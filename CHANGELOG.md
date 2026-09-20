@@ -122,7 +122,9 @@ a restart does before doing it (`docs/upgrading.md`).
   allow, so a deny is the apiary's own: it takes entries out of what is rendered, which is
   how a repository disables a host of the hive. On a conflict the repository wins, unless the
   hive's rule is locked: a locked rule holds against every repository. Members edit; only an
-  owner locks, unlocks, changes or removes a locked rule. What the document cannot say is
+  owner changes the mode, and only an owner locks, unlocks, changes or removes a locked
+  rule. A list holds at most 500 rules, a rule 100 paths, and a change whose run
+  configuration would be over 1 MiB, more than a runner reads, is refused. What the document cannot say is
   refused when it is written, with a sentence that says what to do instead: a deny of a host
   below an allowed `*.` suffix, and a `*.` suffix held to paths above another allowed entry.
 - Run configurations: every change renders the baseline and every repository with rules of
@@ -140,11 +142,15 @@ a restart does before doing it (`docs/upgrading.md`).
 - The run configuration endpoint of the server contract, `GET /v1/run-configuration`: a
   signed request answered with the stored bytes for the key's hive and the labelled
   repository, the baseline for any other, the digest in `X-Qory-Run-Configuration` and as the
-  `ETag`, never a `304`. A hive without a policy gets a baseline made on first need:
-  `observe`, nothing allowed, nothing denied. Discovery names the `run` section.
-- Live reload: every `202` and `410` of `POST /v1/events` carries
-  `X-Qory-Run-Configuration`, the digest in force for the run's repository, read from an
-  index and never rendered while answering; a run whose policy changed fetches it again
+  `ETag`, never a `304`, rate limited per key with the events endpoint's bucket. A hive
+  serves it only once somebody has made its policy (the first rule or the first change of
+  mode; `Apiary.Policy.managed?/1`): from then on discovery names the `run` section for that
+  hive. Until then there is no `run` section, the endpoint answers `404`, and the hive's
+  machines keep the policy of their own `runner.yaml`. The discovery document and its digest
+  are therefore one of two, by hive.
+- Live reload: every `202` and `410` of `POST /v1/events` to a hive with a policy carries
+  `X-Qory-Run-Configuration`, the digest in force for the run's repository, read after the
+  commit and never rendered while answering; a run whose policy changed fetches it again
   within a heartbeat. The digest a batch reported is kept on the delivery and on the run,
   and `Apiary.Policy.digests/2` says whether a run is behind.
 - What the record says about the rules (`Apiary.Policy.uncovered/2`, `denied_summary/2`,
@@ -189,13 +195,16 @@ a restart does before doing it (`docs/upgrading.md`).
 
 ### Upgrading
 
-- Discovery names a `run` section from this release on, so every run under a server key
-  takes its policy from the hive and no longer from the machine's `runner.yaml`. A hive
-  nobody has given a policy serves `observe` with nothing allowed, which records everything
-  and denies nothing: a machine that enforced its own list stops enforcing it until the hive
-  has the list and the mode. Give the hive its policy before upgrading a fleet that relies
-  on enforcement, or run such a machine with `--local`. The digest of the discovery document
-  changes, so a run in flight fetches it again.
+- The upgrade changes no machine's policy. A hive serves a run configuration only once
+  somebody has made its policy in the console, by the first rule or the first change of
+  mode; until then discovery names no `run` section and every machine keeps the `egress`
+  section of its own `runner.yaml`, enforcement included. The first change is the moment
+  the hive takes over, for every machine under its keys and for the runs in flight, which
+  reload within a heartbeat: from then on the hive's policy is the policy and the machine's
+  own is not merged with it. So before the first change, say in the hive everything the
+  machines' own lists say (the mode is `observe` until an owner sets it, which denies
+  nothing), or keep a machine on its own policy with `qory run --local`. It does not go back
+  by removing the rules: a hive that was given a policy keeps serving it.
 - First release; nothing to upgrade. Set the variables in `.env.example`; `CLOAK_KEY` must
   never change once a key has been created, or every stored secret becomes unreadable.
 - Mail delivery is required: the release does not boot without `SMTP_RELAY`. A trial on one

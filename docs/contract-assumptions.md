@@ -53,12 +53,19 @@ the SHA-256 of the body as sent:
 ```
 
 `<public host>` is the application's public base URL (`PUBLIC_URL`). The `events` URL is
-the events endpoint below, and the `run` URL the run configuration endpoint after it. The
-apiary always names a `run` section: a run under a server's key takes its policy from the
-hive, and a runner refuses to run when the section it was named does not answer `200`.
-Sections a runner does not know are to be ignored. The digest of this document changed when
-the `run` section came back, so a run that was in flight across that upgrade fetches the
-document once more, finds the section and fetches its run configuration.
+the events endpoint below, and the `run` URL the run configuration endpoint after it.
+
+The `run` section is there only for a hive whose policy somebody has made: a hive with at
+least one change in its policy's history, the first rule or the first change of mode. A hive
+nobody has given a policy is answered the document without `run`, and its machines run under
+the policy of their own `runner.yaml`, as the contract has it for a server that names no
+section. So an upgrade, or a hive nobody has looked at, never replaces a machine's own
+enforcement with an empty policy. The document is therefore one of two, by hive, and so is
+its digest, here and in every answer to a batch. The first change of a hive's policy changes
+that digest: a run in flight fetches the document again, finds the section, fetches its run
+configuration and applies it, which is the moment the hive takes over. It does not go back:
+a hive whose rules were all removed again still serves its (empty) policy. Sections a runner
+does not know are to be ignored.
 
 ## Signed POST: the events endpoint
 
@@ -93,10 +100,11 @@ first refusal that applies is the answer:
 | `503` | the batch could not be stored; nothing of it was | `{"error":"unavailable"}` |
 | `202` | stored | empty |
 
-Every `202` and `410` carries the digests in force: `X-Qory-Configuration`, the same digest
-the discovery answer carries, and `X-Qory-Run-Configuration`, the digest of the run
-configuration for the run's repository (see "The run configuration" below for which that is
-while the repository is not known yet). No other status carries the second. No error body repeats anything that was sent. The ping is a batch like any other: a `2xx` lets the
+Every `202` and `410` carries the digests in force: `X-Qory-Configuration`, the digest the
+hive's discovery answer carries, and, for a hive whose policy somebody has made,
+`X-Qory-Run-Configuration`, the digest of the run configuration for the run's repository (see
+"The run configuration" below for which that is while the repository is not known yet). A
+hive without a policy of its own is never answered the second. No other status carries it. No error body repeats anything that was sent. The ping is a batch like any other: a `2xx` lets the
 run start, and a revoked key, a bad signature or an unsupported version does not.
 
 A batch is a non-empty JSON array of at most 1000 objects (a runner cuts a batch at a
@@ -151,8 +159,11 @@ The body is the bytes that were stored when the policy was last changed; nothing
 for a request, so the digest is of exactly what is sent. It is the configuration of the
 key's hive for the repository the two labels name. A repository the hive has not seen, one
 with no rules of its own, and a request that names none (or one label of the two) get the
-hive's baseline. A hive whose policy nobody has touched gets a baseline rendered on first
-need: `observe`, `allow` empty, which denies nothing.
+hive's baseline. A hive whose policy nobody has made serves none: `404`
+`{"error":"not_found"}`, nothing rendered; discovery named it no `run` section, so a runner
+does not ask. The endpoint spends a token of the key's rate limit, the events endpoint's
+bucket: `429 {"error":"rate_limited"}` with `Retry-After` beyond it, which to a runner is no
+run or a reload that failed and is tried again on the next answer.
 
 Rendering is canonical: members in a fixed order, no whitespace, `allow` sorted with names
 before `*.` suffixes (so the rule a runner reports for a connection is the most exact one),
@@ -161,7 +172,9 @@ before `*.` suffixes (so the rule a runner reports for a connection is the most 
 and the same digest, a change that renders the same bytes makes no new version, and every
 document is validated against the contract's `run-configuration.schema.json` and
 `policy.schema.json` (vendored under `priv/contract/`) before it is stored: a change whose
-render the schema refuses is not made.
+render the schema refuses is not made, and neither is one whose render is over 1 MiB, the
+most a runner reads of a document (`MaxDocument`). A list holds at most 500 rules and a rule
+at most 100 paths.
 
 ## Failure
 
@@ -241,10 +254,13 @@ The contract has not fixed these; Apiary chose, and the runner should match:
 - When the run configuration cannot be read the endpoint answers `503
   {"error":"unavailable"}`, which is no run: the run fails closed, as it does on any answer
   but `200`.
-- The digest in an answer to a batch is read, never rendered: one read of an index for a run
-  whose repository has a configuration of its own, two when it falls back to the baseline.
-  If that read fails the header is absent, which means nothing to a runner, and the delivery
-  is still `202`.
+- The digests in an answer to a batch are read after the commit, never rendered: one read
+  that says whether the hive's policy is managed (an index on `policy_changes`), then, for a
+  managed hive, the newest configuration of the run's repository (one read of an index), and
+  the baseline's after it when the repository has none of its own; while the run's
+  repository is not known yet, a lookup of the repository by its labels or of the reported
+  digest comes before. Three to four small reads, not one. If a read fails the header it
+  decides is absent, which means nothing to a runner, and the delivery is still `202`.
 - A run's repository is known to the server once its `run.started` is projected, which is
   after the receiver answers. Until then the answer's digest is, in this order: that of the
   repository the batch's own `run.started` labels name; else, when the request's

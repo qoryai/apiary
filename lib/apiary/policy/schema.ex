@@ -5,6 +5,11 @@ defmodule Apiary.Policy.Schema do
   before it is stored. A test compares the vendored files with the runner's contract
   directory when `RUNNER_CONTRACT_DIR` is set, as CI sets it.
 
+  The schema's patterns are anchored with `^` and `$`, and `$` also matches before a final
+  newline: `"api.example\n"` passes them. This validation is the check of the document's
+  shape, not the guard of a host, a path or a name: that is `Apiary.Policy.Grammar`, whose
+  patterns are anchored with `\\A` and `\\z` and which every rule passes before it is stored.
+
   The validator is built once and kept in `:persistent_term`. Nothing is fetched: a
   reference outside the two files does not resolve.
   """

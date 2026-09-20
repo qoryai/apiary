@@ -8,6 +8,9 @@ defmodule Apiary.Policy.Grammar do
   `covers?/2` and `matches?/2` are the runner's `policy.Covers` and `policy.Match`.
   """
 
+  # The schema's own patterns but for the anchors: `\A` and `\z`, since `$` would let a final
+  # newline through. This, not the validation of the rendered document, is what keeps a
+  # host, a path or a name to the grammar.
   @host ~r/\A(\*\.)?([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\z/
   @path ~r/\A\/[^*?#\s]*\*?\z/
   @name ~r/\A[a-z0-9][a-z0-9_.-]{0,63}\z/
