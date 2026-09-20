@@ -117,8 +117,8 @@ defmodule Apiary.Runs.Fold do
         image: string(data, "image"),
         labels: labels,
         task: labels["task"],
-        forge: labels["forge"],
-        repository: labels["repository"],
+        forge: repository_label(data, "forge"),
+        repository: repository_label(data, "repository"),
         started_at: event.time
       })
       |> started_state()
@@ -316,6 +316,16 @@ defmodule Apiary.Runs.Fold do
 
       _ ->
         []
+    end
+  end
+
+  # The label as sent, whole, or nil: see `Apiary.Runs.Repository.label/1`. A label that
+  # cannot name a repository stays in `labels` (cut like the others) and the run is
+  # unassigned.
+  defp repository_label(data, key) do
+    case data do
+      %{"labels" => %{^key => value}} -> Apiary.Runs.Repository.label(value)
+      _ -> nil
     end
   end
 

@@ -163,6 +163,43 @@ defmodule Apiary.Runs.ProjectorTest do
       assert Repo.aggregate(Repository, :count) == 1
     end
 
+    test "a label that cannot name a repository leaves the run unassigned, its labels as sent",
+         %{scope: scope, run: run} do
+      bad = [
+        "acme/shop\n# injected: true",
+        "acme/shop\r",
+        "acme/\tshop",
+        "acme/shop\u0085",
+        "acme/shop\u2028x",
+        "acme/shop\u2029",
+        "acme/shop\u007F",
+        String.duplicate("a", 257),
+        ""
+      ]
+
+      for {label, n} <- Enum.with_index(bad),
+          {key, other} <- [{"repository", "forge"}, {"forge", "repository"}] do
+        run = if n == 0 and key == "repository", do: run, else: run_fixture(scope)
+        labels = %{key => label, other => "git.example.com"}
+        events_fixture(run, [{1, "run.started", started_data(%{"labels" => labels})}])
+
+        assert {:ok, projected} = Projector.project(run)
+        assert projected.repository_id == nil, inspect(label)
+        assert Map.get(projected, String.to_existing_atom(key)) == nil
+        # The run is kept, and what it said is kept.
+        assert projected.state == "running"
+        assert Map.has_key?(projected.labels, key)
+      end
+
+      assert Repo.aggregate(Repository, :count) == 0
+      assert Repository.label("acme/shop") == "acme/shop"
+      assert Repository.label("äcme/shöp") == "äcme/shöp"
+      assert Repository.label(String.duplicate("a", 256))
+      assert Repository.label(<<255>>) == nil
+      assert Repository.label(7) == nil
+      assert Repository.label("acme/\u0000shop") == nil
+    end
+
     test "the same forge and path in another hive is another repository", %{run: run} do
       other = run_fixture(scope_fixture())
 

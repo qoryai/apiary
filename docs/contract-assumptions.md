@@ -252,10 +252,18 @@ The contract has not fixed these; Apiary chose, and the runner should match:
   events endpoint, signed and verified like it.
 - The run configuration endpoint never answers `304`, whatever `If-None-Match` says: to a
   runner anything but `200` is no run. The `ETag` is there for a person with `curl`.
-- `forge` and `repository` are compared to the stored labels byte for byte after the query's
-  percent-decoding; a label longer than 512 bytes, empty, holding a NUL, or sent as anything
-  but one string (`forge[]=`) names no repository, which is the baseline and not an error.
-  Of a parameter sent twice the last is read. Nothing of the query is logged.
+- A `forge` or a `repository` label names a repository when it is a string of valid UTF-8,
+  not empty, at most 256 bytes, with no control character: C0, DEL, C1 (U+0085 among them),
+  U+2028 and U+2029, anything that ends a line somewhere. A label that fails this is neither
+  cleaned nor cut, since either would file the run under a repository it did not name. The
+  run is kept with its labels as sent, belongs to no repository (the console lists it as
+  unassigned), and is served the hive's baseline. One function decides this for the
+  projector, which makes repositories from the labels of `run.started`, and for the wire, so
+  the run configuration endpoint and the digest in an answer always pick the same repository
+  as the projector, or none. On the endpoint the labels are compared to the stored ones byte
+  for byte after the query's percent-decoding; a parameter sent as anything but one string
+  (`forge[]=`) names no repository, which is the baseline and not an error. Of a parameter
+  sent twice the last is read. Nothing of the query is logged.
 - When the run configuration cannot be read the endpoint answers `503
   {"error":"unavailable"}`, which is no run: the run fails closed, as it does on any answer
   but `200`.

@@ -32,12 +32,8 @@ defmodule Apiary.Policy.Serving do
   alias Apiary.Repo
   alias Apiary.Runs.{Batch, Repository, Run}
 
-  @label_max 512
   @digest ~r/\Asha256=[0-9a-f]{64}\z/
   @started "ai.qory.run.started"
-
-  @doc "The most bytes of a forge or a repository label that is looked up; a longer one names no repository."
-  def label_max, do: @label_max
 
   @doc "The run configuration in force for the key's hive and the labelled repository."
   @spec fetch(AccessKey.t(), term, term) :: {:ok, RunConfiguration.t()} | {:error, term}
@@ -128,18 +124,16 @@ defmodule Apiary.Policy.Serving do
     )
   end
 
+  # The labels name a repository only when the projector would have made one of them
+  # (`Apiary.Runs.Repository.label/1`): the wire and the projector pick the same, or none.
   defp repository_id(hive_id, forge, repository) do
-    if label?(forge) and label?(repository) do
+    with forge when is_binary(forge) <- Repository.label(forge),
+         repository when is_binary(repository) <- Repository.label(repository) do
       Repo.one(
         from p in Repository,
           where: p.hive_id == ^hive_id and p.forge == ^forge and p.path == ^repository,
           select: p.id
       )
     end
-  end
-
-  defp label?(label) do
-    is_binary(label) and label != "" and byte_size(label) <= @label_max and String.valid?(label) and
-      not String.contains?(label, <<0>>)
   end
 end

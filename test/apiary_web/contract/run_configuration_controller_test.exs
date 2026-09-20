@@ -129,6 +129,9 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
           "forge[]=github.example&repository=acme%2Fsite",
           "forge[a]=github.example&repository[b]=acme%2Fsite",
           "forge=github.example&repository=" <> String.duplicate("a", 600),
+          "forge=github.example&repository=acme%2Fsite%0A",
+          "forge=github.example&repository=acme%2Fsite%E2%80%A8",
+          "forge=github.example%C2%85&repository=acme%2Fsite",
           "forge=github.example&repository=acme%2Fsite%00"
         ] do
       conn = fetch(ctx, query)
