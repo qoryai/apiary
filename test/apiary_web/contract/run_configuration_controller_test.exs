@@ -129,6 +129,21 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
     end
   end
 
+  test "a repository with a mode of its own is served it; an unknown one gets the hive's", ctx do
+    site = repository_fixture(ctx.scope, "github.example", "acme/site")
+    {:ok, _} = Policy.set_mode(ctx.scope, site, "enforce")
+    mode = fn conn -> Jason.decode!(conn.resp_body)["security_policy"]["egress"]["mode"] end
+
+    assert mode.(fetch(ctx, "forge=github.example&repository=acme%2Fsite")) == "enforce"
+    assert mode.(fetch(ctx, "forge=github.example&repository=acme%2Funknown")) == "observe"
+    assert mode.(fetch(ctx, "")) == "observe"
+
+    {:ok, _} = Policy.set_mode(ctx.scope, "enforce")
+    {:ok, _} = Policy.set_mode(ctx.scope, site, "observe")
+    assert mode.(fetch(ctx, "forge=github.example&repository=acme%2Fsite")) == "observe"
+    assert mode.(fetch(ctx, "forge=github.example&repository=acme%2Funknown")) == "enforce"
+  end
+
   test "never a 304: a matching If-None-Match is answered 200 with the document", ctx do
     {:ok, _} = Policy.allow(ctx.scope, nil, %{host: "api.example"})
     first = fetch(ctx, "")

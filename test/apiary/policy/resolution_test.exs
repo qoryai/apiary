@@ -155,6 +155,45 @@ defmodule Apiary.Policy.ResolutionTest do
     end
   end
 
+  describe "the mode" do
+    # {name, hive mode, the repository's own, repository?, mode in force, where from}
+    @modes [
+      {"the baseline has the hive's", "observe", nil, false, "observe", :hive},
+      {"a repository follows the hive by default", "enforce", nil, true, "enforce", :hive},
+      {"hive observe, repository enforce", "observe", "enforce", true, "enforce", :repository},
+      {"hive enforce, repository observe", "enforce", "observe", true, "observe", :repository},
+      {"the same mode said by the repository is still its own", "enforce", "enforce", true,
+       "enforce", :repository},
+      {"a mode without a repository is not the baseline's", "observe", "enforce", false,
+       "observe", :hive},
+      {"what is no mode follows the hive", "enforce", "log", true, "enforce", :hive}
+    ]
+
+    for {name, hive, own, repository?, mode, source} <- @modes do
+      test name do
+        id = if unquote(repository?), do: Ecto.UUID.generate()
+
+        assert {:ok, effective} =
+                 Resolution.resolve_for(
+                   unquote(hive),
+                   unquote(own),
+                   [allow("api.example"), deny("mcp.example", locked: true)],
+                   if(id, do: [allow("mcp.example")], else: []),
+                   id
+                 )
+
+        assert effective.mode == unquote(mode)
+        assert effective.mode_source == unquote(source)
+
+        # The rules resolve the same under either mode: the locked deny holds.
+        assert effective.allow == ["api.example"]
+        document = Render.document(effective)
+        assert :ok = Schema.validate(document)
+        assert Jason.decode!(document)["security_policy"]["egress"]["mode"] == unquote(mode)
+      end
+    end
+  end
+
   describe "entries" do
     test "say where they came from, what is in force and what overrode what" do
       {:ok, effective} =

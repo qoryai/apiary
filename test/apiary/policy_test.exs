@@ -51,6 +51,187 @@ defmodule Apiary.PolicyTest do
     end
   end
 
+  describe "a repository's mode" do
+    setup %{scope: scope} do
+      %{repository: repository_fixture(scope), other: repository_fixture(scope, "acme/docs")}
+    end
+
+    test "follows the hive until it sets its own, and goes back by :inherit", ctx do
+      %{scope: scope, repository: repository} = ctx
+
+      assert Policy.get_mode(scope, nil) == "observe"
+      assert Policy.get_mode(scope, :hive) == "observe"
+      assert Policy.get_mode(scope, repository) == %{mode: "observe", own: nil, hive: "observe"}
+      assert %{mode: "observe", mode_source: :hive} = Policy.effective(scope, repository)
+
+      assert {:ok, %{mode: "enforce", own: "enforce", hive: "observe"}} =
+               Policy.set_mode(scope, repository, "enforce")
+
+      assert Policy.get_mode(scope, repository) == %{
+               mode: "enforce",
+               own: "enforce",
+               hive: "observe"
+             }
+
+      assert Policy.get_mode(scope) == "observe"
+      assert %{mode: "enforce", mode_source: :repository} = Policy.effective(scope, repository)
+      assert %{mode: "observe", mode_source: :hive} = Policy.effective(scope, nil)
+      assert %{mode: "observe", mode_source: :hive} = Policy.effective(scope, ctx.other)
+
+      # A repository with only a mode of its own has a configuration of its own.
+      own = current!(scope, repository)
+      assert own.repository_id == repository.id
+      assert policy(own)["egress"]["mode"] == "enforce"
+      assert policy(current!(scope, nil))["egress"]["mode"] == "observe"
+      assert current!(scope, ctx.other).repository_id == nil
+
+      assert {:ok, %{mode: "observe", own: nil}} = Policy.set_mode(scope, repository, "inherit")
+      assert %{version: 2} = own = current!(scope, repository)
+      assert policy(own)["egress"]["mode"] == "observe"
+
+      assert {:ok, %{own: "observe"}} = Policy.set_mode(scope, repository, "observe")
+      # The same bytes: a change, and no new version.
+      assert %{version: 2} = current!(scope, repository)
+      assert {:ok, %{own: nil}} = Policy.set_mode(scope, repository, :inherit)
+
+      assert [
+               %{repository: %{path: "acme/docs"}, own_mode: nil, mode: "observe"},
+               %{repository: %{path: "acme/site"}, own_mode: nil, mode: "observe"}
+             ] = Policy.list_repositories(scope)
+    end
+
+    test "a hive's change moves the repositories that follow it and leaves the others", ctx do
+      %{scope: scope, repository: repository, other: other} = ctx
+      {:ok, _} = Policy.set_mode(scope, repository, "observe")
+      {:ok, _} = Policy.allow(scope, other, %{host: "mcp.example"})
+      kept = current!(scope, repository)
+      followed = current!(scope, other)
+
+      assert {:ok, "enforce"} = Policy.set_mode(scope, nil, "enforce")
+
+      assert current!(scope, repository).id == kept.id
+      assert %{mode: "observe", mode_source: :repository} = Policy.effective(scope, repository)
+
+      moved = current!(scope, other)
+      assert moved.version == followed.version + 1
+      assert policy(moved)["egress"]["mode"] == "enforce"
+      assert policy(current!(scope, nil))["egress"]["mode"] == "enforce"
+
+      # Inherit follows a later change of the hive, too.
+      {:ok, _} = Policy.set_mode(scope, repository, :inherit)
+      assert policy(current!(scope, repository))["egress"]["mode"] == "enforce"
+      {:ok, _} = Policy.set_mode(scope, "observe")
+      assert policy(current!(scope, repository))["egress"]["mode"] == "observe"
+
+      assert [%{own_mode: nil, mode: "observe"}, %{own_mode: nil, mode: "observe"}] =
+               Policy.list_repositories(scope)
+    end
+
+    test "is a change in the repository's history, and its diff says from what to what", ctx do
+      %{scope: scope, repository: repository} = ctx
+      Policy.subscribe(scope)
+      {:ok, _} = Policy.set_mode(scope, repository, "enforce")
+
+      repository_id = repository.id
+      assert_receive {:policy_changed, %{repository_id: ^repository_id, action: "mode_changed"}}
+
+      {:ok, _} = Policy.set_mode(scope, "enforce")
+      {:ok, _} = Policy.set_mode(scope, repository, :inherit)
+      # Setting what is set already is no change.
+      {:ok, _} = Policy.set_mode(scope, repository, :inherit)
+
+      assert %{items: [back, first], total: 2} = Policy.list_changes(scope, repository)
+      assert first.action == "mode_changed" and first.version_after == 1
+
+      assert %{mode: {"inherit", "enforce"}, added: [], removed: [], changed: []} =
+               Policy.diff(first)
+
+      assert %{mode: {"enforce", "inherit"}} = Policy.diff(back)
+      # The repository's bytes did not change when it went back to a hive that enforces.
+      assert back.version_after == 1
+
+      # The hive's change is the hive's, not the repository's.
+      assert %{items: [%{action: "mode_changed"} = hive], total: 1} =
+               Policy.list_changes(scope, nil)
+
+      assert %{mode: {"observe", "enforce"}} = Policy.diff(hive)
+
+      # A rule's change in the repository does not read as a change of mode.
+      {:ok, _} = Policy.allow(scope, repository, %{host: "mcp.example"})
+      %{items: [rule | _]} = Policy.list_changes(scope, repository)
+      assert %{mode: nil, added: [%{"host" => "mcp.example"}]} = Policy.diff(rule)
+    end
+
+    test "is an owner's to set; what is no mode is refused; it makes the hive managed", ctx do
+      %{scope: scope, repository: repository} = ctx
+      %{scope: member} = member_fixture(scope)
+
+      assert {:error, %Error{reason: :unauthorized}} =
+               Policy.set_mode(member, repository, "enforce")
+
+      assert {:error, %Error{reason: :unauthorized}} =
+               Policy.set_mode(member, repository, :inherit)
+
+      assert {:error, %Error{reason: :invalid, field: :mode}} =
+               Policy.set_mode(scope, repository, "log")
+
+      assert {:error, %Error{reason: :invalid, field: :mode}} =
+               Policy.set_mode(scope, nil, :inherit)
+
+      refute Policy.managed?(scope)
+
+      assert {:ok, _} = Policy.set_mode(scope, repository, "enforce")
+      assert Policy.managed?(scope)
+    end
+
+    test "a locked rule of the hive holds under the repository's own mode", ctx do
+      %{scope: scope, repository: repository} = ctx
+      {:ok, _} = Policy.deny(scope, nil, %{host: "mcp.example", locked: true})
+      {:ok, _} = Policy.allow(scope, repository, %{host: "mcp.example"})
+      {:ok, _} = Policy.allow(scope, repository, %{host: "api.example"})
+
+      for mode <- ["observe", "enforce"] do
+        {:ok, _} = Policy.set_mode(scope, repository, mode)
+
+        assert policy(current!(scope, repository))["egress"] == %{
+                 "mode" => mode,
+                 "allow" => ["api.example"]
+               }
+      end
+    end
+
+    test "another hive's repository is not found, and an unknown one follows the hive", ctx do
+      %{scope: other} = sign_up_fixture()
+
+      assert {:error, %Error{reason: :not_found}} =
+               Policy.set_mode(other, ctx.repository, "enforce")
+
+      assert Policy.get_mode(other, ctx.repository) == %{
+               mode: "observe",
+               own: nil,
+               hive: "observe"
+             }
+
+      assert Repo.get!(Repository, ctx.repository.id).egress_mode == nil
+    end
+
+    test "the database takes observe, enforce or null and nothing else", ctx do
+      assert_raise Postgrex.Error, ~r/repositories_egress_mode_check/, fn ->
+        Repo.query!("UPDATE repositories SET egress_mode = 'log' WHERE id = $1", [
+          Ecto.UUID.dump!(ctx.repository.id)
+        ])
+      end
+    end
+
+    test "the export says the mode in force for the repository", ctx do
+      {:ok, _} = Policy.set_mode(ctx.scope, ctx.repository, "enforce")
+      assert {:ok, %{runner_file: runner_file}} = Policy.export(ctx.scope, ctx.repository)
+      assert runner_file =~ "mode: enforce"
+      assert {:ok, %{runner_file: hive_file}} = Policy.export(ctx.scope, nil)
+      assert hive_file =~ "mode: observe"
+    end
+  end
+
   describe "rules" do
     test "a rule is added, changed and removed, each a change and a version", %{scope: scope} do
       Policy.subscribe(scope)
