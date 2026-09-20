@@ -85,7 +85,9 @@ defmodule ApiaryWeb do
       # HTML escaping functionality
       import Phoenix.HTML
       # Core UI components
-      import ApiaryWeb.CoreComponents
+      import ApiaryWeb.CoreComponents, except: [relative_time: 1, relative_time: 2]
+      # The components of the runs, run and connections pages
+      import ApiaryWeb.RunComponents
 
       # Common modules used in templates
       alias Phoenix.LiveView.JS
