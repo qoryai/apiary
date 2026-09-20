@@ -77,17 +77,25 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
 
   test "a key over its rate is 429 with Retry-After, from the events endpoint's bucket", ctx do
     {:ok, _} = Policy.allow(ctx.scope, nil, %{host: "api.example"})
+    assert fetch(ctx, "").status == 200
 
-    statuses =
-      for _ <- 1..130 do
-        conn = fetch(ctx, "")
-        if conn.status == 429, do: assert([_seconds] = get_resp_header(conn, "retry-after"))
-        conn.status
-      end
+    # The key's bucket, emptied and dated an hour ahead of the monotonic clock, so nothing
+    # refills it however slowly the suite runs. The bucket is this test's key's alone, and
+    # nothing here depends on how fast requests are made.
+    bucket = Apiary.Runs.RateLimit
+    later = System.monotonic_time(:millisecond) + :timer.hours(1)
+    :ets.insert(bucket, {ctx.key.id, 0, later})
 
-    assert 200 in statuses
-    assert 429 in statuses
-    assert Enum.uniq(statuses) -- [200, 429] == []
+    conn = fetch(ctx, "")
+    assert json_response(conn, 429) == %{"error" => "rate_limited"}
+    assert [seconds] = get_resp_header(conn, "retry-after")
+    assert String.to_integer(seconds) >= 1
+    assert get_resp_header(conn, "x-qory-run-configuration") == []
+
+    # It is the bucket the events endpoint spends from: one token back serves one request.
+    :ets.insert(bucket, {ctx.key.id, 1000, later})
+    assert fetch(ctx, "").status == 200
+    assert fetch(ctx, "").status == 429
   end
 
   test "the bytes served are the bytes stored, under the stored digest", ctx do
