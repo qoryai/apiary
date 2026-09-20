@@ -24,8 +24,10 @@ a restart does before doing it (`docs/upgrading.md`).
   last used, last runner and contract version. Secrets are encrypted at rest with an
   application-held key.
 - The discovery endpoint of the server contract, `GET /.well-known/qory-configuration`: a
-  signed request answered with the configuration document, version 1, sections `events` and
-  `run`. The signature rules Apiary assumes are in `docs/contract-assumptions.md`.
+  signed request answered with the configuration document, version 1 revision 1, section
+  `events` and the document's digest in `X-Qory-Configuration`; the `run` section arrives
+  with the run configuration. The rules of the wire as the apiary implements them are in
+  `docs/contract-assumptions.md`.
 
 ### Migrations
 

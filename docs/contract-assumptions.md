@@ -1,7 +1,9 @@
-# The server contract as Apiary implements it (M2)
+# The server contract as the apiary implements it (M2)
 
-What the discovery endpoint expects and returns, so the runner side can be written against
-it. Anything the contract has not fixed yet is listed under "Assumed" at the end.
+What the discovery endpoint expects and returns. The contract is `contracts/runner/v1` of the
+`qoryai/runner` repository, revision 1; this page is the apiary's reading of it, and where the
+two disagree the contract wins. Anything the contract has not fixed is listed under "Assumed"
+at the end.
 
 ## Signed GET
 
@@ -39,20 +41,22 @@ or the key is revoked.
 ## The discovery document
 
 `GET /.well-known/qory-configuration`, signed as above, answers `200` with
-`Content-Type: application/json`:
+`Content-Type: application/json` and the header `X-Qory-Configuration: sha256=<lowercase hex>`,
+the SHA-256 of the body as sent:
 
 ```json
 {
   "version": 1,
-  "events": {"url": "https://<public host>/v1/events", "types": ["*"]},
-  "run": {"url": "https://<public host>/v1/run-configuration"}
+  "events": {"url": "https://<public host>/v1/events", "types": ["*"]}
 }
 ```
 
-`<public host>` is the application's public base URL (`PUBLIC_URL`). The `events` and `run`
-URLs are named by the document but **do not exist yet**: the events receiver and the run
-configuration are later milestones. A runner that fetches them now gets the application's
-404. Sections a runner does not know are to be ignored.
+`<public host>` is the application's public base URL (`PUBLIC_URL`). The `events` URL is
+named by the document but **does not exist yet**: the events receiver is the next milestone,
+and a runner that pings it now gets the application's 404 and does not run. The `run`
+section is deliberately absent until the run configuration exists: a runner refuses to run
+when a section the document names does not answer, and runs under its machine's own policy
+when the section is absent. Sections a runner does not know are to be ignored.
 
 ## Failure
 
