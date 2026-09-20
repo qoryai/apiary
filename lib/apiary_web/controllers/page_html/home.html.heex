@@ -1,0 +1,25 @@
+<Layouts.flash_group flash={@flash} />
+<div class="flex min-h-dvh flex-col">
+  <header class="flex h-16 items-center justify-between px-4 sm:px-6">
+    <.brand />
+    <div class="flex items-center gap-2">
+      <Layouts.theme_toggle />
+      <.button navigate={~p"/users/log-in"} variant="ghost" size="sm">Sign in</.button>
+    </div>
+  </header>
+
+  <main class="flex flex-1 items-center justify-center px-4 pb-24">
+    <div class="w-full max-w-xl text-center">
+      <.logo_mark class="mx-auto size-16" />
+      <h1 class="mt-6 text-3xl font-semibold tracking-tight text-ink sm:text-4xl">Apiary</h1>
+      <p class="mx-auto mt-4 max-w-md text-balance text-base text-ink-muted">
+        Give your <.term word="hive" /> an access key, paste it into the runner file on your
+        machines, and every run they make lands here.
+      </p>
+      <div class="mt-8 flex flex-col justify-center gap-2 sm:flex-row">
+        <.button navigate={~p"/users/log-in"} variant="primary">Sign in</.button>
+        <.button navigate={~p"/users/register"}>Create account</.button>
+      </div>
+    </div>
+  </main>
+</div>

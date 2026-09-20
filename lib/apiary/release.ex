@@ -1,0 +1,43 @@
+defmodule Apiary.Release do
+  @moduledoc """
+  Release tasks that run without Mix: migrations for `bin/migrate` and for
+  `Apiary.Release.Migrator` at boot, and helpers that production configuration
+  evaluates at runtime.
+  """
+  @app :apiary
+
+  def migrate do
+    load_app()
+
+    for repo <- repos() do
+      {:ok, _, _} = Ecto.Migrator.with_repo(repo, &Ecto.Migrator.run(&1, :up, all: true))
+    end
+  end
+
+  def rollback(repo, version) do
+    load_app()
+    {:ok, _, _} = Ecto.Migrator.with_repo(repo, &Ecto.Migrator.run(&1, :down, to: version))
+  end
+
+  @doc """
+  True when `PUBLIC_URL` is plain `http://`.
+
+  `config/prod.exs` passes this to `Plug.SSL` as an `:exclude` condition, so an
+  instance published over plain HTTP (a LAN, a trial on one machine) is not redirected
+  to an HTTPS address that does not exist. With an `https://` public URL every request
+  is redirected unless the reverse proxy sends `X-Forwarded-Proto: https`.
+  """
+  def plain_http?(_conn) do
+    Application.get_env(@app, :public_url_scheme) == "http"
+  end
+
+  defp repos do
+    Application.fetch_env!(@app, :ecto_repos)
+  end
+
+  defp load_app do
+    # Many platforms require SSL when connecting to the database
+    Application.ensure_all_started(:ssl)
+    Application.ensure_loaded(@app)
+  end
+end
