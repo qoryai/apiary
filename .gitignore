@@ -42,3 +42,6 @@ npm-debug.log
 # Local secrets and per-machine tool settings.
 .env
 mise.local.toml
+
+# Agent worktrees and local tool state
+.claude/
