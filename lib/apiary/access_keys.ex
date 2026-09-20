@@ -206,6 +206,8 @@ defmodule Apiary.AccessKeys do
     ArgumentError -> unreadable(key_id)
   end
 
+  def fetch_for_verification(_key_id), do: :error
+
   # A secret encrypted under another key does not raise when it is loaded: the cipher's
   # failure comes through as the atom `:error` in the field. A secret is a binary or nil.
   defp readable?(%AccessKey{secret_primary: primary, secret_secondary: secondary}) do
@@ -221,8 +223,6 @@ defmodule Apiary.AccessKeys do
 
     {:error, :unreadable}
   end
-
-  def fetch_for_verification(_key_id), do: :error
 
   @doc "Records a use: `last_used_at` now, plus `last_runner_version` and `last_contract_version` from `attrs`."
   def touch(%AccessKey{} = access_key, attrs) do
