@@ -279,7 +279,17 @@ defmodule ApiaryWeb.PolicyComponents do
           role="radio"
           aria-checked={to_string(@mode == mode)}
           aria-disabled={!@can_edit && "true"}
-          aria-describedby={"#{@id}-#{mode}-p"}
+          aria-describedby={
+            Enum.join(
+              [
+                "#{@id}-#{mode}-p",
+                @mode == mode && (@fact || !@served) && "#{@id}-fact",
+                !@can_edit && "#{@id}-owners"
+              ]
+              |> Enum.filter(&is_binary/1),
+              " "
+            )
+          }
           tabindex={if @mode == mode, do: "0", else: "-1"}
           phx-click={@can_edit && @mode != mode && JS.push("mode_ask", value: %{mode: mode})}
         >
@@ -414,7 +424,6 @@ defmodule ApiaryWeb.PolicyComponents do
             type="button"
             role="radio"
             aria-checked={to_string(@setting == setting)}
-            aria-pressed={to_string(@setting == setting)}
             aria-disabled={!@can_edit && @setting != setting && "true"}
             tabindex={if @setting == setting, do: "0", else: "-1"}
             phx-click={
@@ -868,6 +877,7 @@ defmodule ApiaryWeb.PolicyComponents do
     <span
       class={["q-host tooltip q-tip-wide", @class]}
       tabindex="0"
+      aria-description={"Every host below #{@suffix}, and not #{@suffix} itself."}
       data-tip={"Every host below #{@suffix}, and not #{@suffix} itself."}
     ><span class="q-host-w">*.</span>{@suffix}</span>
     """
@@ -888,6 +898,7 @@ defmodule ApiaryWeb.PolicyComponents do
     <span
       class="q-every tooltip q-tip-wide"
       tabindex="0"
+      aria-description="The host is listed with no path: every request to it is denied under enforce."
       data-tip="The host is listed with no path: every request to it is denied under enforce."
     >
       no path
@@ -966,7 +977,7 @@ defmodule ApiaryWeb.PolicyComponents do
       type="button"
       class="q-lockbtn tooltip tooltip-left q-tip-wide"
       aria-pressed={to_string(@rule.locked)}
-      aria-label={"#{if @rule.locked, do: "Unlock", else: "Lock"} #{@rule.host}"}
+      aria-label={"Lock #{@rule.host}"}
       data-tip={
         if @rule.locked,
           do: "Locked: no repository can override it. Select to unlock.",
@@ -989,6 +1000,7 @@ defmodule ApiaryWeb.PolicyComponents do
       id={"#{@id}-lock"}
       class="q-locked tooltip tooltip-left q-tip-wide"
       tabindex="0"
+      aria-description={@rule.locked_tip || "Locked. Only an owner can change or unlock it."}
       data-tip={@rule.locked_tip || "Locked. Only an owner can change or unlock it."}
     >
       <.icon name="hero-lock-closed-micro" class="size-3 text-muted" />Locked

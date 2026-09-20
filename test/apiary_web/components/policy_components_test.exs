@@ -227,7 +227,10 @@ defmodule ApiaryWeb.PolicyComponentsTest do
       assert text(html) =~ "Holds against this repository's rule"
       assert text(html) =~ "It is not in force."
       assert html =~ "Remove it"
-      assert html =~ "Every host below paste.example, and not paste.example itself."
+
+      assert html =~
+               ~s(aria-description="Every host below paste.example, and not paste.example itself.")
+
       assert html =~ ~s(href="/hive/policy?rule=%2A.paste.example")
     end
 
@@ -254,13 +257,16 @@ defmodule ApiaryWeb.PolicyComponentsTest do
 
       owner = render_table([%{locked | can_change: true}], scope: :hive, can_lock: true)
       assert owner =~ ~s(aria-pressed="true")
-      assert owner =~ ~s(aria-label="Unlock registry.example")
+      # One carrier of the state: the name stays, aria-pressed says whether it is locked.
+      assert owner =~ ~s(aria-label="Lock registry.example")
+      refute owner =~ ~s(aria-label="Unlock)
       assert owner =~ ~s(aria-label="Actions for registry.example")
 
       member = render_table([locked], scope: :hive, can_lock: false)
       refute member =~ "aria-pressed"
       refute member =~ "Actions for"
       assert member =~ "Locked by beekeeper@example.com on 2 Sep 2026."
+      assert member =~ ~s(aria-description="Locked by beekeeper@example.com on 2 Sep 2026.)
       assert text(member) =~ "dana · 9 Sep"
     end
 
@@ -277,5 +283,46 @@ defmodule ApiaryWeb.PolicyComponentsTest do
     refute html =~ "<i>"
     refute html =~ "<u>"
     assert html =~ "&lt;u&gt;"
+  end
+
+  test "the repository's mode is a radio group, its radios checked and never pressed" do
+    assigns = %{}
+
+    html =
+      rendered_to_string(~H"""
+      <PolicyComponents.repository_mode
+        id="rm"
+        setting="follow"
+        effective="enforce"
+        hive_default="enforce"
+        can_edit={false}
+        locked_denies={["*.paste.example"]}
+      />
+      """)
+
+    assert html =~ ~s(role="radiogroup")
+    assert html =~ ~s(id="rm-follow" type="button" role="radio" aria-checked="true")
+    refute html =~ "aria-pressed"
+
+    assert html =~
+             ~s(id="rm-enforce" type="button" role="radio" aria-checked="false" aria-disabled="true")
+
+    assert html =~ "Only an owner sets a mode."
+    refute html =~ "rm-locked-note"
+  end
+
+  test "a mode card is described by its sentence, its fact and the owners' line" do
+    assigns = %{}
+
+    html =
+      rendered_to_string(~H"""
+      <PolicyComponents.mode_switch mode="observe" can_edit={false} served={false} />
+      """)
+
+    assert html =~
+             ~s(aria-describedby="policy-mode-observe-p policy-mode-fact policy-mode-owners")
+
+    assert html =~ ~s(aria-describedby="policy-mode-enforce-p policy-mode-owners")
+    assert html =~ "Not served yet: it applies from the first change here."
   end
 end

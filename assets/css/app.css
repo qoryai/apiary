@@ -3737,6 +3737,11 @@
   .q-rmode-seg > button {
     height: 26px;
   }
+  .q-rmode-seg > button[aria-checked="true"] {
+    background-color: var(--color-base-100);
+    box-shadow: var(--q-shadow-xs);
+    color: var(--color-base-content);
+  }
   .q-rmode-seg > button[aria-disabled="true"] {
     opacity: 0.45;
     cursor: default;
@@ -3753,7 +3758,7 @@
     color: var(--color-base-content);
     font-weight: 500;
   }
-  @media (max-width: 767px) {
+  @media (max-width: 767.98px) {
     .q-rmode {
       grid-template-columns: minmax(0, 1fr);
     }
@@ -4506,7 +4511,7 @@
   }
 
   /* ---- Phone (pi) ---- */
-  @media (max-width: 767px) {
+  @media (max-width: 767.98px) {
     .q-head-side {
       width: 100%;
     }
@@ -4551,7 +4556,7 @@
       font-size: 16px;
     }
     .q-composer-seg > button {
-      height: 32px;
+      height: 40px;
     }
     .q-reads {
       min-height: 38px;
