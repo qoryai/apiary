@@ -236,15 +236,17 @@ defmodule ApiaryWeb.PolicyComponents do
   ## pd2. Mode switch
 
   @doc """
-  The hive's mode as two radio cards. Choosing the other card never switches at once: it
-  sends `mode_ask`, and the page opens the confirm. Arrow keys move between the cards
-  (the `PolicyPage` hook); Space or Enter asks. `can_edit` false is the read-only form a
-  member sees: the mode is an owner's to change.
+  The hive's default mode as two radio cards. Choosing the other card never switches at
+  once: it sends `mode_ask`, and the page opens the confirm. Arrow keys move between the
+  cards (the `PolicyPage` hook); Space or Enter asks. A mode is an owner's to set: for a
+  member the group is `aria-disabled`, keeps its look and its words, and does nothing.
   """
   attr :id, :string, default: "policy-mode"
-  attr :mode, :string, required: true, values: ~w(observe enforce)
-  attr :can_edit, :boolean, default: true
-  attr :started, :boolean, default: true, doc: "false while the hive has no policy of Qory's yet"
+  attr :mode, :string, required: true, values: ~w(observe enforce), doc: "the hive's default"
+  attr :can_edit, :boolean, default: false, doc: "owners only"
+  attr :served, :boolean, default: true, doc: "false on a new hive: nothing is served yet"
+  attr :following, :integer, default: 0, doc: "repositories that follow the default"
+  attr :own, :list, default: [], doc: "the modes of the repositories that set their own"
 
   attr :fact, :any,
     default: nil,
@@ -259,7 +261,7 @@ defmodule ApiaryWeb.PolicyComponents do
         class="q-mode"
         role="radiogroup"
         aria-labelledby={"#{@id}-h"}
-        aria-readonly={!@can_edit && "true"}
+        aria-disabled={!@can_edit && "true"}
         data-roving
       >
         <button
@@ -276,7 +278,7 @@ defmodule ApiaryWeb.PolicyComponents do
           class="q-mode-card"
           role="radio"
           aria-checked={to_string(@mode == mode)}
-          aria-disabled={!@can_edit && @mode != mode && "true"}
+          aria-disabled={!@can_edit && "true"}
           aria-describedby={"#{@id}-#{mode}-p"}
           tabindex={if @mode == mode, do: "0", else: "-1"}
           phx-click={@can_edit && @mode != mode && JS.push("mode_ask", value: %{mode: mode})}
@@ -284,32 +286,67 @@ defmodule ApiaryWeb.PolicyComponents do
           <span class="q-mode-dot" aria-hidden="true"></span>
           <span class="q-mode-h">
             <.icon name={icon} class="size-4 text-faint" />{name}
-            <.badge :if={@mode == mode}>In force</.badge>
+            <.badge :if={@mode == mode}>Hive default</.badge>
           </span>
           <span id={"#{@id}-#{mode}-p"} class="q-mode-p">{sentence}</span>
-          <span :if={@mode == mode && @fact} id={"#{@id}-fact"} class="q-mode-fact">
-            <.mode_fact fact={@fact} mode={@mode} started={@started} />
+          <span :if={@mode == mode && (@fact || !@served)} id={"#{@id}-fact"} class="q-mode-fact">
+            <.mode_fact
+              fact={if @served, do: @fact, else: :unserved}
+              tail={
+                if @own != [], do: ", in the #{repositories(@following)} that follow it", else: ""
+              }
+            />
           </span>
         </button>
       </div>
-      <p class="text-[12.5px]/[18px] text-faint">
-        The mode is the hive's: every repository runs under it. A wall's own refusals (the machine's address, a path that reads two ways) hold in either mode.
-        <span :if={!@can_edit} id={"#{@id}-owners"}>Only an owner can change the mode.</span>
+      <p id={"#{@id}-under"} class="text-[12.5px]/[18px] text-faint">
+        This is the hive's default. A repository follows it unless an owner sets a mode of its own:
+        <span :if={@own == []}>none does.</span>
+        <span :if={@own != []}>
+          <.link navigate="/hive/policy/repositories?mode=own" class="q-link">{own_count(@own, @following)}</.link>{own_modes(
+            @own
+          )}
+        </span>
+        A wall's own refusals (the machine's address, a path that reads two ways) hold in either mode.
+        <span :if={!@can_edit} id={"#{@id}-owners"}>Only an owner sets a mode.</span>
       </p>
     </section>
     """
   end
 
+  defp repositories(1), do: "1 repository"
+  defp repositories(n), do: "#{n} repositories"
+
+  defp own_count([_one], following), do: "1 of #{repositories(following + 1)} does"
+
+  defp own_count(own, following),
+    do: "#{length(own)} of #{repositories(following + length(own))} do"
+
+  defp own_modes([mode]), do: ", and #{mode}s."
+
+  defp own_modes(own) do
+    observe = Enum.count(own, &(&1 == "observe"))
+    enforce = length(own) - observe
+
+    cond do
+      enforce == 0 -> ", and observe."
+      observe == 0 -> ", and enforce."
+      true -> ": #{observe} #{verb(observe, "observe")}, #{enforce} #{verb(enforce, "enforce")}."
+    end
+  end
+
+  defp verb(1, word), do: word <> "s"
+  defp verb(_n, word), do: word
+
   attr :fact, :any, required: true
-  attr :mode, :string, required: true
-  attr :started, :boolean, required: true
+  attr :tail, :string, default: ""
 
   defp mode_fact(%{fact: :loading} = assigns) do
     ~H|<span class="skeleton q-skel inline-block w-64 align-middle"></span>|
   end
 
-  defp mode_fact(%{fact: :none, started: false} = assigns) do
-    ~H"A new hive starts here. No run has reached out yet."
+  defp mode_fact(%{fact: :unserved} = assigns) do
+    ~H"Not served yet: it applies from the first change here."
   end
 
   defp mode_fact(%{fact: :none} = assigns) do
@@ -331,8 +368,81 @@ defmodule ApiaryWeb.PolicyComponents do
     In the last 7 days <b>{RunComponents.delimited(@fact.uncovered)}</b>
     {if @fact.uncovered == 1, do: "attempt", else: "attempts"} to
     <b>{RunComponents.delimited(@fact.destinations)}</b>
-    {if @fact.destinations == 1, do: "destination", else: "destinations"} had no rule. Enforce would deny them.
+    {if @fact.destinations == 1, do: "destination", else: "destinations"} had no rule{@tail}. Enforce would deny them.
     <.link navigate="/hive/connections?since=7d" class="q-link">See them</.link>
+    """
+  end
+
+  ## pd2a. Repository mode
+
+  @doc """
+  A repository's mode: follow the hive, observe or enforce, with what is in effect and
+  where it comes from. Compact on purpose: the hive's page explains the two modes once;
+  here the choice is whose mode. A radio sends `repository_mode_ask`. While the repository
+  observes and its list holds locked denies of the hive, a notice says that they deny
+  nothing here.
+  """
+  attr :id, :string, required: true
+  attr :setting, :string, required: true, values: ~w(follow observe enforce)
+  attr :effective, :string, required: true, values: ~w(observe enforce)
+  attr :hive_default, :string, required: true, values: ~w(observe enforce)
+  attr :can_edit, :boolean, default: false, doc: "owners only"
+  attr :locked_denies, :list, default: [], doc: "the hosts of locked hive denies in the list"
+
+  def repository_mode(assigns) do
+    ~H"""
+    <section id={@id} class="q-sect q-rmode-sect" aria-labelledby={"#{@id}-h"}>
+      <div class="q-rmode">
+        <h2 id={"#{@id}-h"}>Mode</h2>
+        <div
+          id={"#{@id}-radios"}
+          class="q-seg q-rmode-seg"
+          role="radiogroup"
+          aria-labelledby={"#{@id}-h"}
+          aria-describedby={"#{@id}-effect"}
+          data-roving
+        >
+          <button
+            :for={
+              {setting, label} <- [
+                {"follow", "Follow the hive"},
+                {"observe", "Observe"},
+                {"enforce", "Enforce"}
+              ]
+            }
+            id={"#{@id}-#{setting}"}
+            type="button"
+            role="radio"
+            aria-checked={to_string(@setting == setting)}
+            aria-pressed={to_string(@setting == setting)}
+            aria-disabled={!@can_edit && @setting != setting && "true"}
+            tabindex={if @setting == setting, do: "0", else: "-1"}
+            phx-click={
+              @can_edit && @setting != setting &&
+                JS.push("repository_mode_ask", value: %{setting: setting})
+            }
+          >
+            {label}
+          </button>
+        </div>
+        <p id={"#{@id}-effect"} class="q-rmode-effect">
+          In effect: <b>{@effective}</b>,
+          <span :if={@setting == "follow"}>the hive's default. It changes when the hive's does.</span><span :if={
+            @setting != "follow"
+          }>this repository's own. The hive's default is {@hive_default}.</span>
+          <span :if={!@can_edit} id={"#{@id}-owners"}>Only an owner sets a mode.</span>
+        </p>
+      </div>
+      <div :if={@effective == "observe" && @locked_denies != []} class="px-4 pb-3">
+        <.notice kind={:info}>
+          <span id={"#{@id}-locked-note"}>
+            <b>This repository observes: nothing is denied, locked rules included.</b>
+            The locked deny <code :for={host <- @locked_denies} class="q-rule mr-1">{host}</code>
+            still shapes the document, so the hosts it covers are not in the allow list. Under observe a run reaches them all the same, and the record says no rule matched. It denies again the moment this repository enforces.
+          </span>
+        </.notice>
+      </div>
+    </section>
     """
   end
 
@@ -588,6 +698,7 @@ defmodule ApiaryWeb.PolicyComponents do
   attr :activity, :any, default: :unavailable
   attr :fresh, :any, default: %{}, doc: "%{rule id => version}: new in the version in force"
   attr :target, :string, default: nil, doc: "the host `?rule=` points at"
+  attr :observing, :boolean, default: false, doc: "the repository observes: a deny denies nothing"
   attr :empty, :string, default: nil, doc: "the one faint line of a filter that matches nothing"
 
   def rules_table(assigns) do
@@ -623,6 +734,7 @@ defmodule ApiaryWeb.PolicyComponents do
             seen={@seen? && seen(@activity, row)}
             seen?={@seen?}
             fresh={Map.get(@fresh, row.id)}
+            let_through={@observing && row.action == "deny"}
             target={@target != nil && @target == row.host}
           />
         </tbody>
@@ -651,6 +763,7 @@ defmodule ApiaryWeb.PolicyComponents do
   attr :seen?, :boolean, default: false
   attr :fresh, :any, default: nil
   attr :target, :boolean, default: false
+  attr :let_through, :boolean, default: false
 
   def rule_row(assigns) do
     ~H"""
@@ -675,7 +788,9 @@ defmodule ApiaryWeb.PolicyComponents do
       <td :if={@scope == :repository} role="cell" class="q-c-src">
         <.source_chip source={@rule.source} />
       </td>
-      <td :if={@seen?} role="cell" class="q-c-seen q-num"><.seen seen={@seen} /></td>
+      <td :if={@seen?} role="cell" class="q-c-seen q-num">
+        <.seen seen={@seen} let_through={@let_through} />
+      </td>
       <td :if={@scope == :hive} role="cell" class="q-c-by">
         <.who_when by={@rule.by} at={@rule.at} />
       </td>
@@ -788,6 +903,7 @@ defmodule ApiaryWeb.PolicyComponents do
 
   attr :seen, :any, required: true
   attr :noun, :string, default: nil
+  attr :let_through, :boolean, default: false
 
   defp seen(%{seen: :loading} = assigns) do
     ~H|<span class="skeleton q-skel inline-block w-16 align-middle" aria-hidden="true"></span>|
@@ -795,6 +911,23 @@ defmodule ApiaryWeb.PolicyComponents do
 
   defp seen(%{seen: %{allowed: 0, denied: 0}} = assigns) do
     ~H|<span class="q-zero">not seen</span>|
+  end
+
+  # A deny in a repository that observes denies nothing: what reached it was let through.
+  defp seen(%{let_through: true, seen: %{allowed: allowed}} = assigns) when allowed > 0 do
+    ~H"""
+    <span class="text-muted">{RunComponents.delimited(@seen.allowed)} let through</span>
+    <span class="sr-only"> in the last 7 days</span>
+    """
+  end
+
+  defp seen(%{let_through: true} = assigns) do
+    ~H"""
+    <span class="text-muted">
+      {RunComponents.count_noun(@seen.allowed + @seen.denied, "attempt")}
+    </span>
+    <span class="sr-only"> in the last 7 days</span>
+    """
   end
 
   defp seen(%{noun: noun} = assigns) when is_binary(noun) do

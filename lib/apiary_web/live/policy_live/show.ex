@@ -31,7 +31,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
       |> Common.mount(nil)
       |> assign(reload: &load/1, show: nil, rule_target: nil, repositories: nil)
       |> assign(history: nil, open_change: nil, diff: nil, v: nil, export: nil, missing: nil)
-      |> assign(would: nil, composer_open: false)
+      |> assign(would: nil, composer_open: false, own_only: false)
       |> load()
 
     {:ok, socket}
@@ -45,6 +45,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
     own = Policy.list_rules(scope, nil)
     changes = Policy.list_changes(scope, nil, 1)
     locks = Common.locks(scope)
+    repositories = Policy.list_repositories(scope)
 
     socket
     |> assign(
@@ -55,7 +56,9 @@ defmodule ApiaryWeb.PolicyLive.Show do
       locks: locks,
       version: managed? && Common.newest_version(scope, nil),
       change_total: changes.total,
-      repository_total: length(Policy.list_repositories(scope)),
+      repository_total: length(repositories),
+      following: Enum.count(repositories, &is_nil(&1.own_mode)),
+      own_modes: for(%{own_mode: mode} <- repositories, mode != nil, do: mode),
       reload_pending: false,
       now: DateTime.utc_now()
     )
@@ -134,8 +137,10 @@ defmodule ApiaryWeb.PolicyLive.Show do
     |> then(&if(target, do: push_event(&1, "policy:target", %{host: target}), else: &1))
   end
 
-  defp apply_action(socket, :repositories, _params) do
-    socket |> assign(:page_title, "Repositories · Policy") |> load_repositories()
+  defp apply_action(socket, :repositories, params) do
+    socket
+    |> assign(page_title: "Repositories · Policy", own_only: params["mode"] == "own")
+    |> load_repositories()
   end
 
   defp apply_action(socket, :history, params) do
@@ -207,9 +212,10 @@ defmodule ApiaryWeb.PolicyLive.Show do
       Policy.list_repositories(scope)
       |> Enum.sort_by(&(&1.rule_count == 0))
       |> Enum.with_index()
-      |> Enum.map(fn {%{repository: repository, rule_count: count}, index} ->
+      |> Enum.map(fn {%{repository: repository, rule_count: count} = row, index} ->
         detailed? = index < @detailed
         effective = detailed? && count > 0 && Policy.effective(scope, repository)
+
         own_version = detailed? && Common.newest_version(scope, repository)
 
         last_change =
@@ -225,6 +231,8 @@ defmodule ApiaryWeb.PolicyLive.Show do
           forge: repository.forge,
           path: repository.path,
           own: count,
+          mode: row.mode,
+          own_mode: row.own_mode,
           overrides:
             if(effective,
               do:
@@ -236,7 +244,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
             ),
           suggestions: if(detailed?, do: length(Policy.suggestions(scope, repository))),
           version: own_version || baseline,
-          baseline?: !own_version,
+          baseline?: count == 0,
           last_change: last_change
         }
       end)
@@ -265,7 +273,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
   defp event("mode_ask", %{"mode" => mode}, socket) when mode in ~w(observe enforce) do
     cond do
       not socket.assigns.owner? ->
-        assign(socket, :write_error, "Only an owner can change the mode.")
+        assign(socket, :write_error, "Only an owner sets a mode.")
 
       mode == socket.assigns.mode ->
         socket
@@ -289,7 +297,18 @@ defmodule ApiaryWeb.PolicyLive.Show do
       {:ok, mode} ->
         socket
         |> assign(:dialog, nil)
-        |> Common.wrote(nil, "The hive is in #{mode} mode.", "The hive is in #{mode} mode.")
+        |> then(fn socket ->
+          following = socket.assigns.following
+
+          Common.wrote(
+            socket,
+            nil,
+            "The hive's default is #{mode}. " <>
+              "#{Common.plural(following, "repository", "repositories")} " <>
+              "#{if following == 1, do: "follows", else: "follow"} it.",
+            "The hive's default is #{mode}."
+          )
+        end)
         |> Common.focus("policy-mode-#{mode}")
 
       {:error, error} ->
@@ -565,7 +584,11 @@ defmodule ApiaryWeb.PolicyLive.Show do
         </.notice>
 
         <.rules_tab :if={@live_action == :rules} {assigns} />
-        <.repositories_tab :if={@live_action == :repositories} rows={@repositories} />
+        <.repositories_tab
+          :if={@live_action == :repositories}
+          rows={@repositories}
+          own_only={@own_only}
+        />
         <.history_view
           :if={@live_action == :history && @history}
           history={@history}
@@ -609,6 +632,8 @@ defmodule ApiaryWeb.PolicyLive.Show do
         would={@would}
         alive={(@nav_counts && @nav_counts[:alive]) || 0}
         started={@managed?}
+        following={@following}
+        own={length(@own_modes)}
       />
       <.lock_dialog
         :if={match?({:lock, _, _}, @dialog)}
@@ -730,21 +755,25 @@ defmodule ApiaryWeb.PolicyLive.Show do
     <.mode_switch
       mode={@mode}
       can_edit={@owner?}
-      started={@managed?}
-      fact={async_value(@fact, :loading)}
+      served={@managed?}
+      following={@following}
+      own={@own_modes}
+      fact={with :unavailable <- async_value(@fact, :loading), do: nil}
     />
 
     <div :if={@empty?} id="policy-empty" class="grid gap-4">
-      <.empty_state icon="hero-shield-check" title="No rules yet">
+      <.empty_state
+        icon="hero-shield-check"
+        title={if @managed?, do: "No rules yet", else: "Qory serves no policy yet"}
+      >
         <span :if={!@managed?} id="policy-unmanaged">
-          Runs use each machine's own policy until the first change here. The first rule, or the first change of mode, starts the hive's policy, and from then on every run of the hive takes it.
+          Until the first change here, every machine of this hive runs under its own policy, the one in its runner file. The first rule you add, or a mode you set, renders version 1, and machines take their policy from Qory from then on. You can also let a run reach out first and allow its hosts from the Connections page, one row at a time.
         </span>
         <span :if={@managed?}>
-          In {@mode} mode with no rules, {if @mode == "observe",
+          With no rules, {if @mode == "observe",
             do: "runs reach everything and every connection is recorded.",
-            else: "runs reach nothing."}
+            else: "a run under enforce reaches nothing."} Add the hosts your runs need here, or let a run reach out first and allow its hosts from the Connections page, one row at a time.
         </span>
-        Add the hosts your runs need here, or let a run reach out first and allow its hosts from the Connections page, one row at a time.
         <:actions>
           <.button id="policy-first-rule" variant="primary" phx-click="composer_open">
             <.icon name="hero-plus-micro" class="size-4" />Add a host rule
@@ -753,7 +782,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         </:actions>
       </.empty_state>
       <p class="max-w-[80ch] text-[12.5px]/[18px] text-faint">
-        The first version is rendered when the first rule is added or the mode is first set. Until then no machine is served a run configuration by this hive.
+        Version 1 is rendered by the first change, never by a machine asking. Until it exists, a machine that asks is told there is no policy here and keeps its own.
       </p>
     </div>
 
@@ -830,6 +859,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
   defp async_value(_async, loading), do: loading
 
   attr :rows, :any, required: true
+  attr :own_only, :boolean, default: false
 
   defp repositories_tab(%{rows: []} = assigns) do
     ~H"""
@@ -840,6 +870,13 @@ defmodule ApiaryWeb.PolicyLive.Show do
   end
 
   defp repositories_tab(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :shown,
+        if(assigns.own_only, do: Enum.filter(assigns.rows, & &1.own_mode), else: assigns.rows)
+      )
+
     ~H"""
     <div id="policy-repositories" class="grid grid-cols-[minmax(0,1fr)] gap-6">
       <div id="repositories-summary" class="q-summary">
@@ -849,7 +886,17 @@ defmodule ApiaryWeb.PolicyLive.Show do
             else: "repositories have posted runs"}
         </span>
         <span><b>{Enum.count(@rows, &(&1.own > 0))}</b> with rules of their own</span>
+        <span>
+          <b>{Enum.count(@rows, & &1.own_mode)}</b>
+          {if Enum.count(@rows, & &1.own_mode) == 1,
+            do: "sets its own mode",
+            else: "set their own mode"}
+        </span>
         <span><b>{Enum.count(@rows, &((&1.suggestions || 0) > 0))}</b> with suggestions</span>
+        <span :if={@own_only} id="repositories-own-only">
+          Showing those that set their own mode.
+          <.link patch={~p"/hive/policy/repositories"} class="q-link">Show all</.link>
+        </span>
       </div>
       <div
         class="overflow-x-auto rounded-box border border-line bg-base-100 shadow-xs"
@@ -861,6 +908,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
           <thead>
             <tr role="row">
               <th role="columnheader">Repository</th>
+              <th role="columnheader">Mode</th>
               <th role="columnheader">Policy</th>
               <th role="columnheader" class="q-num">Own rules</th>
               <th role="columnheader" class="q-num">Overrides</th>
@@ -870,7 +918,12 @@ defmodule ApiaryWeb.PolicyLive.Show do
             </tr>
           </thead>
           <tbody>
-            <tr :for={row <- @rows} id={"repo-#{row.id}"} role="row" class="q-repo-row">
+            <tr :if={@shown == []} role="row">
+              <td role="cell" colspan="8" class="!whitespace-normal text-[13px] text-faint">
+                No repository sets its own mode. Every one follows the hive's default.
+              </td>
+            </tr>
+            <tr :for={row <- @shown} id={"repo-#{row.id}"} role="row" class="q-repo-row">
               <td role="cell" class="q-c-repo">
                 <.link
                   navigate={~p"/hive/policy/repositories/#{row.id}"}
@@ -879,9 +932,33 @@ defmodule ApiaryWeb.PolicyLive.Show do
                   <span class="q-repo-f">{row.forge}/</span><span class="q-repo-p">{row.path}</span>
                 </.link>
               </td>
+              <td role="cell" class="q-c-mode">
+                <span class="mr-1.5 text-[13px] font-medium">{row.mode}</span>
+                <.source_chip
+                  :if={row.own_mode}
+                  source={:repository}
+                  label="Its own"
+                  class="q-src-bare"
+                />
+                <.source_chip
+                  :if={!row.own_mode}
+                  source={:hive}
+                  label="Hive default"
+                  class="q-src-bare"
+                />
+              </td>
               <td role="cell">
                 <.source_chip :if={!row.baseline?} source={:repository} label="Own rules" />
-                <.source_chip :if={row.baseline?} source={:hive} label="Hive baseline" />
+                <.source_chip
+                  :if={row.baseline? && row.own_mode}
+                  source={:repository}
+                  label="Own mode"
+                />
+                <.source_chip
+                  :if={row.baseline? && !row.own_mode}
+                  source={:hive}
+                  label="Hive baseline"
+                />
               </td>
               <td role="cell" class={["q-num q-opt", row.own == 0 && "q-zero"]}>{row.own}</td>
               <td role="cell" class={["q-num q-opt", row.overrides == 0 && "q-zero"]}>
@@ -916,7 +993,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         </table>
       </div>
       <p class="max-w-[80ch] text-[12.5px]/[18px] text-faint">
-        A repository appears here once a run names it. A repository without rules of its own is served the hive baseline, and so is a run that names no repository.
+        A repository appears here once a run names it. A repository with neither rules nor a mode of its own is served the hive baseline, and so is a run that names no repository.
       </p>
     </div>
     """
@@ -928,6 +1005,8 @@ defmodule ApiaryWeb.PolicyLive.Show do
   attr :would, :any, required: true
   attr :alive, :integer, required: true
   attr :started, :boolean, required: true
+  attr :following, :integer, required: true
+  attr :own, :integer, required: true
 
   defp mode_dialog(%{mode: "enforce"} = assigns) do
     shown = if assigns.would, do: Enum.take(assigns.would.destinations, 8), else: []
@@ -946,21 +1025,21 @@ defmodule ApiaryWeb.PolicyLive.Show do
     ~H"""
     <.modal
       id="mode-enforce"
-      title="Switch the hive to enforce"
+      title="Set the hive's default to enforce"
       size="lg"
       on_cancel={JS.push("dialog_cancel")}
     >
       <p class="text-muted">
-        From the next heartbeat, about 30 s, <b class="font-medium text-base-content">a connection no rule allows is denied</b>, in every repository{alive_words(
-          @alive
-        )}. You can switch back at any time.
+        From the next heartbeat, about 30 s,
+        <b class="font-medium text-base-content">a connection no rule allows is denied</b>
+        {where_words(@following)}{alive_words(@alive)}. {own_words(@own)} You can switch back at any time.
         <span :if={!@started}>
-          This is the hive's first change: from it on, every run takes the hive's policy in place of its machine's own.
+          This is the hive's first change: it renders version 1, and machines take their policy from Qory from then on.
         </span>
       </p>
       <div :if={@would && @would.destinations != []} id="mode-would" class="q-would">
         <div>
-          <span>Let through in the last 7 days with no rule matching</span>
+          <span>Let through in the last 7 days with no rule matching, in those repositories</span>
           <span id="mode-would-n" class="tabular-nums">
             {if @left == 0, do: "none left", else: Common.plural(@left, "destination")}
           </span>
@@ -1008,8 +1087,8 @@ defmodule ApiaryWeb.PolicyLive.Show do
       </p>
       <:footer>
         <.button phx-click="dialog_cancel" data-autofocus>Cancel</.button>
-        <.button id="mode-confirm" variant="primary" phx-click="mode_confirm" loading_text="Switching">
-          Switch to enforce
+        <.button id="mode-confirm" variant="primary" phx-click="mode_confirm" loading_text="Setting">
+          Set the default to enforce
         </.button>
       </:footer>
     </.modal>
@@ -1020,28 +1099,38 @@ defmodule ApiaryWeb.PolicyLive.Show do
     ~H"""
     <.modal
       id="mode-observe"
-      title="Switch the hive to observe"
+      title="Set the hive's default to observe"
       size="sm"
       on_cancel={JS.push("dialog_cancel")}
     >
       <p class="text-muted">
-        From the next heartbeat, about 30 s, <b class="font-medium text-base-content">nothing is denied</b>: every connection is let through and recorded, in every repository{alive_words(
-          @alive
-        )}. The rules stay as they are. Locked rules do not hold in observe mode either.
+        From the next heartbeat, about 30 s,
+        <b class="font-medium text-base-content">nothing is denied</b>
+        {where_words(@following)}{alive_words(@alive)}: every connection is let through and recorded. A repository that sets its own mode does not change. The rules stay as they are, locked ones too: under observe a deny shapes the document and denies nothing.
       </p>
       <:footer>
         <.button phx-click="dialog_cancel" data-autofocus>Cancel</.button>
-        <.button id="mode-confirm" variant="danger" phx-click="mode_confirm" loading_text="Switching">
-          Switch to observe
+        <.button id="mode-confirm" variant="danger" phx-click="mode_confirm" loading_text="Setting">
+          Set the default to observe
         </.button>
       </:footer>
     </.modal>
     """
   end
 
+  defp where_words(0), do: "in the runs that name no repository"
+
+  defp where_words(following),
+    do:
+      "in the #{Common.plural(following, "repository", "repositories")} that " <>
+        "#{if following == 1, do: "follows", else: "follow"} the hive's default"
+
+  defp own_words(0), do: ""
+  defp own_words(1), do: "1 repository sets its own mode and does not change."
+  defp own_words(n), do: "#{n} repositories set their own mode and do not change."
+
   defp alive_words(0), do: ""
-  defp alive_words(1), do: " and in the 1 run alive now"
-  defp alive_words(n), do: " and in the #{n} runs alive now"
+  defp alive_words(n), do: ", and among the #{Common.plural(n, "run")} alive now"
 
   @doc false
   def would_key(%{host: host, path: path}), do: dom_token({host, path})
@@ -1102,9 +1191,17 @@ defmodule ApiaryWeb.PolicyLive.Show do
           This rule is locked: it holds against every repository, and removing it lets their own rules decide again.
         </span>
         <span :if={@overriders != []}>
-          {Common.plural(length(@overriders), "repository")} {if length(@overriders) == 1,
-            do: "has",
-            else: "have"} a rule of {if length(@overriders) == 1, do: "its", else: "their"} own on this host; it then has nothing to override and is kept.
+          {Common.plural(length(@overriders), "repository", "repositories")} {if length(@overriders) ==
+                                                                                   1,
+                                                                                 do: "has",
+                                                                                 else: "have"} a rule of {if length(
+                                                                                                               @overriders
+                                                                                                             ) ==
+                                                                                                               1,
+                                                                                                             do:
+                                                                                                               "its",
+                                                                                                             else:
+                                                                                                               "their"} own on this host; it then has nothing to override and is kept.
         </span>
         This takes effect within a heartbeat.
       </p>

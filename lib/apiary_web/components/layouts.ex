@@ -49,7 +49,8 @@ defmodule ApiaryWeb.Layouts do
 
   attr :counts, :map,
     default: nil,
-    doc: "%{keys: active keys, members: members, alive: runs alive now, mode: the policy's mode}"
+    doc:
+      "%{keys: active keys, members: members, alive: runs alive now, mode: the policy's default mode, own_modes: the modes repositories set}"
 
   attr :width, :string,
     default: "wide",
@@ -215,9 +216,11 @@ defmodule ApiaryWeb.Layouts do
               :if={key == :policy && policy_mode(@counts)}
               id="nav-policy-mode"
               class="ml-auto font-mono text-[11.5px]/4 text-faint"
-              title={"The hive is in #{policy_mode(@counts)} mode"}
+              title={policy_mode_title(@counts)}
             >
-              {policy_mode(@counts)}
+              {policy_mode(@counts)}<span :if={own_modes(@counts) != []} class="opacity-75"> · {length(
+                own_modes(@counts)
+              )} own</span>
             </span>
             <span
               :if={count = nav_count(@counts, key)}
@@ -249,6 +252,20 @@ defmodule ApiaryWeb.Layouts do
   # hive has no policy of Qory's yet.
   defp policy_mode(%{mode: mode}) when mode in ["observe", "enforce"], do: mode
   defp policy_mode(_counts), do: nil
+
+  defp own_modes(%{own_modes: modes}) when is_list(modes), do: modes
+  defp own_modes(_counts), do: []
+
+  # The tag never claims what every run is under: it names the default and how many differ.
+  defp policy_mode_title(counts) do
+    lead = "The hive's default mode is #{policy_mode(counts)}."
+
+    case own_modes(counts) do
+      [] -> "#{lead} Every repository follows it."
+      [mode] -> "#{lead} 1 repository sets its own and #{mode}s."
+      modes -> "#{lead} #{length(modes)} repositories set their own."
+    end
+  end
 
   defp alive_count(%{alive: n}) when is_integer(n), do: n
   defp alive_count(_counts), do: 0

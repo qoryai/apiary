@@ -181,7 +181,12 @@ a restart does before doing it (`docs/upgrading.md`).
   version (changes from any earlier version, the document, the bytes as served, copy); the
   export as a modal at its own URL, with download. Tabs, filters, the opened change, the
   compared version and the export are in the URL. A hive nobody has changed yet says that
-  its runs use each machine's own policy until the first change.
+  its runs use each machine's own policy until the first change. The hive's mode is a
+  default: a repository's page sets Follow the hive, Observe or Enforce (owners only), with
+  its own confirms (enforcing lists what that repository's runs would be denied, with Allow
+  here; observing names the locked denies that stop denying); the repositories list has a
+  Mode column and `?mode=own`; the sidebar's tag names the default and how many
+  repositories set their own.
 - Allow and Deny from a connection's row, on a run's Connections tab and on
   `/hive/connections`: Allow where the last attempt was denied or let through with no rule,
   Deny where a rule allowed it, a padlock where a locked hive rule decides the host (it

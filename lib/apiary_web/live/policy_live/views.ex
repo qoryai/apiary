@@ -40,7 +40,13 @@ defmodule ApiaryWeb.PolicyLive.Views do
           <%= if @summary.since do %>
             No changes yet. Version 1 was rendered on {short_date(@summary.since)}.
           <% else %>
-            No changes yet. The first rule, or the first change of mode, starts the history.
+            No changes yet.
+            <span :if={@scope == :hive}>
+              Qory serves no policy for this hive until the first one.
+            </span>
+            <span :if={@scope == :repository}>
+              The first rule here, or a mode of its own, starts this repository's history.
+            </span>
           <% end %>
         </p>
       </.sect>
@@ -61,7 +67,11 @@ defmodule ApiaryWeb.PolicyLive.Views do
 
       <div class="flex flex-wrap items-center justify-between gap-3">
         <p id="history-foot" class="max-w-[70ch] text-[12.5px]/[18px] text-faint">
-          Showing {length(@history.rows)} of {@history.total}. A change that leaves the document's bytes the same is kept here and makes no new version.
+          Showing {length(@history.rows)} of {@history.total}.
+          <span :if={@scope == :hive}>
+            A change to the default mode re-renders every repository that follows it.
+          </span>
+          A change that leaves the document's bytes the same is kept here and makes no new version.
           <span :if={@scope == :hive}>
             Changes to a repository's own rules are in that repository's history.
           </span>
@@ -108,6 +118,16 @@ defmodule ApiaryWeb.PolicyLive.Views do
         </.kv>
         <.kv label="Changed by">{@v.changed_by || "n/a"}</.kv>
         <.kv label="Change">{@v.change_words || "First render"}</.kv>
+        <.kv :if={@v.mode} label="Mode">
+          {@v.mode}
+          <:sub :if={@v.mode_source}>
+            <span class="font-sans">
+              {if @v.mode_source == :repository,
+                do: "this repository's own",
+                else: "the hive's default"}
+            </span>
+          </:sub>
+        </.kv>
         <.kv
           label="Digest"
           tip="The sha256 of the exact bytes a runner is served. Two runs with the same digest had the same policy."

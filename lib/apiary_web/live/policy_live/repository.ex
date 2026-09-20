@@ -16,6 +16,7 @@ defmodule ApiaryWeb.PolicyLive.Repository do
   alias Apiary.Policy
   alias Apiary.Runs.Filters
   alias ApiaryWeb.PolicyLive.Common
+  alias Apiary.Policy.Grammar
   alias ApiaryWeb.PolicyLive.Show
 
   @shows ~w(hive repository overrides)
@@ -29,7 +30,7 @@ defmodule ApiaryWeb.PolicyLive.Repository do
           |> Common.mount(repository)
           |> assign(reload: &load/1, show: nil, rule_target: nil, allowed: %{})
           |> assign(history: nil, open_change: nil, diff: nil, v: nil, export: nil, missing: nil)
-          |> assign(credentials_open: false, summary: nil)
+          |> assign(credentials_open: false, summary: nil, would: nil)
           |> load()
 
         {:ok, socket}
@@ -52,6 +53,13 @@ defmodule ApiaryWeb.PolicyLive.Repository do
       managed?: managed?,
       own: own,
       effective: effective,
+      mode: Policy.get_mode(scope, repository),
+      locked_denies:
+        for(
+          %{kind: :host, source: :hive, locked: true, action: :deny, in_force: true, host: host} <-
+            effective.entries,
+          do: host
+        ),
       locks: Common.locks(scope),
       version: own_version || (managed? && Common.newest_version(scope, nil)),
       baseline?: !own_version,
@@ -247,6 +255,75 @@ defmodule ApiaryWeb.PolicyLive.Repository do
     end
   end
 
+  defp event("repository_mode_ask", %{"setting" => setting}, socket)
+       when setting in ~w(follow observe enforce) do
+    mode = socket.assigns.mode
+    becomes = if setting == "follow", do: mode.hive, else: setting
+    now = if mode.own, do: mode.own, else: "follow"
+
+    cond do
+      not socket.assigns.owner? ->
+        assign(socket, :write_error, "Only an owner sets a mode.")
+
+      setting == now ->
+        socket
+
+      becomes == mode.mode ->
+        set_repository_mode(socket, setting)
+
+      becomes == "enforce" ->
+        would =
+          case Policy.uncovered(
+                 socket.assigns.current_scope,
+                 socket.assigns.target,
+                 Common.since()
+               ) do
+            {:ok, destinations} -> %{destinations: destinations, allowed: MapSet.new()}
+            _ -> nil
+          end
+
+        assign(socket, dialog: {:repository_mode, setting, "enforce"}, would: would)
+
+      true ->
+        assign(socket, dialog: {:repository_mode, setting, "observe"}, would: nil)
+    end
+  end
+
+  defp event(
+         "repository_mode_confirm",
+         _params,
+         %{assigns: %{dialog: {:repository_mode, setting, _becomes}}} = socket
+       ) do
+    socket |> assign(:dialog, nil) |> set_repository_mode(setting)
+  end
+
+  defp event("would_allow", %{"key" => key}, %{assigns: %{would: %{} = would}} = socket) do
+    scope = socket.assigns.current_scope
+    repository = socket.assigns.target
+
+    case Enum.find(would.destinations, &(Show.would_key(&1) == key)) do
+      nil ->
+        socket
+
+      destination ->
+        result =
+          if destination.path,
+            do: Policy.allow_path(scope, repository, destination.host, destination.path),
+            else: Policy.allow(scope, repository, %{host: destination.host})
+
+        case result do
+          {:ok, _rule} ->
+            socket
+            |> load()
+            |> assign(:would, %{would | allowed: MapSet.put(would.allowed, key)})
+            |> assign(:announce, "#{destination.host} is allowed for this repository.")
+
+          {:error, error} ->
+            assign(socket, :would, Map.put(would, :error, error.message))
+        end
+    end
+  end
+
   defp event("suggest_allow", %{"host" => host, "level" => level}, socket)
        when is_binary(host) and level in ~w(repository hive) do
     case allow_suggestion(socket, host, level) do
@@ -299,6 +376,38 @@ defmodule ApiaryWeb.PolicyLive.Repository do
   end
 
   defp event(_event, _params, socket), do: socket
+
+  defp set_repository_mode(socket, setting) do
+    scope = socket.assigns.current_scope
+    before = socket.assigns.mode
+    name = Common.target_name(socket)
+
+    case Policy.set_mode(
+           scope,
+           socket.assigns.target,
+           if(setting == "follow", do: :inherit, else: setting)
+         ) do
+      {:ok, mode} ->
+        sentence =
+          cond do
+            setting == "follow" ->
+              "#{name} follows the hive: #{mode.hive}."
+
+            mode.mode == before.mode ->
+              "#{name} #{setting}s on its own. Nothing changes today: the hive's default is #{mode.hive} too."
+
+            true ->
+              "#{name} #{setting}s on its own."
+          end
+
+        socket
+        |> Common.wrote(nil, sentence, "This repository's mode is #{mode.mode}.")
+        |> Common.focus("policy-repository-mode-#{setting}")
+
+      {:error, error} ->
+        Common.refused(socket, error)
+    end
+  end
 
   # The suggestions that were there when the page opened stay until the next navigation,
   # with what was done to them, though the policy now covers them.
@@ -519,6 +628,15 @@ defmodule ApiaryWeb.PolicyLive.Repository do
       </div>
 
       <.keys_dialog />
+      <.repository_mode_dialog
+        :if={match?({:repository_mode, _, _}, @dialog)}
+        setting={elem(@dialog, 1)}
+        becomes={elem(@dialog, 2)}
+        name={Common.target_name(%{assigns: %{target: @target}})}
+        hive={@mode.hive}
+        would={@would}
+        locked_denies={@locked_denies}
+      />
       <.export_modal
         :if={@live_action == :export && @export}
         export={@export}
@@ -527,6 +645,155 @@ defmodule ApiaryWeb.PolicyLive.Repository do
     </Layouts.app>
     """
   end
+
+  attr :setting, :string, required: true
+  attr :becomes, :string, required: true
+  attr :name, :string, required: true
+  attr :hive, :string, required: true
+  attr :would, :any, required: true
+  attr :locked_denies, :list, required: true
+
+  defp repository_mode_dialog(%{becomes: "enforce"} = assigns) do
+    shown = if assigns.would, do: Enum.take(assigns.would.destinations, 8), else: []
+
+    left =
+      if assigns.would,
+        do:
+          Enum.count(
+            assigns.would.destinations,
+            &(!MapSet.member?(assigns.would.allowed, Show.would_key(&1)))
+          ),
+        else: 0
+
+    assigns = assign(assigns, shown: shown, left: left)
+
+    ~H"""
+    <.modal
+      id="repository-mode-enforce"
+      title={"Enforce #{@name}"}
+      size="lg"
+      on_cancel={JS.push("dialog_cancel")}
+    >
+      <p class="text-muted">
+        From the next heartbeat, about 30 s,
+        <b class="font-medium text-base-content">a connection no rule allows is denied</b>
+        in this repository's runs. {whose_words(@setting, "enforce")} Other repositories do not change.
+      </p>
+      <div :if={@would && @would.destinations != []} id="mode-would" class="q-would">
+        <div>
+          <span>Let through in this repository's runs, last 7 days, with no rule matching</span>
+          <span id="mode-would-n" class="tabular-nums">
+            {if @left == 0, do: "none left", else: Common.plural(@left, "destination")}
+          </span>
+        </div>
+        <ul>
+          <li :for={destination <- @shown} id={"would-#{Show.would_key(destination)}"}>
+            <.rule_mark action={
+              if MapSet.member?(@would.allowed, Show.would_key(destination)),
+                do: "allow",
+                else: "pending"
+            } />
+            <span class="q-dest">
+              {destination.host}<span :if={destination.path} class="text-muted">{destination.path}</span>
+            </span>
+            <small>
+              {Common.plural(destination.attempts, "attempt")} · {Common.plural(
+                destination.runs,
+                "run"
+              )}
+            </small>
+            <%= cond do %>
+              <% MapSet.member?(@would.allowed, Show.would_key(destination)) -> %>
+                <span class="q-done"><.icon name="hero-check-micro" class="size-3" />Allowed</span>
+              <% lock = Enum.find(@locked_denies, &Grammar.covers?(&1, destination.host)) -> %>
+                <span
+                  class="q-locked tooltip tooltip-left q-tip-wide"
+                  tabindex="0"
+                  data-tip={"A locked hive rule denies #{lock}. Only an owner can change it, on the hive's policy page."}
+                >
+                  <.icon name="hero-lock-closed-micro" class="size-3 text-muted" />Locked deny
+                </span>
+              <% true -> %>
+                <button
+                  type="button"
+                  class="btn btn-xs"
+                  phx-click={JS.push("would_allow", value: %{key: Show.would_key(destination)})}
+                >
+                  Allow here
+                </button>
+            <% end %>
+          </li>
+        </ul>
+        <p :if={length(@would.destinations) > 8} class="q-would-more">
+          and {length(@would.destinations) - 8} more on the connections page
+        </p>
+      </div>
+      <p :if={@would && @would[:error]} class="text-error-soft-content" role="alert">
+        {@would[:error]}
+      </p>
+      <p :if={@would && @would.destinations == []} id="mode-would-none" class="text-muted">
+        Every destination this repository's runs reached in the last 7 days is covered by a rule.
+      </p>
+      <p :if={@would && @would.destinations != []} class="text-[12.5px]/[18px] text-muted">
+        Counted from this repository's recorded connections that today's rules still do not cover. Enforce will deny these. A destination no run has reached yet is not in this list.
+      </p>
+      <:footer>
+        <.button phx-click="dialog_cancel" data-autofocus>Cancel</.button>
+        <.button
+          id="repository-mode-confirm"
+          variant="primary"
+          phx-click="repository_mode_confirm"
+          loading_text="Setting"
+        >
+          {if @setting == "follow", do: "Follow the hive", else: "Enforce this repository"}
+        </.button>
+      </:footer>
+    </.modal>
+    """
+  end
+
+  defp repository_mode_dialog(assigns) do
+    ~H"""
+    <.modal
+      id="repository-mode-observe"
+      title={"Observe #{@name}"}
+      size="sm"
+      on_cancel={JS.push("dialog_cancel")}
+    >
+      <p class="text-muted">
+        From the next heartbeat, about 30 s, <b class="font-medium text-base-content">nothing is denied in this repository's runs</b>: every connection is let through and recorded. {whose_words(
+          @setting,
+          "observe"
+        )}
+        <span :if={@setting != "follow"}>The hive's default stays {@hive} and other repositories do not change.</span>
+      </p>
+      <p class="text-muted">
+        The rules stay as they are, locked ones too. Under observe a deny shapes the document and denies nothing<span :if={
+          @locked_denies != []
+        }>: <code :for={host <- @locked_denies} class="q-rule mr-1">{host}</code>
+          will be reachable from this repository</span>.
+      </p>
+      <:footer>
+        <.button phx-click="dialog_cancel" data-autofocus>Cancel</.button>
+        <.button
+          id="repository-mode-confirm"
+          variant="danger"
+          phx-click="repository_mode_confirm"
+          loading_text="Setting"
+        >
+          {if @setting == "follow", do: "Follow the hive", else: "Observe this repository"}
+        </.button>
+      </:footer>
+    </.modal>
+    """
+  end
+
+  defp whose_words("follow", _mode),
+    do: "The mode follows the hive's default from now on, and changes when it does."
+
+  defp whose_words(_setting, mode),
+    do:
+      "The mode becomes this repository's own: it stays #{mode} whatever the hive's default becomes."
 
   attr :live_action, :atom, required: true
   attr :base, :string, required: true
@@ -591,14 +858,23 @@ defmodule ApiaryWeb.PolicyLive.Repository do
       )
 
     ~H"""
-    <.notice :if={@own == []} kind={:info} class="max-w-[90ch]">
+    <.repository_mode
+      id="policy-repository-mode"
+      setting={@mode.own || "follow"}
+      effective={@mode.mode}
+      hive_default={@mode.hive}
+      can_edit={@owner?}
+      locked_denies={@locked_denies}
+    />
+
+    <.notice :if={@own == [] && is_nil(@mode.own)} kind={:info} class="max-w-[90ch]">
       <span id="policy-no-own">
         This repository has no rules of its own.
         <span :if={@version}>It is served the hive baseline, version {@version.version}.</span>
         <span :if={!@managed?}>
           Runs use each machine's own policy until the first change in this hive.
         </span>
-        The first rule added here gives it versions of its own.
+        The first rule added here, or a mode of its own, gives it versions of its own.
       </span>
     </.notice>
 
@@ -647,6 +923,7 @@ defmodule ApiaryWeb.PolicyLive.Repository do
         activity={async_value(@activity)}
         fresh={@fresh}
         target={@rule_target}
+        observing={@mode.mode == "observe"}
         empty={empty_words(@show, @rows)}
       />
       <.credential_composer
@@ -666,7 +943,9 @@ defmodule ApiaryWeb.PolicyLive.Repository do
       />
       <:footer>
         <span id="policy-effective-foot">
-          Mode <b class="font-medium text-base-content">{@effective.mode}</b>, from the hive.
+          Mode <b class="font-medium text-base-content">{@mode.mode}</b>, {if @mode.own,
+            do: "this repository's own.",
+            else: "the hive's default."}
           <span :if={@in_force_credentials == []}>No credentials.</span>
           <span :if={@in_force_credentials != []}>
             Credentials:

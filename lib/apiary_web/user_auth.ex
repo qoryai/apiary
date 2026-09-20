@@ -288,16 +288,25 @@ defmodule ApiaryWeb.UserAuth do
     %{
       keys: scope |> AccessKeys.list_access_keys() |> Enum.count(&is_nil(&1.revoked_at)),
       members: scope |> Organisations.list_members() |> length(),
-      alive: Apiary.Runs.count_alive(scope),
-      mode: policy_mode(scope)
+      alive: Apiary.Runs.count_alive(scope)
     }
+    |> Map.merge(policy_mode(scope))
   end
 
-  # The word beside Policy: the mode in force, once the hive has a policy of Qory's.
-  defp policy_mode(%Scope{hive: nil}), do: nil
+  # The word beside Policy: the hive's default mode, once the hive has a policy of Qory's,
+  # and the modes of the repositories that set their own.
+  defp policy_mode(%Scope{hive: nil}), do: %{mode: nil, own_modes: []}
 
   defp policy_mode(%Scope{} = scope) do
-    if Apiary.Policy.managed?(scope), do: Apiary.Policy.get_mode(scope)
+    if Apiary.Policy.managed?(scope) do
+      %{
+        mode: Apiary.Policy.get_mode(scope),
+        own_modes:
+          for(%{own_mode: mode} <- Apiary.Policy.list_repositories(scope), mode != nil, do: mode)
+      }
+    else
+      %{mode: nil, own_modes: []}
+    end
   end
 
   # The sidebar's mode word follows `policy:<hive>` on every page. A page that follows the
@@ -329,9 +338,8 @@ defmodule ApiaryWeb.UserAuth do
       |> Phoenix.LiveView.attach_hook(:policy_mode, :handle_info, fn
         {:policy_changed, _change}, socket ->
           counts =
-            Map.put(
+            Map.merge(
               socket.assigns.nav_counts || %{},
-              :mode,
               policy_mode(socket.assigns.current_scope)
             )
 

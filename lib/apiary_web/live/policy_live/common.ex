@@ -452,6 +452,8 @@ defmodule ApiaryWeb.PolicyLive.Common do
   def past("allow"), do: "allowed"
   def past("deny"), do: "denied"
 
+  def target_name(%{assigns: %{target: %{forge: forge, path: path}}}), do: "#{forge}/#{path}"
+
   def for_target(%{assigns: %{target: nil}}), do: "for the hive"
   def for_target(%{assigns: %{target: %{forge: forge, path: path}}}), do: "for #{forge}/#{path}"
 
@@ -519,11 +521,17 @@ defmodule ApiaryWeb.PolicyLive.Common do
     diff = Policy.diff(change)
 
     case {change.action, diff} do
-      {"mode_changed", %{mode: {from, to}}} ->
-        ["switched the hive from #{from} to ", {:b, [to]}]
+      {"mode_changed", %{mode: {from, to}}} when is_nil(change.repository_id) ->
+        ["switched the hive's default mode from #{from} to ", {:b, [to]}]
+
+      {"mode_changed", %{mode: {_from, "inherit"}}} ->
+        ["set this repository to ", {:b, ["follow the hive"]}]
+
+      {"mode_changed", %{mode: {_from, to}}} ->
+        ["set this repository's mode to ", {:b, [to]}]
 
       {"mode_changed", _} ->
-        ["set the mode of the hive"]
+        ["set the mode"]
 
       {"rule_added", %{added: [%{"kind" => "credential"} = rule | _]}} ->
         ["added the credential " | credential_chips(rule)]
@@ -589,8 +597,14 @@ defmodule ApiaryWeb.PolicyLive.Common do
     diff = Policy.diff(change)
 
     case {change.action, diff} do
+      {"mode_changed", %{mode: {_from, to}}} when is_nil(change.repository_id) ->
+        "Hive's default set to #{to}"
+
+      {"mode_changed", %{mode: {_from, "inherit"}}} ->
+        "Set to follow the hive"
+
       {"mode_changed", %{mode: {_from, to}}} ->
-        "Hive switched to #{to}"
+        "Mode set to #{to}"
 
       {"rule_added", %{added: [%{"kind" => "credential", "name" => name} | _]}} ->
         "Credential #{name}"
@@ -625,8 +639,11 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
     mode =
       case diff.mode do
-        {from, to} -> [{:del, ["Mode ", {:b, [from]}]}, {:add, ["Mode ", {:b, [to]}]}]
-        nil -> []
+        {from, to} ->
+          [{:del, ["Mode ", {:b, [mode_words(from)]}]}, {:add, ["Mode ", {:b, [mode_words(to)]}]}]
+
+        nil ->
+          []
       end
 
     removed = for rule <- diff.removed, do: {:del, rule_words(rule)}
@@ -647,6 +664,9 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
     mode ++ removed ++ changed ++ added ++ context
   end
+
+  defp mode_words("inherit"), do: "follow the hive"
+  defp mode_words(mode), do: to_string(mode)
 
   defp rule_words(%{"kind" => "credential"} = rule),
     do: ["Credential " | credential_chips(rule)] ++ locked_words(rule)
@@ -756,8 +776,10 @@ defmodule ApiaryWeb.PolicyLive.Common do
     end
   end
 
-  def plural(1, noun), do: "1 #{noun}"
-  def plural(n, noun), do: "#{n} #{noun}s"
+  def plural(count, noun, plural \\ nil)
+  def plural(1, noun, _plural), do: "1 #{noun}"
+  def plural(n, noun, nil), do: "#{n} #{noun}s"
+  def plural(n, _noun, plural), do: "#{n} #{plural}"
 
   ## History
 
@@ -800,6 +822,25 @@ defmodule ApiaryWeb.PolicyLive.Common do
   end
 
   defp made_version(_scope, _target, _change), do: nil
+
+  defp origin(%{action: "mode_changed", repository_id: id} = change, made) when id != nil do
+    case {change.before["mode"], change.after["mode"], made} do
+      {"inherit", _to, nil} ->
+        "Its own from now on. The hive's default is the same, so the document did not change."
+
+      {"inherit", _to, _made} ->
+        "Its own from now on. It followed the hive's default."
+
+      {from, "inherit", nil} ->
+        "It #{from}d on its own. The hive's default is the same, so the document did not change."
+
+      {from, "inherit", _made} ->
+        "It #{from}d on its own."
+
+      _ ->
+        nil
+    end
+  end
 
   defp origin(%{action: action}, nil) when action in ~w(rule_locked rule_unlocked),
     do: "The lock holds against repositories. The document did not change."
@@ -902,6 +943,11 @@ defmodule ApiaryWeb.PolicyLive.Common do
          latest: latest.version,
          superseded_by: superseded_by,
          changed_by: socket.assigns.people[configuration.changed_by_id],
+         mode: document_mode(configuration.document),
+         mode_source:
+           if(latest.version == configuration.version,
+             do: Policy.effective(scope, target).mode_source
+           ),
          change_words: change && change_words(change),
          view: view,
          compare: compare,
@@ -934,6 +980,15 @@ defmodule ApiaryWeb.PolicyLive.Common do
        }}
     else
       _ -> :error
+    end
+  end
+
+  # The mode a served document says: the version's fact, not today's setting.
+  defp document_mode(document) do
+    case Jason.decode(document) do
+      {:ok, %{"security_policy" => %{"egress" => %{"mode" => mode}}}} when is_binary(mode) -> mode
+      {:ok, %{"egress" => %{"mode" => mode}}} when is_binary(mode) -> mode
+      _ -> nil
     end
   end
 

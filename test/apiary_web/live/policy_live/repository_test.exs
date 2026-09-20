@@ -91,7 +91,7 @@ defmodule ApiaryWeb.PolicyLive.RepositoryTest do
            )
 
     assert text(view, "#policy-effective-foot") =~
-             "Mode observe , from the hive. Credentials: model-key from the hive."
+             "Mode observe , the hive's default. Credentials: model-key from the hive."
 
     assert has_element?(view, "#policy-tab-runs[href*='repo=acme%2Fshop']")
     assert has_element?(view, "#policy-tab-connections[href*='forge=github.example']")
@@ -221,6 +221,127 @@ defmodule ApiaryWeb.PolicyLive.RepositoryTest do
     |> render_change()
 
     assert text(view, "#policy-composer-reads") =~ "Only an owner can change or unlock it."
+  end
+
+  describe "the repository's mode" do
+    test "follows the hive until an owner says otherwise, and says where it comes from",
+         %{conn: conn, path: path} do
+      view = open(conn, path)
+
+      assert has_element?(view, "#policy-repository-mode-follow[aria-checked=true]")
+
+      assert text(view, "#policy-repository-mode-effect") ==
+               "In effect: observe , the hive's default. It changes when the hive's does."
+    end
+
+    test "to enforce asks with this repository's own list, and Allow here adds a repository rule",
+         %{conn: conn, scope: scope, repository: repository, path: path} do
+      started_run(scope, shop(),
+        egress: [
+          %{"host" => "files.cdn.example", "decision" => "allowed", "rule" => ""},
+          %{"host" => "bin.paste.example", "decision" => "allowed", "rule" => ""}
+        ]
+      )
+
+      view = open(conn, path)
+      view |> element("#policy-repository-mode-enforce") |> render_click()
+
+      assert Policy.get_mode(scope, repository).own == nil
+      assert text(view, "#repository-mode-enforce") =~ "Enforce github.example/acme/shop"
+
+      assert text(view, "#repository-mode-enforce") =~
+               "The mode becomes this repository's own: it stays enforce"
+
+      assert text(view, "#mode-would") =~ "Let through in this repository's runs"
+      assert text(view, "#mode-would") =~ "Locked deny"
+
+      view |> element("#mode-would button", "Allow here") |> render_click()
+      assert own(scope, repository, "files.cdn.example")
+
+      view |> element("#repository-mode-confirm", "Enforce this repository") |> render_click()
+
+      assert %{mode: "enforce", own: "enforce", hive: "observe"} =
+               Policy.get_mode(scope, repository)
+
+      assert has_element?(view, "#policy-repository-mode-enforce[aria-checked=true]")
+      assert text(view, "#flash-info") =~ "github.example/acme/shop enforces on its own. Version"
+
+      assert text(view, "#policy-repository-mode-effect") =~
+               "In effect: enforce , this repository's own. The hive's default is observe."
+
+      assert text(view, "#policy-effective-foot") =~ "Mode enforce , this repository's own."
+    end
+
+    test "to observe names the locked denies that stop denying, and the card keeps saying so",
+         %{conn: conn, scope: scope, repository: repository, path: path} do
+      {:ok, _} = Policy.set_mode(scope, "enforce")
+      view = open(conn, path)
+      refute has_element?(view, "#policy-repository-mode-locked-note")
+
+      view |> element("#policy-repository-mode-observe") |> render_click()
+
+      assert text(view, "#repository-mode-observe") =~
+               "nothing is denied in this repository's runs"
+
+      assert text(view, "#repository-mode-observe") =~
+               "*.paste.example will be reachable from this repository"
+
+      view |> element("#repository-mode-confirm", "Observe this repository") |> render_click()
+      assert Policy.get_mode(scope, repository).own == "observe"
+
+      assert text(view, "#policy-repository-mode-locked-note") =~
+               "This repository observes: nothing is denied, locked rules included."
+
+      view |> element("#policy-repository-mode-follow") |> render_click()
+
+      assert text(view, "#repository-mode-enforce") =~
+               "The mode follows the hive's default from now on"
+
+      view |> element("#repository-mode-confirm", "Follow the hive") |> render_click()
+      assert Policy.get_mode(scope, repository).own == nil
+      assert text(view, "#flash-info") =~ "github.example/acme/shop follows the hive: enforce."
+    end
+
+    test "a setting that changes nothing today is immediate, and says so",
+         %{conn: conn, scope: scope, repository: repository, path: path} do
+      view = open(conn, path)
+      view |> element("#policy-repository-mode-observe") |> render_click()
+
+      refute has_element?(view, "#repository-mode-observe")
+      assert Policy.get_mode(scope, repository).own == "observe"
+
+      assert text(view, "#flash-info") =~
+               "github.example/acme/shop observes on its own. Nothing changes today: the hive's default is observe too."
+    end
+
+    test "its history words the change", %{
+      conn: conn,
+      scope: scope,
+      repository: repository,
+      path: path
+    } do
+      {:ok, _} = Policy.set_mode(scope, repository, "enforce")
+      view = open(conn, path <> "/history")
+
+      assert text(view, "#history-list") =~ "set this repository's mode to enforce"
+      assert text(view, "#history-list") =~ "Its own from now on."
+    end
+
+    test "a member reads it, and a crafted event is refused", %{
+      scope: scope,
+      repository: repository,
+      path: path
+    } do
+      %{user: member} = member_fixture(scope, :member)
+      view = open(log_in_user(build_conn(), member), path)
+
+      assert has_element?(view, "#policy-repository-mode-enforce[aria-disabled=true]")
+      assert text(view, "#policy-repository-mode-owners") == "Only an owner sets a mode."
+
+      render_hook(view, "repository_mode_ask", %{"setting" => "enforce"})
+      refute has_element?(view, "#repository-mode-enforce")
+      assert Policy.get_mode(scope, repository).own == nil
+    end
   end
 
   describe "suggestions" do

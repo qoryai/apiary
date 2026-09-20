@@ -3715,8 +3715,56 @@
   .q-mode-card[aria-disabled="true"] {
     cursor: default;
   }
-  .q-mode-card[aria-disabled="true"]:hover {
+  .q-mode-card[aria-disabled="true"][aria-checked="false"]:hover {
     border-color: var(--q-border-subtle);
+  }
+
+  /* ---- Repository mode (pd2a): whose mode, in one compact card ---- */
+  .q-rmode {
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr);
+    align-items: center;
+    gap: 6px 16px;
+    padding: 10px 16px;
+  }
+  .q-rmode h2 {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    line-height: 22px;
+    letter-spacing: -0.006em;
+  }
+  .q-rmode-seg > button {
+    height: 26px;
+  }
+  .q-rmode-seg > button[aria-disabled="true"] {
+    opacity: 0.45;
+    cursor: default;
+  }
+  .q-rmode-seg > button[aria-disabled="true"]:hover {
+    color: var(--q-muted);
+  }
+  .q-rmode-effect {
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+    line-height: 19px;
+  }
+  .q-rmode-effect b {
+    color: var(--color-base-content);
+    font-weight: 500;
+  }
+  @media (max-width: 767px) {
+    .q-rmode {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .q-rmode-seg {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    .q-rmode-seg > button {
+      height: 36px;
+      justify-content: center;
+      padding-inline: 4px;
+    }
   }
   .q-mode-dot {
     display: grid;

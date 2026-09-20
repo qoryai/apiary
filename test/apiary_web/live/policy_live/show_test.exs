@@ -48,15 +48,19 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
 
       assert has_element?(view, "#nav-policy[aria-current=page]")
       refute has_element?(view, "#nav-policy-mode")
-      assert has_element?(view, "h2", "No rules yet")
+      assert has_element?(view, "h2", "Qory serves no policy yet")
 
       assert text(view, "#policy-unmanaged") =~
-               "Runs use each machine's own policy until the first change here."
+               "Until the first change here, every machine of this hive runs under its own policy"
 
       refute has_element?(view, "#policy-version-pill-copy")
       refute has_element?(view, "#policy-tabs a", "Document")
       assert has_element?(view, "#policy-mode-observe[aria-checked=true]")
-      assert text(view, "#policy-mode-fact") =~ "A new hive starts here."
+
+      assert text(view, "#policy-mode-fact") ==
+               "Not served yet: it applies from the first change here."
+
+      assert text(view, "#policy-mode-observe") =~ "Hive default"
     end
 
     test "the first rule starts the policy: a version, the pill, the mode word", %{conn: conn} do
@@ -419,8 +423,9 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert has_element?(view, "#rule-#{plain.id}-menu")
       refute has_element?(view, "#rule-#{plain.id}-menu button", "Lock")
 
-      assert has_element?(view, "#policy-mode[aria-readonly=true]")
-      assert text(view, "#policy-mode-owners") == "Only an owner can change the mode."
+      assert has_element?(view, "#policy-mode[aria-disabled=true]")
+      assert has_element?(view, "#policy-mode-enforce[aria-disabled=true]")
+      assert text(view, "#policy-mode-owners") == "Only an owner sets a mode."
     end
 
     test "edits what is not locked", %{scope: scope} = context do
@@ -475,7 +480,9 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
 
       view |> element("#policy-mode-enforce") |> render_click()
       assert Policy.get_mode(scope) == "observe"
+      assert text(view, "#mode-enforce") =~ "Set the hive's default to enforce"
       assert text(view, "#mode-enforce") =~ "a connection no rule allows is denied"
+      assert text(view, "#mode-enforce") =~ "in the 1 repository that follows the hive's default"
       assert text(view, "#mode-would") =~ "files.cdn.example"
       assert text(view, "#mode-would-n") == "1 destination"
 
@@ -486,7 +493,10 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       view |> element("#mode-confirm") |> render_click()
       assert Policy.get_mode(scope) == "enforce"
       assert has_element?(view, "#policy-mode-enforce[aria-checked=true]")
-      assert text(view, "#flash-info") =~ "The hive is in enforce mode. Version"
+
+      assert text(view, "#flash-info") =~
+               "The hive's default is enforce. 1 repository follows it. Version"
+
       assert text(view, "#nav-policy-mode") == "enforce"
     end
 
@@ -506,10 +516,66 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       view = open(conn)
 
       view |> element("#policy-mode-observe") |> render_click()
-      assert text(view, "#mode-observe") =~ "Locked rules do not hold in observe mode either."
+
+      assert text(view, "#mode-observe") =~
+               "The rules stay as they are, locked ones too: under observe a deny shapes the document and denies nothing."
 
       view |> element("#mode-confirm") |> render_click()
       assert Policy.get_mode(scope) == "observe"
+    end
+  end
+
+  describe "repositories that set their own mode" do
+    setup %{scope: scope} do
+      {:ok, _} = Policy.allow(scope, nil, %{host: "registry.example"})
+      started_run(scope, shop())
+      started_run(scope, %{"forge" => "github.example", "repository" => "acme/docs"})
+
+      docs =
+        Enum.find(Policy.list_repositories(scope), &(&1.repository.path == "acme/docs")).repository
+
+      {:ok, _} = Policy.set_mode(scope, docs, "enforce")
+      %{docs: docs}
+    end
+
+    test "the hive's page says how many, and the sidebar tag counts them", %{conn: conn} do
+      view = open(conn)
+
+      assert text(view, "#policy-mode-under") =~
+               "A repository follows it unless an owner sets a mode of its own: 1 of 2 repositories does , and enforces."
+
+      assert has_element?(view, "#policy-mode-under a[href='/hive/policy/repositories?mode=own']")
+      assert text(view, "#nav-policy-mode") == "observe · 1 own"
+
+      assert has_element?(
+               view,
+               "#nav-policy-mode[title=\"The hive's default mode is observe. 1 repository sets its own and enforces.\"]"
+             )
+    end
+
+    test "the confirm names those that do not change", %{conn: conn} do
+      view = open(conn)
+      view |> element("#policy-mode-enforce") |> render_click()
+      assert text(view, "#mode-enforce") =~ "1 repository sets its own mode and does not change."
+    end
+
+    test "the repositories list has a Mode column, and ?mode=own keeps those with their own",
+         %{conn: conn, docs: docs} do
+      view = open(conn, "/hive/policy/repositories")
+      assert text(view, "#repositories-summary") =~ "1 sets its own mode"
+      assert text(view, "#repo-#{docs.id} .q-c-mode") == "enforce Its own"
+      assert text(view, "#policy-repositories") =~ "observe Hive default"
+
+      view = open(conn, "/hive/policy/repositories?mode=own")
+      assert has_element?(view, "#repo-#{docs.id}")
+
+      assert view
+             |> render()
+             |> LazyHTML.from_fragment()
+             |> LazyHTML.query(".q-repo-row")
+             |> Enum.count() == 1
+
+      assert text(view, "#repositories-own-only") =~ "Showing those that set their own mode."
     end
   end
 
@@ -560,7 +626,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert text(view, "#history-summary") =~ "2 versions"
 
       assert text(view, "#history-list") =~
-               "#{user.email} switched the hive from observe to enforce"
+               "#{user.email} switched the hive's default mode from observe to enforce"
 
       assert text(view, "#history-list") =~ "allowed registry.example"
       assert text(view, "#history-list") =~ "denied telemetry.example"
@@ -697,7 +763,10 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert text(view, "#nav-policy-mode") == "observe"
 
       {:ok, _} = Policy.set_mode(scope, "enforce")
-      assert render(view) =~ "The hive is in enforce mode"
+
+      assert render(view) =~
+               "The hive&#39;s default mode is enforce. Every repository follows it."
+
       assert text(view, "#nav-policy-mode") == "enforce"
     end
   end
