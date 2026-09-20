@@ -763,21 +763,30 @@ defmodule Apiary.Runs do
 
   ## Closing
 
+  @closable_states ~w(pending running lost)
+
+  @doc "The states a member may close a run from: the ones without an end."
+  def closable_states, do: @closable_states
+
   @doc """
   Closes the run: the hive takes no more events for it and the receiver answers `410`.
-  Any member of the hive, read again from the database. A close is final: no event
-  reopens the run, and closing a closed run changes nothing.
+  Any member of the hive, read again from the database. Only a run that has not ended is
+  closed: one that is `pending`, `running` or `lost`. A run that exited, failed or timed out
+  keeps the end its events gave it. A close is final: no event reopens the run, and
+  closing a closed run changes nothing.
 
   `{:error, :unauthorized}` when the caller's membership is gone, `{:error, :not_found}`
-  when the run is not one of the scope's hive.
+  when the run is not one of the scope's hive, `{:error, :not_closable}` when it has ended.
   """
   def close_run(%Scope{user: user} = scope, %Run{id: id}) do
     with {:ok, _membership} <- Organisations.fetch_membership(scope) do
       now = DateTime.utc_now()
 
+      # One statement: the state is part of the WHERE, so an exit that lands between a
+      # read and this write is not overwritten.
       query =
         from r in in_scope(scope),
-          where: r.id == ^id and r.state != "closed",
+          where: r.id == ^id and r.state in ^@closable_states,
           select: r
 
       case Repo.update_all(query,
@@ -789,7 +798,8 @@ defmodule Apiary.Runs do
 
         {0, _} ->
           case Repo.one(from r in in_scope(scope), where: r.id == ^id) do
-            %Run{} = run -> {:ok, run}
+            %Run{state: "closed"} = run -> {:ok, run}
+            %Run{} -> {:error, :not_closable}
             nil -> {:error, :not_found}
           end
       end

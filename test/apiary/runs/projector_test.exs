@@ -549,16 +549,19 @@ defmodule Apiary.Runs.ProjectorTest do
       assert Runs.get_run!(scope, run.id).host == "dev-laptop"
     end
 
+    # Only a run without an end is closed (`Runs.close_run/2`): the record here stops
+    # before its exit.
     test "keeps a close, which no event records", %{scope: scope, run: run} do
-      events_fixture(run, record())
-      {:ok, _} = Projector.project(run)
+      events_fixture(run, Enum.drop(record(), -1))
+      {:ok, %{state: "running"}} = Projector.project(run)
       {:ok, closed} = Runs.close_run(scope, run)
 
       assert {:ok, rebuilt} = Projector.rebuild(run)
       assert rebuilt.state == "closed"
       assert rebuilt.closed_at == closed.closed_at
       assert rebuilt.closed_by_id == scope.user.id
-      assert rebuilt.exit_code == 0
+      assert rebuilt.runtime == "claude"
+      assert rebuilt.elapsed_seconds == 60
     end
   end
 end
