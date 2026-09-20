@@ -4,7 +4,8 @@
 //
 //   data-tick="relative"  datetime=…    "2 minutes ago", "Yesterday, 16:40", "17 Sep, 09:30"
 //   data-tick="clock"     datetime=…    "Today, 14:02:11"
-//   data-tick="duration"  data-since=…  "2 m 14 s", counting up
+//   data-tick="duration"  data-base=… data-since=…  "2 m 14 s": the runner's elapsed seconds
+//                                                   plus the server time since it said so
 //   data-tick="seconds"   data-since=…  the same format, for "Alive, 4 s ago"
 //
 // The hook itself only re-renders its element after a LiveView patch put the server's
@@ -46,21 +47,48 @@ export const formatClock = (at, now) => {
   return `${at.getUTCDate()} ${MONTHS[at.getUTCMonth()]} ${at.getUTCFullYear()}, ${hms(at)}`
 }
 
-const render = (el, now) => {
+// The browser's clock is never trusted. Every ticking element carries the server's now at
+// the moment it was rendered (`data-now`); the first time an element is seen, the
+// difference from the browser's clock is an estimate of the offset, short by the time the
+// render took to arrive. The largest estimate is the one that travelled fastest, so it is
+// kept. Everything on the page then counts on one clock, the server's: the quiet counter
+// cannot disagree with the badge the server decided.
+let offset = null
+const seen = new WeakSet()
+
+const learn = el => {
+  if (seen.has(el)) return
+  seen.add(el)
+  const at = Date.parse(el.dataset.now || "")
+  if (Number.isNaN(at)) return
+  const estimate = at - Date.now()
+  if (offset === null || estimate > offset) offset = estimate
+}
+
+const serverNow = () => new Date(Date.now() + (offset || 0))
+
+const render = el => {
+  learn(el)
+  const now = serverNow()
   const kind = el.dataset.tick
   const at = new Date(kind === "relative" || kind === "clock" ? el.getAttribute("datetime") : el.dataset.since)
   if (Number.isNaN(at.getTime())) return
+  // A duration counts from what the runner said had elapsed (`data-base`) at the server
+  // time it said so (`data-since`).
+  const base = kind === "duration" ? Number(el.dataset.base) || 0 : 0
   const text =
     kind === "relative" ? formatRelative(at, now)
     : kind === "clock" ? formatClock(at, now)
-    : formatSeconds((now - at) / 1000)
+    : formatSeconds(base + Math.max(0, (now - at) / 1000))
   if (el.textContent !== text) el.textContent = text
 }
 
 const tick = () => {
   if (document.hidden) return
-  const now = new Date()
-  document.querySelectorAll("time[data-tick]").forEach(el => render(el, now))
+  const els = document.querySelectorAll("time[data-tick]")
+  // Learn from every new element before rendering any, so one pass is on one clock.
+  els.forEach(learn)
+  els.forEach(render)
 }
 
 let timer = null
@@ -74,9 +102,11 @@ window.addEventListener("phx:page-loading-stop", tick)
 export const Ticker = {
   mounted() {
     start()
-    render(this.el, new Date())
+    render(this.el)
   },
   updated() {
-    render(this.el, new Date())
+    // A patch may carry a fresher `data-now`: let it be learnt again.
+    seen.delete(this.el)
+    render(this.el)
   },
 }

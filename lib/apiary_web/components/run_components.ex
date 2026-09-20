@@ -11,7 +11,9 @@ defmodule ApiaryWeb.RunComponents do
 
   Times tick in the browser: every `<time data-tick=…>` is re-rendered once a second by the
   `Ticker` hook's one interval (`assets/js/hooks/ticker.js`), in the same words the server
-  rendered, so the server never re-renders for a clock.
+  rendered, so the server never re-renders for a clock. The browser's clock is never
+  trusted: every ticking element carries the server's now at render (`data-now`), the hook
+  learns its offset from the server from it, and counts on the server's time.
   """
   use Phoenix.Component
   use Gettext, backend: ApiaryWeb.Gettext
@@ -82,6 +84,7 @@ defmodule ApiaryWeb.RunComponents do
           :if={@quiet_since}
           data-tick="seconds"
           data-since={iso(@quiet_since)}
+          data-now={iso(DateTime.utc_now())}
           aria-live="off"
           class="tabular-nums"
         >{format_seconds(@quiet_for)}</time>
@@ -135,36 +138,68 @@ defmodule ApiaryWeb.RunComponents do
 
   defp closed_tip(_at), do: "Closed by a member. The run never posted its exit."
 
+  # What `Apiary.Runs.Liveness` holds a run to when it announced no interval, and its bounds.
+  @default_beat 30
+  @max_beat 3600
+
   @doc """
-  The seconds a running run has been quiet for, or nil: set once the last heartbeat is
-  older than one interval. The server decides this, never the browser.
+  The seconds a running run has been quiet for, or nil: set once the hive has heard no
+  heartbeat for more than one interval. The server decides this, never the browser, and by
+  the rule of `Apiary.Runs.Liveness`: silence is measured on the server's clock from when
+  the last heartbeat was received, or, for a run that has not beaten yet, from when the
+  hive first heard of it; a run that announced no valid interval is held to 30 seconds.
   """
   def quiet_for(run, now \\ DateTime.utc_now())
 
-  def quiet_for(
-        %{
-          state: "running",
-          last_heartbeat_at: %DateTime{} = at,
-          heartbeat_interval_seconds: interval
-        },
-        now
-      )
-      when is_integer(interval) do
-    seconds = DateTime.diff(now, at, :second)
-    if seconds > interval, do: seconds
+  def quiet_for(%{state: "running"} = run, now) do
+    case heard_at(run) do
+      %DateTime{} = at ->
+        seconds = DateTime.diff(now, at, :second)
+        if seconds > beat(run), do: seconds
+
+      nil ->
+        nil
+    end
   end
 
   def quiet_for(_run, _now), do: nil
 
+  @doc "When the server last heard the run is alive: its last heartbeat, else its first event."
+  def heard_at(run), do: Map.get(run, :last_heartbeat_at) || Map.get(run, :inserted_at)
+
+  @doc "The heartbeat interval the run is held to, in seconds: its own within bounds, else 30."
+  def beat(run) do
+    case Map.get(run, :heartbeat_interval_seconds) do
+      interval when is_integer(interval) -> interval |> max(1) |> min(@max_beat)
+      _ -> @default_beat
+    end
+  end
+
+  @doc """
+  What a running run's clock counts from, `{elapsed_seconds, elapsed_at}`: the runner's own
+  `elapsed_seconds` of its last heartbeat and the server time that heartbeat was received;
+  before the first heartbeat, zero at the moment the hive first heard of the run. Never the
+  runner's `started_at`: its clock may be anywhere.
+  """
+  def elapsed(%{last_heartbeat_at: %DateTime{} = at, elapsed_seconds: seconds})
+      when is_integer(seconds),
+      do: {seconds, at}
+
+  def elapsed(%{inserted_at: %DateTime{} = at}), do: {0, at}
+  def elapsed(_run), do: {nil, nil}
+
   ## rd2. Duration
 
   @doc """
-  A duration. `ms` for what has ended, `running_since` for a clock that counts in the
-  browser, `at_least_seconds` for a run whose heartbeats stopped. Nothing given: "n/a".
+  A duration. `ms` for what has ended; `elapsed_seconds` with `elapsed_at` (the server time
+  at which that value was true, see `elapsed/1`) for a clock that counts in the browser;
+  `at_least_seconds` for a run whose heartbeats stopped. Nothing given: "n/a".
   """
   attr :id, :string, default: nil
   attr :ms, :integer, default: nil
-  attr :running_since, :any, default: nil
+  attr :elapsed_seconds, :integer, default: nil
+  attr :elapsed_at, :any, default: nil, doc: "the server time at which elapsed_seconds was true"
+  attr :running_since, :any, default: nil, doc: "deprecated and ignored: the runner's clock"
   attr :at_least_seconds, :integer, default: nil
   attr :precise, :boolean, default: false, doc: "tenths of a second under a minute, for tools"
   attr :so_far, :boolean, default: false, doc: "the run header adds the words"
@@ -176,16 +211,21 @@ defmodule ApiaryWeb.RunComponents do
     """
   end
 
-  def duration(%{running_since: %DateTime{}} = assigns) do
+  def duration(%{elapsed_seconds: seconds, elapsed_at: %DateTime{}} = assigns)
+      when is_integer(seconds) do
+    assigns = assign(assigns, :now, DateTime.utc_now())
+
     ~H"""
     <span class={["tabular-nums", @class]}>
       <time
         id={@id}
         phx-hook={@id && "Ticker"}
         data-tick="duration"
-        data-since={iso(@running_since)}
+        data-base={@elapsed_seconds}
+        data-since={iso(@elapsed_at)}
+        data-now={iso(@now)}
         aria-live="off"
-      >{format_seconds(max(DateTime.diff(DateTime.utc_now(), @running_since, :second), 0))}</time>
+      >{format_seconds(@elapsed_seconds + max(DateTime.diff(@now, @elapsed_at, :second), 0))}</time>
       <small :if={@so_far} class="text-xs text-faint">so far</small>
     </span>
     """
@@ -250,6 +290,7 @@ defmodule ApiaryWeb.RunComponents do
       phx-hook={@id && "Ticker"}
       datetime={iso(@at)}
       data-tick={@format}
+      data-now={iso(DateTime.utc_now())}
       title={absolute(@at)}
       aria-live="off"
       class={["tabular-nums", @class]}
@@ -484,10 +525,16 @@ defmodule ApiaryWeb.RunComponents do
   attr :at, :any, required: true
 
   defp seconds_since(assigns) do
+    assigns = assign(assigns, :now, DateTime.utc_now())
+
     ~H"""
-    <time data-tick="seconds" data-since={iso(@at)} aria-live="off" class="tabular-nums">{format_seconds(
-      max(DateTime.diff(DateTime.utc_now(), @at, :second), 0)
-    )}</time>
+    <time
+      data-tick="seconds"
+      data-since={iso(@at)}
+      data-now={iso(@now)}
+      aria-live="off"
+      class="tabular-nums"
+    >{format_seconds(max(DateTime.diff(@now, @at, :second), 0))}</time>
     """
   end
 

@@ -85,6 +85,7 @@ defmodule ApiaryWeb.RunComponentsTest do
 
       run = %{
         state: "running",
+        inserted_at: ~U[2026-09-20 13:00:00Z],
         last_heartbeat_at: ~U[2026-09-20 13:59:13Z],
         heartbeat_interval_seconds: 30
       }
@@ -95,7 +96,40 @@ defmodule ApiaryWeb.RunComponentsTest do
                nil
 
       assert RunComponents.quiet_for(%{run | state: "lost"}, now) == nil
-      assert RunComponents.quiet_for(%{run | last_heartbeat_at: nil}, now) == nil
+    end
+
+    test "without a valid interval a run is held to 30 seconds, as the lost-run check holds it" do
+      now = ~U[2026-09-20 14:00:00Z]
+
+      run = %{
+        state: "running",
+        inserted_at: ~U[2026-09-20 13:00:00Z],
+        last_heartbeat_at: ~U[2026-09-20 13:59:20Z],
+        heartbeat_interval_seconds: nil
+      }
+
+      assert RunComponents.quiet_for(run, now) == 40
+
+      assert RunComponents.quiet_for(%{run | last_heartbeat_at: ~U[2026-09-20 13:59:45Z]}, now) ==
+               nil
+
+      assert RunComponents.beat(%{heartbeat_interval_seconds: 0}) == 1
+      assert RunComponents.beat(%{heartbeat_interval_seconds: 999_999}) == 3600
+    end
+
+    test "a running run that has not beaten yet is quiet past one interval since it was first heard" do
+      now = ~U[2026-09-20 14:00:00Z]
+
+      run = %{
+        state: "running",
+        inserted_at: ~U[2026-09-20 13:59:00Z],
+        last_heartbeat_at: nil,
+        heartbeat_interval_seconds: nil
+      }
+
+      assert RunComponents.quiet_for(run, now) == 60
+      assert RunComponents.quiet_for(%{run | inserted_at: ~U[2026-09-20 13:59:50Z]}, now) == nil
+      assert RunComponents.heard_at(run) == ~U[2026-09-20 13:59:00Z]
     end
   end
 
@@ -115,14 +149,58 @@ defmodule ApiaryWeb.RunComponentsTest do
       assert text(render_component(&RunComponents.duration/1, at_least_seconds: 510)) ==
                "at least 8 m 30 s"
 
+      # The runner said 120 s had elapsed; the server received that 14 s ago. The runner's
+      # own started_at plays no part.
       html =
         render_component(&RunComponents.duration/1,
-          running_since: DateTime.add(DateTime.utc_now(), -134, :second),
+          elapsed_seconds: 120,
+          elapsed_at: DateTime.add(DateTime.utc_now(), -14, :second),
           so_far: true
         )
 
       assert html =~ ~s(data-tick="duration")
-      assert text(html) =~ ~r/^2 m 1\d s so far$/
+      assert html =~ ~s(data-base="120")
+      assert html =~ ~r/data-now="[^"]+Z"/
+      assert text(html) =~ ~r/^2 m 1[45] s so far$/
+
+      assert text(render_component(&RunComponents.duration/1, running_since: DateTime.utc_now())) ==
+               "n/a"
+    end
+
+    test "the running clock counts from the last heartbeat's elapsed, or from first heard" do
+      beat = ~U[2026-09-20 13:59:00Z]
+      first = ~U[2026-09-20 13:50:00Z]
+
+      assert RunComponents.elapsed(%{
+               last_heartbeat_at: beat,
+               elapsed_seconds: 510,
+               inserted_at: first
+             }) == {510, beat}
+
+      assert RunComponents.elapsed(%{
+               last_heartbeat_at: nil,
+               elapsed_seconds: nil,
+               inserted_at: first
+             }) ==
+               {0, first}
+    end
+
+    test "every ticking element carries the server's now" do
+      at = DateTime.add(DateTime.utc_now(), -90, :second)
+
+      for html <- [
+            render_component(&RunComponents.relative_time/1, at: at),
+            render_component(&RunComponents.relative_time/1, at: at, format: "clock"),
+            render_component(&RunComponents.run_state/1,
+              state: "running",
+              quiet_for: 90,
+              quiet_since: at
+            ),
+            render_component(&RunComponents.alive/1, state: "running", last_heartbeat_at: at)
+          ] do
+        assert html =~ ~r/data-tick="[a-z]+"/
+        assert html =~ ~r/data-now="[^"]+Z"/
+      end
     end
 
     test "relative and clock labels" do

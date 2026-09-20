@@ -142,9 +142,36 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert has_element?(view, "#{row(live_run)} time[data-tick=duration]")
       refute has_element?(view, "#{row(live_run)} .q-quiet")
 
+      # What the runner said had elapsed (90 s) plus the server time since it said so
+      # (5 s): not the 100 s since the runner's own started_at.
+      assert text(view, "#{row(live_run)} time[data-tick=duration]") =~ ~r/^1 m 3[567] s$/
+
+      assert has_element?(
+               view,
+               "#{row(live_run)} time[data-tick=duration][data-base='90'][data-now]"
+             )
+
       refute has_element?(view, "#{row(quiet)} .q-state-running")
       assert text(view, "#{row(quiet)} .q-quiet") =~ ~r/^No heartbeat for \d\d s$/
       assert text(view, row(quiet)) =~ "at least 8 m 30 s"
+    end
+
+    test "a running run that never beat turns amber one default interval after it was first heard",
+         %{conn: conn, scope: scope} do
+      run = started_run(scope, shop(), ago: 5)
+      view = open(conn)
+      refute has_element?(view, "#{row(run)} .q-quiet")
+
+      Repo.update_all(Apiary.Runs.Run,
+        set: [inserted_at: DateTime.add(DateTime.utc_now(), -45, :second)]
+      )
+
+      send(view.pid, :quiet_tick)
+      refute has_element?(view, "#{row(run)} .q-quiet")
+
+      Runs.broadcast_changed(Repo.reload!(run))
+      assert text(view, "#{row(run)} .q-quiet") =~ ~r/^No heartbeat for 4\d s$/
+      assert render(view) =~ "Heartbeats are due every 30 s."
     end
 
     test "lost and closed runs keep at least", %{conn: conn, scope: scope} do

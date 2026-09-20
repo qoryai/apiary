@@ -393,8 +393,8 @@ defmodule ApiaryWeb.RunLive.Index do
           exit_code={@run.exit_code}
           signal={@run.signal}
           quiet_for={if @quiet, do: quiet_for(@run) || 0}
-          quiet_since={@run.last_heartbeat_at}
-          interval={@run.heartbeat_interval_seconds}
+          quiet_since={heard_at(@run)}
+          interval={beat(@run)}
           closed_at={@run.closed_at}
         />
       </td>
@@ -482,9 +482,12 @@ defmodule ApiaryWeb.RunLive.Index do
     """
   end
 
-  defp run_duration(%{run: %{state: "running", started_at: %DateTime{}}, quiet: false} = assigns) do
+  defp run_duration(%{run: %{state: "running"}, quiet: false} = assigns) do
+    {seconds, at} = elapsed(assigns.run)
+    assigns = assign(assigns, seconds: seconds, at: at)
+
     ~H"""
-    <.duration running_since={@run.started_at} />
+    <.duration elapsed_seconds={@seconds} elapsed_at={@at} />
     """
   end
 
