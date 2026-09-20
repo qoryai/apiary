@@ -52,16 +52,19 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
     |> String.trim()
   end
 
-  # The change reaches the page on the policy's own topic (one subscription, and the
-  # sidebar's hook lets it through); only the 250 ms of coalescing is skipped, not waited.
+  # The change reaches the page on the policy's own topic, once: the sidebar's hook lets
+  # it through to a page that subscribed, and leaves the process one subscription. Only
+  # the 250 ms of coalescing is skipped, not waited.
   defp heard_policy_change(view, scope) do
+    # answered after the broadcast, which was sent before this was asked
+    assert :sys.get_state(view.pid).socket.assigns.policy_flush_scheduled
+
     subscriptions =
       Apiary.PubSub
       |> Registry.lookup(Policy.topic(scope.hive.id))
       |> Enum.count(fn {pid, _} -> pid == view.pid end)
 
     assert subscriptions == 1
-    assert :sys.get_state(view.pid).socket.assigns.policy_flush_scheduled
     send(view.pid, :policy_flush)
   end
 
