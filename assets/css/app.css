@@ -138,6 +138,7 @@
   --q-lane-b: oklch(52% 0.085 205);
   --q-lane-c: oklch(52% 0.12 265);
   --q-denied-tint: color-mix(in oklab, var(--q-error-soft) 55%, var(--color-base-100));
+  --q-added-tint: color-mix(in oklab, var(--q-success-soft) 55%, var(--color-base-100));
   --q-term-bg: oklch(20% 0.008 70);
   --q-term-edge: oklch(30% 0.008 70);
   --q-term-fg: oklch(90% 0.008 80);
@@ -176,6 +177,7 @@
   --q-lane-b: oklch(76% 0.09 205);
   --q-lane-c: oklch(76% 0.1 265);
   --q-denied-tint: color-mix(in oklab, var(--q-error-soft) 55%, var(--color-base-100));
+  --q-added-tint: color-mix(in oklab, var(--q-success-soft) 55%, var(--color-base-100));
   --q-term-bg: oklch(13.5% 0.005 70);
   --q-term-edge: oklch(27% 0.008 70);
 }
@@ -208,6 +210,7 @@
     --q-lane-b: oklch(76% 0.09 205);
     --q-lane-c: oklch(76% 0.1 265);
     --q-denied-tint: color-mix(in oklab, var(--q-error-soft) 55%, var(--color-base-100));
+    --q-added-tint: color-mix(in oklab, var(--q-success-soft) 55%, var(--color-base-100));
     --q-term-bg: oklch(13.5% 0.005 70);
     --q-term-edge: oklch(27% 0.008 70);
   }
@@ -240,6 +243,7 @@
   --color-lane-b: var(--q-lane-b);
   --color-lane-c: var(--q-lane-c);
   --color-denied: var(--q-denied-tint);
+  --color-added: var(--q-added-tint);
   --color-term: var(--q-term-bg);
   --color-term-edge: var(--q-term-edge);
   --color-term-content: var(--q-term-fg);
@@ -3112,5 +3116,132 @@
 @layer qory {
   .q-t .q-no-end {
     color: var(--q-primary-soft-content);
+  }
+}
+
+/* ==== The security policy (M5): the components of policy_components.ex ==========
+   Class names follow docs/design/policy-mock.html with a `q-` prefix. The version pill,
+   the version link, the pending mark and the source chip are shared with the run page
+   and the connections pages. */
+@layer qory {
+  /* ---- Version pill and version link (pd1) ---- */
+  .q-vpill {
+    display: inline-flex;
+    height: 28px;
+    align-items: stretch;
+    overflow: hidden;
+    border: 1px solid var(--q-border-strong);
+    border-radius: var(--radius-field);
+    background-color: var(--color-base-100);
+    box-shadow: var(--q-shadow-xs);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    line-height: 1rem;
+    white-space: nowrap;
+  }
+  .q-vpill > * {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding-inline: 9px;
+  }
+  .q-vpill > * + * {
+    border-left: 1px solid var(--q-border-subtle);
+  }
+  .q-vpill-v {
+    font-weight: 600;
+  }
+  a.q-vpill-v {
+    transition: background-color 120ms var(--q-ease-out);
+  }
+  a.q-vpill-v:hover {
+    background-color: var(--color-base-200);
+  }
+  a.q-vpill-v:focus-visible {
+    outline-offset: -2px;
+  }
+  .q-vpill-dg {
+    color: var(--q-muted);
+  }
+  .q-vpill-dg > i {
+    color: var(--q-faint);
+    font-style: normal;
+  }
+  .q-vpill-copy {
+    border: 0;
+    border-left: 1px solid var(--q-border-subtle);
+    background: none;
+    padding-inline: 7px;
+    color: var(--q-faint);
+    cursor: pointer;
+    overflow: visible;
+    transition:
+      background-color 120ms var(--q-ease-out),
+      color 120ms var(--q-ease-out);
+  }
+  .q-vpill-copy:hover {
+    background-color: var(--color-base-200);
+    color: var(--color-base-content);
+  }
+  .q-vpill-copy:focus-visible {
+    outline-offset: -2px;
+  }
+  .q-vpill:has(.q-vpill-copy) {
+    overflow: visible;
+  }
+  .q-vpill-sm {
+    height: 22px;
+    box-shadow: none;
+    font-size: 0.71875rem;
+  }
+  .q-vpill-sm > * {
+    padding-inline: 7px;
+  }
+  .q-ver {
+    font-family: var(--font-mono);
+    font-size: 0.78125rem;
+    font-weight: 600;
+    color: var(--color-base-content);
+    text-decoration: underline;
+    text-decoration-color: var(--q-border-field);
+    text-underline-offset: 3px;
+    transition: text-decoration-color 120ms var(--q-ease-out);
+  }
+  a.q-ver:hover {
+    text-decoration-color: currentColor;
+  }
+  .q-ver-plain {
+    text-decoration: none;
+  }
+
+  /* ---- The mark of a host nothing has decided yet (pd4, pd6) ---- */
+  .q-mark-pend {
+    border: 1.5px dashed var(--color-error);
+    background: none;
+    color: var(--color-error);
+  }
+
+  /* ---- Source chip (pd5) ---- */
+  .q-src {
+    display: inline-flex;
+    height: 20px;
+    align-items: center;
+    gap: 5px;
+    padding-inline: 7px;
+    border: 1px solid var(--q-border-subtle);
+    border-radius: var(--radius-selector);
+    background-color: var(--color-base-200);
+    color: var(--q-muted);
+    font-size: 0.71875rem;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .q-src-repo {
+    border-color: var(--q-border-field);
+    background-color: var(--color-base-100);
+    color: var(--color-base-content);
+  }
+  .q-src-lock {
+    color: var(--color-base-content);
   }
 }
