@@ -30,6 +30,7 @@ import {LiveEnd} from "./hooks/live_end"
 import {TimelineKeys} from "./hooks/timeline_keys"
 import {Terminal} from "./hooks/terminal"
 import {FocusOn} from "./hooks/focus_on"
+import {PolicyPage, RuleComposer, ChangeRow} from "./hooks/policy"
 import {RulePopover} from "./hooks/rule_popover"
 
 // Copies `data-copy` (or the text content of the element `data-copy-target`
@@ -259,7 +260,7 @@ const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, CopyToClipboard, Modal, Menu, NavDrawer, Toast, Ticker, RunGroups, LiveEnd, TimelineKeys, Terminal, FocusOn, RulePopover},
+  hooks: {...colocatedHooks, CopyToClipboard, Modal, Menu, NavDrawer, Toast, Ticker, RunGroups, LiveEnd, TimelineKeys, Terminal, FocusOn, RulePopover, PolicyPage, RuleComposer, ChangeRow},
   dom: {
     // showModal() sets `open` on the client; keep it across patches.
     onBeforeElUpdated(from, to) {

@@ -17,7 +17,9 @@ defmodule ApiaryWeb.Layouts do
      [
        {:overview, "Overview", "hero-squares-2x2-micro", "/hive"},
        {:runs, "Runs", "hero-play-circle-micro", "/hive/runs"},
-       {:connections, "Connections", "hero-arrows-right-left-micro", "/hive/connections"}
+       {:connections, "Connections", "hero-arrows-right-left-micro", "/hive/connections"},
+       # After Connections, because the policy is what the connections are judged by.
+       {:policy, "Policy", "hero-shield-check-micro", "/hive/policy"}
      ]},
     {"Manage", "Manage",
      [
@@ -47,7 +49,7 @@ defmodule ApiaryWeb.Layouts do
 
   attr :counts, :map,
     default: nil,
-    doc: "%{keys: active keys, members: members, alive: runs alive now}"
+    doc: "%{keys: active keys, members: members, alive: runs alive now, mode: the policy's mode}"
 
   attr :width, :string,
     default: "wide",
@@ -210,6 +212,14 @@ defmodule ApiaryWeb.Layouts do
               {alive_count(@counts)}
             </span>
             <span
+              :if={key == :policy && policy_mode(@counts)}
+              id="nav-policy-mode"
+              class="ml-auto font-mono text-[11.5px]/4 text-faint"
+              title={"The hive is in #{policy_mode(@counts)} mode"}
+            >
+              {policy_mode(@counts)}
+            </span>
+            <span
               :if={count = nav_count(@counts, key)}
               class="ml-auto font-mono text-[11.5px]/4 text-faint tabular-nums"
             >
@@ -234,6 +244,11 @@ defmodule ApiaryWeb.Layouts do
   defp nav_count(%{keys: n}, :keys), do: n
   defp nav_count(%{members: n}, :members), do: n
   defp nav_count(_counts, _key), do: nil
+
+  # The mode in force is a word, not a colour: observe is not a fault. Absent while the
+  # hive has no policy of Qory's yet.
+  defp policy_mode(%{mode: mode}) when mode in ["observe", "enforce"], do: mode
+  defp policy_mode(_counts), do: nil
 
   defp alive_count(%{alive: n}) when is_integer(n), do: n
   defp alive_count(_counts), do: 0

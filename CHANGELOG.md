@@ -162,6 +162,24 @@ a restart does before doing it (`docs/upgrading.md`).
   told the count is unavailable rather than given a count of a part. No new migration.
 - `mix apiary.demo` gives a hive without rules a policy to look at: a baseline, a host held
   to paths, a locked deny, a repository's overrides, several versions and a history.
+- The policy pages, under **Policy** in the sidebar, which names the mode in force once the
+  hive has a policy. `/hive/policy`: the mode as two cards, each change confirmed (going to
+  enforce lists the destinations it would start denying, from the record, with Allow for
+  the hive beside each; only an owner changes the mode); the host rules with a composer that
+  checks a rule in the contract's grammar as it is typed and reads it back in words before
+  it can be saved, repairs a pasted URL, takes a pasted list a line at a time, and refuses
+  what the document cannot say with the ways out; per rule its paths, what the last seven
+  days' connections say of it, who added it, and its lock, which owners toggle and members
+  read; the credentials, by name. `/hive/policy/repositories` and
+  `/hive/policy/repositories/:id`: a repository's effective policy as one list, every rule
+  with where it came from (Hive; This repository; Hive, locked), a rule that lost struck
+  through under the rule that beat it, Disable here, Allow here, Remove, Restore, and the
+  hosts the harness declared with one-click allow. History with every change, the version
+  it made or that it made none, and its diff in rules and in document lines; a page per
+  version (changes from any earlier version, the document, the bytes as served, copy); the
+  export as a modal at its own URL, with download. Tabs, filters, the opened change, the
+  compared version and the export are in the URL. A hive nobody has changed yet says that
+  its runs use each machine's own policy until the first change.
 
 ### Migrations
 

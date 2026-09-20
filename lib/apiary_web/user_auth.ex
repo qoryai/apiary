@@ -246,7 +246,8 @@ defmodule ApiaryWeb.UserAuth do
        |> Phoenix.Component.assign(:memberships, Organisations.list_memberships(scope.user))
        |> Phoenix.Component.assign(:nav_counts, nav_counts(scope))
        |> follow_membership_changes()
-       |> follow_alive_runs()}
+       |> follow_alive_runs()
+       |> follow_policy_mode()}
     else
       {:cont, Phoenix.Component.assign(socket, memberships: [], nav_counts: nil)}
     end
@@ -287,8 +288,63 @@ defmodule ApiaryWeb.UserAuth do
     %{
       keys: scope |> AccessKeys.list_access_keys() |> Enum.count(&is_nil(&1.revoked_at)),
       members: scope |> Organisations.list_members() |> length(),
-      alive: Apiary.Runs.count_alive(scope)
+      alive: Apiary.Runs.count_alive(scope),
+      mode: policy_mode(scope)
     }
+  end
+
+  # The word beside Policy: the mode in force, once the hive has a policy of Qory's.
+  defp policy_mode(%Scope{hive: nil}), do: nil
+
+  defp policy_mode(%Scope{} = scope) do
+    if Apiary.Policy.managed?(scope), do: Apiary.Policy.get_mode(scope)
+  end
+
+  # The sidebar's mode word follows `policy:<hive>` on every page. A page that follows the
+  # policy itself has subscribed in its mount, and then gets the message after this hook;
+  # a page that has not is subscribed here, once its mount is over, and the message stops
+  # at the hook, so no page has to handle a message it did not ask for.
+  defp follow_policy_mode(socket) do
+    scope = socket.assigns.current_scope
+
+    if scope.hive && Phoenix.LiveView.connected?(socket) do
+      socket
+      |> Phoenix.LiveView.attach_hook(:policy_mode_subscribe, :handle_params, fn
+        _params, _uri, socket ->
+          topic = Apiary.Policy.topic(scope.hive.id)
+
+          own? =
+            if topic in Registry.keys(Apiary.PubSub, self()) do
+              true
+            else
+              Apiary.Policy.subscribe(scope)
+              false
+            end
+
+          {:cont,
+           socket
+           |> Phoenix.LiveView.put_private(:policy_mode_passes, own?)
+           |> Phoenix.LiveView.detach_hook(:policy_mode_subscribe, :handle_params)}
+      end)
+      |> Phoenix.LiveView.attach_hook(:policy_mode, :handle_info, fn
+        {:policy_changed, _change}, socket ->
+          counts =
+            Map.put(
+              socket.assigns.nav_counts || %{},
+              :mode,
+              policy_mode(socket.assigns.current_scope)
+            )
+
+          socket = Phoenix.Component.assign(socket, :nav_counts, counts)
+
+          if socket.private[:policy_mode_passes], do: {:cont, socket}, else: {:halt, socket}
+
+        _message, socket ->
+          {:cont, socket}
+      end)
+    else
+      socket
+    end
   end
 
   # The sidebar's count of alive runs follows the hive on every page. It listens on a

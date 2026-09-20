@@ -93,6 +93,25 @@ defmodule ApiaryWeb.Router do
       live "/hive/runs/:run_id/terminal", RunLive.Show, :terminal
       live "/hive/runs/:run_id/connections", RunLive.Show, :connections
       live "/hive/runs/:run_id/details", RunLive.Show, :details
+      # The security policy: the hive's baseline and a repository's view of it, one object
+      # with two scopes. Tabs, filters, the opened change, the compared version and the
+      # export modal are in the URL. `:repository_id` is the repository row's id, because
+      # a forge and a path hold slashes.
+      live "/hive/policy", PolicyLive.Show, :rules
+      live "/hive/policy/repositories", PolicyLive.Show, :repositories
+      live "/hive/policy/history", PolicyLive.Show, :history
+      live "/hive/policy/document", PolicyLive.Show, :document
+      live "/hive/policy/versions/:n", PolicyLive.Show, :version
+      live "/hive/policy/versions/:n/export", PolicyLive.Show, :export
+      live "/hive/policy/repositories/:repository_id", PolicyLive.Repository, :rules
+      live "/hive/policy/repositories/:repository_id/history", PolicyLive.Repository, :history
+      live "/hive/policy/repositories/:repository_id/document", PolicyLive.Repository, :document
+      live "/hive/policy/repositories/:repository_id/versions/:n", PolicyLive.Repository, :version
+
+      live "/hive/policy/repositories/:repository_id/versions/:n/export",
+           PolicyLive.Repository,
+           :export
+
       live "/hive/keys", AccessKeyLive.Index, :index
       live "/hive/keys/new", AccessKeyLive.Index, :new
       live "/hive/keys/:id/rotate", AccessKeyLive.Index, :rotate
