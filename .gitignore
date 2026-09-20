@@ -28,6 +28,9 @@ apiary-*.tar
 # Ignore assets that are produced by build tools.
 /priv/static/assets/
 
+# The documentation `mix docs` builds, served at /docs.
+/priv/static/docs/
+
 # Ignore digested assets cache.
 /priv/static/cache_manifest.json
 

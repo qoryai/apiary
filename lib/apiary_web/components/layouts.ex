@@ -407,6 +407,11 @@ defmodule ApiaryWeb.Layouts do
             <.icon name="hero-user-circle-micro" class="size-4" /> Account settings
           </.link>
         </li>
+        <li role="none">
+          <.link href={~p"/docs"} role="menuitem" id="user-menu-docs">
+            <.icon name="hero-book-open-micro" class="size-4" /> Docs
+          </.link>
+        </li>
         <li class="menu-title" role="presentation">Theme</li>
         <li role="none">
           <div class="block cursor-default px-1 pb-1 pt-0.5 hover:bg-transparent">

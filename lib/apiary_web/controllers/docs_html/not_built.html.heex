@@ -1,0 +1,18 @@
+<Layouts.auth flash={@flash} current_scope={@current_scope}>
+  <div id="docs-not-built">
+    <.empty_state
+      icon="hero-book-open"
+      tone="neutral"
+      heading="h1"
+      title="The documentation is not built"
+    >
+      A release image builds it and serves it here. In a checkout, run
+      <code class="q-rule">mix docs</code>
+      and reload this page. The guides are also in the <code class="q-rule">guides</code>
+      directory of the repository, as Markdown.
+      <:actions>
+        <.button navigate={~p"/"}>Back to Qory</.button>
+      </:actions>
+    </.empty_state>
+  </div>
+</Layouts.auth>

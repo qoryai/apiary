@@ -1,0 +1,206 @@
+# The server contract
+
+The server contract is what a runner and a server say to each other: how a runner finds the
+server's endpoints, how it proves which access key it holds, how it delivers a run's events,
+and how it is given the run's security policy. A Qory server implements the server's side.
+A receiver of your own that implements the same contract takes the same runners.
+
+## Where the contract lives
+
+The contract is not in this repository. It is the `contracts/runner/v1` directory of the
+runner's repository: a README that defines every document and header, one JSON schema per
+document, and fixtures, among them signed requests with the status a receiver has to answer.
+This server implements version 1, revision 1.
+
+Where this page and the contract disagree, the contract wins. Two files in the server's
+repository tie the two together:
+
+- `.runner-contract-ref` pins the ref of the runner's repository whose fixtures the server's
+  tests replay, in development and in CI: every signed request, the batches, and a recorded
+  run in any order, batching and repetition.
+- `docs/contract-assumptions.md` is the server's full reading of the contract, with
+  everything the contract has not fixed and the server chose, under "Assumed". This page is
+  a summary of it.
+
+The contract's schemas for the run configuration and the policy are vendored in the server,
+and every run configuration is validated against them before it is stored.
+
+## Who is asking: the access key
+
+Every request names an access key and is signed with that key's secret. The key decides the
+hive: a run is stored in the hive of the key that delivered it, and a run configuration is
+the one of the key's hive. After a rotation either of a key's two secrets verifies, until
+the previous one is retired or the key is revoked.
+
+On every request:
+
+| Header | Value |
+|---|---|
+| `X-Qory-Access-Key` | the key id, `ak_` and 16 lower-case Crockford base32 characters |
+| `X-Qory-Contract-Version` | the revision the runner implements, `1` |
+| `User-Agent` | `qory-runner/<version>` |
+
+The server records the runner's version and the contract version on the key, which is what
+the **Runner** column of the access keys page shows. What is recorded never decides the
+answer.
+
+## Signed requests
+
+### A signed GET
+
+For the configuration document and the run configuration.
+
+| Header | Value |
+|---|---|
+| `X-Qory-Timestamp` | Unix seconds, UTC, a decimal integer |
+| `X-Qory-Signature-256` | `sha256=` and the lower-case hex HMAC SHA-256 of the canonical string, keyed with the secret |
+
+The canonical string is three lines joined by a line feed, with none after the last:
+
+```text
+GET
+/.well-known/qory-configuration?x=1
+1700000000
+```
+
+1. the method, in upper case;
+2. the request target exactly as sent: the path, then `?` and the query only when the query
+   is not empty. Nothing is decoded, re-ordered or normalised on either side;
+3. the value of `X-Qory-Timestamp` as sent.
+
+A known answer: the secret `test-secret` over the string above gives
+`sha256=e8cc6260e2740e9282f2b45fa8bc590e3afe0e59eb53882b19cdb0f87a613c02`.
+
+**The five-minute window.** The server accepts the request when its own clock and the
+timestamp differ by at most 300 seconds, earlier or later alike. A machine whose clock is
+more than five minutes wrong is refused, so keep the clocks of the server and of the
+machines synchronised.
+
+### A signed POST
+
+For the events endpoint.
+
+| Header | Value |
+|---|---|
+| `Content-Type` | `application/cloudevents-batch+json` |
+| `X-Qory-Delivery` | a UUID per batch; a retry of the batch carries the same one |
+| `X-Qory-Signature-256` | `sha256=` and the lower-case hex HMAC SHA-256 of the raw request body, keyed with the secret |
+| `X-Qory-Run-Configuration` | optional: the digest of the run configuration the run holds |
+
+No timestamp is signed and no window is checked: a replayed batch is a duplicate, and the
+server discards duplicates by event id. The signature is verified over the bytes as
+received, before anything parses them.
+
+### Failure
+
+Every failure of authentication is `401` with the body `{"error":"unauthorized"}` and
+nothing more: a header missing, empty or sent twice, a key id of the wrong shape, a key the
+server does not know or has revoked, a timestamp that is not an integer or is outside the
+window, a signature that does not match. The body never says which, and nothing about the
+request's headers is logged. The comparison is constant-time, and the key is looked up only
+after its shape is checked.
+
+## The three endpoints
+
+### Discovery: `GET /.well-known/qory-configuration`
+
+A signed GET. The answer is `200`, `application/json`, with the header
+`X-Qory-Configuration: sha256=<hex>`, the SHA-256 of the body as sent.
+
+```json
+{
+  "version": 1,
+  "events": {"url": "https://qory.example/v1/events", "types": ["*"]},
+  "run": {"url": "https://qory.example/v1/run-configuration"}
+}
+```
+
+The URLs are built from the server's `PUBLIC_URL`, never from the request's `Host` header
+([Install and configure](install.md)). A runner's `server.url` is that address, and the
+runner finds the other two endpoints through this document alone.
+
+The `run` section is there only for a hive whose policy somebody has made. A hive nobody has
+given a policy is answered the document without `run`, and its machines run under the policy
+of their own runner file ([The security policy](security-policy.md)). The document is
+therefore one of two, by hive, and so is its digest.
+
+### Events: `POST /v1/events`
+
+A signed POST: one batch of one run's events, a non-empty JSON array. A request is refused in
+this order, and the first refusal that applies is the answer:
+
+| Status | When | Body |
+|---|---|---|
+| `413` | the body is over 2 MiB, or cannot be read | `{"error":"payload_too_large"}` |
+| `401` | any failure of authentication | `{"error":"unauthorized"}` |
+| `415` | the content type is not `application/cloudevents-batch+json` | `{"error":"unsupported_media_type"}` |
+| `429` | the key has delivered more than its rate; `Retry-After` says how many seconds to wait | `{"error":"rate_limited"}` |
+| `400` | `X-Qory-Contract-Version` is sent and is not `1` | `{"error":"unsupported_contract_version","supported":[1]}` |
+| `400` | the body is not a batch, or is over a limit | `{"error":"invalid_batch"}` |
+| `410` | the hive has closed the run: the delivery is recorded, no event is stored | empty |
+| `503` | the batch could not be stored; nothing of it was | `{"error":"unavailable"}` |
+| `202` | stored | empty |
+
+To a runner a `2xx` means accepted, `410` means send nothing more for this run, and anything
+else is retried with backoff until the run ends. The ping that opens a run is a batch like
+any other: a `202` lets the run start, and a revoked key, a bad signature or an unsupported
+version does not.
+
+- **The envelope is checked, the data is not.** Each event has `id` and `subject` (lower-case
+  UUIDs), `type` (beginning `ai.qory.`), `sequence` (ten digits, from `0000000001`),
+  `source`, `time` (RFC 3339) and `data` (an object), all of one subject. A batch holds at
+  most 1000 events; a runner cuts one at a hundred. A type this release does not know is
+  stored like any other, so a newer runner's events are kept until a release reads them.
+- **Delivery is at least once.** An event already held, by its `id`, is skipped. A delivery
+  id the key has delivered before is answered `202` again and nothing is stored.
+- **Stored first, read later.** The batch is stored in one transaction before the answer.
+  The run is created on the first event of a subject the key's hive has not seen. The events
+  are projected into the run, its connections and its log after the answer, in order of
+  `sequence`, never of arrival.
+- **The rate** is per access key and per node: 50 batches a second, 100 at once. Every
+  request that passed the `413`, the `401` and the `415` spends one, whatever it is answered
+  after that.
+- **The digests.** Every `202` and `410` carries `X-Qory-Configuration`, and for a hive with
+  a policy `X-Qory-Run-Configuration`, the digest in force for the run's repository. A
+  runner that holds another digest fetches the document again. That is how a change of the
+  policy reaches a run in flight, and the whole of it: nothing in an answer's body is read.
+- Neither the signature nor the body is logged, and no batch is answered `500`.
+
+### The run configuration: `GET /v1/run-configuration`
+
+A signed GET, with the query `?forge=<label>&repository=<label>` signed as sent, each
+parameter only when the run has that label.
+
+| Status | When | Body |
+|---|---|---|
+| `200` | the hive has a policy | the run configuration |
+| `401` | any failure of authentication | `{"error":"unauthorized"}` |
+| `404` | nobody has made the hive's policy; discovery named no `run` section, so a runner does not ask | `{"error":"not_found"}` |
+| `429` | the key's rate, the events endpoint's bucket, is spent; with `Retry-After` | `{"error":"rate_limited"}` |
+| `503` | the configuration could not be read | `{"error":"unavailable"}` |
+
+To a runner anything but `200` is no run, or a reload that failed and is tried again on the
+next answer. The endpoint never answers `304`.
+
+A `200` carries `X-Qory-Run-Configuration: sha256=<hex>`, `ETag` with the same string
+quoted, `X-Qory-Configuration` and `Cache-Control: no-store`:
+
+```json
+{"version":1,"security_policy":{"version":1,"egress":{"mode":"enforce","allow":["api.example"]}}}
+```
+
+The body is the bytes that were stored when the policy was last changed. Nothing is rendered
+for a request, so the digest is of exactly what is sent. It is the configuration of the key's
+hive for the repository the two labels name; a repository the hive has not seen, one with no
+rules of its own, and a request that names none, or one label of the two, get the hive's
+baseline. The labels are compared to the stored ones byte for byte after the query's
+percent-decoding.
+
+The `security_policy` is the policy: the runner does not merge it with the machine's own.
+
+## A receiver of your own
+
+The runner's repository ships a reference receiver and the fixtures any receiver is tested
+against. Discovery and the events endpoint are enough; a receiver that names no `run`
+section offers no run configuration, and the policy stays the machine's. On the machine it
+is configured like a Qory server ([The runner file's `server` section](runner-file.md)).

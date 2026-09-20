@@ -22,7 +22,7 @@ written out in [CONTRIBUTING.md](CONTRIBUTING.md).
 - **Migrations.** One per change, via `mix ecto.gen.migration`; expand in one release,
   contract in a later one; every migration reverses; tenant keys in the first migration of
   a table. The changelog section of a release lists them under Migrations. Rules and
-  reasons: [docs/upgrading.md](docs/upgrading.md).
+  reasons: [guides/upgrading.md](guides/upgrading.md).
 - **Commits and pull requests** carry no attribution to an AI: no `Co-Authored-By` trailer
   for a model, no "generated with" line, no session link. The message says what changed
   and why, in the imperative.
@@ -30,8 +30,14 @@ written out in [CONTRIBUTING.md](CONTRIBUTING.md).
   `mise x -- mix ...` from the repository root. Postgres on `localhost:5432` as `postgres`
   without a password.
 - **Quality gate.** `mise x -- mix precommit` before a pull request: it compiles with
-  warnings as errors, drops unused lock entries, formats and runs the tests. CI runs the
+  warnings as errors, drops unused lock entries, formats, builds the documentation with
+  warnings as errors (`mix docs --warnings-as-errors`) and runs the tests. CI runs the
   same checks plus `MIX_ENV=prod mix assets.deploy`.
+- **Documentation.** It ships with the application: the guides are Markdown under
+  `guides/`, built with the module reference by ExDoc into `priv/static/docs` and served by
+  every instance at `/docs`. Every module gets a moduledoc stating its role and invariants,
+  every public function a doc and a spec. A change an operator or a user has to know about
+  changes a guide in the same pull request.
 - Use the already included `:req` (`Req`) library for HTTP requests, **avoid** `:httpoison`,
   `:tesla`, and `:httpc`.
 - The server contract (signed GET, discovery document, what is assumed beyond the contract)

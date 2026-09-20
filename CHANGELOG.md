@@ -222,6 +222,16 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
   apiary.prune` (`Apiary.Release.prune/1` in a release) runs it by hand, `--dry-run`
   counts without deleting. A rebuild leaves a run alone whose events are pruned, or due to
   be: its projection is all that is left of it.
+- The documentation ships with the application: the guides under `guides/` (quickstart,
+  install and configure, upgrading, backup and restore, retention, the hosting checklist,
+  the security policy, the runner file's `server` section, the server contract) and the
+  module reference are built by ExDoc into `priv/static/docs`, in the release image too,
+  and every instance serves them at `/docs`, without signing in; the user menu links
+  there. A checkout that has not run `mix docs` says so at `/docs`. `mix docs
+  --warnings-as-errors` is part of `mix precommit` and of CI. `docs/upgrading.md` moved
+  to `guides/upgrading.md`.
+- An empty `SMTP_USERNAME`, which is how `.env.example` leaves it, means no
+  authentication at the relay; before, it meant authenticating with an empty name.
 
 ### Migrations
 

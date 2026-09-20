@@ -20,7 +20,15 @@ local reverse proxy serves the dev server under another name, set `PHX_HOST` (or
 `PUBLIC_URL`) in `mise.local.toml` or the shell; that file is not tracked. Emails in
 development go to the mailbox at `http://localhost:4100/dev/mailbox`.
 
-`mix precommit` runs the compiler with warnings as errors, the formatter and the tests.
+`mix precommit` runs the compiler with warnings as errors, the formatter, the documentation
+build with warnings as errors and the tests.
+
+## Documentation
+
+The guides live in [guides/](guides/) and are built with the module reference by `mix docs`
+into `priv/static/docs`. Every instance serves them at `/docs`, the release image included,
+so the documentation a person reads is that of the version they run. Start with
+[guides/quickstart.md](guides/quickstart.md): from nothing to a first run.
 
 ## Self-hosting with docker compose
 
@@ -32,7 +40,7 @@ docker compose up --build
 The image builds the release; the compose file adds Postgres 18 with a volume and starts
 Apiary on port 4100 once the database is healthy. Pending migrations run at boot, so an
 upgrade is `docker compose pull` (or `--build`) and `docker compose up`; read
-`docs/upgrading.md` and the release's section in `CHANGELOG.md` first.
+[guides/upgrading.md](guides/upgrading.md) and the release's section in `CHANGELOG.md` first.
 
 `.env` has six groups of variables:
 

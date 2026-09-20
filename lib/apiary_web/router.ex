@@ -21,6 +21,11 @@ defmodule ApiaryWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
+
+    # The documentation (decision 0043). The endpoint serves the built files under /docs;
+    # these answer /docs itself and what was not found. Public: no authentication.
+    get "/docs", DocsController, :index
+    get "/docs/*path", DocsController, :missing
   end
 
   ## Operations (region owned by the operations work: health)

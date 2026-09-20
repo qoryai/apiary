@@ -66,6 +66,13 @@ COPY assets assets
 # compile assets
 RUN mix assets.deploy
 
+# The documentation ships with the application: the guides and the module reference are
+# built into priv/static/docs, which the release serves at /docs. After assets.deploy, so
+# phx.digest does not fingerprint them.
+COPY guides guides
+COPY CHANGELOG.md ./
+RUN mix docs
+
 # Changes to config/runtime.exs don't require recompiling the code
 COPY config/runtime.exs config/
 

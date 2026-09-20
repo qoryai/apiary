@@ -63,6 +63,9 @@ jobs:
       - name: Compile without warnings
         run: mix compile --warnings-as-errors
 
+      - name: Build the documentation without warnings
+        run: mix docs --warnings-as-errors
+
       - name: Test
         env:
           MIX_ENV: test

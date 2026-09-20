@@ -17,8 +17,9 @@ Everywhere. Four kinds are the most useful:
   `contracts/runner/v1/`; a change to the contract goes there, and this repository follows it.
 - **The security policy.** [SECURITY.md](SECURITY.md) says what counts as a vulnerability
   here. A tighter definition, or a case it misses, is a contribution.
-- **Docs.** [README.md](README.md) for running it, [docs/upgrading.md](docs/upgrading.md)
-  for a self-hoster's restart, [CHANGELOG.md](CHANGELOG.md) for what a release did.
+- **Docs.** [README.md](README.md) for running it, the guides under [guides/](guides/), which
+  every instance serves at `/docs` ([guides/upgrading.md](guides/upgrading.md) for a
+  self-hoster's restart), [CHANGELOG.md](CHANGELOG.md) for what a release did.
 
 ## Contributor Licence Agreement
 
@@ -56,7 +57,8 @@ mix setup                          # dependencies, database, assets
 mix test                           # creates and migrates the test database, then runs everything
 mix format                         # CI runs mix format --check-formatted
 mix compile --warnings-as-errors
-mix precommit                      # the three above plus deps.unlock --unused; run it before a pull request
+mix docs --warnings-as-errors      # the guides and the module reference, into priv/static/docs
+mix precommit                      # the four above plus deps.unlock --unused; run it before a pull request
 mix phx.server                     # http://localhost:4100
 ```
 
@@ -134,7 +136,7 @@ A page never touches `Apiary.Repo`; it calls a context with `@current_scope`.
 ## Migrations
 
 One migration per change, generated with `mix ecto.gen.migration`, named for what it does.
-The rules are in [docs/upgrading.md](docs/upgrading.md), because they exist for the person
+The rules are in [guides/upgrading.md](guides/upgrading.md), because they exist for the person
 who restarts a self-hosted installation; the short form:
 
 - **Expand, then contract, in separate releases.** A release adds; the release after it

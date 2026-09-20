@@ -27,6 +27,14 @@ defmodule ApiaryWeb.Endpoint do
     only: ApiaryWeb.static_paths(),
     raise_on_missing_only: code_reloading?
 
+  # The documentation `mix docs` builds (the release image too), served by every instance
+  # at /docs. Its own plug, because the directory is absent until it is built:
+  # `ApiaryWeb.DocsController` answers what is not found here.
+  plug Plug.Static,
+    at: "/docs",
+    from: {:apiary, "priv/static/docs"},
+    gzip: false
+
   # Code reloading can be explicitly enabled under the
   # :code_reloader configuration of your endpoint.
   if code_reloading? do
