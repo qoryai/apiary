@@ -11,6 +11,57 @@ Naming. The brand is **Qory**. Inside the product an organisation is an **apiary
 `github.example`, `gitlab.example`, `api.example`, `registry.example`, `files.cdn.example`,
 `build-01`. No people appear in a run.
 
+## Amendment 1: state families
+
+An owner's ruling after the first issue of this brief. **Run states read as three families on
+every surface**: **alive** (`pending`, `running`, the amber quiet state included), **ended well**
+(`succeeded`) and **ended badly** (`failed`, `timed_out`, `lost`, `closed`). `closed` reads as
+"stopped by the hive", not as a failure of the run, and sits in the last family for scanning. The
+overview (`brief-overview.md`) counts and lists runs by these families. On the runs list the
+amendment touches the State filter and the summary line, and nothing else: the list, its rows and
+its badges are not redesigned, and the badges keep their colours (green Succeeded, red and amber
+for the bad endings, blue Running, neutral Pending and Closed).
+
+**The State filter (rd7).** The `<.filter name="state" multiple>` menu is grouped under three
+headings, in this order: **Alive**, **Ended well**, **Ended badly**. Each heading is itself a
+checkbox row, "Every alive state" / "Every state that ended well" / "Every state that ended
+badly", which checks or unchecks every state of its family in one click; under it, indented by
+the checkbox's width, the family's states as today (Pending, Running · Succeeded · Failed, Timed
+out, Lost, Closed) with their counts in `font-mono text-faint`. The heading's checkbox is checked
+when every state of the family is, indeterminate (`aria-checked="mixed"`, the dash glyph) when
+some are, unchecked otherwise. The URL does not change: `state=` takes the states, several
+values, as today (`state=failed,timed_out,lost,closed`); the family choice fills them in, so a
+shared link reproduces the view on any version of the page. No family word appears in the URL.
+
+**The set chip.** When the chosen states are exactly one family, the chip reads the family:
+"State **alive**", "State **ended well**", "State **ended badly**"; two whole families read
+"State **alive, ended badly**"; anything else reads the states as today ("State **failed, lost**",
+"State **3 selected**" past two). The remove button's name follows: "Remove filter: state ended
+badly".
+
+**The summary line (re1).** The facts after the count read the families in place of "2 alive"
+alone: "11 runs in 4 repositories · 2 alive · 6 ended well · 3 ended badly · 3 with denials",
+a family at zero left out. The legend of the runs table is this line; there is no other.
+
+**Microcopy.**
+
+| Where | Text |
+|---|---|
+| Menu headings | Alive · Ended well · Ended badly |
+| Heading checkboxes (accessible names) | Every alive state · Every state that ended well · Every state that ended badly |
+| States under them | Pending, Running · Succeeded · Failed, Timed out, Lost, Closed |
+| Closed's tooltip in the menu | Stopped by the hive: a member closed it after it went quiet. Counted with the runs that ended badly. |
+| Set chip | State **alive** / State **ended well** / State **ended badly** / State **alive, ended badly** / State **failed, lost** / State **3 selected** |
+| Remove button | Remove filter: state ended badly |
+| Summary line | 11 runs in 4 repositories · 2 alive · 6 ended well · 3 ended badly · 3 with denials |
+| Empty after a family filter | No runs ended badly in the last 7 days. (the neutral funnel state of re7, with the family in the sentence) |
+
+The "quiet" running run stays in the alive family: it is running until the server says lost
+(rd1). `lost` is ended badly the moment the server says so, even though the run may still be
+going: the record ended, and the list reads the record.
+
+---
+
 Out of scope, not designed here: editing a security policy, allow and deny buttons on a connection
 row (the row keeps a free trailing slot for them), billing, search across the logs of several runs.
 
