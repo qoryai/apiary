@@ -59,6 +59,7 @@ a restart does before doing it (`docs/upgrading.md`).
   id, the newest runs, and closing a run, after which the receiver answers `410` for it.
 - The hive overview shows "Runs alive now", live; the access keys page shows each key's last
   heartbeat beside its last use.
+- For development, `mix apiary.demo` replays the synthetic recorded runs under `priv/demo/` into a hive through the receiver's own ingest, as new runs that end now (dev and test only).
 
 ### Migrations
 
