@@ -40,6 +40,26 @@ defmodule ApiaryWeb.DocsControllerTest do
     end
   end
 
+  describe "a built file" do
+    # Under priv/static/docs itself, which is where the endpoint's Plug.Static reads, so
+    # this is the plug that serves in dev and in the release; removed after the test.
+    setup do
+      dir = Application.app_dir(:apiary, "priv/static/docs")
+      name = "served-in-test-#{System.unique_integer([:positive])}.html"
+      File.mkdir_p!(dir)
+      File.write!(Path.join(dir, name), "<html><body>served</body></html>")
+      on_exit(fn -> File.rm(Path.join(dir, name)) end)
+      %{name: name}
+    end
+
+    test "is served under /docs by the endpoint, not the controller", %{conn: conn, name: name} do
+      conn = get(conn, "/docs/#{name}")
+      assert conn.status == 200
+      assert conn.resp_body =~ "served"
+      assert get_resp_header(conn, "content-type") == ["text/html"]
+    end
+  end
+
   test "the user menu links to it", %{conn: conn} do
     %{conn: conn} = register_and_log_in_user(%{conn: conn})
     {:ok, _lv, html} = live(conn, ~p"/hive/settings")

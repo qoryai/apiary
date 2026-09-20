@@ -3,7 +3,8 @@ defmodule ApiaryWeb.DocsController do
   The way in to the documentation every instance serves at `/docs`.
 
   The guides and the module reference are built by `mix docs` into `priv/static/docs`,
-  in the release image too, and the endpoint serves the files from there. This controller
+  in the release image too, and the endpoint's `Plug.Static` serves the files from there
+  (`docs` is in `ApiaryWeb.static_paths/0`). This controller
   answers what is not a file: `/docs` itself, which goes to the first page, and any path
   below it that was not found. When the documentation has not been built, which happens
   in a checkout before `mix docs`, the page says so and how to build it, with `404`.

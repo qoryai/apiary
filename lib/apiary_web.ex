@@ -17,7 +17,9 @@ defmodule ApiaryWeb do
   those modules here.
   """
 
-  def static_paths, do: ~w(assets fonts images favicon.ico favicon.svg favicon-32.png robots.txt)
+  # `docs` is what `mix docs` builds: served by every instance, absent until it is built.
+  def static_paths,
+    do: ~w(assets fonts images favicon.ico favicon.svg favicon-32.png robots.txt docs)
 
   def router do
     quote do
