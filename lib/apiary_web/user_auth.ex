@@ -299,53 +299,62 @@ defmodule ApiaryWeb.UserAuth do
 
   defp policy_mode(%Scope{} = scope) do
     if Apiary.Policy.managed?(scope) do
-      %{
-        mode: Apiary.Policy.get_mode(scope),
-        own_modes:
-          for(%{own_mode: mode} <- Apiary.Policy.list_repositories(scope), mode != nil, do: mode)
-      }
+      repositories = Apiary.Policy.list_repositories(scope)
+
+      # A repository that follows the hive says the hive's mode; only a hive where none
+      # does is asked for it.
+      mode =
+        case Enum.find(repositories, &is_nil(&1.own_mode)) do
+          %{mode: mode} -> mode
+          nil -> Apiary.Policy.get_mode(scope)
+        end
+
+      %{mode: mode, own_modes: for(%{own_mode: own} <- repositories, own != nil, do: own)}
     else
       %{mode: nil, own_modes: []}
     end
   end
 
-  # The sidebar's mode word follows `policy:<hive>` on every page. A page that follows the
-  # policy itself has subscribed in its mount, and then gets the message after this hook;
-  # a page that has not is subscribed here, once its mount is over, and the message stops
-  # at the hook, so no page has to handle a message it did not ask for.
+  # The sidebar's mode word follows `policy:<hive>` on every page: the hook subscribes
+  # the page's process here, before the page mounts, and re-reads the word at once on
+  # the first change and then at most once a second while changes keep coming, as the
+  # count of alive runs does.
+  #
+  # Whether the message goes on to the page is decided when it arrives, not by who
+  # subscribed first: a page that follows the policy subscribes too, wherever it likes,
+  # and then the process holds the topic more than once. The hook sees that, leaves one
+  # subscription in place, and from then on passes every message on. A page that never
+  # subscribed never sees a message it did not ask for.
+  @policy_window 1_000
+
   defp follow_policy_mode(socket) do
     scope = socket.assigns.current_scope
 
     if scope.hive && Phoenix.LiveView.connected?(socket) do
+      Apiary.Policy.subscribe(scope)
+      topic = Apiary.Policy.topic(scope.hive.id)
+
       socket
-      |> Phoenix.LiveView.attach_hook(:policy_mode_subscribe, :handle_params, fn
-        _params, _uri, socket ->
-          topic = Apiary.Policy.topic(scope.hive.id)
-
-          own? =
-            if topic in Registry.keys(Apiary.PubSub, self()) do
-              true
-            else
-              Apiary.Policy.subscribe(scope)
-              false
-            end
-
-          {:cont,
-           socket
-           |> Phoenix.LiveView.put_private(:policy_mode_passes, own?)
-           |> Phoenix.LiveView.detach_hook(:policy_mode_subscribe, :handle_params)}
-      end)
+      |> Phoenix.LiveView.put_private(:policy_window, :closed)
+      |> Phoenix.LiveView.put_private(:policy_passes, false)
       |> Phoenix.LiveView.attach_hook(:policy_mode, :handle_info, fn
         {:policy_changed, _change}, socket ->
-          counts =
-            Map.merge(
-              socket.assigns.nav_counts || %{},
-              policy_mode(socket.assigns.current_scope)
-            )
+          socket = socket |> policy_page_subscribed(topic) |> policy_window_changed()
+          if socket.private[:policy_passes], do: {:cont, socket}, else: {:halt, socket}
 
-          socket = Phoenix.Component.assign(socket, :nav_counts, counts)
+        :policy_window_over, socket ->
+          case socket.private[:policy_window] do
+            :dirty ->
+              Process.send_after(self(), :policy_window_over, @policy_window)
 
-          if socket.private[:policy_mode_passes], do: {:cont, socket}, else: {:halt, socket}
+              {:halt,
+               socket
+               |> refresh_policy_mode()
+               |> Phoenix.LiveView.put_private(:policy_window, :open)}
+
+            _open ->
+              {:halt, Phoenix.LiveView.put_private(socket, :policy_window, :closed)}
+          end
 
         _message, socket ->
           {:cont, socket}
@@ -353,6 +362,46 @@ defmodule ApiaryWeb.UserAuth do
     else
       socket
     end
+  end
+
+  # The page subscribed as well: keep one subscription, so a change arrives once, and
+  # pass messages on from now.
+  defp policy_page_subscribed(socket, topic) do
+    if Enum.count(Registry.keys(Apiary.PubSub, self()), &(&1 == topic)) > 1 do
+      Phoenix.PubSub.unsubscribe(Apiary.PubSub, topic)
+      Phoenix.PubSub.subscribe(Apiary.PubSub, topic)
+      Phoenix.LiveView.put_private(socket, :policy_passes, true)
+    else
+      socket
+    end
+  end
+
+  # `config :apiary, ApiaryWeb.PolicyLive, nav_window: 0` in a test reads at every change.
+  defp policy_window do
+    :apiary
+    |> Application.get_env(ApiaryWeb.PolicyLive, [])
+    |> Keyword.get(:nav_window, @policy_window)
+  end
+
+  defp policy_window_changed(socket) do
+    case {policy_window(), socket.private[:policy_window]} do
+      {0, _window} ->
+        refresh_policy_mode(socket)
+
+      {window, :closed} ->
+        Process.send_after(self(), :policy_window_over, window)
+        socket |> refresh_policy_mode() |> Phoenix.LiveView.put_private(:policy_window, :open)
+
+      {_window, _open_or_dirty} ->
+        Phoenix.LiveView.put_private(socket, :policy_window, :dirty)
+    end
+  end
+
+  defp refresh_policy_mode(socket) do
+    counts =
+      Map.merge(socket.assigns.nav_counts || %{}, policy_mode(socket.assigns.current_scope))
+
+    Phoenix.Component.assign(socket, :nav_counts, counts)
   end
 
   # The sidebar's count of alive runs follows the hive on every page. It listens on a

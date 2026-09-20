@@ -12,7 +12,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
   # The coalescing window of a reload is none here, so a broadcast is followed by its
   # reload as the next message and no test waits.
   setup do
-    Application.put_env(:apiary, ApiaryWeb.PolicyLive, reload_window: 0)
+    Application.put_env(:apiary, ApiaryWeb.PolicyLive, reload_window: 0, nav_window: 0)
     :ok
   end
 
@@ -779,6 +779,37 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
   end
 
   describe "the sidebar" do
+    test "a page that subscribes itself gets each change, whoever subscribed first",
+         %{conn: conn, scope: scope} do
+      {:ok, _} = Policy.allow(scope, nil, %{host: "registry.example"})
+      view = open(conn)
+
+      # The hook subscribed before the page did: two subscriptions, one process.
+      topic = Policy.topic(scope.hive.id)
+      assert Enum.count(Registry.keys(Apiary.PubSub, view.pid), &(&1 == topic)) == 2
+
+      {:ok, _} = Policy.allow(scope, nil, %{host: "first.example"})
+      _ = render(view)
+      assert has_element?(view, "#policy-rules .q-host", "first.example")
+      assert Enum.count(Registry.keys(Apiary.PubSub, view.pid), &(&1 == topic)) == 1
+
+      {:ok, _} = Policy.allow(scope, nil, %{host: "second.example"})
+      _ = render(view)
+      assert has_element?(view, "#policy-rules .q-host", "second.example")
+    end
+
+    test "a page that never asked for the policy never gets its messages", %{
+      conn: conn,
+      scope: scope
+    } do
+      {:ok, _} = Policy.allow(scope, nil, %{host: "registry.example"})
+      {:ok, view, _html} = live(conn, ~p"/hive/settings")
+
+      {:ok, _} = Policy.set_mode(scope, "enforce")
+      assert text(view, "#nav-policy-mode") == "enforce"
+      assert Process.alive?(view.pid)
+    end
+
     test "the mode word follows the policy on a page that does not", %{conn: conn, scope: scope} do
       {:ok, _} = Policy.allow(scope, nil, %{host: "registry.example"})
       {:ok, view, _html} = live(conn, ~p"/hive/members")

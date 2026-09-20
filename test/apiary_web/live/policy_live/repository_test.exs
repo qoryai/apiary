@@ -14,7 +14,7 @@ defmodule ApiaryWeb.PolicyLive.RepositoryTest do
   # The coalescing window of a reload is none here, so a broadcast is followed by its
   # reload as the next message and no test waits.
   setup do
-    Application.put_env(:apiary, ApiaryWeb.PolicyLive, reload_window: 0)
+    Application.put_env(:apiary, ApiaryWeb.PolicyLive, reload_window: 0, nav_window: 0)
     :ok
   end
 
