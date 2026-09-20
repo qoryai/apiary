@@ -926,6 +926,12 @@ defmodule ApiaryWeb.RunPageComponents do
   hook (`phx-update="ignore"`); the foot is the LiveView's, which sends numbers and never
   bytes. The hook reads the log from `src` and asks again when the LiveView says the log
   has advanced.
+
+  `cols` and `rows` are the pseudo-terminal's size as the record last said it, or nil: a
+  run on pipes, or one recorded before the runner reported the size. With a size the hook
+  replays at the recorded size, each answer of `src` at the size its bytes were written
+  to, and the box grows to the rows; without one it fits the screen to the box and offers
+  to wrap.
   """
   attr :id, :string, required: true
   attr :src, :string, required: true
@@ -936,8 +942,12 @@ defmodule ApiaryWeb.RunPageComponents do
   attr :bytes, :integer, required: true
   attr :chunks, :integer, required: true
   attr :through, :integer, required: true
+  attr :cols, :integer, default: nil
+  attr :rows, :integer, default: nil
 
   def terminal(assigns) do
+    assigns = assign(assigns, :sized, is_integer(assigns.cols) and is_integer(assigns.rows))
+
     ~H"""
     <div
       id={@id}
@@ -951,6 +961,9 @@ defmodule ApiaryWeb.RunPageComponents do
       data-live={to_string(@live)}
       data-pty={to_string(@streams == ["terminal"])}
       data-through={@through}
+      data-sized={to_string(@sized)}
+      data-cols={@sized && @cols}
+      data-rows={@sized && @rows}
     >
       <div id={"#{@id}-bar"} class="q-term-bar" phx-update="ignore">
         <a class="sr-only focus:not-sr-only q-tbtn" href={@src <> "?download=1"} download>
@@ -973,6 +986,7 @@ defmodule ApiaryWeb.RunPageComponents do
           <span data-find-count aria-live="polite"></span>
         </label>
         <button
+          :if={!@sized}
           type="button"
           class="q-tbtn tooltip tooltip-left"
           data-tip="Wrap long lines"
@@ -982,6 +996,14 @@ defmodule ApiaryWeb.RunPageComponents do
         >
           <.icon name="hero-bars-arrow-down-micro" class="size-4" />
         </button>
+        <span
+          :if={@sized}
+          class="q-term-size tooltip tooltip-left"
+          data-tip="The size the runtime ran at"
+          data-size
+        >
+          {@cols}×{@rows}
+        </span>
         <a
           class="q-tbtn tooltip tooltip-left"
           data-tip="Download the raw bytes"
@@ -1016,7 +1038,8 @@ defmodule ApiaryWeb.RunPageComponents do
       </div>
     </div>
     <p class="mt-3 text-[12.5px] text-faint">
-      The bytes as the runtime wrote them, terminal escapes included. Nothing here is interpreted; the timeline is where the session is read.
+      The bytes as the runtime wrote them, terminal escapes included,
+      <span :if={@sized}>replayed at the size the runtime ran at. </span><span :if={!@sized}>fitted to this box. </span>Nothing here is interpreted; the timeline is where the session is read.
     </p>
     """
   end

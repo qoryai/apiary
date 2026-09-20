@@ -616,7 +616,34 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert html =~ "chunks"
       assert html =~ "through #0100"
       assert html =~ "The bytes as the runtime wrote them"
+      assert has_element?(lv, "#terminal[data-sized='false'] [data-wrap]")
+      refute has_element?(lv, "#terminal[data-cols]")
       refute html =~ "vitest"
+    end
+
+    test "a run with a recorded size replays at it: the size on the box, no wrap", %{
+      conn: conn,
+      scope: scope
+    } do
+      run =
+        projected(scope, [
+          {1, "run.started",
+           started_data(%{"interactive" => true, "terminal" => %{"cols" => 120, "rows" => 40}})},
+          {2, "run.log", %{"stream" => "terminal", "bytes" => Base.encode64("one\r\n")}},
+          {3, "run.resized", %{"cols" => 100, "rows" => 30}},
+          {4, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1}}
+        ])
+
+      {:ok, lv, html} = live(conn, ~p"/hive/runs/#{run.run_id}/terminal")
+
+      assert has_element?(lv, "#terminal[data-sized='true'][data-cols='100'][data-rows='30']")
+      assert has_element?(lv, "#terminal [data-size]", "100×30")
+      refute has_element?(lv, "#terminal [data-wrap]")
+      assert html =~ "replayed at the size the runtime ran at"
+
+      {:ok, _lv, html} = live(conn, ~p"/hive/runs/#{run.run_id}/details")
+      assert html =~ "Yes, on a pseudo-terminal"
+      assert html =~ "100×30"
     end
 
     test "a live run tails: the page says how far the log advanced", %{conn: conn, scope: scope} do

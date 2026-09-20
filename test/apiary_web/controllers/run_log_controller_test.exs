@@ -13,6 +13,33 @@ defmodule ApiaryWeb.RunLogControllerTest do
     run
   end
 
+  defp drawn(sequence, text),
+    do: {sequence, "run.log", %{"stream" => "terminal", "bytes" => Base.encode64(text)}}
+
+  # A run on a 120 by 40 terminal, resized twice: at 6, and at 10 with nothing drawn after.
+  defp sized_run(scope) do
+    run = run_fixture(scope)
+
+    events_fixture(run, [
+      {1, "run.started",
+       started_data(%{"interactive" => true, "terminal" => %{"cols" => 120, "rows" => 40}})},
+      drawn(2, "a"),
+      drawn(3, "b"),
+      drawn(4, "c"),
+      {6, "run.resized", %{"cols" => 100, "rows" => 30}},
+      drawn(7, "d"),
+      drawn(8, "e"),
+      {10, "run.resized", %{"cols" => 80, "rows" => 24}},
+      {11, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1}}
+    ])
+
+    {:ok, run} = Projector.project(run)
+    run
+  end
+
+  defp through(conn), do: conn |> get_resp_header("x-qory-log-through") |> List.first()
+  defp size(conn), do: conn |> get_resp_header("x-qory-log-size") |> List.first()
+
   describe "GET /hive/runs/:run_id/log" do
     setup :register_and_log_in_user
 
@@ -63,6 +90,52 @@ defmodule ApiaryWeb.RunLogControllerTest do
       assert conn4.status == 200
       assert conn4.resp_body == ""
       assert get_resp_header(conn4, "x-qory-log-through") == ["9"]
+    end
+
+    test "a sized run is answered one size at a time, stopping short of each resize", %{
+      conn: conn,
+      scope: scope
+    } do
+      run = sized_run(scope)
+      assert %{terminal_cols: 80, terminal_rows: 24} = Apiary.Repo.get!(Apiary.Runs.Run, run.id)
+      path = ~p"/hive/runs/#{run.run_id}/log"
+
+      # From the start: the chunks before the first resize, at the start's size, and the
+      # answer reaches the resize itself.
+      first = get(conn, path)
+      assert {first.resp_body, through(first), size(first)} == {"abc", "6", "120x40"}
+
+      # From the resize: its size, up to the next.
+      second = get(conn, "#{path}?after=6")
+      assert {second.resp_body, through(second), size(second)} == {"de", "10", "100x30"}
+
+      # Past the last resize nothing follows: the reader stops here.
+      third = get(conn, "#{path}?after=10")
+      assert {third.resp_body, through(third), size(third)} == {"", "10", "80x24"}
+
+      # A limit under the chunks before a resize stops at the chunk, not the resize.
+      limited = get(conn, "#{path}?limit=2")
+      assert {limited.resp_body, through(limited), size(limited)} == {"ab", "3", "120x40"}
+      rest = get(conn, "#{path}?after=3&limit=2")
+      assert {rest.resp_body, through(rest), size(rest)} == {"c", "6", "120x40"}
+
+      # The size in force between two resizes, from any sequence.
+      assert size(get(conn, "#{path}?after=7")) == "100x30"
+      assert through(get(conn, "#{path}?after=7")) == "10"
+
+      # The terminal stream by name is sized too; a download is every chunk, unsized.
+      assert size(get(conn, "#{path}?stream=terminal")) == "120x40"
+      download = get(conn, "#{path}?download=1")
+      assert {download.resp_body, through(download), size(download)} == {"abcde", "8", nil}
+    end
+
+    test "a run without a size is answered as before: every chunk, no size", %{
+      conn: conn,
+      scope: scope
+    } do
+      run = run_with_log(scope)
+      conn = get(conn, ~p"/hive/runs/#{run.run_id}/log")
+      assert {through(conn), size(conn)} == {"9", nil}
     end
 
     test "download=1 is every chunk as an attachment named after the short id", %{

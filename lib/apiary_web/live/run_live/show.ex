@@ -450,6 +450,8 @@ defmodule ApiaryWeb.RunLive.Show do
         bytes={@log.bytes}
         chunks={@log.chunks}
         through={@log.through}
+        cols={@run.terminal_cols}
+        rows={@run.terminal_rows}
       />
     </div>
     """

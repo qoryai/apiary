@@ -3,11 +3,20 @@
 //
 //   GET {data-src}?after=<sequence>&limit=<chunks>[&stream=stdout|stderr|terminal]
 //
-// which answers the raw bytes and names the last sequence it sent in x-qory-log-through.
-// It reads until the answer is empty, and again whenever the LiveView says
+// which answers the raw bytes and names the sequence it reached in x-qory-log-through.
+// It reads until the answer reaches nothing further, and again whenever the LiveView says
 // "log_advanced" (a number, nothing else). Bytes go to xterm.js as Uint8Arrays, never as
 // strings, because a chunk may end inside a character; nothing here interprets them and
 // nothing of them touches the DOM outside xterm.js.
+//
+// A run whose record says the pseudo-terminal's size (data-cols, data-rows) is replayed
+// at it: every answer of the endpoint names in x-qory-log-size the size its bytes were
+// written to and stops short of the next resize, so the screen is set to that size before
+// the bytes are written and xterm.js reflows as a terminal does. The columns and rows are
+// the record's, never the box's: the font scales down to fit the columns in the box (to a
+// floor, below which the box scrolls sideways) and the box grows to the rows, so a
+// full-screen program replays as the screen it drew. A run without a size, on pipes or
+// recorded before the runner reported one, is fitted to the box, with the wrap toggle.
 //
 // xterm.js is vendored (assets/vendor/xterm) and built as its own bundle; it is loaded
 // on the first mount of this hook and by no other page.
@@ -15,6 +24,10 @@
 const LIMIT = 2000
 const SLICE = 256 * 1024
 const UNWRAPPED_COLS = 200
+const FONT_SIZE = 12.5
+const MIN_FONT_SIZE = 7
+// What the box keeps beside the columns: xterm's own scrollbar and a little air.
+const SIDE_ROOM = 18
 const reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches
 
 // A hidden tab gets no animation frames; the log still loads there.
@@ -56,6 +69,21 @@ const rgb = color => {
 const hex = ([r, g, b]) => "#" + [r, g, b].map(n => n.toString(16).padStart(2, "0")).join("")
 const mix = (a, b, share) => a.map((n, i) => Math.round(n * share + b[i] * (1 - share)))
 
+// "120x40" as [120, 40], or null: a size is two integers a terminal can be.
+const size = text => {
+  const match = /^(\d{1,5})x(\d{1,5})$/.exec(text || "")
+  if (!match) return null
+  const [cols, rows] = [Number(match[1]), Number(match[2])]
+  return cols >= 1 && cols <= 65535 && rows >= 1 && rows <= 65535 ? [cols, rows] : null
+}
+
+// The width of one cell per pixel of font size: xterm.js measures its cell on "W" too.
+const cellRatio = family => {
+  const ctx = document.createElement("canvas").getContext("2d")
+  ctx.font = `100px ${family}`
+  return ctx.measureText("W").width / 100
+}
+
 export const Terminal = {
   async mounted() {
     const q = selector => this.el.querySelector(selector)
@@ -75,6 +103,7 @@ export const Terminal = {
     this.live = this.el.dataset.live === "true"
     this.following = this.live
     this.wrap = false
+    this.sized = false
     this.stream = ""
     this.through = 0
     this.failures = 0
@@ -122,7 +151,7 @@ export const Terminal = {
       cursorBlink: this.live && !reducedMotion(),
       cursorInactiveStyle: this.live ? "outline" : "none",
       fontFamily: style.getPropertyValue("--font-mono").trim() || "ui-monospace, monospace",
-      fontSize: 12.5,
+      fontSize: FONT_SIZE,
       lineHeight: 1.52,
       // The search add-on marks its matches with decorations, which xterm.js keeps behind
       // this flag (registerDecoration); nothing else here uses a proposed API.
@@ -161,7 +190,11 @@ export const Terminal = {
     this.term.loadAddon(this.fitter)
     this.term.loadAddon(this.search)
     this.term.open(this.screen)
-    this.fit()
+    // How wide a cell is per pixel of font size, for the font xterm.js draws with.
+    this.cellRatio = cellRatio(this.term.options.fontFamily)
+    const recorded = size(`${this.el.dataset.cols}x${this.el.dataset.rows}`)
+    if (recorded) this.size(...recorded)
+    else this.fit()
     this.labelInput(0)
 
     this.resize = new ResizeObserver(() => this.fit())
@@ -230,7 +263,8 @@ export const Terminal = {
     })
     this.followButton.addEventListener("click", () => this.follow(!this.following))
     this.pill.addEventListener("click", () => this.follow(true))
-    this.wrapButton.addEventListener("click", () => {
+    // A sized run has no wrap: its columns are the record's.
+    if (this.wrapButton) this.wrapButton.addEventListener("click", () => {
       this.wrap = !this.wrap
       this.wrapButton.setAttribute("aria-pressed", String(this.wrap))
       this.fit()
@@ -244,14 +278,38 @@ export const Terminal = {
     )
   },
 
-  // Unwrapped, the screen is as wide as the output may be and scrolls sideways inside
-  // the box; wrapped, it is as wide as the box.
+  // Unsized: the box decides. Unwrapped, the screen is as wide as the output may be and
+  // scrolls sideways inside the box; wrapped, it is as wide as the box. Sized: the
+  // record decides the columns and rows, and only the font follows the box.
   fit() {
     if (!this.term) return
+    if (this.sized) return this.scale()
     const size = this.fitter.proposeDimensions()
     if (!size || !size.cols || !size.rows) return
     const cols = this.wrap ? size.cols : Math.max(size.cols, UNWRAPPED_COLS)
     if (cols !== this.term.cols || size.rows !== this.term.rows) this.term.resize(cols, size.rows)
+  },
+
+  // The screen at the recorded size: what the runtime drew to, as the endpoint said it.
+  size(cols, rows) {
+    if (!this.term) return
+    if (!this.sized) {
+      this.sized = true
+      this.el.dataset.sized = "true"
+      if (this.wrapButton) this.wrapButton.hidden = true
+    }
+    if (cols !== this.term.cols || rows !== this.term.rows) this.term.resize(cols, rows)
+    this.scale()
+  },
+
+  // The largest font, up to the usual one, at which the recorded columns fit the box;
+  // never below the floor, where the box scrolls sideways instead.
+  scale() {
+    const room = this.screen.clientWidth - SIDE_ROOM
+    if (room <= 0 || !this.cellRatio) return
+    const fits = Math.floor((10 * room) / (this.term.cols * this.cellRatio)) / 10
+    const fontSize = Math.max(MIN_FONT_SIZE, Math.min(FONT_SIZE, fits))
+    if (fontSize !== this.term.options.fontSize) this.term.options.fontSize = fontSize
   },
 
   restart() {
@@ -285,18 +343,24 @@ export const Terminal = {
         const response = await fetch(url, {credentials: "same-origin"})
         if (!response.ok) throw new Error(`log ${response.status}`)
         const through = Number(response.headers.get("x-qory-log-through"))
+        const recorded = size(response.headers.get("x-qory-log-size"))
         const bytes = new Uint8Array(await response.arrayBuffer())
         if (generation !== this.generation || this.dead) return
 
+        // The bytes of one answer were all written to a terminal of this size.
+        if (recorded) this.size(...recorded)
         await this.write(bytes)
         const advanced = Number.isFinite(through) && through > this.through
         if (advanced) this.through = through
-        if (!advanced || bytes.length === 0) break
+        // An empty answer that still advanced is a resize with nothing drawn before it.
+        if (!advanced) break
       }
       this.failures = 0
       this.say(null)
-      // An ended run is read from its start; a live one is followed.
-      if (first && !this.following) this.toTop()
+      // An ended run is read from its start, or, sized, from its last screen: the
+      // screen is what a full-screen program left, and its scrollback is the reflowed
+      // rest. A live one is followed.
+      if (first && !this.following) this.sized ? this.term.scrollToBottom() : this.toTop()
     } catch (err) {
       console.error("terminal: the log was not read", err)
       if (generation === this.generation) this.fail(false)

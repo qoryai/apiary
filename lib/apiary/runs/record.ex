@@ -27,11 +27,17 @@ defmodule Apiary.Runs.Record do
 
   @policy_applied "ai.qory.run.policy_applied"
   @session_started "ai.qory.session.started"
+  @started "ai.qory.run.started"
+  @resized "ai.qory.run.resized"
   @list_types ["ai.qory.session.turn_finished", "ai.qory.session.subagent_finished"]
 
   @log_page 200
   @default_log_limit 2_000
   @max_log_limit 10_000
+  # The most a terminal can be, as the contract has it; and how many resizes are read
+  # past `after` for the first that is a size (a run's resizes that are not are rare).
+  @max_cells 65_535
+  @resizes_read 100
   @connections_page 50
 
   ## SQL that bounds what an array of an event gives. Macros, because a fragment's text is
@@ -534,21 +540,28 @@ defmodule Apiary.Runs.Record do
   defp to_integer(n) when is_integer(n), do: n
 
   @doc """
-  The sequence of the last of the first `limit` chunks after `after_sequence`, or
-  `after_sequence` itself when none follows: how far `log_pages/7` will go.
+  How far `log_pages/7` will go from `after_sequence`: `{through, all?}`, the sequence of
+  the last of the first `limit` chunks after it, or `after_sequence` itself when none
+  follows, and whether that is every chunk there is (below `before:`, when given).
 
   `stream:` keeps one stream (`"stdout"`, `"stderr"`, `"terminal"`); `limit: :all` takes
-  every chunk.
+  every chunk; `before:` a sequence stops short of it, the next resize's say.
   """
   def log_through(%Scope{} = scope, %Run{} = run, after_sequence, opts \\ []) do
     query = log_after(scope, run, after_sequence, opts[:stream])
 
-    through =
-      case log_limit(opts[:limit]) do
-        :all ->
-          Repo.one(from l in query, select: max(l.sequence))
+    query =
+      case opts[:before] do
+        before when is_integer(before) -> from l in query, where: l.sequence < ^before
+        _none -> query
+      end
 
-        limit ->
+    case log_limit(opts[:limit]) do
+      :all ->
+        {Repo.one(from l in query, select: max(l.sequence)) || after_sequence, true}
+
+      limit ->
+        {count, through} =
           Repo.one(
             from l in subquery(
                    from l in query,
@@ -556,12 +569,69 @@ defmodule Apiary.Runs.Record do
                      limit: ^limit,
                      select: %{sequence: l.sequence}
                  ),
-                 select: max(l.sequence)
+                 select: {count(l.sequence), max(l.sequence)}
           )
-      end
 
-    through || after_sequence
+        {through || after_sequence, count < limit}
+    end
   end
+
+  @doc """
+  The size of the terminal the chunks right after `after_sequence` were written to:
+  `{cols, rows}`, the last `ai.qory.run.resized` at or below it, else `terminal` of
+  `ai.qory.run.started`; nil when the record says none, a run on pipes or one recorded
+  before the runner reported the size. A size is read like the fold reads it.
+  """
+  def terminal_size(%Scope{} = scope, %Run{} = run, after_sequence) do
+    resized =
+      Repo.one(
+        from e in events(scope, run),
+          where: e.type == @resized and e.sequence <= ^after_sequence,
+          order_by: [desc: e.sequence],
+          limit: 1,
+          select: e.data
+      )
+
+    started =
+      resized ||
+        Repo.one(
+          from e in events(scope, run),
+            where: e.type == @started,
+            order_by: [desc: e.sequence],
+            limit: 1,
+            select: fragment("? -> 'terminal'", e.data)
+        )
+
+    size(started)
+  end
+
+  @doc """
+  The first `ai.qory.run.resized` after `after_sequence` that is a size, `%{sequence,
+  cols, rows}`, or nil: where a read of the log has to stop, since the chunks after it
+  were written to a terminal of another size.
+  """
+  def next_resize(%Scope{} = scope, %Run{} = run, after_sequence) do
+    Repo.all(
+      from e in events(scope, run),
+        where: e.type == @resized and e.sequence > ^after_sequence,
+        order_by: e.sequence,
+        limit: @resizes_read,
+        select: {e.sequence, e.data}
+    )
+    |> Enum.find_value(fn {sequence, data} ->
+      case size(data) do
+        {cols, rows} -> %{sequence: sequence, cols: cols, rows: rows}
+        nil -> nil
+      end
+    end)
+  end
+
+  defp size(%{"cols" => cols, "rows" => rows})
+       when is_integer(cols) and cols in 1..@max_cells and is_integer(rows) and
+              rows in 1..@max_cells,
+       do: {cols, rows}
+
+  defp size(_other), do: nil
 
   @doc """
   Calls `fun` with the bytes of each page of chunks after `after_sequence` up to and

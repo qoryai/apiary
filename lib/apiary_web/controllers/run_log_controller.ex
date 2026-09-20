@@ -9,8 +9,16 @@ defmodule ApiaryWeb.RunLogController do
   `after` defaults to 0 and `limit` to 2,000 chunks (at most 10,000); `stream` keeps one of
   `terminal`, `stdout` and `stderr`; `download=1` sends every chunk as an attachment. The
   answer is `application/octet-stream`, chunked, and `x-qory-log-through` names the
-  sequence of the last chunk it holds, or `after` again when nothing followed: the reader
-  asks again from there. A parameter that is not what it should be is a `400`.
+  sequence the answer reaches, or `after` again when nothing followed: the reader asks
+  again from there. A parameter that is not what it should be is a `400`.
+
+  A run on a pseudo-terminal whose record says its size is answered at that size: the
+  bytes of one answer were all written to a terminal of `x-qory-log-size`, `<cols>x<rows>`,
+  the size in force right after `after`. An answer stops short of the next
+  `ai.qory.run.resized`, and once every chunk before it is sent `x-qory-log-through` is
+  the resize's own sequence, so the reader's next question is answered at the new size.
+  No header on a run on pipes, on one recorded before the runner reported its size, on a
+  single stream of pipes and on a download, which is every chunk whatever the size.
 
   Scoped like the page: the run is looked up in the signed-in user's hive, and a run of
   another hive is `404`, like one that does not exist. The bytes are never rendered by the
@@ -80,7 +88,14 @@ defmodule ApiaryWeb.RunLogController do
 
   defp send_log(conn, scope, run, opts) do
     read = [stream: opts.stream, limit: opts.limit]
-    through = Record.log_through(scope, run, opts.after, read)
+    sized? = sized?(run, opts)
+    resize = if sized?, do: Record.next_resize(scope, run, opts.after)
+
+    {through, all?} =
+      Record.log_through(scope, run, opts.after, read ++ [before: resize && resize.sequence])
+
+    through = if resize && all?, do: resize.sequence, else: through
+    size = if sized?, do: Record.terminal_size(scope, run, opts.after)
 
     conn =
       conn
@@ -88,6 +103,7 @@ defmodule ApiaryWeb.RunLogController do
       |> put_resp_header("cache-control", "private, no-store")
       |> put_resp_header("x-content-type-options", "nosniff")
       |> put_resp_header("x-qory-log-through", Integer.to_string(through))
+      |> size_header(size)
       |> disposition(run, opts)
       |> send_chunked(200)
 
@@ -106,6 +122,16 @@ defmodule ApiaryWeb.RunLogController do
       read
     )
   end
+
+  # The record says a size, and the answer is the terminal's stream, read to be replayed.
+  defp sized?(run, opts) do
+    is_integer(run.terminal_cols) and not opts.download? and opts.stream in [nil, "terminal"]
+  end
+
+  defp size_header(conn, {cols, rows}),
+    do: put_resp_header(conn, "x-qory-log-size", "#{cols}x#{rows}")
+
+  defp size_header(conn, nil), do: conn
 
   # The file name is made of the first eight characters of a UUID the database matched.
   defp disposition(conn, run, %{download?: true}) do

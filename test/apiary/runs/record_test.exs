@@ -59,7 +59,7 @@ defmodule Apiary.Runs.RecordTest do
       assert Record.session_id(scope, run) == nil
       assert Record.policy(scope, run) == nil
       assert %{chunks: 0, bytes: 0, through: 0, streams: []} = Record.log_summary(scope, run)
-      assert Record.log_through(scope, run, 0) == 0
+      assert Record.log_through(scope, run, 0) == {0, true}
       assert Record.reload(scope, run) == nil
 
       refute Record.timeline(theirs, run).items == []
@@ -185,12 +185,16 @@ defmodule Apiary.Runs.RecordTest do
       assert %{chunks: 2, bytes: 12, through: 9, streams: ["stderr", "stdout"]} =
                Record.log_summary(scope, run)
 
-      assert Record.log_through(scope, run, 0) == 9
-      assert Record.log_through(scope, run, 0, limit: 1) == 5
-      assert Record.log_through(scope, run, 5) == 9
-      assert Record.log_through(scope, run, 9) == 9
-      assert Record.log_through(scope, run, 0, stream: "stdout") == 5
-      assert Record.log_through(scope, run, 0, limit: :all) == 9
+      assert Record.log_through(scope, run, 0) == {9, true}
+      assert Record.log_through(scope, run, 0, limit: 1) == {5, false}
+      assert Record.log_through(scope, run, 5) == {9, true}
+      assert Record.log_through(scope, run, 9) == {9, true}
+      assert Record.log_through(scope, run, 0, stream: "stdout") == {5, true}
+      assert Record.log_through(scope, run, 0, limit: :all) == {9, true}
+      # Short of a sequence: the chunks below it, and whether they were all of them.
+      assert Record.log_through(scope, run, 0, before: 9) == {5, true}
+      assert Record.log_through(scope, run, 0, before: 5) == {0, true}
+      assert Record.log_through(scope, run, 0, before: 9, limit: 1) == {5, false}
 
       collect = fn bytes, acc -> {:cont, [acc, bytes]} end
 
