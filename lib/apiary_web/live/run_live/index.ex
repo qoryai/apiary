@@ -6,7 +6,9 @@ defmodule ApiaryWeb.RunLive.Index do
   denials. Every filter, the grouping and the page are query parameters, read through
   `Apiary.Runs.Filters`: a value it does not know is dropped and the URL rewritten.
 
-  Live through the hive's topic. A run on the page changes in place, by its DOM id. A new
+  Live through the hive's topic. A run on the page changes in place, by its DOM id; changes
+  are collected and applied at most every 250 ms, and the rows are a keyed comprehension,
+  so only the rows that changed are sent. A new
   run that the filters return is never inserted under the reader: the summary line gains
   "1 new run", which asks again (the `NewRuns` hook follows it for a reader at the top of
   page 1 with nothing focused in the table). Whether a running run has gone quiet is
@@ -23,6 +25,7 @@ defmodule ApiaryWeb.RunLive.Index do
 
   @quiet_tick 5_000
   @summary_window 1_000
+  @flush_window 250
 
   @impl true
   def render(assigns) do
@@ -316,6 +319,7 @@ defmodule ApiaryWeb.RunLive.Index do
           </tr>
           <.run_row
             :for={run <- group.runs}
+            :key={run.id}
             run={run}
             group_by={@group_by}
             quiet={MapSet.member?(@quiet_ids, run.id)}
@@ -590,35 +594,31 @@ defmodule ApiaryWeb.RunLive.Index do
 
   def handle_async(:summary, {:exit, _reason}, socket), do: {:noreply, socket}
 
+  # Changes are collected and applied at most once every @flush_window: at once for the
+  # first, then together when the window ends. A busy hive costs this page one render and
+  # at most one query a window, however many batches land; nothing is read again for a
+  # row, the message carries the run.
   @impl true
   def handle_info({:run_changed, run}, socket) do
-    %{listing: listing, filters: filters, current_scope: scope} = socket.assigns
+    changed = Map.put(socket.private[:changed] || %{}, run.id, run)
+    socket = put_private(socket, :changed, changed)
 
-    cond do
-      listing == nil ->
+    case socket.private[:flush_window] do
+      :open ->
         {:noreply, socket}
 
-      Enum.any?(listing.runs, &(&1.id == run.id)) ->
-        runs = Enum.map(listing.runs, &if(&1.id == run.id, do: run, else: &1))
+      _closed ->
+        Process.send_after(self(), :flush_runs, @flush_window)
+        {:noreply, socket |> put_private(:flush_window, :open) |> flush()}
+    end
+  end
 
-        {:noreply,
-         socket
-         |> assign(
-           listing: %{listing | runs: runs},
-           groups: Runs.group_runs(runs, filters.group)
-         )
-         |> assign_quiet()
-         |> touch_summary()}
-
-      # Only a run that did not exist when the page was read can be new to it; an old
-      # run of another page changing costs nothing.
-      DateTime.compare(run.inserted_at, socket.assigns.loaded_at) == :gt and
-        not MapSet.member?(socket.assigns.new_ids, run.id) and
-          Runs.matches?(scope, filters, run) ->
-        {:noreply, socket |> update(:new_ids, &MapSet.put(&1, run.id)) |> touch_summary()}
-
-      true ->
-        {:noreply, touch_summary(socket)}
+  def handle_info(:flush_runs, socket) do
+    if map_size(socket.private[:changed] || %{}) > 0 do
+      Process.send_after(self(), :flush_runs, @flush_window)
+      {:noreply, flush(socket)}
+    else
+      {:noreply, put_private(socket, :flush_window, :closed)}
     end
   end
 
@@ -632,6 +632,43 @@ defmodule ApiaryWeb.RunLive.Index do
       :dirty -> {:noreply, socket |> assign(:summary_window, :closed) |> touch_summary()}
       _open -> {:noreply, assign(socket, :summary_window, :closed)}
     end
+  end
+
+  defp flush(%{assigns: %{listing: nil}} = socket), do: put_private(socket, :changed, %{})
+
+  defp flush(socket) do
+    %{listing: listing, filters: filters, current_scope: scope, new_ids: new_ids} =
+      socket.assigns
+
+    changed = socket.private[:changed] || %{}
+    socket = put_private(socket, :changed, %{})
+    on_page = MapSet.new(listing.runs, & &1.id)
+
+    # Only a run that did not exist when the page was read can be new to it; an old run
+    # of another page changing costs nothing. One query for all of them.
+    candidates =
+      for {id, run} <- changed,
+          not MapSet.member?(on_page, id),
+          not MapSet.member?(new_ids, id),
+          DateTime.compare(run.inserted_at, socket.assigns.loaded_at) == :gt,
+          do: id
+
+    new = if candidates == [], do: [], else: Runs.matching_ids(scope, filters, candidates)
+
+    socket =
+      if Enum.any?(changed, fn {id, _run} -> MapSet.member?(on_page, id) end) do
+        runs = Enum.map(listing.runs, &Map.get(changed, &1.id, &1))
+
+        socket
+        |> assign(listing: %{listing | runs: runs}, groups: Runs.group_runs(runs, filters.group))
+        |> assign_quiet()
+      else
+        socket
+      end
+
+    socket = if new == [], do: socket, else: assign(socket, :new_ids, Enum.into(new, new_ids))
+
+    if map_size(changed) > 0, do: touch_summary(socket), else: socket
   end
 
   # The summary and the groups' facts are counted again at once on the first change, then

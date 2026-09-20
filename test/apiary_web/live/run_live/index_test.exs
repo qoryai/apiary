@@ -384,6 +384,35 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       refute text(view, "#runs-summary") =~ "alive"
     end
 
+    test "changes inside a window are collected and applied together, without a query per message",
+         %{conn: conn, scope: scope} do
+      run = started_run(scope, shop(), ago: 30)
+      other = started_run(scope, shop(), ago: 20)
+      view = open(conn)
+
+      # The first change opens the window and is applied at once.
+      Runs.broadcast_changed(%{Repo.reload!(run) | host: "first"})
+      assert text(view, row(run)) =~ "first"
+
+      # The rest wait for the window's end, the last word on each run winning.
+      for host <- ~w(second third fourth) do
+        Runs.broadcast_changed(%{Repo.reload!(run) | host: host})
+      end
+
+      Runs.broadcast_changed(%{Repo.reload!(other) | host: "other-host"})
+      assert text(view, row(run)) =~ "first"
+      refute text(view, row(other)) =~ "other-host"
+
+      send(view.pid, :flush_runs)
+      assert text(view, row(run)) =~ "fourth"
+      assert text(view, row(other)) =~ "other-host"
+
+      # A window with nothing in it closes; the next change is applied at once again.
+      send(view.pid, :flush_runs)
+      Runs.broadcast_changed(%{Repo.reload!(run) | host: "fifth"})
+      assert text(view, row(run)) =~ "fifth"
+    end
+
     test "a new run is counted, not inserted, until the reader asks", %{conn: conn, scope: scope} do
       first = started_run(scope, shop(), ago: 30)
       view = open(conn)
@@ -395,6 +424,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
       # More of the same run's batches do not count it twice.
       Runs.broadcast_changed(Repo.reload!(new))
+      send(view.pid, :flush_runs)
       assert text(view, "#runs-new") == "1 new run"
 
       view |> element("#runs-new") |> render_click()

@@ -308,6 +308,12 @@ defmodule Apiary.Runs do
     Repo.exists?(from r in filtered(scope, filters, now), where: r.id == ^id)
   end
 
+  @doc "Which of the runs with these row ids the filters return: one query for a page's flush."
+  def matching_ids(%Scope{} = scope, %Filters{} = filters, ids, now \\ DateTime.utc_now())
+      when is_list(ids) do
+    Repo.all(from r in filtered(scope, filters, now), where: r.id in ^ids, select: r.id)
+  end
+
   defp filtered(scope, %Filters{} = f, now) do
     {from, to} = Filters.bounds(f, now)
 
