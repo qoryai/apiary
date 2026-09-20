@@ -11,6 +11,28 @@ defmodule ApiaryWeb.PolicyLive.Views do
 
   alias ApiaryWeb.PolicyLive.Common
 
+  @doc "The first render of a policy page, before the socket connects: its shape, and nothing read."
+  attr :title, :string, required: true
+
+  def page_skeleton(assigns) do
+    ~H"""
+    <div id="policy-loading" class="grid grid-cols-[minmax(0,1fr)] gap-6" aria-busy="true">
+      <.header>{@title}</.header>
+      <div class="q-sect">
+        <div
+          :for={_row <- 1..5}
+          class="flex items-center gap-4 border-b border-line px-4 py-3 last:border-0"
+        >
+          <span class="skeleton q-skel w-40"></span>
+          <span class="skeleton q-skel w-24"></span>
+          <span class="grow"></span>
+          <span class="skeleton q-skel w-16"></span>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
   ## pe4. History
 
   attr :history, :map, required: true

@@ -1185,7 +1185,9 @@ defmodule ApiaryWeb.PolicyComponents do
   """
   attr :id, :string, required: true
   attr :suggestions, :list, required: true
+  attr :covered, :list, default: [], doc: "[%{host:, by:, source:}]: declared and already allowed"
   attr :allowed, :any, default: %{}, doc: "%{host => rule id}"
+  attr :observing, :boolean, default: false, doc: "the repository observes: nothing is denied"
 
   def suggestions(assigns) do
     open = Enum.reject(assigns.suggestions, &Map.has_key?(assigns.allowed, &1.host))
@@ -1221,8 +1223,8 @@ defmodule ApiaryWeb.PolicyComponents do
         </span>
         <span class="q-sugg-what">
           Declared by the <.term word="harness" standard={harness_tip()} class="q-tip-wide" />
-          in <b>{RunComponents.count_noun(suggestion.runs, "run")}</b>, last
-          <RunComponents.relative_time at={suggestion.last_seen_at} />.
+          in <b>{RunComponents.count_noun(suggestion.runs, "run")}</b>.
+          <.suggestion_record suggestion={suggestion} observing={@observing} />
         </span>
         <span :if={!Map.has_key?(@allowed, suggestion.host)} class="q-sugg-acts">
           <span
@@ -1283,9 +1285,50 @@ defmodule ApiaryWeb.PolicyComponents do
           </span>
         </span>
       </div>
+      <:footer :if={@covered != []}>
+        <span id={"#{@id}-covered"}>
+          {covered_lead(length(@covered))}
+          <span :for={{covered, index} <- Enum.with_index(@covered, 1)}>
+            <code class="q-rule">{covered.host}</code>
+            {covered_by(covered)}{if index == length(@covered), do: ".", else: ","}
+          </span>
+        </span>
+      </:footer>
     </.sect>
     """
   end
+
+  attr :suggestion, :map, required: true
+  attr :observing, :boolean, required: true
+
+  # What the record says of a declared host, when it could be counted; nothing when not.
+  defp suggestion_record(%{suggestion: %{allowed: allowed, denied: denied}} = assigns)
+       when is_integer(allowed) and is_integer(denied) do
+    ~H"""
+    <span :if={@suggestion.denied > 0} class="q-bad">
+      Denied {times(@suggestion.denied)}<span :if={@suggestion.allowed == 0}>.</span>
+    </span>
+    <span :if={@suggestion.allowed > 0}>
+      {if @suggestion.denied > 0, do: "and let", else: "Let"} through {times(@suggestion.allowed)} with no rule.
+    </span>
+    <span :if={@suggestion.allowed == 0 && @suggestion.denied == 0}>
+      No run has tried to reach it in the last 7 days.
+    </span>
+    """
+  end
+
+  defp suggestion_record(assigns), do: ~H""
+
+  defp times(1), do: "once"
+  defp times(n), do: "#{RunComponents.delimited(n)} times"
+
+  defp covered_lead(1), do: "1 more declared host is already allowed:"
+  defp covered_lead(n), do: "#{n} more declared hosts are already allowed:"
+
+  defp covered_by(%{host: host, by: host, source: :hive}), do: "by the hive"
+  defp covered_by(%{host: host, by: host}), do: "by this repository"
+  defp covered_by(%{by: by, source: :hive}), do: "by the hive's #{by}"
+  defp covered_by(%{by: by}), do: "by this repository's #{by}"
 
   defp allowed_where(%{level: "hive"}), do: "for the hive"
   defp allowed_where(_allowed), do: "here"

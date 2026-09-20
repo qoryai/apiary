@@ -30,13 +30,18 @@ defmodule ApiaryWeb.PolicyLive.Repository do
           |> Common.mount(repository)
           |> assign(reload: &load/1, show: nil, rule_target: nil, allowed: %{})
           |> assign(history: nil, open_change: nil, diff: nil, v: nil, export: nil, missing: nil)
-          |> assign(credentials_open: false, summary: nil, would: nil)
-          |> load()
+          |> assign(credentials_open: false, summary: nil, would: nil, params: %{})
+
+        # The page is read once, by the connected mount: the first render is its skeleton.
+        socket =
+          if connected?(socket),
+            do: socket |> load() |> assign(:loaded, true),
+            else: assign(socket, loaded: false, page_title: "Policy")
 
         {:ok, socket}
 
       {:error, _not_found} ->
-        {:ok, assign(socket, target: :not_found, page_title: "Policy")}
+        {:ok, assign(socket, target: :not_found, loaded: true, page_title: "Policy")}
     end
   end
 
@@ -46,7 +51,14 @@ defmodule ApiaryWeb.PolicyLive.Repository do
     managed? = Policy.managed?(scope)
     own = Policy.list_rules(scope, repository)
     effective = Policy.effective(scope, repository)
-    own_version = managed? && Common.newest_version(scope, repository)
+    changes = Policy.list_changes(scope, repository, 1)
+    declared = Policy.declared_hosts(scope, repository)
+
+    {version, own?} =
+      case Common.served_version(scope, repository, managed?) do
+        {configuration, own?} -> {configuration, own?}
+        nil -> {nil, false}
+      end
 
     socket
     |> assign(
@@ -60,11 +72,17 @@ defmodule ApiaryWeb.PolicyLive.Repository do
             effective.entries,
           do: host
         ),
-      locks: Common.locks(scope),
-      version: own_version || (managed? && Common.newest_version(scope, nil)),
-      baseline?: !own_version,
-      change_total: Policy.list_changes(scope, repository, 1).total,
-      suggestions: Policy.suggestions(scope, repository),
+      # Who locked what is read only where a lock is in the list to be asked about.
+      locks:
+        if(Enum.any?(effective.entries, & &1.locked),
+          do: Common.locks(Policy.list_changes(scope, nil, 1)),
+          else: %{}
+        ),
+      version: version,
+      baseline?: !own?,
+      change_total: changes.total,
+      suggestions: declared.suggested,
+      covered: declared.covered,
       reload_pending: false,
       now: DateTime.utc_now()
     )
@@ -113,8 +131,10 @@ defmodule ApiaryWeb.PolicyLive.Repository do
   def handle_params(_params, _uri, %{assigns: %{target: :not_found}} = socket),
     do: {:noreply, socket}
 
+  def handle_params(_params, _uri, %{assigns: %{loaded: false}} = socket), do: {:noreply, socket}
+
   def handle_params(params, _uri, socket) do
-    socket = assign(socket, missing: nil, export: nil, now: DateTime.utc_now())
+    socket = assign(socket, missing: nil, export: nil, params: params, now: DateTime.utc_now())
     {:noreply, apply_action(socket, socket.assigns.live_action, params)}
   end
 
@@ -180,17 +200,17 @@ defmodule ApiaryWeb.PolicyLive.Repository do
     end
   end
 
+  # The versions count from 1 without a gap, so the newest one's number is how many.
   defp summary(socket) do
-    scope = socket.assigns.current_scope
-    repository = socket.assigns.target
+    own = if socket.assigns.baseline?, do: nil, else: socket.assigns.version
 
     since =
-      case Policy.get_configuration(scope, repository, 1) do
+      case own && Policy.get_configuration(socket.assigns.current_scope, socket.assigns.target, 1) do
         {:ok, first} -> first.rendered_at
         _ -> nil
       end
 
-    %{versions: Policy.list_configurations(scope, repository, 1).total, since: since}
+    %{versions: (own && own.version) || 0, since: since}
   end
 
   defp title(%{assigns: %{target: %{forge: forge, path: path}}}), do: "#{forge}/#{path} · Policy"
@@ -461,14 +481,21 @@ defmodule ApiaryWeb.PolicyLive.Repository do
     socket =
       if socket.assigns.allowed == %{}, do: socket, else: assign(socket, :suggestions, shown)
 
+    # What the URL shows is read again too: a version in force a moment ago may be
+    # superseded now.
     socket =
-      if socket.assigns.live_action == :history and socket.assigns.history do
-        assign(socket,
-          history: Common.history(socket, socket.assigns.history.page),
-          summary: summary(socket)
-        )
-      else
-        socket
+      case socket.assigns.live_action do
+        :history ->
+          apply_action(socket, :history, socket.assigns.params)
+
+        action when action in [:version, :export] ->
+          case Common.version(socket, socket.assigns.params["n"], socket.assigns.params) do
+            {:ok, v} -> assign(socket, :v, v)
+            :error -> socket
+          end
+
+        _ ->
+          socket
       end
 
     socket =
@@ -480,6 +507,21 @@ defmodule ApiaryWeb.PolicyLive.Repository do
   ## Render
 
   @impl true
+  def render(%{loaded: false} = assigns) do
+    ~H"""
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      memberships={@memberships}
+      counts={@nav_counts}
+      nav={:policy}
+      width="full"
+    >
+      <.page_skeleton title={"#{@target.forge}/#{@target.path}"} />
+    </Layouts.app>
+    """
+  end
+
   def render(%{target: :not_found} = assigns) do
     ~H"""
     <Layouts.app
@@ -878,7 +920,13 @@ defmodule ApiaryWeb.PolicyLive.Repository do
       </span>
     </.notice>
 
-    <.suggestions id="policy-suggestions" suggestions={@suggestions} allowed={@allowed} />
+    <.suggestions
+      id="policy-suggestions"
+      suggestions={@suggestions}
+      covered={@covered}
+      allowed={@allowed}
+      observing={@mode.mode == "observe"}
+    />
 
     <.sect
       id="policy-effective"

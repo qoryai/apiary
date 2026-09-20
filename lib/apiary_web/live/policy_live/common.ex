@@ -41,6 +41,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
       dialog: nil,
       queue: [],
       reload_pending: false,
+      touched: MapSet.new(),
       now: DateTime.utc_now()
     )
     |> reset_composer()
@@ -69,13 +70,35 @@ defmodule ApiaryWeb.PolicyLive.Common do
   ## Coalesced reloads: one read per 250 ms however many changes land
 
   @doc "Asks for a reload of the page's policy, at most once per window. The page handles `:policy_reload`."
-  def schedule_reload(socket) do
+  def schedule_reload(socket, change \\ %{}) do
+    # Which repositories the changes of this window name; `:all` once one names the hive.
+    touched =
+      case {socket.assigns.touched, change} do
+        {:all, _} -> :all
+        {%MapSet{} = set, %{repository_id: id}} when is_binary(id) -> MapSet.put(set, id)
+        _ -> :all
+      end
+
+    socket = assign(socket, :touched, touched)
+
     if socket.assigns.reload_pending do
       socket
     else
-      Process.send_after(self(), :policy_reload, @coalesce)
+      case reload_window() do
+        0 -> send(self(), :policy_reload)
+        window -> Process.send_after(self(), :policy_reload, window)
+      end
+
       assign(socket, :reload_pending, true)
     end
+  end
+
+  # `config :apiary, ApiaryWeb.PolicyLive, reload_window: 0` in a test makes the reload
+  # the next message, so a test waits for nothing.
+  defp reload_window do
+    :apiary
+    |> Application.get_env(ApiaryWeb.PolicyLive, [])
+    |> Keyword.get(:reload_window, @coalesce)
   end
 
   ## Rows
@@ -203,11 +226,12 @@ defmodule ApiaryWeb.PolicyLive.Common do
   defp locked_tip(_unknown), do: "Locked. Only an owner can change or unlock it."
 
   @doc """
-  Who locked which host, read from the newest page of the hive's changes: `%{host =>
+  Who locked which host, from the newest page of the hive's changes (a page the caller
+  has read already): `%{host =>
   %{by:, at:}}`. A lock older than that page is shown without its author.
   """
-  def locks(scope) do
-    Policy.list_changes(scope, nil, 1).items
+  def locks(%{items: changes}) do
+    changes
     |> Enum.filter(&(&1.action == "rule_locked"))
     |> Enum.reverse()
     |> Map.new(fn change ->
@@ -789,10 +813,11 @@ defmodule ApiaryWeb.PolicyLive.Common do
     target = socket.assigns.target
     base = socket.assigns.base
     changes = Policy.list_changes(scope, target, page)
+    versions = configurations_for(scope, target, changes.items)
 
     rows =
       for change <- changes.items do
-        made = made_version(scope, target, change)
+        made = made_version(versions, change)
         query = if changes.page > 1, do: %{"page" => changes.page}, else: %{}
 
         %{
@@ -814,14 +839,42 @@ defmodule ApiaryWeb.PolicyLive.Common do
   end
 
   # The configuration a change made, or nil when the bytes stayed the same.
-  defp made_version(scope, target, %{version_after: version} = change) when is_integer(version) do
-    case Policy.get_configuration(scope, target, version) do
-      {:ok, %{policy_change_id: id} = configuration} when id == change.id -> configuration
+  defp made_version(versions, %{version_after: version} = change) when is_integer(version) do
+    case versions[version] do
+      %{policy_change_id: id} = configuration when id == change.id -> configuration
       _ -> nil
     end
   end
 
-  defp made_version(_scope, _target, _change), do: nil
+  defp made_version(_versions, _change), do: nil
+
+  # The configurations the changes of one page name, by version, read a page of versions
+  # at a time rather than one by one: a page of changes names neighbouring versions, so
+  # this is one read, seldom two, and never more than three.
+  defp configurations_for(scope, target, changes) do
+    wanted = for %{version_after: version} <- changes, is_integer(version), do: version
+
+    case wanted do
+      [] ->
+        %{}
+
+      wanted ->
+        first = Policy.list_configurations(scope, target, 1)
+        latest = first.items |> List.first() |> then(&((&1 && &1.version) || 0))
+        size = max(length(first.items), 1)
+
+        pages =
+          wanted
+          |> Enum.map(&(div(max(latest - &1, 0), size) + 1))
+          |> Enum.uniq()
+          |> Enum.reject(&(&1 == 1))
+          |> Enum.take(2)
+
+        [first | Enum.map(pages, &Policy.list_configurations(scope, target, &1))]
+        |> Enum.flat_map(& &1.items)
+        |> Map.new(&{&1.version, &1})
+    end
+  end
 
   defp origin(%{action: "mode_changed", repository_id: id} = change, made) when id != nil do
     case {change.before["mode"], change.after["mode"], made} do
@@ -856,7 +909,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
     with {:ok, change} <- Policy.get_change(scope, change_id),
          true <- change.repository_id == target_id do
-      made = made_version(scope, target, change)
+      made = made_version(configurations_for(scope, target, [change]), change)
 
       before =
         with %{version: version} when version > 1 <- made,
@@ -901,8 +954,21 @@ defmodule ApiaryWeb.PolicyLive.Common do
     target = socket.assigns.target
 
     with {:ok, configuration} <- Policy.get_configuration(scope, target, n) do
+      # One page of versions serves the newest, the few around this one and the ones to
+      # compare with; a version further back than that page has its own page read too.
       newest = Policy.list_configurations(scope, target, 1)
       latest = List.first(newest.items) || configuration
+      size = max(length(newest.items), 1)
+      at = div(max(latest.version - configuration.version, 0), size) + 1
+
+      near =
+        if at == 1,
+          do: newest.items,
+          else: Policy.list_configurations(scope, target, at).items
+
+      changes =
+        Map.new(Policy.list_changes(scope, target, 1).items, &{&1.id, &1})
+
       view = if params["view"] in @views, do: params["view"], else: "changes"
 
       compare =
@@ -920,18 +986,19 @@ defmodule ApiaryWeb.PolicyLive.Common do
           do: line_diff(pretty(compare.document), pretty),
           else: Enum.map(String.split(pretty, "\n"), &{:ctx, &1})
 
-      change = change_of(scope, configuration)
+      change = change_of(scope, changes, configuration)
 
       superseded_by =
         if latest.version > configuration.version do
-          case Policy.get_configuration(scope, target, configuration.version + 1) do
-            {:ok, next} -> next
-            _ -> nil
-          end
+          Enum.find(near ++ newest.items, &(&1.version == configuration.version + 1)) ||
+            case Policy.get_configuration(scope, target, configuration.version + 1) do
+              {:ok, next} -> next
+              _ -> nil
+            end
         end
 
       around =
-        newest.items
+        near
         |> Enum.filter(&(&1.version <= configuration.version + 1))
         |> Enum.take(5)
         |> then(&if(&1 == [], do: [configuration], else: &1))
@@ -952,7 +1019,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
          view: view,
          compare: compare,
          compare_options:
-           newest.items
+           near
            |> Enum.filter(&(&1.version < configuration.version))
            |> then(fn options ->
              if compare && not Enum.any?(options, &(&1.version == compare.version)),
@@ -964,7 +1031,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
          caption: caption(view, compare, configuration, lines),
          versions:
            for item <- around do
-             change = change_of(scope, item)
+             change = change_of(scope, changes, item)
 
              %{
                version: item.version,
@@ -992,11 +1059,16 @@ defmodule ApiaryWeb.PolicyLive.Common do
     end
   end
 
-  defp change_of(_scope, %{policy_change_id: nil}), do: nil
+  # The change that made a version: from the newest page of the target's changes when it
+  # is there, read by itself when it is older or the hive's.
+  defp change_of(_scope, _changes, %{policy_change_id: nil}), do: nil
 
-  defp change_of(scope, %{policy_change_id: id}) do
-    case Policy.get_change(scope, id) do
-      {:ok, change} -> change
+  defp change_of(scope, changes, %{policy_change_id: id}) do
+    with nil <- changes[id],
+         {:ok, change} <- Policy.get_change(scope, id) do
+      change
+    else
+      %{} = change -> change
       _ -> nil
     end
   end
@@ -1023,9 +1095,21 @@ defmodule ApiaryWeb.PolicyLive.Common do
     do:
       "v#{configuration.version} · #{byte_size(configuration.document)} bytes · sha256 over exactly these"
 
-  @doc "The newest version of the target, read and never rendered: nil for a hive nobody has changed."
-  def newest_version(scope, target) do
-    Policy.list_configurations(scope, target, 1).items |> List.first()
+  @doc """
+  The version a target is served, one row read: `{configuration, own?}`, `own?` false when
+  a repository is served the hive's baseline. Only for a hive somebody has changed: before
+  that nothing is served, and nothing is read (`nil`).
+  """
+  def served_version(_scope, _target, false), do: nil
+
+  def served_version(scope, target, true) do
+    case Policy.current_configuration(scope, target) do
+      {:ok, configuration} ->
+        {configuration, is_nil(target) or configuration.repository_id == target.id}
+
+      _ ->
+        nil
+    end
   end
 
   @doc "The export of the target's effective policy, with the scope, version and digest as comments."

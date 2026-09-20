@@ -9,6 +9,13 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
 
   setup :register_and_log_in_user
 
+  # The coalescing window of a reload is none here, so a broadcast is followed by its
+  # reload as the next message and no test waits.
+  setup do
+    Application.put_env(:apiary, ApiaryWeb.PolicyLive, reload_window: 0)
+    :ok
+  end
+
   defp open(conn, path \\ "/hive/policy") do
     {:ok, view, _html} = live(conn, path)
     render_async(view, 5_000)
@@ -399,7 +406,8 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       view = open(conn)
       {:ok, _} = Policy.allow(scope, nil, %{host: "late.example"})
 
-      send(view.pid, :policy_reload)
+      # The broadcast is in the view's mailbox; once it is handled, the reload is next.
+      _ = render(view)
       assert has_element?(view, "#policy-rules .q-host", "late.example")
     end
   end
@@ -718,6 +726,19 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert text(view, "#version-export") == "Export the version in force"
     end
 
+    test "a version that is superseded while it is open stops saying it is in force",
+         %{conn: conn, scope: scope} do
+      view = open(conn, "/hive/policy/versions/2")
+      assert text(view, "#policy-page") =~ "In force"
+
+      {:ok, _} = Policy.allow(scope, nil, %{host: "later.example"})
+      _ = render(view)
+
+      assert text(view, "#policy-page") =~ "Superseded"
+      assert text(view, "#version-superseded") =~ "by v3"
+      assert has_element?(view, "#ver-3")
+    end
+
     test "a version that does not exist, and one that is no number", %{conn: conn} do
       view = open(conn, "/hive/policy/versions/31")
       assert has_element?(view, "h2", "There is no version 31")
@@ -751,8 +772,9 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
     end
 
     test "only the version in force is exported", %{conn: conn} do
-      assert {:error, {:live_redirect, %{to: "/hive/policy/versions/2/export"}}} =
-               live(conn, "/hive/policy/versions/1/export")
+      {:ok, view, _html} = live(conn, "/hive/policy/versions/1/export")
+      assert text(view, "#export-lead") =~ "as of version 2"
+      assert has_element?(view, "h1", "Version 2")
     end
   end
 

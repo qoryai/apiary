@@ -31,8 +31,16 @@ defmodule ApiaryWeb.PolicyLive.Show do
       |> Common.mount(nil)
       |> assign(reload: &load/1, show: nil, rule_target: nil, repositories: nil)
       |> assign(history: nil, open_change: nil, diff: nil, v: nil, export: nil, missing: nil)
-      |> assign(would: nil, composer_open: false, own_only: false)
-      |> load()
+      |> assign(would: nil, composer_open: false, own_only: false, params: %{})
+      |> assign(repository_list: [], summary: nil)
+      |> assign(:repository_details, Phoenix.LiveView.AsyncResult.loading())
+      |> assign(:repository_suggestions, Phoenix.LiveView.AsyncResult.loading())
+
+    # The page is read once, by the connected mount: the first render is its skeleton.
+    socket =
+      if connected?(socket),
+        do: socket |> load() |> assign(:loaded, true),
+        else: assign(socket, loaded: false, page_title: "Policy")
 
     {:ok, socket}
   end
@@ -44,8 +52,14 @@ defmodule ApiaryWeb.PolicyLive.Show do
     managed? = Policy.managed?(scope)
     own = Policy.list_rules(scope, nil)
     changes = Policy.list_changes(scope, nil, 1)
-    locks = Common.locks(scope)
+    locks = Common.locks(changes)
     repositories = Policy.list_repositories(scope)
+
+    version =
+      case Common.served_version(scope, nil, managed?) do
+        {configuration, _own?} -> configuration
+        nil -> nil
+      end
 
     socket
     |> assign(
@@ -54,8 +68,9 @@ defmodule ApiaryWeb.PolicyLive.Show do
       own: own,
       effective: Policy.effective(scope, nil),
       locks: locks,
-      version: managed? && Common.newest_version(scope, nil),
+      version: version,
       change_total: changes.total,
+      repository_list: repositories,
       repository_total: length(repositories),
       following: Enum.count(repositories, &is_nil(&1.own_mode)),
       own_modes: for(%{own_mode: mode} <- repositories, mode != nil, do: mode),
@@ -123,8 +138,10 @@ defmodule ApiaryWeb.PolicyLive.Show do
   end
 
   @impl true
+  def handle_params(_params, _uri, %{assigns: %{loaded: false}} = socket), do: {:noreply, socket}
+
   def handle_params(params, _uri, socket) do
-    socket = assign(socket, missing: nil, export: nil, now: DateTime.utc_now())
+    socket = assign(socket, missing: nil, export: nil, params: params, now: DateTime.utc_now())
     {:noreply, apply_action(socket, socket.assigns.live_action, params)}
   end
 
@@ -140,7 +157,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
   defp apply_action(socket, :repositories, params) do
     socket
     |> assign(page_title: "Repositories · Policy", own_only: params["mode"] == "own")
-    |> load_repositories()
+    |> load_repositories(:all)
   end
 
   defp apply_action(socket, :history, params) do
@@ -188,72 +205,123 @@ defmodule ApiaryWeb.PolicyLive.Show do
     end
   end
 
+  # The versions count from 1 without a gap, so the newest one's number is how many.
   defp summary(socket) do
-    scope = socket.assigns.current_scope
-    versions = Policy.list_configurations(scope, nil, 1).total
-
     since =
-      case Policy.get_configuration(scope, nil, 1) do
+      case socket.assigns.version &&
+             Policy.get_configuration(socket.assigns.current_scope, nil, 1) do
         {:ok, first} -> first.rendered_at
         _ -> nil
       end
 
-    %{versions: versions, since: since}
+    %{versions: (socket.assigns.version && socket.assigns.version.version) || 0, since: since}
   end
 
-  # One row per repository. The counts that cost a read per repository (overrides,
-  # suggestions, the version) are made for the first fifty, the ones with rules first.
+  # The repositories tab. The list is the one read `load/1` made. What costs a read per
+  # repository is read off the render, in two tasks, for the first fifty (the ones with
+  # rules or a mode of their own first): the overrides and the version served, and the
+  # suggestions, which read events. A change that names one repository re-reads that
+  # repository alone.
   @detailed 50
-  defp load_repositories(socket) do
+  defp load_repositories(socket, :all) do
     scope = socket.assigns.current_scope
-    baseline = socket.assigns.version
+    managed? = socket.assigns.managed?
+    detailed = detailed(socket.assigns.repository_list)
 
-    rows =
-      Policy.list_repositories(scope)
-      |> Enum.sort_by(&(&1.rule_count == 0))
-      |> Enum.with_index()
-      |> Enum.map(fn {%{repository: repository, rule_count: count} = row, index} ->
-        detailed? = index < @detailed
-        effective = detailed? && count > 0 && Policy.effective(scope, repository)
+    socket
+    |> assign_async(:repository_details, fn ->
+      {:ok,
+       %{repository_details: Map.new(detailed, &{&1.repository.id, details(scope, &1, managed?)})}}
+    end)
+    |> assign_async(:repository_suggestions, fn ->
+      {:ok,
+       %{
+         repository_suggestions:
+           Map.new(
+             detailed,
+             &{&1.repository.id, length(Policy.suggestions(scope, &1.repository))}
+           )
+       }}
+    end)
+  end
 
-        own_version = detailed? && Common.newest_version(scope, repository)
+  defp load_repositories(socket, %MapSet{} = ids) do
+    %{repository_details: details, repository_suggestions: suggestions} = socket.assigns
 
-        last_change =
-          if detailed? && count > 0 do
-            case Policy.list_changes(scope, repository, 1).items do
-              [change | _] -> change.inserted_at
-              [] -> nil
-            end
-          end
+    if details.ok? and suggestions.ok? do
+      scope = socket.assigns.current_scope
+      rows = Enum.filter(detailed(socket.assigns.repository_list), &(&1.repository.id in ids))
 
-        %{
-          id: repository.id,
-          forge: repository.forge,
-          path: repository.path,
-          own: count,
-          mode: row.mode,
-          own_mode: row.own_mode,
-          overrides:
-            if(effective,
-              do:
-                Enum.count(
-                  effective.entries,
-                  &(&1.source == :repository and &1.in_force and &1.overrides != [])
-                ),
-              else: 0
-            ),
-          suggestions: if(detailed?, do: length(Policy.suggestions(scope, repository))),
-          version: own_version || baseline,
-          baseline?: count == 0,
-          last_change: last_change
-        }
-      end)
-      |> Enum.sort_by(fn row ->
-        {-(row.suggestions || 0), -((row.last_change && DateTime.to_unix(row.last_change)) || 0),
-         row.forge, row.path}
-      end)
+      socket
+      |> assign(
+        :repository_details,
+        Phoenix.LiveView.AsyncResult.ok(
+          details,
+          Enum.reduce(rows, details.result, fn row, map ->
+            Map.put(map, row.repository.id, details(scope, row, socket.assigns.managed?))
+          end)
+        )
+      )
+      |> assign(
+        :repository_suggestions,
+        Phoenix.LiveView.AsyncResult.ok(
+          suggestions,
+          Enum.reduce(rows, suggestions.result, fn row, map ->
+            Map.put(map, row.repository.id, length(Policy.suggestions(scope, row.repository)))
+          end)
+        )
+      )
+    else
+      load_repositories(socket, :all)
+    end
+  end
 
-    assign(socket, :repositories, rows)
+  defp detailed(list) do
+    list |> Enum.sort_by(&(&1.rule_count == 0 and is_nil(&1.own_mode))) |> Enum.take(@detailed)
+  end
+
+  defp details(scope, %{repository: repository, rule_count: count}, managed?) do
+    overrides =
+      if count > 0 do
+        Enum.count(
+          Policy.effective(scope, repository).entries,
+          &(&1.source == :repository and &1.in_force and &1.overrides != [])
+        )
+      else
+        0
+      end
+
+    case Common.served_version(scope, repository, managed?) do
+      {configuration, own?} -> %{overrides: overrides, version: configuration, own?: own?}
+      nil -> %{overrides: overrides, version: nil, own?: false}
+    end
+  end
+
+  defp repository_rows(list, details, suggestions) do
+    details = if details.ok?, do: details.result
+    suggestions = if suggestions.ok?, do: suggestions.result
+
+    list
+    |> Enum.map(fn %{repository: repository} = row ->
+      detail = details && details[repository.id]
+
+      %{
+        id: repository.id,
+        forge: repository.forge,
+        path: repository.path,
+        own: row.rule_count,
+        mode: row.mode,
+        own_mode: row.own_mode,
+        detail: if(details, do: detail || :none, else: :loading),
+        suggestions:
+          if(suggestions, do: Map.get(suggestions, repository.id, :none), else: :loading),
+        changed: detail && detail.own? && detail.version && detail.version.rendered_at
+      }
+    end)
+    |> Enum.sort_by(fn row ->
+      {-if(is_integer(row.suggestions), do: row.suggestions, else: 0),
+       -((row.changed && DateTime.to_unix(row.changed)) || 0), row.forge, row.path}
+    end)
   end
 
   ## Events
@@ -494,25 +562,20 @@ defmodule ApiaryWeb.PolicyLive.Show do
   ## Messages
 
   @impl true
-  def handle_info({:policy_changed, _change}, socket),
-    do: {:noreply, Common.schedule_reload(socket)}
+  def handle_info({:policy_changed, change}, socket),
+    do: {:noreply, Common.schedule_reload(socket, change)}
 
   def handle_info(:policy_reload, socket) do
-    socket = load(socket)
+    touched = socket.assigns.touched
+    socket = socket |> load() |> assign(:touched, MapSet.new())
 
+    # What the URL shows is read again too: a version that was in force a moment ago may
+    # be superseded now, a history may have a change more.
     socket =
       case socket.assigns.live_action do
-        :repositories ->
-          load_repositories(socket)
-
-        :history ->
-          assign(socket,
-            history: Common.history(socket, socket.assigns.history.page),
-            summary: summary(socket)
-          )
-
-        _ ->
-          socket
+        :repositories -> load_repositories(socket, touched)
+        action when action in [:history, :version, :export] -> reapply(socket, action)
+        _ -> socket
       end
 
     socket =
@@ -521,9 +584,37 @@ defmodule ApiaryWeb.PolicyLive.Show do
     {:noreply, socket}
   end
 
+  defp reapply(socket, :history), do: apply_action(socket, :history, socket.assigns.params)
+
+  defp reapply(socket, action) do
+    case Common.version(socket, socket.assigns.params["n"], socket.assigns.params) do
+      {:ok, v} ->
+        export = if action == :export and v.current?, do: Common.export(socket, v.configuration)
+        assign(socket, v: v, export: export || socket.assigns.export)
+
+      :error ->
+        socket
+    end
+  end
+
   ## Render
 
   @impl true
+  def render(%{loaded: false} = assigns) do
+    ~H"""
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      memberships={@memberships}
+      counts={@nav_counts}
+      nav={:policy}
+      width="full"
+    >
+      <.page_skeleton title="Policy" />
+    </Layouts.app>
+    """
+  end
+
   def render(assigns) do
     ~H"""
     <Layouts.app
@@ -586,7 +677,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         <.rules_tab :if={@live_action == :rules} {assigns} />
         <.repositories_tab
           :if={@live_action == :repositories}
-          rows={@repositories}
+          rows={repository_rows(@repository_list, @repository_details, @repository_suggestions)}
           own_only={@own_only}
         />
         <.history_view
@@ -892,7 +983,8 @@ defmodule ApiaryWeb.PolicyLive.Show do
             do: "sets its own mode",
             else: "set their own mode"}
         </span>
-        <span><b>{Enum.count(@rows, &((&1.suggestions || 0) > 0))}</b> with suggestions</span>
+        <span><b>{Enum.count(@rows, &(is_integer(&1.suggestions) and &1.suggestions > 0))}</b>
+        with suggestions</span>
         <span :if={@own_only} id="repositories-own-only">
           Showing those that set their own mode.
           <.link patch={~p"/hive/policy/repositories"} class="q-link">Show all</.link>
@@ -948,45 +1040,44 @@ defmodule ApiaryWeb.PolicyLive.Show do
                 />
               </td>
               <td role="cell">
-                <.source_chip :if={!row.baseline?} source={:repository} label="Own rules" />
+                <.source_chip :if={row.own > 0} source={:repository} label="Own rules" />
                 <.source_chip
-                  :if={row.baseline? && row.own_mode}
+                  :if={row.own == 0 && row.own_mode}
                   source={:repository}
                   label="Own mode"
                 />
                 <.source_chip
-                  :if={row.baseline? && !row.own_mode}
+                  :if={row.own == 0 && !row.own_mode}
                   source={:hive}
                   label="Hive baseline"
                 />
               </td>
               <td role="cell" class={["q-num q-opt", row.own == 0 && "q-zero"]}>{row.own}</td>
-              <td role="cell" class={["q-num q-opt", row.overrides == 0 && "q-zero"]}>
-                {row.overrides}
+              <td role="cell" class="q-num q-opt">
+                <.cell value={row.detail} none="n/a">
+                  <span class={row.detail.overrides == 0 && "q-zero"}>{row.detail.overrides}</span>
+                </.cell>
               </td>
               <td role="cell" class="q-num">
-                <span :if={(row.suggestions || 0) > 0} class="q-newdot">
-                  {row.suggestions} to review
-                </span>
-                <span :if={row.suggestions == 0} class="q-zero">0</span>
-                <span
-                  :if={row.suggestions == nil}
-                  class="q-zero"
-                  title="Open the repository to see them"
-                >
-                  n/a
-                </span>
+                <.cell value={row.suggestions} none="n/a">
+                  <span :if={row.suggestions > 0} class="q-newdot">{row.suggestions} to review</span>
+                  <span :if={row.suggestions == 0} class="q-zero">0</span>
+                </.cell>
               </td>
               <td role="cell" class="q-opt font-mono text-[12.5px]">
-                <span :if={row.version}>
-                  v{row.version.version}
-                  <span class="text-faint">{short_digest(row.version.digest)}</span>
-                </span>
-                <span :if={!row.version} class="text-faint font-sans text-[13px]">no version yet</span>
+                <.cell value={row.detail} none="n/a">
+                  <span :if={row.detail.version}>
+                    v{row.detail.version.version}
+                    <span class="text-faint">{short_digest(row.detail.version.digest)}</span>
+                  </span>
+                  <span :if={!row.detail.version} class="text-faint font-sans text-[13px]">
+                    no version yet
+                  </span>
+                </.cell>
               </td>
               <td role="cell" class="q-opt text-muted tabular-nums">
-                <.relative_time :if={row.last_change} at={row.last_change} />
-                <span :if={!row.last_change} class="text-faint">n/a</span>
+                <.relative_time :if={row.changed} at={row.changed} />
+                <span :if={!row.changed} class="text-faint">n/a</span>
               </td>
             </tr>
           </tbody>
@@ -998,6 +1089,22 @@ defmodule ApiaryWeb.PolicyLive.Show do
     </div>
     """
   end
+
+  # A cell read off the render: a skeleton while it loads, "n/a" for a repository past the
+  # first fifty, never a number nobody counted.
+  attr :value, :any, required: true
+  attr :none, :string, required: true
+  slot :inner_block, required: true
+
+  defp cell(%{value: :loading} = assigns) do
+    ~H|<span class="skeleton q-skel inline-block w-10 align-middle" aria-hidden="true"></span>|
+  end
+
+  defp cell(%{value: :none} = assigns) do
+    ~H|<span class="q-zero font-sans" title="Open the repository to see it">{@none}</span>|
+  end
+
+  defp cell(assigns), do: ~H"{render_slot(@inner_block)}"
 
   ## Dialogs
 

@@ -11,6 +11,13 @@ defmodule ApiaryWeb.PolicyLive.RepositoryTest do
 
   setup :register_and_log_in_user
 
+  # The coalescing window of a reload is none here, so a broadcast is followed by its
+  # reload as the next message and no test waits.
+  setup do
+    Application.put_env(:apiary, ApiaryWeb.PolicyLive, reload_window: 0)
+    :ok
+  end
+
   setup %{scope: scope} do
     started_run(scope, shop())
     [%{repository: repository}] = Policy.list_repositories(scope)
@@ -372,7 +379,12 @@ defmodule ApiaryWeb.PolicyLive.RepositoryTest do
       assert text(view, "#policy-suggestions-n") == "2 to review"
       assert text(view, "#policy-suggestions") =~ "A declaration allows nothing by itself."
       assert has_element?(view, "#policy-suggestions .q-mark-pend")
-      refute text(view, "#policy-suggestions") =~ "registry.example"
+
+      assert text(view, "#policy-suggestions") =~
+               "No run has tried to reach it in the last 7 days."
+
+      assert text(view, "#policy-suggestions-covered") ==
+               "1 more declared host is already allowed: registry.example by the hive."
 
       id = PolicyComponents.suggestion_id("flags.example")
       view |> element("##{id}-allow") |> render_click()
