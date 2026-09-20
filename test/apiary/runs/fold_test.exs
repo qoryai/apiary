@@ -336,12 +336,16 @@ defmodule Apiary.Runs.FoldTest do
                last_decision: "denied",
                last_rule: "",
                last_outcome: "refused",
+               last_mode: "enforce",
+               last_path_rule: nil,
+               last_credential: nil,
+               last_request_method: nil,
                last_sequence: 7,
                first_seen_at: at(6),
                last_seen_at: at(7)
              }
 
-      assert %{attempts: 1, method: "HTTPS"} =
+      assert %{attempts: 1, method: "HTTPS", last_request_method: "POST"} =
                connections[{"api.example.com", 443, "/v1/messages"}]
 
       assert %{attempts: 1} = connections[{"api.example.com", 8443, ""}]

@@ -19,6 +19,10 @@ defmodule Apiary.Runs.Connection do
     field :last_decision, :string
     field :last_rule, :string
     field :last_outcome, :string
+    field :last_mode, :string
+    field :last_path_rule, :string
+    field :last_credential, :string
+    field :last_request_method, :string
     field :first_seen_at, :utc_datetime_usec
     field :last_seen_at, :utc_datetime_usec
     field :last_sequence, :integer, default: 0

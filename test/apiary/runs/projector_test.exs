@@ -55,6 +55,10 @@ defmodule Apiary.Runs.ProjectorTest do
                 :last_decision,
                 :last_rule,
                 :last_outcome,
+                :last_mode,
+                :last_path_rule,
+                :last_credential,
+                :last_request_method,
                 :last_sequence,
                 :first_seen_at,
                 :last_seen_at
@@ -188,6 +192,76 @@ defmodule Apiary.Runs.ProjectorTest do
 
       assert [%{attempts: 2, allowed: 1, denied: 1, last_decision: "denied"}] =
                projection(run).connections
+    end
+
+    test "the run counts its denied egress events, once each, and a rebuild counts the same",
+         %{run: run} do
+      event_fixture(run, 1, "run.egress", egress_data(%{"decision" => "denied", "rule" => ""}))
+      {:ok, run} = Projector.project(run)
+      assert run.denied_count == 1
+
+      events_fixture(run, [
+        {2, "run.egress", egress_data()},
+        {3, "run.egress", egress_data(%{"host" => "b.example", "decision" => "denied"})},
+        {4, "run.egress", egress_data(%{"decision" => "denied", "rule" => ""})}
+      ])
+
+      {:ok, run} = Projector.project(run)
+      {:ok, run} = Projector.project(run)
+      assert run.denied_count == 3
+
+      before = projection(run)
+      {:ok, rebuilt} = Projector.rebuild(run)
+      assert rebuilt.denied_count == 3
+      assert projection(run) == before
+    end
+
+    test "the mode, path rule, credential and request method are the last attempt's", %{
+      run: run
+    } do
+      terminated = %{
+        "method" => "HTTPS",
+        "path" => "/v1/messages",
+        "request_method" => "POST",
+        "path_rule" => "/v1/*",
+        "credential" => "model-key"
+      }
+
+      event_fixture(run, 5, "run.egress", egress_data(terminated))
+      {:ok, _} = Projector.project(run)
+
+      # An earlier attempt arriving later changes none of them.
+      event_fixture(
+        run,
+        2,
+        "run.egress",
+        egress_data(%{terminated | "request_method" => "GET", "credential" => "old-key"})
+        |> Map.put("mode", "observe")
+      )
+
+      {:ok, _} = Projector.project(run)
+
+      assert [connection] = projection(run).connections
+      assert connection.attempts == 2
+      assert connection.last_mode == "enforce"
+      assert connection.last_path_rule == "/v1/*"
+      assert connection.last_credential == "model-key"
+      assert connection.last_request_method == "POST"
+
+      # A later one without a credential clears it: the columns say the last attempt.
+      event_fixture(
+        run,
+        9,
+        "run.egress",
+        egress_data(Map.drop(terminated, ["credential"]))
+      )
+
+      {:ok, _} = Projector.project(run)
+      assert [%{last_credential: nil, last_sequence: 9}] = projection(run).connections
+
+      before = projection(run)
+      {:ok, _} = Projector.rebuild(run)
+      assert projection(run) == before
     end
 
     test "an earlier egress event arriving later does not take over the last columns", %{

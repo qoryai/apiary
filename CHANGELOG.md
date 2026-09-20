@@ -59,6 +59,9 @@ a restart does before doing it (`docs/upgrading.md`).
   id, the newest runs, and closing a run, after which the receiver answers `410` for it.
 - The hive overview shows "Runs alive now", live; the access keys page shows each key's last
   heartbeat beside its last use.
+- The projection keeps, per run, the count of its denied connections, and per connection the
+  mode, path rule, credential name and request method of its last attempt, ranked by
+  sequence like the rest and reproduced by a rebuild.
 - For development, `mix apiary.demo` replays the synthetic recorded runs under `priv/demo/` into a hive through the receiver's own ingest, as new runs that end now (dev and test only).
 
 ### Migrations
@@ -72,6 +75,14 @@ a restart does before doing it (`docs/upgrading.md`).
   `events`, `log_chunks`, `connections`, `deliveries`. All new and empty; each reverses by
   dropping its table.
 - `20260921000700`: `access_keys.last_heartbeat_at`, a nullable column. Instant; reversible.
+- `20260922000100`: `runs.denied_count` (the run's denied connections, default 0),
+  `connections.last_mode`, `last_path_rule`, `last_credential` and `last_request_method`
+  (nullable), and indexes on `runs (hive_id, started_at)`, `runs (hive_id, repository_id,
+  started_at)` and `connections (hive_id, last_seen_at)`. Expand only; reversible. The
+  migration backfills both in place with two statements: the count from the run's
+  `connections`, the four columns from the one event each connection names as its last, so
+  no run needs a rebuild. On a large `connections` table the second statement is the slow
+  one (one index lookup in `events` per row).
 
 ### Upgrading
 

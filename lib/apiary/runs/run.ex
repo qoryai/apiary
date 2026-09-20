@@ -53,6 +53,7 @@ defmodule Apiary.Runs.Run do
     field :lost_at, :utc_datetime_usec
 
     field :event_count, :integer, default: 0
+    field :denied_count, :integer, default: 0
     field :projected_sequence, :integer, default: 0
 
     belongs_to :organisation, Apiary.Organisations.Organisation

@@ -120,7 +120,12 @@ defmodule Apiary.Runs.Projector do
 
           current
           |> Ecto.Changeset.change(blank)
-          |> Ecto.Changeset.change(state: state, projected_sequence: 0, repository_id: nil)
+          |> Ecto.Changeset.change(
+            state: state,
+            projected_sequence: 0,
+            repository_id: nil,
+            denied_count: 0
+          )
           |> Repo.update()
       end
     end)
@@ -232,6 +237,7 @@ defmodule Apiary.Runs.Projector do
       run =
         run
         |> Ecto.Changeset.change(Map.take(fold.run, @folded_fields))
+        |> Ecto.Changeset.change(denied_count: run.denied_count + denied(fold.connections))
         |> put_repository(fold.run)
         |> Repo.update!(log: false)
 
@@ -300,6 +306,12 @@ defmodule Apiary.Runs.Projector do
         limit: 1,
         select: e.sequence
     )
+  end
+
+  # An egress event is folded exactly once, so the run's count of denials is the sum of
+  # what each pass adds: the same number as the sum of its connections' `denied`.
+  defp denied(connections) do
+    connections |> Map.values() |> Enum.map(& &1.denied) |> Enum.sum()
   end
 
   defp put_repository(changeset, %{forge: forge, repository: path})
@@ -377,7 +389,7 @@ defmodule Apiary.Runs.Projector do
       end
 
     # Every right-hand side reads the row as it was before the update, so the comparison
-    # of the sequences decides the four "last" columns and `last_sequence` together.
+    # of the sequences decides the "last" columns and `last_sequence` together.
     on_conflict =
       from c in Connection,
         update: [
@@ -411,6 +423,30 @@ defmodule Apiary.Runs.Projector do
                 "CASE WHEN EXCLUDED.last_sequence > ? THEN EXCLUDED.last_outcome ELSE ? END",
                 c.last_sequence,
                 c.last_outcome
+              ),
+            last_mode:
+              fragment(
+                "CASE WHEN EXCLUDED.last_sequence > ? THEN EXCLUDED.last_mode ELSE ? END",
+                c.last_sequence,
+                c.last_mode
+              ),
+            last_path_rule:
+              fragment(
+                "CASE WHEN EXCLUDED.last_sequence > ? THEN EXCLUDED.last_path_rule ELSE ? END",
+                c.last_sequence,
+                c.last_path_rule
+              ),
+            last_credential:
+              fragment(
+                "CASE WHEN EXCLUDED.last_sequence > ? THEN EXCLUDED.last_credential ELSE ? END",
+                c.last_sequence,
+                c.last_credential
+              ),
+            last_request_method:
+              fragment(
+                "CASE WHEN EXCLUDED.last_sequence > ? THEN EXCLUDED.last_request_method ELSE ? END",
+                c.last_sequence,
+                c.last_request_method
               )
           ]
         ]

@@ -171,6 +171,10 @@ defmodule Apiary.Runs.Fold do
         last_decision: decision,
         last_rule: string(data, "rule"),
         last_outcome: string(data, "outcome", 64),
+        last_mode: string(data, "mode", 64),
+        last_path_rule: string(data, "path_rule"),
+        last_credential: string(data, "credential"),
+        last_request_method: string(data, "request_method", 64),
         last_sequence: sequence
       }
 
