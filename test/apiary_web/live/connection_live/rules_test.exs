@@ -32,7 +32,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
 
   defp open(conn, path \\ "/hive/connections") do
     {:ok, view, _html} = live(conn, path)
-    render_async(view)
+    render_async(view, 2_000)
     view
   end
 

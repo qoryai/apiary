@@ -19,7 +19,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
 
   defp open(conn, path \\ "/hive/connections") do
     {:ok, view, _html} = live(conn, path)
-    render_async(view)
+    render_async(view, 2_000)
     view
   end
 
@@ -55,7 +55,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
     test "the first render is the table's skeleton", %{conn: conn} do
       {:ok, view, html} = live(conn, ~p"/hive/connections")
       assert html =~ "connections-loading"
-      render_async(view)
+      render_async(view, 2_000)
       refute has_element?(view, "#connections-loading")
     end
 
@@ -215,7 +215,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
 
       view |> element("#filter-repo-remove") |> render_click()
       assert_patch(view, ~p"/hive/connections?decision=allowed")
-      render_async(view)
+      render_async(view, 2_000)
       refute has_element?(view, "##{dst("files.cdn.example")}")
 
       view |> form("#filter-host-form") |> render_change(%{"host" => "registry.example"})
@@ -242,7 +242,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
         ~p"/hive/connections?#{%{"forge" => "git.example:8443", "repo" => "acme/shop"}}"
       )
 
-      render_async(view)
+      render_async(view, 2_000)
       assert has_element?(view, "##{dst("colon.example")}")
       refute has_element?(view, "##{dst("registry.example")}")
       assert text(view, "#connections-repo-note") == "Showing git.example:8443/acme/shop only. Its policy"
@@ -252,7 +252,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       view = open(conn)
       view |> element("#filter-since-remove") |> render_click()
       assert_patch(view, ~p"/hive/connections?since=90d")
-      render_async(view)
+      render_async(view, 2_000)
       assert has_element?(view, "#filter-since-button", "last 90 days")
       refute has_element?(view, "#filter-since-remove")
     end
@@ -262,7 +262,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       # The box shows once a menu is long; what it sends narrows on the server.
       refute has_element?(view, "#filter-host-narrow")
       render_change(view, "narrow", %{"_filter" => "host", "q" => "cdn"})
-      render_async(view)
+      render_async(view, 2_000)
       assert has_element?(view, "#filter-host-search[value=cdn]")
       assert text(view, "#filter-host-form") =~ "files.cdn.example 1"
       refute text(view, "#filter-host-form") =~ "registry.example"
@@ -285,7 +285,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       refute has_element?(view, "##{dst("new.example")}")
 
       view |> element("#connections-refresh") |> render_click()
-      render_async(view)
+      render_async(view, 2_000)
       assert has_element?(view, "##{dst("new.example")}")
       assert text(view, "##{id}-runs") =~ "3 runs reached this destination"
       refute has_element?(view, "#connections-refresh")
