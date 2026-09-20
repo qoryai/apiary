@@ -1347,6 +1347,10 @@ defmodule ApiaryWeb.RunLive.Show do
       {%{standing: :can_deny}, "deny"} ->
         {:noreply, open_popover(socket, row, act, :deny)}
 
+      # No rule decides the host: it can be denied outright as well as allowed.
+      {%{standing: :can_allow, deny: true}, "deny"} ->
+        {:noreply, open_popover(socket, row, act, :deny)}
+
       {%{standing: locked}, _} when locked in [:locked_deny, :locked_allow] ->
         {:noreply, open_refusal(socket, row, act)}
 
@@ -1437,6 +1441,7 @@ defmodule ApiaryWeb.RunLive.Show do
         action: action,
         host: act.host,
         path: path,
+        mode: Rules.mode(row),
         page: :run,
         level: if(repository, do: :repository, else: :hive),
         repository: repository && %{label: "#{repository.forge}/#{repository.path}"},
@@ -1487,9 +1492,13 @@ defmodule ApiaryWeb.RunLive.Show do
   # The slot's button says whether its popover is open.
   defp mark_expanded(%{assigns: %{acts: acts, popover: popover}} = socket) when is_map(acts) do
     open = popover && String.replace_suffix(popover.anchor, "-act", "")
+    action = popover && popover[:action]
 
     assign(socket,
-      acts: Map.new(acts, fn {id, act} -> {id, Map.put(act, :expanded, id == open)} end)
+      acts:
+        Map.new(acts, fn {id, act} ->
+          {id, Map.merge(act, %{expanded: id == open, expanded_action: id == open && action})}
+        end)
     )
   end
 

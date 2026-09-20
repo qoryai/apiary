@@ -51,7 +51,11 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
 
     event_fixture(run, 2, "run.started", started_data(%{"labels" => shop()}), time: time)
 
-    event_fixture(run, 3, "run.policy_applied", applied(opts[:applied], ["registry.example"]),
+    event_fixture(
+      run,
+      3,
+      "run.policy_applied",
+      applied(opts[:applied], ["registry.example"], opts[:mode] || "enforce"),
       time: at.(1)
     )
 
@@ -79,11 +83,13 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
     run
   end
 
-  defp applied(nil, allow), do: %{"mode" => "enforce", "allow" => allow, "source" => "none"}
+  defp applied(digest, allow, mode \\ "enforce")
 
-  defp applied(digest, allow) do
+  defp applied(nil, allow, mode), do: %{"mode" => mode, "allow" => allow, "source" => "none"}
+
+  defp applied(digest, allow, mode) do
     %{
-      "mode" => "enforce",
+      "mode" => mode,
       "allow" => allow,
       "source" => "fetched",
       "url" => "https://qory.example/v1/run-configuration",
@@ -414,7 +420,10 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       id = &"#cx-#{connection_id(run, &1)}-act"
 
       assert text(view, "button" <> id.("files.cdn.example")) == "Allow"
+      # no rule decides it, so it can be denied outright too; the Deny is a bordered button
+      assert text(view, "button" <> id.("files.cdn.example") <> "-deny.q-rowbtn-deny") == "Deny"
       assert text(view, "button" <> id.("registry.example")) == "Deny"
+      refute has_element?(view, "button" <> id.("registry.example") <> "-deny")
 
       assert has_element?(
                view,
@@ -613,6 +622,36 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       assert has_element?(view, ~s(tr#cx-#{id}[data-decision=allowed]))
       assert text(view, "#cx-#{id}-after") =~ "Denied for the hive"
       assert has_element?(view, ~s(a#cx-#{id}-act[href="/hive/policy?rule=registry.example"]))
+    end
+
+    test "denying a host no rule decides writes the rule, and under observe says what it does",
+         %{conn: conn, scope: scope} do
+      # this run's own policy observes (the mode of its last policy_applied)
+      observed = %{"host" => "files.cdn.example", "rule" => "", "mode" => "observe"}
+      run = policy_run(scope, egress: [observed], mode: "observe")
+      view = connections(conn, run)
+      id = connection_id(run, "files.cdn.example")
+      assert has_element?(view, "button#cx-#{id}-act.q-rowbtn-allow", "Allow")
+      view |> element("#cx-#{id}-act-deny") |> render_click()
+
+      assert text(view, "#rule-popover-title") == "Deny files.cdn.example"
+      assert has_element?(view, ~s(#cx-#{id}-act-deny[aria-expanded=true]))
+      assert has_element?(view, ~s(#cx-#{id}-act[aria-expanded=false]))
+      assert text(view, "#rule-popover-submit") == "Deny for this repository"
+
+      assert text(view, "#rule-popover-next") =~
+               "This run observes, so nothing is denied yet: the rule holds once the mode is enforce."
+
+      view |> form("#rule-popover-form") |> render_submit()
+      repository = Runs.fetch_repository(scope, "github.example", "acme/shop")
+
+      assert [%{action: "deny"}] =
+               Enum.filter(
+                 Policy.list_rules(scope, repository),
+                 &(&1.host == "files.cdn.example")
+               )
+
+      assert text(view, "#cx-#{id}-after") =~ "Denied for this repository"
     end
 
     test "what the domain refuses is said in its sentence, and nothing is written", %{
@@ -870,7 +909,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       assert {:ok, %Connection{}} = Runs.fetch_connection(other, their_id)
     end
 
-    test "a row asks only for what it stands for: Deny on a denied row opens nothing", %{
+    test "a row asks only for what it stands for: the wall's row opens nothing", %{
       conn: conn,
       scope: scope
     } do
@@ -878,8 +917,9 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       run = policy_run(scope, egress: [@denied, @wall])
       view = connections(conn, run)
 
+      # the wall's row stands for nothing; a denied row no rule decides can be denied
       render_click(view, "rule_open", %{
-        "id" => connection_id(run, "files.cdn.example"),
+        "id" => connection_id(run, "169.254.169.254"),
         "action" => "deny"
       })
 

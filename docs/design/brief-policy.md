@@ -7,6 +7,14 @@ shell, components, tone, accessibility) still holds and is not repeated. The ren
 `policy-mock.html` beside this file; where the two disagree, this brief wins. Section letters
 continue the pattern with a `p` prefix.
 
+## Amendment 2: deny from a row no rule decides
+
+An owner's decision of 21 Sep 2026. A connection let through under observe with no rule, or
+denied by default under enforce, offered only **Allow**; while a hive observes, the policy is
+written from the record, and a decision against a host is as common as one for it. Such a row
+now holds a **Deny** before the **Allow** (pd8), bordered like it, Deny in the danger tone and Allow in the success tone, the tones of the decision marks, since a ghost beside a bordered button read as text, and a deny under observe says what it
+does: nothing yet, until the mode is enforce. Marked **[A2]** where it stands.
+
 ## Amendment 1: mode per repository
 
 An owner's decision after the first issue of this brief. **The hive's mode is a default. Each
@@ -460,8 +468,9 @@ What the slot holds:
 
 | The row | Slot |
 |---|---|
-| denied, or let through by observe with no rule | default `btn-xs` **Allow** |
-| allowed by a rule | ghost `btn-xs` **Deny** |
+| denied, or let through by observe with no rule | `btn-xs` **Deny** in the danger tone (`q-rowbtn-deny`: bordered, `text-error`, soft error fill on hover), then `btn-xs` **Allow** in the success tone (`q-rowbtn-allow`) [A2]: no rule decides the host, so either is a decision, and under observe the record is read while the policy is written |
+| denied by a rule (not locked) | `btn-xs` **Allow** in the success tone [A2] |
+| allowed by a rule | `btn-xs` **Deny** in the danger tone [A2] |
 | a locked hive rule decides it | ghost icon button, closed padlock, tooltip "A locked hive rule denies `*.paste.example`" (or "allows") |
 | the wall refused it (`wall:own-address`, `wall:ambiguous-path`) | nothing, with `sr-only` "No rule changes this" |
 | a rule was added from this row | ghost `btn-xs` link **Rule** to the rule on its policy page |
@@ -490,7 +499,8 @@ Contents, top to bottom:
 4. **What happens next**, a reload icon and one sentence (pf7). **[A1]** The sentence reads the mode
    of the run's own policy (the `mode` of its last `policy_applied`), on the hive connections page
    the effective mode of the repository chosen under "For": under observe the icon is the eye and
-   the sentence says the connection is already let through.
+   the sentence says the connection is already let through. **[A2]** A deny under observe says
+   "This run observes, so nothing is denied yet: the rule holds once the mode is enforce."
 5. Footer: Cancel, then the act named in full: **Allow for this repository**, **Allow for the
    hive**, **Deny for this repository** (danger), **Deny for the hive** (danger).
 

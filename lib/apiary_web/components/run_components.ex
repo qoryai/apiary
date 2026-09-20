@@ -1429,13 +1429,16 @@ defmodule ApiaryWeb.RunComponents do
       values: act[:values] || %{},
       rule_path: act[:rule_path],
       entry_host: act[:entry_host],
-      expanded: act[:expanded] == true
+      expanded: act[:expanded] == true,
+      expanded_action: act[:expanded_action],
+      deny: act[:deny] == true
     }
   end
 
   @doc """
   The trailing slot of a connection's row. `standing` says what it holds: a button that
-  opens the popover (`:can_allow`, `:can_deny`), a padlock that opens the refusal
+  opens the popover (`:can_allow`, `:can_deny`; a `:can_allow` row with `deny` holds a
+  ghost Deny before the Allow, since no rule decides it yet), a padlock that opens the refusal
   (`:locked_deny`, `:locked_allow`), nothing the wall's refusals (`:wall`) and a host no
   rule can name (`:unnameable`), and the link to the rule once one answers the row
   (`{:rule_added, _}`). Always visible: never on hover alone.
@@ -1450,6 +1453,37 @@ defmodule ApiaryWeb.RunComponents do
   attr :rule_path, :string, default: nil
   attr :entry_host, :string, default: nil, doc: "the host of the locked rule, for the tooltip"
   attr :expanded, :boolean, default: false
+  attr :expanded_action, :atom, default: nil, doc: "which of two buttons the open popover is of"
+  attr :deny, :boolean, default: false, doc: "a `:can_allow` row no rule decides: Deny too"
+
+  def rule_action(%{standing: :can_allow, deny: true} = assigns) do
+    ~H"""
+    <span id={"#{@id}-both"} class="q-rowacts-pair">
+      <button
+        type="button"
+        id={"#{@id}-deny"}
+        class="btn btn-xs q-rowbtn q-rowbtn-deny"
+        phx-click={JS.push("rule_open", value: Map.put(@values, "action", "deny"))}
+        aria-haspopup="dialog"
+        aria-expanded={to_string(@expanded and @expanded_action == :deny)}
+        aria-label={"Deny #{@connection.host}"}
+      >
+        Deny
+      </button>
+      <button
+        type="button"
+        id={@id}
+        class="btn btn-xs q-rowbtn q-rowbtn-allow"
+        phx-click={JS.push("rule_open", value: Map.put(@values, "action", "allow"))}
+        aria-haspopup="dialog"
+        aria-expanded={to_string(@expanded and @expanded_action != :deny)}
+        aria-label={"Allow #{@connection.host}"}
+      >
+        Allow
+      </button>
+    </span>
+    """
+  end
 
   def rule_action(%{standing: standing} = assigns) when standing in [:can_allow, :can_deny] do
     assigns = assign(assigns, :action, if(standing == :can_allow, do: "allow", else: "deny"))
@@ -1458,7 +1492,10 @@ defmodule ApiaryWeb.RunComponents do
     <button
       type="button"
       id={@id}
-      class={["btn btn-xs q-rowbtn", @action == "deny" && "btn-ghost"]}
+      class={[
+        "btn btn-xs q-rowbtn",
+        if(@action == "deny", do: "q-rowbtn-deny", else: "q-rowbtn-allow")
+      ]}
       phx-click={JS.push("rule_open", value: Map.put(@values, "action", @action))}
       aria-haspopup="dialog"
       aria-expanded={to_string(@expanded)}
@@ -1792,6 +1829,16 @@ defmodule ApiaryWeb.RunComponents do
   defp popover_ready?(%{level: :repository, page: :run}), do: true
   defp popover_ready?(%{level: :repository, choice: choice}) when is_binary(choice), do: true
   defp popover_ready?(_popover), do: false
+
+  # Under observe the mode, not the rule, decides what a run does: the rule is written
+  # for the day the mode is enforce, and the sentence says so instead of promising a
+  # refusal that observe never makes.
+  defp next_sentence(%{action: :deny, mode: "observe"}),
+    do: "This run observes, so nothing is denied yet: the rule holds once the mode is enforce."
+
+  defp next_sentence(%{action: :allow, mode: "observe"}),
+    do:
+      "This run observes, so the connection is already let through: the rule records that it may be."
 
   defp next_sentence(%{action: :deny}),
     do: "Open connections to the host are closed at the reload."

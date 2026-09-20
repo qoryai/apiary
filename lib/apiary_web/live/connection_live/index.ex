@@ -372,6 +372,10 @@ defmodule ApiaryWeb.ConnectionLive.Index do
       {%{standing: :can_deny}, "deny"} ->
         {:noreply, open_popover(socket, row, act, :deny)}
 
+      # No rule decides the host: it can be denied outright as well as allowed.
+      {%{standing: :can_allow, deny: true}, "deny"} ->
+        {:noreply, open_popover(socket, row, act, :deny)}
+
       {%{standing: locked}, _} when locked in [:locked_deny, :locked_allow] ->
         {:noreply, open_refusal(socket, row, act)}
 
@@ -593,11 +597,17 @@ defmodule ApiaryWeb.ConnectionLive.Index do
       for {row, standing} <- standings, do: {row, Rules.answered(standing, row, changes)}
 
     open = socket.assigns.popover && socket.assigns.popover.anchor
+    action = socket.assigns.popover && socket.assigns.popover[:action]
 
     acts =
       for {row, standing} <- standings, into: %{} do
         id = destination_id(row)
-        {id, row |> act(standing, changes, socket) |> Map.put(:expanded, open == "#{id}-act")}
+        expanded = open == "#{id}-act"
+
+        {id,
+         row
+         |> act(standing, changes, socket)
+         |> Map.merge(%{expanded: expanded, expanded_action: expanded && action})}
       end
 
     assign(socket, acts: acts)
@@ -676,6 +686,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
         action: action,
         host: act.host,
         path: row.path || "",
+        mode: Rules.mode(row),
         page: :hive,
         level: if(choice, do: :repository),
         repository: nil,

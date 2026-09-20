@@ -94,7 +94,9 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   What the row's slot holds: `%{standing:, host:, entry:}` with `standing` one of
   `:can_allow`, `:can_deny`, `:locked_deny`, `:locked_allow`, `:wall`, `:unnameable`,
   `{:rule_added, :allow | :deny}`. `entry` is the rule in force that decides the host,
-  when one does. `page` is `:run` or `:hive`: on the hive's page a row allowed by a rule
+  when one does. A `:can_allow` row carries `deny: true` when no rule decides its host:
+  a host let through under observe, or denied by default under enforce, can be denied
+  outright as well, so the policy is written while the record is read. `page` is `:run` or `:hive`: on the hive's page a row allowed by a rule
   the baseline does not hold (a repository's own) can still be denied.
 
   `own` matters on the hive's page, where the rows stand against the baseline alone: the
@@ -139,7 +141,10 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
         %{standing: :locked_allow, host: host, entry: entry}
 
       true ->
-        %{standing: :can_allow, host: host, entry: nil}
+        # A deny rule that agrees with the record still decides the host: the row keeps
+        # its Allow, so the decision can be turned, and no second deny is offered.
+        entry = deny_entry(effective, host)
+        %{standing: :can_allow, host: host, entry: entry, deny: is_nil(entry)}
     end
   end
 
@@ -155,7 +160,7 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
         %{standing: :can_deny, host: host, entry: allow_entry(effective, host)}
 
       true ->
-        %{standing: :can_allow, host: host, entry: nil}
+        %{standing: :can_allow, host: host, entry: nil, deny: true}
     end
   end
 
@@ -246,6 +251,19 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
       else: standing
   end
 
+  # The mirror: a row let through with no rule (observe) that a deny rule added lately
+  # now decides is a row that rule answered, and its line says so, with the link to the
+  # rule. A row that was denied already gains no line from a deny that agrees with it.
+  def answered(
+        %{standing: :can_allow, entry: %Entry{action: :deny} = entry} = standing,
+        row,
+        changes
+      ) do
+    if read(row).decision == "allowed" and change_for(entry, changes) != nil,
+      do: %{standing | standing: {:rule_added, :deny}},
+      else: standing
+  end
+
   def answered(standing, _row, _changes), do: standing
 
   @doc "The words of the toast, from the rule the domain made."
@@ -268,6 +286,9 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   defp wall?(%{rule: "wall:" <> _}), do: true
   defp wall?(%{path_rule: "wall:" <> _}), do: true
   defp wall?(_c), do: false
+
+  @doc "The mode of the row's last attempt, from either page's row shape, or nil."
+  def mode(row), do: Map.get(row, :mode) || Map.get(row, :last_mode)
 
   @doc "A row's host as a rule would name it, or nil when no rule can."
   def host(host) when is_binary(host) and byte_size(host) <= 255 do
@@ -377,7 +398,7 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   def changes(scope, repository, standings) do
     sources =
       for %{standing: standing, entry: %Entry{source: source}} <- standings,
-          match?({:rule_added, _}, standing) or standing == :can_deny,
+          match?({:rule_added, _}, standing) or standing in [:can_deny, :can_allow],
           uniq: true,
           do: source
 

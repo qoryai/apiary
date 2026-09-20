@@ -4129,6 +4129,35 @@
     justify-content: flex-end;
     gap: 2px;
   }
+  /* Allow and Deny on a row are the same bordered button in the tones of the decision
+     marks: Allow in the success tone, Deny in the danger tone. A ghost Deny read as
+     text beside a bordered Allow. */
+  .q-rowbtn-allow {
+    color: var(--q-success-soft-content);
+  }
+  .q-rowbtn-allow:hover,
+  .q-rowbtn-allow:active:not(.btn-active),
+  .q-rowbtn-allow[aria-expanded="true"] {
+    background-color: var(--q-success-soft);
+    border-color: color-mix(in oklab, var(--color-success) 35%, var(--color-base-100));
+    color: var(--q-success-soft-content);
+  }
+  .q-rowbtn-deny {
+    color: var(--color-error);
+  }
+  .q-rowbtn-deny:hover,
+  .q-rowbtn-deny:active:not(.btn-active),
+  .q-rowbtn-deny[aria-expanded="true"] {
+    background-color: var(--q-error-soft);
+    border-color: color-mix(in oklab, var(--color-error) 35%, var(--color-base-100));
+    color: var(--q-error-soft-content);
+  }
+  /* A row no rule decides holds Deny before Allow. */
+  .q-rowacts-pair {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
   .q-rowacts .dropdown-content button {
     width: 100%;
   }

@@ -336,6 +336,69 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       assert render(view) =~ "The policy changed; look at the row again."
     end
 
+    test "a row no rule decides can be denied outright, and a denied one only allowed", %{
+      conn: conn,
+      scope: scope
+    } do
+      view = open(conn)
+      id = dst("files.cdn.example")
+      assert has_element?(view, "button##{id}-act-deny.q-rowbtn-deny", "Deny")
+      assert has_element?(view, "button##{id}-act", "Allow")
+
+      view |> element("##{id}-act-deny") |> render_click()
+      assert text(view, "#rule-popover-title") == "Deny files.cdn.example"
+      assert has_element?(view, ~s(##{id}-act-deny[aria-expanded=true]))
+      assert has_element?(view, ~s(##{id}-act[aria-expanded=false]))
+
+      view |> form("#rule-popover-form", %{"for" => "hive"}) |> render_change()
+      assert text(view, "#rule-popover-submit") == "Deny for the hive"
+      view |> form("#rule-popover-form") |> render_submit()
+
+      assert [%{action: "deny", locked: false}] =
+               Enum.filter(Policy.list_rules(scope, nil), &(&1.host == "files.cdn.example"))
+
+      # the rule agrees with the record, so the row gains no line: Allow stays, Deny goes
+      refute has_element?(view, "##{id}-after")
+      assert text(view, "button##{id}-act") == "Allow"
+      refute has_element?(view, "##{id}-act-deny")
+
+      # a host a deny rule already decides is only offered Allow
+      {:ok, _} = Policy.deny(scope, nil, %{host: "ads.example"})
+      effective = Policy.effective(scope, nil)
+
+      denied = %{
+        host: "ads.example",
+        path: "",
+        decision: "denied",
+        rule: "ads.example",
+        path_rule: nil
+      }
+
+      assert %{standing: :can_allow, deny: false} = Rules.standing(denied, effective)
+    end
+
+    test "a row let through under observe that is denied since gains the line and the link", %{
+      conn: conn,
+      scope: scope
+    } do
+      started_run(scope, shop(),
+        egress: [%{"host" => "flags.example", "rule" => "", "mode" => "observe"}]
+      )
+
+      view = open(conn)
+      id = dst("flags.example")
+      view |> element("##{id}-act-deny") |> render_click()
+      view |> form("#rule-popover-form", %{"for" => "hive"}) |> render_change()
+      view |> form("#rule-popover-form") |> render_submit()
+
+      assert render(view) =~ "flags.example is denied for the hive."
+      # the row is the record and stays let through; the line after says what holds now
+      assert has_element?(view, ~s(tr##{id}[data-decision=allowed]))
+      assert text(view, "##{id}-after") =~ "Denied for the hive in v"
+      assert has_element?(view, ~s(a##{id}-act[href="/hive/policy?rule=flags.example"]))
+      refute has_element?(view, "##{id}-act-deny")
+    end
+
     test "the repository's select is not part of the radio's name", %{conn: conn} do
       view = open(conn)
       view |> element("##{dst("files.cdn.example")}-act") |> render_click()
@@ -376,8 +439,8 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       render_change(view, "rule_change", %{"for" => "hive"})
       render_click(view, "rule_open", %{"host" => %{"a" => 1}, "action" => "allow"})
       render_click(view, "rule_open", Map.put(values("files.cdn.example"), "action", "lock"))
-      # Deny is not what a denied row stands for
-      render_click(view, "rule_open", Map.put(values("files.cdn.example"), "action", "deny"))
+      # Deny is not what the wall's row stands for
+      render_click(view, "rule_open", Map.put(values("169.254.169.254", 80), "action", "deny"))
       refute has_element?(view, "#rule-popover")
       assert Policy.list_rules(scope, nil) |> Enum.map(& &1.host) == ["registry.example"]
     end
@@ -403,6 +466,9 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
 
       assert standing.(row("files.cdn.example", "denied", nil)) == :can_allow
       assert standing.(row("flags.example", "allowed", "")) == :can_allow
+      # no rule decides them, so each can be denied outright as well
+      assert Rules.standing(row("files.cdn.example", "denied", nil), effective).deny
+      assert Rules.standing(row("flags.example", "allowed", ""), effective).deny
       assert standing.(row("registry.example", "allowed", "registry.example")) == :can_deny
       assert standing.(row("tax.internal.example", "allowed", "*.internal.example")) == :can_deny
       assert standing.(row("bin.paste.example", "denied", nil)) == :locked_deny
