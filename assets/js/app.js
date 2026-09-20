@@ -26,8 +26,8 @@ import {hooks as colocatedHooks} from "phoenix-colocated/apiary"
 import topbar from "../vendor/topbar"
 
 // Copies `data-copy` (or the text content of the element `data-copy-target`
-// points at) to the clipboard and flips the button into its "copied" state
-// for a moment.
+// points at) to the clipboard, flips the button into its "Copied" state for
+// 1600 ms and announces it politely.
 const CopyToClipboard = {
   mounted() {
     this.el.addEventListener("click", async () => {
@@ -49,8 +49,13 @@ const CopyToClipboard = {
         area.remove()
       }
       this.el.setAttribute("data-copied", "")
+      const live = this.el.querySelector("[aria-live]")
+      if (live) live.textContent = "Copied"
       clearTimeout(this.timer)
-      this.timer = setTimeout(() => this.el.removeAttribute("data-copied"), 1600)
+      this.timer = setTimeout(() => {
+        this.el.removeAttribute("data-copied")
+        if (live) live.textContent = ""
+      }, 1600)
     })
   },
   destroyed() {
@@ -58,10 +63,188 @@ const CopyToClipboard = {
   },
 }
 
-// Submits the closest form when the element changes (apiary switcher).
-const SubmitOnChange = {
+// A native <dialog> shown as a modal while it is in the page. Escape and the
+// backdrop run the `data-cancel` JS command (a patch back to the index); a
+// dialog without one cannot be dismissed.
+const Modal = {
   mounted() {
-    this.el.addEventListener("change", () => this.el.form?.submit())
+    this.trigger = document.activeElement
+    this.el.addEventListener("cancel", e => {
+      e.preventDefault()
+      this.cancel()
+    })
+    // The backdrop is a form[method=dialog]; the server closes the dialog.
+    this.el.addEventListener("submit", e => {
+      if (e.target.method === "dialog") {
+        e.preventDefault()
+        this.cancel()
+      }
+    })
+    // Chrome lets a second Escape through: the server decides when it closes.
+    this.el.addEventListener("close", () => this.el.isConnected && this.el.showModal())
+    if (!this.el.open) this.el.showModal()
+    this.focusFirst()
+    // The dialog may still be becoming visible on a fresh page load.
+    setTimeout(() => this.el.contains(document.activeElement) && document.activeElement !== this.el || this.focusFirst(), 80)
+  },
+  focusFirst() {
+    const first =
+      this.el.querySelector("[data-autofocus]") ||
+      this.el.querySelector(".modal-body input:not([type=hidden]), .modal-body select, .modal-body textarea") ||
+      this.el.querySelector(".modal-action [data-cancel-button]") ||
+      this.el.querySelector(".modal-action .btn-primary")
+    first?.focus()
+  },
+  updated() {
+    if (!this.el.open) this.el.showModal()
+  },
+  cancel() {
+    const js = this.el.dataset.cancel
+    if (js) this.liveSocket.execJS(this.el, js)
+  },
+  destroyed() {
+    if (this.trigger?.isConnected) this.trigger.focus({preventScroll: true})
+  },
+}
+
+// A daisyUI dropdown with menu manners: click toggles, Escape closes and gives
+// focus back, arrows move between items, focus leaving closes.
+const Menu = {
+  mounted() {
+    const trigger = () => this.el.querySelector("[aria-haspopup]")
+    const items = () =>
+      [...this.el.querySelectorAll(".dropdown-content :is(a, button):not([disabled])")]
+    const set = open => {
+      this.el.classList.toggle("dropdown-open", open)
+      trigger()?.setAttribute("aria-expanded", String(open))
+    }
+    const close = refocus => {
+      set(false)
+      if (this.el.contains(document.activeElement)) {
+        refocus ? trigger()?.focus() : document.activeElement.blur()
+      }
+    }
+    this.el.addEventListener("click", e => {
+      const t = trigger()
+      if (t && t.contains(e.target)) {
+        this.el.classList.contains("dropdown-open") ? close(false) : set(true)
+      } else if (e.target.closest("a, [data-menu-close]")) {
+        close(false)
+      }
+    })
+    this.el.addEventListener("keydown", e => {
+      const list = items()
+      const at = list.indexOf(document.activeElement)
+      const t = trigger()
+      const open = this.el.classList.contains("dropdown-open") || this.el.matches(":focus-within")
+      if ((e.key === "Enter" || e.key === " ") && e.target === t && t.tagName !== "BUTTON") {
+        e.preventDefault()
+        this.el.classList.contains("dropdown-open") ? close(true) : set(true)
+      } else if (e.key === "Escape" && open) {
+        e.preventDefault()
+        e.stopPropagation()
+        close(true)
+      } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault()
+        set(true)
+        const step = e.key === "ArrowDown" ? 1 : -1
+        const next = at < 0 ? (step > 0 ? 0 : list.length - 1) : (at + step + list.length) % list.length
+        list[next]?.focus()
+      } else if (e.key === "Home" || e.key === "End") {
+        e.preventDefault()
+        list[e.key === "Home" ? 0 : list.length - 1]?.focus()
+      }
+    })
+    this.el.addEventListener("focusout", e => {
+      if (!this.el.contains(e.relatedTarget)) set(false)
+    })
+    this.outside = e => {
+      if (!this.el.contains(e.target)) set(false)
+    }
+    document.addEventListener("pointerdown", this.outside)
+  },
+  destroyed() {
+    document.removeEventListener("pointerdown", this.outside)
+  },
+}
+
+// The sidebar as a drawer below 768 px: focus moves in and back out, the page
+// behind is inert and does not scroll, Escape and navigation close it.
+const NavDrawer = {
+  mounted() {
+    const toggle = this.el.querySelector(".drawer-toggle")
+    const wide = matchMedia("(min-width: 768px)")
+    const sync = focus => {
+      const open = toggle.checked && !wide.matches
+      const main = this.el.querySelector(".drawer-content")
+      main.toggleAttribute("inert", open)
+      document.documentElement.style.overflow = open ? "hidden" : ""
+      this.el.querySelector("[data-drawer-open]")?.setAttribute("aria-expanded", String(open))
+      if (focus) {
+        // The drawer is still hidden in this frame; focus once it shows.
+        const target = this.el.querySelector(open ? "[data-drawer-close]" : "[data-drawer-open]")
+        let tries = 0
+        const go = () => {
+          target?.focus()
+          if (document.activeElement !== target && tries++ < 30) requestAnimationFrame(go)
+        }
+        go()
+      }
+    }
+    const set = (open, focus = true) => {
+      if (toggle.checked === open) return
+      toggle.checked = open
+      sync(focus)
+    }
+    this.el.addEventListener("click", e => {
+      if (e.target.closest("[data-drawer-open]")) set(true)
+      else if (e.target.closest("[data-drawer-close]")) set(false)
+    })
+    toggle.addEventListener("change", () => sync(true))
+    this.onKey = e => {
+      if (e.key === "Escape" && toggle.checked && !wide.matches && !e.defaultPrevented) set(false)
+    }
+    document.addEventListener("keydown", this.onKey)
+    this.onNav = () => set(false, false)
+    window.addEventListener("phx:page-loading-stop", this.onNav)
+    this.onWide = () => wide.matches && set(false, false)
+    wide.addEventListener("change", this.onWide)
+    this.wide = wide
+  },
+  destroyed() {
+    window.removeEventListener("phx:page-loading-stop", this.onNav)
+    document.removeEventListener("keydown", this.onKey)
+    this.wide.removeEventListener("change", this.onWide)
+    document.documentElement.style.overflow = ""
+  },
+}
+
+// Info toasts leave after 5 s; hovering or focusing one holds it.
+const autoDismiss = (el, dismiss) => {
+  let timer
+  const start = () => {
+    clearTimeout(timer)
+    timer = setTimeout(dismiss, 5000)
+  }
+  const hold = () => clearTimeout(timer)
+  el.addEventListener("mouseenter", hold)
+  el.addEventListener("focusin", hold)
+  el.addEventListener("mouseleave", start)
+  el.addEventListener("focusout", start)
+  start()
+  return hold
+}
+
+const Toast = {
+  mounted() {
+    this.stop = autoDismiss(this.el, () => this.liveSocket.execJS(this.el, this.el.dataset.dismiss))
+  },
+  updated() {
+    this.stop()
+    this.mounted()
+  },
+  destroyed() {
+    this.stop()
   },
 }
 
@@ -69,12 +252,107 @@ const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, CopyToClipboard, SubmitOnChange},
+  hooks: {...colocatedHooks, CopyToClipboard, Modal, Menu, NavDrawer, Toast},
+  dom: {
+    // showModal() sets `open` on the client; keep it across patches.
+    onBeforeElUpdated(from, to) {
+      if (from.tagName === "DIALOG" && from.open) to.setAttribute("open", "")
+    },
+  },
 })
 
-// Show progress bar on live navigation and form submits
-topbar.config({barColors: {0: "oklch(78% 0.16 75)"}, shadowColor: "rgba(0, 0, 0, .15)"})
-window.addEventListener("phx:page-loading-start", _info => topbar.show(300))
+// Pages rendered by a controller have no hooks: run the toast timer by hand.
+window.addEventListener("DOMContentLoaded", () => {
+  document.querySelectorAll("[data-dismiss]").forEach(el => {
+    if (!el.closest("[data-phx-session]")) {
+      autoDismiss(el, () => liveSocket.execJS(el, el.dataset.dismiss))
+    }
+  })
+})
+
+// Buttons with a gerund (`data-busy`) show it while their form submits. The
+// button may sit outside the form (a modal footer), so the form's loading
+// class cannot reach it from CSS.
+const busyButtons = form => {
+  const inside = [...form.querySelectorAll(".btn[data-busy]:not([type=button])")]
+  const outside = form.id ? [...document.querySelectorAll(`.btn[data-busy][form="${form.id}"]`)] : []
+  return [...inside, ...outside]
+}
+document.addEventListener("submit", e => {
+  const form = e.target
+  if (!(form instanceof HTMLFormElement)) return
+  const buttons = busyButtons(form)
+  if (buttons.length === 0) return
+  buttons.forEach(b => {
+    b.classList.add("is-busy")
+    b.setAttribute("aria-busy", "true")
+  })
+  if (!form.hasAttribute("phx-submit")) return
+  // LiveView marks the form while it waits; clear the buttons when it stops.
+  const done = () => {
+    busyButtons(form).forEach(b => {
+      b.classList.remove("is-busy")
+      b.removeAttribute("aria-busy")
+    })
+    // A failed submit puts the caret in the first invalid field.
+    setTimeout(() => form.isConnected && form.querySelector("[aria-invalid=true]")?.focus(), 0)
+  }
+  let seen = false
+  const watch = new MutationObserver(() => {
+    const loading = form.classList.contains("phx-submit-loading")
+    if (loading) seen = true
+    if ((seen && !loading) || !form.isConnected) {
+      watch.disconnect()
+      done()
+    }
+  })
+  watch.observe(form, {attributes: true, attributeFilter: ["class"]})
+  setTimeout(() => {
+    if (!seen) {
+      watch.disconnect()
+      done()
+    }
+  }, 600)
+}, true)
+document.addEventListener("click", e => {
+  const button = e.target.closest?.(".btn[data-busy][phx-click]")
+  if (!button) return
+  button.setAttribute("aria-busy", "true")
+  const watch = new MutationObserver(() => {
+    if (!button.classList.contains("phx-click-loading")) {
+      watch.disconnect()
+      button.removeAttribute("aria-busy")
+    }
+  })
+  setTimeout(() => watch.observe(button, {attributes: true, attributeFilter: ["class"]}), 0)
+})
+
+// The theme control is a group of three buttons; the script in the root
+// layout owns the theme, this keeps `aria-pressed` honest.
+const syncThemeButtons = () => {
+  const root = document.documentElement
+  const current =
+    root.getAttribute("data-theme-source") === "system"
+      ? "system"
+      : root.getAttribute("data-theme") === "qory-dark" ? "dark" : "light"
+  document.querySelectorAll("[data-phx-theme]").forEach(b => {
+    const state = b.getAttribute("role") === "menuitemradio" ? "aria-checked" : "aria-pressed"
+    b.setAttribute(state, String(b.dataset.phxTheme === current))
+  })
+}
+window.addEventListener("DOMContentLoaded", syncThemeButtons)
+window.addEventListener("phx:set-theme", () => setTimeout(syncThemeButtons, 0))
+window.addEventListener("storage", e => e.key === "phx:theme" && setTimeout(syncThemeButtons, 0))
+window.addEventListener("phx:page-loading-stop", syncThemeButtons)
+
+// Show progress bar on live navigation and form submits, in the theme's honey.
+const honey = () =>
+  getComputedStyle(document.documentElement).getPropertyValue("--color-primary").trim() || "#eea82f"
+topbar.config({barThickness: 2, barColors: {0: honey()}, shadowColor: "rgba(0, 0, 0, 0)"})
+window.addEventListener("phx:page-loading-start", _info => {
+  topbar.config({barColors: {0: honey()}})
+  topbar.show(300)
+})
 window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
 
 // connect if there are any LiveViews on the page

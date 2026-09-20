@@ -9,47 +9,55 @@ defmodule ApiaryWeb.UserLive.Registration do
   def render(assigns) do
     ~H"""
     <Layouts.auth flash={@flash} current_scope={@current_scope}>
-      <div class="mb-6 text-center">
-        <h1 class="text-lg font-semibold tracking-tight text-ink">Register</h1>
-        <p class="mt-1 text-sm text-ink-muted">
-          Already registered?
-          <.link
-            navigate={~p"/users/log-in"}
-            class="font-medium text-ink underline-offset-4 hover:underline"
-          >
-            Log in
-          </.link>
-          to your account.
+      <.check_your_email :if={@sent_to}>
+        We sent a confirmation link to <strong class="font-medium text-base-content">{@sent_to}</strong>.
+        It works for 15 minutes.
+      </.check_your_email>
+
+      <div :if={!@sent_to} class="grid gap-4">
+        <Layouts.auth_heading>
+          Create your account
+          <:subtitle>
+            Start an <.term word="apiary" /> for your team. We will email you a link to confirm;
+            no password needed.
+          </:subtitle>
+        </Layouts.auth_heading>
+
+        <.notice :if={@invitation} kind={:info}>
+          You are invited to the <strong>{@invitation.hive.name}</strong>
+          <.term word="hive" /> at <strong>{@invitation.organisation.name}</strong>.
+          Your account joins it as soon as you confirm.
+        </.notice>
+
+        <.form
+          for={@form}
+          id="registration_form"
+          phx-submit="save"
+          phx-change="validate"
+          class="grid gap-4"
+        >
+          <.input
+            field={@form[:email]}
+            type="email"
+            label="Email"
+            size="md"
+            autocomplete="username"
+            spellcheck="false"
+            required
+            phx-mounted={JS.focus()}
+          />
+          <.button variant="primary" size="md" class="btn-block" loading_text="Creating">
+            Create account
+          </.button>
+        </.form>
+
+        <p class="mt-1 text-center text-[13px]/[18px] text-muted">
+          Already have an account?
+          <.button variant="link" navigate={~p"/users/log-in"}>Log in</.button>
         </p>
       </div>
 
-      <.notice :if={@invitation} kind={:info} class="mb-5">
-        <p>
-          You have been invited to join the <strong class="text-ink">{@invitation.hive.name}</strong>
-          <.term word="hive" /> at <strong class="text-ink">{@invitation.organisation.name}</strong>.
-          Your account will be part of it as soon as you register.
-        </p>
-      </.notice>
-
-      <.form for={@form} id="registration_form" phx-submit="save" phx-change="validate">
-        <.input
-          field={@form[:email]}
-          type="email"
-          label="Email"
-          autocomplete="username"
-          spellcheck="false"
-          required
-          phx-mounted={JS.focus()}
-        />
-
-        <.button variant="primary" phx-disable-with="Creating account..." class="w-full">
-          Create an account
-        </.button>
-      </.form>
-
-      <p class="mt-5 text-center text-[13px] text-ink-faint">
-        We will email you a link to confirm your address. No password needed.
-      </p>
+      <.dev_mailbox_note />
     </Layouts.auth>
     """
   end
@@ -69,7 +77,8 @@ defmodule ApiaryWeb.UserLive.Registration do
 
     {:ok,
      socket
-     |> assign(:page_title, "Register")
+     |> assign(:page_title, "Create your account")
+     |> assign(:sent_to, nil)
      |> assign(:invitation_token, if(invitation, do: token, else: nil))
      |> assign(:invitation, invitation)
      |> assign_form(changeset), temporary_assigns: [form: nil]}
@@ -85,13 +94,7 @@ defmodule ApiaryWeb.UserLive.Registration do
             &url(~p"/users/log-in/#{&1}")
           )
 
-        {:noreply,
-         socket
-         |> put_flash(
-           :info,
-           "An email was sent to #{user.email}, please access it to confirm your account."
-         )
-         |> push_navigate(to: ~p"/users/log-in")}
+        {:noreply, assign(socket, :sent_to, user.email)}
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign_form(socket, changeset)}

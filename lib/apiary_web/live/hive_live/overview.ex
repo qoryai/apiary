@@ -5,6 +5,7 @@ defmodule ApiaryWeb.HiveLive.Overview do
   use ApiaryWeb, :live_view
 
   alias Apiary.AccessKeys
+  alias Apiary.AccessKeys.AccessKey
   alias Apiary.Organisations
 
   @impl true
@@ -14,37 +15,46 @@ defmodule ApiaryWeb.HiveLive.Overview do
       flash={@flash}
       current_scope={@current_scope}
       memberships={@memberships}
+      counts={@nav_counts}
       nav={:overview}
     >
       <.header>
         {@current_scope.hive.name}
         <:subtitle>
-          The <.term word="hive" /> of the
-          <span class="font-medium text-ink">{@current_scope.organisation.name}</span>
-          <.term word="apiary" />.
+          The <.term word="hive" /> of the {@current_scope.organisation.name} <.term word="apiary" />.
         </:subtitle>
       </.header>
 
-      <.empty_state
-        :if={@keys == []}
-        icon="hero-key"
-        title="Connect your first machine"
-        class="py-14"
-      >
-        <p>
-          Nothing has posted to this <.term word="hive" /> yet. An access key is all a machine
-          needs to start.
-        </p>
-        <.steps class="mx-auto mt-8 max-w-md text-left" />
-        <:actions>
-          <.button variant="primary" navigate={~p"/hive/keys/new"}>
-            <.icon name="hero-plus-micro" class="size-4" /> Create an access key
-          </.button>
-        </:actions>
-      </.empty_state>
+      <div :if={@keys == []} class="grid gap-4">
+        <section
+          id="onboarding"
+          class="grid overflow-hidden rounded-box border border-line bg-base-100 shadow-xs md:grid-cols-2"
+        >
+          <div class="grid content-start gap-5 p-5 md:p-7">
+            <div>
+              <h2 class="text-base/6 font-semibold tracking-[-0.01em]">Connect your first machine</h2>
+              <p class="mt-1 text-muted">
+                Nothing has posted to this hive yet. An access key is all a machine needs to start.
+              </p>
+            </div>
+            <.connect_steps current={1} />
+            <div>
+              <.button variant="primary" navigate={~p"/hive/keys/new"} class="max-[479px]:w-full">
+                <.icon name="hero-plus-micro" class="size-4" /> Create an access key
+              </.button>
+            </div>
+          </div>
+          <div class="hidden content-start gap-3 border-l border-line bg-base-200 p-7 md:grid">
+            <p class="text-xs/4 font-medium tracking-[0.005em] text-muted">What you will paste</p>
+            <.code_block code={@preview} label="~/.config/qory/runner.yaml" />
+            <.listening class="mt-1">Listening for the first post from a machine.</.listening>
+          </div>
+        </section>
+        <.listening class="md:hidden">Listening for the first post from a machine.</.listening>
+      </div>
 
-      <div :if={@keys != []} class="space-y-6">
-        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div :if={@keys != []} class="grid gap-6">
+        <.stats>
           <.stat
             label="Access keys"
             value={@active_keys}
@@ -57,51 +67,35 @@ defmodule ApiaryWeb.HiveLive.Overview do
             hint={owners_hint(@members)}
             navigate={~p"/hive/members"}
           />
-        </div>
+        </.stats>
 
         <.card>
           <:title>Connect a machine</:title>
           <:actions>
-            <.button size="sm" navigate={~p"/hive/keys"}>Manage access keys</.button>
+            <.button navigate={~p"/hive/keys"}>Manage access keys</.button>
           </:actions>
-          <.steps />
+          <.connect_steps current={2} />
         </.card>
 
-        <p class="text-sm text-ink-muted">
-          Runs will appear here once a machine posts.
-        </p>
+        <.listening>Listening for the first post from a machine.</.listening>
       </div>
     </Layouts.app>
     """
   end
 
-  attr :class, :any, default: nil
+  attr :current, :integer, required: true
 
-  defp steps(assigns) do
+  defp connect_steps(assigns) do
     ~H"""
-    <ol class={["space-y-4", @class]}>
-      <li
-        :for={
-          {n, title, body} <- [
-            {1, "Create an access key",
-             "Give it a label such as the machine or environment it is for."},
-            {2, "Paste the server block into the runner file",
-             "The key dialog shows the block ready to copy. The secret is shown once."},
-            {3, "See runs here",
-             "From the first post on, every run of that machine lands in this hive."}
-          ]
-        }
-        class="flex gap-3"
-      >
-        <span class="flex size-6 shrink-0 items-center justify-center rounded-full bg-accent-soft text-xs font-semibold text-accent-soft-ink">
-          {n}
-        </span>
-        <div class="min-w-0">
-          <p class="text-sm font-medium text-ink">{title}</p>
-          <p class="text-sm text-ink-muted">{body}</p>
-        </div>
-      </li>
-    </ol>
+    <.steps current={@current}>
+      <:step title="Create an access key">Label it after the machine or environment.</:step>
+      <:step title="Paste the server block into the runner file">
+        The secret is shown once, in the dialog that creates it.
+      </:step>
+      <:step title="See runs here">
+        From the first post on, every run of that machine lands in this hive.
+      </:step>
+    </.steps>
     """
   end
 
@@ -115,7 +109,13 @@ defmodule ApiaryWeb.HiveLive.Overview do
        page_title: "Overview",
        keys: keys,
        active_keys: Enum.count(keys, &is_nil(&1.revoked_at)),
-       members: Organisations.list_members(scope)
+       members: Organisations.list_members(scope),
+       preview:
+         AccessKeys.server_block(
+           %AccessKey{key_id: "············"},
+           "························",
+           ApiaryWeb.Endpoint.url()
+         )
      )}
   end
 

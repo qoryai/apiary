@@ -6,12 +6,12 @@ defmodule ApiaryWeb.PageControllerTest do
   test "GET / shows the landing to a visitor", %{conn: conn} do
     conn = get(conn, ~p"/")
     response = html_response(conn, 200)
-    assert response =~ "Apiary"
-    assert response =~ "Sign in"
-    assert response =~ "Create account"
+    assert response =~ "Qory"
+    assert response =~ "Log in"
+    assert response =~ "Create an account"
     assert response =~ ~p"/users/log-in"
     assert response =~ ~p"/users/register"
-    assert response =~ ~r/<abbr[^>]*title="team"[^>]*>hive<\/abbr>/
+    assert response =~ ~r/<abbr[^>]*data-tip="team"[^>]*>hive<\/abbr>/
   end
 
   test "GET / sends a signed-in user to the hive", %{conn: conn} do

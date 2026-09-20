@@ -13,7 +13,9 @@ defmodule ApiaryWeb.SettingsLive do
       flash={@flash}
       current_scope={@current_scope}
       memberships={@memberships}
+      counts={@nav_counts}
       nav={:settings}
+      width="narrow"
     >
       <.header>
         Settings
@@ -23,68 +25,102 @@ defmodule ApiaryWeb.SettingsLive do
         </:subtitle>
       </.header>
 
-      <.notice :if={!@owner?} kind={:info} class="mb-6">
+      <.notice :if={!@owner?} kind={:info}>
         Only owners can change these settings. Ask an owner if a name needs to change.
       </.notice>
 
-      <div class="grid gap-6 lg:grid-cols-2">
-        <.card>
-          <:title><.term word="Apiary" /> name</:title>
-          <.form
-            for={@organisation_form}
-            id="organisation-form"
-            phx-change="validate_organisation"
-            phx-submit="save_organisation"
+      <.card>
+        <:title><.term word="Apiary" /> name</:title>
+        <.form
+          for={@organisation_form}
+          id="organisation-form"
+          phx-change="validate_organisation"
+          phx-submit="save_organisation"
+          class="grid max-w-[420px] gap-4"
+        >
+          <.input
+            field={@organisation_form[:name]}
+            type="text"
+            label="Name"
+            debounce="200"
+            autocomplete="off"
+            disabled={!@owner?}
+            required
+          />
+        </.form>
+        <:footer>
+          <span>Shown in the sidebar and in invitations.</span>
+          <.button
+            :if={@owner?}
+            type="submit"
+            form="organisation-form"
+            disabled={!@organisation_form.source.valid?}
+            loading_text="Saving"
           >
-            <.input
-              field={@organisation_form[:name]}
-              type="text"
-              label="Name"
-              disabled={!@owner?}
-              required
+            Save
+          </.button>
+        </:footer>
+      </.card>
+
+      <.card>
+        <:title><.term word="Hive" /> name</:title>
+        <.form
+          for={@hive_form}
+          id="hive-form"
+          phx-change="validate_hive"
+          phx-submit="save_hive"
+          class="grid max-w-[420px] gap-4"
+        >
+          <.input
+            field={@hive_form[:name]}
+            type="text"
+            label="Name"
+            debounce="200"
+            autocomplete="off"
+            disabled={!@owner?}
+            required
+          />
+        </.form>
+        <:footer>
+          <span>Shown in the sidebar and as the overview title.</span>
+          <.button
+            :if={@owner?}
+            type="submit"
+            form="hive-form"
+            disabled={!@hive_form.source.valid?}
+            loading_text="Saving"
+          >
+            Save
+          </.button>
+        </:footer>
+      </.card>
+
+      <.card padding={false}>
+        <:title>Owners</:title>
+        <:actions>
+          <.button navigate={~p"/hive/members"}>Manage members</.button>
+        </:actions>
+        <ul id="owners" class="divide-y divide-line">
+          <li
+            :for={owner <- @owners}
+            id={"owner-#{owner.id}"}
+            class="flex flex-wrap items-center gap-x-2.5 gap-y-1 px-5 py-2.5"
+          >
+            <.avatar
+              name={owner.user.email}
+              kind={if owner.user_id == @current_scope.user.id, do: "self", else: "person"}
             />
-            <.button :if={@owner?} variant="primary" phx-disable-with="Saving...">
-              Save <.term word="apiary" /> name
-            </.button>
-          </.form>
-        </.card>
-
-        <.card>
-          <:title><.term word="Hive" /> name</:title>
-          <.form for={@hive_form} id="hive-form" phx-change="validate_hive" phx-submit="save_hive">
-            <.input field={@hive_form[:name]} type="text" label="Name" disabled={!@owner?} required />
-            <.button :if={@owner?} variant="primary" phx-disable-with="Saving...">
-              Save <.term word="hive" /> name
-            </.button>
-          </.form>
-        </.card>
-
-        <.card class="lg:col-span-2" padding={false}>
-          <:title>Owners</:title>
-          <:actions>
-            <.button size="sm" navigate={~p"/hive/members"}>Manage members</.button>
-          </:actions>
-          <ul id="owners" class="divide-y divide-line">
-            <li
-              :for={owner <- @owners}
-              id={"owner-#{owner.id}"}
-              class="flex items-center gap-3 px-5 py-3"
-            >
-              <span class="flex size-7 shrink-0 items-center justify-center rounded-full bg-accent-soft text-xs font-semibold uppercase text-accent-soft-ink">
-                {String.first(owner.user.email)}
-              </span>
-              <span class="text-sm font-medium text-ink">{owner.user.email}</span>
-              <.badge :if={owner.user_id == @current_scope.user.id}>you</.badge>
-              <span class="ml-auto text-[13px] text-ink-faint">
-                since {short_date(owner.inserted_at)}
-              </span>
-            </li>
-          </ul>
-          <p class="border-t border-line px-5 py-3 text-[13px] text-ink-muted">
-            The last owner cannot be removed or demoted.
-          </p>
-        </.card>
-      </div>
+            <span class="min-w-0 truncate font-medium">{owner.user.email}</span>
+            <.badge :if={owner.user_id == @current_scope.user.id}>You</.badge>
+            <span class="ml-auto text-[13px]/[18px] tabular-nums text-faint">
+              since {short_date(owner.inserted_at)}
+            </span>
+          </li>
+        </ul>
+        <:footer>
+          <span>The last owner cannot be removed or demoted.</span>
+        </:footer>
+      </.card>
     </Layouts.app>
     """
   end
@@ -119,7 +155,7 @@ defmodule ApiaryWeb.SettingsLive do
          socket
          |> assign(:current_scope, %{scope | organisation: organisation})
          |> assign_forms()
-         |> put_flash(:info, "The apiary is now called #{organisation.name}.")}
+         |> put_flash(:info, "Apiary renamed to #{organisation.name}.")}
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign(socket, :organisation_form, to_form(changeset))}
@@ -147,7 +183,7 @@ defmodule ApiaryWeb.SettingsLive do
          socket
          |> assign(:current_scope, %{scope | hive: hive})
          |> assign_forms()
-         |> put_flash(:info, "The hive is now called #{hive.name}.")}
+         |> put_flash(:info, "Hive renamed to #{hive.name}.")}
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign(socket, :hive_form, to_form(changeset))}

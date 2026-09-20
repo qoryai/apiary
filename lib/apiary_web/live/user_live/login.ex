@@ -7,111 +7,145 @@ defmodule ApiaryWeb.UserLive.Login do
   def render(assigns) do
     ~H"""
     <Layouts.auth flash={@flash} current_scope={@current_scope}>
-      <div class="mb-6 text-center">
-        <h1 class="text-lg font-semibold tracking-tight text-ink">Log in</h1>
-        <p class="mt-1 text-sm text-ink-muted">
-          <%= if @current_scope do %>
-            You need to reauthenticate to perform sensitive actions on your account.
-          <% else %>
-            Don't have an account? <.link
-              navigate={~p"/users/register"}
-              class="font-medium text-ink underline-offset-4 hover:underline"
-              phx-no-format
-            >Sign up</.link> for an account now.
-          <% end %>
+      <.check_your_email :if={@sent_to} on_back="use_different_email">
+        If <strong class="font-medium text-base-content">{@sent_to}</strong>
+        has an account, a log-in link is on its way. It works for 15 minutes.
+      </.check_your_email>
+
+      <div :if={!@sent_to} class="grid gap-4">
+        <Layouts.auth_heading>
+          {if @current_scope, do: "Confirm it is you", else: "Log in to Qory"}
+          <:subtitle>
+            <%= cond do %>
+              <% @current_scope -> %>
+                Log in again to change sensitive account settings.
+              <% @mode == :password -> %>
+                Enter the password you set in account settings.
+              <% true -> %>
+                We will email you a link. No password needed.
+            <% end %>
+          </:subtitle>
+        </Layouts.auth_heading>
+
+        <.form
+          :let={f}
+          for={@form}
+          id="login_form"
+          action={~p"/users/log-in"}
+          phx-change="change"
+          phx-submit="submit"
+          phx-trigger-action={@trigger_submit}
+          class="grid gap-4"
+        >
+          <.input
+            readonly={!!@current_scope}
+            field={f[:email]}
+            type="email"
+            label="Email"
+            size="md"
+            autocomplete="username"
+            spellcheck="false"
+            required
+            phx-mounted={@mode == :magic && JS.focus()}
+          />
+          <div :if={@mode == :password} id="login_password" class="grid gap-4">
+            <%!-- Never patched: the typed password is not echoed back by the server. --%>
+            <div id="login_password_field" phx-update="ignore">
+              <.input
+                field={f[:password]}
+                type="password"
+                label="Password"
+                size="md"
+                autocomplete="current-password"
+                spellcheck="false"
+                required
+                phx-mounted={JS.focus()}
+              />
+            </div>
+            <.input
+              :if={!@current_scope}
+              field={f[:remember_me]}
+              type="checkbox"
+              label="Keep me signed in"
+              checked={@remember_me}
+            />
+          </div>
+          <div class="grid gap-2">
+            <.button
+              variant="primary"
+              size="md"
+              class="btn-block"
+              loading_text={if @mode == :password, do: "Logging in", else: "Sending"}
+            >
+              {if @mode == :password, do: "Log in", else: "Send me a log-in link"}
+            </.button>
+            <.button
+              type="button"
+              variant="ghost"
+              size="md"
+              class="btn-block"
+              phx-click="toggle_mode"
+              aria-expanded={to_string(@mode == :password)}
+              aria-controls="login_password"
+            >
+              {if @mode == :password, do: "Email me a link instead", else: "Use a password instead"}
+            </.button>
+          </div>
+        </.form>
+
+        <p :if={!@current_scope} class="mt-1 text-center text-[13px]/[18px] text-muted">
+          New to Qory?
+          <.button variant="link" navigate={~p"/users/register"}>Create an account</.button>
         </p>
       </div>
 
-      <.notice :if={local_mail_adapter?()} kind={:info} class="mb-5">
-        <p>You are running the local mail adapter.</p>
-        <p>
-          To see sent emails, visit <.link
-            href="/dev/mailbox"
-            class="font-medium text-ink underline underline-offset-4"
-          >
-            the mailbox page
-          </.link>.
-        </p>
-      </.notice>
-
-      <.form
-        :let={f}
-        for={@form}
-        id="login_form_magic"
-        action={~p"/users/log-in"}
-        phx-submit="submit_magic"
-      >
-        <.input
-          readonly={!!@current_scope}
-          field={f[:email]}
-          type="email"
-          label="Email"
-          autocomplete="username"
-          spellcheck="false"
-          required
-          phx-mounted={JS.focus()}
-        />
-        <.button variant="primary" class="w-full">
-          Log in with email <span aria-hidden="true">→</span>
-        </.button>
-      </.form>
-
-      <div class="my-6 flex items-center gap-3 text-xs uppercase tracking-wide text-ink-faint">
-        <span class="h-px flex-1 bg-line" /> or <span class="h-px flex-1 bg-line" />
-      </div>
-
-      <.form
-        :let={f}
-        for={@form}
-        id="login_form_password"
-        action={~p"/users/log-in"}
-        phx-submit="submit_password"
-        phx-trigger-action={@trigger_submit}
-      >
-        <.input
-          readonly={!!@current_scope}
-          field={f[:email]}
-          type="email"
-          label="Email"
-          autocomplete="username"
-          spellcheck="false"
-          required
-        />
-        <.input
-          field={@form[:password]}
-          type="password"
-          label="Password"
-          autocomplete="current-password"
-          spellcheck="false"
-        />
-        <.button variant="primary" class="w-full" name={@form[:remember_me].name} value="true">
-          Log in and stay logged in <span aria-hidden="true">→</span>
-        </.button>
-        <.button class="mt-2 w-full">
-          Log in only this time
-        </.button>
-      </.form>
+      <.dev_mailbox_note />
     </Layouts.auth>
     """
   end
 
   @impl true
   def mount(_params, _session, socket) do
+    # A failed password log-in comes back with the email in the flash: stay in
+    # password mode, where the person was.
+    flash_email = Phoenix.Flash.get(socket.assigns.flash, :email)
+
     email =
-      Phoenix.Flash.get(socket.assigns.flash, :email) ||
+      flash_email ||
         get_in(socket.assigns, [:current_scope, Access.key(:user), Access.key(:email)])
 
-    form = to_form(%{"email" => email}, as: "user")
-
-    {:ok, assign(socket, form: form, trigger_submit: false, page_title: "Log in")}
+    {:ok,
+     assign(socket,
+       form: to_form(%{"email" => email}, as: "user"),
+       mode: if(flash_email, do: :password, else: :magic),
+       remember_me: true,
+       sent_to: nil,
+       trigger_submit: false,
+       page_title: "Log in"
+     )}
   end
 
   @impl true
-  def handle_event("submit_password", _params, socket) do
-    {:noreply, assign(socket, :trigger_submit, true)}
+  def handle_event("change", %{"user" => params}, socket) do
+    {:noreply,
+     socket
+     |> assign(:form, to_form(Map.take(params, ["email"]), as: "user"))
+     |> assign(:remember_me, Map.get(params, "remember_me", "true") == "true")}
   end
 
-  def handle_event("submit_magic", %{"user" => %{"email" => email}}, socket) do
+  def handle_event("toggle_mode", _params, socket) do
+    mode = if socket.assigns.mode == :magic, do: :password, else: :magic
+    {:noreply, assign(socket, :mode, mode)}
+  end
+
+  def handle_event("submit", %{"user" => params}, %{assigns: %{mode: :password}} = socket) do
+    {:noreply,
+     socket
+     |> assign(:form, to_form(Map.take(params, ["email"]), as: "user"))
+     |> assign(:trigger_submit, true)}
+  end
+
+  def handle_event("submit", %{"user" => %{"email" => email}}, socket) do
     if user = Accounts.get_user_by_email(email) do
       Accounts.deliver_login_instructions(
         user,
@@ -119,16 +153,11 @@ defmodule ApiaryWeb.UserLive.Login do
       )
     end
 
-    info =
-      "If your email is in our system, you will receive instructions for logging in shortly."
-
-    {:noreply,
-     socket
-     |> put_flash(:info, info)
-     |> push_navigate(to: ~p"/users/log-in")}
+    # The same answer whether or not the address has an account.
+    {:noreply, assign(socket, :sent_to, email)}
   end
 
-  defp local_mail_adapter? do
-    Application.get_env(:apiary, Apiary.Mailer)[:adapter] == Swoosh.Adapters.Local
+  def handle_event("use_different_email", _params, socket) do
+    {:noreply, assign(socket, sent_to: nil, form: to_form(%{"email" => nil}, as: "user"))}
   end
 end

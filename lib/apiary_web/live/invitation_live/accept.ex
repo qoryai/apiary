@@ -10,78 +10,87 @@ defmodule ApiaryWeb.InvitationLive.Accept do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.auth flash={@flash} current_scope={@current_scope} width="max-w-md">
+    <Layouts.auth flash={@flash} current_scope={@current_scope}>
       <%= cond do %>
         <% is_nil(@invitation) -> %>
-          <div class="text-center">
-            <div class="mx-auto flex size-12 items-center justify-center rounded-full bg-surface-2 text-ink-faint">
-              <.icon name="hero-envelope-open" class="size-6" />
-            </div>
-            <h1 class="mt-4 text-lg font-semibold tracking-tight text-ink">
-              This invitation is no longer valid
-            </h1>
-            <p class="mt-2 text-sm text-ink-muted">
+          <.hex_tile icon="hero-envelope-open" tone="neutral" />
+          <Layouts.auth_heading>
+            This invitation is no longer valid
+            <:subtitle>
               It may have been accepted already, revoked, or it expired after seven days. Ask
               the person who invited you to send a new one.
-            </p>
-            <div class="mt-6 flex justify-center gap-2">
-              <.button :if={@current_scope} variant="primary" navigate={~p"/hive"}>
-                Go to your hive
-              </.button>
-              <.button :if={!@current_scope} variant="primary" navigate={~p"/users/log-in"}>
-                Log in
-              </.button>
-            </div>
-          </div>
+            </:subtitle>
+          </Layouts.auth_heading>
+          <.button
+            :if={@current_scope}
+            variant="primary"
+            size="md"
+            class="btn-block"
+            navigate={~p"/hive"}
+          >
+            Go to your hive
+          </.button>
+          <.button
+            :if={!@current_scope}
+            variant="primary"
+            size="md"
+            class="btn-block"
+            navigate={~p"/users/log-in"}
+          >
+            Log in
+          </.button>
         <% @current_scope -> %>
-          <div class="text-center">
-            <.invitation_summary invitation={@invitation} />
-            <p class="mt-4 text-sm text-ink-muted">
-              You are signed in as <span class="font-medium text-ink">{@current_scope.user.email}</span>.
+          <.invitation_summary invitation={@invitation} />
+          <div class="flex items-center gap-2.5 rounded-field border border-line px-3 py-2.5">
+            <.avatar name={@current_scope.user.email} kind="self" />
+            <p class="min-w-0 truncate text-[13px]/[18px] text-muted">
+              Signed in as
+              <span class="font-medium text-base-content">{@current_scope.user.email}</span>
             </p>
-            <div class="mt-6 flex flex-col gap-2">
-              <.button
-                variant="primary"
-                phx-click="accept"
-                phx-disable-with="Joining..."
-                class="w-full"
-              >
-                Accept invitation
-              </.button>
-              <.button href={~p"/users/log-out"} method="delete" variant="ghost" class="w-full">
-                Not you? Log out
-              </.button>
-            </div>
-            <.form
-              for={%{}}
-              id="switch-form"
-              action={~p"/organisations/switch"}
-              method="post"
-              phx-trigger-action={@trigger_submit}
-              class="hidden"
-            >
-              <input type="hidden" name="organisation_id" value={@organisation_id} />
-            </.form>
           </div>
+          <.button
+            variant="primary"
+            size="md"
+            class="btn-block"
+            phx-click="accept"
+            loading_text="Joining"
+          >
+            Accept invitation
+          </.button>
+          <p class="text-center text-[13px]/[18px] text-muted">
+            <.button variant="link" href={~p"/users/log-out"} method="delete">
+              Not you? Log out
+            </.button>
+          </p>
+          <.form
+            for={%{}}
+            id="switch-form"
+            action={~p"/organisations/switch"}
+            method="post"
+            phx-trigger-action={@trigger_submit}
+            class="hidden"
+          >
+            <input type="hidden" name="organisation_id" value={@organisation_id} />
+          </.form>
         <% true -> %>
-          <div class="text-center">
-            <.invitation_summary invitation={@invitation} />
-            <p class="mt-4 text-sm text-ink-muted">
-              Create an account with <span class="font-medium text-ink">{@invitation.email}</span>
-              to join, or log in if you already have one.
-            </p>
-            <div class="mt-6 flex flex-col gap-2">
-              <.button
-                variant="primary"
-                navigate={~p"/users/register?invitation=#{@token}"}
-                class="w-full"
-              >
-                Create an account
-              </.button>
-              <.button href={~p"/invitations/#{@token}/continue"} class="w-full">
-                Log in
-              </.button>
-            </div>
+          <.invitation_summary invitation={@invitation} />
+          <p class="text-sm/5 text-muted">
+            Create an account with
+            <strong class="font-medium text-base-content">{@invitation.email}</strong>
+            to join, or log in if you already have one.
+          </p>
+          <div class="grid gap-2">
+            <.button
+              variant="primary"
+              size="md"
+              class="btn-block"
+              navigate={~p"/users/register?invitation=#{@token}"}
+            >
+              Create an account
+            </.button>
+            <.button size="md" class="btn-block" href={~p"/invitations/#{@token}/continue"}>
+              Log in
+            </.button>
           </div>
       <% end %>
     </Layouts.auth>
@@ -92,18 +101,16 @@ defmodule ApiaryWeb.InvitationLive.Accept do
 
   defp invitation_summary(assigns) do
     ~H"""
-    <div class="mx-auto flex size-12 items-center justify-center rounded-full bg-accent-soft text-accent-soft-ink">
-      <.icon name="hero-envelope-open" class="size-6" />
-    </div>
-    <h1 class="mt-4 text-lg font-semibold tracking-tight text-ink">
-      You are invited to join {@invitation.hive.name}
-    </h1>
-    <p class="mt-2 text-sm text-ink-muted">
-      The <span class="font-medium text-ink">{@invitation.hive.name}</span>
-      <.term word="hive" /> of the
-      <span class="font-medium text-ink">{@invitation.organisation.name}</span>
-      <.term word="apiary" />, as {level_word(@invitation.level)}.
-    </p>
+    <Layouts.auth_heading>
+      Join {@invitation.hive.name}
+      <:subtitle>
+        You are invited to the
+        <strong class="font-medium text-base-content">{@invitation.hive.name}</strong>
+        <.term word="hive" /> of the
+        <strong class="font-medium text-base-content">{@invitation.organisation.name}</strong>
+        <.term word="apiary" />, as {level_word(@invitation.level)}.
+      </:subtitle>
+    </Layouts.auth_heading>
     """
   end
 

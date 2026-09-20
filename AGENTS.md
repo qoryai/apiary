@@ -1,4 +1,4 @@
-Apiary is the console of Qory: a Phoenix 1.8 / LiveView application on Postgres. This file
+The apiary is the control plane console of Qory: a Phoenix 1.8 / LiveView application on Postgres. This file
 is for an agent working in the repository; the rules for people are the same and are
 written out in [CONTRIBUTING.md](CONTRIBUTING.md).
 
@@ -64,7 +64,7 @@ custom classes must fully style the input
 - **Always use and maintain this import syntax** in the app.css file
 - **Never** use `@apply` when writing raw css
 - daisyUI **is** used here (the `:daisyui` dependency in `mix.exs`), with two custom themes,
-  `apiary` and `apiary-dark`, defined in `assets/css/app.css`. Do not add a third theme or
+  `qory` and `qory-dark`, defined in `assets/css/app.css`. Do not add a third theme or
   restyle a daisyUI component ad hoc; extend the theme. Components come from
   `lib/apiary_web/components/core_components.ex`: a page composes them and does not write
   its own button, table or modal.

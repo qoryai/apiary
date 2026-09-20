@@ -22,12 +22,12 @@ defmodule ApiaryWeb.InvitationLive.AcceptTest do
   } do
     {:ok, _lv, html} = live(conn, ~p"/invitations/#{token}")
 
-    assert html =~ "You are invited to join #{owner.hive.name}"
+    assert html =~ "Join #{owner.hive.name}"
     assert html =~ owner.organisation.name
     assert html =~ "bee@example.com"
     assert html =~ ~p"/users/register?invitation=#{token}"
     assert html =~ ~p"/invitations/#{token}/continue"
-    assert html =~ ~r/<abbr[^>]*title="organisation"[^>]*>apiary<\/abbr>/
+    assert html =~ ~r/<abbr[^>]*data-tip="organisation"[^>]*>apiary<\/abbr>/
 
     # the log in link remembers where to return
     conn = get(conn, ~p"/invitations/#{token}/continue")
@@ -99,12 +99,14 @@ defmodule ApiaryWeb.InvitationLive.AcceptTest do
   } do
     {:ok, lv, html} = live(conn, ~p"/users/register?invitation=#{token}")
 
-    assert html =~ "You have been invited to join"
+    assert html =~ "You are invited to the"
     assert html =~ owner.hive.name
     assert html =~ ~s(value="bee@example.com")
 
     form = form(lv, "#registration_form", user: %{email: "bee@example.com"})
-    assert {:error, {:live_redirect, %{to: "/users/log-in"}}} = render_submit(form)
+    html = render_submit(form)
+    assert html =~ "Check your email"
+    assert html =~ "We sent a confirmation link to"
 
     user = Apiary.Accounts.get_user_by_email("bee@example.com")
     assert [membership] = Organisations.list_memberships(user)

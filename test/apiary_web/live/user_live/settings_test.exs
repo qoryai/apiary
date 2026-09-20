@@ -12,8 +12,8 @@ defmodule ApiaryWeb.UserLive.SettingsTest do
         |> log_in_user(user_fixture())
         |> live(~p"/users/settings")
 
-      assert html =~ "Change Email"
-      assert html =~ "Save Password"
+      assert html =~ "Change email"
+      assert html =~ "Save password"
     end
 
     test "redirects if user is not logged in", %{conn: conn} do
@@ -70,7 +70,7 @@ defmodule ApiaryWeb.UserLive.SettingsTest do
           "user" => %{"email" => "with spaces"}
         })
 
-      assert result =~ "Change Email"
+      assert result =~ "Change email"
       assert result =~ "must have the @ sign and no spaces"
     end
 
@@ -84,7 +84,7 @@ defmodule ApiaryWeb.UserLive.SettingsTest do
         })
         |> render_submit()
 
-      assert result =~ "Change Email"
+      assert result =~ "Change email"
       assert result =~ "did not change"
     end
   end
@@ -118,7 +118,7 @@ defmodule ApiaryWeb.UserLive.SettingsTest do
       assert get_session(new_password_conn, :user_token) != get_session(conn, :user_token)
 
       assert Phoenix.Flash.get(new_password_conn.assigns.flash, :info) =~
-               "Password updated successfully"
+               "Your password is updated."
 
       assert Accounts.get_user_by_email_and_password(user.email, new_password)
     end
@@ -136,7 +136,7 @@ defmodule ApiaryWeb.UserLive.SettingsTest do
           }
         })
 
-      assert result =~ "Save Password"
+      assert result =~ "Save password"
       assert result =~ "should be at least 12 character(s)"
       assert result =~ "does not match password"
     end
@@ -154,7 +154,7 @@ defmodule ApiaryWeb.UserLive.SettingsTest do
         })
         |> render_submit()
 
-      assert result =~ "Save Password"
+      assert result =~ "Save password"
       assert result =~ "should be at least 12 character(s)"
       assert result =~ "does not match password"
     end
@@ -179,7 +179,7 @@ defmodule ApiaryWeb.UserLive.SettingsTest do
       assert {:live_redirect, %{to: path, flash: flash}} = redirect
       assert path == ~p"/users/settings"
       assert %{"info" => message} = flash
-      assert message == "Email changed successfully."
+      assert message == "Your email address is changed."
       refute Accounts.get_user_by_email(user.email)
       assert Accounts.get_user_by_email(email)
 
@@ -188,7 +188,7 @@ defmodule ApiaryWeb.UserLive.SettingsTest do
       assert {:live_redirect, %{to: path, flash: flash}} = redirect
       assert path == ~p"/users/settings"
       assert %{"error" => message} = flash
-      assert message == "Email change link is invalid or it has expired."
+      assert message == "That link has expired. Ask for a new one below."
     end
 
     test "does not update email with invalid token", %{conn: conn, user: user} do
@@ -196,7 +196,7 @@ defmodule ApiaryWeb.UserLive.SettingsTest do
       assert {:live_redirect, %{to: path, flash: flash}} = redirect
       assert path == ~p"/users/settings"
       assert %{"error" => message} = flash
-      assert message == "Email change link is invalid or it has expired."
+      assert message == "That link has expired. Ask for a new one below."
       assert Accounts.get_user_by_email(user.email)
     end
 

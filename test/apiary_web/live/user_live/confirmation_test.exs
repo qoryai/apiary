@@ -18,7 +18,9 @@ defmodule ApiaryWeb.UserLive.ConfirmationTest do
         end)
 
       {:ok, _lv, html} = live(conn, ~p"/users/log-in/#{token}")
-      assert html =~ "Confirm and stay logged in"
+      assert html =~ "Welcome to Qory"
+      assert html =~ "Confirm my account"
+      assert html =~ "Keep me signed in"
     end
 
     test "renders login page for confirmed user", %{conn: conn, confirmed_user: user} do
@@ -29,7 +31,8 @@ defmodule ApiaryWeb.UserLive.ConfirmationTest do
 
       {:ok, _lv, html} = live(conn, ~p"/users/log-in/#{token}")
       refute html =~ "Confirm my account"
-      assert html =~ "Keep me logged in on this device"
+      assert html =~ "Welcome back"
+      assert html =~ "Keep me signed in"
     end
 
     test "renders login page for already logged in user", %{conn: conn, confirmed_user: user} do
@@ -42,6 +45,7 @@ defmodule ApiaryWeb.UserLive.ConfirmationTest do
 
       {:ok, _lv, html} = live(conn, ~p"/users/log-in/#{token}")
       refute html =~ "Confirm my account"
+      refute html =~ "Keep me signed in"
       assert html =~ "Log in"
     end
 
@@ -59,7 +63,7 @@ defmodule ApiaryWeb.UserLive.ConfirmationTest do
       conn = follow_trigger_action(form, conn)
 
       assert Phoenix.Flash.get(conn.assigns.flash, :info) =~
-               "User confirmed successfully"
+               "Your account is confirmed."
 
       assert Accounts.get_user!(user.id).confirmed_at
       # we are logged in now
@@ -69,11 +73,11 @@ defmodule ApiaryWeb.UserLive.ConfirmationTest do
       # log out, new conn
       conn = build_conn()
 
-      {:ok, _lv, html} =
-        live(conn, ~p"/users/log-in/#{token}")
-        |> follow_redirect(conn, ~p"/users/log-in")
+      {:ok, lv, html} = live(conn, ~p"/users/log-in/#{token}")
 
-      assert html =~ "Magic link is invalid or it has expired"
+      assert html =~ "That link has expired"
+      refute has_element?(lv, "form")
+      assert has_element?(lv, ~s|a[href="/users/log-in"]|, "Send a new link")
     end
 
     test "logs confirmed user in without changing confirmed_at", %{
@@ -93,26 +97,64 @@ defmodule ApiaryWeb.UserLive.ConfirmationTest do
       conn = follow_trigger_action(form, conn)
 
       assert Phoenix.Flash.get(conn.assigns.flash, :info) =~
-               "Welcome back!"
+               "You are logged in."
 
       assert Accounts.get_user!(user.id).confirmed_at == user.confirmed_at
 
       # log out, new conn
       conn = build_conn()
 
-      {:ok, _lv, html} =
-        live(conn, ~p"/users/log-in/#{token}")
-        |> follow_redirect(conn, ~p"/users/log-in")
+      {:ok, lv, html} = live(conn, ~p"/users/log-in/#{token}")
 
-      assert html =~ "Magic link is invalid or it has expired"
+      assert html =~ "That link has expired"
+      refute has_element?(lv, "form")
+      assert has_element?(lv, ~s|a[href="/users/log-in"]|, "Send a new link")
+    end
+
+    test "has one button and the keep-me-signed-in checkbox, checked", %{
+      conn: conn,
+      unconfirmed_user: unconfirmed,
+      confirmed_user: confirmed
+    } do
+      for {user, form_id, label} <- [
+            {unconfirmed, "#confirmation_form", "Confirm my account"},
+            {confirmed, "#login_form", "Log in"}
+          ] do
+        token = extract_user_token(fn url -> Accounts.deliver_login_instructions(user, url) end)
+        {:ok, lv, html} = live(conn, ~p"/users/log-in/#{token}")
+
+        assert [_one] = Regex.scan(~r/<button[^>]*btn-primary/, html)
+        assert has_element?(lv, "#{form_id} button", label)
+
+        assert has_element?(
+                 lv,
+                 ~s|#{form_id} input[type=checkbox][name="user[remember_me]"][checked]|
+               )
+      end
+    end
+
+    test "the checkbox decides the remember-me cookie", %{conn: conn, confirmed_user: user} do
+      for {remember, cookie?} <- [{"true", true}, {"false", false}] do
+        token = extract_user_token(fn url -> Accounts.deliver_login_instructions(user, url) end)
+        {:ok, lv, _html} = live(conn, ~p"/users/log-in/#{token}")
+
+        form =
+          form(lv, "#login_form", %{"user" => %{"token" => token, "remember_me" => remember}})
+
+        render_submit(form)
+        conn = follow_trigger_action(form, conn)
+
+        assert redirected_to(conn) == ~p"/hive"
+        assert is_map_key(conn.resp_cookies, "_apiary_web_user_remember_me") == cookie?
+      end
     end
 
     test "raises error for invalid token", %{conn: conn} do
-      {:ok, _lv, html} =
-        live(conn, ~p"/users/log-in/invalid-token")
-        |> follow_redirect(conn, ~p"/users/log-in")
+      {:ok, lv, html} = live(conn, ~p"/users/log-in/invalid-token")
 
-      assert html =~ "Magic link is invalid or it has expired"
+      assert html =~ "That link has expired"
+      refute has_element?(lv, "form")
+      assert has_element?(lv, ~s|a[href="/users/log-in"]|, "Send a new link")
     end
   end
 end

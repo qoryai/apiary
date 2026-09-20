@@ -43,14 +43,14 @@ defmodule ApiaryWeb.AccessKeyLive.IndexTest do
       assert html =~ "access_key: #{key.key_id}"
       assert [_, secret] = Regex.run(@secret, html)
 
-      lv |> element("a", "Done") |> render_click()
+      lv |> element("#reveal-key a", "I have copied the secret") |> render_click()
       assert_patch(lv, ~p"/hive/keys")
 
       html = render(lv)
       assert html =~ "build-server-1"
       assert html =~ key.key_id
       assert html =~ "Active"
-      assert html =~ "never posted"
+      assert html =~ "Never posted"
       refute html =~ secret
 
       # the secret never appears again
@@ -75,7 +75,7 @@ defmodule ApiaryWeb.AccessKeyLive.IndexTest do
       assert [_, new_secret] = Regex.run(@secret, html)
       assert new_secret != secret
 
-      lv |> element("a", "Done") |> render_click()
+      lv |> element("#reveal-key a", "I have copied the secret") |> render_click()
       assert_patch(lv, ~p"/hive/keys")
 
       html = render(lv)

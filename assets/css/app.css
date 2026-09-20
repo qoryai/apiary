@@ -1,6 +1,6 @@
-/* Apiary styles: Tailwind v4 + daisyUI 5 with two custom themes carrying the
-   honey palette. `apiary` is the light default, `apiary-dark` follows the
-   system preference; the toggle in the layout sets [data-theme] explicitly. */
+/* Qory console styles: Tailwind v4 + daisyUI 5 with two custom themes.
+   `qory` is the light default, `qory-dark` follows the system preference;
+   the script in root.html.heex sets [data-theme] explicitly. */
 
 @import "tailwindcss" source(none);
 @import "phoenix-colocated/apiary/colocated.css";
@@ -19,35 +19,35 @@
   themes: false;
 }
 
-/* Light: warm paper surfaces, honey amber primary. */
+/* Light: warm paper surfaces, one drop of honey. */
 @plugin "daisyui/packages/bundle/daisyui-theme" {
-  name: "apiary";
+  name: "qory";
   default: true;
   prefersdark: false;
   color-scheme: "light";
-  --color-base-100: oklch(99.4% 0.003 85);
-  --color-base-200: oklch(97.4% 0.008 85);
-  --color-base-300: oklch(92.5% 0.012 82);
-  --color-base-content: oklch(23% 0.02 60);
-  --color-primary: oklch(78% 0.16 75);
-  --color-primary-content: oklch(24% 0.06 68);
-  --color-secondary: oklch(48% 0.022 60);
-  --color-secondary-content: oklch(98% 0.005 85);
-  --color-accent: oklch(70% 0.14 55);
-  --color-accent-content: oklch(98% 0.005 85);
-  --color-neutral: oklch(30% 0.02 60);
-  --color-neutral-content: oklch(98% 0.005 85);
-  --color-info: oklch(62% 0.12 240);
-  --color-info-content: oklch(98% 0.01 240);
-  --color-success: oklch(62% 0.15 150);
-  --color-success-content: oklch(98% 0.02 150);
-  --color-warning: oklch(72% 0.16 70);
-  --color-warning-content: oklch(24% 0.06 68);
-  --color-error: oklch(58% 0.2 25);
-  --color-error-content: oklch(98% 0.015 20);
-  --radius-selector: 0.375rem;
-  --radius-field: 0.5rem;
-  --radius-box: 0.75rem;
+  --color-base-100: oklch(99.3% 0.003 85);
+  --color-base-200: oklch(97.6% 0.005 85);
+  --color-base-300: oklch(94.6% 0.007 85);
+  --color-base-content: oklch(21% 0.012 65);
+  --color-primary: oklch(78% 0.15 76);
+  --color-primary-content: oklch(22% 0.045 70);
+  --color-secondary: oklch(27% 0.012 65);
+  --color-secondary-content: oklch(98% 0.004 85);
+  --color-accent: oklch(50% 0.11 66);
+  --color-accent-content: oklch(99% 0.004 85);
+  --color-neutral: oklch(24% 0.012 65);
+  --color-neutral-content: oklch(96% 0.005 85);
+  --color-info: oklch(54% 0.13 248);
+  --color-info-content: oklch(99% 0.01 248);
+  --color-success: oklch(53% 0.13 152);
+  --color-success-content: oklch(99% 0.01 152);
+  --color-warning: oklch(76% 0.15 72);
+  --color-warning-content: oklch(24% 0.05 70);
+  --color-error: oklch(54% 0.2 27);
+  --color-error-content: oklch(99% 0.01 27);
+  --radius-selector: 0.25rem;
+  --radius-field: 0.375rem;
+  --radius-box: 0.625rem;
   --size-selector: 0.25rem;
   --size-field: 0.25rem;
   --border: 1px;
@@ -55,35 +55,35 @@
   --noise: 0;
 }
 
-/* Dark: warm near-black surfaces, the same honey. */
+/* Dark: designed on its own. The sidebar is darker than the content. */
 @plugin "daisyui/packages/bundle/daisyui-theme" {
-  name: "apiary-dark";
+  name: "qory-dark";
   default: false;
   prefersdark: true;
   color-scheme: "dark";
-  --color-base-100: oklch(20% 0.01 60);
-  --color-base-200: oklch(16.5% 0.009 60);
-  --color-base-300: oklch(28.5% 0.012 60);
-  --color-base-content: oklch(93% 0.01 80);
-  --color-primary: oklch(80% 0.15 78);
-  --color-primary-content: oklch(22% 0.05 68);
-  --color-secondary: oklch(70% 0.015 70);
-  --color-secondary-content: oklch(18% 0.01 60);
-  --color-accent: oklch(76% 0.13 55);
-  --color-accent-content: oklch(18% 0.01 60);
-  --color-neutral: oklch(26% 0.012 60);
-  --color-neutral-content: oklch(93% 0.01 80);
-  --color-info: oklch(72% 0.11 240);
-  --color-info-content: oklch(18% 0.02 240);
-  --color-success: oklch(72% 0.15 150);
-  --color-success-content: oklch(18% 0.04 150);
-  --color-warning: oklch(78% 0.15 72);
-  --color-warning-content: oklch(22% 0.05 68);
-  --color-error: oklch(66% 0.19 25);
-  --color-error-content: oklch(18% 0.03 20);
-  --radius-selector: 0.375rem;
-  --radius-field: 0.5rem;
-  --radius-box: 0.75rem;
+  --color-base-100: oklch(19.5% 0.006 70);
+  --color-base-200: oklch(16.5% 0.006 70);
+  --color-base-300: oklch(24.5% 0.008 70);
+  --color-base-content: oklch(94% 0.008 80);
+  --color-primary: oklch(80% 0.145 78);
+  --color-primary-content: oklch(20% 0.04 70);
+  --color-secondary: oklch(92% 0.008 80);
+  --color-secondary-content: oklch(19% 0.006 70);
+  --color-accent: oklch(82% 0.12 80);
+  --color-accent-content: oklch(20% 0.04 70);
+  --color-neutral: oklch(28% 0.008 70);
+  --color-neutral-content: oklch(94% 0.008 80);
+  --color-info: oklch(74% 0.11 248);
+  --color-info-content: oklch(18% 0.03 248);
+  --color-success: oklch(74% 0.14 152);
+  --color-success-content: oklch(18% 0.04 152);
+  --color-warning: oklch(80% 0.14 75);
+  --color-warning-content: oklch(20% 0.04 70);
+  --color-error: oklch(68% 0.18 25);
+  --color-error-content: oklch(16% 0.03 25);
+  --radius-selector: 0.25rem;
+  --radius-field: 0.375rem;
+  --radius-box: 0.625rem;
   --size-selector: 0.25rem;
   --size-field: 0.25rem;
   --border: 1px;
@@ -91,23 +91,147 @@
   --noise: 0;
 }
 
+/* Self-hosted Geist (SIL OFL 1.1, see priv/static/fonts/OFL.txt). */
+@font-face {
+  font-family: "Geist";
+  src: url("/fonts/Geist-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Geist Mono";
+  src: url("/fonts/GeistMono-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Semantic tokens that daisyUI does not carry. */
+:root,
+[data-theme="qory"] {
+  --q-border-subtle: oklch(91.5% 0.008 80);
+  --q-border-strong: oklch(84% 0.01 80);
+  --q-border-field: oklch(66% 0.01 80);
+  --q-muted: oklch(47% 0.012 65);
+  --q-faint: oklch(55% 0.01 65);
+  --q-ring: oklch(62% 0.15 70);
+  --q-code-bg: oklch(96.8% 0.006 85);
+  --q-primary-soft: oklch(95.5% 0.04 85);
+  --q-primary-soft-content: oklch(42% 0.095 66);
+  --q-success-soft: oklch(95.5% 0.035 152);
+  --q-success-soft-content: oklch(40% 0.1 152);
+  --q-error-soft: oklch(95.5% 0.025 27);
+  --q-error-soft-content: oklch(45% 0.17 27);
+  --q-info-soft: oklch(95.5% 0.025 248);
+  --q-info-soft-content: oklch(42% 0.12 248);
+  --q-overlay: oklch(21% 0.012 65 / 0.4);
+  --q-shadow-xs: 0 1px 2px oklch(21% 0.02 70 / 0.06);
+  --q-shadow-pop: 0 0 0 1px oklch(21% 0.02 70 / 0.06), 0 10px 28px -8px oklch(21% 0.02 70 / 0.18);
+  --q-shadow-modal: 0 0 0 1px oklch(21% 0.02 70 / 0.06), 0 28px 70px -18px oklch(21% 0.02 70 / 0.32);
+  --q-highlight: inset 0 1px 0 oklch(100% 0 0 / 0.28);
+  --q-ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --q-ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+[data-theme="qory-dark"] {
+  --q-border-subtle: oklch(27% 0.008 70);
+  --q-border-strong: oklch(35% 0.01 70);
+  --q-border-field: oklch(50% 0.01 70);
+  --q-muted: oklch(71% 0.012 75);
+  --q-faint: oklch(60% 0.012 75);
+  --q-ring: oklch(80% 0.145 78);
+  --q-code-bg: oklch(15% 0.006 70);
+  --q-primary-soft: oklch(27% 0.04 78);
+  --q-primary-soft-content: oklch(85% 0.12 80);
+  --q-success-soft: oklch(26% 0.04 152);
+  --q-success-soft-content: oklch(82% 0.12 152);
+  --q-error-soft: oklch(27% 0.05 25);
+  --q-error-soft-content: oklch(80% 0.11 25);
+  --q-info-soft: oklch(26% 0.04 248);
+  --q-info-soft-content: oklch(82% 0.09 248);
+  --q-overlay: oklch(8% 0.005 70 / 0.62);
+  --q-shadow-xs: 0 1px 2px oklch(0% 0 0 / 0.4);
+  --q-shadow-pop: 0 0 0 1px oklch(100% 0 0 / 0.07), 0 12px 32px -8px oklch(0% 0 0 / 0.6);
+  --q-shadow-modal: 0 0 0 1px oklch(100% 0 0 / 0.08), 0 32px 80px -16px oklch(0% 0 0 / 0.75);
+  --q-highlight: inset 0 1px 0 oklch(100% 0 0 / 0.22);
+}
+
+/* Without the theme script (no JavaScript) the system preference decides. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --q-border-subtle: oklch(27% 0.008 70);
+    --q-border-strong: oklch(35% 0.01 70);
+    --q-border-field: oklch(50% 0.01 70);
+    --q-muted: oklch(71% 0.012 75);
+    --q-faint: oklch(60% 0.012 75);
+    --q-ring: oklch(80% 0.145 78);
+    --q-code-bg: oklch(15% 0.006 70);
+    --q-primary-soft: oklch(27% 0.04 78);
+    --q-primary-soft-content: oklch(85% 0.12 80);
+    --q-success-soft: oklch(26% 0.04 152);
+    --q-success-soft-content: oklch(82% 0.12 152);
+    --q-error-soft: oklch(27% 0.05 25);
+    --q-error-soft-content: oklch(80% 0.11 25);
+    --q-info-soft: oklch(26% 0.04 248);
+    --q-info-soft-content: oklch(82% 0.09 248);
+    --q-overlay: oklch(8% 0.005 70 / 0.62);
+    --q-shadow-xs: 0 1px 2px oklch(0% 0 0 / 0.4);
+    --q-shadow-pop: 0 0 0 1px oklch(100% 0 0 / 0.07), 0 12px 32px -8px oklch(0% 0 0 / 0.6);
+    --q-shadow-modal: 0 0 0 1px oklch(100% 0 0 / 0.08), 0 32px 80px -16px oklch(0% 0 0 / 0.75);
+    --q-highlight: inset 0 1px 0 oklch(100% 0 0 / 0.22);
+  }
+}
+
 @theme inline {
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-  --default-transition-duration: 150ms;
+  --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  --default-transition-duration: 120ms;
+  --default-transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+
+  --color-line: var(--q-border-subtle);
+  --color-line-strong: var(--q-border-strong);
+  --color-line-field: var(--q-border-field);
+  --color-muted: var(--q-muted);
+  --color-faint: var(--q-faint);
+  --color-ring: var(--q-ring);
+  --color-code: var(--q-code-bg);
+  --color-overlay: var(--q-overlay);
+  --color-primary-soft: var(--q-primary-soft);
+  --color-primary-soft-content: var(--q-primary-soft-content);
+  --color-success-soft: var(--q-success-soft);
+  --color-success-soft-content: var(--q-success-soft-content);
+  --color-error-soft: var(--q-error-soft);
+  --color-error-soft-content: var(--q-error-soft-content);
+  --color-info-soft: var(--q-info-soft);
+  --color-info-soft-content: var(--q-info-soft-content);
+
+  --shadow-xs: var(--q-shadow-xs);
+  --shadow-pop: var(--q-shadow-pop);
+  --shadow-modal: var(--q-shadow-modal);
 }
 
 @layer base {
   html {
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
+    -webkit-text-size-adjust: 100%;
   }
 
   body {
-    font-size: 0.875rem;
-    line-height: 1.5;
     min-height: 100dvh;
+    background-color: var(--color-base-100);
+    color: var(--color-base-content);
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+  }
+
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
   }
 
   ::selection {
@@ -115,16 +239,15 @@
     color: var(--color-primary-content);
   }
 
-  abbr[title] {
-    text-decoration: underline dotted;
-    text-decoration-color: color-mix(in oklab, currentColor 40%, transparent);
-    text-underline-offset: 0.2em;
-    cursor: help;
+  :focus-visible {
+    outline: 2px solid var(--q-ring);
+    outline-offset: 2px;
   }
 
-  :focus-visible {
-    outline: 2px solid var(--color-primary);
-    outline-offset: 2px;
+  @media print {
+    .term {
+      text-decoration: none;
+    }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -139,45 +262,898 @@
   }
 }
 
-@layer components {
-  /* Three-way theme toggle: highlight the active segment. */
-  [data-theme-source="system"] .theme-toggle [data-phx-theme="system"],
-  [data-theme-source="user"][data-theme="apiary"] .theme-toggle [data-phx-theme="light"],
-  [data-theme-source="user"][data-theme="apiary-dark"] .theme-toggle [data-phx-theme="dark"] {
+/* Qory's overrides of daisyUI. daisyUI 5 ships its components in a nested
+   cascade layer inside `utilities`, so rules written here (same layer, no
+   sub-layer) win over it whatever their specificity. Selectors are wrapped in
+   :where() to stay at zero specificity: any Tailwind utility on the element
+   still wins over them. */
+@layer utilities {
+  /* ---- Button ---- */
+  :where(.btn) {
+    --size: 2rem;
+    height: var(--size);
+    gap: 0.375rem;
+    padding-inline: 0.75rem;
+    border: 1px solid var(--q-border-strong);
+    border-radius: var(--radius-field);
+    background-color: var(--color-base-100);
+    background-image: none;
+    color: var(--color-base-content);
+    font-size: 0.8125rem;
+    line-height: 1rem;
+    font-weight: 500;
+    white-space: nowrap;
+    text-shadow: none;
+    box-shadow: var(--q-shadow-xs);
+    outline-color: var(--q-ring);
+    transition-property: color, background-color, border-color, box-shadow;
+    transition-duration: 120ms;
+    transition-timing-function: var(--q-ease-out);
+  }
+  :where(.btn):hover {
+    background-color: var(--color-base-200);
+    border-color: var(--q-border-field);
+  }
+  :where(.btn):active,
+  :where(.btn):active:not(.btn-active) {
+    background-color: var(--color-base-300);
+    translate: none;
+    transform: none;
+  }
+  :where(.btn-sm) {
+    --size: 2rem;
+    font-size: 0.8125rem;
+    padding-inline: 0.75rem;
+  }
+  :where(.btn-md) {
+    --size: 2.5rem;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    padding-inline: 1rem;
+  }
+  :where(.btn-xs) {
+    --size: 1.5rem;
+    font-size: 0.75rem;
+    padding-inline: 0.5rem;
+    border-radius: var(--radius-selector);
+  }
+  :where(.btn-square) {
+    width: var(--size);
+    padding-inline: 0;
+  }
+
+  :where(.btn-primary) {
+    background-color: var(--color-primary);
+    color: var(--color-primary-content);
+    border-color: color-mix(in oklab, var(--color-primary) 82%, black);
+    box-shadow: var(--q-shadow-xs), var(--q-highlight);
+  }
+  :where(.btn-primary):hover {
+    background-color: color-mix(in oklab, var(--color-primary) 92%, black);
+    border-color: color-mix(in oklab, var(--color-primary) 74%, black);
+  }
+  :where(.btn-primary):active,
+  :where(.btn-primary):active:not(.btn-active) {
+    background-color: color-mix(in oklab, var(--color-primary) 86%, black);
+  }
+
+  :where(.btn-error) {
+    background-color: var(--color-error);
+    color: var(--color-error-content);
+    border-color: color-mix(in oklab, var(--color-error) 85%, black);
+    box-shadow: var(--q-shadow-xs), var(--q-highlight);
+  }
+  :where(.btn-error):hover {
+    background-color: color-mix(in oklab, var(--color-error) 90%, black);
+    border-color: color-mix(in oklab, var(--color-error) 75%, black);
+  }
+  :where(.btn-error):active,
+  :where(.btn-error):active:not(.btn-active) {
+    background-color: color-mix(in oklab, var(--color-error) 84%, black);
+  }
+
+  :where(.btn-ghost) {
+    background-color: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    color: var(--q-muted);
+  }
+  :where(.btn-ghost):hover,
+  :where(.btn-ghost):active,
+  :where(.btn-ghost):active:not(.btn-active) {
+    background-color: var(--color-base-300);
+    border-color: transparent;
+    color: var(--color-base-content);
+  }
+  :where(.btn-ghost.btn-danger) {
+    color: var(--color-error);
+  }
+  :where(.btn-ghost.btn-danger):hover,
+  :where(.btn-ghost.btn-danger):active:not(.btn-active) {
+    background-color: var(--q-error-soft);
+    color: var(--q-error-soft-content);
+  }
+
+  :where(.btn):disabled,
+  :where(.btn)[disabled],
+  :where(.btn.btn-disabled) {
+    opacity: 0.5;
+    cursor: not-allowed;
+    box-shadow: none;
+    pointer-events: none;
+  }
+  /* daisyUI greys a disabled button out; Qory keeps the variant and fades it. */
+  :where(.btn-primary):disabled {
+    background-color: var(--color-primary);
+    color: var(--color-primary-content);
+    border-color: color-mix(in oklab, var(--color-primary) 82%, black);
+  }
+  :where(.btn:not(.btn-primary, .btn-error, .btn-ghost)):disabled {
     background-color: var(--color-base-100);
     color: var(--color-base-content);
-    box-shadow: 0 1px 2px oklch(0% 0 0 / 0.12);
+    border-color: var(--q-border-strong);
+  }
+
+  /* Loading: the label and its gerund share one grid cell, so the button
+     keeps its width while the spinner and "Creating" replace the label.
+     `is-busy` is set by app.js on submit; LiveView sets phx-click-loading. */
+  .btn[data-busy] {
+    display: inline-grid;
+    grid-template-columns: auto;
+  }
+  .btn[data-busy] > :where(.btn-label, .btn-busy) {
+    grid-area: 1 / 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+  }
+  .btn[data-busy] > .btn-busy {
+    visibility: hidden;
+  }
+  .btn[data-busy]:where(.is-busy, .phx-click-loading) {
+    pointer-events: none;
+  }
+  .btn[data-busy]:where(.is-busy, .phx-click-loading) > .btn-label {
+    visibility: hidden;
+  }
+  .btn[data-busy]:where(.is-busy, .phx-click-loading) > .btn-busy {
+    visibility: visible;
+  }
+  :where(.btn-busy) > :where(.loading) {
+    width: 0.875rem;
+    height: 0.875rem;
+  }
+
+  /* ---- Fields ---- */
+  :where(.fieldset) {
+    display: grid;
+    gap: 0.375rem;
+    padding: 0;
+    border: 0;
+    min-width: 0;
+    font-size: inherit;
+  }
+
+  :where(.input, .select, .textarea) {
+    --size: 2rem;
+    width: 100%;
+    min-width: 0;
+    height: var(--size);
+    padding-inline: 0.625rem;
+    border: 1px solid var(--q-border-field);
+    border-radius: var(--radius-field);
+    background-color: var(--color-base-100);
+    color: var(--color-base-content);
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    box-shadow: var(--q-shadow-xs);
+    outline: none;
+    transition-property: border-color, box-shadow;
+    transition-duration: 120ms;
+    transition-timing-function: var(--q-ease-out);
+  }
+  :where(.textarea) {
+    height: auto;
+    min-height: 6rem;
+    padding-block: 0.375rem;
+  }
+  :where(.input-md, .select-md) {
+    --size: 2.5rem;
+    padding-inline: 0.75rem;
+    font-size: 0.9375rem;
+  }
+  :where(.input)::placeholder {
+    color: var(--q-faint);
+    opacity: 1;
+  }
+  :where(.input, .select, .textarea):hover {
+    border-color: var(--q-muted);
+  }
+  :where(.input, .select, .textarea):focus,
+  :where(.input, .select, .textarea):focus-within {
+    outline: none;
+    border-color: var(--q-ring);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--q-ring) 28%, transparent);
+  }
+  :where(.input-error, .select-error),
+  :where(.input-error, .select-error):hover {
+    border-color: var(--color-error);
+  }
+  :where(.input-error, .select-error):focus {
+    border-color: var(--color-error);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-error) 24%, transparent);
+  }
+  :where(.input, .select, .textarea):disabled,
+  :where(.input, .textarea)[readonly] {
+    background-color: var(--color-base-200);
+    color: var(--q-muted);
+    border-color: var(--q-border-strong);
+    box-shadow: none;
+  }
+  :where(.input, .select, .textarea):disabled {
+    cursor: not-allowed;
+  }
+  :where(.input, .textarea)[readonly]:focus {
+    border-color: var(--q-border-field);
+    box-shadow: none;
+  }
+
+  :where(.select) {
+    appearance: none;
+    padding-inline: 0.625rem 1.875rem;
+    cursor: pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%23857f7a' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6.5 8 10 4.5 13.5 8M6.5 12l3.5 3.5 3.5-3.5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.5rem center;
+    background-size: 1rem;
+  }
+  :where(.select-xs) {
+    --size: 1.5rem;
+    width: auto;
+    padding-inline: 0.5rem 1.625rem;
+    border-radius: var(--radius-selector);
+    font-size: 0.78125rem;
+    font-weight: 500;
+    background-position: right 0.3125rem center;
+    background-size: 0.875rem;
+  }
+
+  :where(.checkbox) {
+    --size: 1rem;
+    padding: 0.125rem;
+    border-radius: var(--radius-selector);
+    box-shadow: var(--q-shadow-xs);
+    transition-property: background-color, border-color;
+    transition-duration: 120ms;
+  }
+  :where(.checkbox):not(:checked) {
+    border-color: var(--q-border-field);
+    background-color: var(--color-base-100);
+  }
+  :where(.checkbox):checked {
+    border-color: color-mix(in oklab, var(--color-primary) 78%, black);
+  }
+  :where(.checkbox):focus-visible {
+    outline: 2px solid var(--q-ring);
+    outline-offset: 2px;
+  }
+  :where(.checkbox):disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* 40 px controls and 16 px text below 768 px, and everywhere on touch. */
+  @media (max-width: 767.98px) {
+    :where(.input, .select):not(.select-xs) {
+      --size: 2.5rem;
+      padding-inline: 0.75rem;
+      font-size: 1rem;
+    }
+    :where(.select):not(.select-xs) {
+      padding-inline-end: 2rem;
+    }
+    :where(.btn):not(.btn-xs, .btn-keep) {
+      --size: 2.5rem;
+      font-size: 0.875rem;
+      padding-inline: 1rem;
+    }
+    :where(.btn-square):not(.btn-xs, .btn-keep) {
+      padding-inline: 0;
+    }
+  }
+  @media (pointer: coarse) {
+    :where(.btn-xs):not(.btn-keep) {
+      min-height: 2.5rem;
+      min-width: 2.5rem;
+    }
+    :where(.select-xs) {
+      --size: 2.5rem;
+      font-size: 1rem;
+    }
+  }
+
+  /* ---- Badge ---- */
+  :where(.badge) {
+    --size: 1.25rem;
+    height: 1.25rem;
+    gap: 0.3125rem;
+    padding-inline: 0.4375rem;
+    border: 1px solid var(--q-border-subtle);
+    border-radius: 9999px;
+    background-color: var(--color-base-200);
+    color: var(--q-muted);
+    font-size: 0.71875rem;
+    line-height: 1rem;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  :where(.badge-dot)::before {
+    content: "";
+    width: 0.375rem;
+    height: 0.375rem;
+    border-radius: 9999px;
+    background-color: currentColor;
+  }
+
+  /* ---- Card ---- */
+  :where(.card) {
+    min-width: 0;
+    border-radius: var(--radius-box);
+  }
+  :where(.card-border) {
+    border: 1px solid var(--q-border-subtle);
+  }
+
+  /* ---- Stats ---- */
+  :where(.stats) {
+    display: grid;
+    grid-auto-flow: row;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+    overflow: hidden;
+    border-radius: var(--radius-box);
+  }
+  :where(.stat) {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.125rem;
+    padding: 1rem 1.25rem;
+    margin-left: -1px;
+    margin-top: -1px;
+    border: 0;
+    border-left: 1px solid var(--q-border-subtle);
+    border-top: 1px solid var(--q-border-subtle);
+    transition: background-color 120ms var(--q-ease-out);
+  }
+  :where(.stats) > :where(.stat):not(:last-child) {
+    border-inline-end: 0;
+    border-block-end: 0;
+  }
+  :where(a.stat):hover {
+    background-color: var(--color-base-200);
+  }
+  :where(a.stat):focus-visible {
+    outline-offset: -2px;
+  }
+  :where(.stat-title) {
+    font-size: 0.75rem;
+    line-height: 1rem;
+    font-weight: 500;
+    letter-spacing: 0.005em;
+    color: var(--q-muted);
+  }
+  :where(.stat-value) {
+    font-size: 1.5rem;
+    line-height: 2rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+  }
+  :where(.stat-desc) {
+    font-size: 0.78125rem;
+    line-height: 1.125rem;
+    color: var(--q-faint);
+  }
+
+  /* ---- Table ---- */
+  :where(.table) {
+    width: 100%;
+    border-radius: 0;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+  }
+  :where(.table) :where(th, td) {
+    padding: 0.625rem 0.625rem;
+    white-space: nowrap;
+    vertical-align: middle;
+    text-align: left;
+  }
+  :where(.table) :where(th, td):first-child {
+    padding-left: 1rem;
+  }
+  :where(.table) :where(th, td):last-child {
+    padding-right: 1rem;
+  }
+  :where(.table) :where(td.cell-actions):last-child {
+    padding-left: 0.25rem;
+    padding-right: 0.5rem;
+  }
+  :where(.table) :where(thead) :where(th) {
+    padding-block: 0.5625rem;
+    background-color: var(--color-base-200);
+    color: var(--q-muted);
+    font-size: 0.75rem;
+    line-height: 1rem;
+    font-weight: 500;
+    letter-spacing: 0.005em;
+  }
+  :where(.table) :where(thead tr, tbody tr:not(:last-child)) {
+    border-bottom: 1px solid var(--q-border-subtle);
+  }
+  :where(.table) :where(tbody tr) {
+    transition: background-color 120ms var(--q-ease-out);
+  }
+  :where(.table) :where(tbody tr):hover {
+    background-color: var(--color-base-200);
+  }
+  :where(.table) :where(tr.row-off td) {
+    color: var(--q-faint);
+  }
+  /* The row's copy button shows on hover and focus; always on touch. */
+  @media (hover: hover) {
+    :where(.table) :where(tbody tr) .row-reveal {
+      opacity: 0;
+      transition: opacity 120ms var(--q-ease-out);
+    }
+    :where(.table) :where(tbody tr):hover .row-reveal,
+    :where(.table) :where(tbody tr) .row-reveal:focus-within,
+    :where(.table) :where(tbody tr) .row-reveal:has([data-copied]) {
+      opacity: 1;
+    }
+  }
+
+  /* ---- Alert ---- */
+  :where(.alert) {
+    display: grid;
+    grid-template-columns: 1rem 1fr;
+    grid-auto-flow: row;
+    justify-items: start;
+    align-items: start;
+    gap: 0.625rem;
+    padding: 0.625rem 0.75rem;
+    border: 0;
+    border-radius: var(--radius-field);
+    box-shadow: none;
+    font-size: 0.8125rem;
+    line-height: 1.125rem;
+    text-align: left;
+  }
+
+  /* ---- Tooltip ---- */
+  :where(.tooltip) {
+    --tt-off: calc(100% + 0.375rem);
+    --tt-bg: var(--color-neutral);
+  }
+  :where(.tooltip)[data-tip]::before {
+    padding: 0.25rem 0.5rem;
+    border-radius: var(--radius-field);
+    background-color: var(--color-neutral);
+    color: var(--color-neutral-content);
+    font-family: var(--font-sans);
+    font-size: 0.75rem;
+    line-height: 1rem;
+    font-weight: 500;
+    letter-spacing: 0;
+    white-space: nowrap;
+    width: max-content;
+    box-shadow: var(--q-shadow-pop);
+    z-index: 30;
+    transition: opacity 120ms var(--q-ease-out), transform 120ms var(--q-ease-out);
+    transition-delay: 0ms;
+  }
+  :where(.tooltip)::after {
+    display: none;
+  }
+  :where(.tooltip):hover::before {
+    transition-delay: 300ms;
+  }
+  :where(.tooltip):focus-visible::before,
+  :where(.tooltip):has(:focus-visible)::before {
+    opacity: 1;
+    transition-delay: 0ms;
+  }
+  @media (hover: none) {
+    :where(.tooltip:not(.term))::before {
+      display: none;
+    }
+  }
+
+  /* ---- Dropdown and menu ---- */
+  :where(.dropdown-content) {
+    z-index: 50;
+    transition-property: opacity, scale, translate, display;
+    transition-duration: 180ms;
+    transition-timing-function: var(--q-ease-out);
+  }
+  :where(.menu) {
+    display: flex;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    min-width: 13.75rem;
+    padding: 0.25rem;
+    gap: 1px;
+    border-radius: var(--radius-box);
+    background-color: var(--color-base-100);
+    box-shadow: var(--q-shadow-pop);
+    font-size: 0.8125rem;
+    line-height: 1.125rem;
+  }
+  :where(.menu) :where(li) {
+    display: block;
+  }
+  :where(.menu) :where(li) > :where(a, button) {
+    display: flex;
+    width: 100%;
+    height: 1.875rem;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0 0.5rem;
+    border-radius: var(--radius-field);
+    background-color: transparent;
+    color: var(--color-base-content);
+    font-size: 0.8125rem;
+    text-align: left;
+    cursor: pointer;
+    box-shadow: none;
+    outline-offset: -2px;
+    transition: background-color 120ms var(--q-ease-out);
+  }
+  :where(.menu) :where(li) > :where(a, button):hover,
+  :where(.menu) :where(li) > :where(a, button):focus-visible,
+  :where(.menu) :where(li) > :where(a, button):active {
+    background-color: var(--color-base-200);
+    color: var(--color-base-content);
+    box-shadow: none;
+  }
+  :where(.menu) :where(li) > :where(a, button) > :where([class*="hero-"]) {
+    color: var(--q-faint);
+  }
+  :where(.menu) :where(li.menu-danger) > :where(a, button),
+  :where(.menu) :where(li.menu-danger) > :where(a, button) > :where([class*="hero-"]) {
+    color: var(--color-error);
+  }
+  :where(.menu) :where(li.menu-title) {
+    padding: 0.375rem 0.5rem 0.125rem;
+    color: var(--q-faint);
+    font-size: 0.71875rem;
+    line-height: 1rem;
+    font-weight: 500;
+  }
+  :where(.menu) :where(li.menu-divider) {
+    height: 0;
+    margin: 3px -0.25rem;
+    border-top: 1px solid var(--q-border-subtle);
+  }
+  @media (max-width: 767.98px) {
+    :where(.menu) :where(li) > :where(a, button) {
+      height: 2.5rem;
+      font-size: 0.875rem;
+    }
+  }
+
+  /* ---- Modal on the native <dialog> ---- */
+  :where(.modal) {
+    background-color: transparent;
+    transition: opacity 160ms var(--q-ease-in), visibility 160ms allow-discrete,
+      background-color 160ms var(--q-ease-in);
+  }
+  :where(.modal)[open] {
+    background-color: var(--q-overlay);
+    -webkit-backdrop-filter: blur(2px);
+    backdrop-filter: blur(2px);
+    transition-duration: 240ms;
+    transition-timing-function: var(--q-ease-out);
+  }
+  :where(.modal)::backdrop {
+    background: transparent;
+  }
+  :where(.modal-box) {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-height: calc(100dvh - 2rem);
+    padding: 0;
+    overflow: hidden;
+    border-radius: 12px;
+    background-color: var(--color-base-100);
+    color: var(--color-base-content);
+    box-shadow: var(--q-shadow-modal);
+    scale: 0.98;
+    translate: 0 8px;
+    transition: scale 160ms var(--q-ease-in), translate 160ms var(--q-ease-in),
+      opacity 160ms var(--q-ease-in);
+  }
+  :where(.modal)[open] :where(.modal-box) {
+    scale: 1;
+    translate: 0 0;
+    transition-duration: 240ms;
+    transition-timing-function: var(--q-ease-out);
+  }
+  :where(.modal-action) {
+    display: flex;
+    flex-direction: column-reverse;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin: 0;
+    padding: 0.75rem 1.25rem;
+    border-top: 1px solid var(--q-border-subtle);
+    border-radius: 0 0 12px 12px;
+    background-color: var(--color-base-200);
+  }
+  :where(.modal-backdrop) > :where(button) {
+    cursor: default;
+  }
+  @media (min-width: 640px) {
+    :where(.modal-action) {
+      flex-direction: row;
+    }
+  }
+  @media (max-width: 639.98px) {
+    :where(.modal-box) {
+      max-width: none;
+      border-radius: 12px 12px 0 0;
+      scale: 1;
+      translate: 0 24px;
+    }
+    :where(.modal-action) {
+      border-radius: 0;
+      padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+    }
+    :where(.modal-action) > :where(.btn) {
+      --size: 2.5rem;
+      width: 100%;
+    }
+  }
+
+  /* ---- Toast ---- */
+  :where(.toast) {
+    gap: 0.5rem;
+    white-space: normal;
+    min-width: 0;
+  }
+  :where(.toast) > * {
+    animation: q-toast-in 180ms var(--q-ease-out);
+  }
+  @keyframes q-toast-in {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+  }
+
+  /* ---- Drawer ---- */
+  :where(.drawer-side) > :where(.drawer-overlay) {
+    background-color: var(--q-overlay);
+    transition: opacity 160ms var(--q-ease-in);
+  }
+  :where(.drawer-side) > :where(*:not(.drawer-overlay)) {
+    transition: translate 160ms var(--q-ease-in);
+    will-change: auto;
+  }
+  :where(.drawer-toggle):checked ~ :where(.drawer-side) > :where(*:not(.drawer-overlay)) {
+    transition: translate 240ms var(--q-ease-out);
+  }
+  :where(.drawer-toggle):checked ~ :where(.drawer-side) > :where(.drawer-overlay) {
+    background-color: var(--q-overlay);
+    transition: opacity 240ms var(--q-ease-out);
+  }
+
+  /* ---- Avatar ---- */
+  :where(.avatar) > :where(div) {
+    display: grid;
+    place-items: center;
+    font-weight: 600;
+    text-transform: uppercase;
+    line-height: 1;
+  }
+
+  /* ---- Skeleton ---- */
+  :where(.skeleton) {
+    border-radius: var(--radius-selector);
+  }
+}
+
+/* Qory's own classes. Unlayered, so they hold against the overrides above. */
+@layer qory {
+  /* Vocabulary: apiary and hive carry their standard term on hover and focus. */
+  .term {
+    text-decoration: underline dotted;
+    text-decoration-color: var(--q-border-field);
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
+    cursor: help;
+    border-radius: 2px;
+  }
+
+  /* Three-way theme control: the pressed segment follows the theme script. */
+  .theme-seg {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 2px;
+    padding: 2px;
+    border-radius: var(--radius-field);
+    background-color: var(--color-base-300);
+  }
+  .theme-seg > button {
+    display: flex;
+    height: 1.5rem;
+    align-items: center;
+    justify-content: center;
+    gap: 0.3125rem;
+    border-radius: var(--radius-selector);
+    color: var(--q-muted);
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: color 120ms var(--q-ease-out), background-color 120ms var(--q-ease-out);
+  }
+  .theme-seg > button:hover {
+    color: var(--color-base-content);
+  }
+  [data-theme-source="system"] .theme-seg > [data-phx-theme="system"],
+  [data-theme-source="user"][data-theme="qory"] .theme-seg > [data-phx-theme="light"],
+  [data-theme-source="user"][data-theme="qory-dark"] .theme-seg > [data-phx-theme="dark"] {
+    background-color: var(--color-base-100);
+    color: var(--color-base-content);
+    box-shadow: var(--q-shadow-xs);
+  }
+  [data-theme-source="system"] .theme-menu [data-phx-theme="system"] .theme-check,
+  [data-theme-source="user"][data-theme="qory"] .theme-menu [data-phx-theme="light"] .theme-check,
+  [data-theme-source="user"][data-theme="qory-dark"] .theme-menu [data-phx-theme="dark"] .theme-check {
+    visibility: visible;
+  }
+  .theme-check {
+    visibility: hidden;
+  }
+  @media (max-width: 767.98px) {
+    .theme-seg > button {
+      height: 2.25rem;
+      font-size: 0.8125rem;
+    }
   }
 
   /* Copy button state, driven by the CopyToClipboard hook. */
-  .copy-btn .copy-label-idle,
-  .copy-btn .copy-label-done {
+  .copy-btn .copy-idle,
+  .copy-btn .copy-done {
     display: inline-flex;
     align-items: center;
     gap: 0.375rem;
   }
-  .copy-btn[data-copied] .copy-label-idle {
+  .copy-btn[data-copied] .copy-idle,
+  .copy-btn:not([data-copied]) .copy-done {
     display: none;
   }
-  .copy-btn:not([data-copied]) .copy-label-done {
-    display: none;
-  }
-  .copy-btn[data-copied] {
+  .copy-btn[data-copied],
+  .copy-btn[data-copied]:hover {
     color: var(--color-success);
   }
 
-  /* Submit spinners: shown while the form or button is loading. */
-  .btn > .btn-spinner {
-    display: none;
+  /* Vertical steps. */
+  .q-steps > li {
+    position: relative;
+    display: grid;
+    grid-template-columns: 1.5rem 1fr;
+    column-gap: 0.75rem;
+    padding-bottom: 1.125rem;
   }
-  .phx-submit-loading .btn > .btn-spinner,
-  .btn.phx-click-loading > .btn-spinner {
-    display: inline-block;
+  .q-steps > li:last-child {
+    padding-bottom: 0;
+  }
+  .q-steps > li:not(:last-child)::after {
+    content: "";
+    position: absolute;
+    left: 0.71875rem;
+    top: 1.5rem;
+    bottom: 0;
+    width: 1px;
+    background-color: var(--q-border-strong);
+  }
+  .q-step-disc {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    width: 1.5rem;
+    height: 1.5rem;
+    place-items: center;
+    border: 1px solid var(--q-border-strong);
+    border-radius: 9999px;
+    background-color: var(--color-base-100);
+    color: var(--q-muted);
+    font-family: var(--font-mono);
+    font-size: 0.71875rem;
+    line-height: 1;
+    font-weight: 500;
+  }
+  .q-step-current .q-step-disc {
+    border-color: var(--color-primary);
+    color: var(--color-base-content);
+    box-shadow: 0 0 0 3px var(--q-primary-soft);
+  }
+  .q-step-done .q-step-disc {
+    border-color: transparent;
+    background-color: var(--color-primary);
+    color: var(--color-primary-content);
   }
 
-  /* Hexagon mark. */
-  .logo-mark {
-    color: var(--color-primary);
+  /* The hexagon tile of empty states. */
+  .hex-tile {
+    display: grid;
+    width: 2.75rem;
+    height: 2.75rem;
+    place-items: center;
+    clip-path: polygon(50% 0, 93.3% 25%, 93.3% 75%, 50% 100%, 6.7% 75%, 6.7% 25%);
+    background-color: var(--q-primary-soft);
+    color: var(--q-primary-soft-content);
+  }
+  .hex-tile-neutral {
+    background-color: var(--color-base-300);
+    color: var(--q-muted);
+  }
+
+  /* "Listening" dot: a slow ripple, still under reduced motion. */
+  .listening-dot {
+    position: relative;
+    width: 0.5rem;
+    height: 0.5rem;
+    flex: none;
+    border-radius: 9999px;
+    background-color: var(--q-border-field);
+  }
+  .listening-dot::after {
+    content: "";
+    position: absolute;
+    inset: -4px;
+    border: 1px solid var(--q-border-field);
+    border-radius: 9999px;
+    animation: q-ripple 2.4s var(--q-ease-out) infinite;
+  }
+  @keyframes q-ripple {
+    from {
+      opacity: 0.9;
+      transform: scale(0.6);
+    }
+    to {
+      opacity: 0;
+      transform: scale(1.5);
+    }
+  }
+
+  /* YAML in code blocks: keys in accent, placeholders faint. */
+  .code-key {
+    color: var(--color-accent);
+  }
+  .code-faint {
+    color: var(--q-faint);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .listening-dot::after {
+      display: none;
+    }
+    .loading {
+      animation: none !important;
+      mask-image: none;
+      -webkit-mask-image: none;
+      background-color: transparent;
+      border: 1.5px solid currentColor;
+      border-right-color: transparent;
+      border-radius: 9999px;
+    }
+    .skeleton {
+      animation: none !important;
+      background-image: none;
+      background-color: var(--color-base-300);
+    }
   }
 }
 
@@ -187,7 +1163,7 @@
 @custom-variant phx-change-loading (.phx-change-loading&, .phx-change-loading &);
 
 /* Use the data attribute for dark mode  */
-@custom-variant dark (&:where([data-theme=apiary-dark], [data-theme=apiary-dark] *));
+@custom-variant dark (&:where([data-theme=qory-dark], [data-theme=qory-dark] *));
 
 /* Make LiveView wrapper divs transparent for layout */
 [data-phx-session], [data-phx-teleported-src] { display: contents }

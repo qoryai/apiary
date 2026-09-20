@@ -4,88 +4,77 @@ defmodule ApiaryWeb.UserLive.Confirmation do
   alias Apiary.Accounts
 
   @impl true
+  def render(%{user: nil} = assigns) do
+    ~H"""
+    <Layouts.auth flash={@flash} current_scope={@current_scope}>
+      <.hex_tile icon="hero-clock" tone="neutral" />
+      <Layouts.auth_heading>
+        That link has expired
+        <:subtitle>Log-in links work once and for a short time. Ask for a new one.</:subtitle>
+      </Layouts.auth_heading>
+      <.button variant="primary" size="md" class="btn-block" navigate={~p"/users/log-in"}>
+        Send a new link
+      </.button>
+    </Layouts.auth>
+    """
+  end
+
   def render(assigns) do
     ~H"""
     <Layouts.auth flash={@flash} current_scope={@current_scope}>
-      <div class="mb-6 text-center">
-        <h1 class="text-lg font-semibold tracking-tight text-ink">Welcome</h1>
-        <p class="mt-1 truncate text-sm text-ink-muted">{@user.email}</p>
-      </div>
+      <Layouts.auth_heading>
+        {if @user.confirmed_at, do: "Welcome back", else: "Welcome to Qory"}
+        <:subtitle><span class="break-all">{@user.email}</span></:subtitle>
+      </Layouts.auth_heading>
 
       <.form
-        :if={!@user.confirmed_at}
         for={@form}
-        id="confirmation_form"
-        phx-mounted={JS.focus_first()}
+        id={if @user.confirmed_at, do: "login_form", else: "confirmation_form"}
         phx-submit="submit"
-        action={~p"/users/log-in?_action=confirmed"}
+        action={
+          if @user.confirmed_at, do: ~p"/users/log-in", else: ~p"/users/log-in?_action=confirmed"
+        }
         phx-trigger-action={@trigger_submit}
+        class="grid gap-4"
       >
         <input type="hidden" name={@form[:token].name} value={@form[:token].value} />
+        <.input
+          :if={!@current_scope}
+          field={@form[:remember_me]}
+          type="checkbox"
+          label="Keep me signed in"
+          checked={@form[:remember_me].value != "false"}
+        />
         <.button
           variant="primary"
-          name={@form[:remember_me].name}
-          value="true"
-          phx-disable-with="Confirming..."
-          class="w-full"
+          size="md"
+          class="btn-block"
+          loading_text={if @user.confirmed_at, do: "Logging in", else: "Confirming"}
+          phx-mounted={JS.focus()}
         >
-          Confirm and stay logged in
-        </.button>
-        <.button phx-disable-with="Confirming..." class="mt-2 w-full">
-          Confirm and log in only this time
+          {if @user.confirmed_at, do: "Log in", else: "Confirm my account"}
         </.button>
       </.form>
 
-      <.form
-        :if={@user.confirmed_at}
-        for={@form}
-        id="login_form"
-        phx-submit="submit"
-        phx-mounted={JS.focus_first()}
-        action={~p"/users/log-in"}
-        phx-trigger-action={@trigger_submit}
-      >
-        <input type="hidden" name={@form[:token].name} value={@form[:token].value} />
-        <%= if @current_scope do %>
-          <.button variant="primary" phx-disable-with="Logging in..." class="w-full">
-            Log in
-          </.button>
-        <% else %>
-          <.button
-            variant="primary"
-            name={@form[:remember_me].name}
-            value="true"
-            phx-disable-with="Logging in..."
-            class="w-full"
-          >
-            Keep me logged in on this device
-          </.button>
-          <.button phx-disable-with="Logging in..." class="mt-2 w-full">
-            Log me in only this time
-          </.button>
-        <% end %>
-      </.form>
-
-      <.notice :if={!@user.confirmed_at} kind={:info} class="mt-6">
-        Tip: If you prefer passwords, you can enable them in the account settings.
-      </.notice>
+      <p :if={!@user.confirmed_at} class="text-center text-[13px]/[18px] text-muted">
+        Prefer a password? You can set one in account settings.
+      </p>
     </Layouts.auth>
     """
   end
 
   @impl true
   def mount(%{"token" => token}, _session, socket) do
-    if user = Accounts.get_user_by_magic_link_token(token) do
-      form = to_form(%{"token" => token}, as: "user")
+    user = Accounts.get_user_by_magic_link_token(token)
+    form = to_form(%{"token" => token}, as: "user")
 
-      {:ok, assign(socket, user: user, form: form, trigger_submit: false, page_title: "Log in"),
-       temporary_assigns: [form: nil]}
-    else
-      {:ok,
-       socket
-       |> put_flash(:error, "Magic link is invalid or it has expired.")
-       |> push_navigate(to: ~p"/users/log-in")}
-    end
+    {:ok,
+     assign(socket,
+       user: user,
+       form: form,
+       trigger_submit: false,
+       page_title: if(user, do: "Log in", else: "That link has expired")
+     ), temporary_assigns: [form: nil]}
   end
 
   @impl true

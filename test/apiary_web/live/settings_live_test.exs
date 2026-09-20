@@ -13,16 +13,16 @@ defmodule ApiaryWeb.SettingsLiveTest do
     test "renames the apiary and the hive", %{conn: conn, user: user, scope: scope} do
       {:ok, lv, html} = live(conn, ~p"/hive/settings")
 
-      assert html =~ ~r/<abbr[^>]*title="organisation"/
-      assert html =~ ~r/<abbr[^>]*title="team"/
+      assert html =~ ~r/<abbr[^>]*data-tip="organisation"/
+      assert html =~ ~r/<abbr[^>]*data-tip="team"/
       assert html =~ scope.organisation.name
       assert html =~ scope.hive.name
 
       html = lv |> form("#organisation-form", organisation: %{name: "Acme"}) |> render_submit()
-      assert html =~ "The apiary is now called Acme"
+      assert html =~ "Apiary renamed to Acme"
 
       html = lv |> form("#hive-form", hive: %{name: "Platform"}) |> render_submit()
-      assert html =~ "The hive is now called Platform"
+      assert html =~ "Hive renamed to Platform"
 
       reloaded = Organisations.load_scope(Scope.for_user(user))
       assert reloaded.organisation.name == "Acme"

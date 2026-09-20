@@ -22,17 +22,17 @@ defmodule Apiary.Accounts.UserNotifier do
   Deliver instructions to update a user email.
   """
   def deliver_update_email_instructions(user, url) do
-    deliver(user.email, "Update email instructions", """
+    deliver(user.email, "Confirm your new email address for Qory", """
 
     ==============================
 
     Hi #{user.email},
 
-    You can change your email by visiting the URL below:
+    You can change the email address of your Qory account by visiting the URL below:
 
     #{url}
 
-    If you didn't request this change, please ignore this.
+    If you did not ask for this change, ignore this email.
 
     ==============================
     """)
@@ -49,34 +49,34 @@ defmodule Apiary.Accounts.UserNotifier do
   end
 
   defp deliver_magic_link_instructions(user, url) do
-    deliver(user.email, "Log in instructions", """
+    deliver(user.email, "Your Qory log-in link", """
 
     ==============================
 
     Hi #{user.email},
 
-    You can log into your account by visiting the URL below:
+    You can log in to Qory by visiting the URL below:
 
     #{url}
 
-    If you didn't request this email, please ignore this.
+    The link works once, for 15 minutes. If you did not ask for it, ignore this email.
 
     ==============================
     """)
   end
 
   defp deliver_confirmation_instructions(user, url) do
-    deliver(user.email, "Confirmation instructions", """
+    deliver(user.email, "Confirm your Qory account", """
 
     ==============================
 
     Hi #{user.email},
 
-    You can confirm your account by visiting the URL below:
+    You can confirm your Qory account by visiting the URL below:
 
     #{url}
 
-    If you didn't create an account with us, please ignore this.
+    If you did not create a Qory account, ignore this email.
 
     ==============================
     """)
@@ -86,18 +86,18 @@ defmodule Apiary.Accounts.UserNotifier do
   Deliver an invitation to join an organisation.
   """
   def deliver_invitation(email, inviter, organisation, url) do
-    deliver(email, "You are invited to #{organisation.name} on Apiary", """
+    deliver(email, "You are invited to #{organisation.name} on Qory", """
 
     ==============================
 
     Hi #{email},
 
-    #{inviter.email} has invited you to join #{organisation.name} on Apiary.
+    #{inviter.email} has invited you to join #{organisation.name} on Qory.
     You can accept the invitation by visiting the URL below:
 
     #{url}
 
-    The invitation is valid for seven days. If you weren't expecting it, please ignore this.
+    The invitation is valid for seven days. If you were not expecting it, ignore this email.
 
     ==============================
     """)

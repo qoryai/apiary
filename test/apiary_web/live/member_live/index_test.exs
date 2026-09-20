@@ -12,9 +12,9 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
     test "lists the members", %{conn: conn, user: user} do
       {:ok, _lv, html} = live(conn, ~p"/hive/members")
       assert html =~ user.email
-      assert html =~ "you"
+      assert html =~ "You"
       assert html =~ "Invite member"
-      assert html =~ ~r/<abbr[^>]*title="team"[^>]*>hive<\/abbr>/
+      assert html =~ ~r/<abbr[^>]*data-tip="team"[^>]*>hive<\/abbr>/
     end
 
     test "invites a member and can revoke the invitation", %{conn: conn, scope: scope} do
@@ -70,7 +70,7 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       html =
         lv |> form("#level-form-#{scope.membership.id}", %{level: "member"}) |> render_change()
 
-      assert html =~ "The last owner cannot be demoted"
+      assert html =~ "The last owner cannot be removed or demoted"
       assert Organisations.owner?(Organisations.load_scope(scope))
     end
 
@@ -95,7 +95,7 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       assert render(lv) =~ "You will leave"
 
       lv |> element("#remove-member button", "Remove member") |> render_click()
-      assert render(lv) =~ "The last owner cannot be removed"
+      assert render(lv) =~ "The last owner cannot be removed or demoted"
       assert has_element?(lv, "#member-#{own.id}")
     end
   end

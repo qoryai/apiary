@@ -1,10 +1,11 @@
 defmodule ApiaryWeb.CoreComponents do
   @moduledoc """
-  Core UI components for Apiary.
+  Core UI components of the Qory console.
 
-  Bespoke Tailwind v4 components on top of the design tokens in
-  `assets/css/app.css` (`bg-surface`, `text-ink-muted`, `border-line`,
-  `bg-accent`, `rounded-field`, `rounded-box`, `shadow-low`, `shadow-pop`).
+  daisyUI 5 components with Qory's overrides and tokens from
+  `assets/css/app.css`: `border-line`, `text-muted`, `text-faint`, `bg-code`,
+  the `*-soft` pairs, `shadow-xs`, `shadow-pop`, `shadow-modal`, and daisyUI's
+  `rounded-selector`, `rounded-field`, `rounded-box`.
 
   Icons come from [Heroicons](https://heroicons.com), see `icon/1`.
   """
@@ -13,7 +14,7 @@ defmodule ApiaryWeb.CoreComponents do
 
   alias Phoenix.LiveView.JS
 
-  # Apiary words and the standard term they show on hover.
+  # Qory's words and the standard term they show on hover.
   @terms %{
     "apiary" => "organisation",
     "apiaries" => "organisations",
@@ -24,43 +25,44 @@ defmodule ApiaryWeb.CoreComponents do
   ## Brand
 
   @doc """
-  The hexagon logo mark.
+  The mark: one cell of comb with a tail, a hexagon that reads as a Q. The body
+  takes `primary` and the tail `base-content`, so it is right in both themes.
   """
-  attr :class, :any, default: "size-7"
+  attr :class, :any, default: "size-[22px]"
 
   def logo_mark(assigns) do
     ~H"""
-    <svg viewBox="0 0 32 32" fill="none" aria-hidden="true" class={["logo-mark shrink-0", @class]}>
+    <svg viewBox="0 0 32 32" aria-hidden="true" class={["flex-none", @class]}>
       <path
-        d="M16 2.5 27.7 9.25v13.5L16 29.5 4.3 22.75V9.25L16 2.5Z"
-        fill="currentColor"
-        fill-opacity="0.18"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linejoin="round"
+        fill="var(--color-primary)"
+        fill-rule="evenodd"
+        d="M16 2.2 27.95 9.1v13.8L16 29.8 4.05 22.9V9.1L16 2.2Zm0 7.6-5.37 3.1v6.2L16 22.2l5.37-3.1v-6.2L16 9.8Z"
       />
-      <path
-        d="M16 9.5 21.6 12.75v6.5L16 22.5l-5.6-3.25v-6.5L16 9.5Z"
-        fill="currentColor"
-        stroke="currentColor"
-        stroke-width="1.5"
-        stroke-linejoin="round"
-      />
+      <path fill="var(--color-base-content)" d="m17.35 17.1 2.6-1.5 6.2 10.74-2.6 1.5z" />
     </svg>
     """
   end
 
   @doc """
-  Logo mark with the wordmark.
+  The mark with the wordmark, as a link to `/`.
   """
   attr :class, :any, default: nil
   attr :href, :string, default: "/"
+  attr :size, :string, default: "sm", values: ~w(sm lg)
 
   def brand(assigns) do
     ~H"""
-    <a href={@href} class={["inline-flex items-center gap-2.5 text-ink", @class]}>
-      <.logo_mark class="size-7" />
-      <span class="text-[15px] font-semibold tracking-tight">Apiary</span>
+    <a
+      href={@href}
+      class={["inline-flex items-center gap-2 rounded-field text-base-content", @class]}
+    >
+      <.logo_mark class={if @size == "lg", do: "size-7", else: "size-[22px]"} />
+      <span class={[
+        "font-semibold tracking-[-0.03em]",
+        if(@size == "lg", do: "text-[19px]/6", else: "text-base/5")
+      ]}>
+        Qory
+      </span>
     </a>
     """
   end
@@ -68,10 +70,10 @@ defmodule ApiaryWeb.CoreComponents do
   ## Vocabulary
 
   @doc """
-  Renders an apiary word with its standard term on hover.
+  Renders one of Qory's words with its standard term on hover and focus.
 
-      <.term word="apiary" />        # <abbr title="organisation">apiary</abbr>
-      <.term word="Hive" />          # <abbr title="team">Hive</abbr>
+      <.term word="apiary" />     # apiary, with "organisation" as the tip
+      <.term word="Hive" />       # Hive, with "team" as the tip
   """
   attr :word, :string, required: true
   attr :standard, :string, default: nil, doc: "override the standard term"
@@ -82,70 +84,208 @@ defmodule ApiaryWeb.CoreComponents do
     assigns = assign(assigns, :standard, standard)
 
     ~H"""
-    <abbr title={@standard} class={@class}>{@word}</abbr>
+    <abbr
+      class={["term tooltip", @class]}
+      tabindex="0"
+      data-tip={@standard}
+      aria-label={"#{@word} (#{@standard})"}
+    >{@word}</abbr>
     """
   end
 
   ## Feedback
 
   @doc """
-  Renders a flash notice as a toast.
+  Renders a flash notice as a toast. The toast stays neutral; only the icon
+  carries colour. A message of two sentences shows the first as the title and
+  the rest as a muted second line.
 
   ## Examples
 
       <.flash kind={:info} flash={@flash} />
-      <.flash id="welcome-back" kind={:info} phx-mounted={show("#welcome-back")} hidden>
-        Welcome back!
+      <.flash id="client-error" kind={:error} title="Connection lost." spinner hidden>
+        Reconnecting.
       </.flash>
   """
   attr :id, :string, doc: "the optional id of flash container"
   attr :flash, :map, default: %{}, doc: "the map of flash messages to display"
   attr :title, :string, default: nil
   attr :kind, :atom, values: [:info, :error], doc: "used for styling and flash lookup"
+  attr :spinner, :boolean, default: false, doc: "a spinner in place of the dismiss button"
   attr :rest, :global, doc: "the arbitrary HTML attributes to add to the flash container"
 
   slot :inner_block, doc: "the optional inner block that renders the flash message"
 
   def flash(assigns) do
     assigns = assign_new(assigns, :id, fn -> "flash-#{assigns.kind}" end)
+    flash_msg = Phoenix.Flash.get(assigns.flash, assigns.kind)
+
+    {title, body} =
+      cond do
+        assigns.title -> {assigns.title, nil}
+        is_binary(flash_msg) -> split_sentences(flash_msg)
+        true -> {nil, nil}
+      end
+
+    assigns =
+      assign(assigns,
+        toast_title: title,
+        toast_body: body,
+        dismiss: JS.push("lv:clear-flash", value: %{key: assigns.kind}) |> hide("##{assigns.id}")
+      )
 
     ~H"""
     <div
-      :if={msg = render_slot(@inner_block) || Phoenix.Flash.get(@flash, @kind)}
+      :if={@toast_title}
       id={@id}
-      phx-click={JS.push("lv:clear-flash", value: %{key: @kind}) |> hide("##{@id}")}
-      role="alert"
-      class={[
-        "pointer-events-auto flex w-80 items-start gap-3 rounded-box border bg-surface p-4",
-        "text-sm shadow-pop sm:w-96",
-        @kind == :info && "border-line",
-        @kind == :error && "border-danger/40"
-      ]}
+      role={if @kind == :info, do: "status", else: "alert"}
+      phx-hook={@kind == :info && !@spinner && "Toast"}
+      data-dismiss={@kind == :info && !@spinner && @dismiss}
+      class="pointer-events-auto grid w-full grid-cols-[16px_1fr_auto] items-start gap-2.5 rounded-box bg-base-100 p-3 text-[13px]/[18px] shadow-pop sm:w-[360px]"
       {@rest}
     >
       <.icon
         :if={@kind == :info}
-        name="hero-check-circle-mini"
-        class="mt-0.5 size-5 shrink-0 text-success"
+        name="hero-check-circle-micro"
+        class="mt-px size-4 text-success"
       />
       <.icon
         :if={@kind == :error}
-        name="hero-exclamation-circle-mini"
-        class="mt-0.5 size-5 shrink-0 text-danger"
+        name="hero-exclamation-triangle-micro"
+        class="mt-px size-4 text-error"
       />
-      <div class="min-w-0 flex-1 text-ink">
-        <p :if={@title} class="font-semibold">{@title}</p>
-        <p class="text-ink-muted">{msg}</p>
+      <div class="min-w-0 break-words">
+        <p class="font-medium">{@toast_title}</p>
+        <p :if={@toast_body} class="text-muted">{@toast_body}</p>
+        <p :if={@inner_block != []} class="text-muted">{render_slot(@inner_block)}</p>
       </div>
-      <button
-        type="button"
-        class="-m-1 rounded-md p-1 text-ink-faint transition hover:text-ink"
-        aria-label={gettext("close")}
-      >
-        <.icon name="hero-x-mark-mini" class="size-4" />
-      </button>
+      <span :if={@spinner} class="loading loading-spinner mt-px size-3.5 text-faint" />
+      <.tooltip :if={!@spinner} tip={gettext("Dismiss")} placement="left" class="-m-0.5">
+        <button
+          type="button"
+          phx-click={@dismiss}
+          class="grid size-5 cursor-pointer place-items-center rounded-selector text-faint transition-colors hover:bg-base-300 hover:text-base-content"
+          aria-label={gettext("Dismiss")}
+        >
+          <.icon name="hero-x-mark-micro" class="size-4" />
+        </button>
+      </.tooltip>
     </div>
     """
+  end
+
+  # "build-01 is revoked. Machines using it fail." -> {"build-01 is revoked.", "Machines ..."}
+  defp split_sentences(msg) do
+    case String.split(msg, ~r/(?<=[.?])\s+(?=[A-Z])/, parts: 2) do
+      [title, body] -> {title, body}
+      [title] -> {title, nil}
+    end
+  end
+
+  @doc """
+  An inline notice: a soft fill, an icon, no close button.
+  """
+  attr :kind, :atom, default: :info, values: [:info, :warning, :error]
+  attr :class, :any, default: nil
+  slot :inner_block, required: true
+
+  def notice(assigns) do
+    ~H"""
+    <div
+      role={if @kind == :error, do: "alert", else: "note"}
+      class={[
+        "alert alert-soft",
+        @kind == :info && "bg-info-soft text-info-soft-content",
+        @kind == :warning && "bg-primary-soft text-primary-soft-content",
+        @kind == :error && "bg-error-soft text-error-soft-content",
+        @class
+      ]}
+    >
+      <.icon
+        name={
+          case @kind do
+            :info -> "hero-information-circle-micro"
+            :warning -> "hero-exclamation-triangle-micro"
+            :error -> "hero-exclamation-circle-micro"
+          end
+        }
+        class="mt-px size-4"
+      />
+      <div class="min-w-0 [&_strong]:font-semibold">{render_slot(@inner_block)}</div>
+    </div>
+    """
+  end
+
+  @doc """
+  A tooltip around an icon-only control. Never holds essential information:
+  the control's `aria-label` carries the same words.
+  """
+  attr :tip, :string, required: true
+  attr :placement, :string, default: "top", values: ~w(top bottom left right)
+  attr :class, :any, default: nil
+  slot :inner_block, required: true
+
+  def tooltip(assigns) do
+    ~H"""
+    <span
+      class={[
+        "tooltip inline-flex",
+        @placement == "bottom" && "tooltip-bottom",
+        @placement == "left" && "tooltip-left",
+        @placement == "right" && "tooltip-right",
+        @class
+      ]}
+      data-tip={@tip}
+    >
+      {render_slot(@inner_block)}
+    </span>
+    """
+  end
+
+  @doc """
+  The in-place confirmation after a link is emailed: log in and register.
+  """
+  attr :on_back, :string, default: nil, doc: "the event of the ghost button back to the form"
+  slot :inner_block, required: true
+
+  def check_your_email(assigns) do
+    ~H"""
+    <div id="check-your-email" class="grid gap-4" role="status">
+      <.hex_tile icon="hero-envelope" />
+      <div class="grid gap-1.5">
+        <h1
+          class="text-2xl/8 font-semibold tracking-[-0.025em] outline-none sm:text-3xl/9"
+          tabindex="-1"
+          phx-mounted={JS.focus()}
+        >
+          Check your email
+        </h1>
+        <p class="text-sm/5 text-muted">{render_slot(@inner_block)}</p>
+      </div>
+      <.button :if={@on_back} variant="ghost" size="md" class="btn-block" phx-click={@on_back}>
+        Use a different email
+      </.button>
+    </div>
+    """
+  end
+
+  @doc """
+  Development only: where sent mail goes. One faint line under the form.
+  """
+  def dev_mailbox_note(assigns) do
+    ~H"""
+    <p :if={local_mail_adapter?()} class="text-center text-[12.5px]/[18px] text-faint">
+      Dev: sent mail is in the <a
+        href="/dev/mailbox"
+        class="underline decoration-line-field underline-offset-[3px] hover:text-base-content"
+      >mailbox</a>.
+    </p>
+    """
+  end
+
+  defp local_mail_adapter? do
+    Application.get_env(:apiary, :dev_routes, false) &&
+      Application.get_env(:apiary, Apiary.Mailer)[:adapter] == Swoosh.Adapters.Local
   end
 
   ## Buttons
@@ -153,18 +293,26 @@ defmodule ApiaryWeb.CoreComponents do
   @doc """
   Renders a button, or a link styled as one when `href`, `navigate` or `patch` is given.
 
+  `loading_text` is the gerund shown with a spinner while the button's form
+  submits or its click is in flight; the button keeps its width.
+
   ## Examples
 
-      <.button variant="primary">Save</.button>
+      <.button variant="primary" loading_text="Saving">Save</.button>
       <.button navigate={~p"/hive"}>Back</.button>
-      <.button variant="danger" phx-click="revoke">Revoke</.button>
+      <.button variant="danger" phx-click="revoke" loading_text="Revoking">Revoke key</.button>
   """
   attr :rest, :global,
     include: ~w(href navigate patch method download name value disabled type form)
 
   attr :class, :any, default: nil
-  attr :variant, :string, default: "secondary", values: ~w(primary secondary ghost danger)
-  attr :size, :string, default: "md", values: ~w(sm md)
+
+  attr :variant, :string,
+    default: "default",
+    values: ~w(primary default ghost danger danger-ghost link)
+
+  attr :size, :string, default: "sm", values: ~w(xs sm md)
+  attr :loading_text, :string, default: nil
   slot :inner_block, required: true
 
   def button(%{rest: rest} = assigns) do
@@ -178,50 +326,75 @@ defmodule ApiaryWeb.CoreComponents do
       """
     else
       ~H"""
-      <button class={@classes} {@rest}>
-        {render_slot(@inner_block)}
+      <button class={@classes} data-busy={@loading_text && ""} {@rest}>
+        <%= if @loading_text do %>
+          <span class="btn-label">{render_slot(@inner_block)}</span>
+          <span class="btn-busy" aria-hidden="true">
+            <span class="loading loading-spinner loading-xs" />{@loading_text}
+          </span>
+        <% else %>
+          {render_slot(@inner_block)}
+        <% end %>
       </button>
       """
     end
   end
 
-  defp button_classes(assigns) do
+  defp button_classes(%{variant: "link"} = assigns) do
     [
-      "inline-flex cursor-pointer select-none items-center justify-center gap-1.5 whitespace-nowrap",
-      "rounded-field border font-medium transition",
-      "disabled:cursor-not-allowed disabled:opacity-50",
-      "phx-submit-loading:opacity-70 phx-click-loading:opacity-70",
-      size_classes(assigns.size),
-      variant_classes(assigns.variant),
+      "cursor-pointer rounded-selector font-medium text-accent underline decoration-transparent",
+      "underline-offset-[3px] transition-colors hover:decoration-current",
       assigns.class
     ]
   end
 
-  defp size_classes("sm"), do: "h-8 px-2.5 text-[13px]"
-  defp size_classes("md"), do: "h-9 px-3.5 text-sm"
-
-  defp variant_classes("primary"),
-    do: "border-transparent bg-accent text-accent-ink shadow-low hover:bg-accent-hover"
-
-  defp variant_classes("secondary"),
-    do: "border-line-strong bg-surface text-ink shadow-low hover:bg-surface-2"
-
-  defp variant_classes("ghost"),
-    do: "border-transparent bg-transparent text-ink-muted hover:bg-surface-2 hover:text-ink"
-
-  defp variant_classes("danger"),
-    do: "border-transparent bg-danger text-ink-inverse shadow-low hover:bg-danger-hover"
+  defp button_classes(assigns) do
+    [
+      "btn",
+      "btn-#{assigns.size}",
+      case assigns.variant do
+        "primary" -> "btn-primary"
+        "default" -> nil
+        "ghost" -> "btn-ghost"
+        "danger" -> "btn-error"
+        "danger-ghost" -> "btn-ghost btn-danger"
+      end,
+      assigns.class
+    ]
+  end
 
   @doc """
   A copy-to-clipboard button. Copies `text`, or the text content of the
-  element `target` selects, via the CopyToClipboard hook.
+  element `target` selects, via the CopyToClipboard hook. `icon_only` renders
+  a square button with a tooltip.
   """
   attr :id, :string, required: true
   attr :text, :string, default: nil
   attr :target, :string, default: nil, doc: "a CSS selector whose text content is copied"
   attr :label, :string, default: "Copy"
-  attr :size, :string, default: "sm", values: ~w(sm md)
+  attr :icon_only, :boolean, default: false
+  attr :placement, :string, default: "top"
   attr :class, :any, default: nil
+
+  def copy_button(%{icon_only: true} = assigns) do
+    ~H"""
+    <.tooltip tip={@label} placement={@placement} class={@class}>
+      <button
+        id={@id}
+        type="button"
+        phx-hook="CopyToClipboard"
+        data-copy={@text}
+        data-copy-target={@target}
+        class="copy-btn btn btn-ghost btn-xs btn-square"
+        aria-label={@label}
+      >
+        <span class="copy-idle"><.icon name="hero-clipboard-document-micro" class="size-4" /></span>
+        <span class="copy-done"><.icon name="hero-check-micro" class="size-4" /></span>
+        <span class="sr-only" aria-live="polite"></span>
+      </button>
+    </.tooltip>
+    """
+  end
 
   def copy_button(assigns) do
     ~H"""
@@ -231,22 +404,13 @@ defmodule ApiaryWeb.CoreComponents do
       phx-hook="CopyToClipboard"
       data-copy={@text}
       data-copy-target={@target}
-      class={[
-        "copy-btn inline-flex cursor-pointer items-center gap-1.5 rounded-field border border-line-strong",
-        "bg-surface font-medium text-ink-muted shadow-low transition hover:bg-surface-2 hover:text-ink",
-        "data-copied:border-success/50 data-copied:text-success",
-        size_classes(@size),
-        @class
-      ]}
-      aria-label={"#{@label} to clipboard"}
+      class={["copy-btn btn btn-ghost btn-xs btn-keep font-sans", @class]}
     >
-      <span class="copy-label-idle">
-        <.icon name="hero-clipboard-document-micro" class="size-4" />
-        {@label}
+      <span class="copy-idle">
+        <.icon name="hero-clipboard-document-micro" class="size-4" />{@label}
       </span>
-      <span class="copy-label-done">
-        <.icon name="hero-check-micro" class="size-4" /> Copied
-      </span>
+      <span class="copy-done"><.icon name="hero-check-micro" class="size-4" />Copied</span>
+      <span class="sr-only" aria-live="polite"></span>
     </button>
     """
   end
@@ -254,11 +418,11 @@ defmodule ApiaryWeb.CoreComponents do
   ## Forms
 
   @doc """
-  Renders an input with label and error messages.
+  Renders an input with label, hint and error messages.
 
   A `Phoenix.HTML.FormField` may be passed as argument, which is used to
   retrieve the input name, id, and values. Otherwise all attributes may be
-  passed explicitly.
+  passed explicitly. Fields carry no margin: the form's `grid gap-4` spaces them.
 
   ## Examples
 
@@ -268,8 +432,11 @@ defmodule ApiaryWeb.CoreComponents do
   attr :id, :any, default: nil
   attr :name, :any
   attr :label, :string, default: nil
+  attr :optional, :boolean, default: false, doc: "appends (optional) to the label"
   attr :hint, :string, default: nil, doc: "a short helper line under the input"
   attr :value, :any
+  attr :size, :string, default: "sm", values: ~w(sm md), doc: "md (40 px) on auth pages"
+  attr :debounce, :string, default: "blur", doc: "errors show after blur, not while typing"
 
   attr :type, :string,
     default: "text",
@@ -288,7 +455,7 @@ defmodule ApiaryWeb.CoreComponents do
 
   attr :rest, :global,
     include: ~w(accept autocomplete capture cols disabled form list max maxlength min minlength
-                multiple pattern placeholder readonly required rows size step)
+                multiple pattern placeholder readonly required rows size step spellcheck)
 
   def input(%{field: %Phoenix.HTML.FormField{} = field} = assigns) do
     errors = if Phoenix.Component.used_input?(field), do: field.errors, else: []
@@ -314,8 +481,11 @@ defmodule ApiaryWeb.CoreComponents do
       end)
 
     ~H"""
-    <div class="mb-4">
-      <label for={@id} class="inline-flex cursor-pointer items-center gap-2.5 text-sm text-ink">
+    <div class="grid gap-1.5">
+      <label
+        for={@id}
+        class="inline-flex w-fit cursor-pointer items-center gap-2 text-[13.5px]/5 max-md:min-h-10 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50"
+      >
         <input
           type="hidden"
           name={@name}
@@ -329,109 +499,113 @@ defmodule ApiaryWeb.CoreComponents do
           name={@name}
           value="true"
           checked={@checked}
-          class={[
-            "size-4 cursor-pointer rounded border-line-strong bg-surface accent-accent",
-            @class
-          ]}
+          class={["checkbox checkbox-sm checkbox-primary", @class]}
           {@rest}
         />
         {@label}
       </label>
-      <.error :for={msg <- @errors}>{msg}</.error>
+      <.error :for={msg <- @errors} id={"#{@id}-error"}>{msg}</.error>
     </div>
     """
   end
 
   def input(%{type: "select"} = assigns) do
     ~H"""
-    <div class="mb-4">
-      <.label :if={@label} for={@id}>{@label}</.label>
+    <fieldset class="fieldset">
+      <.label :if={@label} for={@id} optional={@optional}>{@label}</.label>
       <select
         id={@id}
         name={@name}
-        class={[field_classes(@errors), "select-field", @class]}
+        class={["select", "select-#{@size}", @errors != [] && "select-error", @class]}
         multiple={@multiple}
+        aria-invalid={@errors != [] && "true"}
+        aria-describedby={describedby(@id, @errors, @hint)}
         {@rest}
       >
         <option :if={@prompt} value="">{@prompt}</option>
         {Phoenix.HTML.Form.options_for_select(@options, @value)}
       </select>
-      <.hint :if={@hint}>{@hint}</.hint>
-      <.error :for={msg <- @errors}>{msg}</.error>
-    </div>
+      <.hint :if={@hint && @errors == []} id={"#{@id}-hint"}>{@hint}</.hint>
+      <.error :for={msg <- @errors} id={"#{@id}-error"}>{msg}</.error>
+    </fieldset>
     """
   end
 
   def input(%{type: "textarea"} = assigns) do
     ~H"""
-    <div class="mb-4">
-      <.label :if={@label} for={@id}>{@label}</.label>
+    <fieldset class="fieldset">
+      <.label :if={@label} for={@id} optional={@optional}>{@label}</.label>
       <textarea
         id={@id}
         name={@name}
-        class={[field_classes(@errors), "min-h-24 py-2", @class]}
+        class={["textarea textarea-sm", @errors != [] && "input-error", @class]}
+        phx-debounce={@debounce}
+        aria-invalid={@errors != [] && "true"}
+        aria-describedby={describedby(@id, @errors, @hint)}
         {@rest}
       >{Phoenix.HTML.Form.normalize_value("textarea", @value)}</textarea>
-      <.hint :if={@hint}>{@hint}</.hint>
-      <.error :for={msg <- @errors}>{msg}</.error>
-    </div>
+      <.hint :if={@hint && @errors == []} id={"#{@id}-hint"}>{@hint}</.hint>
+      <.error :for={msg <- @errors} id={"#{@id}-error"}>{msg}</.error>
+    </fieldset>
     """
   end
 
   # All other inputs text, datetime-local, url, password, etc. are handled here...
   def input(assigns) do
     ~H"""
-    <div class="mb-4">
-      <.label :if={@label} for={@id}>{@label}</.label>
+    <fieldset class="fieldset">
+      <.label :if={@label} for={@id} optional={@optional}>{@label}</.label>
       <input
         type={@type}
         name={@name}
         id={@id}
         value={Phoenix.HTML.Form.normalize_value(@type, @value)}
-        class={[field_classes(@errors), @class]}
+        class={["input", "input-#{@size}", @errors != [] && "input-error", @class]}
+        phx-debounce={@debounce}
+        aria-invalid={@errors != [] && "true"}
+        aria-describedby={describedby(@id, @errors, @hint)}
         {@rest}
       />
-      <.hint :if={@hint}>{@hint}</.hint>
-      <.error :for={msg <- @errors}>{msg}</.error>
-    </div>
+      <.hint :if={@hint && @errors == []} id={"#{@id}-hint"}>{@hint}</.hint>
+      <.error :for={msg <- @errors} id={"#{@id}-error"}>{msg}</.error>
+    </fieldset>
     """
   end
 
-  defp field_classes(errors) do
-    [
-      "block h-9 w-full rounded-field border bg-surface px-3 text-sm text-ink shadow-low",
-      "transition placeholder:text-ink-faint",
-      "focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/40",
-      "read-only:bg-surface-2 read-only:text-ink-muted",
-      "disabled:cursor-not-allowed disabled:bg-surface-2 disabled:text-ink-muted",
-      if(errors == [], do: "border-line-strong", else: "border-danger focus:ring-danger/30")
-    ]
-  end
+  defp describedby(id, [_ | _], _hint), do: "#{id}-error"
+  defp describedby(id, [], hint) when is_binary(hint), do: "#{id}-hint"
+  defp describedby(_id, _errors, _hint), do: nil
 
   attr :for, :string, default: nil
+  attr :optional, :boolean, default: false
   slot :inner_block, required: true
 
   defp label(assigns) do
     ~H"""
-    <label for={@for} class="mb-1.5 block text-[13px] font-medium text-ink">
+    <label for={@for} class="text-[13px]/[18px] font-medium">
       {render_slot(@inner_block)}
+      <span :if={@optional} class="font-normal text-faint">(optional)</span>
     </label>
     """
   end
 
+  attr :id, :string, default: nil
   slot :inner_block, required: true
 
   defp hint(assigns) do
     ~H"""
-    <p class="mt-1.5 text-[13px] text-ink-muted">{render_slot(@inner_block)}</p>
+    <p id={@id} class="text-[12.5px]/[18px] text-muted">{render_slot(@inner_block)}</p>
     """
   end
+
+  attr :id, :string, default: nil
+  slot :inner_block, required: true
 
   # Helper used by inputs to generate form errors
   defp error(assigns) do
     ~H"""
-    <p class="mt-1.5 flex items-center gap-1.5 text-[13px] text-danger">
-      <.icon name="hero-exclamation-circle-micro" class="size-4 shrink-0" />
+    <p id={@id} class="flex items-center gap-1.5 text-[12.5px]/[18px] text-error">
+      <.icon name="hero-exclamation-circle-micro" class="size-4 flex-none" />
       {render_slot(@inner_block)}
     </p>
     """
@@ -440,8 +614,8 @@ defmodule ApiaryWeb.CoreComponents do
   ## Layout blocks
 
   @doc """
-  Renders a page header: a title, an optional one-line description and a
-  primary action slot.
+  Renders a page header: a title, an optional one-line description and at most
+  one primary and one default action.
 
       <.header>
         Access keys
@@ -456,19 +630,19 @@ defmodule ApiaryWeb.CoreComponents do
 
   def header(assigns) do
     ~H"""
-    <header class={[
-      "mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between",
-      @class
-    ]}>
-      <div class="min-w-0">
-        <h1 class="text-xl font-semibold tracking-tight text-ink">
+    <header class={["flex flex-wrap items-start justify-between gap-4", @class]}>
+      <div class="min-w-0 flex-1 basis-72">
+        <h1 class="text-xl/7 font-semibold tracking-[-0.017em]">
           {render_slot(@inner_block)}
         </h1>
-        <p :if={@subtitle != []} class="mt-1 text-sm text-ink-muted">
+        <p :if={@subtitle != []} class="mt-0.5 max-w-[62ch] text-sm/5 text-muted">
           {render_slot(@subtitle)}
         </p>
       </div>
-      <div :if={@actions != []} class="flex shrink-0 items-center gap-2">
+      <div
+        :if={@actions != []}
+        class="flex flex-none items-center gap-2 max-[479px]:w-full max-[479px]:[&>.btn]:flex-1"
+      >
         {render_slot(@actions)}
       </div>
     </header>
@@ -476,7 +650,8 @@ defmodule ApiaryWeb.CoreComponents do
   end
 
   @doc """
-  A bordered surface.
+  A bordered box with an optional header row and footer bar. Static cards
+  never react to hover. Do not nest cards.
   """
   attr :class, :any, default: nil
   attr :padding, :boolean, default: true
@@ -484,30 +659,51 @@ defmodule ApiaryWeb.CoreComponents do
   slot :inner_block, required: true
   slot :title
   slot :actions
+  slot :footer
 
   def card(assigns) do
     ~H"""
-    <section
-      class={["rounded-box border border-line bg-surface shadow-low", @class]}
-      {@rest}
-    >
+    <section class={["card card-border bg-base-100 shadow-xs", @class]} {@rest}>
       <div
         :if={@title != []}
-        class="flex items-center justify-between gap-4 border-b border-line px-5 py-3.5"
+        class="flex min-h-[51px] flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-line px-5 py-2"
       >
-        <h2 class="text-sm font-semibold text-ink">{render_slot(@title)}</h2>
+        <h2 class="text-[15px]/[22px] font-semibold tracking-[-0.006em]">
+          {render_slot(@title)}
+        </h2>
         <div :if={@actions != []} class="flex items-center gap-2">{render_slot(@actions)}</div>
       </div>
-      <div class={@padding && "px-5 py-4"}>
+      <div class={@padding && "grid gap-4 p-5"}>
         {render_slot(@inner_block)}
+      </div>
+      <div
+        :if={@footer != []}
+        class="flex flex-wrap items-center justify-between gap-3 rounded-b-box border-t border-line bg-base-200 px-5 py-3 text-[12.5px]/[18px] text-muted"
+      >
+        {render_slot(@footer)}
       </div>
     </section>
     """
   end
 
   @doc """
-  A summary figure.
+  Summary figures as one bordered object with internal dividers.
+
+      <.stats>
+        <.stat label="Access keys" value={3} hint="active" navigate={~p"/hive/keys"} />
+      </.stats>
   """
+  attr :class, :any, default: nil
+  slot :inner_block, required: true
+
+  def stats(assigns) do
+    ~H"""
+    <div class={["stats border border-line bg-base-100 shadow-xs", @class]}>
+      {render_slot(@inner_block)}
+    </div>
+    """
+  end
+
   attr :label, :string, required: true
   attr :value, :any, required: true
   attr :hint, :string, default: nil
@@ -515,40 +711,88 @@ defmodule ApiaryWeb.CoreComponents do
 
   def stat(%{navigate: nil} = assigns) do
     ~H"""
-    <div class="block rounded-box border border-line bg-surface px-5 py-4 shadow-low">
-      <.stat_body label={@label} value={@value} hint={@hint} />
+    <div class="stat">
+      <div class="stat-title">{@label}</div>
+      <div class="stat-value">{@value}</div>
+      <div :if={@hint} class="stat-desc">{@hint}</div>
     </div>
     """
   end
 
   def stat(assigns) do
     ~H"""
-    <.link
-      navigate={@navigate}
-      class="block rounded-box border border-line bg-surface px-5 py-4 shadow-low transition hover:border-line-strong hover:bg-surface-2"
-    >
-      <.stat_body label={@label} value={@value} hint={@hint} />
+    <.link navigate={@navigate} class="stat">
+      <div class="stat-title">{@label}</div>
+      <div class="stat-value">{@value}</div>
+      <div :if={@hint} class="stat-desc">{@hint}</div>
     </.link>
     """
   end
 
-  attr :label, :string, required: true
-  attr :value, :any, required: true
-  attr :hint, :string, default: nil
+  @doc """
+  A vertical list of numbered steps. Steps before `current` are done, the step
+  at `current` is the current one, the rest are to do.
 
-  defp stat_body(assigns) do
+      <.steps current={2}>
+        <:step title="Create an access key">Label it after the machine.</:step>
+      </.steps>
+  """
+  attr :current, :integer, default: 1
+  attr :class, :any, default: nil
+
+  slot :step, required: true do
+    attr :title, :string, required: true
+  end
+
+  def steps(assigns) do
     ~H"""
-    <p class="text-[13px] font-medium text-ink-muted">{@label}</p>
-    <p class="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-ink">{@value}</p>
-    <p :if={@hint} class="mt-1 text-[13px] text-ink-faint">{@hint}</p>
+    <ol class={["q-steps", @class]}>
+      <li
+        :for={{step, n} <- Enum.with_index(@step, 1)}
+        class={[n < @current && "q-step-done", n == @current && "q-step-current"]}
+        aria-current={n == @current && "step"}
+      >
+        <span class="q-step-disc" aria-hidden={n < @current && "true"}>
+          <%= if n < @current do %>
+            <.icon name="hero-check-micro" class="size-3.5" />
+          <% else %>
+            {n}
+          <% end %>
+        </span>
+        <div class="min-w-0">
+          <p class="text-[13.5px]/6 font-medium">
+            <span :if={n < @current} class="sr-only">Done:</span>
+            {step.title}
+          </p>
+          <p :if={step.inner_block} class="text-[13px]/[18px] text-muted">{render_slot(step)}</p>
+        </div>
+      </li>
+    </ol>
     """
   end
 
   @doc """
-  An empty state with an icon, a title, a description and actions.
+  A quiet line that says the page is waiting for something.
+  """
+  attr :class, :any, default: nil
+  slot :inner_block, required: true
+
+  def listening(assigns) do
+    ~H"""
+    <p class={["flex items-center gap-2.5 text-[13px]/[18px] text-muted", @class]}>
+      <span class="listening-dot mx-1" aria-hidden="true" />
+      {render_slot(@inner_block)}
+    </p>
+    """
+  end
+
+  @doc """
+  An empty state: what is missing and the one next step.
   """
   attr :icon, :string, default: "hero-key"
   attr :title, :string, required: true
+  attr :tone, :string, default: "honey", values: ~w(honey neutral)
+  attr :heading, :string, default: "h2", values: ~w(h1 h2), doc: "h1 when it titles the page"
   attr :class, :any, default: nil
   slot :inner_block
   slot :actions
@@ -556,133 +800,188 @@ defmodule ApiaryWeb.CoreComponents do
   def empty_state(assigns) do
     ~H"""
     <div class={[
-      "rounded-box border border-dashed border-line-strong bg-surface px-6 py-12 text-center",
+      "grid justify-items-center gap-1.5 rounded-box border border-dashed border-line-strong px-6 py-10 text-center",
       @class
     ]}>
-      <div class="mx-auto flex size-12 items-center justify-center rounded-full bg-accent-soft text-accent-soft-ink">
-        <.icon name={@icon} class="size-6" />
+      <.hex_tile icon={@icon} tone={@tone} class="mb-2.5" />
+      <.dynamic_tag tag_name={@heading} class="text-[15px]/[22px] font-semibold tracking-[-0.006em]">
+        {@title}
+      </.dynamic_tag>
+      <div class="max-w-[46ch] text-[13.5px]/5 text-muted">{render_slot(@inner_block)}</div>
+      <div :if={@actions != []} class="mt-3.5 flex flex-wrap justify-center gap-2">
+        {render_slot(@actions)}
       </div>
-      <h2 class="mt-4 text-base font-semibold text-ink">{@title}</h2>
-      <div class="mx-auto mt-1.5 max-w-md text-sm text-ink-muted">{render_slot(@inner_block)}</div>
-      <div :if={@actions != []} class="mt-6 flex justify-center gap-2">{render_slot(@actions)}</div>
     </div>
     """
   end
 
   @doc """
-  A small status label.
+  The 44 px hexagon tile with an outline icon.
   """
-  attr :color, :string, default: "neutral", values: ~w(neutral success warning danger accent)
+  attr :icon, :string, required: true
+  attr :tone, :string, default: "honey", values: ~w(honey neutral)
+  attr :class, :any, default: nil
+
+  def hex_tile(assigns) do
+    ~H"""
+    <div class={["hex-tile", @tone == "neutral" && "hex-tile-neutral", @class]} aria-hidden="true">
+      <.icon name={@icon} class="size-5" />
+    </div>
+    """
+  end
+
+  @doc """
+  A small label. Status badges carry a dot (`dot`), label badges do not. State
+  is never colour alone: the word is always there.
+  """
+  attr :color, :string, default: "neutral", values: ~w(neutral success warning info error)
+  attr :dot, :boolean, default: false
   attr :class, :any, default: nil
   slot :inner_block, required: true
 
   def badge(assigns) do
     ~H"""
     <span class={[
-      "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-0.5",
-      "text-xs font-medium",
-      badge_classes(@color),
+      "badge badge-sm",
+      @dot && "badge-dot",
+      @color == "success" && "border-transparent bg-success-soft text-success-soft-content",
+      @color == "warning" && "border-transparent bg-primary-soft text-primary-soft-content",
+      @color == "info" && "border-transparent bg-info-soft text-info-soft-content",
+      @color == "error" && "border-transparent bg-error-soft text-error-soft-content",
       @class
     ]}>
-      <span :if={@color != "neutral"} class="size-1.5 rounded-full bg-current" aria-hidden="true" />
       {render_slot(@inner_block)}
     </span>
     """
   end
 
-  defp badge_classes("neutral"), do: "border-line bg-surface-2 text-ink-muted"
-  defp badge_classes("success"), do: "border-success/30 bg-success-soft text-success-soft-ink"
-  defp badge_classes("warning"), do: "border-warn/40 bg-warn-soft text-warn-soft-ink"
-  defp badge_classes("danger"), do: "border-danger/30 bg-danger-soft text-danger-soft-ink"
-  defp badge_classes("accent"), do: "border-accent/40 bg-accent-soft text-accent-soft-ink"
-
   @doc """
-  A block of preformatted text with a copy button.
+  A placeholder avatar: the first letter of a name. People are round, an
+  apiary is square. Decorative: the name is always beside it.
   """
-  attr :id, :string, required: true
-  attr :code, :string, required: true
-  attr :label, :string, default: nil
+  attr :name, :string, default: nil
+  attr :kind, :string, default: "person", values: ~w(person self apiary pending)
+  attr :size, :string, default: "sm", values: ~w(sm md lg)
   attr :class, :any, default: nil
 
-  def code_block(assigns) do
+  def avatar(assigns) do
     ~H"""
-    <div class={["overflow-hidden rounded-box border border-line bg-surface-2", @class]}>
-      <div class="flex items-center justify-between gap-3 border-b border-line px-3 py-2">
-        <span class="font-mono text-xs text-ink-muted">{@label}</span>
-        <.copy_button id={"#{@id}-copy"} text={@code} />
+    <span class={["avatar avatar-placeholder flex-none", @class]} aria-hidden="true">
+      <div class={[
+        @size == "sm" && "size-6 text-[11px]",
+        @size == "md" && "size-7 text-xs",
+        @size == "lg" && "size-8 text-[13px]",
+        @kind == "person" && "rounded-full bg-base-300 text-muted ring-1 ring-inset ring-line",
+        @kind == "self" && "rounded-full bg-primary-soft text-primary-soft-content",
+        @kind == "apiary" && "rounded-field bg-neutral text-neutral-content",
+        @kind == "pending" &&
+          "rounded-full border border-dashed border-line-field bg-transparent text-faint"
+      ]}>
+        <%= if @kind == "pending" do %>
+          <.icon name="hero-envelope-micro" class="size-3.5" />
+        <% else %>
+          {String.first(@name || "?")}
+        <% end %>
       </div>
-      <pre
-        id={@id}
-        class="overflow-x-auto px-4 py-3 font-mono text-[13px] leading-relaxed text-ink"
-      ><code>{@code}</code></pre>
-    </div>
+    </span>
     """
   end
 
   @doc """
-  A short inline code span, for key ids and similar.
+  A block of preformatted text with a file name and a copy button. YAML keys
+  take the accent colour; there is no other syntax colour. Without an `id` the
+  block is a preview and has no copy button.
   """
+  attr :id, :string, default: nil
+  attr :code, :string, required: true
+  attr :label, :string, default: nil
+  attr :copy_label, :string, default: "Copy block"
+  attr :class, :any, default: nil
+
+  def code_block(assigns) do
+    assigns = assign(assigns, :highlighted, highlight_yaml(assigns.code))
+
+    ~H"""
+    <div class={["min-w-0 overflow-hidden rounded-box border border-line bg-code", @class]}>
+      <div class={[
+        "flex items-center justify-between border-b border-line pl-3.5 pr-1.5 font-mono text-xs/4 text-muted",
+        if(@id, do: "py-1.5", else: "py-2.5")
+      ]}>
+        <span>{@label}</span>
+        <.copy_button :if={@id} id={"#{@id}-copy"} text={@code} label={@copy_label} />
+      </div>
+      <pre
+        id={@id}
+        tabindex="0"
+        class="overflow-x-auto p-3.5 font-mono text-[12.5px]/5 [tab-size:2]"
+      ><code>{@highlighted}</code></pre>
+    </div>
+    """
+  end
+
+  # YAML keys in accent, placeholders (runs of middle dots) faint, nothing else.
+  defp highlight_yaml(code) do
+    lines =
+      for line <- code |> String.trim_trailing() |> String.split("\n") do
+        case Regex.run(~r/^(\s*)([A-Za-z_][\w.-]*):(.*)$/, line) do
+          [_, indent, key, value] ->
+            [indent, ~s(<span class="code-key">), escape(key), "</span>:", yaml_value(value)]
+
+          _ ->
+            escape(line)
+        end
+      end
+
+    {:safe, Enum.intersperse(lines, "\n")}
+  end
+
+  defp yaml_value(value) do
+    if String.contains?(value, "··"),
+      do: [~s(<span class="code-faint">), escape(value), "</span>"],
+      else: escape(value)
+  end
+
+  defp escape(text), do: text |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
+
+  @doc """
+  A short inline code span, for key ids and similar. `bare` drops the well,
+  for table cells.
+  """
+  attr :bare, :boolean, default: false
   attr :class, :any, default: nil
   slot :inner_block, required: true
 
   def mono(assigns) do
     ~H"""
-    <code class={["rounded-md bg-surface-2 px-1.5 py-0.5 font-mono text-[13px] text-ink", @class]}>
-      {render_slot(@inner_block)}
-    </code>
-    """
-  end
-
-  @doc """
-  An inline notice.
-  """
-  attr :kind, :atom, default: :info, values: [:info, :warning, :danger]
-  attr :class, :any, default: nil
-  slot :inner_block, required: true
-
-  def notice(assigns) do
-    ~H"""
-    <div
-      role="note"
+    <code
+      phx-no-format
       class={[
-        "flex items-start gap-2.5 rounded-field border px-3.5 py-3 text-sm",
-        @kind == :info && "border-line bg-surface-2 text-ink-muted",
-        @kind == :warning && "border-warn/40 bg-warn-soft text-warn-soft-ink",
-        @kind == :danger && "border-danger/30 bg-danger-soft text-danger-soft-ink",
+        "font-mono text-[12.5px]",
+        !@bare && "rounded-selector border border-line bg-code px-1.5 py-0.5",
         @class
       ]}
-    >
-      <.icon
-        name={
-          case @kind do
-            :info -> "hero-information-circle-mini"
-            :warning -> "hero-exclamation-triangle-mini"
-            :danger -> "hero-exclamation-circle-mini"
-          end
-        }
-        class="mt-0.5 size-4 shrink-0"
-      />
-      <div class="min-w-0">{render_slot(@inner_block)}</div>
-    </div>
+    >{render_slot(@inner_block)}</code>
     """
   end
 
   ## Tables
 
   @doc """
-  Renders a table with generic styling.
+  Renders a table inside a focusable scroll region.
 
   ## Examples
 
-      <.table id="users" rows={@users}>
+      <.table id="users" label="Users" rows={@users}>
         <:col :let={user} label="id">{user.id}</:col>
         <:col :let={user} label="username">{user.username}</:col>
       </.table>
   """
   attr :id, :string, required: true
+  attr :label, :string, default: nil, doc: "the accessible name of the scroll region"
   attr :rows, :list, required: true
   attr :row_id, :any, default: nil, doc: "the function for generating the row id"
   attr :row_click, :any, default: nil, doc: "the function for handling phx-click on each row"
+  attr :row_class, :any, default: nil, doc: "a function from a row to extra classes"
   attr :class, :any, default: nil
 
   attr :row_item, :any,
@@ -703,43 +1002,36 @@ defmodule ApiaryWeb.CoreComponents do
       end
 
     ~H"""
-    <div class={["overflow-x-auto rounded-box border border-line bg-surface shadow-low", @class]}>
-      <table class="w-full text-sm">
-        <thead class="border-b border-line bg-surface-2/60 text-left">
+    <div
+      class={["overflow-x-auto rounded-box border border-line bg-base-100 shadow-xs", @class]}
+      tabindex="0"
+      role="region"
+      aria-label={@label || @id}
+    >
+      <table class="table">
+        <thead>
           <tr>
-            <th
-              :for={col <- @col}
-              class={[
-                "px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-ink-muted",
-                col[:class]
-              ]}
-            >
-              {col[:label]}
-            </th>
-            <th :if={@action != []} class="px-4 py-2.5">
+            <th :for={col <- @col} scope="col" class={col[:class]}>{col[:label]}</th>
+            <th :if={@action != []} scope="col" class="w-px">
               <span class="sr-only">{gettext("Actions")}</span>
             </th>
           </tr>
         </thead>
-        <tbody
-          id={@id}
-          phx-update={is_struct(@rows, Phoenix.LiveView.LiveStream) && "stream"}
-          class="divide-y divide-line"
-        >
+        <tbody id={@id} phx-update={is_struct(@rows, Phoenix.LiveView.LiveStream) && "stream"}>
           <tr
             :for={row <- @rows}
             id={@row_id && @row_id.(row)}
-            class="transition hover:bg-surface-2/60"
+            class={@row_class && @row_class.(row)}
           >
             <td
               :for={col <- @col}
               phx-click={@row_click && @row_click.(row)}
-              class={["px-4 py-3 align-middle text-ink", @row_click && "cursor-pointer", col[:class]]}
+              class={[@row_click && "cursor-pointer", col[:class]]}
             >
               {render_slot(col, @row_item.(row))}
             </td>
-            <td :if={@action != []} class="w-0 px-4 py-3 align-middle">
-              <div class="flex items-center justify-end gap-1">
+            <td :if={@action != []} class="cell-actions w-px text-right">
+              <div class="flex items-center justify-end gap-0.5">
                 <%= for action <- @action do %>
                   {render_slot(action, @row_item.(row))}
                 <% end %>
@@ -752,102 +1044,80 @@ defmodule ApiaryWeb.CoreComponents do
     """
   end
 
-  @doc """
-  Renders a data list.
-
-      <.list>
-        <:item title="Title">{@post.title}</:item>
-      </.list>
-  """
-  slot :item, required: true do
-    attr :title, :string, required: true
-  end
-
-  def list(assigns) do
-    ~H"""
-    <dl class="divide-y divide-line">
-      <div :for={item <- @item} class="grid gap-1 py-3 sm:grid-cols-3 sm:gap-4">
-        <dt class="text-sm font-medium text-ink-muted">{item.title}</dt>
-        <dd class="text-sm text-ink sm:col-span-2">{render_slot(item)}</dd>
-      </div>
-    </dl>
-    """
-  end
-
   ## Modal
 
   @doc """
-  Renders a modal. Render it conditionally (for example on a live action) and
-  pass an `on_cancel` JS command, usually a patch back to the index.
+  Renders a modal on the native `<dialog>`: focus is trapped, the background is
+  inert and Escape works for free. Render it conditionally (for example on a
+  live action) and pass an `on_cancel` JS command, usually a patch back to the
+  index. `dismissable={false}` leaves the footer's button as the only exit.
 
       <.modal :if={@live_action == :new} id="new-key" on_cancel={JS.patch(~p"/hive/keys")} title="New access key">
         ...
         <:footer>
-          <.button phx-click={JS.patch(~p"/hive/keys")}>Cancel</.button>
+          <.button patch={~p"/hive/keys"}>Cancel</.button>
         </:footer>
       </.modal>
+
+  Initial focus goes to the element marked `data-autofocus`, else the first
+  field, else the primary button. Mark Cancel in destructive confirms.
   """
   attr :id, :string, required: true
-  attr :title, :string, default: nil
+  attr :title, :string, required: true
   attr :on_cancel, JS, default: %JS{}
   attr :dismissable, :boolean, default: true, doc: "close on escape, click outside and the X"
   attr :size, :string, default: "md", values: ~w(sm md lg)
   slot :inner_block, required: true
+  slot :aside, doc: "sits at the right of the title, for example a badge"
   slot :footer
 
   def modal(assigns) do
     ~H"""
-    <div
+    <dialog
       id={@id}
-      class="fixed inset-0 z-50"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby={@title && "#{@id}-title"}
-      phx-mounted={show_modal(@id)}
-      phx-remove={hide_modal(@id)}
-      phx-window-keydown={@dismissable && @on_cancel}
-      phx-key="escape"
+      phx-hook="Modal"
+      data-cancel={@dismissable && @on_cancel}
+      aria-labelledby={"#{@id}-title"}
+      class="modal modal-bottom sm:modal-middle"
     >
-      <div id={"#{@id}-bg"} class="fixed inset-0 bg-overlay transition-opacity" aria-hidden="true" />
-      <div class="fixed inset-0 overflow-y-auto">
-        <div class="flex min-h-full items-center justify-center p-4 sm:p-6">
-          <div
-            id={"#{@id}-panel"}
-            class={[
-              "relative w-full rounded-box border border-line bg-surface shadow-pop",
-              @size == "sm" && "max-w-sm",
-              @size == "md" && "max-w-lg",
-              @size == "lg" && "max-w-2xl"
-            ]}
-            phx-click-away={@dismissable && @on_cancel}
+      <div class={[
+        "modal-box",
+        @size == "sm" && "sm:max-w-[400px]",
+        @size == "md" && "sm:max-w-[480px]",
+        @size == "lg" && "sm:max-w-[560px]"
+      ]}>
+        <div class="flex items-start justify-between gap-3 px-5 pt-5">
+          <h2
+            id={"#{@id}-title"}
+            class="min-w-0 break-words text-base/6 font-semibold tracking-[-0.01em]"
           >
-            <div :if={@title || @dismissable} class="flex items-start justify-between gap-4 px-6 pt-5">
-              <h2 :if={@title} id={"#{@id}-title"} class="text-base font-semibold text-ink">
-                {@title}
-              </h2>
-              <button
-                :if={@dismissable}
-                type="button"
-                phx-click={@on_cancel}
-                class="-m-1.5 ml-auto rounded-md p-1.5 text-ink-faint transition hover:bg-surface-2 hover:text-ink"
-                aria-label={gettext("Close")}
-              >
-                <.icon name="hero-x-mark-mini" class="size-5" />
-              </button>
-            </div>
-            <div id={"#{@id}-content"} class="px-6 py-4 text-sm text-ink">
-              {render_slot(@inner_block)}
-            </div>
-            <div
-              :if={@footer != []}
-              class="flex flex-col-reverse gap-2 border-t border-line px-6 py-4 sm:flex-row sm:justify-end"
-            >
-              {render_slot(@footer)}
-            </div>
+            {@title}
+          </h2>
+          <div :if={@aside != []} class="flex h-6 flex-none items-center">
+            {render_slot(@aside)}
           </div>
+          <.tooltip :if={@dismissable} tip={gettext("Close")} placement="left" class="flex-none">
+            <button
+              type="button"
+              phx-click={@on_cancel}
+              class="btn btn-ghost btn-xs btn-square btn-keep"
+              aria-label={gettext("Close")}
+            >
+              <.icon name="hero-x-mark-micro" class="size-4" />
+            </button>
+          </.tooltip>
+        </div>
+        <div class="modal-body grid min-h-0 gap-4 overflow-y-auto px-5 pb-5 pt-2 text-[13.5px]/5">
+          {render_slot(@inner_block)}
+        </div>
+        <div :if={@footer != []} class="modal-action flex-none">
+          {render_slot(@footer)}
         </div>
       </div>
-    </div>
+      <form :if={@dismissable} method="dialog" class="modal-backdrop">
+        <button tabindex="-1" aria-hidden="true">{gettext("Close")}</button>
+      </form>
+    </dialog>
     """
   end
 
@@ -884,14 +1154,46 @@ defmodule ApiaryWeb.CoreComponents do
   def short_datetime(%DateTime{} = dt), do: Calendar.strftime(dt, "%-d %b %Y, %H:%M UTC")
   def short_datetime(%NaiveDateTime{} = dt), do: Calendar.strftime(dt, "%-d %b %Y, %H:%M UTC")
 
+  @doc """
+  A timestamp as people say it, up to seven days back ("2 minutes ago",
+  "Yesterday, 17:20"), then the short date. The absolute time is in the `title`.
+  """
+  attr :at, :any, required: true
+  attr :class, :any, default: nil
+
+  def time_ago(assigns) do
+    ~H"""
+    <time datetime={DateTime.to_iso8601(@at)} title={short_datetime(@at)} class={@class}>
+      {relative_time(@at)}
+    </time>
+    """
+  end
+
+  @doc false
+  def relative_time(%DateTime{} = at, now \\ DateTime.utc_now()) do
+    seconds = max(DateTime.diff(now, at, :second), 0)
+    days = Date.diff(DateTime.to_date(now), DateTime.to_date(at))
+
+    cond do
+      seconds < 60 -> "Just now"
+      seconds < 120 -> "1 minute ago"
+      seconds < 3600 -> "#{div(seconds, 60)} minutes ago"
+      days == 0 and seconds < 7200 -> "1 hour ago"
+      days == 0 -> "#{div(seconds, 3600)} hours ago"
+      days == 1 -> "Yesterday, #{Calendar.strftime(at, "%H:%M")}"
+      days <= 7 -> "#{days} days ago"
+      true -> short_date(at)
+    end
+  end
+
   ## JS Commands
 
   def show(js \\ %JS{}, selector) do
     JS.show(js,
       to: selector,
-      time: 150,
+      time: 180,
       transition:
-        {"transition-all ease-out duration-150", "opacity-0 translate-y-1",
+        {"transition-all ease-out duration-[180ms]", "opacity-0 translate-y-1",
          "opacity-100 translate-y-0"}
     )
   end
@@ -899,49 +1201,11 @@ defmodule ApiaryWeb.CoreComponents do
   def hide(js \\ %JS{}, selector) do
     JS.hide(js,
       to: selector,
-      time: 150,
+      time: 120,
       transition:
-        {"transition-all ease-in duration-150", "opacity-100 translate-y-0",
+        {"transition-all ease-in duration-[120ms]", "opacity-100 translate-y-0",
          "opacity-0 translate-y-1"}
     )
-  end
-
-  def show_modal(js \\ %JS{}, id) when is_binary(id) do
-    js
-    |> JS.show(to: "##{id}")
-    |> JS.show(
-      to: "##{id}-bg",
-      time: 150,
-      transition: {"transition-opacity ease-out duration-150", "opacity-0", "opacity-100"}
-    )
-    |> JS.show(
-      to: "##{id}-panel",
-      time: 150,
-      transition:
-        {"transition-all ease-out duration-150", "opacity-0 translate-y-2 scale-[0.98]",
-         "opacity-100 translate-y-0 scale-100"}
-    )
-    |> JS.add_class("overflow-hidden", to: "body")
-    |> JS.focus_first(to: "##{id}-content")
-  end
-
-  def hide_modal(js \\ %JS{}, id) do
-    js
-    |> JS.hide(
-      to: "##{id}-bg",
-      time: 150,
-      transition: {"transition-opacity ease-in duration-150", "opacity-100", "opacity-0"}
-    )
-    |> JS.hide(
-      to: "##{id}-panel",
-      time: 150,
-      transition:
-        {"transition-all ease-in duration-150", "opacity-100 translate-y-0 scale-100",
-         "opacity-0 translate-y-2 scale-[0.98]"}
-    )
-    |> JS.hide(to: "##{id}", transition: {"block", "block", "block"}, time: 150)
-    |> JS.remove_class("overflow-hidden", to: "body")
-    |> JS.pop_focus()
   end
 
   @doc """

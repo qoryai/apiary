@@ -16,6 +16,7 @@ defmodule ApiaryWeb.MemberLive.Index do
       flash={@flash}
       current_scope={@current_scope}
       memberships={@memberships}
+      counts={@nav_counts}
       nav={:members}
     >
       <.header>
@@ -31,21 +32,23 @@ defmodule ApiaryWeb.MemberLive.Index do
         </:actions>
       </.header>
 
-      <.table id="members" rows={@members} row_id={&"member-#{&1.id}"}>
-        <:col :let={m} label="Email">
-          <span class="font-medium">{m.user.email}</span>
-          <.badge :if={m.user_id == @current_scope.user.id} class="ml-2">you</.badge>
+      <.table id="members" label="Members" rows={@members} row_id={&"member-#{&1.id}"}>
+        <:col :let={m} label="Member">
+          <div class="flex items-center gap-2.5">
+            <.avatar
+              name={m.user.email}
+              kind={if m.user_id == @current_scope.user.id, do: "self", else: "person"}
+            />
+            <span class="font-medium">{m.user.email}</span>
+            <.badge :if={m.user_id == @current_scope.user.id}>You</.badge>
+          </div>
         </:col>
         <:col :let={m} label="Level">
           <%= if @owner? do %>
             <form phx-change="set_level" id={"level-form-#{m.id}"}>
               <input type="hidden" name="membership_id" value={m.id} />
               <label for={"level-#{m.id}"} class="sr-only">Level of {m.user.email}</label>
-              <select
-                id={"level-#{m.id}"}
-                name="level"
-                class="select-field h-8 cursor-pointer rounded-field border border-line-strong bg-surface pl-2.5 text-[13px] font-medium text-ink shadow-low transition hover:bg-surface-2"
-              >
+              <select id={"level-#{m.id}"} name="level" class="select select-xs">
                 {Phoenix.HTML.Form.options_for_select(@levels, Atom.to_string(m.level))}
               </select>
             </form>
@@ -54,46 +57,53 @@ defmodule ApiaryWeb.MemberLive.Index do
           <% end %>
         </:col>
         <:col :let={m} label="Joined">
-          <span class="text-ink-muted">{short_date(m.inserted_at)}</span>
+          <span class="tabular-nums text-muted">{short_date(m.inserted_at)}</span>
         </:col>
         <:action :let={m} :if={@owner?}>
           <.button
-            variant="ghost"
-            size="sm"
+            variant="danger-ghost"
+            size="xs"
             patch={~p"/hive/members/#{m.id}/remove"}
-            class="text-danger hover:text-danger"
+            aria-label={"Remove #{m.user.email}"}
           >
             Remove
           </.button>
         </:action>
       </.table>
 
-      <section :if={@owner? || @invitations != []} class="mt-8">
-        <h2 class="mb-3 text-sm font-semibold text-ink">Pending invitations</h2>
-        <p :if={@invitations == []} class="text-sm text-ink-muted">
-          No pending invitations. Invitations expire after seven days.
-        </p>
+      <section :if={@owner? || @invitations != []} class="mt-2 grid gap-3">
+        <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <h2 class="text-[15px]/[22px] font-semibold tracking-[-0.006em]">Pending invitations</h2>
+          <p class="text-[12.5px]/[18px] text-muted">Invitations expire after seven days.</p>
+        </div>
+        <p :if={@invitations == []} class="text-muted">No pending invitations.</p>
         <.table
           :if={@invitations != []}
           id="invitations"
+          label="Pending invitations"
           rows={@invitations}
           row_id={&"invitation-#{&1.id}"}
         >
-          <:col :let={i} label="Email"><span class="font-medium">{i.email}</span></:col>
+          <:col :let={i} label="Email">
+            <div class="flex items-center gap-2.5">
+              <.avatar kind="pending" />
+              <span class="font-medium">{i.email}</span>
+            </div>
+          </:col>
           <:col :let={i} label="Level"><.level_badge level={i.level} /></:col>
           <:col :let={i} label="Sent">
-            <span class="text-ink-muted">{short_date(i.inserted_at)}</span>
+            <span class="tabular-nums text-muted">{short_date(i.inserted_at)}</span>
           </:col>
           <:col :let={i} label="Expires">
-            <span class="text-ink-muted">{short_date(i.expires_at)}</span>
+            <span class="tabular-nums text-muted">{short_date(i.expires_at)}</span>
           </:col>
           <:action :let={i} :if={@owner?}>
             <.button
-              variant="ghost"
-              size="sm"
+              variant="danger-ghost"
+              size="xs"
               phx-click="revoke_invitation"
               phx-value-id={i.id}
-              class="text-danger hover:text-danger"
+              aria-label={"Revoke the invitation to #{i.email}"}
             >
               Revoke
             </.button>
@@ -107,36 +117,37 @@ defmodule ApiaryWeb.MemberLive.Index do
         title="Invite a member"
         on_cancel={JS.patch(~p"/hive/members")}
       >
-        <p class="mb-4 text-ink-muted">
+        <p class="text-muted">
           We email an invitation link. It works for seven days and brings the person into this
           <.term word="hive" /> when they accept.
         </p>
-        <.form for={@form} id="invitation-form" phx-change="validate_invite" phx-submit="invite">
+        <.form
+          for={@form}
+          id="invitation-form"
+          phx-change="validate_invite"
+          phx-submit="invite"
+          class="grid gap-4"
+        >
           <.input
             field={@form[:email]}
             type="email"
             label="Email"
+            placeholder="dana@example.com"
             autocomplete="off"
             spellcheck="false"
             required
-            phx-mounted={JS.focus()}
           />
           <.input
             field={@form[:level]}
             type="select"
             label="Level"
             options={@levels}
-            hint="Owners can manage members and settings. Members can manage keys and see runs."
+            hint="Owners manage members and settings. Members manage keys and see every run."
           />
         </.form>
         <:footer>
           <.button patch={~p"/hive/members"}>Cancel</.button>
-          <.button
-            variant="primary"
-            type="submit"
-            form="invitation-form"
-            phx-disable-with="Sending..."
-          >
+          <.button variant="primary" type="submit" form="invitation-form" loading_text="Sending">
             Send invitation
           </.button>
         </:footer>
@@ -148,18 +159,18 @@ defmodule ApiaryWeb.MemberLive.Index do
         title={"Remove #{@member.user.email}"}
         on_cancel={JS.patch(~p"/hive/members")}
       >
-        <p class="text-ink-muted">
+        <p class="text-muted">
           <%= if @member.user_id == @current_scope.user.id do %>
-            You will leave this <.term word="hive" /> and lose access to it. Another owner can
-            invite you back.
+            You will leave this <.term word="hive" /> and lose access to its runs at once. Your
+            account stays; an owner can invite you again.
           <% else %>
-            They lose access to this <.term word="hive" /> at once. You can invite them again
-            later.
+            They lose access to this <.term word="hive" /> and its runs at once. Their account
+            stays; you can invite them again.
           <% end %>
         </p>
         <:footer>
-          <.button patch={~p"/hive/members"}>Cancel</.button>
-          <.button variant="danger" phx-click="remove" phx-disable-with="Removing...">
+          <.button patch={~p"/hive/members"} data-autofocus>Cancel</.button>
+          <.button variant="danger" phx-click="remove" loading_text="Removing">
             Remove member
           </.button>
         </:footer>
@@ -172,7 +183,7 @@ defmodule ApiaryWeb.MemberLive.Index do
 
   defp level_badge(%{level: :owner} = assigns) do
     ~H"""
-    <.badge color="accent">Owner</.badge>
+    <.badge>Owner</.badge>
     """
   end
 
@@ -281,7 +292,7 @@ defmodule ApiaryWeb.MemberLive.Index do
          socket
          |> put_flash(
            :error,
-           "The last owner cannot be demoted. Make someone else an owner first."
+           "The last owner cannot be removed or demoted. Make someone else an owner first."
          )
          |> load()}
 
@@ -316,7 +327,7 @@ defmodule ApiaryWeb.MemberLive.Index do
          socket
          |> put_flash(
            :error,
-           "The last owner cannot be removed. Make someone else an owner first."
+           "The last owner cannot be removed or demoted. Make someone else an owner first."
          )
          |> push_patch(to: ~p"/hive/members")}
 
@@ -354,7 +365,9 @@ defmodule ApiaryWeb.MemberLive.Index do
     invitations =
       if socket.assigns.owner?, do: Organisations.list_invitations(scope), else: []
 
-    assign(socket, members: members, invitations: invitations)
+    socket
+    |> assign(members: members, invitations: invitations)
+    |> assign(:nav_counts, Map.put(socket.assigns.nav_counts || %{}, :members, length(members)))
   end
 
   # The current user's own level may have changed; reload the scope so the

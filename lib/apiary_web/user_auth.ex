@@ -4,6 +4,7 @@ defmodule ApiaryWeb.UserAuth do
   import Plug.Conn
   import Phoenix.Controller
 
+  alias Apiary.AccessKeys
   alias Apiary.Accounts
   alias Apiary.Accounts.Scope
   alias Apiary.Organisations
@@ -237,16 +238,16 @@ defmodule ApiaryWeb.UserAuth do
     scope = socket.assigns.current_scope
 
     if scope && scope.user do
+      scope = Organisations.load_scope(scope, session["organisation_id"])
+
       {:cont,
        socket
-       |> Phoenix.Component.assign(
-         :current_scope,
-         Organisations.load_scope(scope, session["organisation_id"])
-       )
+       |> Phoenix.Component.assign(:current_scope, scope)
        |> Phoenix.Component.assign(:memberships, Organisations.list_memberships(scope.user))
+       |> Phoenix.Component.assign(:nav_counts, nav_counts(scope))
        |> follow_membership_changes()}
     else
-      {:cont, Phoenix.Component.assign(socket, :memberships, [])}
+      {:cont, Phoenix.Component.assign(socket, memberships: [], nav_counts: nil)}
     end
   end
 
@@ -273,6 +274,18 @@ defmodule ApiaryWeb.UserAuth do
 
       {:halt, socket}
     end
+  end
+
+  @doc """
+  The counts the sidebar shows beside Access keys (active keys) and Members.
+  """
+  def nav_counts(%Scope{organisation: nil}), do: nil
+
+  def nav_counts(%Scope{} = scope) do
+    %{
+      keys: scope |> AccessKeys.list_access_keys() |> Enum.count(&is_nil(&1.revoked_at)),
+      members: scope |> Organisations.list_members() |> length()
+    }
   end
 
   # An open page follows a change of the user's own membership: a new level is
@@ -307,6 +320,7 @@ defmodule ApiaryWeb.UserAuth do
       socket
       |> Phoenix.Component.assign(:current_scope, reloaded)
       |> Phoenix.Component.assign(:memberships, Organisations.list_memberships(scope.user))
+      |> Phoenix.Component.assign(:nav_counts, nav_counts(reloaded))
       |> then(fn socket ->
         # The pages that show owner-only controls keep the answer in `owner?`.
         if is_map_key(socket.assigns, :owner?),

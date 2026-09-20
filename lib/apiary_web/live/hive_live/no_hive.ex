@@ -8,11 +8,15 @@ defmodule ApiaryWeb.HiveLive.NoHive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope} memberships={@memberships}>
-      <.empty_state icon="hero-envelope-open" title="You are not part of an apiary yet" class="py-16">
+      <.empty_state
+        icon="hero-envelope-open"
+        title="You are not part of an apiary yet"
+        heading="h1"
+        class="mx-auto mt-6 w-full max-w-[480px] md:mt-16"
+      >
         <p>
           An <.term word="apiary" /> is created when you register, and you join someone else's
-          <.term word="apiary" />
-          through an invitation. Ask an owner to invite <span class="font-medium text-ink">{@current_scope.user.email}</span>;
+          through an invitation. Ask an owner to invite <strong class="font-medium text-base-content">{@current_scope.user.email}</strong>;
           the email they send brings you straight to their <.term word="hive" />.
         </p>
         <:actions>

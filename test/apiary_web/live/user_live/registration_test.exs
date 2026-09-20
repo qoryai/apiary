@@ -8,7 +8,7 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
     test "renders registration page", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/users/register")
 
-      assert html =~ "Register"
+      assert html =~ "Create your account"
       assert html =~ "Log in"
     end
 
@@ -29,7 +29,7 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
         |> element("#registration_form")
         |> render_change(user: %{"email" => "with spaces"})
 
-      assert result =~ "Register"
+      assert result =~ "Create your account"
       assert result =~ "must have the @ sign and no spaces"
     end
   end
@@ -41,12 +41,17 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
       email = unique_user_email()
       form = form(lv, "#registration_form", user: valid_user_attributes(email: email))
 
-      {:ok, _lv, html} =
-        render_submit(form)
-        |> follow_redirect(conn, ~p"/users/log-in")
+      html = render_submit(form)
 
-      assert html =~
-               ~r/An email was sent to .*, please access it to confirm your account/
+      # the confirmation replaces the form in place; nobody is logged in
+      assert html =~ "Check your email"
+      assert html =~ "We sent a confirmation link to"
+      assert html =~ email
+      refute has_element?(lv, "#registration_form")
+
+      assert Apiary.Repo.get_by!(Apiary.Accounts.UserToken,
+               user_id: Apiary.Accounts.get_user_by_email(email).id
+             ).context == "login"
     end
 
     test "renders errors for duplicated email", %{conn: conn} do

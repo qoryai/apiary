@@ -14,8 +14,8 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
       assert html =~ scope.organisation.name
       assert html =~ "Connect your first machine"
       assert html =~ "Paste the server block into the runner file"
-      assert html =~ ~r/<abbr[^>]*title="organisation"[^>]*>apiary<\/abbr>/
-      assert html =~ ~r/<abbr[^>]*title="team"[^>]*>hive<\/abbr>/
+      assert html =~ ~r/<abbr[^>]*data-tip="organisation"[^>]*>apiary<\/abbr>/
+      assert html =~ ~r/<abbr[^>]*data-tip="team"[^>]*>hive<\/abbr>/
 
       # the user menu lives in the shell
       assert html =~ ~p"/users/settings"
@@ -43,7 +43,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
       assert html =~ "Members"
       assert html =~ "1 owner"
       assert html =~ "Connect a machine"
-      assert html =~ "Runs will appear here once a machine posts."
+      assert html =~ "Listening for the first post from a machine."
     end
   end
 

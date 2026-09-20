@@ -8,72 +8,87 @@ defmodule ApiaryWeb.UserLive.Settings do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope} memberships={@memberships}>
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      memberships={@memberships}
+      counts={assigns[:nav_counts]}
+      width="narrow"
+    >
       <.header>
         Account settings
-        <:subtitle>Manage your account email address and password settings.</:subtitle>
+        <:subtitle>Your email address and password.</:subtitle>
       </.header>
 
-      <div class="grid gap-6 lg:grid-cols-2">
-        <.card>
-          <:title>Email</:title>
-          <.form
-            for={@email_form}
-            id="email_form"
-            phx-submit="update_email"
-            phx-change="validate_email"
-          >
-            <.input
-              field={@email_form[:email]}
-              type="email"
-              label="Email"
-              autocomplete="username"
-              spellcheck="false"
-              required
-            />
-            <.button variant="primary" phx-disable-with="Changing...">Change Email</.button>
-          </.form>
-        </.card>
+      <.card>
+        <:title>Email</:title>
+        <.form
+          for={@email_form}
+          id="email_form"
+          phx-submit="update_email"
+          phx-change="validate_email"
+          class="grid max-w-[420px] gap-4"
+        >
+          <.input
+            field={@email_form[:email]}
+            type="email"
+            label="Email"
+            autocomplete="username"
+            spellcheck="false"
+            required
+          />
+        </.form>
+        <:footer>
+          <span>We send a confirmation link to the new address.</span>
+          <.button type="submit" form="email_form" loading_text="Sending">
+            Change email
+          </.button>
+        </:footer>
+      </.card>
 
-        <.card>
-          <:title>Password</:title>
-          <.form
-            for={@password_form}
-            id="password_form"
-            action={~p"/users/update-password"}
-            method="post"
-            phx-change="validate_password"
-            phx-submit="update_password"
-            phx-trigger-action={@trigger_submit}
-          >
-            <input
-              name={@password_form[:email].name}
-              type="hidden"
-              id="hidden_user_email"
-              spellcheck="false"
-              value={@current_email}
-            />
-            <.input
-              field={@password_form[:password]}
-              type="password"
-              label="New password"
-              autocomplete="new-password"
-              spellcheck="false"
-              required
-            />
-            <.input
-              field={@password_form[:password_confirmation]}
-              type="password"
-              label="Confirm new password"
-              autocomplete="new-password"
-              spellcheck="false"
-            />
-            <.button variant="primary" phx-disable-with="Saving...">
-              Save Password
-            </.button>
-          </.form>
-        </.card>
-      </div>
+      <.card>
+        <:title>Password</:title>
+        <.form
+          for={@password_form}
+          id="password_form"
+          action={~p"/users/update-password"}
+          method="post"
+          phx-change="validate_password"
+          phx-submit="update_password"
+          phx-trigger-action={@trigger_submit}
+          class="grid max-w-[420px] gap-4"
+        >
+          <input
+            name={@password_form[:email].name}
+            type="hidden"
+            id="hidden_user_email"
+            autocomplete="username"
+            value={@current_email}
+          />
+          <.input
+            field={@password_form[:password]}
+            type="password"
+            label="New password"
+            hint="At least 12 characters."
+            autocomplete="new-password"
+            spellcheck="false"
+            required
+          />
+          <.input
+            field={@password_form[:password_confirmation]}
+            type="password"
+            label="Confirm new password"
+            autocomplete="new-password"
+            spellcheck="false"
+          />
+        </.form>
+        <:footer>
+          <span>Optional. Log-in links keep working either way.</span>
+          <.button type="submit" form="password_form" loading_text="Saving">
+            Save password
+          </.button>
+        </:footer>
+      </.card>
     </Layouts.app>
     """
   end
@@ -83,10 +98,10 @@ defmodule ApiaryWeb.UserLive.Settings do
     socket =
       case Accounts.update_user_email(socket.assigns.current_scope.user, token) do
         {:ok, _user} ->
-          put_flash(socket, :info, "Email changed successfully.")
+          put_flash(socket, :info, "Your email address is changed.")
 
         {:error, _} ->
-          put_flash(socket, :error, "Email change link is invalid or it has expired.")
+          put_flash(socket, :error, "That link has expired. Ask for a new one below.")
       end
 
     {:ok, push_navigate(socket, to: ~p"/users/settings")}
@@ -135,7 +150,7 @@ defmodule ApiaryWeb.UserLive.Settings do
           &url(~p"/users/settings/confirm-email/#{&1}")
         )
 
-        info = "A link to confirm your email change has been sent to the new address."
+        info = "A link to confirm your email change is on its way to the new address."
         {:noreply, socket |> put_flash(:info, info)}
 
       changeset ->

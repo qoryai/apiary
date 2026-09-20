@@ -4,88 +4,156 @@ defmodule ApiaryWeb.UserLive.LoginTest do
   import Phoenix.LiveViewTest
   import Apiary.AccountsFixtures
 
-  describe "login page" do
-    test "renders login page", %{conn: conn} do
-      {:ok, _lv, html} = live(conn, ~p"/users/log-in")
+  @remember_me_cookie "_apiary_web_user_remember_me"
 
-      assert html =~ "Log in"
-      assert html =~ "Sign up"
-      assert html =~ "Log in with email"
+  defp password_mode(lv) do
+    lv |> element("button[phx-click=toggle_mode]") |> render_click()
+    lv
+  end
+
+  describe "login page" do
+    test "renders one form with one email field, in link mode", %{conn: conn} do
+      {:ok, lv, html} = live(conn, ~p"/users/log-in")
+
+      assert html =~ "Log in to Qory"
+      assert html =~ "Send me a log-in link"
+      assert html =~ "Use a password instead"
+      assert html =~ "Create an account"
+
+      assert [_one] = Regex.scan(~r/<form[^>]*id="login_form"/, html)
+      assert [_one] = Regex.scan(~r/<input[^>]*type="email"/, html)
+      refute has_element?(lv, "input[type=password]")
+      refute has_element?(lv, "input[type=checkbox]")
+    end
+
+    test "the toggle reveals the password and keeps the typed email", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/users/log-in")
+
+      lv |> form("#login_form", user: %{email: "dana@example.com"}) |> render_change()
+      html = lv |> password_mode() |> render()
+
+      assert html =~ "Email me a link instead"
+      assert html =~ "Keep me signed in"
+      assert [_one] = Regex.scan(~r/<input[^>]*type="email"/, html)
+      assert has_element?(lv, ~s|#login_form_email[value="dana@example.com"]|)
+      assert has_element?(lv, "#login_form input[type=password]")
+
+      assert has_element?(
+               lv,
+               ~s|#login_form input[type=checkbox][name="user[remember_me]"][checked]|
+             )
+
+      html = lv |> password_mode() |> render()
+      assert html =~ "Send me a log-in link"
+      refute has_element?(lv, "input[type=password]")
+      assert has_element?(lv, ~s|#login_form_email[value="dana@example.com"]|)
     end
   end
 
   describe "user login - magic link" do
-    test "sends magic link email when user exists", %{conn: conn} do
+    test "sends the email and shows the confirmation in place", %{conn: conn} do
       user = user_fixture()
 
       {:ok, lv, _html} = live(conn, ~p"/users/log-in")
 
-      {:ok, _lv, html} =
-        form(lv, "#login_form_magic", user: %{email: user.email})
-        |> render_submit()
-        |> follow_redirect(conn, ~p"/users/log-in")
+      html = lv |> form("#login_form", user: %{email: user.email}) |> render_submit()
 
-      assert html =~ "If your email is in our system"
+      assert html =~ "Check your email"
+      assert html =~ user.email
+      assert html =~ "a log-in link is on its way"
+      refute has_element?(lv, "#login_form")
 
       assert Apiary.Repo.get_by!(Apiary.Accounts.UserToken, user_id: user.id).context ==
                "login"
+
+      html = lv |> element("button", "Use a different email") |> render_click()
+      assert html =~ "Send me a log-in link"
+      assert has_element?(lv, "#login_form")
     end
 
     test "does not disclose if user is registered", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/users/log-in")
 
-      {:ok, _lv, html} =
-        form(lv, "#login_form_magic", user: %{email: "idonotexist@example.com"})
-        |> render_submit()
-        |> follow_redirect(conn, ~p"/users/log-in")
+      html =
+        lv |> form("#login_form", user: %{email: "idonotexist@example.com"}) |> render_submit()
 
-      assert html =~ "If your email is in our system"
+      assert html =~ "Check your email"
+      assert html =~ "a log-in link is on its way"
+      assert Apiary.Repo.aggregate(Apiary.Accounts.UserToken, :count) == 0
     end
   end
 
   describe "user login - password" do
-    test "redirects if user logs in with valid credentials", %{conn: conn} do
+    test "logs in with valid credentials and sets the remember-me cookie", %{conn: conn} do
       user = user_fixture() |> set_password()
 
       {:ok, lv, _html} = live(conn, ~p"/users/log-in")
+      password_mode(lv)
 
       form =
-        form(lv, "#login_form_password",
+        form(lv, "#login_form",
           user: %{email: user.email, password: valid_user_password(), remember_me: true}
         )
 
-      conn = submit_form(form, conn)
+      render_submit(form)
+      conn = follow_trigger_action(form, conn)
 
       assert redirected_to(conn) == ~p"/hive"
+      assert get_session(conn, :user_token)
+      assert conn.resp_cookies[@remember_me_cookie]
     end
 
-    test "redirects to login page with a flash error if credentials are invalid", %{
-      conn: conn
-    } do
+    test "sets no remember-me cookie when the box is unchecked", %{conn: conn} do
+      user = user_fixture() |> set_password()
+
       {:ok, lv, _html} = live(conn, ~p"/users/log-in")
+      password_mode(lv)
 
       form =
-        form(lv, "#login_form_password", user: %{email: "test@email.com", password: "123456"})
+        form(lv, "#login_form",
+          user: %{email: user.email, password: valid_user_password(), remember_me: false}
+        )
 
-      render_submit(form, %{user: %{remember_me: true}})
+      render_submit(form)
+      conn = follow_trigger_action(form, conn)
+
+      assert redirected_to(conn) == ~p"/hive"
+      assert get_session(conn, :user_token)
+      refute conn.resp_cookies[@remember_me_cookie]
+    end
+
+    test "comes back with an error, in password mode, if credentials are invalid", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/users/log-in")
+      password_mode(lv)
+
+      form = form(lv, "#login_form", user: %{email: "test@email.com", password: "123456"})
+      render_submit(form)
 
       conn = follow_trigger_action(form, conn)
-      assert Phoenix.Flash.get(conn.assigns.flash, :error) == "Invalid email or password"
+
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) ==
+               "That email and password do not match."
+
       assert redirected_to(conn) == ~p"/users/log-in"
+
+      {:ok, lv, html} = live(recycle(conn), ~p"/users/log-in")
+      assert html =~ "That email and password do not match."
+      assert has_element?(lv, "#login_form input[type=password]")
+      assert has_element?(lv, ~s|#login_form_email[value="test@email.com"]|)
     end
   end
 
   describe "login navigation" do
-    test "redirects to registration page when the Register button is clicked", %{conn: conn} do
+    test "goes to the registration page when Create an account is clicked", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/users/log-in")
 
-      {:ok, _login_live, login_html} =
+      {:ok, _register_live, register_html} =
         lv
-        |> element("main a", "Sign up")
+        |> element("main a", "Create an account")
         |> render_click()
         |> follow_redirect(conn, ~p"/users/register")
 
-      assert login_html =~ "Register"
+      assert register_html =~ "Create your account"
     end
   end
 
@@ -96,14 +164,14 @@ defmodule ApiaryWeb.UserLive.LoginTest do
     end
 
     test "shows login page with email filled in", %{conn: conn, user: user} do
-      {:ok, _lv, html} = live(conn, ~p"/users/log-in")
+      {:ok, lv, html} = live(conn, ~p"/users/log-in")
 
-      assert html =~ "You need to reauthenticate"
-      refute html =~ "Register"
-      assert html =~ "Log in with email"
+      assert html =~ "Confirm it is you"
+      assert html =~ "Log in again to change sensitive account settings."
+      refute html =~ "Create an account"
+      assert html =~ "Send me a log-in link"
 
-      assert html =~
-               ~s(<input type="email" name="user[email]" id="login_form_magic_email" value="#{user.email}")
+      assert has_element?(lv, ~s|#login_form_email[readonly][value="#{user.email}"]|)
     end
   end
 end
