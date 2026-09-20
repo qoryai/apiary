@@ -10,8 +10,7 @@ defmodule ApiaryWeb.RunLive.Index do
   are collected and applied at most every 250 ms, and the rows are a keyed comprehension,
   so only the rows that changed are sent. A new
   run that the filters return is never inserted under the reader: the summary line gains
-  "1 new run", which asks again (the `NewRuns` hook follows it for a reader at the top of
-  page 1 with nothing focused in the table). Whether a running run has gone quiet is
+  "1 new run", said politely to a screen reader, which asks again when the reader follows it. Whether a running run has gone quiet is
   decided here, on a 5 s timer and on every change, never in the browser.
 
   The page is loaded off the socket's process (`start_async`): the first render is the
@@ -167,17 +166,13 @@ defmodule ApiaryWeb.RunLive.Index do
             <b>{delimited(@summary.with_denials)}</b> with denials
           </span>
           <span :if={!@summary} class="skeleton q-skel w-56"></span>
-          <.link
-            :if={MapSet.size(@new_ids) > 0}
-            id="runs-new"
-            phx-hook="NewRuns"
-            phx-click="show_new"
-            data-auto={to_string(@listing != nil && @listing.page == 1)}
-            data-table="#runs"
-            href="#"
-          >
-            {count_noun(MapSet.size(@new_ids), "new run")}
-          </.link>
+          <%!-- Never followed for the reader: a screen reader's cursor leaves focus on the
+          body, which looks like "nothing focused". The link is shown and said politely. --%>
+          <span id="runs-new-status" role="status" aria-live="polite">
+            <.link :if={MapSet.size(@new_ids) > 0} id="runs-new" phx-click="show_new" href="#">
+              {count_noun(MapSet.size(@new_ids), "new run")}
+            </.link>
+          </span>
           <span class="text-faint">Updated as batches land</span>
         </div>
 
@@ -294,20 +289,22 @@ defmodule ApiaryWeb.RunLive.Index do
       aria-busy={to_string(@loading)}
     >
       <table id={@id} class="table q-runs" phx-hook="RunGroups" role="table">
-        <thead>
+        <thead role="rowgroup">
           <tr role="row">
-            <th scope="col">State</th>
-            <th scope="col">{if @group_by == "task", do: "Repository", else: "Run"}</th>
-            <th :if={@group_by == "none"} scope="col">Repository</th>
-            <th scope="col">Runtime</th>
-            <th scope="col">Host</th>
-            <th scope="col">Started</th>
-            <th scope="col" class="q-num">Duration</th>
-            <th scope="col" class="q-num">Denials</th>
+            <th scope="col" role="columnheader">State</th>
+            <th scope="col" role="columnheader">
+              {if @group_by == "task", do: "Repository", else: "Run"}
+            </th>
+            <th :if={@group_by == "none"} scope="col" role="columnheader">Repository</th>
+            <th scope="col" role="columnheader">Runtime</th>
+            <th scope="col" role="columnheader">Host</th>
+            <th scope="col" role="columnheader">Started</th>
+            <th scope="col" role="columnheader" class="q-num">Duration</th>
+            <th scope="col" role="columnheader" class="q-num">Denials</th>
           </tr>
         </thead>
-        <tbody :if={@loading} id={"#{@id}-loading"}>
-          <tr :for={n <- 1..8} role="row" class="q-skel-row">
+        <tbody :if={@loading} id={"#{@id}-loading"} role="rowgroup">
+          <tr :for={n <- 1..8} role="row" class="q-skel-row" aria-hidden="true">
             <td><span class="skeleton q-skel w-16"></span></td>
             <td>
               <span class={["skeleton q-skel", if(rem(n, 2) == 0, do: "w-40", else: "w-28")]}></span>
@@ -322,6 +319,7 @@ defmodule ApiaryWeb.RunLive.Index do
         </tbody>
         <tbody
           :for={group <- @groups}
+          role="rowgroup"
           id={"#{@id}-group-#{group_id(group)}"}
           data-group={group.kind != :none && group_storage_key(@group_by, group)}
           phx-mounted={JS.ignore_attributes(["data-collapsed"])}

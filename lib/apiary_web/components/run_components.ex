@@ -68,8 +68,9 @@ defmodule ApiaryWeb.RunComponents do
         <span
           :if={@state == "closed"}
           class="tooltip q-tip-wide"
+          tabindex="0"
           data-tip={closed_tip(@closed_at)}
-        >{state_label(@state)}</span>
+        >{state_label(@state)}<span class="sr-only">. {closed_tip(@closed_at)}</span></span>
         <span :if={@state != "closed"}>{state_label(@state)}</span>
         <span :if={@code} class="font-mono text-[11px]">{@code}</span>
       </.badge>
@@ -89,6 +90,7 @@ defmodule ApiaryWeb.RunComponents do
           class="tabular-nums"
         >{format_seconds(@quiet_for)}</time>
         <span :if={!@quiet_since} class="tabular-nums">{format_seconds(@quiet_for)}</span>
+        <span class="sr-only">. {quiet_tip(@interval)}</span>
       </span>
     </span>
     """
@@ -241,7 +243,7 @@ defmodule ApiaryWeb.RunComponents do
       tabindex="0"
       data-tip={@tip}
     >
-      at least {format_seconds(@at_least_seconds)}
+      at least {format_seconds(@at_least_seconds)}<span class="sr-only">. {@tip}</span>
     </span>
     """
   end
@@ -504,7 +506,8 @@ defmodule ApiaryWeb.RunComponents do
         <% @state == "running" and @quiet -> %>
           <span class="q-dot" aria-hidden="true"></span>
           <span class="tooltip tooltip-left q-tip-wide" tabindex="0" data-tip={quiet_tip(@interval)}>
-            No heartbeat for <.seconds_since at={@since} />
+            No heartbeat for
+            <.seconds_since at={@since} /><span class="sr-only">. {quiet_tip(@interval)}</span>
           </span>
         <% @state == "running" and @since -> %>
           <span class="q-dot q-ripple" aria-hidden="true"></span>
@@ -593,7 +596,8 @@ defmodule ApiaryWeb.RunComponents do
 
   @doc """
   One filter: a dashed chip while unset, a solid one with its value and a remove button once
-  set. The menu is a form; a change sends `event` with the form's fields (`name` or
+  set. What opens is a small dialog, not a menu: it holds a form of checkboxes or radios
+  (and dates), and is named as one. A change sends `event` with the form's fields (`name` or
   `name[]`, and `from` and `to` when `dates` is given), and the LiveView patches.
   """
   attr :id, :string, default: nil
@@ -637,7 +641,8 @@ defmodule ApiaryWeb.RunComponents do
           id={"#{@id}-button"}
           type="button"
           class="q-chip-main"
-          aria-haspopup="menu"
+          aria-haspopup="dialog"
+          aria-controls={"#{@id}-panel"}
           aria-expanded="false"
           aria-label={
             if @set?, do: "#{@label}: #{@shown}, change", else: "Filter by #{String.downcase(@label)}"
@@ -658,7 +663,12 @@ defmodule ApiaryWeb.RunComponents do
           <.icon name="hero-x-mark-micro" class="size-3" />
         </.link>
       </span>
-      <div class="dropdown-content q-filter-menu left-0 top-full mt-1.5">
+      <div
+        id={"#{@id}-panel"}
+        role="dialog"
+        aria-label={"Filter by #{String.downcase(@label)}"}
+        class="dropdown-content q-filter-menu left-0 top-full mt-1.5"
+      >
         <form
           :if={@query not in [nil, ""] or (@total || length(@options)) > 8}
           id={"#{@id}-narrow"}
@@ -756,23 +766,25 @@ defmodule ApiaryWeb.RunComponents do
   attr :pressed, :boolean, default: false
   attr :patch, :string, required: true
 
+  # A real button that patches: it answers Space as well as Enter, which a link dressed as
+  # a button does not.
   def filter_toggle(assigns) do
     ~H"""
-    <.link
+    <button
       id={@id || "filter-#{@name}"}
-      patch={@patch}
-      role="button"
+      type="button"
+      phx-click={JS.patch(@patch)}
       aria-pressed={to_string(@pressed)}
       class="q-chip q-chip-toggle"
     >
       <.icon :if={@icon} name={@icon} class="size-4" />{@label}
-    </.link>
+    </button>
     """
   end
 
   @doc """
-  The segmented control of the theme menu, as links: the group-by control and the decision
-  filter. Every segment is a patch.
+  The segmented control of the theme menu: the group-by control and the decision filter.
+  Every segment is a button that patches, so the URL changes and Space works.
   """
   attr :id, :string, required: true
   attr :label, :string, required: true
@@ -786,17 +798,17 @@ defmodule ApiaryWeb.RunComponents do
   def segments(assigns) do
     ~H"""
     <div id={@id} class="q-seg" role="group" aria-label={@label}>
-      <.link
+      <button
         :for={segment <- @segment}
-        patch={segment.patch}
-        role="button"
+        type="button"
+        phx-click={JS.patch(segment.patch)}
         aria-pressed={to_string(segment[:pressed] == true)}
       >
         {render_slot(segment)}
         <span :if={segment[:count]} class="font-mono text-[11px] text-faint tabular-nums">
           {segment[:count]}
         </span>
-      </.link>
+      </button>
     </div>
     """
   end

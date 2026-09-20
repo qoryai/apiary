@@ -26,7 +26,7 @@ defmodule ApiaryWeb.RunComponentsTest do
             {"closed", "Closed"}
           ] do
         html = render_component(&RunComponents.run_state/1, state: state)
-        assert text(html) == word
+        assert String.starts_with?(text(html), word)
         assert html =~ "q-state-running" == (state == "running")
       end
     end
@@ -73,7 +73,7 @@ defmodule ApiaryWeb.RunComponentsTest do
 
       assert html =~ "bg-primary-soft"
       refute html =~ "q-state-running"
-      assert text(html) == "Running No heartbeat for 47 s"
+      assert text(html) =~ ~r/^Running No heartbeat for 47 s\s*\. Heartbeats are due every 30 s\./
       assert html =~ ~s(data-tick="seconds")
 
       assert html =~
@@ -146,8 +146,8 @@ defmodule ApiaryWeb.RunComponentsTest do
     test "a duration says n/a, at least, or ticks" do
       assert text(render_component(&RunComponents.duration/1, [])) == "n/a"
 
-      assert text(render_component(&RunComponents.duration/1, at_least_seconds: 510)) ==
-               "at least 8 m 30 s"
+      assert text(render_component(&RunComponents.duration/1, at_least_seconds: 510)) =~
+               ~r/^at least 8 m 30 s\. Elapsed at the last heartbeat\./
 
       # The runner said 120 s had elapsed; the server received that 14 s ago. The runner's
       # own started_at plays no part.
@@ -402,6 +402,35 @@ defmodule ApiaryWeb.RunComponentsTest do
 
       refute html =~ "<script>"
       refute html =~ "<b>x</b>"
+    end
+  end
+
+  describe "controls" do
+    test "a toggle and a segment are buttons that patch, so Space works" do
+      html =
+        render_component(&RunComponents.filter_toggle/1,
+          name: "denials",
+          label: "Has denials",
+          pressed: true,
+          patch: "/hive/runs"
+        )
+
+      assert html =~ ~r/<button[^>]*type="button"[^>]*aria-pressed="true"/
+      refute html =~ "role=\"button\""
+      assert html =~ "/hive/runs"
+    end
+
+    test "the closed badge's tip is focusable and is text" do
+      html =
+        render_component(&RunComponents.run_state/1,
+          state: "closed",
+          closed_at: ~U[2026-09-14 10:00:00Z]
+        )
+
+      assert html =~ ~s(tabindex="0")
+
+      assert text(html) =~
+               "Closed. Closed by a member on 14 Sep 2026. The run never posted its exit."
     end
   end
 

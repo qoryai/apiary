@@ -152,7 +152,10 @@ defmodule ApiaryWeb.RunLive.IndexTest do
              )
 
       refute has_element?(view, "#{row(quiet)} .q-state-running")
-      assert text(view, "#{row(quiet)} .q-quiet") =~ ~r/^No heartbeat for \d\d s$/
+
+      assert text(view, "#{row(quiet)} .q-quiet") =~
+               ~r/^No heartbeat for \d\d s \. Heartbeats are due every 30 s\./
+
       assert text(view, row(quiet)) =~ "at least 8 m 30 s"
     end
 
@@ -170,7 +173,10 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       refute has_element?(view, "#{row(run)} .q-quiet")
 
       Runs.broadcast_changed(Repo.reload!(run))
-      assert text(view, "#{row(run)} .q-quiet") =~ ~r/^No heartbeat for 4\d s$/
+
+      assert text(view, "#{row(run)} .q-quiet") =~
+               ~r/^No heartbeat for 4\d s \. Heartbeats are due every 30 s\./
+
       assert render(view) =~ "Heartbeats are due every 30 s."
     end
 
@@ -228,7 +234,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
                "tr.q-group a[href='/hive/connections?forge=github.example&repo=acme%2Fshop']"
              )
 
-      assert has_element?(view, "#runs-group a[aria-pressed=true]", "Repository")
+      assert has_element?(view, "#runs-group button[aria-pressed=true]", "Repository")
     end
 
     test "by task: one task spans repositories, each row leads with its repository", %{
@@ -236,7 +242,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       github: github
     } do
       view = open(conn)
-      view |> element("#runs-group a", "Task") |> render_click()
+      view |> element("#runs-group button", "Task") |> render_click()
       assert_patch(view, ~p"/hive/runs?group=task")
       render_async(view)
 
@@ -509,6 +515,48 @@ defmodule ApiaryWeb.RunLive.IndexTest do
     end
   end
 
+  describe "accessibility" do
+    test "toggles and segments are buttons, the filter opens a named dialog, tips are text", %{
+      conn: conn,
+      scope: scope
+    } do
+      quiet = started_run(scope, shop(), ago: 600, heartbeat: {47, 510, 30})
+      view = open(conn)
+
+      assert has_element?(view, "button#filter-denials[type=button][aria-pressed=false]")
+
+      assert has_element?(
+               view,
+               "#runs-group button[type=button][aria-pressed=true]",
+               "Repository"
+             )
+
+      refute has_element?(view, "#runs-filters [role=button]")
+
+      assert has_element?(
+               view,
+               "#filter-state-button[aria-haspopup=dialog][aria-controls=filter-state-panel]"
+             )
+
+      assert has_element?(view, "#filter-state-panel[role=dialog][aria-label='Filter by state']")
+
+      # What a sighted reader gets from the tooltip is in the text for everyone else.
+      assert has_element?(view, "#{row(quiet)} .q-quiet[tabindex='0'] .sr-only", "After 1 m 30 s")
+      assert has_element?(view, "#{row(quiet)} .q-c-dur [tabindex='0'] .sr-only", "clock stops")
+    end
+
+    test "the table keeps its roles whole, headers included", %{conn: conn, scope: scope} do
+      run = started_run(scope, shop())
+      view = open(conn)
+
+      assert has_element?(view, "table#runs[role=table] > thead[role=rowgroup] > tr[role=row]")
+      assert has_element?(view, "#runs th[role=columnheader][scope=col]", "Denials")
+      assert has_element?(view, "#runs > tbody[role=rowgroup] > #{row(run)}[role=row]")
+      refute has_element?(view, "#runs th:not([role=columnheader])")
+      refute has_element?(view, "#{row(run)} td:not([role=cell])")
+    end
+  end
+
   describe "pagination keeps the URL" do
     test "fifty a page, previous and next", %{conn: conn, scope: scope} do
       for _ <- 1..51, do: run_fixture(scope)
@@ -581,7 +629,9 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       new = started_run(scope, shop(), ago: 1)
       refute has_element?(view, row(new))
       assert text(view, "#runs-new") == "1 new run"
-      assert has_element?(view, "#runs-new[data-auto=true]")
+      # Said politely, and never followed for the reader.
+      assert has_element?(view, "#runs-new-status[role=status][aria-live=polite] #runs-new")
+      refute has_element?(view, "#runs-new[phx-hook]")
 
       # More of the same run's batches do not count it twice.
       Runs.broadcast_changed(Repo.reload!(new))

@@ -1411,8 +1411,9 @@
     border-radius: var(--radius-field);
     background-color: var(--color-base-300);
   }
-  .q-seg > a {
+  .q-seg > button {
     display: inline-flex;
+    cursor: pointer;
     height: 24px;
     align-items: center;
     gap: 5px;
@@ -1424,10 +1425,10 @@
     white-space: nowrap;
     transition: color 120ms var(--q-ease-out), background-color 120ms var(--q-ease-out);
   }
-  .q-seg > a:hover {
+  .q-seg > button:hover {
     color: var(--color-base-content);
   }
-  .q-seg > a[aria-pressed="true"] {
+  .q-seg > button[aria-pressed="true"] {
     background-color: var(--color-base-100);
     color: var(--color-base-content);
     box-shadow: var(--q-shadow-xs);
@@ -2136,8 +2137,18 @@
 
   /* The runs table reflows into blocks below 640 px; roles stay on the elements. */
   @media (max-width: 639.98px) {
-    .q-runs thead {
-      display: none;
+    /* Out of sight, still in the accessibility tree: the cells keep their headers. */
+    .q-runs thead,
+    .q-runs tr.q-row td.q-c-rt,
+    .q-runs tr.q-row td.q-c-host,
+    .q-runs tr.q-row td.q-c-repo,
+    .q-runs tr.q-row td.q-c-den:has(.q-zero) {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
     }
     .q-runs,
     .q-runs tbody {
@@ -2184,20 +2195,14 @@
       justify-self: end;
       font-size: 0.78125rem;
     }
-    .q-runs tr.q-row td.q-c-rt,
-    .q-runs tr.q-row td.q-c-host,
-    .q-runs tr.q-row td.q-c-repo {
-      display: none;
-    }
+
     .q-runs tr.q-row td.q-c-den {
       grid-column: 1 / -1;
       grid-row: 3;
       font-size: 0.78125rem;
       text-align: left !important;
     }
-    .q-runs tr.q-row td.q-c-den:has(.q-zero) {
-      display: none;
-    }
+
     .q-runs tr.q-group {
       display: block;
     }

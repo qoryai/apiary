@@ -206,7 +206,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       refute has_element?(view, "##{dst("files.cdn.example")}")
       assert text(view, "#connections-summary") =~ "1 destination 1 denied 1 run"
 
-      view |> element("#connections-decision a", "Allowed") |> render_click()
+      view |> element("#connections-decision button", "Allowed") |> render_click()
 
       assert_patch(
         view,

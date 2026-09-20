@@ -45,21 +45,3 @@ export const RunGroups = {
     })
   },
 }
-
-// "1 new run": a new run is not inserted under the reader. At the top of page 1 with
-// nothing focused inside the table it is, by following the link for them.
-export const NewRuns = {
-  mounted() {
-    this.maybe()
-  },
-  updated() {
-    this.maybe()
-  },
-  maybe() {
-    if (this.el.dataset.auto !== "true") return
-    const table = document.querySelector(this.el.dataset.table)
-    const reading = table && table.contains(document.activeElement)
-    const atTop = (window.scrollY || document.documentElement.scrollTop) < 120
-    if (atTop && !reading && !document.hidden) this.el.click()
-  },
-}
