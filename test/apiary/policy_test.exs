@@ -997,6 +997,37 @@ defmodule Apiary.PolicyTest do
              """
     end
 
+    test "what YAML reads as a line break is refused in a rule, and escaped should it be there",
+         %{scope: scope} do
+      assert {:error, %Error{field: :paths}} =
+               Policy.allow(scope, nil, %{host: "git.example", paths: ["/a\u2028b"]})
+
+      assert {:error, %Error{field: :argument}} =
+               Policy.allow(scope, nil, %{
+                 kind: "credential",
+                 name: "product",
+                 argument: "x\u2028y: z"
+               })
+
+      # The export does not lean on that: a scalar is one line whatever it holds.
+      effective = %Apiary.Policy.Effective{
+        mode: "enforce",
+        allow: ["git.example"],
+        paths: %{"git.example" => ["/a\u2028b", "/c\u2029d", "/e\u0085f", "/ü/🐝"]},
+        credentials: [%{name: "product", argument: "x\u2028y: z"}]
+      }
+
+      %{policy_file: policy_file} = Apiary.Policy.Export.text(effective)
+
+      refute policy_file =~ ~r/[\x{85}\x{2028}\x{2029}]/u
+      assert policy_file =~ ~S("/a\u2028b")
+      assert policy_file =~ ~S("/c\u2029d")
+      assert policy_file =~ ~S("/e\u0085f")
+      assert policy_file =~ ~S(argument: "x\u2028y: z")
+      # Nothing else is escaped: an astral character stays itself.
+      assert policy_file =~ ~s("/ü/🐝")
+    end
+
     test "paths and credentials go to a policy file the contract's schema accepts", %{
       scope: scope
     } do

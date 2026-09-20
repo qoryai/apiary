@@ -14,6 +14,28 @@ defmodule Apiary.Policy.GrammarTest do
     refute Grammar.argument?("acme/shop\n")
   end
 
+  test "a path holds no space or control character of any script; an argument is one line" do
+    for bad <- [
+          "/a\u2028b",
+          "/a\u2029b",
+          "/a\u0085b",
+          "/a\u00A0b",
+          "/a\u3000b",
+          "/a\u200Bb",
+          "/a\tb"
+        ] do
+      refute Grammar.path?(bad), inspect(bad)
+    end
+
+    assert Grammar.path?("/ü/🐝/*")
+
+    for bad <- ["a\u2028b", "a\u2029b", "a\u0085b", "a\nb", "a\u0000b"] do
+      refute Grammar.argument?(bad), inspect(bad)
+    end
+
+    assert Grammar.argument?("acme/shop with a space, ü and 🐝")
+  end
+
   test "covers?/2 and matches?/2 are the runner's" do
     assert Grammar.covers?("*.example", "api.example")
     assert Grammar.covers?("*.example", "*.api.example")

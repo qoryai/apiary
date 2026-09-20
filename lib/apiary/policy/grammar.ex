@@ -13,6 +13,12 @@ defmodule Apiary.Policy.Grammar do
   # host, a path or a name to the grammar.
   @host ~r/\A(\*\.)?([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\z/
   @path ~r/\A\/[^*?#\s]*\*?\z/
+  # The schema's `\s` is ECMAScript's, every Unicode space and U+2028 and U+2029 with it,
+  # where this engine's `\s` without more is ASCII's: a path holds no separator and no
+  # control character of any kind, or the schema would refuse the render later, without a
+  # sentence. An argument is one line: no control character, no line or paragraph separator.
+  @blank ~r/[\p{Z}\p{C}]/u
+  @line ~r/[\p{Cc}\x{2028}\x{2029}]/u
   @name ~r/\A[a-z0-9][a-z0-9_.-]{0,63}\z/
 
   # A DNS name is at most 253 characters; a path and a list of paths are bounded so a
@@ -36,7 +42,8 @@ defmodule Apiary.Policy.Grammar do
 
   @doc "Whether `path` is a path from the root, whole or up to a final `*`."
   def path?(path) when is_binary(path) do
-    String.valid?(path) and byte_size(path) <= @path_max and Regex.match?(@path, path)
+    String.valid?(path) and byte_size(path) <= @path_max and Regex.match?(@path, path) and
+      not Regex.match?(@blank, path)
   end
 
   def path?(_path), do: false
@@ -50,7 +57,7 @@ defmodule Apiary.Policy.Grammar do
   @doc "Whether `argument` is one a credential may be asked with: 1 to 256 characters, none of control."
   def argument?(argument) when is_binary(argument) do
     String.valid?(argument) and String.length(argument) in 1..@argument_max and
-      not Regex.match?(~r/[[:cntrl:]]/u, argument)
+      not Regex.match?(@line, argument)
   end
 
   def argument?(_argument), do: false

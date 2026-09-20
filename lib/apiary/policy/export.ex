@@ -8,7 +8,8 @@ defmodule Apiary.Policy.Export do
   with `qory run --policy <file>`; it narrows the machine's section and never widens it,
   so the two are exported together and agree.
 
-  Every scalar is written as a JSON string, which YAML reads as it is.
+  Every scalar is written as a JSON string, which YAML reads as it is, with the line
+  breaks YAML knows and JSON does not (U+0085, U+2028, U+2029) escaped.
   """
 
   alias Apiary.Policy.Effective
@@ -109,5 +110,12 @@ defmodule Apiary.Policy.Export do
     ])
   end
 
-  defp quoted(text), do: Jason.encode!(text)
+  # A JSON string, with the three characters JSON leaves raw and YAML reads as a line
+  # break, which it would fold inside the quotes: U+2028 and U+2029 (escaped by
+  # `:javascript_safe`) and U+0085. Everything else stays as it is: escaping every
+  # character outside ASCII would write astral ones as surrogate pairs, which YAML's
+  # `\u` does not read.
+  defp quoted(text) do
+    text |> Jason.encode!(escape: :javascript_safe) |> String.replace("\u0085", "\\u0085")
+  end
 end
