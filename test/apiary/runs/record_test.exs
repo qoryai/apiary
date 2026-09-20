@@ -353,65 +353,8 @@ defmodule Apiary.Runs.RecordTest do
 
   describe "read budgets" do
     # What a read costs this server is set by the number of rows, never by what a runner
-    # put in them.
-    test "H1: a window of 300 calls with 512 KiB responses is read in under 32 MiB", %{
-      scope: scope
-    } do
-      run = run_fixture(scope)
-      big = String.duplicate("0123456789abcdef", 32 * 1024)
-      assert byte_size(big) == 512 * 1024
-
-      events =
-        [{1, "run.started", started_data()}] ++
-          Enum.flat_map(1..300, fn n ->
-            [
-              {2 * n, "session.tool_started",
-               %{
-                 "tool" => "Bash",
-                 "tool_use_id" => "t#{n}",
-                 "input" => %{"command" => "cat big-#{n}", "stdin" => big}
-               }},
-              {2 * n + 1, "session.tool_finished",
-               %{
-                 "tool" => "Bash",
-                 "tool_use_id" => "t#{n}",
-                 "response" => %{"stdout" => big, "stderr" => big}
-               }}
-            ]
-          end)
-
-      events_fixture(run, events)
-      {:ok, run} = Projector.project(run)
-
-      index = Record.timeline(scope, run)
-      light = Enum.take(index.items, 300)
-      parent = self()
-
-      {pid, ref} =
-        spawn_monitor(fn ->
-          Ecto.Adapters.SQL.Sandbox.allow(Repo, parent, self())
-          items = Record.items(scope, run, light)
-          {:memory, memory} = Process.info(self(), :memory)
-          {:binary, binaries} = Process.info(self(), :binary)
-          held = binaries |> Enum.map(&elem(&1, 1)) |> Enum.sum()
-
-          send(
-            parent,
-            {:read, length(items), memory + held,
-             items |> :erlang.term_to_binary() |> byte_size()}
-          )
-        end)
-
-      assert_receive {:read, 300, bytes, size}, 120_000
-      assert_receive {:DOWN, ^ref, :process, ^pid, _}, 5_000
-
-      IO.puts(
-        "\n[budget H1] 300 calls with 512 KiB payloads: the reading process held #{div(bytes, 1024)} KiB (memory + binaries); the items are #{div(size, 1024)} KiB"
-      )
-
-      assert bytes < 32 * 1024 * 1024, "held #{div(bytes, 1024)} KiB"
-    end
-
+    # put in them. The window of 300 calls with 512 KiB payloads, which writes some
+    # 460 MiB, is in `Apiary.Runs.RecordBudgetTest`, a module that runs alone.
     test "H1: Show all reads one item, cut at 512 KB by the database", %{scope: scope} do
       huge = String.duplicate("a", 1024 * 1024) <> "THE-END"
 

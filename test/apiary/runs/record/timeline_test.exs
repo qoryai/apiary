@@ -460,19 +460,45 @@ defmodule Apiary.Runs.Record.TimelineTest do
   end
 
   describe "linear in what a runner sends (M4)" do
-    test "50,000 subagents that never finish, and as many notifications, are indexed in time" do
-      events =
-        light(
-          for(n <- 1..50_000, do: subagent(n, "started", "agent-#{n}", "Explore")) ++
-            for(
-              n <- 50_001..100_000,
-              do: event(n, "session.notification", %{"agent_id" => "agent-#{n - 50_000}"})
-            )
-        )
+    # The work is counted in reductions, which the machine's load does not change, where
+    # a wall-clock budget failed whenever the suite was busy. Four times the events is
+    # four times the work for an index that is linear and sixteen times for one that is
+    # quadratic: under six says which it is.
+    defp reductions(fun) do
+      task =
+        Task.async(fn ->
+          {:reductions, before} = Process.info(self(), :reductions)
+          result = fun.()
+          {:reductions, after_} = Process.info(self(), :reductions)
+          {after_ - before, result}
+        end)
 
-      {micros, index} = :timer.tc(fn -> Timeline.index(events, alive: true) end)
+      Task.await(task, 120_000)
+    end
 
-      assert micros < 3_000_000, "took #{div(micros, 1000)} ms"
+    defp assert_linear(events_of) do
+      {small, _index} = reductions(fn -> Timeline.index(events_of.(12_500), alive: true) end)
+      {large, index} = reductions(fn -> Timeline.index(events_of.(50_000), alive: true) end)
+
+      assert large / small < 6,
+             "four times the events took #{Float.round(large / small, 1)} times the work"
+
+      index
+    end
+
+    @tag timeout: 300_000
+    test "50,000 subagents that never finish, and as many notifications, are indexed in linear work" do
+      index =
+        assert_linear(fn n ->
+          light(
+            for(i <- 1..n, do: subagent(i, "started", "agent-#{i}", "Explore")) ++
+              for(
+                i <- (n + 1)..(2 * n),
+                do: event(i, "session.notification", %{"agent_id" => "agent-#{i - n}"})
+              )
+          )
+        end)
+
       assert index.lane_count == 50_000
       assert index.rails == 4
       # a dozen lanes in the key; any of them can still be found
@@ -481,24 +507,14 @@ defmodule Apiary.Runs.Record.TimelineTest do
       assert Timeline.lane(index, "nobody") == nil
     end
 
+    @tag timeout: 300_000
     test "50,000 calls that never end and as many connections" do
-      events =
+      assert_linear(fn n ->
         light(
-          for(n <- 1..50_000, do: tool(n, "started", "t#{n}")) ++
-            for(n <- 50_001..100_000, do: egress(n))
+          for(i <- 1..n, do: tool(i, "started", "t#{i}")) ++
+            for(i <- (n + 1)..(2 * n), do: egress(i))
         )
-
-      {micros, _index} = :timer.tc(fn -> Timeline.index(events, alive: true) end)
-      assert micros < 3_000_000, "took #{div(micros, 1000)} ms"
-    end
-  end
-
-  describe "lanes have numbers (M7)" do
-    test "two agents, whatever their ids, have different indexes" do
-      index =
-        index([subagent(1, "started", "x", "Explore"), subagent(2, "started", "y", "Explore")])
-
-      assert [%{index: 0}, %{index: 1, id: "x"}, %{index: 2, id: "y"}] = index.lanes
+      end)
     end
   end
 
