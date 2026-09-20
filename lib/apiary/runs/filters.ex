@@ -9,16 +9,30 @@ defmodule Apiary.Runs.Filters do
   the values are compared as strings by `Apiary.Runs`.
 
   The defaults (group by repository, the last seven days, page 1) are left out of the URL.
-  `since=all` is the way to say "no time range", which removing the range chip writes.
+  On the runs list `since=all` is the way to say "no time range", which removing the range
+  chip writes. The hive's connections are an aggregate over every connection in range, so
+  their range is bounded: `since=90d` is the widest, and dates cover at most
+  90 days, counted back from `to` (or on from `from` when only it is given).
+
+  A repository is two parameters, `forge` and `repo` (the path), because either may hold
+  any character, a colon included; `repo=none` without a forge is "no repository".
+  `repo_params/2` writes them, for every link to a filtered page.
+
+  A value that is present and refused (not one the page offers, not a string, longer than
+  the column it is compared with, or holding a control character, which Postgres would
+  refuse) is named in `dropped`, so the page can say that the link was not read in full
+  instead of silently showing an unfiltered list.
   """
 
   alias Apiary.Runs.Run
 
   @groups ~w(repository task none)
-  @ranges ~w(1h 24h 7d 30d all)
+  @ranges %{runs: ~w(1h 24h 7d 30d all), connections: ~w(1h 24h 7d 30d 90d)}
+  @max_window_days 90
   @decisions ~w(allowed denied)
   @default_since "7d"
-  @max_text 256
+  # What the fold stores of a label, a runtime or a host, in bytes.
+  @max_text 1024
   @max_page 100_000
 
   defstruct kind: :runs,
@@ -33,7 +47,8 @@ defmodule Apiary.Runs.Filters do
             to: nil,
             denials: false,
             decision: nil,
-            page: 1
+            page: 1,
+            dropped: []
 
   @type t :: %__MODULE__{
           kind: :runs | :connections,
@@ -48,11 +63,17 @@ defmodule Apiary.Runs.Filters do
           to: nil | Date.t(),
           denials: boolean(),
           decision: nil | String.t(),
-          page: pos_integer()
+          page: pos_integer(),
+          dropped: [String.t()]
         }
 
+  @doc "The widest window the hive's connections are aggregated over, in days."
+  def max_window_days, do: @max_window_days
+
   @doc "The time ranges a page offers, as `{label, value}`."
-  def ranges,
+  def ranges(kind \\ :runs)
+
+  def ranges(:runs),
     do: [
       {"Last hour", "1h"},
       {"Last 24 hours", "24h"},
@@ -60,36 +81,68 @@ defmodule Apiary.Runs.Filters do
       {"Last 30 days", "30d"}
     ]
 
+  def ranges(:connections), do: ranges(:runs) ++ [{"Last 90 days", "90d"}]
+
   @doc "Reads the parameters of the runs list (`:runs`) or the hive's connections (`:connections`)."
   @spec parse(map(), :runs | :connections) :: t()
   def parse(params, kind \\ :runs) when is_map(params) and kind in [:runs, :connections] do
-    from = date(params["from"])
-    to = date(params["to"])
+    {from, d1} = read(params, "from", &date/1)
+    {to, d2} = read(params, "to", &date/1)
     {from, to} = if from && to && Date.compare(from, to) == :gt, do: {to, from}, else: {from, to}
+    {from, to} = clamp(from, to, kind)
+
+    {repo, d3} = repo(params)
+    {host, d4} = read(params, "host", &text/1)
+    {since, d5} = read(params, "since", &one_of(&1, @ranges[kind]))
+    {page, d6} = read(params, "page", &page/1)
 
     filters = %__MODULE__{
       kind: kind,
-      repo: repo(params["repo"]),
-      host: text(params["host"]),
+      repo: repo,
+      host: host,
       from: from,
       to: to,
-      since: if(from || to, do: nil, else: since(params["since"])),
-      page: page(params["page"])
+      since: if(from || to, do: nil, else: since || @default_since),
+      page: page || 1,
+      dropped: d1 ++ d2 ++ d3 ++ d4 ++ d5 ++ d6
     }
 
     case kind do
       :runs ->
+        {group, d7} = read(params, "group", &one_of(&1, @groups))
+        {states, d8} = states(params)
+        {task, d9} = read(params, "task", &none_or_text/1)
+        {runtime, d10} = read(params, "runtime", &text/1)
+        {denials, d11} = read(params, "denials", &if(&1 == "1", do: true))
+
         %{
           filters
-          | group: one_of(params["group"], @groups) || "repository",
-            states: states(params["state"]),
-            task: none_or_text(params["task"]),
-            runtime: text(params["runtime"]),
-            denials: params["denials"] == "1"
+          | group: group || "repository",
+            states: states,
+            task: task,
+            runtime: runtime,
+            denials: denials == true,
+            dropped: filters.dropped ++ d7 ++ d8 ++ d9 ++ d10 ++ d11
         }
 
       :connections ->
-        %{filters | decision: one_of(params["decision"], @decisions)}
+        {decision, d7} = read(params, "decision", &one_of(&1, @decisions))
+        %{filters | decision: decision, dropped: filters.dropped ++ d7}
+    end
+  end
+
+  # The value of a parameter as `reader` reads it, and the parameter's name when it was
+  # there and was refused.
+  defp read(params, name, reader) do
+    case Map.fetch(params, name) do
+      :error ->
+        {nil, []}
+
+      {:ok, raw} ->
+        case reader.(raw) do
+          nil -> {nil, [name]}
+          value -> {value, []}
+        end
     end
   end
 
@@ -99,7 +152,8 @@ defmodule Apiary.Runs.Filters do
     [
       {"group", f.group != "repository" && f.kind == :runs && f.group},
       {"state", f.states != [] && Enum.join(f.states, ",")},
-      {"repo", repo_param(f.repo)},
+      {"forge", match?({_forge, _path}, f.repo) && elem(f.repo, 0)},
+      {"repo", repo_path(f.repo)},
       {"task", if(f.task == :none, do: "none", else: f.task)},
       {"runtime", f.runtime},
       {"host", f.host},
@@ -124,7 +178,10 @@ defmodule Apiary.Runs.Filters do
   def clear(%__MODULE__{kind: kind, group: group}), do: %__MODULE__{kind: kind, group: group}
 
   @doc "Sets fields and returns to page 1, which every change of a filter does."
-  def put(%__MODULE__{} = f, changes), do: struct!(%{f | page: 1}, changes)
+  def put(%__MODULE__{} = f, changes), do: struct!(%{f | page: 1, dropped: []}, changes)
+
+  @doc "The filters without what `parse/2` noted: what two views are compared by."
+  def same?(%__MODULE__{} = a, %__MODULE__{} = b), do: %{a | dropped: []} == %{b | dropped: []}
 
   @doc """
   The filters after a change in a filter's menu: `form` is what the menu's form sends, the
@@ -148,7 +205,10 @@ defmodule Apiary.Runs.Filters do
             current |> Map.drop(["from", "to"]) |> Map.merge(Map.take(form, ["since"]))
           end
 
-        name when name in ~w(repo task runtime host) ->
+        "repo" ->
+          current |> Map.drop(["forge", "repo"]) |> Map.merge(repo_from_value(form["repo"]))
+
+        name when name in ~w(task runtime host) ->
           Map.merge(current, Map.take(form, [name]))
 
         _other ->
@@ -174,6 +234,7 @@ defmodule Apiary.Runs.Filters do
         "24h" -> 86_400
         "7d" -> 7 * 86_400
         "30d" -> 30 * 86_400
+        "90d" -> 90 * 86_400
         _all -> nil
       end
 
@@ -187,6 +248,7 @@ defmodule Apiary.Runs.Filters do
       "24h" -> "last 24 hours"
       "7d" -> "last 7 days"
       "30d" -> "last 30 days"
+      "90d" -> "last 90 days"
       _all -> nil
     end
   end
@@ -198,33 +260,87 @@ defmodule Apiary.Runs.Filters do
 
   defp day(date), do: Calendar.strftime(date, "%-d %b %Y")
 
-  @doc "`{forge}:{path}` of a repository, `none` for unassigned."
-  def repo_param(nil), do: nil
-  def repo_param(:none), do: "none"
-  def repo_param({forge, path}), do: forge <> ":" <> path
+  @doc """
+  The two parameters of a repository, for a link to a filtered page:
+  `%{"forge" => forge, "repo" => path}`; `%{"repo" => "none"}` for runs without one.
+  """
+  @spec repo_params(String.t() | nil, String.t() | nil) :: %{String.t() => String.t()}
+  def repo_params(forge, path) when is_binary(forge) and is_binary(path),
+    do: %{"forge" => forge, "repo" => path}
 
-  defp repo("none"), do: :none
+  def repo_params(_forge, _path), do: %{"repo" => "none"}
 
-  defp repo(value) when is_binary(value) do
-    # A forge is a host name and holds no colon; a path may.
-    with [forge, path] when forge != "" and path != "" <- String.split(value, ":", parts: 2),
-         true <- fits?(forge) and fits?(path) do
-      {forge, path}
-    else
-      _ -> nil
+  @doc """
+  A repository as the one value of a menu's option: `none`, or the JSON of `[forge, path]`,
+  which no forge or path can be mistaken for. `change/2` reads it back.
+  """
+  def repo_value(nil), do: nil
+  def repo_value(:none), do: "none"
+  def repo_value({forge, path}), do: Jason.encode!([forge, path])
+
+  defp repo_from_value("none"), do: %{"repo" => "none"}
+
+  defp repo_from_value(value) when is_binary(value) do
+    case Jason.decode(value) do
+      {:ok, [forge, path]} when is_binary(forge) and is_binary(path) -> repo_params(forge, path)
+      _ -> %{"repo" => value}
     end
   end
 
-  defp repo(_value), do: nil
+  defp repo_from_value(_value), do: %{}
 
-  defp states(value) when is_binary(value) do
-    chosen = value |> String.split(",", trim: true) |> Enum.uniq()
-    Enum.filter(Run.states(), &(&1 in chosen))
+  defp repo_path(nil), do: nil
+  defp repo_path(:none), do: "none"
+  defp repo_path({_forge, path}), do: path
+
+  # `repo=none` alone is "no repository"; otherwise both parts, or neither.
+  defp repo(params) do
+    case {Map.fetch(params, "forge"), Map.fetch(params, "repo")} do
+      {:error, :error} ->
+        {nil, []}
+
+      {:error, {:ok, "none"}} ->
+        {:none, []}
+
+      {{:ok, forge}, {:ok, path}} ->
+        if text(forge) && text(path), do: {{forge, path}, []}, else: {nil, ["repo"]}
+
+      _one_without_the_other ->
+        {nil, ["repo"]}
+    end
   end
 
-  defp states(_value), do: []
+  # A window of dates no wider than the page's bound.
+  defp clamp(from, to, :connections) when not is_nil(from) or not is_nil(to) do
+    case {from, to} do
+      {from, nil} ->
+        {from, Date.add(from, @max_window_days - 1)}
 
-  defp since(value), do: one_of(value, @ranges) || @default_since
+      {nil, to} ->
+        {Date.add(to, -(@max_window_days - 1)), to}
+
+      {from, to} ->
+        earliest = Date.add(to, -(@max_window_days - 1))
+        {if(Date.compare(from, earliest) == :lt, do: earliest, else: from), to}
+    end
+  end
+
+  defp clamp(from, to, _kind), do: {from, to}
+
+  defp states(params) do
+    case Map.fetch(params, "state") do
+      :error ->
+        {[], []}
+
+      {:ok, value} when is_binary(value) ->
+        chosen = value |> String.split(",", trim: true) |> Enum.uniq()
+        known = Enum.filter(Run.states(), &(&1 in chosen))
+        {known, if(length(known) == length(chosen) and chosen != [], do: [], else: ["state"])}
+
+      {:ok, _other} ->
+        {[], ["state"]}
+    end
+  end
 
   defp one_of(value, allowed) when is_binary(value), do: if(value in allowed, do: value)
   defp one_of(_value, _allowed), do: nil
@@ -238,7 +354,12 @@ defmodule Apiary.Runs.Filters do
 
   defp text(_value), do: nil
 
-  defp fits?(value), do: byte_size(value) <= @max_text and String.valid?(value)
+  # Postgres refuses a NUL in text, and no label, runtime or host a reader would filter by
+  # holds a control character: a value with one is refused here, not by the database.
+  defp fits?(value) do
+    byte_size(value) <= @max_text and String.valid?(value) and
+      not String.match?(value, ~r/[\x00-\x1F\x7F]/)
+  end
 
   defp date(value) when is_binary(value) do
     case Date.from_iso8601(value) do
@@ -252,9 +373,9 @@ defmodule Apiary.Runs.Filters do
   defp page(value) when is_binary(value) do
     case Integer.parse(value) do
       {page, ""} when page in 1..@max_page -> page
-      _ -> 1
+      _ -> nil
     end
   end
 
-  defp page(_value), do: 1
+  defp page(_value), do: nil
 end

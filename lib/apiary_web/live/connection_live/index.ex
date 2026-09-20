@@ -47,6 +47,10 @@ defmodule ApiaryWeb.ConnectionLive.Index do
         </span>
       </.notice>
 
+      <.notice :if={@dropped != []} kind={:warning} class="max-w-[80ch]">
+        <span id="connections-dropped">{dropped_sentence(@dropped)}</span>
+      </.notice>
+
       <div :if={!@load_error} class="grid grid-cols-[minmax(0,1fr)] gap-6">
         <.filter_bar
           id="connections-filters"
@@ -63,12 +67,14 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           </.segments>
           <.filter
             name="repo"
+            total={facet_total(@facets, :repo)}
+            query={@narrow["repo"]}
             label="Repository"
-            value={Filters.repo_param(@filters.repo)}
+            value={Filters.repo_value(@filters.repo)}
             options={
               with_chosen(
-                @facets[:repo],
-                Filters.repo_param(@filters.repo),
+                facet_options(@facets, :repo),
+                Filters.repo_value(@filters.repo),
                 repo_label(@filters.repo)
               )
             }
@@ -76,9 +82,11 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           />
           <.filter
             name="host"
+            total={facet_total(@facets, :host)}
+            query={@narrow["host"]}
             label="Host"
             value={@filters.host}
-            options={with_chosen(@facets[:host], @filters.host, @filters.host)}
+            options={with_chosen(facet_options(@facets, :host), @filters.host, @filters.host)}
             remove={path(Filters.put(@filters, host: nil))}
           />
           <.filter
@@ -86,14 +94,16 @@ defmodule ApiaryWeb.ConnectionLive.Index do
             label="Seen"
             value={range_value(@filters)}
             value_label={Filters.range_label(@filters)}
-            options={for {label, value} <- Filters.ranges(), do: {label, value, nil}}
+            options={for {label, value} <- Filters.ranges(:connections), do: {label, value, nil}}
             dates={
               %{
                 from: @filters.from && Date.to_iso8601(@filters.from),
                 to: @filters.to && Date.to_iso8601(@filters.to)
               }
             }
-            remove={path(Filters.put(@filters, since: "all", from: nil, to: nil))}
+            remove={
+              @filters.since != "90d" && path(Filters.put(@filters, since: "90d", from: nil, to: nil))
+            }
           />
           <:trailing>
             <span id="connections-summary" class="q-summary">
@@ -232,7 +242,9 @@ defmodule ApiaryWeb.ConnectionLive.Index do
        facets: %{},
        open: %{},
        stale: false,
-       load_error: false
+       load_error: false,
+       dropped: [],
+       narrow: %{}
      )}
   end
 
@@ -242,10 +254,14 @@ defmodule ApiaryWeb.ConnectionLive.Index do
 
     if Filters.to_params(filters) == params do
       # What is open belongs to the view it was opened in.
-      open = if filters == socket.assigns.filters, do: socket.assigns.open, else: %{}
-      {:noreply, socket |> assign(filters: filters, open: open) |> load()}
+      open = if Filters.same?(filters, socket.assigns.filters), do: socket.assigns.open, else: %{}
+      {:noreply, socket |> keep_dropped() |> assign(filters: filters, open: open) |> load()}
     else
-      {:noreply, push_patch(socket, to: path(filters), replace: true)}
+      {:noreply,
+       socket
+       |> assign(:dropped, filters.dropped)
+       |> put_private(:rewrote, true)
+       |> push_patch(to: path(%{filters | dropped: []}), replace: true)}
     end
   end
 
@@ -254,28 +270,50 @@ defmodule ApiaryWeb.ConnectionLive.Index do
     {:noreply, push_patch(socket, to: path(Filters.change(socket.assigns.filters, params)))}
   end
 
+  def handle_event("narrow", %{"_filter" => name, "q" => q}, socket)
+      when name in ~w(repo host) and is_binary(q) do
+    %{current_scope: scope, filters: filters} = socket.assigns
+    narrow = Map.put(socket.assigns.narrow, name, String.slice(q, 0, 256))
+
+    {:noreply,
+     socket
+     |> assign(:narrow, narrow)
+     |> start_async(:facets, fn ->
+       %{
+         filters: filters,
+         narrow: narrow,
+         facets: Runs.destination_facets(scope, filters, narrow: narrow)
+       }
+     end)}
+  end
+
+  def handle_event("narrow", _params, socket), do: {:noreply, socket}
+
   def handle_event("refresh", _params, socket), do: {:noreply, load(socket)}
 
-  def handle_event("toggle_destination", %{"id" => id}, socket) do
+  def handle_event("toggle_destination", params, socket) do
     %{open: open} = socket.assigns
 
-    cond do
-      is_map_key(open, id) ->
-        {:noreply, assign(socket, :open, Map.delete(open, id))}
-
-      row = find_row(socket, id) ->
-        {:noreply, assign(socket, :open, Map.put(open, id, hits(socket, row, @hits_page)))}
-
-      true ->
+    case find_row(socket, params) do
+      nil ->
         {:noreply, socket}
+
+      row ->
+        key = destination_key(row)
+
+        if is_map_key(open, key),
+          do: {:noreply, assign(socket, :open, Map.delete(open, key))},
+          else:
+            {:noreply, assign(socket, :open, Map.put(open, key, hits(socket, row, @hits_page)))}
     end
   end
 
-  def handle_event("more_destination_runs", %{"id" => id}, socket) do
-    with %{runs: shown} <- socket.assigns.open[id],
-         %{} = row <- find_row(socket, id) do
+  def handle_event("more_destination_runs", params, socket) do
+    with %{} = row <- find_row(socket, params),
+         key = destination_key(row),
+         %{runs: shown} <- socket.assigns.open[key] do
       more = hits(socket, row, length(shown) + @hits_page)
-      {:noreply, update(socket, :open, &Map.put(&1, id, more))}
+      {:noreply, update(socket, :open, &Map.put(&1, key, more))}
     else
       _ -> {:noreply, socket}
     end
@@ -297,6 +335,14 @@ defmodule ApiaryWeb.ConnectionLive.Index do
     end
   end
 
+  def handle_async(:facets, {:ok, %{filters: filters, narrow: narrow, facets: facets}}, socket) do
+    if filters == socket.assigns.filters and narrow == socket.assigns.narrow,
+      do: {:noreply, assign(socket, :facets, facets)},
+      else: {:noreply, socket}
+  end
+
+  def handle_async(:facets, {:exit, _reason}, socket), do: {:noreply, socket}
+
   def handle_async(:load, {:exit, _reason}, socket),
     do: {:noreply, assign(socket, load_error: true)}
 
@@ -308,7 +354,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   end
 
   defp load(socket) do
-    %{current_scope: scope, filters: filters, open: open} = socket.assigns
+    %{current_scope: scope, filters: filters, open: open, narrow: narrow} = socket.assigns
 
     if connected?(socket) do
       start_async(socket, :load, fn ->
@@ -318,10 +364,10 @@ defmodule ApiaryWeb.ConnectionLive.Index do
         # The rows that were open stay open, read again, for as long as they are on the page.
         open =
           for row <- listing.rows,
-              id = destination_id(row),
-              %{runs: shown} <- [open[id]],
+              key = destination_key(row),
+              %{runs: shown} <- [open[key]],
               into: %{} do
-            {id,
+            {key,
              Runs.destination_runs(scope, filters, {row.host, row.port, row.path},
                now: now,
                limit: max(length(shown), @hits_page)
@@ -331,7 +377,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
         %{
           filters: filters,
           listing: listing,
-          facets: Runs.destination_facets(scope, filters, now),
+          facets: Runs.destination_facets(scope, filters, now: now, narrow: narrow),
           open: open
         }
       end)
@@ -345,11 +391,32 @@ defmodule ApiaryWeb.ConnectionLive.Index do
     Runs.destination_runs(scope, filters, {row.host, row.port, row.path}, limit: limit)
   end
 
-  # The id comes from the browser: it only ever picks one of the rows the page holds.
-  defp find_row(%{assigns: %{listing: %{rows: rows}}}, id),
-    do: Enum.find(rows, &(destination_id(&1) == id))
+  # What the browser names is matched whole, host, port and path, against the rows the
+  # page holds: never by a DOM id, and it only ever picks one of those rows.
+  defp find_row(%{assigns: %{listing: %{rows: rows}}}, %{
+         "host" => host,
+         "port" => port,
+         "path" => path
+       })
+       when is_binary(host) and is_binary(port) and is_binary(path) do
+    Enum.find(rows, &(&1.host == host and Integer.to_string(&1.port) == port and &1.path == path))
+  end
 
   defp find_row(_socket, _id), do: nil
+
+  # The notice of a rewritten link stays for the view the rewrite led to, and goes with the
+  # reader's next change.
+  defp keep_dropped(socket) do
+    if socket.private[:rewrote],
+      do: put_private(socket, :rewrote, false),
+      else: assign(socket, :dropped, [])
+  end
+
+  defp dropped_sentence([name]),
+    do: "The link's #{name} filter could not be read, so it is not applied."
+
+  defp dropped_sentence(names),
+    do: "The link's #{Enum.join(names, ", ")} filters could not be read, so they are not applied."
 
   defp path(%Filters{} = filters), do: ~p"/hive/connections?#{Filters.to_params(filters)}"
   defp run_path(run), do: ~p"/hive/runs/#{run.run_id}/connections"
@@ -369,6 +436,9 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   defp tidy_range("No connections in the from " <> rest), do: "No connections from " <> rest
   defp tidy_range("No connections in the to " <> rest), do: "No connections up to " <> rest
   defp tidy_range("No connections in the " <> rest), do: "No connections in " <> rest
+
+  defp facet_options(facets, name), do: (facets[name] || %{options: []}).options
+  defp facet_total(facets, name), do: facets[name] && facets[name].total
 
   defp with_chosen(options, nil, _label), do: options || []
 

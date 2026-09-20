@@ -225,7 +225,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
       assert has_element?(
                view,
-               "tr.q-group a[href='/hive/connections?repo=github.example%3Aacme%2Fshop']"
+               "tr.q-group a[href='/hive/connections?forge=github.example&repo=acme%2Fshop']"
              )
 
       assert has_element?(view, "#runs-group a[aria-pressed=true]", "Repository")
@@ -274,7 +274,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       view =
         open(
           conn,
-          ~p"/hive/runs?state=failed&repo=github.example:acme/shop&task=fix-cart&runtime=claude&host=build-02&denials=1&since=24h"
+          ~p"/hive/runs?state=failed&forge=github.example&repo=acme/shop&task=fix-cart&runtime=claude&host=build-02&denials=1&since=24h"
         )
 
       assert has_element?(view, row(failed))
@@ -345,6 +345,167 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert_patch(view, ~p"/hive/runs?since=all")
       render_async(view)
       refute has_element?(view, "#filter-since-remove")
+    end
+  end
+
+  describe "links that cannot be read in full" do
+    # Follows the rewrite, as a browser does, and returns the view on the canonical URL.
+    defp follow(conn, path) do
+      case live(conn, path) do
+        {:ok, view, _html} ->
+          {view, path}
+
+        {:error, {:live_redirect, %{to: to}}} ->
+          {:ok, view, _html} = live(conn, to)
+          {view, to}
+      end
+    end
+
+    test "no value of any parameter breaks the page, and it ends on the canonical URL", %{
+      conn: conn,
+      scope: scope
+    } do
+      started_run(scope, shop())
+
+      bad = [
+        <<0>>,
+        "a" <> <<0>> <> "b",
+        "\e[31m",
+        String.duplicate("x", 5000),
+        "99999999999999999999999999",
+        "-1",
+        "2026-02-31",
+        "none,none",
+        "%",
+        "' OR 1=1 --"
+      ]
+
+      names = ~w(group state forge repo task runtime host since from to denials page)
+
+      for name <- names, value <- bad do
+        {view, to} = follow(conn, ~p"/hive/runs?#{%{name => value}}")
+        render_async(view)
+        assert has_element?(view, "#runs-filters"), "#{name}=#{inspect(value)} broke the page"
+        refute has_element?(view, "#runs-error")
+        assert URI.parse(to).path == "/hive/runs"
+      end
+
+      # Lists and maps where a string is expected.
+      for name <- names, shape <- ["#{name}[]=x", "#{name}[a]=x", "#{name}[a][]=x"] do
+        {view, to} = follow(conn, "/hive/runs?" <> shape)
+        render_async(view)
+        assert has_element?(view, "#runs-filters"), "#{shape} broke the page"
+        assert to == "/hive/runs"
+      end
+    end
+
+    test "a refused value is said, never silently an unfiltered list", %{conn: conn, scope: scope} do
+      started_run(scope, shop())
+
+      assert {:error, {:live_redirect, %{to: "/hive/runs"}}} =
+               live(conn, ~p"/hive/runs?#{%{"task" => <<0>>}}")
+
+      # The rewrite is a patch of the same view in a browser: the notice rides along.
+      {:ok, view, _html} = live(conn, ~p"/hive/runs?state=running")
+      render_async(view)
+      refute has_element?(view, "#runs-dropped")
+
+      render_patch(
+        view,
+        ~p"/hive/runs?#{%{"host" => String.duplicate("h", 1025), "since" => "90d"}}"
+      )
+
+      assert_patch(view, ~p"/hive/runs")
+      render_async(view)
+
+      assert text(view, "#runs-dropped") ==
+               "The link's host, since filters could not be read, so they are not applied."
+
+      # The reader's next change takes the notice away.
+      view |> element("#filter-denials") |> render_click()
+      refute has_element?(view, "#runs-dropped")
+    end
+
+    test "a host as long as the column holds is a filter like any other", %{
+      conn: conn,
+      scope: scope
+    } do
+      long = String.duplicate("h", 1024)
+      run = started_run(scope, shop(), host: long)
+      other = started_run(scope, shop())
+
+      view = open(conn, ~p"/hive/runs?#{%{"host" => long}}")
+      assert has_element?(view, row(run))
+      refute has_element?(view, row(other))
+      refute has_element?(view, "#runs-dropped")
+    end
+  end
+
+  describe "repositories and menus at any size" do
+    test "a forge with a colon groups, links and filters", %{conn: conn, scope: scope} do
+      run = started_run(scope, %{"forge" => "git.example:8443", "repository" => "acme/shop"})
+      other = started_run(scope, shop())
+      view = open(conn)
+
+      connections =
+        ~p"/hive/connections?#{Apiary.Runs.Filters.repo_params("git.example:8443", "acme/shop")}"
+
+      assert has_element?(view, "tr.q-group a[href='#{connections}']")
+
+      value = Apiary.Runs.Filters.repo_value({"git.example:8443", "acme/shop"})
+      view |> form("#filter-repo-form") |> render_change(%{"repo" => value})
+
+      assert_patch(
+        view,
+        ~p"/hive/runs?#{%{"forge" => "git.example:8443", "repo" => "acme/shop"}}"
+      )
+
+      render_async(view)
+
+      assert has_element?(view, row(run))
+      refute has_element?(view, row(other))
+      assert has_element?(view, "#filter-repo-button", "git.example:8443/acme/shop")
+    end
+
+    test "a long menu shows fifty values, says so, and narrows on the server", %{
+      conn: conn,
+      scope: scope
+    } do
+      for n <- 1..60 do
+        run_fixture(scope, %{state: "running", task: "task-#{n}", started_at: DateTime.utc_now()})
+      end
+
+      view = open(conn, ~p"/hive/runs?group=none")
+      assert text(view, "#filter-task-more") == "Showing 50 of 60: type to narrow"
+
+      view |> form("#filter-task-narrow") |> render_change(%{"q" => "task-6"})
+      render_async(view)
+      assert text(view, "#filter-task-form") == "task-6 1 task-60 1"
+      refute has_element?(view, "#filter-task-more")
+
+      view |> form("#filter-task-narrow") |> render_change(%{"q" => "%"})
+      render_async(view)
+      assert text(view, "#filter-task-form") == "Nothing matches"
+    end
+
+    test "two group labels that collide under a short hash are two groups", %{
+      conn: conn,
+      scope: scope
+    } do
+      started_run(scope, Map.put(shop(), "task", "a"))
+      started_run(scope, Map.put(shop("gitlab.example"), "task", "a"))
+      view = open(conn)
+
+      ids =
+        view
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("#runs > tbody[data-group]")
+        |> Enum.flat_map(&LazyHTML.attribute(&1, "id"))
+
+      assert length(ids) == 2
+      assert Enum.all?(ids, &(&1 =~ ~r/^runs-group-[a-z2-7]{16}$/))
+      assert ids == Enum.uniq(ids)
     end
   end
 

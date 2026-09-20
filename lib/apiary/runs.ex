@@ -164,33 +164,48 @@ defmodule Apiary.Runs do
   end
 
   @doc """
-  The facts of the groups the given runs fall in, over everything the filters return and
-  not only the page: `%{key => %{runs:, alive:, denials:, repositories:}}`. A key is
-  `{forge, path}` or `:none` grouped by repository, the task or `:none` grouped by task.
+  The facts of the groups with these keys (the groups on the page, so at most a page of
+  them), over everything the filters return and not only the page:
+  `%{key => %{runs:, alive:, denials:, repositories:}}`. A key is `{forge, path}` or `:none`
+  grouped by repository, the task or `:none` grouped by task.
   """
-  def group_facts(scope, filters, now \\ DateTime.utc_now())
+  def group_facts(scope, filters, keys, now \\ DateTime.utc_now())
 
-  def group_facts(%Scope{} = scope, %Filters{group: "repository"} = filters, now) do
+  def group_facts(%Scope{}, %Filters{}, [], _now), do: %{}
+
+  def group_facts(%Scope{} = scope, %Filters{group: "repository"} = filters, keys, now) do
+    condition =
+      Enum.reduce(keys, dynamic(false), fn
+        :none, acc -> dynamic([r], ^acc or is_nil(r.repository_id))
+        {forge, path}, acc -> dynamic([r], ^acc or (r.forge == ^forge and r.repository == ^path))
+        _other, acc -> acc
+      end)
+
     Repo.all(
       from r in filtered(scope, filters, now),
-        group_by: [r.repository_id, r.forge, r.repository],
+        where: ^condition,
+        group_by: [is_nil(r.repository_id), r.forge, r.repository],
         select:
-          {r.repository_id, r.forge, r.repository,
+          {is_nil(r.repository_id), r.forge, r.repository,
            %{
              runs: count(r.id),
              alive: filter(count(r.id), r.state in ^Run.alive_states()),
              denials: coalesce(sum(r.denied_count), 0)
            }}
     )
-    |> Enum.reduce(%{}, fn {repository_id, forge, path, facts}, acc ->
-      key = if repository_id, do: {forge, path}, else: :none
+    |> Enum.reduce(%{}, fn {unassigned?, forge, path, facts}, acc ->
+      key = if unassigned?, do: :none, else: {forge, path}
       Map.update(acc, key, facts, &Map.merge(&1, facts, fn _k, a, b -> a + b end))
     end)
   end
 
-  def group_facts(%Scope{} = scope, %Filters{group: "task"} = filters, now) do
+  def group_facts(%Scope{} = scope, %Filters{group: "task"} = filters, keys, now) do
+    tasks = Enum.filter(keys, &is_binary/1)
+    none? = :none in keys
+
     Repo.all(
       from r in filtered(scope, filters, now),
+        where: r.task in ^tasks or (^none? and is_nil(r.task)),
         group_by: r.task,
         select:
           {r.task,
@@ -204,7 +219,7 @@ defmodule Apiary.Runs do
     |> Map.new(fn {task, facts} -> {task || :none, facts} end)
   end
 
-  def group_facts(%Scope{}, %Filters{}, _now), do: %{}
+  def group_facts(%Scope{}, %Filters{}, _keys, _now), do: %{}
 
   @doc """
   The page's runs in their groups, the groups by their most recent run with the group that
@@ -243,19 +258,30 @@ defmodule Apiary.Runs do
   defp recency(%Run{} = run),
     do: DateTime.to_unix(run.started_at || run.inserted_at, :microsecond)
 
+  @facet_size 50
+
+  @doc "How many options a filter's menu holds at most."
+  def facet_size, do: @facet_size
+
   @doc """
   The options of each filter of the runs list, counted from the data: every facet is counted
   under the other filters and the range, not under itself, so a chip shows what choosing
-  another value would give. `%{state:, repo:, task:, runtime:, host:}`, each a list of
-  `{label, value, count}`, the most frequent first.
+  another value would give. `%{state:, repo:, task:, runtime:, host:}`, each
+  `%{options: [{label, value, count}], total: n}`: the #{@facet_size} most frequent values
+  and the chosen one, with how many values there are. `narrow:` maps a facet's name to
+  what the reader typed in its menu, matched anywhere in the value, case-insensitively, as
+  text and never as a pattern.
   """
-  def run_facets(%Scope{} = scope, %Filters{} = filters, now \\ DateTime.utc_now()) do
+  def run_facets(%Scope{} = scope, %Filters{} = filters, opts \\ []) do
+    now = Keyword.get(opts, :now, DateTime.utc_now())
+    narrow = Keyword.get(opts, :narrow, %{})
+
     %{
       state: state_facet(scope, filters, now),
-      repo: repo_facet(scope, filters, now),
-      task: text_facet(scope, %{filters | task: nil}, now, :task, "No task"),
-      runtime: text_facet(scope, %{filters | runtime: nil}, now, :runtime, nil),
-      host: text_facet(scope, %{filters | host: nil}, now, :host, nil)
+      repo: run_repo_facet(scope, filters, now, narrow["repo"]),
+      task: text_facet(scope, filters, now, :task, "No task", narrow["task"]),
+      runtime: text_facet(scope, filters, now, :runtime, nil, narrow["runtime"]),
+      host: text_facet(scope, filters, now, :host, nil, narrow["host"])
     }
   end
 
@@ -268,40 +294,138 @@ defmodule Apiary.Runs do
       )
       |> Map.new()
 
-    for state <- Run.states(), count = counts[state], do: {state, state, count}
+    options = for state <- Run.states(), count = counts[state], do: {state, state, count}
+    %{options: options, total: length(options)}
   end
 
-  defp repo_facet(scope, filters, now) do
-    Repo.all(
-      from r in filtered(scope, %{filters | repo: nil}, now),
-        group_by: [r.repository_id, r.forge, r.repository],
-        select: {r.repository_id, r.forge, r.repository, count(r.id)}
-    )
-    |> Enum.reduce(%{}, fn {repository_id, forge, path, count}, acc ->
-      key = if repository_id, do: {forge, path}, else: :none
-      Map.update(acc, key, count, &(&1 + count))
-    end)
-    |> Enum.map(fn
-      {:none, count} -> {"Unassigned", "none", count}
-      {{forge, path}, count} -> {"#{forge}/#{path}", Filters.repo_param({forge, path}), count}
-    end)
-    |> Enum.sort_by(fn {label, value, count} -> {value == "none", -count, label} end)
+  defp run_repo_facet(scope, filters, now, narrow),
+    do: repo_facet(filtered(scope, %{filters | repo: nil}, now), filters.repo, narrow)
+
+  # `base` is a query with the run bound as `:run`; what is counted per repository is its
+  # distinct runs: the runs of the list, the runs that reached out on the connections page.
+  defp repo_facet(base, chosen, narrow) do
+    like = like(narrow)
+
+    grouped =
+      from [run: r] in base,
+        where: not is_nil(r.repository_id),
+        group_by: [r.forge, r.repository]
+
+    grouped =
+      if like,
+        do:
+          where(grouped, [run: r], ilike(fragment("? || '/' || ?", r.forge, r.repository), ^like)),
+        else: grouped
+
+    rows =
+      Repo.all(
+        from [run: r] in grouped,
+          order_by: [desc: count(r.id, :distinct), asc: r.forge, asc: r.repository],
+          limit: ^(@facet_size + 1),
+          select: {r.forge, r.repository, count(r.id, :distinct)}
+      )
+
+    total =
+      if length(rows) > @facet_size,
+        do: Repo.one(from g in subquery(select(grouped, [run: r], r.forge)), select: count()),
+        else: length(rows)
+
+    unassigned =
+      Repo.one(
+        from [run: r] in base, where: is_nil(r.repository_id), select: count(r.id, :distinct)
+      )
+
+    options =
+      for {forge, path, n} <- Enum.take(rows, @facet_size),
+          do: {"#{forge}/#{path}", Filters.repo_value({forge, path}), n}
+
+    options =
+      with {forge, path} <- chosen,
+           value = Filters.repo_value(chosen),
+           false <- Enum.any?(options, &(elem(&1, 1) == value)) do
+        n =
+          Repo.one(
+            from [run: r] in base,
+              where: r.forge == ^forge and r.repository == ^path,
+              select: count(r.id, :distinct)
+          )
+
+        [{"#{forge}/#{path}", value, n} | options]
+      else
+        _ -> options
+      end
+
+    options =
+      if unassigned > 0 and is_nil(like),
+        do: options ++ [{"Unassigned", "none", unassigned}],
+        else: options
+
+    %{options: options, total: total + if(unassigned > 0, do: 1, else: 0)}
   end
 
-  defp text_facet(scope, filters, now, field, none_label) do
-    Repo.all(
-      from r in filtered(scope, filters, now),
-        group_by: field(r, ^field),
-        select: {field(r, ^field), count(r.id)}
-    )
-    |> Enum.flat_map(fn
-      {nil, count} -> if none_label, do: [{none_label, "none", count}], else: []
-      # A label that reads "none" cannot be told from the absence of one in the URL.
-      {"none", _count} -> []
-      {value, count} -> [{value, value, count}]
-    end)
-    |> Enum.sort_by(fn {label, value, count} -> {value == "none", -count, label} end)
+  defp text_facet(scope, filters, now, field, none_label, narrow) do
+    chosen = Map.fetch!(filters, field)
+    base = filtered(scope, Map.put(filters, field, nil), now)
+    like = like(narrow)
+
+    grouped = from r in base, where: not is_nil(field(r, ^field)), group_by: field(r, ^field)
+    grouped = if like, do: where(grouped, [r], ilike(field(r, ^field), ^like)), else: grouped
+
+    rows =
+      Repo.all(
+        from r in grouped,
+          order_by: [desc: count(r.id), asc: field(r, ^field)],
+          limit: ^(@facet_size + 1),
+          select: {field(r, ^field), count(r.id)}
+      )
+
+    total =
+      if length(rows) > @facet_size,
+        do: Repo.one(from g in subquery(select(grouped, [r], field(r, ^field))), select: count()),
+        else: length(rows)
+
+    # A label that reads "none" cannot be told from the absence of one in the URL.
+    options =
+      for {value, n} <- Enum.take(rows, @facet_size), value != "none", do: {value, value, n}
+
+    options =
+      if is_binary(chosen) and not Enum.any?(options, &(elem(&1, 1) == chosen)) do
+        n = Repo.aggregate(from(r in base, where: field(r, ^field) == ^chosen), :count)
+        [{chosen, chosen, n} | options]
+      else
+        options
+      end
+
+    none =
+      if none_label,
+        do: Repo.aggregate(from(r in base, where: is_nil(field(r, ^field))), :count),
+        else: 0
+
+    options =
+      if none > 0 and is_nil(like), do: options ++ [{none_label, "none", none}], else: options
+
+    %{options: options, total: total + if(none > 0, do: 1, else: 0)}
   end
+
+  # What the reader typed, as the operand of ILIKE that matches it anywhere and as text:
+  # the pattern's own characters are escaped, so "%" finds a per cent sign and nothing else.
+  @doc false
+  def like(narrow) when is_binary(narrow) do
+    narrow = String.trim(narrow)
+
+    if narrow != "" and byte_size(narrow) <= 256 and String.valid?(narrow) and
+         not String.match?(narrow, ~r/[\x00-\x1F\x7F]/) do
+      escaped =
+        narrow
+        |> String.replace("\\", "\\\\")
+        |> String.replace("%", "\\%")
+        |> String.replace("_", "\\_")
+
+      "%" <> escaped <> "%"
+    end
+  end
+
+  def like(_narrow), do: nil
 
   @doc "Whether the run is one the filters return: for a page deciding what a change means to it."
   def matches?(%Scope{} = scope, %Filters{} = filters, %Run{id: id}, now \\ DateTime.utc_now()) do
@@ -413,34 +537,60 @@ defmodule Apiary.Runs do
     %{runs: hits, total: Repo.aggregate(query, :count)}
   end
 
-  @doc "The options of the connections page's filters: `%{repo:, host:}` of `{label, value, count}`."
-  def destination_facets(%Scope{} = scope, %Filters{} = filters, now \\ DateTime.utc_now()) do
-    repos =
-      Repo.all(
-        from [c, r] in connections_in(scope, %{filters | repo: nil}, now),
-          group_by: [r.repository_id, r.forge, r.repository],
-          select: {r.repository_id, r.forge, r.repository, count(c.run_id, :distinct)}
-      )
-      |> Enum.reduce(%{}, fn {repository_id, forge, path, count}, acc ->
-        key = if repository_id, do: {forge, path}, else: :none
-        Map.update(acc, key, count, &(&1 + count))
-      end)
-      |> Enum.map(fn
-        {:none, count} -> {"Unassigned", "none", count}
-        {{forge, path}, count} -> {"#{forge}/#{path}", Filters.repo_param({forge, path}), count}
-      end)
-      |> Enum.sort_by(fn {label, value, count} -> {value == "none", -count, label} end)
+  @doc """
+  The options of the connections page's filters, `%{repo:, host:}`, each
+  `%{options: [{label, value, count}], total: n}` like `run_facets/3`, counted in runs;
+  `narrow:` as there.
+  """
+  def destination_facets(%Scope{} = scope, %Filters{} = filters, opts \\ []) do
+    now = Keyword.get(opts, :now, DateTime.utc_now())
+    narrow = Keyword.get(opts, :narrow, %{})
 
-    hosts =
+    %{
+      repo:
+        repo_facet(
+          connections_in(scope, %{filters | repo: nil}, now),
+          filters.repo,
+          narrow["repo"]
+        ),
+      host: destination_host_facet(scope, filters, now, narrow["host"])
+    }
+  end
+
+  defp destination_host_facet(scope, filters, now, narrow) do
+    base = connections_in(scope, %{filters | host: nil}, now)
+    like = like(narrow)
+    grouped = from c in base, group_by: c.host
+    grouped = if like, do: where(grouped, [c], ilike(c.host, ^like)), else: grouped
+
+    rows =
       Repo.all(
-        from [c, r] in connections_in(scope, %{filters | host: nil}, now),
-          group_by: c.host,
+        from c in grouped,
           order_by: [desc: count(c.run_id, :distinct), asc: c.host],
-          limit: 200,
+          limit: ^(@facet_size + 1),
           select: {c.host, c.host, count(c.run_id, :distinct)}
       )
 
-    %{repo: repos, host: hosts}
+    total =
+      if length(rows) > @facet_size,
+        do: Repo.one(from g in subquery(select(grouped, [c], c.host)), select: count()),
+        else: length(rows)
+
+    options = Enum.take(rows, @facet_size)
+
+    options =
+      if is_binary(filters.host) and not Enum.any?(options, &(elem(&1, 1) == filters.host)) do
+        n =
+          Repo.one(
+            from c in base, where: c.host == ^filters.host, select: count(c.run_id, :distinct)
+          )
+
+        [{filters.host, filters.host, n} | options]
+      else
+        options
+      end
+
+    %{options: options, total: total}
   end
 
   # The hive's connection rows under the filters, joined to their run (for the repository).
@@ -453,6 +603,7 @@ defmodule Apiary.Runs do
 
     from(c in Connection,
       join: r in Run,
+      as: :run,
       on: r.id == c.run_id and r.hive_id == c.hive_id,
       where: c.organisation_id == ^organisation_id and c.hive_id == ^hive_id,
       where: r.organisation_id == ^organisation_id and r.hive_id == ^hive_id
@@ -614,6 +765,8 @@ defmodule Apiary.Runs do
          organisation: %Organisation{id: organisation_id},
          hive: %Hive{id: hive_id}
        }) do
-    from r in Run, where: r.organisation_id == ^organisation_id and r.hive_id == ^hive_id
+    from r in Run,
+      as: :run,
+      where: r.organisation_id == ^organisation_id and r.hive_id == ^hive_id
   end
 end

@@ -159,15 +159,47 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       refute has_element?(view, "##{id}-more")
     end
 
-    test "an id the page does not hold opens nothing", %{conn: conn} do
+    test "a destination the page does not hold opens nothing", %{conn: conn} do
       view = open(conn)
-      render_click(view, "toggle_destination", %{"id" => "dst-0"})
-      render_click(view, "more_destination_runs", %{"id" => "dst-0"})
+
+      for params <- [
+            %{"host" => "nowhere.example", "port" => "443", "path" => ""},
+            %{"host" => "registry.example", "port" => "444", "path" => ""},
+            %{"host" => ["registry.example"], "port" => "443", "path" => ""},
+            %{"id" => "dst-0"},
+            %{}
+          ] do
+        render_click(view, "toggle_destination", params)
+        render_click(view, "more_destination_runs", params)
+      end
+
       refute has_element?(view, "tr.q-sub")
     end
 
+    test "two hosts that collide under a short hash have their own ids, and open one at a time",
+         %{conn: conn, scope: scope} do
+      # :erlang.phash2 gives both of these tuples the same number.
+      pair = [{"h8601.example", 443, ""}, {"h24259.example", 443, ""}]
+      assert [same, same] = Enum.map(pair, &:erlang.phash2/1)
+
+      started_run(scope, %{},
+        egress: [%{"host" => "h8601.example"}, %{"host" => "h24259.example"}]
+      )
+
+      view = open(conn)
+
+      [a, b] = ids = Enum.map(pair, fn {host, port, path} -> dst(host, port, path) end)
+      assert a != b
+      for id <- ids, do: assert(has_element?(view, "##{id}"))
+
+      view |> element("##{a}-toggle") |> render_click()
+      assert has_element?(view, "##{a}-runs")
+      refute has_element?(view, "##{b}-runs")
+      assert has_element?(view, "##{b}-toggle[aria-expanded=false]")
+    end
+
     test "every filter is the URL; per repository is the page with repo set", %{conn: conn} do
-      view = open(conn, ~p"/hive/connections?repo=gitlab.example:acme/shop")
+      view = open(conn, ~p"/hive/connections?forge=gitlab.example&repo=acme/shop")
 
       assert text(view, "#connections-repo-note") == "Showing gitlab.example/acme/shop only."
       assert has_element?(view, "##{dst("registry.example")}")
@@ -178,7 +210,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
 
       assert_patch(
         view,
-        ~p"/hive/connections?#{%{"decision" => "allowed", "repo" => "gitlab.example:acme/shop"}}"
+        ~p"/hive/connections?#{%{"decision" => "allowed", "forge" => "gitlab.example", "repo" => "acme/shop"}}"
       )
 
       view |> element("#filter-repo-remove") |> render_click()
@@ -194,6 +226,46 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       |> render_change(%{"since" => "1h", "_target" => ["since"]})
 
       assert_patch(view, ~p"/hive/connections?decision=allowed&host=registry.example&since=1h")
+    end
+
+    test "a forge with a colon filters and reads back", %{conn: conn, scope: scope} do
+      started_run(scope, %{"forge" => "git.example:8443", "repository" => "acme/shop"},
+        egress: [%{"host" => "colon.example"}]
+      )
+
+      view = open(conn)
+      value = Apiary.Runs.Filters.repo_value({"git.example:8443", "acme/shop"})
+      view |> form("#filter-repo-form") |> render_change(%{"repo" => value})
+
+      assert_patch(
+        view,
+        ~p"/hive/connections?#{%{"forge" => "git.example:8443", "repo" => "acme/shop"}}"
+      )
+
+      render_async(view)
+      assert has_element?(view, "##{dst("colon.example")}")
+      refute has_element?(view, "##{dst("registry.example")}")
+      assert text(view, "#connections-repo-note") == "Showing git.example:8443/acme/shop only."
+    end
+
+    test "the range is bounded: the widest is 90 days, and it cannot be removed", %{conn: conn} do
+      view = open(conn)
+      view |> element("#filter-since-remove") |> render_click()
+      assert_patch(view, ~p"/hive/connections?since=90d")
+      render_async(view)
+      assert has_element?(view, "#filter-since-button", "last 90 days")
+      refute has_element?(view, "#filter-since-remove")
+    end
+
+    test "a menu narrows on the server", %{conn: conn} do
+      view = open(conn)
+      # The box shows once a menu is long; what it sends narrows on the server.
+      refute has_element?(view, "#filter-host-narrow")
+      render_change(view, "narrow", %{"_filter" => "host", "q" => "cdn"})
+      render_async(view)
+      assert has_element?(view, "#filter-host-search[value=cdn]")
+      assert text(view, "#filter-host-form") =~ "files.cdn.example 1"
+      refute text(view, "#filter-host-form") =~ "registry.example"
     end
 
     test "unknown values are dropped and the URL is rewritten", %{conn: conn} do

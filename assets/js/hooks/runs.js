@@ -63,13 +63,3 @@ export const NewRuns = {
     if (atTop && !reading && !document.hidden) this.el.click()
   },
 }
-
-// The search box on top of a long filter menu narrows the options in place.
-document.addEventListener("input", e => {
-  const input = e.target
-  if (!(input instanceof HTMLInputElement) || !input.matches("[data-filter-search]")) return
-  const needle = input.value.trim().toLowerCase()
-  input.closest(".q-filter-menu")?.querySelectorAll("[data-filter-option]").forEach(li => {
-    li.hidden = needle !== "" && !li.dataset.filterOption.includes(needle)
-  })
-})

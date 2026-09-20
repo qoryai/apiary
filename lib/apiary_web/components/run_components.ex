@@ -610,6 +610,9 @@ defmodule ApiaryWeb.RunComponents do
     doc: "%{from: iso date or nil, to: …}: adds the two date inputs"
 
   attr :value_label, :string, default: nil, doc: "overrides the words of the set value"
+  attr :total, :integer, default: nil, doc: "how many values there are, when not all are options"
+  attr :query, :string, default: nil, doc: "what the reader typed to narrow the options"
+  attr :narrow, :string, default: "narrow", doc: "the event of the narrowing box"
 
   def filter(assigns) do
     values = assigns.value |> List.wrap() |> Enum.map(&to_string/1)
@@ -656,27 +659,39 @@ defmodule ApiaryWeb.RunComponents do
         </.link>
       </span>
       <div class="dropdown-content q-filter-menu left-0 top-full mt-1.5">
-        <input
-          :if={length(@options) > 8}
-          id={"#{@id}-search"}
-          type="search"
-          class="input input-sm q-filter-search"
-          placeholder={"Find a #{String.downcase(@label)}"}
-          aria-label={"Find a #{String.downcase(@label)}"}
-          data-filter-search
-          phx-update="ignore"
-          autocomplete="off"
-        />
+        <form
+          :if={@query not in [nil, ""] or (@total || length(@options)) > 8}
+          id={"#{@id}-narrow"}
+          phx-change={@narrow}
+          phx-submit={@narrow}
+        >
+          <input type="hidden" name="_filter" value={@name} />
+          <input
+            id={"#{@id}-search"}
+            type="search"
+            name="q"
+            value={@query}
+            class="input input-sm q-filter-search"
+            placeholder={"Find a #{String.downcase(@label)}"}
+            aria-label={"Find a #{String.downcase(@label)}"}
+            phx-debounce="250"
+            autocomplete="off"
+          />
+        </form>
+        <p
+          :if={@total && @total > length(@options)}
+          id={"#{@id}-more"}
+          class="px-2 pb-1 text-xs text-faint"
+        >
+          Showing {length(@options)} of {delimited(@total)}: type to narrow
+        </p>
         <form id={"#{@id}-form"} phx-change={@event} phx-submit={@event}>
           <input type="hidden" name="_filter" value={@name} />
           <ul class="q-filter-options" aria-label={@label}>
             <li :if={@options == []} class="px-2 py-1.5 text-xs text-faint">
-              Nothing to filter by yet
+              {if @query in [nil, ""], do: "Nothing to filter by yet", else: "Nothing matches"}
             </li>
-            <li
-              :for={{label, value, count} <- @options}
-              data-filter-option={String.downcase(to_string(label))}
-            >
+            <li :for={{label, value, count} <- @options}>
               <label class="q-filter-option" data-menu-close={!@multiple}>
                 <input
                   type={if @multiple, do: "checkbox", else: "radio"}
@@ -927,7 +942,9 @@ defmodule ApiaryWeb.RunComponents do
             id={"#{@id}-toggle"}
             class="q-expander"
             phx-click={@toggle}
-            phx-value-id={@id}
+            phx-value-host={@c.host}
+            phx-value-port={@c.port}
+            phx-value-path={@c.path}
             aria-expanded={to_string(@open != nil)}
             aria-controls={"#{@id}-runs"}
             aria-label={"Runs that reached #{destination_words(@c)}"}
@@ -1002,7 +1019,9 @@ defmodule ApiaryWeb.RunComponents do
             id={"#{@id}-more"}
             class="btn btn-ghost btn-xs justify-self-start"
             phx-click={@more}
-            phx-value-id={@id}
+            phx-value-host={@c.host}
+            phx-value-port={@c.port}
+            phx-value-path={@c.path}
           >
             Show {min(10, @open.total - length(@open.runs))} more
           </button>
@@ -1180,7 +1199,11 @@ defmodule ApiaryWeb.RunComponents do
   attr :variant, :string, default: "table", values: ~w(table hive)
   attr :started_at, :any, default: nil
   attr :row_id, :any, default: nil
-  attr :open, :map, default: %{}, doc: "hive: DOM id of an open destination => %{runs, total}"
+
+  attr :open, :map,
+    default: %{},
+    doc: "hive: `destination_key/1` of an open destination => %{runs, total}"
+
   attr :run_path, :any, default: nil
   attr :class, :any, default: nil
 
@@ -1231,7 +1254,7 @@ defmodule ApiaryWeb.RunComponents do
             connection={row}
             variant={@variant}
             started_at={@started_at}
-            open={@open[@row_id.(row)]}
+            open={@open[destination_key(row)]}
             run_path={@run_path}
           />
         </tbody>
@@ -1243,9 +1266,28 @@ defmodule ApiaryWeb.RunComponents do
   defp default_row_id(%{id: id}) when is_binary(id), do: "cx-#{id}"
   defp default_row_id(row), do: destination_id(row)
 
-  @doc "The DOM id of a destination across runs: never an index."
-  def destination_id(%{host: host, port: port} = row),
-    do: "dst-#{:erlang.phash2({host, port, Map.get(row, :path) || ""})}"
+  @doc """
+  The DOM id of a destination across runs. Never an index, and not a short hash either: the
+  host and the path are a runner's strings, and two of them must not be made to share an
+  id. See `dom_token/1`.
+  """
+  def destination_id(row), do: "dst-" <> dom_token(destination_key(row))
+
+  @doc "What a destination is: `{host, port, path}`. What the page opens and finds rows by."
+  def destination_key(%{host: host, port: port} = row),
+    do: {host, port, Map.get(row, :path) || ""}
+
+  @doc """
+  A token for a DOM id made from strings the page does not control: the first 16
+  characters of the lower-case Base32 of the SHA-256 of the term, 80 bits of it, so a
+  collision cannot be arranged.
+  """
+  def dom_token(term) do
+    :sha256
+    |> :crypto.hash(:erlang.term_to_binary(term))
+    |> Base.encode32(case: :lower, padding: false)
+    |> binary_part(0, 16)
+  end
 
   ## rd15. New items pill
 

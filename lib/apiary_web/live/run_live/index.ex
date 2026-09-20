@@ -66,12 +66,14 @@ defmodule ApiaryWeb.RunLive.Index do
           />
           <.filter
             name="repo"
+            total={facet_total(@facets, :repo)}
+            query={@narrow["repo"]}
             label="Repository"
-            value={Filters.repo_param(@filters.repo)}
+            value={Filters.repo_value(@filters.repo)}
             options={
               with_chosen(
-                @facets[:repo],
-                Filters.repo_param(@filters.repo),
+                facet_options(@facets, :repo),
+                Filters.repo_value(@filters.repo),
                 repo_label(@filters.repo)
               )
             }
@@ -79,25 +81,37 @@ defmodule ApiaryWeb.RunLive.Index do
           />
           <.filter
             name="task"
+            total={facet_total(@facets, :task)}
+            query={@narrow["task"]}
             label="Task"
             value={task_param(@filters.task)}
             options={
-              with_chosen(@facets[:task], task_param(@filters.task), task_label(@filters.task))
+              with_chosen(
+                facet_options(@facets, :task),
+                task_param(@filters.task),
+                task_label(@filters.task)
+              )
             }
             remove={path(Filters.put(@filters, task: nil))}
           />
           <.filter
             name="runtime"
+            total={facet_total(@facets, :runtime)}
+            query={@narrow["runtime"]}
             label="Runtime"
             value={@filters.runtime}
-            options={with_chosen(@facets[:runtime], @filters.runtime, @filters.runtime)}
+            options={
+              with_chosen(facet_options(@facets, :runtime), @filters.runtime, @filters.runtime)
+            }
             remove={path(Filters.put(@filters, runtime: nil))}
           />
           <.filter
             name="host"
+            total={facet_total(@facets, :host)}
+            query={@narrow["host"]}
             label="Host"
             value={@filters.host}
-            options={with_chosen(@facets[:host], @filters.host, @filters.host)}
+            options={with_chosen(facet_options(@facets, :host), @filters.host, @filters.host)}
             remove={path(Filters.put(@filters, host: nil))}
           />
           <.filter
@@ -230,6 +244,10 @@ defmodule ApiaryWeb.RunLive.Index do
           </div>
         </div>
       </div>
+
+      <.notice :if={@dropped != []} kind={:warning} class="max-w-[80ch]">
+        <span id="runs-dropped">{dropped_sentence(@dropped)}</span>
+      </.notice>
 
       <div :if={!@load_error && first_run?(@summary, @filters)} class="grid gap-4">
         <.empty_state :if={!@has_keys} icon="hero-play-circle" title="No runs yet">
@@ -532,6 +550,8 @@ defmodule ApiaryWeb.RunLive.Index do
        loaded_at: DateTime.utc_now(),
        load_error: false,
        summary_window: :closed,
+       dropped: [],
+       narrow: %{},
        has_keys: AccessKeys.list_access_keys(scope) != []
      )}
   end
@@ -541,10 +561,15 @@ defmodule ApiaryWeb.RunLive.Index do
     filters = Filters.parse(params, :runs)
 
     if Filters.to_params(filters) == params do
-      {:noreply, socket |> assign(:filters, filters) |> load()}
+      {:noreply, socket |> keep_dropped() |> assign(:filters, filters) |> load()}
     else
-      # A value the page does not know was dropped: the address bar says what is shown.
-      {:noreply, push_patch(socket, to: path(filters), replace: true)}
+      # A value the page does not know was dropped: the address bar says what is shown,
+      # and the page says that the link was not read in full.
+      {:noreply,
+       socket
+       |> assign(:dropped, filters.dropped)
+       |> put_private(:rewrote, true)
+       |> push_patch(to: path(%{filters | dropped: []}), replace: true)}
     end
   end
 
@@ -552,6 +577,27 @@ defmodule ApiaryWeb.RunLive.Index do
   def handle_event("filter", params, socket) do
     {:noreply, push_patch(socket, to: path(Filters.change(socket.assigns.filters, params)))}
   end
+
+  # What the reader types in a menu narrows that menu's options on the server: the menu
+  # holds the fifty most frequent values, never all of them.
+  def handle_event("narrow", %{"_filter" => name, "q" => q}, socket)
+      when name in ~w(repo task runtime host) and is_binary(q) do
+    %{current_scope: scope, filters: filters} = socket.assigns
+    narrow = Map.put(socket.assigns.narrow, name, String.slice(q, 0, 256))
+
+    {:noreply,
+     socket
+     |> assign(:narrow, narrow)
+     |> start_async(:facets, fn ->
+       %{
+         filters: filters,
+         narrow: narrow,
+         facets: Runs.run_facets(scope, filters, narrow: narrow)
+       }
+     end)}
+  end
+
+  def handle_event("narrow", _params, socket), do: {:noreply, socket}
 
   def handle_event("show_new", _params, socket) do
     filters = socket.assigns.filters
@@ -585,6 +631,14 @@ defmodule ApiaryWeb.RunLive.Index do
   def handle_async(:load, {:exit, _reason}, socket) do
     {:noreply, assign(socket, load_error: true)}
   end
+
+  def handle_async(:facets, {:ok, %{filters: filters, narrow: narrow, facets: facets}}, socket) do
+    if filters == socket.assigns.filters and narrow == socket.assigns.narrow,
+      do: {:noreply, assign(socket, :facets, facets)},
+      else: {:noreply, socket}
+  end
+
+  def handle_async(:facets, {:exit, _reason}, socket), do: {:noreply, socket}
 
   def handle_async(:summary, {:ok, %{filters: filters} = loaded}, socket) do
     if filters == socket.assigns.filters,
@@ -674,7 +728,8 @@ defmodule ApiaryWeb.RunLive.Index do
   # The summary and the groups' facts are counted again at once on the first change, then
   # at most once a second while changes keep coming.
   defp touch_summary(%{assigns: %{summary_window: :closed}} = socket) do
-    %{current_scope: scope, filters: filters} = socket.assigns
+    %{current_scope: scope, filters: filters, groups: groups} = socket.assigns
+    keys = Enum.map(groups, & &1.key)
     Process.send_after(self(), :summary_window_over, @summary_window)
 
     socket
@@ -683,7 +738,7 @@ defmodule ApiaryWeb.RunLive.Index do
       %{
         filters: filters,
         summary: Runs.summarise_runs(scope, filters),
-        facts: Runs.group_facts(scope, filters)
+        facts: Runs.group_facts(scope, filters, keys)
       }
     end)
   end
@@ -694,16 +749,20 @@ defmodule ApiaryWeb.RunLive.Index do
     %{current_scope: scope, filters: filters} = socket.assigns
 
     if connected?(socket) do
+      narrow = socket.assigns.narrow
+
       start_async(socket, :load, fn ->
         now = DateTime.utc_now()
+        listing = Runs.page_runs(scope, filters, now)
+        keys = listing.runs |> Enum.map(&Runs.group_key(&1, filters.group)) |> Enum.uniq()
 
         %{
           filters: filters,
           at: now,
-          listing: Runs.page_runs(scope, filters, now),
+          listing: listing,
           summary: Runs.summarise_runs(scope, filters, now),
-          facts: Runs.group_facts(scope, filters, now),
-          facets: Runs.run_facets(scope, filters, now)
+          facts: Runs.group_facts(scope, filters, keys, now),
+          facets: Runs.run_facets(scope, filters, now: now, narrow: narrow)
         }
       end)
     else
@@ -725,10 +784,24 @@ defmodule ApiaryWeb.RunLive.Index do
 
   ## Words and paths
 
+  # The notice of a rewritten link stays for the view the rewrite led to, and goes with the
+  # reader's next change.
+  defp keep_dropped(socket) do
+    if socket.private[:rewrote],
+      do: put_private(socket, :rewrote, false),
+      else: assign(socket, :dropped, [])
+  end
+
+  defp dropped_sentence([name]),
+    do: "The link's #{name} filter could not be read, so it is not applied."
+
+  defp dropped_sentence(names),
+    do: "The link's #{Enum.join(names, ", ")} filters could not be read, so they are not applied."
+
   defp path(%Filters{} = filters), do: ~p"/hive/runs?#{Filters.to_params(filters)}"
 
   defp connections_path({forge, path}),
-    do: ~p"/hive/connections?#{%{"repo" => Filters.repo_param({forge, path})}}"
+    do: ~p"/hive/connections?#{Filters.repo_params(forge, path)}"
 
   # No run in the hive at all, and nothing narrowing the view: the first-run states.
   defp first_run?(%{hive_runs: 0}, filters), do: not Filters.any?(filters)
@@ -758,16 +831,20 @@ defmodule ApiaryWeb.RunLive.Index do
     |> Enum.join(", ")
   end
 
-  # Never an index: the group's own key, hashed so any label is a valid id.
-  defp group_id(%{key: key}), do: :erlang.phash2(key)
+  # Never an index: the group's own key, as a token no two labels can be made to share.
+  defp group_id(%{key: key}), do: dom_token(key)
 
   defp group_storage_key(group_by, %{key: key}) do
-    "#{group_by}:#{:erlang.phash2(key)}"
+    "#{group_by}:#{dom_token(key)}"
   end
 
   defp state_options(facets) do
-    for {state, value, count} <- facets[:state] || [], do: {state_label(state), value, count}
+    for {state, value, count} <- facet_options(facets, :state),
+        do: {state_label(state), value, count}
   end
+
+  defp facet_options(facets, name), do: (facets[name] || %{options: []}).options
+  defp facet_total(facets, name), do: facets[name] && facets[name].total
 
   # A chosen value that the data no longer offers still shows in its menu, so it can be read.
   defp with_chosen(options, nil, _label), do: options || []
