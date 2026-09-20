@@ -3419,6 +3419,18 @@
     vertical-align: 1px;
     white-space: nowrap;
   }
+  .q-sver-of,
+  .q-drift-of {
+    font-family: var(--font-mono);
+    font-size: 0.71875rem;
+    font-weight: 400;
+    color: var(--q-muted);
+    white-space: nowrap;
+  }
+  .q-drift-of {
+    color: inherit;
+    opacity: 0.85;
+  }
   .q-kv-policy,
   .q-kv-policy dd {
     overflow: visible;
@@ -3504,6 +3516,13 @@
   }
   .q-vpill-dg {
     color: var(--q-muted);
+  }
+  .q-vpill-scope {
+    max-width: 22ch;
+    overflow: hidden;
+    color: var(--q-faint);
+    font-family: var(--font-sans);
+    text-overflow: ellipsis;
   }
   .q-vpill-dg > i {
     color: var(--q-faint);

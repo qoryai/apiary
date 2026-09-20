@@ -697,6 +697,18 @@ defmodule ApiaryWeb.PolicyLive.Show do
                 <.icon name="hero-arrow-up-tray-micro" class="size-4" />Export
               </.button>
             </div>
+            <div :if={!(@managed? && @version)} class="q-head-side">
+              <.version_pill id="policy-version-pill" />
+              <.tooltip
+                tip="Nothing to export yet: the first change here renders version 1."
+                placement="left"
+                class="q-tip-wide"
+              >
+                <.button id="policy-export-button" disabled aria-disabled="true">
+                  <.icon name="hero-arrow-up-tray-micro" class="size-4" />Export
+                </.button>
+              </.tooltip>
+            </div>
           </:actions>
         </.header>
 
@@ -912,8 +924,19 @@ defmodule ApiaryWeb.PolicyLive.Show do
           <.button navigate={~p"/hive/connections"}>Go to connections</.button>
         </:actions>
       </.empty_state>
-      <p class="max-w-[80ch] text-[12.5px]/[18px] text-faint">
+      <p
+        :if={!@managed?}
+        id="policy-first-version"
+        class="max-w-[80ch] text-[12.5px]/[18px] text-faint"
+      >
         Version 1 is rendered by the first change, never by a machine asking. Until it exists, a machine that asks is told there is no policy here and keeps its own.
+      </p>
+      <p
+        :if={@managed? && @version}
+        id="policy-first-version"
+        class="max-w-[80ch] text-[12.5px]/[18px] text-faint"
+      >
+        Version {@version.version} is what machines are served now: the mode, with nothing allowed. A rule added here renders the next one.
       </p>
     </div>
 
@@ -1101,15 +1124,30 @@ defmodule ApiaryWeb.PolicyLive.Show do
               <td role="cell" class="q-num">
                 <.cell value={row.suggestions} none="n/a">
                   <span :if={row.suggestions > 0} class="q-newdot">{row.suggestions} to review</span>
-                  <span :if={row.suggestions == 0} class="q-zero">0</span>
+                  <span :if={row.suggestions == 0} class="q-zero">
+                    <span class="sr-only">none</span><span aria-hidden="true">–</span>
+                  </span>
                 </.cell>
               </td>
               <td role="cell" class="q-opt font-mono text-[12.5px]">
                 <.cell value={row.detail} none="n/a">
-                  <span :if={row.detail.version}>
-                    v{row.detail.version.version}
-                    <span class="text-faint">{short_digest(row.detail.version.digest)}</span>
-                  </span>
+                  <.version_pill
+                    :if={row.detail.version}
+                    size="sm"
+                    version={row.detail.version.version}
+                    digest={row.detail.version.digest}
+                    scope={
+                      if is_nil(row.detail.version.repository_id),
+                        do: "hive baseline",
+                        else: "#{row.forge}/#{row.path}"
+                    }
+                    navigate={
+                      if is_nil(row.detail.version.repository_id),
+                        do: ~p"/hive/policy/versions/#{row.detail.version.version}",
+                        else:
+                          ~p"/hive/policy/repositories/#{row.id}/versions/#{row.detail.version.version}"
+                    }
+                  />
                   <span :if={!row.detail.version} class="text-faint font-sans text-[13px]">
                     no version yet
                   </span>

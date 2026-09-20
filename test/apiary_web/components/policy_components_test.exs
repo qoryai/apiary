@@ -57,6 +57,19 @@ defmodule ApiaryWeb.PolicyComponentsTest do
       refute html =~ "CopyToClipboard"
     end
 
+    test "a scope names whose version it is, away from its own page" do
+      html =
+        render_component(&PolicyComponents.version_pill/1,
+          version: 3,
+          digest: @digest,
+          size: "sm",
+          scope: "github.example/acme/shop"
+        )
+
+      assert text(html) == "Version v3 c41d7e02b9a6 of github.example/acme/shop"
+      assert html =~ "q-vpill-scope"
+    end
+
     test "no version yet" do
       assert render_component(&PolicyComponents.version_pill/1, []) |> text() == "No version yet"
     end

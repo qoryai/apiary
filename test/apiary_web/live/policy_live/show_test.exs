@@ -61,6 +61,9 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
                "Until the first change here, every machine of this hive runs under its own policy"
 
       refute has_element?(view, "#policy-version-pill-copy")
+      assert text(view, "#policy-version-pill") == "No version yet"
+      assert has_element?(view, "#policy-export-button[disabled]")
+      assert text(view, "#policy-first-version") =~ "Version 1 is rendered by the first change"
       refute has_element?(view, "#policy-tabs a", "Document")
       assert has_element?(view, "#policy-mode-observe[aria-checked=true]")
 
@@ -81,6 +84,8 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert has_element?(view, "#policy-rules tr.q-fresh", "api.example")
       assert text(view, "#policy-rules tr.q-fresh") =~ "New in v1"
       assert has_element?(view, "#policy-version-pill-copy[data-copy^='sha256=']")
+      refute has_element?(view, "#policy-export-button[disabled]")
+      refute has_element?(view, "#policy-first-version")
       assert has_element?(view, "#policy-tabs a", "Document")
       assert text(view, "#flash-info") =~ "api.example is allowed for the hive. Version 1."
       assert text(view, "#policy-announce") == "Rule added. Version 1."
@@ -561,6 +566,16 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
              )
     end
 
+    test "a managed hive with a mode set and no rule says what version is served",
+         %{conn: conn, scope: scope} do
+      other = scope_fixture()
+      {:ok, _} = Policy.set_mode(other, "enforce")
+      %{user: owner} = %{user: other.user}
+      view = open(log_in_user(build_conn(), owner))
+      assert text(view, "#policy-first-version") =~ "Version 1 is what machines are served now"
+      _ = scope
+    end
+
     test "the confirm names those that do not change", %{conn: conn} do
       view = open(conn)
       view |> element("#policy-mode-enforce") |> render_click()
@@ -609,6 +624,13 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert text(view, "#repositories-summary") =~ "1 with rules of their own"
       assert text(view, "#repo-#{repository.id}") =~ "Own rules"
       assert text(view, "#repo-#{repository.id}") =~ "v1"
+      # Whose version each row shows, and no bare 0 where nothing is to review.
+      assert text(view, "#repo-#{repository.id} .q-vpill") =~ "of github.example/acme/shop"
+      assert text(view, "#policy-repositories") =~ "of hive baseline"
+
+      refute view |> element("#repo-#{repository.id} td.q-num:nth-of-type(6)") |> render() =~
+               ">0<"
+
       assert text(view, "#policy-repositories") =~ "Hive baseline"
 
       assert has_element?(

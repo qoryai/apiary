@@ -37,11 +37,17 @@ defmodule ApiaryWeb.PolicyComponents do
   attr :navigate, :string, default: nil, doc: "the version page"
   attr :copy, :boolean, default: false
   attr :size, :string, default: "md", values: ~w(sm md)
+
+  attr :scope, :string,
+    default: nil,
+    doc:
+      "whose version, when shown away from its own page: \"hive baseline\" or a forge/path; a quiet suffix"
+
   attr :class, :any, default: nil
 
   def version_pill(%{version: nil} = assigns) do
     ~H"""
-    <span class={["q-vpill", @size == "sm" && "q-vpill-sm", @class]}>
+    <span id={@id} class={["q-vpill", @size == "sm" && "q-vpill-sm", @class]}>
       <span class="q-vpill-dg">No version yet</span>
     </span>
     """
@@ -49,7 +55,7 @@ defmodule ApiaryWeb.PolicyComponents do
 
   def version_pill(assigns) do
     ~H"""
-    <span class={["q-vpill", @size == "sm" && "q-vpill-sm", @class]} title={@digest}>
+    <span id={@id} class={["q-vpill", @size == "sm" && "q-vpill-sm", @class]} title={@digest}>
       <.link :if={@navigate} navigate={@navigate} class="q-vpill-v">
         <span class="sr-only">Version </span>v{@version}
       </.link>
@@ -57,6 +63,7 @@ defmodule ApiaryWeb.PolicyComponents do
       <span :if={@digest} class="q-vpill-dg">
         <i :if={@size == "md"}>sha256</i>{short_digest(@digest)}
       </span>
+      <span :if={@scope} class="q-vpill-scope"><span class="sr-only">of </span>{@scope}</span>
       <button
         :if={@copy && @size == "md" && @digest && @id}
         id={"#{@id}-copy"}
