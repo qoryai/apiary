@@ -567,7 +567,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
     end
 
     test "a managed hive with a mode set and no rule says what version is served",
-         %{conn: conn, scope: scope} do
+         %{scope: scope} do
       other = scope_fixture()
       {:ok, _} = Policy.set_mode(other, "enforce")
       %{user: owner} = %{user: other.user}
