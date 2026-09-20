@@ -26,6 +26,8 @@ defmodule Apiary.Repo.Migrations.CreateRepositories do
     end
 
     create unique_index(:repositories, [:hive_id, :forge, :path])
+    # What a run references, so the database holds a run to a repository of its hive.
+    create unique_index(:repositories, [:id, :hive_id])
     create index(:repositories, [:organisation_id, :hive_id])
   end
 end

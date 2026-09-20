@@ -18,7 +18,16 @@ defmodule Apiary.Repo.Migrations.CreateLogChunks do
           ),
           null: false
 
-      add :run_id, references(:runs, type: :binary_id, on_delete: :delete_all), null: false
+      # With the hive, so a row cannot name a run of another hive.
+      add :run_id,
+          references(:runs,
+            type: :binary_id,
+            with: [hive_id: :hive_id],
+            match: :full,
+            on_delete: :delete_all
+          ),
+          null: false
+
       add :sequence, :bigint, null: false
       add :stream, :text, null: false
       add :bytes, :binary, null: false

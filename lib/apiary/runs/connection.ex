@@ -21,6 +21,7 @@ defmodule Apiary.Runs.Connection do
     field :last_outcome, :string
     field :first_seen_at, :utc_datetime_usec
     field :last_seen_at, :utc_datetime_usec
+    field :last_sequence, :integer, default: 0
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :hive, Apiary.Organisations.Hive

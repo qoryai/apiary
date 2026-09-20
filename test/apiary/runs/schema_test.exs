@@ -91,4 +91,91 @@ defmodule Apiary.Runs.SchemaTest do
     Repo.delete!(run)
     assert Repo.aggregate(Event, :count) == 0
   end
+
+  test "a child of a run cannot name another hive than its run's" do
+    %{scope: scope} = sign_up_fixture()
+    %{scope: other} = sign_up_fixture()
+    run = run_fixture(scope)
+
+    assert_raise Ecto.ConstraintError, ~r/events_run_id_fkey/, fn ->
+      Repo.insert!(%Event{
+        organisation_id: other.organisation.id,
+        hive_id: other.hive.id,
+        run_id: run.id,
+        sequence: 1,
+        event_id: Ecto.UUID.generate(),
+        type: "ai.qory.ping",
+        time: DateTime.utc_now(),
+        received_at: DateTime.utc_now()
+      })
+    end
+
+    for table <- ~w(log_chunks connections) do
+      %{rows: [[definition]]} =
+        Repo.query!(
+          "SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = $1",
+          [table <> "_run_id_fkey"]
+        )
+
+      assert definition =~ "FOREIGN KEY (run_id, hive_id) REFERENCES runs(id, hive_id)"
+    end
+  end
+
+  test "a run cannot name a repository of another hive" do
+    %{scope: scope} = sign_up_fixture()
+    %{scope: other} = sign_up_fixture()
+    now = DateTime.utc_now()
+
+    repository =
+      Repo.insert!(%Apiary.Runs.Repository{
+        organisation_id: other.organisation.id,
+        hive_id: other.hive.id,
+        forge: "git.example.com",
+        path: "acme/shop",
+        first_seen_at: now
+      })
+
+    assert_raise Ecto.ConstraintError, ~r/runs_repository_id_fkey/, fn ->
+      run_fixture(scope, %{repository_id: repository.id})
+    end
+
+    # In its own hive it may, and the run outlives the repository.
+    run = run_fixture(other, %{repository_id: repository.id})
+    Repo.delete!(repository)
+    assert %Run{repository_id: nil, hive_id: hive_id} = Repo.get!(Run, run.id)
+    assert hive_id == other.hive.id
+  end
+
+  test "a delivery keeps its key: the key cannot be deleted from under it, the hive can go" do
+    %{scope: scope} = sign_up_fixture()
+    %{access_key: key} = Apiary.AccessKeysFixtures.access_key_fixture(scope)
+
+    Repo.insert!(%Apiary.Runs.Delivery{
+      organisation_id: scope.organisation.id,
+      hive_id: scope.hive.id,
+      access_key_id: key.id,
+      delivery_id: Ecto.UUID.generate(),
+      run_id: Ecto.UUID.generate(),
+      received_at: DateTime.utc_now(),
+      status: 202
+    })
+
+    assert_raise Postgrex.Error, ~r/deliveries_access_key_id_fkey/, fn ->
+      Repo.query!("DELETE FROM access_keys WHERE id = $1", [Ecto.UUID.dump!(key.id)])
+    end
+
+    Repo.query!("DELETE FROM organisations WHERE id = $1", [
+      Ecto.UUID.dump!(scope.organisation.id)
+    ])
+
+    assert Repo.aggregate(Apiary.Runs.Delivery, :count) == 0
+  end
+
+  test "the liveness scan has its index" do
+    %{rows: [[definition]]} =
+      Repo.query!("SELECT indexdef FROM pg_indexes WHERE indexname = 'runs_alive_index'")
+
+    assert definition =~ "(state, last_heartbeat_at)"
+    assert definition =~ "WHERE"
+  end
 end

@@ -21,7 +21,14 @@ defmodule Apiary.Repo.Migrations.CreateRuns do
       add :run_id, :uuid, null: false
 
       add :access_key_id, references(:access_keys, type: :binary_id, on_delete: :nilify_all)
-      add :repository_id, references(:repositories, type: :binary_id, on_delete: :nilify_all)
+      # The repository is of the run's hive: the key carries the hive, and only the
+      # repository's own column is cleared should a repository ever go.
+      add :repository_id,
+          references(:repositories,
+            type: :binary_id,
+            with: [hive_id: :hive_id],
+            on_delete: {:nilify, [:repository_id]}
+          )
 
       add :forge, :text
       add :repository, :text
@@ -72,6 +79,16 @@ defmodule Apiary.Repo.Migrations.CreateRuns do
            )
 
     create unique_index(:runs, [:hive_id, :run_id])
+    # What the events, the log chunks and the connections of a run reference, so the
+    # database holds a child to its run's hive.
+    create unique_index(:runs, [:id, :hive_id])
+
+    # The lost-run check reads the runs that are alive, oldest heartbeat first.
+    create index(:runs, [:state, :last_heartbeat_at],
+             where: "state IN ('pending', 'running')",
+             name: :runs_alive_index
+           )
+
     create index(:runs, [:hive_id, :state])
     create index(:runs, [:hive_id, :inserted_at])
     create index(:runs, [:hive_id, :repository_id])

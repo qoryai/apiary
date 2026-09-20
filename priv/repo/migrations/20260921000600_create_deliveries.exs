@@ -18,7 +18,9 @@ defmodule Apiary.Repo.Migrations.CreateDeliveries do
           ),
           null: false
 
-      add :access_key_id, references(:access_keys, type: :binary_id, on_delete: :delete_all),
+      # A key is revoked, never deleted, and what it delivered is not to vanish with
+      # it: no action, which still lets a hive go with everything in it.
+      add :access_key_id, references(:access_keys, type: :binary_id, on_delete: :nothing),
         null: false
 
       add :delivery_id, :uuid, null: false
