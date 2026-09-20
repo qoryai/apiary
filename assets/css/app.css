@@ -826,6 +826,24 @@
     transition-property: opacity, scale, translate, display;
     transition-duration: 180ms;
     transition-timing-function: var(--q-ease-out);
+    animation: q-menu-in 180ms var(--q-ease-out);
+  }
+  /* A menu hangs from its trigger: it arrives from 4 px above. One that opens
+     upwards arrives from 4 px below. The reduced-motion block zeroes both. */
+  @keyframes q-menu-in {
+    from {
+      opacity: 0;
+      translate: 0 -4px;
+    }
+  }
+  :where(.dropdown-top) > :where(.dropdown-content) {
+    animation-name: q-menu-in-up;
+  }
+  @keyframes q-menu-in-up {
+    from {
+      opacity: 0;
+      translate: 0 4px;
+    }
   }
   :where(.menu) {
     display: flex;
@@ -1027,38 +1045,7 @@
     border-radius: 2px;
   }
 
-  /* Three-way theme control: the pressed segment follows the theme script. */
-  .theme-seg {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 2px;
-    padding: 2px;
-    border-radius: var(--radius-field);
-    background-color: var(--color-base-300);
-  }
-  .theme-seg > button {
-    display: flex;
-    height: 1.5rem;
-    align-items: center;
-    justify-content: center;
-    gap: 0.3125rem;
-    border-radius: var(--radius-selector);
-    color: var(--q-muted);
-    font-size: 0.75rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: color 120ms var(--q-ease-out), background-color 120ms var(--q-ease-out);
-  }
-  .theme-seg > button:hover {
-    color: var(--color-base-content);
-  }
-  [data-theme-source="system"] .theme-seg > [data-phx-theme="system"],
-  [data-theme-source="user"][data-theme="qory"] .theme-seg > [data-phx-theme="light"],
-  [data-theme-source="user"][data-theme="qory-dark"] .theme-seg > [data-phx-theme="dark"] {
-    background-color: var(--color-base-100);
-    color: var(--color-base-content);
-    box-shadow: var(--q-shadow-xs);
-  }
+  /* The theme menu: the check mark on the theme in force. */
   [data-theme-source="system"] .theme-menu [data-phx-theme="system"] .theme-check,
   [data-theme-source="user"][data-theme="qory"] .theme-menu [data-phx-theme="light"] .theme-check,
   [data-theme-source="user"][data-theme="qory-dark"] .theme-menu [data-phx-theme="dark"] .theme-check {
@@ -1067,13 +1054,6 @@
   .theme-check {
     visibility: hidden;
   }
-  @media (max-width: 767.98px) {
-    .theme-seg > button {
-      height: 2.25rem;
-      font-size: 0.8125rem;
-    }
-  }
-
   /* Copy button state, driven by the CopyToClipboard hook. */
   .copy-btn .copy-idle,
   .copy-btn .copy-done {

@@ -117,8 +117,10 @@ const Modal = {
   },
 }
 
-// A daisyUI dropdown with menu manners: click toggles, Escape closes and gives
-// focus back, arrows move between items, focus leaving closes.
+// A daisyUI dropdown with menu manners: a click toggles and leaves focus on the
+// trigger (nothing jumps under the cursor); Enter, Space and ArrowDown open and
+// focus the first item, ArrowUp the last; arrows wrap, Home and End go to the
+// ends; Escape closes and gives focus back; focus leaving closes.
 const Menu = {
   mounted() {
     const trigger = () => this.el.querySelector("[aria-haspopup]")
@@ -147,9 +149,15 @@ const Menu = {
       const at = list.indexOf(document.activeElement)
       const t = trigger()
       const open = this.el.classList.contains("dropdown-open") || this.el.matches(":focus-within")
-      if ((e.key === "Enter" || e.key === " ") && e.target === t && t.tagName !== "BUTTON") {
+      if ((e.key === "Enter" || e.key === " ") && e.target === t) {
+        // Not the button's own click: that would open with focus still on the trigger.
         e.preventDefault()
-        this.el.classList.contains("dropdown-open") ? close(true) : set(true)
+        if (this.el.classList.contains("dropdown-open")) {
+          close(true)
+        } else {
+          set(true)
+          list[0]?.focus()
+        }
       } else if (e.key === "Escape" && open) {
         e.preventDefault()
         e.stopPropagation()

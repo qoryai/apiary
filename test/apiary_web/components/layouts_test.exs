@@ -1,0 +1,179 @@
+defmodule ApiaryWeb.LayoutsTest do
+  use ApiaryWeb.ConnCase, async: true
+
+  import Phoenix.LiveViewTest
+  import Apiary.AccountsFixtures
+  import Apiary.OrganisationsFixtures
+
+  alias Apiary.Organisations
+
+  defp before?(html, first, second) do
+    {a, _} = :binary.match(html, first)
+    {b, _} = :binary.match(html, second)
+    a < b
+  end
+
+  describe "the app shell" do
+    setup :register_and_log_in_user
+
+    test "the sidebar comes before the top bar and main in the DOM, and the bar is in the content column",
+         %{conn: conn} do
+      {:ok, view, html} = live(conn, ~p"/hive")
+
+      assert before?(html, ~s(class="drawer-side), ~s(id="shell-content"))
+      assert has_element?(view, "#shell-content > header#top-bar[aria-label='Top bar']")
+      assert has_element?(view, "#shell-content > main#main")
+      assert has_element?(view, "aside#sidebar[aria-label='Sidebar'] nav[aria-label='Main']")
+      assert has_element?(view, "aside#sidebar nav[aria-label='Manage']")
+    end
+
+    test "the top bar holds the theme toggle and then the account menu, on every page", %{
+      conn: conn,
+      user: user
+    } do
+      {:ok, view, html} = live(conn, ~p"/hive")
+
+      assert has_element?(view, "#top-bar #theme-menu-button[aria-label='Theme']")
+
+      assert has_element?(
+               view,
+               "#top-bar #user-menu-button[aria-haspopup='menu'][aria-label='Account menu, #{user.email}']"
+             )
+
+      assert before?(html, ~s(id="theme-menu-button"), ~s(id="user-menu-button"))
+      # below 768 px the bar opens the drawer and says where you are; the label is text
+      assert has_element?(view, "#top-bar #nav-drawer-open[aria-label='Open menu'].md\\:hidden")
+      assert has_element?(view, "#top-bar div#apiary-label.md\\:hidden")
+      refute has_element?(view, "#apiary-label a, #apiary-label button")
+    end
+
+    test "the account menu: who you are, then Account settings, Docs and Log out", %{
+      conn: conn,
+      user: user,
+      scope: scope
+    } do
+      {:ok, view, _html} = live(conn, ~p"/hive")
+
+      assert has_element?(view, "#user-menu[phx-hook='Menu']")
+      menu = view |> element("#user-menu ul[role='menu'][aria-label='Account']") |> render()
+      assert menu =~ user.email
+      assert menu =~ "Owner of #{scope.organisation.name}"
+      assert before?(menu, "Account settings", "Docs")
+      assert before?(menu, "Docs", "Log out")
+      assert length(Regex.scan(~r/role="menuitem"/, menu)) == 3
+      refute menu =~ "Theme"
+      refute menu =~ ~p"/organisations/switch"
+
+      # a keyboard open focuses the first item: it is the first focusable thing in the list
+      assert has_element?(
+               view,
+               "#user-menu .dropdown-content li:nth-child(3) a#user-menu-settings[role='menuitem'][href='/users/settings']"
+             )
+
+      assert has_element?(view, "#user-menu a#user-menu-docs[href='/docs']")
+
+      assert has_element?(
+               view,
+               "#user-menu a#user-menu-log-out[href='/users/log-out'][data-method='delete']"
+             )
+    end
+
+    test "a member's account menu says so", %{conn: _conn, scope: scope} do
+      %{user: member} = member_fixture(scope, :member)
+      conn = log_in_user(build_conn(), member)
+      {:ok, view, _html} = live(conn, ~p"/hive")
+      assert has_element?(view, "#user-menu-level", "Member of #{scope.organisation.name}")
+    end
+
+    test "the sidebar: the apiary row at the top, the nav, then the brand foot; no user card",
+         %{conn: conn, user: user, scope: scope} do
+      {:ok, view, html} = live(conn, ~p"/hive")
+
+      sidebar = view |> element("#sidebar") |> render()
+      assert before?(sidebar, ~s(id="apiary-row"), ~s(aria-label="Main"))
+      assert before?(sidebar, ~s(aria-label="Manage"), ~s(id="brand-foot"))
+
+      # one membership: the block is text, the chevron slot empty, nothing to focus
+      assert has_element?(view, "#apiary-row div#apiary-block", scope.organisation.name)
+      assert has_element?(view, "#apiary-block", scope.hive.name)
+      refute has_element?(view, "#apiary-block button, #apiary-block a")
+      refute sidebar =~ "hero-chevron-up-down-micro"
+      assert has_element?(view, "#apiary-row button[data-drawer-close][aria-label='Close menu']")
+
+      # the user card and the theme row are gone
+      refute sidebar =~ user.email
+      refute has_element?(view, "#sidebar #user-menu")
+      refute html =~ "theme-seg"
+    end
+
+    test "with several memberships the apiary row is the switcher", %{conn: conn, user: user} do
+      other = sign_up_fixture()
+      %{token: token} = invitation_fixture(other.scope, %{"email" => user.email})
+      {:ok, _membership} = Organisations.accept_invitation(user, token)
+
+      {:ok, view, _html} = live(conn, ~p"/hive")
+
+      refute has_element?(view, "#apiary-block")
+
+      assert has_element?(
+               view,
+               "#apiary-row #workspace-menu[phx-hook='Menu'] button#workspace-menu-button[aria-haspopup='menu']"
+             )
+
+      assert has_element?(
+               view,
+               "#workspace-menu form[action='#{~p"/organisations/switch"}'] button[name='organisation_id'][value='#{other.organisation.id}']"
+             )
+    end
+
+    test "the brand foot links home as Qory Apiary and shows the version", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/hive")
+
+      assert has_element?(view, "#brand-foot a[href='/']", "Qory Apiary")
+      version = :apiary |> Application.spec(:vsn) |> List.to_string()
+      assert has_element?(view, "#brand-foot #brand-version[title='Version #{version}']", version)
+      refute has_element?(view, "#brand-foot a", version)
+      refute has_element?(view, "#brand-foot button")
+      # the brand is at the foot, not the top
+      sidebar = view |> element("#sidebar") |> render()
+      assert before?(sidebar, ~s(id="apiary-row"), "Qory Apiary")
+    end
+
+    test "the page title carries the product name as its suffix", %{conn: conn, scope: scope} do
+      {:ok, _view, html} = live(conn, ~p"/hive/members")
+      assert html =~ ~r{<title[^>]*>\s*Members · Qory Apiary\s*</title>}
+      assert html =~ scope.hive.name
+    end
+  end
+
+  describe "the no-hive shell" do
+    test "no sidebar, no menu button, the brand at the left of the bar", %{conn: conn} do
+      user = user_fixture()
+      conn = log_in_user(conn, user)
+      {:ok, view, html} = live(conn, ~p"/no-hive")
+
+      refute has_element?(view, "#sidebar")
+      refute has_element?(view, "#nav-drawer, #nav-drawer-open")
+      assert has_element?(view, "#top-bar a[href='/']", "Qory Apiary")
+      assert has_element?(view, "#top-bar #theme-menu-button")
+
+      assert has_element?(
+               view,
+               "#top-bar #user-menu-button[aria-label='Account menu, #{user.email}']"
+             )
+
+      assert has_element?(view, "#user-menu-level", "Not part of an apiary yet")
+      assert before?(html, ~s(href="/"), ~s(id="theme-menu-button"))
+      assert html =~ ~r{<title[^>]*>\s*No hive yet · Qory Apiary\s*</title>}
+    end
+  end
+
+  describe "the title" do
+    test "defaults to Qory Apiary", %{conn: conn} do
+      response = conn |> get(~p"/") |> html_response(200)
+      assert response =~ ~s(<title phx-r data-default="Qory Apiary" data-suffix=" · Qory Apiary">)
+      assert response =~ ~r{<title[^>]*>\s*Welcome · Qory Apiary\s*</title>}
+      assert response =~ "Welcome to Qory Apiary"
+    end
+  end
+end
