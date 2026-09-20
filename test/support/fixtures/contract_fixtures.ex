@@ -103,6 +103,27 @@ defmodule Apiary.ContractFixtures do
     |> Phoenix.ConnTest.dispatch(ApiaryWeb.Endpoint, :post, "/v1/events", body)
   end
 
+  @doc """
+  A signed GET of `target`, a path with its query exactly as it is sent. Options:
+  `:timestamp`, `:signature`, `:headers` (sent beside the others).
+  """
+  def signed_get(conn, key_id, secret, target, opts \\ []) do
+    timestamp = Keyword.get(opts, :timestamp, System.os_time(:second))
+    canonical = Signature.canonical_string("GET", target, timestamp)
+
+    conn
+    |> put_req_header("x-qory-access-key", key_id)
+    |> put_req_header("x-qory-timestamp", to_string(timestamp))
+    |> put_req_header(
+      "x-qory-signature-256",
+      Keyword.get(opts, :signature, Signature.sign(secret, canonical))
+    )
+    |> put_req_header("user-agent", "qory-runner/0.4.0")
+    |> put_req_header("x-qory-contract-version", "1")
+    |> then(&%{&1 | req_headers: &1.req_headers ++ Keyword.get(opts, :headers, [])})
+    |> Phoenix.ConnTest.dispatch(ApiaryWeb.Endpoint, :get, target, nil)
+  end
+
   defp to_header(nil), do: nil
   defp to_header(value), do: to_string(value)
 

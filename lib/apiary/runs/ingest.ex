@@ -26,6 +26,7 @@ defmodule Apiary.Runs.Ingest do
 
   alias Apiary.AccessKeys
   alias Apiary.AccessKeys.AccessKey
+  alias Apiary.Policy.Serving
   alias Apiary.Repo
   alias Apiary.Runs
   alias Apiary.Runs.{Batch, Delivery, Event, Projector, Run}
@@ -51,8 +52,14 @@ defmodule Apiary.Runs.Ingest do
   closed the run and nothing but the delivery was recorded; `inserted` events
   were new, `duplicates` were already held, `conflicts` were dropped,
   `heartbeat` says a heartbeat was among the new ones, and `repeated` says the
-  delivery id had been recorded before. `{:error, :unavailable}` when the batch
-  could not be stored.
+  delivery id had been recorded before, and `run_configuration_digest` is the digest
+  in force for the run's repository, for the answer's header (nil when it could not
+  be read). `{:error, :unavailable}` when the batch could not be stored.
+
+  The digest the request reported (`meta.run_configuration`) is kept on the delivery
+  and, as the last one reported, on the run. The digest in force is read after the
+  commit, outside the run's lock: one read of an index, never a render, but for the
+  first baseline of a hive that has none.
   """
   def ingest(%AccessKey{} = access_key, %Batch{} = batch, meta \\ %{}) do
     now = DateTime.utc_now()
@@ -62,7 +69,9 @@ defmodule Apiary.Runs.Ingest do
       if not result.repeated, do: touch(access_key, result, meta, now)
       if result.conflicts > 0, do: log_conflicts(result)
       if result.status == 202, do: Projector.project_async(result.run)
-      {:ok, result}
+
+      in_force = Serving.digest_for(access_key, result.run, batch, run_configuration(meta))
+      {:ok, Map.put(result, :run_configuration_digest, in_force)}
     end
   end
 
@@ -72,7 +81,7 @@ defmodule Apiary.Runs.Ingest do
   # quote the row, which is an event.
   defp transact(access_key, batch, meta, delivery_id, now) do
     if Runs.closed?(access_key.hive_id, batch.subject) do
-      Repo.transact(fn -> {:ok, gone(access_key, batch, delivery_id, now)} end)
+      Repo.transact(fn -> {:ok, gone(access_key, batch, meta, delivery_id, now)} end)
     else
       Repo.transact(fn -> {:ok, store(access_key, batch, meta, delivery_id, now)} end)
     end
@@ -87,9 +96,9 @@ defmodule Apiary.Runs.Ingest do
 
     cond do
       run.state == "closed" ->
-        gone(access_key, batch, delivery_id, now)
+        gone(access_key, batch, meta, delivery_id, now)
 
-      not new_delivery?(access_key, batch, delivery_id, now) ->
+      not new_delivery?(access_key, batch, meta, delivery_id, now) ->
         %{result(202, run) | repeated: true}
 
       true ->
@@ -108,8 +117,8 @@ defmodule Apiary.Runs.Ingest do
   end
 
   # The hive has closed the run: the delivery is recorded, nothing else is kept.
-  defp gone(access_key, batch, delivery_id, now) do
-    repeated = not new_delivery?(access_key, batch, delivery_id, now, 410)
+  defp gone(access_key, batch, meta, delivery_id, now) do
+    repeated = not new_delivery?(access_key, batch, meta, delivery_id, now, 410)
     %{result(410, nil) | repeated: repeated}
   end
 
@@ -160,7 +169,7 @@ defmodule Apiary.Runs.Ingest do
 
   # The delivery is inserted first with nothing counted, so a delivery id seen
   # before is known before any event is touched.
-  defp new_delivery?(access_key, batch, delivery_id, now, status \\ 202) do
+  defp new_delivery?(access_key, batch, meta, delivery_id, now, status \\ 202) do
     {count, _} =
       Repo.insert_all(
         Delivery,
@@ -175,7 +184,8 @@ defmodule Apiary.Runs.Ingest do
             received_at: now,
             event_count: length(batch.events),
             inserted_count: 0,
-            status: status
+            status: status,
+            run_configuration_digest: run_configuration(meta)
           }
         ],
         on_conflict: :nothing,

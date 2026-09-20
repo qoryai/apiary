@@ -3,7 +3,9 @@ defmodule Apiary.Runs.Delivery do
   One batch as the receiver answered it: which key delivered it, for which
   subject, how many events it held and how many were new, and the status
   answered. `run_id` is the subject of the batch, not a row of `runs`.
-  Nothing of the request's headers or body is kept here.
+  `run_configuration_digest` is what the batch's `X-Qory-Run-Configuration` said
+  the run holds, nil when it said nothing or no digest. Nothing else of the
+  request's headers, and nothing of its body, is kept here.
   """
   use Ecto.Schema
 
@@ -16,6 +18,7 @@ defmodule Apiary.Runs.Delivery do
     field :event_count, :integer, default: 0
     field :inserted_count, :integer, default: 0
     field :status, :integer
+    field :run_configuration_digest, :string
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :hive, Apiary.Organisations.Hive

@@ -14,9 +14,13 @@ defmodule ApiaryWeb.Contract.EventsController do
   not a batch is `400`; a run the hive has closed is `410`; anything else is
   stored and answered `202`, with nothing projected yet.
 
-  Every `202` and `410` carries `X-Qory-Configuration`, the digest the discovery
-  answer carries. Errors are short JSON and never repeat anything sent. The
-  body, the signature and the headers are never logged.
+  Every `202` and `410` carries the digests in force: `X-Qory-Configuration`, the
+  digest the discovery answer carries, and `X-Qory-Run-Configuration`, the digest of
+  the run configuration for the run's repository (`Apiary.Policy.Serving.digest_for/4`:
+  read, never rendered here), which is how a run learns that its policy changed. The
+  digest the request reported is stored on the delivery and on the run. Errors are
+  short JSON and never repeat anything sent. The body, the signature and the headers
+  are never logged.
   """
   use ApiaryWeb, :controller
 
@@ -33,9 +37,10 @@ defmodule ApiaryWeb.Contract.EventsController do
          :ok <- rate(access_key),
          :ok <- contract_version(conn),
          {:ok, batch} <- batch(conn.assigns.raw_body),
-         {:ok, %{status: status}} <- Ingest.ingest(access_key, batch, meta(conn)) do
+         {:ok, %{status: status} = result} <- Ingest.ingest(access_key, batch, meta(conn)) do
       conn
       |> put_resp_header("x-qory-configuration", Configuration.digest())
+      |> put_run_configuration(result[:run_configuration_digest])
       |> send_resp(status, "")
     else
       {:refuse, status, body, headers} ->
@@ -48,6 +53,12 @@ defmodule ApiaryWeb.Contract.EventsController do
         conn |> put_status(503) |> json(%{error: "unavailable"})
     end
   end
+
+  # Absent when it could not be read: a header absent means nothing to a runner.
+  defp put_run_configuration(conn, digest) when is_binary(digest),
+    do: put_resp_header(conn, "x-qory-run-configuration", digest)
+
+  defp put_run_configuration(conn, _digest), do: conn
 
   # As the reference receiver reads it: the media type, whatever its case and
   # whatever parameters follow.

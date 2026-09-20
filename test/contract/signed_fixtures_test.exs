@@ -17,11 +17,10 @@ defmodule Apiary.Contract.SignedFixturesTest do
   @moduletag :contract
 
   @clock 1_700_000_000
-  @served ["/.well-known/qory-configuration", "/v1/events"]
+  @served ["/.well-known/qory-configuration", "/v1/events", "/v1/run-configuration"]
 
-  # Not served until the run configuration exists (M5). When it is, take the
-  # file out of this list: every other file whose target is served is replayed.
-  @skipped ["get-run-configuration-valid.json"]
+  # Every file whose target is served is replayed; a file named here is not.
+  @skipped []
 
   @files (case Apiary.ContractFixtures.contract_dir() do
             nil -> []
@@ -51,6 +50,7 @@ defmodule Apiary.Contract.SignedFixturesTest do
     names = Enum.map(@files, &Path.basename/1)
     assert "batch-valid.json" in names
     assert "get-configuration-valid.json" in names
+    assert "get-run-configuration-valid.json" in names
     for name <- @skipped, do: assert(name in names)
   end
 
@@ -71,13 +71,26 @@ defmodule Apiary.Contract.SignedFixturesTest do
     end
   end
 
-  test "the skipped targets are really not served yet" do
-    for name <- @skipped do
-      fixture =
-        contract_dir() |> Path.join("fixtures/signed/#{name}") |> File.read!() |> Jason.decode!()
-
-      refute served?(fixture)
+  test "every fixture's target is served" do
+    for file <- @files do
+      assert file |> File.read!() |> Jason.decode!() |> served?(), Path.basename(file)
     end
+  end
+
+  test "get-run-configuration-valid: the answer is a run configuration under its digest" do
+    fixture =
+      contract_dir()
+      |> Path.join("fixtures/signed/get-run-configuration-valid.json")
+      |> File.read!()
+      |> Jason.decode!()
+
+    conn = replay(fixture)
+    assert conn.status == 200
+    assert :ok = Apiary.Policy.Schema.validate(conn.resp_body)
+
+    [digest] = Plug.Conn.get_resp_header(conn, "x-qory-run-configuration")
+    assert digest == Apiary.Policy.Render.digest(conn.resp_body)
+    assert Plug.Conn.get_resp_header(conn, "etag") == [~s("#{digest}")]
   end
 
   test "batch-valid and then batch-replayed: both 202, nothing stored twice" do
