@@ -31,6 +31,8 @@ defmodule Apiary.Runs.Ingest do
   alias Apiary.Runs.{Batch, Delivery, Event, Projector, Run}
 
   @digest ~r/\Asha256=[0-9a-f]{64}\z/
+  @heartbeat "ai.qory.run.heartbeat"
+  @insert_chunk 500
 
   @typedoc """
   What the request said beside its body: `delivery_id` (`X-Qory-Delivery`; one is
@@ -47,26 +49,37 @@ defmodule Apiary.Runs.Ingest do
   @doc """
   Stores the batch. `{:ok, result}` with `status` 202, or 410 when the hive has
   closed the run and nothing but the delivery was recorded; `inserted` events
-  were new, `duplicates` were already held, `conflicts` were dropped, and
-  `repeated` says the delivery id had been recorded before.
+  were new, `duplicates` were already held, `conflicts` were dropped,
+  `heartbeat` says a heartbeat was among the new ones, and `repeated` says the
+  delivery id had been recorded before. `{:error, :unavailable}` when the batch
+  could not be stored.
   """
   def ingest(%AccessKey{} = access_key, %Batch{} = batch, meta \\ %{}) do
     now = DateTime.utc_now()
     delivery_id = delivery_id(meta)
 
-    result =
-      if Runs.closed?(access_key.hive_id, batch.subject) do
-        Repo.transact(fn -> {:ok, gone(access_key, batch, delivery_id, now)} end)
-      else
-        Repo.transact(fn -> {:ok, store(access_key, batch, meta, delivery_id, now)} end)
-      end
-
-    with {:ok, result} <- result do
-      touch(access_key, batch, meta, now)
+    with {:ok, result} <- transact(access_key, batch, meta, delivery_id, now) do
+      if not result.repeated, do: touch(access_key, result, meta, now)
       if result.conflicts > 0, do: log_conflicts(result)
       if result.status == 202, do: Projector.project_async(result.run)
       {:ok, result}
     end
+  end
+
+  # Whatever the database refuses or cannot do is `{:error, :unavailable}`, a
+  # 503 the runner retries, never an exception into the request. The log line
+  # names the exception's module and nothing else: a Postgres message can
+  # quote the row, which is an event.
+  defp transact(access_key, batch, meta, delivery_id, now) do
+    if Runs.closed?(access_key.hive_id, batch.subject) do
+      Repo.transact(fn -> {:ok, gone(access_key, batch, delivery_id, now)} end)
+    else
+      Repo.transact(fn -> {:ok, store(access_key, batch, meta, delivery_id, now)} end)
+    end
+  rescue
+    exception ->
+      Logger.error("a delivery could not be stored: #{inspect(exception.__struct__)}")
+      {:error, :unavailable}
   end
 
   defp store(access_key, batch, meta, delivery_id, now) do
@@ -80,10 +93,17 @@ defmodule Apiary.Runs.Ingest do
         %{result(202, run) | repeated: true}
 
       true ->
-        {inserted, duplicates, conflicts} = insert_events(run, batch, now)
+        {inserted, duplicates, conflicts, heartbeat} = insert_events(run, batch, now)
         record_delivery(access_key, delivery_id, inserted)
         run = count(run, inserted, run_configuration(meta), now)
-        %{result(202, run) | inserted: inserted, duplicates: duplicates, conflicts: conflicts}
+
+        %{
+          result(202, run)
+          | inserted: inserted,
+            duplicates: duplicates,
+            conflicts: conflicts,
+            heartbeat: heartbeat
+        }
     end
   end
 
@@ -94,11 +114,22 @@ defmodule Apiary.Runs.Ingest do
   end
 
   defp result(status, run) do
-    %{status: status, run: run, inserted: 0, duplicates: 0, conflicts: 0, repeated: false}
+    %{
+      status: status,
+      run: run,
+      inserted: 0,
+      duplicates: 0,
+      conflicts: 0,
+      heartbeat: false,
+      repeated: false
+    }
   end
 
   # Two first batches of one run may arrive at once: the insert that loses waits
   # for the one that wins and inserts nothing, and the read after it sees the row.
+  # The read locks the row for the rest of the transaction, so a close that
+  # committed first is seen here, and one that comes after waits for this batch:
+  # a closed run never gains an event.
   defp upsert_run(access_key, batch, meta, now) do
     Repo.insert_all(
       Run,
@@ -121,7 +152,9 @@ defmodule Apiary.Runs.Ingest do
     )
 
     Repo.one!(
-      from r in Run, where: r.hive_id == ^access_key.hive_id and r.run_id == ^batch.subject
+      from r in Run,
+        where: r.hive_id == ^access_key.hive_id and r.run_id == ^batch.subject,
+        lock: "FOR UPDATE"
     )
   end
 
@@ -180,12 +213,26 @@ defmodule Apiary.Runs.Ingest do
         }
       end)
 
+    # In sequence order, so two deliveries that overlap take their locks in the
+    # same order; in chunks, far under the parameters one statement may carry.
     {inserted, stored} =
-      Repo.insert_all(Event, rows, on_conflict: :nothing, returning: [:event_id], log: false)
+      rows
+      |> Enum.sort_by(& &1.sequence)
+      |> Enum.chunk_every(@insert_chunk)
+      |> Enum.reduce({0, []}, fn chunk, {count, stored} ->
+        {inserted, returned} =
+          Repo.insert_all(Event, chunk,
+            on_conflict: :nothing,
+            returning: [:event_id, :type],
+            log: false
+          )
+
+        {count + inserted, returned ++ stored}
+      end)
 
     skipped = length(rows) - inserted
     conflicts = if skipped > 0, do: conflicts(run, rows, stored), else: 0
-    {inserted, skipped - conflicts, conflicts}
+    {inserted, skipped - conflicts, conflicts, Enum.any?(stored, &(&1.type == @heartbeat))}
   end
 
   # An event that was not inserted is a duplicate when the hive holds the same id
@@ -245,13 +292,15 @@ defmodule Apiary.Runs.Ingest do
     end
   end
 
-  # Bookkeeping on the key, after the commit: it never fails the delivery.
-  defp touch(access_key, batch, meta, now) do
+  # Bookkeeping on the key, after the commit: it never fails the delivery. The
+  # heartbeat is dated by this server's clock, when it was received: the runner's
+  # clock, which may be wrong or ahead, never pins it.
+  defp touch(access_key, result, meta, now) do
     AccessKeys.touch_delivery(access_key, %{
       last_used_at: now,
       last_runner_version: meta[:runner_version],
       last_contract_version: meta[:contract_version],
-      last_heartbeat_at: Batch.last_heartbeat(batch)
+      last_heartbeat_at: if(result.heartbeat, do: now)
     })
   rescue
     _exception -> :ok

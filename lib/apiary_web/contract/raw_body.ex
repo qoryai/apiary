@@ -23,7 +23,24 @@ defmodule ApiaryWeb.Contract.RawBody do
 
   def init(opts), do: opts
 
-  def call(%Plug.Conn{method: "POST", path_info: @events_path} = conn, _opts) do
+  def call(%Plug.Conn{method: "POST", path_info: path_info} = conn, _opts) do
+    if events_path?(path_info), do: keep(conn), else: conn
+  end
+
+  def call(conn, _opts), do: conn
+
+  # The router matches the decoded path, so this does: `/v1/%65vents` is the
+  # events endpoint too, and its body is no more to be parsed unverified.
+  defp events_path?([_, _] = path_info), do: Enum.map(path_info, &decode/1) == @events_path
+  defp events_path?(_path_info), do: false
+
+  defp decode(segment) do
+    URI.decode(segment)
+  rescue
+    ArgumentError -> segment
+  end
+
+  defp keep(conn) do
     case read(conn, [], 0) do
       {:ok, body, conn} ->
         %{conn | body_params: %{}}
@@ -37,8 +54,6 @@ defmodule ApiaryWeb.Contract.RawBody do
         |> halt()
     end
   end
-
-  def call(conn, _opts), do: conn
 
   # One byte over the limit is asked for, so a body of exactly the limit is
   # told from a longer one without reading the rest.

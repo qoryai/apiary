@@ -85,8 +85,9 @@ first refusal that applies is the answer:
 | `415` | the content type is not `application/cloudevents-batch+json` (its case and any parameters are ignored) | `{"error":"unsupported_media_type"}` |
 | `429` | the key has delivered more than its rate; `Retry-After` says how many seconds to wait | `{"error":"rate_limited"}` |
 | `400` | `X-Qory-Contract-Version` is sent and is not `1` | `{"error":"unsupported_contract_version","supported":[1]}` |
-| `400` | the body is not a batch | `{"error":"invalid_batch"}` |
+| `400` | the body is not a batch, or is over a limit below | `{"error":"invalid_batch"}` |
 | `410` | the hive has closed the run: the delivery is recorded, no event is stored | empty |
+| `503` | the batch could not be stored; nothing of it was | `{"error":"unavailable"}` |
 | `202` | stored | empty |
 
 Every `202` and `410` carries `X-Qory-Configuration`, the same digest the discovery answer
@@ -94,9 +95,12 @@ carries. `X-Qory-Run-Configuration` is not answered until the run configuration 
 error body repeats anything that was sent. The ping is a batch like any other: a `2xx` lets the
 run start, and a revoked key, a bad signature or an unsupported version does not.
 
-A batch is a non-empty JSON array of objects, each with `id` and `subject` (lowercase UUIDs),
-`type` (beginning `ai.qory.`), `sequence` (ten digits), `source` (`urn:qory:run:` and the
-subject), `time` (RFC 3339) and `data` (an object), all of one subject. Only this envelope is
+A batch is a non-empty JSON array of at most 1000 objects (a runner cuts a batch at a
+hundred), each with `id` and `subject` (lowercase UUIDs), `type` (beginning `ai.qory.`),
+`sequence` (ten digits, from `0000000001`: `0000000000` is no sequence), `source`
+(`urn:qory:run:` and the subject), `time` (RFC 3339, in the years 1970 to 9999) and `data`
+(an object, nested no deeper than 64 levels), all of one subject. The limits are what the
+tables hold: what passes them is stored, and no batch is answered `500`. Only this envelope is
 checked: `data` is not validated against the schema of its type, and a type this release does
 not know is stored like any other, so a newer runner's events are kept until a release reads
 them.
@@ -105,7 +109,9 @@ What is stored, in one transaction, before the answer:
 
 - the run, created on the first event of a subject the key's hive has not seen, in that hive,
   in state `pending`, with the key that delivered it and the versions the request named. The
-  same subject under another hive is another run. Two first batches at once make one run;
+  same subject under another hive is another run. Two first batches at once make one run.
+  The run's row is locked while its batch is stored, so a close and a batch never cross: a
+  close that commits first is answered `410`, and a closed run never gains an event;
 - each event, as received: `id`, `sequence` as an integer, `type`, `time`, `data`, and when it
   was received. An event already held (the same `id`) is skipped: delivery is at least once.
   An event whose `id` is held by another run of the hive, or whose `sequence` in its run is
@@ -117,9 +123,11 @@ What is stored, in one transaction, before the answer:
 - on the run: the count of events, when the last one was received, and the last
   `X-Qory-Run-Configuration` that had the shape `sha256=` and 64 lowercase hex digits.
 
-After the commit, and never failing the request: the key records the time, the runner version
-and the contract version, and the time of the batch's last heartbeat when it holds one; the
-run's events are projected into the run, its connections and its log, on the server's own
+After the commit, and never failing the request: the key records the time, and the runner
+version and the contract version when the request named them (a request that names none
+leaves what is recorded); when the batch held a heartbeat that was new, the key records when
+the server received it, by the server's clock and never the runner's. A repeated delivery
+records nothing on the key. The run's events are projected into the run, its connections and its log, on the server's own
 time. Nothing of a request's headers beyond the above is stored, and neither the signature nor
 the body is logged.
 
@@ -170,8 +178,13 @@ The contract has not fixed these; Apiary chose, and the runner should match:
 - The body limit is 2 MiB, twice the mebibyte a runner cuts a batch at, and it is checked
   before the signature.
 - The rate limit is per access key and per node: 50 batches a second, 100 at once
-  (`config :apiary, Apiary.Runs.RateLimit, rate: 50, burst: 100`). A refused request of any
-  other kind spends nothing of it.
+  (`config :apiary, Apiary.Runs.RateLimit, rate: 50, burst: 100`). Every request that passed
+  the `413`, the `401` and the `415` spends a token, whatever it is answered after that: a
+  `400` and a `410` count like a `202`, so a key that keeps sending what is refused is slowed
+  like any other. What is refused before, and so an unauthenticated request, spends nothing.
+- A batch holds at most 1000 events, `data` nests at most 64 levels, `time` is in the years
+  1970 to 9999, and `sequence` starts at `0000000001`; anything else is `400`
+  `invalid_batch`.
 - Events are stored as received and unknown types are kept. The one exception: a NUL
   character inside `data`, which Postgres cannot hold, is stored as U+FFFD; a `type` with one
   is not a batch.
@@ -181,5 +194,9 @@ The contract has not fixed these; Apiary chose, and the runner should match:
   deduplicated by event id only.
 - `X-Qory-Timestamp`, `X-Qory-Access-Key` or `X-Qory-Signature-256` sent twice on a POST is
   `401`, though the timestamp's value is not read.
-- A `POST` answers `503 {"error":"unavailable"}` when the batch cannot be stored; a runner
-  retries anything that is not `2xx` or `410`.
+- A `POST` answers `503 {"error":"unavailable"}` when the database refuses the batch or
+  cannot be reached: the transaction is rolled back, the log names the kind of the failure and
+  nothing of the batch, and no `X-Qory-Configuration` is sent. A runner retries anything that
+  is not `2xx` or `410`.
+- The path is matched after percent-decoding, as the router matches it: `/v1/%65vents` is the
+  events endpoint, signed and verified like it.

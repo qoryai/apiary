@@ -20,6 +20,10 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
     %{scope: scope, key: key, secret: secret}
   end
 
+  # An object nested `depth` levels deep, itself included.
+  defp nested(1), do: %{"leaf" => true}
+  defp nested(depth), do: %{"in" => nested(depth - 1)}
+
   defp run!(scope, subject) do
     Repo.one!(from r in Run, where: r.hive_id == ^scope.hive.id and r.run_id == ^subject)
   end
@@ -68,18 +72,71 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
       assert run.state == "pending"
     end
 
-    test "a heartbeat is recorded on the key, and never moves backwards",
+    test "a heartbeat is recorded on the key by the server's clock, not the runner's",
          %{scope: scope, key: key, secret: secret} do
       subject = Ecto.UUID.generate()
       beat = %{"elapsed_seconds" => 30, "interval_seconds" => 30}
-      later = wire_event(subject, 2, "run.heartbeat", beat, time: "2026-09-16T12:01:00Z")
-      earlier = wire_event(subject, 1, "run.heartbeat", beat, time: "2026-09-16T12:00:30Z")
+      # A runner whose clock is a century ahead does not pin the key's heartbeat.
+      future = wire_event(subject, 1, "run.heartbeat", beat, time: "2126-01-01T00:00:00Z")
 
-      assert build_conn() |> signed_post(key.key_id, secret, [later]) |> response(202)
-      assert build_conn() |> signed_post(key.key_id, secret, [earlier]) |> response(202)
+      before = DateTime.utc_now()
+      assert build_conn() |> signed_post(key.key_id, secret, [future]) |> response(202)
+      first = AccessKeys.get_access_key!(scope, key.id).last_heartbeat_at
 
-      assert AccessKeys.get_access_key!(scope, key.id).last_heartbeat_at ==
-               ~U[2026-09-16 12:01:00.000000Z]
+      assert DateTime.compare(first, before) != :lt
+      assert DateTime.diff(first, before) < 60
+
+      # The same heartbeat delivered again is not a new heartbeat.
+      assert build_conn() |> signed_post(key.key_id, secret, [future]) |> response(202)
+      assert AccessKeys.get_access_key!(scope, key.id).last_heartbeat_at == first
+
+      # A new one moves it on.
+      next = wire_event(subject, 2, "run.heartbeat", beat, time: "1999-01-01T00:00:00Z")
+      assert build_conn() |> signed_post(key.key_id, secret, [next]) |> response(202)
+
+      assert DateTime.compare(AccessKeys.get_access_key!(scope, key.id).last_heartbeat_at, first) !=
+               :lt
+    end
+
+    test "a delivery that names no version leaves the versions the key has recorded",
+         %{scope: scope, key: key, secret: secret} do
+      {subject, [ping, _]} = first_events()
+      assert build_conn() |> signed_post(key.key_id, secret, [ping]) |> response(202)
+
+      beat = wire_event(subject, 2, "run.heartbeat", %{"elapsed_seconds" => 30})
+
+      assert build_conn()
+             |> signed_post(key.key_id, secret, [beat],
+               contract_version: nil,
+               user_agent: "curl/8"
+             )
+             |> response(202)
+
+      key = AccessKeys.get_access_key!(scope, key.id)
+      assert key.last_runner_version == "0.4.0"
+      assert key.last_contract_version == 1
+    end
+
+    test "a repeated delivery does not touch the key", %{scope: scope, key: key, secret: secret} do
+      {_subject, batch} = first_events()
+      delivery = Ecto.UUID.generate()
+
+      assert build_conn()
+             |> signed_post(key.key_id, secret, batch, delivery: delivery)
+             |> response(202)
+
+      used = AccessKeys.get_access_key!(scope, key.id).last_used_at
+
+      assert build_conn()
+             |> signed_post(key.key_id, secret, batch,
+               delivery: delivery,
+               user_agent: "qory-runner/9.9.9"
+             )
+             |> response(202)
+
+      key = AccessKeys.get_access_key!(scope, key.id)
+      assert key.last_used_at == used
+      assert key.last_runner_version == "0.4.0"
     end
 
     test "either secret verifies during a rotation", %{scope: scope, key: key, secret: old} do
@@ -376,6 +433,16 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
         Jason.encode!([%{good | "type" => "ai.qory.a\u0000b"}]),
         Jason.encode!([%{good | "sequence" => "1"}]),
         Jason.encode!([%{good | "sequence" => 1}]),
+        # The contract numbers from 0000000001.
+        Jason.encode!([%{good | "sequence" => "0000000000"}]),
+        # Times Postgres has no timestamp for, or that no run has seen.
+        Jason.encode!([%{good | "time" => "1969-12-31T23:59:59Z"}]),
+        Jason.encode!([%{good | "time" => "-0001-01-01T00:00:00Z"}]),
+        Jason.encode!([%{good | "time" => "10000-01-01T00:00:00Z"}]),
+        # data nested deeper than 64 levels
+        Jason.encode!([%{good | "data" => nested(65)}]),
+        # more events than a batch may hold
+        Jason.encode!(for(n <- 1..1001, do: wire_event(subject, n, "run.log"))),
         Jason.encode!([%{good | "source" => "urn:qory:run:" <> Ecto.UUID.generate()}]),
         Jason.encode!([%{good | "time" => "yesterday"}]),
         Jason.encode!([%{good | "data" => []}]),
@@ -390,6 +457,54 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
       end
 
       assert Repo.aggregate(Run, :count) == 0
+    end
+
+    test "the limits themselves are accepted: 1000 events, data 64 levels deep, the years 1970 and 9999",
+         %{scope: scope, key: key, secret: secret} do
+      subject = Ecto.UUID.generate()
+
+      events =
+        [
+          wire_event(subject, 1, "session.tool_started", nested(64),
+            time: "1970-01-01T00:00:00Z"
+          ),
+          wire_event(subject, 2, "run.log", %{}, time: "9999-12-31T23:59:59.999999Z")
+        ] ++ for(n <- 3..1000, do: wire_event(subject, n, "run.log", %{"stream" => "stdout"}))
+
+      # Out of order on the wire; stored in one go all the same.
+      assert build_conn()
+             |> signed_post(key.key_id, secret, Enum.reverse(events))
+             |> response(202)
+
+      run = run!(scope, subject)
+      assert run.event_count == 1000
+      assert [%Event{sequence: 1, data: data} | _] = events(run)
+      assert data == nested(64)
+    end
+
+    test "the encoded path is the events endpoint too: nothing is parsed before the signature",
+         %{key: key, secret: secret} do
+      for path <- ["/v1/%65vents", "/%761/events"] do
+        conn =
+          build_conn()
+          |> put_req_header("content-type", "application/json")
+          |> put_req_header("x-qory-access-key", key.key_id)
+          |> put_req_header("x-qory-signature-256", "sha256=" <> String.duplicate("0", 64))
+          |> post(path, "{not json")
+
+        assert json_response(conn, 401) == @unauthorized
+
+        body = "[not a batch"
+
+        conn =
+          build_conn()
+          |> put_req_header("content-type", content_type())
+          |> put_req_header("x-qory-access-key", key.key_id)
+          |> put_req_header("x-qory-signature-256", Apiary.Contract.Signature.sign(secret, body))
+          |> post(path, body)
+
+        assert json_response(conn, 400) == %{"error" => "invalid_batch"}
+      end
     end
 
     test "other methods are not served", %{conn: conn} do

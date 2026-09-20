@@ -4,10 +4,16 @@ defmodule Apiary.Runs.Batch do
 
   Only the envelope is checked, what the receiver needs to key, order and store
   an event: `id` and `subject` (UUIDs), `type` (in the `ai.qory.` namespace),
-  `sequence` (ten digits), `source` (`urn:qory:run:<subject>`), `time` (RFC 3339)
-  and `data` (an object). A type this release does not know is kept; `data` is
-  not validated against its type's schema and is stored as received. Anything
-  else is `:error`, which says nothing about what was wrong.
+  `sequence` (ten digits, from `0000000001`), `source` (`urn:qory:run:<subject>`),
+  `time` (RFC 3339, from 1970 to 9999) and `data` (an object). A type this
+  release does not know is kept; `data` is not validated against its type's
+  schema and is stored as received. Anything else is `:error`, which says
+  nothing about what was wrong.
+
+  The limits are what the tables can hold, so that nothing that parses fails to
+  store: at most `max_events/0` events (the contract cuts a batch at a hundred),
+  `data` nested no deeper than `max_depth/0`, a `time` Postgres has a timestamp
+  for, no NUL in a `type`.
 
   Pure: nothing here touches the database or logs.
   """
@@ -19,11 +25,20 @@ defmodule Apiary.Runs.Batch do
   @sequence ~r/\A[0-9]{10}\z/
   @type_prefix "ai.qory."
   @source_prefix "urn:qory:run:"
-  @heartbeat "ai.qory.run.heartbeat"
+  @max_events 1000
+  @max_depth 64
+  @years 1970..9999
+
+  @doc "The most events a batch may hold."
+  def max_events, do: @max_events
+
+  @doc "The deepest `data` may nest, the object itself being level one."
+  def max_depth, do: @max_depth
 
   @doc "Parses the raw body of a delivery."
   def parse(body) when is_binary(body) do
     with {:ok, [_ | _] = items} <- Jason.decode(body),
+         true <- length(items) <= @max_events,
          {:ok, [%{subject: subject} | _] = events} <- events(items, []),
          true <- Enum.all?(events, &(&1.subject == subject)) do
       {:ok, %__MODULE__{subject: subject, events: events}}
@@ -33,14 +48,6 @@ defmodule Apiary.Runs.Batch do
   end
 
   def parse(_body), do: :error
-
-  @doc "The latest `time` of the batch's heartbeats, or nil when it holds none."
-  def last_heartbeat(%__MODULE__{events: events}) do
-    events
-    |> Enum.filter(&(&1.type == @heartbeat))
-    |> Enum.map(& &1.time)
-    |> Enum.max(DateTime, fn -> nil end)
-  end
 
   defp events([], acc), do: {:ok, Enum.reverse(acc)}
 
@@ -65,16 +72,19 @@ defmodule Apiary.Runs.Batch do
     with true <- Regex.match?(@uuid, id),
          true <- Regex.match?(@uuid, subject),
          true <- Regex.match?(@sequence, sequence),
+         sequence = String.to_integer(sequence),
+         true <- sequence >= 1,
          true <- storable?(type),
-         {:ok, time} <- time(time) do
+         {:ok, time} <- time(time),
+         {:ok, data} <- data(data) do
       {:ok,
        %{
          event_id: id,
          subject: subject,
          type: type,
-         sequence: String.to_integer(sequence),
+         sequence: sequence,
          time: time,
-         data: storable(data)
+         data: data
        }}
     else
       _ -> :error
@@ -85,7 +95,8 @@ defmodule Apiary.Runs.Batch do
 
   defp time(value) do
     case DateTime.from_iso8601(value) do
-      {:ok, %DateTime{microsecond: {microsecond, _precision}} = time, _offset} ->
+      {:ok, %DateTime{year: year, microsecond: {microsecond, _precision}} = time, _offset}
+      when year in @years ->
         {:ok, %{time | microsecond: {microsecond, 6}}}
 
       _ ->
@@ -98,11 +109,20 @@ defmodule Apiary.Runs.Batch do
   # exactly as received.
   defp storable?(text), do: not String.contains?(text, <<0>>)
 
-  defp storable(%{} = map) do
-    Map.new(map, fn {key, value} -> {storable(key), storable(value)} end)
+  defp data(data) do
+    {:ok, storable(data, 1)}
+  catch
+    :too_deep -> :error
   end
 
-  defp storable(list) when is_list(list), do: Enum.map(list, &storable/1)
-  defp storable(text) when is_binary(text), do: String.replace(text, <<0>>, "�")
-  defp storable(other), do: other
+  defp storable(nested, depth) when (is_map(nested) or is_list(nested)) and depth > @max_depth,
+    do: throw(:too_deep)
+
+  defp storable(%{} = map, depth) do
+    Map.new(map, fn {key, value} -> {storable(key, depth), storable(value, depth + 1)} end)
+  end
+
+  defp storable(list, depth) when is_list(list), do: Enum.map(list, &storable(&1, depth + 1))
+  defp storable(text, _depth) when is_binary(text), do: String.replace(text, <<0>>, "\uFFFD")
+  defp storable(other, _depth), do: other
 end

@@ -34,8 +34,9 @@ a restart does before doing it (`docs/upgrading.md`).
   hive. It answers `202` before anything is projected, `410` for a run the hive has closed,
   and carries the configuration digest on both. A body over 2 MiB is `413`, an unsupported
   `X-Qory-Contract-Version` is `400`, and a key is limited to 50 batches a second, 100 at
-  once (`429` with `Retry-After`). The ping is answered like any batch, and the key records
-  the runner's versions and its last heartbeat.
+  once (`429` with `Retry-After`). A batch holds at most 1000 events, and one that cannot be
+  stored is `503`, never `500`. The ping is answered like any batch, and the key records the
+  runner's versions and when its last heartbeat was received.
 - The fixtures of the server contract are replayed in the tests and in CI, from the
   runner's repository at the ref in `.runner-contract-ref`: every signed request, the
   batches, and the recorded run in any order, batching and repetition.

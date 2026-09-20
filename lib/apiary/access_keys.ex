@@ -190,16 +190,19 @@ defmodule Apiary.AccessKeys do
   end
 
   @doc """
-  Records a delivery to the events endpoint: `last_used_at` and the two versions
-  as `touch/2` does, and `last_heartbeat_at` when the delivery held a heartbeat,
-  never moving it backwards. One `UPDATE`, without reading the row.
+  Records a delivery to the events endpoint: `last_used_at`, the runner and
+  contract versions when the request named them (a request that named none
+  leaves what is recorded), and `last_heartbeat_at` when the delivery held a new
+  heartbeat, never moving it backwards. One `UPDATE`, without reading the row.
   """
   def touch_delivery(%AccessKey{id: id}, attrs) do
-    set = [
-      last_used_at: attrs[:last_used_at] || DateTime.utc_now(),
-      last_runner_version: attrs[:last_runner_version],
-      last_contract_version: attrs[:last_contract_version]
-    ]
+    set =
+      [
+        last_used_at: attrs[:last_used_at] || DateTime.utc_now(),
+        last_runner_version: attrs[:last_runner_version],
+        last_contract_version: attrs[:last_contract_version]
+      ]
+      |> Enum.reject(fn {_field, value} -> is_nil(value) end)
 
     query = from(k in AccessKey, where: k.id == ^id)
 

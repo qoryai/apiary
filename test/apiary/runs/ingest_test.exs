@@ -73,4 +73,40 @@ defmodule Apiary.Runs.IngestTest do
     assert {:ok, %{run: %Run{id: ^id} = run}} = Ingest.ingest(other, batch!([started]))
     assert run.access_key_id == key.id
   end
+
+  test "what the database refuses is {:error, :unavailable}, logged by its module only",
+       %{key: key} do
+    {_subject, [ping, _]} = first_events()
+    batch = batch!([ping])
+    # Past the parser on purpose: a NUL, which no text column holds.
+    [event] = batch.events
+    poisoned = %{batch | events: [%{event | type: "ai.qory.secret-looking\0payload"}]}
+
+    log =
+      ExUnit.CaptureLog.capture_log(fn ->
+        assert Ingest.ingest(key, poisoned) == {:error, :unavailable}
+      end)
+
+    assert log =~ "could not be stored: Postgrex.Error"
+    refute log =~ "secret-looking"
+    assert Repo.aggregate(Run, :count) == 0
+    assert Repo.aggregate(Delivery, :count) == 0
+
+    # And the connection is fine afterwards.
+    assert {:ok, %{status: 202, inserted: 1}} = Ingest.ingest(key, batch)
+  end
+
+  test "events are inserted in sequence order, whatever the order of the batch", %{key: key} do
+    subject = Ecto.UUID.generate()
+    events = for n <- [3, 1, 2], do: wire_event(subject, n, "run.log", %{"stream" => "stdout"})
+    assert {:ok, %{inserted: 3, run: run}} = Ingest.ingest(key, batch!(events))
+
+    # ctid is the physical place of a row: in a fresh run, the order of insertion.
+    %{rows: rows} =
+      Repo.query!("SELECT sequence FROM events WHERE run_id = $1 ORDER BY ctid", [
+        Ecto.UUID.dump!(run.id)
+      ])
+
+    assert List.flatten(rows) == [1, 2, 3]
+  end
 end

@@ -57,4 +57,48 @@ defmodule Apiary.Runs.IngestConcurrencyTest do
     assert run.event_count == 8
     assert Repo.aggregate(from(e in Event, where: e.run_id == ^run.id), :count) == 8
   end
+
+  test "a close that commits while a batch is on its way wins: the batch is answered 410" do
+    %{scope: scope, user: user} = sign_up_fixture()
+
+    on_exit(fn ->
+      Sandbox.mode(Repo, :auto)
+
+      Repo.delete_all(
+        from o in Apiary.Organisations.Organisation, where: o.id == ^scope.organisation.id
+      )
+
+      Repo.delete_all(from u in Apiary.Accounts.User, where: u.id == ^user.id)
+      Sandbox.mode(Repo, :manual)
+    end)
+
+    %{access_key: key} = access_key_fixture(scope)
+    {subject, [ping, started]} = first_events()
+    {:ok, first} = [ping] |> Jason.encode!() |> Batch.parse()
+    {:ok, second} = [started] |> Jason.encode!() |> Batch.parse()
+
+    assert {:ok, %{status: 202, run: run}} = Ingest.ingest(key, first)
+    test = self()
+
+    # The close, as `Apiary.Runs.close_run/2` makes it, held open for a moment
+    # before it commits: the receiver's first look does not see it.
+    closing =
+      Task.async(fn ->
+        Repo.transaction(fn ->
+          Repo.update_all(from(r in Run, where: r.id == ^run.id),
+            set: [state: "closed", closed_at: DateTime.utc_now()]
+          )
+
+          send(test, :closing)
+          Process.sleep(300)
+        end)
+      end)
+
+    assert_receive :closing, 5_000
+    assert {:ok, %{status: 410}} = Ingest.ingest(key, second)
+    Task.await(closing)
+
+    assert Repo.aggregate(from(e in Event, where: e.run_id == ^run.id), :count) == 1
+    assert Repo.one!(from r in Run, where: r.id == ^run.id).run_id == subject
+  end
 end

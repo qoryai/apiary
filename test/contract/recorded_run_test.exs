@@ -55,7 +55,15 @@ defmodule Apiary.Contract.RecordedRunTest do
       run:
         run
         |> Map.from_struct()
-        |> Map.drop([:__meta__, :id, :inserted_at, :updated_at, :last_event_at])
+        # The last two are dated by the receiver's clock, when the events arrived.
+        |> Map.drop([
+          :__meta__,
+          :id,
+          :inserted_at,
+          :updated_at,
+          :last_event_at,
+          :last_heartbeat_at
+        ])
         |> Map.reject(fn {_field, value} -> match?(%Ecto.Association.NotLoaded{}, value) end),
       connections:
         Repo.all(
