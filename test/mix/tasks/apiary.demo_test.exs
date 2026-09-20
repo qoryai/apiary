@@ -213,7 +213,9 @@ defmodule Mix.Tasks.Apiary.DemoTest do
     test "gives a hive without rules a policy with overrides, a lock, versions and a history",
          %{scope: scope, access_key: access_key} do
       assert {:ok, _run} = Demo.replay(access_key, file("session-with-subagents"))
+      refute Apiary.Policy.managed?(scope)
       assert {:ok, 14} = Demo.policy(access_key)
+      assert Apiary.Policy.managed?(scope)
 
       assert Apiary.Policy.get_mode(scope) == "enforce"
 

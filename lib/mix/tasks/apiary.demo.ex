@@ -26,8 +26,9 @@ defmodule Mix.Tasks.Apiary.Demo do
   `Apiary.Policy` as a page would and in the name of the hive's first owner: enforce, a
   baseline of hosts, one held to paths, a locked deny, a credential, and in the repository
   `git.example.com/acme/shop` an added host, a disabled one and an allow the lock
-  overrides; written rule by rule, so there are versions and a history to look at. A hive
-  that has rules already is left as it is.
+  overrides; written rule by rule, so there are versions and a history to look at, and the
+  hive is a managed one, serving its run configuration. A hive whose policy anybody has
+  changed, even back to nothing, is left as it is.
   """
 
   use Mix.Task
@@ -92,13 +93,14 @@ defmodule Mix.Tasks.Apiary.Demo do
   end
 
   @doc """
-  Gives the key's hive the demo's security policy, when it has no rule yet: `{:ok,
-  changes}` with how many changes were made, `:kept` when the hive has rules already, or
+  Gives the key's hive the demo's security policy, when nobody has made its policy yet
+  (`Apiary.Policy.managed?/1`; a hive whose rules were all removed again has been):
+  `{:ok, changes}` with how many changes were made, `:kept` for a hive with any change, or
   `{:error, sentence}`. Synthetic hosts only, the ones the recorded runs reach.
   """
   def policy(%AccessKey{hive_id: hive_id}) do
     with %Scope{} = scope <- owner_scope(hive_id),
-         [] <- Policy.list_rules(scope, nil) do
+         false <- Policy.managed?(scope) do
       shop =
         Repo.get_by(Repository, hive_id: hive_id, forge: "git.example.com", path: "acme/shop")
 
@@ -141,7 +143,7 @@ defmodule Mix.Tasks.Apiary.Demo do
       end)
     else
       nil -> {:error, "the hive has no owner"}
-      [_ | _] -> :kept
+      true -> :kept
     end
   end
 
