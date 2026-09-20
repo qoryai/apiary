@@ -16,6 +16,9 @@ defmodule Apiary.Accounts.Scope do
 
   alias Apiary.Accounts.User
 
+  @typedoc "Who is asking, and in which organisation and hive."
+  @type t :: %__MODULE__{}
+
   defstruct user: nil, organisation: nil, hive: nil, membership: nil
 
   @doc """

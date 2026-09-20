@@ -6,6 +6,9 @@ defmodule Apiary.AccessKeys.AccessKey do
   use Ecto.Schema
   import Ecto.Changeset
 
+  @typedoc "An access key of a hive."
+  @type t :: %__MODULE__{}
+
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
   schema "access_keys" do

@@ -2,7 +2,7 @@ defmodule Apiary.Release.Migrator do
   @moduledoc """
   Runs pending database migrations at boot, before the endpoint accepts requests.
 
-  `Apiary.Application` starts this child only when `config :apiary, :migrate_on_boot`
+  The application's supervisor starts this child only when `config :apiary, :migrate_on_boot`
   is true (the default for production releases; `MIGRATE_ON_BOOT=false` turns it off).
   An upgrade is a restart: the new release migrates and then serves. When a migration
   fails, this child fails to start and takes the boot down with it, so a release that

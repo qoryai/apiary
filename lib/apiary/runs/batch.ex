@@ -18,6 +18,9 @@ defmodule Apiary.Runs.Batch do
   Pure: nothing here touches the database or logs.
   """
 
+  @typedoc "A parsed batch: the subject and its events."
+  @type t :: %__MODULE__{}
+
   @enforce_keys [:subject, :events]
   defstruct [:subject, :events]
 

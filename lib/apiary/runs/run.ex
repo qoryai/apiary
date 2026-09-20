@@ -9,6 +9,9 @@ defmodule Apiary.Runs.Run do
   """
   use Ecto.Schema
 
+  @typedoc "A run of a hive."
+  @type t :: %__MODULE__{}
+
   @states ~w(pending running exited failed timed_out lost closed)
 
   @primary_key {:id, :binary_id, autogenerate: true}

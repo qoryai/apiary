@@ -5,6 +5,9 @@ defmodule Apiary.Runs.Repository do
   """
   use Ecto.Schema
 
+  @typedoc "A repository the hive's runs named."
+  @type t :: %__MODULE__{}
+
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
   schema "repositories" do

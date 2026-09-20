@@ -6,6 +6,9 @@ defmodule Apiary.Runs.Connection do
   """
   use Ecto.Schema
 
+  @typedoc "One destination of one run."
+  @type t :: %__MODULE__{}
+
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
   schema "connections" do
