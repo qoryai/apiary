@@ -393,10 +393,22 @@ defmodule ApiaryWeb.RunLive.Index do
         >
           Connections
         </.link>
+        <.link
+          :if={@group.kind == :repository && group_repository_id(@group)}
+          navigate={ApiaryWeb.ConnectionLive.Rules.repository_path(group_repository_id(@group))}
+          class="q-g-policy"
+          aria-label={"Policy of #{@group.forge} #{@group.path}"}
+        >
+          Policy
+        </.link>
       </span>
     </div>
     """
   end
+
+  # The repository's row id, from any of the group's runs: they share it.
+  defp group_repository_id(%{runs: [%{repository_id: id} | _]}) when is_binary(id), do: id
+  defp group_repository_id(_group), do: nil
 
   attr :run, :map, required: true
   attr :group_by, :string, required: true
