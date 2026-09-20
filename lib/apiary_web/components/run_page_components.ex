@@ -126,13 +126,23 @@ defmodule ApiaryWeb.RunPageComponents do
   """
   attr :reason, :atom,
     required: true,
-    values: [:no_hooks, :vm_wall, :other_runtime, :not_started, :no_egress, :no_log]
+    values: [
+      :no_hooks,
+      :vm_wall,
+      :other_runtime,
+      :not_started,
+      :no_egress,
+      :no_log,
+      :pruned,
+      :log_pruned
+    ]
 
   attr :variant, :string, default: "notice", values: ~w(notice empty)
   attr :runtime, :string, default: nil
   attr :live, :boolean, default: false
   attr :wall, :boolean, default: false
   attr :only_result, :boolean, default: false
+  attr :at, :any, default: nil, doc: "when retention pruned, for `:pruned` and `:log_pruned`"
 
   def limits(%{variant: "notice"} = assigns) do
     ~H"""
@@ -151,7 +161,7 @@ defmodule ApiaryWeb.RunPageComponents do
       title={limit_title(@reason, @live)}
       class="q-limits"
     >
-      <.limit_sentence :if={@reason != :no_log} reason={@reason} runtime={@runtime} />
+      <.limit_sentence :if={@reason != :no_log} reason={@reason} runtime={@runtime} at={@at} />
       <.listening
         :if={@reason == :not_started or (@reason == :no_log and @live)}
         class="mt-3 justify-center"
@@ -166,6 +176,19 @@ defmodule ApiaryWeb.RunPageComponents do
 
   attr :reason, :atom, required: true
   attr :runtime, :string, default: nil
+  attr :at, :any, default: nil
+
+  defp limit_sentence(%{reason: :pruned} = assigns) do
+    ~H"""
+    This run's events were pruned on {ApiaryWeb.CoreComponents.short_date(@at)}, under the hive's retention. The run keeps its header, its counts and its connections; the timeline and the log output are gone.
+    """
+  end
+
+  defp limit_sentence(%{reason: :log_pruned} = assigns) do
+    ~H"""
+    This run's log output was pruned on {ApiaryWeb.CoreComponents.short_date(@at)}, under the hive's retention. The timeline and the connections are whole.
+    """
+  end
 
   defp limit_sentence(%{reason: :not_started} = assigns) do
     ~H"The runner has pinged. The run's first event has not arrived."
@@ -199,12 +222,16 @@ defmodule ApiaryWeb.RunPageComponents do
 
   defp limit_sentence(assigns), do: ~H""
 
+  defp limit_title(:pruned, _live), do: "Events pruned"
+  defp limit_title(:log_pruned, _live), do: "Log output pruned"
   defp limit_title(:not_started, _live), do: "Waiting for the run to start"
   defp limit_title(:no_egress, _live), do: "No connections recorded"
   defp limit_title(:no_log, true), do: "No output yet"
   defp limit_title(:no_log, false), do: "This run wrote no output"
   defp limit_title(_reason, _live), do: "No session timeline"
 
+  defp limit_icon(:pruned), do: "hero-archive-box-x-mark"
+  defp limit_icon(:log_pruned), do: "hero-archive-box-x-mark"
   defp limit_icon(:not_started), do: "hero-play-circle"
   defp limit_icon(:no_egress), do: "hero-arrows-right-left"
   defp limit_icon(:no_log), do: "hero-command-line"

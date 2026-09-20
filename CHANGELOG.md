@@ -200,6 +200,21 @@ a restart does before doing it (`docs/upgrading.md`).
   behind. The timeline shows a second `run.policy_applied` as "Policy applied again" with
   the hosts the reload added and removed, from the two events. The runs list links a
   repository group to its policy, and `/hive/connections?repo=…` to the repository's.
+- Retention (`Apiary.Retention`): a hive keeps a run's events and a run's log output for a
+  number of days each, 1 to 3650, or for ever, which is the default; owners set it on the
+  settings page, and the log is never kept longer than the events that carry it. A nightly
+  job (`Apiary.Retention.Scheduler`, three o'clock UTC plus up to an hour, one node at a
+  time under an advisory lock) prunes whole runs that are not alive, counted from the last
+  event the server received: past the log's days the run loses its log chunks and log
+  events, past the events' days all its events, log chunks and deliveries. Every delete is
+  one statement over at most 2,000 rows of one run, read through an index, in its own
+  transaction. The run stays, with its state, times, labels, counts and connections; its
+  page says on which date the events, or the log output, were pruned where they would have
+  been. The job says what it pruned: a `retention_runs` row per hive per night, the last
+  five on the settings page, and a `retention pruned hive=…` line in the log. `mix
+  apiary.prune` (`Apiary.Release.prune/1` in a release) runs it by hand, `--dry-run`
+  counts without deleting. A rebuild leaves a run alone whose events are pruned, or due to
+  be: its projection is all that is left of it.
 
 ### Migrations
 
@@ -233,6 +248,18 @@ a restart does before doing it (`docs/upgrading.md`).
 - `20260923000600`: `repositories.egress_mode`, nullable, `observe` or `enforce` by a
   `CHECK`; null, which every repository that exists gets, follows the hive's mode. Instant;
   reversible.
+- `20260924000100`: `hives.events_retention_days` and `hives.log_retention_days`, nullable,
+  1 to 3650 by a `CHECK`; null, which every hive that exists gets, keeps everything.
+  Instant; reversible.
+- `20260924000200`: `runs.events_pruned_at` and `runs.log_pruned_at`, nullable. Instant;
+  reversible.
+- `20260924000300`: the table `retention_runs`, with the hive's composite key. New and
+  empty; reverses by dropping it.
+- `20260924000400`: two partial indexes on `runs (hive_id, COALESCE(last_event_at,
+  inserted_at), id)`, for the runs whose events, and whose log, are not pruned yet. Built
+  `CONCURRENTLY`, outside a transaction and without the migration lock, like
+  `20260922000200`; reversible. Two instances must not boot this migration at the same
+  moment.
 
 ### Upgrading
 
@@ -258,3 +285,5 @@ a restart does before doing it (`docs/upgrading.md`).
   release `bin/apiary eval "Apiary.Release.rebuild()"`, does that: only the runs that need
   it, a hundred at a time, safely beside the running server, and it can be stopped and run
   again. `--all` (`all: true`) rebuilds every run.
+- Retention is off until an owner sets it: an upgrade prunes nothing. What the job deletes
+  comes back only from a backup of Postgres.

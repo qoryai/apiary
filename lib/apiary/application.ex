@@ -21,6 +21,7 @@ defmodule Apiary.Application do
       ] ++
         migrator() ++
         liveness() ++
+        retention() ++
         [
           # Start to serve requests, typically the last entry
           ApiaryWeb.Endpoint
@@ -54,6 +55,12 @@ defmodule Apiary.Application do
   # Off in test, where the tests call `Apiary.Runs.Liveness.check/1` themselves.
   defp liveness do
     if Apiary.Runs.Liveness.enabled?(), do: [Apiary.Runs.Liveness], else: []
+  end
+
+  # The nightly retention job, after the migrator like the lost-run check. Off in test,
+  # where the tests call `Apiary.Retention.prune_all/1` themselves.
+  defp retention do
+    if Apiary.Retention.Scheduler.enabled?(), do: [Apiary.Retention.Scheduler], else: []
   end
 
   # One JSON line per request, from the endpoint's `Plug.Telemetry` stop event. The

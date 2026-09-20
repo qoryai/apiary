@@ -100,6 +100,12 @@ defmodule Apiary.Runs.Projector do
   Deletes the run's projections, clears `projected_at` on its events and projects again:
   the projections come from `events` alone. A close is not an event and is kept; a lost
   run is found lost again by the next liveness check.
+
+  A run whose events retention has deleted, or is due to delete (`Apiary.Retention.due_or_pruned?/1`),
+  is returned as it is: its projection is all that is left of it, and nothing here deletes
+  it. A run that lost only its log events is rebuilt from the rest; its log chunks were
+  deleted with them, and `projected_sequence` does not fall back to the first of the gaps
+  they left.
   """
   @spec rebuild(struct()) :: {:ok, struct()} | {:error, :not_found}
   def rebuild(%Run{id: id} = run) do
@@ -111,29 +117,57 @@ defmodule Apiary.Runs.Projector do
           {:error, :not_found}
 
         %Run{} = current ->
-          Repo.delete_all(from c in Connection, where: c.run_id == ^id)
-          Repo.delete_all(from l in LogChunk, where: l.run_id == ^id)
-          Repo.update_all(from(e in Event, where: e.run_id == ^id), set: [projected_at: nil])
-
-          blank = Map.take(%Run{}, @rebuilt_fields)
-          state = if current.state == "closed", do: "closed", else: "pending"
-
-          current
-          |> Ecto.Changeset.change(blank)
-          |> Ecto.Changeset.change(
-            state: state,
-            projected_sequence: 0,
-            repository_id: nil,
-            denied_count: 0
-          )
-          |> Repo.update()
+          if Apiary.Retention.due_or_pruned?(current),
+            do: {:ok, {:kept, current}},
+            else: reset(current)
       end
     end)
     |> case do
-      {:ok, _run} -> project(run)
-      {:error, reason} -> {:error, reason}
+      {:ok, {:kept, current}} ->
+        {:ok, current}
+
+      {:ok, %Run{log_pruned_at: %DateTime{}} = before} ->
+        run |> project() |> past_the_gaps(before)
+
+      {:ok, _run} ->
+        project(run)
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
+
+  # The run as it was before the reset, so the caller knows where it stood.
+  defp reset(%Run{id: id} = current) do
+    Repo.delete_all(from c in Connection, where: c.run_id == ^id)
+    Repo.delete_all(from l in LogChunk, where: l.run_id == ^id)
+    Repo.update_all(from(e in Event, where: e.run_id == ^id), set: [projected_at: nil])
+
+    blank = Map.take(%Run{}, @rebuilt_fields)
+    state = if current.state == "closed", do: "closed", else: "pending"
+
+    current
+    |> Ecto.Changeset.change(blank)
+    |> Ecto.Changeset.change(
+      state: state,
+      projected_sequence: 0,
+      repository_id: nil,
+      denied_count: 0
+    )
+    |> Repo.update()
+    |> case do
+      {:ok, _reset} -> {:ok, current}
+      {:error, changeset} -> {:error, changeset}
+    end
+  end
+
+  # The log events retention deleted left gaps no event will fill.
+  defp past_the_gaps({:ok, %Run{} = run}, %Run{projected_sequence: stood})
+       when stood > run.projected_sequence do
+    run |> Ecto.Changeset.change(projected_sequence: stood) |> Repo.update()
+  end
+
+  defp past_the_gaps(result, _before), do: result
 
   defp inline?, do: Application.get_env(:apiary, __MODULE__, [])[:async] == false
 
@@ -267,8 +301,14 @@ defmodule Apiary.Runs.Projector do
   # The fold is replaceable so that a test can make a pass raise; nothing else sets it.
   defp fold_module, do: Application.get_env(:apiary, __MODULE__, [])[:fold] || Fold
 
-  defp lock(id) do
+  @doc """
+  Takes the run's projection lock for the rest of the transaction. `Apiary.Retention`
+  deletes a run's rows under it, so a delete and a projection never interleave.
+  """
+  @spec lock(Ecto.UUID.t()) :: :ok
+  def lock(id) do
     Repo.query!("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", ["run:" <> id])
+    :ok
   end
 
   defp locked_run(id), do: Repo.one(from r in Run, where: r.id == ^id, lock: "FOR UPDATE")

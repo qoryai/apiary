@@ -11,6 +11,10 @@ defmodule Apiary.Runs.Rebuild do
   second time, and rebuilding one twice gives the same rows. A run that fails is logged by
   its id, without any event data, and the walk goes on. Safe beside a running server: a
   rebuild takes the run's projection lock like any projection.
+
+  A run whose events `Apiary.Retention` has deleted is never selected, and one that is due
+  to be pruned is returned untouched by the projector: a rebuild never wipes a projection
+  whose events are gone.
   """
 
   import Ecto.Query
@@ -41,7 +45,8 @@ defmodule Apiary.Runs.Rebuild do
   end
 
   defp page(all?, batch, after_id) do
-    query = from r in Run, order_by: r.id, limit: ^batch
+    # A run whose events retention deleted has nothing to be rebuilt from: never selected.
+    query = from r in Run, where: is_nil(r.events_pruned_at), order_by: r.id, limit: ^batch
     query = if after_id, do: where(query, [r], r.id > ^after_id), else: query
 
     if all? do

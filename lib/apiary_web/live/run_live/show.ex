@@ -246,6 +246,8 @@ defmodule ApiaryWeb.RunLive.Show do
           </div>
         <% @run.state == "pending" and @index.items == [] and @live_action != :details -> %>
           <.limits reason={:not_started} variant="empty" />
+        <% @run.events_pruned_at && @index.items == [] && @live_action == :timeline -> %>
+          <.limits reason={:pruned} variant="empty" at={@run.events_pruned_at} />
         <% @live_action == :timeline -> %>
           <.timeline_tab {assigns} />
         <% @live_action == :terminal -> %>
@@ -425,7 +427,18 @@ defmodule ApiaryWeb.RunLive.Show do
   defp terminal_tab(assigns) do
     ~H"""
     <div>
-      <.limits :if={@log.chunks == 0} reason={:no_log} variant="empty" live={alive?(@run)} />
+      <.limits
+        :if={@log.chunks == 0 and is_nil(@run.log_pruned_at)}
+        reason={:no_log}
+        variant="empty"
+        live={alive?(@run)}
+      />
+      <.limits
+        :if={@log.chunks == 0 and @run.log_pruned_at}
+        reason={if @run.events_pruned_at, do: :pruned, else: :log_pruned}
+        variant="empty"
+        at={@run.log_pruned_at}
+      />
       <.terminal
         :if={@log.chunks > 0}
         id="terminal"
@@ -660,7 +673,10 @@ defmodule ApiaryWeb.RunLive.Show do
           <dd class="font-mono">#{pad(@policy.sequence)}</dd>
         </dl>
         <p :if={!@policy} class="px-5 py-4 text-[13px] text-muted">
-          No policy event has arrived for this run.
+          {if @run.events_pruned_at,
+            do:
+              "The policy event was pruned with the run's events on #{short_date(@run.events_pruned_at)}.",
+            else: "No policy event has arrived for this run."}
         </p>
       </section>
 

@@ -53,6 +53,84 @@ defmodule ApiaryWeb.SettingsLiveTest do
       assert has_element?(lv, "#owners", other_owner.email)
       refute has_element?(lv, "#owners", member.email)
     end
+
+    test "sets the retention, within the bounds, and clears it", %{conn: conn, scope: scope} do
+      {:ok, lv, html} = live(conn, ~p"/hive/settings")
+      assert html =~ "This hive keeps everything."
+      assert html =~ "Nothing is pruned: this hive keeps everything."
+
+      html =
+        lv
+        |> form("#retention-form", retention: %{events_retention_days: "0"})
+        |> render_change()
+
+      assert html =~ "must be between 1 and 3650 days, or empty to keep everything"
+
+      html =
+        lv
+        |> form("#retention-form",
+          retention: %{events_retention_days: "30", log_retention_days: "31"}
+        )
+        |> render_submit()
+
+      assert html =~ "cannot be longer than the events are kept"
+
+      html =
+        lv
+        |> form("#retention-form",
+          retention: %{events_retention_days: "90", log_retention_days: "14"}
+        )
+        |> render_submit()
+
+      assert html =~ "Retention saved."
+
+      assert has_element?(
+               lv,
+               "#retention-summary",
+               "Log output is pruned after 14 days, events after 90 days."
+             )
+
+      assert has_element?(lv, "#retention-runs-empty", "Nothing has been pruned yet.")
+
+      hive = Apiary.Repo.get!(Apiary.Organisations.Hive, scope.hive.id)
+      assert {hive.events_retention_days, hive.log_retention_days} == {90, 14}
+
+      lv
+      |> form("#retention-form", retention: %{events_retention_days: "", log_retention_days: ""})
+      |> render_submit()
+
+      hive = Apiary.Repo.get!(Apiary.Organisations.Hive, scope.hive.id)
+      assert {hive.events_retention_days, hive.log_retention_days} == {nil, nil}
+    end
+
+    test "says what the job pruned, for this hive only", %{conn: conn, scope: scope} do
+      import Apiary.RunEventsFixtures
+
+      {:ok, hive} = Apiary.Retention.update_retention(scope, %{events_retention_days: 10})
+      run = run_fixture(scope)
+      events_fixture(run, record())
+      {:ok, _run} = Apiary.Runs.Projector.project(run)
+
+      other = sign_up_fixture().scope
+      {:ok, _} = Apiary.Retention.update_retention(other, %{events_retention_days: 3})
+
+      now = DateTime.add(DateTime.utc_now(), 40 * 86_400, :second)
+      assert {:ok, [_, _]} = Apiary.Retention.prune_all(now: now)
+
+      {:ok, lv, _html} = live(conn, ~p"/hive/settings")
+
+      assert [mine] = Apiary.Retention.list_retention_runs(%{scope | hive: hive})
+
+      assert has_element?(
+               lv,
+               "#retention-runs li",
+               "1 run: 14 events and 12 B of log output in 2 chunks."
+             )
+
+      assert has_element?(lv, "#retention-run-#{mine.id}", "By hand")
+      assert lv |> element("#retention-runs") |> render() =~ "events from before"
+      assert lv |> render() |> String.split("retention-run-") |> length() == 2
+    end
   end
 
   describe "as a member" do
@@ -68,7 +146,17 @@ defmodule ApiaryWeb.SettingsLiveTest do
       assert html =~ "Only owners can change these settings"
       assert has_element?(lv, "input#organisation_name[disabled]")
       assert has_element?(lv, "input#hive_name[disabled]")
+      assert has_element?(lv, "input#retention_events_retention_days[disabled]")
+      assert has_element?(lv, "input#retention_log_retention_days[disabled]")
       refute has_element?(lv, "button", "Save")
+
+      # A crafted event changes nothing.
+      html = render_submit(lv, "save_retention", %{"retention" => %{"log_retention_days" => "1"}})
+      assert html =~ "Only owners can change these settings."
+
+      assert Apiary.Repo.get!(Apiary.Organisations.Hive, owner.scope.hive.id).log_retention_days ==
+               nil
+
       assert has_element?(lv, "#owners", owner.user.email)
     end
   end

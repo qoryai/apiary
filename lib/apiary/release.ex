@@ -45,6 +45,29 @@ defmodule Apiary.Release do
   end
 
   @doc """
+  Runs the retention job now, as `mix apiary.prune` does where there is Mix:
+  `bin/apiary eval "Apiary.Release.prune()"`. `dry_run: true` deletes nothing and prints
+  the same counts. See `Apiary.Retention`.
+  """
+  def prune(opts \\ []) do
+    load_app()
+
+    for repo <- repos() do
+      {:ok, result, _} =
+        Ecto.Migrator.with_repo(repo, fn _repo ->
+          Apiary.Retention.prune_all(Keyword.put_new(opts, :trigger, "manual"))
+        end)
+
+      case result do
+        {:ok, results} -> Enum.each(results, &IO.puts(Apiary.Retention.sentence(&1)))
+        {:error, :locked} -> IO.puts("The retention job is already running on this database.")
+      end
+
+      result
+    end
+  end
+
+  @doc """
   True when `PUBLIC_URL` is plain `http://`.
 
   `config/prod.exs` passes this to `Plug.SSL` as an `:exclude` condition, so an

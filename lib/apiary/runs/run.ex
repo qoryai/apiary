@@ -52,6 +52,10 @@ defmodule Apiary.Runs.Run do
     field :closed_at, :utc_datetime_usec
     field :lost_at, :utc_datetime_usec
 
+    # Set by `Apiary.Retention` when it deleted the run's events, or its log bytes alone.
+    field :events_pruned_at, :utc_datetime_usec
+    field :log_pruned_at, :utc_datetime_usec
+
     field :event_count, :integer, default: 0
     field :denied_count, :integer, default: 0
     field :projected_sequence, :integer, default: 0

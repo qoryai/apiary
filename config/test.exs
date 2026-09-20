@@ -55,3 +55,4 @@ config :apiary, Apiary.Vault,
 # lost-run check runs only when a test calls it.
 config :apiary, Apiary.Runs.Projector, async: false
 config :apiary, Apiary.Runs.Liveness, enabled: false
+config :apiary, Apiary.Retention.Scheduler, enabled: false
