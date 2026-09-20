@@ -704,6 +704,7 @@ defmodule ApiaryWeb.CoreComponents do
     """
   end
 
+  attr :id, :string, default: nil
   attr :label, :string, required: true
   attr :value, :any, required: true
   attr :hint, :string, default: nil
@@ -711,7 +712,7 @@ defmodule ApiaryWeb.CoreComponents do
 
   def stat(%{navigate: nil} = assigns) do
     ~H"""
-    <div class="stat">
+    <div id={@id} class="stat">
       <div class="stat-title">{@label}</div>
       <div class="stat-value">{@value}</div>
       <div :if={@hint} class="stat-desc">{@hint}</div>
@@ -721,7 +722,7 @@ defmodule ApiaryWeb.CoreComponents do
 
   def stat(assigns) do
     ~H"""
-    <.link navigate={@navigate} class="stat">
+    <.link id={@id} navigate={@navigate} class="stat">
       <div class="stat-title">{@label}</div>
       <div class="stat-value">{@value}</div>
       <div :if={@hint} class="stat-desc">{@hint}</div>

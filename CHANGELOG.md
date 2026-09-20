@@ -36,6 +36,10 @@ a restart does before doing it (`docs/upgrading.md`).
   announced (90 seconds when it announced none) is marked `lost`, whether it was running or
   still pending; a later heartbeat or its exit corrects that. Checked every 15 seconds
   (`config :apiary, Apiary.Runs.Liveness, interval: …, enabled: …`), safely on several nodes.
+- Runs in the console's API (`Apiary.Runs`): how many runs of the hive are alive, a run by
+  id, the newest runs, and closing a run, after which the receiver answers `410` for it.
+- The hive overview shows "Runs alive now", live; the access keys page shows each key's last
+  heartbeat beside its last use.
 
 ### Migrations
 

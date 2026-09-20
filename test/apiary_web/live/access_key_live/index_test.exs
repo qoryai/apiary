@@ -1,6 +1,7 @@
 defmodule ApiaryWeb.AccessKeyLive.IndexTest do
   use ApiaryWeb.ConnCase, async: true
 
+  import Ecto.Query, only: [where: 2]
   import Phoenix.LiveViewTest
   import Apiary.AccessKeysFixtures
 
@@ -16,6 +17,25 @@ defmodule ApiaryWeb.AccessKeyLive.IndexTest do
       {:ok, _lv, html} = live(conn, ~p"/hive/keys")
       assert html =~ "No access keys yet"
       assert html =~ "New access key"
+    end
+
+    test "shows each key's last heartbeat beside its last use", %{conn: conn, scope: scope} do
+      %{access_key: beating} = access_key_fixture(scope, label: "build-01")
+      %{access_key: silent} = access_key_fixture(scope, label: "build-02")
+
+      Apiary.Repo.update_all(
+        where(AccessKey, id: ^beating.id),
+        set: [last_heartbeat_at: DateTime.add(DateTime.utc_now(), -300, :second)]
+      )
+
+      {:ok, lv, html} = live(conn, ~p"/hive/keys")
+
+      assert html =~ ~r/Last used.*Last heartbeat.*Runner/s
+      assert lv |> element("#key-#{beating.id}") |> render() =~ "5 minutes ago"
+
+      row = lv |> element("#key-#{silent.id}") |> render()
+      assert row =~ ~r/>\s*Never\s*</
+      refute row =~ "minutes ago"
     end
 
     test "creates a key and reveals the secret once", %{conn: conn, scope: scope} do

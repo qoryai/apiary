@@ -82,6 +82,14 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
             class={["tabular-nums", is_nil(key.revoked_at) && "text-muted"]}
           />
         </:col>
+        <:col :let={key} label="Last heartbeat">
+          <span :if={is_nil(key.last_heartbeat_at)} class="text-faint">Never</span>
+          <.time_ago
+            :if={key.last_heartbeat_at}
+            at={key.last_heartbeat_at}
+            class={["tabular-nums", is_nil(key.revoked_at) && "text-muted"]}
+          />
+        </:col>
         <:col :let={key} label="Runner">
           <span :if={key.last_runner_version} class="font-mono text-[12.5px]">
             {key.last_runner_version}

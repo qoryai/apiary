@@ -1,12 +1,15 @@
 defmodule ApiaryWeb.HiveLive.Overview do
   @moduledoc """
-  The landing after sign-in: the hive, empty, with the one thing to do next.
+  The landing after sign-in: the hive, with the one thing to do next while it is empty
+  and, once machines post, how many runs are alive now. The count follows the hive's
+  topic (`Apiary.Runs.topic/1`), so it moves without a reload.
   """
   use ApiaryWeb, :live_view
 
   alias Apiary.AccessKeys
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Organisations
+  alias Apiary.Runs
 
   @impl true
   def render(assigns) do
@@ -56,6 +59,12 @@ defmodule ApiaryWeb.HiveLive.Overview do
       <div :if={@keys != []} class="grid gap-6">
         <.stats>
           <.stat
+            id="runs-alive"
+            label="Runs alive now"
+            value={@runs_alive}
+            hint={alive_hint(@runs_alive)}
+          />
+          <.stat
             label="Access keys"
             value={@active_keys}
             hint={keys_hint(@keys, @active_keys)}
@@ -74,10 +83,10 @@ defmodule ApiaryWeb.HiveLive.Overview do
           <:actions>
             <.button navigate={~p"/hive/keys"}>Manage access keys</.button>
           </:actions>
-          <.connect_steps current={2} />
+          <.connect_steps current={if @posted, do: 3, else: 2} />
         </.card>
 
-        <.listening>Listening for the first post from a machine.</.listening>
+        <.listening :if={!@posted}>Listening for the first post from a machine.</.listening>
       </div>
     </Layouts.app>
     """
@@ -104,8 +113,12 @@ defmodule ApiaryWeb.HiveLive.Overview do
     scope = socket.assigns.current_scope
     keys = AccessKeys.list_access_keys(scope)
 
+    if connected?(socket), do: Runs.subscribe(scope)
+
     {:ok,
-     assign(socket,
+     socket
+     |> assign_runs()
+     |> assign(
        page_title: "Overview",
        keys: keys,
        active_keys: Enum.count(keys, &is_nil(&1.revoked_at)),
@@ -118,6 +131,23 @@ defmodule ApiaryWeb.HiveLive.Overview do
          )
      )}
   end
+
+  @impl true
+  def handle_info({:run_changed, _run}, socket), do: {:noreply, assign_runs(socket)}
+
+  # Counted again on every change: a run becomes alive, ends, is lost or is closed in
+  # more ways than a page should reason about, and the count is one indexed query.
+  defp assign_runs(socket) do
+    scope = socket.assigns.current_scope
+    alive = Runs.count_alive(scope)
+
+    posted = alive > 0 or socket.assigns[:posted] == true or Runs.list_runs(scope, limit: 1) != []
+
+    assign(socket, runs_alive: alive, posted: posted)
+  end
+
+  defp alive_hint(0), do: "none running"
+  defp alive_hint(_alive), do: "starting or running"
 
   defp keys_hint(keys, active) do
     case length(keys) - active do

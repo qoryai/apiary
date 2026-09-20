@@ -3,6 +3,11 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
 
   import Phoenix.LiveViewTest
   import Apiary.AccessKeysFixtures
+  import Apiary.OrganisationsFixtures
+  import Apiary.RunEventsFixtures
+
+  alias Apiary.Runs
+  alias Apiary.Runs.{Liveness, Projector}
 
   describe "/hive" do
     setup :register_and_log_in_user
@@ -44,6 +49,90 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
       assert html =~ "1 owner"
       assert html =~ "Connect a machine"
       assert html =~ "Listening for the first post from a machine."
+    end
+  end
+
+  describe "runs alive now" do
+    setup :register_and_log_in_user
+
+    setup %{scope: scope} do
+      access_key_fixture(scope)
+      :ok
+    end
+
+    defp alive(lv) do
+      html = lv |> element("#runs-alive .stat-value") |> render()
+      [_, count] = Regex.run(~r/>\s*(\d+)\s*</, html)
+      count
+    end
+
+    test "is zero, and the page listens, before anything has posted", %{conn: conn} do
+      {:ok, lv, html} = live(conn, ~p"/hive")
+
+      assert html =~ "Runs alive now"
+      assert alive(lv) == "0"
+      assert html =~ "none running"
+      assert html =~ "Listening for the first post from a machine."
+    end
+
+    test "counts the pending and running runs of this hive only", %{conn: conn, scope: scope} do
+      for state <- ~w(pending running exited lost closed), do: run_fixture(scope, %{state: state})
+      run_fixture(scope_fixture(), %{state: "running"})
+
+      {:ok, lv, html} = live(conn, ~p"/hive")
+
+      assert alive(lv) == "2"
+      assert html =~ "starting or running"
+      refute html =~ "Listening for the first post"
+    end
+
+    test "follows the hive live: a run starts, is lost, beats again, exits", %{
+      conn: conn,
+      scope: scope
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/hive")
+      assert alive(lv) == "0"
+
+      run = run_fixture(scope)
+      event_fixture(run, 1, "run.started", started_data())
+      {:ok, _} = Projector.project(run)
+      assert alive(lv) == "1"
+      refute render(lv) =~ "Listening for the first post"
+
+      assert [_] = Liveness.check(DateTime.add(DateTime.utc_now(), 3600, :second))
+      assert alive(lv) == "0"
+
+      event_fixture(run, 2, "run.heartbeat", %{"elapsed_seconds" => 30, "interval_seconds" => 30},
+        time: DateTime.utc_now()
+      )
+
+      {:ok, _} = Projector.project(run)
+      assert alive(lv) == "1"
+
+      event_fixture(run, 3, "run.exited", %{
+        "state" => "succeeded",
+        "exit_code" => 0,
+        "duration_ms" => 10
+      })
+
+      {:ok, _} = Projector.project(run)
+      assert alive(lv) == "0"
+    end
+
+    test "a closed run is no longer alive, and another hive's run changes nothing", %{
+      conn: conn,
+      scope: scope
+    } do
+      run = run_fixture(scope, %{state: "running"})
+      {:ok, lv, _html} = live(conn, ~p"/hive")
+      assert alive(lv) == "1"
+
+      other = scope_fixture()
+      {:ok, _} = Runs.close_run(other, run_fixture(other, %{state: "running"}))
+      assert alive(lv) == "1"
+
+      {:ok, _} = Runs.close_run(scope, run)
+      assert alive(lv) == "0"
     end
   end
 
