@@ -454,7 +454,23 @@ defmodule Apiary.Policy do
   """
   @spec uncovered(Scope.t(), DateTime.t()) :: {:ok, [uncovered]} | :unavailable
   def uncovered(%Scope{hive: %Hive{}} = scope, %DateTime{} = since),
-    do: Activity.uncovered(scope, since)
+    do: Activity.uncovered(scope, nil, since)
+
+  @doc """
+  `uncovered/2` for a target. For the hive (`nil`, `:hive`) it is `uncovered/2`: what
+  enforcing the hive would start denying, so only the runs of repositories that follow the
+  hive's mode count, and the runs that name no repository; a repository with a mode of
+  its own would not change. For a repository: what enforcing that repository would start
+  denying, from its own runs under its own effective rules, whatever its mode is now.
+  A repository that is not the hive's has nothing.
+  """
+  @spec uncovered(Scope.t(), target, DateTime.t()) :: {:ok, [uncovered]} | :unavailable
+  def uncovered(%Scope{hive: %Hive{}} = scope, target, %DateTime{} = since) do
+    case target_id(scope, target) do
+      {:ok, repository_id} -> Activity.uncovered(scope, repository_id, since)
+      {:error, _not_found} -> {:ok, []}
+    end
+  end
 
   @doc """
   How many attempts were denied since `since`, and to how many destinations (host, port

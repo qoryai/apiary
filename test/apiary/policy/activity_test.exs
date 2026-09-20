@@ -73,10 +73,50 @@ defmodule Apiary.Policy.ActivityTest do
       assert {:ok, []} =
                Policy.uncovered(ctx.scope, DateTime.add(DateTime.utc_now(), 60, :second))
 
-      assert :unavailable = Activity.uncovered(ctx.scope, since(), cap: 3)
+      assert :unavailable = Activity.uncovered(ctx.scope, nil, since(), cap: 3)
       assert :unavailable = Activity.denied_summary(ctx.scope, since(), cap: 3)
       assert :unavailable = Activity.rule_activity(ctx.scope, nil, since(), cap: 3)
-      assert {:ok, [_ | _]} = Activity.uncovered(ctx.scope, since(), cap: 100)
+      assert {:ok, [_ | _]} = Activity.uncovered(ctx.scope, nil, since(), cap: 100)
+    end
+  end
+
+  describe "uncovered and a repository's own mode" do
+    test "the hive's form leaves out a repository that does not follow the hive", ctx do
+      {:ok, _} = Policy.set_mode(ctx.scope, ctx.docs, "observe")
+
+      assert {:ok, [new, push]} = Policy.uncovered(ctx.scope, since())
+      # acme/docs reached new.example and mcp.example; enforcing the hive changes neither.
+      assert %{host: "new.example", attempts: 2, runs: 2} = new
+      assert Enum.map(new.repositories, & &1.path) == ["acme/site"]
+      assert push.host == "git.example"
+
+      assert {:ok, same} = Policy.uncovered(ctx.scope, nil, since())
+      assert same == [new, push]
+
+      {:ok, _} = Policy.set_mode(ctx.scope, ctx.docs, :inherit)
+      assert {:ok, [_, _, %{host: "mcp.example"}]} = Policy.uncovered(ctx.scope, since())
+    end
+
+    test "a repository's form is its own runs under its own rules, whatever its mode", ctx do
+      for mode <- ["observe", "enforce", :inherit] do
+        {:ok, _} = Policy.set_mode(ctx.scope, ctx.docs, mode)
+
+        assert {:ok, [%{host: "mcp.example", attempts: 1}, %{host: "new.example", attempts: 1}]} =
+                 Policy.uncovered(ctx.scope, ctx.docs, since())
+      end
+
+      # mcp.example is allowed in acme/site by its own rule.
+      assert {:ok,
+              [
+                %{host: "git.example", path: "/acme/site.git/git-receive-pack"},
+                %{host: "new.example"}
+              ]} =
+               Policy.uncovered(ctx.scope, ctx.repository, since())
+    end
+
+    test "another hive's repository has nothing", ctx do
+      %{scope: other} = sign_up_fixture()
+      assert {:ok, []} = Policy.uncovered(other, ctx.repository, since())
     end
   end
 

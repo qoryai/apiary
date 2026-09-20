@@ -9,7 +9,13 @@ defmodule Apiary.Policy.Activity do
   part would read as a count of the whole. A connection's counters are those of its run,
   so a connection counts whole when it was last seen in the range.
 
-  A connection is held to the effective policy of its own run's repository (the baseline
+  `uncovered` for the hive counts only the runs of repositories that follow the hive's
+  mode, and the runs that name no repository: a repository with a mode of its own is not
+  changed by the hive's. For a repository it counts that repository's runs, whatever its
+  mode is now: what enforcing it would start denying.
+
+  A connection is held to the effective policy of its own run's repository, its mode
+  included (the baseline
   for a run that names none), resolved once per repository, and matched as the runner's
   proxy matches: the host against `allow` in the rendered order, first match; then, on a
   host held to paths, the path against that host's list. Hosts and paths are a runner's
@@ -31,13 +37,15 @@ defmodule Apiary.Policy.Activity do
   def cap, do: @cap
 
   @doc false
-  def uncovered(%Scope{hive: %Hive{} = hive}, since, opts \\ []) do
-    with {:ok, rows} <- rows(hive.id, nil, since, opts) do
+  def uncovered(%Scope{hive: %Hive{} = hive}, repository_id, since, opts \\ []) do
+    with {:ok, rows} <- rows(hive.id, repository_id, since, opts) do
       policies = policies(hive, rows)
 
       destinations =
         rows
         |> Enum.filter(&(&1.allowed > 0))
+        # Enforcing the hive changes nothing for a repository with a mode of its own.
+        |> Enum.filter(&(repository_id != nil or policies[&1.repository_id].follows_hive))
         |> Enum.flat_map(fn row ->
           case cover(policies[row.repository_id], row) do
             {:uncovered, path} -> [{{row.host, path}, row}]
@@ -142,6 +150,15 @@ defmodule Apiary.Policy.Activity do
   # repository id (nil for the baseline) => what matching needs of its effective policy.
   defp policies(%Hive{id: hive_id}, rows) do
     mode = Repo.one!(from h in Hive, where: h.id == ^hive_id, select: h.egress_mode)
+
+    modes =
+      Repo.all(
+        from p in Repository,
+          where: p.hive_id == ^hive_id and not is_nil(p.egress_mode),
+          select: {p.id, p.egress_mode}
+      )
+      |> Map.new()
+
     rules = Repo.all(from r in Rule, where: r.hive_id == ^hive_id)
     {hive_rules, own} = Enum.split_with(rules, &is_nil(&1.repository_id))
     own = Enum.group_by(own, & &1.repository_id)
@@ -149,7 +166,9 @@ defmodule Apiary.Policy.Activity do
     [nil | Enum.map(rows, & &1.repository_id)]
     |> Enum.uniq()
     |> Map.new(fn repository_id ->
-      case Resolution.resolve(mode, hive_rules, Map.get(own, repository_id, []), repository_id) do
+      rules = Map.get(own, repository_id, [])
+
+      case Resolution.resolve_for(mode, modes[repository_id], hive_rules, rules, repository_id) do
         {:ok, effective} -> {repository_id, policy(effective)}
         {:error, _error} -> {repository_id, policy(%Effective{})}
       end
@@ -167,6 +186,8 @@ defmodule Apiary.Policy.Activity do
     denies = for %{kind: :host, action: :deny, host: host} <- in_force, do: host
 
     %{
+      mode: effective.mode,
+      follows_hive: effective.mode_source == :hive,
       allow: effective.allow,
       paths: effective.paths,
       # Names before suffixes, as `allow` is: the most exact deny is the one named.
