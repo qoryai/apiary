@@ -40,6 +40,8 @@ defmodule Apiary.Repo.Migrations.CreateEvents do
     create unique_index(:events, [:run_id, :sequence])
     create unique_index(:events, [:hive_id, :event_id])
     create index(:events, [:organisation_id, :hive_id])
+    # The projector ranks the events of one type in a run by sequence.
+    create index(:events, [:run_id, :type, :sequence])
 
     create index(:events, [:run_id, :projected_at],
              where: "projected_at IS NULL",

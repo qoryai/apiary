@@ -98,15 +98,37 @@ defmodule Apiary.Runs.IngestTest do
 
   test "events are inserted in sequence order, whatever the order of the batch", %{key: key} do
     subject = Ecto.UUID.generate()
-    events = for n <- [3, 1, 2], do: wire_event(subject, n, "run.log", %{"stream" => "stdout"})
-    assert {:ok, %{inserted: 3, run: run}} = Ingest.ingest(key, batch!(events))
+    log = %{"stream" => "stdout", "bytes" => "aGk="}
+    events = for n <- [3, 1, 2], do: wire_event(subject, n, "run.log", log)
+    # As the parameters carry them: a UUID as text or as its sixteen bytes.
+    ids =
+      for event <- events, id <- [event["id"], Ecto.UUID.dump!(event["id"])], into: %{} do
+        {id, String.to_integer(event["sequence"])}
+      end
 
-    # ctid is the physical place of a row: in a fresh run, the order of insertion.
-    %{rows: rows} =
-      Repo.query!("SELECT sequence FROM events WHERE run_id = $1 ORDER BY ctid", [
-        Ecto.UUID.dump!(run.id)
-      ])
+    test = self()
+    handler = "ingest-order-#{System.unique_integer([:positive])}"
 
-    assert List.flatten(rows) == [1, 2, 3]
+    # The insert is kept out of the log, not out of telemetry: its parameters say
+    # in what order the rows went in.
+    :telemetry.attach(
+      handler,
+      [:apiary, :repo, :query],
+      fn _event, _measurements, metadata, _config ->
+        # Every test's queries pass here: only this test's insert is its own.
+        if metadata.query =~ ~s(INSERT INTO "events") and
+             Enum.any?(metadata.params, &is_map_key(ids, &1)),
+           do: send(test, {:inserted, metadata.params})
+      end,
+      nil
+    )
+
+    on_exit(fn -> :telemetry.detach(handler) end)
+
+    assert {:ok, %{inserted: 3}} = Ingest.ingest(key, batch!(events))
+    assert_received {:inserted, params}
+
+    order = for param <- params, sequence = ids[param], do: sequence
+    assert order == [1, 2, 3]
   end
 end

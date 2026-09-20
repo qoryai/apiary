@@ -468,8 +468,12 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
           wire_event(subject, 1, "session.tool_started", nested(64),
             time: "1970-01-01T00:00:00Z"
           ),
-          wire_event(subject, 2, "run.log", %{}, time: "9999-12-31T23:59:59.999999Z")
-        ] ++ for(n <- 3..1000, do: wire_event(subject, n, "run.log", %{"stream" => "stdout"}))
+          wire_event(subject, 2, "session.ended", %{}, time: "9999-12-31T23:59:59.999999Z")
+        ] ++
+          for(
+            n <- 3..1000,
+            do: wire_event(subject, n, "session.notification", %{"kind" => "idle"})
+          )
 
       # Out of order on the wire; stored in one go all the same.
       assert build_conn()
