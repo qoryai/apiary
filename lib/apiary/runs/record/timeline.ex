@@ -65,6 +65,8 @@ defmodule Apiary.Runs.Record.Timeline do
   @max_tasks 20
   @max_listed 50
   @max_open_lanes 1_000
+  @max_delta 3
+  @max_allow 200
   @lane_key 12
 
   @doc "The bytes of a payload a well shows before \"Show all\"."
@@ -78,6 +80,9 @@ defmodule Apiary.Runs.Record.Timeline do
 
   @doc "How many tasks of one list are read, at most."
   def max_listed, do: @max_listed
+
+  @doc "How many hosts of a policy applied event's allow list are read, at most."
+  def max_allow, do: @max_allow
 
   @doc "The event types the index needs, with the `ai.qory.` prefix."
   def types, do: Enum.map(Map.keys(@kinds), &(@prefix <> &1))
@@ -184,6 +189,8 @@ defmodule Apiary.Runs.Record.Timeline do
       hook_events: 0,
       # the tasks of the last list given
       tasks: [],
+      # the sequence of the last policy applied, for the reload that follows it
+      policy_seq: nil,
       through: 0
     }
   end
@@ -402,6 +409,14 @@ defmodule Apiary.Runs.Record.Timeline do
     end
   end
 
+  # A policy applied after the first is a reload: it remembers the one before it, which is
+  # what its delta is taken against.
+  defp place(state, :policy_applied, event) do
+    state
+    |> push(:policy_applied, event, %{previous_seq: Map.get(state, :policy_seq)})
+    |> Map.put(:policy_seq, event.sequence)
+  end
+
   defp place(state, kind, event), do: push(state, kind, event)
 
   defp end_call(state, seq, event) do
@@ -471,6 +486,7 @@ defmodule Apiary.Runs.Record.Timeline do
           inner_count: 0,
           denied_inside: false,
           started_seq: nil,
+          previous_seq: nil,
           lane: lane,
           open_rails: rails,
           opens: false,
@@ -560,8 +576,12 @@ defmodule Apiary.Runs.Record.Timeline do
 
     load =
       case item.kind do
-        kind when kind in [:connection, :connection_group] -> inner
-        _ -> [item.seq | inner] ++ List.wrap(item.end_seq) ++ List.wrap(item.started_seq)
+        kind when kind in [:connection, :connection_group] ->
+          inner
+
+        _ ->
+          [item.seq | inner] ++
+            List.wrap(item.end_seq) ++ List.wrap(item.started_seq) ++ List.wrap(item.previous_seq)
       end
 
     item
@@ -654,13 +674,21 @@ defmodule Apiary.Runs.Record.Timeline do
   defp body(%{kind: :run_started}, event, _events, _limit),
     do: Map.take(event, [:runtime, :runtime_version, :host, :wall])
 
-  defp body(%{kind: :policy_applied}, event, _events, _limit) do
+  defp body(%{kind: :policy_applied} = item, event, events, _limit) do
+    previous = item[:previous_seq] && events[item.previous_seq]
+
     %{
       mode: event.mode,
       source: event.source,
+      digest: event[:run_configuration],
       allowed_hosts: event.allow_count || 0,
       terminated: event.terminated || [],
-      terminated_count: event.terminated_count || 0
+      terminated_count: event.terminated_count || 0,
+      again: is_integer(item[:previous_seq]),
+      previous_seq: item[:previous_seq],
+      previous_digest: is_map(previous) && previous[:run_configuration],
+      was_mode: if(is_map(previous) and previous.mode != event.mode, do: previous.mode),
+      delta: if(is_map(previous), do: allow_delta(previous, event))
     }
   end
 
@@ -759,6 +787,30 @@ defmodule Apiary.Runs.Record.Timeline do
       first_at: item.first_at,
       last_at: item.last_at
     }
+  end
+
+  @doc """
+  What a reload changed in the allow list, from the two events alone: `%{added:, removed:,
+  added_count:, removed_count:}`, the hosts at most #{@max_delta} each. nil when either event listed
+  more hosts than were read (#{@max_allow}): half a list says nothing of what was added.
+  """
+  def allow_delta(previous, event) do
+    before = previous[:allow] || []
+    now = event[:allow] || []
+
+    if (previous[:allow_count] || 0) > length(before) or (event[:allow_count] || 0) > length(now) do
+      nil
+    else
+      added = Enum.uniq(now -- before)
+      removed = Enum.uniq(before -- now)
+
+      %{
+        added: Enum.take(added, @max_delta),
+        removed: Enum.take(removed, @max_delta),
+        added_count: length(added),
+        removed_count: length(removed)
+      }
+    end
   end
 
   @doc "One slim egress event as the connection row reads it."
@@ -863,7 +915,8 @@ defmodule Apiary.Runs.Record.Timeline do
 
   @slim_keys ~w(sequence type time tool agent_id agent_type runtime runtime_version host wall mode source
     model cwd kind outcome reason signal method request_method path decision rule path_rule credential
-    port exit_code duration_ms turns cost_usd interrupted in_background allow_count terminated
+    port exit_code duration_ms turns cost_usd interrupted in_background allow allow_count
+    run_configuration terminated
     terminated_count summary text text_bytes error error_bytes error_lines details details_bytes
     details_lines input input_bytes response response_bytes response_lines stdout stdout_bytes
     stdout_lines stderr stderr_bytes stderr_lines response_json response_json_bytes)a
@@ -929,7 +982,9 @@ defmodule Apiary.Runs.Record.Timeline do
       cost_usd: if(is_number(data["cost_usd"]), do: data["cost_usd"]),
       interrupted: data["interrupted"] == true,
       in_background: input["run_in_background"] == true,
+      allow: allow(data["allow"]),
       allow_count: if(is_list(data["allow"]), do: length(data["allow"]), else: 0),
+      run_configuration: string(data, "run_configuration"),
       terminated:
         terminated |> Enum.filter(&is_binary/1) |> Enum.take(5) |> Enum.map(&bound(&1, 120)),
       terminated_count: length(terminated),
@@ -1000,6 +1055,17 @@ defmodule Apiary.Runs.Record.Timeline do
   end
 
   ## Reading untrusted data
+
+  # The allow list of a policy applied event, bounded like everything a runner sends.
+  defp allow(list) when is_list(list) do
+    # Cut as the query cuts them (`left(v, 255)`), so a delta is the same either way.
+    list
+    |> Enum.filter(&is_binary/1)
+    |> Enum.take(@max_allow)
+    |> Enum.map(&String.slice(&1, 0, 255))
+  end
+
+  defp allow(_other), do: []
 
   defp string(data, key) when is_map(data) do
     case data[key] do

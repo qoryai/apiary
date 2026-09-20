@@ -16,7 +16,9 @@ defmodule ApiaryWeb.RunPageComponents do
     only: [badge: 1, icon: 1, notice: 1, empty_state: 1, listening: 1, term: 1]
 
   import ApiaryWeb.RunComponents,
-    only: [connection_row: 1, duration: 1, offset: 1, count_noun: 2, delimited: 1]
+    only: [connection_row: 1, duration: 1, offset: 1, count_noun: 2, delimited: 1, middle: 2]
+
+  import ApiaryWeb.PolicyComponents, only: [version_link: 1]
 
   alias Phoenix.LiveView.JS
 
@@ -363,6 +365,9 @@ defmodule ApiaryWeb.RunPageComponents do
   defp node_look(%{kind: :run_started}),
     do: %{glyph: "hero-play-micro", shape: :square, tone: :info}
 
+  defp node_look(%{kind: :policy_applied, again: true}),
+    do: %{glyph: "hero-arrow-path-micro", shape: :square, tone: nil}
+
   defp node_look(%{kind: :policy_applied}),
     do: %{glyph: "hero-shield-check-micro", shape: :square, tone: nil}
 
@@ -427,9 +432,53 @@ defmodule ApiaryWeb.RunPageComponents do
     """
   end
 
+  # pe6: a reload. What it changed is taken from the allow lists of the two events, which
+  # are the record's; the policy tables are not asked. Every host is a runner's string.
+  defp item_body(%{item: %{kind: :policy_applied, again: true}} = assigns) do
+    ~H"""
+    <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind="Policy applied again">
+      reloaded ·
+      <%= if @item.was_mode do %>
+        <b class="font-semibold text-base-content">{@item.mode || "n/a"}</b> (was {@item.was_mode})
+      <% else %>
+        {@item.mode || "n/a"}
+      <% end %>
+      · {count_noun(@item.allowed_hosts, "host")} allowed
+      <:chips :if={@item.delta}>
+        <span :for={host <- @item.delta.added} class="q-delta q-delta-add" title={host}>
+          <span aria-hidden="true">+</span><span class="sr-only">Added:</span> {middle(host, 48)}
+        </span>
+        <span :for={host <- @item.delta.removed} class="q-delta q-delta-del" title={host}>
+          <span aria-hidden="true">−</span><span class="sr-only">Removed:</span> {middle(host, 48)}
+        </span>
+        <span :if={delta_more(@item.delta) > 0} class="text-xs text-faint">
+          and {delimited(delta_more(@item.delta))} more
+        </span>
+      </:chips>
+      <:version><.item_version version={@item[:version]} /></:version>
+    </.head>
+    <p id={"#{@id}-reload"} class="q-reload-say">
+      {if @item.source == "fetched",
+        do:
+          "The runner fetched a new run configuration after the server's answer named a new digest.",
+        else: "The runner applied a policy again."}
+      <span :if={@item.previous_seq}>
+        Compared with the policy applied at <.link
+          patch={@seq_path.(@item.previous_seq)}
+          class="q-link font-mono text-xs"
+        >#{pad(@item.previous_seq)}</.link>: {delta_words(@item.delta)}
+      </span>
+      <span :if={@item[:previous_version]}>
+        Connections before this item were decided by v{@item.previous_version.n}.
+      </span>
+    </p>
+    """
+  end
+
   defp item_body(%{item: %{kind: :policy_applied}} = assigns) do
     ~H"""
     <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind="Policy applied">
+      <:version><.item_version version={@item[:version]} /></:version>
       {@item.mode || "n/a"} · {count_noun(@item.allowed_hosts, "host")} allowed · {policy_source(
         @item.source
       )}
@@ -632,6 +681,8 @@ defmodule ApiaryWeb.RunPageComponents do
   attr :kind, :string, required: true
   attr :tone, :string, default: nil
   slot :inner_block
+  slot :chips, doc: "after the summary: the delta of a reload"
+  slot :version, doc: "before the offset: the version link of a policy applied"
 
   defp head(assigns) do
     ~H"""
@@ -639,10 +690,43 @@ defmodule ApiaryWeb.RunPageComponents do
       <span class={["q-k", @tone == "error" && "q-bad"]}>{@kind}</span>
       <.who :if={@item.who} lane={@item.lane} />
       <span class="q-s">{render_slot(@inner_block)}</span>
-      <.tail item={@item} started_at={@started_at} seq_path={@seq_path} />
+      {render_slot(@chips)}
+      <.tail item={@item} started_at={@started_at} seq_path={@seq_path}>
+        {render_slot(@version)}
+      </.tail>
     </div>
     """
   end
+
+  attr :version, :any, default: nil, doc: "%{n, path} when the digest names a version here"
+
+  # The version a policy applied names, when this hive rendered it: the link of pd1.
+  defp item_version(%{version: %{n: _, path: _}} = assigns) do
+    ~H"""
+    <.version_link
+      version={@version.n}
+      navigate={@version.path}
+      title={"Version #{@version.n}. Open the exact document."}
+    />
+    """
+  end
+
+  defp item_version(assigns), do: ~H""
+
+  defp delta_more(delta) do
+    delta.added_count - length(delta.added) + (delta.removed_count - length(delta.removed))
+  end
+
+  defp delta_words(nil), do: "the lists are too long to compare here."
+
+  defp delta_words(%{added_count: 0, removed_count: 0}), do: "the same hosts are allowed."
+
+  defp delta_words(%{added_count: added, removed_count: removed}) do
+    "#{hosts_words(added)} added, #{if removed == 0, do: "none", else: hosts_words(removed)} removed."
+  end
+
+  defp hosts_words(0), do: "no host"
+  defp hosts_words(n), do: count_noun(n, "host")
 
   attr :item, :map, required: true
   attr :started_at, :any, required: true

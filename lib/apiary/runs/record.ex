@@ -310,12 +310,16 @@ defmodule Apiary.Runs.Record do
   @slim_sql """
   SELECT
     e.sequence, e.type, e.time,
-    #{Enum.map_join(~w(tool agent_id agent_type runtime runtime_version host wall mode source model cwd kind outcome reason signal method request_method path decision rule path_rule credential), ",\n  ", &"CASE WHEN jsonb_typeof(e.data -> '#{&1}') = 'string' THEN left(e.data ->> '#{&1}', 400) END AS #{&1}")},
+    #{Enum.map_join(~w(tool agent_id agent_type runtime runtime_version host wall mode source model cwd kind outcome reason signal method request_method path decision rule path_rule credential run_configuration), ",\n  ", &"CASE WHEN jsonb_typeof(e.data -> '#{&1}') = 'string' THEN left(e.data ->> '#{&1}', 400) END AS #{&1}")},
     #{Enum.map_join(~w(port exit_code duration_ms turns), ",\n  ", &"CASE WHEN jsonb_typeof(e.data -> '#{&1}') = 'number' AND (e.data ->> '#{&1}') ~ '^-?[0-9]{1,15}$' THEN (e.data ->> '#{&1}')::bigint END AS #{&1}")},
     CASE WHEN jsonb_typeof(e.data -> 'cost_usd') = 'number' AND (e.data ->> 'cost_usd') ~ '^-?[0-9]{1,12}(\\.[0-9]{1,12})?([eE]-?[0-9]{1,2})?$' THEN (e.data ->> 'cost_usd')::float8 END AS cost_usd,
     (e.data -> 'interrupted' = 'true'::jsonb) IS TRUE AS interrupted,
     (x.i -> 'run_in_background' = 'true'::jsonb) IS TRUE AS in_background,
     CASE WHEN jsonb_typeof(e.data -> 'allow') = 'array' THEN jsonb_array_length(e.data -> 'allow') ELSE 0 END AS allow_count,
+    CASE WHEN e.type = 'ai.qory.run.policy_applied' THEN
+      (SELECT coalesce(jsonb_agg(left(v #>> '{}', 255)), '[]'::jsonb)
+         FROM (SELECT v FROM jsonb_array_elements(CASE WHEN jsonb_typeof(e.data -> 'allow') = 'array' THEN e.data -> 'allow' ELSE '[]'::jsonb END) WITH ORDINALITY a(v, n)
+               WHERE jsonb_typeof(v) = 'string' ORDER BY n LIMIT #{Timeline.max_allow()}) q) END AS allow,
     (SELECT coalesce(jsonb_agg(left(v #>> '{}', 120)), '[]'::jsonb)
        FROM (SELECT v FROM jsonb_array_elements(CASE WHEN jsonb_typeof(e.data -> 'terminated') = 'array' THEN e.data -> 'terminated' ELSE '[]'::jsonb END) WITH ORDINALITY a(v, n)
              WHERE jsonb_typeof(v) = 'string' ORDER BY n LIMIT 5) q) AS terminated,
@@ -378,6 +382,7 @@ defmodule Apiary.Runs.Record do
     row
     |> Map.update!(:time, &utc/1)
     |> Map.update!(:terminated, &(&1 || []))
+    |> Map.update!(:allow, &(&1 || []))
     |> Map.put(:summary, Timeline.tool_summary(row.tool, input, row.input_first))
     |> Map.take(Timeline.slim_keys())
     |> Map.new(fn
@@ -466,6 +471,20 @@ defmodule Apiary.Runs.Record do
       )
 
     %{rows: rows, page: page, pages: pages, total: total}
+  end
+
+  @doc """
+  One connection of the run by its row id, whole, for `Apiary.Policy.rule_from_connection/4`.
+  `:error` for an id that is not a UUID and for a row of another run or another hive.
+  """
+  def connection(%Scope{} = scope, %Run{} = run, id) do
+    with {:ok, id} <- cast_uuid(id),
+         %Connection{} = connection <-
+           Repo.one(from c in connections_of(scope, run), where: c.id == ^id) do
+      {:ok, connection}
+    else
+      _ -> :error
+    end
   end
 
   defp connections_of(scope, run) do

@@ -708,4 +708,90 @@ defmodule Apiary.Runs.Record.TimelineTest do
                ])
     end
   end
+
+  describe "a policy applied again (pe6)" do
+    defp applied(sequence, allow, extra \\ %{}) do
+      event(
+        sequence,
+        "run.policy_applied",
+        Map.merge(%{"mode" => "enforce", "allow" => allow, "source" => "fetched"}, extra)
+      )
+    end
+
+    test "the first is the policy applied; a later one carries the delta of the two events" do
+      [first, again] =
+        build([
+          applied(3, ["api.example", "gitlab.example"], %{
+            "run_configuration" => "sha256=" <> String.duplicate("a", 64)
+          }),
+          applied(46, ["api.example", "files.cdn.example"], %{
+            "run_configuration" => "sha256=" <> String.duplicate("b", 64)
+          })
+        ])
+
+      assert %{again: false, previous_seq: nil, delta: nil, was_mode: nil} = first
+      assert first.digest == "sha256=" <> String.duplicate("a", 64)
+
+      assert %{
+               again: true,
+               previous_seq: 3,
+               was_mode: nil,
+               allowed_hosts: 2,
+               delta: %{
+                 added: ["files.cdn.example"],
+                 removed: ["gitlab.example"],
+                 added_count: 1,
+                 removed_count: 1
+               }
+             } = again
+
+      assert again.previous_digest == "sha256=" <> String.duplicate("a", 64)
+    end
+
+    test "each reload is compared with the one before it, not with the first" do
+      [_, _, third] = build([applied(3, ["a"]), applied(10, ["a", "b"]), applied(20, ["b"])])
+      assert %{previous_seq: 10, delta: %{added: [], removed: ["a"]}} = third
+    end
+
+    test "a reload that changed only the mode says what the mode was" do
+      [_, again] = build([applied(3, ["a"]), applied(9, ["a"], %{"mode" => "observe"})])
+      assert %{mode: "observe", was_mode: "enforce"} = again
+      assert %{added_count: 0, removed_count: 0} = again.delta
+    end
+
+    test "the chips are capped at three a side, and the counts say how many there were" do
+      many = for n <- 1..7, do: "h#{n}.example"
+      [_, again] = build([applied(3, []), applied(9, many)])
+      assert %{added: [_, _, _] = shown, added_count: 7, removed: []} = again.delta
+      assert shown == Enum.take(many, 3)
+    end
+
+    test "a list longer than what is read gives no delta: half a list says nothing" do
+      long = for n <- 1..(Timeline.max_allow() + 5), do: "h#{n}.example"
+      [_, again] = build([applied(3, ["a"]), applied(9, long)])
+      assert again.again
+      assert again.delta == nil
+      assert again.allowed_hosts == Timeline.max_allow() + 5
+    end
+
+    test "a long host is cut, and a list that holds what is not a string gives no delta" do
+      long = String.duplicate("x", 400) <> ".example"
+      [_, again] = build([applied(3, []), applied(9, [long])])
+      assert [host] = again.delta.added
+      assert String.length(host) == 255
+
+      [_, again] = build([applied(3, []), applied(9, [1, %{"a" => 1}, nil, "a.example"])])
+      assert again.delta == nil
+    end
+
+    test "an index extended by a later range still knows the policy before it" do
+      first = [applied(3, ["a"])]
+      later = [applied(9, ["a", "b"])]
+      index = first |> light() |> Timeline.index()
+      index = Timeline.extend(index, light(later))
+      events = Map.new(first ++ later, &{&1.sequence, Timeline.slim(&1)})
+      assert [_, %{again: true, previous_seq: 3}] = Timeline.build(index.items, events)
+      assert 3 in List.last(index.items).seqs
+    end
+  end
 end
