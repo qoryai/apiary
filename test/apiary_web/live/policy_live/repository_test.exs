@@ -101,6 +101,7 @@ defmodule ApiaryWeb.PolicyLive.RepositoryTest do
              "Mode observe , the hive's default. Credentials: model-key from the hive."
 
     assert has_element?(view, "#policy-tab-runs[href*='repo=acme%2Fshop']")
+    assert text(view, "#policy-tab-runs") == "Runs 1"
     assert has_element?(view, "#policy-tab-connections[href*='forge=github.example']")
   end
 

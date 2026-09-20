@@ -81,6 +81,7 @@ defmodule ApiaryWeb.PolicyLive.Repository do
       version: version,
       baseline?: !own?,
       change_total: changes.total,
+      run_total: run_total(scope, repository),
       suggestions: declared.suggested,
       covered: declared.covered,
       reload_pending: false,
@@ -93,6 +94,17 @@ defmodule ApiaryWeb.PolicyLive.Repository do
       )
     end)
     |> load_record()
+  end
+
+  # How many runs the Runs tab leads to: the runs list's own count, over its default range
+  # of seven days, so the number and the page agree.
+  defp run_total(scope, %{forge: forge, path: path}) do
+    filters = Filters.parse(Filters.repo_params(forge, path), :runs)
+
+    case Apiary.Runs.group_facts(scope, filters, [{forge, path}]) do
+      %{{^forge, ^path} => %{runs: runs}} -> runs
+      _none -> 0
+    end
   end
 
   defp credentials(effective, socket) do
@@ -634,6 +646,7 @@ defmodule ApiaryWeb.PolicyLive.Repository do
           base={@base}
           rules={length(@rows)}
           changes={@change_total}
+          runs={@run_total}
           document={@version != nil}
           target={@target}
         />
@@ -840,6 +853,7 @@ defmodule ApiaryWeb.PolicyLive.Repository do
   attr :base, :string, required: true
   attr :rules, :integer, required: true
   attr :changes, :integer, required: true
+  attr :runs, :integer, required: true
   attr :document, :boolean, required: true
   attr :target, :map, required: true
 
@@ -866,6 +880,7 @@ defmodule ApiaryWeb.PolicyLive.Repository do
       </.link>
       <.link id="policy-tab-runs" navigate={~p"/hive/runs?#{@repo}"}>
         <.icon name="hero-play-circle-micro" class="size-4" />Runs
+        <span :if={@runs > 0} class="q-tabs-n" title="In the last 7 days">{@runs}</span>
       </.link>
       <.link id="policy-tab-connections" navigate={~p"/hive/connections?#{@repo}"}>
         <.icon name="hero-arrows-right-left-micro" class="size-4" />Connections
