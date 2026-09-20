@@ -20,7 +20,8 @@ defmodule ApiaryWeb.RunLive.Show do
   import ApiaryWeb.RunPageComponents
 
   alias Apiary.Runs
-  alias Apiary.Runs.{Record, Run}
+  alias Apiary.Runs.{Filters, Record, Run}
+  alias Apiary.Runs.Record.Timeline
 
   @window 300
   @page 200
@@ -28,7 +29,6 @@ defmodule ApiaryWeb.RunLive.Show do
   @coalesce_ms 250
   @quiet_tick_ms 5_000
   @announce_every_ms 10_000
-  @closable ~w(pending running lost)
 
   @wall_tip "The enclosure the agent runs in. Its only route out leads to the runner's proxy."
   @no_wall_tip "This run had no wall. A program that ignores the proxy is not seen."
@@ -83,7 +83,7 @@ defmodule ApiaryWeb.RunLive.Show do
           <%= if @run.forge && @run.repository do %>
             <.icon name="hero-chevron-right-micro" class="size-3" />
             <.link
-              navigate={~p"/hive/runs?#{%{repo: "#{@run.forge}:#{@run.repository}"}}"}
+              navigate={~p"/hive/runs?#{Filters.repo_params(@run.forge, @run.repository)}"}
               class="font-mono text-xs"
             >
               <span class="text-faint">{@run.forge}/</span>{@run.repository}
@@ -94,8 +94,8 @@ defmodule ApiaryWeb.RunLive.Show do
         </nav>
 
         <div class="q-run-title">
-          <h1 :if={@run.task}>{@run.task}</h1>
-          <h1 :if={!@run.task}>
+          <h1 :if={@run.task} id="run-title" tabindex="-1" phx-hook="FocusOn">{@run.task}</h1>
+          <h1 :if={!@run.task} id="run-title" tabindex="-1" phx-hook="FocusOn">
             Run <span class="font-mono text-[17px]">{short_id(@run.run_id)}</span>
           </h1>
           <.run_state
@@ -103,8 +103,8 @@ defmodule ApiaryWeb.RunLive.Show do
             exit_code={@run.exit_code}
             signal={@run.signal}
             quiet_for={@quiet_for}
-            quiet_since={@run.last_heartbeat_at}
-            interval={@run.heartbeat_interval_seconds}
+            quiet_since={heard_at(@run)}
+            interval={beat(@run)}
             closed_at={@run.closed_at}
             note={false}
           />
@@ -113,7 +113,7 @@ defmodule ApiaryWeb.RunLive.Show do
             state={@run.state}
             last_heartbeat_at={@run.last_heartbeat_at}
             last_event_at={@run.last_event_at}
-            interval={@run.heartbeat_interval_seconds}
+            interval={beat(@run)}
             quiet={@quiet_for != nil}
             run={@run}
           />
@@ -200,7 +200,11 @@ defmodule ApiaryWeb.RunLive.Show do
       </.tabs>
 
       <%= cond do %>
-        <% @run.state == "pending" and @run.event_count <= 1 and @live_action != :details -> %>
+        <% not @loaded -> %>
+          <div id="run-loading" class="grid gap-3" aria-busy="true" aria-label="Reading the record">
+            <span :for={width <- ~w(w-2/3 w-1/2 w-3/5 w-2/5 w-1/2)} class={["q-skel", width]}></span>
+          </div>
+        <% @run.state == "pending" and @index.items == [] and @live_action != :details -> %>
           <.limits reason={:not_started} variant="empty" />
         <% @live_action == :timeline -> %>
           <.timeline_tab {assigns} />
@@ -219,7 +223,7 @@ defmodule ApiaryWeb.RunLive.Show do
             run={@run}
             policy={@policy}
             session_id={@session_id}
-            closable={@run.state in @closable_states}
+            closable={@run.state in Runs.closable_states()}
             tips={@tips}
           />
       <% end %>
@@ -250,11 +254,18 @@ defmodule ApiaryWeb.RunLive.Show do
     <div id="run-timeline" class="grid gap-4" phx-hook="LiveEnd" data-live={to_string(alive?(@run))}>
       <div class="q-tl-bar" role="group" aria-label="Lanes">
         <.lane
-          :for={lane <- @index.lanes}
+          :for={lane <- lane_chips(@index, @lane)}
           lane={lane}
           pressed={is_nil(@lane) or @lane == lane.id}
           patch={tab_path(@run, :timeline, lane_query(@timeline_query, @lane, lane.id))}
         />
+        <span
+          :if={@index.lane_count + 1 > length(@index.lanes)}
+          id="more-lanes"
+          class="text-xs text-faint"
+        >
+          and {delimited(@index.lane_count + 1 - length(@index.lanes))} more
+        </span>
         <span
           :if={length(@index.lanes) > 1}
           class="tooltip q-tip-wide text-faint"
@@ -266,16 +277,16 @@ defmodule ApiaryWeb.RunLive.Show do
         </span>
         <span class="flex-1"></span>
         <.shortcuts />
-        <.link
+        <button
+          type="button"
           id="toggle-connections"
-          patch={tab_path(@run, :timeline, cx_query(@timeline_query, @cx))}
-          role="button"
+          phx-click={JS.patch(tab_path(@run, :timeline, cx_query(@timeline_query, @cx)))}
           aria-pressed={to_string(@cx)}
           class={["q-chip", @cx && "q-chip-on q-chip-plain"]}
         >
           <.icon name="hero-arrows-right-left-micro" class="size-4" />Connections
           <b>{if @cx, do: "inline", else: "hidden"}</b>
-        </.link>
+        </button>
       </div>
 
       <div :if={@unread > 0} id="unread-events">
@@ -426,7 +437,7 @@ defmodule ApiaryWeb.RunLive.Show do
             {if @counts.all == 1, do: "destination", else: "destinations"}
           </span>
           <span :if={@policy}>
-            policy <b>{@policy.data["mode"]}</b>
+            policy <b>{@policy.mode}</b>
             <span :if={@run.policy_digest} class="font-mono text-[12.5px]" title={@run.policy_digest}>
               {String.slice(@run.policy_digest, 0, 12)}
             </span>
@@ -437,12 +448,32 @@ defmodule ApiaryWeb.RunLive.Show do
         :if={@counts.all > 0}
         id="run-connections"
         label="Connections of this run"
-        rows={shown_connections(@connections, @decision)}
+        rows={@connections.rows}
         started_at={@run.started_at}
       />
-      <p :if={@counts.all > length(@connections)} class="text-[12.5px] text-faint">
-        Showing {delimited(length(@connections))} of {delimited(@counts.all)} destinations.
-      </p>
+      <div
+        :if={@connections.total > 0}
+        id="connections-pages"
+        class="flex flex-wrap items-center justify-between gap-3"
+      >
+        <p class="text-[12.5px] text-faint">
+          Showing {delimited(length(@connections.rows))} of {delimited(@connections.total)}.
+        </p>
+        <div :if={@connections.pages > 1} class="flex gap-2">
+          <.button
+            :if={@connections.page > 1}
+            patch={tab_path(@run, :connections, connections_query(@decision, @connections.page - 1))}
+          >
+            Previous
+          </.button>
+          <.button
+            :if={@connections.page < @connections.pages}
+            patch={tab_path(@run, :connections, connections_query(@decision, @connections.page + 1))}
+          >
+            Next
+          </.button>
+        </div>
+      </div>
       <p :if={@counts.all > 0} class="max-w-[80ch] text-[12.5px] text-faint">
         Counted per host, port and path from the run's egress events. The reason and outcome are
         those of the last attempt. Only programs that honour the proxy are seen; {if @run.wall,
@@ -510,10 +541,10 @@ defmodule ApiaryWeb.RunLive.Show do
         <dl :if={@policy} class="q-dl">
           <dt>Mode</dt>
           <dd>
-            <.term word={@policy.data["mode"] || "n/a"} standard={@tips.mode} class="q-tip-wide" />
+            <.term word={@policy.mode || "n/a"} standard={@tips.mode} class="q-tip-wide" />
           </dd>
           <dt>Source</dt>
-          <dd>{policy_source_words(@policy.data["source"])}</dd>
+          <dd>{policy_source_words(@policy.source)}</dd>
           <dt><.term word="Digest" standard={@tips.digest} class="q-tip-wide tooltip-right" /></dt>
           <dd class="font-mono">
             {@run.policy_digest || "n/a"}
@@ -530,7 +561,7 @@ defmodule ApiaryWeb.RunLive.Show do
             {@run.run_configuration_digest || @run.reported_run_configuration_digest || "n/a"}
           </dd>
           <dt>Allowed hosts</dt>
-          <dd class="font-mono">{strings(@policy.data["allow"]) || "none"}</dd>
+          <dd class="font-mono">{strings(@policy.allow, @policy.allow_count) || "none"}</dd>
           <dt>
             <.term
               word="Reads requests to"
@@ -538,9 +569,9 @@ defmodule ApiaryWeb.RunLive.Show do
               class="q-tip-wide tooltip-right"
             />
           </dt>
-          <dd class="font-mono">{strings(@policy.data["terminated"]) || "none"}</dd>
+          <dd class="font-mono">{strings(@policy.terminated, @policy.terminated_count) || "none"}</dd>
           <dt>Credentials</dt>
-          <dd class="font-mono">{credential_names(@policy.data["credentials"]) || "none"}</dd>
+          <dd class="font-mono">{credential_names(@policy.credentials) || "none"}</dd>
           <dt>Applied at</dt>
           <dd class="font-mono">#{pad(@policy.sequence)}</dd>
         </dl>
@@ -603,8 +634,14 @@ defmodule ApiaryWeb.RunLive.Show do
     <%= cond do %>
       <% is_integer(@run.duration_ms) -> %>
         <.duration ms={@run.duration_ms} />
-      <% @run.state == "running" and not @quiet and @run.started_at != nil -> %>
-        <.duration id="run-duration" running_since={@run.started_at} so_far />
+      <% @run.state == "running" and not @quiet -> %>
+        <%!-- The runner's own elapsed seconds plus this server's time since they were true. --%>
+        <.duration
+          id="run-duration"
+          elapsed_seconds={elem(elapsed(@run), 0)}
+          elapsed_at={elem(elapsed(@run), 1)}
+          so_far
+        />
       <% @run.state in ~w(running lost closed) and is_integer(@run.elapsed_seconds) -> %>
         <.duration at_least_seconds={@run.elapsed_seconds} />
       <% true -> %>
@@ -619,7 +656,7 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp policy_value(%{policy: nil} = assigns), do: ~H|<span class="text-faint">n/a</span>|
 
-  defp policy_value(%{policy: %{data: %{"source" => "none"}}} = assigns) do
+  defp policy_value(%{policy: %{source: "none"}} = assigns) do
     ~H"""
     <.term word="observe" standard={@tips.mode} class="q-tip-wide tooltip-left" />
     <small class="ml-1">no policy</small>
@@ -628,7 +665,7 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp policy_value(assigns) do
     ~H"""
-    <.term word={@policy.data["mode"] || "n/a"} standard={@tips.mode} class="q-tip-wide tooltip-left" />
+    <.term word={@policy.mode || "n/a"} standard={@tips.mode} class="q-tip-wide tooltip-left" />
     <small :if={@digest} class="ml-1 font-mono" title={"sha256 #{@digest}"}>{String.slice(
       @digest,
       0,
@@ -658,6 +695,7 @@ defmodule ApiaryWeb.RunLive.Show do
      |> assign(
        run: nil,
        loaded_id: nil,
+       loaded: false,
        page_title: "Run",
        tips: %{
          wall: @wall_tip,
@@ -667,14 +705,32 @@ defmodule ApiaryWeb.RunLive.Show do
          terminated: @terminated_tip,
          lane: @lane_tip
        },
-       closable_states: @closable,
        confirm_close: false,
        announcement: nil,
        announced_at: nil,
        at_end: false,
        flush_scheduled: false,
+       range: nil,
        full: MapSet.new(),
-       window_loaded: false
+       window_loaded: false,
+       index: Timeline.new(),
+       policy: nil,
+       session_id: nil,
+       counts: %{all: 0, allowed: 0, denied: 0, attempts: 0},
+       connections: %{rows: [], page: 1, pages: 1, total: 0},
+       log: %{chunks: 0, bytes: 0, through: 0, streams: []},
+       target: nil,
+       lane: nil,
+       cx: true,
+       decision: nil,
+       timeline_query: %{},
+       new_count: 0,
+       earlier: 0,
+       later: 0,
+       unread: 0,
+       limit: nil,
+       win_first: nil,
+       win_last: nil
      )
      |> stream_configure(:items, dom_id: & &1.id)
      |> stream(:items, [])}
@@ -684,26 +740,41 @@ defmodule ApiaryWeb.RunLive.Show do
   def handle_params(%{"run_id" => run_id} = params, _uri, socket) do
     socket = if socket.assigns.loaded_id == run_id, do: socket, else: load_run(socket, run_id)
 
-    case socket.assigns.run do
-      nil -> {:noreply, socket}
-      %Run{} -> {:noreply, apply_params(socket, Map.delete(params, "run_id"))}
+    case socket.assigns do
+      %{run: %Run{}, loaded: true} ->
+        {:noreply, apply_params(socket, Map.delete(params, "run_id"))}
+
+      _ ->
+        {:noreply, socket}
     end
   end
 
+  # The run row is read for the first, static render too: it says found or not found, and
+  # gives the header. Everything else waits for the socket, so that opening the page reads
+  # the record once, not twice.
   defp load_run(socket, run_id) do
     scope = socket.assigns.current_scope
 
     case Record.fetch_run(scope, run_id) do
       {:ok, run} ->
+        socket = socket |> assign(loaded_id: run_id, new_count: 0) |> assign_run(run)
+
         if connected?(socket) do
+          # Subscribed before the read, so nothing projected after it is missed.
           Runs.subscribe(scope, run)
           Process.send_after(self(), :quiet_tick, @quiet_tick_ms)
-        end
 
-        socket
-        |> assign(loaded_id: run_id, window_loaded: false, full: MapSet.new(), new_count: 0)
-        |> assign_run(run)
-        |> assign_record()
+          assign(socket,
+            loaded: true,
+            window_loaded: false,
+            full: MapSet.new(),
+            index: Record.timeline(scope, run),
+            policy: Record.policy(scope, run),
+            counts: Record.connection_counts(scope, run)
+          )
+        else
+          socket
+        end
 
       :error ->
         assign(socket, run: nil, loaded_id: run_id, page_title: "Run not found")
@@ -718,30 +789,6 @@ defmodule ApiaryWeb.RunLive.Show do
     )
   end
 
-  # Everything read from the record beside the run row itself.
-  defp assign_record(socket) do
-    %{current_scope: scope, run: run} = socket.assigns
-    connections = Record.connections(scope, run)
-
-    assign(socket,
-      index: Record.timeline(scope, run),
-      policy: Record.policy(scope, run),
-      session_id: Record.session_id(scope, run),
-      log: Record.log_summary(scope, run),
-      connections: connections,
-      counts: connection_counts(connections)
-    )
-  end
-
-  defp connection_counts(connections) do
-    %{
-      all: length(connections),
-      allowed: Enum.count(connections, &(&1.allowed > 0)),
-      denied: Enum.count(connections, &(&1.denied > 0)),
-      attempts: connections |> Enum.map(& &1.attempts) |> Enum.sum()
-    }
-  end
-
   # Every parameter is validated against the record; what is not valid is dropped and the
   # URL is rewritten without it.
   defp apply_params(socket, params) do
@@ -749,43 +796,73 @@ defmodule ApiaryWeb.RunLive.Show do
 
     seq = tab == :timeline && sequence(params["seq"])
     target = seq && index.by_seq[seq]
-    lane = tab == :timeline && Enum.find_value(index.lanes, &(&1.id == params["lane"] && &1.id))
+    lane = tab == :timeline && Timeline.lane(index, params["lane"])
     cx = not (tab == :timeline and params["cx"] == "0")
 
     decision =
       tab == :connections && params["decision"] in ~w(allowed denied) && params["decision"]
 
+    page = (tab == :connections && sequence(params["page"])) || 1
+
     timeline_query =
       %{}
-      |> put_if("lane", lane || nil)
+      |> put_if("lane", lane && lane.id)
       |> put_if("cx", if(cx, do: nil, else: "0"))
 
-    canonical =
-      case tab do
-        :timeline -> put_if(timeline_query, "seq", target && Integer.to_string(seq))
-        :connections -> put_if(%{}, "decision", decision || nil)
-        _ -> %{}
-      end
-
     socket =
-      assign(socket,
+      socket
+      |> assign(
         target: target || nil,
-        lane: lane || nil,
+        lane: (lane && lane.id) || nil,
         cx: cx,
         decision: decision || nil,
         timeline_query: keep_timeline_query(socket, tab, timeline_query)
       )
+      |> read_tab(tab, decision || nil, page)
 
-    cond do
-      canonical != params ->
-        push_patch(socket, to: tab_path(run, tab, canonical), replace: true)
+    canonical =
+      case tab do
+        :timeline ->
+          put_if(timeline_query, "seq", target && Integer.to_string(seq))
 
-      tab == :timeline ->
-        socket |> ensure_window() |> assign_window_counts()
+        :connections ->
+          page = socket.assigns.connections.page
 
-      true ->
-        assign(socket, window_loaded: false)
-    end
+          %{}
+          |> put_if("decision", decision || nil)
+          |> put_if("page", if(page > 1, do: Integer.to_string(page)))
+
+        _ ->
+          %{}
+      end
+
+    if canonical != params,
+      do: push_patch(socket, to: tab_path(run, tab, canonical), replace: true),
+      else: socket
+  end
+
+  # What a tab shows is read when the tab opens, and only then.
+  defp read_tab(socket, :timeline, _decision, _page),
+    do: socket |> ensure_window() |> assign_window_counts()
+
+  defp read_tab(socket, :terminal, _decision, _page) do
+    %{current_scope: scope, run: run} = socket.assigns
+    assign(socket, window_loaded: false, log: Record.log_summary(scope, run))
+  end
+
+  defp read_tab(socket, :connections, decision, page) do
+    %{current_scope: scope, run: run} = socket.assigns
+
+    assign(socket,
+      window_loaded: false,
+      counts: Record.connection_counts(scope, run),
+      connections: Record.connections(scope, run, decision: decision, page: page)
+    )
+  end
+
+  defp read_tab(socket, :details, _decision, _page) do
+    %{current_scope: scope, run: run} = socket.assigns
+    assign(socket, window_loaded: false, session_id: Record.session_id(scope, run))
   end
 
   # The other tabs link back to the timeline as the reader left it.
@@ -802,6 +879,7 @@ defmodule ApiaryWeb.RunLive.Show do
   defp sequence(_value), do: nil
 
   defp put_if(map, _key, nil), do: map
+  defp put_if(map, _key, false), do: map
   defp put_if(map, key, value), do: Map.put(map, key, value)
 
   defp lane_query(query, current, lane_id) do
@@ -810,6 +888,12 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp cx_query(query, true), do: Map.put(query, "cx", "0")
   defp cx_query(query, false), do: Map.delete(query, "cx")
+
+  defp connections_query(decision, page) do
+    %{}
+    |> put_if("decision", decision)
+    |> put_if("page", if(page > 1, do: Integer.to_string(page)))
+  end
 
   defp tab_path(run, tab, query \\ %{})
   defp tab_path(%Run{run_id: id}, :timeline, query), do: ~p"/hive/runs/#{id}?#{query}"
@@ -824,9 +908,16 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp label_path(%Run{forge: forge, repository: repository}, key, _value)
        when key in ~w(forge repository) and is_binary(forge) and is_binary(repository),
-       do: ~p"/hive/runs?#{%{repo: "#{forge}:#{repository}"}}"
+       do: ~p"/hive/runs?#{Filters.repo_params(forge, repository)}"
 
   defp label_path(_run, _key, _value), do: nil
+
+  # The chips of the lane key: the first dozen, and the isolated one wherever it is.
+  defp lane_chips(index, isolated) do
+    if is_nil(isolated) or Enum.any?(index.lanes, &(&1.id == isolated)),
+      do: index.lanes,
+      else: index.lanes ++ List.wrap(Timeline.lane(index, isolated))
+  end
 
   ## The window of the timeline
 
@@ -853,8 +944,12 @@ defmodule ApiaryWeb.RunLive.Show do
 
     start =
       case around && Enum.find_index(items, &(&1.seq == around)) do
-        index when is_integer(index) -> max(index - div(@window, 2), 0)
-        _ -> 0
+        # Around the target, and a whole window even when the target is near the end.
+        index when is_integer(index) ->
+          (index - div(@window, 2)) |> min(length(items) - @window) |> max(0)
+
+        _ ->
+          0
       end
 
     put_window(socket, Enum.slice(items, start, @window))
@@ -876,12 +971,12 @@ defmodule ApiaryWeb.RunLive.Show do
   end
 
   defp build(socket, light) do
-    %{current_scope: scope, run: run, index: index, full: full} = socket.assigns
-    Record.items(scope, run, index, light, full: MapSet.to_list(full))
+    %{current_scope: scope, run: run, full: full} = socket.assigns
+    Record.items(scope, run, light, full: MapSet.to_list(full))
   end
 
   defp assign_window_counts(socket) do
-    %{index: index, win_first: first, win_last: last} = socket.assigns
+    %{index: index, win_first: first, win_last: last, run: run} = socket.assigns
 
     {earlier, later} =
       if is_integer(first),
@@ -889,14 +984,12 @@ defmodule ApiaryWeb.RunLive.Show do
           {Enum.count(index.items, &(&1.seq < first)), Enum.count(index.items, &(&1.seq > last))},
         else: {0, length(index.items)}
 
-    unread = max(socket.assigns.run.event_count - socket.assigns.run.projected_sequence, 0)
-
     assign(socket,
       earlier: earlier,
       later: later,
       new_count: min(socket.assigns.new_count, later),
-      unread: unread,
-      limit: limit_reason(socket.assigns.run, index)
+      unread: max(run.event_count - run.projected_sequence, 0),
+      limit: limit_reason(run, index)
     )
   end
 
@@ -929,7 +1022,8 @@ defmodule ApiaryWeb.RunLive.Show do
   defp limit_reason(%Run{state: "pending"}, _index), do: :not_started
 
   defp limit_reason(%Run{} = run, index) do
-    settled? = not alive?(run) or older_than?(run.started_at, 60)
+    # By this server's clock, from when it first heard of the run: never the runner's.
+    settled? = not alive?(run) or older_than?(run.inserted_at, 60)
 
     cond do
       is_binary(run.runtime) and run.runtime != "claude" ->
@@ -952,9 +1046,9 @@ defmodule ApiaryWeb.RunLive.Show do
   ## Events from the page
 
   @impl true
-  def handle_event("load_earlier", _params, socket) do
-    %{index: index, win_first: first} = socket.assigns
-    light = index.items |> Enum.filter(&(&1.seq < first)) |> Enum.take(-@page)
+  def handle_event("load_earlier", _params, %{assigns: %{win_first: first}} = socket)
+      when is_integer(first) do
+    light = socket.assigns.index.items |> Enum.filter(&(&1.seq < first)) |> Enum.take(-@page)
 
     socket =
       if light == [] do
@@ -965,19 +1059,20 @@ defmodule ApiaryWeb.RunLive.Show do
         |> stream(:items, socket |> build(light) |> Enum.reverse(), at: 0, limit: @max_dom)
         |> assign(win_first: hd(light).seq)
         |> trim_window(:after_prepend)
+        |> announce("#{count_noun(length(light), "earlier event")} loaded.", :now)
       end
 
     {:noreply, assign_window_counts(socket)}
   end
 
-  def handle_event("load_later", _params, socket) do
+  def handle_event("load_later", _params, %{assigns: %{window_loaded: true}} = socket) do
     %{index: index, win_last: last} = socket.assigns
     light = index.items |> Enum.filter(&(&1.seq > (last || 0))) |> Enum.take(@page)
     socket = if light == [], do: socket, else: append(socket, light)
     {:noreply, assign_window_counts(socket)}
   end
 
-  def handle_event("show_new", _params, socket) do
+  def handle_event("show_new", _params, %{assigns: %{window_loaded: true}} = socket) do
     %{index: index, win_last: last} = socket.assigns
     tail = Enum.filter(index.items, &(&1.seq > (last || 0)))
     first_new = tail |> Enum.take(-max(socket.assigns.new_count, 1)) |> List.first()
@@ -1000,10 +1095,10 @@ defmodule ApiaryWeb.RunLive.Show do
     {:noreply, assign(socket, at_end: at_end)}
   end
 
-  def handle_event("show_all", %{"seq" => seq}, socket) do
+  def handle_event("show_all", %{"seq" => seq}, %{assigns: %{window_loaded: true}} = socket) do
     with seq when is_integer(seq) <- sequence(seq),
-         %{} = light <- Enum.find(socket.assigns.index.items, &(&1.seq == seq)),
-         true <- in_window?(socket, seq) do
+         true <- in_window?(socket, seq),
+         %{} = light <- Enum.find(socket.assigns.index.items, &(&1.seq == seq)) do
       socket = assign(socket, full: MapSet.put(socket.assigns.full, seq))
       {:noreply, stream(socket, :items, build(socket, [light]))}
     else
@@ -1011,20 +1106,28 @@ defmodule ApiaryWeb.RunLive.Show do
     end
   end
 
-  def handle_event("close", _params, socket) do
-    {:noreply, assign(socket, confirm_close: socket.assigns.run.state in @closable)}
+  def handle_event("close", _params, %{assigns: %{run: %Run{state: state}}} = socket) do
+    {:noreply, assign(socket, confirm_close: state in Runs.closable_states())}
   end
 
   def handle_event("close_cancel", _params, socket),
     do: {:noreply, assign(socket, confirm_close: false)}
 
-  def handle_event("close_confirm", _params, socket) do
-    %{current_scope: scope, run: run} = socket.assigns
-
+  # The context decides what may be closed; the page only asks.
+  def handle_event("close_confirm", _params, %{assigns: %{run: %Run{} = run}} = socket) do
     socket =
-      case Runs.close_run(scope, run) do
+      case Runs.close_run(socket.assigns.current_scope, run) do
         {:ok, closed} ->
-          socket |> follow_run(closed) |> put_flash(:info, "Run closed.")
+          socket
+          |> follow_run(closed)
+          |> put_flash(:info, "Run closed.")
+          # The button that had focus is gone with the state it belonged to.
+          |> push_event("run:focus", %{id: "run-title"})
+
+        {:error, :not_closable} ->
+          socket
+          |> refresh_run()
+          |> put_flash(:error, "This run has ended; its record keeps the end it posted.")
 
         {:error, :unauthorized} ->
           put_flash(socket, :error, "You are no longer a member of this hive.")
@@ -1036,25 +1139,37 @@ defmodule ApiaryWeb.RunLive.Show do
     {:noreply, assign(socket, confirm_close: false)}
   end
 
-  ## The run's topic
+  # A crafted event, or one for a page without a run: nothing to do.
+  def handle_event(_event, _params, socket), do: {:noreply, socket}
 
-  @impl true
-  def handle_info({:run_changed, %Run{} = run}, socket), do: {:noreply, follow_run(socket, run)}
-
-  # At most one read per run per #{@coalesce_ms} ms, however many batches land.
-  def handle_info({:run_projected, %Run{} = run, _first, _last}, socket) do
-    socket = follow_run(socket, run)
-
-    if socket.assigns.flush_scheduled do
-      {:noreply, socket}
-    else
-      Process.send_after(self(), :flush, @coalesce_ms)
-      {:noreply, assign(socket, flush_scheduled: true)}
+  defp refresh_run(socket) do
+    case Record.reload(socket.assigns.current_scope, socket.assigns.run) do
+      %Run{} = run -> follow_run(socket, run)
+      nil -> socket
     end
   end
 
+  ## The run's topic
+
+  @impl true
+  def handle_info({:run_changed, %Run{} = run}, socket),
+    do: {:noreply, socket |> follow_run(run) |> schedule_flush()}
+
+  # At most one read per run per #{@coalesce_ms} ms, however many batches land: the ranges
+  # that arrive in between are joined.
+  def handle_info({:run_projected, %Run{} = run, first, last}, socket)
+      when is_integer(first) and is_integer(last) do
+    range =
+      case socket.assigns.range do
+        nil -> {first, last}
+        {a, b} -> {min(a, first), max(b, last)}
+      end
+
+    {:noreply, socket |> follow_run(run) |> assign(range: range) |> schedule_flush()}
+  end
+
   def handle_info(:flush, socket) do
-    {:noreply, socket |> assign(flush_scheduled: false) |> refresh_record()}
+    {:noreply, socket |> assign(flush_scheduled: false) |> flush()}
   end
 
   # Quiet is the server's word: recomputed on a timer and on every batch, never by the page.
@@ -1067,10 +1182,9 @@ defmodule ApiaryWeb.RunLive.Show do
         now = quiet_for(run)
 
         socket =
-          cond do
-            is_nil(was) and now != nil -> announce(socket, "No heartbeat for #{now} s.", :now)
-            true -> socket
-          end
+          if is_nil(was) and now != nil,
+            do: announce(socket, "No heartbeat for #{now} s.", :now),
+            else: socket
 
         socket = assign(socket, quiet_for: now)
 
@@ -1086,6 +1200,13 @@ defmodule ApiaryWeb.RunLive.Show do
   end
 
   def handle_info(_other, socket), do: {:noreply, socket}
+
+  defp schedule_flush(%{assigns: %{flush_scheduled: true}} = socket), do: socket
+
+  defp schedule_flush(socket) do
+    Process.send_after(self(), :flush, @coalesce_ms)
+    assign(socket, flush_scheduled: true)
+  end
 
   defp follow_run(%{assigns: %{run: %Run{id: id} = old}} = socket, %Run{id: id} = run) do
     # The broadcast carries the row; the key it was posted with does not change.
@@ -1133,6 +1254,7 @@ defmodule ApiaryWeb.RunLive.Show do
   defp state_sentence(%Run{}), do: nil
 
   defp announce(socket, nil, _when), do: socket
+
   # A state change is said at once, and holds the floor: "n new events" waits its turn.
   defp announce(socket, text, :now),
     do: assign(socket, announcement: text, announced_at: System.monotonic_time(:millisecond))
@@ -1147,75 +1269,121 @@ defmodule ApiaryWeb.RunLive.Show do
       else: socket
   end
 
-  # After a projection: the record is read again, and the timeline follows by difference.
-  defp refresh_record(%{assigns: %{run: %Run{}}} = socket) do
-    old = socket.assigns.index
-    old_through = socket.assigns.log.through
-    socket = assign_record(socket)
+  # After the projections of the last quarter second. What is read is the range they
+  # announced and what the open tab shows of it: never the run again, whatever its size.
+  # The one exception is an event that arrived below what the page holds.
+  defp flush(%{assigns: %{run: %Run{} = run, loaded: true}} = socket) do
+    %{current_scope: scope, index: old, range: range, live_action: tab} = socket.assigns
+    socket = assign(socket, range: nil)
 
-    socket =
-      if socket.assigns.log.through > old_through,
-        do: push_event(socket, "log_advanced", %{through: socket.assigns.log.through}),
-        else: socket
+    {index, rows} =
+      case range do
+        nil ->
+          {Timeline.alive(old, alive?(run)), []}
 
-    if socket.assigns.live_action == :timeline and socket.assigns.window_loaded,
-      do: socket |> follow_timeline(old) |> assign_window_counts(),
+        {first, last} ->
+          case Record.extend_timeline(scope, run, old, first, last) do
+            {:ok, index, rows} -> {index, rows}
+            :stale -> {Record.timeline(scope, run), :stale}
+          end
+      end
+
+    socket = assign(socket, index: index)
+
+    case rows do
+      :stale ->
+        socket
+        |> assign(policy: Record.policy(scope, run), window_loaded: false)
+        |> read_tab(tab, socket.assigns.decision, socket.assigns.connections.page)
+
+      rows ->
+        types = MapSet.new(rows, & &1.type)
+        egress? = "ai.qory.run.egress" in types
+
+        socket
+        |> then(
+          &if("ai.qory.run.policy_applied" in types,
+            do: assign(&1, policy: Record.policy(scope, run)),
+            else: &1
+          )
+        )
+        |> then(
+          &if(egress?, do: assign(&1, counts: Record.connection_counts(scope, run)), else: &1)
+        )
+        |> flush_tab(tab, old, types, range)
+    end
+  end
+
+  defp flush(socket), do: assign(socket, range: nil)
+
+  defp flush_tab(%{assigns: %{window_loaded: true}} = socket, :timeline, old, _types, _range),
+    do: socket |> follow_timeline(old) |> assign_window_counts()
+
+  # The log is read by difference: what followed the last chunk the page knows of. The
+  # hook is told how far it has come, and fetches the bytes itself.
+  defp flush_tab(socket, :terminal, _old, _types, range) when range != nil do
+    %{current_scope: scope, run: run, log: log} = socket.assigns
+    more = Record.log_summary(scope, run, log.through)
+
+    if more.chunks > 0 do
+      log = Record.add_log_summary(log, more)
+      socket |> assign(log: log) |> push_event("log_advanced", %{through: log.through})
+    else
+      socket
+    end
+  end
+
+  defp flush_tab(socket, :connections, _old, types, _range) do
+    if "ai.qory.run.egress" in types,
+      do:
+        read_tab(socket, :connections, socket.assigns.decision, socket.assigns.connections.page),
       else: socket
   end
 
-  defp refresh_record(socket), do: socket
+  defp flush_tab(socket, :details, _old, types, _range) do
+    if "ai.qory.session.started" in types,
+      do: read_tab(socket, :details, nil, 1),
+      else: socket
+  end
+
+  defp flush_tab(socket, _tab, _old, _types, _range), do: socket
 
   defp follow_timeline(socket, old) do
     %{index: new, win_first: first, win_last: last} = socket.assigns
-    old_by_seq = Map.new(old.items, &{&1.seq, &1})
-    new_seqs = MapSet.new(new.items, & &1.seq)
     old_last = old.items |> List.last() |> then(&((&1 && &1.seq) || 0))
 
-    arrived = Enum.reject(new.items, &is_map_key(old_by_seq, &1.seq))
-    {appended, inside} = Enum.split_with(arrived, &(&1.seq > old_last))
+    if is_nil(first) do
+      # Nothing was on the page yet: the window starts with what arrived.
+      reset_window(socket, socket.assigns.target)
+    else
+      old_in_window =
+        for item <- old.items,
+            item.seq >= first and item.seq <= last,
+            into: %{},
+            do: {item.seq, item}
 
-    cond do
-      is_nil(first) ->
-        # Nothing was on the page yet: the window starts with what arrived.
-        reset_window(socket, socket.assigns.target)
+      changed =
+        for item <- new.items,
+            item.seq >= first and item.seq <= last,
+            old_in_window[item.seq] != item,
+            do: item
 
-      Enum.any?(inside, &(&1.seq > first and &1.seq < last)) ->
-        # An event arrived late, inside the window: order is the sequence, so the window
-        # is read again rather than patched.
-        reset_window(socket, first)
+      appended = Enum.drop_while(new.items, &(&1.seq <= old_last))
 
-      true ->
-        gone =
-          for item <- old.items,
-              item.seq not in new_seqs,
-              in_window?(socket, item.seq),
-              do: item.seq
+      socket = if changed == [], do: socket, else: stream(socket, :items, build(socket, changed))
 
-        changed =
-          for item <- new.items,
-              in_window?(socket, item.seq),
-              old_by_seq[item.seq] != item,
-              do: item
+      cond do
+        appended == [] ->
+          socket
 
-        socket = Enum.reduce(gone, socket, &stream_delete_by_dom_id(&2, :items, "e-#{&1}"))
+        last == old_last and socket.assigns.at_end and socket.assigns.new_count == 0 ->
+          append(socket, appended)
 
-        socket =
-          if changed == [], do: socket, else: stream(socket, :items, build(socket, changed))
-
-        at_tail? = last == old_last
-
-        cond do
-          appended == [] ->
-            socket
-
-          at_tail? and socket.assigns.at_end and socket.assigns.new_count == 0 ->
-            append(socket, appended)
-
-          true ->
-            socket
-            |> assign(new_count: socket.assigns.new_count + length(appended))
-            |> announce("#{count_noun(length(appended), "new event")}.", :throttled)
-        end
+        true ->
+          socket
+          |> assign(new_count: socket.assigns.new_count + length(appended))
+          |> announce("#{count_noun(length(appended), "new event")}.", :throttled)
+      end
     end
   end
 
@@ -1234,47 +1402,30 @@ defmodule ApiaryWeb.RunLive.Show do
   defp connections_count(%{all: all}) when all > 0, do: delimited(all)
   defp connections_count(_counts), do: nil
 
-  defp shown_connections(connections, "allowed"), do: Enum.filter(connections, &(&1.allowed > 0))
-  defp shown_connections(connections, "denied"), do: Enum.filter(connections, &(&1.denied > 0))
-  defp shown_connections(connections, _all), do: connections
-
   defp interactive_words(true), do: "Yes, on a pseudo-terminal"
   defp interactive_words(false), do: "No, on pipes"
   defp interactive_words(_unknown), do: "n/a"
 
   defp join(parts), do: parts |> Enum.reject(&is_nil/1) |> Enum.join(" ")
 
-  # A list of strings from an event, bounded, joined for one cell.
-  defp strings(list) when is_list(list) do
-    strings = Enum.filter(list, &is_binary/1)
+  # The strings the record kept of a list, and how many the list had.
+  defp strings([], _count), do: nil
 
-    case Enum.take(strings, 50) do
-      [] ->
-        nil
-
-      shown when length(strings) > 50 ->
-        Enum.join(shown, ", ") <> " and #{length(strings) - 50} more"
-
-      shown ->
-        Enum.join(shown, ", ")
-    end
+  defp strings(shown, count) when is_list(shown) do
+    more = (count || 0) - length(shown)
+    Enum.join(shown, ", ") <> if(more > 0, do: " and #{delimited(more)} more", else: "")
   end
 
-  defp strings(_other), do: nil
+  defp strings(_other, _count), do: nil
 
   # Credentials by name, where each goes. Never a value: the event carries none.
-  defp credential_names(list) when is_list(list) do
-    list
-    |> Enum.filter(&(is_map(&1) and is_binary(&1["name"])))
-    |> Enum.take(20)
-    |> Enum.map(fn credential ->
-      hosts = strings(credential["hosts"])
-      if hosts, do: "#{credential["name"]} (#{hosts})", else: credential["name"]
+  defp credential_names([_ | _] = credentials) do
+    Enum.map_join(credentials, ", ", fn credential ->
+      case credential["hosts"] do
+        [_ | _] = hosts -> "#{credential["name"]} (#{Enum.join(hosts, ", ")})"
+        _ -> credential["name"]
+      end
     end)
-    |> case do
-      [] -> nil
-      names -> Enum.join(names, ", ")
-    end
   end
 
   defp credential_names(_other), do: nil

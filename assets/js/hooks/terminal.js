@@ -70,6 +70,7 @@ export const Terminal = {
     this.message = q("[data-message]")
     this.messageText = q("[data-message-text]")
     this.retry = q("[data-retry]")
+    this.polite = q("[data-announce]")
 
     this.live = this.el.dataset.live === "true"
     this.following = this.live
@@ -123,8 +124,14 @@ export const Terminal = {
       fontFamily: style.getPropertyValue("--font-mono").trim() || "ui-monospace, monospace",
       fontSize: 12.5,
       lineHeight: 1.52,
+      // The search add-on marks its matches with decorations, which xterm.js keeps behind
+      // this flag (registerDecoration); nothing else here uses a proposed API.
       allowProposedApi: true,
-      screenReaderMode: !this.following,
+      // Off, always: xterm's screen reader mode reads every line aloud as it lands. The log
+      // is offered as text beside the box, and a summary is announced at most every 10 s.
+      screenReaderMode: false,
+      // The log is not a place for links: an OSC 8 hyperlink in the bytes does nothing.
+      linkHandler: {activate() {}, hover() {}, leave() {}, allowNonHttpProtocols: false},
       theme: {
         background: hex(bg),
         foreground: hex(token("--q-term-fg")),
@@ -155,6 +162,7 @@ export const Terminal = {
     this.term.loadAddon(this.search)
     this.term.open(this.screen)
     this.fit()
+    this.labelInput(0)
 
     this.resize = new ResizeObserver(() => this.fit())
     this.resize.observe(this.screen)
@@ -187,6 +195,7 @@ export const Terminal = {
   destroyed() {
     this.dead = true
     clearTimeout(this.retryTimer)
+    clearTimeout(this.saying)
     if (this.resize) this.resize.disconnect()
     if (this.term) this.term.dispose()
   },
@@ -324,6 +333,8 @@ export const Terminal = {
     const lines = this.term.buffer.active.length
     const label = this.screen
     label.setAttribute("aria-label", `Log, ${lines.toLocaleString("en-GB")} lines`)
+    this.labelInput(lines)
+    if (!this.initial && lines > before) this.announce(lines - before)
     if (this.following) {
       this.term.scrollToBottom()
     } else if (!this.initial && lines > before) {
@@ -337,14 +348,36 @@ export const Terminal = {
     nextFrame(() => setTimeout(() => !this.dead && !this.following && this.term.scrollToTop(), 30))
   },
 
+  // One tab stop: xterm's own input element, named for what it is, with its keys.
+  labelInput(lines) {
+    const input = this.term.textarea
+    if (!input) return
+    input.setAttribute("aria-label",
+      `Log, ${lines.toLocaleString("en-GB")} lines, read only. Slash searches, Enter and Shift Enter move between matches, ` +
+      "Escape clears, End follows the output, Home goes to the start. The link before this box opens the log as text.")
+    input.setAttribute("aria-readonly", "true")
+  },
+
+  // "128 new lines", politely, at most once every ten seconds.
+  announce(lines) {
+    this.unsaid = (this.unsaid || 0) + lines
+    if (this.saying) return
+    const say = () => {
+      this.saying = null
+      if (this.dead || !this.unsaid) return
+      this.polite.textContent = `${this.unsaid.toLocaleString("en-GB")} new ${this.unsaid === 1 ? "line" : "lines"}`
+      this.unsaid = 0
+      this.saying = setTimeout(say, 10000)
+    }
+    say()
+  },
+
   follow(on) {
     this.following = on
     if (on) {
       this.unseen = 0
       this.term.scrollToBottom()
     }
-    // xterm's screen reader mode announces every line: on only when not following.
-    this.term.options.screenReaderMode = !on
     this.showFollowing()
     this.showPill()
   },

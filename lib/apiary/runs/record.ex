@@ -8,8 +8,12 @@ defmodule Apiary.Runs.Record do
   another hive is never reached: `fetch_run/2` does not find it, and a `%Run{}` of another
   hive handed in reads nothing.
 
-  What an event carries is the runner's input. It is returned as data, bounded by
-  `Apiary.Runs.Record.Timeline`; nothing here renders it.
+  What an event carries is the runner's input, and an event may be megabytes. No function
+  here selects an event's `data` whole: every field is cut by the database before it
+  crosses the wire (`left(...)` on text, a bounded number of elements of an array), so
+  what a read costs this server is bounded by the number of rows, never by what a runner
+  put in them. `Apiary.Runs.Record.Timeline` says what is made of the rows; nothing here
+  renders them.
   """
 
   import Ecto.Query, warn: false
@@ -23,11 +27,55 @@ defmodule Apiary.Runs.Record do
 
   @policy_applied "ai.qory.run.policy_applied"
   @session_started "ai.qory.session.started"
-  @egress "ai.qory.run.egress"
+  @list_types ["ai.qory.session.turn_finished", "ai.qory.session.subagent_finished"]
 
   @log_page 200
   @default_log_limit 2_000
   @max_log_limit 10_000
+  @connections_page 50
+
+  ## SQL that bounds what an array of an event gives. Macros, because a fragment's text is
+  ## fixed at compile time.
+
+  # The first `count` strings of the array under `key`, each cut at `length` characters.
+  defmacrop strings(data, key, count, length) do
+    sql = """
+    (SELECT coalesce(jsonb_agg(left(v #>> '{}', #{length})), '[]'::jsonb)
+       FROM (SELECT v FROM jsonb_array_elements(
+               CASE WHEN jsonb_typeof(? -> '#{key}') = 'array' THEN ? -> '#{key}' ELSE '[]'::jsonb END
+             ) WITH ORDINALITY a(v, n)
+             WHERE jsonb_typeof(v) = 'string' ORDER BY n LIMIT #{count}) q)
+    """
+
+    quote do: fragment(unquote(sql), unquote(data), unquote(data))
+  end
+
+  defmacrop array_length(data, key) do
+    sql =
+      "CASE WHEN jsonb_typeof(? -> '#{key}') = 'array' THEN jsonb_array_length(? -> '#{key}') ELSE 0 END"
+
+    quote do: fragment(unquote(sql), unquote(data), unquote(data))
+  end
+
+  # The background tasks an event lists, the first fifty of them, each as the few words
+  # the page shows; NULL when the event gives no list.
+  defmacrop listed_tasks(data) do
+    sql = """
+    CASE WHEN jsonb_typeof(? -> 'background_tasks') = 'array' THEN
+      (SELECT coalesce(jsonb_agg(jsonb_build_object(
+          'id', CASE WHEN jsonb_typeof(t -> 'id') IN ('string', 'number') THEN left(t ->> 'id', 64) END,
+          'type', left(t ->> 'type', 40),
+          'status', left(t ->> 'status', 40),
+          'what', left(coalesce(t ->> 'command', t ->> 'agent_type', t ->> 'subagent_type', t ->> 'description'), 200))), '[]'::jsonb)
+       FROM (SELECT t FROM jsonb_array_elements(
+               CASE WHEN jsonb_typeof(? -> 'background_tasks') = 'array' THEN ? -> 'background_tasks' ELSE '[]'::jsonb END
+             ) WITH ORDINALITY ts(t, n)
+             WHERE jsonb_typeof(t) = 'object' ORDER BY n LIMIT 50) tq)
+    END
+    """
+
+    quote do: fragment(unquote(sql), unquote(data), unquote(data), unquote(data))
+  end
 
   ## The run
 
@@ -56,185 +104,411 @@ defmodule Apiary.Runs.Record do
   end
 
   @doc """
-  The policy in force: the data of the run's last `run.policy_applied`, with the sequence
-  it was applied at under `:sequence` and its time under `:time`. nil when the run has none.
+  The policy in force, from the run's last `run.policy_applied`: `%{sequence, time, mode,
+  source, allow, allow_count, terminated, terminated_count, credentials}`; the lists hold
+  at most fifty strings, the credentials at most twenty `%{name, hosts}`. nil when the run
+  has none.
   """
   def policy(%Scope{} = scope, %Run{} = run) do
-    case last_of_type(scope, run, @policy_applied) do
-      %{data: %{} = data} = event -> %{data: data, sequence: event.sequence, time: event.time}
-      _ -> nil
-    end
+    Repo.one(
+      from e in events(scope, run),
+        where: e.type == ^@policy_applied,
+        order_by: [desc: e.sequence],
+        limit: 1,
+        select: %{
+          sequence: e.sequence,
+          time: e.time,
+          mode: fragment("left(? ->> 'mode', 40)", e.data),
+          source: fragment("left(? ->> 'source', 40)", e.data),
+          allow: strings(e.data, "allow", 50, 255),
+          allow_count: array_length(e.data, "allow"),
+          terminated: strings(e.data, "terminated", 50, 255),
+          terminated_count: array_length(e.data, "terminated"),
+          credentials:
+            fragment(
+              """
+              (SELECT coalesce(jsonb_agg(jsonb_build_object(
+                  'name', left(c ->> 'name', 120),
+                  'hosts', (SELECT coalesce(jsonb_agg(left(h #>> '{}', 255)), '[]'::jsonb)
+                            FROM (SELECT h FROM jsonb_array_elements(
+                                    CASE WHEN jsonb_typeof(c -> 'hosts') = 'array' THEN c -> 'hosts' ELSE '[]'::jsonb END
+                                  ) WITH ORDINALITY hs(h, n)
+                                  WHERE jsonb_typeof(h) = 'string' ORDER BY n LIMIT 10) hq))), '[]'::jsonb)
+               FROM (SELECT c FROM jsonb_array_elements(
+                       CASE WHEN jsonb_typeof(? -> 'credentials') = 'array' THEN ? -> 'credentials' ELSE '[]'::jsonb END
+                     ) WITH ORDINALITY cs(c, n)
+                     WHERE jsonb_typeof(c -> 'name') = 'string' ORDER BY n LIMIT 20) cq)
+              """,
+              e.data,
+              e.data
+            )
+        }
+    )
   end
 
   @doc "The runtime's session id, from the run's last `session.started`; nil without one."
   def session_id(%Scope{} = scope, %Run{} = run) do
-    case last_of_type(scope, run, @session_started) do
-      %{data: %{"session_id" => id}} when is_binary(id) -> id
-      _ -> nil
-    end
-  end
-
-  defp last_of_type(scope, run, type) do
     Repo.one(
       from e in events(scope, run),
-        where: e.type == ^type,
+        where: e.type == ^@session_started,
         order_by: [desc: e.sequence],
         limit: 1,
-        select: %{sequence: e.sequence, time: e.time, data: e.data}
+        select: fragment("left(? ->> 'session_id', 120)", e.data)
     )
   end
 
   ## The timeline
 
   @doc """
-  The layout of the run's timeline (`Timeline.index/2`), from a light read of every event
-  that makes an item: no payload is loaded.
+  The layout of the run's timeline (`Timeline.index/2`) from a light read of every
+  projected event that makes an item: ids and a few words, no payload. The outstanding
+  background tasks are read beside it, from the last list the runtime gave.
   """
   def timeline(%Scope{} = scope, %Run{} = run) do
-    types = Enum.map(Timeline.types(), &("ai.qory." <> &1))
-
-    light =
-      Repo.all(
-        from e in events(scope, run),
-          where: e.type in ^types,
-          order_by: e.sequence,
-          select: %{
-            sequence: e.sequence,
-            type: e.type,
-            time: e.time,
-            tool_use_id: fragment("?->>'tool_use_id'", e.data),
-            agent_id: fragment("?->>'agent_id'", e.data),
-            agent_type: fragment("?->>'agent_type'", e.data),
-            host: fragment("?->>'host'", e.data),
-            port: fragment("?->>'port'", e.data),
-            decision: fragment("?->>'decision'", e.data),
-            background_tasks: fragment("?->'background_tasks'", e.data)
-          }
-      )
-
-    light
-    |> Enum.map(&bound_light/1)
+    scope
+    |> light(run, 0, nil, false)
     |> Timeline.index(alive: run.state in Run.alive_states())
+    |> Timeline.put_background(background(scope, run))
   end
-
-  # Ids pair events up and name lanes; a runner that sends a megabyte for one is cut.
-  defp bound_light(event) do
-    event
-    |> Map.update!(:tool_use_id, &short/1)
-    |> Map.update!(:agent_id, &short/1)
-    |> Map.update!(:agent_type, &short/1)
-    |> Map.update!(:host, &short/1)
-  end
-
-  defp short(value) when is_binary(value), do: String.slice(value, 0, 255)
-  defp short(_value), do: nil
 
   @doc """
-  The full items of the light items `light` of `index`, payloads bounded. `full:` lists
-  the item sequences whose payloads are given whole.
+  The index extended by the projected events after `index.through`, up to `last`: the
+  range a projection announced. `:stale` when the range reaches below what the index
+  holds: an event arrived late, and order is the sequence, so the run is read again.
   """
-  def items(%Scope{} = scope, %Run{} = run, %{lanes: lanes}, light, opts \\ []) do
-    case Timeline.needed(light, lanes) do
-      [] ->
-        []
-
-      sequences ->
-        events =
-          Repo.all(
-            from e in events(scope, run),
-              where: e.sequence in ^sequences,
-              select: %{sequence: e.sequence, type: e.type, time: e.time, data: e.data}
-          )
-          |> Map.new(fn event -> {event.sequence, %{event | data: data(event.data)}} end)
-
-        Timeline.build(light, events, opts)
+  def extend_timeline(%Scope{} = scope, %Run{} = run, index, first, last)
+      when is_integer(first) and is_integer(last) do
+    if first <= index.through do
+      :stale
+    else
+      rows = light(scope, run, index.through, last, true)
+      {:ok, Timeline.extend(index, rows, alive: run.state in Run.alive_states()), rows}
     end
   end
 
-  defp data(%{} = data), do: data
-  defp data(_other), do: %{}
+  # Only projected events: what a projection announces later is then always new.
+  defp light(scope, run, after_sequence, last, tasks?) do
+    types = Timeline.types()
+
+    query =
+      from e in events(scope, run),
+        where: e.type in ^types and e.sequence > ^after_sequence and not is_nil(e.projected_at),
+        order_by: e.sequence,
+        select: %{
+          sequence: e.sequence,
+          type: e.type,
+          time: e.time,
+          tool_use_id: fragment("left(? ->> 'tool_use_id', 255)", e.data),
+          agent_id: fragment("left(? ->> 'agent_id', 255)", e.data),
+          agent_type: fragment("left(? ->> 'agent_type', 255)", e.data),
+          host: fragment("left(? ->> 'host', 255)", e.data),
+          port: fragment("left(? ->> 'port', 12)", e.data),
+          decision: fragment("left(? ->> 'decision', 12)", e.data)
+        }
+
+    query = if last, do: from(e in query, where: e.sequence <= ^last), else: query
+
+    # Lists are read with a range, which is a few rows; the lists of a whole run are read
+    # by `background/2`, which takes the last of each agent alone.
+    query =
+      if tasks? do
+        from e in query,
+          select_merge: %{
+            background_tasks:
+              fragment(
+                "CASE WHEN ? = ANY(?) THEN ? END",
+                e.type,
+                type(^@list_types, {:array, :string}),
+                listed_tasks(e.data)
+              )
+          }
+      else
+        query
+      end
+
+    Repo.all(query)
+  end
+
+  @doc """
+  The tasks of the last background-task list the runtime gave, fifty at most, each with
+  the sequence of the first list of the run that named it. One event is read for the
+  list, however many the run holds.
+  """
+  def background(%Scope{} = scope, %Run{} = run) do
+    last =
+      Repo.one(
+        from e in events(scope, run),
+          where: e.type in ^@list_types and not is_nil(e.projected_at),
+          where: fragment("jsonb_typeof(? -> 'background_tasks') = 'array'", e.data),
+          order_by: [desc: e.sequence],
+          limit: 1,
+          select: %{sequence: e.sequence, tasks: listed_tasks(e.data)}
+      )
+
+    tasks =
+      if last, do: Enum.filter(last.tasks, &(is_binary(&1["id"]) and &1["id"] != "")), else: []
+
+    listed = first_listed(scope, run, Enum.map(tasks, & &1["id"]))
+
+    for task <- Enum.uniq_by(tasks, & &1["id"]) do
+      %{
+        id: task["id"],
+        type: task["type"],
+        status: task["status"],
+        what: task["what"],
+        listed_at: Map.get(listed, task["id"], last.sequence)
+      }
+    end
+  end
+
+  defp first_listed(_scope, _run, []), do: %{}
+
+  defp first_listed(scope, run, ids) do
+    Repo.all(
+      from e in events(scope, run),
+        where: e.type in ^@list_types,
+        inner_lateral_join:
+          t in fragment(
+            "jsonb_array_elements(CASE WHEN jsonb_typeof(? -> 'background_tasks') = 'array' THEN ? -> 'background_tasks' ELSE '[]'::jsonb END)",
+            e.data,
+            e.data
+          ),
+        on: true,
+        where: fragment("left(? ->> 'id', 64)", t.value) in ^ids,
+        group_by: fragment("left(? ->> 'id', 64)", t.value),
+        select: {fragment("left(? ->> 'id', 64)", t.value), min(e.sequence)}
+    )
+    |> Map.new()
+  end
+
+  @doc """
+  The full items of the light items `light`, every payload cut by the database at
+  #{Timeline.well_limit()} characters. `full:` lists the item sequences read with the
+  larger cap of "Show all", #{Timeline.full_limit()}.
+  """
+  def items(%Scope{} = scope, %Run{} = run, light, opts \\ []) do
+    full = opts |> Keyword.get(:full, []) |> MapSet.new()
+    {whole, cut} = Enum.split_with(light, &(&1.seq in full))
+
+    events =
+      Map.merge(
+        slim(scope, run, Timeline.needed(cut), Timeline.well_limit()),
+        slim(scope, run, Timeline.needed(whole), Timeline.full_limit())
+      )
+
+    Timeline.build(light, events, full: MapSet.to_list(full))
+  end
+
+  # The columns of the statement below, by name: its own names, never an event's.
+  @input_columns for key <- ~w(command file_path pattern path url description),
+                     do: {key, String.to_atom("input_" <> key)}
+  @slim_columns Map.new(
+                  Timeline.slim_keys() ++ [:input_first | Enum.map(@input_columns, &elem(&1, 1))],
+                  &{Atom.to_string(&1), &1}
+                )
+
+  @slim_sql """
+  SELECT
+    e.sequence, e.type, e.time,
+    #{Enum.map_join(~w(tool agent_id agent_type runtime runtime_version host wall mode source model cwd kind outcome reason signal method request_method path decision rule path_rule credential), ",\n  ", &"CASE WHEN jsonb_typeof(e.data -> '#{&1}') = 'string' THEN left(e.data ->> '#{&1}', 400) END AS #{&1}")},
+    #{Enum.map_join(~w(port exit_code duration_ms turns), ",\n  ", &"CASE WHEN jsonb_typeof(e.data -> '#{&1}') = 'number' AND (e.data ->> '#{&1}') ~ '^-?[0-9]{1,15}$' THEN (e.data ->> '#{&1}')::bigint END AS #{&1}")},
+    CASE WHEN jsonb_typeof(e.data -> 'cost_usd') = 'number' AND (e.data ->> 'cost_usd') ~ '^-?[0-9]{1,12}(\\.[0-9]{1,12})?([eE]-?[0-9]{1,2})?$' THEN (e.data ->> 'cost_usd')::float8 END AS cost_usd,
+    (e.data -> 'interrupted' = 'true'::jsonb) IS TRUE AS interrupted,
+    (x.i -> 'run_in_background' = 'true'::jsonb) IS TRUE AS in_background,
+    CASE WHEN jsonb_typeof(e.data -> 'allow') = 'array' THEN jsonb_array_length(e.data -> 'allow') ELSE 0 END AS allow_count,
+    (SELECT coalesce(jsonb_agg(left(v #>> '{}', 120)), '[]'::jsonb)
+       FROM (SELECT v FROM jsonb_array_elements(CASE WHEN jsonb_typeof(e.data -> 'terminated') = 'array' THEN e.data -> 'terminated' ELSE '[]'::jsonb END) WITH ORDINALITY a(v, n)
+             WHERE jsonb_typeof(v) = 'string' ORDER BY n LIMIT 5) q) AS terminated,
+    CASE WHEN jsonb_typeof(e.data -> 'terminated') = 'array' THEN jsonb_array_length(e.data -> 'terminated') ELSE 0 END AS terminated_count,
+    #{Enum.map_join(~w(command file_path pattern path url description), ",\n  ", &"CASE WHEN jsonb_typeof(x.i -> '#{&1}') = 'string' THEN left(x.i ->> '#{&1}', 400) END AS input_#{&1}")},
+    (SELECT left(value #>> '{}', 400) FROM jsonb_each(CASE WHEN jsonb_typeof(x.i) = 'object' THEN x.i ELSE '{}'::jsonb END)
+       WHERE jsonb_typeof(value) = 'string' AND value #>> '{}' <> '' ORDER BY key COLLATE "C" LIMIT 1) AS input_first,
+    #{Enum.map_join(~w(text error details input response stdout stderr response_json), ",\n  ", fn name -> "left(y.#{name}, $5) AS #{name}, octet_length(y.#{name}) AS #{name}_bytes" end)},
+    #{Enum.map_join(~w(error details response stdout stderr), ",\n  ", fn name -> "CASE WHEN y.#{name} IS NULL OR y.#{name} = '' THEN 0 ELSE length(y.#{name}) - length(replace(y.#{name}, E'\\n', '')) + CASE WHEN right(y.#{name}, 1) = E'\\n' THEN 0 ELSE 1 END END AS #{name}_lines" end)}
+  FROM events e
+  CROSS JOIN LATERAL (SELECT e.data -> 'input' AS i, e.data -> 'response' AS r) x
+  CROSS JOIN LATERAL (SELECT
+      CASE WHEN jsonb_typeof(x.r) = 'string' THEN x.r #>> '{}'
+           WHEN jsonb_typeof(x.r #> '{file,content}') = 'string' THEN x.r #>> '{file,content}' END AS plain,
+      CASE WHEN jsonb_typeof(x.r -> 'stdout') = 'string' THEN x.r ->> 'stdout' END AS out,
+      CASE WHEN jsonb_typeof(x.r -> 'stderr') = 'string' THEN x.r ->> 'stderr' END AS err,
+      CASE e.type WHEN 'ai.qory.session.prompt_submitted' THEN e.data -> 'prompt'
+                  WHEN 'ai.qory.session.result' THEN e.data -> 'result'
+                  ELSE e.data -> 'message' END AS body) w
+  CROSS JOIN LATERAL (SELECT
+      CASE WHEN jsonb_typeof(w.body) = 'string' THEN w.body #>> '{}' END AS text,
+      CASE WHEN jsonb_typeof(e.data -> 'error') = 'string' THEN e.data ->> 'error' END AS error,
+      CASE WHEN jsonb_typeof(e.data -> 'details') = 'string' THEN e.data ->> 'details' END AS details,
+      CASE WHEN jsonb_typeof(x.i) = 'object' AND x.i <> '{}'::jsonb THEN jsonb_pretty(x.i) END AS input,
+      w.plain AS response, w.out AS stdout, w.err AS stderr,
+      CASE WHEN x.r IS NOT NULL AND jsonb_typeof(x.r) NOT IN ('string', 'null') AND x.r <> '{}'::jsonb
+                AND coalesce(w.plain, '') = '' AND coalesce(w.out, '') = '' AND coalesce(w.err, '') = ''
+           THEN jsonb_pretty(x.r) END AS response_json) y
+  WHERE e.organisation_id = $1 AND e.hive_id = $2 AND e.run_id = $3 AND e.sequence = ANY($4)
+  """
+
+  # The slim events of `sequences`, by sequence: one statement, scoped like every other
+  # read, whose every text column is cut at `limit` characters by the database.
+  defp slim(_scope, _run, [], _limit), do: %{}
+
+  defp slim(scope, run, sequences, limit) do
+    params = [
+      Ecto.UUID.dump!(organisation_id(scope)),
+      Ecto.UUID.dump!(hive_id(scope)),
+      Ecto.UUID.dump!(run.id),
+      sequences,
+      limit
+    ]
+
+    %{columns: columns, rows: rows} = Repo.query!(@slim_sql, params)
+    columns = Enum.map(columns, &Map.fetch!(@slim_columns, &1))
+
+    for row <- rows, into: %{} do
+      event = columns |> Enum.zip(row) |> Map.new() |> slim_event()
+      {event.sequence, event}
+    end
+  end
+
+  defp slim_event(row) do
+    input =
+      for {key, column} <- @input_columns, into: %{} do
+        {key, row[column]}
+      end
+
+    row
+    |> Map.update!(:time, &utc/1)
+    |> Map.update!(:terminated, &(&1 || []))
+    |> Map.put(:summary, Timeline.tool_summary(row.tool, input, row.input_first))
+    |> Map.take(Timeline.slim_keys())
+    |> Map.new(fn
+      {key, ""} -> {key, nil}
+      pair -> pair
+    end)
+  end
+
+  defp utc(%NaiveDateTime{} = time), do: DateTime.from_naive!(time, "Etc/UTC")
+  defp utc(%DateTime{} = time), do: time
 
   ## Connections
 
+  @doc "How many destinations a page of a run's connections holds."
+  def connections_page_size, do: @connections_page
+
   @doc """
-  The run's connections, one per host, port and path, denied destinations first and then
-  the most recently seen. Each is the projection's counts with the fields of the last
-  egress event of the destination beside them (`decision`, `rule`, `path_rule`,
-  `credential`, `mode`, `outcome`, `request_method`): the reason a row gives is the last
-  attempt's.
+  What the run's connections come to, in one row: `%{all, allowed, denied, attempts}`,
+  destinations that were ever allowed and ever denied, and every attempt.
   """
-  def connections(%Scope{} = scope, %Run{} = run) do
+  def connection_counts(%Scope{} = scope, %Run{} = run) do
+    counts =
+      Repo.one(
+        from c in connections_of(scope, run),
+          select: %{
+            all: count(c.id),
+            allowed: fragment("count(*) FILTER (WHERE ? > 0)", c.allowed),
+            denied: fragment("count(*) FILTER (WHERE ? > 0)", c.denied),
+            attempts: coalesce(sum(c.attempts), 0)
+          }
+      )
+
+    Map.update!(counts, :attempts, &to_integer/1)
+  end
+
+  @doc """
+  A page of the run's connections, one per host, port and path, denied destinations first
+  and then the most recently seen, #{@connections_page} to a page. `decision:` keeps the
+  destinations ever `"allowed"` or ever `"denied"`. The reason a row gives is the last
+  attempt's, as the projection keeps it. `%{rows, page, pages, total}`.
+  """
+  def connections(%Scope{} = scope, %Run{} = run, opts \\ []) do
+    query =
+      case opts[:decision] do
+        "allowed" -> from c in connections_of(scope, run), where: c.allowed > 0
+        "denied" -> from c in connections_of(scope, run), where: c.denied > 0
+        _ -> connections_of(scope, run)
+      end
+
+    total = Repo.aggregate(query, :count)
+    pages = max(ceil(total / @connections_page), 1)
+    page = opts |> Keyword.get(:page, 1) |> max(1) |> min(pages)
+
     rows =
       Repo.all(
-        from c in Connection,
-          where: c.organisation_id == ^organisation_id(scope) and c.hive_id == ^hive_id(scope),
-          where: c.run_id == ^run.id,
-          order_by: [desc: c.denied > 0, desc: c.last_seen_at, desc: c.last_sequence, asc: c.host]
+        from c in query,
+          order_by: [
+            desc: c.denied > 0,
+            desc: c.last_seen_at,
+            desc: c.last_sequence,
+            asc: c.host,
+            asc: c.id
+          ],
+          limit: @connections_page,
+          offset: ^((page - 1) * @connections_page),
+          select: %{
+            id: c.id,
+            host: fragment("left(?, 255)", c.host),
+            port: c.port,
+            path: fragment("left(?, 2000)", c.path),
+            method: fragment("left(?, 40)", c.method),
+            request_method: fragment("left(?, 40)", c.last_request_method),
+            attempts: c.attempts,
+            allowed: c.allowed,
+            denied: c.denied,
+            decision: fragment("left(?, 40)", c.last_decision),
+            rule: fragment("left(?, 400)", c.last_rule),
+            path_rule: fragment("left(?, 400)", c.last_path_rule),
+            credential: fragment("left(?, 400)", c.last_credential),
+            mode: fragment("left(?, 40)", c.last_mode),
+            outcome: fragment("left(?, 40)", c.last_outcome),
+            first_seen_at: c.first_seen_at,
+            last_seen_at: c.last_seen_at,
+            last_sequence: c.last_sequence
+          }
       )
 
-    sequences = Enum.map(rows, & &1.last_sequence)
+    %{rows: rows, page: page, pages: pages, total: total}
+  end
 
-    last =
-      Repo.all(
-        from e in events(scope, run),
-          where: e.type == ^@egress and e.sequence in ^sequences,
-          select: %{sequence: e.sequence, time: e.time, data: e.data}
-      )
-      |> Map.new(fn event ->
-        {event.sequence, Timeline.connection(%{event | data: data(event.data)})}
-      end)
-
-    for row <- rows do
-      attempt = Map.get(last, row.last_sequence, %{})
-
-      %{
-        id: row.id,
-        host: row.host,
-        port: row.port,
-        path: row.path,
-        method: row.method,
-        request_method: attempt[:request_method],
-        attempts: row.attempts,
-        allowed: row.allowed,
-        denied: row.denied,
-        decision: attempt[:decision] || row.last_decision,
-        rule: attempt[:rule] || row.last_rule,
-        path_rule: attempt[:path_rule],
-        credential: attempt[:credential],
-        mode: attempt[:mode],
-        outcome: attempt[:outcome] || row.last_outcome,
-        first_seen_at: row.first_seen_at,
-        last_seen_at: row.last_seen_at,
-        last_sequence: row.last_sequence
-      }
-    end
+  defp connections_of(scope, run) do
+    from c in Connection,
+      where: c.organisation_id == ^organisation_id(scope) and c.hive_id == ^hive_id(scope),
+      where: c.run_id == ^run.id
   end
 
   ## The log
 
   @doc """
-  What the run's log holds: `%{chunks, bytes, through, streams}`; `through` is the last
-  chunk's sequence (0 without chunks) and `streams` the stream names in the record.
+  What the run's log holds after `after_sequence` (0 for all of it): `%{chunks, bytes,
+  through, streams}`; `through` is the last chunk's sequence (`after_sequence` when none
+  follows) and `streams` the stream names among them.
   """
-  def log_summary(%Scope{} = scope, %Run{} = run) do
+  def log_summary(%Scope{} = scope, %Run{} = run, after_sequence \\ 0) do
+    chunks = from l in log_chunks(scope, run), where: l.sequence > ^after_sequence
+
     summary =
       Repo.one(
-        from l in log_chunks(scope, run),
+        from l in chunks,
           select: %{
             chunks: count(l.id),
             bytes: coalesce(sum(fragment("octet_length(?)", l.bytes)), 0),
-            through: coalesce(max(l.sequence), 0)
+            through: coalesce(max(l.sequence), ^after_sequence)
           }
       )
 
-    streams =
-      Repo.all(
-        from l in log_chunks(scope, run), distinct: true, select: l.stream, order_by: l.stream
-      )
+    streams = Repo.all(from l in chunks, distinct: true, select: l.stream, order_by: l.stream)
 
     summary
     |> Map.update!(:bytes, &to_integer/1)
     |> Map.put(:streams, streams)
+  end
+
+  @doc "A summary with what followed it added: the log of a live run, read by difference."
+  def add_log_summary(summary, more) do
+    %{
+      chunks: summary.chunks + more.chunks,
+      bytes: summary.bytes + more.bytes,
+      through: max(summary.through, more.through),
+      streams: Enum.sort(Enum.uniq(summary.streams ++ more.streams))
+    }
   end
 
   defp to_integer(%Decimal{} = n), do: Decimal.to_integer(n)
@@ -242,7 +516,7 @@ defmodule Apiary.Runs.Record do
 
   @doc """
   The sequence of the last of the first `limit` chunks after `after_sequence`, or
-  `after_sequence` itself when none follows: how far `log_pages/5` will go.
+  `after_sequence` itself when none follows: how far `log_pages/7` will go.
 
   `stream:` keeps one stream (`"stdout"`, `"stderr"`, `"terminal"`); `limit: :all` takes
   every chunk.

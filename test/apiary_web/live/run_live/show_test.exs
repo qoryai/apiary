@@ -79,7 +79,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       # breadcrumb, title, state, alive sentence
       assert html =~ ~s(aria-label="Breadcrumb")
       assert html =~ String.slice(run.run_id, 0, 8)
-      assert html =~ "<h1>#{run.task}</h1>"
+      assert has_element?(lv, "h1#run-title", run.task)
       assert html =~ "Exited"
       assert html =~ "after it started"
 
@@ -119,9 +119,9 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       scope: scope
     } do
       run = projected(scope, [{1, "run.started", started_data(%{"labels" => %{}})}])
-      {:ok, _lv, html} = live(conn, ~p"/hive/runs/#{run.run_id}")
+      {:ok, lv, html} = live(conn, ~p"/hive/runs/#{run.run_id}")
 
-      assert html =~ ~r/<h1>\s*Run <span[^>]*>#{String.slice(run.run_id, 0, 8)}/
+      assert has_element?(lv, "h1#run-title", "Run #{String.slice(run.run_id, 0, 8)}")
       assert html =~ "This run had no wall"
       refute html =~ "Labels"
       # unassigned: the breadcrumb has no repository
@@ -211,9 +211,9 @@ defmodule ApiaryWeb.RunLive.ShowTest do
     } do
       {:ok, lv, html} = live(conn, ~p"/hive/runs/#{run.run_id}")
 
-      assert has_element?(lv, "a.q-lanekey.q-lane-main", "Main session")
-      assert has_element?(lv, "a.q-lanekey.q-lane-a", "Explore")
-      assert has_element?(lv, "a.q-lanekey.q-lane-b", "general-purpose")
+      assert has_element?(lv, "button.q-lanekey.q-lane-main", "Main session")
+      assert has_element?(lv, "button.q-lanekey.q-lane-a", "Explore")
+      assert has_element?(lv, "button.q-lanekey.q-lane-b", "general-purpose")
       assert html =~ "agent-demo-a1"
       assert has_element?(lv, "ol.q-lanes-3")
 
@@ -278,16 +278,17 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}?seq=59")
       assert has_element?(lv, "ol#timeline[data-target='e-58']")
 
-      assert {:error, {:live_redirect, %{to: to}}} =
-               live(conn, ~p"/hive/runs/#{run.run_id}?seq=99999&lane=nobody&cx=7&x=1")
-
-      assert to == ~p"/hive/runs/#{run.run_id}"
+      # what is not valid is dropped: the page is the plain one, and its links carry none of it
+      {:ok, lv, html} = live(conn, ~p"/hive/runs/#{run.run_id}?seq=99999&lane=nobody&cx=7&x=1")
+      refute has_element?(lv, "ol#timeline[data-target]")
+      refute has_element?(lv, "ol#timeline[data-isolate]")
+      assert has_element?(lv, "ol#timeline[data-cx='1']")
+      refute html =~ "nobody"
+      refute html =~ "99999"
 
       # a valid one among them is kept
-      assert {:error, {:live_redirect, %{to: to}}} =
-               live(conn, ~p"/hive/runs/#{run.run_id}?seq=58&x=1")
-
-      assert to == ~p"/hive/runs/#{run.run_id}?seq=58"
+      {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}?seq=58&x=1")
+      assert has_element?(lv, "ol#timeline[data-target='e-58']")
     end
 
     test "?lane= isolates a lane and ?cx=0 hides the connections; both are toggles that patch", %{
@@ -296,17 +297,17 @@ defmodule ApiaryWeb.RunLive.ShowTest do
     } do
       {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}")
 
-      lv |> element("a.q-lanekey.q-lane-a") |> render_click()
+      lv |> element("button.q-lanekey.q-lane-a") |> render_click()
       assert_patch(lv, ~p"/hive/runs/#{run.run_id}?lane=agent-demo-a1")
       assert has_element?(lv, "ol#timeline[data-isolate='agent-demo-a1']")
-      assert has_element?(lv, "a.q-lanekey.q-lane-a[aria-pressed='true']")
-      assert has_element?(lv, "a.q-lanekey.q-lane-b[aria-pressed='false']")
+      assert has_element?(lv, "button.q-lanekey.q-lane-a[aria-pressed='true']")
+      assert has_element?(lv, "button.q-lanekey.q-lane-b[aria-pressed='false']")
 
       lv |> element("#toggle-connections") |> render_click()
       assert_patch(lv, ~p"/hive/runs/#{run.run_id}?cx=0&lane=agent-demo-a1")
       assert has_element?(lv, "ol#timeline[data-cx='0']")
 
-      lv |> element("a.q-lanekey.q-lane-a") |> render_click()
+      lv |> element("button.q-lanekey.q-lane-a") |> render_click()
       assert_patch(lv, ~p"/hive/runs/#{run.run_id}?cx=0")
       refute has_element?(lv, "ol#timeline[data-isolate]")
     end
@@ -684,16 +685,14 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert html =~ "forge-token"
       assert html =~ "behind a wall, anything else fails unseen."
 
-      lv |> element("#decision a", "Denied") |> render_click()
+      lv |> element("#decision button", "Denied") |> render_click()
       assert_patch(lv, ~p"/hive/runs/#{run.run_id}/connections?decision=denied")
       html = render(lv)
       refute html =~ "git-upload-pack"
       assert html =~ "registry.example"
 
-      assert {:error, {:live_redirect, %{to: to}}} =
-               live(conn, ~p"/hive/runs/#{run.run_id}/connections?decision=maybe")
-
-      assert to == ~p"/hive/runs/#{run.run_id}/connections"
+      {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}/connections?decision=maybe")
+      assert has_element?(lv, "#decision button[aria-pressed='true']", "All")
     end
 
     test "no egress: the sentence, never an empty table", %{conn: conn, scope: scope} do
@@ -751,6 +750,449 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert html =~ "Closed"
       refute has_element?(lv, "#close-run-button")
       assert has_element?(lv, "#run-announcer", "Run closed.")
+    end
+  end
+
+  describe "read budget of a live page (H3)" do
+    # What twenty projections cost the page must not depend on how long the run is.
+    defp live_run(scope, items) do
+      now = DateTime.utc_now()
+
+      events =
+        [{1, "run.started", started_data(), time: now}] ++
+          for(
+            n <- 2..items,
+            do: {n, "session.notification", %{"kind" => "k", "message" => "m#{n}"}, time: now}
+          ) ++
+          for(
+            n <- (items + 1)..(items + 40),
+            do: {n, "run.egress", egress_data(%{"host" => "h#{n}.example"}), time: now}
+          ) ++
+          for(
+            n <- (items + 41)..(items + 80),
+            do:
+              {n, "run.log", %{"stream" => "stdout", "bytes" => Base.encode64("l\n")}, time: now}
+          )
+
+      {projected(scope, events), items + 80, now}
+    end
+
+    defp twenty_projections(conn, scope, items, path) do
+      {run, last, now} = live_run(scope, items)
+      {:ok, lv, _html} = live(conn, "/hive/runs/#{run.run_id}" <> path)
+
+      handler = {__MODULE__, make_ref()}
+      counter = :counters.new(2, [])
+      page = lv.pid
+
+      :telemetry.attach(
+        handler,
+        [:apiary, :repo, :query],
+        fn _event, _measurements, metadata, _config ->
+          if self() == page do
+            :counters.add(counter, 1, 1)
+
+            case metadata[:result] do
+              {:ok, %{num_rows: rows}} when is_integer(rows) -> :counters.add(counter, 2, rows)
+              _ -> :ok
+            end
+          end
+        end,
+        nil
+      )
+
+      for n <- 1..20 do
+        sequence = last + n
+
+        event =
+          case rem(n, 4) do
+            0 ->
+              {sequence, "run.egress", egress_data(%{"host" => "late#{n}.example"}), time: now}
+
+            1 ->
+              {sequence, "run.log", %{"stream" => "stdout", "bytes" => Base.encode64("x\n")},
+               time: now}
+
+            _ ->
+              {sequence, "session.notification", %{"kind" => "k", "message" => "new #{n}"},
+               time: now}
+          end
+
+        project_more(run, [event])
+        flush(lv)
+      end
+
+      :telemetry.detach(handler)
+      html = render(lv)
+      {:counters.get(counter, 1), :counters.get(counter, 2), html}
+    end
+
+    for {tab, path} <- [
+          timeline: "",
+          terminal: "/terminal",
+          connections: "/connections",
+          details: "/details"
+        ] do
+      test "#{tab}: twenty projections read the same whatever the size of the run", %{
+        conn: conn,
+        scope: scope
+      } do
+        # Both are longer than a window, so what differs is the size of the run alone.
+        {small_queries, small_rows, _} = twenty_projections(conn, scope, 400, unquote(path))
+        {large_queries, large_rows, html} = twenty_projections(conn, scope, 3_000, unquote(path))
+
+        IO.puts(
+          "\n[budget H3] #{unquote(tab)}: 20 projections on a run of 480 events: #{small_queries} queries, #{small_rows} rows; of 3,080 events: #{large_queries} queries, #{large_rows} rows"
+        )
+
+        assert large_queries == small_queries
+        assert large_rows == small_rows
+        assert large_queries <= 80
+
+        # and the page followed all the same
+        if unquote(tab) == :timeline, do: assert(html =~ "new events")
+        if unquote(tab) == :terminal, do: assert(html =~ "45 chunks")
+      end
+    end
+
+    test "opening the page reads the record once: the static render has the header and a skeleton",
+         %{conn: conn, scope: scope} do
+      run = demo(scope, "session-with-subagents")
+
+      html = conn |> get(~p"/hive/runs/#{run.run_id}") |> html_response(200)
+
+      assert html =~ run.task
+      assert html =~ "Exited"
+      assert html =~ ~s(id="run-loading")
+      refute html =~ ~s(id="timeline")
+      refute html =~ "package.json"
+    end
+
+    test "an event that arrives below what the page holds is read in its place", %{
+      conn: conn,
+      scope: scope
+    } do
+      now = DateTime.utc_now()
+
+      run =
+        projected(scope, [
+          {1, "run.started", started_data(), time: now},
+          {2, "session.prompt_submitted", %{"prompt" => "go"}, time: now},
+          {5, "session.turn_finished", %{"message" => "done"}, time: now}
+        ])
+
+      {:ok, lv, html} = live(conn, ~p"/hive/runs/#{run.run_id}")
+      assert item_ids(html) == ["e-1", "e-2", "e-5"]
+
+      project_more(run, [
+        {3, "session.notification", %{"kind" => "late", "message" => "late"}, time: now}
+      ])
+
+      assert lv |> flush() |> item_ids() == ["e-1", "e-2", "e-3", "e-5"]
+    end
+  end
+
+  describe "a call the record never ends (M1, M2)" do
+    setup %{scope: scope} do
+      run =
+        projected(scope, [
+          {1, "session.tool_started",
+           %{"tool" => "Bash", "tool_use_id" => "t", "input" => %{"command" => "sleep 9"}}},
+          {2, "session.turn_finished", %{"message" => "done"}},
+          {3, "session.ended", %{"reason" => "other"}},
+          {4, "session.started", %{"source" => "resume"}},
+          {5, "run.egress",
+           egress_data(%{
+             "host" => "late.example",
+             "decision" => "denied",
+             "outcome" => "refused",
+             "rule" => ""
+           })}
+        ])
+
+      %{run: run}
+    end
+
+    test "the later connection is an item at its own sequence, and ?seq=5 is that item", %{
+      conn: conn,
+      run: run
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}?seq=5")
+
+      assert has_element?(lv, "ol#timeline[data-target='e-5']")
+      assert has_element?(lv, "#e-5.q-ti-cx .q-cx-denied", "late.example")
+      refute has_element?(lv, "#e-1 .q-during")
+    end
+
+    test "the call reads No end recorded, never Running", %{conn: conn, run: run} do
+      {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}")
+
+      assert has_element?(lv, "#e-1 .q-no-end", "No end recorded")
+      refute has_element?(lv, "#e-1 .q-running")
+      refute has_element?(lv, "#e-1 .q-spin")
+    end
+
+    test "on a run that has ended an open call is not Running either", %{conn: conn, scope: scope} do
+      now = DateTime.utc_now()
+
+      run =
+        projected(scope, [
+          {1, "run.started", started_data(), time: now},
+          {2, "session.tool_started",
+           %{"tool" => "Bash", "tool_use_id" => "t", "input" => %{"command" => "x"}}, time: now}
+        ])
+
+      {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}")
+      assert has_element?(lv, "#e-2 .q-running", "Running")
+
+      # the run is found lost: no projection, only the change of state
+      {:ok, lost} =
+        Runs.get_run!(scope, run.id)
+        |> Ecto.Changeset.change(state: "lost")
+        |> Apiary.Repo.update()
+
+      send(lv.pid, {:run_changed, lost})
+      flush(lv)
+
+      refute has_element?(lv, "#e-2 .q-running")
+      assert has_element?(lv, "#e-2 .q-no-end", "No end recorded")
+    end
+  end
+
+  describe "clocks (M3)" do
+    test "so far counts from the runner's elapsed seconds and this server's clock, never from started_at",
+         %{conn: conn, scope: scope} do
+      received = DateTime.add(DateTime.utc_now(), -5, :second)
+
+      run =
+        projected(scope, [
+          # The runner's clock is a day behind.
+          {1, "run.started", started_data(),
+           time: DateTime.add(received, -86_400, :second), received_at: received},
+          {2, "run.heartbeat", %{"elapsed_seconds" => 600, "interval_seconds" => 60},
+           time: DateTime.add(received, -85_800, :second), received_at: received}
+        ])
+
+      {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}")
+
+      assert has_element?(lv, "#run-duration[data-base='600']")
+      assert lv |> element("#run-duration") |> render() =~ ~r/10 m 0\d s/
+      refute render(lv) =~ "24 h"
+    end
+  end
+
+  describe "bounds of what is drawn (M5, M7)" do
+    test "a dozen lane chips and the rest as a number; any lane can still be isolated", %{
+      conn: conn,
+      scope: scope
+    } do
+      now = DateTime.utc_now()
+
+      events =
+        [{1, "run.started", started_data(), time: now}] ++
+          for(
+            n <- 1..30,
+            do:
+              {n + 1, "session.subagent_started",
+               %{"agent_id" => "agent-#{n}", "agent_type" => "Explore"}, time: now}
+          )
+
+      run = projected(scope, events)
+      {:ok, lv, html} = live(conn, ~p"/hive/runs/#{run.run_id}")
+
+      assert html
+             |> LazyHTML.from_document()
+             |> LazyHTML.query("button.q-lanekey")
+             |> Enum.count() == 13
+
+      assert has_element?(lv, "#more-lanes", "and 18 more")
+      # ids are the lanes' numbers, not the runner's strings
+      assert has_element?(lv, "button#lane-0", "Main session")
+      assert has_element?(lv, "button#lane-12", "agent-12")
+
+      {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}?lane=agent-27")
+      assert has_element?(lv, "ol#timeline[data-isolate='agent-27']")
+      assert has_element?(lv, "button#lane-27[aria-pressed='true']", "agent-27")
+    end
+
+    test "the run's connections page by fifty, denied first, and Showing x of y is true", %{
+      conn: conn,
+      scope: scope
+    } do
+      events =
+        [{1, "run.started", started_data()}] ++
+          for(n <- 1..120, do: {n + 1, "run.egress", egress_data(%{"host" => "h#{n}.example"})}) ++
+          [
+            {200, "run.egress",
+             egress_data(%{
+               "host" => "denied.example",
+               "decision" => "denied",
+               "outcome" => "refused",
+               "rule" => ""
+             })}
+          ]
+
+      run = projected(scope, events)
+
+      {:ok, lv, html} = live(conn, ~p"/hive/runs/#{run.run_id}/connections")
+      assert html =~ "Showing 50 of 121."
+
+      assert html
+             |> LazyHTML.from_document()
+             |> LazyHTML.query("#run-connections > tr")
+             |> Enum.count() == 50
+
+      assert has_element?(lv, "#run-connections > tr:first-child", "denied.example")
+      assert html =~ "121"
+
+      lv |> element("#connections-pages a", "Next") |> render_click()
+      assert_patch(lv, ~p"/hive/runs/#{run.run_id}/connections?page=2")
+      refute has_element?(lv, "#run-connections", "denied.example")
+
+      {:ok, lv, html} = live(conn, ~p"/hive/runs/#{run.run_id}/connections?page=3")
+      assert html =~ "Showing 21 of 121."
+      refute has_element?(lv, "#connections-pages a", "Next")
+
+      # a page past the last is the last
+      {:ok, lv, _html} =
+        live(conn, ~p"/hive/runs/#{run.run_id}/connections?page=99&decision=denied")
+
+      assert has_element?(lv, "#decision button[aria-pressed='true']", "Denied")
+      assert render(lv) =~ "Showing 1 of 1."
+    end
+  end
+
+  describe "closing (M6)" do
+    test "a crafted close_confirm does not close a run that has ended, and its end stays", %{
+      conn: conn,
+      scope: scope
+    } do
+      for {exit, state} <- [
+            {%{"state" => "failed", "exit_code" => 1, "duration_ms" => 5}, "failed"},
+            {%{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 5}, "exited"},
+            {%{"state" => "failed", "exit_code" => -1, "reason" => "timeout", "duration_ms" => 5},
+             "timed_out"}
+          ] do
+        run = projected(scope, [{1, "run.started", started_data()}, {2, "run.exited", exit}])
+        assert run.state == state
+
+        {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}/details")
+        refute has_element?(lv, "#close-run-button")
+
+        render_hook(lv, "close", %{})
+        refute has_element?(lv, "#close-run")
+
+        render_hook(lv, "close_confirm", %{})
+
+        after_close = Runs.get_run!(scope, run.id)
+        assert after_close.state == state
+        assert after_close.closed_at == nil
+        assert after_close.closed_by_id == nil
+      end
+    end
+
+    test "the context refuses, whoever asks", %{scope: scope} do
+      ended =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "run.exited", %{"state" => "failed", "exit_code" => 1}}
+        ])
+
+      assert Runs.close_run(scope, ended) == {:error, :not_closable}
+      assert Runs.get_run!(scope, ended.id).state == "failed"
+
+      for state <- Runs.closable_states() do
+        run = run_fixture(scope, %{state: state})
+        assert {:ok, %{state: "closed"} = closed} = Runs.close_run(scope, run)
+        # closing a closed run changes nothing
+        assert {:ok, %{closed_at: at}} = Runs.close_run(scope, closed)
+        assert at == closed.closed_at
+      end
+
+      # a run of another hive is not found, whatever its state
+      assert Runs.close_run(scope, run_fixture(scope_fixture())) == {:error, :not_found}
+    end
+
+    test "close and close_confirm on a page without a run do nothing", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, "/hive/runs/#{Ecto.UUID.generate()}")
+
+      assert render_hook(lv, "close", %{}) =~ "This run is not in this hive"
+      assert render_hook(lv, "close_confirm", %{}) =~ "This run is not in this hive"
+      assert render_hook(lv, "show_all", %{"seq" => "1"}) =~ "This run is not in this hive"
+      assert render_hook(lv, "load_earlier", %{}) =~ "This run is not in this hive"
+    end
+
+    test "after a close, focus is sent to the page's heading", %{conn: conn, scope: scope} do
+      run = projected(scope, [{1, "run.started", started_data()}])
+      {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}/details")
+
+      lv |> element("#close-run-button") |> render_click()
+      lv |> element("#close-run button", "Close run") |> render_click()
+
+      assert_push_event(lv, "run:focus", %{id: "run-title"})
+      assert has_element?(lv, "h1#run-title[tabindex='-1'][phx-hook='FocusOn']")
+    end
+  end
+
+  describe "read aloud (A3, A6, A9)" do
+    test "an item in a subagent's lane says whose it is in words", %{conn: conn, scope: scope} do
+      run = demo(scope, "session-with-subagents")
+      {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}")
+
+      assert has_element?(lv, "#e-25 .sr-only", "in Explore -demo-a1")
+      assert has_element?(lv, "#e-27 .sr-only", "in general-purpose -demo-a2")
+      refute has_element?(lv, "#e-11 .sr-only", "in ")
+    end
+
+    test "earlier items are announced, and the list only says oldest first when it starts at the start",
+         %{conn: conn, scope: scope} do
+      events =
+        [{1, "run.started", started_data()}] ++
+          for(
+            n <- 2..400,
+            do: {n, "session.notification", %{"kind" => "k", "message" => "m#{n}"}}
+          )
+
+      run = projected(scope, events)
+
+      {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}")
+
+      assert has_element?(
+               lv,
+               "ol#timeline[aria-label='Session timeline, in sequence order; 100 later events not loaded']"
+             )
+
+      {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}?seq=400")
+
+      assert has_element?(
+               lv,
+               "ol#timeline[aria-label^='Session timeline, in sequence order; 100 earlier events not loaded']"
+             )
+
+      lv |> element("#timeline-earlier") |> render_click()
+      assert has_element?(lv, "#run-announcer", "100 earlier events loaded.")
+      assert has_element?(lv, "ol#timeline[aria-label='Session timeline, oldest first']")
+    end
+
+    test "the terminal offers the log as text and a polite place for a summary; xterm's reader mode is never on",
+         %{conn: conn, scope: scope} do
+      run = demo(scope, "session-with-subagents")
+      {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}/terminal")
+
+      assert has_element?(
+               lv,
+               "#terminal a.sr-only[href$='/log?download=1']",
+               "Read the log as text"
+             )
+
+      assert has_element?(lv, "#terminal [data-announce][aria-live='polite']")
+      # one tab stop: xterm's own input, which the hook names with its keys
+      refute has_element?(lv, "#terminal [data-screen][tabindex]")
+
+      hook = File.read!("assets/js/hooks/terminal.js")
+      assert hook =~ "screenReaderMode: false"
+      refute hook =~ "screenReaderMode = "
+      assert hook =~ "linkHandler"
     end
   end
 end

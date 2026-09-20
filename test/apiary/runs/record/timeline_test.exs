@@ -33,7 +33,8 @@ defmodule Apiary.Runs.Record.TimelineTest do
 
   defp build(events, opts \\ []) do
     index = index(events)
-    Timeline.build(index.items, Map.new(events, &{&1.sequence, &1}), opts)
+    limit = if opts[:full], do: Timeline.full_limit(), else: Timeline.well_limit()
+    Timeline.build(index.items, Map.new(events, &{&1.sequence, Timeline.slim(&1, limit)}), opts)
   end
 
   defp egress(sequence, extra \\ %{}) do
@@ -103,13 +104,35 @@ defmodule Apiary.Runs.Record.TimelineTest do
       assert index.by_seq == %{1 => 1, 4 => 1, 2 => 2, 3 => 2}
     end
 
-    test "an end without its start is an item of its own, and a start without an end stays open" do
-      index = index([tool(1, "finished", "lost"), tool(2, "started", "open")])
+    test "an end without its start is an item of its own; a start without an end is open only while the run is alive" do
+      events = [tool(1, "finished", "lost"), tool(2, "started", "open")]
 
-      assert [%{seq: 1, end_seq: nil}, %{seq: 2, end_seq: nil}] = index.items
+      assert [
+               %{seq: 1, end_seq: 1, tool_state: :ended},
+               %{seq: 2, end_seq: nil, tool_state: :open}
+             ] =
+               index(events, alive: true).items
 
-      assert [%{status: :finished}, %{status: :open}] =
-               build([tool(1, "finished", "lost"), tool(2, "started", "open")])
+      assert [%{tool_state: :ended}, %{tool_state: :no_end}] = index(events).items
+      assert [%{status: :finished}, %{status: :no_end}] = build(events)
+    end
+
+    test "the same call started twice is one item, which its end closes" do
+      index =
+        index([tool(1, "started", "a"), tool(2, "started", "a"), tool(3, "finished", "a")],
+          alive: true
+        )
+
+      assert [%{seq: 1, end_seq: 3, tool_state: :ended}] = index.items
+      assert index.by_seq == %{1 => 1, 2 => 1, 3 => 1}
+    end
+
+    test "a call without an id is an item that is never open" do
+      index =
+        index([event(1, "session.tool_started", %{"tool" => "Bash"}), egress(2)], alive: true)
+
+      assert [%{seq: 1, tool_state: :no_end, inner: []}, %{seq: 2, kind: :connection}] =
+               index.items
     end
 
     test "session.result is the session's but not a hook's" do
@@ -234,8 +257,8 @@ defmodule Apiary.Runs.Record.TimelineTest do
         )
 
       assert index.rails == 4
-      assert %{rail: 3, overflow: true} = List.last(index.lanes)
-      assert %{who: true, lane: %{rail: 3}} = List.last(index.items)
+      assert %{rail: 3, index: 4, id: "a4"} = List.last(index.lanes)
+      assert %{who: true, lane: %{rail: 3, overflow: true}} = List.last(index.items)
       assert %{link: nil} = Enum.at(index.items, 3)
     end
 
@@ -282,12 +305,200 @@ defmodule Apiary.Runs.Record.TimelineTest do
                index(events ++ [event(5, "session.turn_finished", %{"background_tasks" => []})]).background
     end
 
+    test "a list is read fifty tasks deep, and what was read beside the events can be put in" do
+      tasks = for n <- 1..80, do: %{"id" => "b#{n}", "type" => "shell"}
+
+      assert %{count: 50} =
+               index([event(1, "session.turn_finished", %{"background_tasks" => tasks})]).background
+
+      index =
+        Timeline.put_background(index([]), [
+          %{id: "x", type: "shell", status: nil, what: "sleep 9", listed_at: 7}
+        ])
+
+      assert %{count: 1, tasks: [%{id: "x", listed_at: 7}]} = index.background
+
+      # a later list of the run still ends it
+      assert %{count: 0} =
+               Timeline.extend(
+                 index,
+                 light([event(9, "session.turn_finished", %{"background_tasks" => []})])
+               ).background
+    end
+
     test "an entry that is not an object with an id is ignored" do
       events = [
         event(1, "session.turn_finished", %{"background_tasks" => ["x", %{"type" => "shell"}, 7]})
       ]
 
       assert %{count: 0} = index(events).background
+    end
+  end
+
+  describe "a call the record never ends (M1)" do
+    test "stops being open where the record says it cannot be: later connections are their own items" do
+      events = [
+        tool(1, "started", "t"),
+        event(2, "session.turn_finished", %{"message" => "done"}),
+        event(3, "session.ended", %{"reason" => "other"}),
+        event(4, "session.started", %{"source" => "resume"}),
+        egress(5, %{"decision" => "denied", "rule" => ""}),
+        egress(6)
+      ]
+
+      index = index(events, alive: true)
+
+      assert %{seq: 5, kind: :connection, open_calls: 0} = Enum.find(index.items, &(&1.seq == 5))
+      assert index.by_seq[5] == 5
+      assert %{seq: 1, inner: [], tool_state: :no_end} = hd(index.items)
+      assert [%{status: :no_end, connections: []} | _] = build(events)
+    end
+
+    test "each of turn finished or failed, the subagent's finish, session ended or started and run exited closes it" do
+      for closing <- [
+            event(2, "session.turn_finished"),
+            event(2, "session.turn_failed"),
+            event(2, "session.ended"),
+            event(2, "session.started"),
+            event(2, "run.exited", %{"exit_code" => 0})
+          ] do
+        index = index([tool(1, "started", "t"), closing, egress(3)], alive: true)
+        assert %{kind: :connection} = Enum.find(index.items, &(&1.seq == 3)), closing.type
+      end
+
+      # a subagent's finish closes the subagent's calls, not the main session's
+      index =
+        index(
+          [
+            subagent(1, "started", "a1", "Explore"),
+            tool(2, "started", "main-call"),
+            tool(3, "started", "sub-call", %{"agent_id" => "a1"}),
+            subagent(4, "finished", "a1", "Explore"),
+            egress(5)
+          ],
+          alive: true
+        )
+
+      assert %{seq: 2, inner: [5], tool_state: :open} = Enum.find(index.items, &(&1.seq == 2))
+      assert %{seq: 3, tool_state: :no_end} = Enum.find(index.items, &(&1.seq == 3))
+    end
+
+    test "an end that arrives after all still belongs to its call" do
+      index =
+        index([
+          tool(1, "started", "t"),
+          event(2, "session.turn_finished"),
+          tool(3, "finished", "t")
+        ])
+
+      assert [%{seq: 1, end_seq: 3, tool_state: :ended}, %{seq: 2}] = index.items
+    end
+  end
+
+  describe "what one item holds is bounded (H2)" do
+    test "a call keeps the first hundred connections inside it and counts the rest" do
+      events = [
+        tool(1, "started", "t")
+        | for(n <- 2..5_001, do: egress(n, %{"host" => "h#{rem(n, 7)}.example"}))
+      ]
+
+      index = index(events, alive: true)
+
+      assert [%{seq: 1, inner: inner, inner_count: 5_000, seqs: seqs}] = index.items
+      assert length(inner) == Timeline.max_inner()
+      assert length(seqs) == Timeline.max_inner() + 1
+      assert index.by_seq[5_001] == 1
+      assert length(Timeline.needed(index.items)) <= 102
+    end
+
+    test "a run of allowed connections keeps the first hundred and counts the rest" do
+      index = index(for n <- 1..1_000, do: egress(n))
+
+      assert [
+               %{
+                 kind: :connection_group,
+                 inner_count: 1_000,
+                 seqs: seqs,
+                 first_at: first,
+                 last_at: last
+               }
+             ] = index.items
+
+      assert length(seqs) == Timeline.max_inner()
+      assert first == at(1) and last == at(1_000)
+    end
+  end
+
+  describe "extend/3" do
+    test "folding a run in pieces gives what folding it whole gives" do
+      events =
+        light([
+          event(1, "session.prompt_submitted"),
+          subagent(2, "started", "a1", "Explore"),
+          tool(3, "started", "t1", %{"agent_id" => "a1"}),
+          egress(4),
+          egress(5),
+          tool(6, "finished", "t1", %{"agent_id" => "a1"}),
+          egress(7),
+          egress(8),
+          subagent(9, "finished", "a1", "Explore"),
+          event(10, "session.turn_finished", %{
+            "background_tasks" => [%{"id" => "b", "type" => "shell"}]
+          })
+        ])
+
+      whole = Timeline.index(events, alive: true)
+
+      for cut <- 1..9 do
+        {head, tail} = Enum.split(events, cut)
+        pieces = head |> Timeline.index(alive: true) |> Timeline.extend(tail, alive: true)
+        assert Map.delete(pieces, :state) == Map.delete(whole, :state), "cut at #{cut}"
+      end
+
+      assert whole.through == 10
+    end
+  end
+
+  describe "linear in what a runner sends (M4)" do
+    test "50,000 subagents that never finish, and as many notifications, are indexed in time" do
+      events =
+        light(
+          for(n <- 1..50_000, do: subagent(n, "started", "agent-#{n}", "Explore")) ++
+            for(
+              n <- 50_001..100_000,
+              do: event(n, "session.notification", %{"agent_id" => "agent-#{n - 50_000}"})
+            )
+        )
+
+      {micros, index} = :timer.tc(fn -> Timeline.index(events, alive: true) end)
+
+      assert micros < 3_000_000, "took #{div(micros, 1000)} ms"
+      assert index.lane_count == 50_000
+      assert index.rails == 4
+      # a dozen lanes in the key; any of them can still be found
+      assert length(index.lanes) == 13
+      assert %{id: "agent-49999", index: 49_999} = Timeline.lane(index, "agent-49999")
+      assert Timeline.lane(index, "nobody") == nil
+    end
+
+    test "50,000 calls that never end and as many connections" do
+      events =
+        light(
+          for(n <- 1..50_000, do: tool(n, "started", "t#{n}")) ++
+            for(n <- 50_001..100_000, do: egress(n))
+        )
+
+      {micros, _index} = :timer.tc(fn -> Timeline.index(events, alive: true) end)
+      assert micros < 3_000_000, "took #{div(micros, 1000)} ms"
+    end
+  end
+
+  describe "lanes have numbers (M7)" do
+    test "two agents, whatever their ids, have different indexes" do
+      index =
+        index([subagent(1, "started", "x", "Explore"), subagent(2, "started", "y", "Explore")])
+
+      assert [%{index: 0}, %{index: 1, id: "x"}, %{index: 2, id: "y"}] = index.lanes
     end
   end
 
@@ -410,7 +621,7 @@ defmodule Apiary.Runs.Record.TimelineTest do
 
       index = index(events)
 
-      assert Timeline.needed([List.last(index.items)], index.lanes) |> Enum.sort() == [2, 8]
+      assert Timeline.needed([List.last(index.items)]) |> Enum.sort() == [2, 8]
 
       assert [
                _,

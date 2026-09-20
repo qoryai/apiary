@@ -6,6 +6,7 @@ defmodule Apiary.Runs.RecordTest do
   import Apiary.RunEventsFixtures
 
   alias Apiary.Runs.{Projector, Record, Run}
+  alias Apiary.Runs.Record.Timeline
   alias Mix.Tasks.Apiary.Demo
 
   defp demo(scope, name, now \\ DateTime.utc_now()) do
@@ -52,7 +53,10 @@ defmodule Apiary.Runs.RecordTest do
       run = projected(theirs)
 
       assert Record.timeline(scope, run).items == []
-      assert Record.connections(scope, run) == []
+      assert %{rows: [], total: 0} = Record.connections(scope, run)
+      assert %{all: 0, attempts: 0} = Record.connection_counts(scope, run)
+      assert Record.background(scope, run) == []
+      assert Record.session_id(scope, run) == nil
       assert Record.policy(scope, run) == nil
       assert %{chunks: 0, bytes: 0, through: 0, streams: []} = Record.log_summary(scope, run)
       assert Record.log_through(scope, run, 0) == 0
@@ -92,6 +96,7 @@ defmodule Apiary.Runs.RecordTest do
 
       assert index.rails == 3
       assert index.background == %{tasks: [], count: 0}
+      assert index.through == 101
       assert index.hook_events > 0
     end
 
@@ -100,7 +105,7 @@ defmodule Apiary.Runs.RecordTest do
       assert index.by_seq[59] == 58
       assert index.by_seq[85] == 84
 
-      [npm] = Record.items(scope, run, index, Enum.filter(index.items, &(&1.seq == 58)))
+      [npm] = Record.items(scope, run, Enum.filter(index.items, &(&1.seq == 58)))
 
       assert %{
                kind: :tool,
@@ -123,7 +128,7 @@ defmodule Apiary.Runs.RecordTest do
       run: run
     } do
       index = Record.timeline(scope, run)
-      items = Record.items(scope, run, index, index.items)
+      items = Record.items(scope, run, index.items)
 
       assert length(items) == length(index.items)
       assert Enum.map(items, & &1.sequence) == Enum.sort(Enum.map(items, & &1.sequence))
@@ -138,7 +143,17 @@ defmodule Apiary.Runs.RecordTest do
   describe "connections/2" do
     test "denied destinations first, each with the fields of its last attempt", %{scope: scope} do
       run = demo(scope, "session-with-subagents")
-      connections = Record.connections(scope, run)
+
+      assert %{rows: connections, total: total, page: 1, pages: 1} =
+               Record.connections(scope, run)
+
+      assert total == length(connections)
+
+      assert %{all: ^total, denied: 2, attempts: attempts} = Record.connection_counts(scope, run)
+      assert attempts == connections |> Enum.map(& &1.attempts) |> Enum.sum()
+
+      assert %{rows: denied, total: 2} = Record.connections(scope, run, decision: "denied")
+      assert Enum.all?(denied, &(&1.denied > 0))
 
       assert [%{denied: d1}, %{denied: d2} | rest] = connections
       assert d1 > 0 and d2 > 0
@@ -219,11 +234,286 @@ defmodule Apiary.Runs.RecordTest do
     test "the last policy applied and the session", %{scope: scope} do
       run = projected(scope)
 
-      assert %{sequence: 11, data: %{"source" => "fetched", "mode" => "enforce"}} =
-               Record.policy(scope, run)
+      assert %{
+               sequence: 11,
+               source: "fetched",
+               mode: "enforce",
+               allow: ["api.example.com"],
+               allow_count: 1,
+               terminated: [],
+               credentials: []
+             } = Record.policy(scope, run)
 
       assert Record.session_id(scope, run) == "session-1"
       assert Record.policy(scope, run_fixture(scope)) == nil
+    end
+  end
+
+  describe "the query cuts what Timeline.slim/2 cuts" do
+    test "on every event of every demo run, the rows are the slim events", %{scope: scope} do
+      for name <- ~w(session-with-subagents failed-run running) do
+        run = demo(scope, name)
+        index = Record.timeline(scope, run)
+
+        whole =
+          Repo.all(
+            from e in Apiary.Runs.Event,
+              where: e.run_id == ^run.id,
+              select: %{sequence: e.sequence, type: e.type, time: e.time, data: e.data}
+          )
+          |> Map.new(&{&1.sequence, Timeline.slim(&1)})
+
+        # jsonb_pretty and Jason indent differently: the wells of JSON are compared parsed.
+        strip = fn items ->
+          for item <- items do
+            wells =
+              for well <- Map.get(item, :wells, []) do
+                if well.format == :json,
+                  do: %{well | text: Jason.decode!(well.text), bytes: nil},
+                  else: well
+              end
+
+            if is_map_key(item, :wells), do: %{item | wells: wells}, else: item
+          end
+        end
+
+        rows = Record.items(scope, run, index.items)
+        assert strip.(rows) == strip.(Timeline.build(index.items, whole)), name
+      end
+    end
+
+    test "policy, credentials and lists are cut to a bounded number of bounded strings", %{
+      scope: scope
+    } do
+      run =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "run.policy_applied",
+           %{
+             "mode" => "enforce",
+             "source" => "config",
+             "allow" => for(n <- 1..500, do: "h#{n}." <> String.duplicate("x", 1000)) ++ [7, %{}],
+             "terminated" => "not a list",
+             "credentials" =>
+               for(
+                 n <- 1..100,
+                 do: %{"name" => "c#{n}", "hosts" => for(m <- 1..100, do: "host#{m}.example")}
+               ) ++
+                 ["junk"]
+           }}
+        ])
+
+      policy = Record.policy(scope, run)
+
+      assert length(policy.allow) == 50
+      assert policy.allow_count == 502
+      assert Enum.all?(policy.allow, &(String.length(&1) <= 255))
+      assert policy.terminated == [] and policy.terminated_count == 0
+      assert length(policy.credentials) == 20
+      assert %{"name" => "c1", "hosts" => hosts} = hd(policy.credentials)
+      assert length(hosts) == 10
+    end
+
+    test "data of the wrong shape reads as absent", %{scope: scope} do
+      run =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "session.tool_started",
+           %{"tool" => 7, "tool_use_id" => "t", "input" => "not a map"}},
+          {3, "session.tool_finished",
+           %{
+             "tool_use_id" => "t",
+             "response" => 12,
+             "duration_ms" => "soon",
+             "interrupted" => "yes"
+           }},
+          {4, "session.result",
+           %{"turns" => 1.5, "cost_usd" => "free", "result" => %{}, "duration_ms" => 1.0e300}},
+          {5, "run.egress", %{"host" => 5, "port" => "https", "decision" => []}}
+        ])
+
+      index = Record.timeline(scope, run)
+      items = Record.items(scope, run, index.items)
+
+      assert %{
+               tool: "tool",
+               summary: nil,
+               duration_ms: nil,
+               wells: [%{label: "response", format: :json, text: "12"}]
+             } =
+               Enum.find(items, &(&1.kind == :tool))
+
+      assert %{turns: nil, cost_usd: nil, duration_ms: nil, text: nil} =
+               Enum.find(items, &(&1.kind == :result))
+
+      assert %{connection: %{host: "n/a", port: nil, decision: nil}} =
+               Enum.find(items, &(&1.kind == :connection))
+    end
+  end
+
+  describe "read budgets" do
+    # What a read costs this server is set by the number of rows, never by what a runner
+    # put in them.
+    test "H1: a window of 300 calls with 512 KiB responses is read in under 32 MiB", %{
+      scope: scope
+    } do
+      run = run_fixture(scope)
+      big = String.duplicate("0123456789abcdef", 32 * 1024)
+      assert byte_size(big) == 512 * 1024
+
+      events =
+        [{1, "run.started", started_data()}] ++
+          Enum.flat_map(1..300, fn n ->
+            [
+              {2 * n, "session.tool_started",
+               %{
+                 "tool" => "Bash",
+                 "tool_use_id" => "t#{n}",
+                 "input" => %{"command" => "cat big-#{n}", "stdin" => big}
+               }},
+              {2 * n + 1, "session.tool_finished",
+               %{
+                 "tool" => "Bash",
+                 "tool_use_id" => "t#{n}",
+                 "response" => %{"stdout" => big, "stderr" => big}
+               }}
+            ]
+          end)
+
+      events_fixture(run, events)
+      {:ok, run} = Projector.project(run)
+
+      index = Record.timeline(scope, run)
+      light = Enum.take(index.items, 300)
+      parent = self()
+
+      {pid, ref} =
+        spawn_monitor(fn ->
+          Ecto.Adapters.SQL.Sandbox.allow(Repo, parent, self())
+          items = Record.items(scope, run, light)
+          {:memory, memory} = Process.info(self(), :memory)
+          {:binary, binaries} = Process.info(self(), :binary)
+          held = binaries |> Enum.map(&elem(&1, 1)) |> Enum.sum()
+
+          send(
+            parent,
+            {:read, length(items), memory + held,
+             items |> :erlang.term_to_binary() |> byte_size()}
+          )
+        end)
+
+      assert_receive {:read, 300, bytes, size}, 120_000
+      assert_receive {:DOWN, ^ref, :process, ^pid, _}, 5_000
+
+      IO.puts(
+        "\n[budget H1] 300 calls with 512 KiB payloads: the reading process held #{div(bytes, 1024)} KiB (memory + binaries); the items are #{div(size, 1024)} KiB"
+      )
+
+      assert bytes < 32 * 1024 * 1024, "held #{div(bytes, 1024)} KiB"
+    end
+
+    test "H1: Show all reads one item, cut at 512 KB by the database", %{scope: scope} do
+      huge = String.duplicate("a", 1024 * 1024) <> "THE-END"
+
+      run =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "session.tool_started",
+           %{"tool" => "Bash", "tool_use_id" => "t", "input" => %{"command" => "x"}}},
+          {3, "session.tool_finished",
+           %{"tool" => "Bash", "tool_use_id" => "t", "response" => huge}}
+        ])
+
+      index = Record.timeline(scope, run)
+      light = Enum.filter(index.items, &(&1.seq == 2))
+
+      assert [%{wells: [_, %{text: text, bytes: bytes, cut: true}]}] =
+               Record.items(scope, run, light)
+
+      assert byte_size(text) == Timeline.well_limit()
+      assert bytes == byte_size(huge)
+
+      assert [%{full: true, wells: [_, %{text: text, cut: true}]}] =
+               Record.items(scope, run, light, full: [2])
+
+      assert byte_size(text) == Timeline.full_limit()
+    end
+
+    test "H2: one call with 50,000 connections inside it reads at most 102 rows", %{scope: scope} do
+      run = run_fixture(scope)
+      now = DateTime.utc_now()
+
+      rows =
+        [
+          {1, "ai.qory.session.tool_started",
+           %{"tool" => "Bash", "tool_use_id" => "t", "input" => %{"command" => "fetch"}}}
+        ] ++
+          for(
+            n <- 2..50_001,
+            do: {n, "ai.qory.run.egress", egress_data(%{"host" => "h#{rem(n, 50)}.example"})}
+          )
+
+      rows
+      |> Enum.map(fn {sequence, type, data} ->
+        %{
+          id: Ecto.UUID.bingenerate(),
+          organisation_id: Ecto.UUID.dump!(run.organisation_id),
+          hive_id: Ecto.UUID.dump!(run.hive_id),
+          run_id: Ecto.UUID.dump!(run.id),
+          sequence: sequence,
+          event_id: Ecto.UUID.bingenerate(),
+          type: type,
+          time: now,
+          data: data,
+          received_at: now,
+          projected_at: now
+        }
+      end)
+      |> Enum.chunk_every(5_000)
+      |> Enum.each(&Repo.insert_all("events", &1))
+
+      index = Record.timeline(scope, run)
+      assert [%{seq: 1, inner_count: 50_000} = item] = index.items
+
+      {items, reads} = count_reads(fn -> Record.items(scope, run, [item]) end)
+
+      IO.puts(
+        "\n[budget H2] 1 call + 50,000 connections: #{reads.queries} queries, #{reads.rows} rows"
+      )
+
+      assert [%{connections: connections, connections_count: 50_000}] = items
+      assert length(connections) == 100
+      assert reads.rows <= 102, "read #{reads.rows} rows"
+    end
+  end
+
+  # The queries this process makes while `fun` runs, and the rows they answer.
+  defp count_reads(fun) do
+    handler = {__MODULE__, make_ref()}
+    parent = self()
+    counter = :counters.new(2, [])
+
+    :telemetry.attach(
+      handler,
+      [:apiary, :repo, :query],
+      fn _event, _measurements, metadata, _config ->
+        if self() == parent do
+          :counters.add(counter, 1, 1)
+
+          case metadata[:result] do
+            {:ok, %{num_rows: rows}} when is_integer(rows) -> :counters.add(counter, 2, rows)
+            _ -> :ok
+          end
+        end
+      end,
+      nil
+    )
+
+    try do
+      result = fun.()
+      {result, %{queries: :counters.get(counter, 1), rows: :counters.get(counter, 2)}}
+    after
+      :telemetry.detach(handler)
     end
   end
 end

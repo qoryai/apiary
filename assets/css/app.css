@@ -3107,3 +3107,10 @@
     }
   }
 }
+
+/* The run page: a call without an end, and the lanes past the key. */
+@layer qory {
+  .q-t .q-no-end {
+    color: var(--q-primary-soft-content);
+  }
+}

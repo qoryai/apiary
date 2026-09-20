@@ -91,6 +91,18 @@ a restart does before doing it (`docs/upgrading.md`).
   switch on pipes. **Connections**: one row per destination with the reason and the outcome
   of the last attempt. **Details**: the command, the policy in force, the record, and
   closing a run that went quiet, behind a confirmation.
+- What the run page reads is bounded by rows, never by what a runner put in them: every
+  field of an event is cut by the database before it crosses the wire (8 KB a payload,
+  512 KB for "Show all", which reads one item), one item loads at most a hundred
+  connections and counts the rest, a live page reads the range a projection announced and
+  what the open tab shows of it rather than the run again, the static render reads the run
+  row alone, the lane key shows a dozen lanes and counts the rest, and a run's connections
+  come fifty to a page. A tool call whose end the record lacks stops being open when its
+  turn ends, its subagent finishes, the session ends or starts again, or the run exits, and
+  reads "No end recorded"; connections after that are items at their own sequence.
+- A member closes only a run that has not ended (`pending`, `running`, `lost`):
+  `Apiary.Runs.close_run/2` answers `{:error, :not_closable}` for a run that exited, failed
+  or timed out, and its end stays as its events gave it.
 - `GET /hive/runs/:run_id/log?after=<sequence>&limit=<chunks>&stream=<name>`: the decoded
   bytes of a run's log as `application/octet-stream`, chunked, with the last sequence sent
   in `x-qory-log-through`; `download=1` sends the whole log as an attachment. Signed-in

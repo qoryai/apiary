@@ -18,13 +18,28 @@ export const TimelineKeys = {
     this.lastTarget = null
     this.onKey = e => this.key(e)
     this.el.addEventListener("keydown", this.onKey)
+    // A patch of one item puts the server's attributes back: what this hook set on it
+    // (inert, the dimming, the target) is set again. Setting what is already set changes
+    // nothing, so this does not feed itself.
     this.observer = new MutationObserver(() => this.apply())
-    this.observer.observe(this.el, {childList: true})
+    this.observer.observe(this.el, {childList: true, subtree: true, attributes: true, attributeFilter: ["class", "inert"]})
     this.apply()
+  },
+
+  // Items loaded above the reader must not move what they are reading: remember the first
+  // item on screen and where it was, and put it back there.
+  beforeUpdate() {
+    const anchor = this.items().find(li => li.getBoundingClientRect().bottom > 64)
+    this.anchor = anchor ? {id: anchor.id, top: anchor.getBoundingClientRect().top, first: this.el.firstElementChild?.id} : null
   },
 
   updated() {
     this.apply()
+    const was = this.anchor
+    this.anchor = null
+    if (!was || this.el.firstElementChild?.id === was.first) return
+    const li = document.getElementById(was.id)
+    if (li) window.scrollBy({top: li.getBoundingClientRect().top - was.top, behavior: "auto"})
   },
 
   destroyed() {

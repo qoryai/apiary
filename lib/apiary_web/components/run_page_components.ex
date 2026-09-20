@@ -28,17 +28,19 @@ defmodule ApiaryWeb.RunPageComponents do
   One toggle of the lane key: a ring in the lane's colour, the agent's type and its id.
   The key is the legend of the rails, so colour is never the only carrier.
   """
-  attr :lane, :map, required: true, doc: "%{id, type, color}"
+  attr :lane, :map, required: true, doc: "%{index, id, type, color}"
   attr :pressed, :boolean, default: true
   attr :patch, :string, required: true
 
+  # A button that patches, so that it answers Space as well as Enter and the URL changes. The
+  # DOM id is the lane's number in the run: an agent id is the runner's string.
   def lane(assigns) do
     ~H"""
-    <.link
-      id={"lane-#{lane_dom(@lane.id)}"}
-      patch={@patch}
+    <button
+      type="button"
+      id={"lane-#{@lane.index}"}
+      phx-click={JS.patch(@patch)}
       class={["q-lanekey", "q-lane-#{@lane.color}"]}
-      role="button"
       aria-pressed={to_string(@pressed)}
     >
       <i aria-hidden="true"></i>
@@ -47,13 +49,9 @@ defmodule ApiaryWeb.RunPageComponents do
       <% else %>
         {@lane.type || "Subagent"} <small>{@lane.id}</small>
       <% end %>
-    </.link>
+    </button>
     """
   end
-
-  # A DOM id from an agent id the runner chose: the hash, never the string.
-  defp lane_dom("main"), do: "main"
-  defp lane_dom(id), do: :erlang.phash2(id)
 
   ## rd11. Who
 
@@ -246,7 +244,7 @@ defmodule ApiaryWeb.RunPageComponents do
       <ol
         id={@id}
         class={["q-tl", "q-lanes-#{@rails}"]}
-        aria-label="Session timeline, oldest first"
+        aria-label={timeline_label(@earlier, @later)}
         phx-update="stream"
         phx-hook="TimelineKeys"
         phx-viewport-top={@earlier > 0 && "load_earlier"}
@@ -276,6 +274,19 @@ defmodule ApiaryWeb.RunPageComponents do
       </button>
     </div>
     """
+  end
+
+  # "Oldest first" is only true of a list that starts at the start.
+  defp timeline_label(0, 0), do: "Session timeline, oldest first"
+
+  defp timeline_label(earlier, later) do
+    [
+      "Session timeline, in sequence order",
+      earlier > 0 && "#{count_noun(earlier, "earlier event")} not loaded",
+      later > 0 && "#{count_noun(later, "later event")} not loaded"
+    ]
+    |> Enum.filter(& &1)
+    |> Enum.join("; ")
   end
 
   @doc """
@@ -309,11 +320,18 @@ defmodule ApiaryWeb.RunPageComponents do
         <.item_node :if={!connection?(@item)} item={@item} />
       </div>
       <div class={["q-b", connection?(@item) && "q-b-cx"]}>
+        <span :if={@item.lane.id != "main"} class="sr-only">
+          in {@item.lane.type || "subagent"} {short_agent(@item.lane.id)}:
+        </span>
         <.item_body id={@id} item={@item} started_at={@started_at} seq_path={@seq_path} />
       </div>
     </li>
     """
   end
+
+  # Enough of an agent's id to tell two agents of one type apart when read aloud.
+  defp short_agent(id) when is_binary(id), do: String.slice(id, -8, 8)
+  defp short_agent(_id), do: ""
 
   defp connection?(item), do: item.kind in [:connection, :connection_group]
 
@@ -365,6 +383,9 @@ defmodule ApiaryWeb.RunPageComponents do
 
   defp node_look(%{kind: :tool, status: :open}),
     do: %{glyph: :spinner, shape: :round, tone: :info}
+
+  defp node_look(%{kind: :tool, status: :no_end}),
+    do: %{glyph: "hero-ellipsis-horizontal-micro", shape: :round, tone: nil}
 
   defp node_look(%{kind: :tool}),
     do: %{glyph: "hero-code-bracket-micro", shape: :round, tone: nil}
@@ -461,6 +482,7 @@ defmodule ApiaryWeb.RunPageComponents do
             do: "Interrupted",
             else: "Failed"}</span>
           <span :if={@item.status == :open} class="q-running">Running</span>
+          <span :if={@item.status == :no_end} class="q-no-end">No end recorded</span>
           <.duration :if={@item.duration_ms} ms={@item.duration_ms} precise class="q-d" />
         </.tail>
       </summary>
@@ -814,6 +836,9 @@ defmodule ApiaryWeb.RunPageComponents do
       data-through={@through}
     >
       <div id={"#{@id}-bar"} class="q-term-bar" phx-update="ignore">
+        <a class="sr-only focus:not-sr-only q-tbtn" href={@src <> "?download=1"} download>
+          Read the log as text
+        </a>
         <div class="q-tseg" role="group" aria-label="Stream">
           <%= if length(@streams) > 1 do %>
             <button :for={stream <- @streams} type="button" data-stream={stream} aria-pressed="false">
@@ -855,7 +880,8 @@ defmodule ApiaryWeb.RunPageComponents do
         </button>
       </div>
       <div id={"#{@id}-screen"} class="q-term-screen" phx-update="ignore">
-        <div data-screen tabindex="0" role="log" aria-live="off" aria-label="Log"></div>
+        <div data-screen role="log" aria-live="off" aria-label="Log"></div>
+        <span class="sr-only" data-announce aria-live="polite"></span>
         <button type="button" class="q-newpill q-term-pill" data-pill tabindex="-1" aria-hidden="true">
           <.icon name="hero-arrow-down-micro" class="size-4" /> <span data-pill-text>New lines</span>
         </button>
