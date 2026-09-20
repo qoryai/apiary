@@ -1,5 +1,6 @@
 defmodule ApiaryWeb.Contract.EventsControllerTest do
-  use ApiaryWeb.ConnCase, async: true
+  use ApiaryWeb.ConnCase, async: false
+  # Not async: a test here changes the global log level, which would race async modules.
 
   import Apiary.AccessKeysFixtures
   import Apiary.ContractFixtures

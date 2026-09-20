@@ -1,5 +1,6 @@
 defmodule Apiary.AccessKeysTest do
-  use Apiary.DataCase, async: true
+  use Apiary.DataCase, async: false
+  # Not async: a test here changes the global log level, which would race async modules.
 
   import Apiary.AccessKeysFixtures
   import Apiary.OrganisationsFixtures
