@@ -81,6 +81,37 @@ defmodule Apiary.Policy.ActivityTest do
     end
   end
 
+  describe "denied_destinations/2" do
+    test "the denied destinations today's rules still do not allow, most denied first", ctx do
+      # ads.example is denied by a hive rule; mcp.example is allowed in acme/site by its
+      # own rule, so its denial is a fact of the past; other.example has no rule.
+      assert {:ok, [ads, other]} = Policy.denied_destinations(ctx.scope, since())
+
+      assert %{host: "ads.example", port: 443, path: "", denied: 2, runs: 1, held: false} = ads
+      assert ads.locked == nil
+      assert Enum.map(ads.repositories, & &1.path) == ["acme/site"]
+      assert %{host: "other.example", denied: 1, runs: 1, repositories: []} = other
+
+      # A locked deny is named, so the page can say that only an owner changes it.
+      {:ok, _} = Policy.lock(ctx.scope, ctx.ads)
+
+      assert {:ok, [%{host: "ads.example", locked: "ads.example"} | _]} =
+               Policy.denied_destinations(ctx.scope, since())
+
+      # Allowed since: the row leaves.
+      {:ok, _} = Policy.allow(ctx.scope, nil, %{host: "other.example"})
+      assert {:ok, [%{host: "ads.example"}]} = Policy.denied_destinations(ctx.scope, since())
+
+      assert {:ok, []} =
+               Policy.denied_destinations(
+                 ctx.scope,
+                 DateTime.add(DateTime.utc_now(), 60, :second)
+               )
+
+      assert :unavailable = Activity.denied_destinations(ctx.scope, since(), cap: 3)
+    end
+  end
+
   describe "uncovered and a repository's own mode" do
     test "the hive's form leaves out a repository that does not follow the hive", ctx do
       {:ok, _} = Policy.set_mode(ctx.scope, ctx.docs, "observe")

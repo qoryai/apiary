@@ -16,9 +16,10 @@ defmodule Apiary.Policy.Suggestions do
 
   import Ecto.Query, warn: false
 
-  alias Apiary.Policy.{Effective, Grammar}
+  alias Apiary.Organisations.Hive
+  alias Apiary.Policy.{Effective, Grammar, Resolution, Rule}
   alias Apiary.Repo
-  alias Apiary.Runs.{Connection, Event, Run}
+  alias Apiary.Runs.{Connection, Event, Repository, Run}
 
   @policy_applied "ai.qory.run.policy_applied"
   @runs 20
@@ -27,6 +28,8 @@ defmodule Apiary.Policy.Suggestions do
   @limit 50
   @covered 20
   @attempts_cap 20_000
+  @count_runs 100
+  @count_events 300
 
   @doc false
   def list(hive_id, repository_id, %Effective{} = effective, since),
@@ -54,7 +57,7 @@ defmodule Apiary.Policy.Suggestions do
     suggested =
       open
       |> Enum.map(fn {host, seen} ->
-        {allowed, denied} = counts(attempts, host)
+        {allowed, denied} = attempt_counts(attempts, host)
 
         %{
           host: host,
@@ -79,6 +82,78 @@ defmodule Apiary.Policy.Suggestions do
       |> Enum.take(@covered)
 
     %{suggested: suggested, covered: covered}
+  end
+
+  @doc false
+  # See `Apiary.Policy.suggestion_counts/2`. One read of the events joined to their runs
+  # and repositories (the hosts declared, and each repository's own mode), one read of the
+  # hive's rules, and the hive's mode; each repository's effective policy is resolved once.
+  def counts(%Hive{id: hive_id}, since) do
+    runs =
+      from r in Run,
+        where: r.hive_id == ^hive_id and not is_nil(r.repository_id),
+        where: coalesce(r.started_at, r.inserted_at) >= ^since,
+        order_by: [desc: coalesce(r.started_at, r.inserted_at), desc: r.id],
+        limit: @count_runs,
+        select: r.id
+
+    declared =
+      Repo.all(
+        from(e in Event,
+          join: r in Run,
+          on: r.id == e.run_id,
+          join: p in Repository,
+          on: p.id == r.repository_id,
+          where:
+            e.hive_id == ^hive_id and e.run_id in subquery(runs) and e.type == @policy_applied,
+          order_by: [desc: e.received_at],
+          limit: @count_events,
+          select: {r.repository_id, p.egress_mode, e.data}
+        ),
+        log: false
+      )
+
+    if declared == [] do
+      %{hosts: 0, repositories: 0}
+    else
+      mode = Repo.one!(from h in Hive, where: h.id == ^hive_id, select: h.egress_mode)
+      rules = Repo.all(from r in Rule, where: r.hive_id == ^hive_id)
+      {hive_rules, own} = Enum.split_with(rules, &is_nil(&1.repository_id))
+      own = Enum.group_by(own, & &1.repository_id)
+
+      per_repository =
+        declared
+        |> Enum.group_by(fn {repository_id, own_mode, _data} -> {repository_id, own_mode} end)
+        |> Enum.map(fn {{repository_id, own_mode}, rows} ->
+          hosts = rows |> Enum.flat_map(fn {_id, _mode, data} -> hosts(data) end) |> Enum.uniq()
+
+          effective =
+            case Resolution.resolve_for(
+                   mode,
+                   own_mode,
+                   hive_rules,
+                   Map.get(own, repository_id, []),
+                   repository_id
+                 ) do
+              {:ok, effective} -> effective
+              {:error, _error} -> %Effective{}
+            end
+
+          hosts |> open_hosts(effective) |> length()
+        end)
+        |> Enum.filter(&(&1 > 0))
+
+      %{hosts: Enum.sum(per_repository), repositories: length(per_repository)}
+    end
+  end
+
+  # The declared hosts the policy neither covers nor denies, as `report/4` picks them.
+  defp open_hosts(hosts, %Effective{allow: allow, entries: entries}) do
+    denied = for %{kind: :host, action: :deny, in_force: true, host: host} <- entries, do: host
+
+    hosts
+    |> Enum.reject(&Grammar.covers_any?(denied, &1))
+    |> Enum.reject(&Grammar.covers_any?(allow, &1))
   end
 
   # host => [{run id, received at}], from the newest runs' policy applied events.
@@ -125,9 +200,9 @@ defmodule Apiary.Policy.Suggestions do
     if length(rows) <= @attempts_cap, do: rows
   end
 
-  defp counts(nil, _host), do: {nil, nil}
+  defp attempt_counts(nil, _host), do: {nil, nil}
 
-  defp counts(rows, host) do
+  defp attempt_counts(rows, host) do
     Enum.reduce(rows, {0, 0}, fn {reached, allowed, denied}, {a, d} ->
       if is_binary(reached) and String.valid?(reached) and Grammar.matches?([host], reached),
         do: {a + allowed, d + denied},

@@ -63,6 +63,10 @@ defmodule Apiary.Runs.Run do
     field :denied_count, :integer, default: 0
     field :projected_sequence, :integer, default: 0
 
+    # The cost the run reported: the sum of `cost_usd` over its session result events
+    # (`Apiary.Runs.Fold`). Null until a result carried one; never zero for "unknown".
+    field :cost_usd, :decimal
+
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :hive, Apiary.Organisations.Hive
     belongs_to :access_key, Apiary.AccessKeys.AccessKey
@@ -81,4 +85,14 @@ defmodule Apiary.Runs.Run do
 
   @doc "The states of a run that has not ended: the hive counts these as alive."
   def alive_states, do: ~w(pending running)
+
+  @doc "The one state of a run that ended well."
+  def ended_well_states, do: ~w(succeeded)
+
+  @doc """
+  The states of a run that ended badly: failed, timed out, lost and closed. A closed run
+  was stopped by the hive, not by a failure of its own; it sits in this family so that
+  every surface counts runs in the same three families (alive, ended well, ended badly).
+  """
+  def ended_badly_states, do: ~w(failed timed_out lost closed)
 end

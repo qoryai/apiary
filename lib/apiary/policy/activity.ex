@@ -1,9 +1,9 @@
 defmodule Apiary.Policy.Activity do
   @moduledoc """
   What the recorded connections say about the rules: see `Apiary.Policy.uncovered/2`,
-  `denied_summary/2` and `rule_activity/3`.
+  `denied_summary/2`, `denied_destinations/2` and `rule_activity/3`.
 
-  One read serves all three: the hive's connections last seen since a moment, through the
+  One read serves all four: the hive's connections last seen since a moment, through the
   index `connections (hive_id, last_seen_at)`, a few small columns a row and at most
   `cap/0` rows. A hive with more than that in the range gets `:unavailable`: a count of a
   part would read as a count of the whole. A connection's counters are those of its run,
@@ -44,36 +44,108 @@ defmodule Apiary.Policy.Activity do
   @doc false
   def uncovered(%Scope{hive: %Hive{} = hive}, repository_id, since, opts \\ []) do
     with {:ok, rows} <- rows(hive.id, repository_id, since, opts) do
-      policies = policies(hive, rows)
-
-      destinations =
-        rows
-        |> Enum.filter(&(&1.allowed > 0))
-        # Enforcing the hive changes nothing for a repository with a mode of its own.
-        |> Enum.filter(&(repository_id != nil or policies[&1.repository_id].follows_hive))
-        |> Enum.flat_map(fn row ->
-          case cover(policies[row.repository_id], row) do
-            {:uncovered, path} -> [{{row.host, path}, row}]
-            _covered -> []
-          end
-        end)
-        |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
-        |> Enum.map(fn {{host, path}, rows} ->
-          %{
-            host: host,
-            path: path,
-            attempts: rows |> Enum.map(& &1.allowed) |> Enum.sum(),
-            runs: rows |> Enum.map(& &1.run_id) |> Enum.uniq() |> length(),
-            last_seen_at: rows |> Enum.map(& &1.last_seen_at) |> Enum.max(DateTime),
-            repository_ids:
-              rows |> Enum.map(& &1.repository_id) |> Enum.reject(&is_nil/1) |> Enum.uniq()
-          }
-        end)
-        |> Enum.sort_by(&{-&1.attempts, &1.host, &1.path})
-        |> Enum.take(@top)
-
-      {:ok, with_repositories(hive.id, destinations)}
+      {:ok, uncovered_from(hive, rows, policies(hive, rows), repository_id)}
     end
+  end
+
+  defp uncovered_from(%Hive{id: hive_id}, rows, policies, repository_id) do
+    rows
+    |> Enum.filter(&(&1.allowed > 0))
+    # Enforcing the hive changes nothing for a repository with a mode of its own.
+    |> Enum.filter(&(repository_id != nil or policies[&1.repository_id].follows_hive))
+    |> Enum.flat_map(fn row ->
+      case cover(policies[row.repository_id], row) do
+        {:uncovered, path} -> [{{row.host, path}, row}]
+        _covered -> []
+      end
+    end)
+    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+    |> Enum.map(fn {{host, path}, rows} ->
+      %{
+        host: host,
+        path: path,
+        attempts: rows |> Enum.map(& &1.allowed) |> Enum.sum(),
+        runs: rows |> Enum.map(& &1.run_id) |> Enum.uniq() |> length(),
+        last_seen_at: rows |> Enum.map(& &1.last_seen_at) |> Enum.max(DateTime),
+        repository_ids:
+          rows |> Enum.map(& &1.repository_id) |> Enum.reject(&is_nil/1) |> Enum.uniq()
+      }
+    end)
+    |> Enum.sort_by(&{-&1.attempts, &1.host, &1.path})
+    |> Enum.take(@top)
+    |> then(&with_repositories(hive_id, &1))
+  end
+
+  @doc false
+  def denied_destinations(%Scope{hive: %Hive{} = hive}, since, opts \\ []) do
+    with {:ok, rows} <- rows(hive.id, nil, since, opts) do
+      {:ok, denied_from(hive, rows, policies(hive, rows))}
+    end
+  end
+
+  @doc false
+  # What the overview's attention list and strip need of the connections, from one read
+  # over the wider window: the denied destinations held to today's rules and what enforce
+  # would deny, both since `since`, and how many destinations were denied since `window`
+  # (the earlier moment). See `Apiary.Policy.overview_activity/3`.
+  def overview(%Scope{hive: %Hive{} = hive}, since, window, opts \\ []) do
+    with {:ok, rows} <- rows(hive.id, nil, window, opts) do
+      recent = Enum.filter(rows, &(DateTime.compare(&1.last_seen_at, since) != :lt))
+      policies = policies(hive, recent)
+
+      {:ok,
+       %{
+         denied: denied_from(hive, recent, policies),
+         uncovered: uncovered_from(hive, recent, policies, nil),
+         denied_destinations:
+           rows
+           |> Enum.filter(&(&1.denied > 0))
+           |> Enum.map(&{&1.host, &1.port, &1.path})
+           |> Enum.uniq()
+           |> length()
+       }}
+    end
+  end
+
+  defp denied_from(%Hive{id: hive_id}, rows, policies) do
+    rows
+    |> Enum.filter(&(&1.denied > 0))
+    |> Enum.flat_map(fn row ->
+      policy = policies[row.repository_id]
+
+      case cover(policy, row) do
+        # Allowed since: nothing to offer.
+        :covered -> []
+        {:uncovered, path} -> [{{row.host, row.port, row.path || ""}, {row, path, policy}}]
+      end
+    end)
+    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+    |> Enum.map(fn {{host, port, path}, hits} ->
+      rows = Enum.map(hits, &elem(&1, 0))
+      # The path is what no rule covers when the host itself is allowed somewhere.
+      held? = Enum.any?(hits, fn {_row, uncovered_path, _policy} -> uncovered_path != nil end)
+
+      locked =
+        Enum.find_value(hits, fn {row, _path, policy} ->
+          first_match(policy.locked_denies, row.host)
+        end)
+
+      %{
+        host: host,
+        port: port,
+        path: path,
+        held: held?,
+        locked: locked,
+        denied: rows |> Enum.map(& &1.denied) |> Enum.sum(),
+        runs: rows |> Enum.map(& &1.run_id) |> Enum.uniq() |> length(),
+        last_seen_at: rows |> Enum.map(& &1.last_seen_at) |> Enum.max(DateTime),
+        repository_ids:
+          rows |> Enum.map(& &1.repository_id) |> Enum.reject(&is_nil/1) |> Enum.uniq()
+      }
+    end)
+    |> Enum.sort_by(&{-&1.denied, &1.host, &1.port, &1.path})
+    |> Enum.take(@top)
+    |> then(&with_repositories(hive_id, &1))
   end
 
   @doc false
@@ -189,9 +261,11 @@ defmodule Apiary.Policy.Activity do
           do: {{entry.action, entry.host}, id}
 
     denies = for %{kind: :host, action: :deny, host: host} <- in_force, do: host
+    locked = for %{kind: :host, action: :deny, locked: true, host: host} <- in_force, do: host
 
     %{
       mode: effective.mode,
+      locked_denies: Enum.sort_by(locked, &{Grammar.wildcard?(&1), &1}),
       follows_hive: effective.mode_source == :hive,
       allow: effective.allow,
       paths: effective.paths,

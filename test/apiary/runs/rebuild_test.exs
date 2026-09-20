@@ -78,6 +78,27 @@ defmodule Apiary.Runs.RebuildTest do
       assert projection(fresh) == expected
     end
 
+    test "selects a run whose result was folded before the cost was, and only that", %{
+      scope: scope
+    } do
+      costed = run_fixture(scope)
+      event_fixture(costed, 1, "session.result", %{"outcome" => "success", "cost_usd" => 0.25})
+      {:ok, _} = Projector.project(costed)
+      assert Decimal.equal?(Repo.get!(Run, costed.id).cost_usd, Decimal.new("0.25"))
+
+      # As a release before the column left it: the result folded, no cost on the row.
+      Repo.update_all(from(r in Run, where: r.id == ^costed.id), set: [cost_usd: nil])
+
+      # A result that carried no cost gives the rebuild nothing to do but the work.
+      free = run_fixture(scope)
+      event_fixture(free, 1, "session.result", %{"outcome" => "success"})
+      {:ok, _} = Projector.project(free)
+
+      assert Rebuild.run() == %{rebuilt: 2, failed: 0}
+      assert Decimal.equal?(Repo.get!(Run, costed.id).cost_usd, Decimal.new("0.25"))
+      assert Repo.get!(Run, free.id).cost_usd == nil
+    end
+
     test "walks in batches", %{scope: scope} do
       runs =
         for _ <- 1..5 do

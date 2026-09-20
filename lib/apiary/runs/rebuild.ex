@@ -5,7 +5,8 @@ defmodule Apiary.Runs.Rebuild do
 
   By default only the runs that need it: those with a connection projected before the
   columns of its last attempt existed (`last_mode` is null on a row that has folded an
-  event). `all: true` rebuilds every run. Runs are walked by id, `batch:` at a time
+  event), and those with a session result and no `cost_usd`, projected before the cost
+  was folded. `all: true` rebuilds every run. Runs are walked by id, `batch:` at a time
   (default 100), each rebuilt in its own transactions by `Apiary.Runs.Projector.rebuild/1`,
   so the work can be stopped and started again: a run already rebuilt is not selected the
   second time, and rebuilding one twice gives the same rows. A run that fails is logged by
@@ -22,9 +23,10 @@ defmodule Apiary.Runs.Rebuild do
   require Logger
 
   alias Apiary.Repo
-  alias Apiary.Runs.{Connection, Projector, Run}
+  alias Apiary.Runs.{Connection, Event, Projector, Run}
 
   @default_batch 100
+  @result "ai.qory.session.result"
 
   @doc "Rebuilds the runs that need it (or all); returns `%{rebuilt: n, failed: n}`."
   @spec run(keyword()) :: %{rebuilt: non_neg_integer(), failed: non_neg_integer()}
@@ -56,7 +58,15 @@ defmodule Apiary.Runs.Rebuild do
         from c in Connection,
           where: c.run_id == parent_as(:run).id and is_nil(c.last_mode) and c.last_sequence > 0
 
-      from r in query, as: :run, where: exists(stale)
+      # A result folded before `cost_usd` existed: the run has one and no cost. Read on
+      # the index `events (run_id, type, sequence)`, one probe a run.
+      uncosted =
+        from e in Event,
+          where: e.run_id == parent_as(:run).id and e.type == @result
+
+      from r in query,
+        as: :run,
+        where: exists(stale) or (is_nil(r.cost_usd) and exists(uncosted))
     end
   end
 

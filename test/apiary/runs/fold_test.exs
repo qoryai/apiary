@@ -31,7 +31,8 @@ defmodule Apiary.Runs.FoldTest do
     heartbeat_interval_seconds: nil,
     policy_digest: nil,
     run_configuration_digest: nil,
-    lost_at: nil
+    lost_at: nil,
+    cost_usd: nil
   }
 
   @t0 ~U[2026-09-16 12:00:00.000000Z]
@@ -455,6 +456,41 @@ defmodule Apiary.Runs.FoldTest do
       assert run.state == "closed"
       assert run.exit_code == 0
       assert run.exited_at == at(18)
+    end
+  end
+
+  describe "ai.qory.session.result" do
+    test "adds the cost the session reported to the run's, once per result" do
+      events = [
+        event(4, "session.result", %{"outcome" => "success", "cost_usd" => 0.8412}),
+        event(9, "session.result", %{"outcome" => "error_max_turns", "cost_usd" => 1})
+      ]
+
+      %{run: run} = Fold.fold(@run, events)
+      assert Decimal.equal?(run.cost_usd, Decimal.new("1.8412"))
+
+      # One pass or two, the sum is the same: an event is folded once.
+      %{run: run, latest: latest} = Fold.fold(@run, Enum.take(events, 1))
+      %{run: run} = Fold.fold(run, Enum.drop(events, 1), latest)
+      assert Decimal.equal?(run.cost_usd, Decimal.new("1.8412"))
+    end
+
+    test "a result without a cost, or with one that is not a number, leaves the run unrecorded" do
+      for data <- [
+            %{"outcome" => "success"},
+            %{"cost_usd" => "free"},
+            %{"cost_usd" => nil},
+            %{"cost_usd" => -0.5},
+            %{"cost_usd" => 1.0e12}
+          ] do
+        assert %{run: %{cost_usd: nil}} = Fold.fold(@run, [event(4, "session.result", data)])
+      end
+
+      # A zero is a cost that was reported: zero, not unrecorded.
+      assert %{run: %{cost_usd: zero}} =
+               Fold.fold(@run, [event(4, "session.result", %{"cost_usd" => 0})])
+
+      assert Decimal.equal?(zero, 0)
     end
   end
 

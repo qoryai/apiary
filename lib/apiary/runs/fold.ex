@@ -33,8 +33,13 @@ defmodule Apiary.Runs.Fold do
   @log "ai.qory.run.log"
   @egress "ai.qory.run.egress"
   @exited "ai.qory.run.exited"
+  @result "ai.qory.session.result"
 
   @runner_version "runner_version"
+
+  # The most a result may say a session cost, in dollars, before the value is read as
+  # absent: a runtime's accounting error, not a bill.
+  @max_cost Decimal.new(1_000_000_000)
 
   @doc """
   The ranks an event of `type` competes in, which the projector seeds `latest` with; none
@@ -228,9 +233,38 @@ defmodule Apiary.Runs.Fold do
     end)
   end
 
+  # The cost a non-interactive session reported is the runtime's own total for the
+  # session, its subagents included (`docs/contract-assumptions.md`): every result of the
+  # run adds its `cost_usd` to the run's, once, so the run's cost is a sum of totals and
+  # never counts a subagent twice. A result without a cost adds nothing and leaves null
+  # null: a run that reported no cost is unrecorded, not free.
+  defp event(acc, %{type: @result, data: data}) do
+    case cost(data) do
+      nil -> acc
+      cost -> %{acc | run: %{acc.run | cost_usd: add_cost(acc.run.cost_usd, cost)}}
+    end
+  end
+
   # Session events and types this revision does not know: kept in `events`, marked
   # projected by the projector, nothing folded.
   defp event(acc, _event), do: acc
+
+  defp add_cost(nil, cost), do: cost
+  defp add_cost(%Decimal{} = sum, cost), do: Decimal.add(sum, cost)
+
+  # A cost is a JSON number, zero or more and below the bound; anything else is absent.
+  defp cost(data) do
+    case data do
+      %{"cost_usd" => value} when is_integer(value) -> bounded_cost(Decimal.new(value))
+      %{"cost_usd" => value} when is_float(value) -> bounded_cost(Decimal.from_float(value))
+      _ -> nil
+    end
+  end
+
+  defp bounded_cost(%Decimal{} = cost) do
+    if Decimal.compare(cost, 0) != :lt and Decimal.compare(cost, @max_cost) == :lt,
+      do: Decimal.normalize(cost)
+  end
 
   @doc "The run state an `ai.qory.run.exited` with this `state` and `reason` means."
   def exit_state("succeeded", _reason), do: "succeeded"

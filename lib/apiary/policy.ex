@@ -509,6 +509,53 @@ defmodule Apiary.Policy do
   def denied_summary(%Scope{hive: %Hive{}} = scope, %DateTime{} = since),
     do: Activity.denied_summary(scope, since)
 
+  @typedoc "A denied destination today's rules still do not allow: see `denied_destinations/2`."
+  @type denied_destination :: %{
+          host: String.t(),
+          port: non_neg_integer,
+          path: String.t(),
+          held: boolean,
+          locked: String.t() | nil,
+          denied: pos_integer,
+          runs: pos_integer,
+          last_seen_at: DateTime.t(),
+          repositories: [%{id: Ecto.UUID.t(), forge: String.t(), path: String.t()}]
+        }
+
+  @doc """
+  The destinations (host, port and path) that were denied since `since` and that today's
+  effective policy still does not allow: what a member can act on, each held to the
+  policy of its own run's repository as `uncovered/2` holds them. A destination allowed
+  since is left out: the record says it was denied, the rules say it no longer would be.
+  `held` is true when the host is allowed and the path is what no rule covers; `locked`
+  names the locked hive deny that covers the host, when one does, so a page can say that
+  only an owner changes it. The 50 with the most denials, most first, with the
+  repositories whose runs were denied. Bounded as `uncovered/2` is, `:unavailable` beyond
+  the cap.
+  """
+  @spec denied_destinations(Scope.t(), DateTime.t()) :: {:ok, [denied_destination]} | :unavailable
+  def denied_destinations(%Scope{hive: %Hive{}} = scope, %DateTime{} = since),
+    do: Activity.denied_destinations(scope, since)
+
+  @doc """
+  What the hive overview reads of the connections in one bounded read: `denied`, the
+  denied destinations of `denied_destinations/2` since `since`; `uncovered`, what
+  `uncovered/2` answers for the same moment; and `denied_destinations`, how many distinct
+  destinations (host, port and path) were denied since `window`, an earlier moment, for
+  the strip's "to 3 destinations". One read of `connections` since `window`, capped as
+  `uncovered/2` is; `:unavailable` beyond the cap, for all three at once.
+  """
+  @spec overview_activity(Scope.t(), DateTime.t(), DateTime.t()) ::
+          {:ok,
+           %{
+             denied: [denied_destination],
+             uncovered: [uncovered],
+             denied_destinations: non_neg_integer
+           }}
+          | :unavailable
+  def overview_activity(%Scope{hive: %Hive{}} = scope, %DateTime{} = since, %DateTime{} = window),
+    do: Activity.overview(scope, since, window)
+
   @doc """
   Per rule id, the attempts allowed and denied since `since`: `%{rule_id => %{allowed: n,
   denied: n}}`, a rule nothing reached being absent. For the baseline (`nil`) every
@@ -557,6 +604,25 @@ defmodule Apiary.Policy do
   @spec suggestions(Scope.t(), Repository.t(), DateTime.t() | nil) :: [suggestion]
   def suggestions(%Scope{} = scope, %Repository{} = repository, since \\ nil),
     do: declared_hosts(scope, repository, since).suggested
+
+  @doc """
+  How many declared hosts across the hive's repositories no rule covers or denies, counted
+  and not listed, for a card that says "3 to review in 2 repositories":
+  `%{hosts: n, repositories: n}`. Read from the policy applied events of the newest runs
+  since `since` (the last fourteen days by default), bounded at every step
+  (`Apiary.Policy.Suggestions`): the 100 most recent runs with a repository and
+  300 of their events, then each repository's effective policy resolved once from the
+  hive's rules, read once. Two bounded reads and the hive's mode, however many
+  repositories the hive has; no attempts are counted, so nothing here can be unavailable.
+  """
+  @spec suggestion_counts(Scope.t(), DateTime.t() | nil) :: %{
+          hosts: non_neg_integer,
+          repositories: non_neg_integer
+        }
+  def suggestion_counts(%Scope{hive: %Hive{} = hive}, since \\ nil) do
+    since = since || DateTime.add(DateTime.utc_now(), -14, :day)
+    Suggestions.counts(hive, since)
+  end
 
   @doc """
   The declared hosts shown against the rules (S5): `%{suggested: [suggestion], covered:

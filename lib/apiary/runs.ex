@@ -155,10 +155,15 @@ defmodule Apiary.Runs do
 
   @doc """
   What the summary line says of everything the filters return: `runs`, `repositories`,
-  `tasks`, `alive` and `with_denials`. `hive_runs` is every run of the hive, filtered or
-  not, for the empty state that says how many the filters hide.
+  `tasks`, the three families `alive`, `ended_well` and `ended_badly`
+  (`Apiary.Runs.Filters.families/0`), and `with_denials`, all counted in one query.
+  `hive_runs` is every run of the hive, filtered or not, for the empty state that says how
+  many the filters hide.
   """
   def summarise_runs(%Scope{} = scope, %Filters{} = filters, now \\ DateTime.utc_now()) do
+    ended_well = Filters.family_states("ended_well")
+    ended_badly = Filters.family_states("ended_badly")
+
     summary =
       Repo.one(
         from r in filtered(scope, filters, now),
@@ -167,6 +172,8 @@ defmodule Apiary.Runs do
             repositories: count(r.repository_id, :distinct),
             tasks: count(r.task, :distinct),
             alive: filter(count(r.id), r.state in ^Run.alive_states()),
+            ended_well: filter(count(r.id), r.state in ^ended_well),
+            ended_badly: filter(count(r.id), r.state in ^ended_badly),
             with_denials: filter(count(r.id), r.denied_count > 0)
           }
       )
@@ -842,6 +849,150 @@ defmodule Apiary.Runs do
       :error -> false
     end
   end
+
+  ## The hive overview
+
+  # The runs are placed by when they started, or, for a run that has only pinged, by when
+  # the hive first heard of it: the expression of `runs_hive_id_started_or_first_heard_index`.
+  defp by_start, do: dynamic([r], coalesce(r.started_at, r.inserted_at))
+
+  @typedoc """
+  One UTC day of the hive's runs, counted in the three families (`alive`, `ended_well`,
+  `ended_badly`; `runs` is their sum), with the denials of those runs and the cost they
+  reported: `cost` is the sum of `cost_usd` over the day's runs, nil when none reported
+  one, and `costed` how many did.
+  """
+  @type day_facts :: %{
+          day: Date.t(),
+          runs: non_neg_integer,
+          alive: non_neg_integer,
+          ended_well: non_neg_integer,
+          ended_badly: non_neg_integer,
+          denied: non_neg_integer,
+          cost: Decimal.t() | nil,
+          costed: non_neg_integer
+        }
+
+  @doc """
+  The hive's runs from `from` on, one row per UTC day they started (a pending run by when
+  its ping arrived), oldest first; a day with no run has no row. One grouped query over
+  the index the runs list reads by; the caller fills the days in. `to`, when given, bounds
+  the read above (exclusive), so one call can read today alone.
+  """
+  @spec day_facts(Scope.t(), DateTime.t(), DateTime.t() | nil) :: [day_facts]
+  def day_facts(%Scope{} = scope, %DateTime{} = from, to \\ nil) do
+    query =
+      in_scope(scope)
+      |> where(^dynamic([r], ^by_start() >= ^from))
+      |> where_if(to, dynamic([r], ^by_start() < ^to))
+
+    Repo.all(
+      from r in query,
+        group_by:
+          fragment("(COALESCE(?, ?) AT TIME ZONE 'UTC')::date", r.started_at, r.inserted_at),
+        order_by:
+          fragment("(COALESCE(?, ?) AT TIME ZONE 'UTC')::date", r.started_at, r.inserted_at),
+        select: %{
+          day:
+            type(
+              fragment("(COALESCE(?, ?) AT TIME ZONE 'UTC')::date", r.started_at, r.inserted_at),
+              :date
+            ),
+          runs: count(r.id),
+          alive: filter(count(r.id), r.state in ^Run.alive_states()),
+          ended_well: filter(count(r.id), r.state == "succeeded"),
+          ended_badly: filter(count(r.id), r.state in ^Run.ended_badly_states()),
+          denied: type(coalesce(sum(r.denied_count), 0), :integer),
+          cost: sum(r.cost_usd),
+          costed: count(r.cost_usd)
+        }
+    )
+  end
+
+  @doc "The alive runs of the hive, the most recently started first; at most `limit` (default 6)."
+  @spec list_alive(Scope.t(), pos_integer) :: [Run.t()]
+  def list_alive(%Scope{} = scope, limit \\ 6) do
+    Repo.all(
+      from r in in_scope(scope),
+        where: r.state in ^Run.alive_states(),
+        order_by: [desc: coalesce(r.started_at, r.inserted_at), desc: r.id],
+        limit: ^bound(limit)
+    )
+  end
+
+  @doc "The hive's most recently started runs, alive or ended; at most `limit` (default 5)."
+  @spec recent_runs(Scope.t(), pos_integer) :: [Run.t()]
+  def recent_runs(%Scope{} = scope, limit \\ 5) do
+    Repo.all(
+      from r in in_scope(scope),
+        order_by: [desc: coalesce(r.started_at, r.inserted_at), desc: r.id],
+        limit: ^bound(limit)
+    )
+  end
+
+  @doc """
+  The runs the hive found lost since `since`, the most recently lost first, at most `limit`
+  (default 6): the ones a member may still want to close. Older losses are facts on the
+  runs list, not tasks.
+  """
+  @spec lost_since(Scope.t(), DateTime.t(), pos_integer) :: [Run.t()]
+  def lost_since(%Scope{} = scope, %DateTime{} = since, limit \\ 6) do
+    Repo.all(
+      from r in in_scope(scope),
+        where: r.state == "lost" and r.lost_at >= ^since,
+        order_by: [desc: r.lost_at, desc: r.id],
+        limit: ^bound(limit)
+    )
+  end
+
+  @doc """
+  The last run each of these access keys started, by the key's row id, in one read of the
+  index `runs (hive_id, access_key_id, started)` (`DISTINCT ON`); a key with no run is
+  absent. At most #{@max_limit} keys are read.
+  """
+  @spec last_runs_by_key(Scope.t(), [Ecto.UUID.t()]) :: %{optional(Ecto.UUID.t()) => Run.t()}
+  def last_runs_by_key(%Scope{}, []), do: %{}
+
+  def last_runs_by_key(%Scope{} = scope, key_ids) when is_list(key_ids) do
+    ids = Enum.take(key_ids, @max_limit)
+
+    Repo.all(
+      from r in in_scope(scope),
+        where: r.access_key_id in ^ids,
+        distinct: r.access_key_id,
+        order_by: [asc: r.access_key_id, desc: coalesce(r.started_at, r.inserted_at), desc: r.id]
+    )
+    |> Map.new(&{&1.access_key_id, &1})
+  end
+
+  @doc """
+  The hosts each of these access keys' runs came from since `since`, by the key's row id:
+  `%{key_id => %{count: n, host: name}}`, `host` being the one host when there is only one
+  and nil otherwise; a key with no run in the window is absent. A key is not a machine (a
+  pool of ephemeral instances shares one), so a page counts the hosts. One grouped read of
+  the index `runs (hive_id, access_key_id, started)`; at most #{@max_limit} keys.
+  """
+  @spec hosts_by_key(Scope.t(), [Ecto.UUID.t()], DateTime.t()) :: %{
+          optional(Ecto.UUID.t()) => %{count: pos_integer, host: String.t() | nil}
+        }
+  def hosts_by_key(%Scope{}, [], _since), do: %{}
+
+  def hosts_by_key(%Scope{} = scope, key_ids, %DateTime{} = since) when is_list(key_ids) do
+    ids = Enum.take(key_ids, @max_limit)
+
+    Repo.all(
+      from r in in_scope(scope),
+        where: r.access_key_id in ^ids and not is_nil(r.host),
+        where: coalesce(r.started_at, r.inserted_at) >= ^since,
+        group_by: r.access_key_id,
+        select: {r.access_key_id, count(r.host, :distinct), min(r.host), max(r.host)}
+    )
+    |> Map.new(fn {key_id, count, first, last} ->
+      {key_id, %{count: count, host: if(first == last, do: first)}}
+    end)
+  end
+
+  defp bound(limit), do: limit |> max(1) |> min(@max_limit)
 
   ## Closing
 
