@@ -1343,11 +1343,10 @@
     display: inline-block;
     flex: none;
   }
+  /* No `display` here: daisyUI hides a closed dropdown with it, and this layer would win. */
   .q-filter-menu {
-    display: grid;
     width: 15rem;
     max-height: 22rem;
-    gap: 4px;
     overflow-y: auto;
     padding: 0.25rem;
     border-radius: var(--radius-box);
@@ -1356,6 +1355,7 @@
   }
   .q-filter-search {
     width: 100%;
+    margin-bottom: 4px;
   }
   .q-filter-options {
     display: grid;

@@ -62,7 +62,23 @@ a restart does before doing it (`docs/upgrading.md`).
 - The projection keeps, per run, the count of its denied connections, and per connection the
   mode, path rule, credential name and request method of its last attempt, ranked by
   sequence like the rest and reproduced by a rebuild.
-- For development, `mix apiary.demo` replays the synthetic recorded runs under `priv/demo/` into a hive through the receiver's own ingest, as new runs that end now (dev and test only).
+- The runs list, `/hive/runs`: every run of the hive with its state, what it worked on, its
+  runtime, host, start, duration and denials; grouped by repository (two forges with one
+  path are two groups, runs without a repository are Unassigned), by task across
+  repositories, or not at all; filtered by state, repository, task, runtime, host, time
+  range and "has denials", with the options counted from the data. Every filter, the
+  grouping and the page are in the URL, which is validated and shareable. A running run
+  whose heartbeat is overdue turns amber and its clock stops at "at least"; the server
+  decides that, and only the projector and the lost-run check change a state. Live: a run
+  on the page changes in place, a new one is counted ("1 new run") until the reader asks.
+- The hive's connections, `/hive/connections`: one row per host, port and path across the
+  runs in range, with attempts, allowed and denied, the reason and the outcome of the last
+  attempt in a sentence, and the runs that reached each destination; filtered by decision,
+  repository, host and time range. With a repository chosen it is the per-repository view,
+  which the runs list links to.
+- The sidebar has two sections, Hive (Overview, Runs, Connections) and Manage; Runs shows
+  how many runs are alive now on every page of the hive. The overview links to the runs.
+- For development, `mix apiary.demo` replays the synthetic recorded runs under `priv/demo/` into a hive through the receiver's own ingest, as new runs that end now (dev and test only), and prints each run's page.
 
 ### Migrations
 

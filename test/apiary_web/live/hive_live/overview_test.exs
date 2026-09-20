@@ -66,6 +66,22 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
       count
     end
 
+    test "links to the runs: the count always, a button once a machine has posted", %{
+      conn: conn,
+      scope: scope
+    } do
+      {:ok, lv, _html} = live(conn, ~p"/hive")
+      assert has_element?(lv, "a#runs-alive[href='/hive/runs']")
+      refute has_element?(lv, "#overview-runs")
+
+      run = run_fixture(scope)
+      event_fixture(run, 2, "run.started", started_data())
+      {:ok, _} = Projector.project(run)
+
+      assert has_element?(lv, "#overview-runs[href='/hive/runs']")
+      assert has_element?(lv, "#nav-runs-alive", "1")
+    end
+
     test "is zero, and the page listens, before anything has posted", %{conn: conn} do
       {:ok, lv, html} = live(conn, ~p"/hive")
 

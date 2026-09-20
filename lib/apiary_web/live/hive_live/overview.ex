@@ -63,6 +63,7 @@ defmodule ApiaryWeb.HiveLive.Overview do
             label="Runs alive now"
             value={@runs_alive}
             hint={alive_hint(@runs_alive)}
+            navigate={~p"/hive/runs"}
           />
           <.stat
             label="Access keys"
@@ -81,6 +82,7 @@ defmodule ApiaryWeb.HiveLive.Overview do
         <.card>
           <:title>Connect a machine</:title>
           <:actions>
+            <.button :if={@posted} id="overview-runs" navigate={~p"/hive/runs"}>See the runs</.button>
             <.button navigate={~p"/hive/keys"}>Manage access keys</.button>
           </:actions>
           <.connect_steps current={if @posted, do: 3, else: 2} />

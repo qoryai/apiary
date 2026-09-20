@@ -62,7 +62,7 @@ defmodule Mix.Tasks.Apiary.Demo do
           #{file |> Path.relative_to(Application.app_dir(:apiary)) |> Path.relative_to_cwd()}
             run id  #{run.run_id}
             state   #{run.state}, #{run.event_count} events
-            url     #{ApiaryWeb.Endpoint.url()}/hive/runs/#{run.id}\
+            url     #{ApiaryWeb.Endpoint.url()}/hive/runs/#{run.run_id}\
           """)
 
         {:error, reason} ->
