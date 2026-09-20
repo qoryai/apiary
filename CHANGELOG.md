@@ -245,6 +245,13 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
   that has one. The hints name what works, `https://qory.example`, or `http://localhost:4100`
   for a trial on one machine. Every message an operator reads, `.env.example` and the compose
   file say Qory, and the default sender of mail is `qory@<public host>`.
+- A key whose secrets the instance cannot decrypt, because `CLOAK_KEY` is not the key they
+  were encrypted with, answers every signed request `503` `{"error":"unavailable"}` with a
+  log line naming the key id, where it raised and answered `500` before; the access keys
+  page still lists it, **Rotate** issues a new secret in place of the unreadable ones and
+  **Revoke** revokes. The backup guide says so.
+- `/docs` is served by the endpoint's static plug in every environment; in development it
+  answered `400` for a built page.
 - An empty `SMTP_USERNAME`, which is how `.env.example` leaves it, means no
   authentication at the relay; before, it meant authenticating with an empty name.
 

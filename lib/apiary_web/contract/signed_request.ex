@@ -15,8 +15,12 @@ defmodule ApiaryWeb.Contract.SignedRequest do
   anything parses it.
 
   Either secret of the key verifies, in constant time. Every failure, whatever
-  its cause, is a 401 with the same body. Nothing in this module logs a header
-  value.
+  its cause, is a 401 with the same body, but one: a key whose secrets the instance
+  cannot decrypt, because `CLOAK_KEY` is not the key they were encrypted with, is a
+  503 with `{"error":"unavailable"}`, the runner's signal to fail closed and try
+  again, and a line in the log names the key id (`Apiary.AccessKeys.fetch_for_verification/1`).
+  That is the instance's fault, never the machine's, and a 401 would send the operator
+  to the wrong place. Nothing in this module logs a header value.
 
   No input makes this plug raise. The key id is checked for its exact shape
   before it reaches the database, and a header of the signature sent twice is
@@ -44,6 +48,7 @@ defmodule ApiaryWeb.Contract.SignedRequest do
   # The column is a Postgres integer; a contract version is a small number.
   @contract_version_range 0..32_767
   @unauthorized %{error: "unauthorized"}
+  @unavailable %{error: "unavailable"}
 
   def init(opts), do: opts
 
@@ -57,6 +62,7 @@ defmodule ApiaryWeb.Contract.SignedRequest do
          true <- Signature.verify(AccessKey.secrets(access_key), body, signature) do
       assign(conn, :access_key, access_key)
     else
+      {:error, :unreadable} -> unavailable(conn)
       _ -> unauthorized(conn)
     end
   end
@@ -73,6 +79,7 @@ defmodule ApiaryWeb.Contract.SignedRequest do
          true <- Signature.verify(AccessKey.secrets(access_key), canonical, signature) do
       assign(conn, :access_key, touch(access_key, conn))
     else
+      {:error, :unreadable} -> unavailable(conn)
       _ -> unauthorized(conn)
     end
   end
@@ -89,6 +96,13 @@ defmodule ApiaryWeb.Contract.SignedRequest do
     conn
     |> put_status(:unauthorized)
     |> Phoenix.Controller.json(@unauthorized)
+    |> halt()
+  end
+
+  defp unavailable(conn) do
+    conn
+    |> put_status(:service_unavailable)
+    |> Phoenix.Controller.json(@unavailable)
     |> halt()
   end
 

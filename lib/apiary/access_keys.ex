@@ -9,6 +9,8 @@ defmodule Apiary.AccessKeys do
 
   import Ecto.Query, warn: false
 
+  require Logger
+
   alias Apiary.Repo
   alias Apiary.Accounts.Scope
   alias Apiary.AccessKeys.AccessKey
@@ -112,7 +114,7 @@ defmodule Apiary.AccessKeys do
                current
                |> Ecto.Changeset.change(
                  secret_primary: fn -> secret end,
-                 secret_secondary: fn -> previous end,
+                 secret_secondary: previous && fn -> previous end,
                  rotated_at: DateTime.utc_now()
                )
                |> Repo.update() do
@@ -168,18 +170,56 @@ defmodule Apiary.AccessKeys do
         where: k.id == ^id and k.organisation_id == ^organisation.id and k.hive_id == ^hive.id,
         lock: "FOR UPDATE"
 
+    # A secret that cannot be decrypted with the key the instance holds (see
+    # `readable?/1`) is dropped here, never carried over: a rotation issues a new secret
+    # in its place, and a revocation still revokes.
     case Repo.one(query) do
-      %AccessKey{} = access_key -> {:ok, access_key}
+      %AccessKey{} = access_key -> {:ok, drop_unreadable(access_key)}
       nil -> {:error, :unauthorized}
     end
   end
 
-  @doc "The active key behind a key id, secrets decrypted, for request verification."
+  defp drop_unreadable(%AccessKey{} = access_key) do
+    %{
+      access_key
+      | secret_primary: if(is_binary(access_key.secret_primary), do: access_key.secret_primary),
+        secret_secondary:
+          if(is_binary(access_key.secret_secondary), do: access_key.secret_secondary)
+    }
+  end
+
+  @doc """
+  The active key behind a key id, secrets decrypted, for request verification: `:error`
+  for a key id the hive does not hold or has revoked, and `{:error, :unreadable}`, with a
+  line in the log, when the secrets cannot be decrypted with the key the instance holds
+  (`CLOAK_KEY` is not the one they were encrypted with).
+  """
   def fetch_for_verification(key_id) when is_binary(key_id) do
     case Repo.one(from k in AccessKey, where: k.key_id == ^key_id and is_nil(k.revoked_at)) do
-      %AccessKey{} = access_key -> {:ok, access_key}
-      nil -> :error
+      %AccessKey{} = access_key ->
+        if readable?(access_key), do: {:ok, access_key}, else: unreadable(key_id)
+
+      nil ->
+        :error
     end
+  rescue
+    ArgumentError -> unreadable(key_id)
+  end
+
+  # A secret encrypted under another key does not raise when it is loaded: the cipher's
+  # failure comes through as the atom `:error` in the field. A secret is a binary or nil.
+  defp readable?(%AccessKey{secret_primary: primary, secret_secondary: secondary}) do
+    (is_binary(primary) or is_nil(primary)) and (is_binary(secondary) or is_nil(secondary))
+  end
+
+  # The key id is public; nothing of the row is in the line.
+  defp unreadable(key_id) do
+    Logger.error(
+      "access key secret cannot be decrypted key_id=#{key_id}: " <>
+        "CLOAK_KEY is not the key the secret was encrypted with"
+    )
+
+    {:error, :unreadable}
   end
 
   def fetch_for_verification(_key_id), do: :error

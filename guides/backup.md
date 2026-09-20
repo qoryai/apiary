@@ -104,12 +104,24 @@ It encrypts the secrets of access keys at rest: the columns `secret_primary` and
 `secret_secondary` of the table `access_keys`. Nothing else in the database is encrypted
 with it.
 
-Without the `CLOAK_KEY` the dump was taken under, those secrets cannot be read, so no
-request of any runner can be verified: no machine starts a run against this server, and no
-events arrive. The console cannot show a secret again either, by design. The way out is a
-new access key for every machine, created in the console under the new `CLOAK_KEY`, with its
-`server` block pasted into each machine's runner file
-([The runner file's `server` section](runner-file.md)).
+Without the `CLOAK_KEY` the dump was taken under, those secrets cannot be read. What that
+looks like, so it is recognised:
+
+- Every signed request of a runner holding such a key, the configuration document, the
+  run configuration and every batch of events, is answered `503` with
+  `{"error":"unavailable"}`, never `401`: the instance is at fault, not the machine. The
+  runner fails closed, so no machine starts a run against this server and no events
+  arrive. For each request the log has `access key secret cannot be decrypted
+  key_id=ak_…: CLOAK_KEY is not the key the secret was encrypted with`.
+- The console still shows every key on **Access keys** with its label, key id and last
+  use, since the page never reads a secret. It cannot show a secret again, by design.
+- **Rotate** on such a key issues a new secret, shown once, in place of the ones nobody can
+  read, which are dropped; **Revoke** revokes as ever.
+
+The way out is therefore a new secret for every machine: rotate each key under the new
+`CLOAK_KEY`, or create a new key, and paste the `server` block into each machine's runner
+file ([The runner file's `server` section](runner-file.md)). When the right `CLOAK_KEY`
+turns up, put it back before rotating and every existing secret reads again.
 
 Everything else survives: accounts, organisations, hives and memberships, runs, events,
 logs, connections, the security policy with its versions and history, and the access keys'
