@@ -9,9 +9,21 @@ defmodule Apiary.Runs.Fold do
   Events are stored as received, so `data` is not trusted to follow its schema: a field of
   the wrong type is read as absent, and an event never makes the fold raise.
 
-  The fold tolerates any order of arrival. What decides between two events of one type is
-  the sequence (`latest`, the highest sequence already projected per type) or the event's
-  time (heartbeats, connections), never the order in which they were folded.
+  The fold is total. Every integer is read within the range of its column and of its
+  meaning (a port, an interval of 1 to 3600 seconds) and every string is cut to a sane
+  length; a value outside is read as absent, so nothing the fold returns can fail to be
+  written.
+
+  The fold tolerates any order of arrival. What decides between two events is always the
+  sequence, never a clock and never the order in which they were folded: `latest` carries,
+  per rank, the highest sequence already projected. A rank is a type where one event wins
+  (`ranks/0`); `run.started` and `ping` also share the rank of the `runner_version`, which
+  the later of the two decides.
+
+  Times: `started_at`, `exited_at` and a connection's first and last seen are the runner's
+  own, the record. `last_heartbeat_at` is the moment this server received the heartbeat
+  with the highest sequence, because the lost-run check compares it with the server's
+  clock and a runner's clock may be anywhere.
   """
 
   @ping "ai.qory.ping"
@@ -22,8 +34,27 @@ defmodule Apiary.Runs.Fold do
   @egress "ai.qory.run.egress"
   @exited "ai.qory.run.exited"
 
-  @doc "The types whose highest projected sequence the projector passes in as `latest`."
-  def ranked_types, do: [@started, @policy_applied, @exited]
+  @runner_version "runner_version"
+
+  @doc """
+  The ranks an event of `type` competes in, which the projector seeds `latest` with; none
+  for a type that is folded without ranking.
+  """
+  def ranks(type) when type in [@ping, @started], do: [type, @runner_version]
+  def ranks(type) when type in [@policy_applied, @heartbeat, @exited], do: [type]
+  def ranks(_type), do: []
+
+  @doc "The types whose highest projected sequence seeds a rank."
+  def rank_types(@runner_version), do: [@ping, @started]
+  def rank_types(type), do: [type]
+
+  @int4 2_147_483_647
+  @int8 9_223_372_036_854_775_807
+  @max_interval 3600
+  @text 1024
+  @long_text 4096
+  @max_args 1024
+  @max_labels 64
 
   @terminal ~w(exited failed timed_out)
   @streams ~w(terminal stdout stderr)
@@ -61,25 +92,25 @@ defmodule Apiary.Runs.Fold do
     %{acc | log_chunks: Enum.reverse(acc.log_chunks)}
   end
 
-  defp event(acc, %{type: @ping, data: data}) do
-    update_run(acc, fn run ->
-      run
-      |> put_present(:runner_version, string(data, "runner_version"))
-      |> put_present(:contract_version, integer(data, "contract_version"))
-    end)
+  defp event(acc, %{type: @ping, data: data} = event) do
+    acc
+    |> ranked(event, &%{&1 | contract_version: integer(data, "contract_version", 0..@int4)})
+    |> runner_version(event)
   end
 
   defp event(acc, %{type: @started, data: data} = event) do
-    ranked(acc, event, fn run ->
+    acc
+    |> runner_version(event)
+    |> ranked(event, fn run ->
       labels = labels(data)
 
       run
       |> Map.merge(%{
         runtime: string(data, "runtime"),
         runtime_version: string(data, "runtime_version"),
-        command: string(data, "command"),
+        command: string(data, "command", @long_text),
         args: strings(data, "args"),
-        dir: string(data, "dir"),
+        dir: string(data, "dir", @long_text),
         interactive: boolean(data, "interactive"),
         host: string(data, "host"),
         wall: string(data, "wall"),
@@ -90,8 +121,7 @@ defmodule Apiary.Runs.Fold do
         repository: labels["repository"],
         started_at: event.time
       })
-      |> put_present(:runner_version, string(data, "runner_version"))
-      |> Map.update!(:state, &started_state/1)
+      |> started_state()
     end)
   end
 
@@ -105,23 +135,22 @@ defmodule Apiary.Runs.Fold do
     end)
   end
 
-  defp event(acc, %{type: @heartbeat, data: data, time: time}) do
-    update_run(acc, fn run ->
-      if newer_heartbeat?(run, time, integer(data, "elapsed_seconds")) do
-        run
-        |> Map.put(:last_heartbeat_at, time)
-        |> put_present(:elapsed_seconds, integer(data, "elapsed_seconds"))
-        |> put_present(:heartbeat_interval_seconds, positive(data, "interval_seconds"))
-        |> revive()
-      else
-        run
-      end
+  # Ordered by sequence, timed by this server: see the moduledoc.
+  defp event(acc, %{type: @heartbeat, data: data} = event) do
+    ranked(acc, event, fn run ->
+      run
+      |> Map.merge(%{
+        last_heartbeat_at: Map.get(event, :received_at) || event.time,
+        elapsed_seconds: integer(data, "elapsed_seconds", 0..@int4),
+        heartbeat_interval_seconds: integer(data, "interval_seconds", 1..@max_interval)
+      })
+      |> revive()
     end)
   end
 
   defp event(acc, %{type: @log, data: data, sequence: sequence}) do
     with stream when stream in @streams <- string(data, "stream"),
-         encoded when is_binary(encoded) <- string(data, "bytes"),
+         encoded when is_binary(encoded) <- string(data, "bytes", :infinity),
          {:ok, bytes} <- Base.decode64(encoded) do
       chunk = %{sequence: sequence, stream: stream, bytes: bytes}
       %{acc | log_chunks: [chunk | acc.log_chunks]}
@@ -130,36 +159,46 @@ defmodule Apiary.Runs.Fold do
     end
   end
 
-  defp event(acc, %{type: @egress, data: data, time: time}) do
-    with host when is_binary(host) <- string(data, "host"),
-         port when is_integer(port) <- integer(data, "port") do
-      key = {host, port, string(data, "path") || ""}
-      allowed? = string(data, "decision") == "allowed"
-      denied? = string(data, "decision") == "denied"
+  defp event(acc, %{type: @egress, data: data, time: time, sequence: sequence}) do
+    with host when is_binary(host) <- string(data, "host", 255),
+         port when is_integer(port) <- integer(data, "port", 0..65_535) do
+      key = {host, port, string(data, "path", @text) || ""}
+      decision = string(data, "decision", 64)
 
+      # Events come in sequence order, so within a pass the last one folded is the last.
       seen = %{
-        method: string(data, "method"),
-        last_decision: string(data, "decision"),
+        method: string(data, "method", 64),
+        last_decision: decision,
         last_rule: string(data, "rule"),
-        last_outcome: string(data, "outcome"),
-        last_seen_at: time
+        last_outcome: string(data, "outcome", 64),
+        last_sequence: sequence
       }
 
       delta =
         case acc.connections[key] do
           nil ->
-            Map.merge(seen, %{attempts: 0, allowed: 0, denied: 0, first_seen_at: time})
+            Map.merge(seen, %{
+              attempts: 0,
+              allowed: 0,
+              denied: 0,
+              first_seen_at: time,
+              last_seen_at: time
+            })
 
-          %{last_seen_at: last} = delta ->
-            delta = %{delta | first_seen_at: earliest(delta.first_seen_at, time)}
-            if DateTime.compare(time, last) == :lt, do: delta, else: Map.merge(delta, seen)
+          delta ->
+            delta
+            |> Map.merge(seen)
+            |> Map.merge(%{
+              first_seen_at: earliest(delta.first_seen_at, time),
+              last_seen_at: latest_time(delta.last_seen_at, time)
+            })
         end
 
       delta = %{
         delta
         | attempts: delta.attempts + 1,
-          allowed: delta.allowed + if(allowed?, do: 1, else: 0),
-          denied: delta.denied + if(denied?, do: 1, else: 0)
+          allowed: delta.allowed + if(decision == "allowed", do: 1, else: 0),
+          denied: delta.denied + if(decision == "denied", do: 1, else: 0)
       }
 
       %{acc | connections: Map.put(acc.connections, key, delta)}
@@ -175,10 +214,10 @@ defmodule Apiary.Runs.Fold do
       run
       |> Map.merge(%{
         exited_at: event.time,
-        exit_code: integer(data, "exit_code"),
-        signal: string(data, "signal"),
+        exit_code: integer(data, "exit_code", -@int4..@int4),
+        signal: string(data, "signal", 64),
         reason: reason,
-        duration_ms: integer(data, "duration_ms")
+        duration_ms: integer(data, "duration_ms", 0..@int8)
       })
       |> Map.update!(:state, &exited_state(&1, string(data, "state"), reason))
       |> Map.put(:lost_at, nil)
@@ -197,8 +236,23 @@ defmodule Apiary.Runs.Fold do
   defp exited_state("closed", _state, _reason), do: "closed"
   defp exited_state(_current, state, reason), do: exit_state(state, reason)
 
-  defp started_state(state) when state in @terminal or state == "closed", do: state
-  defp started_state(_state), do: "running"
+  defp started_state(%{state: state} = run) when state in @terminal or state == "closed",
+    do: run
+
+  defp started_state(run), do: %{run | state: "running", lost_at: nil}
+
+  # `ping` and `run.started` both say the runner's version: the later of the two decides.
+  defp runner_version(acc, %{sequence: sequence, data: data}) do
+    if sequence > Map.get(acc.latest, @runner_version, 0) do
+      %{
+        acc
+        | run: %{acc.run | runner_version: string(data, "runner_version", 255)},
+          latest: Map.put(acc.latest, @runner_version, sequence)
+      }
+    else
+      acc
+    end
+  end
 
   # A heartbeat says the run is alive: a lost run runs again, and so does a run whose
   # `run.started` has not arrived yet. An exit or a close is not undone.
@@ -206,16 +260,6 @@ defmodule Apiary.Runs.Fold do
     do: %{run | state: "running", lost_at: nil}
 
   defp revive(run), do: run
-
-  defp newer_heartbeat?(%{last_heartbeat_at: nil}, _time, _elapsed), do: true
-
-  defp newer_heartbeat?(%{last_heartbeat_at: last} = run, time, elapsed) do
-    case DateTime.compare(time, last) do
-      :gt -> true
-      :eq -> is_integer(elapsed) and elapsed > (run.elapsed_seconds || -1)
-      :lt -> false
-    end
-  end
 
   # Only the event of its type with the highest sequence decides.
   defp ranked(acc, %{type: type, sequence: sequence}, fun) do
@@ -226,30 +270,27 @@ defmodule Apiary.Runs.Fold do
     end
   end
 
-  defp update_run(acc, fun), do: %{acc | run: fun.(acc.run)}
-
-  defp put_present(run, _key, nil), do: run
-  defp put_present(run, key, value), do: Map.put(run, key, value)
-
   defp earliest(a, b), do: if(DateTime.compare(b, a) == :lt, do: b, else: a)
+  defp latest_time(a, b), do: if(DateTime.compare(b, a) == :gt, do: b, else: a)
 
-  defp string(data, key) do
+  # `max` is a count of bytes, or `:infinity`, which every integer is below.
+  defp string(data, key, max \\ @text) do
     case data do
-      %{^key => value} when is_binary(value) -> value
+      %{^key => value} when is_binary(value) -> cut(value, max)
       _ -> nil
     end
   end
 
-  defp integer(data, key) do
-    case data do
-      %{^key => value} when is_integer(value) -> value
-      _ -> nil
-    end
+  # Cut by bytes, on a character boundary.
+  defp cut(value, max) when byte_size(value) <= max, do: value
+
+  defp cut(value, max) do
+    value |> binary_part(0, max) |> String.chunk(:valid) |> List.first("")
   end
 
-  defp positive(data, key) do
-    case integer(data, key) do
-      value when is_integer(value) and value > 0 -> value
+  defp integer(data, key, range) do
+    case data do
+      %{^key => value} when is_integer(value) -> if value in range, do: value
       _ -> nil
     end
   end
@@ -263,15 +304,27 @@ defmodule Apiary.Runs.Fold do
 
   defp strings(data, key) do
     case data do
-      %{^key => values} when is_list(values) -> Enum.filter(values, &is_binary/1)
-      _ -> []
+      %{^key => values} when is_list(values) ->
+        values
+        |> Stream.filter(&is_binary/1)
+        |> Stream.map(&cut(&1, @long_text))
+        |> Enum.take(@max_args)
+
+      _ ->
+        []
     end
   end
 
   defp labels(data) do
     case data do
       %{"labels" => %{} = labels} ->
-        for {key, value} <- labels, is_binary(key), is_binary(value), into: %{}, do: {key, value}
+        labels
+        |> Enum.filter(fn {key, value} ->
+          is_binary(key) and is_binary(value) and byte_size(key) <= 64
+        end)
+        |> Enum.sort()
+        |> Enum.take(@max_labels)
+        |> Map.new(fn {key, value} -> {key, cut(value, 256)} end)
 
       _ ->
         %{}

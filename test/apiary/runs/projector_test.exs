@@ -55,6 +55,7 @@ defmodule Apiary.Runs.ProjectorTest do
                 :last_decision,
                 :last_rule,
                 :last_outcome,
+                :last_sequence,
                 :first_seen_at,
                 :last_seen_at
               ])
@@ -96,9 +97,10 @@ defmodule Apiary.Runs.ProjectorTest do
       assert projected.exited_at == at(61.5)
       assert projected.exit_code == 0
       assert projected.duration_ms == 61_500
-      assert projected.last_heartbeat_at == at(60)
+      # The heartbeat with the highest sequence, at the time this server received it.
+      assert projected.last_heartbeat_at == at(130)
       assert projected.elapsed_seconds == 60
-      assert projected.heartbeat_interval_seconds == 30
+      assert projected.heartbeat_interval_seconds == 20
       assert projected.policy_digest == String.duplicate("2b", 32)
       assert projected.run_configuration_digest == "sha256=" <> String.duplicate("3c", 32)
       assert projected.projected_sequence == 14
@@ -120,7 +122,8 @@ defmodule Apiary.Runs.ProjectorTest do
              ] = connections
 
       assert api.first_seen_at == at(6)
-      assert api.last_seen_at == at(8)
+      assert api.last_seen_at == at(6)
+      assert api.last_sequence == 8
       assert api.hive_id == run.hive_id
       assert api.organisation_id == run.organisation_id
     end
@@ -200,6 +203,54 @@ defmodule Apiary.Runs.ProjectorTest do
       assert connection.last_outcome == "dial_failed"
       assert connection.first_seen_at == at(2)
       assert connection.last_seen_at == at(5)
+    end
+
+    test "at equal times the higher sequence is the last, whichever arrives first", %{
+      scope: scope
+    } do
+      events = [
+        {4, "run.egress", egress_data(%{"outcome" => "connected"}), time: at(9)},
+        {5, "run.egress", egress_data(%{"outcome" => "dial_failed"}), time: at(9)}
+      ]
+
+      for order <- [events, Enum.reverse(events)] do
+        run = run_fixture(scope)
+
+        for event <- order do
+          events_fixture(run, [event])
+          {:ok, _} = Projector.project(run)
+        end
+
+        assert [%{attempts: 2, last_outcome: "dial_failed", last_sequence: 5}] =
+                 projection(run).connections
+      end
+    end
+
+    test "the later of ping and run.started says the runner's version, in any order", %{
+      scope: scope
+    } do
+      events = [
+        {1, "ping", %{"runner_version" => "v0.4.0", "contract_version" => 1}},
+        {2, "run.started", started_data(%{"runner_version" => "v0.4.1"})}
+      ]
+
+      for order <- [events, Enum.reverse(events)] do
+        run = run_fixture(scope)
+
+        for event <- order do
+          events_fixture(run, [event])
+          {:ok, _} = Projector.project(run)
+        end
+
+        assert Repo.get!(Run, run.id).runner_version == "v0.4.1"
+      end
+    end
+
+    test "a late run.started revives a lost run and clears lost_at", %{scope: scope} do
+      run = run_fixture(scope, %{state: "lost", lost_at: at(500)})
+      events_fixture(run, [{2, "run.started", started_data()}])
+
+      assert {:ok, %Run{state: "running", lost_at: nil}} = Projector.project(run)
     end
 
     test "a late lower sequence is projected and never regresses the run", %{run: run} do
@@ -298,6 +349,59 @@ defmodule Apiary.Runs.ProjectorTest do
 
       assert {:ok, %Run{state: "failed", args: [], labels: %{}, projected_sequence: 4}} =
                Projector.project(run)
+    end
+
+    test "integers no column can hold are read as absent and block nothing", %{run: run} do
+      huge = 99_999_999_999_999_999_999
+
+      events_fixture(run, [
+        {1, "ping", %{"runner_version" => "v0.4.0", "contract_version" => huge}},
+        {2, "run.started", started_data()},
+        {3, "run.heartbeat", %{"elapsed_seconds" => huge, "interval_seconds" => 2_000_000_000}},
+        {4, "run.egress", egress_data(%{"port" => huge})},
+        {5, "run.egress", egress_data(%{"port" => 70_000})},
+        {6, "run.egress", egress_data(%{"path" => "/" <> String.duplicate("a", 100_000)})},
+        {7, "run.exited", %{"state" => "failed", "exit_code" => huge, "duration_ms" => huge}}
+      ])
+
+      assert {:ok, %Run{} = projected} = Projector.project(run)
+
+      assert projected.state == "failed"
+      assert projected.projected_sequence == 7
+      assert projected.contract_version == nil
+      assert projected.elapsed_seconds == nil
+      assert projected.heartbeat_interval_seconds == nil
+      assert projected.exit_code == nil
+      assert projected.duration_ms == nil
+      assert %{unprojected: 0, connections: [%{port: 443, attempts: 1}]} = projection(run)
+
+      before = projection(run)
+      assert {:ok, _} = Projector.rebuild(run)
+      assert projection(run) == before
+    end
+
+    test "projected_sequence advances over more than a page of events", %{run: run} do
+      now = DateTime.utc_now()
+
+      rows =
+        for sequence <- 1..2500 do
+          %{
+            id: Ecto.UUID.generate(),
+            organisation_id: run.organisation_id,
+            hive_id: run.hive_id,
+            run_id: run.id,
+            sequence: sequence,
+            event_id: Ecto.UUID.generate(),
+            type: "ai.qory.session.started",
+            time: now,
+            data: %{},
+            received_at: now
+          }
+        end
+
+      Repo.insert_all(Event, rows)
+
+      assert {:ok, %Run{projected_sequence: 2500}} = Projector.project(run)
     end
 
     test "a closed run stays closed whatever arrives", %{scope: scope, run: run} do

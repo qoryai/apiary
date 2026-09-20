@@ -25,9 +25,13 @@ defmodule Apiary.RunEventsFixtures do
 
   @doc """
   Stores one event of the run, unprojected. `type` is given without the `ai.qory.`
-  prefix; the time defaults to `sequence` seconds after `t0/0`.
+  prefix; `time:` defaults to `sequence` seconds after `t0/0` and `received_at:` to a
+  hundred seconds after the time, so that the two clocks are told apart and two receptions
+  of one record project the same.
   """
   def event_fixture(%Run{} = run, sequence, type, data, opts \\ []) do
+    time = Keyword.get(opts, :time) || at(sequence)
+
     Repo.insert!(%Event{
       organisation_id: run.organisation_id,
       hive_id: run.hive_id,
@@ -35,9 +39,9 @@ defmodule Apiary.RunEventsFixtures do
       sequence: sequence,
       event_id: Ecto.UUID.generate(),
       type: "ai.qory." <> type,
-      time: Keyword.get(opts, :time) || at(sequence),
+      time: time,
       data: data,
-      received_at: DateTime.utc_now()
+      received_at: Keyword.get(opts, :received_at) || DateTime.add(time, 100, :second)
     })
   end
 
@@ -51,7 +55,11 @@ defmodule Apiary.RunEventsFixtures do
     end
   end
 
-  @doc "A whole synthetic run: every type the projector folds, and two it only marks."
+  @doc """
+  A whole synthetic run: every type the projector folds, and two it only marks. The two
+  attempts on `api.example.com` carry one time, and so do the two heartbeats: only the
+  sequence tells which is the last.
+  """
   def record do
     [
       {1, "ping", %{"runner_version" => "v0.4.0", "contract_version" => 1, "events" => []}},
@@ -73,7 +81,7 @@ defmodule Apiary.RunEventsFixtures do
          "outcome" => "refused",
          "rule" => ""
        })},
-      {8, "run.egress", egress_data(%{"outcome" => "dial_failed"})},
+      {8, "run.egress", egress_data(%{"outcome" => "dial_failed"}), time: at(6)},
       {9, "run.log", %{"stream" => "stderr", "bytes" => Base.encode64(<<255, 0, 10>>)}},
       {10, "run.heartbeat", %{"elapsed_seconds" => 30, "interval_seconds" => 30}, time: at(30)},
       {11, "run.policy_applied",
@@ -85,7 +93,7 @@ defmodule Apiary.RunEventsFixtures do
          "digest" => String.duplicate("2b", 32),
          "run_configuration" => "sha256=" <> String.duplicate("3c", 32)
        }, time: at(31)},
-      {12, "run.heartbeat", %{"elapsed_seconds" => 60, "interval_seconds" => 30}, time: at(60)},
+      {12, "run.heartbeat", %{"elapsed_seconds" => 60, "interval_seconds" => 20}, time: at(30)},
       {13, "something.unheard_of", %{"anything" => true}, time: at(61)},
       {14, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 61_500},
        time: at(61.5)}

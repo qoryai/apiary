@@ -38,8 +38,17 @@ defmodule Apiary.Runs.FoldTest do
 
   defp at(seconds), do: DateTime.add(@t0, seconds, :second)
 
+  # Received a hundred seconds after it was sent: the two clocks are told apart.
   defp event(sequence, type, data, seconds \\ nil) do
-    %{sequence: sequence, type: "ai.qory." <> type, data: data, time: at(seconds || sequence)}
+    seconds = seconds || sequence
+
+    %{
+      sequence: sequence,
+      type: "ai.qory." <> type,
+      data: data,
+      time: at(seconds),
+      received_at: at(seconds + 100)
+    }
   end
 
   defp started(sequence, extra \\ %{}) do
@@ -115,6 +124,28 @@ defmodule Apiary.Runs.FoldTest do
       data = %{"runner_version" => 4, "contract_version" => "1"}
       assert %{run: @run} = Fold.fold(@run, [event(1, "ping", data)])
     end
+
+    test "the later of ping and run.started says the runner's version, in any order" do
+      ping = event(1, "ping", %{"runner_version" => "v0.4.0", "contract_version" => 1})
+      start = started(2, %{"runner_version" => "v0.4.1"})
+
+      assert Fold.fold(@run, [ping, start]).run.runner_version == "v0.4.1"
+
+      %{run: run, latest: latest} = Fold.fold(@run, [start])
+      %{run: run} = Fold.fold(run, [ping], latest)
+      assert run.runner_version == "v0.4.1"
+      assert run.contract_version == 1
+    end
+
+    test "the ping with the highest sequence decides" do
+      first = event(1, "ping", %{"runner_version" => "v1", "contract_version" => 1})
+      second = event(9, "ping", %{"runner_version" => "v2", "contract_version" => 2})
+
+      %{run: run, latest: latest} = Fold.fold(@run, [second])
+      %{run: run} = Fold.fold(run, [first], latest)
+
+      assert {run.runner_version, run.contract_version} == {"v2", 2}
+    end
   end
 
   describe "ai.qory.run.started" do
@@ -157,6 +188,11 @@ defmodule Apiary.Runs.FoldTest do
       %{run: run} = Fold.fold(%{@run | state: "closed"}, [started(2)])
       assert run.state == "closed"
     end
+
+    test "arriving for a lost run, the run is running and no longer lost" do
+      %{run: run} = Fold.fold(%{@run | state: "lost", lost_at: at(100)}, [started(2)])
+      assert {run.state, run.lost_at} == {"running", nil}
+    end
   end
 
   describe "ai.qory.run.policy_applied" do
@@ -182,38 +218,63 @@ defmodule Apiary.Runs.FoldTest do
   end
 
   describe "ai.qory.run.heartbeat" do
-    test "records the beat" do
+    test "records the beat at the time this server received it" do
       %{run: run} = Fold.fold(%{@run | state: "running"}, [heartbeat(5, 30)])
 
-      assert run.last_heartbeat_at == at(5)
+      assert run.last_heartbeat_at == at(105)
       assert run.elapsed_seconds == 30
       assert run.heartbeat_interval_seconds == 30
       assert run.state == "running"
     end
 
-    test "never moves backwards" do
-      %{run: run} = Fold.fold(@run, [heartbeat(9, 60, 30, 60)])
-      %{run: run} = Fold.fold(run, [heartbeat(5, 30, 15, 30)])
+    test "the highest sequence decides, whatever the runner's clock says" do
+      # The later beat is dated before the earlier one: a clock that was set back.
+      later = heartbeat(9, 60, 30, 3)
+      earlier = heartbeat(5, 30, 15, 50)
 
-      assert run.last_heartbeat_at == at(60)
+      %{run: run, latest: latest} = Fold.fold(@run, [later])
+      %{run: run} = Fold.fold(run, [earlier], latest)
+
+      assert run.last_heartbeat_at == later.received_at
       assert run.elapsed_seconds == 60
       assert run.heartbeat_interval_seconds == 30
+      assert Fold.fold(@run, [earlier, later]).run == run
+    end
+
+    test "a beat dated in the future does not mask the beats after it" do
+      future = heartbeat(5, 30, 30, 86_400 * 365)
+      next = heartbeat(6, 60)
+
+      %{run: run} = Fold.fold(@run, [future, next])
+      assert run.last_heartbeat_at == next.received_at
+      assert run.elapsed_seconds == 60
+    end
+
+    test "an interval outside 1..3600 is read as absent" do
+      for interval <- [0, -5, 3601, 2_000_000_000, "30"] do
+        %{run: run} = Fold.fold(@run, [heartbeat(5, 30, interval)])
+        assert run.heartbeat_interval_seconds == nil
+        assert run.last_heartbeat_at == at(105)
+      end
+
+      assert Fold.fold(@run, [heartbeat(5, 30, 3600)]).run.heartbeat_interval_seconds == 3600
     end
 
     test "a lost run that beats again is running again" do
       lost = %{@run | state: "lost", lost_at: at(100), last_heartbeat_at: at(10)}
-      %{run: run} = Fold.fold(lost, [heartbeat(7, 120, 30, 120)])
+      %{run: run} = Fold.fold(lost, [heartbeat(7, 120)], %{"ai.qory.run.heartbeat" => 4})
 
       assert run.state == "running"
       assert run.lost_at == nil
     end
 
-    test "an old beat does not revive a lost run" do
+    test "an earlier beat arriving late does not revive a lost run" do
       lost = %{@run | state: "lost", lost_at: at(100), last_heartbeat_at: at(10)}
-      %{run: run} = Fold.fold(lost, [heartbeat(3, 5, 30, 5)])
+      %{run: run} = Fold.fold(lost, [heartbeat(3, 5)], %{"ai.qory.run.heartbeat" => 4})
 
       assert run.state == "lost"
       assert run.lost_at == at(100)
+      assert run.last_heartbeat_at == at(10)
     end
 
     test "an exited or a closed run is not revived" do
@@ -275,6 +336,7 @@ defmodule Apiary.Runs.FoldTest do
                last_decision: "denied",
                last_rule: "",
                last_outcome: "refused",
+               last_sequence: 7,
                first_seen_at: at(6),
                last_seen_at: at(7)
              }
@@ -283,6 +345,46 @@ defmodule Apiary.Runs.FoldTest do
                connections[{"api.example.com", 443, "/v1/messages"}]
 
       assert %{attempts: 1} = connections[{"api.example.com", 8443, ""}]
+    end
+
+    test "the highest sequence is the last, at equal times and against the clock" do
+      events = [
+        egress(6, %{"outcome" => "connected"}, 50),
+        egress(7, %{"outcome" => "dial_failed"}, 50),
+        egress(8, %{"outcome" => "refused", "decision" => "denied"}, 10)
+      ]
+
+      for order <- [events, Enum.reverse(events)] do
+        %{connections: connections} = Fold.fold(@run, order)
+
+        assert %{
+                 last_sequence: 8,
+                 last_outcome: "refused",
+                 last_decision: "denied",
+                 attempts: 3,
+                 first_seen_at: first,
+                 last_seen_at: last
+               } = connections[{"api.example.com", 443, ""}]
+
+        assert {first, last} == {at(10), at(50)}
+      end
+    end
+
+    test "a port outside 0..65535 is not a connection, and long names are cut" do
+      path = "/" <> String.duplicate("é", 4000)
+
+      %{connections: connections} =
+        Fold.fold(@run, [
+          egress(6, %{"port" => 65_536}),
+          egress(7, %{"port" => -1}),
+          egress(8, %{"port" => 9_999_999_999_999_999_999}),
+          egress(9, %{"path" => path, "host" => String.duplicate("h", 300)})
+        ])
+
+      assert [{{host, 443, cut}, %{attempts: 1}}] = Map.to_list(connections)
+      assert byte_size(host) == 255
+      assert byte_size(cut) <= 1024
+      assert String.valid?(cut)
     end
 
     test "an event without a host or a port is not a connection" do
@@ -310,6 +412,24 @@ defmodule Apiary.Runs.FoldTest do
         assert run.exit_code == Map.get(data, "exit_code", 0)
         assert run.duration_ms == 1200
       end
+    end
+
+    test "integers outside their columns are read as absent" do
+      huge = 9_999_999_999_999_999_999
+
+      for data <- [
+            %{"exit_code" => huge, "duration_ms" => huge},
+            %{"exit_code" => 2_147_483_648, "duration_ms" => -1},
+            %{"exit_code" => 1.5, "duration_ms" => "long"}
+          ] do
+        %{run: run} = Fold.fold(@run, [exited(18, Map.put(data, "state", "failed"))])
+        assert {run.state, run.exit_code, run.duration_ms} == {"failed", nil, nil}
+      end
+
+      ping = event(1, "ping", %{"contract_version" => huge, "runner_version" => "v"})
+      assert Fold.fold(@run, [ping]).run.contract_version == nil
+
+      assert Fold.fold(@run, [heartbeat(5, huge)]).run.elapsed_seconds == nil
     end
 
     test "keeps the signal" do
@@ -349,10 +469,13 @@ defmodule Apiary.Runs.FoldTest do
       event(1, "ping", %{"runner_version" => "v0.4.0", "contract_version" => 1}),
       started(2),
       event(3, "run.policy_applied", %{"digest" => "first"}),
+      # Every heartbeat at the same instant on both clocks: only the sequence can decide.
       heartbeat(4, 30, 30, 30),
       event(5, "run.policy_applied", %{"digest" => "second"}),
-      heartbeat(6, 60, 30, 60),
-      exited(7, %{"state" => "failed", "reason" => "timeout"})
+      heartbeat(6, 60, 15, 30),
+      heartbeat(7, 90, 45, 30),
+      event(8, "ping", %{"runner_version" => "v0.4.2", "contract_version" => 2}),
+      exited(9, %{"state" => "failed", "reason" => "timeout"})
     ]
 
     expected = Fold.fold(@run, events).run

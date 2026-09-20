@@ -44,10 +44,17 @@ a restart does before doing it (`docs/upgrading.md`).
   hive's repositories, after the receiver has answered. Idempotent and tolerant of any order
   of arrival; `Apiary.Runs.Projector.rebuild/1` rebuilds a run's projections from its events
   alone. Changes are announced on `Apiary.PubSub` (`runs:<hive>`, `run:<hive>:<run>`).
+  Values no column can hold are read as absent, and an event that still makes a projection
+  fail is skipped and named in the log, so one event never blocks a run. Event data stays out
+  of the query log at every level.
 - Lost runs: a run that has been silent for more than three of the heartbeat intervals it
   announced (90 seconds when it announced none) is marked `lost`, whether it was running or
   still pending; a later heartbeat or its exit corrects that. Checked every 15 seconds
   (`config :apiary, Apiary.Runs.Liveness, interval: …, enabled: …`), safely on several nodes.
+  Silence is measured on the server's clock alone (when a heartbeat was received, not when
+  the runner says it was sent), so a runner whose clock is wrong is neither lost for it nor
+  held alive by it. Before each check, and once at boot, the runs whose events were left
+  unprojected for more than ten seconds are projected, at most 100 a check.
 - Runs in the console's API (`Apiary.Runs`): how many runs of the hive are alive, a run by
   id, the newest runs, and closing a run, after which the receiver answers `410` for it.
 - The hive overview shows "Runs alive now", live; the access keys page shows each key's last

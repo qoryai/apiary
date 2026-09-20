@@ -4,8 +4,9 @@ defmodule Apiary.Runs.Projector do
   its `log_chunks` and the hive's `repositories`.
 
   The receiver stores events and answers; it calls `project_async/1` after its
-  transaction has committed. `project/1` is the same work done synchronously, for the
-  tests and for anything that sweeps up events left unprojected.
+  transaction has committed. `project/1` is the same work done synchronously: the tests
+  call it, and so does `Apiary.Runs.Liveness`, which on every tick projects the runs whose
+  events were left unprojected, by a task that died or a node that stopped.
 
   A pass takes a Postgres advisory transaction lock on the run, so two projections of one
   run never interleave on any node, then locks the run's row, so a close or a lost-run
@@ -13,14 +14,19 @@ defmodule Apiary.Runs.Projector do
   `projected_at is null` in `sequence` order, folds them (`Apiary.Runs.Fold`), writes the
   result and marks the events projected in the same transaction: an event is folded
   exactly once, and a pass with nothing to fold changes nothing. Events that arrive late
-  with a lower sequence are folded when they arrive; the fold decides by sequence and by
-  the events' own times, so the order of arrival does not show in the result.
+  with a lower sequence are folded when they arrive; the fold decides by sequence alone, so
+  the order of arrival does not show in the result.
+
+  One event never blocks a run. The fold is total, and should a pass raise all the same, its
+  events are projected one by one and the one that fails is marked projected and named in
+  the log by run, sequence and the exception's module.
 
   `projected_sequence` is the highest sequence up to which every event has been
   projected: it stops before the first gap and moves on when the gap fills.
 
   Event data is never logged from here: a failure is logged with the run's id and the
-  kind of the error, nothing more.
+  kind of the error, nothing more, and every query that carries event data as a parameter
+  is kept out of the query log (`log: false`), which at debug level prints parameters.
   """
 
   import Ecto.Query
@@ -147,7 +153,7 @@ defmodule Apiary.Runs.Projector do
   # One transaction per pass of at most @pass_size events, so a long record, or a rebuild
   # of one, is not held in memory or in one transaction.
   defp passes(id, span) do
-    case Repo.transact(fn -> pass(id) end) do
+    case guarded_pass(id) do
       {:ok, {run, nil}} -> {:ok, run, span}
       {:ok, {_run, {first, last, @pass_size}}} -> passes(id, widen(span, first, last))
       {:ok, {run, {first, last, _count}}} -> {:ok, run, widen(span, first, last)}
@@ -158,22 +164,80 @@ defmodule Apiary.Runs.Projector do
   defp widen(nil, first, last), do: {first, last}
   defp widen({a, b}, first, last), do: {min(a, first), max(b, last)}
 
-  defp pass(id) do
+  defp guarded_pass(id) do
+    Repo.transact(fn -> pass(id, &unprojected/1) end)
+  rescue
+    _error -> one_by_one(id)
+  end
+
+  # The pass raised and rolled back. Project its events one at a time, each in its own
+  # transaction; the one that raises again is marked projected unfolded, so the pass
+  # after this one is not the same pass again.
+  defp one_by_one(id) do
+    events = Repo.all(from e in unprojected_query(id), select: {e.id, e.sequence})
+
+    Enum.each(events, fn {event_id, sequence} ->
+      try do
+        Repo.transact(fn -> pass(id, fn _id -> unprojected_event(event_id) end) end)
+      rescue
+        error ->
+          Logger.error(
+            "event skipped run=#{id} sequence=#{sequence} error=#{inspect(error.__struct__)}"
+          )
+
+          Repo.transact(fn ->
+            lock(id)
+            mark_projected([event_id])
+            {:ok, :skipped}
+          end)
+      end
+    end)
+
+    case {events, Repo.get(Run, id)} do
+      {_events, nil} ->
+        {:error, :not_found}
+
+      {[], run} ->
+        {:ok, {run, nil}}
+
+      {events, run} ->
+        sequences = Enum.map(events, &elem(&1, 1))
+        run = advance(run)
+        {:ok, {run, {Enum.min(sequences), Enum.max(sequences), length(events)}}}
+    end
+  end
+
+  # After events were skipped nothing has moved `projected_sequence` over them.
+  defp advance(%Run{id: id}) do
+    {:ok, run} =
+      Repo.transact(fn ->
+        lock(id)
+        run = locked_run(id)
+
+        run
+        |> Ecto.Changeset.change(projected_sequence: contiguous(run))
+        |> Repo.update()
+      end)
+
+    run
+  end
+
+  defp pass(id, read) do
     lock(id)
 
     with %Run{} = run <- locked_run(id),
-         {:events, _run, [_ | _] = events} <- {:events, run, unprojected(id)} do
-      fold = Fold.fold(run, events, latest(id))
+         {:events, _run, [_ | _] = events} <- {:events, run, read.(id)} do
+      fold = fold_module().fold(run, events, latest(id, events))
 
       run =
         run
         |> Ecto.Changeset.change(Map.take(fold.run, @folded_fields))
         |> put_repository(fold.run)
-        |> Repo.update!()
+        |> Repo.update!(log: false)
 
       insert_log_chunks(run, fold.log_chunks)
       upsert_connections(run, fold.connections)
-      mark_projected(events)
+      mark_projected(Enum.map(events, & &1.id))
 
       run =
         run
@@ -194,30 +258,48 @@ defmodule Apiary.Runs.Projector do
     end
   end
 
+  # The fold is replaceable so that a test can make a pass raise; nothing else sets it.
+  defp fold_module, do: Application.get_env(:apiary, __MODULE__, [])[:fold] || Fold
+
   defp lock(id) do
     Repo.query!("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", ["run:" <> id])
   end
 
   defp locked_run(id), do: Repo.one(from r in Run, where: r.id == ^id, lock: "FOR UPDATE")
 
-  defp unprojected(id) do
-    Repo.all(
-      from e in Event,
-        where: e.run_id == ^id and is_nil(e.projected_at),
-        order_by: e.sequence,
-        limit: @pass_size
-    )
+  defp unprojected(id), do: Repo.all(unprojected_query(id))
+
+  defp unprojected_query(id) do
+    from e in Event,
+      where: e.run_id == ^id and is_nil(e.projected_at),
+      order_by: e.sequence,
+      limit: @pass_size
   end
 
-  # The highest sequence already projected of each type where the highest decides.
-  defp latest(id) do
-    Repo.all(
+  defp unprojected_event(event_id) do
+    Repo.all(from e in Event, where: e.id == ^event_id and is_nil(e.projected_at))
+  end
+
+  # The highest sequence already projected in each rank this pass's events compete in.
+  # Most passes hold logs and egress only and ask nothing. One that asks walks the run's
+  # sequence index backwards to the last such event: a heartbeat back, for a heartbeat.
+  defp latest(id, events) do
+    ranks =
+      events |> Enum.map(& &1.type) |> Enum.uniq() |> Enum.flat_map(&Fold.ranks/1) |> Enum.uniq()
+
+    for rank <- ranks, sequence = last_projected(id, Fold.rank_types(rank)), into: %{} do
+      {rank, sequence}
+    end
+  end
+
+  defp last_projected(id, types) do
+    Repo.one(
       from e in Event,
-        where: e.run_id == ^id and not is_nil(e.projected_at) and e.type in ^Fold.ranked_types(),
-        group_by: e.type,
-        select: {e.type, max(e.sequence)}
+        where: e.run_id == ^id and e.type in ^types and not is_nil(e.projected_at),
+        order_by: [desc: e.sequence],
+        limit: 1,
+        select: e.sequence
     )
-    |> Map.new()
   end
 
   defp put_repository(changeset, %{forge: forge, repository: path})
@@ -240,14 +322,17 @@ defmodule Apiary.Runs.Projector do
         }
       ],
       on_conflict: :nothing,
-      conflict_target: [:hive_id, :forge, :path]
+      conflict_target: [:hive_id, :forge, :path],
+      log: false
     )
 
     repository_id =
       Repo.one!(
-        from p in Repository,
+        from(p in Repository,
           where: p.hive_id == ^run.hive_id and p.forge == ^forge and p.path == ^path,
           select: p.id
+        ),
+        log: false
       )
 
     Ecto.Changeset.change(changeset, repository_id: repository_id)
@@ -270,7 +355,8 @@ defmodule Apiary.Runs.Projector do
 
     Repo.insert_all(LogChunk, rows,
       on_conflict: :nothing,
-      conflict_target: [:run_id, :sequence]
+      conflict_target: [:run_id, :sequence],
+      log: false
     )
   end
 
@@ -291,7 +377,7 @@ defmodule Apiary.Runs.Projector do
       end
 
     # Every right-hand side reads the row as it was before the update, so the comparison
-    # of the times decides all four "last" columns together.
+    # of the sequences decides the four "last" columns and `last_sequence` together.
     on_conflict =
       from c in Connection,
         update: [
@@ -301,28 +387,29 @@ defmodule Apiary.Runs.Projector do
             denied: fragment("? + EXCLUDED.denied", c.denied),
             first_seen_at: fragment("LEAST(?, EXCLUDED.first_seen_at)", c.first_seen_at),
             last_seen_at: fragment("GREATEST(?, EXCLUDED.last_seen_at)", c.last_seen_at),
+            last_sequence: fragment("GREATEST(?, EXCLUDED.last_sequence)", c.last_sequence),
             method:
               fragment(
-                "CASE WHEN EXCLUDED.last_seen_at >= ? THEN EXCLUDED.method ELSE ? END",
-                c.last_seen_at,
+                "CASE WHEN EXCLUDED.last_sequence > ? THEN EXCLUDED.method ELSE ? END",
+                c.last_sequence,
                 c.method
               ),
             last_decision:
               fragment(
-                "CASE WHEN EXCLUDED.last_seen_at >= ? THEN EXCLUDED.last_decision ELSE ? END",
-                c.last_seen_at,
+                "CASE WHEN EXCLUDED.last_sequence > ? THEN EXCLUDED.last_decision ELSE ? END",
+                c.last_sequence,
                 c.last_decision
               ),
             last_rule:
               fragment(
-                "CASE WHEN EXCLUDED.last_seen_at >= ? THEN EXCLUDED.last_rule ELSE ? END",
-                c.last_seen_at,
+                "CASE WHEN EXCLUDED.last_sequence > ? THEN EXCLUDED.last_rule ELSE ? END",
+                c.last_sequence,
                 c.last_rule
               ),
             last_outcome:
               fragment(
-                "CASE WHEN EXCLUDED.last_seen_at >= ? THEN EXCLUDED.last_outcome ELSE ? END",
-                c.last_seen_at,
+                "CASE WHEN EXCLUDED.last_sequence > ? THEN EXCLUDED.last_outcome ELSE ? END",
+                c.last_sequence,
                 c.last_outcome
               )
           ]
@@ -330,41 +417,39 @@ defmodule Apiary.Runs.Projector do
 
     Repo.insert_all(Connection, rows,
       on_conflict: on_conflict,
-      conflict_target: [:run_id, :host, :port, :path]
+      conflict_target: [:run_id, :host, :port, :path],
+      log: false
     )
   end
 
-  defp mark_projected(events) do
-    ids = Enum.map(events, & &1.id)
-
+  defp mark_projected(ids) do
     Repo.update_all(from(e in Event, where: e.id in ^ids),
       set: [projected_at: DateTime.utc_now()]
     )
   end
 
-  # From where the run stands, the end of the unbroken stretch of projected sequences.
+  # From where the run stands, the end of the unbroken stretch of projected sequences,
+  # read a page at a time from the sequence index: the cost is the length of the advance.
+  @page 1000
+
   defp contiguous(%Run{id: id, projected_sequence: from}) do
-    next = from + 1
-
-    stretch_end =
-      Repo.one(
+    sequences =
+      Repo.all(
         from e in Event,
-          where: e.run_id == ^id and e.sequence >= ^next and not is_nil(e.projected_at),
-          where:
-            fragment(
-              "NOT EXISTS (SELECT 1 FROM events n WHERE n.run_id = ? AND n.sequence = ? + 1 AND n.projected_at IS NOT NULL)",
-              e.run_id,
-              e.sequence
-            ),
-          select: min(e.sequence)
+          where: e.run_id == ^id and e.sequence > ^from and not is_nil(e.projected_at),
+          order_by: e.sequence,
+          limit: @page,
+          select: e.sequence
       )
 
-    starts? =
-      Repo.exists?(
-        from e in Event,
-          where: e.run_id == ^id and e.sequence == ^next and not is_nil(e.projected_at)
-      )
+    reached =
+      Enum.reduce_while(sequences, from, fn
+        sequence, reached when sequence == reached + 1 -> {:cont, sequence}
+        _sequence, reached -> {:halt, reached}
+      end)
 
-    if starts? and is_integer(stretch_end), do: stretch_end, else: from
+    if reached == from + @page,
+      do: contiguous(%Run{id: id, projected_sequence: reached}),
+      else: reached
   end
 end
