@@ -528,6 +528,9 @@ defmodule Apiary.PolicyTest do
       assert [%{host: "registry.example", runs: 2, last_seen_at: %DateTime{}}] =
                Policy.suggestions(scope, repository)
 
+      # A host somebody denied is not suggested; one allowed is covered.
+      {:ok, _} = Policy.deny(scope, nil, %{host: "registry.example"})
+      assert [] = Policy.suggestions(scope, repository)
       {:ok, _} = Policy.allow(scope, repository, %{host: "registry.example"})
       assert [] = Policy.suggestions(scope, repository)
     end

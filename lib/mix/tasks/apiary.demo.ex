@@ -21,6 +21,13 @@ defmodule Mix.Tasks.Apiary.Demo do
   shifted so that the last event of the file happens now. A run that exits has just
   exited; one that does not has just beaten, and is found lost once its heartbeats have
   been missing for three of its intervals, like any run that stops talking.
+
+  Once the runs are in, a hive that has no security policy yet is given one, through
+  `Apiary.Policy` as a page would and in the name of the hive's first owner: enforce, a
+  baseline of hosts, one held to paths, a locked deny, a credential, and in the repository
+  `git.example.com/acme/shop` an added host, a disabled one and an allow the lock
+  overrides; written rule by rule, so there are versions and a history to look at. A hive
+  that has rules already is left as it is.
   """
 
   use Mix.Task
@@ -29,9 +36,11 @@ defmodule Mix.Tasks.Apiary.Demo do
 
   alias Apiary.AccessKeys
   alias Apiary.AccessKeys.AccessKey
-  alias Apiary.Organisations.Hive
+  alias Apiary.Accounts.Scope
+  alias Apiary.Organisations.{Hive, Membership}
+  alias Apiary.Policy
   alias Apiary.Repo
-  alias Apiary.Runs.{Batch, Ingest, Projector, Run}
+  alias Apiary.Runs.{Batch, Ingest, Projector, Repository, Run}
 
   @batch_size 20
   @source_prefix "urn:qory:run:"
@@ -68,6 +77,97 @@ defmodule Mix.Tasks.Apiary.Demo do
         {:error, reason} ->
           Mix.raise("#{file} was not replayed: #{inspect(reason)}")
       end
+    end
+
+    case policy(access_key) do
+      {:ok, changes} ->
+        Mix.shell().info("\nThe hive has a security policy now: #{changes} changes.")
+
+      :kept ->
+        Mix.shell().info("\nThe hive's security policy is left as it is.")
+
+      {:error, reason} ->
+        Mix.raise("the security policy was not written: #{reason}")
+    end
+  end
+
+  @doc """
+  Gives the key's hive the demo's security policy, when it has no rule yet: `{:ok,
+  changes}` with how many changes were made, `:kept` when the hive has rules already, or
+  `{:error, sentence}`. Synthetic hosts only, the ones the recorded runs reach.
+  """
+  def policy(%AccessKey{hive_id: hive_id}) do
+    with %Scope{} = scope <- owner_scope(hive_id),
+         [] <- Policy.list_rules(scope, nil) do
+      shop =
+        Repo.get_by(Repository, hive_id: hive_id, forge: "git.example.com", path: "acme/shop")
+
+      steps =
+        [
+          &Policy.allow(&1, nil, %{host: "api.llm.example"}),
+          &Policy.allow(&1, nil, %{host: "packages.example.com"}),
+          &Policy.allow(&1, nil, %{host: "*.packages.example.com"}),
+          &Policy.allow(&1, nil, %{host: "registry.example"}),
+          &Policy.allow(&1, nil, %{host: "metrics.example"}),
+          &Policy.allow(&1, nil, %{
+            host: "git.example.com",
+            paths: ["/acme/shop.git/info/refs", "/acme/shop.git/git-upload-pack"]
+          }),
+          &Policy.deny(&1, nil, %{host: "telemetry.llm.example", locked: true}),
+          &Policy.allow(&1, nil, %{kind: "credential", name: "model"}),
+          &Policy.set_mode(&1, "enforce"),
+          &remove(&1, "metrics.example")
+        ] ++
+          if shop do
+            [
+              &Policy.allow(&1, shop, %{host: "api.example"}),
+              &Policy.deny(&1, shop, %{host: "registry.example"}),
+              &Policy.allow(&1, shop, %{host: "telemetry.llm.example"}),
+              &Policy.allow(&1, shop, %{
+                kind: "credential",
+                name: "product",
+                argument: "acme/shop"
+              })
+            ]
+          else
+            []
+          end
+
+      Enum.reduce_while(steps, {:ok, 0}, fn step, {:ok, count} ->
+        case step.(scope) do
+          {:ok, _value} -> {:cont, {:ok, count + 1}}
+          {:error, %Policy.Error{message: message}} -> {:halt, {:error, message}}
+        end
+      end)
+    else
+      nil -> {:error, "the hive has no owner"}
+      [_ | _] -> :kept
+    end
+  end
+
+  defp remove(scope, host) do
+    rule = Enum.find(Policy.list_rules(scope, nil), &(&1.host == host))
+    Policy.remove_rule(scope, rule)
+  end
+
+  # The scope of the hive's first owner: the policy is written in somebody's name.
+  defp owner_scope(hive_id) do
+    membership =
+      Repo.one(
+        from m in Membership,
+          where: m.hive_id == ^hive_id and m.level == :owner,
+          order_by: [asc: m.inserted_at, asc: m.id],
+          limit: 1,
+          preload: [:user, :organisation, :hive]
+      )
+
+    if membership do
+      %Scope{
+        user: membership.user,
+        organisation: membership.organisation,
+        hive: membership.hive,
+        membership: membership
+      }
     end
   end
 

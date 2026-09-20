@@ -284,8 +284,8 @@ defmodule Apiary.Policy do
 
   @doc """
   The hosts the repository's harness declared (`harness_hosts` of its runs' policy
-  applied events, the newest runs first) that the repository's effective policy does not
-  cover: `[%{host:, runs:, last_seen_at:}]`, at most 50. Hosts that are not in the
+  applied events, the newest runs first) that the repository's effective policy neither
+  covers nor denies: `[%{host:, runs:, last_seen_at:}]`, at most 50. Hosts that are not in the
   contract's grammar are left out.
   """
   @spec suggestions(Scope.t(), Repository.t()) :: [

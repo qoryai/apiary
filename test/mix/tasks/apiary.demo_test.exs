@@ -208,4 +208,57 @@ defmodule Mix.Tasks.Apiary.DemoTest do
       assert Runs.list_runs(scope) == []
     end
   end
+
+  describe "policy/1" do
+    test "gives a hive without rules a policy with overrides, a lock, versions and a history",
+         %{scope: scope, access_key: access_key} do
+      assert {:ok, _run} = Demo.replay(access_key, file("session-with-subagents"))
+      assert {:ok, 14} = Demo.policy(access_key)
+
+      assert Apiary.Policy.get_mode(scope) == "enforce"
+
+      [%{repository: shop}] =
+        Enum.filter(Apiary.Policy.list_repositories(scope), &(&1.rule_count > 0))
+
+      effective = Apiary.Policy.effective(scope, shop)
+
+      assert effective.allow == [
+               "api.example",
+               "api.llm.example",
+               "git.example.com",
+               "packages.example.com",
+               "*.packages.example.com"
+             ]
+
+      assert Map.keys(effective.paths) == ["git.example.com"]
+
+      assert effective.credentials == [
+               %{name: "model"},
+               %{name: "product", argument: "acme/shop"}
+             ]
+
+      assert %{in_force: false, overridden_by: %{locked: true}} =
+               Enum.find(
+                 effective.entries,
+                 &(&1.host == "telemetry.llm.example" and &1.source == :repository)
+               )
+
+      assert %{total: 10} = Apiary.Policy.list_changes(scope, nil)
+      assert %{total: 4} = Apiary.Policy.list_changes(scope, shop)
+      assert {:ok, %{version: version}} = Apiary.Policy.current_configuration(scope, nil)
+      assert version > 5
+
+      # A second invocation leaves the policy as it is.
+      assert :kept = Demo.policy(access_key)
+      assert %{total: 14} = Apiary.Policy.list_changes(scope, :all)
+    end
+
+    test "without the demo's repository the baseline alone is written", %{
+      scope: scope,
+      access_key: access_key
+    } do
+      assert {:ok, 10} = Demo.policy(access_key)
+      assert Apiary.Policy.effective(scope, nil).allow != []
+    end
+  end
 end

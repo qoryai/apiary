@@ -1,6 +1,6 @@
 defmodule Apiary.Policy.Suggestions do
   @moduledoc """
-  The hosts a repository's harness declared and its policy does not cover (S5).
+  The hosts a repository's harness declared and its policy neither covers nor denies (S5).
 
   A run's `ai.qory.run.policy_applied` events report `harness_hosts`, the hosts the
   harness's modules declared; they decide nothing. Read here from the repository's newest
@@ -21,7 +21,10 @@ defmodule Apiary.Policy.Suggestions do
   @limit 50
 
   @doc false
-  def list(hive_id, repository_id, %Effective{allow: allow}) do
+  def list(hive_id, repository_id, %Effective{allow: allow, entries: entries}) do
+    # A host somebody denied is not covered on purpose: suggesting it would be noise.
+    denied = for %{kind: :host, action: :deny, in_force: true, host: host} <- entries, do: host
+
     runs =
       from r in Run,
         where: r.hive_id == ^hive_id and r.repository_id == ^repository_id,
@@ -41,7 +44,9 @@ defmodule Apiary.Policy.Suggestions do
     |> Enum.flat_map(fn {run_id, data, received_at} ->
       for host <- hosts(data), do: {host, run_id, received_at}
     end)
-    |> Enum.reject(fn {host, _run_id, _received_at} -> Grammar.covers_any?(allow, host) end)
+    |> Enum.reject(fn {host, _run_id, _received_at} ->
+      Grammar.covers_any?(allow, host) or Grammar.covers_any?(denied, host)
+    end)
     |> Enum.group_by(&elem(&1, 0))
     |> Enum.map(fn {host, seen} ->
       %{
