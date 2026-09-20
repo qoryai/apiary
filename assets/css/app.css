@@ -1738,6 +1738,10 @@
   .q-tabs::-webkit-scrollbar {
     display: none;
   }
+  /* The document scrolls, so the room for the sticky tab bar is the root's. */
+  :root:has(.q-tabs) {
+    scroll-padding-top: 64px;
+  }
   .q-tabs > a {
     display: inline-flex;
     height: 40px;
@@ -2042,9 +2046,14 @@
 
   /* ---- Phone (ri) ---- */
   @media (max-width: 767.98px) {
+    /* Under the shell's own sticky bar, which is 52 px tall. */
     .q-tabs {
+      top: 3.25rem;
       margin-inline: -1rem;
       padding-inline: 1rem;
+    }
+    :root:has(.q-tabs) {
+      scroll-padding-top: 116px;
     }
     .q-chip {
       height: 32px;

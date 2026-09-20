@@ -107,7 +107,7 @@ defmodule ApiaryWeb.Layouts do
           <.avatar :if={@user} name={@user.email} kind="self" />
         </header>
 
-        <main id="main" tabindex="-1" class="min-w-0 flex-1 scroll-pt-16 outline-none">
+        <main id="main" tabindex="-1" class="min-w-0 flex-1 outline-none">
           <div class="mx-auto w-full px-4 pb-12 pt-5 md:px-6 md:pt-8 lg:px-10">
             <div class={["mx-auto", if(@width == "full", do: "max-w-[1200px]", else: "max-w-[960px]")]}>
               <div class={[
