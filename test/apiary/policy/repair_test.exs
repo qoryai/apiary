@@ -3,7 +3,9 @@ defmodule Apiary.Policy.RepairTest do
   The one-off repair of `20260925000300`: the baselines a page's read once rendered and
   stored, with no change behind them, are deleted and the versions after them move down.
   """
-  use Apiary.DataCase, async: true
+  # Not async: the repair's statements are the database's whole, not one hive's, and make a
+  # temporary table; they run as the migration runs, alone.
+  use Apiary.DataCase, async: false
 
   import Apiary.OrganisationsFixtures
 
