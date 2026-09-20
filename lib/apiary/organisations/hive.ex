@@ -7,6 +7,8 @@ defmodule Apiary.Organisations.Hive do
   @foreign_key_type :binary_id
   schema "hives" do
     field :name, :string
+    # The mode of the hive's security policy; changed through `Apiary.Policy.set_mode/2`.
+    field :egress_mode, :string, default: "observe"
 
     belongs_to :organisation, Apiary.Organisations.Organisation
 
