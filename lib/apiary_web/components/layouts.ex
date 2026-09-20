@@ -680,10 +680,9 @@ defmodule ApiaryWeb.Layouts do
       phx-hook="Menu"
       phx-mounted={JS.ignore_attributes(["class"])}
     >
-      <div
+      <button
         id="theme-menu-button"
-        tabindex="0"
-        role="button"
+        type="button"
         class={["tooltip btn btn-ghost btn-square inline-flex", @tooltip]}
         data-tip="Theme"
         aria-label="Theme"
@@ -693,7 +692,7 @@ defmodule ApiaryWeb.Layouts do
       >
         <.icon name="hero-sun-micro" class="size-4 dark:hidden" />
         <.icon name="hero-moon-micro" class="hidden size-4 dark:inline-block" />
-      </div>
+      </button>
       <ul class="menu menu-sm dropdown-content mt-1.5 w-40 min-w-0" role="menu" aria-label="Theme">
         <li
           :for={

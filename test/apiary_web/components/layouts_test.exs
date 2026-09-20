@@ -33,7 +33,11 @@ defmodule ApiaryWeb.LayoutsTest do
     } do
       {:ok, view, html} = live(conn, ~p"/hive")
 
-      assert has_element?(view, "#top-bar #theme-menu-button[aria-label='Theme']")
+      # Both triggers are buttons, never a div with a tabindex: daisyUI takes the
+      # pointer away from a [tabindex] trigger while its dropdown has focus, so the
+      # click that should open the menu would land beside it.
+      assert has_element?(view, "#top-bar button#theme-menu-button[aria-label='Theme']")
+      refute has_element?(view, "#theme-menu [tabindex]")
 
       assert has_element?(
                view,
