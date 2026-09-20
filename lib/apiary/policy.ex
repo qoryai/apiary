@@ -665,6 +665,125 @@ defmodule Apiary.Policy do
 
   def digests(%Scope{}, %Run{}), do: {:error, not_found("This hive has no such run.")}
 
+  ## Bulk reads, for a page that lists
+
+  @bulk_max 500
+  @configuration_fields [
+    :id,
+    :version,
+    :digest,
+    :rendered_at,
+    :organisation_id,
+    :hive_id,
+    :repository_id,
+    :changed_by_id,
+    :policy_change_id
+  ]
+  @change_fields [
+    :id,
+    :action,
+    :subject,
+    :version_after,
+    :inserted_at,
+    :organisation_id,
+    :hive_id,
+    :repository_id,
+    :changed_by_id
+  ]
+
+  @doc """
+  The newest version of each target's own run configurations, in one query and without
+  the documents (`document` is nil): `%{key => %RunConfiguration{}}`, the key being the
+  repository's id, or nil for the baseline. `targets` holds `nil` or `:hive` for the
+  baseline, repositories, or repository ids; at most #{@bulk_max} are read. A target with no
+  configuration of its own (a repository served the baseline's, another hive's, an id that
+  is none) has no key.
+  """
+  @spec newest_versions(Scope.t(), [target | Ecto.UUID.t()]) :: %{
+          optional(Ecto.UUID.t() | nil) => RunConfiguration.t()
+        }
+  def newest_versions(%Scope{hive: %Hive{id: hive_id}}, targets) when is_list(targets) do
+    {ids, baseline?} = target_keys(targets)
+
+    Repo.all(
+      from c in RunConfiguration,
+        where: c.hive_id == ^hive_id,
+        where: c.repository_id in ^ids or (^baseline? and is_nil(c.repository_id)),
+        distinct: c.repository_id,
+        order_by: [asc: c.repository_id, desc: c.version],
+        select: struct(c, ^@configuration_fields)
+    )
+    |> Map.new(&{&1.repository_id, &1})
+  end
+
+  @doc """
+  The run configuration versions each change made, in one query and without the
+  documents: `%{change_id => [%RunConfiguration{}]}`, the baseline's first and then by
+  repository. A change of the hive may have rendered the baseline and several
+  repositories; one that rendered the same bytes made none and has no key, and neither
+  has another hive's change. At most #{@bulk_max} ids are read.
+  """
+  @spec configurations_for_changes(Scope.t(), [Ecto.UUID.t()]) :: %{
+          optional(Ecto.UUID.t()) => [RunConfiguration.t()]
+        }
+  def configurations_for_changes(%Scope{hive: %Hive{id: hive_id}}, change_ids)
+      when is_list(change_ids) do
+    ids = uuids(change_ids)
+
+    Repo.all(
+      from c in RunConfiguration,
+        where: c.hive_id == ^hive_id and c.policy_change_id in ^ids,
+        order_by: [asc_nulls_first: c.repository_id, asc: c.version],
+        select: struct(c, ^@configuration_fields)
+    )
+    |> Enum.group_by(& &1.policy_change_id)
+  end
+
+  @doc """
+  The last change of each target, in one query: `%{key => %Change{}}`, keyed like
+  `newest_versions/2`, `changed_by` preloaded, without the rule sets (`before` and
+  `after` are nil: `get_change/2` reads one whole). `targets` as in `newest_versions/2`.
+  A target nobody has changed, or another hive's, has no key.
+  """
+  @spec last_changes(Scope.t(), [target | Ecto.UUID.t()]) :: %{
+          optional(Ecto.UUID.t() | nil) => Change.t()
+        }
+  def last_changes(%Scope{hive: %Hive{id: hive_id}}, targets) when is_list(targets) do
+    {ids, baseline?} = target_keys(targets)
+
+    Repo.all(
+      from c in Change,
+        where: c.hive_id == ^hive_id,
+        where: c.repository_id in ^ids or (^baseline? and is_nil(c.repository_id)),
+        distinct: c.repository_id,
+        order_by: [asc: c.repository_id, desc: c.inserted_at, desc: c.id],
+        select: struct(c, ^@change_fields),
+        preload: [:changed_by]
+    )
+    |> Map.new(&{&1.repository_id, &1})
+  end
+
+  defp target_keys(targets) do
+    targets = Enum.take(targets, @bulk_max)
+    baseline? = Enum.any?(targets, &(&1 in [nil, :hive]))
+
+    ids =
+      uuids(
+        for target <- targets, target not in [nil, :hive] do
+          case target do
+            %Repository{id: id} -> id
+            id -> id
+          end
+        end
+      )
+
+    {ids, baseline?}
+  end
+
+  defp uuids(ids) do
+    for id <- Enum.take(ids, @bulk_max), is_binary(id), {:ok, id} <- [Ecto.UUID.cast(id)], do: id
+  end
+
   ## History
 
   @doc """

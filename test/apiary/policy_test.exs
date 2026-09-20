@@ -610,6 +610,75 @@ defmodule Apiary.PolicyTest do
     end
   end
 
+  describe "bulk reads" do
+    setup %{scope: scope} do
+      site = repository_fixture(scope)
+      docs = repository_fixture(scope, "acme/docs")
+      {:ok, _} = Policy.allow(scope, nil, %{host: "api.example"})
+      {:ok, _} = Policy.allow(scope, site, %{host: "mcp.example"})
+      {:ok, _} = Policy.allow(scope, nil, %{host: "cdn.example"})
+      %{site: site, docs: docs}
+    end
+
+    test "newest_versions/2: one per target with a configuration of its own, no documents", ctx do
+      versions =
+        Policy.newest_versions(ctx.scope, [
+          nil,
+          ctx.site,
+          ctx.docs.id,
+          "not-an-id",
+          Ecto.UUID.generate()
+        ])
+
+      assert Map.keys(versions) |> Enum.sort() == Enum.sort([nil, ctx.site.id])
+      assert %RunConfiguration{version: 2, document: nil, digest: "sha256=" <> _} = versions[nil]
+      assert %RunConfiguration{version: 2, document: nil} = versions[ctx.site.id]
+      assert versions[nil].digest == current!(ctx.scope, nil).digest
+
+      assert Map.keys(Policy.newest_versions(ctx.scope, [:hive])) == [nil]
+      assert Policy.newest_versions(ctx.scope, [ctx.site]) |> Map.keys() == [ctx.site.id]
+      assert Policy.newest_versions(ctx.scope, []) == %{}
+    end
+
+    test "configurations_for_changes/2: what each change rendered, the baseline's first", ctx do
+      %{items: [cdn, mcp, api]} = Policy.list_changes(ctx.scope, :all)
+      by_change = Policy.configurations_for_changes(ctx.scope, [cdn.id, mcp.id, api.id, "x"])
+
+      assert [%{repository_id: nil, version: 1, document: nil}] = by_change[api.id]
+      assert [%{repository_id: site_id, version: 1}] = by_change[mcp.id]
+      assert site_id == ctx.site.id
+      # The hive's second rule rendered the baseline and the repository that has rules.
+      assert [%{repository_id: nil, version: 2}, %{repository_id: ^site_id, version: 2}] =
+               by_change[cdn.id]
+
+      # A change that rendered the same bytes has no key.
+      {:ok, _} = Policy.deny(ctx.scope, nil, %{host: "ads.example"})
+      %{items: [same | _]} = Policy.list_changes(ctx.scope, nil)
+      assert Policy.configurations_for_changes(ctx.scope, [same.id]) == %{}
+    end
+
+    test "last_changes/2: the newest change of each target, who made it, no rule sets", ctx do
+      changes = Policy.last_changes(ctx.scope, [nil, ctx.site, ctx.docs])
+
+      assert Map.keys(changes) |> Enum.sort() == Enum.sort([nil, ctx.site.id])
+
+      assert %Change{subject: "cdn.example", before: nil, after: nil, version_after: 2} =
+               changes[nil]
+
+      assert changes[nil].changed_by.id == ctx.scope.user.id
+      assert %Change{subject: "mcp.example"} = changes[ctx.site.id]
+    end
+
+    test "another hive reads none of it", ctx do
+      %{scope: other} = sign_up_fixture()
+      %{items: changes} = Policy.list_changes(ctx.scope, :all)
+
+      assert Policy.newest_versions(other, [nil, ctx.site]) == %{}
+      assert Policy.last_changes(other, [nil, ctx.site.id]) == %{}
+      assert Policy.configurations_for_changes(other, Enum.map(changes, & &1.id)) == %{}
+    end
+  end
+
   describe "who may" do
     test "a member edits; only an owner locks, unlocks, changes or removes a locked rule", %{
       scope: scope
