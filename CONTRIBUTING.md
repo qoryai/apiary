@@ -9,13 +9,12 @@ Everywhere. Four kinds are the most useful:
 - **A page or a context feature of the console.** A LiveView under `lib/apiary_web/live/`
   or a function in one of the contexts under `lib/apiary/`, with its test. The console is
   what an organisation sees: its hive, the members, the access keys, the settings.
-- **The receiver of the server contract.** The discovery document names an events URL and a
-  run configuration URL that do not exist yet; the receiver that answers them is the next
-  thing to build, behind the same signed request as the discovery endpoint. What the
-  discovery endpoint assumes today is written down in
-  [docs/contract-assumptions.md](docs/contract-assumptions.md). The contract itself lives in
-  [qoryai/runner](https://github.com/qoryai/runner), under `contracts/runner/v1/`; a change
-  to the contract goes there, and this repository follows it.
+- **The receiver of the server contract.** Discovery and the events endpoint exist; the run
+  configuration, which the discovery document does not name yet, is the next endpoint to
+  build, behind the same signed request. What the endpoints assume beyond the contract is
+  written down in [docs/contract-assumptions.md](docs/contract-assumptions.md). The contract
+  itself lives in [qoryai/runner](https://github.com/qoryai/runner), under
+  `contracts/runner/v1/`; a change to the contract goes there, and this repository follows it.
 - **The security policy.** [SECURITY.md](SECURITY.md) says what counts as a vulnerability
   here. A tighter definition, or a case it misses, is a contribution.
 - **Docs.** [README.md](README.md) for running it, [docs/upgrading.md](docs/upgrading.md)
@@ -85,7 +84,8 @@ The web side is under `lib/apiary_web/`:
 
 - `contract/`: the server contract. `ApiaryWeb.Contract.SignedRequest` is the plug that
   verifies a signed request and assigns the access key; the controllers behind it answer
-  the contract's endpoints, today `ConfigurationController` for the discovery document.
+  the contract's endpoints: `ConfigurationController` for the discovery document,
+  `EventsController` for the events, whose body `RawBody` keeps as it was sent.
 - `live/`: the pages behind sign-in, one directory per area (`hive_live`, `member_live`,
   `access_key_live`, `settings_live`, `invitation_live`, `user_live`).
 - `controllers/`: health, the home page, and the session controllers.
@@ -98,7 +98,14 @@ Migrations are under `priv/repo/migrations/`, one per change. Tests mirror the t
 `test/apiary/` for the contexts, `test/apiary_web/` for the plugs, controllers and pages.
 Fixtures are under `test/support/fixtures/`, one module per context; they create data the
 way the product does, through `Apiary.Organisations.sign_up_user/2` and the context
-functions, never by inserting rows directly.
+functions, never by inserting rows directly. The one exception is the published key of the
+contract's fixtures, which no product function would create.
+
+The tests tagged `:contract` (`test/contract/`) replay the fixtures of the server contract
+from a checkout of qoryai/runner: `RUNNER_CONTRACT_DIR`, or `../../runner/main/contracts/runner/v1`
+when that is there. Without one they are excluded and a line says so; CI checks the runner
+out at the ref in `.runner-contract-ref` and sets `CONTRACT_FIXTURES_REQUIRED=1`, which makes
+their absence a failure.
 
 ## Tenancy
 

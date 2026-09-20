@@ -24,6 +24,20 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # The fixtures of the server contract live in the runner's repository; the tests
+      # tagged :contract replay them, at the ref pinned in .runner-contract-ref.
+      # The whole history is fetched, so the ref may be a tag, a branch or a short commit id.
+      - name: Fetch the runner's repository
+        uses: actions/checkout@v7
+        with:
+          repository: qoryai/runner
+          path: tmp/runner
+          fetch-depth: 0
+          token: ${{ secrets.RUNNER_REPOSITORY_TOKEN || github.token }}
+
+      - name: Check out the pinned ref of the runner's contract
+        run: git -C tmp/runner checkout --detach "$(grep -v '^#' .runner-contract-ref | head -n 1 | tr -d '[:space:]')"
+
       - name: Install the toolchain pinned in mise.toml
         uses: jdx/mise-action@v3
 
@@ -52,6 +66,8 @@ jobs:
       - name: Test
         env:
           MIX_ENV: test
+          RUNNER_CONTRACT_DIR: ${{ github.workspace }}/tmp/runner/contracts/runner/v1
+          CONTRACT_FIXTURES_REQUIRED: "1"
         run: mix test
 
       - name: Build the assets

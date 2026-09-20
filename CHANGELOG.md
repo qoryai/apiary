@@ -36,6 +36,9 @@ a restart does before doing it (`docs/upgrading.md`).
   `X-Qory-Contract-Version` is `400`, and a key is limited to 50 batches a second, 100 at
   once (`429` with `Retry-After`). The ping is answered like any batch, and the key records
   the runner's versions and its last heartbeat.
+- The fixtures of the server contract are replayed in the tests and in CI, from the
+  runner's repository at the ref in `.runner-contract-ref`: every signed request, the
+  batches, and the recorded run in any order, batching and repetition.
 - The projector: a run's events are folded into the run, its connections, its log and the
   hive's repositories, after the receiver has answered. Idempotent and tolerant of any order
   of arrival; `Apiary.Runs.Projector.rebuild/1` rebuilds a run's projections from its events
