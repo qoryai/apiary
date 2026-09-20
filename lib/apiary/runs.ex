@@ -573,6 +573,64 @@ defmodule Apiary.Runs do
   end
 
   @doc """
+  The repositories whose runs reached a destination under the same filters, the ones with
+  the most runs first, 25 at most: `%{repository_id:, forge:, repository:, runs:,
+  connection_id:}`, runs that name no repository as one entry with nil for the three.
+  `connection_id` is the most recent connection of the destination among the repository's
+  runs: the row a rule made from the destination is made from (`fetch_connection/2`).
+  """
+  def destination_repositories(
+        %Scope{} = scope,
+        %Filters{} = filters,
+        {host, port, path},
+        opts \\ []
+      )
+      when is_binary(host) and is_integer(port) and is_binary(path) do
+    now = Keyword.get(opts, :now, DateTime.utc_now())
+
+    Repo.all(
+      from [c, r] in connections_in(scope, filters, now),
+        where: c.host == ^host and c.port == ^port and c.path == ^path,
+        group_by: [r.repository_id, r.forge, r.repository],
+        order_by: [desc: count(c.run_id, :distinct), asc: r.forge, asc: r.repository],
+        limit: 25,
+        select: %{
+          repository_id: r.repository_id,
+          forge: r.forge,
+          repository: r.repository,
+          runs: count(c.run_id, :distinct),
+          connection_id:
+            type(
+              fragment("(array_agg(? ORDER BY ? DESC, ? DESC))[1]", c.id, c.last_seen_at, c.id),
+              :binary_id
+            )
+        }
+    )
+  end
+
+  @doc """
+  One connection of the scope's hive by its row id, whole. `:error` for an id that is not
+  a UUID and for a connection of another hive.
+  """
+  def fetch_connection(
+        %Scope{organisation: %Organisation{id: organisation_id}, hive: %Hive{id: hive_id}},
+        id
+      ) do
+    with <<_::binary-size(36)>> <- id,
+         {:ok, id} <- Ecto.UUID.cast(id),
+         %Connection{} = connection <-
+           Repo.one(
+             from c in Connection,
+               where:
+                 c.id == ^id and c.organisation_id == ^organisation_id and c.hive_id == ^hive_id
+           ) do
+      {:ok, connection}
+    else
+      _ -> :error
+    end
+  end
+
+  @doc """
   The options of the connections page's filters, `%{repo:, host:}`, each
   `%{options: [{label, value, count}], total: n}` like `run_facets/3`, counted in runs;
   `narrow:` as there.

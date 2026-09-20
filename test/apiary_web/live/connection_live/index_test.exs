@@ -201,7 +201,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
     test "every filter is the URL; per repository is the page with repo set", %{conn: conn} do
       view = open(conn, ~p"/hive/connections?forge=gitlab.example&repo=acme/shop")
 
-      assert text(view, "#connections-repo-note") == "Showing gitlab.example/acme/shop only."
+      assert text(view, "#connections-repo-note") == "Showing gitlab.example/acme/shop only. Its policy"
       assert has_element?(view, "##{dst("registry.example")}")
       refute has_element?(view, "##{dst("files.cdn.example")}")
       assert text(view, "#connections-summary") =~ "1 destination 1 denied 1 run"
@@ -245,7 +245,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       render_async(view)
       assert has_element?(view, "##{dst("colon.example")}")
       refute has_element?(view, "##{dst("registry.example")}")
-      assert text(view, "#connections-repo-note") == "Showing git.example:8443/acme/shop only."
+      assert text(view, "#connections-repo-note") == "Showing git.example:8443/acme/shop only. Its policy"
     end
 
     test "the range is bounded: the widest is 90 days, and it cannot be removed", %{conn: conn} do

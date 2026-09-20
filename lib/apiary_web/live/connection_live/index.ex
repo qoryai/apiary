@@ -9,13 +9,25 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   `page`), read through `Apiary.Runs.Filters`. A destination's runs are read only when its
   row opens, ten at a time. While batches land the table does not move under the reader:
   the summary gains "New activity", which asks again and keeps the open rows open.
+
+  Each row may ask the policy for a rule (`docs/design/brief-policy.md`, pd8). A row's
+  standing is derived from one effective policy the page holds: the hive's baseline, or
+  the repository's when `repo` names one. The scope of a new rule is never guessed: among
+  several repositories none is chosen until the reader chooses. The rule itself is made
+  by `Apiary.Policy.rule_from_connection/4` from the most recent connection of the
+  destination in the chosen scope, and what the domain refuses is said in its sentence.
   """
   use ApiaryWeb, :live_view
 
+  alias Apiary.Policy
   alias Apiary.Runs
   alias Apiary.Runs.Filters
+  alias ApiaryWeb.ConnectionLive.Rules
 
   @hits_page 10
+  @coalesce_ms 250
+  # The contract's default heartbeat, for "about 30 s" on a page that is of no one run.
+  @default_beat 30
 
   @impl true
   def render(assigns) do
@@ -37,6 +49,14 @@ defmodule ApiaryWeb.ConnectionLive.Index do
             Showing
             <.mono>{repo_label(@filters.repo)}</.mono>
             only.
+            <.link
+              :if={@repository}
+              id="connections-repo-policy"
+              navigate={Rules.repository_path(@repository.id)}
+              class="q-link"
+            >
+              Its policy
+            </.link>
           </span>
         </:subtitle>
       </.header>
@@ -176,6 +196,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           row_id={&destination_id/1}
           open={@open}
           run_path={&run_path/1}
+          acts={@acts}
         />
 
         <.empty_state
@@ -206,7 +227,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           class="flex flex-wrap items-center justify-between gap-3"
         >
           <p id="connections-footer" class="max-w-[80ch] text-[12.5px] text-faint">
-            Denied destinations come first, then the most recent. The reason and outcome are those of the last attempt across the runs shown.
+            Denied destinations come first, then the most recent. The reason and outcome are those of the last attempt across the runs shown. A rule added here changes what happens next; what the record already says stays as it was.
           </p>
           <div :if={@listing.pages > 1} class="flex items-center gap-2">
             <.button
@@ -226,13 +247,18 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           </div>
         </div>
       </div>
+
+      <.rule_popover :if={@popover} popover={@popover} />
     </Layouts.app>
     """
   end
 
   @impl true
   def mount(_params, _session, socket) do
-    if connected?(socket), do: Runs.subscribe(socket.assigns.current_scope)
+    if connected?(socket) do
+      Runs.subscribe(socket.assigns.current_scope)
+      Policy.subscribe(socket.assigns.current_scope)
+    end
 
     {:ok,
      assign(socket,
@@ -244,7 +270,12 @@ defmodule ApiaryWeb.ConnectionLive.Index do
        stale: false,
        load_error: false,
        dropped: [],
-       narrow: %{}
+       narrow: %{},
+       repository: nil,
+       effective: nil,
+       acts: nil,
+       popover: nil,
+       policy_flush_scheduled: false
      )}
   end
 
@@ -255,7 +286,12 @@ defmodule ApiaryWeb.ConnectionLive.Index do
     if Filters.to_params(filters) == params do
       # What is open belongs to the view it was opened in.
       open = if Filters.same?(filters, socket.assigns.filters), do: socket.assigns.open, else: %{}
-      {:noreply, socket |> keep_dropped() |> assign(filters: filters, open: open) |> load()}
+
+      {:noreply,
+       socket
+       |> keep_dropped()
+       |> assign(filters: filters, open: open, popover: nil)
+       |> load()}
     else
       {:noreply,
        socket
@@ -319,17 +355,110 @@ defmodule ApiaryWeb.ConnectionLive.Index do
     end
   end
 
+  ## A row's Allow and Deny (pd8). What the browser names is matched whole against the rows
+  ## the page holds, and the rule is made from a connection read through the scope: a
+  ## destination or a repository of another hive finds nothing.
+
+  def handle_event("rule_open", %{"action" => action} = params, socket)
+      when action in ~w(allow deny) do
+    row = find_row(socket, params)
+    act = row && socket.assigns.acts && socket.assigns.acts[destination_id(row)]
+
+    case {act, action} do
+      {%{standing: :can_allow}, "allow"} ->
+        {:noreply, open_popover(socket, row, act, :allow)}
+
+      {%{standing: :can_deny}, "deny"} ->
+        {:noreply, open_popover(socket, row, act, :deny)}
+
+      {%{standing: locked}, _} when locked in [:locked_deny, :locked_allow] ->
+        {:noreply, open_refusal(socket, row, act)}
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
+  def handle_event(
+        "rule_change",
+        params,
+        %{assigns: %{popover: %{refusal: nil} = popover}} = socket
+      ) do
+    level =
+      case params["for"] do
+        "repository" when popover.repositories != [] -> :repository
+        "hive" -> :hive
+        _ -> popover.level
+      end
+
+    # Only a repository the popover listed can be chosen.
+    choice =
+      case params["repository"] do
+        id when is_binary(id) ->
+          if Enum.any?(popover.repositories, &(&1.id == id)), do: id
+
+        _ ->
+          popover.choice
+      end
+
+    {:noreply, assign(socket, popover: %{popover | level: level, choice: choice, error: nil})}
+  end
+
+  def handle_event("rule_cancel", _params, socket), do: {:noreply, close_popover(socket)}
+
+  def handle_event(
+        "rule_submit",
+        _params,
+        %{assigns: %{popover: %{refusal: nil, level: level} = popover}} = socket
+      )
+      when level in [:repository, :hive] do
+    scope = socket.assigns.current_scope
+
+    with {:ok, from} <- rule_source(popover),
+         {:ok, connection} <- Runs.fetch_connection(scope, from.connection_id),
+         {:ok, _rule} <- Policy.rule_from_connection(scope, connection, popover.action, level) do
+      where = if level == :repository, do: from.label, else: "the hive"
+      target = if level == :repository, do: from.repository
+
+      {:noreply,
+       socket
+       |> close_popover()
+       |> refresh_policy()
+       |> put_flash(
+         :info,
+         "#{popover.host} is #{if popover.action == :deny, do: "denied", else: "allowed"} for #{where}.#{version_words(scope, target)} Running sessions have it within a heartbeat."
+       )}
+    else
+      {:error, %Policy.Error{message: message}} ->
+        {:noreply, assign(socket, popover: %{popover | error: message})}
+
+      _not_found ->
+        {:noreply,
+         socket
+         |> close_popover()
+         |> put_flash(:error, "This destination is no longer among the connections shown.")}
+    end
+  end
+
+  def handle_event(event, _params, socket)
+      when event in ~w(rule_open rule_change rule_submit),
+      do: {:noreply, socket}
+
   @impl true
   def handle_async(:load, {:ok, %{filters: filters} = loaded}, socket) do
     if filters == socket.assigns.filters do
       {:noreply,
-       assign(socket,
+       socket
+       |> assign(
          listing: loaded.listing,
          facets: loaded.facets,
          open: loaded.open,
+         repository: loaded.repository,
+         effective: loaded.effective,
          stale: false,
          load_error: false
-       )}
+       )
+       |> assign_acts()}
     else
       {:noreply, socket}
     end
@@ -353,6 +482,21 @@ defmodule ApiaryWeb.ConnectionLive.Index do
       else: {:noreply, socket}
   end
 
+  # The policy's topic: the rows' standing is read again, the listing is not.
+  def handle_info({:policy_changed, _what}, socket) do
+    if socket.assigns.policy_flush_scheduled do
+      {:noreply, socket}
+    else
+      Process.send_after(self(), :policy_flush, @coalesce_ms)
+      {:noreply, assign(socket, policy_flush_scheduled: true)}
+    end
+  end
+
+  def handle_info(:policy_flush, socket),
+    do: {:noreply, socket |> assign(policy_flush_scheduled: false) |> refresh_policy()}
+
+  def handle_info(_other, socket), do: {:noreply, socket}
+
   defp load(socket) do
     %{current_scope: scope, filters: filters, open: open, narrow: narrow} = socket.assigns
 
@@ -374,17 +518,226 @@ defmodule ApiaryWeb.ConnectionLive.Index do
              )}
           end
 
+        repository = repository_of(scope, filters.repo)
+
         %{
           filters: filters,
           listing: listing,
           facets: Runs.destination_facets(scope, filters, now: now, narrow: narrow),
-          open: open
+          open: open,
+          repository: repository,
+          effective: Policy.effective(scope, repository)
         }
       end)
     else
       socket
     end
   end
+
+  ## The rows and the policy
+
+  # The repository `repo` names, when the hive has it: its policy is what the rows stand
+  # against, and where "Its policy" leads.
+  defp repository_of(scope, {forge, path}) do
+    scope
+    |> Policy.list_repositories()
+    |> Enum.find_value(fn %{repository: repository} ->
+      if repository.forge == forge and repository.path == path, do: repository
+    end)
+  end
+
+  defp repository_of(_scope, _repo), do: nil
+
+  defp refresh_policy(%{assigns: %{listing: %{}}} = socket) do
+    %{current_scope: scope, repository: repository} = socket.assigns
+    socket |> assign(effective: Policy.effective(scope, repository)) |> assign_acts()
+  end
+
+  defp refresh_policy(socket), do: socket
+
+  defp assign_acts(
+         %{assigns: %{effective: %Policy.Effective{} = effective, listing: %{rows: rows}}} =
+           socket
+       ) do
+    %{current_scope: scope, repository: repository} = socket.assigns
+    page = if repository, do: :run, else: :hive
+    standings = Enum.map(rows, &{&1, Rules.standing(&1, effective, page)})
+    changes = Rules.changes(scope, repository, Enum.map(standings, &elem(&1, 1)))
+    open = socket.assigns.popover && socket.assigns.popover.anchor
+
+    acts =
+      for {row, standing} <- standings, into: %{} do
+        id = destination_id(row)
+        {id, row |> act(standing, changes, socket) |> Map.put(:expanded, open == "#{id}-act")}
+      end
+
+    assign(socket, acts: acts)
+  end
+
+  defp assign_acts(socket), do: assign(socket, acts: nil)
+
+  defp act(row, %{standing: {:rule_added, action}, entry: entry} = standing, changes, socket)
+       when not is_nil(entry) do
+    %{current_scope: scope, repository: repository} = socket.assigns
+    target_id = if entry.source == :repository and repository, do: repository.id
+    change = Rules.change_for(entry, changes)
+
+    Map.merge(standing, %{
+      values: row_values(row),
+      entry_host: entry.host,
+      rule_path: Rules.rule_path(target_id, entry.host),
+      after: %{
+        action: action,
+        level: if(entry.source == :repository, do: :repository, else: :hive),
+        version:
+          change && is_integer(change.version) &&
+            %{n: change.version, path: Rules.version_path(target_id, change.version)},
+        by: change && who(change, scope),
+        at: (change && change.at) || (entry.rule && entry.rule.updated_at),
+        # The hive's page says nothing of a run.
+        state: :hive,
+        reloaded_at: nil
+      }
+    })
+  end
+
+  defp act(row, standing, _changes, _socket) do
+    Map.merge(standing, %{
+      values: row_values(row),
+      entry_host: standing.entry && standing.entry.host,
+      rule_path: nil,
+      after: nil
+    })
+  end
+
+  defp row_values(row),
+    do: %{"host" => row.host, "port" => Integer.to_string(row.port), "path" => row.path || ""}
+
+  defp who(%{by_id: id}, %{user: %{id: id}}) when not is_nil(id), do: "you"
+  defp who(%{by: email}, _scope) when is_binary(email), do: email |> String.split("@") |> hd()
+  defp who(_change, _scope), do: nil
+
+  defp open_popover(socket, row, act, action) do
+    %{current_scope: scope, filters: filters, effective: effective, repository: filtered} =
+      socket.assigns
+
+    reached = Runs.destination_repositories(scope, filters, {row.host, row.port, row.path || ""})
+
+    repositories =
+      for %{repository_id: id} = r when is_binary(id) <- reached do
+        %{
+          id: id,
+          label: "#{r.forge}/#{r.repository}",
+          runs: r.runs,
+          connection_id: r.connection_id
+        }
+      end
+
+    # With `repo` set that repository is chosen; among several, none is: no guessed scope.
+    choice = filtered && Enum.find_value(repositories, &(&1.id == filtered.id && &1.id))
+
+    assign(socket,
+      popover: %{
+        anchor: "#{destination_id(row)}-act",
+        any_connection_id: reached |> List.first() |> then(&(&1 && &1.connection_id)),
+        action: action,
+        host: act.host,
+        path: row.path || "",
+        page: :hive,
+        level: if(choice, do: :repository),
+        repository: nil,
+        repositories: repositories,
+        choice: choice,
+        host_paths: Rules.held_paths(effective, act.host),
+        hive: scope.hive.name,
+        alive: false,
+        fetched: false,
+        interval: @default_beat,
+        consequence: deny_consequence(act[:entry]),
+        error: nil,
+        refusal: nil
+      }
+    )
+    |> assign_acts()
+  end
+
+  defp open_refusal(socket, row, act) do
+    scope = socket.assigns.current_scope
+
+    locked =
+      scope
+      |> Policy.list_changes(nil, 1)
+      |> Map.get(:items, [])
+      |> Enum.find(&(&1.action == "rule_locked" and &1.subject == act.entry.host))
+
+    assign(socket,
+      popover: %{
+        anchor: "#{destination_id(row)}-act",
+        host: act.host,
+        refusal: %{
+          standing: act.standing,
+          rule: act.entry.host,
+          locked_by: locked && locked.changed_by && locked.changed_by.email,
+          locked_at: locked && locked.inserted_at,
+          owner: match?(%{membership: %{level: :owner}}, scope),
+          rule_path: Rules.rule_path(nil, act.entry.host)
+        }
+      }
+    )
+    |> assign_acts()
+  end
+
+  defp close_popover(socket), do: socket |> assign(popover: nil) |> assign_acts()
+
+  # The connection the rule is made from: the chosen repository's, or for the hive any of
+  # the destination's.
+  defp rule_source(%{level: :repository, choice: choice, repositories: repositories})
+       when is_binary(choice) do
+    case Enum.find(repositories, &(&1.id == choice)) do
+      %{} = repository -> {:ok, Map.put(repository, :repository, %{id: repository.id})}
+      nil -> :error
+    end
+  end
+
+  defp rule_source(%{level: :hive, any_connection_id: id}) when is_binary(id),
+    do: {:ok, %{connection_id: id, label: "the hive", repository: nil}}
+
+  defp rule_source(_popover), do: :error
+
+  defp version_words(scope, target) do
+    target =
+      case target do
+        %{id: id} ->
+          case Policy.get_repository(scope, id) do
+            {:ok, repository} -> repository
+            _ -> nil
+          end
+
+        nil ->
+          nil
+      end
+
+    case Policy.list_changes(scope, target, 1) do
+      %{items: [%{version_after: n} | _]} when is_integer(n) -> " Version #{n}."
+      _ -> ""
+    end
+  end
+
+  defp deny_consequence(%{source: :hive}) do
+    %{
+      repository: "Disables the hive's allow rule there. Other repositories keep it.",
+      hive: "Replaces the hive's allow rule."
+    }
+  end
+
+  defp deny_consequence(%{source: :repository}) do
+    %{
+      repository: "Replaces the repository's allow rule.",
+      hive: "A repository's own allow rule still holds there."
+    }
+  end
+
+  defp deny_consequence(_entry), do: %{}
 
   defp hits(socket, row, limit) do
     %{current_scope: scope, filters: filters} = socket.assigns
