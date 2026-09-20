@@ -51,5 +51,7 @@ config :apiary, Apiary.Vault,
        tag: "AES.GCM.V1", key: Base.decode64!("dGVzdDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=")}
   ]
 
-# Projections run in the caller's process, inside its sandbox connection.
+# Projections run in the caller's process, inside its sandbox connection, and the
+# lost-run check runs only when a test calls it.
 config :apiary, Apiary.Runs.Projector, async: false
+config :apiary, Apiary.Runs.Liveness, enabled: false

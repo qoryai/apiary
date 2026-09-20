@@ -19,6 +19,7 @@ defmodule Apiary.Application do
         {Task.Supervisor, name: Apiary.Runs.TaskSupervisor}
       ] ++
         migrator() ++
+        liveness() ++
         [
           # Start to serve requests, typically the last entry
           ApiaryWeb.Endpoint
@@ -46,6 +47,12 @@ defmodule Apiary.Application do
     else
       []
     end
+  end
+
+  # The lost-run check, after the migrator so it never reads a schema it does not know.
+  # Off in test, where the tests call `Apiary.Runs.Liveness.check/1` themselves.
+  defp liveness do
+    if Apiary.Runs.Liveness.enabled?(), do: [Apiary.Runs.Liveness], else: []
   end
 
   # One JSON line per request, from the endpoint's `Plug.Telemetry` stop event. The

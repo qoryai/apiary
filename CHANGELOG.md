@@ -32,6 +32,10 @@ a restart does before doing it (`docs/upgrading.md`).
   hive's repositories, after the receiver has answered. Idempotent and tolerant of any order
   of arrival; `Apiary.Runs.Projector.rebuild/1` rebuilds a run's projections from its events
   alone. Changes are announced on `Apiary.PubSub` (`runs:<hive>`, `run:<hive>:<run>`).
+- Lost runs: a run that has been silent for more than three of the heartbeat intervals it
+  announced (90 seconds when it announced none) is marked `lost`, whether it was running or
+  still pending; a later heartbeat or its exit corrects that. Checked every 15 seconds
+  (`config :apiary, Apiary.Runs.Liveness, interval: …, enabled: …`), safely on several nodes.
 
 ### Migrations
 
