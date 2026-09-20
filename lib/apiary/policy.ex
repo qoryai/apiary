@@ -23,7 +23,8 @@ defmodule Apiary.Policy do
   the commit `{:policy_changed, %{hive_id:, repository_id:, action:}}` goes out on
   `topic/1`, `"policy:<hive_id>"`.
 
-  Members edit. Only an owner locks, unlocks, changes or removes a locked rule.
+  Members edit rules. Only an owner changes the mode (in either direction), and only an
+  owner locks, unlocks, changes or removes a locked rule.
 
   ## Returns
 
@@ -48,6 +49,10 @@ defmodule Apiary.Policy do
 
   @modes ~w(observe enforce)
   @page_size 25
+  # The most rules one list holds (the baseline's, or a repository's). With at most
+  # `Grammar.paths_max/0` paths a rule, it bounds a change's `before` and `after`, which
+  # repeat the list, and so the history's growth: quadratic in the rules, up to this.
+  @rules_max 500
   @nobody "00000000-0000-0000-0000-000000000000"
 
   @type target :: nil | :hive | Repository.t()
@@ -116,10 +121,18 @@ defmodule Apiary.Policy do
     )
   end
 
-  @doc "Sets the mode of the hive. The mode is the hive's alone: a repository has none of its own."
+  @doc """
+  Sets the mode of the hive, in either direction an owner's act: a member is refused
+  with a sentence. The mode is the hive's alone: a repository has none of its own.
+  """
   @spec set_mode(Scope.t(), String.t()) :: {:ok, String.t()} | refusal
   def set_mode(%Scope{} = scope, mode) when mode in @modes do
-    with {:ok, _membership} <- member(scope) do
+    with {:ok, membership} <- member(scope),
+         :ok <-
+           owner(
+             membership,
+             "Only an owner changes the mode: it decides what every run of the hive is denied."
+           ) do
       write(scope, nil, fn hive ->
         if hive.egress_mode != mode do
           Repo.update_all(from(h in Hive, where: h.id == ^hive.id),
@@ -192,9 +205,16 @@ defmodule Apiary.Policy do
   host or name when there is one.
 
   `attrs`, with atom or string keys: `kind` (`"host"`, the default, or `"credential"`);
-  for a host `host` and `paths` (nil or absent for every path; a list, or a text of one
-  path a line, for the paths the host is held to; `[]` for no path at all); for a
-  credential `name` and `argument`; `locked` (the hive's rules only, owners only).
+  for a host `host` and `paths` (a list, or a text of one path a line, for the paths the
+  host is held to; `[]` for no path at all; `nil` for every path); for a credential
+  `name` and `argument`; `locked`, `true` or `false` and nothing else (the hive's rules
+  only, owners only).
+
+  What `attrs` does not name stays as the rule there has it: the lock, the paths, the
+  argument. So allowing a host that is held to paths does not open it: every path takes
+  the key, `paths: nil`. A paths text with no path in it (a form's empty field) names
+  nothing. A new rule without `paths` is on every path. At most #{@rules_max} rules a list
+  and #{Grammar.paths_max()} paths a rule.
   """
   @spec allow(Scope.t(), target, map) :: {:ok, Rule.t()} | refusal
   def allow(%Scope{} = scope, target, attrs), do: put_rule(scope, target, "allow", attrs)
@@ -230,11 +250,14 @@ defmodule Apiary.Policy do
   @spec remove_rule(Scope.t(), Rule.t() | String.t()) :: {:ok, Rule.t()} | refusal
   def remove_rule(%Scope{} = scope, rule_or_id) do
     with {:ok, membership} <- member(scope),
-         {:ok, rule} <- get_rule(scope, rule_id(rule_or_id)),
-         :ok <- may_change(membership, rule) do
-      write(scope, rule.repository_id, fn _hive ->
-        Repo.delete_all(from r in Rule, where: r.id == ^rule.id)
-        {:ok, rule, "rule_removed", Rule.subject(rule)}
+         {:ok, rule} <- get_rule(scope, rule_id(rule_or_id)) do
+      # Who may remove it is decided on the rule as it is under the hive's lock.
+      write(scope, rule.repository_id, fn hive ->
+        with {:ok, rule} <- reread(hive, rule),
+             :ok <- may_change(membership, rule) do
+          Repo.delete_all(from r in Rule, where: r.id == ^rule.id)
+          {:ok, rule, "rule_removed", Rule.subject(rule)}
+        end
       end)
     end
   end
@@ -270,6 +293,14 @@ defmodule Apiary.Policy do
       cond do
         key && connection.path not in [nil, ""] ->
           put_path(scope, target, key, connection.path, action)
+
+        key && action == :allow ->
+          {:error,
+           Error.new(
+             :invalid,
+             "#{key} is held to paths, and this connection names no path, so there is no path to add. Allowing the host from here would open every path of it: change the rule's paths on the policy page instead.",
+             :paths
+           )}
 
         action == :allow ->
           allow(scope, target, %{host: host})
@@ -432,14 +463,17 @@ defmodule Apiary.Policy do
   `reported` is the `X-Qory-Run-Configuration` of the run's last batch that carried one;
   `applied` is what its last policy applied event named. `drift` is true when the run
   reported a digest other than the one in force, which is a run that has not reloaded
-  yet, and false when it reported none: such a run holds no fetched configuration.
+  yet, and false when it reported none: such a run holds no fetched configuration. A run of another hive is a
+  refusal, `{:error, %Apiary.Policy.Error{reason: :not_found}}`, not a map.
   """
-  @spec digests(Scope.t(), Run.t()) :: %{
-          in_force: String.t() | nil,
-          reported: String.t() | nil,
-          applied: String.t() | nil,
-          drift: boolean
-        }
+  @spec digests(Scope.t(), Run.t()) ::
+          %{
+            in_force: String.t() | nil,
+            reported: String.t() | nil,
+            applied: String.t() | nil,
+            drift: boolean
+          }
+          | refusal
   def digests(%Scope{hive: %Hive{id: hive_id} = hive}, %Run{hive_id: hive_id} = run) do
     in_force =
       case in_force(hive.organisation_id, hive_id, run.repository_id) do
@@ -456,6 +490,8 @@ defmodule Apiary.Policy do
       drift: is_binary(reported) and is_binary(in_force) and reported != in_force
     }
   end
+
+  def digests(%Scope{}, %Run{}), do: {:error, not_found("This hive has no such run.")}
 
   ## History
 
@@ -546,27 +582,49 @@ defmodule Apiary.Policy do
   ## Writes, inside
 
   defp put_rule(scope, target, action, attrs) do
-    attrs = attrs(attrs)
-
-    with {:ok, membership} <- member(scope),
+    with {:ok, attrs} <- attrs(attrs),
+         {:ok, membership} <- member(scope),
          {:ok, repository_id} <- target_id(scope, target),
-         :ok <- lock_is_the_hives(repository_id, attrs),
-         changeset = Rule.changeset(%Rule{}, Map.put(attrs, "action", action)),
-         {:ok, candidate} <- applied(changeset) do
-      # The rule already there is read under the hive's lock, so two writers of one host
-      # meet as an add and a change, never as two adds.
+         {:ok, candidate} <- candidate(action, attrs),
+         :ok <- lock_is_the_hives(repository_id, candidate.locked) do
       write(scope, repository_id, fn hive ->
-        existing = existing(hive.id, repository_id, candidate)
-
-        with :ok <- may_change(membership, existing),
-             :ok <- may_lock(membership, existing, attrs) do
-          put(hive, scope.user, repository_id, existing, candidate, attrs)
-        end
+        put(hive, scope.user, membership, repository_id, candidate, attrs)
       end)
     end
   end
 
-  defp put(hive, user, repository_id, nil, candidate, _attrs) do
+  defp candidate(action, attrs) do
+    %Rule{} |> Rule.changeset(Map.put(attrs, "action", action)) |> applied()
+  end
+
+  # Under the hive's lock: the rule already there is read here, so two writers of one
+  # host meet as an add and a change, never as two adds, and who may change it is
+  # decided on the row as it is now.
+  defp put(hive, user, membership, repository_id, candidate, attrs) do
+    existing = existing(hive.id, repository_id, candidate)
+
+    with :ok <- may_change(membership, existing),
+         :ok <- may_lock(membership, existing, attrs),
+         :ok <- room(hive.id, repository_id, existing) do
+      store(hive, user, repository_id, existing, candidate, attrs)
+    end
+  end
+
+  defp room(_hive_id, _repository_id, %Rule{}), do: :ok
+
+  defp room(hive_id, repository_id, nil) do
+    if length(rules(hive_id, repository_id)) < @rules_max do
+      :ok
+    else
+      {:error,
+       Error.new(
+         :invalid,
+         "There are #{@rules_max} rules here already, which is the most one list holds. Remove one, or say several hosts with a *. suffix."
+       )}
+    end
+  end
+
+  defp store(hive, user, repository_id, nil, candidate, _attrs) do
     rule =
       Repo.insert!(%{
         candidate
@@ -579,15 +637,25 @@ defmodule Apiary.Policy do
     {:ok, rule, "rule_added", Rule.subject(rule)}
   end
 
-  defp put(_hive, _user, _repository_id, %Rule{} = existing, candidate, attrs) do
+  # What the caller did not name stays: the lock, and the paths and the argument of an
+  # allow. Opening a host held to paths to every path takes `paths: nil`, said.
+  defp store(_hive, _user, _repository_id, %Rule{} = existing, candidate, attrs) do
+    keep = fn key, given, held ->
+      cond do
+        candidate.action == "deny" -> nil
+        Map.has_key?(attrs, key) -> given
+        true -> held
+      end
+    end
+
     locked = if Map.has_key?(attrs, "locked"), do: candidate.locked, else: existing.locked
 
     rule =
       existing
       |> Ecto.Changeset.change(
         action: candidate.action,
-        paths: candidate.paths,
-        argument: candidate.argument,
+        paths: keep.("paths", candidate.paths, existing.paths),
+        argument: keep.("argument", candidate.argument, existing.argument),
         locked: locked
       )
       |> Repo.update!()
@@ -595,16 +663,24 @@ defmodule Apiary.Policy do
     {:ok, rule, "rule_changed", Rule.subject(rule)}
   end
 
+  # The paths in force are read under the hive's lock, so a path added here is added to
+  # what is there now and not to what was there when the page was drawn.
   defp put_path(scope, target, host, path, action) do
     host = host |> to_string() |> String.trim() |> String.downcase()
 
-    with {:ok, _membership} <- member(scope),
+    with {:ok, membership} <- member(scope),
          {:ok, repository_id} <- target_id(scope, target),
-         :ok <- a_path(path),
-         effective = effective(scope, target),
-         :ok <- not_locked_above(effective, repository_id, host),
-         {:ok, paths} <- paths_after(effective, host, path, action) do
-      allow(scope, target, %{host: host, paths: paths})
+         :ok <- a_path(path) do
+      write(scope, repository_id, fn hive ->
+        effective = effective(scope, target)
+
+        with :ok <- not_locked_above(effective, repository_id, host),
+             {:ok, paths} <- paths_after(effective, host, path, action),
+             attrs = %{"host" => host, "paths" => paths},
+             {:ok, candidate} <- candidate("allow", attrs) do
+          put(hive, scope.user, membership, repository_id, candidate, attrs)
+        end
+      end)
     end
   end
 
@@ -688,21 +764,33 @@ defmodule Apiary.Policy do
     with {:ok, membership} <- member(scope),
          :ok <- owner(membership, "Only an owner locks or unlocks a rule."),
          {:ok, rule} <- get_rule(scope, rule_id(rule_or_id)),
-         :ok <- lock_is_the_hives(rule.repository_id, %{"locked" => true}) do
-      write(scope, nil, fn _hive ->
-        rule = rule |> Ecto.Changeset.change(locked: locked) |> Repo.update!()
-        {:ok, rule, if(locked, do: "rule_locked", else: "rule_unlocked"), Rule.subject(rule)}
+         :ok <- lock_is_the_hives(rule.repository_id, true) do
+      write(scope, nil, fn hive ->
+        with {:ok, rule} <- reread(hive, rule) do
+          rule = rule |> Ecto.Changeset.change(locked: locked) |> Repo.update!()
+          {:ok, rule, if(locked, do: "rule_locked", else: "rule_unlocked"), Rule.subject(rule)}
+        end
       end)
     end
   end
 
+  # The rule as it is under the hive's lock: one removed in the meantime is not found.
+  defp reread(%Hive{id: hive_id}, %Rule{id: id}) do
+    case Repo.one(from r in Rule, where: r.id == ^id and r.hive_id == ^hive_id) do
+      %Rule{} = rule -> {:ok, rule}
+      nil -> {:error, not_found("This rule is gone: somebody removed it a moment ago.")}
+    end
+  end
+
   # One write: the hive's row is locked first, so writes of one hive happen one after
-  # another and versions count without gaps; then the change, its row in the history and
+  # another and versions count without gaps. `FOR NO KEY UPDATE`, not `FOR UPDATE`: every
+  # insert of an event or a run takes `FOR KEY SHARE` on its hive through the foreign
+  # key, and a policy write must never make the receiver wait; then the change, its row in the history and
   # the renders. Whatever refuses rolls everything back.
   defp write(%Scope{hive: %Hive{} = hive, user: user}, repository_id, fun) do
     result =
       Repo.transact(fn ->
-        hive = Repo.one!(from h in Hive, where: h.id == ^hive.id, lock: "FOR UPDATE")
+        hive = Repo.one!(from h in Hive, where: h.id == ^hive.id, lock: "FOR NO KEY UPDATE")
         before = snapshot(hive, repository_id)
 
         with {:ok, value, action, subject} <- fun.(hive) do
@@ -810,6 +898,7 @@ defmodule Apiary.Policy do
   defp render(hive, user, change, repository_id, hive_rules, own) do
     with {:ok, effective} <- Resolution.resolve(hive.egress_mode, hive_rules, own, repository_id),
          document = Render.document(effective),
+         :ok <- small(document),
          :ok <- valid(document) do
       digest = Render.digest(document)
 
@@ -832,6 +921,18 @@ defmodule Apiary.Policy do
            })}
       end
     end
+  end
+
+  # The most a runner reads of a document (its `MaxDocument`): a larger one is no run.
+  @document_max 1_048_576
+  defp small(document) when byte_size(document) <= @document_max, do: :ok
+
+  defp small(_document) do
+    {:error,
+     Error.new(
+       :invalid_document,
+       "The change was not made: the run configuration it renders is over 1 MiB, more than a runner reads. Say the paths with fewer, shorter patterns (a final * matches everything below)."
+     )}
   end
 
   defp valid(document) do
@@ -894,7 +995,7 @@ defmodule Apiary.Policy do
         Repo.one(
           from h in Hive,
             where: h.id == ^hive_id and h.organisation_id == ^organisation_id,
-            lock: "FOR UPDATE"
+            lock: "FOR NO KEY UPDATE"
         )
 
       cond do
@@ -911,12 +1012,17 @@ defmodule Apiary.Policy do
     from c in configurations(hive_id, repository_id), order_by: [desc: c.version], limit: 1
   end
 
+  # The expression is the index's own, constant and all (`run_configurations_version_index`):
+  # as a parameter it would match only under a custom plan, and a prepared statement
+  # goes generic after a few runs.
   defp configurations(hive_id, repository_id) do
     from c in RunConfiguration,
       where:
         c.hive_id == ^hive_id and
-          fragment("COALESCE(?, ?::uuid)", c.repository_id, type(^@nobody, Ecto.UUID)) ==
-            type(^(repository_id || @nobody), Ecto.UUID)
+          fragment(
+            "COALESCE(?, '00000000-0000-0000-0000-000000000000'::uuid)",
+            c.repository_id
+          ) == type(^(repository_id || @nobody), Ecto.UUID)
   end
 
   defp by_digest(hive_id, repository_id, digest) do
@@ -992,17 +1098,17 @@ defmodule Apiary.Policy do
     )
   end
 
-  defp may_lock(membership, existing, %{"locked" => _} = attrs) do
-    wanted = attrs["locked"] in [true, "true"]
+  # `locked` is true or false by now (`attrs/1`): what is compared is what is stored.
+  defp may_lock(membership, existing, %{"locked" => wanted}) do
     now = if existing, do: existing.locked, else: false
     if wanted == now, do: :ok, else: owner(membership, "Only an owner locks or unlocks a rule.")
   end
 
   defp may_lock(_membership, _existing, _attrs), do: :ok
 
-  defp lock_is_the_hives(nil, _attrs), do: :ok
+  defp lock_is_the_hives(nil, _locked), do: :ok
 
-  defp lock_is_the_hives(_repository_id, %{"locked" => locked}) when locked in [true, "true"] do
+  defp lock_is_the_hives(_repository_id, true) do
     {:error,
      Error.new(
        :invalid,
@@ -1010,7 +1116,7 @@ defmodule Apiary.Policy do
      )}
   end
 
-  defp lock_is_the_hives(_repository_id, _attrs), do: :ok
+  defp lock_is_the_hives(_repository_id, _locked), do: :ok
 
   # The changeset's errors as the first sentence, or the rule it describes.
   defp applied(%Ecto.Changeset{valid?: true} = changeset),
@@ -1024,11 +1130,22 @@ defmodule Apiary.Policy do
   # from input.
   @keys ~w(kind host paths name argument locked)
   defp attrs(attrs) when is_map(attrs) do
-    for key <- @keys,
-        {:ok, value} <- [fetch(attrs, key)],
-        into: %{},
-        do: {key, normalise(key, value)}
+    attrs =
+      for key <- @keys,
+          {:ok, value} <- [fetch(attrs, key)],
+          {:ok, value} <- [present(normalise(key, value))],
+          into: %{},
+          do: {key, value}
+
+    # Ecto would cast "1" and 1 to true; a lock is said as true or false and nothing else,
+    # so what is authorised is exactly what is stored.
+    if Map.get(attrs, "locked", false) in [true, false],
+      do: {:ok, attrs},
+      else: {:error, Error.new(:invalid, "A rule is locked or it is not: true or false.")}
   end
+
+  defp present(:absent), do: :absent
+  defp present(value), do: {:ok, value}
 
   defp fetch(attrs, key) do
     case Map.fetch(attrs, key) do
@@ -1050,10 +1167,15 @@ defmodule Apiary.Policy do
     end
   end
 
-  # A text of paths, one a line (or separated by commas or spaces); empty is every path.
+  defp normalise("locked", locked) when locked in [true, "true"], do: true
+  defp normalise("locked", locked) when locked in [false, "false"], do: false
+
+  # A text of paths, one a line (or separated by commas or spaces). A text with no path
+  # in it says nothing about the paths: it is a form's empty field, never "every path",
+  # which takes `paths: nil`.
   defp normalise("paths", paths) when is_binary(paths) do
     case String.split(paths, ~r/[\s,]+/u, trim: true) do
-      [] -> nil
+      [] -> :absent
       paths -> Enum.uniq(paths)
     end
   end

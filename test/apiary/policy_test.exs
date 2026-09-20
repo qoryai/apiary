@@ -193,6 +193,157 @@ defmodule Apiary.PolicyTest do
     end
   end
 
+  describe "what is not named stays" do
+    test "allowing a host held to paths again does not open it; every path is said", %{
+      scope: scope
+    } do
+      {:ok, _} = Policy.allow(scope, nil, %{host: "git.example", paths: ["/a"]})
+
+      assert {:ok, %Rule{paths: ["/a"]}} = Policy.allow(scope, nil, %{host: "git.example"})
+
+      assert {:ok, %Rule{paths: ["/a"]}} =
+               Policy.allow(scope, nil, %{host: "git.example", paths: " \n "})
+
+      assert {:ok, %Rule{paths: ["/a"]}} =
+               Policy.allow(scope, nil, %{host: "git.example", paths: ""})
+
+      assert %{total: 1} = Policy.list_changes(scope, nil)
+
+      assert {:ok, %Rule{paths: nil}} =
+               Policy.allow(scope, nil, %{host: "git.example", paths: nil})
+
+      assert {:ok, %Rule{paths: []}} = Policy.allow(scope, nil, %{host: "git.example", paths: []})
+
+      # A deny takes the host whole, and an allow after it starts from every path.
+      assert {:ok, %Rule{action: "deny", paths: nil}} =
+               Policy.deny(scope, nil, %{host: "git.example"})
+
+      assert {:ok, %Rule{action: "allow", paths: nil}} =
+               Policy.allow(scope, nil, %{host: "git.example"})
+
+      # A new rule with an empty paths field is on every path.
+      assert {:ok, %Rule{paths: nil}} =
+               Policy.allow(scope, nil, %{host: "new.example", paths: ""})
+    end
+
+    test "a credential's argument stays when it is not named", %{scope: scope} do
+      {:ok, _} =
+        Policy.allow(scope, nil, %{kind: "credential", name: "product", argument: "acme/site"})
+
+      assert {:ok, %Rule{argument: "acme/site"}} =
+               Policy.allow(scope, nil, %{kind: "credential", name: "product"})
+    end
+  end
+
+  describe "bounds" do
+    test "a list holds at most 500 rules", %{scope: scope} do
+      now = DateTime.utc_now()
+
+      rows =
+        for n <- 1..500 do
+          %{
+            id: Ecto.UUID.generate(),
+            organisation_id: scope.organisation.id,
+            hive_id: scope.hive.id,
+            kind: "host",
+            action: "allow",
+            host: "h#{n}.example",
+            locked: false,
+            inserted_at: now,
+            updated_at: now
+          }
+        end
+
+      Repo.insert_all(Rule, rows)
+
+      assert {:error, %Error{reason: :invalid, message: message}} =
+               Policy.allow(scope, nil, %{host: "one-more.example"})
+
+      assert message =~ "500 rules"
+      # A rule that is there is still changed, and a repository has a list of its own.
+      assert {:ok, %Rule{}} = Policy.deny(scope, nil, %{host: "h1.example"})
+
+      assert {:ok, %Rule{}} =
+               Policy.allow(scope, repository_fixture(scope), %{host: "one-more.example"})
+    end
+
+    test "a rule holds at most 100 paths", %{scope: scope} do
+      assert {:error, %Error{field: :paths, message: message}} =
+               Policy.allow(scope, nil, %{
+                 host: "git.example",
+                 paths: for(n <- 1..101, do: "/p/#{n}")
+               })
+
+      assert message =~ "at most 100"
+    end
+
+    test "a document over 1 MiB, more than a runner reads, is a refused change", %{scope: scope} do
+      paths = fn n -> for m <- 1..100, do: "/" <> String.duplicate("a", 1000) <> "/#{n}/#{m}" end
+
+      for n <- 1..10,
+          do: {:ok, _} = Policy.allow(scope, nil, %{host: "h#{n}.example", paths: paths.(n)})
+
+      {:ok, before} = Policy.current_configuration(scope, nil)
+      assert byte_size(before.document) < 1_048_576
+
+      assert {:error, %Error{reason: :invalid_document, message: message}} =
+               Policy.allow(scope, nil, %{host: "h11.example", paths: paths.(11)})
+
+      assert message =~ "over 1 MiB"
+      assert length(Policy.list_rules(scope, nil)) == 10
+      assert {:ok, %{id: id}} = Policy.current_configuration(scope, nil)
+      assert id == before.id
+    end
+  end
+
+  describe "under the hive's lock" do
+    test "a rule removed in the meantime is not found, by remove, lock and unlock", %{
+      scope: scope
+    } do
+      {:ok, rule} = Policy.allow(scope, nil, %{host: "api.example"})
+      {:ok, _} = Policy.remove_rule(scope, rule)
+
+      # The caller still holds the struct it read before.
+      assert {:error, %Error{reason: :not_found}} = Policy.remove_rule(scope, rule)
+      assert {:error, %Error{reason: :not_found}} = Policy.lock(scope, rule)
+      assert {:error, %Error{reason: :not_found}} = Policy.unlock(scope, rule)
+    end
+
+    test "a member holding a rule from before it was locked cannot remove it", %{scope: scope} do
+      %{scope: member} = member_fixture(scope)
+      {:ok, stale} = Policy.allow(scope, nil, %{host: "api.example"})
+      {:ok, _locked} = Policy.lock(scope, stale)
+
+      assert {:error, %Error{reason: :unauthorized}} = Policy.remove_rule(member, stale)
+      assert [%Rule{locked: true}] = Policy.list_rules(scope, nil)
+    end
+
+    test "the hive's row is locked without blocking the receiver's inserts", %{scope: scope} do
+      # FOR NO KEY UPDATE does not conflict with the FOR KEY SHARE a foreign key takes;
+      # FOR UPDATE would. Said by the query, since two transactions do not meet in a sandbox.
+      handler = "policy-lock-#{System.unique_integer()}"
+      parent = self()
+
+      :telemetry.attach(
+        handler,
+        [:apiary, :repo, :query],
+        fn _event, _measurements, %{query: query}, _config ->
+          if self() == parent and query =~ "FOR ", do: send(parent, {:lock, query})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler) end)
+
+      {:ok, _} = Policy.allow(scope, nil, %{host: "api.example"})
+      {:ok, _} = Policy.current_configuration(scope, nil)
+
+      assert_received {:lock, query}
+      assert query =~ "FOR NO KEY UPDATE"
+      refute_received {:lock, "FOR UPDATE" <> _}
+    end
+  end
+
   describe "repositories" do
     test "a repository without rules is served the baseline's; with rules, its own", %{
       scope: scope
@@ -285,7 +436,6 @@ defmodule Apiary.PolicyTest do
       %{scope: member} = member_fixture(scope)
 
       assert {:ok, rule} = Policy.allow(member, nil, %{host: "api.example"})
-      assert {:ok, "enforce"} = Policy.set_mode(member, "enforce")
 
       assert {:error, %Error{reason: :unauthorized}} = Policy.lock(member, rule)
 
@@ -307,6 +457,61 @@ defmodule Apiary.PolicyTest do
 
       assert {:ok, %Rule{locked: false}} = Policy.unlock(scope, rule)
       assert {:ok, %Rule{}} = Policy.remove_rule(member, rule)
+    end
+
+    test "the mode is an owner's to change, in both directions", %{scope: scope} do
+      %{scope: member} = member_fixture(scope)
+
+      assert {:error, %Error{reason: :unauthorized, message: message}} =
+               Policy.set_mode(member, "enforce")
+
+      assert message =~ "Only an owner changes the mode"
+      assert Policy.get_mode(scope) == "observe"
+
+      assert {:ok, "enforce"} = Policy.set_mode(scope, "enforce")
+      assert {:error, %Error{reason: :unauthorized}} = Policy.set_mode(member, "observe")
+      assert Policy.get_mode(scope) == "enforce"
+    end
+
+    test "a lock is said as true or false: nothing a cast would read as true gets past", %{
+      scope: scope
+    } do
+      %{scope: member} = member_fixture(scope)
+      repository = repository_fixture(scope)
+
+      for locked <- ["1", 1, "true", true, "t", "yes"] do
+        assert {:error, %Error{reason: reason}} =
+                 Policy.allow(member, nil, %{"host" => "api.example", "locked" => locked})
+
+        assert reason in [:unauthorized, :invalid], inspect(locked)
+
+        # On a repository it is a refusal with a sentence, never the database's constraint.
+        for who <- [member, scope] do
+          assert {:error, %Error{reason: :invalid}} =
+                   Policy.allow(who, repository, %{host: "api.example", locked: locked})
+        end
+      end
+
+      assert [] = Policy.list_rules(scope, nil)
+      assert [] = Policy.list_rules(scope, repository)
+
+      # An owner locks with true or "true"; "1" is refused for an owner too.
+      assert {:error, %Error{reason: :invalid}} =
+               Policy.allow(scope, nil, %{host: "a.example", locked: "1"})
+
+      assert {:ok, %Rule{locked: true}} =
+               Policy.allow(scope, nil, %{host: "a.example", locked: "true"})
+
+      assert {:ok, %Rule{locked: false}} =
+               Policy.allow(member, repository, %{host: "b.example", locked: "false"})
+
+      # And a member cannot unlock by any spelling.
+      for locked <- [false, "false", "0", 0] do
+        assert {:error, %Error{}} =
+                 Policy.allow(member, nil, %{host: "a.example", locked: locked})
+      end
+
+      assert [%Rule{locked: true}] = Policy.list_rules(scope, nil)
     end
 
     test "only a rule of the hive locks", %{scope: scope} do
@@ -366,6 +571,14 @@ defmodule Apiary.PolicyTest do
       # And the other hive's policy is untouched by this one's.
       {:ok, _rule} = Policy.allow(scope, nil, %{host: "mine.example"})
       assert Policy.effective(other, repository).allow == ["api.example"]
+    end
+
+    test "the digests of another hive's run are a refusal, not a raise", %{scope: scope} do
+      %{scope: other} = sign_up_fixture()
+      run = run_fixture(other)
+
+      assert {:error, %Error{reason: :not_found}} = Policy.digests(scope, run)
+      assert %{drift: false} = Policy.digests(other, run)
     end
 
     test "the database refuses a rule that names another hive's repository", %{scope: scope} do
@@ -458,6 +671,24 @@ defmodule Apiary.PolicyTest do
                Policy.rule_from_connection(ctx.scope, ctx.git, :deny, :repository)
 
       assert message =~ "denied already"
+    end
+
+    test "allowing a connection that names no path, on a host held to paths, is refused", ctx do
+      {:ok, _} = Policy.allow(ctx.scope, nil, %{host: "new.example", paths: ["/v1/*"]})
+
+      for level <- [:repository, :hive] do
+        assert {:error, %Error{reason: :invalid, field: :paths, message: message}} =
+                 Policy.rule_from_connection(ctx.scope, ctx.new, :allow, level)
+
+        assert message =~ "names no path"
+      end
+
+      assert [%Rule{paths: ["/v1/*"]}] = Policy.list_rules(ctx.scope, nil)
+      assert [] = Policy.list_rules(ctx.scope, ctx.repository)
+
+      # Denying the host whole is still one click.
+      assert {:ok, %Rule{action: "deny"}} =
+               Policy.rule_from_connection(ctx.scope, ctx.new, :deny, :repository)
     end
 
     test "a path cannot be taken out of every path or out of a pattern; a locked rule holds",
