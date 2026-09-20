@@ -3335,9 +3335,10 @@
     line-height: 16px;
   }
   .q-pop-select {
-    grid-column: 2;
     width: 100%;
-    margin-top: 6px;
+  }
+  .q-popt-more {
+    padding: 0 0 6px 26px;
   }
   .q-pop-next {
     display: grid;

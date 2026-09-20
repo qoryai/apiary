@@ -85,10 +85,16 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   `{:rule_added, :allow | :deny}`. `entry` is the rule in force that decides the host,
   when one does. `page` is `:run` or `:hive`: on the hive's page a row allowed by a rule
   the baseline does not hold (a repository's own) can still be denied.
-  """
-  def standing(row, effective, page \\ :run)
 
-  def standing(row, %Effective{} = effective, page) do
+  `own` matters on the hive's page, where the rows stand against the baseline alone: the
+  hosts repositories have rules of their own for (`own_hosts/1`), or `:unknown`. There a
+  baseline rule is said to answer a row only when no repository's own rule could be what
+  decides it; otherwise the row keeps its button, since the baseline is not the whole
+  answer.
+  """
+  def standing(row, effective, page \\ :run, own \\ [])
+
+  def standing(row, %Effective{} = effective, page, own) do
     c = read(row)
     host = host(c.host)
 
@@ -100,18 +106,19 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
         %{standing: :unnameable, host: nil, entry: nil}
 
       needs_allow?(c) ->
-        wants_allow(effective, host, c.path)
+        wants_allow(effective, host, c.path, own_touches?(own, host, page))
 
       true ->
-        wants_deny(effective, host, c.path, page)
+        wants_deny(effective, host, c.path, page, own_touches?(own, host, page))
     end
   end
 
-  def standing(_row, _effective, _page), do: %{standing: :unnameable, host: nil, entry: nil}
+  def standing(_row, _effective, _page, _own),
+    do: %{standing: :unnameable, host: nil, entry: nil}
 
-  defp wants_allow(effective, host, path) do
+  defp wants_allow(effective, host, path, own?) do
     cond do
-      allowed_now?(effective, host, path) ->
+      allowed_now?(effective, host, path) and not own? ->
         %{standing: {:rule_added, :allow}, host: host, entry: allow_entry(effective, host)}
 
       entry = locked(effective, host, :deny) ->
@@ -125,9 +132,9 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
     end
   end
 
-  defp wants_deny(effective, host, path, page) do
+  defp wants_deny(effective, host, path, page, own?) do
     cond do
-      entry = deny_entry(effective, host) ->
+      (entry = deny_entry(effective, host)) && not own? ->
         %{standing: {:rule_added, :deny}, host: host, entry: entry}
 
       entry = locked(effective, host, :allow) ->
@@ -138,6 +145,90 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
 
       true ->
         %{standing: :can_allow, host: host, entry: nil}
+    end
+  end
+
+  @doc "Whether a repository's own rule could be what decides `host`, from `own_hosts/1`."
+  def own_touches?(own, host, page \\ :hive)
+  def own_touches?(_own, _host, :run), do: false
+  def own_touches?(_own, nil, _page), do: false
+  def own_touches?(:unknown, _host, :hive), do: true
+
+  def own_touches?(own, host, :hive) when is_list(own),
+    do: Enum.any?(own, &(Grammar.covers?(&1, host) or Grammar.covers?(host, &1)))
+
+  def own_touches?(_own, _host, _page), do: false
+
+  @doc """
+  The hosts the hive's repositories have rules of their own for, from the rules of every
+  repository that has any: one read for the list and one a repository with rules, fifty
+  of them at most. `:unknown` past that, and past the five hundred repositories the list
+  holds: then nothing is claimed of a row from the baseline alone.
+  """
+  def own_hosts(scope) do
+    listed = Policy.list_repositories(scope)
+    with_rules = Enum.filter(listed, &(&1.rule_count > 0))
+
+    if length(listed) >= 500 or length(with_rules) > 50 do
+      :unknown
+    else
+      for %{repository: repository} <- with_rules,
+          %{kind: "host", host: host} <- Policy.list_rules(scope, repository),
+          uniq: true,
+          do: host
+    end
+  end
+
+  @doc """
+  What `Apiary.Policy.rule_from_connection/4` will make of a row in a target whose
+  effective policy is `effective`: `%{kind: :path, paths: held}` when the host is held to
+  paths there and the row names a path (the path is added to them, or taken out), else
+  `%{kind: :host, paths: held}`. The popover says this for the scope chosen, never for
+  another.
+  """
+  def what(%Effective{} = effective, host, path) do
+    held = held_paths(effective, host)
+    %{kind: if(held && path not in [nil, ""], do: :path, else: :host), paths: held}
+  end
+
+  def what(_effective, _host, _path), do: nil
+
+  @doc "Whether the repository of this effective policy has a rule of its own that touches the host."
+  def own_rule?(%Effective{entries: entries}, host) when is_binary(host) do
+    Enum.any?(
+      entries,
+      &(&1.kind == :host and &1.source == :repository and
+          (Grammar.covers?(&1.host, host) or Grammar.covers?(host, &1.host)))
+    )
+  end
+
+  def own_rule?(_effective, _host), do: false
+
+  @doc """
+  Every rule of the effective policy that touches the host, in force or not, as plain
+  terms: what a popover saw when it opened. When it is not the same at the moment of
+  sending, the policy changed under the reader, and nothing is sent.
+  """
+  def seen(%Effective{entries: entries}, host) when is_binary(host) do
+    for entry <- entries,
+        entry.kind == :host,
+        Grammar.covers?(entry.host, host) or Grammar.covers?(host, entry.host) do
+      {entry.source, entry.action, entry.host, entry.paths, entry.locked, entry.in_force}
+    end
+    |> Enum.sort()
+  end
+
+  def seen(_effective, _host), do: []
+
+  @doc "The words of the toast, from the rule the domain made."
+  def toast(rule, action, host, path, where) do
+    pathed? = is_list(rule.paths) and path not in [nil, ""] and rule.action == "allow"
+
+    cond do
+      pathed? and action == :allow -> "#{path} on #{host} is allowed for #{where}."
+      pathed? -> "#{path} on #{host} is no longer allowed for #{where}."
+      rule.action == "deny" -> "#{host} is denied for #{where}."
+      true -> "#{host} is allowed for #{where}."
     end
   end
 
@@ -224,7 +315,10 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
 
     changes
     |> Map.get(key, [])
-    |> Enum.find(&(&1.subject == entry.host and &1.action in ~w(rule_added rule_changed)))
+    |> Enum.find(
+      &(&1.subject == entry.host and &1.action in ~w(rule_added rule_changed) and
+          host_rule?(&1, entry.host))
+    )
     |> case do
       nil ->
         nil
@@ -240,6 +334,12 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   end
 
   def change_for(_entry, _changes), do: nil
+
+  # A credential may be named like a host; its change says nothing of the host's rule.
+  defp host_rule?(%{after: %{"rules" => rules}}, host) when is_list(rules),
+    do: Enum.any?(rules, &(&1["kind"] == "host" and &1["host"] == host))
+
+  defp host_rule?(_change, _host), do: false
 
   @doc """
   The newest page of changes of each scope the entries of these standings were written

@@ -1494,7 +1494,7 @@ defmodule ApiaryWeb.RunComponents do
 
       %{anchor:, action: :allow | :deny, host:, path:, page: :run | :hive, level:,
         repository: %{label:} | nil, repositories: [%{id, label, runs}], choice:,
-        host_paths:, hive:, alive:, fetched:, interval:, consequence:, error:,
+        what: %{repository:, hive:}, own_rule:, hive:, alive:, fetched:, interval:, consequence:, error:,
         refusal: nil | %{standing:, rule:, locked_by:, locked_at:, owner:, rule_path:}}
 
   The form changes with `rule_change` and is sent with `rule_submit`; `rule_cancel`
@@ -1556,7 +1556,7 @@ defmodule ApiaryWeb.RunComponents do
     assigns =
       assigns
       |> assign(:deny, assigns.popover.action == :deny)
-      |> assign(:pathed, assigns.popover.host_paths != nil and assigns.popover.path != "")
+      |> assign(:what, popover_what(assigns.popover))
       |> assign(:ready, popover_ready?(assigns.popover))
 
     ~H"""
@@ -1573,7 +1573,7 @@ defmodule ApiaryWeb.RunComponents do
         <header>
           <PolicyComponents.rule_mark action={if @deny, do: "deny", else: "allow"} />
           <h3 id={"#{@id}-title"}>
-            {if @deny, do: "Deny", else: "Allow"}{if @pathed, do: " on"}
+            {if @deny, do: "Deny", else: "Allow"}{if @what && @what.kind == :path, do: " on"}
             <span class="q-pop-host" title={@popover.host}>{middle(@popover.host, 40)}</span>
           </h3>
         </header>
@@ -1582,16 +1582,16 @@ defmodule ApiaryWeb.RunComponents do
             <.notice kind={:error}>{@popover.error}</.notice>
           </div>
 
-          <fieldset :if={@pathed}>
+          <fieldset :if={@what && @what.kind == :path} id={"#{@id}-what-set"}>
             <legend>
               What. This host has path rules:
-              <.mono :for={path <- Enum.take(@popover.host_paths, 6)} bare class="q-rule">
+              <.mono :for={path <- Enum.take(@what.paths, 6)} bare class="q-rule">
                 {middle(path, 40)}
               </.mono>
-              <span :if={length(@popover.host_paths) > 6}>
-                and {length(@popover.host_paths) - 6} more
+              <span :if={length(@what.paths) > 6}>
+                and {length(@what.paths) - 6} more
               </span>
-              <span :if={@popover.host_paths == []}>none, so no path is allowed</span>
+              <span :if={@what.paths == []}>none, so no path is allowed</span>
             </legend>
             <p id={"#{@id}-what"} class="q-pop-what">
               <b>This path</b>
@@ -1627,6 +1627,15 @@ defmodule ApiaryWeb.RunComponents do
                 checked={@popover.level == :repository}
               />
               <span><b>One repository</b></span>
+              <small :if={@deny && @popover.consequence[:repository]}>
+                {@popover.consequence.repository}
+              </small>
+            </label>
+            <%!-- Outside the label: inside it, every option would be part of the radio's name. --%>
+            <div
+              :if={@popover.page == :hive and @popover.repositories != []}
+              class="q-popt-more"
+            >
               <select
                 name="repository"
                 id={"#{@id}-repository"}
@@ -1642,15 +1651,17 @@ defmodule ApiaryWeb.RunComponents do
                   {middle(repository.label, 56)} · {count_noun(repository.runs, "run")}
                 </option>
               </select>
-              <small :if={@deny && @popover.consequence[:repository]}>
-                {@popover.consequence.repository}
-              </small>
-            </label>
+            </div>
             <label class="q-popt">
               <input type="radio" name="for" value="hive" checked={@popover.level == :hive} />
               <span><b>The whole hive</b></span>
               <small>
                 Every repository of {@popover.hive}. {if @deny, do: @popover.consequence[:hive]}
+              </small>
+              <small :if={@popover[:own_rule]} id={"#{@id}-own-rule"}>
+                {if @popover.page == :run,
+                  do: "This repository's own rule still decides here.",
+                  else: "A repository's own rule for this host still decides there."}
               </small>
             </label>
           </fieldset>
@@ -1684,6 +1695,10 @@ defmodule ApiaryWeb.RunComponents do
     </div>
     """
   end
+
+  # What the domain will do is said for the level chosen, and for no other.
+  defp popover_what(%{level: level, what: what}) when is_map(what), do: what[level]
+  defp popover_what(_popover), do: nil
 
   defp popover_ready?(%{level: :hive}), do: true
   defp popover_ready?(%{level: :repository, page: :run}), do: true

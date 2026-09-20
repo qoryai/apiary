@@ -1385,7 +1385,10 @@ defmodule ApiaryWeb.RunLive.Show do
       when level in [:repository, :hive] do
     %{current_scope: scope, run: run} = socket.assigns
 
-    with {:ok, connection} <- Record.connection(scope, run, popover.connection_id),
+    # What the popover said was true of the policy it opened on. It is sent only while
+    # that is still the policy: a stale Allow must not undo a deny made meanwhile.
+    with :ok <- still(socket, popover),
+         {:ok, connection} <- Record.connection(scope, run, popover.connection_id),
          {:ok, rule} <- Policy.rule_from_connection(scope, connection, popover.action, level) do
       {:noreply,
        socket
@@ -1394,10 +1397,19 @@ defmodule ApiaryWeb.RunLive.Show do
        |> refresh_policy()
        |> put_flash(:info, rule_toast(socket, popover, rule, level))
        |> announce(
-         "#{popover.host} is #{if popover.action == :deny, do: "denied", else: "allowed"} for #{if level == :repository, do: "this repository", else: "the hive"}.",
+         Rules.toast(
+           rule,
+           popover.action,
+           popover.host,
+           popover.path,
+           if(level == :repository, do: "this repository", else: "the hive")
+         ),
          :now
        )}
     else
+      :stale ->
+        {:noreply, socket |> assign(effective: nil) |> refresh_policy() |> policy_moved()}
+
       {:error, %Policy.Error{message: message}} ->
         {:noreply, assign(socket, popover: %{popover | error: message})}
 
@@ -1416,19 +1428,30 @@ defmodule ApiaryWeb.RunLive.Show do
     %{run: run, repository: repository, current_scope: scope, effective: effective} =
       socket.assigns
 
+    path = row.path || ""
+    # The page holds the repository's policy; the hive's is read when a popover opens,
+    # since what a rule for the hive would be is decided by the hive's own paths.
+    baseline = if repository, do: Policy.effective(scope, nil), else: effective
+
     assign(socket,
       popover: %{
         anchor: "cx-#{row.id}-act",
         connection_id: row.id,
         action: action,
         host: act.host,
-        path: row.path || "",
+        path: path,
         page: :run,
         level: if(repository, do: :repository, else: :hive),
         repository: repository && %{label: "#{repository.forge}/#{repository.path}"},
         repositories: [],
         choice: nil,
-        host_paths: Rules.held_paths(effective, act.host),
+        what: %{
+          repository: repository && Rules.what(effective, act.host, path),
+          hive: Rules.what(baseline, act.host, path)
+        },
+        own_rule: repository != nil and Rules.own_rule?(effective, act.host),
+        seen: {Rules.seen(effective, act.host), Rules.seen(baseline, act.host)},
+        standing: act.standing,
         hive: scope.hive.name,
         alive: alive?(run),
         fetched: fetched?(socket),
@@ -1502,7 +1525,34 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp deny_consequence(_entry), do: %{}
 
-  defp rule_toast(socket, popover, _rule, level) do
+  # Whether the policy is still the one the popover opened on, for the host it is about.
+  defp still(socket, popover) do
+    %{current_scope: scope, repository: repository, connections: %{rows: rows}} = socket.assigns
+    effective = Policy.effective(scope, repository)
+    baseline = if repository, do: Policy.effective(scope, nil), else: effective
+    row = Enum.find(rows, &(&1.id == popover.connection_id))
+
+    if (row && Rules.standing(row, effective, :run).standing == popover.standing) and
+         {Rules.seen(effective, popover.host), Rules.seen(baseline, popover.host)} == popover.seen,
+       do: :ok,
+       else: :stale
+  end
+
+  defp policy_moved(socket) do
+    socket
+    |> close_popover()
+    |> put_flash(:error, "The policy changed; look at the row again.")
+  end
+
+  # A change of the policy under an open popover closes it when it touches its host.
+  defp recheck_popover(%{assigns: %{popover: %{refusal: nil} = popover}} = socket) do
+    if still(socket, popover) == :ok, do: socket, else: policy_moved(socket)
+  end
+
+  defp recheck_popover(%{assigns: %{popover: %{}}} = socket), do: close_popover(socket)
+  defp recheck_popover(socket), do: socket
+
+  defp rule_toast(socket, popover, rule, level) do
     %{current_scope: scope, repository: repository} = socket.assigns
     target = if level == :repository, do: repository, else: nil
 
@@ -1517,7 +1567,14 @@ defmodule ApiaryWeb.RunLive.Show do
         _ -> ""
       end
 
-    "#{popover.host} is #{if popover.action == :deny, do: "denied", else: "allowed"} for #{where}.#{version}" <>
+    own =
+      if level == :hive and popover.own_rule,
+        do: " This repository's own rule still decides here.",
+        else: ""
+
+    Rules.toast(rule, popover.action, popover.host, popover.path, where) <>
+      version <>
+      own <>
       if(fetched?(socket) or not alive?(socket.assigns.run),
         do: " Running sessions have it within a heartbeat.",
         else:
@@ -1734,8 +1791,10 @@ defmodule ApiaryWeb.RunLive.Show do
     end
   end
 
-  def handle_info(:policy_flush, socket),
-    do: {:noreply, socket |> assign(policy_flush_scheduled: false) |> refresh_policy()}
+  def handle_info(:policy_flush, socket) do
+    {:noreply,
+     socket |> assign(policy_flush_scheduled: false) |> refresh_policy() |> recheck_popover()}
+  end
 
   def handle_info(_other, socket), do: {:noreply, socket}
 
