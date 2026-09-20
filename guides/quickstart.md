@@ -14,7 +14,7 @@ steps you need the `qory` command, version 0.10.0 or later, on the same machine.
 Clone the repository of the Qory server and enter the checkout:
 
 ```sh
-git clone <the repository's URL> qory-server
+git clone https://github.com/qoryai/apiary.git qory-server
 cd qory-server
 ```
 

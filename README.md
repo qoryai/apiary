@@ -41,7 +41,7 @@ autonomy was meant to end. Autonomy should not mean blindness.
 Docker with `docker compose`, `git` and `openssl` are enough for a trial on one machine.
 
 ```sh
-git clone <the repository's URL> qory-server && cd qory-server
+git clone https://github.com/qoryai/apiary.git qory-server && cd qory-server
 cp .env.example .env
 openssl rand -hex 24         # the database password, twice in .env
 openssl rand -base64 48      # SECRET_KEY_BASE
