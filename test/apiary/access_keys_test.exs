@@ -277,10 +277,10 @@ defmodule Apiary.AccessKeysTest do
       %{scope: scope} = sign_up_fixture()
       %{access_key: key, secret: secret} = access_key_fixture(scope)
 
-      assert AccessKeys.server_block(key, secret, "https://apiary.example.com") == """
+      assert AccessKeys.server_block(key, secret, "https://qory.example") == """
              apiVersion: qory.dev/v1alpha1
              server:
-               url: https://apiary.example.com
+               url: https://qory.example
                access_key: #{key.key_id}
                secret: #{secret}
              """

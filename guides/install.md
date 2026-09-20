@@ -128,24 +128,30 @@ Generate one with: openssl rand -base64 32
 
 | Variable | Required or default | Meaning and accepted values |
 |---|---|---|
-| `PUBLIC_URL` | required | The address people and runners use to reach this instance, with its scheme: `https://qory.example`, or `http://10.0.0.5:4100` on a LAN. `http` or `https`, a host, optionally a port and a path; a trailing slash is dropped. It decides the links in emails, the discovery document and whether plain HTTP is redirected. A runner takes a server URL of a scheme and a host alone, and over plain `http` only to an address of its own machine: for runners on other machines the public URL is `https` and has no path. |
+| `PUBLIC_URL` | required | The address people and runners use to reach this instance, `https://qory.example`, or `http://localhost:4100` for a trial on one machine. `http` or `https`, a host and optionally a port, and nothing after: a path, a query or a user is refused at boot, because a runner refuses a server URL that has one. It decides the links in emails, the discovery document and whether plain HTTP is redirected. A runner accepts plain `http` only to an address of its own machine, so for runners on other machines the public URL is `https`. |
 | `PHX_HOST` | none | Read only when `PUBLIC_URL` is not set: the public address is then `https://` and this host. `.env.example` does not list it; set `PUBLIC_URL`. |
 | `PORT` | `4100` | The port the release listens on inside the container. An integer. The compose file publishes 4100, so change both or neither. |
 | `PHX_SERVER` | set by `bin/server` | Any value makes the release serve HTTP. `bin/server` sets it; an operator who starts `bin/apiary start` directly sets it too. |
 
 ```text
 environment variable PUBLIC_URL is missing.
-It is the address of this instance, for example: https://apiary.example.com
+It is the address of this instance, for example: https://qory.example
 ```
 
 ```text
 environment variable PUBLIC_URL must start with http:// or https://.
-For example: https://apiary.example.com
+For example: https://qory.example
 ```
 
 ```text
 environment variable PUBLIC_URL has no host.
-For example: https://apiary.example.com
+For example: https://qory.example
+```
+
+```text
+environment variable PUBLIC_URL must be a scheme and a host, with a port when it has one,
+and nothing after: no path, no query. Runners refuse a server URL that has more.
+For example: https://qory.example
 ```
 
 ### Mail
@@ -158,7 +164,7 @@ For example: https://apiary.example.com
 | `SMTP_USERNAME` | none | The relay's user. Not set, or left empty as `.env.example` has it, means no authentication; set means the release always authenticates. |
 | `SMTP_PASSWORD` | none | The relay's password. |
 | `SMTP_TLS` | `always` | The STARTTLS policy: `always`, `if_available` or `never`. Not read on port 465. |
-| `MAIL_FROM` | `apiary@` and the host of `PUBLIC_URL` | The sender address of every email. |
+| `MAIL_FROM` | `qory@` and the host of `PUBLIC_URL` | The sender address of every email. |
 
 ```text
 no mail delivery is configured.

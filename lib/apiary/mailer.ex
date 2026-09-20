@@ -1,13 +1,13 @@
 defmodule Apiary.Mailer do
   use Swoosh.Mailer, otp_app: :apiary
 
-  @default_from "apiary@localhost"
+  @default_from "qory@localhost"
 
   @doc """
   The sender of every email Qory sends, as `{name, address}` for `Swoosh.Email.from/2`.
 
   The address comes from `config :apiary, :mail_from`, which production sets from
-  `MAIL_FROM` (default `apiary@<public host>`, see config/runtime.exs). Development and
+  `MAIL_FROM` (default `qory@<public host>`, see config/runtime.exs). Development and
   test fall back to `#{@default_from}`.
   """
   def from do

@@ -240,6 +240,11 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
   there. A checkout that has not run `mix docs` says so at `/docs`. `mix docs
   --warnings-as-errors` is part of `mix precommit` and of CI. `docs/upgrading.md` moved
   to `guides/upgrading.md`.
+- `PUBLIC_URL` is a scheme, a host and, when it has one, a port: a path, a query or a user
+  is refused at boot with a message that says so, because a runner refuses a server URL
+  that has one. The hints name what works, `https://qory.example`, or `http://localhost:4100`
+  for a trial on one machine. Every message an operator reads, `.env.example` and the compose
+  file say Qory, and the default sender of mail is `qory@<public host>`.
 - An empty `SMTP_USERNAME`, which is how `.env.example` leaves it, means no
   authentication at the relay; before, it meant authenticating with an empty name.
 

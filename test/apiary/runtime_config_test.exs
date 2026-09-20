@@ -6,7 +6,7 @@ defmodule Apiary.RuntimeConfigTest do
     "DATABASE_URL" => "ecto://apiary:apiary@localhost/apiary",
     "SECRET_KEY_BASE" => String.duplicate("s", 64),
     "CLOAK_KEY" => Base.encode64(String.duplicate("k", 32)),
-    "PUBLIC_URL" => "https://apiary.example.com"
+    "PUBLIC_URL" => "https://qory.example"
   }
   @mail ~w(SMTP_RELAY SMTP_PORT SMTP_USERNAME SMTP_PASSWORD SMTP_TLS MAIL_TO_LOG MAIL_FROM)
 
@@ -55,6 +55,45 @@ defmodule Apiary.RuntimeConfigTest do
     mailer = prod_mailer()
     assert mailer[:adapter] == Swoosh.Adapters.SMTP
     assert mailer[:relay] == "smtp.example.com"
+  end
+
+  defp prod_config, do: Config.Reader.read!("config/runtime.exs", env: :prod, target: :host)
+
+  describe "PUBLIC_URL" do
+    setup do
+      System.put_env("MAIL_TO_LOG", "true")
+    end
+
+    test "a scheme, a host and a port are what the endpoint is given" do
+      System.put_env("PUBLIC_URL", "https://qory.example:8443/")
+      url = get_in(prod_config(), [:apiary, ApiaryWeb.Endpoint, :url])
+      assert url == [scheme: "https", host: "qory.example", port: 8443]
+      assert get_in(prod_config(), [:apiary, :mail_from]) == "qory@qory.example"
+    end
+
+    test "a path, a query or a user is refused at boot: a runner would refuse the server" do
+      for url <- [
+            "https://qory.example/console",
+            "https://qory.example/?a=1",
+            "https://qory.example#x",
+            "https://ada@qory.example"
+          ] do
+        System.put_env("PUBLIC_URL", url)
+        error = assert_raise RuntimeError, fn -> prod_config() end
+        assert error.message =~ "PUBLIC_URL must be a scheme and a host"
+        assert error.message =~ "https://qory.example"
+      end
+    end
+
+    test "every refusal names Qory's example address, never another product name" do
+      for url <- ["qory.example", "ftp://qory.example", "https://"] do
+        System.put_env("PUBLIC_URL", url)
+        error = assert_raise RuntimeError, fn -> prod_config() end
+        assert error.message =~ "PUBLIC_URL"
+        assert error.message =~ "https://qory.example"
+        refute error.message =~ ~r/apiary/i
+      end
+    end
   end
 
   test "a blank SMTP_USERNAME, as .env.example leaves it, is no authentication" do

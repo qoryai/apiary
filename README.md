@@ -38,7 +38,7 @@ docker compose up --build
 ```
 
 The image builds the release; the compose file adds Postgres 18 with a volume and starts
-Apiary on port 4100 once the database is healthy. Pending migrations run at boot, so an
+Qory on port 4100 once the database is healthy. Pending migrations run at boot, so an
 upgrade is `docker compose pull` (or `--build`) and `docker compose up`; read
 [guides/upgrading.md](guides/upgrading.md) and the release's section in `CHANGELOG.md` first.
 
@@ -49,8 +49,8 @@ upgrade is `docker compose pull` (or `--build`) and `docker compose up`; read
 | Database | `DATABASE_URL` (required), `POSTGRES_PASSWORD` (for the bundled Postgres), `POOL_SIZE`, `ECTO_IPV6`, `MIGRATE_ON_BOOT` |
 | Secret key base | `SECRET_KEY_BASE` (required; `mix phx.gen.secret`) |
 | Encryption key | `CLOAK_KEY` (required; `openssl rand -base64 32`; encrypts access key secrets at rest, keep it with the database backups) |
-| Public URL | `PUBLIC_URL` (required, with scheme, e.g. `https://apiary.example.com`), `PORT` (default 4100) |
-| Mail | `SMTP_RELAY`, `SMTP_PORT` (587), `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_TLS` (`always`, `if_available`, `never`), `MAIL_FROM` (default `apiary@<public host>`), `MAIL_TO_LOG` (trial only, see below) |
+| Public URL | `PUBLIC_URL` (required: scheme and host, a port when it has one, no path, e.g. `https://qory.example`), `PORT` (default 4100) |
+| Mail | `SMTP_RELAY`, `SMTP_PORT` (587), `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_TLS` (`always`, `if_available`, `never`), `MAIL_FROM` (default `qory@<public host>`), `MAIL_TO_LOG` (trial only, see below) |
 | Clustering | `DNS_CLUSTER_QUERY` (optional) |
 
 A missing or malformed required variable stops the boot with a message naming it.

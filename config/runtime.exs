@@ -20,11 +20,13 @@ if System.get_env("PHX_SERVER") do
   config :apiary, ApiaryWeb.Endpoint, server: true
 end
 
-# PUBLIC_URL is the address people and runners use to reach this instance, for
-# example https://apiary.example.com or http://10.0.0.5:4100. The endpoint derives
-# its `url` from it so `ApiaryWeb.Endpoint.url/0` returns exactly that address in
-# links, emails and the discovery document. Returns a keyword list for `url:` and the
-# host, or raises with the reason.
+# PUBLIC_URL is the address people and runners use to reach this instance: a scheme, a
+# host and, when it has one, a port, for example https://qory.example, or
+# http://localhost:4100 for a trial on one machine. Nothing after the host: a runner
+# takes a server URL without a path, and over plain http only to its own machine. The
+# endpoint derives its `url` from it so `ApiaryWeb.Endpoint.url/0` returns exactly that
+# address in links, emails and the discovery document. Returns a keyword list for `url:`,
+# or raises with the reason.
 parse_public_url = fn value ->
   uri = URI.parse(value)
 
@@ -32,20 +34,25 @@ parse_public_url = fn value ->
     uri.scheme not in ["http", "https"] ->
       raise """
       environment variable PUBLIC_URL must start with http:// or https://.
-      For example: https://apiary.example.com
+      For example: https://qory.example
       """
 
     uri.host in [nil, ""] ->
       raise """
       environment variable PUBLIC_URL has no host.
-      For example: https://apiary.example.com
+      For example: https://qory.example
+      """
+
+    uri.path not in [nil, "", "/"] or not is_nil(uri.query) or not is_nil(uri.fragment) or
+        not is_nil(uri.userinfo) ->
+      raise """
+      environment variable PUBLIC_URL must be a scheme and a host, with a port when it has one,
+      and nothing after: no path, no query. Runners refuse a server URL that has more.
+      For example: https://qory.example
       """
 
     true ->
-      path =
-        if uri.path in [nil, "", "/"], do: [], else: [path: String.trim_trailing(uri.path, "/")]
-
-      [scheme: uri.scheme, host: uri.host, port: uri.port] ++ path
+      [scheme: uri.scheme, host: uri.host, port: uri.port]
   end
 end
 
@@ -150,7 +157,7 @@ if config_env() == :prod do
       (System.get_env("PHX_HOST") && "https://#{System.get_env("PHX_HOST")}") ||
       raise """
       environment variable PUBLIC_URL is missing.
-      It is the address of this instance, for example: https://apiary.example.com
+      It is the address of this instance, for example: https://qory.example
       """
 
   url = parse_public_url.(public_url)
@@ -178,7 +185,7 @@ if config_env() == :prod do
   # ## Mail
 
   # Every email is sent from MAIL_FROM; `Apiary.Mailer.from/0` reads it.
-  config :apiary, :mail_from, System.get_env("MAIL_FROM") || "apiary@#{public_host}"
+  config :apiary, :mail_from, System.get_env("MAIL_FROM") || "qory@#{public_host}"
 
   # An empty SMTP_RELAY (the line left blank in .env) is an unset one.
   smtp_relay =
