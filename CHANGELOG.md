@@ -36,6 +36,10 @@ a restart does before doing it (`docs/upgrading.md`).
 - `20260920020000`: `CHECK` constraints on `memberships.level` and `invitations.level`
   (`owner` or `member`), and indexes on `invitations.invited_by_id` and
   `access_keys.created_by_id`. Short; reversible.
+- `20260921000100` to `20260921000600`: the tables of the record, `repositories`, `runs`,
+  `events`, `log_chunks`, `connections`, `deliveries`. All new and empty; each reverses by
+  dropping its table.
+- `20260921000700`: `access_keys.last_heartbeat_at`, a nullable column. Instant; reversible.
 
 ### Upgrading
 

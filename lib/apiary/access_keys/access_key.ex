@@ -18,6 +18,7 @@ defmodule Apiary.AccessKeys.AccessKey do
     field :last_used_at, :utc_datetime_usec
     field :last_runner_version, :string
     field :last_contract_version, :integer
+    field :last_heartbeat_at, :utc_datetime_usec
     # Set by the queries that leave the secret columns unloaded (listings and
     # everything handed to the web layer): whether a previous secret still verifies.
     field :rotating, :boolean, virtual: true, default: false
