@@ -233,6 +233,44 @@ defmodule Apiary.Runs.ListingTest do
     end
   end
 
+  describe "the page is read from its index" do
+    test "page_runs orders and ranges by the expression index, without a sort", %{scope: scope} do
+      %{organisation: organisation, hive: hive} = scope
+
+      rows =
+        for n <- 1..4000 do
+          at = DateTime.add(@now, -n * 60, :second)
+
+          %{
+            id: Ecto.UUID.generate(),
+            run_id: Ecto.UUID.generate(),
+            organisation_id: organisation.id,
+            hive_id: hive.id,
+            state: "exited",
+            # Every third run has only pinged: it is placed by inserted_at.
+            started_at: if(rem(n, 3) == 0, do: nil, else: at),
+            inserted_at: at,
+            updated_at: at
+          }
+        end
+
+      for chunk <- Enum.chunk_every(rows, 1000), do: Repo.insert_all(Apiary.Runs.Run, chunk)
+      Repo.query!("ANALYZE runs")
+
+      plan =
+        Ecto.Adapters.SQL.explain(Repo, :all, Runs.page_runs_query(scope, parse(%{}), @now))
+
+      assert plan =~ "runs_hive_id_started_or_first_heard_index"
+      refute plan =~ "Sort"
+
+      # And it is the same page a sort would give.
+      %{runs: runs} = Runs.page_runs(scope, parse(%{}), @now)
+      assert length(runs) == 50
+      times = Enum.map(runs, &(&1.started_at || &1.inserted_at))
+      assert times == Enum.sort(times, {:desc, DateTime})
+    end
+  end
+
   describe "groups, summary and facets" do
     setup %{scope: scope, other: other} do
       runs = %{
@@ -447,6 +485,42 @@ defmodule Apiary.Runs.ListingTest do
              } = registry
 
       assert summary == %{destinations: 2, denied: 2, attempts: 6, runs: 2}
+    end
+
+    test "the page and its totals come from one pass; a page past the end is the last", %{
+      scope: scope
+    } do
+      egress = for n <- 1..55, do: %{"host" => "h#{n}.example", "rule" => "*.example"}
+      started(scope, shop(), 100, egress: egress)
+
+      assert %{
+               rows: rows,
+               page: 1,
+               pages: 2,
+               summary: %{destinations: 57, denied: 2, attempts: 61}
+             } =
+               Runs.page_destinations(scope, cx(%{}), @now)
+
+      assert length(rows) == 50
+
+      for page <- ["2", "9"] do
+        assert %{rows: rest, page: 2, pages: 2, summary: %{destinations: 57}} =
+                 Runs.page_destinations(scope, cx(%{"page" => page}), @now)
+
+        assert length(rest) == 7
+      end
+
+      assert %{
+               rows: [],
+               page: 1,
+               pages: 1,
+               summary: %{destinations: 0, denied: 0, attempts: 0, runs: 0}
+             } =
+               Runs.page_destinations(
+                 scope,
+                 cx(%{"host" => "nowhere.example", "page" => "3"}),
+                 @now
+               )
     end
 
     test "filters: decision, repository, host and the range", %{scope: scope} do

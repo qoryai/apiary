@@ -20,6 +20,31 @@ defmodule Apiary.Release do
   end
 
   @doc """
+  Projects runs again from their events, as `mix apiary.rebuild` does where there is Mix:
+  `bin/apiary eval "Apiary.Release.rebuild()"`. `all: true` for every run, `batch:` for
+  the batch size. See `Apiary.Runs.Rebuild`.
+  """
+  def rebuild(opts \\ []) do
+    load_app()
+
+    for repo <- repos() do
+      {:ok, result, _} =
+        Ecto.Migrator.with_repo(repo, fn _repo ->
+          # A projection announces itself; outside the running application nobody listens,
+          # but the name has to exist.
+          {:ok, pubsub} =
+            Supervisor.start_link([{Phoenix.PubSub, name: Apiary.PubSub}], strategy: :one_for_one)
+
+          result = Apiary.Runs.Rebuild.run(opts)
+          Supervisor.stop(pubsub)
+          result
+        end)
+
+      result
+    end
+  end
+
+  @doc """
   True when `PUBLIC_URL` is plain `http://`.
 
   `config/prod.exs` passes this to `Plug.SSL` as an `:exclude` condition, so an

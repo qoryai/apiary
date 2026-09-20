@@ -61,7 +61,9 @@ a restart does before doing it (`docs/upgrading.md`).
   heartbeat beside its last use.
 - The projection keeps, per run, the count of its denied connections, and per connection the
   mode, path rule, credential name and request method of its last attempt, ranked by
-  sequence like the rest and reproduced by a rebuild.
+  sequence like the rest and reproduced by a rebuild. `mix apiary.rebuild`
+  (`Apiary.Release.rebuild/1` in a release) projects runs again from their events, in
+  batches, for the rows a release's new columns are empty on.
 - The runs list, `/hive/runs`: every run of the hive with its state, what it worked on, its
   runtime, host, start, duration and denials; grouped by repository (two forges with one
   path are two groups, runs without a repository are Unassigned), by task across
@@ -112,14 +114,16 @@ a restart does before doing it (`docs/upgrading.md`).
   `events`, `log_chunks`, `connections`, `deliveries`. All new and empty; each reverses by
   dropping its table.
 - `20260921000700`: `access_keys.last_heartbeat_at`, a nullable column. Instant; reversible.
-- `20260922000100`: `runs.denied_count` (the run's denied connections, default 0),
-  `connections.last_mode`, `last_path_rule`, `last_credential` and `last_request_method`
-  (nullable), and indexes on `runs (hive_id, started_at)`, `runs (hive_id, repository_id,
-  started_at)` and `connections (hive_id, last_seen_at)`. Expand only; reversible. The
-  migration backfills both in place with two statements: the count from the run's
-  `connections`, the four columns from the one event each connection names as its last, so
-  no run needs a rebuild. On a large `connections` table the second statement is the slow
-  one (one index lookup in `events` per row).
+- `20260922000100`: `runs.denied_count` (the run's denied connections, default 0) and
+  `connections.last_mode`, `last_path_rule`, `last_credential`, `last_request_method`
+  (nullable). Expand only; reversible. It backfills the count in one statement, the sum of
+  each run's `connections`; on a large `connections` table that statement is the slow part.
+  The four columns are not backfilled here: see Upgrading.
+- `20260922000200`: the index the runs list reads by, on `runs (hive_id,
+  COALESCE(started_at, inserted_at) DESC, id DESC)`, and `connections (hive_id,
+  last_seen_at)`. Both built `CONCURRENTLY`, outside a transaction and without the migration
+  lock, so the receiver keeps writing while they build; reversible. Two instances must not
+  boot this migration at the same moment.
 
 ### Upgrading
 
@@ -128,3 +132,9 @@ a restart does before doing it (`docs/upgrading.md`).
 - Mail delivery is required: the release does not boot without `SMTP_RELAY`. A trial on one
   machine may set `MAIL_TO_LOG=true` instead, which writes every email, log-in links
   included, to the log.
+- Connections projected before `20260922000100` have no mode, path rule, credential or
+  request method of their last attempt: the console says "The policy denies it." where it
+  would name the mode, until those runs are projected again. `mix apiary.rebuild`, or in a
+  release `bin/apiary eval "Apiary.Release.rebuild()"`, does that: only the runs that need
+  it, a hundred at a time, safely beside the running server, and it can be stopped and run
+  again. `--all` (`all: true`) rebuilds every run.

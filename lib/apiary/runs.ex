@@ -131,16 +131,23 @@ defmodule Apiary.Runs do
     total = Repo.aggregate(query, :count)
     page = filters.page |> min(max(ceil(total / @page_size), 1))
 
-    runs =
-      Repo.all(
-        from r in query,
-          order_by: [desc: coalesce(r.started_at, r.inserted_at), desc: r.id],
-          limit: @page_size,
-          offset: ^((page - 1) * @page_size)
-      )
+    runs = Repo.all(page_query(query, page))
 
     %{runs: runs, page: page, total: total, pages: max(ceil(total / @page_size), 1)}
   end
+
+  # In the order of the index `runs_hive_id_started_or_first_heard_index`, expression
+  # included, so a page is read from the index and never sorted.
+  defp page_query(query, page) do
+    from r in query,
+      order_by: [desc: coalesce(r.started_at, r.inserted_at), desc: r.id],
+      limit: @page_size,
+      offset: ^((page - 1) * @page_size)
+  end
+
+  @doc false
+  def page_runs_query(%Scope{} = scope, %Filters{} = filters, now \\ DateTime.utc_now()),
+    do: scope |> filtered(filters, now) |> page_query(filters.page)
 
   @doc """
   What the summary line says of everything the filters return: `runs`, `repositories`,
@@ -473,29 +480,16 @@ defmodule Apiary.Runs do
   path, with how many runs reached it, the attempts, and the decision, rule, outcome and
   the rest of the most recent attempt across those runs. Filters: `decision` (destinations
   with any attempt so decided), `repo`, `host` (the destination's) and the range, which is
-  over when a run last reached the destination. Denied destinations come first, then the
+  over when a run last reached the destination and never wider than
+  `Apiary.Runs.Filters.max_window_days/0` days, so the aggregate is over a bounded set. Denied destinations come first, then the
   most recent.
   """
   def page_destinations(%Scope{} = scope, %Filters{} = filters, now \\ DateTime.utc_now()) do
     query = destinations(scope, filters, now)
 
-    summary =
-      Repo.one(
-        from d in subquery(query),
-          select: %{
-            destinations: count(),
-            denied: filter(count(), d.denied > 0),
-            attempts: type(coalesce(sum(d.attempts), 0), :integer)
-          }
-      )
-
-    runs =
-      Repo.one(from c in connections_in(scope, filters, now), select: count(c.run_id, :distinct))
-
-    pages = max(ceil(summary.destinations / @page_size), 1)
-    page = min(filters.page, pages)
-
-    rows =
+    # One pass: the page's rows carry the totals of everything grouped, as window
+    # aggregates over the same grouping, so the GROUP BY is not run a second time.
+    read = fn page ->
       Repo.all(
         from d in subquery(query),
           order_by: [
@@ -506,10 +500,51 @@ defmodule Apiary.Runs do
             asc: d.path
           ],
           limit: @page_size,
-          offset: ^((page - 1) * @page_size)
+          offset: ^((page - 1) * @page_size),
+          select:
+            {d,
+             %{
+               destinations: over(count()),
+               denied:
+                 type(
+                   over(sum(fragment("CASE WHEN ? > 0 THEN 1 ELSE 0 END", d.denied))),
+                   :integer
+                 ),
+               attempts: type(over(sum(d.attempts)), :integer)
+             }}
       )
+    end
 
-    %{rows: rows, page: page, pages: pages, summary: Map.put(summary, :runs, runs)}
+    {page, found} =
+      case {filters.page, read.(filters.page)} do
+        {page, [_ | _] = found} ->
+          {page, found}
+
+        {1, []} ->
+          {1, []}
+
+        # A page past the end says nothing of how many there are: count, and read the last.
+        {_beyond, []} ->
+          total = Repo.one(from d in subquery(query), select: count())
+          last = max(ceil(total / @page_size), 1)
+          {last, read.(last)}
+      end
+
+    summary =
+      case found do
+        [{_row, totals} | _] -> totals
+        [] -> %{destinations: 0, denied: 0, attempts: 0}
+      end
+
+    runs =
+      Repo.one(from c in connections_in(scope, filters, now), select: count(c.run_id, :distinct))
+
+    %{
+      rows: Enum.map(found, &elem(&1, 0)),
+      page: page,
+      pages: max(ceil(summary.destinations / @page_size), 1),
+      summary: Map.put(summary, :runs, runs)
+    }
   end
 
   @doc """
