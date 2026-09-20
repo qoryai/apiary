@@ -146,8 +146,9 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
 - The run configuration endpoint of the server contract, `GET /v1/run-configuration`: a
   signed request answered with the stored bytes for the key's hive and the labelled
   repository, the baseline for any other, the digest in `X-Qory-Run-Configuration` and as the
-  `ETag`, never a `304`, rate limited per key with the events endpoint's bucket. A hive
-  serves it only once somebody has made its policy (the first rule or the first change of
+  `ETag`, never a `304`, rate limited per key with the events endpoint's bucket. Nothing
+  is rendered or stored by a read, on the wire or on a page: version 1 is written by the
+  first change and by nothing else. A hive serves it only once somebody has made its policy (the first rule or the first change of
   mode; `Apiary.Policy.managed?/1`): from then on discovery names the `run` section for that
   hive. Until then there is no `run` section, the endpoint answers `404`, and the hive's
   machines keep the policy of their own `runner.yaml`. The discovery document and its digest
@@ -284,6 +285,14 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
   to the repository. All new and empty; each reverses by dropping its table.
 - `20260923000500`: `deliveries.run_configuration_digest`, a nullable column: what a batch
   said the run holds. Instant; reversible. Deliveries recorded before it keep null.
+- `20260925000300`: a one-off repair of data, idempotent. Before this release a page's
+  read of a hive nobody had changed rendered and stored a baseline run configuration
+  (version 1, no change and no author behind it), so the hive's first real change became
+  version 2. Nothing is persisted by a read any more, and this migration deletes such rows
+  where the hive has no change yet or a later version supersedes them, moving the versions
+  after them and the changes' `version_after` down by one, so the first change is version
+  1 again. A row that is the only version of a managed baseline stays: it is what is
+  served. Short; `down` does nothing.
 - `20260923000600`: `repositories.egress_mode`, nullable, `observe` or `enforce` by a
   `CHECK`; null, which every repository that exists gets, follows the hive's mode. Instant;
   reversible.
