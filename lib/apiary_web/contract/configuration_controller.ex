@@ -5,16 +5,20 @@ defmodule ApiaryWeb.Contract.ConfigurationController do
   `ApiaryWeb.Contract.SignedRequest`. The events URL it names is served by
   `ApiaryWeb.Contract.EventsController`.
 
+  The document names the `run` section only for a hive whose policy somebody has made
+  (`Apiary.Policy.managed?/1`); see `ApiaryWeb.Contract.Configuration`.
+
   The answer carries `X-Qory-Configuration`, the digest of the document as
   sent, which a runner compares with the digest in later answers and fetches
   the document again when it differs.
   """
   use ApiaryWeb, :controller
 
+  alias Apiary.Policy.Serving
   alias ApiaryWeb.Contract.Configuration
 
   def show(conn, _params) do
-    {body, digest} = Configuration.document()
+    {body, digest} = Configuration.document(Serving.managed?(conn.assigns.access_key))
 
     conn
     |> put_resp_header("x-qory-configuration", digest)

@@ -36,9 +36,23 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
 
   defp allow(conn), do: Jason.decode!(conn.resp_body)["security_policy"]["egress"]["allow"]
 
-  test "a hive with no rules yet gets a baseline made on first need: observe, nothing allowed",
-       ctx do
+  test "a hive nobody has given a policy serves none: 404, and nothing is rendered", ctx do
+    refute Policy.managed?(ctx.scope)
+
+    for query <- ["", "forge=github.example&repository=acme%2Fsite"] do
+      conn = fetch(ctx, query)
+      assert json_response(conn, 404) == %{"error" => "not_found"}
+      assert get_resp_header(conn, "x-qory-run-configuration") == []
+      assert get_resp_header(conn, "etag") == []
+    end
+
     assert Repo.aggregate(RunConfiguration, :count) == 0
+  end
+
+  test "from the first change on it is served, in the contract's shape, under its digest", ctx do
+    # The first change may render nothing new: a deny of a host nothing allows.
+    {:ok, _} = Policy.deny(ctx.scope, nil, %{host: "ads.example"})
+    assert Policy.managed?(ctx.scope)
 
     conn = fetch(ctx, "forge=github.example&repository=acme%2Fsite")
 
@@ -57,13 +71,23 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
     [digest] = get_resp_header(conn, "x-qory-run-configuration")
     assert digest == Render.digest(conn.resp_body)
     assert get_resp_header(conn, "etag") == [~s("#{digest}")]
-    assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest()]
+    assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(true)]
+    assert [%RunConfiguration{version: 1, repository_id: nil}] = Repo.all(RunConfiguration)
+  end
 
-    # Made once: the second answer is the same row's bytes.
-    assert fetch(ctx, "").resp_body == conn.resp_body
+  test "a key over its rate is 429 with Retry-After, from the events endpoint's bucket", ctx do
+    {:ok, _} = Policy.allow(ctx.scope, nil, %{host: "api.example"})
 
-    assert [%RunConfiguration{version: 1, repository_id: nil, changed_by_id: nil}] =
-             Repo.all(RunConfiguration)
+    statuses =
+      for _ <- 1..130 do
+        conn = fetch(ctx, "")
+        if conn.status == 429, do: assert([_seconds] = get_resp_header(conn, "retry-after"))
+        conn.status
+      end
+
+    assert 200 in statuses
+    assert 429 in statuses
+    assert Enum.uniq(statuses) -- [200, 429] == []
   end
 
   test "the bytes served are the bytes stored, under the stored digest", ctx do
@@ -106,6 +130,7 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
   end
 
   test "never a 304: a matching If-None-Match is answered 200 with the document", ctx do
+    {:ok, _} = Policy.allow(ctx.scope, nil, %{host: "api.example"})
     first = fetch(ctx, "")
     [etag] = get_resp_header(first, "etag")
 
@@ -120,13 +145,21 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
 
     %{scope: other} = sign_up_fixture()
     %{access_key: key, secret: secret} = access_key_fixture(other)
+    query = "forge=github.example&repository=acme%2Fsite"
 
-    conn = fetch(%{key: key, secret: secret}, "forge=github.example&repository=acme%2Fsite")
+    # Managed is the hive's own, too: this hive's policy does not make the other's served.
+    assert fetch(%{key: key, secret: secret}, query).status == 404
+
+    {:ok, _} = Policy.deny(other, nil, %{host: "ads.example"})
+    conn = fetch(%{key: key, secret: secret}, query)
     assert conn.status == 200
     assert allow(conn) == []
   end
 
   test "a request that does not verify is 401 and renders nothing", ctx do
+    {:ok, _} = Policy.allow(ctx.scope, nil, %{host: "api.example"})
+    count = Repo.aggregate(RunConfiguration, :count)
+
     for conn <- [
           fetch(ctx, "", signature: "sha256=" <> String.duplicate("0", 64)),
           fetch(ctx, "", timestamp: System.os_time(:second) - 301),
@@ -136,7 +169,7 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
       assert get_resp_header(conn, "x-qory-run-configuration") == []
     end
 
-    assert Repo.aggregate(RunConfiguration, :count) == 0
+    assert Repo.aggregate(RunConfiguration, :count) == count
   end
 
   test "a revoked key is refused", ctx do

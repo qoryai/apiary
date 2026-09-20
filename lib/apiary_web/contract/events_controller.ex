@@ -15,9 +15,11 @@ defmodule ApiaryWeb.Contract.EventsController do
   stored and answered `202`, with nothing projected yet.
 
   Every `202` and `410` carries the digests in force: `X-Qory-Configuration`, the
-  digest the discovery answer carries, and `X-Qory-Run-Configuration`, the digest of
-  the run configuration for the run's repository (`Apiary.Policy.Serving.digest_for/4`:
-  read, never rendered here), which is how a run learns that its policy changed. The
+  digest the hive's discovery answer carries, and, for a hive whose policy somebody has
+  made, `X-Qory-Run-Configuration`, the digest of the run configuration for the run's
+  repository (`Apiary.Policy.Serving.digest_for/4`: read, never rendered here), which
+  is how a run learns that its policy changed. A hive nobody has given a policy names
+  no run configuration anywhere, and its machines keep their own. The
   digest the request reported is stored on the delivery and on the run. Errors are
   short JSON and never repeat anything sent. The body, the signature and the headers
   are never logged.
@@ -39,7 +41,7 @@ defmodule ApiaryWeb.Contract.EventsController do
          {:ok, batch} <- batch(conn.assigns.raw_body),
          {:ok, %{status: status} = result} <- Ingest.ingest(access_key, batch, meta(conn)) do
       conn
-      |> put_resp_header("x-qory-configuration", Configuration.digest())
+      |> put_configuration(result[:managed])
       |> put_run_configuration(result[:run_configuration_digest])
       |> send_resp(status, "")
     else
@@ -54,7 +56,14 @@ defmodule ApiaryWeb.Contract.EventsController do
     end
   end
 
-  # Absent when it could not be read: a header absent means nothing to a runner.
+  # The discovery document is one of two, by whether the hive's policy is managed; when
+  # that could not be read, neither digest is claimed.
+  defp put_configuration(conn, managed?) when is_boolean(managed?),
+    do: put_resp_header(conn, "x-qory-configuration", Configuration.digest(managed?))
+
+  defp put_configuration(conn, _unknown), do: conn
+
+  # Absent for a hive that is not managed, and when it could not be read: a header absent means nothing to a runner.
   defp put_run_configuration(conn, digest) when is_binary(digest),
     do: put_resp_header(conn, "x-qory-run-configuration", digest)
 

@@ -33,6 +33,8 @@ defmodule Apiary.Contract.SignedFixturesTest do
 
     %{scope: scope} = sign_up_fixture()
     published_key_fixture(scope)
+    # A hive serves a run configuration once somebody has made its policy.
+    {:ok, _rule} = Apiary.Policy.allow(scope, nil, %{host: "api.example"})
     %{scope: scope}
   end
 

@@ -74,6 +74,25 @@ defmodule Apiary.Policy do
     Phoenix.PubSub.subscribe(Apiary.PubSub, topic(hive_id))
   end
 
+  ## Managed
+
+  @doc """
+  Whether somebody has made the hive's policy: there is a change in its history, the
+  first rule or the first change of mode. Until then the hive serves no run
+  configuration at all (discovery names no `run` section, the endpoint answers `404`, the
+  answers to batches name no digest of one), so its machines use the policy of their own
+  `runner.yaml`: an upgrade, or a hive nobody has looked at, takes no machine's
+  enforcement away. From the first change on, every run of the hive takes the hive's
+  policy. For the pages: "machines use their own policy until the first change here".
+  """
+  @spec managed?(Scope.t()) :: boolean
+  def managed?(%Scope{hive: %Hive{id: hive_id}}), do: managed_hive?(hive_id)
+
+  @doc false
+  def managed_hive?(hive_id) do
+    Repo.exists?(from c in Change, where: c.hive_id == ^hive_id)
+  end
+
   ## Repositories
 
   @doc """
@@ -395,8 +414,9 @@ defmodule Apiary.Policy do
   @doc """
   The run configuration in force for the baseline (`nil`) or for a repository: the highest
   version. A repository that never had rules of its own is served the baseline's, and the
-  row says so by its `repository_id`. The hive's first baseline is rendered when it is first
-  needed.
+  row says so by its `repository_id`. For a hive nobody has changed yet (`managed?/1` is
+  false) this renders what the baseline would be, `observe` with nothing allowed, so a
+  page has something to show; no runner is served it until the hive is managed.
   """
   @spec current_configuration(Scope.t(), target) :: {:ok, RunConfiguration.t()} | refusal
   def current_configuration(%Scope{hive: %Hive{} = hive} = scope, target) do

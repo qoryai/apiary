@@ -60,7 +60,7 @@ defmodule ApiaryWeb.Contract.EventsDigestsTest do
 
     assert response(conn, 202) == ""
     assert in_force(conn) == [ctx.baseline]
-    assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest()]
+    assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(true)]
   end
 
   test "the ping of a run that holds a digest in force is answered that digest, no other", ctx do
@@ -148,21 +148,42 @@ defmodule ApiaryWeb.Contract.EventsDigestsTest do
 
     assert response(conn, 410) == ""
     assert in_force(conn) == [ctx.own]
-    assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest()]
+    assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(true)]
 
     assert Repo.one!(
              from d in Delivery, where: d.status == 410, select: d.run_configuration_digest
            ) == ctx.own
   end
 
-  test "a hive that never had a policy answers its first baseline", _ctx do
+  test "a hive nobody has given a policy names no run configuration, and renders none", _ctx do
     %{scope: scope} = sign_up_fixture()
     %{access_key: key, secret: secret} = access_key_fixture(scope)
-    {_subject, [ping, _started]} = first_events()
+    {subject, [ping, started]} = first_events()
+    reported = "sha256=" <> String.duplicate("a", 64)
 
-    conn = signed_post(build_conn(), key.key_id, secret, [ping])
-    {:ok, %{digest: digest, version: 1}} = Policy.current_configuration(scope, nil)
+    for events <- [[ping], [started]] do
+      conn = signed_post(build_conn(), key.key_id, secret, events, run_configuration: reported)
+      assert response(conn, 202) == ""
+      assert in_force(conn) == []
+      assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(false)]
+    end
+
+    assert Repo.aggregate(
+             from(c in Apiary.Policy.RunConfiguration, where: c.hive_id == ^scope.hive.id),
+             :count
+           ) == 0
+
+    # The first change: the discovery digest of the hive's answers changes, which is what
+    # sends a run in flight to fetch the document and find the run section.
+    {:ok, _} = Policy.set_mode(scope, "enforce")
+
+    conn =
+      signed_post(build_conn(), key.key_id, secret, [wire_event(subject, 3, "run.heartbeat", %{})])
+
+    assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(true)]
+    {:ok, %{digest: digest}} = Policy.current_configuration(scope, nil)
     assert in_force(conn) == [digest]
+    assert Configuration.digest(true) != Configuration.digest(false)
   end
 
   test "a refusal carries no digest of a run configuration", ctx do

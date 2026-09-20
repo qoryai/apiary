@@ -37,16 +37,46 @@ defmodule ApiaryWeb.Contract.ConfigurationControllerTest do
     |> get(path)
   end
 
-  test "a valid request gets the version 1 document with the events and run sections and its digest",
+  test "a hive whose policy somebody made is named the run section; the digest differs",
+       %{scope: scope, key: key, secret: secret} do
+    unmanaged = signed_get(build_conn(), key.key_id, secret)
+    {:ok, _rule} = Apiary.Policy.allow(scope, nil, %{host: "api.example"})
+    managed = signed_get(build_conn(), key.key_id, secret)
+    base = ApiaryWeb.Endpoint.url()
+
+    assert json_response(managed, 200) == %{
+             "version" => 1,
+             "events" => %{"url" => base <> "/v1/events", "types" => ["*"]},
+             "run" => %{"url" => base <> "/v1/run-configuration"}
+           }
+
+    [digest] = get_resp_header(managed, "x-qory-configuration")
+    assert digest == ApiaryWeb.Contract.ConfigurationController.digest(managed.resp_body)
+    assert [digest] != get_resp_header(unmanaged, "x-qory-configuration")
+
+    # Another hive's policy changes nothing here.
+    %{scope: other} = sign_up_fixture()
+    %{access_key: other_key, secret: other_secret} = access_key_fixture(other)
+
+    refute Map.has_key?(
+             json_response(signed_get(build_conn(), other_key.key_id, other_secret), 200),
+             "run"
+           )
+  end
+
+  test "a valid request gets the version 1 document with the events section and its digest",
        %{conn: conn, key: key, secret: secret} do
     conn = signed_get(conn, key.key_id, secret, contract_version: 1)
     base = ApiaryWeb.Endpoint.url()
 
     assert json_response(conn, 200) == %{
              "version" => 1,
-             "events" => %{"url" => base <> "/v1/events", "types" => ["*"]},
-             "run" => %{"url" => base <> "/v1/run-configuration"}
+             "events" => %{"url" => base <> "/v1/events", "types" => ["*"]}
            }
+
+    # No run section until somebody has made the hive's policy: until then its machines
+    # keep the policy of their own runner file.
+    refute Map.has_key?(json_response(conn, 200), "run")
 
     [digest] = get_resp_header(conn, "x-qory-configuration")
     assert digest == ApiaryWeb.Contract.ConfigurationController.digest(conn.resp_body)

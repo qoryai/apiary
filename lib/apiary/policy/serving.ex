@@ -4,14 +4,19 @@ defmodule Apiary.Policy.Serving do
   and no user. Everything a runner names is untrusted: a forge and a repository are
   bounded strings compared to stored ones and nothing more.
 
+  A hive serves a run configuration only once somebody has made its policy
+  (`Apiary.Policy.managed?/1`). Until then `fetch/3` is `{:error, :unmanaged}`,
+  `digest_for/4` is nil, and nothing is rendered from here: the hive's machines use the
+  policy of their own `runner.yaml`.
+
   `fetch/3` is the run configuration endpoint's: the stored bytes and their digest for the
   labelled repository, the baseline's for a repository the hive does not know or that has
-  no rules of its own. The hive's first baseline (`observe`, nothing allowed) is rendered
-  when it is first needed.
+  no rules of its own. A managed hive always has a baseline: its first change rendered one.
 
   `digest_for/4` is the events endpoint's, on the path the receiver answers from, so it
-  reads and never renders (but for that first baseline): the digest in force for the
-  run's repository. A run's repository is known once its start is projected, which is
+  reads and never renders: the digest in force for the run's repository, after the read
+  that says the hive is managed. Each is a read of an index; a repository without a
+  configuration of its own costs one more, for the baseline's. A run's repository is known once its start is projected, which is
   after the receiver answers; until then it is taken from the start event when the batch
   holds it, and a run that names none yet (its ping) is answered the digest it reported
   when that is one in force in the hive, the baseline's otherwise. A runner that is told
@@ -37,12 +42,19 @@ defmodule Apiary.Policy.Serving do
   @doc "The run configuration in force for the key's hive and the labelled repository."
   @spec fetch(AccessKey.t(), term, term) :: {:ok, RunConfiguration.t()} | {:error, term}
   def fetch(%AccessKey{organisation_id: organisation_id, hive_id: hive_id}, forge, repository) do
-    Policy.in_force(organisation_id, hive_id, repository_id(hive_id, forge, repository))
+    if Policy.managed_hive?(hive_id),
+      do: Policy.in_force(organisation_id, hive_id, repository_id(hive_id, forge, repository)),
+      else: {:error, :unmanaged}
   end
 
+  @doc "Whether the key's hive serves a run configuration: `Apiary.Policy.managed?/1` for a key."
+  @spec managed?(AccessKey.t()) :: boolean
+  def managed?(%AccessKey{hive_id: hive_id}), do: Policy.managed_hive?(hive_id)
+
   @doc """
-  The digest in force for a run of the key's hive, or nil when it cannot be read: the
-  answer then carries no such header, which means nothing to a runner. `run` is the run's
+  The digest in force for a run of the key's managed hive (the caller has asked
+  `managed?/1`), or nil when it cannot be read: the answer then carries no such header,
+  which means nothing to a runner. `run` is the run's
   row or nil (a closed run is looked up by the batch's subject).
   """
   @spec digest_for(AccessKey.t(), Run.t() | nil, Batch.t(), String.t() | nil) :: String.t() | nil

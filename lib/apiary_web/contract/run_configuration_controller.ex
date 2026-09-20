@@ -11,6 +11,11 @@ defmodule ApiaryWeb.Contract.RunConfigurationController do
   repository; a repository the hive does not know, one without rules of its own and a
   request that names none get the hive's baseline.
 
+  A hive nobody has given a policy (`Apiary.Policy.managed?/1`) serves none: `404`
+  `{"error":"not_found"}`, and nothing is rendered. Discovery names no `run` section for
+  such a hive, so a runner does not ask. A key is limited here as on the events endpoint,
+  from the same bucket: `429` with `Retry-After`.
+
   Never a `304`: to a runner anything but `200` is no run, so `If-None-Match` is not
   read. A parameter sent as anything but a string, or longer than a label may be, names
   no repository and gets the baseline (of one sent twice the last is read); nothing of the query is logged or
@@ -20,18 +25,35 @@ defmodule ApiaryWeb.Contract.RunConfigurationController do
   use ApiaryWeb, :controller
 
   alias Apiary.Policy.Serving
+  alias Apiary.Runs.RateLimit
   alias ApiaryWeb.Contract.Configuration
 
   def show(conn, params) do
+    case RateLimit.check(conn.assigns.access_key.id) do
+      :ok ->
+        serve(conn, params)
+
+      {:error, seconds} ->
+        conn
+        |> put_resp_header("retry-after", Integer.to_string(seconds))
+        |> put_status(429)
+        |> json(%{error: "rate_limited"})
+    end
+  end
+
+  defp serve(conn, params) do
     case Serving.fetch(conn.assigns.access_key, params["forge"], params["repository"]) do
       {:ok, configuration} ->
         conn
         |> put_resp_header("x-qory-run-configuration", configuration.digest)
         |> put_resp_header("etag", ~s("#{configuration.digest}"))
-        |> put_resp_header("x-qory-configuration", Configuration.digest())
+        |> put_resp_header("x-qory-configuration", Configuration.digest(true))
         |> put_resp_header("cache-control", "no-store")
         |> put_resp_content_type("application/json")
         |> send_resp(200, configuration.document)
+
+      {:error, :unmanaged} ->
+        conn |> put_status(404) |> json(%{error: "not_found"})
 
       {:error, _reason} ->
         conn |> put_status(503) |> json(%{error: "unavailable"})

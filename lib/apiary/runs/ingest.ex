@@ -52,14 +52,16 @@ defmodule Apiary.Runs.Ingest do
   closed the run and nothing but the delivery was recorded; `inserted` events
   were new, `duplicates` were already held, `conflicts` were dropped,
   `heartbeat` says a heartbeat was among the new ones, and `repeated` says the
-  delivery id had been recorded before, and `run_configuration_digest` is the digest
-  in force for the run's repository, for the answer's header (nil when it could not
-  be read). `{:error, :unavailable}` when the batch could not be stored.
+  delivery id had been recorded before; `managed` says whether the hive serves a run
+  configuration (nil when that could not be read) and `run_configuration_digest` is
+  the digest in force for the run's repository, for the answer's headers (nil for a
+  hive that is not managed, and when it could not be read). `{:error, :unavailable}` when the batch could not be stored.
 
   The digest the request reported (`meta.run_configuration`) is kept on the delivery
   and, as the last one reported, on the run. The digest in force is read after the
-  commit, outside the run's lock: one read of an index, never a render, but for the
-  first baseline of a hive that has none.
+  commit, outside the run's lock, and never rendered: a read that says the hive is
+  managed, then one read of an index for the digest, two when the run's repository has
+  no configuration of its own and the baseline's is read after it.
   """
   def ingest(%AccessKey{} = access_key, %Batch{} = batch, meta \\ %{}) do
     now = DateTime.utc_now()
@@ -70,9 +72,22 @@ defmodule Apiary.Runs.Ingest do
       if result.conflicts > 0, do: log_conflicts(result)
       if result.status == 202, do: Projector.project_async(result.run)
 
-      in_force = Serving.digest_for(access_key, result.run, batch, run_configuration(meta))
-      {:ok, Map.put(result, :run_configuration_digest, in_force)}
+      {:ok, Map.merge(result, in_force(access_key, result.run, batch, meta))}
     end
+  end
+
+  # What the answer's digests are decided by, read after the commit and never failing the
+  # delivery: whether the hive's policy is managed (nil when that could not be read), and,
+  # for a managed hive, the digest of the run configuration in force for the run.
+  defp in_force(access_key, run, batch, meta) do
+    if Serving.managed?(access_key) do
+      digest = Serving.digest_for(access_key, run, batch, run_configuration(meta))
+      %{managed: true, run_configuration_digest: digest}
+    else
+      %{managed: false, run_configuration_digest: nil}
+    end
+  rescue
+    _exception -> %{managed: nil, run_configuration_digest: nil}
   end
 
   # Whatever the database refuses or cannot do is `{:error, :unavailable}`, a
