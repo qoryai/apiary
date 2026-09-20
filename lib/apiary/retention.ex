@@ -17,6 +17,10 @@ defmodule Apiary.Retention do
     * Past the events cut-off, all the run's `events`, its `log_chunks` and its
       `deliveries` are deleted and `runs.events_pruned_at` (and `log_pruned_at`) is set.
 
+  A pruned run takes nothing more: `Apiary.Runs.Ingest` answers `410` for a run whose
+  events are pruned, since what a replay would be deduplicated against is gone, and drops
+  the log events of a run whose log is pruned.
+
   The run's row stays, with everything the projector folded into it (state, times, labels,
   exit, `event_count`, `denied_count`), and so do its `connections`: the runs list, the
   hive's connections and the run's header and Connections tab read as before. The run page

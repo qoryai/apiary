@@ -813,11 +813,12 @@ defmodule ApiaryWeb.PolicyLive.Common do
     target = socket.assigns.target
     base = socket.assigns.base
     changes = Policy.list_changes(scope, target, page)
-    versions = configurations_for(scope, target, changes.items)
+    # One read for the page: the versions its changes made, without their documents.
+    versions = Policy.configurations_for_changes(scope, Enum.map(changes.items, & &1.id))
 
     rows =
       for change <- changes.items do
-        made = made_version(versions, change)
+        made = made_version(versions, target, change)
         query = if changes.page > 1, do: %{"page" => changes.page}, else: %{}
 
         %{
@@ -838,42 +839,10 @@ defmodule ApiaryWeb.PolicyLive.Common do
     %{rows: rows, page: changes.page, pages: changes.pages, total: changes.total}
   end
 
-  # The configuration a change made, or nil when the bytes stayed the same.
-  defp made_version(versions, %{version_after: version} = change) when is_integer(version) do
-    case versions[version] do
-      %{policy_change_id: id} = configuration when id == change.id -> configuration
-      _ -> nil
-    end
-  end
-
-  defp made_version(_versions, _change), do: nil
-
-  # The configurations the changes of one page name, by version, read a page of versions
-  # at a time rather than one by one: a page of changes names neighbouring versions, so
-  # this is one read, seldom two, and never more than three.
-  defp configurations_for(scope, target, changes) do
-    wanted = for %{version_after: version} <- changes, is_integer(version), do: version
-
-    case wanted do
-      [] ->
-        %{}
-
-      wanted ->
-        first = Policy.list_configurations(scope, target, 1)
-        latest = first.items |> List.first() |> then(&((&1 && &1.version) || 0))
-        size = max(length(first.items), 1)
-
-        pages =
-          wanted
-          |> Enum.map(&(div(max(latest - &1, 0), size) + 1))
-          |> Enum.uniq()
-          |> Enum.reject(&(&1 == 1))
-          |> Enum.take(2)
-
-        [first | Enum.map(pages, &Policy.list_configurations(scope, target, &1))]
-        |> Enum.flat_map(& &1.items)
-        |> Map.new(&{&1.version, &1})
-    end
+  # The configuration a change made for the target, or nil when the bytes stayed the same.
+  defp made_version(versions, target, change) do
+    target_id = target && target.id
+    Enum.find(versions[change.id] || [], &(&1.repository_id == target_id))
   end
 
   defp origin(%{action: "mode_changed", repository_id: id} = change, made) when id != nil do
@@ -909,7 +878,15 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
     with {:ok, change} <- Policy.get_change(scope, change_id),
          true <- change.repository_id == target_id do
-      made = made_version(configurations_for(scope, target, [change]), change)
+      # The row names the version; the diff needs its document, and the one before.
+      made =
+        with %{version: version} <-
+               made_version(Policy.configurations_for_changes(scope, [change.id]), target, change),
+             {:ok, configuration} <- Policy.get_configuration(scope, target, version) do
+          configuration
+        else
+          _ -> nil
+        end
 
       before =
         with %{version: version} when version > 1 <- made,
@@ -1096,19 +1073,20 @@ defmodule ApiaryWeb.PolicyLive.Common do
       "v#{configuration.version} · #{byte_size(configuration.document)} bytes · sha256 over exactly these"
 
   @doc """
-  The version a target is served, one row read: `{configuration, own?}`, `own?` false when
+  The version a target is served, one read and no document: `{configuration, own?}`, `own?` false when
   a repository is served the hive's baseline. Only for a hive somebody has changed: before
   that nothing is served, and nothing is read (`nil`).
   """
   def served_version(_scope, _target, false), do: nil
 
   def served_version(scope, target, true) do
-    case Policy.current_configuration(scope, target) do
-      {:ok, configuration} ->
-        {configuration, is_nil(target) or configuration.repository_id == target.id}
+    versions = Policy.newest_versions(scope, [nil | List.wrap(target)])
+    own = target && versions[target.id]
 
-      _ ->
-        nil
+    cond do
+      own -> {own, true}
+      versions[nil] -> {versions[nil], is_nil(target)}
+      true -> nil
     end
   end
 

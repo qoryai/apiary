@@ -33,6 +33,7 @@ defmodule Apiary.Runs.Ingest do
 
   @digest ~r/\Asha256=[0-9a-f]{64}\z/
   @heartbeat "ai.qory.run.heartbeat"
+  @log "ai.qory.run.log"
   @insert_chunk 500
 
   @typedoc """
@@ -49,7 +50,8 @@ defmodule Apiary.Runs.Ingest do
 
   @doc """
   Stores the batch. `{:ok, result}` with `status` 202, or 410 when the hive has
-  closed the run and nothing but the delivery was recorded; `inserted` events
+  closed the run, or retention has pruned its events (`runs.events_pruned_at`), and
+  nothing but the delivery was recorded; `inserted` events
   were new, `duplicates` were already held, `conflicts` were dropped,
   `heartbeat` says a heartbeat was among the new ones, and `repeated` says the
   delivery id had been recorded before; `managed` says whether the hive serves a run
@@ -113,10 +115,16 @@ defmodule Apiary.Runs.Ingest do
       run.state == "closed" ->
         gone(access_key, batch, meta, delivery_id, now)
 
+      # Retention deleted the run's events, and with them what a replay would be
+      # deduplicated against: the hive wants nothing more of this run.
+      not is_nil(run.events_pruned_at) ->
+        gone(access_key, batch, meta, delivery_id, now)
+
       not new_delivery?(access_key, batch, meta, delivery_id, now) ->
         %{result(202, run) | repeated: true}
 
       true ->
+        {batch, pruned} = without_pruned_log(run, batch)
         {inserted, duplicates, conflicts, heartbeat} = insert_events(run, batch, now)
         record_delivery(access_key, delivery_id, inserted)
         run = count(run, inserted, run_configuration(meta), now)
@@ -124,14 +132,26 @@ defmodule Apiary.Runs.Ingest do
         %{
           result(202, run)
           | inserted: inserted,
-            duplicates: duplicates,
+            duplicates: duplicates + pruned,
             conflicts: conflicts,
             heartbeat: heartbeat
         }
     end
   end
 
-  # The hive has closed the run: the delivery is recorded, nothing else is kept.
+  # A run whose log retention has pruned takes no more log events: the ones it had are
+  # gone, so a replay of them could not be told from new ones, and any that is new is
+  # older than the hive keeps log output. They are answered as duplicates; every other
+  # event is still deduplicated against the events the run keeps.
+  defp without_pruned_log(%Run{log_pruned_at: nil}, batch), do: {batch, 0}
+
+  defp without_pruned_log(%Run{}, %Batch{events: events} = batch) do
+    kept = Enum.reject(events, &(&1.type == @log))
+    {%{batch | events: kept}, length(events) - length(kept)}
+  end
+
+  # The hive has closed the run, or pruned its events: the delivery is recorded, nothing
+  # else is kept.
   defp gone(access_key, batch, meta, delivery_id, now) do
     repeated = not new_delivery?(access_key, batch, meta, delivery_id, now, 410)
     %{result(410, nil) | repeated: repeated}

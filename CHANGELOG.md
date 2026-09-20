@@ -221,7 +221,10 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
   five on the settings page, and a `retention pruned hive=…` line in the log. `mix
   apiary.prune` (`Apiary.Release.prune/1` in a release) runs it by hand, `--dry-run`
   counts without deleting. A rebuild leaves a run alone whose events are pruned, or due to
-  be: its projection is all that is left of it.
+  be: its projection is all that is left of it. A run whose events are pruned takes no more
+  events: the receiver answers `410`, as for a closed run, because a batch delivered again
+  could no longer be told from a new one; a run whose log is pruned takes no more log
+  events.
 - Live reload, proven end to end: `e2e/run.sh`, and the workflow `End to end` in CI, start
   a test instance on a database of its own, run `qory run` behind a Docker wall on a Linux
   node against it under an `enforce` policy, let the session be refused a host, allow the

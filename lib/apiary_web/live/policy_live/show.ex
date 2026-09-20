@@ -230,8 +230,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
 
     socket
     |> assign_async(:repository_details, fn ->
-      {:ok,
-       %{repository_details: Map.new(detailed, &{&1.repository.id, details(scope, &1, managed?)})}}
+      {:ok, %{repository_details: details(scope, detailed, managed?)}}
     end)
     |> assign_async(:repository_suggestions, fn ->
       {:ok,
@@ -257,9 +256,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         :repository_details,
         Phoenix.LiveView.AsyncResult.ok(
           details,
-          Enum.reduce(rows, details.result, fn row, map ->
-            Map.put(map, row.repository.id, details(scope, row, socket.assigns.managed?))
-          end)
+          Map.merge(details.result, details(scope, rows, socket.assigns.managed?))
         )
       )
       |> assign(
@@ -280,21 +277,31 @@ defmodule ApiaryWeb.PolicyLive.Show do
     list |> Enum.sort_by(&(&1.rule_count == 0 and is_nil(&1.own_mode))) |> Enum.take(@detailed)
   end
 
-  defp details(scope, %{repository: repository, rule_count: count}, managed?) do
-    overrides =
-      if count > 0 do
-        Enum.count(
-          Policy.effective(scope, repository).entries,
-          &(&1.source == :repository and &1.in_force and &1.overrides != [])
-        )
-      else
-        0
-      end
+  # Two reads for all of them, the versions and the last changes, and the effective
+  # policy of each repository that has rules, for its overrides.
+  defp details(scope, rows, managed?) do
+    repositories = Enum.map(rows, & &1.repository)
+    versions = if managed?, do: Policy.newest_versions(scope, [nil | repositories]), else: %{}
+    changes = Policy.last_changes(scope, repositories)
 
-    case Common.served_version(scope, repository, managed?) do
-      {configuration, own?} -> %{overrides: overrides, version: configuration, own?: own?}
-      nil -> %{overrides: overrides, version: nil, own?: false}
-    end
+    Map.new(rows, fn %{repository: repository, rule_count: count} ->
+      overrides =
+        if count > 0 do
+          Enum.count(
+            Policy.effective(scope, repository).entries,
+            &(&1.source == :repository and &1.in_force and &1.overrides != [])
+          )
+        else
+          0
+        end
+
+      {repository.id,
+       %{
+         overrides: overrides,
+         version: versions[repository.id] || versions[nil],
+         changed: changes[repository.id] && changes[repository.id].inserted_at
+       }}
+    end)
   end
 
   defp repository_rows(list, details, suggestions) do
@@ -315,7 +322,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         detail: if(details, do: detail || :none, else: :loading),
         suggestions:
           if(suggestions, do: Map.get(suggestions, repository.id, :none), else: :loading),
-        changed: detail && detail.own? && detail.version && detail.version.rendered_at
+        changed: detail && detail.changed
       }
     end)
     |> Enum.sort_by(fn row ->

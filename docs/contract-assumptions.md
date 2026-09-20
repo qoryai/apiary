@@ -97,7 +97,7 @@ first refusal that applies is the answer:
 | `429` | the key has delivered more than its rate; `Retry-After` says how many seconds to wait | `{"error":"rate_limited"}` |
 | `400` | `X-Qory-Contract-Version` is sent and is not `1` | `{"error":"unsupported_contract_version","supported":[1]}` |
 | `400` | the body is not a batch, or is over a limit below | `{"error":"invalid_batch"}` |
-| `410` | the hive has closed the run: the delivery is recorded, no event is stored | empty |
+| `410` | the hive has closed the run, or retention has pruned the run's events: the delivery is recorded, no event is stored | empty |
 | `503` | the batch could not be stored; nothing of it was | `{"error":"unavailable"}` |
 | `202` | stored | empty |
 
@@ -125,6 +125,16 @@ What is stored, in one transaction, before the answer:
   same subject under another hive is another run. Two first batches at once make one run.
   The run's row is locked while its batch is stored, so a close and a batch never cross: a
   close that commits first is answered `410`, and a closed run never gains an event;
+- nothing, for a run retention has pruned. Deduplication is against the events the hive
+  holds, and a pruned run holds none, so a batch delivered again after the prune could not
+  be told from a new one and would be folded a second time. The hive therefore wants nothing
+  more of a run whose events it pruned, and says so the way it does for a closed run: `410`,
+  the delivery recorded, no event stored. A run that lost only its log output (the log's
+  days are shorter than the events') still takes events, deduplicated against the ones it
+  keeps, but no `ai.qory.run.log` event: its log events are gone, so a replayed one could
+  not be recognised, and one that is new would be older than the hive keeps log output.
+  Such events are answered like duplicates, within a `202`. Neither case arises for a run
+  that is alive: retention only prunes a run that has ended or gone silent for days;
 - each event, as received: `id`, `sequence` as an integer, `type`, `time`, `data`, and when it
   was received. An event already held (the same `id`) is skipped: delivery is at least once.
   An event whose `id` is held by another run of the hive, or whose `sequence` in its run is

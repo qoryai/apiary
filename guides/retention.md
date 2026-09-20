@@ -43,6 +43,11 @@ the number of connections it was denied, and its connections, one row per destin
 the attempts, the decision, the rule and the outcome of the last attempt. The hive's
 connections page and the counts on the policy pages read those rows and are unchanged.
 
+A pruned run takes nothing more. A runner that delivers a batch of it again, from a spool
+that outlived the retention, is answered `410` once the events are pruned, as for a run the
+hive closed, and nothing is stored. A run that lost only its log output still takes its
+other events, without storing one twice, and no log event.
+
 A run whose events are pruned cannot be projected again, because a projection is rebuilt
 from events. `mix apiary.rebuild` and `Apiary.Release.rebuild/1` never select such a run,
 and leave alone a run that is due to be pruned, so a rebuild never wipes what is left of it.
