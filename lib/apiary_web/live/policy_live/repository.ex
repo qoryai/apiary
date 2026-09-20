@@ -235,19 +235,30 @@ defmodule ApiaryWeb.PolicyLive.Repository do
 
     with {:ok, rule} <- Policy.get_rule(scope, id),
          true <- rule.kind == "host" do
+      # The act is matched against the rule as it is now, not as the row showed it: a
+      # hive rule that became a deny is not disabled, one that became an allow is not
+      # allowed again over its paths, and a locked one is an owner's on the hive's page.
       {result, sentence, announce} =
-        case {act, rule.repository_id} do
-          {"disable", nil} ->
+        case {act, rule.repository_id, rule.action} do
+          {_act, nil, _action} when rule.locked ->
+            {{:error,
+              %Policy.Error{
+                reason: :locked,
+                message:
+                  "The hive's rule for #{rule.host} is locked. An owner changes it on the hive's policy page."
+              }}, nil, nil}
+
+          {"disable", nil, "allow"} ->
             {Policy.deny(scope, repository, %{host: rule.host}),
              "#{rule.host} is denied #{Common.for_target(socket)}.",
              "#{rule.host} is disabled for this repository."}
 
-          {"allow_here", nil} ->
+          {"allow_here", nil, "deny"} ->
             {Policy.allow(scope, repository, %{host: rule.host, paths: nil}),
              "#{rule.host} is allowed #{Common.for_target(socket)}.",
              "#{rule.host} is allowed for this repository."}
 
-          {act, repository_id}
+          {act, repository_id, _action}
           when act in ~w(remove restore) and repository_id == repository.id ->
             {Policy.remove_rule(scope, rule),
              if(act == "restore",
@@ -257,8 +268,11 @@ defmodule ApiaryWeb.PolicyLive.Repository do
 
           _ ->
             {{:error,
-              %Policy.Error{reason: :invalid, message: "This rule cannot be changed from here."}},
-             nil, nil}
+              %Policy.Error{
+                reason: :conflict,
+                message:
+                  "The rule for #{rule.host} changed while you were deciding. The list below is current."
+              }}, nil, nil}
         end
 
       case result do
@@ -292,15 +306,7 @@ defmodule ApiaryWeb.PolicyLive.Repository do
         set_repository_mode(socket, setting)
 
       becomes == "enforce" ->
-        would =
-          case Policy.uncovered(
-                 socket.assigns.current_scope,
-                 socket.assigns.target,
-                 Common.since()
-               ) do
-            {:ok, destinations} -> %{destinations: destinations, allowed: MapSet.new()}
-            _ -> nil
-          end
+        would = Common.would(socket.assigns.current_scope, socket.assigns.target)
 
         assign(socket, dialog: {:repository_mode, setting, "enforce"}, would: would)
 
@@ -321,7 +327,7 @@ defmodule ApiaryWeb.PolicyLive.Repository do
     scope = socket.assigns.current_scope
     repository = socket.assigns.target
 
-    case Enum.find(would.destinations, &(Show.would_key(&1) == key)) do
+    case Enum.find(would.destinations, &(Common.would_key(&1) == key)) do
       nil ->
         socket
 
@@ -335,7 +341,7 @@ defmodule ApiaryWeb.PolicyLive.Repository do
           {:ok, _rule} ->
             socket
             |> load()
-            |> assign(:would, %{would | allowed: MapSet.put(would.allowed, key)})
+            |> assign(:would, Common.would(scope, repository, would))
             |> assign(:announce, "#{destination.host} is allowed for this repository.")
 
           {:error, error} ->
@@ -698,14 +704,7 @@ defmodule ApiaryWeb.PolicyLive.Repository do
   defp repository_mode_dialog(%{becomes: "enforce"} = assigns) do
     shown = if assigns.would, do: Enum.take(assigns.would.destinations, 8), else: []
 
-    left =
-      if assigns.would,
-        do:
-          Enum.count(
-            assigns.would.destinations,
-            &(!MapSet.member?(assigns.would.allowed, Show.would_key(&1)))
-          ),
-        else: 0
+    left = if assigns.would, do: MapSet.size(assigns.would.open), else: 0
 
     assigns = assign(assigns, shown: shown, left: left)
 
@@ -729,9 +728,9 @@ defmodule ApiaryWeb.PolicyLive.Repository do
           </span>
         </div>
         <ul>
-          <li :for={destination <- @shown} id={"would-#{Show.would_key(destination)}"}>
+          <li :for={destination <- @shown} id={"would-#{Common.would_key(destination)}"}>
             <.rule_mark action={
-              if MapSet.member?(@would.allowed, Show.would_key(destination)),
+              if !MapSet.member?(@would.open, Common.would_key(destination)),
                 do: "allow",
                 else: "pending"
             } />
@@ -745,7 +744,7 @@ defmodule ApiaryWeb.PolicyLive.Repository do
               )}
             </small>
             <%= cond do %>
-              <% MapSet.member?(@would.allowed, Show.would_key(destination)) -> %>
+              <% !MapSet.member?(@would.open, Common.would_key(destination)) -> %>
                 <span class="q-done"><.icon name="hero-check-micro" class="size-3" />Allowed</span>
               <% lock = Enum.find(@locked_denies, &Grammar.covers?(&1, destination.host)) -> %>
                 <span
@@ -759,7 +758,7 @@ defmodule ApiaryWeb.PolicyLive.Repository do
                 <button
                   type="button"
                   class="btn btn-xs"
-                  phx-click={JS.push("would_allow", value: %{key: Show.would_key(destination)})}
+                  phx-click={JS.push("would_allow", value: %{key: Common.would_key(destination)})}
                 >
                   Allow here
                 </button>

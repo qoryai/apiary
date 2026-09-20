@@ -269,7 +269,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
   @doc "Reads the composer again against the rules on the page. `own` and `entries` are the page's."
   def read(socket, params) do
     params =
-      Map.merge(socket.assigns.composer_params, Map.take(params, ~w(action host paths every)))
+      Map.merge(socket.assigns.composer_params, fields(params, ~w(action host paths every)))
 
     reading =
       Reading.host_rule(params, %{
@@ -305,11 +305,28 @@ defmodule ApiaryWeb.PolicyLive.Common do
     end
   end
 
+  # What a client sends is a map of strings, or it is nothing: the named fields that are
+  # text, cut to what a field can hold, NUL and the like taken out. Anything else is left
+  # as it was, so a crafted payload changes no field and crashes no page.
+  @field_max 4000
+  defp fields(%{} = params, names) do
+    for name <- names, is_binary(value = params[name]), into: %{} do
+      {name,
+       value
+       |> String.replace(~r/[\x00-\x08\x0B\x0C\x0E-\x1F]/, "")
+       |> String.slice(0, @field_max)}
+    end
+  end
+
+  defp fields(_params, _names), do: %{}
+
   @doc "The shared events of the composer. Returns `{:halt, socket}` when it handled the event, `:cont` otherwise."
-  def handle_event("composer_change", %{"rule" => params}, socket) do
+  def handle_event("composer_change", params, socket) when is_map(params) do
+    params = fields(params["rule"], ~w(host paths))
+
     # Typing a host again takes back an "every path" asked for another host.
     params =
-      if params["host"] != socket.assigns.composer_params["host"],
+      if Map.has_key?(params, "host") and params["host"] != socket.assigns.composer_params["host"],
         do: Map.put(params, "every", "false"),
         else: params
 
@@ -321,12 +338,13 @@ defmodule ApiaryWeb.PolicyLive.Common do
     {:halt, socket |> read(%{"action" => action}) |> focus("policy-composer-host")}
   end
 
-  def handle_event("composer_use", params, socket) do
+  def handle_event("composer_use", params, socket) when is_map(params) do
+    values = params |> fields(~w(host paths action)) |> Map.put("every", "false")
+
     values =
-      params
-      |> Map.take(~w(host paths action))
-      |> Map.new(fn {key, value} -> {key, to_string(value) |> String.slice(0, 4000)} end)
-      |> Map.put("every", "false")
+      if values["action"] in [nil, "allow", "deny"],
+        do: values,
+        else: Map.delete(values, "action")
 
     field =
       if params["focus"] == "paths", do: "policy-composer-paths", else: "policy-composer-host"
@@ -383,8 +401,13 @@ defmodule ApiaryWeb.PolicyLive.Common do
     {:halt, push_navigate(socket, to: ~p"/hive/policy?#{%{"rule" => host}}")}
   end
 
-  def handle_event("credential_change", %{"credential" => params}, socket) do
-    params = Map.take(params, ~w(name argument))
+  def handle_event("credential_change", params, socket) when is_map(params) do
+    params =
+      Map.merge(
+        %{"name" => "", "argument" => ""},
+        fields(params["credential"], ~w(name argument))
+      )
+
     reading = Reading.credential(params, socket.assigns.own)
 
     {:halt,
@@ -537,6 +560,31 @@ defmodule ApiaryWeb.PolicyLive.Common do
       }
     })
   end
+
+  ## What enforcing would deny, for a confirm
+
+  @doc """
+  The list of an enforce confirm, from the record: `%{destinations:, open:}`, the
+  destinations as they were when the confirm opened, so a row stays where it is, and the
+  keys of those that today's rules still do not cover. Read again after every allow made
+  from the list, so "Allowed" and "none left" are what the policy says, not what was
+  clicked. `nil` when it cannot be counted.
+  """
+  def would(scope, target, previous \\ nil) do
+    case Policy.uncovered(scope, target, since()) do
+      {:ok, fresh} ->
+        shown = (previous && previous.destinations) || fresh
+        known = MapSet.new(shown, &would_key/1)
+        added = Enum.reject(fresh, &(would_key(&1) in known))
+        %{destinations: shown ++ added, open: MapSet.new(fresh, &would_key/1)}
+
+      _ ->
+        nil
+    end
+  end
+
+  @doc "The DOM-safe key of a destination of the list."
+  def would_key(%{host: host, path: path}), do: ApiaryWeb.RunComponents.dom_token({host, path})
 
   ## The words of a change (pf6)
 

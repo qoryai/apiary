@@ -354,13 +354,10 @@ defmodule ApiaryWeb.PolicyLive.Show do
         socket
 
       mode == "enforce" ->
-        would =
-          case Policy.uncovered(socket.assigns.current_scope, Common.since()) do
-            {:ok, destinations} -> %{destinations: destinations, allowed: MapSet.new()}
-            _ -> nil
-          end
-
-        assign(socket, dialog: {:mode, "enforce"}, would: would)
+        assign(socket,
+          dialog: {:mode, "enforce"},
+          would: Common.would(socket.assigns.current_scope, nil)
+        )
 
       true ->
         assign(socket, dialog: {:mode, "observe"}, would: nil)
@@ -408,7 +405,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
           {:ok, _rule} ->
             socket
             |> load()
-            |> assign(:would, %{would | allowed: MapSet.put(would.allowed, key)})
+            |> assign(:would, Common.would(scope, nil, would))
             |> assign(:announce, "#{destination.host} is allowed for the hive.")
 
           {:error, error} ->
@@ -439,8 +436,16 @@ defmodule ApiaryWeb.PolicyLive.Show do
     end
   end
 
+  # A confirm acts on the rule as it is now, not as it was when the dialog opened: one
+  # that is gone, or is not what the dialog named any more, is refused and the list re-read.
   defp event("lock_confirm", _params, %{assigns: %{dialog: {:lock, rule, _held}}} = socket) do
-    socket |> assign(:dialog, nil) |> set_lock(rule, true)
+    socket = assign(socket, :dialog, nil)
+
+    case fresh(socket, rule) do
+      {:ok, %{locked: false} = rule} -> set_lock(socket, rule, true)
+      {:ok, _locked_already} -> load(socket)
+      {:error, error} -> Common.refused(socket, error)
+    end
   end
 
   defp event("edit_paths", %{"id" => id}, socket) do
@@ -482,7 +487,12 @@ defmodule ApiaryWeb.PolicyLive.Show do
   end
 
   defp event("remove_confirm", _params, %{assigns: %{dialog: {:remove, rule, _}}} = socket) do
-    socket |> assign(:dialog, nil) |> remove(rule)
+    socket = assign(socket, :dialog, nil)
+
+    case fresh(socket, rule) do
+      {:ok, rule} -> remove(socket, rule)
+      {:error, error} -> Common.refused(socket, error)
+    end
   end
 
   defp event("compare", %{"compare" => compare}, %{assigns: %{v: %{} = v}} = socket) do
@@ -492,6 +502,29 @@ defmodule ApiaryWeb.PolicyLive.Show do
   end
 
   defp event(_event, _params, socket), do: socket
+
+  defp fresh(socket, %{id: id, action: action, host: host}) do
+    case Policy.get_rule(socket.assigns.current_scope, id) do
+      {:ok, %{action: ^action, host: ^host, repository_id: nil} = rule} ->
+        {:ok, rule}
+
+      {:ok, _changed} ->
+        {:error,
+         %Policy.Error{
+           reason: :conflict,
+           message:
+             "The rule for #{host} changed while you were deciding. The list below is current."
+         }}
+
+      {:error, _gone} ->
+        {:error,
+         %Policy.Error{
+           reason: :not_found,
+           message:
+             "The rule for #{host} was removed while you were deciding. The list below is current."
+         }}
+    end
+  end
 
   defp set_lock(socket, rule, locked) do
     scope = socket.assigns.current_scope
@@ -728,7 +761,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         :if={match?({:mode, _}, @dialog)}
         mode={elem(@dialog, 1)}
         would={@would}
-        alive={(@nav_counts && @nav_counts[:alive]) || 0}
+        alive={if @own_modes == [], do: (@nav_counts && @nav_counts[:alive]) || 0, else: 0}
         started={@managed?}
         following={@following}
         own={length(@own_modes)}
@@ -1125,14 +1158,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
   defp mode_dialog(%{mode: "enforce"} = assigns) do
     shown = if assigns.would, do: Enum.take(assigns.would.destinations, 8), else: []
 
-    left =
-      if assigns.would,
-        do:
-          Enum.count(
-            assigns.would.destinations,
-            &(!MapSet.member?(assigns.would.allowed, would_key(&1)))
-          ),
-        else: 0
+    left = if assigns.would, do: MapSet.size(assigns.would.open), else: 0
 
     assigns = assign(assigns, shown: shown, left: left)
 
@@ -1161,7 +1187,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         <ul>
           <li :for={destination <- @shown} id={"would-#{would_key(destination)}"}>
             <.rule_mark action={
-              if MapSet.member?(@would.allowed, would_key(destination)), do: "allow", else: "pending"
+              if !MapSet.member?(@would.open, would_key(destination)), do: "allow", else: "pending"
             } />
             <span class="q-dest">
               {destination.host}<span :if={destination.path} class="text-muted">{destination.path}</span>
@@ -1173,14 +1199,14 @@ defmodule ApiaryWeb.PolicyLive.Show do
               )}
             </small>
             <button
-              :if={!MapSet.member?(@would.allowed, would_key(destination))}
+              :if={MapSet.member?(@would.open, would_key(destination))}
               type="button"
               class="btn btn-xs"
               phx-click={JS.push("would_allow", value: %{key: would_key(destination)})}
             >
               Allow for the hive
             </button>
-            <span :if={MapSet.member?(@would.allowed, would_key(destination))} class="q-done">
+            <span :if={!MapSet.member?(@would.open, would_key(destination))} class="q-done">
               <.icon name="hero-check-micro" class="size-3" />Allowed
             </span>
           </li>
@@ -1247,7 +1273,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
   defp alive_words(n), do: ", and among the #{Common.plural(n, "run")} alive now"
 
   @doc false
-  def would_key(%{host: host, path: path}), do: dom_token({host, path})
+  def would_key(destination), do: Common.would_key(destination)
 
   attr :rule, :map, required: true
   attr :held, :list, required: true
