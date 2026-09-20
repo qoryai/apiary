@@ -28,6 +28,10 @@ a restart does before doing it (`docs/upgrading.md`).
   `events` and the document's digest in `X-Qory-Configuration`; the `run` section arrives
   with the run configuration. The rules of the wire as the apiary implements them are in
   `docs/contract-assumptions.md`.
+- The projector: a run's events are folded into the run, its connections, its log and the
+  hive's repositories, after the receiver has answered. Idempotent and tolerant of any order
+  of arrival; `Apiary.Runs.Projector.rebuild/1` rebuilds a run's projections from its events
+  alone. Changes are announced on `Apiary.PubSub` (`runs:<hive>`, `run:<hive>:<run>`).
 
 ### Migrations
 

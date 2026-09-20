@@ -15,7 +15,8 @@ defmodule Apiary.Application do
         Apiary.Repo,
         Apiary.Vault,
         {DNSCluster, query: Application.get_env(:apiary, :dns_cluster_query) || :ignore},
-        {Phoenix.PubSub, name: Apiary.PubSub}
+        {Phoenix.PubSub, name: Apiary.PubSub},
+        {Task.Supervisor, name: Apiary.Runs.TaskSupervisor}
       ] ++
         migrator() ++
         [

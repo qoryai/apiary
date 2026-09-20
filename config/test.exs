@@ -50,3 +50,6 @@ config :apiary, Apiary.Vault,
       {Cloak.Ciphers.AES.GCM,
        tag: "AES.GCM.V1", key: Base.decode64!("dGVzdDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=")}
   ]
+
+# Projections run in the caller's process, inside its sandbox connection.
+config :apiary, Apiary.Runs.Projector, async: false
