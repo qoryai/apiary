@@ -3890,6 +3890,9 @@
   .q-reads-fix {
     margin-left: 6px;
   }
+  .q-notice-acts .q-reads-fix {
+    margin-left: 0;
+  }
   .q-reads-queued {
     margin-left: 8px;
     padding: 0 6px;
@@ -4546,8 +4549,9 @@
     }
     .q-rules td.q-c-acts {
       grid-column: 2;
-      grid-row: 1 / span 2;
+      grid-row: 1;
       width: auto;
+      align-self: center;
     }
     .q-rules td.q-c-paths {
       grid-column: 1;
@@ -4567,7 +4571,7 @@
       grid-row: 4;
       padding-left: 28px;
       font-size: 0.78125rem;
-      text-align: left;
+      text-align: left !important;
     }
     .q-rules td.q-c-by {
       display: none;
