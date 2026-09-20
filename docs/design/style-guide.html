@@ -165,10 +165,10 @@ svg.i { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor;
 /* ---------- Identity ---------- */
 .brand { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; color: var(--color-base-content); }
 .brand svg { width: 22px; height: 22px; flex: none; }
-.brand span { font-size: 16px; line-height: 20px; font-weight: 600; letter-spacing: -0.03em; }
+.brand span { font-size: 16px; line-height: 20px; font-weight: 600; letter-spacing: -0.03em; white-space: nowrap; }
 .mark-body { fill: var(--color-primary); } .mark-ink { fill: var(--color-base-content); }
 .id-big { display: grid; place-items: center; min-height: 260px; position: relative; overflow: hidden; }
-.id-big .brand svg { width: 72px; height: 72px; } .id-big .brand span { font-size: 56px; line-height: 1; letter-spacing: -0.045em; } .id-big .brand { gap: 22px; }
+.id-big .brand svg { width: 56px; height: 56px; } .id-big .brand span { font-size: 42px; line-height: 1; letter-spacing: -0.045em; white-space: nowrap; } .id-big .brand { gap: 16px; }
 .id-grid svg { width: 100%; height: auto; max-width: 240px; display: block; margin-inline: auto; }
 .sizes { display: flex; align-items: end; gap: 18px; flex-wrap: wrap; }
 .sizes figure { display: grid; gap: 10px; justify-items: center; font: 11.5px/16px var(--font-mono); color: var(--q-faint); }
@@ -354,8 +354,8 @@ dialog.modal-box[open] { animation: modal var(--dur-3) var(--ease-out); } dialog
 .mock-scroll > .frame { min-width: 940px; }
 .shell { display: grid; grid-template-columns: 240px 1fr; min-height: 620px; position: relative; }
 .side { background: var(--color-base-200); border-right: 1px solid var(--q-border-subtle); display: flex; flex-direction: column; min-width: 0; }
-.side-brand { height: 56px; display: flex; align-items: center; padding-inline: 16px; }
-.ws { margin: 0 8px 8px; padding: 6px 8px; display: grid; grid-template-columns: 28px 1fr auto; gap: 10px; align-items: center; border-radius: var(--radius-field); border: 1px solid transparent; text-align: left; background: none; }
+.side-top { height: 52px; display: flex; align-items: center; gap: 4px; padding-inline: 8px; flex: none; }
+.ws { flex: 1; min-width: 0; margin: 0; padding: 6px 8px; display: grid; grid-template-columns: 28px 1fr auto; gap: 10px; align-items: center; border-radius: var(--radius-field); border: 1px solid transparent; text-align: left; background: none; }
 button.ws { cursor: pointer; border-color: var(--q-border-subtle); background: var(--color-base-100); box-shadow: var(--q-shadow-xs); } button.ws:hover { border-color: var(--q-border-strong); }
 .ws .avatar { width: 28px; height: 28px; font-size: 12px; } .ws b { display: block; font-size: 13px; line-height: 18px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .ws small { display: block; font-size: 12px; line-height: 16px; color: var(--q-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .ws svg { color: var(--q-faint); }
 .side-label { padding: 12px 16px 4px; font-size: 11.5px; line-height: 16px; font-weight: 500; color: var(--q-faint); }
@@ -364,9 +364,19 @@ button.ws { cursor: pointer; border-color: var(--q-border-subtle); background: v
 .side-nav a svg { color: var(--q-faint); transition: color var(--dur-1); } .side-nav a:hover { background: var(--color-base-300); color: var(--color-base-content); }
 .side-nav a[aria-current] { background: var(--color-base-300); color: var(--color-base-content); } .side-nav a[aria-current] svg { color: var(--color-accent); }
 .side-nav a .count { margin-left: auto; font: 11.5px/16px var(--font-mono); color: var(--q-faint); }
-.side-user { margin: auto 8px 8px; padding: 6px 8px; display: grid; grid-template-columns: 24px 1fr auto; gap: 10px; align-items: center; border-radius: var(--radius-field); border: 0; background: none; text-align: left; cursor: pointer; position: relative; }
-.side-user:hover, .side-user.is-open { background: var(--color-base-300); } .side-user b { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; line-height: 18px; } .side-user small { font-size: 11.5px; line-height: 14px; color: var(--q-faint); display: block; } .side-user > svg { color: var(--q-faint); }
-.main { min-width: 0; padding: 32px 40px 48px; position: relative; }
+.side-foot { margin: auto 8px 8px; height: 36px; padding-inline: 8px; display: flex; align-items: center; gap: 8px; border-radius: var(--radius-field); }
+.side-foot .brand { color: var(--q-muted); transition: color var(--dur-1); } .side-foot .brand:hover { color: var(--color-base-content); } .side-foot .brand svg { width: 18px; height: 18px; } .side-foot .brand span { font-size: 13px; line-height: 18px; font-weight: 500; white-space: nowrap; }
+.side-foot .ver { margin-left: auto; font: 11.5px/16px var(--font-mono); color: var(--q-faint); font-variant-numeric: tabular-nums; }
+.m-drawer .side-foot { height: 40px; }
+.col-main { min-width: 0; display: flex; flex-direction: column; position: relative; }
+.shell-top { height: 52px; flex: none; display: flex; align-items: center; justify-content: flex-end; gap: 4px; padding-inline: 16px; border-bottom: 1px solid var(--q-border-subtle); background: var(--color-base-100); }
+.acct { display: inline-flex; align-items: center; gap: 4px; height: 32px; min-width: 32px; padding-inline: 4px; border-radius: var(--radius-field); border: 0; background: none; cursor: pointer; color: var(--q-faint); transition: background-color var(--dur-1); }
+.acct:hover, .acct.is-on { background: var(--color-base-300); }
+.in-dark { display: none; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .in-light { display: none; } :root:not([data-theme="light"]) .in-dark { display: inline-block; } }
+:root[data-theme="dark"] .in-light { display: none; } :root[data-theme="dark"] .in-dark { display: inline-block; }
+.tip.tip-down::after { bottom: auto; top: calc(100% + 6px); transform: translate(-50%, -2px); } .tip.tip-down:hover::after { transform: translate(-50%, 0); }
+.main { min-width: 0; flex: 1; padding: 32px 40px 48px; position: relative; }
 .main-in { max-width: 960px; margin-inline: auto; display: grid; gap: 24px; } .main-in.narrow { max-width: 640px; }
 .page-head { display: flex; justify-content: space-between; align-items: start; gap: 16px; flex-wrap: wrap; }
 .page-head h3 { font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: -0.017em; } .page-head p { margin-top: 2px; color: var(--q-muted); max-width: 62ch; }
@@ -378,7 +388,7 @@ button.ws { cursor: pointer; border-color: var(--q-border-subtle); background: v
 .pulse::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 1px solid var(--q-border-field); animation: pulse 2.4s var(--ease-out) infinite; }
 @keyframes pulse { from { opacity: 0.9; transform: scale(0.6); } to { opacity: 0; transform: scale(1.5); } }
 .scrim { position: absolute; inset: 0; background: var(--q-overlay); display: grid; place-items: center; padding: 24px; z-index: 5; }
-.float-menu { position: absolute; left: 8px; bottom: 56px; z-index: 6; width: 224px; }
+.float-menu { position: absolute; right: 16px; top: 48px; z-index: 6; width: 224px; }
 
 /* auth */
 .auth { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); min-height: 620px; }
@@ -397,7 +407,10 @@ button.ws { cursor: pointer; border-color: var(--q-border-subtle); background: v
 .phone { width: min(100%, 340px); border: 1px solid var(--q-border-strong); border-radius: 32px; padding: 8px; background: var(--color-base-300); box-shadow: var(--q-shadow-modal); }
 .phone-in { border-radius: 25px; overflow: hidden; background: var(--color-base-100); height: 640px; position: relative; display: flex; flex-direction: column; }
 .m-top { display: flex; align-items: center; justify-content: space-between; height: 52px; padding-inline: 8px 16px; border-bottom: 1px solid var(--q-border-subtle); flex: none; }
-.m-top .l { display: flex; align-items: center; gap: 4px; }
+.m-top .l { display: flex; align-items: center; gap: 4px; min-width: 0; } .m-top .r { display: flex; align-items: center; gap: 4px; flex: none; }
+.m-top .acct { height: 40px; min-width: 40px; padding-inline: 8px; } .m-top .acct svg { display: none; }
+.m-org { display: flex; align-items: center; gap: 8px; min-width: 0; padding-inline: 4px; } .m-org .avatar { width: 24px; height: 24px; font-size: 11px; }
+.m-org b { display: block; font-size: 13px; line-height: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .m-org small { display: block; font-size: 11.5px; line-height: 14px; color: var(--q-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .m-main { padding: 20px 16px; display: grid; gap: 20px; overflow: hidden; align-content: start; }
 .m-drawer { position: absolute; inset: 0 56px 0 0; z-index: 7; box-shadow: var(--q-shadow-modal); border-right: 0; }
 .phone .onboard { grid-template-columns: 1fr; } .phone .onboard > div { padding: 20px; } .phone .onboard .pre { display: none; }
@@ -426,8 +439,13 @@ figcaption.cap { text-align: center; font: 11.5px/16px var(--font-mono); color: 
     <symbol id="i-sun" viewBox="0 0 20 20"><circle cx="10" cy="10" r="3.200"/><path d="M10 2.500v2M10 15.500v2M2.500 10h2M15.500 10h2M4.700 4.700l1.400 1.400M13.900 13.900l1.400 1.400M4.700 15.300l1.400-1.400M13.900 6.100l1.400-1.400"/></symbol>
     <symbol id="i-moon" viewBox="0 0 20 20"><path d="M16.500 11.700A7 7 0 0 1 8.300 3.500a7 7 0 1 0 8.200 8.200Z"/></symbol>
     <symbol id="i-monitor" viewBox="0 0 20 20"><rect x="2.500" y="3.500" width="15" height="10" rx="1.500"/><path d="M7 17h6M10 13.500V17"/></symbol>
+    <symbol id="i-play" viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><path d="m8.300 7.300 4.200 2.700-4.200 2.700z"/></symbol>
+    <symbol id="i-arrows" viewBox="0 0 20 20"><path d="M3.500 7h12M12.500 4l3 3-3 3M16.500 13h-12M7.500 10l-3 3 3 3"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 20 20"><path d="M10 2.800 16.500 5.300v4.700c0 3.600-2.700 6.100-6.500 7.200-3.800-1.100-6.500-3.600-6.500-7.200V5.300Z"/><path d="m7.300 10.200 1.900 1.900 3.600-4"/></symbol>
+    <symbol id="i-chev" viewBox="0 0 20 20"><path d="m6 8 4 4 4-4"/></symbol>
     <symbol id="i-menu" viewBox="0 0 20 20"><path d="M3.500 6h13M3.500 10h13M3.500 14h13"/></symbol>
     <symbol id="i-out" viewBox="0 0 20 20"><path d="M8 3.500H5.500a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2H8M12.500 6.500 16 10l-3.500 3.500M16 10H7.500"/></symbol>
+    <symbol id="i-book" viewBox="0 0 20 20"><path d="M10 5.500c-1.500-1.300-3.600-1.600-6.500-1.400v11.300c2.900-.2 5 .1 6.500 1.400 1.500-1.300 3.600-1.600 6.500-1.400V4.100c-2.900-.2-5 .1-6.500 1.400ZM10 5.500v11.300"/></symbol>
     <symbol id="i-user" viewBox="0 0 20 20"><circle cx="10" cy="7" r="3.200"/><path d="M3.500 17c.6-3.400 3.200-5.200 6.500-5.200s5.900 1.800 6.500 5.200"/></symbol>
     <symbol id="i-warn" viewBox="0 0 20 20"><path d="M10 3.500 17.500 16.500h-15ZM10 8.500v3.500M10 14.300v.2"/></symbol>
     <symbol id="i-info" viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><path d="M10 9.200v4.300M10 6.400v.2"/></symbol>
@@ -438,7 +456,7 @@ figcaption.cap { text-align: center; font: 11.5px/16px var(--font-mono); color: 
 </svg>
 
 <div class="g-top">
-  <a class="brand" href="#top" aria-label="Qory style guide"><svg aria-hidden="true"><use href="#mark"/></svg><span>Qory</span></a>
+  <a class="brand" href="#top" aria-label="Qory Apiary style guide"><svg aria-hidden="true"><use href="#mark"/></svg><span>Qory Apiary</span></a>
   <span class="badge badge-plain">Style guide</span>
   <nav aria-label="Sections">
     <a href="#identity">Identity</a><a href="#colour">Colour</a><a href="#type">Type</a><a href="#foundations">Foundations</a><a href="#components">Components</a><a href="#pages">Pages</a>
@@ -469,11 +487,11 @@ figcaption.cap { text-align: center; font: 11.5px/16px var(--font-mono); color: 
   <!-- ================= IDENTITY ================= -->
   <section class="g-sec" id="identity">
     <header><span class="g-eyebrow">01 Identity</span><h2>A hexagon that reads as a Q</h2>
-      <p>The mark is one cell of comb with its counter cut out and a tail crossing the lower-right wall. At 16 px it is a hexagon; at 22 px and up it is a Q. The wordmark is plain “Qory” in Geist Semibold, tightly tracked, never in capitals.</p></header>
+      <p>The mark is one cell of comb with its counter cut out and a tail crossing the lower-right wall. At 16 px it is a hexagon; at 22 px and up it is a Q. The wordmark is plain “Qory Apiary” in Geist Semibold, tightly tracked, never in capitals, never broken over two lines. “Qory” alone names the whole of Qory, runner included, and appears only in the trust sentence.</p></header>
     <div class="g-grid" style="--min:420px">
       <div class="g-stage id-big sunk">
         <svg class="comb" aria-hidden="true"><rect width="100%" height="100%" fill="url(#combp)"/></svg>
-        <span class="brand"><svg aria-hidden="true"><use href="#mark"/></svg><span>Qory</span></span>
+        <span class="brand"><svg aria-hidden="true"><use href="#mark"/></svg><span>Qory Apiary</span></span>
       </div>
       <div class="g-stage id-grid">
         <span class="lbl">construction · viewBox 0 0 32 32</span>
@@ -488,18 +506,19 @@ figcaption.cap { text-align: center; font: 11.5px/16px var(--font-mono); color: 
       <div class="g-stage"><span class="lbl">sizes</span>
         <div class="sizes">
           <figure><svg width="16" height="16"><use href="#mark"/></svg>16 favicon</figure>
-          <figure><svg width="22" height="22"><use href="#mark"/></svg>22 sidebar</figure>
+          <figure><svg width="18" height="18"><use href="#mark"/></svg>18 sidebar foot</figure>
+          <figure><svg width="22" height="22"><use href="#mark"/></svg>22 top bar, strip</figure>
           <figure><svg width="28" height="28"><use href="#mark"/></svg>28 auth</figure>
           <figure><svg width="48" height="48"><use href="#mark"/></svg>48 email</figure>
         </div>
       </div>
       <div class="g-stage t-dark"><span class="lbl">on dark · tail takes base-content</span>
-        <div class="row" style="gap:32px"><span class="brand"><svg><use href="#mark"/></svg><span>Qory</span></span>
-        <span class="brand" style="--color-primary: var(--color-base-content)"><svg><use href="#mark"/></svg><span>Qory</span></span><span class="faint mono">mono variant</span></div>
+        <div class="row" style="gap:32px"><span class="brand"><svg><use href="#mark"/></svg><span>Qory Apiary</span></span>
+        <span class="brand" style="--color-primary: var(--color-base-content)"><svg><use href="#mark"/></svg><span>Qory Apiary</span></span><span class="faint mono">mono variant</span></div>
       </div>
       <div class="g-stage t-light"><span class="lbl">on light</span>
-        <div class="row" style="gap:32px"><span class="brand"><svg><use href="#mark"/></svg><span>Qory</span></span>
-        <span class="brand" style="--color-primary: var(--color-base-content)"><svg><use href="#mark"/></svg><span>Qory</span></span><span class="faint mono">mono variant</span></div>
+        <div class="row" style="gap:32px"><span class="brand"><svg><use href="#mark"/></svg><span>Qory Apiary</span></span>
+        <span class="brand" style="--color-primary: var(--color-base-content)"><svg><use href="#mark"/></svg><span>Qory Apiary</span></span><span class="faint mono">mono variant</span></div>
       </div>
     </div>
 
@@ -706,19 +725,19 @@ figcaption.cap { text-align: center; font: 11.5px/16px var(--font-mono); color: 
   <!-- ================= PAGES ================= -->
   <section class="g-sec" id="pages">
     <header><span class="g-eyebrow">06 Pages</span><h2>The console, composed</h2>
-      <p>Static mockups in whichever theme you have selected above. On a narrow screen the desktop frames scroll sideways inside their own box.</p></header>
+      <p>Static mockups in whichever theme you have selected above. On a narrow screen the desktop frames scroll sideways inside their own box. The shell follows Amendment 2 of the brief: the apiary at the top of the sidebar, the brand at its foot, the theme toggle and the account menu at the right end of a 52 px top bar.</p></header>
 
-    <div class="g-sub"><h3>Overview, first visit</h3><span class="muted t-small">The one thing to do next sits beside exactly what will be pasted. The page admits it is waiting.</span></div>
+    <div class="g-sub"><h3>Overview, first visit</h3><span class="muted t-small">The one thing to do next sits beside exactly what will be pasted. The page admits it is waiting. One membership: the apiary block is text and its chevron slot stays empty.</span></div>
     <div class="mock-scroll"><div class="frame"><div class="frame-bar"><i></i><i></i><i></i><span>qory.example.com/hive</span></div>
       <div class="shell">
-        <aside class="side">
-          <div class="side-brand"><span class="brand"><svg><use href="#mark"/></svg><span>Qory</span></span></div>
-          <div class="ws"><span class="avatar sq">A</span><span style="min-width:0"><b>Acme</b><small>Platform</small></span></div>
-          <div class="side-label">Hive</div>
-          <nav class="side-nav" aria-label="Main (mock)"><a href="#pages" aria-current="page"><svg class="i"><use href="#i-grid"/></svg>Overview</a><a href="#pages"><svg class="i"><use href="#i-key"/></svg>Access keys</a><a href="#pages"><svg class="i"><use href="#i-users"/></svg>Members</a><a href="#pages"><svg class="i"><use href="#i-cog"/></svg>Settings</a></nav>
-          <div class="side-user"><span class="avatar honey">B</span><span style="min-width:0"><b>beekeeper@example.com</b><small>Owner</small></span><svg class="i"><use href="#i-ud"/></svg></div>
+        <aside class="side" aria-label="Sidebar (mock)">
+          <div class="side-top"><div class="ws"><span class="avatar sq">A</span><span style="min-width:0"><b>Acme</b><small>Platform</small></span></div></div>
+          <div class="side-label"><span class="term" tabindex="0" data-tip="team">Hive</span></div><nav class="side-nav" aria-label="Main (mock)"><a href="#pages" aria-current="page"><svg class="i"><use href="#i-grid"/></svg>Overview</a><a href="#pages"><svg class="i"><use href="#i-play"/></svg>Runs<span class="count">2</span></a><a href="#pages"><svg class="i"><use href="#i-arrows"/></svg>Connections</a><a href="#pages"><svg class="i"><use href="#i-shield"/></svg>Policy<span class="count">observe</span></a></nav><div class="side-label">Manage</div><nav class="side-nav" aria-label="Manage (mock)"><a href="#pages"><svg class="i"><use href="#i-key"/></svg>Access keys<span class="count">3</span></a><a href="#pages"><svg class="i"><use href="#i-users"/></svg>Members<span class="count">4</span></a><a href="#pages"><svg class="i"><use href="#i-cog"/></svg>Settings</a></nav>
+          <div class="side-foot"><a class="brand" href="#pages"><svg aria-hidden="true"><use href="#mark"/></svg><span>Qory Apiary</span></a><span class="ver" title="Version 0.1.0">0.1.0</span></div>
         </aside>
-        <div class="main"><div class="main-in">
+        <div class="col-main">
+          <header class="shell-top" aria-label="Top bar (mock)"><button class="btn btn-ghost btn-square tip tip-down" type="button" data-tip="Theme" aria-label="Theme" aria-haspopup="menu" aria-expanded="false"><svg class="i in-light"><use href="#i-sun"/></svg><svg class="i in-dark"><use href="#i-moon"/></svg></button><button class="acct tip tip-down" type="button" data-tip="Account" aria-label="Account menu, beekeeper@example.com" aria-haspopup="menu" aria-expanded="false"><span class="avatar honey">B</span><svg class="i"><use href="#i-chev"/></svg></button></header>
+          <div class="main"><div class="main-in">
           <div class="page-head"><div><h3>Platform</h3><p>The <abbr class="term" tabindex="0" data-tip="team">hive</abbr> of the Acme <abbr class="term" tabindex="0" data-tip="organisation">apiary</abbr>.</p></div></div>
           <div class="onboard">
             <div><div><h4>Connect your first machine</h4><p>Nothing has posted to this hive yet. An access key is all a machine needs to start.</p></div>
@@ -732,25 +751,27 @@ figcaption.cap { text-align: center; font: 11.5px/16px var(--font-mono); color: 
               <div class="quiet" style="margin-top:8px"><span class="pulse"></span>Listening for the first post from a machine.</div></div>
           </div>
         </div></div>
+        </div>
       </div></div></div>
 
-    <div class="g-sub"><h3>Access keys, the secret revealed once</h3><span class="muted t-small">Not dismissable by Escape or a click outside. One way out, and it says what you are confirming.</span></div>
+    <div class="g-sub"><h3>Access keys, the secret revealed once</h3><span class="muted t-small">Not dismissable by Escape or a click outside. One way out, and it says what you are confirming. Several memberships: the apiary block is the switcher.</span></div>
     <div class="mock-scroll"><div class="frame"><div class="frame-bar"><i></i><i></i><i></i><span>qory.example.com/hive/keys/new</span></div>
       <div class="shell" style="min-height:660px">
-        <aside class="side">
-          <div class="side-brand"><span class="brand"><svg><use href="#mark"/></svg><span>Qory</span></span></div>
-          <button class="ws" type="button"><span class="avatar sq">A</span><span style="min-width:0"><b>Acme</b><small>Platform</small></span><svg class="i"><use href="#i-ud"/></svg></button>
-          <div class="side-label">Hive</div>
-          <nav class="side-nav" aria-label="Main (mock 2)"><a href="#pages"><svg class="i"><use href="#i-grid"/></svg>Overview</a><a href="#pages" aria-current="page"><svg class="i"><use href="#i-key"/></svg>Access keys<span class="count">3</span></a><a href="#pages"><svg class="i"><use href="#i-users"/></svg>Members<span class="count">4</span></a><a href="#pages"><svg class="i"><use href="#i-cog"/></svg>Settings</a></nav>
-          <div class="side-user"><span class="avatar honey">B</span><span style="min-width:0"><b>beekeeper@example.com</b><small>Owner</small></span><svg class="i"><use href="#i-ud"/></svg></div>
+        <aside class="side" aria-label="Sidebar (mock 2)">
+          <div class="side-top"><button class="ws" type="button" aria-label="Switch apiary, current: Acme"><span class="avatar sq">A</span><span style="min-width:0"><b>Acme</b><small>Platform</small></span><svg class="i"><use href="#i-ud"/></svg></button></div>
+          <div class="side-label"><span class="term" tabindex="0" data-tip="team">Hive</span></div><nav class="side-nav" aria-label="Main (mock 2)"><a href="#pages"><svg class="i"><use href="#i-grid"/></svg>Overview</a><a href="#pages"><svg class="i"><use href="#i-play"/></svg>Runs<span class="count">2</span></a><a href="#pages"><svg class="i"><use href="#i-arrows"/></svg>Connections</a><a href="#pages"><svg class="i"><use href="#i-shield"/></svg>Policy<span class="count">observe</span></a></nav><div class="side-label">Manage</div><nav class="side-nav" aria-label="Manage (mock 2)"><a href="#pages" aria-current="page"><svg class="i"><use href="#i-key"/></svg>Access keys<span class="count">3</span></a><a href="#pages"><svg class="i"><use href="#i-users"/></svg>Members<span class="count">4</span></a><a href="#pages"><svg class="i"><use href="#i-cog"/></svg>Settings</a></nav>
+          <div class="side-foot"><a class="brand" href="#pages"><svg aria-hidden="true"><use href="#mark"/></svg><span>Qory Apiary</span></a><span class="ver" title="Version 0.1.0">0.1.0</span></div>
         </aside>
-        <div class="main"><div class="main-in">
+        <div class="col-main">
+          <header class="shell-top" aria-label="Top bar (mock)"><button class="btn btn-ghost btn-square tip tip-down" type="button" data-tip="Theme" aria-label="Theme" aria-haspopup="menu" aria-expanded="false"><svg class="i in-light"><use href="#i-sun"/></svg><svg class="i in-dark"><use href="#i-moon"/></svg></button><button class="acct tip tip-down" type="button" data-tip="Account" aria-label="Account menu, beekeeper@example.com" aria-haspopup="menu" aria-expanded="false"><span class="avatar honey">B</span><svg class="i"><use href="#i-chev"/></svg></button></header>
+          <div class="main"><div class="main-in">
           <div class="page-head"><div><h3>Access keys</h3><p>A key lets the machines of this hive post their runs. Create one per machine or environment.</p></div><button class="btn btn-primary" type="button"><svg class="i"><use href="#i-plus"/></svg>New access key</button></div>
           <div class="table-wrap"><table class="table"><thead><tr><th>Label</th><th>Key id</th><th>Status</th><th>Created</th><th>Last used</th></tr></thead><tbody>
             <tr><td style="font-weight:500">build-01</td><td class="mono">qk_7f3a9c2e41d8</td><td><span class="badge badge-success">Active</span></td><td class="muted">20 Sep 2026</td><td class="faint">Never posted</td></tr>
             <tr><td style="font-weight:500">staging-runners</td><td class="mono">qk_b81d04f6a2c9</td><td><span class="badge badge-warning">Rotating</span></td><td class="muted">3 Sep 2026</td><td class="muted">Yesterday, 17:20</td></tr>
             <tr><td style="font-weight:500">dana-laptop</td><td class="mono">qk_29e6c7710b3f</td><td><span class="badge badge-success">Active</span></td><td class="muted">19 Sep 2026</td><td class="faint">Never posted</td></tr></tbody></table></div>
         </div></div>
+        </div>
         <div class="scrim"><div class="modal-box" style="--w:560px" role="dialog" aria-label="Your new access key (mock)">
           <div class="modal-head"><h4>Your new access key</h4><span class="badge badge-success">build-01</span></div>
           <div class="modal-body">
@@ -768,18 +789,18 @@ figcaption.cap { text-align: center; font: 11.5px/16px var(--font-mono); color: 
         </div></div>
       </div></div></div>
 
-    <div class="g-sub"><h3>Members, with the account menu open</h3></div>
+    <div class="g-sub"><h3>Members, with the account menu open</h3><span class="muted t-small">The menu hangs from the bar's right end: who you are, then settings, docs, log out. The theme is the toggle's, one button to the left.</span></div>
     <div class="mock-scroll"><div class="frame"><div class="frame-bar"><i></i><i></i><i></i><span>qory.example.com/hive/members</span></div>
       <div class="shell">
-        <aside class="side">
-          <div class="side-brand"><span class="brand"><svg><use href="#mark"/></svg><span>Qory</span></span></div>
-          <div class="ws"><span class="avatar sq">A</span><span style="min-width:0"><b>Acme</b><small>Platform</small></span></div>
-          <div class="side-label">Hive</div>
-          <nav class="side-nav" aria-label="Main (mock 3)"><a href="#pages"><svg class="i"><use href="#i-grid"/></svg>Overview</a><a href="#pages"><svg class="i"><use href="#i-key"/></svg>Access keys<span class="count">3</span></a><a href="#pages" aria-current="page"><svg class="i"><use href="#i-users"/></svg>Members<span class="count">4</span></a><a href="#pages"><svg class="i"><use href="#i-cog"/></svg>Settings</a></nav>
-          <div class="menu float-menu"><div class="who"><b>beekeeper@example.com</b><span>Owner of Acme</span></div><hr><a href="#pages" class="is-hover"><svg class="i"><use href="#i-user"/></svg>Account settings</a><div class="menu-title">Theme</div><div class="seg"><button type="button" data-set-theme="system" aria-pressed="true"><svg class="i"><use href="#i-monitor"/></svg>Auto</button><button type="button" data-set-theme="light" aria-pressed="false"><svg class="i"><use href="#i-sun"/></svg>Light</button><button type="button" data-set-theme="dark" aria-pressed="false"><svg class="i"><use href="#i-moon"/></svg>Dark</button></div><hr><a href="#pages"><svg class="i"><use href="#i-out"/></svg>Log out</a></div>
-          <div class="side-user is-open"><span class="avatar honey">B</span><span style="min-width:0"><b>beekeeper@example.com</b><small>Owner</small></span><svg class="i"><use href="#i-ud"/></svg></div>
+        <aside class="side" aria-label="Sidebar (mock 3)">
+          <div class="side-top"><div class="ws"><span class="avatar sq">A</span><span style="min-width:0"><b>Acme</b><small>Platform</small></span></div></div>
+          <div class="side-label"><span class="term" tabindex="0" data-tip="team">Hive</span></div><nav class="side-nav" aria-label="Main (mock 3)"><a href="#pages"><svg class="i"><use href="#i-grid"/></svg>Overview</a><a href="#pages"><svg class="i"><use href="#i-play"/></svg>Runs<span class="count">2</span></a><a href="#pages"><svg class="i"><use href="#i-arrows"/></svg>Connections</a><a href="#pages"><svg class="i"><use href="#i-shield"/></svg>Policy<span class="count">observe</span></a></nav><div class="side-label">Manage</div><nav class="side-nav" aria-label="Manage (mock 3)"><a href="#pages"><svg class="i"><use href="#i-key"/></svg>Access keys<span class="count">3</span></a><a href="#pages" aria-current="page"><svg class="i"><use href="#i-users"/></svg>Members<span class="count">4</span></a><a href="#pages"><svg class="i"><use href="#i-cog"/></svg>Settings</a></nav>
+          <div class="side-foot"><a class="brand" href="#pages"><svg aria-hidden="true"><use href="#mark"/></svg><span>Qory Apiary</span></a><span class="ver" title="Version 0.1.0">0.1.0</span></div>
         </aside>
-        <div class="main"><div class="main-in">
+        <div class="col-main">
+          <header class="shell-top" aria-label="Top bar (mock)"><button class="btn btn-ghost btn-square tip tip-down" type="button" data-tip="Theme" aria-label="Theme" aria-haspopup="menu" aria-expanded="false"><svg class="i in-light"><use href="#i-sun"/></svg><svg class="i in-dark"><use href="#i-moon"/></svg></button><button class="acct tip tip-down is-on" type="button" data-tip="Account" aria-label="Account menu, beekeeper@example.com" aria-haspopup="menu" aria-expanded="true"><span class="avatar honey">B</span><svg class="i"><use href="#i-chev"/></svg></button></header>
+          <div class="menu float-menu" role="menu" aria-label="Account (mock)"><div class="who"><b>beekeeper@example.com</b><span>Owner of Acme</span></div><hr><a href="#pages" class="is-hover" role="menuitem"><svg class="i"><use href="#i-user"/></svg>Account settings</a><a href="#pages" role="menuitem"><svg class="i"><use href="#i-book"/></svg>Docs</a><hr><a href="#pages" role="menuitem"><svg class="i"><use href="#i-out"/></svg>Log out</a></div>
+          <div class="main"><div class="main-in">
           <div class="page-head"><div><h3>Members</h3><p>The people in this hive. Owners manage members, keys and settings; members manage keys and see every run.</p></div><button class="btn btn-primary" type="button"><svg class="i"><use href="#i-plus"/></svg>Invite member</button></div>
           <div class="table-wrap"><table class="table"><thead><tr><th>Member</th><th>Level</th><th>Joined</th><th class="act"></th></tr></thead><tbody>
             <tr><td><div class="cell-user"><span class="avatar honey">B</span><span style="font-weight:500">beekeeper@example.com</span><span class="badge badge-plain">You</span></div></td><td><select class="select select-xs" aria-label="Level of beekeeper@example.com" id="mk-l1"><option>Owner</option><option>Member</option></select></td><td class="muted">1 Sep 2026</td><td class="act"><button class="btn btn-xs btn-ghost text-error" type="button">Remove</button></td></tr>
@@ -790,50 +811,49 @@ figcaption.cap { text-align: center; font: 11.5px/16px var(--font-mono); color: 
           <div class="table-wrap"><table class="table"><thead><tr><th>Email</th><th>Level</th><th>Sent</th><th>Expires</th><th class="act"></th></tr></thead><tbody>
             <tr><td><div class="cell-user"><span class="avatar" style="background:none;box-shadow:inset 0 0 0 1px var(--q-border-strong);border-style:dashed"><svg class="i" style="width:12px;height:12px"><use href="#i-mail"/></svg></span><span style="font-weight:500">noor@example.com</span></div></td><td><span class="badge badge-plain">Member</span></td><td class="muted">18 Sep 2026</td><td class="muted">25 Sep 2026</td><td class="act"><button class="btn btn-xs btn-ghost text-error" type="button">Revoke</button></td></tr></tbody></table></div></div>
         </div></div>
+        </div>
       </div></div></div>
 
-    <div class="g-sub"><h3>Log in, split view</h3><span class="muted t-small">One email field. The link is the main road; the password is a side door. Try the toggle.</span></div>
+    <div class="g-sub"><h3>Log in, split view</h3><span class="muted t-small">One email field. The link is the main road; the password is a side door. Try the toggle. The panel says "Qory Apiary"; the trust sentence alone says "Qory".</span></div>
     <div class="mock-scroll"><div class="frame"><div class="frame-bar"><i></i><i></i><i></i><span>qory.example.com/users/log-in</span></div>
       <div class="auth">
         <div class="auth-brand"><svg class="comb" aria-hidden="true"><rect width="100%" height="100%" fill="url(#combp)"/></svg>
-          <span class="brand"><svg style="width:28px;height:28px"><use href="#mark"/></svg><span style="font-size:19px">Qory</span></span>
+          <span class="brand"><svg style="width:28px;height:28px"><use href="#mark"/></svg><span style="font-size:19px">Qory Apiary</span></span>
           <blockquote><p>Can you trust your agents? With Qory <em>you don't have to</em>.</p><small>Every session runs behind a security wall, reaches only what you allow, never holds your keys, and leaves a full record. Open source, so you can check all of that.</small></blockquote>
         </div>
         <div class="auth-form">
           <form id="login-mock" onsubmit="return false" novalidate>
-            <h3>Log in to Qory</h3><p id="login-sub">We will email you a link. No password needed.</p>
+            <h3>Log in to Qory Apiary</h3><p id="login-sub">We will email you a link. No password needed.</p>
             <div class="fieldset"><label class="label" for="lm-email">Email</label><input class="input input-md" id="lm-email" type="email" value="beekeeper@example.com" autocomplete="username" spellcheck="false"></div>
             <div class="fieldset" id="lm-pw-wrap" hidden><label class="label" for="lm-pw">Password</label><input class="input input-md" id="lm-pw" type="password" autocomplete="current-password"></div>
             <label class="check"><input type="checkbox" class="checkbox" id="lm-keep" checked>Keep me signed in</label>
             <button class="btn btn-md btn-primary btn-block" type="submit" id="lm-submit">Send me a log-in link</button>
             <button class="btn btn-md btn-ghost btn-block" type="button" id="lm-toggle" aria-expanded="false" aria-controls="lm-pw-wrap">Use a password instead</button>
-            <p class="foot">New to Qory? <a class="btn-link" href="#pages">Create an account</a></p>
+            <p class="foot">New to Qory Apiary? <a class="btn-link" href="#pages">Create an account</a></p>
           </form>
         </div>
       </div></div></div>
 
-    <div class="g-sub"><h3>Phone width</h3><span class="muted t-small">Below 768 px the sidebar becomes a drawer, unchanged inside. Tables scroll in their own box; inputs grow to 40 px.</span></div>
-    <div class="phones">
+    <div class="g-sub"><h3>Phone width</h3><span class="muted t-small">Below 768 px the bar keeps the theme toggle and the account menu, and gains the menu button and the apiary label at its left. The drawer is the sidebar, unchanged inside; its top row adds the close button. Tables scroll in their own box; inputs grow to 40 px.</span></div>
+    <div class="phones" id="shell-phones">
       <figure><div class="phone"><div class="phone-in">
-        <div class="m-top"><div class="l"><button class="btn btn-square btn-ghost btn-md" type="button" aria-label="Open menu"><svg class="i" style="width:20px;height:20px"><use href="#i-menu"/></svg></button><span class="brand"><svg><use href="#mark"/></svg><span>Qory</span></span></div><span class="avatar honey">B</span></div>
+        <div class="m-top"><div class="l"><button class="btn btn-square btn-ghost btn-md" type="button" aria-label="Open menu" aria-expanded="false"><svg class="i" style="width:20px;height:20px"><use href="#i-menu"/></svg></button><span class="m-org"><span class="avatar sq">A</span><span style="min-width:0"><b>Acme</b><small>Platform</small></span></span></div><div class="r"><button class="btn btn-square btn-ghost btn-md" type="button" aria-label="Theme"><svg class="i in-light"><use href="#i-sun"/></svg><svg class="i in-dark"><use href="#i-moon"/></svg></button><button class="acct" type="button" aria-label="Account menu, beekeeper@example.com" aria-haspopup="menu" aria-expanded="false"><span class="avatar honey">B</span><svg class="i"><use href="#i-chev"/></svg></button></div></div>
         <div class="m-main"><div class="page-head"><div><h3>Platform</h3><p>The hive of the Acme apiary.</p></div></div>
           <div class="onboard"><div><div><h4>Connect your first machine</h4><p>Nothing has posted to this hive yet. An access key is all a machine needs to start.</p></div>
           <ol class="q-steps"><li class="now"><b>Create an access key</b><p>Label it after the machine or environment.</p></li><li><b>Paste the server block into the runner file</b><p>The secret is shown once.</p></li><li><b>See runs here</b><p>Every run of that machine lands in this hive.</p></li></ol>
           <button class="btn btn-md btn-primary btn-block" type="button"><svg class="i"><use href="#i-plus"/></svg>Create an access key</button></div><div class="pre"></div></div>
           <div class="quiet"><span class="pulse"></span>Listening for the first post.</div></div>
-      </div></div><figcaption class="cap">375 · overview</figcaption></figure>
+      </div></div><figcaption class="cap">390 · overview</figcaption></figure>
       <figure><div class="phone"><div class="phone-in">
-        <div class="m-top"><div class="l"><button class="btn btn-square btn-ghost btn-md" type="button" aria-label="Close menu"><svg class="i" style="width:20px;height:20px"><use href="#i-menu"/></svg></button><span class="brand"><svg><use href="#mark"/></svg><span>Qory</span></span></div><span class="avatar honey">B</span></div>
+        <div class="m-top"><div class="l"><button class="btn btn-square btn-ghost btn-md" type="button" aria-label="Open menu" aria-expanded="true"><svg class="i" style="width:20px;height:20px"><use href="#i-menu"/></svg></button><span class="m-org"><span class="avatar sq">A</span><span style="min-width:0"><b>Acme</b><small>Platform</small></span></span></div><div class="r"><button class="btn btn-square btn-ghost btn-md" type="button" aria-label="Theme"><svg class="i in-light"><use href="#i-sun"/></svg><svg class="i in-dark"><use href="#i-moon"/></svg></button><button class="acct" type="button" aria-label="Account menu, beekeeper@example.com" aria-haspopup="menu" aria-expanded="false"><span class="avatar honey">B</span><svg class="i"><use href="#i-chev"/></svg></button></div></div>
         <div class="m-main"><div class="page-head"><div><h3>Access keys</h3><p>A key lets the machines of this hive post their runs.</p></div></div><div class="skeleton" style="height:120px;border-radius:10px;animation:none"></div></div>
         <div class="scrim" style="padding:0"></div>
-        <aside class="side m-drawer">
-          <div class="side-brand between"><span class="brand"><svg><use href="#mark"/></svg><span>Qory</span></span><button class="btn btn-square btn-ghost" type="button" aria-label="Close menu"><svg class="i"><use href="#i-x"/></svg></button></div>
-          <div class="ws"><span class="avatar sq">A</span><span style="min-width:0"><b>Acme</b><small>Platform</small></span></div>
-          <div class="side-label">Hive</div>
-          <nav class="side-nav" aria-label="Main (phone mock)" style="gap:2px"><a href="#pages" style="height:40px;font-size:14px"><svg class="i"><use href="#i-grid"/></svg>Overview</a><a href="#pages" aria-current="page" style="height:40px;font-size:14px"><svg class="i"><use href="#i-key"/></svg>Access keys<span class="count">3</span></a><a href="#pages" style="height:40px;font-size:14px"><svg class="i"><use href="#i-users"/></svg>Members<span class="count">4</span></a><a href="#pages" style="height:40px;font-size:14px"><svg class="i"><use href="#i-cog"/></svg>Settings</a></nav>
-          <div class="side-user"><span class="avatar honey">B</span><span style="min-width:0"><b>beekeeper@example.com</b><small>Owner</small></span><svg class="i"><use href="#i-ud"/></svg></div>
+        <aside class="side m-drawer" aria-label="Sidebar (phone mock)">
+          <div class="side-top"><div class="ws"><span class="avatar sq">A</span><span style="min-width:0"><b>Acme</b><small>Platform</small></span></div><button class="btn btn-square btn-ghost btn-md" type="button" aria-label="Close menu"><svg class="i"><use href="#i-x"/></svg></button></div>
+          <div class="side-label"><span class="term" tabindex="0" data-tip="team">Hive</span></div><nav class="side-nav" aria-label="Main (phone mock)" style="gap:2px"><a href="#pages" style="height:40px;font-size:14px"><svg class="i"><use href="#i-grid"/></svg>Overview</a><a href="#pages" style="height:40px;font-size:14px"><svg class="i"><use href="#i-play"/></svg>Runs<span class="count">2</span></a><a href="#pages" style="height:40px;font-size:14px"><svg class="i"><use href="#i-arrows"/></svg>Connections</a><a href="#pages" style="height:40px;font-size:14px"><svg class="i"><use href="#i-shield"/></svg>Policy<span class="count">observe</span></a></nav><div class="side-label">Manage</div><nav class="side-nav" aria-label="Manage (phone mock)" style="gap:2px"><a href="#pages" aria-current="page" style="height:40px;font-size:14px"><svg class="i"><use href="#i-key"/></svg>Access keys<span class="count">3</span></a><a href="#pages" style="height:40px;font-size:14px"><svg class="i"><use href="#i-users"/></svg>Members<span class="count">4</span></a><a href="#pages" style="height:40px;font-size:14px"><svg class="i"><use href="#i-cog"/></svg>Settings</a></nav>
+          <div class="side-foot"><a class="brand" href="#pages"><svg aria-hidden="true"><use href="#mark"/></svg><span>Qory Apiary</span></a><span class="ver" title="Version 0.1.0">0.1.0</span></div>
         </aside>
-      </div></div><figcaption class="cap">375 · drawer open</figcaption></figure>
+      </div></div><figcaption class="cap">390 · drawer open</figcaption></figure>
     </div>
   </section>
 </main>

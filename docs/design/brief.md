@@ -1,12 +1,43 @@
 # Qory console: design brief
 
+## Amendment 2: the shell
+
+An owner's decision after the first issue of this brief, 20 Sep 2026. Four changes to the
+application shell, and nothing else moves: **the product name on surfaces is "Qory Apiary"**; **the
+account menu leaves the foot of the sidebar for the right end of a top bar**, on desktop and phone;
+**the brand moves to the foot of the sidebar**, quiet, with the version; **the top of the sidebar is
+the apiary's**, its name and hive, shaped so an apiary switcher takes that slot. The Hive and
+Manage nav groups stay as built. Every change is marked **[A2]** where it stands.
+
+| Section | What changed |
+|---|---|
+| Naming (the paragraph under this one) | "Qory Apiary" on every surface that names the product; where "Qory" alone stays |
+| b. The mark | the size list: 18 px in the sidebar foot, 22 px in the no-hive top bar and the auth strip |
+| b. The wordmark | the wordmark is "Qory Apiary"; `<.brand>` sizes; `<.live_title>` default and suffix |
+| b. Microcopy tone | two rows in the table: the product name, naming the whole of Qory |
+| f. App shell | rewritten: the diagram, the top bar, the sidebar's order, the drawer, the no-hive variant, keyboard order, focus after opening the account menu, reduced motion, the shell's copy |
+| h9. Auth pages | the brand panel, the strip, the headings and the foot line say "Qory Apiary" |
+| i. Accessibility | the top bar landmark, the order of landmarks, the names of the new controls |
+| j. Done checklist | the Identity and Shell groups |
+
+Out of scope: page compositions, components, colour, type, and the running prose in which the
+system is the actor ("Qory keeps only an encrypted copy", "Qory serves no policy yet"). Those
+sentences stay as written until the owner rules on them; this amendment renames surfaces, not
+sentences. Module names do not change. Emails have no footer today; if one is added it says
+"Qory Apiary".
+
 Implementation spec for the Qory control plane console (the application whose Elixir modules are
 named `Apiary`). Milestone: accounts, the apiary and its hive, members, access keys. The rendered
 reference is `qory-style-guide.html` beside this file; where the two disagree, this brief wins.
 
-Naming. The product and brand are **Qory**. The wordmark, `<title>`, emails and auth pages say
-"Qory". Inside the product an organisation is an **apiary** and a workplace a **hive**; each shows its
-standard term on hover. Module names (`Apiary`, `ApiaryWeb`) do not change. British spelling
+Naming. The brand is **Qory**; this console, the control plane, is **Qory Apiary** [A2]. Every
+surface that names the product says "Qory Apiary": the wordmark, `<title>` (default and suffix),
+the sign-in panel and its headings, the subjects and sign-offs of emails. "Qory" alone appears only
+where it names the whole of Qory, the runner included: the trust sentence of the sign-in panel
+("With Qory you don't have to"). In "Qory Apiary" the second word is part of a name: capitalised,
+no dotted underline, no hover. Inside the product an organisation is an **apiary** and a workplace
+a **hive**; each shows its standard term on hover. Module names (`Apiary`, `ApiaryWeb`) do not
+change. British spelling
 everywhere. Sample data is synthetic only: Acme, Platform, build-01, `build-01.example.com`,
 `beekeeper@example.com`, `dana@example.com`.
 
@@ -60,7 +91,8 @@ the counter and ending just outside the wall.
 
 - Body takes `primary`, tail takes `base-content`, so the mark is correct in both themes with no
   variant. Mono variant (emails in plain clients, print): both paths `currentColor`.
-- Sizes: 16 favicon, 22 sidebar and mobile bar, 28 auth panel, 48 email header. Never below 16.
+- Sizes [A2]: 16 favicon, 18 sidebar foot, 22 no-hive top bar and auth header strip, 28 auth
+  panel, 48 email header. Never below 16.
 - Clear space: half the mark's width on every side. Never rotate, outline, add a gradient or a
   drop shadow.
 - Favicon: the same SVG as `priv/static/favicon.svg` with literal fills `#eea82f` and `#1c1713`,
@@ -68,11 +100,16 @@ the counter and ending just outside the wall.
 
 ### The wordmark
 
-"Qory" in Geist 600, letter-spacing -0.03em, sentence case, never capitals, never coloured. Beside
-the mark: gap 8 px, wordmark cap-height optically centred on the mark. In the sidebar 16 px / 20 px;
-on the auth panel 19 px with the 28 px mark.
+**[A2]** "Qory Apiary" in Geist 600, letter-spacing -0.03em, sentence case, never capitals, never
+coloured honey, one space between the words and never a break between them (`whitespace-nowrap`).
+Beside the mark: gap 8 px, wordmark cap-height optically centred on the mark. In the sidebar foot
+13 px / 18 px, weight 500, `text-muted`, with an 18 px mark (the one place the wordmark is grey: it
+is a signature there, not a heading); in the no-hive top bar and the auth header strip 16 px /
+20 px with the 22 px mark; on the auth panel 19 px with the 28 px mark.
 
-`<.brand />` renders mark + wordmark as a link to `/`. `<.live_title default="Qory" suffix=" · Qory">`.
+`<.brand />` renders mark + wordmark as a link to `/`; `size` is `xs` (the sidebar foot), `sm`
+(the default) or `lg` (the auth panel). `<.live_title default="Qory Apiary" suffix=" · Qory Apiary">`
+[A2].
 
 ### The honeycomb pattern
 
@@ -107,6 +144,8 @@ seven days ("2 minutes ago", "Yesterday, 17:20") with the absolute timestamp in 
 | Button | Send me a log-in link | Submit |
 | In-flight button | Creating | Creating... (the spinner is the ellipsis) |
 | Vocabulary | The hive of the Acme apiary. | Your buzzing hive! |
+| Product name [A2] | Log in to Qory Apiary · Your Qory Apiary log-in link | Log in to Qory · Log in to the Apiary |
+| The whole of Qory [A2] | With Qory you don't have to. | With Qory Apiary you don't have to. |
 
 ---
 
@@ -312,85 +351,177 @@ without its ripple.
 
 ## f. App shell
 
+**[A2]** Rewritten by Amendment 2. The diagram, the top bar, the order of the sidebar, the drawer's
+top row and the no-hive variant are new; the page header and the content widths are unchanged.
+
 ```
->= 768 px                                              < 768 px
-+------------------+-----------------------------+     +---------------------------+
-| [Q] Qory         |                             |     | [=] [Q] Qory          (B) |  52 px bar
-|------------------|  Page header                |     +---------------------------+
-| [A] Acme      <> |  title · description  [CTA] |     |  Page header              |
-|     Platform     |                             |     |  content, 16 px gutter    |
-|                  |  content                    |     |                           |
-| Hive             |  max 960 (tables)           |     +---------------------------+
-| [#] Overview     |  max 640 (forms, settings)  |     drawer: the same sidebar, 288 px,
-| [k] Access keys 3|                             |     slides from the left over a scrim
-| [u] Members    4 |                             |
-| [s] Settings     |                             |
-|                  |                             |
-| (B) beekeeper@.. |                             |
-|     Owner     <> |                             |
-+------------------+-----------------------------+
-   240 px fixed        flex-1, base-100
+>= 768 px                                                   < 768 px
++------------------+----------------------------------+     +-----------------------------+
+| [A] Acme      <> |                       (◐)  (B ˅) |     | [=] [A] Acme       (◐) (B)  |  52 px
+|     Platform     |                                  |     |         Platform            |
+|                  |----------------------------------|     +-----------------------------+
+| Hive             |  Page header                     |     |  Page header                |
+| [#] Overview     |  title · description       [CTA] |     |  content, 16 px gutter      |
+| [>] Runs       2 |                                  |     |                             |
+| [«] Connections  |  content                         |     +-----------------------------+
+| [s] Policy   obs |  max 960 (tables)                |     drawer: the same sidebar, 288 px,
+|                  |  max 640 (forms, settings)       |     slides in from the left over a scrim;
+| Manage           |                                  |     its top row is the apiary block
+| [k] Access keys 3|                                  |     and, at the right, [x] Close menu.
+| [u] Members    4 |                                  |
+| [c] Settings     |                                  |
+|                  |                                  |
+| [Q] Qory Apiary  |                                  |
+|            0.1.0 |                                  |
++------------------+----------------------------------+
+   240 px fixed        flex-1, base-100; the bar is 52 px
 ```
 
 **Structure.** Use daisyUI `drawer md:drawer-open`: `div.drawer.md:drawer-open` > hidden checkbox
-`#nav-drawer.drawer-toggle` + `div.drawer-content` (mobile bar, `<main>`) + `div.drawer-side.z-40`
-(`label.drawer-overlay` + the sidebar). One sidebar in the DOM, not two (today it is rendered twice
-with duplicate ids). Breakpoint is **768 px** (`md`), not 1024.
+`#nav-drawer.drawer-toggle` + `div.drawer-side.z-40` (`label.drawer-overlay` + the sidebar) +
+`div.drawer-content` (the top bar, `<main>`). One sidebar in the DOM. Breakpoint **768 px** (`md`).
+**[A2]** `drawer-side` comes *before* `drawer-content` in the DOM: daisyUI places the two by grid
+column, not by source order, and a closed drawer is `visibility: hidden`, so the tab order reads
+sidebar → top bar → main at every width without a single `tabindex`.
 
-**Sidebar.** `w-60` (240 px; 288 px / `w-72` inside the mobile drawer), `h-dvh sticky top-0`,
-`bg-base-200 border-r border-line flex flex-col`. Top to bottom:
+**Top bar** [A2]. One `<header aria-label="Top bar">` at every width, `sticky top-0 z-30 h-13
+flex items-center gap-1 border-b border-line bg-base-100/85 backdrop-blur pl-2 pr-4 md:px-4`.
+52 px everywhere, the same height as the sidebar's apiary row, so the bar's bottom border and the
+row's lower edge read as one line across the screen.
 
-1. **Brand row.** `h-14 px-4 flex items-center`. `<.brand />`: 22 px mark, "Qory".
-2. **Workspace block.** `mx-2 mb-2 px-2 py-1.5 grid grid-cols-[28px_1fr_auto] gap-2.5 items-center rounded-field`.
-   A 28 px square avatar (`rounded-field bg-neutral text-neutral-content text-xs font-semibold`,
-   first letter of the apiary name), then the apiary name (`text-[13px]/[18px] font-semibold truncate`,
-   `title` = full name) over the hive name (`text-xs/4 text-muted truncate`).
-   - **One membership:** a plain `div`, no border, no chevron, not focusable.
-   - **Several memberships:** a `button` with `border border-line bg-base-100 shadow-xs hover:border-line-strong`
-     and `hero-chevron-up-down-micro` in `text-faint`, opening a daisyUI `dropdown` (`menu menu-sm`,
-     width of the sidebar minus 16 px). Title row "Switch apiary" (with the term hover); one item per
-     membership: square avatar, apiary name, hive name in `text-faint`, a `hero-check-micro` on the
-     current one. Each item is a `<button>` in a POST form to `/organisations/switch` with
-     `organisation_id` (same endpoint and parameter as the current `<select>`; the `SubmitOnChange`
-     hook goes away). `aria-label="Switch apiary, current: Acme"`.
-3. **Nav.** Section label "Hive" (`px-4 pt-3 pb-1 text-[11.5px]/4 font-medium text-faint`; the word
-   carries the term hover). Items: Overview `hero-squares-2x2`, Access keys `hero-key`, Members
-   `hero-users`, Settings `hero-cog-6-tooth`, all from the 16 px `-micro` set at `size-4`.
-   Item: `flex items-center gap-2.5 h-8 px-2 rounded-field text-[13px] font-medium text-muted
-   hover:bg-base-300 hover:text-base-content transition-colors`, icon `text-faint`.
-   **Active** (`aria-current="page"`): `bg-base-300 text-base-content`, icon `text-accent`. No left
-   bar, no honey fill. Access keys and Members show a right-aligned count (`ml-auto font-mono
-   text-[11.5px] text-faint`): active keys, members. In the drawer items are `h-10 text-sm`.
-   `<nav aria-label="Main">`, `gap-px px-2`. Do not use daisyUI `menu` here; its paddings and active
-   colour fight the spec.
-4. **Spacer** `flex-1`.
-5. **User card**, pinned to the bottom: `m-2 px-2 py-1.5 grid grid-cols-[24px_1fr_auto] gap-2.5
-   items-center rounded-field hover:bg-base-300`. 24 px round avatar (`bg-primary-soft
-   text-primary-soft-content`, first letter of the email), the email (`text-[13px] font-medium
-   truncate`, `title` = email) over the level ("Owner" / "Member", `text-[11.5px] text-faint`), and
-   `hero-chevron-up-down-micro`. It is a `button` opening a `dropdown dropdown-top` menu, 224 px:
-   - header: email (500) and "Owner of Acme" (`text-xs text-faint`); divider
-   - "Account settings" `hero-user-circle-micro` → `/users/settings`
-   - label "Theme", then a three-segment control Auto / Light / Dark (`hero-computer-desktop-micro`,
-     `hero-sun-micro`, `hero-moon-micro`), `aria-pressed` on the active one, dispatching
-     `phx:set-theme` as today; divider
-   - "Log out" `hero-arrow-right-start-on-rectangle-micro` → `DELETE /users/log-out`
+- **Left, below 768 px only.** The menu button: 40 px `btn btn-ghost btn-square`, `hero-bars-3` at
+  `size-5`, `aria-label="Open menu"`, `aria-controls="sidebar"`, `aria-expanded`. Then the
+  **apiary label**: 24 px square avatar (`rounded-field bg-neutral text-neutral-content text-[11px]
+  font-semibold`, the first letter), the apiary name (`text-[13px]/4 font-semibold truncate`,
+  `title`) over the hive name (`text-[11.5px]/[14px] text-muted truncate`); `min-w-0`. It is text,
+  not a control: it says where you are; the switcher lives in the drawer. From 768 px the left is
+  empty (`ml-auto` on the controls). No breadcrumb, no page title, no search: the bar is not for
+  content, and an empty left half is honest.
+- **Right, every width.** The theme toggle, then the account menu, `gap-1`. Both `btn btn-ghost`,
+  32 px from 768 px, 40 px below it.
+  - **Theme toggle.** The auth layout's `theme_menu/1`, unchanged: `btn-square`, `hero-sun-micro`
+    in light and `hero-moon-micro` in dark (it shows the theme on screen, so Auto shows what Auto
+    resolved to), `aria-label="Theme"`, tooltip "Theme" below the button (`tooltip-bottom`; the bar
+    is at the top), `dropdown dropdown-end` > `menu menu-sm w-40`, three `menuitemradio` Auto /
+    Light / Dark with `aria-checked` and the check mark on the current, dispatching
+    `phx:set-theme`. The three-segment control leaves the account menu; `theme_segments/1` goes
+    unless the account settings page uses it.
+  - **Account menu.** `button#user-menu-button`, `btn btn-ghost h-8 min-w-8 gap-1 px-1
+    rounded-field` (`h-10 min-w-10 px-2` below 768 px) holding the 24 px round avatar
+    (`bg-primary-soft text-primary-soft-content`, the first letter of the email) and
+    `hero-chevron-down-micro` `size-4 text-faint md:inline hidden` (below 768 px the avatar alone is
+    the 40 × 40 button). `aria-haspopup="menu"`, `aria-expanded`, `aria-label="Account menu,
+    beekeeper@example.com"`, tooltip "Account" below. Open: `bg-base-300`. The menu is `dropdown
+    dropdown-end` > `ul.menu.menu-sm.dropdown-content` `right-0 top-full mt-1.5 w-56`,
+    `role="menu" aria-label="Account"`:
+    - header, not focusable: the email (500, truncate, `title`) over the level line "Owner of Acme"
+      / "Member of Acme" / "Not part of an apiary yet" (`text-xs text-faint`); divider
+    - "Account settings" `hero-user-circle-micro` → `/users/settings`
+    - "Docs" `hero-book-open-micro` → `/docs`; divider
+    - "Log out" `hero-arrow-right-start-on-rectangle-micro` → `DELETE /users/log-out`
 
-   The standalone "Theme" row above the user card is removed. Replace the `<details>` menus with
-   daisyUI `dropdown` on a focusable `button` + `ul[tabindex=0]`; close on Escape and outside click.
+    No Theme row (it is the toggle's), no apiary switching (it is the sidebar's), no version (it
+    is the foot's).
 
-**No-hive variant.** When the user has no membership: brand row, no workspace block, no nav, user
-card. The content column shows the no-hive page.
+**Sidebar.** `w-60` (240 px; `w-72`, 288 px, inside the drawer), `h-dvh sticky top-0`,
+`bg-base-200 border-r border-line flex flex-col`. Top to bottom [A2]:
 
-**Mobile bar** (below 768): `sticky top-0 z-30 h-13 (52 px) flex items-center justify-between pl-2
-pr-4 border-b border-line bg-base-100/85 backdrop-blur`. Left: `label[for=nav-drawer]` as a 40 px
-ghost square button with `hero-bars-3` (`aria-label="Open menu"`), then `<.brand />`. Right: the
-24 px user avatar (decorative; the menu lives in the drawer).
+1. **Apiary row.** `h-13 flex items-center gap-1 px-2` (52 px, level with the top bar). It holds
+   the **apiary block**, `flex-1 min-w-0`: `grid grid-cols-[28px_1fr_auto] gap-2.5 items-center
+   px-2 py-1.5 rounded-field`, a 28 px square avatar (`rounded-field bg-neutral
+   text-neutral-content text-xs font-semibold`, the first letter), the apiary name
+   (`text-[13px]/[18px] font-semibold truncate`, `title`) over the hive name (`text-xs/4 text-muted
+   truncate`, `title`). The third column is the switcher's chevron slot and exists in both
+   variants, so nothing moves the day a second membership arrives:
+   - **One membership:** a plain `div`, `border border-transparent`, no chevron. The slot is
+     empty, not a disabled control: a greyed chevron would promise a switch that does not exist
+     for this user (principle 4). Not focusable.
+   - **Several memberships:** the switcher `button`, `border border-line bg-base-100 shadow-xs
+     hover:border-line-strong`, `hero-chevron-up-down-micro` in `text-faint`, opening a daisyUI
+     `dropdown` (`menu menu-sm`, `top-full mt-1.5`, width of the sidebar minus 16 px). Title row
+     "Switch apiary" (with the term hover); one item per membership: square avatar, apiary name,
+     hive name in `text-faint`, `hero-check-micro` on the current one. Each item is a `<button>` in
+     a POST form to `/organisations/switch` with `organisation_id`.
+     `aria-label="Switch apiary, current: Acme"`.
+   - In the drawer the row also holds, after the block, the **Close menu** button: `btn btn-ghost
+     btn-square md:hidden`, `hero-x-mark size-5`, `aria-label="Close menu"`.
+2. **Nav.** Two groups, as built. "Hive": Overview `hero-squares-2x2-micro`, Runs
+   `hero-play-circle-micro`, Connections `hero-arrows-right-left-micro`, Policy
+   `hero-shield-check-micro`. "Manage": Access keys `hero-key-micro`, Members `hero-users-micro`,
+   Settings `hero-cog-6-tooth-micro`. Group label `px-4 pt-3 pb-1 text-[11.5px]/4 font-medium
+   text-faint` (the word "Hive" carries the term hover). Item: `flex items-center gap-2.5 h-8 px-2
+   rounded-field text-[13px] font-medium text-muted hover:bg-base-300 hover:text-base-content
+   transition-colors`, icon `size-4 text-faint`. **Active** (`aria-current="page"`): `bg-base-300
+   text-base-content`, icon `text-accent`. No left bar, no honey fill. Right-aligned tags in
+   `ml-auto font-mono text-[11.5px] text-faint tabular-nums`: Runs the alive count with the
+   listening dot, Policy the default mode, Access keys the active keys, Members the members. In
+   the drawer items are `h-10 text-sm`. `<nav aria-label="Main">` for Hive, `<nav
+   aria-label="Manage">` for Manage, `gap-px px-2`. Do not use daisyUI `menu` here.
+3. **Spacer** `flex-1`.
+4. **Brand foot** [A2]. `m-2 h-9 px-2 flex items-center gap-2 rounded-field` (`h-10` in the
+   drawer). `<.brand size="xs" />`: the 18 px mark at full colour, then "Qory Apiary" in
+   `text-[13px]/[18px] font-medium text-muted whitespace-nowrap`, `hover:text-base-content`, a link
+   to `/`. Then, `ml-auto`, the version: `font-mono text-[11.5px]/4 text-faint tabular-nums`, the
+   text "0.1.0", `title="Version 0.1.0"`; `Application.spec(:apiary, :vsn)` read at compile time.
+   If it is nil, render nothing, never "unknown". The version sits outside the link so the link's
+   name stays "Qory Apiary". The foot is not a button and opens nothing: it is the signature at the
+   bottom of the page, the last thing in the sidebar's tab order.
+
+The user card at the foot of the sidebar is gone [A2]; its contents are the account menu in the
+top bar. The standalone "Theme" row is gone too.
+
+**No-hive variant** [A2]. When the user has no membership: no sidebar, no drawer, no menu button.
+The top bar shows `<.brand />` (22 px mark, "Qory Apiary" 16 px) at its left, the theme toggle and
+the account menu at its right; the account menu's level line reads "Not part of an apiary yet".
+The content column shows the no-hive page.
 
 **Drawer behaviour.** Slides in 240 ms over a `--q-overlay` scrim. Closes on scrim tap, Escape, the
-X button in its brand row, and on any navigation (LiveView `phx:page-loading-stop` unchecks the
-toggle; a six-line hook `CloseDrawerOnNav`). While open: focus moves to the drawer's close button,
-`<main>` gets `inert`, body scroll is locked. On close, focus returns to the menu button.
+Close menu button in its apiary row [A2], and on any navigation (LiveView `phx:page-loading-stop`
+unchecks the toggle; the `NavDrawer` hook). While open: focus moves to the Close menu button, the
+whole content column (`#shell-content`: the top bar and `<main>`) gets `inert` [A2], body scroll is
+locked. On close, focus returns to the menu button.
+
+**Keyboard order** [A2]. The visual order is the tab order. From 768 px: skip link → sidebar
+(the switcher, when there is one → Overview … Policy → Access keys … Settings → the brand foot) →
+top bar (theme toggle → account menu) → main. Below 768 px, drawer closed: skip link → menu button →
+theme toggle → account menu → main; drawer open: Close menu → the switcher → the nav items → the
+brand foot, and Tab cycles inside the drawer because everything else is inert. The apiary label in
+the bar and the apiary block with one membership are never in the order.
+
+**Focus after opening the account menu** [A2]. Opened with the pointer, the menu opens and focus
+stays on the button: nothing jumps under the cursor. Opened with Enter, Space or ArrowDown, the
+menu opens and focus moves to the first item, "Account settings" (ArrowUp opens it on the last,
+"Log out"). Arrows wrap; Home and End go to the ends; Escape closes and returns focus to the
+button; Tab out closes it and focus continues on its way; a pointer down outside closes it and
+leaves focus where it is; activating an item closes it as the navigation or the log-out POST
+happens. The same rule for the theme toggle and the switcher: one `Menu` hook, one behaviour.
+Today the hook leaves focus on the trigger when Enter fires the button's click; add the keyboard
+branch (`keydown` Enter / Space on the trigger: prevent the click, open, focus the first item).
+
+**Reduced motion** [A2]. Both menus follow the menu row of section e: 180 ms in, 120 ms out,
+opacity and a 4 px translate, downwards here because they hang from the bar. Under
+`prefers-reduced-motion: reduce` the global block zeroes the durations and nothing else is needed:
+the menus appear in place, the drawer appears in place, and a theme change is instant as it always
+was (no transition on colour or `color-scheme`).
+
+**Shell copy** [A2]. Every visible or announced string of the shell:
+
+| Element | Copy | Note |
+|---|---|---|
+| Skip link | Skip to content | first focusable |
+| Menu button | Open menu | `aria-label`; icon only |
+| Close button | Close menu | `aria-label`; icon only |
+| Apiary label (bar, phone) | Acme / Platform | text, not a control; `title` = full names |
+| Apiary block (sidebar) | Acme / Platform | one membership: text; `title` = full names |
+| Switcher button | Switch apiary, current: Acme | `aria-label`; visible: avatar, names, chevron |
+| Switcher menu | Switch apiary | title row; "apiary" carries the term hover |
+| Group labels | Hive · Manage | "Hive" carries the term hover |
+| Theme toggle | Theme | `aria-label` and tooltip; items Auto · Light · Dark |
+| Account button | Account menu, beekeeper@example.com | `aria-label`; tooltip "Account" |
+| Account menu header | beekeeper@example.com / Owner of Acme | or Member of Acme · Not part of an apiary yet |
+| Account menu items | Account settings · Docs · Log out | in this order |
+| Brand foot | Qory Apiary · 0.1.0 | link name "Qory Apiary"; version `title` "Version 0.1.0" |
+| Page title | Members · Qory Apiary | default "Qory Apiary" |
 
 **Page header.** `flex flex-wrap items-start justify-between gap-4`, 24 px below it.
 Left: `<h1>` Title style; under it (2 px) the description in `text-sm/5 text-muted max-w-[62ch]`.
@@ -400,7 +531,8 @@ the header. Below 480 px the action button goes full width under the text.
 **Content widths.** `<main class="min-w-0 flex-1 bg-base-100">` > `div.mx-auto.w-full.px-4.md:px-6.lg:px-10.pt-5.md:pt-8.pb-12`
 > inner `max-w-[960px]` for overview, access keys and members; `max-w-[640px]` for settings and
 account settings (left-aligned within the 960 column so the title edge does not jump between
-pages: wrap as `max-w-[960px] mx-auto` > `max-w-[640px]`).
+pages: wrap as `max-w-[960px] mx-auto` > `max-w-[640px]`). The runs, run and connections pages use
+the 1200 px `full` width as built.
 
 ---
 
@@ -870,9 +1002,9 @@ Form side, left-aligned like the other auth pages (not centred text):
 ```
 >= 1024 px
 +-------------------------------+----------------------------------------+
-| [Q] Qory                      |                          [theme ▾]     |
+| [Q] Qory Apiary               |                          [theme ▾]     |
 |                               |                                        |
-|                               |        Log in to Qory                  |
+|                               |        Log in to Qory Apiary           |
 |   . . honeycomb, fading . .   |        We will email you a link.       |
 |                               |        No password needed.             |
 |                               |        Email                           |
@@ -880,8 +1012,8 @@ Form side, left-aligned like the other auth pages (not centred text):
 | With Qory you don't have to.  |        [x] Keep me signed in           |
 | Every session runs behind a   |        [  Send me a log-in link   ]    |
 | security wall, reaches only   |        [  Use a password instead  ]    |
-| what you allow, never holds   |        New to Qory? Create an account  |
-| your keys, and leaves a full  |                                        |
+| what you allow, never holds   |        New to Qory Apiary?             |
+| your keys, and leaves a full  |        Create an account               |
 | record. Open source, so you   |                                        |
 | can check all of that.        |                                        |
 +-------------------------------+----------------------------------------+
@@ -890,7 +1022,7 @@ Form side, left-aligned like the other auth pages (not centred text):
 
 `div.grid.min-h-dvh.lg:grid-cols-[5fr_6fr]`. **Brand panel**: `bg-base-200 border-r border-line
 p-8 lg:p-10 flex flex-col justify-between relative overflow-hidden`, the honeycomb behind; top:
-28 px mark + "Qory" 19 px; bottom: the sentence in 26 / 32 semibold -0.025em, `max-w-[30ch]`, with
+28 px mark + "Qory Apiary" 19 px [A2]; bottom: the sentence in 26 / 32 semibold -0.025em, `max-w-[30ch]`, with
 "you don't have to" in `text-accent`, and under it in `text-[13px] text-muted max-w-[46ch]`: "Every
 session runs behind a security wall, reaches only what you allow, never holds your keys, and
 leaves a full record. Open source, so you can check all of that." The same sentence on every
@@ -898,7 +1030,8 @@ auth page. The line sells trust, never the deployment model: self-hosting is one
 Qory and belongs on the install page, not here. **Form side**: centred
 352 px column (`max-w-[352px]`), everything left-aligned, `grid gap-4`; theme control top-right
 (icon-only ghost button opening the three-way menu). **Below 1024 px** the panel collapses to a
-header strip: `h-14 px-4 border-b`, brand only, no pattern, no sentence; the form starts 40 px
+header strip: `h-14 px-4 border-b`, brand only ("Qory Apiary", 22 px mark [A2]), no pattern, no
+sentence; the form starts 40 px
 below it with 16 px gutters. No card around the form at any width. All controls `md` (40 px).
 
 The dev-only "local mail adapter" notice moves under the form as one `text-faint` line: "Dev: sent
@@ -906,7 +1039,7 @@ mail is in the [mailbox](/dev/mailbox)." It must not sit between the heading and
 
 **Log in** (`/users/log-in`). ONE form, ONE email field.
 
-- Heading "Log in to Qory"; sub "We will email you a link. No password needed."
+- Heading "Log in to Qory Apiary" [A2]; sub "We will email you a link. No password needed."
 - "Email" (`autocomplete="username"`, focused on mount, `readonly` in sudo mode).
 - Password field, hidden by default, revealed by the toggle: label "Password",
   `autocomplete="current-password"`; when revealed it takes focus and the sub changes to "Enter the
@@ -920,7 +1053,7 @@ mail is in the [mailbox](/dev/mailbox)." It must not sit between the heading and
 - Primary block: "Send me a log-in link" → "Sending"; in password mode "Log in" → "Logging in".
 - Ghost block toggle: "Use a password instead" ⇄ "Email me a link instead"
   (`aria-expanded`, `aria-controls` the password wrapper).
-- Foot: "New to Qory? [Create an account]".
+- Foot: "New to Qory Apiary? [Create an account]" [A2].
 - Sudo mode: heading "Confirm it is you", sub "Log in again to change sensitive account settings.",
   no foot line.
 
@@ -942,7 +1075,7 @@ it as soon as you confirm." and the email prefilled. Field "Email". Primary bloc
 → "Creating". Foot: "Already have an account? [Log in]". After submit, the same "Check your email"
 confirmation: "We sent a confirmation link to **{email}**."
 
-**Confirmation** (`/users/log-in/:token`). Heading "Welcome to Qory" (unconfirmed) or "Welcome
+**Confirmation** (`/users/log-in/:token`). Heading "Welcome to Qory Apiary" [A2] (unconfirmed) or "Welcome
 back" (confirmed); sub: the email in `text-muted`. Checkbox "Keep me signed in" (checked) and ONE
 primary block button: "Confirm my account" → "Confirming", or "Log in" → "Logging in". This
 replaces the two-button pair ("… and stay logged in" / "… only this time"); the same
@@ -959,8 +1092,10 @@ link has expired", "Log-in links work once and for a short time. Ask for a new o
 - **Focus**: one global rule, `:focus-visible { outline: 2px solid var(--q-ring); outline-offset:
   2px }`; inputs swap it for the border + 3 px halo. Never remove focus without replacing it. Focus
   order follows the visual order; the sidebar comes before main. A "Skip to content" link is the
-  first focusable element (`sr-only focus:not-sr-only`, top-left, `btn btn-sm`).
-- **Landmarks**: `<aside aria-label="Sidebar">`, `<nav aria-label="Main">`, one `<main id="main">`,
+  first focusable element (`sr-only focus:not-sr-only`, top-left, `btn btn-sm`). [A2] The order is
+  sidebar, top bar, main; `drawer-side` precedes `drawer-content` in the DOM (section f).
+- **Landmarks**: `<aside aria-label="Sidebar">`, `<nav aria-label="Main">` and `<nav
+  aria-label="Manage">`, `<header aria-label="Top bar">` [A2], one `<main id="main">`,
   one `<h1>` per page (the page header title; on auth pages the display heading). Card titles are
   `<h2>`, modal titles `<h2>`.
 - **Keyboard**: every action reachable and operable; menus with arrows, Escape and focus return;
@@ -968,7 +1103,9 @@ link has expired", "Log-in links work once and for a short time. Ask for a new o
   focusable; tooltips and term hovers appear on focus.
 - **Names**: icon-only buttons have `aria-label`; row actions include the object ("Revoke
   build-01") via `aria-label` while the visible text stays short; selects in rows are labelled
-  "Level of {email}"; the workspace switcher announces the current apiary.
+  "Level of {email}"; the apiary switcher announces the current apiary; [A2] the account button
+  announces the email ("Account menu, beekeeper@example.com"), the theme toggle is "Theme", the
+  menu button "Open menu" and "Close menu"; the apiary label in the phone bar is plain text.
 - **State**: never colour alone (badges carry words, errors carry an icon and text, the active nav
   item has `aria-current`). Loading buttons set `aria-busy`. Copy success is announced politely.
   Toasts: `role="status"` / `role="alert"`; auto-dismiss pauses on hover and focus and is never less
@@ -992,7 +1129,7 @@ link has expired", "Log-in links work once and for a short time. Ask for a new o
 ## j. Done checklist
 
 Identity and naming
-- [ ] "Qory" in the wordmark, `<title>` (default and suffix), auth pages, emails, the reveal alert; no user-facing "Apiary" as a product name remains (`grep -rn "Apiary" lib/apiary_web` shows only module names and the term component)
+- [ ] [A2] "Qory Apiary" in the wordmark, `<title>` (default and suffix), the sign-in panel and strip, the auth headings and foot line, email subjects and bodies; "Qory" alone only in the trust sentence and in prose where the system is the actor (out of scope); `grep -rn "Apiary" lib/apiary_web` shows module names, the term component and the brand strings only
 - [ ] New mark in `logo_mark/1`, `favicon.svg`, 32 px PNG fallback
 - [ ] No consulting customer or counterparty anywhere; no AI attribution; British spelling; sample data synthetic
 
@@ -1003,10 +1140,13 @@ Tokens
 - [ ] Geist and Geist Mono self-hosted under `priv/static/fonts` with `OFL.txt`; no external requests in the network panel
 
 Shell
-- [ ] Sidebar 240 px visible from 768 px; one sidebar in the DOM; sections in the specified order; active item per spec; counts shown
-- [ ] Workspace block is static with one membership, a dropdown with several; switching posts to the same endpoint
-- [ ] User card pinned to the bottom with Account settings, Theme (three-way), Log out; standalone theme row removed
-- [ ] Drawer below 768 px: scrim, Escape, closes on navigation, focus managed, main inert
+- [ ] Sidebar 240 px visible from 768 px; one sidebar in the DOM; active item per spec; tags and counts shown
+- [ ] [A2] Sidebar order: apiary row, Hive, Manage, spacer, brand foot with "Qory Apiary" and the version; no user card, no theme row
+- [ ] [A2] Apiary block: text with one membership (chevron slot empty, not disabled), the switcher with several; switching posts to the same endpoint; the Close menu button in the same row in the drawer
+- [ ] [A2] Top bar at every width, 52 px: theme toggle and account menu at the right; below 768 px the menu button and the apiary label at the left, from 768 px nothing at the left
+- [ ] [A2] Account menu: header, Account settings, Docs, Log out; pointer open keeps focus on the button, keyboard open moves it to the first item; Escape returns it
+- [ ] [A2] Tab order sidebar → top bar → main (`drawer-side` first in the DOM); drawer: scrim, Escape, closes on navigation, focus managed, the whole content column inert
+- [ ] [A2] No-hive: no sidebar, no menu button, the brand at the left of the bar
 - [ ] Page header anatomy and content widths (960 / 640) on every page
 
 Components
