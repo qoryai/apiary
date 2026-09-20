@@ -303,6 +303,16 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert to == "/hive/runs?state=failed"
     end
 
+    test "a link with the state's former name is rewritten to the state, and nothing is dropped",
+         %{conn: conn} do
+      assert {:error, {:live_redirect, %{to: "/hive/runs?state=succeeded"}}} =
+               live(conn, ~p"/hive/runs?state=exited")
+
+      {:ok, view, _html} = live(conn, ~p"/hive/runs?state=succeeded")
+      render_async(view)
+      refute has_element?(view, "#runs-dropped")
+    end
+
     test "the menus are counted from the data and patch the URL", %{conn: conn, running: running} do
       view = open(conn)
 
@@ -587,7 +597,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
       {:ok, _} = Projector.project(run)
 
-      assert text(view, row(run)) =~ "Exited"
+      assert text(view, row(run)) =~ "Succeeded"
       assert text(view, row(run)) =~ "30 s"
       render_async(view)
       refute text(view, "#runs-summary") =~ "alive"

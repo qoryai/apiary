@@ -110,6 +110,14 @@ defmodule Apiary.Runs.ListingTest do
       assert parse(%{"zzz" => "1"}).dropped == []
     end
 
+    test "the state's former name in a shared link is read as the state, and canonicalised" do
+      filters = parse(%{"state" => "exited,failed,succeeded"})
+
+      assert filters.states == ["succeeded", "failed"]
+      assert filters.dropped == []
+      assert Filters.to_params(filters) == %{"state" => "succeeded,failed"}
+    end
+
     test "what can be stored can be filtered by: 1024 bytes, and no control characters" do
       long = String.duplicate("h", 1024)
       assert parse(%{"host" => long}).host == long
@@ -246,7 +254,7 @@ defmodule Apiary.Runs.ListingTest do
             run_id: Ecto.UUID.generate(),
             organisation_id: organisation.id,
             hive_id: hive.id,
-            state: "exited",
+            state: "succeeded",
             # Every third run has only pinged: it is placed by inserted_at.
             started_at: if(rem(n, 3) == 0, do: nil, else: at),
             inserted_at: at,
@@ -346,13 +354,13 @@ defmodule Apiary.Runs.ListingTest do
                %{runs: 4, repositories: 2, tasks: 2, alive: 3, with_denials: 1, hive_runs: 4}
 
       assert %{runs: 1, hive_runs: 4} =
-               Runs.summarise_runs(scope, parse(%{"state" => "exited"}), @now)
+               Runs.summarise_runs(scope, parse(%{"state" => "succeeded"}), @now)
     end
 
     test "facets are counted from the data, each under the other filters", %{scope: scope} do
       facets = Runs.run_facets(scope, parse(%{"state" => "running"}), now: @now)
 
-      assert facets.state.options == [{"running", "running", 3}, {"exited", "exited", 1}]
+      assert facets.state.options == [{"running", "running", 3}, {"succeeded", "succeeded", 1}]
 
       assert facets.repo == %{
                options: [

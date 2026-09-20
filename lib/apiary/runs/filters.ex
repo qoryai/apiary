@@ -21,7 +21,9 @@ defmodule Apiary.Runs.Filters do
   A value that is present and refused (not one the page offers, not a string, longer than
   the column it is compared with, or holding a control character, which Postgres would
   refuse) is named in `dropped`, so the page can say that the link was not read in full
-  instead of silently showing an unfiltered list.
+  instead of silently showing an unfiltered list. A state under a name it no longer has
+  (`state=exited`, from before the state was called `succeeded`) is read as the state and
+  not refused; the canonical query says the current name.
   """
 
   alias Apiary.Runs.Run
@@ -30,6 +32,9 @@ defmodule Apiary.Runs.Filters do
   @ranges %{runs: ~w(1h 24h 7d 30d all), connections: ~w(1h 24h 7d 30d 90d)}
   @max_window_days 90
   @decisions ~w(allowed denied)
+  # A state's former name, read from a link written before the rename and canonicalised, so
+  # the link keeps working and the page patches to the word the state has now.
+  @state_aliases %{"exited" => "succeeded"}
   @default_since "7d"
   # What the fold stores of a label, a runtime or a host, in bytes.
   @max_text 1024
@@ -333,7 +338,12 @@ defmodule Apiary.Runs.Filters do
         {[], []}
 
       {:ok, value} when is_binary(value) ->
-        chosen = value |> String.split(",", trim: true) |> Enum.uniq()
+        chosen =
+          value
+          |> String.split(",", trim: true)
+          |> Enum.map(&Map.get(@state_aliases, &1, &1))
+          |> Enum.uniq()
+
         known = Enum.filter(Run.states(), &(&1 in chosen))
         {known, if(length(known) == length(chosen) and chosen != [], do: [], else: ["state"])}
 
