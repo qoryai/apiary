@@ -11,7 +11,7 @@ defmodule ApiaryWeb.PageControllerTest do
     assert response =~ "Create an account"
     assert response =~ ~p"/users/log-in"
     assert response =~ ~p"/users/register"
-    assert response =~ ~r/<abbr[^>]*data-tip="team"[^>]*>hive<\/abbr>/
+    assert response =~ ~r/<abbr[^>]*data-tip="workplace"[^>]*>hive<\/abbr>/
   end
 
   test "GET / sends a signed-in user to the hive", %{conn: conn} do

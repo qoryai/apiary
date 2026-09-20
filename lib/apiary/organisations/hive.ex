@@ -1,5 +1,5 @@
 defmodule Apiary.Organisations.Hive do
-  @moduledoc "The team inside an organisation: the unit of use."
+  @moduledoc "The workplace inside an organisation: the unit of use."
   use Ecto.Schema
   import Ecto.Changeset
 

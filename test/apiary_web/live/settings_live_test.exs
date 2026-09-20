@@ -14,7 +14,7 @@ defmodule ApiaryWeb.SettingsLiveTest do
       {:ok, lv, html} = live(conn, ~p"/hive/settings")
 
       assert html =~ ~r/<abbr[^>]*data-tip="organisation"/
-      assert html =~ ~r/<abbr[^>]*data-tip="team"/
+      assert html =~ ~r/<abbr[^>]*data-tip="workplace"/
       assert html =~ scope.organisation.name
       assert html =~ scope.hive.name
 

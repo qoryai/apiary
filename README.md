@@ -1,6 +1,6 @@
 # Apiary
 
-Apiary is the console of Qory: an organisation (an apiary) signs up, gets a team (a hive),
+Apiary is the console of Qory: an organisation (an apiary) signs up, gets a workplace (a hive),
 and creates an access key for the runner file on its machines. From then on every run of
 that hive reports back here. Postgres is the only dependency.
 

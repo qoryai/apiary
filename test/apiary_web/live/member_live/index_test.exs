@@ -14,7 +14,7 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       assert html =~ user.email
       assert html =~ "You"
       assert html =~ "Invite member"
-      assert html =~ ~r/<abbr[^>]*data-tip="team"[^>]*>hive<\/abbr>/
+      assert html =~ ~r/<abbr[^>]*data-tip="workplace"[^>]*>hive<\/abbr>/
     end
 
     test "invites a member and can revoke the invitation", %{conn: conn, scope: scope} do

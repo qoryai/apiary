@@ -20,7 +20,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
       assert html =~ "Connect your first machine"
       assert html =~ "Paste the server block into the runner file"
       assert html =~ ~r/<abbr[^>]*data-tip="organisation"[^>]*>apiary<\/abbr>/
-      assert html =~ ~r/<abbr[^>]*data-tip="team"[^>]*>hive<\/abbr>/
+      assert html =~ ~r/<abbr[^>]*data-tip="workplace"[^>]*>hive<\/abbr>/
 
       # the user menu lives in the shell
       assert html =~ ~p"/users/settings"

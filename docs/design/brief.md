@@ -5,7 +5,7 @@ named `Apiary`). Milestone: accounts, the apiary and its hive, members, access k
 reference is `qory-style-guide.html` beside this file; where the two disagree, this brief wins.
 
 Naming. The product and brand are **Qory**. The wordmark, `<title>`, emails and auth pages say
-"Qory". Inside the product an organisation is an **apiary** and a team a **hive**; each shows its
+"Qory". Inside the product an organisation is an **apiary** and a workplace a **hive**; each shows its
 standard term on hover. Module names (`Apiary`, `ApiaryWeb`) do not change. British spelling
 everywhere. Sample data is synthetic only: Acme, Platform, build-01, `build-01.example.com`,
 `beekeeper@example.com`, `dana@example.com`.
@@ -583,10 +583,10 @@ font-medium px-2 py-1 rounded-field shadow-pop`, no arrow (`.tooltip::after { di
 6 px offset, 300 ms show delay, 0 ms hide, also shown on `:focus-visible`. Required on every
 icon-only button (whose `aria-label` carries the same words). Never holds essential information.
 
-**Term** (`<.term word="hive" />`): `<abbr class="term tooltip" tabindex="0" data-tip="team"
-aria-label="hive (team)">hive</abbr>` with `underline decoration-dotted decoration-line-field
+**Term** (`<.term word="hive" />`): `<abbr class="term tooltip" tabindex="0" data-tip="workplace"
+aria-label="hive (workplace)">hive</abbr>` with `underline decoration-dotted decoration-line-field
 underline-offset-[3px] cursor-help no-underline-on-print`. Drop the native `title` (double tooltip,
-no keyboard support). Mapping: apiary → organisation, hive → team. Apply the term treatment to the
+no keyboard support). Mapping: apiary → organisation, hive → workplace. Apply the term treatment to the
 **first** occurrence in a page header, description, empty state or modal body; never inside
 buttons, nav items, table cells, toasts or form labels (plain word there). Capitalised forms keep
 the hover ("Apiary name").
@@ -930,7 +930,7 @@ account, a log-in link is on its way."): hex icon `hero-envelope`, heading
 minutes." (use the app's real token lifetime), ghost `[Use a different email]`.
 
 **Register** (`/users/register`). Heading "Create your account"; sub "Start an ~apiary~ for your
-team. We will email you a link to confirm; no password needed." With an invitation, an info alert
+workplace. We will email you a link to confirm; no password needed." With an invitation, an info alert
 above the field: "You are invited to the **{hive}** ~hive~ at **{organisation}**. Your account joins
 it as soon as you confirm." and the email prefilled. Field "Email". Primary block "Create account"
 → "Creating". Foot: "Already have an account? [Log in]". After submit, the same "Check your email"

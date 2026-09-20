@@ -18,7 +18,7 @@ defmodule ApiaryWeb.CoreComponents do
   @terms %{
     "apiary" => "organisation",
     "apiaries" => "organisations",
-    "hive" => "team",
+    "hive" => "workplace",
     "hives" => "teams"
   }
 
@@ -73,7 +73,7 @@ defmodule ApiaryWeb.CoreComponents do
   Renders one of Qory's words with its standard term on hover and focus.
 
       <.term word="apiary" />     # apiary, with "organisation" as the tip
-      <.term word="Hive" />       # Hive, with "team" as the tip
+      <.term word="Hive" />       # Hive, with "workplace" as the tip
   """
   attr :word, :string, required: true
   attr :standard, :string, default: nil, doc: "override the standard term"

@@ -18,7 +18,7 @@ defmodule ApiaryWeb.UserLive.Registration do
         <Layouts.auth_heading>
           Create your account
           <:subtitle>
-            Start an <.term word="apiary" /> for your team. We will email you a link to confirm;
+            Start an <.term word="apiary" /> for your workplace. We will email you a link to confirm;
             no password needed.
           </:subtitle>
         </Layouts.auth_heading>
