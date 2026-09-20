@@ -33,6 +33,18 @@ defmodule ApiaryWeb.RunLogControllerTest do
       assert get_resp_header(conn, "content-disposition") == []
     end
 
+    test "answers a browser's fetch, which accepts anything", %{conn: conn, scope: scope} do
+      run = run_with_log(scope)
+
+      conn =
+        conn
+        |> put_req_header("accept", "*/*")
+        |> get(~p"/hive/runs/#{run.run_id}/log")
+
+      assert conn.status == 200
+      assert [_] = get_resp_header(conn, "x-qory-log-through")
+    end
+
     test "after, limit and stream", %{conn: conn, scope: scope} do
       run = run_with_log(scope)
 

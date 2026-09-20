@@ -94,7 +94,8 @@ export const Terminal = {
     let lib
     try {
       lib = await load(this.el.dataset.script, this.el.dataset.stylesheet)
-    } catch (_err) {
+    } catch (err) {
+      console.error("terminal: the bundle did not load", err)
       return this.fail(true)
     }
     if (this.dead) return
@@ -270,7 +271,9 @@ export const Terminal = {
         url.searchParams.set("limit", String(LIMIT))
         if (this.stream) url.searchParams.set("stream", this.stream)
 
-        const response = await fetch(url, {credentials: "same-origin", headers: {accept: "application/octet-stream"}})
+        // No Accept of its own: the route sits behind the browser pipeline, which answers 406 to
+        // anything that does not take html, and a fetch's default */* does.
+        const response = await fetch(url, {credentials: "same-origin"})
         if (!response.ok) throw new Error(`log ${response.status}`)
         const through = Number(response.headers.get("x-qory-log-through"))
         const bytes = new Uint8Array(await response.arrayBuffer())
@@ -285,7 +288,8 @@ export const Terminal = {
       this.say(null)
       // An ended run is read from its start; a live one is followed.
       if (first && !this.following) this.toTop()
-    } catch (_err) {
+    } catch (err) {
+      console.error("terminal: the log was not read", err)
       if (generation === this.generation) this.fail(false)
     } finally {
       if (generation === this.generation) {
