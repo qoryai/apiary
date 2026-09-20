@@ -796,7 +796,9 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         handler,
         [:apiary, :repo, :query],
         fn _event, _measurements, metadata, _config ->
-          if self() == page do
+          # The sidebar's count of alive runs comes on a timer of its own, in the page's
+          # process; it is tagged, and is not what this budget is about.
+          if self() == page and not (metadata[:options][:sidebar] == true) do
             :counters.add(counter, 1, 1)
 
             case metadata[:result] do
