@@ -59,6 +59,7 @@ defmodule Apiary.Release do
         end)
 
       case result do
+        {:ok, []} -> IO.puts("No hive has a retention setting: nothing to prune.")
         {:ok, results} -> Enum.each(results, &IO.puts(Apiary.Retention.sentence(&1)))
         {:error, :locked} -> IO.puts("The retention job is already running on this database.")
       end
