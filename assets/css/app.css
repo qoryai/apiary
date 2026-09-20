@@ -839,6 +839,11 @@
   :where(.dropdown-top) > :where(.dropdown-content) {
     animation-name: q-menu-in-up;
   }
+  /* The shell's menus open by the Menu hook, never by focus alone: Tab passes over
+     a closed menu's trigger and on to the next control. */
+  :where(#theme-menu, #user-menu, #workspace-menu):not(.dropdown-open) > :where(.dropdown-content) {
+    display: none;
+  }
   @keyframes q-menu-in-up {
     from {
       opacity: 0;
@@ -2911,6 +2916,22 @@
     overflow: hidden;
     padding: 12px 0 12px 14px;
   }
+  /* A sized run keeps the recorded rows: the box grows to them instead of cutting them. */
+  .q-termbox[data-sized="true"] {
+    height: auto;
+    min-height: 0;
+  }
+  .q-termbox[data-sized="true"] .q-term-screen [data-screen],
+  .q-termbox[data-sized="true"] .q-term-screen .xterm {
+    height: auto;
+  }
+  .q-term-size {
+    flex: none;
+    color: var(--q-term-dim);
+    font-family: var(--font-mono);
+    font-size: 0.71875rem;
+    white-space: nowrap;
+  }
   .q-term-screen [data-screen] {
     height: 100%;
     overflow-x: auto;
@@ -3082,6 +3103,9 @@
       margin-inline: -1rem;
       border-inline: 0;
       border-radius: 0;
+    }
+    .q-termbox[data-sized="true"] {
+      height: auto;
     }
     .q-term-find input {
       width: 64px;
