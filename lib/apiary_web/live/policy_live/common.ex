@@ -1051,8 +1051,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
       |> String.slice(0, 48)
       |> then(&if(&1 == "", do: "qory", else: &1))
 
-    head =
-      "# Qory policy of #{subject}, version #{configuration.version}\n# #{configuration.digest}\n"
+    head = export_head(subject, configuration.version, configuration.digest)
 
     file_name = "#{slug}-policy.yaml"
 
@@ -1067,6 +1066,18 @@ defmodule ApiaryWeb.PolicyLive.Common do
       command: ~s(qory run --local --policy ~/#{file_name} -- -p "…")
     }
   end
+
+  @doc """
+  The two comment lines over an exported text. The subject is a forge and a path from a
+  run's labels, or a hive's name: whatever breaks a line in YAML is taken out of it, so
+  nothing a runner or a person named can become a key of the text an operator pastes.
+  """
+  def export_head(subject, version, digest) do
+    "# Qory policy of #{one_line(subject)}, version #{version}\n# #{one_line(digest)}\n"
+  end
+
+  defp one_line(text),
+    do: text |> to_string() |> String.replace(~r/[\r\n\x{85}\x{2028}\x{2029}]+/u, " ")
 
   ## Parameters
 
