@@ -1,6 +1,6 @@
 # From nothing to a first run
 
-This page takes a machine with Docker and nothing else to a Qory server with one run on its
+This page takes a machine with Docker and nothing else to a running Qory Apiary with one run on its
 runs page. It is a trial on one machine: the server is reached at `http://localhost:4100`,
 and emails are written to the log instead of being sent. For an installation other people
 sign in to, read [Install and configure](install.md) and the
@@ -11,7 +11,7 @@ steps you need the `qory` command, version 0.10.0 or later, on the same machine.
 
 ## 1. Get the source
 
-Clone the repository of the Qory server and enter the checkout:
+Clone the repository of Qory Apiary and enter the checkout:
 
 ```sh
 git clone https://github.com/qoryai/apiary.git qory-server
@@ -92,7 +92,7 @@ newest link:
 docker compose logs apiary | grep -o 'http://localhost:4100/users/log-in/[A-Za-z0-9_-]*' | tail -n 1
 ```
 
-Open the link in the browser. The page reads **Welcome to Qory**; select **Confirm my
+Open the link in the browser. The page reads **Welcome to Qory Apiary**; select **Confirm my
 account**. You land on the overview of your hive.
 
 Signing up created an organisation, which the console calls an *apiary* and names after the
@@ -108,7 +108,7 @@ An access key lets the machines of a hive post their runs.
 3. Give it a **Label**, the machine or environment it is for, `build-01` say, and select
    **Create key**.
 4. The dialog **Your new access key** shows the **Key id**, the **Secret**, and the block
-   for the runner file with both filled in. The secret is shown once: Qory keeps only an
+   for the runner file with both filled in. The secret is shown once: Qory Apiary keeps only an
    encrypted copy and cannot show it again. Copy the block, then select **I have copied the
    secret**.
 

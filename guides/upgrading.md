@@ -1,4 +1,4 @@
-# Upgrading a self-hosted Qory
+# Upgrading a self-hosted Qory Apiary
 
 An upgrade is a restart: stop the old release, start the new one, and the new one migrates
 the database before it serves. This page says what that rests on and what to do when it

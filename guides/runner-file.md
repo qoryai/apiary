@@ -5,7 +5,7 @@ command's configuration directory: `~/.config/qory/runner.yaml`, or
 `$XDG_CONFIG_HOME/qory/runner.yaml` when that variable is set. It lives there and nowhere
 else, so a repository cannot set the policy a run is under or where its events go.
 
-Its `server` section names the Qory server every run on the machine reports to. The section
+Its `server` section names the Qory Apiary every run on the machine reports to. The section
 is read by the `qory` command from version 0.10.0. An earlier command reads the file
 strictly and refuses a file that has the section, so install 0.10.0 or later before adding
 it; `qory version` prints the version.
@@ -87,7 +87,7 @@ whatever the server does.
 
 The `server` section replaced the `webhook` section in version 0.10.0 of the command. A
 runner file that still has a `webhook` section is refused with a message that says so, and
-`QORY_WEBHOOK_SECRET` is not read any more. A receiver of your own that is not a Qory server
+`QORY_WEBHOOK_SECRET` is not read any more. A receiver of your own that is not a Qory Apiary
 is configured with the same `server` section, and implements the same contract: the
 configuration document and the events endpoint are enough.
 

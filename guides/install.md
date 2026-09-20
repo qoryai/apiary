@@ -1,6 +1,6 @@
 # Install and configure
 
-Qory is one container image. Postgres is its only dependency and holds all of its state.
+Qory Apiary is one container image. Postgres is its only dependency and holds all of its state.
 Configuration is by environment variables, read once at boot. Pending database migrations
 run at boot, before the server accepts a request, so an upgrade is a restart
 ([Upgrading](upgrading.md)).

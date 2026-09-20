@@ -1,6 +1,6 @@
 # Backup and restore
 
-Postgres is the only state of a Qory server. The container holds nothing that a restart does
+Postgres is the only state of Qory Apiary. The container holds nothing that a restart does
 not rebuild, and nothing is written to a disk outside the database. A backup is therefore
 three things:
 

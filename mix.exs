@@ -12,7 +12,7 @@ defmodule Apiary.MixProject do
       deps: deps(),
       compilers: [:phoenix_live_view] ++ Mix.compilers(),
       listeners: [Phoenix.CodeReloader],
-      name: "Qory",
+      name: "Qory Apiary",
       docs: docs()
     ]
   end
@@ -148,7 +148,7 @@ defmodule Apiary.MixProject do
           "guides/retention.md",
           "guides/hosting-checklist.md"
         ],
-        "Using Qory": ["guides/security-policy.md", "guides/runner-file.md"],
+        "Using Qory Apiary": ["guides/security-policy.md", "guides/runner-file.md"],
         Reference: ["guides/contract.md", "CHANGELOG.md"]
       ],
       groups_for_modules: [

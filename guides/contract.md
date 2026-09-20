@@ -2,7 +2,7 @@
 
 The server contract is what a runner and a server say to each other: how a runner finds the
 server's endpoints, how it proves which access key it holds, how it delivers a run's events,
-and how it is given the run's security policy. A Qory server implements the server's side.
+and how it is given the run's security policy. Qory Apiary implements the server's side.
 A receiver of your own that implements the same contract takes the same runners.
 
 ## Where the contract lives
@@ -203,4 +203,4 @@ The `security_policy` is the policy: the runner does not merge it with the machi
 The runner's repository ships a reference receiver and the fixtures any receiver is tested
 against. Discovery and the events endpoint are enough; a receiver that names no `run`
 section offers no run configuration, and the policy stays the machine's. On the machine it
-is configured like a Qory server ([The runner file's `server` section](runner-file.md)).
+is configured like Qory Apiary ([The runner file's `server` section](runner-file.md)).
