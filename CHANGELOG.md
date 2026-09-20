@@ -180,6 +180,24 @@ a restart does before doing it (`docs/upgrading.md`).
   export as a modal at its own URL, with download. Tabs, filters, the opened change, the
   compared version and the export are in the URL. A hive nobody has changed yet says that
   its runs use each machine's own policy until the first change.
+- Allow and Deny from a connection's row, on a run's Connections tab and on
+  `/hive/connections`: Allow where the last attempt was denied or let through with no rule,
+  Deny where a rule allowed it, a padlock where a locked hive rule decides the host (it
+  opens the reason, and for an owner where to change it), nothing where the wall refused.
+  The popover asks for whom: on a run the repository first, on the hive's page a repository
+  whose runs reached the destination or the whole hive, none chosen in advance; on a host
+  held to paths the request's path is added to, or taken out of, the paths in force. The
+  record is not rewritten: the row keeps its decision and gains a line naming the rule, its
+  version and who added it, which reads "In force in this run" only once the run has
+  reported the digest in force. A run that holds no configuration fetched from this server
+  is told it uses its machine's policy. No new migration.
+- The run header names the policy version the run last reported, as a link to that exact
+  version ("hive baseline" for a baseline's, "not rendered here" for a digest this hive
+  never rendered), and while an alive run's reported digest is not the one in force it
+  shows "Behind vN" with a notice and the link to what changed; an ended run is never
+  behind. The timeline shows a second `run.policy_applied` as "Policy applied again" with
+  the hosts the reload added and removed, from the two events. The runs list links a
+  repository group to its policy, and `/hive/connections?repo=…` to the repository's.
 
 ### Migrations
 
