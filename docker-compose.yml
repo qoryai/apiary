@@ -1,0 +1,31 @@
+# Apiary with its only dependency, Postgres. Copy .env.example to .env, fill it in,
+# then: docker compose up --build
+services:
+  postgres:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: apiary
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: apiary
+    volumes:
+      # postgres:18 keeps its data under /var/lib/postgresql/<major>; mount the parent.
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U apiary -d apiary"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  apiary:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file: .env
+    ports:
+      - "4100:4100"
+
+volumes:
+  postgres-data:

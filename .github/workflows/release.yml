@@ -1,0 +1,55 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    name: Build and publish the image
+    # Releases are published from the GitHub mirror, where the image is pulled from.
+    if: ${{ github.server_url == 'https://github.com' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check the tag against mix.exs
+        # The release reports the version in mix.exs, so the tag has to be that version.
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          grep -q "version: \"$version\"" mix.exs || {
+            echo "mix.exs does not carry version $version" >&2; exit 1; }
+
+      - name: Take the release body from the changelog
+        # A tag without a section in CHANGELOG.md does not publish.
+        run: scripts/changelog-section.sh "${GITHUB_REF_NAME#v}" release-notes.md
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+            ghcr.io/${{ github.repository }}:latest
+          labels: |
+            org.opencontainers.image.version=${{ github.ref_name }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.licenses=Apache-2.0
+
+      - name: Publish the release
+        uses: softprops/action-gh-release@v3
+        with:
+          body_path: release-notes.md
