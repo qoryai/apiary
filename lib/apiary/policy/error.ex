@@ -12,6 +12,7 @@ defmodule Apiary.Policy.Error do
           | :locked
           | :conflict
           | :invalid_document
+          | :unmanaged
           | :not_implemented
 
   @type t :: %__MODULE__{reason: reason, message: String.t(), field: atom | nil}

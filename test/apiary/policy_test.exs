@@ -33,17 +33,30 @@ defmodule Apiary.PolicyTest do
     do: Jason.decode!(document)["security_policy"]
 
   describe "the mode" do
-    test "is observe until it is set, and a change renders a new baseline", %{scope: scope} do
+    test "is observe until it is set; nothing is rendered until the first change, which is version 1",
+         %{scope: scope} do
       assert Policy.get_mode(scope) == "observe"
-      assert %{version: 1} = first = current!(scope, nil)
-      assert policy(first) == %{"version" => 1, "egress" => %{"mode" => "observe", "allow" => []}}
+
+      # A read of a hive nobody has changed renders and stores nothing.
+      assert {:error, %Error{reason: :unmanaged}} = Policy.current_configuration(scope, nil)
+
+      assert {:error, %Error{reason: :unmanaged}} =
+               Policy.current_configuration(scope, repository_fixture(scope))
+
+      assert %{in_force: nil, drift: false} = Policy.digests(scope, run_fixture(scope))
+
+      assert {:error, %Error{reason: :not_found}} =
+               Policy.configuration_for_digest(scope, nil, "sha256=" <> String.duplicate("0", 64))
+
+      assert Repo.aggregate(RunConfiguration, :count) == 0
+      refute Policy.managed?(scope)
 
       assert {:ok, "enforce"} = Policy.set_mode(scope, "enforce")
       assert Policy.get_mode(scope) == "enforce"
-      assert %{version: 2} = second = current!(scope, nil)
-      assert policy(second)["egress"]["mode"] == "enforce"
-      assert second.digest != first.digest
-      assert second.changed_by_id == scope.user.id
+      assert %{version: 1, policy_change_id: change_id} = first = current!(scope, nil)
+      assert is_binary(change_id)
+      assert policy(first)["egress"]["mode"] == "enforce"
+      assert first.changed_by_id == scope.user.id
 
       assert {:error, %Error{reason: :invalid, field: :mode}} = Policy.set_mode(scope, "log")
       assert {:ok, "enforce"} = Policy.set_mode(scope, "enforce")
@@ -326,16 +339,18 @@ defmodule Apiary.PolicyTest do
     test "a change that renders the same bytes writes a change and no version", %{scope: scope} do
       {:ok, _rule} = Policy.deny(scope, nil, %{host: "ads.example"})
 
-      # The first baseline is version 1; the deny of a host nothing allows renders the same.
+      # The first change renders version 1 whatever it changed in the bytes.
       assert %{total: 1, items: [%Change{version_after: 1}]} = Policy.list_changes(scope, nil)
       assert %{version: 1, changed_by_id: changed_by} = current!(scope, nil)
       assert changed_by == scope.user.id
+      {:ok, _rule} = Policy.deny(scope, nil, %{host: "more.example"})
+      assert %{version: 1} = current!(scope, nil)
 
       {:ok, rule} = Policy.allow(scope, nil, %{host: "api.example"})
       assert %{version: 2} = current!(scope, nil)
       {:ok, _rule} = Policy.lock(scope, rule)
 
-      assert %{total: 3, items: [%Change{action: "rule_locked", version_after: 2} | _]} =
+      assert %{total: 4, items: [%Change{action: "rule_locked", version_after: 2} | _]} =
                Policy.list_changes(scope, nil)
 
       assert %{version: 2} = current!(scope, nil)

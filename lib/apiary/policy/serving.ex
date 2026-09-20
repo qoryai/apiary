@@ -11,7 +11,8 @@ defmodule Apiary.Policy.Serving do
 
   `fetch/3` is the run configuration endpoint's: the stored bytes and their digest for the
   labelled repository, the baseline's for a repository the hive does not know or that has
-  no rules of its own. A managed hive always has a baseline: its first change rendered one.
+  no rules of its own. A managed hive always has a baseline: its first change rendered one,
+  and nothing here renders anything.
 
   `digest_for/4` is the events endpoint's, on the path the receiver answers from, so it
   reads and never renders: the digest in force for the run's repository, after the read

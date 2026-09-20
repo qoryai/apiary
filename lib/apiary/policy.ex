@@ -594,9 +594,9 @@ defmodule Apiary.Policy do
   @doc """
   The run configuration in force for the baseline (`nil`) or for a repository: the highest
   version. A repository that never had rules of its own is served the baseline's, and the
-  row says so by its `repository_id`. For a hive nobody has changed yet (`managed?/1` is
-  false) this renders what the baseline would be, `observe` with nothing allowed, so a
-  page has something to show; no runner is served it until the hive is managed.
+  row says so by its `repository_id`. A hive nobody has changed yet (`managed?/1` is
+  false) has none: `{:error, %Error{reason: :unmanaged}}`, and nothing is rendered or
+  stored by asking. The first version is written by the first change alone.
   """
   @spec current_configuration(Scope.t(), target) :: {:ok, RunConfiguration.t()} | refusal
   def current_configuration(%Scope{hive: %Hive{} = hive} = scope, target) do
@@ -661,7 +661,8 @@ defmodule Apiary.Policy do
   The digest in force for a run and what the run last reported, for the run's header:
   `%{in_force:, reported:, applied:, drift:}`. `in_force` is read now, never stored;
   `reported` is the `X-Qory-Run-Configuration` of the run's last batch that carried one;
-  `applied` is what its last policy applied event named. `drift` is true when the run
+  `applied` is what its last policy applied event named; `in_force` is nil for a hive
+  nobody has changed, which serves no configuration. `drift` is true when the run
   reported a digest other than the one in force, which is a run that has not reloaded
   yet, and false when it reported none: such a run holds no fetched configuration. A run of another hive is a
   refusal, `{:error, %Apiary.Policy.Error{reason: :not_found}}`, not a map.
@@ -1319,32 +1320,24 @@ defmodule Apiary.Policy do
   ## In force, for this module and for the wire (`Apiary.Policy.Serving`)
 
   @doc false
-  # The configuration in force for a repository of the hive, or the baseline's: read, and
-  # the baseline rendered when the hive has none yet.
-  def in_force(organisation_id, hive_id, repository_id) do
+  # The configuration in force for a repository of the hive, or the baseline's: a read,
+  # and nothing but a read. A hive nobody has changed has no baseline row, and none is
+  # made here: the first version is written by the first change and by nothing else
+  # (`render_all/3`), so what a page shows as version 1 is what the first change made.
+  def in_force(_organisation_id, hive_id, repository_id) do
     own = repository_id && Repo.one(newest(hive_id, repository_id))
 
     case own || Repo.one(newest(hive_id, nil)) do
       %RunConfiguration{} = configuration -> {:ok, configuration}
-      nil -> first_baseline(organisation_id, hive_id)
+      nil -> {:error, unmanaged()}
     end
   end
 
-  defp first_baseline(organisation_id, hive_id) do
-    Repo.transact(fn ->
-      hive =
-        Repo.one(
-          from h in Hive,
-            where: h.id == ^hive_id and h.organisation_id == ^organisation_id,
-            lock: "FOR NO KEY UPDATE"
-        )
-
-      cond do
-        is_nil(hive) -> {:error, not_found("There is no such hive.")}
-        configuration = Repo.one(newest(hive_id, nil)) -> {:ok, configuration}
-        true -> render(hive, nil, nil, nil, nil, rules(hive_id, nil), [])
-      end
-    end)
+  defp unmanaged do
+    Error.new(
+      :unmanaged,
+      "Nobody has made this hive's policy yet: its machines run under their own, and there is no version until the first change here."
+    )
   end
 
   @doc false
