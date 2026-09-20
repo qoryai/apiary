@@ -294,31 +294,20 @@ defmodule ApiaryWeb.UserAuth do
   end
 
   # The word beside Policy: the hive's default mode, once the hive has a policy of Qory's,
-  # and the modes of the repositories that set their own.
+  # and the modes of the repositories that set their own. One read.
   defp policy_mode(%Scope{hive: nil}), do: %{mode: nil, own_modes: []}
 
   defp policy_mode(%Scope{} = scope) do
-    if Apiary.Policy.managed?(scope) do
-      repositories = Apiary.Policy.list_repositories(scope)
-
-      # A repository that follows the hive says the hive's mode; only a hive where none
-      # does is asked for it.
-      mode =
-        case Enum.find(repositories, &is_nil(&1.own_mode)) do
-          %{mode: mode} -> mode
-          nil -> Apiary.Policy.get_mode(scope)
-        end
-
-      %{mode: mode, own_modes: for(%{own_mode: own} <- repositories, own != nil, do: own)}
-    else
-      %{mode: nil, own_modes: []}
+    case Apiary.Policy.mode_summary(scope) do
+      %{managed?: true, mode: mode, own_modes: own_modes} -> %{mode: mode, own_modes: own_modes}
+      _unmanaged -> %{mode: nil, own_modes: []}
     end
   end
 
   # The sidebar's mode word follows `policy:<hive>` on every page: the hook subscribes
-  # the page's process here, before the page mounts, and re-reads the word at once on
-  # the first change and then at most once a second while changes keep coming, as the
-  # count of alive runs does.
+  # the page's process here, before the page mounts, and re-reads the word (one read) at
+  # once on the first change and then at most once a second while changes keep coming, as
+  # the count of alive runs does.
   #
   # Whether the message goes on to the page is decided when it arrives, not by who
   # subscribed first: a page that follows the policy subscribes too, wherever it likes,
