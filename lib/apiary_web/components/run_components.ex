@@ -19,7 +19,10 @@ defmodule ApiaryWeb.RunComponents do
   use Gettext, backend: ApiaryWeb.Gettext
 
   import ApiaryWeb.CoreComponents,
-    only: [badge: 1, icon: 1, mono: 1, term: 1, short_date: 1]
+    only: [badge: 1, button: 1, icon: 1, mono: 1, notice: 1, term: 1, short_date: 1]
+
+  # Called by its full name below: `PolicyComponents` imports this module.
+  alias ApiaryWeb.PolicyComponents
 
   alias Phoenix.LiveView.JS
 
@@ -403,12 +406,13 @@ defmodule ApiaryWeb.RunComponents do
   attr :tip, :string, default: nil, doc: "turns the label into a term hover"
   attr :mono, :boolean, default: false
   attr :title, :string, default: nil, doc: "the full value, when the cell may truncate it"
+  attr :class, :any, default: nil
   slot :inner_block, required: true
   slot :sub, doc: "a faint second value on the same line"
 
   def kv(assigns) do
     ~H"""
-    <div class="q-kv">
+    <div class={["q-kv", @class]}>
       <dt>
         <.term :if={@tip} word={@label} standard={@tip} class="q-tip-wide tooltip-right" />
         <span :if={!@tip}>{@label}</span>
@@ -887,7 +891,12 @@ defmodule ApiaryWeb.RunComponents do
   attr :toggle, :string, default: "toggle_destination"
   attr :more, :string, default: "more_destination_runs"
   attr :run_path, :any, default: nil, doc: "hive: a function from a run to its connections page"
-  slot :trailing, doc: "reserved: a later milestone's allow and deny buttons"
+
+  attr :act, :map,
+    default: nil,
+    doc: "table and hive: what the row may ask of the policy, see `rule_action/1`"
+
+  slot :trailing, doc: "what the slot holds when `act` is not given"
 
   def connection_row(%{variant: "inline"} = assigns) do
     assigns = assign(assigns, :c, normalise(assigns.connection))
@@ -927,12 +936,20 @@ defmodule ApiaryWeb.RunComponents do
       <td class={["q-num", if(@c.denied == 0, do: "q-zero", else: "q-bad")]}>
         {delimited(@c.denied)}
       </td>
-      <td class="q-why"><.reason c={@c} variant="table" /></td>
+      <td class="q-why">
+        <.reason c={@c} variant="table" />
+        <.after_line :if={@act && @act[:after]} id={"#{@id}-after"} line={@act.after} />
+      </td>
       <td><.outcome value={@c.outcome} /></td>
       <td class="q-meta">
         <.seen c={@c} started_at={@started_at} />
       </td>
-      <td class="q-slot-cell w-px"><span class="q-slot">{render_slot(@trailing)}</span></td>
+      <td class="q-slot-cell w-px">
+        <span class="q-slot">
+          <.rule_action :if={@act} id={"#{@id}-act"} connection={@c} {rule_action_attrs(@act)} />
+          {if !@act, do: render_slot(@trailing)}
+        </span>
+      </td>
     </tr>
     """
   end
@@ -983,10 +1000,16 @@ defmodule ApiaryWeb.RunComponents do
           :if={@c.allowed > 0 and @c.denied > 0}
           class="text-faint"
         > · last attempt</span>
+        <.after_line :if={@act && @act[:after]} id={"#{@id}-after"} line={@act.after} />
       </td>
       <td><.outcome value={@c.outcome} /></td>
       <td class="q-meta"><.relative_time at={@c.last_seen_at} /></td>
-      <td class="q-slot-cell w-px"><span class="q-slot">{render_slot(@trailing)}</span></td>
+      <td class="q-slot-cell w-px">
+        <span class="q-slot">
+          <.rule_action :if={@act} id={"#{@id}-act"} connection={@c} {rule_action_attrs(@act)} />
+          {if !@act, do: render_slot(@trailing)}
+        </span>
+      </td>
     </tr>
     <tr :if={@open} id={"#{@id}-runs"} class="q-sub">
       <td colspan="8">
@@ -1217,6 +1240,12 @@ defmodule ApiaryWeb.RunComponents do
     doc: "hive: `destination_key/1` of an open destination => %{runs, total}"
 
   attr :run_path, :any, default: nil
+
+  attr :acts, :map,
+    default: nil,
+    doc:
+      "a row's DOM id => what it may ask of the policy (`rule_action/1`); nil leaves the slots empty"
+
   attr :class, :any, default: nil
 
   def connections_table(assigns) do
@@ -1244,7 +1273,7 @@ defmodule ApiaryWeb.RunComponents do
               <.term word="Outcome" standard={@outcome_tip} class="q-tip-wide tooltip-bottom" />
             </th>
             <th scope="col">First and last seen</th>
-            <th scope="col" class="w-px"><span class="sr-only">{gettext("Actions")}</span></th>
+            <th scope="col" class="w-px"><span class="sr-only">Rule actions</span></th>
           </tr>
           <tr :if={@variant == "hive"}>
             <th scope="col">Destination</th>
@@ -1256,7 +1285,7 @@ defmodule ApiaryWeb.RunComponents do
               <.term word="Outcome" standard={@outcome_tip} class="q-tip-wide tooltip-bottom" />
             </th>
             <th scope="col">Last seen</th>
-            <th scope="col" class="w-px"><span class="sr-only">{gettext("Actions")}</span></th>
+            <th scope="col" class="w-px"><span class="sr-only">Rule actions</span></th>
           </tr>
         </thead>
         <tbody id={@id}>
@@ -1268,6 +1297,7 @@ defmodule ApiaryWeb.RunComponents do
             started_at={@started_at}
             open={@open[destination_key(row)]}
             run_path={@run_path}
+            act={@acts && @acts[@row_id.(row)]}
           />
         </tbody>
       </table>
@@ -1299,6 +1329,419 @@ defmodule ApiaryWeb.RunComponents do
     |> :crypto.hash(:erlang.term_to_binary(term))
     |> Base.encode32(case: :lower, padding: false)
     |> binary_part(0, 16)
+  end
+
+  ## pd8. What a connection's row may ask of the policy (brief-policy.md)
+
+  defp rule_action_attrs(act) do
+    %{
+      standing: act.standing,
+      values: act[:values] || %{},
+      rule_path: act[:rule_path],
+      entry_host: act[:entry_host],
+      expanded: act[:expanded] == true
+    }
+  end
+
+  @doc """
+  The trailing slot of a connection's row. `standing` says what it holds: a button that
+  opens the popover (`:can_allow`, `:can_deny`), a padlock that opens the refusal
+  (`:locked_deny`, `:locked_allow`), nothing the wall's refusals (`:wall`) and a host no
+  rule can name (`:unnameable`), and the link to the rule once one answers the row
+  (`{:rule_added, _}`). Always visible: never on hover alone.
+
+  `values` ride on the `rule_open` event; they name the row and are looked up among the
+  rows the page holds, never trusted.
+  """
+  attr :id, :string, required: true
+  attr :connection, :map, required: true
+  attr :standing, :any, required: true
+  attr :values, :map, default: %{}
+  attr :rule_path, :string, default: nil
+  attr :entry_host, :string, default: nil, doc: "the host of the locked rule, for the tooltip"
+  attr :expanded, :boolean, default: false
+
+  def rule_action(%{standing: standing} = assigns) when standing in [:can_allow, :can_deny] do
+    assigns = assign(assigns, :action, if(standing == :can_allow, do: "allow", else: "deny"))
+
+    ~H"""
+    <button
+      type="button"
+      id={@id}
+      class={["btn btn-xs q-rowbtn", @action == "deny" && "btn-ghost"]}
+      phx-click={JS.push("rule_open", value: Map.put(@values, "action", @action))}
+      aria-haspopup="dialog"
+      aria-expanded={to_string(@expanded)}
+      aria-label={"#{String.capitalize(@action)} #{@connection.host}"}
+    >
+      {String.capitalize(@action)}
+    </button>
+    """
+  end
+
+  def rule_action(%{standing: standing} = assigns)
+      when standing in [:locked_deny, :locked_allow] do
+    assigns =
+      assign(
+        assigns,
+        :tip,
+        "A locked hive rule #{if standing == :locked_deny, do: "denies", else: "allows"} #{assigns.entry_host || assigns.connection.host}"
+      )
+
+    ~H"""
+    <button
+      type="button"
+      id={@id}
+      class="btn btn-ghost btn-xs btn-square q-rowbtn tooltip tooltip-left"
+      data-tip={@tip}
+      phx-click={
+        JS.push("rule_open",
+          value: Map.put(@values, "action", if(@standing == :locked_deny, do: "allow", else: "deny"))
+        )
+      }
+      aria-haspopup="dialog"
+      aria-expanded={to_string(@expanded)}
+      aria-label={@tip}
+    >
+      <.icon name="hero-lock-closed-micro" class="size-3.5" />
+    </button>
+    """
+  end
+
+  def rule_action(%{standing: {:rule_added, _action}} = assigns) do
+    ~H"""
+    <.link
+      :if={@rule_path}
+      id={@id}
+      navigate={@rule_path}
+      class="btn btn-ghost btn-xs q-rowbtn"
+      aria-label={"The rule for #{@connection.host}"}
+    >
+      Rule
+    </.link>
+    """
+  end
+
+  def rule_action(%{standing: :wall} = assigns) do
+    ~H|<span id={@id} class="sr-only">No rule changes this</span>|
+  end
+
+  def rule_action(assigns) do
+    ~H|<span id={@id} class="sr-only">No rule can name this host</span>|
+  end
+
+  @doc """
+  The line a row gains once a rule answers it (pd8, "After"). The row above it is the
+  record and stays as it was. `line` is `%{action, level, version, by, at, state,
+  reloaded_at}`; `state` is `:pending` (the run is alive and has not reported the digest
+  in force), `:in_force` (it has: claimed from the record, never after a timer),
+  `:ended`, `:machine` (the run takes no policy from this server) or `:hive` (the hive's
+  page, which says nothing of a run).
+  """
+  attr :id, :string, required: true
+  attr :line, :map, required: true
+
+  def after_line(assigns) do
+    ~H"""
+    <div id={@id} class="q-after" data-state={@line.state}>
+      <.badge color={after_color(@line.state)}>
+        <.icon name="hero-shield-check-micro" class="size-3" />{if @line.state == :in_force,
+          do: "In force in this run",
+          else: "Rule added"}
+      </.badge>
+      <span>
+        {if @line.action == :deny, do: "Denied", else: "Allowed"} for {if @line.level ==
+                                                                            :repository,
+                                                                          do: "this repository",
+                                                                          else: "the hive"}<span :if={
+          @line.version
+        }> in <PolicyComponents.version_link
+          version={@line.version.n}
+          navigate={@line.version.path}
+          class="text-xs"
+        /></span><span :if={@line.state != :in_force && @line.by}> by {@line.by}</span><span :if={
+          @line.state != :in_force && @line.at
+        }>, <.relative_time at={@line.at} /></span>. {after_sentence(@line)}
+      </span>
+    </div>
+    """
+  end
+
+  defp after_color(:in_force), do: "success"
+  defp after_color(:pending), do: "info"
+  defp after_color(:hive), do: "info"
+  defp after_color(_state), do: "neutral"
+
+  defp after_sentence(%{state: :pending}), do: "The run has not reloaded yet."
+
+  defp after_sentence(%{state: :in_force, reloaded_at: seq}) when is_integer(seq),
+    do: "The run reloaded at ##{seq |> Integer.to_string() |> String.pad_leading(4, "0")}."
+
+  defp after_sentence(%{state: :in_force}), do: "The run has reported it."
+
+  defp after_sentence(%{state: :ended}),
+    do: "This run has ended; the next run of the repository has it."
+
+  defp after_sentence(%{state: :machine}),
+    do: "This run uses its machine's policy and does not take this one."
+
+  defp after_sentence(_line), do: nil
+
+  @doc """
+  The popover of a row's Allow or Deny (pd8): a `popover` element in the top layer, so the
+  table's scroll container cannot clip it, placed under its button by the `RulePopover`
+  hook and a bottom sheet below 768 px. `popover` is the page's state of it:
+
+      %{anchor:, action: :allow | :deny, host:, path:, page: :run | :hive, level:,
+        repository: %{label:} | nil, repositories: [%{id, label, runs}], choice:,
+        host_paths:, hive:, alive:, fetched:, interval:, consequence:, error:,
+        refusal: nil | %{standing:, rule:, locked_by:, locked_at:, owner:, rule_path:}}
+
+  The form changes with `rule_change` and is sent with `rule_submit`; `rule_cancel`
+  closes it. A refusal has no form.
+  """
+  attr :id, :string, default: "rule-popover"
+  attr :popover, :map, required: true
+
+  def rule_popover(%{popover: %{refusal: %{}}} = assigns) do
+    ~H"""
+    <div
+      id={@id}
+      class="q-pop"
+      popover="auto"
+      phx-hook="RulePopover"
+      data-anchor={@popover.anchor}
+      role="dialog"
+      aria-labelledby={"#{@id}-title"}
+    >
+      <header>
+        <.icon name="hero-lock-closed-micro" class="size-4 text-faint" />
+        <h3 id={"#{@id}-title"}>
+          <span class="q-pop-host">{middle(@popover.host, 40)}</span>
+          stays {if @popover.refusal.standing == :locked_deny, do: "denied", else: "allowed"}
+        </h3>
+      </header>
+      <div class="q-pop-body">
+        <.notice kind={:warning}>
+          <span id={"#{@id}-refusal"}>
+            A locked hive rule {if @popover.refusal.standing == :locked_deny,
+              do: "denies",
+              else: "allows"}
+            <.mono bare>{@popover.refusal.rule}</.mono>. It holds against every repository, so {if @popover.refusal.standing ==
+                                                                                                     :locked_deny,
+                                                                                                   do:
+                                                                                                     "no rule added here would change what happens.",
+                                                                                                   else:
+                                                                                                     "a deny added here would change nothing."}
+            <span :if={@popover.refusal.locked_by}>
+              Locked by {@popover.refusal.locked_by}<span :if={@popover.refusal.locked_at}> on {short_date(@popover.refusal.locked_at)}</span>.
+            </span>
+            {if @popover.refusal.owner,
+              do: "You can change or unlock it on the hive's policy page.",
+              else: "Only an owner can change or unlock it."}
+          </span>
+        </.notice>
+      </div>
+      <footer>
+        <.button id={"#{@id}-close"} phx-click="rule_cancel" data-autofocus>Close</.button>
+        <.button id={"#{@id}-locked-rule"} navigate={@popover.refusal.rule_path}>
+          Show the locked rule
+        </.button>
+      </footer>
+    </div>
+    """
+  end
+
+  def rule_popover(assigns) do
+    assigns =
+      assigns
+      |> assign(:deny, assigns.popover.action == :deny)
+      |> assign(:pathed, assigns.popover.host_paths != nil and assigns.popover.path != "")
+      |> assign(:ready, popover_ready?(assigns.popover))
+
+    ~H"""
+    <div
+      id={@id}
+      class="q-pop"
+      popover="auto"
+      phx-hook="RulePopover"
+      data-anchor={@popover.anchor}
+      role="dialog"
+      aria-labelledby={"#{@id}-title"}
+    >
+      <form id={"#{@id}-form"} phx-change="rule_change" phx-submit="rule_submit">
+        <header>
+          <PolicyComponents.rule_mark action={if @deny, do: "deny", else: "allow"} />
+          <h3 id={"#{@id}-title"}>
+            {if @deny, do: "Deny", else: "Allow"}{if @pathed, do: " on"}
+            <span class="q-pop-host" title={@popover.host}>{middle(@popover.host, 40)}</span>
+          </h3>
+        </header>
+        <div class="q-pop-body">
+          <div :if={@popover.error} id={"#{@id}-error"} role="alert">
+            <.notice kind={:error}>{@popover.error}</.notice>
+          </div>
+
+          <fieldset :if={@pathed}>
+            <legend>
+              What. This host has path rules:
+              <.mono :for={path <- Enum.take(@popover.host_paths, 6)} bare class="q-rule">
+                {middle(path, 40)}
+              </.mono>
+              <span :if={length(@popover.host_paths) > 6}>
+                and {length(@popover.host_paths) - 6} more
+              </span>
+              <span :if={@popover.host_paths == []}>none, so no path is allowed</span>
+            </legend>
+            <p id={"#{@id}-what"} class="q-pop-what">
+              <b>This path</b>
+              <.mono bare class="q-rule">{middle(@popover.path, 64)}</.mono>
+              {if @deny,
+                do: "is taken out of the paths in force for the host.",
+                else: "is added to the paths in force for the host."}
+            </p>
+          </fieldset>
+
+          <fieldset>
+            <legend>For</legend>
+            <label :if={@popover.page == :run and @popover.repository} class="q-popt">
+              <input
+                type="radio"
+                name="for"
+                value="repository"
+                checked={@popover.level == :repository}
+              />
+              <span>
+                <b>This repository</b>
+                <span class="font-mono text-xs text-muted">{middle(@popover.repository.label, 48)}</span>
+              </span>
+              <small :if={@deny && @popover.consequence[:repository]}>
+                {@popover.consequence.repository}
+              </small>
+            </label>
+            <label :if={@popover.page == :hive and @popover.repositories != []} class="q-popt">
+              <input
+                type="radio"
+                name="for"
+                value="repository"
+                checked={@popover.level == :repository}
+              />
+              <span><b>One repository</b></span>
+              <select
+                name="repository"
+                id={"#{@id}-repository"}
+                class="select select-sm q-pop-select"
+                aria-label="Repository"
+              >
+                <option value="" selected={is_nil(@popover.choice)}>Choose a repository</option>
+                <option
+                  :for={repository <- @popover.repositories}
+                  value={repository.id}
+                  selected={@popover.choice == repository.id}
+                >
+                  {middle(repository.label, 56)} · {count_noun(repository.runs, "run")}
+                </option>
+              </select>
+              <small :if={@deny && @popover.consequence[:repository]}>
+                {@popover.consequence.repository}
+              </small>
+            </label>
+            <label class="q-popt">
+              <input type="radio" name="for" value="hive" checked={@popover.level == :hive} />
+              <span><b>The whole hive</b></span>
+              <small>
+                Every repository of {@popover.hive}. {if @deny, do: @popover.consequence[:hive]}
+              </small>
+            </label>
+          </fieldset>
+
+          <p class="q-pop-next">
+            <.icon name="hero-arrow-path-micro" class="size-3.5" />
+            <span id={"#{@id}-next"}>
+              Takes effect in running sessions within a heartbeat, about {@popover.interval} s. {next_sentence(
+                @popover
+              )}
+            </span>
+          </p>
+        </div>
+        <footer>
+          <.button id={"#{@id}-cancel"} type="button" phx-click="rule_cancel">Cancel</.button>
+          <.button
+            id={"#{@id}-submit"}
+            type="submit"
+            variant={if @deny, do: "danger", else: "primary"}
+            disabled={!@ready}
+          >
+            {if @deny, do: "Deny", else: "Allow"} for {case @popover.level do
+              :hive -> "the hive"
+              :repository when @popover.page == :run -> "this repository"
+              :repository -> "the repository"
+              _ -> "…"
+            end}
+          </.button>
+        </footer>
+      </form>
+    </div>
+    """
+  end
+
+  defp popover_ready?(%{level: :hive}), do: true
+  defp popover_ready?(%{level: :repository, page: :run}), do: true
+  defp popover_ready?(%{level: :repository, choice: choice}) when is_binary(choice), do: true
+  defp popover_ready?(_popover), do: false
+
+  defp next_sentence(%{action: :deny}),
+    do: "Open connections to the host are closed at the reload."
+
+  defp next_sentence(%{page: :run, alive: true, fetched: true}),
+    do: "This run is alive: its next attempt can succeed."
+
+  defp next_sentence(%{page: :run, alive: true}),
+    do: "This run uses its machine's policy and does not take this one."
+
+  defp next_sentence(_popover), do: nil
+
+  ## pd9. The drift mark
+
+  @doc """
+  The mark of a run that is alive and last reported a run configuration other than the one
+  in force for its repository: an amber badge, a triangle and words, never a pulse. It is
+  a comparison of two digests of the record; no timer decides it.
+  """
+  attr :id, :string, default: "run-drift"
+
+  attr :reported, :any,
+    default: nil,
+    doc: "%{n, …} of the version the run last reported, when known"
+
+  attr :in_force, :map, required: true, doc: "%{n, rendered_at, …} of the version in force"
+  attr :last_seq, :integer, default: nil
+  attr :class, :any, default: nil
+
+  def drift(assigns) do
+    ~H"""
+    <span
+      id={@id}
+      class={["q-drift tooltip tooltip-left q-tip-wide", @class]}
+      tabindex="0"
+      data-tip={drift_tip(@reported, @in_force, @last_seq)}
+    >
+      <.icon name="hero-exclamation-triangle-micro" class="size-[11px]" />Behind v{@in_force.n}
+    </span>
+    """
+  end
+
+  defp drift_tip(reported, in_force, last_seq) do
+    [
+      "The run last reported #{if reported, do: "v#{reported.n}", else: "another configuration"}" <>
+        if(is_integer(last_seq) and last_seq > 0,
+          do: " at ##{last_seq |> Integer.to_string() |> String.pad_leading(4, "0")}.",
+          else: "."
+        ),
+      "v#{in_force.n} has been in force since #{clock_label(in_force.rendered_at)}.",
+      "A run reloads at its next heartbeat."
+    ]
+    |> Enum.join(" ")
   end
 
   ## rd15. New items pill

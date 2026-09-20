@@ -91,7 +91,9 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert html =~ run.wall
       assert html =~ run.image
       assert html =~ "enforce"
-      assert html =~ String.slice(run.policy_digest, 0, 12)
+      # the run configuration it applied was not rendered by this hive (pd9)
+      assert has_element?(lv, "#policy-unrendered", "a4e1d0c97b3f")
+      assert has_element?(lv, "#policy-unrendered", "not rendered here")
       assert html =~ "3 m 52 s"
 
       # labels, in the record's order with forge, repository and task first
@@ -683,7 +685,11 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert html =~ "Dial failed"
       assert html =~ "POST /acme/shop.git/git-upload-pack"
       assert html =~ "forge-token"
-      assert html =~ "behind a wall, anything else fails unseen."
+      assert has_element?(
+               lv,
+               "#connections-footnote",
+               "A rule added here changes what happens next; what the record already says stays as it was."
+             )
 
       lv |> element("#decision button", "Denied") |> render_click()
       assert_patch(lv, ~p"/hive/runs/#{run.run_id}/connections?decision=denied")

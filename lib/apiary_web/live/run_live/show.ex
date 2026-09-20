@@ -18,10 +18,13 @@ defmodule ApiaryWeb.RunLive.Show do
   use ApiaryWeb, :live_view
 
   import ApiaryWeb.RunPageComponents
+  import ApiaryWeb.PolicyComponents, only: [version_link: 1, short_digest: 1]
 
+  alias Apiary.Policy
   alias Apiary.Runs
   alias Apiary.Runs.{Filters, Record, Run}
   alias Apiary.Runs.Record.Timeline
+  alias ApiaryWeb.ConnectionLive.Rules
 
   @window 300
   @page 200
@@ -29,6 +32,8 @@ defmodule ApiaryWeb.RunLive.Show do
   @coalesce_ms 250
   @quiet_tick_ms 5_000
   @announce_every_ms 10_000
+  @max_versions 20
+  @unrendered_tip "The run reported a digest that matches no version rendered here: a policy file on the machine, or a run started with --local."
 
   @wall_tip "The enclosure the agent runs in. Its only route out leads to the runner's proxy."
   @no_wall_tip "This run had no wall. A program that ignores the proxy is not seen."
@@ -149,10 +154,45 @@ defmodule ApiaryWeb.RunLive.Show do
             <% end %>
             <:sub :if={@run.wall && @run.image}>{@run.image}</:sub>
           </.kv>
-          <.kv label="Policy">
-            <.policy_value policy={@policy} digest={@run.policy_digest} tips={@tips} />
+          <.kv label="Policy" class="q-kv-policy">
+            <.policy_value
+              policy={@policy}
+              digest={@run.policy_digest}
+              tips={@tips}
+              version={@reported_version}
+              reported={@digests.reported || @digests.applied}
+              in_force={@in_force}
+              last_seq={@run.projected_sequence}
+              baseline={@reported_version && @reported_version.scope == :hive && @repository != nil}
+            />
           </.kv>
         </.kvs>
+
+        <.notice :if={@in_force} kind={:warning} class="max-w-[100ch]">
+          <span id="run-behind">
+            <b>This run is behind the policy in force.</b>
+            It last reported {if @reported_version,
+              do: "v#{@reported_version.n}",
+              else: "another configuration"}
+            <span :if={@digests.reported} class="font-mono text-xs">{short_digest(@digests.reported)}</span>;
+            v{@in_force.n} <span class="font-mono text-xs">{short_digest(@in_force.digest)}</span>
+            came into force <.relative_time id="run-behind-since" at={@in_force.rendered_at} />.
+            A run reloads at its next heartbeat; until it does, it decides by {if @reported_version,
+              do: "v#{@reported_version.n}",
+              else: "what it holds"}.
+          </span>
+          <div class="mt-1">
+            <.link
+              id="run-behind-diff"
+              navigate={behind_path(@reported_version, @in_force)}
+              class="q-link"
+            >
+              {if comparable?(@reported_version, @in_force),
+                do: "What changed between v#{@reported_version.n} and v#{@in_force.n}",
+                else: "Open v#{@in_force.n}"}
+            </.link>
+          </div>
+        </.notice>
 
         <div :if={ordered_labels(@run.labels) != []} class="q-labels">
           <span>Labels</span>
@@ -217,6 +257,9 @@ defmodule ApiaryWeb.RunLive.Show do
             connections={@connections}
             counts={@counts}
             decision={@decision}
+            acts={@acts}
+            version={@reported_version}
+            in_force={@in_force}
           />
         <% @live_action == :details -> %>
           <.details_tab
@@ -225,6 +268,9 @@ defmodule ApiaryWeb.RunLive.Show do
             session_id={@session_id}
             closable={@run.state in Runs.closable_states()}
             tips={@tips}
+            version={@reported_version}
+            in_force={@in_force}
+            digests={@digests}
           />
       <% end %>
 
@@ -243,6 +289,8 @@ defmodule ApiaryWeb.RunLive.Show do
           <.button variant="danger" phx-click="close_confirm" loading_text="Closing">Close run</.button>
         </:footer>
       </.modal>
+
+      <.rule_popover :if={@popover} popover={@popover} />
     </Layouts.app>
     """
   end
@@ -399,6 +447,9 @@ defmodule ApiaryWeb.RunLive.Show do
   attr :connections, :list, required: true
   attr :counts, :map, required: true
   attr :decision, :string, default: nil
+  attr :acts, :map, default: nil
+  attr :version, :any, default: nil
+  attr :in_force, :any, default: nil
 
   defp connections_tab(assigns) do
     ~H"""
@@ -438,9 +489,26 @@ defmodule ApiaryWeb.RunLive.Show do
           </span>
           <span :if={@policy}>
             policy <b>{@policy.mode}</b>
-            <span :if={@run.policy_digest} class="font-mono text-[12.5px]" title={@run.policy_digest}>
+            <.version_link
+              :if={@version}
+              version={@version.n}
+              navigate={@version.path}
+              title={"Version #{@version.n}. Open the exact document."}
+            />
+            <span
+              :if={!@version && @run.policy_digest}
+              class="font-mono text-[12.5px]"
+              title={@run.policy_digest}
+            >
               {String.slice(@run.policy_digest, 0, 12)}
             </span>
+            <.drift
+              :if={@in_force}
+              id="connections-drift"
+              reported={@version}
+              in_force={@in_force}
+              last_seq={@run.projected_sequence}
+            />
           </span>
         </span>
       </div>
@@ -450,6 +518,7 @@ defmodule ApiaryWeb.RunLive.Show do
         label="Connections of this run"
         rows={@connections.rows}
         started_at={@run.started_at}
+        acts={@acts}
       />
       <div
         :if={@connections.total > 0}
@@ -474,11 +543,10 @@ defmodule ApiaryWeb.RunLive.Show do
           </.button>
         </div>
       </div>
-      <p :if={@counts.all > 0} class="max-w-[80ch] text-[12.5px] text-faint">
+      <p :if={@counts.all > 0} id="connections-footnote" class="max-w-[80ch] text-[12.5px] text-faint">
         Counted per host, port and path from the run's egress events. The reason and outcome are
-        those of the last attempt. Only programs that honour the proxy are seen; {if @run.wall,
-          do: "behind a wall, anything else fails unseen.",
-          else: "without a wall, anything else connects unseen."}
+        those of the last attempt. A rule added here changes what happens next; what the record
+        already says stays as it was.
       </p>
     </div>
     """
@@ -489,6 +557,9 @@ defmodule ApiaryWeb.RunLive.Show do
   attr :session_id, :string, default: nil
   attr :closable, :boolean, required: true
   attr :tips, :map, required: true
+  attr :version, :any, default: nil
+  attr :in_force, :any, default: nil
+  attr :digests, :map, required: true
 
   defp details_tab(assigns) do
     ~H"""
@@ -559,6 +630,19 @@ defmodule ApiaryWeb.RunLive.Show do
           <dt>Run configuration</dt>
           <dd class="font-mono">
             {@run.run_configuration_digest || @run.reported_run_configuration_digest || "n/a"}
+          </dd>
+          <dt :if={@version}>Version</dt>
+          <dd :if={@version} id="policy-version">
+            <.version_link version={@version.n} navigate={@version.path} />
+            <span :if={@version.scope == :hive} class="text-faint">hive baseline</span>
+          </dd>
+          <dt :if={@version && @digests.in_force}>In force now</dt>
+          <dd :if={@version && @digests.in_force} id="policy-in-force">
+            <.version_link :if={@in_force} version={@in_force.n} navigate={@in_force.path} />
+            <span :if={!@in_force && @digests.in_force == @version.digest}>the same</span>
+            <span :if={!@in_force && @digests.in_force != @version.digest} class="font-mono">
+              {short_digest(@digests.in_force)}
+            </span>
           </dd>
           <dt>Allowed hosts</dt>
           <dd class="font-mono">{strings(@policy.allow, @policy.allow_count) || "none"}</dd>
@@ -650,9 +734,20 @@ defmodule ApiaryWeb.RunLive.Show do
     """
   end
 
+  # pd9. The mode, then the version the run last reported as a link to that exact version,
+  # then its digest; the drift mark takes the digest's place while the run is behind.
   attr :policy, :any, required: true
-  attr :digest, :string, default: nil
+  attr :digest, :string, default: nil, doc: "the runner's own digest of its policy document"
   attr :tips, :map, required: true
+
+  attr :version, :any,
+    default: nil,
+    doc: "the version the reported digest names here, when one does"
+
+  attr :reported, :string, default: nil, doc: "the run configuration digest the run reported"
+  attr :in_force, :any, default: nil, doc: "the version in force, only while the run is behind"
+  attr :last_seq, :integer, default: nil
+  attr :baseline, :any, default: false
 
   defp policy_value(%{policy: nil} = assigns), do: ~H|<span class="text-faint">n/a</span>|
 
@@ -666,11 +761,28 @@ defmodule ApiaryWeb.RunLive.Show do
   defp policy_value(assigns) do
     ~H"""
     <.term word={@policy.mode || "n/a"} standard={@tips.mode} class="q-tip-wide tooltip-left" />
-    <small :if={@digest} class="ml-1 font-mono" title={"sha256 #{@digest}"}>{String.slice(
-      @digest,
-      0,
-      12
-    )}</small>
+    <%= cond do %>
+      <% @version -> %>
+        <.version_link
+          version={@version.n}
+          navigate={@version.path}
+          class="ml-1"
+          title={"Version #{@version.n}, sha256 #{short_digest(@version.digest)}. Open the exact document."}
+        />
+        <small :if={!@in_force && !@baseline} class="ml-1 font-mono" title={@version.digest}>
+          {short_digest(@version.digest)}
+        </small>
+        <small :if={!@in_force && @baseline} class="ml-1">hive baseline</small>
+      <% @reported -> %>
+        <span id="policy-unrendered" tabindex="0" title={@tips.unrendered}>
+          <small class="ml-1 font-mono">{short_digest(@reported)}</small>
+          <small>· not rendered here</small>
+        </span>
+      <% @digest -> %>
+        <small class="ml-1 font-mono" title={"sha256 #{@digest}"}>{String.slice(@digest, 0, 12)}</small>
+      <% true -> %>
+    <% end %>
+    <.drift :if={@in_force} reported={@version} in_force={@in_force} last_seq={@last_seq} />
     """
   end
 
@@ -703,7 +815,8 @@ defmodule ApiaryWeb.RunLive.Show do
          mode: @mode_tip,
          digest: @digest_tip,
          terminated: @terminated_tip,
-         lane: @lane_tip
+         lane: @lane_tip,
+         unrendered: @unrendered_tip
        },
        confirm_close: false,
        announcement: nil,
@@ -715,6 +828,16 @@ defmodule ApiaryWeb.RunLive.Show do
        window_loaded: false,
        index: Timeline.new(),
        policy: nil,
+       repository: nil,
+       digests: %{in_force: nil, reported: nil, applied: nil, drift: false},
+       reported_version: nil,
+       in_force: nil,
+       versions: %{},
+       effective: nil,
+       acts: nil,
+       popover: nil,
+       policy_subscribed: false,
+       policy_flush_scheduled: false,
        session_id: nil,
        counts: %{all: 0, allowed: 0, denied: 0, attempts: 0},
        connections: %{rows: [], page: 1, pages: 1, total: 0},
@@ -762,16 +885,25 @@ defmodule ApiaryWeb.RunLive.Show do
         if connected?(socket) do
           # Subscribed before the read, so nothing projected after it is missed.
           Runs.subscribe(scope, run)
+          unless socket.assigns.policy_subscribed, do: Policy.subscribe(scope)
           Process.send_after(self(), :quiet_tick, @quiet_tick_ms)
 
-          assign(socket,
+          socket
+          |> assign(
             loaded: true,
             window_loaded: false,
             full: MapSet.new(),
             index: Record.timeline(scope, run),
             policy: Record.policy(scope, run),
-            counts: Record.connection_counts(scope, run)
+            counts: Record.connection_counts(scope, run),
+            policy_subscribed: true,
+            repository: repository_of(scope, run),
+            versions: %{},
+            effective: nil,
+            acts: nil,
+            popover: nil
           )
+          |> assign_policy_facts()
         else
           socket
         end
@@ -853,11 +985,16 @@ defmodule ApiaryWeb.RunLive.Show do
   defp read_tab(socket, :connections, decision, page) do
     %{current_scope: scope, run: run} = socket.assigns
 
-    assign(socket,
+    socket
+    |> assign(
       window_loaded: false,
       counts: Record.connection_counts(scope, run),
-      connections: Record.connections(scope, run, decision: decision, page: page)
+      connections: Record.connections(scope, run, decision: decision, page: page),
+      # The effective policy is read when the tab opens and when the policy changes, and
+      # every row's standing is derived from it: no query per row (pj7).
+      effective: socket.assigns.effective || Policy.effective(scope, socket.assigns.repository)
     )
+    |> assign_acts()
   end
 
   defp read_tab(socket, :details, _decision, _page) do
@@ -972,7 +1109,47 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp build(socket, light) do
     %{current_scope: scope, run: run, full: full} = socket.assigns
-    Record.items(scope, run, light, full: MapSet.to_list(full))
+
+    scope
+    |> Record.items(run, light, full: MapSet.to_list(full))
+    |> with_versions(socket)
+  end
+
+  # The version each policy applied names, where this hive rendered it. The run's own are
+  # held already; any other digest costs one indexed read, and a build asks for at most
+  # #{@max_versions}, whatever a runner put in its events.
+  defp with_versions(items, socket) do
+    %{current_scope: scope, repository: repository, versions: known} = socket.assigns
+
+    {items, _known} =
+      Enum.map_reduce(items, known, fn
+        %{kind: :policy_applied} = item, known ->
+          {version, known} = lookup_version(known, scope, repository, item[:digest])
+          {previous, known} = lookup_version(known, scope, repository, item[:previous_digest])
+          {Map.merge(item, %{version: version, previous_version: previous}), known}
+
+        item, known ->
+          {item, known}
+      end)
+
+    items
+  end
+
+  defp lookup_version(known, _scope, _repository, digest) when not is_binary(digest),
+    do: {nil, known}
+
+  defp lookup_version(known, scope, repository, digest) do
+    case known do
+      %{^digest => version} ->
+        {version, known}
+
+      _ when map_size(known) >= @max_versions ->
+        {nil, known}
+
+      _ ->
+        version = Rules.version(scope, repository, digest)
+        {version, Map.put(known, digest, version)}
+    end
   end
 
   defp assign_window_counts(socket) do
@@ -1139,8 +1316,338 @@ defmodule ApiaryWeb.RunLive.Show do
     {:noreply, assign(socket, confirm_close: false)}
   end
 
+  ## A row's Allow and Deny (pd8). What the browser names is looked up among the rows the
+  ## page holds, which are the run's: an id of another run or another hive finds nothing.
+
+  def handle_event("rule_open", %{"id" => id, "action" => action}, socket)
+      when is_binary(id) and action in ~w(allow deny) do
+    %{connections: %{rows: rows}, acts: acts, live_action: tab} = socket.assigns
+    row = tab == :connections && Enum.find(rows, &(&1.id == id))
+    act = row && acts && acts["cx-#{row.id}"]
+
+    case {act, action} do
+      {%{standing: :can_allow}, "allow"} ->
+        {:noreply, open_popover(socket, row, act, :allow)}
+
+      {%{standing: :can_deny}, "deny"} ->
+        {:noreply, open_popover(socket, row, act, :deny)}
+
+      {%{standing: locked}, _} when locked in [:locked_deny, :locked_allow] ->
+        {:noreply, open_refusal(socket, row, act)}
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
+  def handle_event(
+        "rule_change",
+        params,
+        %{assigns: %{popover: %{refusal: nil} = popover}} = socket
+      ) do
+    level =
+      case params["for"] do
+        "repository" when not is_nil(popover.repository) -> :repository
+        "hive" -> :hive
+        _ -> popover.level
+      end
+
+    {:noreply, assign(socket, popover: %{popover | level: level, error: nil})}
+  end
+
+  def handle_event("rule_cancel", _params, socket), do: {:noreply, close_popover(socket)}
+
+  # The rule is the domain's to make and to refuse: `rule_from_connection/4` and nothing
+  # else, and what it refuses is said in its own sentence.
+  def handle_event(
+        "rule_submit",
+        _params,
+        %{assigns: %{popover: %{refusal: nil, level: level} = popover}} = socket
+      )
+      when level in [:repository, :hive] do
+    %{current_scope: scope, run: run} = socket.assigns
+
+    with {:ok, connection} <- Record.connection(scope, run, popover.connection_id),
+         {:ok, rule} <- Policy.rule_from_connection(scope, connection, popover.action, level) do
+      {:noreply,
+       socket
+       |> close_popover()
+       |> assign(effective: nil)
+       |> refresh_policy()
+       |> put_flash(:info, rule_toast(socket, popover, rule, level))
+       |> announce(
+         "#{popover.host} is #{if popover.action == :deny, do: "denied", else: "allowed"} for #{if level == :repository, do: "this repository", else: "the hive"}.",
+         :now
+       )}
+    else
+      {:error, %Policy.Error{message: message}} ->
+        {:noreply, assign(socket, popover: %{popover | error: message})}
+
+      _not_found ->
+        {:noreply,
+         socket
+         |> close_popover()
+         |> put_flash(:error, "This connection is no longer in this run.")}
+    end
+  end
+
   # A crafted event, or one for a page without a run: nothing to do.
   def handle_event(_event, _params, socket), do: {:noreply, socket}
+
+  defp open_popover(socket, row, act, action) do
+    %{run: run, repository: repository, current_scope: scope, effective: effective} =
+      socket.assigns
+
+    assign(socket,
+      popover: %{
+        anchor: "cx-#{row.id}-act",
+        connection_id: row.id,
+        action: action,
+        host: act.host,
+        path: row.path || "",
+        page: :run,
+        level: if(repository, do: :repository, else: :hive),
+        repository: repository && %{label: "#{repository.forge}/#{repository.path}"},
+        repositories: [],
+        choice: nil,
+        host_paths: Rules.held_paths(effective, act.host),
+        hive: scope.hive.name,
+        alive: alive?(run),
+        fetched: fetched?(socket),
+        interval: beat(run),
+        consequence: deny_consequence(act[:entry]),
+        error: nil,
+        refusal: nil
+      }
+    )
+    |> mark_expanded()
+  end
+
+  defp open_refusal(socket, row, act) do
+    scope = socket.assigns.current_scope
+    locked = locked_change(scope, act.entry)
+
+    assign(socket,
+      popover: %{
+        anchor: "cx-#{row.id}-act",
+        host: act.host,
+        refusal: %{
+          standing: act.standing,
+          rule: act.entry.host,
+          locked_by: locked && locked.changed_by && locked.changed_by.email,
+          locked_at: locked && locked.inserted_at,
+          owner: owner?(scope),
+          rule_path: Rules.rule_path(nil, act.entry.host)
+        }
+      }
+    )
+    |> mark_expanded()
+  end
+
+  defp close_popover(socket), do: socket |> assign(popover: nil) |> mark_expanded()
+
+  # The slot's button says whether its popover is open.
+  defp mark_expanded(%{assigns: %{acts: acts, popover: popover}} = socket) when is_map(acts) do
+    open = popover && String.replace_suffix(popover.anchor, "-act", "")
+
+    assign(socket,
+      acts: Map.new(acts, fn {id, act} -> {id, Map.put(act, :expanded, id == open)} end)
+    )
+  end
+
+  defp mark_expanded(socket), do: socket
+
+  # Who locked the rule and when, from the newest page of the hive's history; nil further back.
+  defp locked_change(scope, entry) do
+    scope
+    |> Policy.list_changes(nil, 1)
+    |> Map.get(:items, [])
+    |> Enum.find(&(&1.action == "rule_locked" and &1.subject == entry.host))
+  end
+
+  defp owner?(%{membership: %{level: :owner}}), do: true
+  defp owner?(_scope), do: false
+
+  defp deny_consequence(%{source: :hive}) do
+    %{
+      repository: "Disables the hive's allow rule here. Other repositories keep it.",
+      hive: "Replaces the hive's allow rule."
+    }
+  end
+
+  defp deny_consequence(%{source: :repository}) do
+    %{
+      repository: "Replaces this repository's allow rule.",
+      hive: "This repository's own allow rule still holds here."
+    }
+  end
+
+  defp deny_consequence(_entry), do: %{}
+
+  defp rule_toast(socket, popover, _rule, level) do
+    %{current_scope: scope, repository: repository} = socket.assigns
+    target = if level == :repository, do: repository, else: nil
+
+    where =
+      if level == :repository and repository,
+        do: "#{repository.forge}/#{repository.path}",
+        else: "the hive"
+
+    version =
+      case Policy.list_changes(scope, target, 1) do
+        %{items: [%{version_after: n} | _]} when is_integer(n) -> " Version #{n}."
+        _ -> ""
+      end
+
+    "#{popover.host} is #{if popover.action == :deny, do: "denied", else: "allowed"} for #{where}.#{version}" <>
+      if(fetched?(socket) or not alive?(socket.assigns.run),
+        do: " Running sessions have it within a heartbeat.",
+        else:
+          " This run uses its machine's policy; sessions that take this one have it within a heartbeat."
+      )
+  end
+
+  ## The policy facts of the header and of the rows
+
+  defp repository_of(scope, %Run{repository_id: id}) when is_binary(id) do
+    case Policy.get_repository(scope, id) do
+      {:ok, repository} -> repository
+      _ -> nil
+    end
+  end
+
+  defp repository_of(_scope, _run), do: nil
+
+  # A run that holds a configuration fetched from this server is one that reloads.
+  defp fetched?(%{assigns: %{digests: digests}}),
+    do: is_binary(digests.reported) or is_binary(digests.applied)
+
+  # pj8: drift is a comparison, read at mount, on each message of the policy's topic and
+  # when the run reports another digest. No timer decides it.
+  defp assign_policy_facts(%{assigns: %{run: %Run{} = run}} = socket) do
+    %{current_scope: scope, repository: repository, versions: known} = socket.assigns
+    digests = Rules.digests(scope, run)
+
+    {reported, known} =
+      lookup_version(known, scope, repository, digests.reported || digests.applied)
+
+    behind? = alive?(run) and digests.drift
+
+    in_force =
+      if behind? do
+        case Policy.current_configuration(scope, repository) do
+          {:ok, configuration} -> Rules.version_of(configuration)
+          _ -> nil
+        end
+      end
+
+    socket =
+      if in_force && is_nil(socket.assigns.in_force),
+        do: announce(socket, "This run is behind the policy in force.", :now),
+        else: socket
+
+    assign(socket,
+      digests: digests,
+      reported_version: reported,
+      in_force: in_force,
+      versions: known
+    )
+  end
+
+  defp assign_policy_facts(socket), do: socket
+
+  defp refresh_policy(%{assigns: %{run: %Run{}, loaded: true}} = socket) do
+    %{current_scope: scope, repository: repository, live_action: tab} = socket.assigns
+    socket = assign_policy_facts(socket)
+
+    if tab == :connections,
+      do: socket |> assign(effective: Policy.effective(scope, repository)) |> assign_acts(),
+      else: assign(socket, effective: nil)
+  end
+
+  defp refresh_policy(socket), do: socket
+
+  # What each row of the page may ask, and the line after the rows a rule already answers.
+  defp assign_acts(%{assigns: %{effective: %Policy.Effective{} = effective}} = socket) do
+    %{current_scope: scope, repository: repository, connections: %{rows: rows}} = socket.assigns
+    standings = Enum.map(rows, &{&1, Rules.standing(&1, effective, :run)})
+    changes = Rules.changes(scope, repository, Enum.map(standings, &elem(&1, 1)))
+
+    acts =
+      for {row, standing} <- standings, into: %{} do
+        {"cx-#{row.id}", act(socket, row, standing, changes)}
+      end
+
+    socket |> assign(acts: acts) |> mark_expanded()
+  end
+
+  defp assign_acts(socket), do: assign(socket, acts: nil)
+
+  defp act(socket, row, %{standing: {:rule_added, action}, entry: entry} = standing, changes)
+       when not is_nil(entry) do
+    %{repository: repository, current_scope: scope} = socket.assigns
+    target_id = if entry.source == :repository and repository, do: repository.id
+    change = Rules.change_for(entry, changes)
+
+    standing
+    |> Map.merge(%{
+      values: %{"id" => row.id},
+      entry_host: entry.host,
+      rule_path: Rules.rule_path(target_id, entry.host),
+      after: %{
+        action: action,
+        level: if(entry.source == :repository, do: :repository, else: :hive),
+        version:
+          change && is_integer(change.version) &&
+            %{n: change.version, path: Rules.version_path(target_id, change.version)},
+        by: change && who(change, scope),
+        at: (change && change.at) || (entry.rule && entry.rule.updated_at),
+        state: after_state(socket),
+        reloaded_at: reloaded_at(socket)
+      }
+    })
+  end
+
+  defp act(_socket, row, standing, _changes) do
+    Map.merge(standing, %{
+      values: %{"id" => row.id},
+      entry_host: standing.entry && standing.entry.host,
+      rule_path: nil,
+      after: nil
+    })
+  end
+
+  defp who(%{by_id: id}, %{user: %{id: id}}) when not is_nil(id), do: "you"
+  defp who(%{by: email}, _scope) when is_binary(email), do: email |> String.split("@") |> hd()
+  defp who(_change, _scope), do: nil
+
+  # "In force in this run" is claimed from the record alone: the run reported the digest
+  # that is in force. Never after a timer, and never of a run that takes no policy here.
+  defp after_state(%{assigns: %{run: run, digests: digests}} = socket) do
+    cond do
+      not alive?(run) -> :ended
+      not fetched?(socket) -> :machine
+      is_binary(digests.reported) and digests.reported == digests.in_force -> :in_force
+      true -> :pending
+    end
+  end
+
+  defp reloaded_at(%{assigns: %{run: run, digests: digests, policy: %{sequence: sequence}}})
+       when is_integer(sequence) do
+    if is_binary(digests.in_force) and run.run_configuration_digest == digests.in_force,
+      do: sequence
+  end
+
+  defp reloaded_at(_socket), do: nil
+
+  defp comparable?(%{repository_id: id}, %{repository_id: id}), do: true
+  defp comparable?(_reported, _in_force), do: false
+
+  defp behind_path(reported, in_force) do
+    if comparable?(reported, in_force),
+      do: Rules.version_path(in_force.repository_id, in_force.n, %{"compare" => reported.n}),
+      else: in_force.path
+  end
 
   defp refresh_run(socket) do
     case Record.reload(socket.assigns.current_scope, socket.assigns.run) do
@@ -1199,6 +1706,19 @@ defmodule ApiaryWeb.RunLive.Show do
     end
   end
 
+  # The policy's topic: coalesced like the run's, one read per #{@coalesce_ms} ms.
+  def handle_info({:policy_changed, _what}, socket) do
+    if socket.assigns.policy_flush_scheduled do
+      {:noreply, socket}
+    else
+      Process.send_after(self(), :policy_flush, @coalesce_ms)
+      {:noreply, assign(socket, policy_flush_scheduled: true)}
+    end
+  end
+
+  def handle_info(:policy_flush, socket),
+    do: {:noreply, socket |> assign(policy_flush_scheduled: false) |> refresh_policy()}
+
   def handle_info(_other, socket), do: {:noreply, socket}
 
   defp schedule_flush(%{assigns: %{flush_scheduled: true}} = socket), do: socket
@@ -1216,9 +1736,30 @@ defmodule ApiaryWeb.RunLive.Show do
     socket
     |> assign_run(run)
     |> announce_change(old, run, was_quiet?)
+    |> follow_digests(old, run)
   end
 
   defp follow_run(socket, _run), do: socket
+
+  # A heartbeat changes nothing here. What the run reports, what it applied and whether it
+  # is alive do: then, and only then, the facts are read again.
+  defp follow_digests(socket, %Run{} = old, %Run{} = run) do
+    same? =
+      old.reported_run_configuration_digest == run.reported_run_configuration_digest and
+        old.run_configuration_digest == run.run_configuration_digest and
+        alive?(old) == alive?(run)
+
+    cond do
+      same? or not socket.assigns.loaded ->
+        socket
+
+      socket.assigns.live_action == :connections ->
+        socket |> assign_policy_facts() |> assign_acts()
+
+      true ->
+        assign_policy_facts(socket)
+    end
+  end
 
   defp announce_change(socket, %Run{state: state}, %Run{state: state} = run, was_quiet?) do
     if was_quiet? and is_nil(quiet_for(run)) and state == "running",
@@ -1303,7 +1844,7 @@ defmodule ApiaryWeb.RunLive.Show do
         socket
         |> then(
           &if("ai.qory.run.policy_applied" in types,
-            do: assign(&1, policy: Record.policy(scope, run)),
+            do: &1 |> assign(policy: Record.policy(scope, run)) |> announce_reload(),
             else: &1
           )
         )
@@ -1315,6 +1856,24 @@ defmodule ApiaryWeb.RunLive.Show do
   end
 
   defp flush(socket), do: assign(socket, range: nil)
+
+  defp announce_reload(%{assigns: %{index: index, policy: %{sequence: sequence}}} = socket) do
+    reload? =
+      Enum.any?(
+        index.items,
+        &(&1.kind == :policy_applied and &1.seq == sequence and &1[:previous_seq])
+      )
+
+    version = socket.assigns.versions[socket.assigns.run.run_configuration_digest]
+
+    cond do
+      not reload? -> socket
+      version -> announce(socket, "The run reloaded its policy: version #{version.n}.", :now)
+      true -> announce(socket, "The run reloaded its policy.", :now)
+    end
+  end
+
+  defp announce_reload(socket), do: socket
 
   defp flush_tab(%{assigns: %{window_loaded: true}} = socket, :timeline, old, _types, _range),
     do: socket |> follow_timeline(old) |> assign_window_counts()
