@@ -73,7 +73,7 @@ defmodule Apiary.Runs.Record.TimelineTest do
   end
 
   describe "index/2: items" do
-    test "heartbeats, log chunks, the ping and unknown types are not items" do
+    test "heartbeats, log chunks, resizes, the ping and unknown types are not items" do
       index =
         index([
           event(1, "ping"),
@@ -81,10 +81,12 @@ defmodule Apiary.Runs.Record.TimelineTest do
           event(3, "run.log", %{"stream" => "stdout", "bytes" => ""}),
           event(4, "run.heartbeat"),
           event(5, "something.unheard_of"),
-          event(6, "session.prompt_submitted", %{"prompt" => "hello"})
+          event(6, "session.prompt_submitted", %{"prompt" => "hello"}),
+          event(7, "run.resized", %{"cols" => 100, "rows" => 30})
         ])
 
       assert Enum.map(index.items, &{&1.seq, &1.kind}) == [{2, :run_started}, {6, :prompt}]
+      assert Timeline.kind("ai.qory.run.resized") == nil
       assert index.session_items == 1
       assert index.hook_events == 1
     end

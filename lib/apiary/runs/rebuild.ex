@@ -5,8 +5,9 @@ defmodule Apiary.Runs.Rebuild do
 
   By default only the runs that need it: those with a connection projected before the
   columns of its last attempt existed (`last_mode` is null on a row that has folded an
-  event), and those with a session result and no `cost_usd`, projected before the cost
-  was folded. `all: true` rebuilds every run. Runs are walked by id, `batch:` at a time
+  event), those with a session result and no `cost_usd`, projected before the cost was
+  folded, and those whose `run.started` reports a terminal size and no `terminal_cols`,
+  projected before the size was folded. `all: true` rebuilds every run. Runs are walked by id, `batch:` at a time
   (default 100), each rebuilt in its own transactions by `Apiary.Runs.Projector.rebuild/1`,
   so the work can be stopped and started again: a run already rebuilt is not selected the
   second time, and rebuilding one twice gives the same rows. A run that fails is logged by
@@ -27,6 +28,7 @@ defmodule Apiary.Runs.Rebuild do
 
   @default_batch 100
   @result "ai.qory.session.result"
+  @started "ai.qory.run.started"
 
   @doc "Rebuilds the runs that need it (or all); returns `%{rebuilt: n, failed: n}`."
   @spec run(keyword()) :: %{rebuilt: non_neg_integer(), failed: non_neg_integer()}
@@ -64,9 +66,18 @@ defmodule Apiary.Runs.Rebuild do
         from e in Event,
           where: e.run_id == parent_as(:run).id and e.type == @result
 
+      # A start that reports a size, folded before `terminal_cols` existed. Same index.
+      unsized =
+        from e in Event,
+          where:
+            e.run_id == parent_as(:run).id and e.type == @started and
+              not is_nil(fragment("? -> 'terminal'", e.data))
+
       from r in query,
         as: :run,
-        where: exists(stale) or (is_nil(r.cost_usd) and exists(uncosted))
+        where:
+          exists(stale) or (is_nil(r.cost_usd) and exists(uncosted)) or
+            (is_nil(r.terminal_cols) and exists(unsized))
     end
   end
 

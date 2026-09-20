@@ -78,6 +78,19 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
 - The projection keeps, per run, the cost its sessions reported (`runs.cost_usd`, the sum of
   `cost_usd` over the run's `session.result` events; null until a result carried one). The
   overview's strip sums it over fourteen days and says how many runs reported one.
+- The size of the pseudo-terminal an interactive run ran on, as the runner at
+  `.runner-contract-ref` now records it: `terminal` of `ai.qory.run.started` and each
+  `ai.qory.run.resized`, a valid event of the contract, folded into `runs.terminal_cols`
+  and `runs.terminal_rows` as the size the record last said. The Details tab shows it
+  ("Terminal 120×40"); the timeline does not list resizes, the terminal is where they
+  matter. The terminal tab replays the log at the recorded size, resize by resize: the log
+  endpoint answers one size at a time (`x-qory-log-size`) and stops short of the next
+  resize, and the screen keeps the recorded columns and rows, scaling its font to the box
+  (or scrolling sideways on a phone) instead of refitting the columns, so a full-screen
+  program replays as the screen it drew and not as stacked frames. A run on pipes, and one
+  recorded before the runner reported a size, is fitted to the box as before, with the
+  wrap toggle. The runner cuts a terminal chunk at 4096 bytes or a 50 ms quiet gap now,
+  one redraw a chunk, instead of at every line: the apiary reads the bytes the same.
 - The projection keeps, per run, the count of its denied connections, and per connection the
   mode, path rule, credential name and request method of its last attempt, ranked by
   sequence like the rest and reproduced by a rebuild. `mix apiary.rebuild`
@@ -328,6 +341,9 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
   `20260922000200`; reversible. Two instances must not boot this migration at the same
   moment.
 - `20260925000100`: `runs.cost_usd`, a nullable `numeric`: the cost the run reported.
+- `20260926000100`: `runs.terminal_cols` and `runs.terminal_rows`, nullable integers: the
+  pseudo-terminal's size as the record last said it. Expand only, instant; reversible. Runs
+  projected before it keep null until `mix apiary.rebuild` (see Upgrading).
   Instant; reversible. Runs projected before it keep null until `mix apiary.rebuild`, which
   now selects a run with a session result and no cost (see Upgrading).
 - `20260925000200`: the index `runs (hive_id, access_key_id, COALESCE(started_at,
@@ -372,6 +388,12 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
   not report one. `mix apiary.rebuild` (or `bin/apiary eval "Apiary.Release.rebuild()"`)
   fills the column for the runs that have a session result and no cost yet, beside the
   running server, and can be run again at any time.
+- The terminal's size is folded from this release on. A run projected before it, whose
+  `run.started` reports a size, is fitted to the box until `mix apiary.rebuild` fills
+  `terminal_cols` and `terminal_rows`; the same task selects those runs. Runs recorded by a
+  runner before 0.4.0 report no size and are fitted to the box, as before. The runner on
+  each machine has to be 0.4.0 or later (`qory` built against it) for the size to be
+  recorded and for the terminal stream to be cut at a redraw instead of a line.
 - Retention is off until an owner sets it: an upgrade prunes nothing. What the job deletes
   comes back only from a backup of Postgres.
 - A run that ended well is `succeeded`, no longer `exited`: on the badge, in the header

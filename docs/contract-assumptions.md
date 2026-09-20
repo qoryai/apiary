@@ -191,6 +191,41 @@ render the schema refuses is not made, and neither is one whose render is over 1
 most a runner reads of a document (`MaxDocument`). A list holds at most 500 rules and a rule
 at most 100 paths.
 
+## The log and the terminal
+
+`ai.qory.run.log` is stored like any event and its bytes, decoded, are the run's
+`log_chunks`, one row a chunk, keyed by the event's sequence; `output.log` is their
+concatenation in sequence order, which is what the log endpoint of the console streams. How
+the runner cuts the chunks is its own affair and the apiary reads nothing into a boundary:
+on pipes a chunk is one line or 4096 bytes and may end inside a multibyte character, on a
+pseudo-terminal it is one redraw, 4096 bytes or a quiet gap of 50 ms after the runtime's
+last write, never inside a character. The terminal of the run page hands the bytes to
+xterm.js as bytes, so a character cut in two is still one character.
+
+The size of the pseudo-terminal is in the record: `terminal` of `ai.qory.run.started`
+(`cols`, `rows`, present exactly when `interactive` is true) and one `ai.qory.run.resized`
+per change, at the sequence where the new size took effect, so the chunks before it were
+written to the old size and the chunks after it to the new. The projection keeps the size
+the record last said, `runs.terminal_cols` and `runs.terminal_rows`, the later of the start
+and the resizes by sequence; a resize whose data is not a size (an integer in 1 to 65535 each)
+changes nothing. The Details tab shows it. A resize is not an item of the timeline: the
+terminal is where it matters.
+
+The terminal tab replays at the recorded size. The bytes never cross the LiveView socket,
+so the sequence of the resizes has to reach the reader beside the bytes: the log endpoint
+answers one size at a time. `x-qory-log-size` (`<cols>x<rows>`) is the size in force right
+after `after`, the last resize at or below it, else the start's; an answer stops short of
+the next resize, and once every chunk before it is sent, `x-qory-log-through` is the
+resize's own sequence, so the next question is answered at the new size. The reader sets the
+screen to each answer's size before writing its bytes, and xterm.js reflows as a terminal
+does. A resize that arrives after the chunks past it (delivery is in any order) is applied
+on the next load, not to what is already on the screen.
+
+A run without a size is a run on pipes, or one recorded by a runner before the size was
+reported: the endpoint sends no size header and the page fits the screen to the box, as it
+did before, with the wrap toggle. On pipes `stream` is `stdout` or `stderr`, never
+`terminal`, and a single stream of a pipes run, or a download, is never sized.
+
 ## Failure
 
 Every failure is `401` with the body `{"error":"unauthorized"}` and nothing else, whether

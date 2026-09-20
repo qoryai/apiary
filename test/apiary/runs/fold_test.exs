@@ -32,7 +32,9 @@ defmodule Apiary.Runs.FoldTest do
     policy_digest: nil,
     run_configuration_digest: nil,
     lost_at: nil,
-    cost_usd: nil
+    cost_usd: nil,
+    terminal_cols: nil,
+    terminal_rows: nil
   }
 
   @t0 ~U[2026-09-16 12:00:00.000000Z]
@@ -78,6 +80,12 @@ defmodule Apiary.Runs.FoldTest do
       )
     )
   end
+
+  defp pty(cols, rows),
+    do: %{"interactive" => true, "terminal" => %{"cols" => cols, "rows" => rows}}
+
+  defp resized(sequence, cols, rows),
+    do: event(sequence, "run.resized", %{"cols" => cols, "rows" => rows})
 
   defp heartbeat(sequence, elapsed, interval \\ 30, seconds \\ nil),
     do:
@@ -193,6 +201,72 @@ defmodule Apiary.Runs.FoldTest do
     test "arriving for a lost run, the run is running and no longer lost" do
       %{run: run} = Fold.fold(%{@run | state: "lost", lost_at: at(100)}, [started(2)])
       assert {run.state, run.lost_at} == {"running", nil}
+    end
+
+    test "on a pseudo-terminal it says the terminal's size; on pipes there is none" do
+      %{run: run} = Fold.fold(@run, [started(2, pty(120, 40))])
+      assert {run.interactive, run.terminal_cols, run.terminal_rows} == {true, 120, 40}
+
+      %{run: run} = Fold.fold(@run, [started(2)])
+      assert {run.terminal_cols, run.terminal_rows} == {nil, nil}
+    end
+
+    test "a size that is not one is read as absent" do
+      for terminal <- [
+            %{"cols" => 0, "rows" => 40},
+            %{"cols" => 120, "rows" => 65_536},
+            %{"cols" => "120", "rows" => 40},
+            %{"cols" => 120},
+            "120x40"
+          ] do
+        %{run: run} = Fold.fold(@run, [started(2, %{"terminal" => terminal})])
+        assert {run.terminal_cols, run.terminal_rows} == {nil, nil}
+      end
+    end
+  end
+
+  describe "ai.qory.run.resized" do
+    test "moves the run to the new size, the later by sequence deciding in any order" do
+      events = [started(2, pty(120, 40)), resized(6, 100, 30), resized(9, 80, 24)]
+
+      for order <- [
+            events,
+            Enum.reverse(events),
+            [Enum.at(events, 1) | [hd(events), List.last(events)]]
+          ] do
+        %{run: run} = Fold.fold(@run, order)
+        assert {run.terminal_cols, run.terminal_rows} == {80, 24}
+      end
+    end
+
+    test "across passes, the sequence already projected decides" do
+      %{run: run} = Fold.fold(@run, [resized(9, 80, 24)])
+      assert {run.terminal_cols, run.terminal_rows} == {80, 24}
+
+      # The start and an earlier resize arrive after: neither takes the size back.
+      %{run: run} =
+        Fold.fold(run, [started(2, pty(120, 40)), resized(6, 100, 30)], %{"terminal" => 9})
+
+      assert {run.terminal_cols, run.terminal_rows} == {80, 24}
+      assert run.interactive == true
+    end
+
+    test "a resize that is not a size changes nothing, and does not take the rank" do
+      %{run: run, latest: latest} =
+        Fold.fold(@run, [
+          started(2, pty(120, 40)),
+          resized(6, 0, 30),
+          event(7, "run.resized", %{})
+        ])
+
+      assert {run.terminal_cols, run.terminal_rows} == {120, 40}
+      assert latest["terminal"] == 2
+    end
+
+    test "its ranks are the terminal's, shared with the start" do
+      assert Fold.ranks("ai.qory.run.resized") == ["terminal"]
+      assert "terminal" in Fold.ranks("ai.qory.run.started")
+      assert Fold.rank_types("terminal") == ["ai.qory.run.started", "ai.qory.run.resized"]
     end
   end
 

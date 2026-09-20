@@ -18,7 +18,10 @@ defmodule Apiary.Runs.Fold do
   sequence, never a clock and never the order in which they were folded: `latest` carries,
   per rank, the highest sequence already projected. A rank is a type where one event wins
   (`ranks/0`); `run.started` and `ping` also share the rank of the `runner_version`, which
-  the later of the two decides.
+  the later of the two decides, and `run.started` and `run.resized` share the rank of the
+  terminal's size, which the later of them decides: `terminal_cols` and `terminal_rows`
+  are the size the record last said, `terminal` of the start on a pseudo-terminal, then
+  each resize. A start on pipes reports no size and leaves both null.
 
   Times: `started_at`, `exited_at` and a connection's first and last seen are the runner's
   own, the record. `last_heartbeat_at` is the moment this server received the heartbeat
@@ -31,11 +34,13 @@ defmodule Apiary.Runs.Fold do
   @policy_applied "ai.qory.run.policy_applied"
   @heartbeat "ai.qory.run.heartbeat"
   @log "ai.qory.run.log"
+  @resized "ai.qory.run.resized"
   @egress "ai.qory.run.egress"
   @exited "ai.qory.run.exited"
   @result "ai.qory.session.result"
 
   @runner_version "runner_version"
+  @terminal_rank "terminal"
 
   # The most a result may say a session cost, in dollars, before the value is read as
   # absent: a runtime's accounting error, not a bill.
@@ -45,12 +50,15 @@ defmodule Apiary.Runs.Fold do
   The ranks an event of `type` competes in, which the projector seeds `latest` with; none
   for a type that is folded without ranking.
   """
-  def ranks(type) when type in [@ping, @started], do: [type, @runner_version]
+  def ranks(@ping), do: [@ping, @runner_version]
+  def ranks(@started), do: [@started, @runner_version, @terminal_rank]
+  def ranks(@resized), do: [@terminal_rank]
   def ranks(type) when type in [@policy_applied, @heartbeat, @exited], do: [type]
   def ranks(_type), do: []
 
   @doc "The types whose highest projected sequence seeds a rank."
   def rank_types(@runner_version), do: [@ping, @started]
+  def rank_types(@terminal_rank), do: [@started, @resized]
   def rank_types(type), do: [type]
 
   @int4 2_147_483_647
@@ -60,6 +68,7 @@ defmodule Apiary.Runs.Fold do
   @long_text 4096
   @max_args 1024
   @max_labels 64
+  @max_cells 65_535
 
   @terminal ~w(succeeded failed timed_out)
   @streams ~w(terminal stdout stderr)
@@ -106,6 +115,7 @@ defmodule Apiary.Runs.Fold do
   defp event(acc, %{type: @started, data: data} = event) do
     acc
     |> runner_version(event)
+    |> terminal_size(event, terminal(data))
     |> ranked(event, fn run ->
       labels = labels(data)
 
@@ -151,6 +161,14 @@ defmodule Apiary.Runs.Fold do
       })
       |> revive()
     end)
+  end
+
+  # A resize that is not a size is nothing: the run keeps the size it had.
+  defp event(acc, %{type: @resized, data: data} = event) do
+    case size(data) do
+      nil -> acc
+      size -> terminal_size(acc, event, size)
+    end
   end
 
   defp event(acc, %{type: @log, data: data, sequence: sequence}) do
@@ -289,6 +307,34 @@ defmodule Apiary.Runs.Fold do
       }
     else
       acc
+    end
+  end
+
+  # `run.started` and `run.resized` both say the terminal's size: the later decides. A
+  # start says none on pipes, which is `{nil, nil}`.
+  defp terminal_size(acc, %{sequence: sequence}, {cols, rows}) do
+    if sequence > Map.get(acc.latest, @terminal_rank, 0) do
+      %{
+        acc
+        | run: %{acc.run | terminal_cols: cols, terminal_rows: rows},
+          latest: Map.put(acc.latest, @terminal_rank, sequence)
+      }
+    else
+      acc
+    end
+  end
+
+  # The size a start reports: `terminal`, or none on pipes.
+  defp terminal(%{"terminal" => %{} = terminal}), do: size(terminal) || {nil, nil}
+  defp terminal(_data), do: {nil, nil}
+
+  # Both of `cols` and `rows`, each an integer a terminal can be, or nil.
+  defp size(data) do
+    with cols when is_integer(cols) <- integer(data, "cols", 1..@max_cells),
+         rows when is_integer(rows) <- integer(data, "rows", 1..@max_cells) do
+      {cols, rows}
+    else
+      _ -> nil
     end
   end
 

@@ -721,6 +721,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert html =~ "--verbose"
       assert html =~ "/work/shop"
       assert html =~ "No, on pipes"
+      refute html =~ "<dt>Terminal</dt>"
       assert html =~ "0.10.0"
       assert html =~ "contract 1"
       assert html =~ run.policy_digest

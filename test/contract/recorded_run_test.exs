@@ -126,6 +126,20 @@ defmodule Apiary.Contract.RecordedRunTest do
       assert projected.host == started["data"]["host"]
       assert projected.projected_sequence == length(lines)
 
+      # The terminal's size is the record's last word on it: the last resize, else the
+      # start's; a start on pipes leaves none.
+      last_size =
+        wire
+        |> Enum.filter(&(&1["type"] == "ai.qory.run.resized"))
+        |> List.last()
+        |> case do
+          nil -> started["data"]["terminal"]
+          resized -> resized["data"]
+        end
+
+      assert {projected.terminal_cols, projected.terminal_rows} ==
+               {last_size && last_size["cols"], last_size && last_size["rows"]}
+
       output = @file_path |> Path.dirname() |> Path.join("output.log") |> File.read!()
       assert log |> Enum.map(&elem(&1, 2)) |> IO.iodata_to_binary() == output
     end

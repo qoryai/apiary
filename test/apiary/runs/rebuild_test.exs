@@ -99,6 +99,31 @@ defmodule Apiary.Runs.RebuildTest do
       assert Repo.get!(Run, free.id).cost_usd == nil
     end
 
+    test "selects a run whose start reports a size folded before the size was, and only that",
+         %{scope: scope} do
+      sized = run_fixture(scope)
+      terminal = %{"interactive" => true, "terminal" => %{"cols" => 120, "rows" => 40}}
+      event_fixture(sized, 1, "run.started", started_data(terminal))
+      event_fixture(sized, 2, "run.resized", %{"cols" => 100, "rows" => 30})
+      {:ok, _} = Projector.project(sized)
+      assert %{terminal_cols: 100, terminal_rows: 30} = Repo.get!(Run, sized.id)
+
+      # As a release before the columns left it: the start folded, no size on the row.
+      Repo.update_all(from(r in Run, where: r.id == ^sized.id),
+        set: [terminal_cols: nil, terminal_rows: nil]
+      )
+
+      # A start on pipes reports no size and gives the rebuild nothing to do.
+      pipes = run_fixture(scope)
+      event_fixture(pipes, 1, "run.started", started_data())
+      {:ok, _} = Projector.project(pipes)
+
+      assert Rebuild.run() == %{rebuilt: 1, failed: 0}
+      assert %{terminal_cols: 100, terminal_rows: 30} = Repo.get!(Run, sized.id)
+      assert %{terminal_cols: nil} = Repo.get!(Run, pipes.id)
+      assert Rebuild.run() == %{rebuilt: 0, failed: 0}
+    end
+
     test "walks in batches", %{scope: scope} do
       runs =
         for _ <- 1..5 do

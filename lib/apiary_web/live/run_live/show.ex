@@ -588,6 +588,10 @@ defmodule ApiaryWeb.RunLive.Show do
           <dd class="font-mono">{@run.dir || na()}</dd>
           <dt>Interactive</dt>
           <dd>{interactive_words(@run.interactive)}</dd>
+          <dt :if={@run.terminal_cols}>Terminal</dt>
+          <dd :if={@run.terminal_cols} class="font-mono">
+            {@run.terminal_cols}×{@run.terminal_rows}
+          </dd>
           <dt>Runtime</dt>
           <dd>
             {@run.runtime || na()} <span class="font-mono text-faint">{@run.runtime_version}</span>
