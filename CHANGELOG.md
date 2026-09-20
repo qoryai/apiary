@@ -147,6 +147,13 @@ a restart does before doing it (`docs/upgrading.md`).
   index and never rendered while answering; a run whose policy changed fetches it again
   within a heartbeat. The digest a batch reported is kept on the delivery and on the run,
   and `Apiary.Policy.digests/2` says whether a run is behind.
+- What the record says about the rules (`Apiary.Policy.uncovered/2`, `denied_summary/2`,
+  `rule_activity/3`): the destinations that were let through and that today's rules do not
+  cover, which is what enforce would start denying; the attempts denied and their
+  destinations; and per rule the attempts allowed and denied, each connection counted on the
+  rule the runner would report. Read through the existing index `connections (hive_id,
+  last_seen_at)`, at most 20,000 connections an answer; a hive with more in the range is
+  told the count is unavailable rather than given a count of a part. No new migration.
 - `mix apiary.demo` gives a hive without rules a policy to look at: a baseline, a host held
   to paths, a locked deny, a repository's overrides, several versions and a history.
 
