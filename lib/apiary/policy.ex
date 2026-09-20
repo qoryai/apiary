@@ -41,7 +41,7 @@ defmodule Apiary.Policy do
   alias Apiary.Accounts.{Scope, User}
   alias Apiary.Organisations
   alias Apiary.Organisations.{Hive, Membership, Organisation}
-  alias Apiary.Policy.{Change, Effective, Error, Export, Grammar, Render, Resolution}
+  alias Apiary.Policy.{Activity, Change, Effective, Error, Export, Grammar, Render, Resolution}
   alias Apiary.Policy.{Rule, RunConfiguration, Schema, Suggestions}
   alias Apiary.Repo
   alias Apiary.Runs.{Connection, Repository, Run}
@@ -277,6 +277,64 @@ defmodule Apiary.Policy do
         true ->
           deny(scope, target, %{host: host})
       end
+    end
+  end
+
+  ## What the record says about the rules
+
+  @typedoc "A destination enforce would start denying: see `uncovered/2`."
+  @type uncovered :: %{
+          host: String.t(),
+          path: String.t() | nil,
+          attempts: non_neg_integer,
+          runs: non_neg_integer,
+          last_seen_at: DateTime.t(),
+          repositories: [%{id: Ecto.UUID.t(), forge: String.t(), path: String.t()}]
+        }
+
+  @doc """
+  The destinations that were let through since `since` and that today's rules do not
+  cover: what enforce would start denying. A destination is a host, and a path as well
+  where the host is held to paths. Each connection is held to the effective policy of
+  its own run's repository (the baseline for a run without one), matched as the runner
+  matches. Each destination says its allowed `attempts`, how many `runs` made them, when
+  it was last seen and in which `repositories`; the 50 with the most attempts, most first.
+
+  Read from `connections` by the hive and when they were last seen, at most
+  #{Apiary.Policy.Activity.cap()} rows: beyond that the answer is `:unavailable`, never a
+  count of a part. A connection counts whole when it was last seen since `since`.
+  """
+  @spec uncovered(Scope.t(), DateTime.t()) :: {:ok, [uncovered]} | :unavailable
+  def uncovered(%Scope{hive: %Hive{}} = scope, %DateTime{} = since),
+    do: Activity.uncovered(scope, since)
+
+  @doc """
+  How many attempts were denied since `since`, and to how many destinations (host, port
+  and path): the enforce card's fact line. Bounded as `uncovered/2` is.
+  """
+  @spec denied_summary(Scope.t(), DateTime.t()) ::
+          {:ok, %{denied: non_neg_integer, destinations: non_neg_integer}} | :unavailable
+  def denied_summary(%Scope{hive: %Hive{}} = scope, %DateTime{} = since),
+    do: Activity.denied_summary(scope, since)
+
+  @doc """
+  Per rule id, the attempts allowed and denied since `since`: `%{rule_id => %{allowed: n,
+  denied: n}}`, a rule nothing reached being absent. For the baseline (`nil`) every
+  connection of the hive is read, for a repository those of its runs; each is held to the
+  effective policy of its run's repository and counted on the rule the runner would
+  report: the first entry of `allow` that matches (names before `*.` suffixes), else the
+  deny in force that covers the host; and on the credential rule the connection named.
+  So a repository's page may name rules of the hive, and the hive's page counts a hive
+  rule wherever it decided. Bounded as `uncovered/2` is.
+  """
+  @spec rule_activity(Scope.t(), target, DateTime.t()) ::
+          {:ok,
+           %{optional(Ecto.UUID.t()) => %{allowed: non_neg_integer, denied: non_neg_integer}}}
+          | :unavailable
+  def rule_activity(%Scope{hive: %Hive{}} = scope, target, %DateTime{} = since) do
+    case target_id(scope, target) do
+      {:ok, repository_id} -> Activity.rule_activity(scope, repository_id, since)
+      {:error, _not_found} -> {:ok, %{}}
     end
   end
 
