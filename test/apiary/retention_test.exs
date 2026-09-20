@@ -198,7 +198,7 @@ defmodule Apiary.RetentionTest do
 
       assert Map.take(pruned, kept) == Map.take(old, kept)
       assert pruned.event_count == 14
-      assert pruned.state == "exited"
+      assert pruned.state == "succeeded"
 
       assert count(Event, young) == 14
       assert Repo.aggregate(from(d in Delivery, where: d.run_id == ^young.run_id), :count) == 1
@@ -270,7 +270,7 @@ defmodule Apiary.RetentionTest do
       pruned = Repo.get!(Run, run.id)
 
       assert {:ok, kept} = Projector.rebuild(pruned)
-      assert kept.state == "exited"
+      assert kept.state == "succeeded"
       assert Repo.get!(Run, run.id) == pruned
       assert count(Connection, run) == 2
 
@@ -291,7 +291,7 @@ defmodule Apiary.RetentionTest do
         set: [events_retention_days: 10]
       )
 
-      assert {:ok, %Run{state: "exited"}} = Projector.rebuild(run)
+      assert {:ok, %Run{state: "succeeded"}} = Projector.rebuild(run)
       assert count(Connection, run) == 2
       assert Repo.get!(Run, run.id).denied_count == 1
     end
@@ -304,7 +304,7 @@ defmodule Apiary.RetentionTest do
       Retention.prune_hive(scope.hive, now: @now)
 
       assert {:ok, rebuilt} = Projector.rebuild(Repo.get!(Run, run.id))
-      assert rebuilt.state == "exited"
+      assert rebuilt.state == "succeeded"
       assert rebuilt.projected_sequence == 14
       assert rebuilt.denied_count == 1
       assert %DateTime{} = rebuilt.log_pruned_at

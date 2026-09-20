@@ -87,7 +87,7 @@ defmodule Apiary.Runs.ProjectorTest do
 
       assert {:ok, %Run{} = projected} = Projector.project(run)
 
-      assert projected.state == "exited"
+      assert projected.state == "succeeded"
       assert projected.runner_version == "v0.4.0"
       assert projected.contract_version == 1
       assert projected.runtime == "claude"
@@ -369,13 +369,13 @@ defmodule Apiary.Runs.ProjectorTest do
       events_fixture(run, rest)
       {:ok, run} = Projector.project(run)
 
-      assert run.state == "exited"
+      assert run.state == "succeeded"
       assert run.projected_sequence == 0
 
       events_fixture(run, [started])
       {:ok, run} = Projector.project(run)
 
-      assert run.state == "exited"
+      assert run.state == "succeeded"
       assert run.runtime == "claude"
       assert run.projected_sequence == 0
 
@@ -558,7 +558,7 @@ defmodule Apiary.Runs.ProjectorTest do
     test "projects", %{run: run} do
       events_fixture(run, record())
       assert :ok = Projector.project_async(run)
-      assert Repo.get!(Run, run.id).state == "exited"
+      assert Repo.get!(Run, run.id).state == "succeeded"
     end
   end
 
@@ -573,7 +573,7 @@ defmodule Apiary.Runs.ProjectorTest do
 
       incremental = projection(run)
 
-      assert {:ok, %Run{state: "exited"}} = Projector.rebuild(run)
+      assert {:ok, %Run{state: "succeeded"}} = Projector.rebuild(run)
       assert projection(run) == incremental
 
       # And it is a rebuild: projections that no event accounts for are gone.

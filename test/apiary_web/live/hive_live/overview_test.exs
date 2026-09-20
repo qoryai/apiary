@@ -92,7 +92,9 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
     end
 
     test "counts the pending and running runs of this hive only", %{conn: conn, scope: scope} do
-      for state <- ~w(pending running exited lost closed), do: run_fixture(scope, %{state: state})
+      for state <- ~w(pending running succeeded lost closed),
+          do: run_fixture(scope, %{state: state})
+
       run_fixture(scope_fixture(), %{state: "running"})
 
       {:ok, lv, html} = live(conn, ~p"/hive")

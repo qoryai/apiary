@@ -146,7 +146,7 @@ defmodule Apiary.Runs.LivenessTest do
       event_fixture(recent, 9, "run.exited", exit, received_at: ago(9))
 
       assert Liveness.sweep(@now) == 1
-      assert state(left) == "exited"
+      assert state(left) == "succeeded"
       assert state(recent) == "running"
       assert Liveness.sweep(@now) == 0
     end
@@ -165,7 +165,7 @@ defmodule Apiary.Runs.LivenessTest do
       )
 
       assert Liveness.check(@now) == []
-      assert state(run) == "exited"
+      assert state(run) == "succeeded"
     end
 
     test "is bounded, oldest first, and the rest waits for the next check", %{scope: scope} do
@@ -212,12 +212,12 @@ defmodule Apiary.Runs.LivenessTest do
 
   test "a run that has ended or is closed is left alone", %{scope: scope} do
     runs =
-      for state <- ~w(exited failed timed_out closed lost) do
+      for state <- ~w(succeeded failed timed_out closed lost) do
         run_fixture(scope, %{state: state, last_heartbeat_at: ago(9000), inserted_at: ago(9000)})
       end
 
     assert Liveness.check(@now) == []
-    assert Enum.map(runs, &state/1) == ~w(exited failed timed_out closed lost)
+    assert Enum.map(runs, &state/1) == ~w(succeeded failed timed_out closed lost)
   end
 
   test "a second check finds nothing new, and each lost run is announced once", %{scope: scope} do

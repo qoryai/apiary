@@ -853,7 +853,7 @@ defmodule Apiary.Runs do
   @doc """
   Closes the run: the hive takes no more events for it and the receiver answers `410`.
   Any member of the hive, read again from the database. Only a run that has not ended is
-  closed: one that is `pending`, `running` or `lost`. A run that exited, failed or timed out
+  closed: one that is `pending`, `running` or `lost`. A run that succeeded, failed or timed out
   keeps the end its events gave it. A close is final: no event reopens the run, and
   closing a closed run changes nothing.
 

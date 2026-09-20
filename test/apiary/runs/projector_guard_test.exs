@@ -46,7 +46,7 @@ defmodule Apiary.Runs.ProjectorGuardTest do
 
       log =
         capture_log(fn ->
-          assert {:ok, %Run{state: "exited", projected_sequence: 5}} = Projector.project(run)
+          assert {:ok, %Run{state: "succeeded", projected_sequence: 5}} = Projector.project(run)
         end)
 
       assert log =~ "event skipped run=#{run.id} sequence=3 error=ArgumentError"

@@ -101,7 +101,7 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
   turn ends, its subagent finishes, the session ends or starts again, or the run exits, and
   reads "No end recorded"; connections after that are items at their own sequence.
 - A member closes only a run that has not ended (`pending`, `running`, `lost`):
-  `Apiary.Runs.close_run/2` answers `{:error, :not_closable}` for a run that exited, failed
+  `Apiary.Runs.close_run/2` answers `{:error, :not_closable}` for a run that succeeded, failed
   or timed out, and its end stays as its events gave it.
 - `GET /hive/runs/:run_id/log?after=<sequence>&limit=<chunks>&stream=<name>`: the decoded
   bytes of a run's log as `application/octet-stream`, chunked, with the last sequence sent
@@ -299,6 +299,13 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
   `CONCURRENTLY`, outside a transaction and without the migration lock, like
   `20260922000200`; reversible. Two instances must not boot this migration at the same
   moment.
+- `20260924000500`: the run state `exited` becomes `succeeded`, in the rows and in the
+  `CHECK` on `runs.state`. Outside a transaction, under the migration lock, every step
+  idempotent: the `CHECK` is swapped for one that takes both words (`NOT VALID`, instant),
+  the rows are renamed in batches of 5000 by primary key, one commit a batch, until a pass
+  finds none, and the `CHECK` is narrowed to the new word and validated under a lock that
+  lets reads and writes through. Its length is the number of `exited` runs; the receiver
+  keeps writing throughout. Reversible: `down` renames the rows back the same way.
 
 ### Upgrading
 
@@ -326,3 +333,8 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
   again. `--all` (`all: true`) rebuilds every run.
 - Retention is off until an owner sets it: an upgrade prunes nothing. What the job deletes
   comes back only from a backup of Postgres.
+- A run that ended well is `succeeded`, no longer `exited`: on the badge, in the header
+  ("Succeeded 19 s after it started"), in the state filter and in `runs.state`, which
+  `20260924000500` renames on boot. A saved link with `state=exited` still opens the same
+  list and is rewritten to `state=succeeded`. The previous release does not read
+  `succeeded`, so going back to it means rolling that migration back first.

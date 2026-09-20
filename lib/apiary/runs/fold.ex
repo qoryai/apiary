@@ -56,7 +56,7 @@ defmodule Apiary.Runs.Fold do
   @max_args 1024
   @max_labels 64
 
-  @terminal ~w(exited failed timed_out)
+  @terminal ~w(succeeded failed timed_out)
   @streams ~w(terminal stdout stderr)
 
   defstruct run: %{},
@@ -233,7 +233,7 @@ defmodule Apiary.Runs.Fold do
   defp event(acc, _event), do: acc
 
   @doc "The run state an `ai.qory.run.exited` with this `state` and `reason` means."
-  def exit_state("succeeded", _reason), do: "exited"
+  def exit_state("succeeded", _reason), do: "succeeded"
   def exit_state("failed", "timeout"), do: "timed_out"
   def exit_state(_state, _reason), do: "failed"
 

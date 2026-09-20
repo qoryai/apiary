@@ -121,7 +121,7 @@ defmodule Apiary.Contract.RecordedRunTest do
       exited = Enum.find(wire, &(&1["type"] == "ai.qory.run.exited"))
       started = Enum.find(wire, &(&1["type"] == "ai.qory.run.started"))
 
-      assert projected.state == "exited"
+      assert projected.state == "succeeded"
       assert projected.exit_code == exited["data"]["exit_code"]
       assert projected.host == started["data"]["host"]
       assert projected.projected_sequence == length(lines)

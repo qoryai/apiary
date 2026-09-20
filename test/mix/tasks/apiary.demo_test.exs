@@ -39,7 +39,7 @@ defmodule Mix.Tasks.Apiary.DemoTest do
   end
 
   describe "replay/3" do
-    test "session-with-subagents is stored and projected: a run that exited, its connections, its lanes",
+    test "session-with-subagents is stored and projected: a run that succeeded, its connections, its lanes",
          %{scope: scope, access_key: access_key} do
       now = ~U[2026-09-20 10:00:00.000000Z]
 
@@ -60,7 +60,7 @@ defmodule Mix.Tasks.Apiary.DemoTest do
                    select: d.inserted_count
                )
 
-      assert run.state == "exited"
+      assert run.state == "succeeded"
       assert run.exit_code == 0
       assert run.runtime == "claude"
       assert run.wall == "docker"
@@ -171,7 +171,7 @@ defmodule Mix.Tasks.Apiary.DemoTest do
     } do
       assert {:ok, run} = Demo.replay(access_key, file("unassigned"))
 
-      assert run.state == "exited"
+      assert run.state == "succeeded"
       assert {run.forge, run.repository, run.task, run.wall} == {nil, nil, nil, nil}
 
       assert [%{last_rule: "", last_mode: "observe", last_decision: "allowed"}, _telemetry] =

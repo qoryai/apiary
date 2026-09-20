@@ -102,7 +102,7 @@ defmodule ApiaryWeb.RunComponents do
   @doc "The word of a state, as the badge says it."
   def state_label("pending"), do: "Pending"
   def state_label("running"), do: "Running"
-  def state_label("exited"), do: "Exited"
+  def state_label("succeeded"), do: "Succeeded"
   def state_label("failed"), do: "Failed"
   def state_label("timed_out"), do: "Timed out"
   def state_label("lost"), do: "Lost"
@@ -110,12 +110,12 @@ defmodule ApiaryWeb.RunComponents do
 
   defp state_color("running", true), do: "warning"
   defp state_color("running", false), do: "info"
-  defp state_color("exited", _), do: "success"
+  defp state_color("succeeded", _), do: "success"
   defp state_color(state, _) when state in ~w(failed timed_out), do: "error"
   defp state_color("lost", _), do: "warning"
   defp state_color(_state, _), do: "neutral"
 
-  defp state_glyph("exited"), do: "hero-check-micro"
+  defp state_glyph("succeeded"), do: "hero-check-micro"
   defp state_glyph("failed"), do: "hero-x-mark-micro"
   defp state_glyph("timed_out"), do: "hero-clock-micro"
   defp state_glyph("lost"), do: "hero-signal-slash-micro"
@@ -547,10 +547,10 @@ defmodule ApiaryWeb.RunComponents do
 
   defp ended_sentence("pending", _run), do: "Ping only"
 
-  defp ended_sentence("exited", %{duration_ms: ms}) when is_integer(ms),
-    do: "Exited #{format_duration_ms(ms)} after it started"
+  defp ended_sentence("succeeded", %{duration_ms: ms}) when is_integer(ms),
+    do: "Succeeded #{format_duration_ms(ms)} after it started"
 
-  defp ended_sentence("exited", _run), do: "Exited"
+  defp ended_sentence("succeeded", _run), do: "Succeeded"
 
   defp ended_sentence("failed", %{signal: signal}) when is_binary(signal) and signal != "",
     do: "Failed with #{signal}"

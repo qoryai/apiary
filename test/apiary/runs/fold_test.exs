@@ -180,7 +180,7 @@ defmodule Apiary.Runs.FoldTest do
       %{run: run} = Fold.fold(@run, [exited(9, %{"state" => "succeeded"})])
       %{run: run} = Fold.fold(run, [started(2)], %{"ai.qory.run.exited" => 9})
 
-      assert run.state == "exited"
+      assert run.state == "succeeded"
       assert run.runtime == "claude"
     end
 
@@ -277,8 +277,8 @@ defmodule Apiary.Runs.FoldTest do
       assert run.last_heartbeat_at == at(10)
     end
 
-    test "an exited or a closed run is not revived" do
-      for state <- ~w(exited failed timed_out closed) do
+    test "a succeeded or a closed run is not revived" do
+      for state <- ~w(succeeded failed timed_out closed) do
         %{run: run} = Fold.fold(%{@run | state: state}, [heartbeat(5, 30)])
         assert run.state == state
       end
@@ -402,7 +402,7 @@ defmodule Apiary.Runs.FoldTest do
   describe "ai.qory.run.exited" do
     test "maps the contract's states onto the run's" do
       for {data, state} <- [
-            {%{"state" => "succeeded"}, "exited"},
+            {%{"state" => "succeeded"}, "succeeded"},
             {%{"state" => "failed", "exit_code" => 2}, "failed"},
             {%{"state" => "failed", "reason" => "timeout"}, "timed_out"},
             {%{"state" => "failed", "reason" => "runner_lost", "exit_code" => -1}, "failed"},
@@ -445,7 +445,7 @@ defmodule Apiary.Runs.FoldTest do
       lost = %{@run | state: "lost", lost_at: at(100)}
       %{run: run} = Fold.fold(lost, [exited(18, %{"state" => "succeeded"})])
 
-      assert run.state == "exited"
+      assert run.state == "succeeded"
       assert run.lost_at == nil
     end
 

@@ -508,7 +508,7 @@ defmodule ApiaryWeb.RunLive.Index do
   attr :quiet, :boolean, required: true
 
   defp run_duration(%{run: %{state: state}} = assigns)
-       when state in ~w(exited failed timed_out) do
+       when state in ~w(succeeded failed timed_out) do
     ~H"""
     <.duration ms={@run.duration_ms} />
     """

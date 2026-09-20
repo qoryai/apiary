@@ -80,7 +80,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert html =~ ~s(aria-label="Breadcrumb")
       assert html =~ String.slice(run.run_id, 0, 8)
       assert has_element?(lv, "h1#run-title", run.task)
-      assert html =~ "Exited"
+      assert html =~ "Succeeded"
       assert html =~ "after it started"
 
       # the strip
@@ -729,7 +729,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert html =~ run.run_id
       assert html =~ "projected through"
       assert html =~ "5b8e2f14-9c3a-4d7e-a1b6-3f0c8d2e7a45"
-      # an exited run is not closed by hand
+      # a succeeded run is not closed by hand
       refute html =~ "close-run-button"
     end
 
@@ -871,7 +871,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       html = conn |> get(~p"/hive/runs/#{run.run_id}") |> html_response(200)
 
       assert html =~ run.task
-      assert html =~ "Exited"
+      assert html =~ "Succeeded"
       assert html =~ ~s(id="run-loading")
       refute html =~ ~s(id="timeline")
       refute html =~ "package.json"
@@ -1078,7 +1078,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
     } do
       for {exit, state} <- [
             {%{"state" => "failed", "exit_code" => 1, "duration_ms" => 5}, "failed"},
-            {%{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 5}, "exited"},
+            {%{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 5}, "succeeded"},
             {%{"state" => "failed", "exit_code" => -1, "reason" => "timeout", "duration_ms" => 5},
              "timed_out"}
           ] do

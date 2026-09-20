@@ -70,7 +70,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
     end
 
     if opts[:exit] do
-      event_fixture(run, 50, "run.exited", %{"state" => "exited", "exit_code" => 0},
+      event_fixture(run, 50, "run.exited", %{"state" => "succeeded", "exit_code" => 0},
         time: at.(45)
       )
     end

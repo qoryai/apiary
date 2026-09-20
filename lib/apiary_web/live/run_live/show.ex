@@ -1848,10 +1848,10 @@ defmodule ApiaryWeb.RunLive.Show do
     announce(socket, state_sentence(run), :now)
   end
 
-  defp state_sentence(%Run{state: "exited", duration_ms: ms}) when is_integer(ms),
-    do: "Run exited after #{format_duration_ms(ms)}."
+  defp state_sentence(%Run{state: "succeeded", duration_ms: ms}) when is_integer(ms),
+    do: "Run succeeded after #{format_duration_ms(ms)}."
 
-  defp state_sentence(%Run{state: "exited"}), do: "Run exited."
+  defp state_sentence(%Run{state: "succeeded"}), do: "Run succeeded."
 
   defp state_sentence(%Run{state: "failed", signal: signal}) when is_binary(signal),
     do: "Run failed with #{signal}."
@@ -2026,7 +2026,7 @@ defmodule ApiaryWeb.RunLive.Show do
   ## Words
 
   defp alive?(%Run{state: state}), do: state in Run.alive_states()
-  defp ended?(%Run{state: state}), do: state in ~w(exited failed timed_out)
+  defp ended?(%Run{state: state}), do: state in ~w(succeeded failed timed_out)
 
   defp exit_value(%Run{reason: "timeout"}), do: "timeout"
   defp exit_value(%Run{reason: "runner_lost"}), do: "runner lost"

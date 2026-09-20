@@ -19,7 +19,7 @@ defmodule ApiaryWeb.RunComponentsTest do
       for {state, word} <- [
             {"pending", "Pending"},
             {"running", "Running"},
-            {"exited", "Exited"},
+            {"succeeded", "Succeeded"},
             {"failed", "Failed"},
             {"timed_out", "Timed out"},
             {"lost", "Lost"},
@@ -33,7 +33,7 @@ defmodule ApiaryWeb.RunComponentsTest do
 
     test "the colours follow the decision table" do
       assert render_component(&RunComponents.run_state/1, state: "running") =~ "bg-info-soft"
-      assert render_component(&RunComponents.run_state/1, state: "exited") =~ "bg-success-soft"
+      assert render_component(&RunComponents.run_state/1, state: "succeeded") =~ "bg-success-soft"
       assert render_component(&RunComponents.run_state/1, state: "failed") =~ "bg-error-soft"
       assert render_component(&RunComponents.run_state/1, state: "timed_out") =~ "bg-error-soft"
       assert render_component(&RunComponents.run_state/1, state: "lost") =~ "bg-primary-soft"
@@ -56,8 +56,8 @@ defmodule ApiaryWeb.RunComponentsTest do
       assert text(render_component(&RunComponents.run_state/1, state: "failed", exit_code: -1)) ==
                "Failed"
 
-      assert text(render_component(&RunComponents.run_state/1, state: "exited", exit_code: 0)) ==
-               "Exited"
+      assert text(render_component(&RunComponents.run_state/1, state: "succeeded", exit_code: 0)) ==
+               "Succeeded"
     end
 
     test "a quiet running run turns amber, stops rippling and says for how long" do

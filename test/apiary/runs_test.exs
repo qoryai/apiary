@@ -24,7 +24,7 @@ defmodule Apiary.RunsTest do
       scope: scope,
       other: other
     } do
-      for state <- ~w(pending running running exited failed timed_out lost closed) do
+      for state <- ~w(pending running running succeeded failed timed_out lost closed) do
         run_fixture(scope, %{state: state})
       end
 
