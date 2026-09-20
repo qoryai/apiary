@@ -78,7 +78,7 @@ a restart does before doing it (`docs/upgrading.md`).
   which the runs list links to.
 - The sidebar has two sections, Hive (Overview, Runs, Connections) and Manage; Runs shows
   how many runs are alive now on every page of the hive. The overview links to the runs.
-- For development, `mix apiary.demo` replays the synthetic recorded runs under `priv/demo/` into a hive through the receiver's own ingest, as new runs that end now (dev and test only), and prints each run's page.
+- For development, `mix apiary.demo` replays the synthetic recorded runs under `priv/demo/` into a hive through the receiver's own ingest, as new runs that end now (dev and test only), and prints each run's page. The records cover a session with two subagents, a failed run, a running one, one stopped at its time limit, one that only pinged and one without labels under an observing policy.
 
 ### Migrations
 

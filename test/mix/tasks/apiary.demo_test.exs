@@ -145,6 +145,39 @@ defmodule Mix.Tasks.Apiary.DemoTest do
       assert Repo.get!(Run, run.id).state == "running"
     end
 
+    test "timed-out was stopped at its limit, in the other forge's acme/shop", %{
+      access_key: access_key
+    } do
+      assert {:ok, run} = Demo.replay(access_key, file("timed-out"))
+
+      assert run.state == "timed_out"
+      assert {run.reason, run.exit_code, run.duration_ms} == {"timeout", -1, 3_600_000}
+      assert {run.forge, run.repository} == {"github.example", "acme/shop"}
+      assert run.denied_count == 0
+    end
+
+    test "ping-only is a run the hive knows by its subject and nothing else", %{
+      access_key: access_key
+    } do
+      assert {:ok, run} = Demo.replay(access_key, file("ping-only"))
+
+      assert run.state == "pending"
+      assert {run.started_at, run.runtime, run.repository_id} == {nil, nil, nil}
+      assert run.runner_version == "0.10.0"
+    end
+
+    test "unassigned has no labels and no wall, and was only observed", %{
+      access_key: access_key
+    } do
+      assert {:ok, run} = Demo.replay(access_key, file("unassigned"))
+
+      assert run.state == "exited"
+      assert {run.forge, run.repository, run.task, run.wall} == {nil, nil, nil, nil}
+
+      assert [%{last_rule: "", last_mode: "observe", last_decision: "allowed"}, _telemetry] =
+               Repo.all(from c in Connection, where: c.run_id == ^run.id, order_by: c.host)
+    end
+
     test "every replay is a new run with new events", %{access_key: access_key} do
       assert {:ok, first} = Demo.replay(access_key, file("failed-run"))
       assert {:ok, second} = Demo.replay(access_key, file("failed-run"))
