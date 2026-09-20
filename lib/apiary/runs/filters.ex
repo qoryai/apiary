@@ -29,6 +29,16 @@ defmodule Apiary.Runs.Filters do
   alias Apiary.Runs.Run
 
   @groups ~w(repository task none)
+  # The three families every surface reads the states as, in the order they are shown.
+  # `closed` is stopped by the hive, not a failure of the run, and sits with the bad endings
+  # for scanning. Only their states go in a URL: `state=failed,timed_out,lost,closed`.
+  # The three families every surface counts runs in (`Apiary.Runs.Run`): one definition.
+  @families [
+    %{key: "alive", label: "Alive", states: Run.alive_states()},
+    %{key: "ended_well", label: "Ended well", states: Run.ended_well_states()},
+    %{key: "ended_badly", label: "Ended badly", states: Run.ended_badly_states()}
+  ]
+  @family_keys Enum.map(@families, & &1.key)
   @ranges %{runs: ~w(1h 24h 7d 30d all), connections: ~w(1h 24h 7d 30d 90d)}
   @max_window_days 90
   @decisions ~w(allowed denied)
@@ -74,6 +84,35 @@ defmodule Apiary.Runs.Filters do
 
   @doc "The widest window the hive's connections are aggregated over, in days."
   def max_window_days, do: @max_window_days
+
+  @typedoc "A family of states: its key, the heading it is shown under and its states."
+  @type family :: %{key: String.t(), label: String.t(), states: [String.t()]}
+
+  @doc """
+  The three families the states read as, in the order they are shown: alive (`pending`,
+  `running`), ended well (`succeeded`) and ended badly (`failed`, `timed_out`, `lost`,
+  `closed`). Every state is in exactly one.
+  """
+  @spec families() :: [family()]
+  def families, do: @families
+
+  @doc "The states of a family, by its key; nil for a key that is not one."
+  @spec family_states(String.t()) :: [String.t()] | nil
+  def family_states(key), do: Enum.find_value(@families, &(&1.key == key and &1.states))
+
+  @doc """
+  The keys of the families these states are, in the families' order, when the states are
+  exactly one or more whole families; nil otherwise (a part of a family, or nothing). This
+  is what lets the chip and the empty state say "ended badly" for the four states.
+  """
+  @spec families_of([String.t()]) :: [String.t()] | nil
+  def families_of(states) when is_list(states) do
+    chosen = MapSet.new(states)
+    whole = Enum.filter(@families, fn family -> Enum.all?(family.states, &(&1 in chosen)) end)
+    covered = whole |> Enum.flat_map(& &1.states) |> MapSet.new()
+
+    if whole != [] and MapSet.equal?(chosen, covered), do: Enum.map(whole, & &1.key)
+  end
 
   @doc "The time ranges a page offers, as `{label, value}`."
   def ranges(kind \\ :runs)
@@ -192,6 +231,12 @@ defmodule Apiary.Runs.Filters do
   The filters after a change in a filter's menu: `form` is what the menu's form sends, the
   name of the filter in `_filter` and its fields. Read through `parse/2` like a URL, so a
   value the page did not offer is dropped all the same. Returns to page 1.
+
+  The State menu's headings are checkboxes named `family_<key>` (value `1`). When the change
+  came from one (`_target`), the states are the form's `state` boxes plus the family's states
+  if the heading is checked, minus them if not; so the heading works without JavaScript, and
+  the same when the page's script has already ticked the family's boxes. The URL still says
+  the states and never a family.
   """
   @spec change(t(), map()) :: t()
   def change(%__MODULE__{} = f, %{"_filter" => name} = form) do
@@ -200,8 +245,18 @@ defmodule Apiary.Runs.Filters do
     changed =
       case name do
         "state" ->
-          states = form["state"] |> List.wrap() |> Enum.filter(&is_binary/1) |> Enum.join(",")
-          Map.put(current, "state", states)
+          states = form["state"] |> List.wrap() |> Enum.filter(&is_binary/1)
+
+          states =
+            case form["_target"] do
+              ["family_" <> key] when key in @family_keys ->
+                toggle_family(states, key, form["family_#{key}"] in ["1", "on", "true"])
+
+              _state_box ->
+                states
+            end
+
+          Map.put(current, "state", Enum.join(states, ","))
 
         "since" ->
           if form["_target"] in [["from"], ["to"]] do
@@ -224,6 +279,9 @@ defmodule Apiary.Runs.Filters do
   end
 
   def change(%__MODULE__{} = f, _form), do: f
+
+  defp toggle_family(states, key, true), do: Enum.uniq(states ++ family_states(key))
+  defp toggle_family(states, key, false), do: states -- family_states(key)
 
   @doc "The instants the range covers, `{from, to}`, either of them nil for open."
   @spec bounds(t(), DateTime.t()) :: {DateTime.t() | nil, DateTime.t() | nil}

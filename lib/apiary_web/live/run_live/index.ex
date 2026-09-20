@@ -24,6 +24,9 @@ defmodule ApiaryWeb.RunLive.Index do
 
   @quiet_tick 5_000
   @summary_window 1_000
+  # Closed's tooltip in the State menu: what the state means and where it is counted.
+  @closed_menu_tip "Stopped by the hive: a member closed it after it went quiet. " <>
+                     "Counted with the runs that ended badly."
   @flush_window 250
 
   @impl true
@@ -60,7 +63,10 @@ defmodule ApiaryWeb.RunLive.Index do
             label="State"
             multiple
             value={@filters.states}
+            value_label={family_words(@filters.states)}
             options={state_options(@facets)}
+            groups={state_groups()}
+            tips={state_tips()}
             remove={path(Filters.put(@filters, states: []))}
           />
           <.filter
@@ -162,6 +168,12 @@ defmodule ApiaryWeb.RunLive.Index do
             </span>
           </span>
           <span :if={@summary && @summary.alive > 0}><b>{delimited(@summary.alive)}</b> alive</span>
+          <span :if={@summary && @summary.ended_well > 0}>
+            <b>{delimited(@summary.ended_well)}</b> ended well
+          </span>
+          <span :if={@summary && @summary.ended_badly > 0}>
+            <b>{delimited(@summary.ended_badly)}</b> ended badly
+          </span>
           <span :if={@summary && @summary.with_denials > 0}>
             <b>{delimited(@summary.with_denials)}</b> with denials
           </span>
@@ -191,7 +203,7 @@ defmodule ApiaryWeb.RunLive.Index do
           :if={@listing && @listing.runs == [] && @summary}
           icon="hero-funnel"
           tone="neutral"
-          title="No runs match these filters"
+          title={empty_title(@filters)}
         >
           <span id="runs-hidden">
             {hidden_sentence(@summary.hive_runs)}
@@ -848,10 +860,75 @@ defmodule ApiaryWeb.RunLive.Index do
     "#{group_by}:#{dom_token(key)}"
   end
 
+  # Every state, in its family's order, with its count under the other filters; a state no
+  # run has shows without a count, so the menu keeps its shape from one view to the next.
   defp state_options(facets) do
-    for {state, value, count} <- facet_options(facets, :state),
-        do: {state_label(state), value, count}
+    counts =
+      for {state, _value, count} <- facet_options(facets, :state), into: %{}, do: {state, count}
+
+    for family <- Filters.families(),
+        state <- family.states,
+        do: {state_label(state), state, counts[state]}
   end
+
+  # The menu's headings: the family's checkbox reads its label and is named for a screen
+  # reader as the sentence of the brief ("Every alive state").
+  defp state_groups do
+    for family <- Filters.families() do
+      %{
+        key: family.key,
+        label: family.label,
+        name: family_checkbox_name(family.key),
+        states: family.states
+      }
+    end
+  end
+
+  defp family_checkbox_name("alive"), do: "Every alive state"
+  defp family_checkbox_name("ended_well"), do: "Every state that ended well"
+  defp family_checkbox_name("ended_badly"), do: "Every state that ended badly"
+
+  defp state_tips, do: %{"closed" => @closed_menu_tip}
+
+  # The chosen states as family words when they are whole families ("ended badly", "alive,
+  # ended badly"); nil otherwise, and the chip reads the states as it does for any filter.
+  defp family_words(states) do
+    case Filters.families_of(states) do
+      nil -> nil
+      keys -> Enum.map_join(keys, ", ", &family_word/1)
+    end
+  end
+
+  defp family_word(key) do
+    Filters.families() |> Enum.find(&(&1.key == key)) |> Map.fetch!(:label) |> String.downcase()
+  end
+
+  # The funnel empty state's title: the family in the sentence when the states are exactly
+  # one family ("No runs ended badly in the last 7 days."), the plain title otherwise.
+  defp empty_title(%Filters{states: states} = filters) do
+    case Filters.families_of(states) do
+      [key] -> "No runs #{family_word(key)}#{empty_range(filters)}."
+      _other -> "No runs match these filters"
+    end
+  end
+
+  defp empty_range(%Filters{from: nil, to: nil} = filters) do
+    case Filters.range_label(filters) do
+      nil -> ""
+      words -> " in the #{words}"
+    end
+  end
+
+  defp empty_range(%Filters{from: from, to: nil}),
+    do: " #{Filters.range_label(%Filters{from: from})}"
+
+  defp empty_range(%Filters{from: nil, to: to}),
+    do: " up #{Filters.range_label(%Filters{to: to})}"
+
+  defp empty_range(%Filters{from: same, to: same} = filters),
+    do: " on #{Filters.range_label(filters)}"
+
+  defp empty_range(%Filters{} = filters), do: " from #{Filters.range_label(filters)}"
 
   defp facet_options(facets, name), do: (facets[name] || %{options: []}).options
   defp facet_total(facets, name), do: facets[name] && facets[name].total

@@ -62,6 +62,27 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       refute has_element?(view, "#runs-loading")
     end
 
+    test "a family that matches nothing is named in the sentence, with the range",
+         %{conn: conn, scope: scope} do
+      started_run(scope, shop())
+
+      view = open(conn, ~p"/hive/runs?state=failed,timed_out,lost,closed")
+      assert has_element?(view, "h2", "No runs ended badly in the last 7 days.")
+      assert has_element?(view, "#runs-hidden", "1 run is hidden by them.")
+
+      view = open(conn, ~p"/hive/runs?state=succeeded&since=all")
+      assert has_element?(view, "h2", "No runs ended well.")
+
+      view = open(conn, ~p"/hive/runs?state=succeeded&from=2026-09-01&to=2026-09-02")
+      assert has_element?(view, "h2", "No runs ended well from 1 Sep 2026 to 2 Sep 2026.")
+
+      # A part of a family, or two families, is not one family's sentence.
+      view = open(conn, ~p"/hive/runs?state=failed")
+      assert has_element?(view, "h2", "No runs match these filters")
+      view = open(conn, ~p"/hive/runs?state=succeeded,failed,timed_out,lost,closed")
+      assert has_element?(view, "h2", "No runs match these filters")
+    end
+
     test "filters that match nothing say how many runs they hide", %{conn: conn, scope: scope} do
       started_run(scope, shop())
       started_run(scope, shop())
@@ -108,7 +129,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert cells =~ "6 m 51 s"
       assert has_element?(view, "#{row(run)} .q-denials", "1")
       assert has_element?(view, "#{row(run)} a.q-rowlink[href='/hive/runs/#{run.run_id}']")
-      assert text(view, "#runs-summary") =~ "1 run in 1 repository 1 with denials"
+      assert text(view, "#runs-summary") =~ "1 run in 1 repository 1 ended badly 1 with denials"
       assert text(view, "#runs-footer") =~ "Showing 1 of 1."
     end
 
@@ -337,6 +358,121 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
       view |> element("#runs-filters-clear") |> render_click()
       assert_patch(view, ~p"/hive/runs")
+    end
+
+    test "the State menu reads as three families, each heading a checkbox over its states",
+         %{conn: conn} do
+      view = open(conn)
+      form = "#filter-state-form"
+
+      for {key, name} <- [
+            {"alive", "Every alive state"},
+            {"ended_well", "Every state that ended well"},
+            {"ended_badly", "Every state that ended badly"}
+          ] do
+        assert has_element?(
+                 view,
+                 "#{form} .q-filter-family input[name=family_#{key}][value='1'][aria-label='#{name}']"
+               )
+      end
+
+      # Every state shows under its family, counted when a run has it.
+      assert text(view, form) =~
+               "Alive Pending Running 1 Ended well Succeeded Ended badly Failed 1 Timed out Lost Closed"
+
+      assert has_element?(
+               view,
+               "#{form} input[name='state[]'][value=closed][aria-describedby=filter-state-tip-closed]"
+             )
+
+      assert text(view, "#filter-state-tip-closed") =~
+               "Stopped by the hive: a member closed it after it went quiet. Counted with the runs that ended badly."
+
+      refute has_element?(view, "#{form} input[name=family_alive][checked]")
+      refute has_element?(view, "#{form} input[name=family_alive][aria-checked]")
+    end
+
+    test "ticking a family fills its states into the URL, and the chip reads the family",
+         %{conn: conn, failed: failed, running: running} do
+      view = open(conn)
+
+      # Without the page's script: the heading alone, the state boxes as the form has them.
+      view
+      |> form("#filter-state-form")
+      |> render_change(%{"_target" => ["family_ended_badly"], "family_ended_badly" => "1"})
+
+      assert URI.decode(assert_patch(view)) == "/hive/runs?state=failed,timed_out,lost,closed"
+      render_async(view)
+      assert has_element?(view, row(failed))
+      refute has_element?(view, row(running))
+      assert has_element?(view, "#filter-state-button[aria-label='State: ended badly, change']")
+
+      assert has_element?(
+               view,
+               "#filter-state-remove[aria-label='Remove filter: state ended badly']"
+             )
+
+      assert has_element?(view, "#filter-state-form input[name=family_ended_badly][checked]")
+      refute has_element?(view, "#filter-state-form input[name=family_ended_badly][aria-checked]")
+
+      # With the script, which ticks the family's boxes before the change is sent.
+      view
+      |> form("#filter-state-form")
+      |> render_change(%{
+        "_target" => ["family_alive"],
+        "family_alive" => "1",
+        "state" => ~w(pending running failed timed_out lost closed)
+      })
+
+      assert URI.decode(assert_patch(view)) ==
+               "/hive/runs?state=pending,running,failed,timed_out,lost,closed"
+
+      render_async(view)
+
+      assert has_element?(
+               view,
+               "#filter-state-button[aria-label='State: alive, ended badly, change']"
+             )
+
+      # Unticking a heading takes its states out. A browser leaves an unticked box out of
+      # the form it sends, which the test client would merge back in from the DOM: the
+      # event is sent as the browser would.
+      render_change(view, "filter", %{
+        "_filter" => "state",
+        "_target" => ["family_ended_badly"],
+        "state" => ~w(pending running failed timed_out lost closed)
+      })
+
+      assert URI.decode(assert_patch(view)) == "/hive/runs?state=pending,running"
+    end
+
+    test "a family with some of its states chosen is mixed, and the chip reads the states",
+         %{conn: conn} do
+      view = open(conn, ~p"/hive/runs?state=failed")
+
+      assert has_element?(
+               view,
+               "#filter-state-form input[name=family_ended_badly][aria-checked=mixed]"
+             )
+
+      refute has_element?(view, "#filter-state-form input[name=family_ended_badly][checked]")
+      refute has_element?(view, "#filter-state-form input[name=family_alive][aria-checked]")
+      assert has_element?(view, "#filter-state-button[aria-label='State: Failed, change']")
+      assert has_element?(view, "#filter-state-remove[aria-label='Remove filter: state Failed']")
+    end
+
+    test "the summary line counts the families, a family at zero left out",
+         %{conn: conn, scope: scope} do
+      started_run(scope, shop(), ago: 200, exit: %{"state" => "succeeded", "exit_code" => 0})
+      view = open(conn)
+
+      assert text(view, "#runs-summary") =~
+               "3 runs in 2 repositories 1 alive 1 ended well 1 ended badly 1 with denials"
+
+      view = open(conn, ~p"/hive/runs?state=running")
+      summary = text(view, "#runs-summary")
+      assert summary =~ "1 run in 1 repository 1 alive"
+      refute summary =~ "ended"
     end
 
     test "the time range: a preset, dates, and none", %{conn: conn} do

@@ -622,6 +622,20 @@ defmodule ApiaryWeb.RunComponents do
   attr :query, :string, default: nil, doc: "what the reader typed to narrow the options"
   attr :narrow, :string, default: "narrow", doc: "the event of the narrowing box"
 
+  attr :groups, :list,
+    default: [],
+    doc: """
+    with `multiple`, the options under headings: `[%{key:, label:, name:, states: [values]}]`
+    in the order shown. Each heading is a checkbox named `family_<key>` (value `1`), named
+    `name` for a screen reader and reading `label`, checked when every one of its values is
+    chosen and mixed when some are; its values follow it, indented, each looked up in
+    `options`, which therefore holds one for every value of every group
+    """
+
+  attr :tips, :map,
+    default: %{},
+    doc: "value => a sentence shown on hover and focus of the option's word (grouped only)"
+
   def filter(assigns) do
     values = assigns.value |> List.wrap() |> Enum.map(&to_string/1)
     id = assigns.id || "filter-#{assigns.name}"
@@ -631,6 +645,7 @@ defmodule ApiaryWeb.RunComponents do
       |> assign(:id, id)
       |> assign(:values, values)
       |> assign(:set?, values != [])
+      |> assign(:grouped?, assigns.multiple and assigns.groups != [])
       |> assign(:shown, assigns.value_label || shown_value(values, assigns.options))
 
     ~H"""
@@ -699,9 +714,14 @@ defmodule ApiaryWeb.RunComponents do
         >
           Showing {length(@options)} of {delimited(@total)}: type to narrow
         </p>
-        <form id={"#{@id}-form"} phx-change={@event} phx-submit={@event}>
+        <form
+          id={"#{@id}-form"}
+          phx-change={@event}
+          phx-submit={@event}
+          phx-hook={@grouped? && "FamilyBoxes"}
+        >
           <input type="hidden" name="_filter" value={@name} />
-          <ul class="q-filter-options" aria-label={@label}>
+          <ul :if={!@grouped?} class="q-filter-options" aria-label={@label}>
             <li :if={@options == []} class="px-2 py-1.5 text-xs text-faint">
               {if @query in [nil, ""], do: "Nothing to filter by yet", else: "Nothing matches"}
             </li>
@@ -719,6 +739,58 @@ defmodule ApiaryWeb.RunComponents do
                   {count}
                 </span>
               </label>
+            </li>
+          </ul>
+          <%!-- Grouped: a heading per family, itself a checkbox over the family's values. The
+          checked and mixed states are rendered here; the FamilyBoxes hook mirrors mixed into
+          the `indeterminate` property and ticks the family's boxes before a heading's change
+          reaches the server, and Filters.change/2 reads the heading when the script did not. --%>
+          <ul :if={@grouped?} class="q-filter-options" aria-label={@label}>
+            <li :for={group <- @groups} class="q-filter-group">
+              <label class="q-filter-option q-filter-family">
+                <input
+                  type="checkbox"
+                  name={"family_#{group.key}"}
+                  value="1"
+                  checked={family_state(group, @values) == :all}
+                  aria-checked={family_state(group, @values) == :some && "mixed"}
+                  aria-label={group.name}
+                  class="checkbox checkbox-xs"
+                  data-family={group.key}
+                />
+                <span class="min-w-0 flex-1 truncate">{group.label}</span>
+              </label>
+              <ul class="q-filter-states" aria-label={group.label}>
+                <li :for={{label, value, count} <- group_options(group, @options)}>
+                  <label class="q-filter-option">
+                    <input
+                      type="checkbox"
+                      name={"#{@name}[]"}
+                      value={value}
+                      checked={to_string(value) in @values}
+                      class="checkbox checkbox-xs"
+                      data-family={group.key}
+                      aria-describedby={@tips[to_string(value)] && "#{@id}-tip-#{value}"}
+                    />
+                    <span :if={!@tips[to_string(value)]} class="min-w-0 flex-1 truncate" title={label}>
+                      {label}
+                    </span>
+                    <span :if={@tips[to_string(value)]} class="min-w-0 flex-1 truncate">
+                      <span
+                        class="tooltip q-tip-wide"
+                        tabindex="0"
+                        data-tip={@tips[to_string(value)]}
+                      >{label}</span>
+                    </span>
+                    <span :if={count} class="font-mono text-[11.5px] text-faint tabular-nums">
+                      {count}
+                    </span>
+                  </label>
+                  <span :if={@tips[to_string(value)]} id={"#{@id}-tip-#{value}"} class="sr-only">
+                    {@tips[to_string(value)]}
+                  </span>
+                </li>
+              </ul>
             </li>
           </ul>
           <div :if={@dates} class="q-filter-dates">
@@ -747,6 +819,24 @@ defmodule ApiaryWeb.RunComponents do
       </div>
     </div>
     """
+  end
+
+  # Whether every, some or none of the group's values is chosen.
+  defp family_state(%{states: states}, values) do
+    case Enum.count(states, &(to_string(&1) in values)) do
+      0 -> :none
+      n when n == length(states) -> :all
+      _some -> :some
+    end
+  end
+
+  # The group's values as options, in the group's order; a value without an option is left
+  # out, so the caller passes one for every value it wants shown.
+  defp group_options(%{states: states}, options) do
+    for value <- states,
+        option =
+          Enum.find(options, fn {_label, v, _count} -> to_string(v) == to_string(value) end),
+        do: option
   end
 
   defp shown_value([one], options), do: option_label(one, options)

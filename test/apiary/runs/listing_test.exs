@@ -118,6 +118,58 @@ defmodule Apiary.Runs.ListingTest do
       assert Filters.to_params(filters) == %{"state" => "succeeded,failed"}
     end
 
+    test "the states read as three families, and whole families are named as such" do
+      assert Enum.map(Filters.families(), & &1.key) == ~w(alive ended_well ended_badly)
+
+      assert Filters.families() |> Enum.flat_map(& &1.states) |> Enum.sort() ==
+               Enum.sort(Apiary.Runs.Run.states())
+
+      assert Filters.family_states("ended_badly") == ~w(failed timed_out lost closed)
+      assert Filters.family_states("ended") == nil
+
+      assert Filters.families_of(~w(failed timed_out lost closed)) == ["ended_badly"]
+      assert Filters.families_of(~w(succeeded running pending)) == ~w(alive ended_well)
+      assert Filters.families_of(Apiary.Runs.Run.states()) == ~w(alive ended_well ended_badly)
+      assert Filters.families_of(~w(failed lost)) == nil
+      assert Filters.families_of(~w(running succeeded)) == nil
+      assert Filters.families_of(~w(running succeeded closed)) == nil
+      assert Filters.families_of([]) == nil
+    end
+
+    test "a family heading in the State menu fills its states in, and the URL never names it" do
+      on = %{
+        "_filter" => "state",
+        "_target" => ["family_ended_badly"],
+        "family_ended_badly" => "1",
+        "state" => ["running"]
+      }
+
+      filters = Filters.change(parse(%{"state" => "running"}), on)
+      assert filters.states == ~w(running failed timed_out lost closed)
+      assert Filters.to_params(filters) == %{"state" => "running,failed,timed_out,lost,closed"}
+
+      # The page's script has already ticked the family's boxes: the same result.
+      ticked = %{on | "state" => ~w(running failed timed_out lost closed)}
+      assert Filters.change(parse(%{"state" => "running"}), ticked) == filters
+
+      off = %{
+        "_filter" => "state",
+        "_target" => ["family_ended_badly"],
+        "state" => ~w(running failed timed_out lost closed)
+      }
+
+      assert Filters.change(filters, off).states == ["running"]
+
+      # Unticking the last family leaves no state, and no `state=`.
+      last = %{"_filter" => "state", "_target" => ["family_ended_well"], "state" => ["succeeded"]}
+      assert Filters.to_params(Filters.change(parse(%{"state" => "succeeded"}), last)) == %{}
+
+      for f <- [filters, Filters.change(filters, off)], {key, value} <- Filters.to_params(f) do
+        refute key =~ "family"
+        refute value =~ ~r/family|alive|ended/
+      end
+    end
+
     test "what can be stored can be filtered by: 1024 bytes, and no control characters" do
       long = String.duplicate("h", 1024)
       assert parse(%{"host" => long}).host == long
@@ -351,7 +403,16 @@ defmodule Apiary.Runs.ListingTest do
 
     test "the summary counts what the filters return, and what they hide", %{scope: scope} do
       assert Runs.summarise_runs(scope, parse(%{}), @now) ==
-               %{runs: 4, repositories: 2, tasks: 2, alive: 3, with_denials: 1, hive_runs: 4}
+               %{
+                 runs: 4,
+                 repositories: 2,
+                 tasks: 2,
+                 alive: 3,
+                 ended_well: 1,
+                 ended_badly: 0,
+                 with_denials: 1,
+                 hive_runs: 4
+               }
 
       assert %{runs: 1, hive_runs: 4} =
                Runs.summarise_runs(scope, parse(%{"state" => "succeeded"}), @now)
