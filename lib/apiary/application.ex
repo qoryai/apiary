@@ -16,7 +16,8 @@ defmodule Apiary.Application do
         Apiary.Vault,
         {DNSCluster, query: Application.get_env(:apiary, :dns_cluster_query) || :ignore},
         {Phoenix.PubSub, name: Apiary.PubSub},
-        {Task.Supervisor, name: Apiary.Runs.TaskSupervisor}
+        {Task.Supervisor, name: Apiary.Runs.TaskSupervisor},
+        Apiary.Runs.RateLimit
       ] ++
         migrator() ++
         liveness() ++

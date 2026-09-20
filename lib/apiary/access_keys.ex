@@ -189,6 +189,40 @@ defmodule Apiary.AccessKeys do
     access_key |> AccessKey.touch_changeset(attrs) |> Repo.update()
   end
 
+  @doc """
+  Records a delivery to the events endpoint: `last_used_at` and the two versions
+  as `touch/2` does, and `last_heartbeat_at` when the delivery held a heartbeat,
+  never moving it backwards. One `UPDATE`, without reading the row.
+  """
+  def touch_delivery(%AccessKey{id: id}, attrs) do
+    set = [
+      last_used_at: attrs[:last_used_at] || DateTime.utc_now(),
+      last_runner_version: attrs[:last_runner_version],
+      last_contract_version: attrs[:last_contract_version]
+    ]
+
+    query = from(k in AccessKey, where: k.id == ^id)
+
+    query =
+      case attrs[:last_heartbeat_at] do
+        %DateTime{} = at ->
+          # GREATEST ignores a null: the first heartbeat sets the column.
+          from k in query,
+            update: [
+              set: [
+                last_heartbeat_at:
+                  fragment("GREATEST(?, ?)", k.last_heartbeat_at, type(^at, :utc_datetime_usec))
+              ]
+            ]
+
+        _ ->
+          query
+      end
+
+    Repo.update_all(query, set: set)
+    :ok
+  end
+
   @doc "The `server` block of the runner file for this key."
   def server_block(%AccessKey{key_id: key_id}, secret, base_url) when is_binary(secret) do
     """

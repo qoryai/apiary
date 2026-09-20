@@ -31,7 +31,7 @@ defmodule ApiaryWeb.Router do
     get "/health", HealthController, :show
   end
 
-  ## The server contract (region owned by the domain work: signed GET, discovery)
+  ## The server contract (region owned by the domain work: signed requests, discovery, events)
 
   pipeline :contract do
     plug :accepts, ["json"]
@@ -42,6 +42,12 @@ defmodule ApiaryWeb.Router do
     pipe_through :contract
 
     get "/qory-configuration", ConfigurationController, :show
+  end
+
+  scope "/v1", ApiaryWeb.Contract do
+    pipe_through :contract
+
+    post "/events", EventsController, :create
   end
 
   ## The application (region owned by the web work: everything behind sign-in)

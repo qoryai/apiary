@@ -1,0 +1,120 @@
+defmodule ApiaryWeb.Contract.EventsController do
+  @moduledoc """
+  The events endpoint of the server contract: `POST /v1/events`, one signed
+  batch of one run's events.
+
+  The refusals come in the order of the contract's reference receiver, and the
+  first two happen before this controller: a body over 2 MiB is `413`
+  (`ApiaryWeb.Contract.RawBody`), a request that does not verify is `401`
+  (`ApiaryWeb.Contract.SignedRequest`, over the raw bytes, before anything is
+  parsed). Then: a content type other than `application/cloudevents-batch+json`
+  is `415`; a key over its rate is `429` with `Retry-After`; a
+  `X-Qory-Contract-Version` other than `1` is `400` and says which versions are
+  served (absent is accepted: a plain client of the contract); a body that is
+  not a batch is `400`; a run the hive has closed is `410`; anything else is
+  stored and answered `202`, with nothing projected yet.
+
+  Every `202` and `410` carries `X-Qory-Configuration`, the digest the discovery
+  answer carries. Errors are short JSON and never repeat anything sent. The
+  body, the signature and the headers are never logged.
+  """
+  use ApiaryWeb, :controller
+
+  alias Apiary.Runs.{Batch, Ingest, RateLimit}
+  alias ApiaryWeb.Contract.{Configuration, SignedRequest}
+
+  @content_type "application/cloudevents-batch+json"
+  @supported [1]
+
+  def create(conn, _params) do
+    access_key = conn.assigns.access_key
+
+    with :ok <- content_type(conn),
+         :ok <- rate(access_key),
+         :ok <- contract_version(conn),
+         {:ok, batch} <- batch(conn.assigns.raw_body),
+         {:ok, %{status: status}} <- Ingest.ingest(access_key, batch, meta(conn)) do
+      conn
+      |> put_resp_header("x-qory-configuration", Configuration.digest())
+      |> send_resp(status, "")
+    else
+      {:refuse, status, body, headers} ->
+        headers
+        |> Enum.reduce(conn, fn {name, value}, conn -> put_resp_header(conn, name, value) end)
+        |> put_status(status)
+        |> json(body)
+
+      {:error, _reason} ->
+        conn |> put_status(503) |> json(%{error: "unavailable"})
+    end
+  end
+
+  # As the reference receiver reads it: the media type, whatever its case and
+  # whatever parameters follow.
+  defp content_type(conn) do
+    case get_req_header(conn, "content-type") do
+      [value] ->
+        if String.starts_with?(String.downcase(value), @content_type),
+          do: :ok,
+          else: unsupported_media_type()
+
+      _ ->
+        unsupported_media_type()
+    end
+  end
+
+  defp unsupported_media_type, do: {:refuse, 415, %{error: "unsupported_media_type"}, []}
+
+  defp rate(access_key) do
+    case RateLimit.check(access_key.id) do
+      :ok ->
+        :ok
+
+      {:error, seconds} ->
+        {:refuse, 429, %{error: "rate_limited"}, [{"retry-after", Integer.to_string(seconds)}]}
+    end
+  end
+
+  defp contract_version(conn) do
+    case get_req_header(conn, "x-qory-contract-version") do
+      [] ->
+        :ok
+
+      [value] ->
+        case Integer.parse(value) do
+          {version, ""} when version in @supported -> :ok
+          _ -> unsupported_contract_version()
+        end
+
+      _ ->
+        unsupported_contract_version()
+    end
+  end
+
+  defp unsupported_contract_version do
+    {:refuse, 400, %{error: "unsupported_contract_version", supported: @supported}, []}
+  end
+
+  defp batch(raw_body) do
+    case Batch.parse(raw_body) do
+      {:ok, batch} -> {:ok, batch}
+      :error -> {:refuse, 400, %{error: "invalid_batch"}, []}
+    end
+  end
+
+  defp meta(conn) do
+    %{
+      delivery_id: single(conn, "x-qory-delivery"),
+      run_configuration: single(conn, "x-qory-run-configuration"),
+      runner_version: SignedRequest.runner_version(conn),
+      contract_version: SignedRequest.contract_version(conn)
+    }
+  end
+
+  defp single(conn, name) do
+    case get_req_header(conn, name) do
+      [value] -> value
+      _ -> nil
+    end
+  end
+end

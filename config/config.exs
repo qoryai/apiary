@@ -83,6 +83,9 @@ config :phoenix, :filter_parameters, ["password", "secret"]
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
+# The events endpoint: batches per second and at once, per access key.
+config :apiary, Apiary.Runs.RateLimit, rate: 50, burst: 100
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"

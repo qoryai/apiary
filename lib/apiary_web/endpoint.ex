@@ -47,13 +47,22 @@ defmodule ApiaryWeb.Endpoint do
   # Phoenix request logger is off there, so each request produces one line.
   plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]
 
-  plug Plug.Parsers,
-    parsers: [:urlencoded, :multipart, :json],
-    pass: ["*/*"],
-    json_decoder: Phoenix.json_library()
+  # A delivery to the events endpoint is signed over its raw bytes and verified
+  # before it is parsed: its body is read and kept here, and the parsers skip it.
+  plug ApiaryWeb.Contract.RawBody
+  plug :parse_body
 
   plug Plug.MethodOverride
   plug Plug.Head
   plug Plug.Session, @session_options
   plug ApiaryWeb.Router
+
+  @parsers Plug.Parsers.init(
+             parsers: [:urlencoded, :multipart, :json],
+             pass: ["*/*"],
+             json_decoder: Phoenix.json_library()
+           )
+
+  defp parse_body(%Plug.Conn{assigns: %{raw_body: _}} = conn, _opts), do: conn
+  defp parse_body(conn, _opts), do: Plug.Parsers.call(conn, @parsers)
 end

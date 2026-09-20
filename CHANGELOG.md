@@ -28,6 +28,14 @@ a restart does before doing it (`docs/upgrading.md`).
   `events` and the document's digest in `X-Qory-Configuration`; the `run` section arrives
   with the run configuration. The rules of the wire as the apiary implements them are in
   `docs/contract-assumptions.md`.
+- The events endpoint of the server contract, `POST /v1/events`: a batch signed over its raw
+  body, verified before it is parsed, deduplicated on each event's id and stored as received,
+  in any order; the run is created on the first event of an unknown subject, in the key's
+  hive. It answers `202` before anything is projected, `410` for a run the hive has closed,
+  and carries the configuration digest on both. A body over 2 MiB is `413`, an unsupported
+  `X-Qory-Contract-Version` is `400`, and a key is limited to 50 batches a second, 100 at
+  once (`429` with `Retry-After`). The ping is answered like any batch, and the key records
+  the runner's versions and its last heartbeat.
 - The projector: a run's events are folded into the run, its connections, its log and the
   hive's repositories, after the receiver has answered. Idempotent and tolerant of any order
   of arrival; `Apiary.Runs.Projector.rebuild/1` rebuilds a run's projections from its events

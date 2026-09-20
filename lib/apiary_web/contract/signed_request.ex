@@ -1,17 +1,33 @@
 defmodule ApiaryWeb.Contract.SignedRequest do
   @moduledoc """
-  Verifies a signed GET of the server contract and assigns the access key.
+  Verifies a signed request of the server contract and assigns the access key.
 
-  The runner sends `X-Qory-Access-Key`, `X-Qory-Timestamp` (Unix seconds) and
-  `X-Qory-Signature-256` over the canonical string of the method, the path with
-  its query and the timestamp (`Apiary.Contract.Signature`). The timestamp must
-  be within five minutes of the server clock. Every failure, whatever its cause,
-  is a 401 with the same body. Nothing in this module logs a header value.
+  A GET has no body: the runner sends `X-Qory-Access-Key`, `X-Qory-Timestamp`
+  (Unix seconds) and `X-Qory-Signature-256` over the canonical string of the
+  method, the path with its query and the timestamp
+  (`Apiary.Contract.Signature`). The timestamp must be within five minutes of
+  the server clock.
+
+  A POST is signed over its raw body, as `ApiaryWeb.Contract.RawBody` kept it,
+  and nothing else: no timestamp is signed and no window is checked, since a
+  replayed batch is a duplicate the receiver discards by event id. A
+  `X-Qory-Timestamp` sent on a POST is ignored. The body is verified before
+  anything parses it.
+
+  Either secret of the key verifies, in constant time. Every failure, whatever
+  its cause, is a 401 with the same body. Nothing in this module logs a header
+  value.
 
   No input makes this plug raise. The key id is checked for its exact shape
-  before it reaches the database; what is recorded about the caller (runner
-  version, contract version) is reduced to what the columns hold, and dropped
-  when it does not fit; a failure to record the use does not fail the request.
+  before it reaches the database, and a header of the signature sent twice is
+  refused. On a GET the use of the key is recorded here (runner version,
+  contract version, reduced to what the columns hold and dropped when they do
+  not fit); on a POST the receiver records it with the delivery. A failure to
+  record the use does not fail the request.
+
+  The clock is the system's; a test of the contract's fixtures, which are signed
+  around a fixed second, sets `config :apiary, :contract_now` to a function of no
+  arguments that returns Unix seconds.
   """
 
   import Plug.Conn
@@ -31,6 +47,20 @@ defmodule ApiaryWeb.Contract.SignedRequest do
 
   def init(opts), do: opts
 
+  def call(%Plug.Conn{method: "POST"} = conn, _opts) do
+    with :ok <- no_header_twice(conn),
+         {:ok, key_id} <- header(conn, "x-qory-access-key"),
+         true <- valid_key_id?(key_id),
+         {:ok, signature} <- header(conn, "x-qory-signature-256"),
+         %{raw_body: body} when is_binary(body) <- conn.assigns,
+         {:ok, %AccessKey{} = access_key} <- AccessKeys.fetch_for_verification(key_id),
+         true <- Signature.verify(AccessKey.secrets(access_key), body, signature) do
+      assign(conn, :access_key, access_key)
+    else
+      _ -> unauthorized(conn)
+    end
+  end
+
   def call(conn, _opts) do
     with {:ok, key_id} <- header(conn, "x-qory-access-key"),
          true <- valid_key_id?(key_id),
@@ -44,6 +74,14 @@ defmodule ApiaryWeb.Contract.SignedRequest do
       assign(conn, :access_key, touch(access_key, conn))
     else
       _ -> unauthorized(conn)
+    end
+  end
+
+  # On a POST the timestamp is not read, so `header/2` never sees it sent twice.
+  defp no_header_twice(conn) do
+    case get_req_header(conn, "x-qory-timestamp") do
+      [_, _ | _] -> :error
+      _ -> :ok
     end
   end
 
@@ -82,7 +120,14 @@ defmodule ApiaryWeb.Contract.SignedRequest do
   end
 
   defp within_window?(seconds) do
-    abs(System.os_time(:second) - seconds) <= @window_seconds
+    abs(now() - seconds) <= @window_seconds
+  end
+
+  defp now do
+    case Application.get_env(:apiary, :contract_now) do
+      clock when is_function(clock, 0) -> clock.()
+      _ -> System.os_time(:second)
+    end
   end
 
   # The path and query exactly as received, so the runner and the server sign
@@ -99,7 +144,8 @@ defmodule ApiaryWeb.Contract.SignedRequest do
     }
   end
 
-  defp runner_version(conn) do
+  @doc "The runner version of `User-Agent: qory-runner/<version>`, as the columns hold it, or nil."
+  def runner_version(conn) do
     with {:ok, user_agent} <- header(conn, "user-agent"),
          true <- String.valid?(user_agent),
          [_, version] <- Regex.run(~r{^qory-runner/(\S+)}, user_agent),
@@ -110,7 +156,8 @@ defmodule ApiaryWeb.Contract.SignedRequest do
     end
   end
 
-  defp contract_version(conn) do
+  @doc "The integer of `X-Qory-Contract-Version` when it is one the columns hold, or nil."
+  def contract_version(conn) do
     with {:ok, value} <- header(conn, "x-qory-contract-version"),
          {:ok, version} <- parse_integer(value),
          true <- version in @contract_version_range do
