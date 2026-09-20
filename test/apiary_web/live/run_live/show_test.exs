@@ -685,6 +685,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert html =~ "Dial failed"
       assert html =~ "POST /acme/shop.git/git-upload-pack"
       assert html =~ "forge-token"
+
       assert has_element?(
                lv,
                "#connections-footnote",

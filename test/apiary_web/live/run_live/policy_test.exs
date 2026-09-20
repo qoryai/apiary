@@ -132,6 +132,19 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
     |> String.trim()
   end
 
+  # The change reaches the page on the policy's own topic (one subscription, and the
+  # sidebar's hook lets it through); only the 250 ms of coalescing is skipped, not waited.
+  defp heard_policy_change(view, scope) do
+    subscriptions =
+      Apiary.PubSub
+      |> Registry.lookup(Policy.topic(scope.hive.id))
+      |> Enum.count(fn {pid, _} -> pid == view.pid end)
+
+    assert subscriptions == 1
+    assert :sys.get_state(view.pid).socket.assigns.policy_flush_scheduled
+    send(view.pid, :policy_flush)
+  end
+
   defp enforce(scope) do
     {:ok, _} = Policy.allow(scope, nil, %{host: "registry.example"})
     {:ok, _} = Policy.set_mode(scope, "enforce")
@@ -206,7 +219,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       # someone changes the policy: the page hears of it on the policy's topic
       {:ok, _} = Policy.allow(scope, repository, %{host: "files.cdn.example"})
       new = in_force(scope, repository)
-      send(view.pid, :policy_flush)
+      heard_policy_change(view, scope)
 
       assert text(view, "#run-drift") == "Behind v#{new.version}"
       assert text(view, "#run-behind") =~ "This run is behind the policy in force."

@@ -818,6 +818,11 @@ defmodule ApiaryWeb.RunLive.Show do
 
   @impl true
   def mount(_params, _session, socket) do
+    # The policy's topic is followed from mount: the sidebar's hook looks, before the first
+    # handle_params, at whether the page subscribed, and stops the message at itself when
+    # it did not. Subscribing any later is both a second subscription and a deaf page.
+    if connected?(socket), do: Policy.subscribe(socket.assigns.current_scope)
+
     {:ok,
      socket
      |> assign(
@@ -852,7 +857,6 @@ defmodule ApiaryWeb.RunLive.Show do
        effective: nil,
        acts: nil,
        popover: nil,
-       policy_subscribed: false,
        policy_flush_scheduled: false,
        session_id: nil,
        counts: %{all: 0, allowed: 0, denied: 0, attempts: 0},
@@ -901,7 +905,6 @@ defmodule ApiaryWeb.RunLive.Show do
         if connected?(socket) do
           # Subscribed before the read, so nothing projected after it is missed.
           Runs.subscribe(scope, run)
-          unless socket.assigns.policy_subscribed, do: Policy.subscribe(scope)
           Process.send_after(self(), :quiet_tick, @quiet_tick_ms)
 
           socket
@@ -912,7 +915,6 @@ defmodule ApiaryWeb.RunLive.Show do
             index: Record.timeline(scope, run),
             policy: Record.policy(scope, run),
             counts: Record.connection_counts(scope, run),
-            policy_subscribed: true,
             repository: repository_of(scope, run),
             versions: %{},
             effective: nil,
