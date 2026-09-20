@@ -485,10 +485,7 @@ defmodule ApiaryWeb.RunPageComponents do
       <:version><.item_version version={@item[:version]} /></:version>
     </.head>
     <p id={"#{@id}-reload"} class="q-reload-say">
-      {if @item.source == "fetched",
-        do:
-          "The runner fetched a new run configuration after the server's answer named a new digest.",
-        else: "The runner applied a policy again."}
+      {reload_sentence(@item)}
       <span :if={@item.previous_seq}>
         Compared with the policy applied at <.link
           patch={@seq_path.(@item.previous_seq)}
@@ -739,6 +736,17 @@ defmodule ApiaryWeb.RunPageComponents do
   end
 
   defp item_version(assigns), do: ~H""
+
+  # "New" is said only of a digest that is not the one before it.
+  defp reload_sentence(%{source: "fetched", digest: digest, previous_digest: previous})
+       when is_binary(digest) and digest != previous,
+       do:
+         "The runner fetched a new run configuration after the server's answer named a new digest."
+
+  defp reload_sentence(%{source: "fetched"}),
+    do: "The runner fetched its run configuration again; the digest is the one it had."
+
+  defp reload_sentence(_item), do: "The runner applied a policy again."
 
   defp delta_more(delta) do
     delta.added_count - length(delta.added) + (delta.removed_count - length(delta.removed))
