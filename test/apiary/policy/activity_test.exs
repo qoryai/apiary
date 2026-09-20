@@ -1,5 +1,6 @@
 defmodule Apiary.Policy.ActivityTest do
-  use Apiary.DataCase, async: true
+  # Not async: one test sets the cap in the application environment, which is global.
+  use Apiary.DataCase, async: false
 
   import Apiary.OrganisationsFixtures
   import Apiary.RunListFixtures
@@ -118,6 +119,24 @@ defmodule Apiary.Policy.ActivityTest do
       %{scope: other} = sign_up_fixture()
       assert {:ok, []} = Policy.uncovered(other, ctx.repository, since())
     end
+  end
+
+  test "the cap is the configuration's at each call, so a page can be shown a hive over it",
+       ctx do
+    assert Activity.cap() == 20_000
+    previous = Application.get_env(:apiary, Activity)
+    Application.put_env(:apiary, Activity, cap: 3)
+
+    on_exit(fn ->
+      if previous,
+        do: Application.put_env(:apiary, Activity, previous),
+        else: Application.delete_env(:apiary, Activity)
+    end)
+
+    assert Activity.cap() == 3
+    assert :unavailable = Policy.uncovered(ctx.scope, since())
+    assert :unavailable = Policy.denied_summary(ctx.scope, since())
+    assert :unavailable = Policy.rule_activity(ctx.scope, nil, since())
   end
 
   test "denied_summary/2: the attempts denied and their destinations", ctx do

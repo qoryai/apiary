@@ -30,11 +30,16 @@ defmodule Apiary.Policy.Activity do
   alias Apiary.Repo
   alias Apiary.Runs.{Connection, Repository, Run}
 
-  @cap 20_000
+  @default_cap 20_000
   @top 50
 
-  @doc "The most connections one answer reads; beyond it the answer is `:unavailable`."
-  def cap, do: @cap
+  @doc """
+  The most connections one answer reads; beyond it the answer is `:unavailable`.
+  #{@default_cap} unless `config :apiary, Apiary.Policy.Activity, cap: n` says otherwise, read
+  at each call, so a test can set it (`Application.put_env/3`, in a module that is not
+  async) and see the answer a large hive gets.
+  """
+  def cap, do: Keyword.get(Application.get_env(:apiary, __MODULE__, []), :cap, @default_cap)
 
   @doc false
   def uncovered(%Scope{hive: %Hive{} = hive}, repository_id, since, opts \\ []) do
@@ -115,7 +120,7 @@ defmodule Apiary.Policy.Activity do
   # there is more than is read.
   # `cap:` is for the tests, which cannot afford the real one.
   defp rows(hive_id, repository_id, since, opts) do
-    cap = Keyword.get(opts, :cap, @cap)
+    cap = Keyword.get(opts, :cap, cap())
 
     query =
       from c in Connection,
