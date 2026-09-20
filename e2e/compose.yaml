@@ -1,0 +1,35 @@
+# The machines of the end to end job, beside the test instance, which run.sh starts on
+# the host: the Linux node the session runs on, and the host the session asks for.
+name: apiary-e2e
+
+services:
+  # A Linux machine with a container engine of its own. qory runs here, and builds the
+  # wall with this engine: two networks and two containers inside the node, nothing of
+  # them on the host's engine. Privileged because an engine inside a container is.
+  node:
+    build: ./node
+    privileged: true
+    environment:
+      DOCKER_TLS_CERTDIR: ""
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - "${E2E_QORY:?}:/usr/local/bin/qory:ro"
+      - "${E2E_WORK:?}/config:/config:ro"
+      - "./checkout:/src/checkout:ro"
+      - "./node:/e2e:ro"
+    networks: [outside]
+
+  # The host the session asks for: a page over TLS, on the node's network and nowhere
+  # else, under a name no resolver outside this job knows.
+  target:
+    image: nginx:1.29-alpine
+    volumes:
+      - "./target/nginx.conf:/etc/nginx/conf.d/default.conf:ro"
+      - "${E2E_WORK:?}/tls:/etc/nginx/tls:ro"
+    networks:
+      outside:
+        aliases: ["${E2E_TARGET_HOST:?}"]
+
+networks:
+  outside: {}

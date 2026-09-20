@@ -1,0 +1,39 @@
+#!/bin/sh
+# The session of the end to end job: not a model, a loop. It asks for one page of the
+# target host through the proxy the wall gave it, every E2E_RETRY_SECONDS, and says what
+# came of each try. It leaves once the page has come back E2E_SUCCESSES times, or
+# after E2E_SESSION_SECONDS. It reads nothing of its arguments.
+url="${E2E_TARGET_URL:?}"
+retry="${E2E_RETRY_SECONDS:-3}"
+wanted="${E2E_SUCCESSES:-2}"
+limit="${E2E_SESSION_SECONDS:-120}"
+
+echo "session $QORY_RUN_ID: asking for $url every ${retry}s"
+
+# First, around the proxy. Behind a wall there is no way around: no resolver that knows
+# the name and no route to anything but the relay. A session that gets through here is
+# not behind a wall, and the job is not proving what it says.
+if curl --silent --noproxy '*' --insecure --max-time 3 --output /dev/null "$url" 2>/dev/null; then
+  echo "reached $url around the proxy: there is no wall"
+  exit 3
+fi
+echo "around the proxy: no way out"
+
+start=$(date +%s)
+reached=0
+try=0
+while [ $(( $(date +%s) - start )) -lt "$limit" ]; do
+  try=$((try + 1))
+  # --insecure: the target's certificate is made for the job and signed by nobody. The
+  # job is about whether the connection is let through, not about whom it reaches.
+  if curl --silent --show-error --insecure --max-time 5 --output /dev/null "$url" 2>/dev/null; then
+    reached=$((reached + 1))
+    echo "try $try: reached"
+    [ "$reached" -ge "$wanted" ] && { echo "done"; exit 0; }
+  else
+    echo "try $try: refused"
+  fi
+  sleep "$retry"
+done
+echo "gave up after ${limit}s"
+exit 1
