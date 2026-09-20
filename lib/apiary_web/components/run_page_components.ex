@@ -18,7 +18,7 @@ defmodule ApiaryWeb.RunPageComponents do
   import ApiaryWeb.RunComponents,
     only: [connection_row: 1, duration: 1, offset: 1, count_noun: 2, delimited: 1, middle: 2]
 
-  import ApiaryWeb.PolicyComponents, only: [version_link: 1]
+  alias ApiaryWeb.RunComponents
 
   alias Phoenix.LiveView.JS
 
@@ -493,7 +493,9 @@ defmodule ApiaryWeb.RunPageComponents do
         >#{pad(@item.previous_seq)}</.link>: {delta_words(@item.delta)}
       </span>
       <span :if={@item[:previous_version]}>
-        Connections before this item were decided by v{@item.previous_version.n}.
+        Connections before this item were decided by {RunComponents.version_words(
+          @item.previous_version
+        )}.
       </span>
     </p>
     """
@@ -727,11 +729,7 @@ defmodule ApiaryWeb.RunPageComponents do
   # The version a policy applied names, when this hive rendered it: the link of pd1.
   defp item_version(%{version: %{n: _, path: _}} = assigns) do
     ~H"""
-    <.version_link
-      version={@version.n}
-      navigate={@version.path}
-      title={"Version #{@version.n}. Open the exact document."}
-    />
+    <RunComponents.scoped_version version={@version} class="q-pv" />
     """
   end
 

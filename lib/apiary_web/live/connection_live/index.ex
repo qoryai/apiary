@@ -588,6 +588,10 @@ defmodule ApiaryWeb.ConnectionLive.Index do
     page = if repository, do: :run, else: :hive
     standings = Enum.map(rows, &{&1, Rules.standing(&1, effective, page, socket.assigns.own)})
     changes = Rules.changes(scope, repository, Enum.map(standings, &elem(&1, 1)))
+
+    standings =
+      for {row, standing} <- standings, do: {row, Rules.answered(standing, row, changes)}
+
     open = socket.assigns.popover && socket.assigns.popover.anchor
 
     acts =
@@ -616,7 +620,11 @@ defmodule ApiaryWeb.ConnectionLive.Index do
         level: if(entry.source == :repository, do: :repository, else: :hive),
         version:
           change && is_integer(change.version) &&
-            %{n: change.version, path: Rules.version_path(target_id, change.version)},
+            %{
+              n: change.version,
+              path: Rules.version_path(target_id, change.version),
+              label: Rules.version_label(target_id, repository)
+            },
         by: change && who(change, scope),
         at: (change && change.at) || (entry.rule && entry.rule.updated_at),
         # The hive's page says nothing of a run.

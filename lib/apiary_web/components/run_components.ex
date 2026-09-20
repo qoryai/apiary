@@ -1455,13 +1455,11 @@ defmodule ApiaryWeb.RunComponents do
                                                                           do: "this repository",
                                                                           else: "the hive"}<span :if={
           @line.version
-        }> in <PolicyComponents.version_link
-          version={@line.version.n}
-          navigate={@line.version.path}
-          class="text-xs"
-        /></span><span :if={@line.state != :in_force && @line.by}> by {@line.by}</span><span :if={
-          @line.state != :in_force && @line.at
-        }> · <.relative_time at={@line.at} /></span>. {after_sentence(@line)}
+        }> in <.scoped_version version={@line.version} class="text-xs" /></span><span :if={
+          @line.state != :in_force && @line.by
+        }> by {@line.by}</span><span :if={@line.state != :in_force && @line.at}> · <.relative_time at={@line.at} /></span>. {after_sentence(
+          @line
+        )}
       </span>
     </div>
     """
@@ -1716,6 +1714,41 @@ defmodule ApiaryWeb.RunComponents do
 
   defp next_sentence(_popover), do: nil
 
+  @doc """
+  A version named on a run's pages: the link of pd1 and, since versions count per target
+  (the baseline's apart from each repository's), the words that say whose it is.
+  `version` is `%{n, path, label}`; a missing label says nothing.
+  """
+  attr :version, :map, required: true
+  attr :class, :any, default: nil
+  attr :title, :string, default: nil
+
+  def scoped_version(assigns) do
+    ~H"""
+    <span class={["q-sver", @class]}>
+      <PolicyComponents.version_link
+        version={@version.n}
+        navigate={@version[:path]}
+        title={
+          @title ||
+            "Version #{@version.n}#{if @version[:label], do: " of the #{@version.label}"}. Open the exact document."
+        }
+      /><small :if={@version[:label]} class="q-sver-of" title={@version.label}><span aria-hidden="true"> · </span><span class="sr-only"> of </span>{middle(
+        @version.label,
+        32
+      )}</small>
+    </span>
+    """
+  end
+
+  @doc "A version in a sentence: \"the hive baseline's v3\", \"acme/shop's v1\"."
+  def version_words(%{n: n, label: label}) when is_binary(label), do: "#{possessive(label)} v#{n}"
+  def version_words(%{n: n}), do: "v#{n}"
+  def version_words(_version), do: "another configuration"
+
+  defp possessive("hive baseline"), do: "the hive baseline's"
+  defp possessive(label), do: middle(label, 40) <> "'s"
+
   ## pd9. The drift mark
 
   @doc """
@@ -1741,19 +1774,22 @@ defmodule ApiaryWeb.RunComponents do
       tabindex="0"
       data-tip={drift_tip(@reported, @in_force, @last_seq)}
     >
-      <.icon name="hero-exclamation-triangle-micro" class="size-[11px]" />Behind v{@in_force.n}
+      <.icon name="hero-exclamation-triangle-micro" class="size-[11px]" />Behind v{@in_force.n}<span
+        :if={@in_force[:label]}
+        class="q-drift-of"
+      > · {middle(@in_force.label, 24)}</span>
     </span>
     """
   end
 
   defp drift_tip(reported, in_force, last_seq) do
     [
-      "The run last reported #{if reported, do: "v#{reported.n}", else: "another configuration"}" <>
+      "The run last reported #{version_words(reported)}" <>
         if(is_integer(last_seq) and last_seq > 0,
           do: " at ##{last_seq |> Integer.to_string() |> String.pad_leading(4, "0")}.",
           else: "."
         ),
-      "v#{in_force.n} has been in force since #{clock_label(in_force.rendered_at)}.",
+      "#{String.capitalize(version_words(in_force))} has been in force since #{clock_label(in_force.rendered_at)}.",
       "A run reloads at its next heartbeat."
     ]
     |> Enum.join(" ")

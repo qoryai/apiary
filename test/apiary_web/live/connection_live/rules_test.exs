@@ -125,7 +125,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       assert has_element?(view, ~s(tr##{cdn}.q-denied[data-decision=denied]))
       line = text(view, "##{cdn}-after")
       assert line =~ "Rule added"
-      assert line =~ "Allowed for the hive in v#{configuration.version} by you"
+      assert line =~ "Allowed for the hive in v#{configuration.version} · of hive baseline by you"
       refute line =~ "run"
       assert has_element?(view, ~s(a##{cdn}-act[href="/hive/policy?rule=files.cdn.example"]))
     end
@@ -173,7 +173,27 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
 
       assert [%{host: "files.cdn.example"}] = Policy.list_rules(scope, github)
       line = text(view, "##{dst("files.cdn.example")}-after")
-      assert line =~ "Allowed for this repository in v1 by you"
+      assert line =~ "Allowed for this repository in v1 · of github.example/acme/shop by you"
+    end
+
+    test "a row denied before and allowed since by a rule added lately keeps its line", %{
+      conn: conn,
+      scope: scope
+    } do
+      {:ok, _} = Policy.allow(scope, nil, %{host: "files.cdn.example"})
+
+      # the later run's attempt is the destination's last
+      started_run(scope, shop(),
+        ago: 10,
+        egress: [%{"host" => "files.cdn.example", "rule" => "files.cdn.example"}]
+      )
+
+      view = open(conn)
+      cdn = dst("files.cdn.example")
+
+      assert has_element?(view, ~s(tr##{cdn}[data-decision=allowed]))
+      assert text(view, "##{cdn}-after") =~ "Allowed for the hive in v2 · of hive baseline"
+      assert text(view, "a##{cdn}-act") == "Rule"
     end
 
     test "a rule someone else adds reaches the rows over the policy's topic", %{

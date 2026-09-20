@@ -18,7 +18,7 @@ defmodule ApiaryWeb.RunLive.Show do
   use ApiaryWeb, :live_view
 
   import ApiaryWeb.RunPageComponents
-  import ApiaryWeb.PolicyComponents, only: [version_link: 1, short_digest: 1]
+  import ApiaryWeb.PolicyComponents, only: [short_digest: 1]
 
   alias Apiary.Policy
   alias Apiary.Runs
@@ -163,7 +163,6 @@ defmodule ApiaryWeb.RunLive.Show do
               reported={@digests.reported || @digests.applied}
               in_force={@in_force}
               last_seq={@run.projected_sequence}
-              baseline={@reported_version && @reported_version.scope == :hive && @repository != nil}
             />
           </.kv>
         </.kvs>
@@ -171,14 +170,14 @@ defmodule ApiaryWeb.RunLive.Show do
         <.notice :if={@in_force} kind={:warning} class="max-w-[100ch]">
           <span id="run-behind">
             <b>This run is behind the policy in force.</b>
-            It last reported {if @reported_version,
-              do: "v#{@reported_version.n}",
-              else: "another configuration"}
-            <span :if={@digests.reported} class="font-mono text-xs">{short_digest(@digests.reported)}</span>;
-            v{@in_force.n} <span class="font-mono text-xs">{short_digest(@in_force.digest)}</span>
+            It last reported {version_words(@reported_version)}
+            <span :if={@digests.reported} class="font-mono text-xs">{short_digest(@digests.reported)}</span>; {version_words(
+              @in_force
+            )}
+            <span class="font-mono text-xs">{short_digest(@in_force.digest)}</span>
             is in force (<.relative_time id="run-behind-since" at={@in_force.rendered_at} />).
             A run reloads at its next heartbeat; until it does, it decides by {if @reported_version,
-              do: "v#{@reported_version.n}",
+              do: version_words(@reported_version),
               else: "what it holds"}.
           </span>
           <div class="mt-1">
@@ -188,8 +187,9 @@ defmodule ApiaryWeb.RunLive.Show do
               class="q-link"
             >
               {if comparable?(@reported_version, @in_force),
-                do: "What changed between v#{@reported_version.n} and v#{@in_force.n}",
-                else: "Open v#{@in_force.n}"}
+                do:
+                  "What changed between v#{@reported_version.n} and v#{@in_force.n} of the #{@in_force.label}",
+                else: "Open #{version_words(@in_force)}"}
             </.link>
           </div>
         </.notice>
@@ -502,12 +502,7 @@ defmodule ApiaryWeb.RunLive.Show do
           </span>
           <span :if={@policy}>
             policy <b>{@policy.mode}</b>
-            <.version_link
-              :if={@version}
-              version={@version.n}
-              navigate={@version.path}
-              title={"Version #{@version.n}. Open the exact document."}
-            />
+            <.scoped_version :if={@version} version={@version} />
             <span
               :if={!@version && @run.policy_digest}
               class="font-mono text-[12.5px]"
@@ -646,12 +641,11 @@ defmodule ApiaryWeb.RunLive.Show do
           </dd>
           <dt :if={@version}>Version</dt>
           <dd :if={@version} id="policy-version">
-            <.version_link version={@version.n} navigate={@version.path} />
-            <span :if={@version.scope == :hive} class="text-faint">hive baseline</span>
+            <.scoped_version version={@version} />
           </dd>
           <dt :if={@version && @digests.in_force}>In force now</dt>
           <dd :if={@version && @digests.in_force} id="policy-in-force">
-            <.version_link :if={@in_force} version={@in_force.n} navigate={@in_force.path} />
+            <.scoped_version :if={@in_force} version={@in_force} />
             <span :if={!@in_force && @digests.in_force == @version.digest}>the same</span>
             <span :if={!@in_force && @digests.in_force != @version.digest} class="font-mono">
               {short_digest(@digests.in_force)}
@@ -763,7 +757,6 @@ defmodule ApiaryWeb.RunLive.Show do
   attr :reported, :string, default: nil, doc: "the run configuration digest the run reported"
   attr :in_force, :any, default: nil, doc: "the version in force, only while the run is behind"
   attr :last_seq, :integer, default: nil
-  attr :baseline, :any, default: false
 
   defp policy_value(%{policy: nil} = assigns), do: ~H|<span class="text-faint">n/a</span>|
 
@@ -779,16 +772,14 @@ defmodule ApiaryWeb.RunLive.Show do
     <.term word={@policy.mode || "n/a"} standard={@tips.mode} class="q-tip-wide tooltip-left" />
     <%= cond do %>
       <% @version -> %>
-        <.version_link
-          version={@version.n}
-          navigate={@version.path}
+        <.scoped_version
+          version={@version}
           class="ml-1"
-          title={"Version #{@version.n}, sha256 #{short_digest(@version.digest)}. Open the exact document."}
+          title={"Version #{@version.n} of the #{@version.label}, sha256 #{short_digest(@version.digest)}. Open the exact document."}
         />
-        <small :if={!@in_force && !@baseline} class="ml-1 font-mono" title={@version.digest}>
+        <small :if={!@in_force} class="ml-1 font-mono" title={@version.digest}>
           {short_digest(@version.digest)}
         </small>
-        <small :if={!@in_force && @baseline} class="ml-1">hive baseline</small>
       <% @reported -> %>
         <span id="policy-unrendered" tabindex="0" title={@tips.unrendered}>
           <small class="ml-1 font-mono">{short_digest(@reported)}</small>
@@ -1611,7 +1602,7 @@ defmodule ApiaryWeb.RunLive.Show do
     in_force =
       if behind? do
         case Policy.current_configuration(scope, repository) do
-          {:ok, configuration} -> Rules.version_of(configuration)
+          {:ok, configuration} -> Rules.version_of(configuration, repository)
           _ -> nil
         end
       end
@@ -1648,6 +1639,9 @@ defmodule ApiaryWeb.RunLive.Show do
     standings = Enum.map(rows, &{&1, Rules.standing(&1, effective, :run)})
     changes = Rules.changes(scope, repository, Enum.map(standings, &elem(&1, 1)))
 
+    standings =
+      for {row, standing} <- standings, do: {row, Rules.answered(standing, row, changes)}
+
     acts =
       for {row, standing} <- standings, into: %{} do
         {"cx-#{row.id}", act(socket, row, standing, changes)}
@@ -1674,7 +1668,11 @@ defmodule ApiaryWeb.RunLive.Show do
         level: if(entry.source == :repository, do: :repository, else: :hive),
         version:
           change && is_integer(change.version) &&
-            %{n: change.version, path: Rules.version_path(target_id, change.version)},
+            %{
+              n: change.version,
+              path: Rules.version_path(target_id, change.version),
+              label: Rules.version_label(target_id, repository)
+            },
         by: change && who(change, scope),
         at: (change && change.at) || (entry.rule && entry.rule.updated_at),
         state: after_state(socket),

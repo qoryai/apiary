@@ -42,29 +42,40 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
 
   @doc """
   The version a digest names for the repository (or the baseline, `nil`): `%{n, digest,
-  scope, repository_id, path, rendered_at}`, or nil when this hive rendered nothing with
-  that digest. One indexed read.
+  scope, repository_id, label, path, rendered_at}`, or nil when this hive rendered nothing
+  with that digest. One indexed read.
   """
   def version(_scope, _repository, digest) when not is_binary(digest), do: nil
 
   def version(scope, repository, digest) do
     case Policy.configuration_for_digest(scope, repository, digest) do
-      {:ok, configuration} -> version_of(configuration)
+      {:ok, configuration} -> version_of(configuration, repository)
       _ -> nil
     end
   end
 
-  @doc "A run configuration as the pages here name a version."
-  def version_of(configuration) do
+  @doc """
+  A run configuration as the pages here name a version. Versions count per target, the
+  baseline's apart from each repository's, so every version is named with its `label`:
+  "hive baseline", or the repository's forge and path when `repository` is the one the
+  configuration is of.
+  """
+  def version_of(configuration, repository \\ nil) do
     %{
       n: configuration.version,
       digest: configuration.digest,
       scope: if(configuration.repository_id, do: :repository, else: :hive),
       repository_id: configuration.repository_id,
+      label: version_label(configuration.repository_id, repository),
       rendered_at: configuration.rendered_at,
       path: version_path(configuration.repository_id, configuration.version)
     }
   end
+
+  @doc "The words that say whose numbering a version is in."
+  def version_label(nil, _repository), do: "hive baseline"
+  def version_label(id, %{id: id, forge: forge, path: path}), do: "#{forge}/#{path}"
+  def version_label(_id, _repository), do: "repository"
 
   @doc """
   `Policy.digests/2`, whatever shape it answers in, as `%{in_force, reported, applied,
@@ -220,6 +231,23 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
 
   def seen(_effective, _host), do: []
 
+  @doc """
+  A row that was denied and is now allowed by a rule added lately is a row a rule
+  answered: once the run reloads, its last attempt is allowed by that rule and the record
+  says so, and the line after must still say "In force in this run" with the link to the
+  rule, not offer to deny it. So `:can_deny` on a row with denials becomes
+  `{:rule_added, :allow}` while the rule's change is on the newest page of its history.
+  """
+  def answered(%{standing: :can_deny, entry: %Entry{} = entry} = standing, row, changes) do
+    denied = Map.get(row, :denied) || 0
+
+    if denied > 0 and change_for(entry, changes) != nil,
+      do: %{standing | standing: {:rule_added, :allow}},
+      else: standing
+  end
+
+  def answered(standing, _row, _changes), do: standing
+
   @doc "The words of the toast, from the rule the domain made."
   def toast(rule, action, host, path, where) do
     pathed? = is_list(rule.paths) and path not in [nil, ""] and rule.action == "allow"
@@ -348,7 +376,8 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   """
   def changes(scope, repository, standings) do
     sources =
-      for %{standing: {:rule_added, _}, entry: %Entry{source: source}} <- standings,
+      for %{standing: standing, entry: %Entry{source: source}} <- standings,
+          match?({:rule_added, _}, standing) or standing == :can_deny,
           uniq: true,
           do: source
 

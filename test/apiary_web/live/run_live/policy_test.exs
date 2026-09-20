@@ -191,7 +191,46 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
                ~s(#run-facts a.q-ver[href="/hive/policy/versions/#{configuration.version}"])
              )
 
-      assert text(view, "#run-facts") =~ "hive baseline"
+      assert text(view, "#run-facts") =~ "v#{configuration.version} · of hive baseline"
+    end
+
+    test "behind a repository's version while on the baseline's: both numberings are named", %{
+      conn: conn,
+      scope: scope
+    } do
+      run = policy_run(scope, applied: @other)
+      repository = repository(scope, run)
+      enforce(scope)
+      {:ok, _} = Policy.allow(scope, nil, %{host: "one.example"})
+      baseline = in_force(scope, nil)
+      run = report(run, baseline.digest)
+      {:ok, view, _html} = live(conn, ~p"/hive/runs/#{run.run_id}")
+      assert text(view, "#run-facts") =~ "v#{baseline.version} · of hive baseline"
+
+      # the repository's first rule gives it a numbering of its own, at v1
+      {:ok, _} = Policy.allow(scope, repository, %{host: "files.cdn.example"})
+      own = in_force(scope, repository)
+      assert own.version == 1
+      heard_policy_change(view, scope)
+
+      assert text(view, "#run-drift") == "Behind v1 · github.example/acme/shop"
+      notice = text(view, "#run-behind")
+      assert notice =~ "It last reported the hive baseline's v#{baseline.version}"
+      assert notice =~ "github.example/acme/shop's v1"
+      assert notice =~ "is in force"
+      # the two numberings do not compare: the link opens the version in force
+      path = "/hive/policy/repositories/#{repository.id}/versions/1"
+
+      assert has_element?(
+               view,
+               ~s(#run-behind-diff[href="#{path}"]),
+               "Open github.example/acme/shop's v1"
+             )
+
+      # the details tab names both
+      {:ok, view, _html} = live(conn, ~p"/hive/runs/#{run.run_id}/details")
+      assert text(view, "#policy-version") =~ "v#{baseline.version} · of hive baseline"
+      assert text(view, "#policy-in-force") =~ "v1 · of github.example/acme/shop"
     end
 
     test "a digest no version here has is not rendered here, and links nowhere", %{
@@ -224,9 +263,17 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       new = in_force(scope, repository)
       heard_policy_change(view, scope)
 
-      assert text(view, "#run-drift") == "Behind v#{new.version}"
+      # versions count per target: every one named says whose it is
+      assert text(view, "#run-drift") == "Behind v#{new.version} · github.example/acme/shop"
       assert text(view, "#run-behind") =~ "This run is behind the policy in force."
-      assert text(view, "#run-behind") =~ "It last reported v#{old.version}"
+
+      assert text(view, "#run-behind") =~
+               "It last reported github.example/acme/shop's v#{old.version}"
+
+      assert text(view, "#run-behind") =~ "github.example/acme/shop's v#{new.version}"
+
+      assert text(view, "#run-behind") =~
+               "it decides by github.example/acme/shop's v#{old.version}"
 
       compare =
         "/hive/policy/repositories/#{repository.id}/versions/#{new.version}?compare=#{old.version}"
@@ -300,7 +347,9 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       assert text(view, "#e-30-reload") =~ "#0003 : 1 host added, none removed."
 
       assert text(view, "#e-30-reload") =~
-               "Connections before this item were decided by v#{v1.version}."
+               "Connections before this item were decided by the hive baseline's v#{v1.version}."
+
+      assert text(view, "#e-30 .q-pv") == "v#{v2.version} · of hive baseline"
     end
 
     test "a reload that names the digest it had is not called new", %{conn: conn, scope: scope} do
@@ -436,7 +485,10 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       # and it gains the line: a rule was added, and this run has not reloaded
       line = text(view, "#cx-#{id}-after")
       assert line =~ "Rule added"
-      assert line =~ "Allowed for this repository in v#{new.version} by you"
+
+      assert line =~
+               "Allowed for this repository in v#{new.version} · of github.example/acme/shop by you"
+
       assert line =~ "The run has not reloaded yet."
       refute line =~ "In force in this run"
 
@@ -453,9 +505,57 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       report(run, new.digest)
       line = text(view, "#cx-#{id}-after")
       assert line =~ "In force in this run"
-      assert line =~ "Allowed for this repository in v#{new.version} . The run has reported it."
+
+      assert line =~
+               "Allowed for this repository in v#{new.version} · of github.example/acme/shop . The run has reported it."
+
       refute line =~ "has not reloaded"
       assert has_element?(view, ~s(tr#cx-#{id}.q-denied))
+    end
+
+    test "once the run reloaded and the row's last attempt is allowed by the rule, the line stays",
+         %{conn: conn, scope: scope} do
+      # denied first; the rule is added; the run reloads and the next attempt is allowed by it
+      digest = in_force(scope, nil).digest
+      run = policy_run(scope, applied: digest, egress: [@denied, @registry])
+      repository = repository(scope, run)
+      {:ok, _} = Policy.allow(scope, repository, %{host: "files.cdn.example"})
+      new = in_force(scope, repository)
+      time = DateTime.add(DateTime.utc_now(), -10, :second)
+
+      event_fixture(run, 30, "run.policy_applied", applied(new.digest, ["files.cdn.example"]),
+        time: time
+      )
+
+      event_fixture(
+        run,
+        31,
+        "run.egress",
+        egress_data(%{"host" => "files.cdn.example", "rule" => "files.cdn.example"}),
+        time: DateTime.add(time, 1, :second)
+      )
+
+      {:ok, run} = Projector.project(run)
+      run = report(run, new.digest)
+      view = connections(conn, run)
+      id = connection_id(run, "files.cdn.example")
+
+      # the record: one denied, one allowed, the last by the rule
+      assert has_element?(view, ~s(tr#cx-#{id}[data-decision=allowed]))
+      assert text(view, "#cx-#{id}") =~ "Rule files.cdn.example"
+      line = text(view, "#cx-#{id}-after")
+      assert line =~ "In force in this run"
+
+      assert line =~
+               "Allowed for this repository in v#{new.version} · of github.example/acme/shop"
+
+      assert line =~ "The run reloaded at #0030."
+      assert text(view, "a#cx-#{id}-act") == "Rule"
+
+      # a row that was never denied is not one a rule answered: it can be denied
+      registry = connection_id(run, "registry.example")
+      refute has_element?(view, "#cx-#{registry}-after")
+      assert text(view, "button#cx-#{registry}-act") == "Deny"
     end
 
     test "a run that takes no policy from here is not promised a reload", %{
