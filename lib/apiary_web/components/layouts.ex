@@ -486,11 +486,11 @@ defmodule ApiaryWeb.Layouts do
         <div class="relative"><.brand size="lg" /></div>
         <div class="relative grid gap-3.5">
           <p class="max-w-[30ch] text-balance text-[26px]/8 font-semibold tracking-[-0.025em]">
-            Every run your coding agents make, in <span class="text-accent">one place</span>
-            you host yourself.
+            Can you trust your agents? With Qory <span class="text-accent">you don't have to</span>.
           </p>
-          <p class="text-[13px]/5 text-muted">
-            Self-hosted. Your machines, your database, your keys.
+          <p class="max-w-[46ch] text-[13px]/5 text-muted">
+            Every session runs behind a security wall, reaches only what you allow, never holds
+            your keys, and leaves a full record. Open source, so you can check all of that.
           </p>
         </div>
       </aside>

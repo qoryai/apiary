@@ -876,11 +876,14 @@ Form side, left-aligned like the other auth pages (not centred text):
 |   . . honeycomb, fading . .   |        We will email you a link.       |
 |                               |        No password needed.             |
 |                               |        Email                           |
-| Every run your coding agents  |        [ beekeeper@example.com    ]    |
-| make, in one place you host   |        [x] Keep me signed in           |
-| yourself.                     |        [  Send me a log-in link   ]    |
-| Self-hosted. Your machines,   |        [  Use a password instead  ]    |
-| your database, your keys.     |        New to Qory? Create an account  |
+| Can you trust your agents?    |        [ beekeeper@example.com    ]    |
+| With Qory you don't have to.  |        [x] Keep me signed in           |
+| Every session runs behind a   |        [  Send me a log-in link   ]    |
+| security wall, reaches only   |        [  Use a password instead  ]    |
+| what you allow, never holds   |        New to Qory? Create an account  |
+| your keys, and leaves a full  |                                        |
+| record. Open source, so you   |                                        |
+| can check all of that.        |                                        |
 +-------------------------------+----------------------------------------+
    5fr, base-200, border-r            6fr, base-100, form 352 px wide
 ```
@@ -888,8 +891,11 @@ Form side, left-aligned like the other auth pages (not centred text):
 `div.grid.min-h-dvh.lg:grid-cols-[5fr_6fr]`. **Brand panel**: `bg-base-200 border-r border-line
 p-8 lg:p-10 flex flex-col justify-between relative overflow-hidden`, the honeycomb behind; top:
 28 px mark + "Qory" 19 px; bottom: the sentence in 26 / 32 semibold -0.025em, `max-w-[30ch]`, with
-"one place" in `text-accent`, and under it in `text-[13px] text-muted`: "Self-hosted. Your
-machines, your database, your keys." The same sentence on every auth page. **Form side**: centred
+"you don't have to" in `text-accent`, and under it in `text-[13px] text-muted max-w-[46ch]`: "Every
+session runs behind a security wall, reaches only what you allow, never holds your keys, and
+leaves a full record. Open source, so you can check all of that." The same sentence on every
+auth page. The line sells trust, never the deployment model: self-hosting is one way to run
+Qory and belongs on the install page, not here. **Form side**: centred
 352 px column (`max-w-[352px]`), everything left-aligned, `grid gap-4`; theme control top-right
 (icon-only ghost button opening the three-way menu). **Below 1024 px** the panel collapses to a
 header strip: `h-14 px-4 border-b`, brand only, no pattern, no sentence; the form starts 40 px
