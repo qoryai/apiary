@@ -216,7 +216,13 @@ if config_env() == :prod do
           _ -> raise "environment variable SMTP_TLS must be always, if_available or never"
         end
 
-      smtp_username = System.get_env("SMTP_USERNAME")
+      # An empty SMTP_USERNAME (the line left blank in .env) is an unset one: no
+      # authentication, not authentication as nobody.
+      smtp_username =
+        case System.get_env("SMTP_USERNAME") do
+          nil -> nil
+          value -> if String.trim(value) == "", do: nil, else: value
+        end
 
       # Port 465 means implicit TLS on connect; every other port uses STARTTLS as
       # SMTP_TLS says.

@@ -56,4 +56,15 @@ defmodule Apiary.RuntimeConfigTest do
     assert mailer[:adapter] == Swoosh.Adapters.SMTP
     assert mailer[:relay] == "smtp.example.com"
   end
+
+  test "a blank SMTP_USERNAME, as .env.example leaves it, is no authentication" do
+    System.put_env("SMTP_RELAY", "smtp.example.com")
+    System.put_env("SMTP_USERNAME", "")
+    assert prod_mailer()[:auth] == :never
+
+    System.put_env("SMTP_USERNAME", "relay-user")
+    mailer = prod_mailer()
+    assert mailer[:auth] == :always
+    assert mailer[:username] == "relay-user"
+  end
 end
