@@ -26,7 +26,7 @@ pruned until an owner asks for it.
 
 Retention works on whole runs, so a timeline is never half there.
 
-A run is due when it is not alive (it exited, failed, timed out, was lost or was closed) and
+A run is due when it is not alive (it succeeded, failed, timed out, was lost or was closed) and
 the server last received an event of it before the cut-off. Only the server's clock is
 compared, never the time a runner wrote into an event. A run that is still running is never
 pruned, however long it has run.

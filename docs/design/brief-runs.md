@@ -36,7 +36,7 @@ it. The eight principles of `brief.md` apply; these six are added.
    heartbeats arrive. After one missed interval it freezes at the last heartbeat's
    `elapsed_seconds` and reads "at least 8 m 30 s". A lost or closed run keeps "at least".
 5. **Colour marks a decision, not a mood.** Green and red belong to the policy's decisions
-   (allowed, denied) and to a run's end (exited, failed). Blue is "in progress". Amber is "the
+   (allowed, denied) and to a run's end (succeeded, failed). Blue is "in progress". Amber is "the
    record has gone quiet". Lanes have their own hues, which are never status hues. The word is
    always beside the colour.
 6. **Live without motion sickness.** New items append at the end. Nothing already on screen moves
@@ -91,7 +91,7 @@ Query parameters, runs list:
 | Param | Values | Default |
 |---|---|---|
 | `group` | `repository`, `task`, `none` | `repository` |
-| `state` | comma list of `pending,running,exited,failed,timed_out,lost,closed` | all |
+| `state` | comma list of `pending,running,succeeded,failed,timed_out,lost,closed` | all |
 | `repo` | `{forge}:{path}`, e.g. `github.example:acme/shop`; `none` for unassigned | all |
 | `task` | the label's value; `none` for runs without | all |
 | `runtime` | e.g. `claude` | all |
@@ -174,7 +174,7 @@ One badge family for the seven states. It is `<.badge>` with a 12 px glyph in pl
 | `pending` | Pending | neutral | hollow 6 px ring | none |
 | `running` | Running | info | solid 6 px dot with a 12 px ripple ring | ripple 1.6 s, `--q-ease-out`, infinite |
 | `running`, quiet | Running | warning | solid dot, no ripple | none; the amber note sits beside it |
-| `exited` | Exited | success | `hero-check-micro` | none |
+| `succeeded` | Succeeded | success | `hero-check-micro` | none |
 | `failed` | Failed `exit 1` | error | `hero-x-mark-micro` | none |
 | `timed_out` | Timed out | error | `hero-clock-micro` | none |
 | `lost` | Lost | warning | `hero-signal-slash-micro` | none |
@@ -283,7 +283,7 @@ Right-aligned in the title row. Running and heard from: 8 px `success` dot with 
 `<.listening>`, "Alive, 4 s ago" (`text-[13px] text-muted tabular-nums`, seconds ticking). After
 one missed interval: `primary-soft-content` dot, no ripple, `text-primary-soft-content`, "No heartbeat for 47 s";
 tooltip as in rd1. Before the first heartbeat it counts from `last_event_at` and reads "Alive, last
-event 4 s ago". Terminal states render no dot: "Exited 18 m 02 s after it started", "Failed with
+event 4 s ago". Terminal states render no dot: "Succeeded 18 m 02 s after it started", "Failed with
 exit 1", "Timed out after 1 h 00 m", "Lost. Last heard 18 Sep 2026, 22:55", "Closed 14 Sep 2026".
 `role="status"` with `aria-live="off"`; the state change itself is announced by the page's one
 polite region (ri).
@@ -679,9 +679,9 @@ Updated as batches land                                          |--------------
 | State      Run            Runtime   Host   Started  Dur  Den | | 2 minutes ago           2 m 16 s |
 |--------------------------------------------------------------| | ⊘ 2                              |
 | v github.example acme/shop        5 runs · 1 alive · 3 denials| |---------------------------------|
-| (•)Running checkout-tax   claude…   build… 2 min    2m14s ⊘2 | | checkout-tax           ✓ Exited  |
+| (•)Running checkout-tax   claude…   build… 2 min    2m14s ⊘2 | | checkout-tax        ✓ Succeeded  |
 |            0191f2a4                                          | | …                                |
-| ✓ Exited   checkout-tax   …                                  | +---------------------------------+
+| ✓ Succeeded checkout-tax  …                                  | +---------------------------------+
 | x Failed exit 1  fix-flaky-cart-test …                    ⊘1 |
 | ◷ Timed out  upgrade-framework …                             |
 | v gitlab.example acme/shop                  2 runs · 1 alive |
@@ -857,7 +857,7 @@ clause reads "without a wall, anything else connects unseen." Hive connections: 
 destinations come first, then the most recent. The reason and outcome are those of the last
 attempt across the runs shown."
 
-Announcements (the polite region, ri): "Run exited after 18 m 02 s." "Run failed with exit 1."
+Announcements (the polite region, ri): "Run succeeded after 18 m 02 s." "Run failed with exit 1."
 "Run timed out." "Run lost. No heartbeat for 90 s." "Heartbeats resumed." "3 new events." (at most
 once every 10 s).
 
@@ -899,7 +899,7 @@ Layout never animates: streamed inserts do not push content when the reader is a
 | base-100 glyph on `error` (the denied mark) | 5.50 | 5.85 |
 | `error-soft-content` (denied lead, counts) on `denied-tint` | 7.46 | 8.48 |
 | base-content / muted / `error` on `denied-tint` | 16.3 / 6.28 / 5.15 | 13.9 / 6.42 / 5.29 |
-| `success-soft-content` on `success-soft` (Exited) | 7.80 | 9.19 |
+| `success-soft-content` on `success-soft` (Succeeded) | 7.80 | 9.19 |
 | `error-soft-content` on `error-soft` (Failed, Timed out) | 7.05 | 7.86 |
 | `info-soft-content` on `info-soft` (Running) | 7.37 | 8.94 |
 | `primary-soft-content` on `primary-soft` (Lost, quiet) | 7.60 | 9.47 |
