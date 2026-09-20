@@ -115,6 +115,41 @@ a restart does before doing it (`docs/upgrading.md`).
   how many runs are alive now on every page of the hive. The overview links to the runs.
 - For development, `mix apiary.demo` replays the synthetic recorded runs under `priv/demo/` into a hive through the receiver's own ingest, as new runs that end now (dev and test only), and prints each run's page. The records cover a session with two subagents, a failed run, a running one, one stopped at its time limit, one that only pinged and one without labels under an observing policy.
 
+- The security policy (`Apiary.Policy`): the hive has a mode, `observe` or `enforce`, and a
+  baseline of rules; a repository has rules of its own on top. A rule allows or denies a host
+  (a name or a `*.` suffix, on every path or held to a list of paths) or a credential of the
+  machine's by name, and never holds a credential. The contract's policy document can only
+  allow, so a deny is the apiary's own: it takes entries out of what is rendered, which is
+  how a repository disables a host of the hive. On a conflict the repository wins, unless the
+  hive's rule is locked: a locked rule holds against every repository. Members edit; only an
+  owner locks, unlocks, changes or removes a locked rule. What the document cannot say is
+  refused when it is written, with a sentence that says what to do instead: a deny of a host
+  below an allowed `*.` suffix, and a `*.` suffix held to paths above another allowed entry.
+- Run configurations: every change renders the baseline and every repository with rules of
+  its own, in the same transaction, as canonical JSON validated against the contract's
+  schemas (vendored under `priv/contract/`; `jsv` is a runtime dependency now). Each version
+  is kept as the exact bytes served, under `sha256=` of those bytes, with who changed what
+  and when; a change that renders the same bytes makes no new version. The history of the
+  hive and of each repository is kept with the rules before and after, and is diffable.
+  Changes are announced on `Apiary.PubSub` (`policy:<hive>`).
+- Suggestions: the hosts a repository's harness declared, from its runs' policy applied
+  events, that its policy neither covers nor denies. Allow and deny from a connection's row:
+  the host, or the path when the host is held to paths, in the repository or in the hive.
+  Export of the effective policy for a node without a server: the `egress` section of
+  `runner.yaml`, and a `--policy` file when there are paths or credentials.
+- The run configuration endpoint of the server contract, `GET /v1/run-configuration`: a
+  signed request answered with the stored bytes for the key's hive and the labelled
+  repository, the baseline for any other, the digest in `X-Qory-Run-Configuration` and as the
+  `ETag`, never a `304`. A hive without a policy gets a baseline made on first need:
+  `observe`, nothing allowed, nothing denied. Discovery names the `run` section.
+- Live reload: every `202` and `410` of `POST /v1/events` carries
+  `X-Qory-Run-Configuration`, the digest in force for the run's repository, read from an
+  index and never rendered while answering; a run whose policy changed fetches it again
+  within a heartbeat. The digest a batch reported is kept on the delivery and on the run,
+  and `Apiary.Policy.digests/2` says whether a run is behind.
+- `mix apiary.demo` gives a hive without rules a policy to look at: a baseline, a host held
+  to paths, a locked deny, a repository's overrides, several versions and a history.
+
 ### Migrations
 
 - `users`, `users_tokens` (the account tables), `organisations`, `hives`, `memberships`,
@@ -136,9 +171,24 @@ a restart does before doing it (`docs/upgrading.md`).
   last_seen_at)`. Both built `CONCURRENTLY`, outside a transaction and without the migration
   lock, so the receiver keeps writing while they build; reversible. Two instances must not
   boot this migration at the same moment.
+- `20260923000100`: `hives.egress_mode`, `observe` or `enforce` by a `CHECK`, default
+  `observe` for every hive that exists: nothing is denied until somebody says so. Instant;
+  reversible.
+- `20260923000200` to `20260923000400`: the tables of the security policy, `policy_rules`,
+  `policy_changes`, `run_configurations`, with the hive's composite key and a composite key
+  to the repository. All new and empty; each reverses by dropping its table.
+- `20260923000500`: `deliveries.run_configuration_digest`, a nullable column: what a batch
+  said the run holds. Instant; reversible. Deliveries recorded before it keep null.
 
 ### Upgrading
 
+- Discovery names a `run` section from this release on, so every run under a server key
+  takes its policy from the hive and no longer from the machine's `runner.yaml`. A hive
+  nobody has given a policy serves `observe` with nothing allowed, which records everything
+  and denies nothing: a machine that enforced its own list stops enforcing it until the hive
+  has the list and the mode. Give the hive its policy before upgrading a fleet that relies
+  on enforcement, or run such a machine with `--local`. The digest of the discovery document
+  changes, so a run in flight fetches it again.
 - First release; nothing to upgrade. Set the variables in `.env.example`; `CLOAK_KEY` must
   never change once a key has been created, or every stored secret becomes unreadable.
 - Mail delivery is required: the release does not boot without `SMTP_RELAY`. A trial on one

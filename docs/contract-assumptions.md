@@ -47,15 +47,18 @@ the SHA-256 of the body as sent:
 ```json
 {
   "version": 1,
-  "events": {"url": "https://<public host>/v1/events", "types": ["*"]}
+  "events": {"url": "https://<public host>/v1/events", "types": ["*"]},
+  "run": {"url": "https://<public host>/v1/run-configuration"}
 }
 ```
 
 `<public host>` is the application's public base URL (`PUBLIC_URL`). The `events` URL is
-the events endpoint below. The `run`
-section is deliberately absent until the run configuration exists: a runner refuses to run
-when a section the document names does not answer, and runs under its machine's own policy
-when the section is absent. Sections a runner does not know are to be ignored.
+the events endpoint below, and the `run` URL the run configuration endpoint after it. The
+apiary always names a `run` section: a run under a server's key takes its policy from the
+hive, and a runner refuses to run when the section it was named does not answer `200`.
+Sections a runner does not know are to be ignored. The digest of this document changed when
+the `run` section came back, so a run that was in flight across that upgrade fetches the
+document once more, finds the section and fetches its run configuration.
 
 ## Signed POST: the events endpoint
 
@@ -90,9 +93,10 @@ first refusal that applies is the answer:
 | `503` | the batch could not be stored; nothing of it was | `{"error":"unavailable"}` |
 | `202` | stored | empty |
 
-Every `202` and `410` carries `X-Qory-Configuration`, the same digest the discovery answer
-carries. `X-Qory-Run-Configuration` is not answered until the run configuration exists. No
-error body repeats anything that was sent. The ping is a batch like any other: a `2xx` lets the
+Every `202` and `410` carries the digests in force: `X-Qory-Configuration`, the same digest
+the discovery answer carries, and `X-Qory-Run-Configuration`, the digest of the run
+configuration for the run's repository (see "The run configuration" below for which that is
+while the repository is not known yet). No other status carries the second. No error body repeats anything that was sent. The ping is a batch like any other: a `2xx` lets the
 run start, and a revoked key, a bad signature or an unsupported version does not.
 
 A batch is a non-empty JSON array of at most 1000 objects (a runner cuts a batch at a
@@ -118,8 +122,9 @@ What is stored, in one transaction, before the answer:
   held under another `id`, is dropped and counted in a log line; it is never an error, since
   sending it again could not help. Events are read back by `sequence`, never by arrival;
 - the delivery: the key, `X-Qory-Delivery`, the subject, how many events it held, how many were
-  new, the status answered. A delivery id the key has delivered before is answered `202` again
-  and nothing is stored;
+  new, the status answered, and the batch's `X-Qory-Run-Configuration` when it had the shape
+  of a digest. A delivery id the key has delivered before is answered `202` again and nothing
+  is stored;
 - on the run: the count of events, when the last one was received, and the last
   `X-Qory-Run-Configuration` that had the shape `sha256=` and 64 lowercase hex digits.
 
@@ -130,6 +135,33 @@ the server received it, by the server's clock and never the runner's. A repeated
 records nothing on the key. The run's events are projected into the run, its connections and its log, on the server's own
 time. Nothing of a request's headers beyond the above is stored, and neither the signature nor
 the body is logged.
+
+## Signed GET: the run configuration
+
+`GET /v1/run-configuration?forge=<label>&repository=<label>`, signed like discovery, the
+query signed as sent. It answers `200`, `Content-Type: application/json`, with
+`X-Qory-Run-Configuration: sha256=<lowercase hex>`, `ETag: "sha256=<hex>"` (the same string,
+quoted), `X-Qory-Configuration` and `Cache-Control: no-store`:
+
+```json
+{"version":1,"security_policy":{"version":1,"egress":{"mode":"enforce","allow":["api.example"]}}}
+```
+
+The body is the bytes that were stored when the policy was last changed; nothing is rendered
+for a request, so the digest is of exactly what is sent. It is the configuration of the
+key's hive for the repository the two labels name. A repository the hive has not seen, one
+with no rules of its own, and a request that names none (or one label of the two) get the
+hive's baseline. A hive whose policy nobody has touched gets a baseline rendered on first
+need: `observe`, `allow` empty, which denies nothing.
+
+Rendering is canonical: members in a fixed order, no whitespace, `allow` sorted with names
+before `*.` suffixes (so the rule a runner reports for a connection is the most exact one),
+`paths` by host with each list sorted, `credentials` by name; `allow` is always present,
+`paths` and `credentials` only when they hold something. The same rules give the same bytes
+and the same digest, a change that renders the same bytes makes no new version, and every
+document is validated against the contract's `run-configuration.schema.json` and
+`policy.schema.json` (vendored under `priv/contract/`) before it is stored: a change whose
+render the schema refuses is not made.
 
 ## Failure
 
@@ -200,3 +232,48 @@ The contract has not fixed these; Apiary chose, and the runner should match:
   is not `2xx` or `410`.
 - The path is matched after percent-decoding, as the router matches it: `/v1/%65vents` is the
   events endpoint, signed and verified like it.
+- The run configuration endpoint never answers `304`, whatever `If-None-Match` says: to a
+  runner anything but `200` is no run. The `ETag` is there for a person with `curl`.
+- `forge` and `repository` are compared to the stored labels byte for byte after the query's
+  percent-decoding; a label longer than 512 bytes, empty, holding a NUL, or sent as anything
+  but one string (`forge[]=`) names no repository, which is the baseline and not an error.
+  Of a parameter sent twice the last is read. Nothing of the query is logged.
+- When the run configuration cannot be read the endpoint answers `503
+  {"error":"unavailable"}`, which is no run: the run fails closed, as it does on any answer
+  but `200`.
+- The digest in an answer to a batch is read, never rendered: one read of an index for a run
+  whose repository has a configuration of its own, two when it falls back to the baseline.
+  If that read fails the header is absent, which means nothing to a runner, and the delivery
+  is still `202`.
+- A run's repository is known to the server once its `run.started` is projected, which is
+  after the receiver answers. Until then the answer's digest is, in this order: that of the
+  repository the batch's own `run.started` labels name; else, when the request's
+  `X-Qory-Run-Configuration` is a digest in force in the hive (the baseline's newest, or any
+  repository's newest), that digest; else the baseline's. So the ping of a run that fetched
+  its repository's configuration a moment ago is not answered the baseline's digest and sent
+  to fetch again. A runner told a digest it does not hold fetches once and remembers the
+  answer it tried, so the worst case is one fetch that changes nothing.
+- What the runner's proxy does with the policy document, read from `internal/proxy`,
+  `internal/policy` and `session` of the runner at the pinned ref, and what the apiary
+  renders for it:
+  - A connection is decided by `egress.allow` first (`Proxy.decide`), and only a connection
+    that was allowed is terminated and held to `egress.paths`. A host that is only in
+    `paths` is denied under `enforce`. So a host held to paths is rendered in **both**
+    `allow` and `paths`, always.
+  - The path rules of a host are those of the first key of `paths` that matches it
+    (`terminator.rules`), and `paths` is a Go map, whose order is not fixed: with `*.example`
+    and `git.example` both in `paths`, which list holds `git.example` changes from run to
+    run. A `*.` key of `paths` also holds every allowed host below it, whatever that host's
+    own rule says. The apiary therefore refuses, at write time and with a sentence, a `*.`
+    suffix held to paths above any other allowed entry; a name held to paths under a `*.`
+    suffix that is free of paths is fine and rendered.
+  - The document can only allow: there is no way to say "every host below `example` except
+    one". A deny of a host below an allowed `*.` suffix is refused at write time unless the
+    allow outranks the deny (then the page shows the deny as overridden); nothing is ever
+    rendered that allows more than the page shows.
+  - A policy with `paths` or `credentials` needs a wall: without one the runner refuses to
+    start the run, in either mode, and on a reload it takes the hosts held to paths out of
+    `allow` and refuses a configuration that selects credentials. The apiary renders what
+    the rules say; the page and the export say that paths and credentials need a wall.
+  - A credential the machine does not define is no run. The apiary names credentials and
+    cannot know what a machine defines.
