@@ -1,0 +1,1111 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Policy · Qory</title>
+<script>
+(function(){try{var t=(location.search.match(/theme=(light|dark)/)||[])[1]||localStorage.getItem("qory:theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}})();
+</script>
+<style>
+/* Static mock of milestone M5 (the security policy: hive and repository rules, versions, history, export,
+   allow and deny from a connection row, the version and drift mark of the run header). Tokens and the M4
+   components are copied from runs-mock.html; the block marked NEW in M5 is what brief-policy.md adds.
+   Synthetic data only. */
+@font-face { font-family: "Geist"; src: url("../../priv/static/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: "Geist Mono"; src: url("../../priv/static/fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+
+:root {
+  color-scheme: light;
+  --color-base-100: oklch(99.3% 0.003 85); --color-base-200: oklch(97.6% 0.005 85); --color-base-300: oklch(94.6% 0.007 85);
+  --color-base-content: oklch(21% 0.012 65);
+  --color-primary: oklch(78% 0.15 76); --color-primary-content: oklch(22% 0.045 70);
+  --color-accent: oklch(50% 0.11 66); --color-accent-content: oklch(99% 0.004 85);
+  --color-neutral: oklch(24% 0.012 65); --color-neutral-content: oklch(96% 0.005 85);
+  --color-info: oklch(54% 0.13 248); --color-success: oklch(53% 0.13 152); --color-warning: oklch(76% 0.15 72); --color-error: oklch(54% 0.2 27);
+  --q-border-subtle: oklch(91.5% 0.008 80); --q-border-strong: oklch(84% 0.01 80); --q-border-field: oklch(66% 0.01 80);
+  --q-muted: oklch(47% 0.012 65); --q-faint: oklch(55% 0.01 65); --q-ring: oklch(62% 0.15 70); --q-code-bg: oklch(96.8% 0.006 85);
+  --q-primary-soft: oklch(95.5% 0.04 85); --q-primary-soft-content: oklch(42% 0.095 66);
+  --q-success-soft: oklch(95.5% 0.035 152); --q-success-soft-content: oklch(40% 0.1 152);
+  --q-error-soft: oklch(95.5% 0.025 27); --q-error-soft-content: oklch(45% 0.17 27);
+  --q-info-soft: oklch(95.5% 0.025 248); --q-info-soft-content: oklch(42% 0.12 248);
+  --q-overlay: oklch(21% 0.012 65 / 0.4);
+  --q-shadow-xs: 0 1px 2px oklch(21% 0.02 70 / 0.06);
+  --q-shadow-pop: 0 0 0 1px oklch(21% 0.02 70 / 0.06), 0 10px 28px -8px oklch(21% 0.02 70 / 0.18);
+  --q-shadow-modal: 0 0 0 1px oklch(21% 0.02 70 / 0.06), 0 28px 70px -18px oklch(21% 0.02 70 / 0.32);
+  /* NEW in M4 */
+  --q-lane-main: oklch(66% 0.01 80); --q-lane-a: oklch(52% 0.15 300); --q-lane-b: oklch(52% 0.085 205); --q-lane-c: oklch(52% 0.12 265);
+  --q-denied-tint: color-mix(in oklab, var(--q-error-soft) 55%, var(--color-base-100));
+  --q-term-bg: oklch(20% 0.008 70); --q-term-edge: oklch(30% 0.008 70);
+}
+:root {
+  --q-term-fg: oklch(90% 0.008 80); --q-term-dim: oklch(66% 0.012 75); --q-term-green: oklch(80% 0.15 152); --q-term-red: oklch(74% 0.16 25);
+  --q-term-yellow: oklch(84% 0.13 85); --q-term-blue: oklch(78% 0.1 248); --q-term-magenta: oklch(78% 0.12 320); --q-term-cyan: oklch(82% 0.09 200);
+  --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  --radius-selector: 0.25rem; --radius-field: 0.375rem; --radius-box: 0.625rem;
+  --ease-out: cubic-bezier(0.2, 0, 0, 1); --dur-1: 120ms; --dur-2: 180ms; --dur-3: 240ms;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  color-scheme: dark;
+  --color-base-100: oklch(19.5% 0.006 70); --color-base-200: oklch(16.5% 0.006 70); --color-base-300: oklch(24.5% 0.008 70);
+  --color-base-content: oklch(94% 0.008 80);
+  --color-primary: oklch(80% 0.145 78); --color-primary-content: oklch(20% 0.04 70);
+  --color-accent: oklch(82% 0.12 80); --color-accent-content: oklch(20% 0.04 70);
+  --color-neutral: oklch(28% 0.008 70); --color-neutral-content: oklch(94% 0.008 80);
+  --color-info: oklch(74% 0.11 248); --color-success: oklch(74% 0.14 152); --color-warning: oklch(80% 0.14 75); --color-error: oklch(68% 0.18 25);
+  --q-border-subtle: oklch(27% 0.008 70); --q-border-strong: oklch(35% 0.01 70); --q-border-field: oklch(50% 0.01 70);
+  --q-muted: oklch(71% 0.012 75); --q-faint: oklch(60% 0.012 75); --q-ring: oklch(80% 0.145 78); --q-code-bg: oklch(15% 0.006 70);
+  --q-primary-soft: oklch(27% 0.04 78); --q-primary-soft-content: oklch(85% 0.12 80);
+  --q-success-soft: oklch(26% 0.04 152); --q-success-soft-content: oklch(82% 0.12 152);
+  --q-error-soft: oklch(27% 0.05 25); --q-error-soft-content: oklch(80% 0.11 25);
+  --q-info-soft: oklch(26% 0.04 248); --q-info-soft-content: oklch(82% 0.09 248);
+  --q-overlay: oklch(8% 0.005 70 / 0.62);
+  --q-shadow-xs: 0 1px 2px oklch(0% 0 0 / 0.4);
+  --q-shadow-pop: 0 0 0 1px oklch(100% 0 0 / 0.07), 0 12px 32px -8px oklch(0% 0 0 / 0.6);
+  --q-shadow-modal: 0 0 0 1px oklch(100% 0 0 / 0.08), 0 32px 80px -16px oklch(0% 0 0 / 0.75);
+  --q-lane-main: oklch(50% 0.01 70); --q-lane-a: oklch(76% 0.12 300); --q-lane-b: oklch(76% 0.09 205); --q-lane-c: oklch(76% 0.1 265);
+  --q-term-bg: oklch(13.5% 0.005 70); --q-term-edge: oklch(27% 0.008 70);
+} }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-base-100: oklch(19.5% 0.006 70); --color-base-200: oklch(16.5% 0.006 70); --color-base-300: oklch(24.5% 0.008 70);
+  --color-base-content: oklch(94% 0.008 80);
+  --color-primary: oklch(80% 0.145 78); --color-primary-content: oklch(20% 0.04 70);
+  --color-accent: oklch(82% 0.12 80); --color-accent-content: oklch(20% 0.04 70);
+  --color-neutral: oklch(28% 0.008 70); --color-neutral-content: oklch(94% 0.008 80);
+  --color-info: oklch(74% 0.11 248); --color-success: oklch(74% 0.14 152); --color-warning: oklch(80% 0.14 75); --color-error: oklch(68% 0.18 25);
+  --q-border-subtle: oklch(27% 0.008 70); --q-border-strong: oklch(35% 0.01 70); --q-border-field: oklch(50% 0.01 70);
+  --q-muted: oklch(71% 0.012 75); --q-faint: oklch(60% 0.012 75); --q-ring: oklch(80% 0.145 78); --q-code-bg: oklch(15% 0.006 70);
+  --q-primary-soft: oklch(27% 0.04 78); --q-primary-soft-content: oklch(85% 0.12 80);
+  --q-success-soft: oklch(26% 0.04 152); --q-success-soft-content: oklch(82% 0.12 152);
+  --q-error-soft: oklch(27% 0.05 25); --q-error-soft-content: oklch(80% 0.11 25);
+  --q-info-soft: oklch(26% 0.04 248); --q-info-soft-content: oklch(82% 0.09 248);
+  --q-overlay: oklch(8% 0.005 70 / 0.62);
+  --q-shadow-xs: 0 1px 2px oklch(0% 0 0 / 0.4);
+  --q-shadow-pop: 0 0 0 1px oklch(100% 0 0 / 0.07), 0 12px 32px -8px oklch(0% 0 0 / 0.6);
+  --q-shadow-modal: 0 0 0 1px oklch(100% 0 0 / 0.08), 0 32px 80px -16px oklch(0% 0 0 / 0.75);
+  --q-lane-main: oklch(50% 0.01 70); --q-lane-a: oklch(76% 0.12 300); --q-lane-b: oklch(76% 0.09 205); --q-lane-c: oklch(76% 0.1 265);
+  --q-term-bg: oklch(13.5% 0.005 70); --q-term-edge: oklch(27% 0.008 70);
+}
+
+/* ---------- Base ---------- */
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; height: 100dvh; overflow: hidden; display: flex; flex-direction: column; background: var(--color-base-300); color: var(--color-base-content);
+  font: 400 14px/20px var(--font-sans); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+[hidden] { display: none !important; }
+h1, h2, h3, h4, p, ul, ol, dl, dd, figure, pre { margin: 0; padding: 0; } ul, ol { list-style: none; } h1, h2, h3 { text-wrap: balance; }
+a { color: inherit; text-decoration: none; } button { font: inherit; color: inherit; }
+svg.i { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+svg.i.sm { width: 12px; height: 12px; stroke-width: 1.9; }
+:focus-visible { outline: 2px solid var(--q-ring); outline-offset: 2px; }
+::selection { background: var(--color-primary); color: var(--color-primary-content); }
+.mono { font-family: var(--font-mono); font-size: 12.5px; } .muted { color: var(--q-muted); } .faint { color: var(--q-faint); } .tnum { font-variant-numeric: tabular-nums; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.trunc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; } .ripple::after, .state-running i::after { display: none; } }
+
+/* ---------- Mock chrome (not part of the product) ---------- */
+.mockbar { flex: none; display: flex; align-items: center; gap: 12px; height: 44px; padding-inline: 12px; background: var(--color-base-300); border-bottom: 1px solid var(--q-border-strong); overflow-x: auto; scrollbar-width: none; }
+.mockbar::-webkit-scrollbar { display: none; }
+.mockbar .tag { font: 500 11.5px/16px var(--font-mono); color: var(--q-faint); white-space: nowrap; }
+.mockbar .url { flex: 1 1 260px; min-width: 200px; height: 26px; display: flex; align-items: center; gap: 6px; padding-inline: 10px; border-radius: 999px; background: var(--color-base-100); border: 1px solid var(--q-border-subtle); font: 11.5px/16px var(--font-mono); color: var(--q-muted); white-space: nowrap; overflow: hidden; }
+.mockbar .url b { font-weight: 400; color: var(--color-base-content); }
+.seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: var(--radius-field); background: color-mix(in oklab, var(--color-base-content) 7%, transparent); flex: none; }
+.seg button, .seg a { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding-inline: 8px; border: 0; background: none; cursor: pointer; font-size: 12px; font-weight: 500; color: var(--q-muted); border-radius: var(--radius-selector); white-space: nowrap; transition: color var(--dur-1), background-color var(--dur-1); }
+.seg svg { width: 13px; height: 13px; }
+.seg button:hover, .seg a:hover { color: var(--color-base-content); }
+.seg [aria-pressed="true"], .seg [aria-current="true"] { background: var(--color-base-100); color: var(--color-base-content); box-shadow: var(--q-shadow-xs); }
+.stage { flex: 1; min-height: 0; container: app / inline-size; background: var(--color-base-100); position: relative; }
+.stage.phone { flex: none; width: min(100% - 24px, 390px); height: min(100dvh - 76px, 844px); margin: 16px auto; border-radius: 28px; border: 1px solid var(--q-border-strong); box-shadow: var(--q-shadow-modal); overflow: hidden; }
+
+/* ---------- Shell ---------- */
+.app { height: 100%; display: grid; grid-template-columns: 240px minmax(0, 1fr); }
+.side { background: var(--color-base-200); border-right: 1px solid var(--q-border-subtle); display: flex; flex-direction: column; min-width: 0; overflow-y: auto; }
+.side-brand { height: 56px; flex: none; display: flex; align-items: center; justify-content: space-between; padding-inline: 16px 8px; }
+.brand { display: inline-flex; align-items: center; gap: 8px; } .brand svg { width: 22px; height: 22px; flex: none; }
+.brand span { font-size: 16px; line-height: 20px; font-weight: 600; letter-spacing: -0.03em; }
+.mark-body { fill: var(--color-primary); } .mark-ink { fill: var(--color-base-content); }
+.ws { margin: 0 8px 8px; padding: 6px 8px; display: grid; grid-template-columns: 28px 1fr auto; gap: 10px; align-items: center; border-radius: var(--radius-field); border: 1px solid var(--q-border-subtle); background: var(--color-base-100); box-shadow: var(--q-shadow-xs); text-align: left; cursor: pointer; }
+.ws:hover { border-color: var(--q-border-strong); }
+.ws b { display: block; font-size: 13px; line-height: 18px; font-weight: 600; } .ws small { display: block; font-size: 12px; line-height: 16px; color: var(--q-muted); } .ws svg { color: var(--q-faint); }
+.avatar { width: 24px; height: 24px; border-radius: 50%; flex: none; display: grid; place-items: center; font-size: 11px; font-weight: 600; text-transform: uppercase; }
+.avatar.sq { width: 28px; height: 28px; font-size: 12px; border-radius: var(--radius-field); background: var(--color-neutral); color: var(--color-neutral-content); }
+.avatar.honey { background: var(--q-primary-soft); color: var(--q-primary-soft-content); }
+.side-label { padding: 12px 16px 4px; font-size: 11.5px; line-height: 16px; font-weight: 500; color: var(--q-faint); }
+.side-nav { display: grid; gap: 1px; padding-inline: 8px; }
+.side-nav a { display: flex; align-items: center; gap: 10px; height: 32px; padding-inline: 8px; border-radius: var(--radius-field); font-size: 13px; font-weight: 500; color: var(--q-muted); transition: background-color var(--dur-1), color var(--dur-1); }
+.side-nav a svg { color: var(--q-faint); } .side-nav a:hover { background: var(--color-base-300); color: var(--color-base-content); }
+.side-nav a[aria-current] { background: var(--color-base-300); color: var(--color-base-content); } .side-nav a[aria-current] svg { color: var(--color-accent); }
+.side-nav .count { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font: 11.5px/16px var(--font-mono); color: var(--q-faint); }
+.side-nav .count.alive { color: var(--q-info-soft-content); }
+.side-user { margin: auto 8px 8px; padding: 6px 8px; display: grid; grid-template-columns: 24px 1fr auto; gap: 10px; align-items: center; border-radius: var(--radius-field); border: 0; background: none; text-align: left; cursor: pointer; }
+.side-user:hover { background: var(--color-base-300); } .side-user b { font-size: 13px; font-weight: 500; display: block; line-height: 18px; } .side-user small { font-size: 11.5px; line-height: 14px; color: var(--q-faint); display: block; } .side-user > svg { color: var(--q-faint); }
+.content { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.m-top { display: none; flex: none; align-items: center; justify-content: space-between; height: 52px; padding-inline: 8px 16px; border-bottom: 1px solid var(--q-border-subtle); background: var(--color-base-100); }
+.m-top .l { display: flex; align-items: center; gap: 4px; }
+.main { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; scroll-padding-top: 64px; position: relative; }
+.main-in { max-width: 1200px; margin-inline: auto; padding: 32px 40px 48px; display: grid; gap: 24px; grid-template-columns: minmax(0, 1fr); }
+.scrim { display: none; }
+.btn.only-drawer { display: none; }
+
+/* ---------- Existing components ---------- */
+.btn { --h: 32px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: var(--h); padding-inline: 12px; border-radius: var(--radius-field); border: 1px solid var(--q-border-strong); background: var(--color-base-100); color: var(--color-base-content); font-size: 13px; line-height: 16px; font-weight: 500; white-space: nowrap; cursor: pointer; box-shadow: var(--q-shadow-xs); transition: background-color var(--dur-1) var(--ease-out), border-color var(--dur-1) var(--ease-out), color var(--dur-1) var(--ease-out); }
+.btn:hover { background: var(--color-base-200); border-color: var(--q-border-field); } .btn:active { background: var(--color-base-300); }
+.btn-xs { --h: 24px; font-size: 12px; padding-inline: 8px; border-radius: var(--radius-selector); }
+.btn-ghost { background: transparent; border-color: transparent; box-shadow: none; color: var(--q-muted); } .btn-ghost:hover { background: var(--color-base-300); border-color: transparent; color: var(--color-base-content); }
+.btn-square { width: var(--h); padding: 0; } .btn-md { --h: 40px; }
+.badge { display: inline-flex; align-items: center; gap: 5px; height: 20px; padding-inline: 7px; border-radius: 999px; font-size: 11.5px; line-height: 16px; font-weight: 500; border: 1px solid var(--q-border-subtle); background: var(--color-base-200); color: var(--q-muted); white-space: nowrap; }
+.badge-success { background: var(--q-success-soft); color: var(--q-success-soft-content); border-color: transparent; }
+.badge-warning { background: var(--q-primary-soft); color: var(--q-primary-soft-content); border-color: transparent; }
+.badge-error { background: var(--q-error-soft); color: var(--q-error-soft-content); border-color: transparent; }
+.badge-info { background: var(--q-info-soft); color: var(--q-info-soft-content); border-color: transparent; }
+.page-head { display: flex; justify-content: space-between; align-items: start; gap: 16px; flex-wrap: wrap; }
+.page-head h1 { font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: -0.017em; } .page-head p { margin-top: 2px; color: var(--q-muted); max-width: 62ch; }
+.term { text-decoration: underline dotted; text-decoration-color: var(--q-border-field); text-underline-offset: 3px; cursor: help; position: relative; }
+.tip { position: relative; display: inline-flex; }
+.term::after, .tip::after { content: attr(data-tip); position: absolute; left: 50%; bottom: calc(100% + 6px); transform: translate(-50%, 2px); padding: 4px 8px; border-radius: var(--radius-field); background: var(--color-neutral); color: var(--color-neutral-content); font: 500 12px/16px var(--font-sans); white-space: normal; width: max-content; max-width: 260px; text-align: left; pointer-events: none; opacity: 0; transition: opacity var(--dur-1) var(--ease-out), transform var(--dur-1) var(--ease-out); z-index: 30; box-shadow: var(--q-shadow-pop); }
+.term.down::after { bottom: auto; top: calc(100% + 6px); }
+.tip.tip-end::after { left: auto; right: 0; transform: translate(0, 2px); }
+.term:hover::after, .term:focus-visible::after, .tip:hover::after, .tip:focus-within::after { opacity: 1; transform: translate(-50%, 0); transition-delay: 300ms; }
+.tip.tip-end:hover::after, .tip.tip-end:focus-within::after { transform: translate(0, 0); }
+.table-wrap { border: 1px solid var(--q-border-subtle); border-radius: var(--radius-box); background: var(--color-base-100); box-shadow: var(--q-shadow-xs); overflow-x: auto; }
+.table { width: 100%; border-collapse: collapse; font-size: 14px; line-height: 20px; }
+.table th { text-align: left; font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: 0.005em; color: var(--q-muted); padding: 9px 16px; background: var(--color-base-200); border-bottom: 1px solid var(--q-border-subtle); white-space: nowrap; }
+.table td { padding: 10px 16px; border-bottom: 1px solid var(--q-border-subtle); white-space: nowrap; vertical-align: middle; }
+.table tbody:last-child tr:last-child td { border-bottom: 0; } .table th.num, .table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.table tbody tr { transition: background-color var(--dur-1); } .table tbody tr.row:hover { background: var(--color-base-200); }
+.table td.meta { color: var(--q-muted); font-variant-numeric: tabular-nums; } .table td.slot { width: 1%; padding-inline: 4px 12px; }
+.notice { display: grid; grid-template-columns: 16px 1fr; gap: 10px; padding: 10px 12px; border-radius: var(--radius-field); font-size: 13px; line-height: 18px; background: var(--q-info-soft); color: var(--q-info-soft-content); }
+.notice svg { margin-top: 1px; } .notice b { font-weight: 600; }
+.ripple { width: 8px; height: 8px; border-radius: 50%; background: currentColor; position: relative; flex: none; display: inline-block; }
+.ripple::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 1px solid currentColor; animation: ripple 2.4s var(--ease-out) infinite; }
+@keyframes ripple { from { opacity: 0.9; transform: scale(0.6); } to { opacity: 0; transform: scale(1.5); } }
+
+/* ---------- NEW: run state badge ---------- */
+.state { padding-left: 5px; } .state svg { width: 12px; height: 12px; stroke-width: 1.9; }
+.state i { width: 12px; height: 12px; display: grid; place-items: center; position: relative; }
+.state i::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.state-pending i::before { background: none; border: 1.5px solid currentColor; }
+.state-running i::after { content: ""; position: absolute; inset: 0; border-radius: 50%; border: 1px solid currentColor; animation: ripple 1.6s var(--ease-out) infinite; }
+
+/* ---------- NEW: filter bar ---------- */
+.filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding-inline: 10px; border-radius: var(--radius-field); border: 1px dashed var(--q-border-strong); background: none; font-size: 13px; font-weight: 500; color: var(--q-muted); cursor: pointer; white-space: nowrap; transition: border-color var(--dur-1), color var(--dur-1), background-color var(--dur-1); }
+.chip:hover { border-color: var(--q-border-field); color: var(--color-base-content); } .chip svg { color: var(--q-faint); }
+.chip.on { border: 1px solid var(--q-border-strong); background: var(--color-base-100); box-shadow: var(--q-shadow-xs); color: var(--q-muted); padding-right: 4px; }
+.chip.on b { font-weight: 500; color: var(--color-base-content); } .chip.on .x { display: grid; place-items: center; width: 20px; height: 20px; border-radius: var(--radius-selector); } .chip.on .x:hover { background: var(--color-base-300); }
+.chip.toggle[aria-pressed="true"] { border: 1px solid transparent; background: var(--q-error-soft); color: var(--q-error-soft-content); } .chip.toggle[aria-pressed="true"] svg { color: currentColor; }
+.filters .grow { flex: 1; } .filters .clear { font-size: 13px; font-weight: 500; color: var(--color-accent); background: none; border: 0; cursor: pointer; padding: 4px; }
+.seg.in { background: var(--color-base-300); }
+.summary { display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: center; font-size: 13px; color: var(--q-muted); }
+.summary b { color: var(--color-base-content); font-weight: 500; font-variant-numeric: tabular-nums; }
+/* ---------- NEW: run header ---------- */
+.crumbs { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--q-muted); flex-wrap: wrap; } .crumbs a:hover { color: var(--color-base-content); } .crumbs svg { color: var(--q-faint); width: 12px; height: 12px; }
+.run-head { display: grid; gap: 16px; }
+.run-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; } .run-title h1 { font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: -0.017em; }
+.alive { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--q-muted); font-variant-numeric: tabular-nums; } .alive .ripple { color: var(--color-success); }
+.alive.amber { color: var(--q-primary-soft-content); } .alive.amber .ripple { color: var(--q-primary-soft-content); } .alive.amber .ripple::after { display: none; }
+.kvs { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); border: 1px solid var(--q-border-subtle); border-radius: var(--radius-box); background: var(--color-base-100); box-shadow: var(--q-shadow-xs); overflow: hidden; }
+.kv { padding: 10px 16px; display: grid; gap: 1px; border-left: 1px solid var(--q-border-subtle); border-bottom: 1px solid var(--q-border-subtle); margin: 0 0 -1px -1px; min-width: 0; }
+.kv dt { font-size: 12px; line-height: 16px; font-weight: 500; color: var(--q-muted); } .kv dd { font-size: 13.5px; line-height: 20px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .kv dd small { font-size: 12px; color: var(--q-faint); }
+.labels { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; } .labels > span:first-child { font-size: 12px; font-weight: 500; color: var(--q-muted); margin-right: 2px; }
+.label { display: inline-flex; height: 20px; align-items: center; border: 1px solid var(--q-border-subtle); border-radius: var(--radius-selector); font: 11.5px/16px var(--font-mono); overflow: hidden; }
+.label i { font-style: normal; padding-inline: 6px; color: var(--q-muted); background: var(--color-base-200); border-right: 1px solid var(--q-border-subtle); align-self: stretch; display: flex; align-items: center; } .label b { font-weight: 400; padding-inline: 6px; }
+.tabs { display: flex; gap: 20px; border-bottom: 1px solid var(--q-border-subtle); position: sticky; top: 0; z-index: 10; background: color-mix(in oklab, var(--color-base-100) 90%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); margin-inline: -40px; padding-inline: 40px; overflow-x: auto; scrollbar-width: none; }
+.tabs a { display: inline-flex; align-items: center; gap: 7px; height: 40px; font-size: 13px; font-weight: 500; color: var(--q-muted); border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; transition: color var(--dur-1); }
+.tabs a svg { color: var(--q-faint); } .tabs a:hover { color: var(--color-base-content); }
+.tabs a[aria-current] { color: var(--color-base-content); border-color: var(--color-base-content); } .tabs a[aria-current] svg { color: var(--color-accent); }
+.tabs .n { font: 11.5px/16px var(--font-mono); color: var(--q-faint); } .tabs .n.bad { color: var(--q-error-soft-content); }
+.tl { --lane: 22px; --lanes: 3; display: grid; }
+.ti { display: grid; grid-template-columns: calc(var(--lane) * var(--lanes)) minmax(0, 1fr); column-gap: 8px; position: relative; scroll-margin-top: 56px; }
+.ti:target .b, .ti.is-target .b { background: var(--q-primary-soft); }
+.g { position: relative; }
+.l0 { --i: 0; --c: var(--q-lane-main); } .l1 { --i: 1; --c: var(--q-lane-a); } .l2 { --i: 2; --c: var(--q-lane-b); }
+.g .r { position: absolute; top: 0; bottom: 0; width: 2px; border-radius: 1px; left: calc(var(--lane) * var(--i) + var(--lane) / 2 - 1px); background: var(--c); }
+.g .r.from { top: 19px; } .g .r.to { bottom: auto; height: 19px; } .g .r.live { background: linear-gradient(var(--c), transparent); }
+.g .h { position: absolute; top: 18px; height: 2px; left: calc(var(--lane) / 2); width: calc(var(--lane) * var(--i)); background: var(--c); }
+.g .n { position: absolute; top: 8px; left: calc(var(--lane) * var(--i) + var(--lane) / 2 - 11px); width: 22px; height: 22px; border-radius: 50%; background: var(--color-base-100); border: 1.5px solid var(--c); display: grid; place-items: center; color: var(--q-muted); z-index: 1; }
+.l1 .n, .n.l1 { color: var(--q-lane-a); } .n.l2 { color: var(--q-lane-b); }
+.g .n svg { width: 12px; height: 12px; stroke-width: 1.7; }
+.g .n.sys { border-radius: 6px; } .g .n.fail { border-color: var(--color-error); color: var(--color-error); background: var(--q-error-soft); }
+.g .n.solid { background: var(--color-base-content); border-color: var(--color-base-content); color: var(--color-base-100); }
+.g .n.run { border-color: var(--color-info); color: var(--color-info); }
+.b { min-width: 0; padding: 7px 10px; margin: 2px 0; border-radius: var(--radius-field); transition: background-color var(--dur-1); }
+.ti:hover > .b { background: var(--color-base-200); }
+.hd { display: flex; align-items: baseline; gap: 8px; min-width: 0; line-height: 22px; }
+.hd .k { font-size: 13px; font-weight: 600; white-space: nowrap; } .hd .k.m { font-family: var(--font-mono); font-size: 12.5px; }
+.hd .s { flex: 1; min-width: 0; color: var(--q-muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .hd .s.m { font-family: var(--font-mono); font-size: 12.5px; color: var(--color-base-content); }
+.hd .t { margin-left: auto; display: flex; gap: 10px; align-items: baseline; font: 11.5px/16px var(--font-mono); color: var(--q-faint); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.hd .t .d { color: var(--q-muted); } .hd .t .bad { color: var(--q-error-soft-content); } .hd .t a:hover { color: var(--color-base-content); }
+.who { font: 11px/16px var(--font-mono); padding: 0 5px; border-radius: var(--radius-selector); border: 1px solid color-mix(in oklab, var(--c) 45%, transparent); color: var(--c); white-space: nowrap; align-self: center; }
+.l0.who, .who.l0 { color: var(--q-muted); border-color: var(--q-border-strong); }
+.say { margin-top: 4px; font-size: 14px; line-height: 21px; max-width: 72ch; } .say.prompt { padding: 10px 12px; border-radius: var(--radius-field); background: var(--color-base-200); border: 1px solid var(--q-border-subtle); }
+.ti:hover .say.prompt { background: var(--color-base-100); }
+/* ---------- NEW: connection row ---------- */
+.cx { display: grid; grid-template-columns: 18px minmax(0, 1.1fr) minmax(0, 1.4fr) auto auto 28px; gap: 10px; align-items: center; min-height: 32px; padding: 4px 4px 4px 8px; border-radius: var(--radius-field); font-size: 13px; }
+.cx.denied { background: var(--q-denied-tint); }
+.mark { width: 18px; height: 18px; border-radius: 5px; display: grid; place-items: center; flex: none; } .mark svg { width: 12px; height: 12px; stroke-width: 2; }
+.mark.ok { background: var(--q-success-soft); color: var(--color-success); } .mark.no { background: var(--color-error); color: var(--color-base-100); }
+.dest { font-family: var(--font-mono); font-size: 12.5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .dest .p { color: var(--q-faint); } .dest .rq { color: var(--q-muted); }
+.why { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--q-muted); } .why b { font-weight: 500; color: var(--color-base-content); } .cx.denied .why b, tr.denied .why b { color: var(--q-error-soft-content); }
+.why code, .rule { white-space: nowrap; font: 12px/16px var(--font-mono); padding: 1px 5px; border-radius: var(--radius-selector); border: 1px solid var(--q-border-subtle); background: var(--color-base-100); color: var(--color-base-content); }
+td.why { white-space: normal; overflow: visible; min-width: 220px; max-width: 400px; line-height: 18px; }
+.table.cxt th, .table.cxt td { padding-inline: 12px; } .table.cxt th:first-child, .table.cxt td:first-child { padding-left: 16px; }
+.outcome { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--q-muted); white-space: nowrap; }
+.outcome::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--color-success); } .outcome.refused::before { background: none; border: 1.5px solid var(--color-error); } .outcome.dial::before { background: var(--q-primary-soft-content); border-radius: 1px; }
+.cx .at { font: 11.5px/16px var(--font-mono); color: var(--q-faint); font-variant-numeric: tabular-nums; }
+.slot-free { width: 28px; height: 24px; }
+tr.denied td { background: var(--q-denied-tint); } tr.denied.row:hover td { background: color-mix(in oklab, var(--q-error-soft) 80%, var(--color-base-100)); }
+.dcell { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.split { display: inline-flex; width: 64px; height: 6px; border-radius: 3px; overflow: hidden; background: var(--color-base-300); vertical-align: middle; } .split i { background: var(--color-success); } .split u { background: var(--color-error); }
+.zero { color: var(--q-faint); } .bad { color: var(--q-error-soft-content); font-weight: 500; }
+.sub td { background: var(--color-base-200); padding: 0; white-space: normal; } .sub-in { padding: 12px 16px 14px 44px; display: grid; gap: 8px; }
+.sub-in h3 { font-size: 12px; line-height: 16px; font-weight: 500; color: var(--q-muted); }
+.hits { display: grid; gap: 2px; } .hit { display: grid; grid-template-columns: 96px minmax(0, 1.2fr) minmax(0, 1fr) auto auto; gap: 12px; align-items: center; padding: 5px 8px; margin-inline: -8px; border-radius: var(--radius-field); font-size: 13px; }
+.hit > .badge { justify-self: start; } .hit:hover { background: var(--color-base-300); } .hit .mono { color: var(--q-muted); }
+.expander { border: 0; background: none; padding: 0; width: 18px; height: 18px; display: grid; place-items: center; color: var(--q-faint); cursor: pointer; border-radius: var(--radius-selector); } .expander[aria-expanded="true"] svg { transform: rotate(90deg); } .expander svg { transition: transform var(--dur-1); }
+
+.cards { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); }
+.card { border: 1px solid var(--q-border-subtle); border-radius: var(--radius-box); background: var(--color-base-100); box-shadow: var(--q-shadow-xs); min-width: 0; }
+.card h2 { font-size: 15px; line-height: 22px; font-weight: 600; letter-spacing: -0.006em; padding: 14px 20px; border-bottom: 1px solid var(--q-border-subtle); }
+.dl { display: grid; grid-template-columns: 132px minmax(0, 1fr); gap: 8px 12px; padding: 16px 20px; font-size: 13px; } .dl dt { color: var(--q-muted); } .dl dd { min-width: 0; overflow-wrap: anywhere; } .dl dd.mono { font-size: 12.5px; }
+
+/* ================= NEW in M5: the security policy ================= */
+:root { --q-added-tint: color-mix(in oklab, var(--q-success-soft) 55%, var(--color-base-100)); }
+.btn-primary { background: var(--color-primary); color: var(--color-primary-content); border-color: color-mix(in oklab, var(--color-primary) 82%, black); box-shadow: var(--q-shadow-xs), inset 0 1px 0 oklch(100% 0 0 / 0.25); }
+.btn-primary:hover { background: color-mix(in oklab, var(--color-primary) 92%, black); border-color: color-mix(in oklab, var(--color-primary) 76%, black); }
+.btn-danger { background: var(--color-error); color: var(--color-base-100); border-color: color-mix(in oklab, var(--color-error) 82%, black); }
+.btn-danger:hover { background: color-mix(in oklab, var(--color-error) 90%, black); border-color: color-mix(in oklab, var(--color-error) 76%, black); }
+.btn[disabled] { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
+.link { color: var(--color-accent); font-weight: 500; text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 3px; transition: text-decoration-color var(--dur-1); cursor: pointer; background: none; border: 0; padding: 0; font-size: inherit; }
+.link:hover { text-decoration-color: currentColor; }
+.notice.warn { background: var(--q-primary-soft); color: var(--q-primary-soft-content); } .notice.err { background: var(--q-error-soft); color: var(--q-error-soft-content); }
+.notice code, .notice .rule { background: color-mix(in oklab, var(--color-base-100) 70%, transparent); border-color: color-mix(in oklab, currentColor 22%, transparent); color: inherit; }
+.notice .acts { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; } .notice .link { color: inherit; text-decoration-color: color-mix(in oklab, currentColor 45%, transparent); }
+.side-nav .count.mode { letter-spacing: 0; }
+.input { height: 32px; width: 100%; min-width: 0; padding-inline: 10px; border-radius: var(--radius-field); border: 1px solid var(--q-border-field); background: var(--color-base-100); color: var(--color-base-content); font: 14px/20px var(--font-sans); box-shadow: var(--q-shadow-xs); transition: border-color var(--dur-1), box-shadow var(--dur-1); }
+.input.m { font: 12.5px/20px var(--font-mono); } .input::placeholder { color: var(--q-faint); }
+.input:hover { border-color: var(--q-muted); } .input:focus { outline: 0; border-color: var(--q-ring); box-shadow: 0 0 0 3px color-mix(in oklab, var(--q-ring) 28%, transparent); }
+.input[aria-invalid="true"] { border-color: var(--color-error); } .input[aria-invalid="true"]:focus { box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-error) 24%, transparent); }
+select.input { appearance: none; padding-right: 28px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23888' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 6.5 8 3.5l3 3M5 9.5l3 3 3-3'/%3E%3C/svg%3E"); background-position: right 6px center; background-size: 16px 16px; background-repeat: no-repeat; }
+
+/* Version pill: the version and digest in force, wherever a policy is named */
+.vpill { display: inline-flex; align-items: stretch; height: 28px; border: 1px solid var(--q-border-strong); border-radius: var(--radius-field); background: var(--color-base-100); box-shadow: var(--q-shadow-xs); font: 12px/16px var(--font-mono); white-space: nowrap; overflow: hidden; }
+.vpill > * { display: inline-flex; align-items: center; gap: 6px; padding-inline: 9px; } .vpill > * + * { border-left: 1px solid var(--q-border-subtle); }
+.vpill .v { font-weight: 600; } .vpill a.v:hover { background: var(--color-base-200); } .vpill .dg { color: var(--q-muted); } .vpill .dg i { font-style: normal; color: var(--q-faint); }
+.vpill button { border: 0; border-left: 1px solid var(--q-border-subtle); background: none; color: var(--q-faint); cursor: pointer; padding-inline: 7px; } .vpill button:hover { background: var(--color-base-200); color: var(--color-base-content); }
+.vpill.sm { height: 22px; font-size: 11.5px; box-shadow: none; } .vpill.sm > * { padding-inline: 7px; }
+.head-side { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.inforce { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; font-size: 12.5px; color: var(--q-muted); }
+
+/* Mode: two radio cards */
+.mode { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.mode-card { position: relative; display: grid; align-content: start; font: inherit; grid-template-columns: 16px minmax(0, 1fr); gap: 2px 10px; padding: 14px 16px; border-radius: var(--radius-box); border: 1px solid var(--q-border-subtle); background: var(--color-base-200); color: var(--q-muted); text-align: left; cursor: pointer; transition: border-color var(--dur-1), background-color var(--dur-1); }
+.mode-card:hover { border-color: var(--q-border-field); }
+.mode-card .dot { width: 16px; height: 16px; margin-top: 2px; border-radius: 50%; border: 1px solid var(--q-border-field); background: var(--color-base-100); display: grid; place-items: center; }
+.mode-card[aria-checked="true"] { background: var(--color-base-100); border-color: var(--q-border-field); box-shadow: var(--q-shadow-xs); color: var(--color-base-content); cursor: default; }
+.mode-card[aria-checked="true"] .dot { background: var(--color-primary); border-color: color-mix(in oklab, var(--color-primary) 78%, black); } .mode-card[aria-checked="true"] .dot::after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--color-primary-content); }
+.mode-card h3 { display: flex; align-items: center; gap: 8px; font-size: 14px; line-height: 20px; font-weight: 600; color: var(--color-base-content); } .mode-card h3 svg { color: var(--q-faint); }
+.mode-card p { grid-column: 2; font-size: 13px; line-height: 19px; color: var(--q-muted); max-width: 52ch; }
+.mode-card .fact { grid-column: 2; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--q-border-subtle); font-size: 12.5px; line-height: 18px; color: var(--q-muted); } .mode-card .fact b { font-weight: 500; color: var(--color-base-content); font-variant-numeric: tabular-nums; }
+
+/* Section card with a composer on top of a table */
+.sect { border: 1px solid var(--q-border-subtle); border-radius: var(--radius-box); background: var(--color-base-100); box-shadow: var(--q-shadow-xs); min-width: 0; }
+.sect > header { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; padding: 12px 16px; border-bottom: 1px solid var(--q-border-subtle); }
+.sect > header h2 { font-size: 15px; line-height: 22px; font-weight: 600; letter-spacing: -0.006em; } .sect > header .n { font: 11.5px/16px var(--font-mono); color: var(--q-faint); } .sect > header .grow { flex: 1; }
+.sect > header p { flex: 0 0 100%; order: 9; font-size: 13px; color: var(--q-muted); padding-right: max(0px, calc(100% - 84ch)); margin-top: -4px; }
+.sect .table-wrap { border: 0; border-radius: 0 0 var(--radius-box) var(--radius-box); box-shadow: none; }
+.sect > footer { padding: 10px 16px; border-top: 1px solid var(--q-border-subtle); background: var(--color-base-200); border-radius: 0 0 var(--radius-box) var(--radius-box); font-size: 12.5px; line-height: 18px; color: var(--q-muted); }
+.composer { display: grid; grid-template-columns: auto minmax(0, 1.2fr) minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 10px 16px; background: var(--color-base-200); border-bottom: 1px solid var(--q-border-subtle); }
+.composer.cred { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) auto; }
+.composer .seg { background: var(--color-base-300); } .composer .seg button { height: 28px; padding-inline: 10px; font-size: 12.5px; }
+.composer .seg [aria-pressed="true"].deny { color: var(--q-error-soft-content); }
+.reads { grid-column: 1 / -1; display: grid; grid-template-columns: 14px minmax(0, 1fr); gap: 8px; align-items: start; font-size: 12.5px; line-height: 18px; color: var(--q-muted); padding: 1px 2px 2px; }
+.reads svg { width: 14px; height: 14px; margin-top: 2px; color: var(--q-faint); } .reads b { font-weight: 500; color: var(--color-base-content); }
+.reads.ok svg { color: var(--color-success); } .reads.bad { color: var(--color-error); } .reads.bad svg { color: var(--color-error); } .reads.bad b { color: inherit; font-weight: 600; }
+.reads .fix { margin-left: 6px; }
+.refusal { grid-column: 1 / -1; }
+
+/* Rule rows */
+.rules td { height: 40px; padding-block: 6px; } .rules td.c-seen { font-size: 13px; } .rules th:first-child { width: 32%; } .rules td.paths { white-space: normal; min-width: 150px; } .rules td.acts { width: 1%; padding-inline: 4px 10px; text-align: right; }
+.rcell { display: flex; align-items: center; gap: 10px; min-width: 0; } .host { font: 500 12.5px/18px var(--font-mono); } .host .w { color: var(--color-accent); font-weight: 600; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; } .every { color: var(--q-faint); font-size: 13px; }
+.newdot { font: 500 11px/16px var(--font-sans); color: var(--q-info-soft-content); background: var(--q-info-soft); padding: 0 6px; border-radius: 999px; }
+.who-when { color: var(--q-muted); font-size: 13px; } .who-when small { color: var(--q-faint); font-size: 12px; }
+.lockbtn { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding-inline: 6px; border-radius: var(--radius-selector); border: 1px solid transparent; background: none; color: var(--q-faint); font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; }
+.lockbtn:hover { background: var(--color-base-300); color: var(--color-base-content); }
+.lockbtn[aria-pressed="true"], .locked { color: var(--color-base-content); } .lockbtn[aria-pressed="true"] { border-color: var(--q-border-strong); background: var(--color-base-100); }
+.lockbtn span { display: none; } .lockbtn[aria-pressed="true"] span { display: inline; }
+.locked { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 500; white-space: nowrap; } .locked svg { color: var(--q-muted); }
+.rowacts { display: inline-flex; align-items: center; gap: 2px; justify-content: flex-end; }
+.member .owner-only { display: none !important; } .app:not(.member) .member-only { display: none !important; }
+tr.fresh td { background: var(--q-added-tint); }
+
+/* Provenance */
+.src { display: inline-flex; align-items: center; gap: 5px; height: 20px; padding-inline: 7px; border-radius: var(--radius-selector); border: 1px solid var(--q-border-subtle); background: var(--color-base-200); color: var(--q-muted); font-size: 11.5px; font-weight: 500; white-space: nowrap; }
+.src svg { width: 12px; height: 12px; } .src.repo { background: var(--color-base-100); border-color: var(--q-border-field); color: var(--color-base-content); } .src.lock { color: var(--color-base-content); }
+tr.over td { padding-block: 0 8px; border-bottom: 1px solid var(--q-border-subtle); height: auto; } tr.has-over td { border-bottom: 0; padding-bottom: 2px; }
+.overline { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; margin-left: 28px; padding-left: 10px; border-left: 2px solid var(--q-border-strong); font-size: 12.5px; line-height: 18px; color: var(--q-muted); white-space: normal; }
+.overline s { text-decoration-thickness: 1px; text-decoration-color: var(--q-faint); font: 12px/16px var(--font-mono); color: var(--q-muted); } .overline b { font-weight: 500; color: var(--color-base-content); }
+
+/* Suggestions */
+.sugg-row { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.5fr) auto; gap: 12px; align-items: center; padding: 8px 16px; border-bottom: 1px solid var(--q-border-subtle); font-size: 13px; min-height: 44px; }
+.sugg-row:last-of-type { border-bottom: 0; } .sugg-row .what { color: var(--q-muted); min-width: 0; } .sugg-row .what b { font-weight: 500; }
+.sugg-row .acts { display: inline-flex; gap: 6px; align-items: center; justify-content: flex-end; }
+.btn-split { display: inline-flex; } .btn-split .btn:first-child { border-radius: var(--radius-selector) 0 0 var(--radius-selector); } .btn-split .btn:last-child { border-radius: 0 var(--radius-selector) var(--radius-selector) 0; margin-left: -1px; padding-inline: 4px; }
+.done { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 500; color: var(--q-success-soft-content); } .done svg { color: var(--color-success); }
+
+/* History and diff */
+.day { font-size: 12px; line-height: 16px; font-weight: 500; color: var(--q-muted); padding: 10px 16px 6px; background: var(--color-base-200); border-bottom: 1px solid var(--q-border-subtle); }
+.chg { border-bottom: 1px solid var(--q-border-subtle); } .chg:last-child { border-bottom: 0; }
+.chg > summary { list-style: none; display: grid; grid-template-columns: 12px 24px minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 9px 16px; min-height: 44px; cursor: pointer; font-size: 13.5px; transition: background-color var(--dur-1); }
+.chg > summary::-webkit-details-marker { display: none; } .chg > summary:hover { background: var(--color-base-200); }
+.chg > summary .chev { color: var(--q-faint); transition: transform var(--dur-1); } .chg[open] > summary .chev { transform: rotate(90deg); }
+.chg .avatar { background: var(--color-base-300); color: var(--q-muted); box-shadow: inset 0 0 0 1px var(--q-border-subtle); }
+.chg .say2 { min-width: 0; color: var(--q-muted); } .chg .say2 b { font-weight: 500; color: var(--color-base-content); } .chg .say2 small { display: block; font-size: 12px; line-height: 16px; color: var(--q-faint); }
+.chg .when { font-size: 12.5px; color: var(--q-muted); white-space: nowrap; font-variant-numeric: tabular-nums; } .nov { font-size: 12px; color: var(--q-faint); white-space: nowrap; }
+.diffbox { padding: 4px 16px 16px 62px; display: grid; align-items: start; gap: 12px; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); }
+.diffbox .bar { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12.5px; color: var(--q-muted); }
+.dpanel { border: 1px solid var(--q-border-subtle); border-radius: var(--radius-field); background: var(--q-code-bg); overflow: hidden; min-width: 0; }
+.dpanel > div:first-child { display: flex; justify-content: space-between; gap: 8px; padding: 4px 10px; border-bottom: 1px solid var(--q-border-subtle); font: 11.5px/16px var(--font-mono); color: var(--q-faint); }
+.dlines { font: 12.5px/20px var(--font-mono); overflow-x: auto; padding-block: 4px; }
+.dlines > div { display: grid; grid-template-columns: 22px minmax(max-content, 1fr); white-space: pre; padding-right: 10px; } .dlines > div > i { font-style: normal; text-align: center; color: var(--q-faint); user-select: none; }
+.dlines .add { background: var(--q-added-tint); } .dlines .add > i { color: var(--color-success); font-weight: 600; } .dlines .del { background: var(--q-denied-tint); } .dlines .del > i { color: var(--color-error); font-weight: 600; }
+.dlines.sem > div { white-space: normal; grid-template-columns: 22px minmax(0, 1fr); font-family: var(--font-sans); font-size: 13px; padding-block: 2px; } .dlines.sem .ctx { color: var(--q-muted); }
+.dlines .k { color: var(--color-accent); }
+.docwell pre { padding: 12px 14px; font: 12.5px/20px var(--font-mono); overflow-x: auto; tab-size: 2; } .docwell .k { color: var(--color-accent); } .docwell .c { color: var(--q-faint); }
+.docwell .btn { font-family: var(--font-sans); } .sect > .composer:last-child { border-bottom: 0; border-radius: 0 0 var(--radius-box) var(--radius-box); }
+.pv { font-weight: 600; color: var(--color-base-content); text-decoration: underline; text-decoration-color: var(--q-border-field); text-underline-offset: 3px; } .pv:hover { text-decoration-color: currentColor; }
+.docwell { border: 1px solid var(--q-border-subtle); border-radius: var(--radius-box); background: var(--q-code-bg); overflow: hidden; }
+.docwell > div:first-child { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 6px 6px 14px; border-bottom: 1px solid var(--q-border-subtle); font: 12px/16px var(--font-mono); color: var(--q-muted); }
+.twocol { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 24px; align-items: start; }
+.vlist { display: grid; } .vlist a { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--q-border-subtle); font-size: 13px; } .vlist a:last-child { border-bottom: 0; } .vlist a:hover { background: var(--color-base-200); }
+.vlist a[aria-current] { background: var(--q-primary-soft); } .vlist .v { font: 600 12px/16px var(--font-mono); min-width: 28px; } .vlist small { font-size: 12px; color: var(--q-faint); white-space: normal; }
+
+/* Row action popover, and its sheet form on a phone */
+.pop { position: fixed; z-index: 50; width: 348px; max-width: calc(100vw - 24px); border-radius: var(--radius-box); background: var(--color-base-100); box-shadow: var(--q-shadow-pop); font-size: 13px; line-height: 18px; }
+.pop.static { position: static; box-shadow: var(--q-shadow-pop); }
+.pop > header { display: flex; align-items: center; gap: 8px; padding: 12px 14px 0; } .pop h3 { font-size: 14px; line-height: 20px; font-weight: 600; min-width: 0; } .pop h3 .host { font-size: 13px; }
+.pop .body { display: grid; gap: 12px; padding: 10px 14px 14px; } .pop fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 2px; min-width: 0; } .pop legend { padding: 0 0 4px; font-size: 12px; font-weight: 500; color: var(--q-muted); }
+.opt { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 0 10px; padding: 6px 8px; margin-inline: -8px; border-radius: var(--radius-field); cursor: pointer; } .opt:hover { background: var(--color-base-200); }
+.opt input[type=radio] { appearance: none; width: 16px; height: 16px; margin: 1px 0 0; border-radius: 50%; border: 1px solid var(--q-border-field); background: var(--color-base-100); display: grid; place-items: center; }
+.opt input[type=radio]:checked { background: var(--color-primary); border-color: color-mix(in oklab, var(--color-primary) 78%, black); } .opt input[type=radio]:checked::after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--color-primary-content); }
+.opt b { font-weight: 500; } .opt small { grid-column: 2; font-size: 12px; line-height: 16px; color: var(--q-muted); } .opt .input { grid-column: 2; margin-top: 6px; height: 28px; }
+.opt.off { cursor: not-allowed; opacity: 0.55; }
+.pop .next { display: grid; grid-template-columns: 14px minmax(0, 1fr); gap: 8px; font-size: 12.5px; color: var(--q-muted); } .pop .next svg { width: 14px; height: 14px; margin-top: 2px; color: var(--q-faint); }
+.pop > footer { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--q-border-subtle); background: var(--color-base-200); border-radius: 0 0 var(--radius-box) var(--radius-box); }
+.rowbtn { --h: 24px; } .table td.slot { padding-inline: 4px 12px; text-align: right; }
+.after { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 4px; font-size: 12.5px; line-height: 18px; color: var(--q-muted); } .after .badge { height: 18px; font-size: 11px; }
+
+/* Modal (native dialog) */
+dialog.modal { border: 0; padding: 0; width: min(560px, calc(100% - 32px)); max-height: calc(100dvh - 2rem); border-radius: 12px; background: var(--color-base-100); color: var(--color-base-content); box-shadow: var(--q-shadow-modal); overflow: hidden; }
+dialog.modal[open] { display: flex; flex-direction: column; animation: modal-in var(--dur-3) var(--ease-out); } dialog.modal.sm { width: min(440px, calc(100% - 32px)); }
+dialog.modal::backdrop { background: var(--q-overlay); backdrop-filter: blur(2px); }
+@keyframes modal-in { from { opacity: 0; transform: translateY(6px) scale(0.985); } }
+.modal-head { display: flex; align-items: start; justify-content: space-between; gap: 12px; padding: 20px 20px 0; } .modal-head h2 { font-size: 16px; line-height: 24px; font-weight: 600; letter-spacing: -0.01em; }
+.modal-body { padding: 8px 20px 20px; display: grid; gap: 14px; font-size: 13.5px; line-height: 20px; overflow-y: auto; } .modal-body > p { color: var(--q-muted); } .modal-body > p b { color: var(--color-base-content); font-weight: 500; }
+.modal-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 20px; border-top: 1px solid var(--q-border-subtle); background: var(--color-base-200); }
+.would { border: 1px solid var(--q-border-subtle); border-radius: var(--radius-field); overflow: hidden; }
+.would > div:first-child { display: flex; justify-content: space-between; gap: 8px; padding: 7px 12px; background: var(--color-base-200); border-bottom: 1px solid var(--q-border-subtle); font-size: 12px; font-weight: 500; color: var(--q-muted); }
+.would li { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 6px 12px; min-height: 38px; border-bottom: 1px solid var(--q-border-subtle); font-size: 13px; } .would li:last-child { border-bottom: 0; }
+.would li small { color: var(--q-muted); font-size: 12.5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.mark.pend { background: none; border: 1.5px dashed var(--color-error); color: var(--color-error); }
+
+/* Drift */
+.drift { display: inline-flex; align-items: center; gap: 4px; height: 18px; padding-inline: 6px; margin-left: 6px; border-radius: 999px; background: var(--q-primary-soft); color: var(--q-primary-soft-content); font-size: 11px; font-weight: 500; vertical-align: 1px; } .drift svg { width: 11px; height: 11px; stroke-width: 2; }
+.kv dd a.ver { font: 600 12.5px/20px var(--font-mono); text-decoration: underline; text-decoration-color: var(--q-border-field); text-underline-offset: 3px; } .kv dd a.ver:hover { text-decoration-color: currentColor; }
+.delta { display: inline-flex; align-items: center; gap: 4px; font: 11.5px/16px var(--font-mono); padding: 0 6px; border-radius: var(--radius-selector); background: var(--q-success-soft); color: var(--q-success-soft-content); white-space: nowrap; align-self: center; } .delta.minus { background: var(--q-error-soft); color: var(--q-error-soft-content); }
+
+.stage { transform: translateZ(0); } .stage.phone.tall { height: calc(100dvh - 76px); }
+/* Specimen sheet (mock only) */
+.spec { display: grid; gap: 8px; } .spec > .tag, .cap { font: 500 11.5px/16px var(--font-mono); color: var(--q-faint); }
+.spec-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 348px), 1fr)); gap: 24px; align-items: start; }
+.toast { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 10px; align-items: start; width: 360px; max-width: 100%; padding: 12px; border-radius: var(--radius-box); background: var(--color-base-100); box-shadow: var(--q-shadow-pop); font-size: 13px; line-height: 18px; } .toast b { font-weight: 500; display: block; } .toast span { color: var(--q-muted); } .toast > svg { margin-top: 1px; color: var(--color-success); }
+.empty { border: 1px dashed var(--q-border-strong); border-radius: var(--radius-box); padding: 40px 24px; display: grid; justify-items: center; text-align: center; gap: 6px; }
+.empty .hex { width: 44px; height: 44px; display: grid; place-items: center; clip-path: polygon(50% 0, 93.3% 25%, 93.3% 75%, 50% 100%, 6.7% 75%, 6.7% 25%); background: var(--q-primary-soft); color: var(--q-primary-soft-content); margin-bottom: 6px; } .empty .hex svg { width: 20px; height: 20px; }
+.empty h2 { font-size: 15px; line-height: 22px; font-weight: 600; } .empty p { color: var(--q-muted); max-width: 52ch; } .empty .acts { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; justify-content: center; }
+.repo-name .f { font: 12px/16px var(--font-mono); color: var(--q-faint); } .repo-name .p { font: 500 12.5px/18px var(--font-mono); }
+
+@container app (max-width: 767px) {
+  .app { grid-template-columns: minmax(0, 1fr); }
+  .side { position: absolute; z-index: 40; inset: 0 auto 0 0; width: 288px; transform: translateX(-100%); transition: transform var(--dur-3) var(--ease-out); box-shadow: var(--q-shadow-modal); }
+  .app.drawer .side { transform: none; } .app.drawer .scrim { display: block; position: absolute; inset: 0; z-index: 35; background: var(--q-overlay); }
+  .side-nav a { height: 40px; font-size: 14px; } .btn.only-drawer { display: inline-flex; } .m-top { display: flex; }
+  .main-in { padding: 20px 16px 48px; gap: 20px; } .tabs { margin-inline: -16px; padding-inline: 16px; }
+  .chip { height: 32px; } .filters { flex-wrap: nowrap; overflow-x: auto; margin-inline: -16px; padding-inline: 16px; scrollbar-width: none; } .filters .grow { display: none; }
+  .alive { margin-left: 0; flex-basis: 100%; } .kvs { grid-template-columns: 1fr 1fr; }
+  .tl { --lane: 16px; } .g .n { width: 18px; height: 18px; left: calc(var(--lane) * var(--i) + var(--lane) / 2 - 9px); top: 10px; } .g .n svg { width: 10px; height: 10px; }
+  .b { padding-inline: 6px; } .hd { flex-wrap: wrap; row-gap: 0; } .hd .s { flex-basis: 100%; order: 3; white-space: normal; } .hd .t .q { display: none; }
+  .cx { grid-template-columns: 18px minmax(0, 1fr) auto; row-gap: 0; padding-block: 6px; } .cx .why { grid-column: 2 / -1; grid-row: 2; white-space: normal; } .cx .outcome { display: none; } .cx .at { display: none; } .cx > .btn { grid-column: 3; grid-row: 1; }
+  .head-side { width: 100%; } .head-side .btn { --h: 40px; flex: 1; } .head-side .vpill { flex-basis: 100%; height: 32px; } .head-side .vpill .dg { flex: 1; }
+  .mode { grid-template-columns: 1fr; } .sect > header .seg { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  .composer, .composer.cred { grid-template-columns: minmax(0, 1fr); } .composer .seg { justify-self: start; } .composer .input, .composer .btn { height: 40px; --h: 40px; font-size: 16px; } .composer .input.m { font-size: 14px; } .composer .seg button { height: 32px; }
+  /* rule rows reflow into blocks, keeping table roles */
+  .rules thead { display: none; } .rules, .rules tbody { display: block; } .rules tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; padding: 10px 16px; border-bottom: 1px solid var(--q-border-subtle); }
+  .rules tr td { display: block; padding: 0; border: 0; height: auto; background: none; } .rules tr.fresh { background: var(--q-added-tint); }
+  .rules td.c-rule { grid-column: 1; grid-row: 1; } .rules td.acts { grid-column: 2; grid-row: 1 / span 2; width: auto; } .rules td.paths { grid-column: 1; grid-row: 2; padding-left: 28px; } .rules td.c-src { grid-column: 1; grid-row: 3; padding-left: 28px; }
+  .rules td.c-seen { grid-column: 1; grid-row: 4; padding-left: 28px; font-size: 12.5px; text-align: left; } .rules td.c-by { display: none; }
+  .rules td.paths:has(> .every) { display: none; }
+  .rules tr.has-over { border-bottom: 0; padding-bottom: 4px; } .rules tr.over { padding-top: 0; display: block; } .overline { margin-left: 28px; }
+  .rules tbody tr:last-child { border-bottom: 0; } .rowacts .btn, .lockbtn { --h: 40px; height: 40px; min-width: 40px; justify-content: center; }
+  .sugg-row { grid-template-columns: minmax(0, 1fr) auto; } .sugg-row .what { grid-column: 1 / -1; grid-row: 2; }
+  .chg > summary { grid-template-columns: 12px 24px minmax(0, 1fr); row-gap: 3px; } .filters .summary { flex-wrap: nowrap; white-space: nowrap; } .chg .when { grid-column: 3; font-size: 12px; } .chg .vcell { grid-column: 3; justify-self: start; }
+  .diffbox { grid-template-columns: minmax(0, 1fr); padding: 4px 16px 16px; } .twocol { grid-template-columns: minmax(0, 1fr); }
+  .dl { grid-template-columns: 1fr; gap: 0 12px; } .dl dd { margin-bottom: 8px; }
+  .pop:not(.static) { left: 0 !important; right: 0; top: auto !important; bottom: 0; width: auto; max-width: none; border-radius: 12px 12px 0 0; box-shadow: var(--q-shadow-modal); } .pop:not(.static) > footer { flex-direction: column-reverse; border-radius: 0; padding-bottom: max(10px, env(safe-area-inset-bottom)); } .pop:not(.static) > footer .btn { --h: 40px; }
+  .repos thead { display: none; } .repos, .repos tbody { display: block; } .repos tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 10px 16px; border-bottom: 1px solid var(--q-border-subtle); position: relative; } .repos td { display: block; padding: 0; border: 0; text-align: left !important; font-size: 12.5px; } .repos td.c-repo { grid-column: 1 / -1; font-size: 14px; } .repos td.opt { display: none; }
+}
+@media (max-width: 640px) { dialog.modal, dialog.modal.sm { width: 100%; max-width: 100%; margin: auto 0 0; border-radius: 12px 12px 0 0; } .modal-foot { flex-direction: column-reverse; } .modal-foot .btn { --h: 40px; } }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="mark" viewBox="0 0 32 32"><path class="mark-body" fill-rule="evenodd" d="M16 2.2 27.95 9.1v13.8L16 29.8 4.05 22.9V9.1L16 2.2Zm0 7.6-5.37 3.1v6.2L16 22.2l5.37-3.1v-6.2L16 9.8Z"/><path class="mark-ink" d="m17.35 17.1 2.6-1.5 6.2 10.74-2.6 1.5z"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 16 16"><path d="M2.5 2.5H7V7H2.5zM9 2.5h4.5V7H9zM2.5 9H7v4.5H2.5zM9 9h4.5v4.5H9z"/></symbol>
+  <symbol id="i-runs" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.75"/><path d="M6.75 5.75v4.5L10.5 8z"/></symbol>
+  <symbol id="i-conn" viewBox="0 0 16 16"><path d="M2.5 5.5h11m0 0L11 3m2.5 2.5L11 8M13.5 10.5h-11m0 0L5 8m-2.5 2.5L5 13"/></symbol>
+  <symbol id="i-key" viewBox="0 0 16 16"><circle cx="5.5" cy="10.5" r="2.75"/><path d="M7.5 8.5 13 3m-2.2 2.2 1.7 1.7"/></symbol>
+  <symbol id="i-users" viewBox="0 0 16 16"><circle cx="6" cy="5.5" r="2.25"/><path d="M2 13c.3-2.2 1.9-3.5 4-3.5s3.7 1.3 4 3.5M10.5 3.6a2.25 2.25 0 0 1 0 3.9M11.8 9.8c1.3.5 2 1.6 2.2 3.2"/></symbol>
+  <symbol id="i-cog" viewBox="0 0 16 16"><path d="M2.5 4.5h6m3 0h2M2.5 11.5h2m3 0h6"/><circle cx="10" cy="4.5" r="1.5"/><circle cx="6" cy="11.5" r="1.5"/></symbol>
+  <symbol id="i-ud" viewBox="0 0 16 16"><path d="M5 6.5 8 3.5l3 3M5 9.5l3 3 3-3"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="M6 3.5 10.5 8 6 12.5"/></symbol>
+  <symbol id="i-chevd" viewBox="0 0 16 16"><path d="M3.5 6 8 10.5 12.5 6"/></symbol>
+  <symbol id="i-check" viewBox="0 0 16 16"><path d="m3.5 8.5 3 3 6-7"/></symbol>
+  <symbol id="i-x" viewBox="0 0 16 16"><path d="m4 4 8 8m0-8-8 8"/></symbol>
+  <symbol id="i-block" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5"/><path d="m4.2 4.2 7.6 7.6"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.75"/><path d="M8 4.75V8l2.25 1.5"/></symbol>
+  <symbol id="i-search" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.25"/><path d="m10.2 10.2 3.3 3.3"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3.5v9M3.5 8h9"/></symbol>
+  <symbol id="i-down" viewBox="0 0 16 16"><path d="M8 3v10m0 0L4 9m4 4 4-4"/></symbol>
+  <symbol id="i-term" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M4.75 6.5 7 8.25 4.75 10M8.5 10h2.75"/></symbol>
+  <symbol id="i-list" viewBox="0 0 16 16"><path d="M6 4h7.5M6 8h7.5M6 12h7.5M2.6 4h.1M2.6 8h.1M2.6 12h.1"/></symbol>
+  <symbol id="i-info" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.75"/><path d="M8 7.25v3.5M8 5.2v.1"/></symbol>
+  <symbol id="i-doc" viewBox="0 0 16 16"><path d="M4 2.5h5.5l2.5 2.5v8.5H4zM6.25 8h3.5M6.25 10.5h3.5"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 16 16"><path d="m8 2 5 2v3.8c0 3-2 5.2-5 6.2-3-1-5-3.2-5-6.2V4z"/></symbol>
+  <symbol id="i-bars" viewBox="0 0 16 16"><path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/></symbol>
+  <symbol id="i-nosig" viewBox="0 0 16 16"><path d="m2.5 2.5 11 11M4.2 8.7a5.4 5.4 0 0 1 2-1.3m3.2-.1a5.4 5.4 0 0 1 2.4 1.4M6.4 11a2.4 2.4 0 0 1 3.2 0"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 16 16"><rect x="3.5" y="7" width="9" height="6.5" rx="1.5"/><path d="M5.5 7V5.25a2.5 2.5 0 0 1 5 0V7"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 16 16"><path d="M8 2.5 14 13H2zM8 6.5v3M8 11.2v.1"/></symbol>
+  <symbol id="i-code" viewBox="0 0 16 16"><path d="M5.5 4.5 2 8l3.5 3.5M10.5 4.5 14 8l-3.5 3.5"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 16 16"><path d="M2.5 4A1.5 1.5 0 0 1 4 2.5h8A1.5 1.5 0 0 1 13.5 4v5.5A1.5 1.5 0 0 1 12 11H7l-3 2.5V11A1.5 1.5 0 0 1 2.5 9.5z"/></symbol>
+  <symbol id="i-msg" viewBox="0 0 16 16"><path d="M3 4.5h10M3 8h10M3 11.5h6"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 16 16"><path d="M4 11V7.5a4 4 0 0 1 8 0V11l1 1.5H3zM6.75 14.2h2.5"/></symbol>
+  <symbol id="i-branch" viewBox="0 0 16 16"><circle cx="4.5" cy="3.75" r="1.5"/><circle cx="4.5" cy="12.25" r="1.5"/><circle cx="11.5" cy="6" r="1.5"/><path d="M4.5 5.25v5.5M11.5 7.5c0 2.6-7 1.2-7 3.2"/></symbol>
+  <symbol id="i-dl" viewBox="0 0 16 16"><path d="M8 2.5v8m0 0L5 7.5m3 3 3-3M2.5 13.5h11"/></symbol>
+  <symbol id="i-wrap" viewBox="0 0 16 16"><path d="M2.5 4h11M2.5 8h9a2 2 0 0 1 0 4H8.5m0 0 1.5-1.5M8.5 12l1.5 1.5M2.5 12h3"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.75"/><path d="M8 1.5V3M8 13v1.5M1.5 8H3M13 8h1.5M3.4 3.4l1 1M11.6 11.6l1 1M3.4 12.6l1-1M11.6 4.4l1-1"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 16 16"><path d="M13 9.5A5.5 5.5 0 0 1 6.5 3 5.5 5.5 0 1 0 13 9.5z"/></symbol>
+  <symbol id="i-desk" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="8" rx="1.5"/><path d="M6 13.5h4M8 11v2.5"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 16 16"><rect x="4.5" y="2" width="7" height="12" rx="1.5"/><path d="M7.25 11.75h1.5"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 16 16"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 5.5V4A1.5 1.5 0 0 0 9 2.5H4A1.5 1.5 0 0 0 2.5 4v5A1.5 1.5 0 0 0 4 10.5h1.5"/></symbol>
+  <symbol id="i-dots" viewBox="0 0 16 16"><g fill="currentColor" stroke="none"><circle cx="3.5" cy="8" r="1.15"/><circle cx="8" cy="8" r="1.15"/><circle cx="12.5" cy="8" r="1.15"/></g></symbol>
+  <symbol id="i-unlock" viewBox="0 0 16 16"><rect x="3.5" y="7" width="9" height="6.5" rx="1.5"/><path d="M5.5 7V5.25a2.5 2.5 0 0 1 4.9-.7"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 16 16"><path d="M1.75 8S4 3.75 8 3.75 14.25 8 14.25 8 12 12.25 8 12.25 1.75 8 1.75 8z"/><circle cx="8" cy="8" r="1.9"/></symbol>
+  <symbol id="i-reload" viewBox="0 0 16 16"><path d="M13 8a5 5 0 0 1-9 3M3 8a5 5 0 0 1 9-3M12.5 2.5V5H10M3.5 13.5V11H6"/></symbol>
+  <symbol id="i-shieldok" viewBox="0 0 16 16"><path d="m8 2 5 2v3.8c0 3-2 5.2-5 6.2-3-1-5-3.2-5-6.2V4z"/><path d="m5.9 8 1.5 1.5 2.7-3"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 16 16"><path d="M3 8h10m0 0L9.5 4.5M13 8l-3.5 3.5"/></symbol>
+  <symbol id="i-repo" viewBox="0 0 16 16"><path d="M12.5 11.5V2.5H5A1.5 1.5 0 0 0 3.5 4v8.25M12.5 11.5H4.75a1.25 1.25 0 0 0 0 2.5h7.75"/></symbol>
+  <symbol id="i-hex" viewBox="0 0 16 16"><path d="m8 2 5.2 3v6L8 14l-5.2-3V5z"/></symbol>
+  <symbol id="i-up" viewBox="0 0 16 16"><path d="M8 10.5v-8m0 0L5 5.5m3-3 3 3M2.5 13.5h11"/></symbol>
+</svg>
+
+<!-- Mock chrome: not part of the product -->
+<div class="mockbar" role="toolbar" aria-label="Mock controls">
+  <span class="tag">M5 mock</span>
+  <div class="seg" id="viewseg">
+    <a href="#policy">Hive policy</a><a href="#repositories">Repositories</a><a href="#repo">Repository</a><a href="#history">History</a><a href="#version">Version · export</a><a href="#connections">Row actions</a><a href="#run">Run header</a><a href="#states">States</a><a href="#empty">New hive</a>
+  </div>
+  <div class="url" aria-hidden="true"><span>qory.example</span><b id="url">/hive/policy</b></div>
+  <div class="seg" id="roleseg"><button type="button" data-r="owner" aria-pressed="true">Owner</button><button type="button" data-r="member" aria-pressed="false">Member</button></div>
+  <div class="seg" id="widthseg"><button type="button" data-w="desktop" aria-pressed="true"><svg class="i"><use href="#i-desk"/></svg>Desktop</button><button type="button" data-w="phone" aria-pressed="false"><svg class="i"><use href="#i-phone"/></svg>Phone</button></div>
+  <div class="seg" id="themeseg"><button type="button" data-t="auto" aria-pressed="true">Auto</button><button type="button" data-t="light" aria-pressed="false"><svg class="i"><use href="#i-sun"/></svg>Light</button><button type="button" data-t="dark" aria-pressed="false"><svg class="i"><use href="#i-moon"/></svg>Dark</button></div>
+</div>
+
+<div class="stage" id="stage">
+<div class="app" id="app">
+  <aside class="side" aria-label="Sidebar">
+    <div class="side-brand"><a class="brand" href="#policy"><svg aria-hidden="true"><use href="#mark"/></svg><span>Qory</span></a><button type="button" class="btn btn-ghost btn-square only-drawer" id="drawer-close" aria-label="Close menu"><svg class="i"><use href="#i-x"/></svg></button></div>
+    <button type="button" class="ws" aria-label="Switch apiary, current: Acme"><span class="avatar sq" aria-hidden="true">A</span><span style="min-width:0"><b class="trunc">Acme</b><small class="trunc">Platform</small></span><svg class="i"><use href="#i-ud"/></svg></button>
+    <div class="side-label">Hive</div>
+    <nav class="side-nav" aria-label="Main">
+      <a href="#policy"><svg class="i"><use href="#i-grid"/></svg>Overview</a>
+      <a href="#run" data-nav="runs"><svg class="i"><use href="#i-runs"/></svg>Runs<span class="count alive" title="2 runs alive now"><span class="ripple" style="width:6px;height:6px"></span>2</span></a>
+      <a href="#connections" data-nav="connections"><svg class="i"><use href="#i-conn"/></svg>Connections</a>
+      <a href="#policy" data-nav="policy"><svg class="i"><use href="#i-shieldok"/></svg>Policy<span class="count mode" id="side-mode" title="The hive is in enforce mode">enforce</span></a>
+    </nav>
+    <div class="side-label">Manage</div>
+    <nav class="side-nav" aria-label="Manage">
+      <a href="#policy"><svg class="i"><use href="#i-key"/></svg>Access keys<span class="count">3</span></a>
+      <a href="#policy"><svg class="i"><use href="#i-users"/></svg>Members<span class="count">4</span></a>
+      <a href="#policy"><svg class="i"><use href="#i-cog"/></svg>Settings</a>
+    </nav>
+    <button type="button" class="side-user"><span class="avatar honey" aria-hidden="true">B</span><span style="min-width:0"><b class="trunc"><span class="owner-only">beekeeper@example.com</span><span class="member-only">dana@example.com</span></b><small><span class="owner-only">Owner</span><span class="member-only">Member</span></small></span><svg class="i"><use href="#i-ud"/></svg></button>
+  </aside>
+  <div class="scrim" id="scrim"></div>
+
+  <div class="content">
+    <header class="m-top"><div class="l"><button type="button" class="btn btn-ghost btn-square btn-md" id="drawer-open" aria-label="Open menu"><svg class="i" style="width:20px;height:20px"><use href="#i-bars"/></svg></button><span class="brand"><svg aria-hidden="true"><use href="#mark"/></svg><span>Qory</span></span></div><span class="avatar honey" aria-hidden="true">B</span></header>
+
+    <main class="main" id="main">
+
+    <!-- ============ HIVE POLICY: RULES ============ -->
+    <div class="main-in" data-view="policy" data-nav="policy" data-url="/hive/policy">
+      <div data-phead="hive"></div>
+      <nav class="tabs" aria-label="Policy" data-ptabs="hive" data-cur="rules"></nav>
+
+      <section aria-labelledby="mode-h" style="display:grid;gap:10px">
+        <h2 id="mode-h" class="sr-only">Mode</h2>
+        <div class="mode" role="radiogroup" aria-labelledby="mode-h" id="mode">
+          <button type="button" class="mode-card" role="radio" aria-checked="false" data-mode="observe">
+            <span class="dot" aria-hidden="true"></span><h3><svg class="i"><use href="#i-eye"/></svg>Observe</h3>
+            <p>Records every connection and denies none. A host no rule names is let through, and the record says so.</p>
+          </button>
+          <button type="button" class="mode-card" role="radio" aria-checked="true" data-mode="enforce">
+            <span class="dot" aria-hidden="true"></span><h3><svg class="i"><use href="#i-shield"/></svg>Enforce <span class="badge">In force</span></h3>
+            <p>Denies a connection no rule allows, and records the denial. With no allow rule, a run reaches nothing.</p>
+            <div class="fact">In the last 7 days it denied <b>12</b> attempts to <b>3</b> destinations. <a class="link" href="#connections">See them</a></div>
+          </button>
+        </div>
+        <p class="faint" style="font-size:12.5px">The mode is the hive's: every repository runs under it. A wall's own refusals (the machine's address, a path that reads two ways) hold in either mode.</p>
+      </section>
+
+      <section class="sect" aria-labelledby="hosts-h">
+        <header><h2 id="hosts-h">Host rules</h2><span class="n">8</span><span class="grow"></span>
+          <div class="seg in" role="group" aria-label="Show"><button type="button" aria-pressed="true">All</button><button type="button" aria-pressed="false">Allow <span class="faint mono" style="font-size:11px">6</span></button><button type="button" aria-pressed="false">Deny <span class="faint mono" style="font-size:11px">2</span></button><button type="button" aria-pressed="false">Locked <span class="faint mono" style="font-size:11px">2</span></button></div>
+        </header>
+        <form class="composer" id="composer" aria-label="Add a host rule" onsubmit="return false">
+          <div class="seg" role="group" aria-label="Action"><button type="button" aria-pressed="true">Allow</button><button type="button" class="deny" aria-pressed="false">Deny</button></div>
+          <label><span class="sr-only">Host</span><input class="input m" id="c-host" type="text" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="api.example or *.internal.example" aria-describedby="c-reads"></label>
+          <label><span class="sr-only">Paths, optional</span><input class="input m" id="c-paths" type="text" spellcheck="false" autocomplete="off" placeholder="Every path, or /v1/* /health" aria-describedby="c-reads"></label>
+          <button type="submit" class="btn btn-primary" id="c-add" disabled>Add rule</button>
+          <div class="reads" id="c-reads" role="status"><svg class="i"><use href="#i-info"/></svg><span>A host name in lower case, or <code class="rule">*.</code> and a suffix for every host below it. No scheme, no port. Paths go in their own field, separated by spaces.</span></div>
+        </form>
+        <div class="table-wrap" tabindex="0" role="region" aria-label="Host rules of the hive">
+          <table class="table rules" role="table">
+            <thead><tr><th>Rule</th><th>Paths</th><th class="num">Last 7 days</th><th>Added</th><th><span class="sr-only">Lock and actions</span></th></tr></thead>
+            <tbody>
+              <tr class="row" id="rule-paste"><td class="c-rule"><div class="rcell"><span class="mark no" title="Deny"><svg class="i"><use href="#i-block"/></svg></span><span class="sr-only">Deny</span><span class="host"><span class="w">*.</span>paste.example</span></div></td><td class="paths"><span class="every">every path</span></td><td class="c-seen num"><span class="bad">3 denied</span></td><td class="c-by who-when">beekeeper <small>· 2 Sep</small></td>
+                <td class="acts"><span class="rowacts"><button type="button" class="lockbtn owner-only tip tip-end" aria-pressed="true" data-tip="Locked: no repository can override it. Select to unlock." aria-label="Unlock *.paste.example"><svg class="i sm"><use href="#i-lock"/></svg><span>Locked</span></button><span class="locked member-only tip tip-end" tabindex="0" data-tip="Locked by beekeeper@example.com on 2 Sep 2026. Only an owner can change or unlock it."><svg class="i sm"><use href="#i-lock"/></svg>Locked</span><button type="button" class="btn btn-ghost btn-xs btn-square owner-only" aria-label="Actions for *.paste.example" aria-haspopup="menu"><svg class="i"><use href="#i-dots"/></svg></button></span></td></tr>
+              <tr class="row"><td class="c-rule"><div class="rcell"><span class="mark ok" title="Allow"><svg class="i"><use href="#i-check"/></svg></span><span class="sr-only">Allow</span><span class="host">github.example</span></div></td><td class="paths"><span class="every">every path</span></td><td class="c-seen num meta">58 allowed</td><td class="c-by who-when">beekeeper <small>· 2 Sep</small></td>
+                <td class="acts"><span class="rowacts"><button type="button" class="lockbtn owner-only tip tip-end" aria-pressed="true" data-tip="Locked: no repository can override it. Select to unlock." aria-label="Unlock github.example"><svg class="i sm"><use href="#i-lock"/></svg><span>Locked</span></button><span class="locked member-only tip tip-end" tabindex="0" data-tip="Locked by beekeeper@example.com on 2 Sep 2026. Only an owner can change or unlock it."><svg class="i sm"><use href="#i-lock"/></svg>Locked</span><button type="button" class="btn btn-ghost btn-xs btn-square owner-only" aria-label="Actions for github.example" aria-haspopup="menu"><svg class="i"><use href="#i-dots"/></svg></button></span></td></tr>
+              <tr class="row"><td class="c-rule"><div class="rcell"><span class="mark no" title="Deny"><svg class="i"><use href="#i-block"/></svg></span><span class="sr-only">Deny</span><span class="host">telemetry.example</span></div></td><td class="paths"><span class="every">every path</span></td><td class="c-seen num"><span class="zero">not seen</span></td><td class="c-by who-when">dana <small>· 16 Sep, from a connection</small></td>
+                <td class="acts"><span class="rowacts"><button type="button" class="lockbtn owner-only tip tip-end" aria-pressed="false" data-tip="Lock: hold this rule against every repository" aria-label="Lock telemetry.example"><svg class="i sm"><use href="#i-unlock"/></svg><span>Locked</span></button><button type="button" class="btn btn-ghost btn-xs btn-square" aria-label="Actions for telemetry.example" aria-haspopup="menu"><svg class="i"><use href="#i-dots"/></svg></button></span></td></tr>
+              <tr class="row"><td class="c-rule"><div class="rcell"><span class="mark ok" title="Allow"><svg class="i"><use href="#i-check"/></svg></span><span class="sr-only">Allow</span><span class="host">api.example</span></div></td><td class="paths"><span class="chips"><code class="rule">/v1/*</code></span></td><td class="c-seen num meta">412 allowed · <span class="bad">1 denied</span></td><td class="c-by who-when">beekeeper <small>· 2 Sep</small></td>
+                <td class="acts"><span class="rowacts"><button type="button" class="lockbtn owner-only" aria-pressed="false" aria-label="Lock api.example"><svg class="i sm"><use href="#i-unlock"/></svg><span>Locked</span></button><button type="button" class="btn btn-ghost btn-xs btn-square" aria-label="Actions for api.example" aria-haspopup="menu"><svg class="i"><use href="#i-dots"/></svg></button></span></td></tr>
+              <tr class="row"><td class="c-rule"><div class="rcell"><span class="mark ok" title="Allow"><svg class="i"><use href="#i-check"/></svg></span><span class="sr-only">Allow</span><span class="host tip" tabindex="0" data-tip="Every host below github.example, and not github.example itself."><span class="w">*.</span>github.example</span></div></td><td class="paths"><span class="every">every path</span></td><td class="c-seen num meta">31 allowed</td><td class="c-by who-when">beekeeper <small>· 2 Sep</small></td>
+                <td class="acts"><span class="rowacts"><button type="button" class="lockbtn owner-only" aria-pressed="false" aria-label="Lock *.github.example"><svg class="i sm"><use href="#i-unlock"/></svg><span>Locked</span></button><button type="button" class="btn btn-ghost btn-xs btn-square" aria-label="Actions for *.github.example" aria-haspopup="menu"><svg class="i"><use href="#i-dots"/></svg></button></span></td></tr>
+              <tr class="row"><td class="c-rule"><div class="rcell"><span class="mark ok" title="Allow"><svg class="i"><use href="#i-check"/></svg></span><span class="sr-only">Allow</span><span class="host">gitlab.example</span></div></td><td class="paths"><span class="every">every path</span></td><td class="c-seen num meta">17 allowed</td><td class="c-by who-when">dana <small>· 9 Sep</small></td>
+                <td class="acts"><span class="rowacts"><button type="button" class="lockbtn owner-only" aria-pressed="false" aria-label="Lock gitlab.example"><svg class="i sm"><use href="#i-unlock"/></svg><span>Locked</span></button><button type="button" class="btn btn-ghost btn-xs btn-square" aria-label="Actions for gitlab.example" aria-haspopup="menu"><svg class="i"><use href="#i-dots"/></svg></button></span></td></tr>
+              <tr class="row"><td class="c-rule"><div class="rcell"><span class="mark ok" title="Allow"><svg class="i"><use href="#i-check"/></svg></span><span class="sr-only">Allow</span><span class="host"><span class="w">*.</span>internal.example</span></div></td><td class="paths"><span class="every">every path</span></td><td class="c-seen num meta">5 allowed</td><td class="c-by who-when">dana <small>· 9 Sep</small></td>
+                <td class="acts"><span class="rowacts"><button type="button" class="lockbtn owner-only" aria-pressed="false" aria-label="Lock *.internal.example"><svg class="i sm"><use href="#i-unlock"/></svg><span>Locked</span></button><button type="button" class="btn btn-ghost btn-xs btn-square" aria-label="Actions for *.internal.example" aria-haspopup="menu"><svg class="i"><use href="#i-dots"/></svg></button></span></td></tr>
+              <tr class="row"><td class="c-rule"><div class="rcell"><span class="mark ok" title="Allow"><svg class="i"><use href="#i-check"/></svg></span><span class="sr-only">Allow</span><span class="host">registry.example</span></div></td><td class="paths"><span class="every">every path</span></td><td class="c-seen num meta">73 allowed</td><td class="c-by who-when">beekeeper <small>· 2 Sep</small></td>
+                <td class="acts"><span class="rowacts"><button type="button" class="lockbtn owner-only" aria-pressed="false" aria-label="Lock registry.example"><svg class="i sm"><use href="#i-unlock"/></svg><span>Locked</span></button><button type="button" class="btn btn-ghost btn-xs btn-square" aria-label="Actions for registry.example" aria-haspopup="menu"><svg class="i"><use href="#i-dots"/></svg></button></span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <footer>Locked rules come first, then deny, then allow, each by host read from the right, so a suffix sits beside the hosts below it. A deny takes allowed hosts out of the document; the document itself can only allow.</footer>
+      </section>
+
+      <section class="sect" aria-labelledby="cred-h">
+        <header><h2 id="cred-h">Credentials</h2><span class="n">1</span>
+          <p>Credentials a run may use, by name. The policy names one; it never holds one. Each machine defines its credentials in its runner file, and a name a machine does not define is no run.</p></header>
+        <form class="composer cred" aria-label="Add a credential" onsubmit="return false">
+          <label><span class="sr-only">Name</span><input class="input m" type="text" spellcheck="false" placeholder="Name, such as forge-token"></label>
+          <label><span class="sr-only">Argument, optional</span><input class="input m" type="text" spellcheck="false" placeholder="Argument (optional), such as acme/shop"></label>
+          <button type="submit" class="btn" disabled>Add credential</button>
+        </form>
+        <div class="table-wrap" tabindex="0" role="region" aria-label="Credentials of the hive">
+          <table class="table rules" role="table"><thead><tr><th>Name</th><th>Argument</th><th class="num">Last 7 days</th><th>Added</th><th><span class="sr-only">Actions</span></th></tr></thead>
+            <tbody><tr class="row"><td class="c-rule"><div class="rcell"><svg class="i faint"><use href="#i-key"/></svg><span class="host">model-key</span></div></td><td class="paths"><span class="every">no argument</span></td><td class="c-seen num meta">412 requests</td><td class="c-by who-when">beekeeper <small>· 2 Sep</small></td><td class="acts"><button type="button" class="btn btn-ghost btn-xs btn-square" aria-label="Actions for model-key" aria-haspopup="menu"><svg class="i"><use href="#i-dots"/></svg></button></td></tr></tbody></table>
+        </div>
+      </section>
+    </div>
+
+    <!-- ============ REPOSITORIES ============ -->
+    <div class="main-in" data-view="repositories" data-nav="policy" data-url="/hive/policy/repositories" hidden>
+      <div data-phead="hive"></div>
+      <nav class="tabs" aria-label="Policy" data-ptabs="hive" data-cur="repositories"></nav>
+      <div class="summary"><span><b>4</b> repositories have posted runs</span><span><b>2</b> with rules of their own</span><span><b>1</b> with suggestions</span></div>
+      <div class="table-wrap" tabindex="0" role="region" aria-label="Repositories and their policy">
+        <table class="table repos" role="table">
+          <thead><tr><th>Repository</th><th>Policy</th><th class="num">Own rules</th><th class="num">Overrides</th><th class="num">Suggestions</th><th>Version</th><th>Last change</th></tr></thead>
+          <tbody>
+            <tr class="row" data-go="repo"><td class="c-repo"><a class="rowlink repo-name" href="#repo"><span class="f">github.example/</span><span class="p">acme/shop</span></a></td><td><span class="src repo"><svg class="i"><use href="#i-repo"/></svg>Own rules</span></td><td class="num opt">4</td><td class="num opt">1</td><td class="num"><span class="newdot">2 to review</span></td><td class="mono opt">v10 <span class="faint">c41d7e02b9a6</span></td><td class="meta opt">2 minutes ago</td></tr>
+            <tr class="row" data-go="repo"><td class="c-repo"><a class="rowlink repo-name" href="#repo"><span class="f">github.example/</span><span class="p">acme/tax-service</span></a></td><td><span class="src repo"><svg class="i"><use href="#i-repo"/></svg>Own rules</span></td><td class="num opt">1</td><td class="num opt zero">0</td><td class="num zero">0</td><td class="mono opt">v3 <span class="faint">7be1a9d04f52</span></td><td class="meta opt">11 Sep, 10:20</td></tr>
+            <tr class="row" data-go="repo"><td class="c-repo"><a class="rowlink repo-name" href="#repo"><span class="f">gitlab.example/</span><span class="p">acme/shop</span></a></td><td><span class="src"><svg class="i"><use href="#i-hex"/></svg>Hive baseline</span></td><td class="num opt zero">0</td><td class="num opt zero">0</td><td class="num zero">0</td><td class="mono opt">v14 <span class="faint">e3b0c44298fc</span></td><td class="meta opt"><span class="faint">n/a</span></td></tr>
+            <tr class="row" data-go="repo"><td class="c-repo"><a class="rowlink repo-name" href="#repo"><span class="f">github.example/</span><span class="p">acme/docs</span></a></td><td><span class="src"><svg class="i"><use href="#i-hex"/></svg>Hive baseline</span></td><td class="num opt zero">0</td><td class="num opt zero">0</td><td class="num zero">0</td><td class="mono opt">v14 <span class="faint">e3b0c44298fc</span></td><td class="meta opt"><span class="faint">n/a</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="faint" style="font-size:12.5px;max-width:80ch">A repository appears here once a run names it. A repository without rules of its own is served the hive baseline, and so is a run that names no repository.</p>
+    </div>
+
+    <!-- ============ REPOSITORY POLICY ============ -->
+    <div class="main-in" data-view="repo" data-nav="policy" data-url="/hive/policy/repositories/rp_5f2c81" hidden>
+      <div style="display:grid;gap:12px">
+        <nav class="crumbs" aria-label="Breadcrumb"><a href="#policy">Policy</a><svg class="i"><use href="#i-chev"/></svg><a href="#repositories">Repositories</a><svg class="i"><use href="#i-chev"/></svg><span class="mono" style="font-size:12px" aria-current="page"><span class="faint">github.example/</span>acme/shop</span></nav>
+        <div class="page-head">
+          <div><h1><span class="mono" style="font-size:17px;font-weight:600"><span class="faint" style="font-weight:400">github.example/</span>acme/shop</span></h1><p>What runs of this repository may reach: the hive's rules, then this repository's own. Where the two meet on a host, the repository wins, unless the hive's rule is locked.</p></div>
+          <div class="head-side"><span class="vpill" title="sha256=c41d7e02b9a61f0d83c5a97be6240d1e5f8b3a6c9d2e7f10a4b5c6d7e8f90a1b"><a class="v" href="#version">v10</a><span class="dg"><i>sha256</i> c41d7e02b9a6</span><button type="button" aria-label="Copy the digest" class="tip tip-end" data-tip="Copy the digest"><svg class="i sm"><use href="#i-copy"/></svg></button></span><a class="btn" href="#version/export"><svg class="i"><use href="#i-up"/></svg>Export</a></div>
+        </div>
+      </div>
+      <nav class="tabs" aria-label="Repository policy"><a href="#repo" aria-current="page"><svg class="i"><use href="#i-shieldok"/></svg>Effective policy <span class="n">10</span></a><a href="#history"><svg class="i"><use href="#i-clock"/></svg>History <span class="n">10</span></a><a href="#version"><svg class="i"><use href="#i-doc"/></svg>Document</a><a href="#run"><svg class="i"><use href="#i-runs"/></svg>Runs <span class="n">5</span></a><a href="#connections"><svg class="i"><use href="#i-conn"/></svg>Connections</a></nav>
+
+      <section class="sect" aria-labelledby="sugg-h">
+        <header><h2 id="sugg-h">Declared by the harness</h2><span class="n">2 to review</span><span class="grow"></span><button type="button" class="btn btn-xs">Allow both here</button>
+          <p>Hosts the runtime says it needs, from the policy applied event of this repository's last 5 runs. A declaration allows nothing by itself.</p></header>
+        <div class="sugg-row" id="sg-1"><span class="rcell"><span class="mark pend" title="Not allowed"><svg class="i"><use href="#i-block"/></svg></span><span class="host trunc">flags.example</span></span><span class="what">Declared by <b>claude</b> in 5 runs. <span class="bad">Denied 9 times</span>, last 2 minutes ago.</span>
+          <span class="acts"><span class="btn-split"><button type="button" class="btn btn-xs" data-allow="sg-1">Allow here</button><button type="button" class="btn btn-xs" aria-label="More ways to allow flags.example" aria-haspopup="menu"><svg class="i sm"><use href="#i-chevd"/></svg></button></span><button type="button" class="btn btn-ghost btn-xs">Dismiss</button></span></div>
+        <div class="sugg-row" id="sg-2"><span class="rcell"><span class="mark pend" title="Not allowed"><svg class="i"><use href="#i-block"/></svg></span><span class="host trunc">downloads.runtime.example</span></span><span class="what">Declared by <b>claude</b> in 5 runs. No run has tried to reach it.</span>
+          <span class="acts"><span class="btn-split"><button type="button" class="btn btn-xs" data-allow="sg-2">Allow here</button><button type="button" class="btn btn-xs" aria-label="More ways to allow downloads.runtime.example" aria-haspopup="menu"><svg class="i sm"><use href="#i-chevd"/></svg></button></span><button type="button" class="btn btn-ghost btn-xs">Dismiss</button></span></div>
+        <footer>2 more declared hosts are already allowed: <code class="rule">api.example</code> by the hive, <code class="rule">mcp.acme.example</code> by this repository.</footer>
+      </section>
+
+      <section class="sect" aria-labelledby="eff-h">
+        <header><h2 id="eff-h">Effective policy</h2><span class="n">10 rules · 7 hosts allowed</span><span class="grow"></span>
+          <div class="seg in" role="group" aria-label="Show"><button type="button" aria-pressed="true">All</button><button type="button" aria-pressed="false">From the hive <span class="faint mono" style="font-size:11px">6</span></button><button type="button" aria-pressed="false">This repository <span class="faint mono" style="font-size:11px">4</span></button><button type="button" aria-pressed="false">Overrides <span class="faint mono" style="font-size:11px">2</span></button></div>
+        </header>
+        <form class="composer" aria-label="Add a rule for this repository" onsubmit="return false">
+          <div class="seg" role="group" aria-label="Action"><button type="button" aria-pressed="true">Allow</button><button type="button" class="deny" aria-pressed="false">Deny</button></div>
+          <label><span class="sr-only">Host</span><input class="input m" type="text" spellcheck="false" placeholder="mcp.acme.example"></label>
+          <label><span class="sr-only">Paths, optional</span><input class="input m" type="text" spellcheck="false" placeholder="Every path, or /v1/* /health"></label>
+          <button type="submit" class="btn btn-primary" disabled>Add for this repository</button>
+        </form>
+        <div class="table-wrap" tabindex="0" role="region" aria-label="Effective policy of github.example/acme/shop">
+          <table class="table rules" role="table">
+            <thead><tr><th>Rule</th><th>Paths</th><th>Comes from</th><th class="num">Last 7 days</th><th><span class="sr-only">Actions</span></th></tr></thead>
+            <tbody>
+              <tr class="row has-over"><td class="c-rule"><div class="rcell"><span class="mark no" title="Deny"><svg class="i"><use href="#i-block"/></svg></span><span class="sr-only">Deny</span><span class="host"><span class="w">*.</span>paste.example</span></div></td><td class="paths"><span class="every">every path</span></td><td class="c-src"><span class="src lock"><svg class="i"><use href="#i-lock"/></svg>Hive, locked</span></td><td class="c-seen num"><span class="bad">3 denied</span></td><td class="acts"><span class="locked tip tip-end" tabindex="0" data-tip="A locked hive rule. It is changed on the hive's policy page, by an owner."><a class="link" href="#policy" style="font-size:12px;padding-right:8px">Open</a></span></td></tr>
+              <tr class="over"><td colspan="5"><div class="overline"><svg class="i sm"><use href="#i-lock"/></svg><span><b>Holds against this repository's rule</b></span><s>allow bin.paste.example</s><span>dana · 28 Aug. It is not in force.</span><button type="button" class="link" style="font-size:12.5px">Remove it</button></div></td></tr>
+              <tr class="row"><td class="c-rule"><div class="rcell"><span class="mark ok" title="Allow"><svg class="i"><use href="#i-check"/></svg></span><span class="sr-only">Allow</span><span class="host">github.example</span></div></td><td class="paths"><span class="every">every path</span></td><td class="c-src"><span class="src lock"><svg class="i"><use href="#i-lock"/></svg>Hive, locked</span></td><td class="c-seen num meta">41 allowed</td><td class="acts"><a class="link" href="#policy" style="font-size:12px;padding-right:8px">Open</a></td></tr>
+              <tr class="row has-over"><td class="c-rule"><div class="rcell"><span class="mark no" title="Deny"><svg class="i"><use href="#i-block"/></svg></span><span class="sr-only">Deny</span><span class="host">gitlab.example</span></div></td><td class="paths"><span class="every">every path</span></td><td class="c-src"><span class="src repo"><svg class="i"><use href="#i-repo"/></svg>This repository</span></td><td class="c-seen num"><span class="zero">not seen</span></td><td class="acts"><button type="button" class="btn btn-ghost btn-xs">Restore</button></td></tr>
+              <tr class="over"><td colspan="5"><div class="overline"><span><b>Overrides the hive's rule</b></span><s>allow gitlab.example</s><span>Disabled here by dana · 9 Sep. Other repositories keep it.</span></div></td></tr>
+              <tr class="row"><td class="c-rule"><div class="rcell"><span class="mark no" title="Deny"><svg class="i"><use href="#i-block"/></svg></span><span class="sr-only">Deny</span><span class="host">telemetry.example</span></div></td><td class="paths"><span class="every">every path</span></td><td class="c-src"><span class="src"><svg class="i"><use href="#i-hex"/></svg>Hive</span></td><td class="c-seen num"><span class="zero">not seen</span></td><td class="acts"><button type="button" class="btn btn-ghost btn-xs">Allow here</button></td></tr>
+              <tr class="row"><td class="c-rule"><div class="rcell"><span class="mark ok" title="Allow"><svg class="i"><use href="#i-check"/></svg></span><span class="sr-only">Allow</span><span class="host">mcp.acme.example</span></div></td><td class="paths"><span class="chips"><code class="rule">/mcp/*</code><code class="rule">/health</code></span></td><td class="c-src"><span class="src repo"><svg class="i"><use href="#i-repo"/></svg>This repository</span></td><td class="c-seen num meta">46 allowed</td><td class="acts"><button type="button" class="btn btn-ghost btn-xs">Remove</button></td></tr>
+              <tr class="row"><td class="c-rule"><div class="rcell"><span class="mark ok" title="Allow"><svg class="i"><use href="#i-check"/></svg></span><span class="sr-only">Allow</span><span class="host">api.example</span></div></td><td class="paths"><span class="chips"><code class="rule">/v1/*</code></span></td><td class="c-src"><span class="src"><svg class="i"><use href="#i-hex"/></svg>Hive</span></td><td class="c-seen num meta">204 allowed · <span class="bad">1 denied</span></td><td class="acts"><button type="button" class="btn btn-ghost btn-xs">Disable here</button></td></tr>
+              <tr class="row fresh"><td class="c-rule"><div class="rcell"><span class="mark ok" title="Allow"><svg class="i"><use href="#i-check"/></svg></span><span class="sr-only">Allow</span><span class="host">files.cdn.example</span><span class="newdot">New in v10</span></div></td><td class="paths"><span class="every">every path</span></td><td class="c-src"><span class="src repo"><svg class="i"><use href="#i-repo"/></svg>This repository</span></td><td class="c-seen num"><span class="bad">3 denied</span> <span class="faint">before it</span></td><td class="acts"><button type="button" class="btn btn-ghost btn-xs">Remove</button></td></tr>
+              <tr class="row"><td class="c-rule"><div class="rcell"><span class="mark ok" title="Allow"><svg class="i"><use href="#i-check"/></svg></span><span class="sr-only">Allow</span><span class="host"><span class="w">*.</span>github.example</span></div></td><td class="paths"><span class="every">every path</span></td><td class="c-src"><span class="src"><svg class="i"><use href="#i-hex"/></svg>Hive</span></td><td class="c-seen num meta">22 allowed</td><td class="acts"><button type="button" class="btn btn-ghost btn-xs">Disable here</button></td></tr>
+              <tr class="row"><td class="c-rule"><div class="rcell"><span class="mark ok" title="Allow"><svg class="i"><use href="#i-check"/></svg></span><span class="sr-only">Allow</span><span class="host"><span class="w">*.</span>internal.example</span></div></td><td class="paths"><span class="every">every path</span></td><td class="c-src"><span class="src"><svg class="i"><use href="#i-hex"/></svg>Hive</span></td><td class="c-seen num meta">5 allowed</td><td class="acts"><button type="button" class="btn btn-ghost btn-xs">Disable here</button></td></tr>
+              <tr class="row"><td class="c-rule"><div class="rcell"><span class="mark ok" title="Allow"><svg class="i"><use href="#i-check"/></svg></span><span class="sr-only">Allow</span><span class="host">registry.example</span></div></td><td class="paths"><span class="every">every path</span></td><td class="c-src"><span class="src"><svg class="i"><use href="#i-hex"/></svg>Hive</span></td><td class="c-seen num meta">65 allowed</td><td class="acts"><button type="button" class="btn btn-ghost btn-xs">Disable here</button></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <footer>Mode <b style="font-weight:500;color:var(--color-base-content)">enforce</b>, from the hive. Credentials: <code class="rule">model-key</code> from the hive, <code class="rule">forge-token</code> <span class="faint">argument</span> <code class="rule">acme/shop</code> from this repository. <a class="link" href="#repo">Edit credentials</a></footer>
+      </section>
+    </div>
+
+    <!-- ============ HISTORY ============ -->
+    <div class="main-in" data-view="history" data-nav="policy" data-url="/hive/policy/history?change=41" hidden>
+      <div data-phead="hive"></div>
+      <nav class="tabs" aria-label="Policy" data-ptabs="hive" data-cur="history"></nav>
+      <div class="filters" role="group" aria-label="Filters">
+        <button type="button" class="chip"><svg class="i"><use href="#i-plus"/></svg>Who</button>
+        <button type="button" class="chip"><svg class="i"><use href="#i-plus"/></svg>Kind</button>
+        <button type="button" class="chip"><svg class="i"><use href="#i-plus"/></svg>Host</button>
+        <span class="grow"></span>
+        <span class="summary"><span><b>16</b> changes</span><span><b>14</b> versions</span><span>since <b>2 Sep 2026</b></span></span>
+      </div>
+      <section class="sect" aria-label="Changes to the hive baseline, newest first">
+        <div class="day">Today</div>
+        <details class="chg"><summary><svg class="i sm chev"><use href="#i-chev"/></svg><span class="avatar" aria-hidden="true">D</span><span class="say2"><b>dana@example.com</b> removed the allow rule <code class="rule">errors.example</code></span><span class="when" title="20 Sep 2026, 13:51:07 UTC">13 minutes ago</span><span class="vcell"><span class="vpill sm"><span class="v">v14</span><span class="dg">e3b0c44298fc</span></span></span></summary></details>
+        <div class="day">Yesterday</div>
+        <details class="chg" open id="chg-41"><summary><svg class="i sm chev"><use href="#i-chev"/></svg><span class="avatar" aria-hidden="true">B</span><span class="say2"><b>beekeeper@example.com</b> switched the hive from observe to <b>enforce</b></span><span class="when" title="19 Sep 2026, 10:04:30 UTC">Yesterday, 10:04</span><span class="vcell"><span class="vpill sm"><span class="v">v13</span><span class="dg">52fa90c1d7ab</span></span></span></summary>
+          <div class="diffbox">
+            <div class="bar"><span class="vpill sm"><span class="v">v12</span><span class="dg">0a4f6e88b1c3</span></span><svg class="i sm faint"><use href="#i-arrow"/></svg><span class="vpill sm"><span class="v">v13</span><span class="dg">52fa90c1d7ab</span></span><span>1 line changed · re-rendered 2 repositories with rules of their own</span><span style="flex:1"></span><a class="link" href="#version">Open v13</a></div>
+            <div class="dpanel"><div><span>rules</span><span>1 change</span></div><div class="dlines sem">
+              <div class="del"><i aria-hidden="true">−</i><span><span class="sr-only">Removed: </span>Mode <b style="font-weight:500">observe</b></span></div>
+              <div class="add"><i aria-hidden="true">+</i><span><span class="sr-only">Added: </span>Mode <b style="font-weight:500">enforce</b></span></div>
+              <div class="ctx"><i></i><span>7 allow rules, 2 deny rules, 1 credential: unchanged</span></div></div></div>
+            <div class="dpanel"><div><span>document</span><span>application/json · 214 bytes</span></div><div class="dlines">
+              <div><i></i><span>{</span></div>
+              <div><i></i><span>  <span class="k">"credentials"</span>: [{"name": "model-key"}],</span></div>
+              <div><i></i><span>  <span class="k">"egress"</span>: {</span></div>
+              <div><i></i><span>    <span class="k">"allow"</span>: ["*.github.example", "*.internal.example", … 5 more],</span></div>
+              <div class="del"><i aria-hidden="true">−</i><span>    <span class="k">"mode"</span>: "observe",</span></div>
+              <div class="add"><i aria-hidden="true">+</i><span>    <span class="k">"mode"</span>: "enforce",</span></div>
+              <div><i></i><span>    <span class="k">"paths"</span>: {"api.example": ["/v1/*"]}</span></div>
+              <div><i></i><span>  },</span></div>
+              <div><i></i><span>  <span class="k">"version"</span>: 1</span></div>
+              <div><i></i><span>}</span></div></div></div>
+          </div></details>
+        <details class="chg"><summary><svg class="i sm chev"><use href="#i-chev"/></svg><span class="avatar" aria-hidden="true">B</span><span class="say2"><b>beekeeper@example.com</b> locked <code class="rule">github.example</code><small>The lock holds against repositories. The document did not change.</small></span><span class="when">Yesterday, 09:58</span><span class="vcell nov">no new version</span></summary></details>
+        <div class="day">16 Sep 2026</div>
+        <details class="chg"><summary><svg class="i sm chev"><use href="#i-chev"/></svg><span class="avatar" aria-hidden="true">D</span><span class="say2"><b>dana@example.com</b> denied <code class="rule">telemetry.example</code><small>From a connection row of run <span class="mono">0191d2aa</span></small></span><span class="when">16 Sep, 18:22</span><span class="vcell nov">no new version</span></summary></details>
+        <details class="chg"><summary><svg class="i sm chev"><use href="#i-chev"/></svg><span class="avatar" aria-hidden="true">D</span><span class="say2"><b>dana@example.com</b> changed the paths of <code class="rule">api.example</code> from every path to <code class="rule">/v1/*</code></span><span class="when">16 Sep, 11:40</span><span class="vcell"><span class="vpill sm"><span class="v">v12</span><span class="dg">0a4f6e88b1c3</span></span></span></summary></details>
+        <details class="chg"><summary><svg class="i sm chev"><use href="#i-chev"/></svg><span class="avatar" aria-hidden="true">D</span><span class="say2"><b>dana@example.com</b> added the credential <code class="rule">model-key</code></span><span class="when">16 Sep, 11:32</span><span class="vcell"><span class="vpill sm"><span class="v">v11</span><span class="dg">b7c2d14e9f06</span></span></span></summary></details>
+      </section>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><p class="faint" style="font-size:12.5px;max-width:70ch">Showing 6 of 16. A change that leaves the document's bytes the same is kept here and makes no new version. Changes to a repository's own rules are in that repository's history.</p><span style="display:flex;gap:8px"><button type="button" class="btn" disabled>Newer</button><button type="button" class="btn">Older</button></span></div>
+    </div>
+
+    <!-- ============ VERSION / DOCUMENT ============ -->
+    <div class="main-in" data-view="version" data-nav="policy" data-url="/hive/policy/repositories/rp_5f2c81/versions/10?compare=9" hidden>
+      <div style="display:grid;gap:12px">
+        <nav class="crumbs" aria-label="Breadcrumb"><a href="#policy">Policy</a><svg class="i"><use href="#i-chev"/></svg><a href="#repo"><span class="mono" style="font-size:12px"><span class="faint">github.example/</span>acme/shop</span></a><svg class="i"><use href="#i-chev"/></svg><span aria-current="page">Version 10</span></nav>
+        <div class="page-head"><div class="run-title"><h1>Version 10</h1><span class="badge badge-success" style="padding-left:5px"><svg class="i sm" style="width:12px;height:12px"><use href="#i-check"/></svg>In force</span></div>
+          <div class="head-side"><button type="button" class="btn" id="open-export"><svg class="i"><use href="#i-up"/></svg>Export</button></div></div>
+        <dl class="kvs">
+          <div class="kv"><dt>Rendered</dt><dd><span title="20 Sep 2026, 14:02:54 UTC">Today, 14:02:54</span></dd></div>
+          <div class="kv"><dt>Changed by</dt><dd>dana@example.com</dd></div>
+          <div class="kv"><dt>Change</dt><dd>Allowed <span class="mono">files.cdn.example</span></dd></div>
+          <div class="kv"><dt><span class="term" tabindex="0" data-tip="The sha256 of the exact bytes a runner is served. Two runs with the same digest had the same policy.">Digest</span></dt><dd class="mono" title="sha256=c41d7e02b9a61f0d83c5a97be6240d1e5f8b3a6c9d2e7f10a4b5c6d7e8f90a1b">sha256=c41d7e02b9a6…</dd></div>
+          <div class="kv"><dt>Runs under it</dt><dd><a class="link" href="#run" style="font-weight:400">1 run</a> <small>1 alive is behind, on v9</small></dd></div>
+        </dl>
+      </div>
+      <div class="twocol">
+        <div style="display:grid;gap:12px;min-width:0">
+          <div class="filters"><div class="seg in" role="group" aria-label="View"><button type="button" aria-pressed="true">Changes from v9</button><button type="button" aria-pressed="false">Document</button><button type="button" aria-pressed="false">As served</button></div><span class="grow"></span><label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--q-muted)">Compare with <select class="input m" style="width:auto;height:28px"><option>v9 · 9f86d081884c</option><option>v8 · 17aa03fe5c21</option></select></label></div>
+          <div class="docwell"><div><span>run-configuration.json <span class="faint">· v9 → v10 · 1 line added</span></span><button type="button" class="btn btn-ghost btn-xs"><svg class="i"><use href="#i-copy"/></svg>Copy document</button></div>
+            <div class="dlines" role="region" aria-label="Difference between version 9 and version 10" tabindex="0">
+              <div><i></i><span>{</span></div>
+              <div><i></i><span>  <span class="k">"credentials"</span>: [</span></div>
+              <div><i></i><span>    {"argument": "acme/shop", "name": "forge-token"},</span></div>
+              <div><i></i><span>    {"name": "model-key"}</span></div>
+              <div><i></i><span>  ],</span></div>
+              <div><i></i><span>  <span class="k">"egress"</span>: {</span></div>
+              <div><i></i><span>    <span class="k">"allow"</span>: [</span></div>
+              <div><i></i><span>      "*.github.example",</span></div>
+              <div><i></i><span>      "*.internal.example",</span></div>
+              <div><i></i><span>      "api.example",</span></div>
+              <div class="add"><i aria-hidden="true">+</i><span><span class="sr-only">Added: </span>      "files.cdn.example",</span></div>
+              <div><i></i><span>      "github.example",</span></div>
+              <div><i></i><span>      "mcp.acme.example",</span></div>
+              <div><i></i><span>      "registry.example"</span></div>
+              <div><i></i><span>    ],</span></div>
+              <div><i></i><span>    <span class="k">"mode"</span>: "enforce",</span></div>
+              <div><i></i><span>    <span class="k">"paths"</span>: {"api.example": ["/v1/*"], "mcp.acme.example": ["/health", "/mcp/*"]}</span></div>
+              <div><i></i><span>  },</span></div>
+              <div><i></i><span>  <span class="k">"version"</span>: 1</span></div>
+              <div><i></i><span>}</span></div>
+            </div></div>
+          <p class="faint" style="font-size:12.5px;max-width:78ch">Shown indented for reading. "As served" is the exact bytes, 388 of them, that the digest is taken over. Deny rules and locks are not in the document: they decide what it lists.</p>
+        </div>
+        <section class="sect" aria-labelledby="vl-h"><header><h2 id="vl-h" style="font-size:13.5px">Versions</h2><span class="n">10</span></header>
+          <nav class="vlist" aria-label="Versions of this repository's policy">
+            <a href="#version" aria-current="page"><span class="v">v10</span><span class="trunc">Allowed files.cdn.example<small style="display:block">dana · 2 minutes ago</small></span><span class="mono faint" style="font-size:11.5px">c41d7e02</span></a>
+            <a href="#version"><span class="v">v9</span><span class="trunc">Hive switched to enforce<small style="display:block">beekeeper · Yesterday, 10:04 · <span class="src" style="height:16px;font-size:10.5px">hive</span></small></span><span class="mono faint" style="font-size:11.5px">9f86d081</span></a>
+            <a href="#version"><span class="v">v8</span><span class="trunc">Allowed mcp.acme.example<small style="display:block">dana · 16 Sep, 12:10</small></span><span class="mono faint" style="font-size:11.5px">17aa03fe</span></a>
+            <a href="#version"><span class="v">v7</span><span class="trunc">Paths of api.example<small style="display:block">dana · 16 Sep, 11:40 · <span class="src" style="height:16px;font-size:10.5px">hive</span></small></span><span class="mono faint" style="font-size:11.5px">d09b64c7</span></a>
+            <a href="#history" style="color:var(--q-muted)"><span></span><span>6 earlier versions</span><svg class="i sm"><use href="#i-chev"/></svg></a>
+          </nav></section>
+      </div>
+    </div>
+
+    <!-- ============ ROW ACTIONS: RUN CONNECTIONS ============ -->
+    <div class="main-in" data-view="connections" data-nav="runs" data-url="/hive/runs/0191f2a4-3c5e-7b8d-9e0f-1a2b3c4d5e6f/connections" hidden>
+      <div class="run-head">
+        <nav class="crumbs" aria-label="Breadcrumb"><a href="#run">Runs</a><svg class="i"><use href="#i-chev"/></svg><a href="#repo"><span class="mono" style="font-size:12px"><span class="faint">github.example/</span>acme/shop</span></a><svg class="i"><use href="#i-chev"/></svg><span class="mono" style="font-size:12px" aria-current="page">0191f2a4</span></nav>
+        <div class="run-title"><h1>checkout-tax</h1><span class="badge badge-info state state-running"><i></i>Running</span><span class="alive" role="status" aria-live="off"><span class="ripple"></span><span>Alive, 4 s ago</span></span></div>
+      </div>
+      <nav class="tabs" aria-label="Run"><a href="#run"><svg class="i"><use href="#i-list"/></svg>Timeline <span class="n">24</span></a><a href="#run"><svg class="i"><use href="#i-term"/></svg>Terminal</a><a href="#connections" aria-current="page"><svg class="i"><use href="#i-conn"/></svg>Connections <span class="n bad">3 denied</span></a><a href="#run"><svg class="i"><use href="#i-doc"/></svg>Details</a></nav>
+      <div class="filters" role="group" aria-label="Filters">
+        <div class="seg in" role="group" aria-label="Decision"><button type="button" aria-pressed="true">All <span class="faint mono" style="font-size:11px">7</span></button><button type="button" aria-pressed="false">Allowed <span class="faint mono" style="font-size:11px">3</span></button><button type="button" aria-pressed="false">Denied <span class="faint mono" style="font-size:11px">4</span></button></div>
+        <span class="grow"></span>
+        <span class="summary"><span><b>41</b> attempts to <b>7</b> destinations</span><span>policy <b>enforce</b> <a class="mono link" href="#version" style="font-weight:500">v9</a> <span class="drift"><svg class="i"><use href="#i-warn"/></svg>Behind v10</span></span></span>
+      </div>
+      <div class="table-wrap" tabindex="0" role="region" aria-label="Connections of this run">
+        <table class="table cxt">
+          <thead><tr><th>Destination</th><th class="num">Attempts</th><th class="num">Allowed</th><th class="num">Denied</th><th>Reason</th><th>Outcome</th><th>First and last seen</th><th><span class="sr-only">Rule actions</span></th></tr></thead>
+          <tbody>
+            <tr class="row denied"><td><div class="dcell"><span class="mark no"><svg class="i"><use href="#i-block"/></svg></span><span class="dest">api.example<span class="p">:443</span> <span class="rq">GET /v2/models</span></span></div></td><td class="num">1</td><td class="num zero">0</td><td class="num bad">1</td><td class="why"><b>Host allowed, no path rule matches.</b> Enforce mode denies it.</td><td><span class="outcome refused">Refused</span></td><td class="meta">+0:48.2</td><td class="slot"><button type="button" class="btn btn-xs rowbtn" id="pop-anchor" aria-haspopup="dialog" aria-expanded="true" aria-controls="pop-live">Allow</button></td></tr>
+            <tr class="row denied"><td><div class="dcell"><span class="mark no"><svg class="i"><use href="#i-block"/></svg></span><span class="dest">files.cdn.example<span class="p">:443</span> <span class="rq">CONNECT</span></span></div></td><td class="num">3</td><td class="num zero">0</td><td class="num bad">3</td><td class="why"><b>No rule matches.</b> Enforce mode denies it.
+                <div class="after"><span class="badge badge-info"><svg class="i sm" style="width:11px;height:11px"><use href="#i-shieldok"/></svg>Rule added</span><span>Allowed for this repository in <a class="link mono" href="#version" style="font-size:12px">v10</a> by you, 2 minutes ago. The run has not reloaded yet.</span></div></td><td><span class="outcome refused">Refused</span></td><td class="meta">+0:09.3 <span class="faint">to</span> +0:10.1</td><td class="slot"><a class="btn btn-ghost btn-xs rowbtn" href="#repo">Rule</a></td></tr>
+            <tr class="row denied"><td><div class="dcell"><span class="mark no"><svg class="i"><use href="#i-block"/></svg></span><span class="dest">bin.paste.example<span class="p">:443</span> <span class="rq">CONNECT</span></span></div></td><td class="num">1</td><td class="num zero">0</td><td class="num bad">1</td><td class="why"><b>No rule matches.</b> Enforce mode denies it.</td><td><span class="outcome refused">Refused</span></td><td class="meta">+0:33.0</td><td class="slot"><button type="button" class="btn btn-ghost btn-xs btn-square rowbtn tip tip-end" data-tip="A locked hive rule denies *.paste.example" aria-label="Why bin.paste.example cannot be allowed here" aria-haspopup="dialog"><svg class="i sm"><use href="#i-lock"/></svg></button></td></tr>
+            <tr class="row denied"><td><div class="dcell"><span class="mark no"><svg class="i"><use href="#i-block"/></svg></span><span class="dest">169.254.169.254<span class="p">:80</span> <span class="rq">HTTP</span></span></div></td><td class="num">1</td><td class="num zero">0</td><td class="num bad">1</td><td class="why"><b>The wall refuses the machine's own address,</b> in either mode.</td><td><span class="outcome refused">Refused</span></td><td class="meta">+0:41.2</td><td class="slot"><span class="sr-only">No rule changes this</span></td></tr>
+            <tr class="row"><td><div class="dcell"><span class="mark ok"><svg class="i"><use href="#i-check"/></svg></span><span class="dest">api.example<span class="p">:443</span> <span class="rq">POST /v1/messages</span></span></div></td><td class="num">21</td><td class="num">21</td><td class="num zero">0</td><td class="why">Rule <code>api.example</code>, path <code>/v1/*</code>, credential <code>model-key</code></td><td><span class="outcome">Connected</span></td><td class="meta">+0:02.1 <span class="faint">to</span> +0:52.0</td><td class="slot"><button type="button" class="btn btn-ghost btn-xs rowbtn" aria-haspopup="dialog">Deny</button></td></tr>
+            <tr class="row"><td><div class="dcell"><span class="mark ok"><svg class="i"><use href="#i-check"/></svg></span><span class="dest">github.example<span class="p">:443</span> <span class="rq">CONNECT</span></span></div></td><td class="num">9</td><td class="num">9</td><td class="num zero">0</td><td class="why">Rule <code>github.example</code></td><td><span class="outcome">Connected</span></td><td class="meta">+0:01.0 <span class="faint">to</span> +0:50.4</td><td class="slot"><button type="button" class="btn btn-ghost btn-xs btn-square rowbtn tip tip-end" data-tip="A locked hive rule allows github.example" aria-label="Why github.example cannot be denied here" aria-haspopup="dialog"><svg class="i sm"><use href="#i-lock"/></svg></button></td></tr>
+            <tr class="row"><td><div class="dcell"><span class="mark ok"><svg class="i"><use href="#i-check"/></svg></span><span class="dest">tax.internal.example<span class="p">:8443</span> <span class="rq">CONNECT</span></span></div></td><td class="num">2</td><td class="num">2</td><td class="num zero">0</td><td class="why">Rule <code>*.internal.example</code></td><td><span class="outcome dial">Dial failed</span></td><td class="meta">+0:44.0 <span class="faint">to</span> +0:47.5</td><td class="slot"><button type="button" class="btn btn-ghost btn-xs rowbtn" aria-haspopup="dialog">Deny</button></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="faint" style="font-size:12.5px;max-width:80ch">Counted per host, port and path from the run's egress events. A rule added here changes what happens next; what the record already says stays as it was.</p>
+
+      <div class="pop" id="pop-live" role="dialog" aria-labelledby="pop-live-h">
+        <header><span class="mark ok"><svg class="i"><use href="#i-check"/></svg></span><h3 id="pop-live-h">Allow on <span class="host">api.example</span></h3></header>
+        <div class="body">
+          <fieldset><legend>What. This host has path rules: <code class="rule">/v1/*</code></legend>
+            <label class="opt"><input type="radio" name="what" checked><span><b>This path</b></span><small>Added to the paths in force for the host. End it with * to allow everything below.</small><input class="input m" type="text" value="/v2/models" spellcheck="false" aria-label="Path"></label>
+            <label class="opt"><input type="radio" name="what"><span><b>Every path of the host</b></span><small>Drops the path rules of this host, for the scope chosen below.</small></label>
+          </fieldset>
+          <fieldset><legend>For</legend>
+            <label class="opt"><input type="radio" name="for" checked><span><b>This repository</b> <span class="mono muted" style="font-size:12px">github.example/acme/shop</span></span></label>
+            <label class="opt"><input type="radio" name="for"><span><b>The whole hive</b></span><small>Every repository of Platform.</small></label>
+          </fieldset>
+          <p class="next"><svg class="i"><use href="#i-reload"/></svg><span>Takes effect in running sessions within a heartbeat, about 30 s. This run is alive: its next attempt can succeed.</span></p>
+        </div>
+        <footer><button type="button" class="btn" id="pop-cancel">Cancel</button><button type="button" class="btn btn-primary">Allow for this repository</button></footer>
+      </div>
+    </div>
+
+    <!-- ============ RUN HEADER AND TIMELINE ============ -->
+    <div class="main-in" data-view="run" data-nav="runs" data-url="/hive/runs/0191f2a4-3c5e-7b8d-9e0f-1a2b3c4d5e6f" hidden>
+      <span class="cap">1 · the run is behind: it last reported v9, and v10 is in force</span>
+      <div class="run-head">
+        <nav class="crumbs" aria-label="Breadcrumb"><a href="#run">Runs</a><svg class="i"><use href="#i-chev"/></svg><a href="#repo"><span class="mono" style="font-size:12px"><span class="faint">github.example/</span>acme/shop</span></a><svg class="i"><use href="#i-chev"/></svg><span class="mono" style="font-size:12px" aria-current="page">0191f2a4</span></nav>
+        <div class="run-title"><h1>checkout-tax</h1><span class="badge badge-info state state-running"><i></i>Running</span><span class="alive" role="status" aria-live="off"><span class="ripple"></span><span>Alive, 4 s ago</span></span></div>
+        <dl class="kvs">
+          <div class="kv"><dt>Started</dt><dd>Today, 14:02:11</dd></div>
+          <div class="kv"><dt>Duration</dt><dd class="tnum">2 m 58 s <small>so far</small></dd></div>
+          <div class="kv"><dt>Runtime</dt><dd>claude <small class="mono">2.1.273</small></dd></div>
+          <div class="kv"><dt>Host</dt><dd class="mono">build-01</dd></div>
+          <div class="kv"><dt>Wall</dt><dd>docker <small class="mono">registry.example/acme/agent:1.8</small></dd></div>
+          <div class="kv" style="overflow:visible"><dt>Policy</dt><dd style="overflow:visible">enforce <a class="ver tip" href="#version" data-tip="Version 9 of github.example/acme/shop, sha256 9f86d081884c. Open the exact document.">v9</a><span class="drift tip tip-end" tabindex="0" data-tip="The run last reported v9 at #0041. v10 has been in force for 47 s. A run reloads at its next heartbeat."><svg class="i"><use href="#i-warn"/></svg>Behind v10</span></dd></div>
+        </dl>
+        <div class="notice warn"><svg class="i"><use href="#i-warn"/></svg><div><b>This run is behind the policy in force.</b> It last reported v9 <span class="mono" style="font-size:12px">9f86d081884c</span>; v10 <span class="mono" style="font-size:12px">c41d7e02b9a6</span> has been in force for 47 s. A run reloads at its next heartbeat; until it does, it decides by v9.<div class="acts"><a class="link" href="#version">What changed between v9 and v10</a></div></div></div>
+      </div>
+
+      <span class="cap" style="margin-top:8px">2 · after the reload: the mark is gone, the version is the new one, and the timeline says when</span>
+      <dl class="kvs">
+        <div class="kv"><dt>Started</dt><dd>Today, 14:02:11</dd></div>
+        <div class="kv"><dt>Duration</dt><dd class="tnum">3 m 12 s <small>so far</small></dd></div>
+        <div class="kv"><dt>Runtime</dt><dd>claude <small class="mono">2.1.273</small></dd></div>
+        <div class="kv"><dt>Host</dt><dd class="mono">build-01</dd></div>
+        <div class="kv"><dt>Wall</dt><dd>docker <small class="mono">registry.example/acme/agent:1.8</small></dd></div>
+        <div class="kv"><dt>Policy</dt><dd>enforce <a class="ver" href="#version">v10</a> <small class="mono">c41d7e02b9a6</small></dd></div>
+      </dl>
+      <ol class="tl" style="--lanes:1" aria-label="Session timeline, oldest first">
+        <li class="ti"><div class="g"><span class="r l0 from"></span><span class="n sys l0"><svg class="i"><use href="#i-shield"/></svg></span></div>
+          <div class="b"><div class="hd"><span class="k">Policy applied</span><span class="s">enforce · 6 hosts allowed · fetched from the run configuration · reads requests to <span class="mono">api.example</span>, <span class="mono">mcp.acme.example</span></span><span class="t"><a class="pv tip" href="#version" data-tip="The version this item applied. Open the exact document.">v9</a><span>+0:00.0</span><a class="q" href="#run">#0003</a></span></div></div></li>
+        <li class="ti"><div class="g"><span class="r l0"></span></div>
+          <div class="b" style="padding-block:2px"><div class="cx denied"><span class="mark no" title="Denied"><svg class="i"><use href="#i-block"/></svg></span><span class="dest">files.cdn.example<span class="p">:443</span> <span class="rq">CONNECT</span></span><span class="why"><b>Denied.</b> No rule matches; enforce mode denies it.</span><span class="outcome refused">Refused</span><span class="at">+0:09.3</span><a class="btn btn-ghost btn-xs rowbtn" href="#repo">Rule</a></div></div></li>
+        <li class="ti"><div class="g"><span class="r l0"></span><span class="n l0"><svg class="i"><use href="#i-msg"/></svg></span></div>
+          <div class="b"><div class="hd"><span class="k">Turn finished</span><span class="s">I could not install the published client because its download host is denied.</span><span class="t"><span>+0:52.7</span><a class="q" href="#run">#0038</a></span></div></div></li>
+        <li class="ti"><div class="g"><span class="r l0"></span><span class="n sys l0"><svg class="i"><use href="#i-reload"/></svg></span></div>
+          <div class="b"><div class="hd"><span class="k">Policy applied again</span><span class="s">reloaded · enforce · 7 hosts allowed</span><span class="delta">+ files.cdn.example</span><span class="t"><a class="pv" href="#version">v10</a><span>+3:04.4</span><a class="q" href="#run">#0046</a></span></div>
+            <p class="say" style="font-size:13px;line-height:19px;color:var(--q-muted)">The runner fetched a new run configuration after the server's answer named a new digest. Compared with the policy applied at <a class="link mono" href="#run" style="font-size:12px">#0003</a>: 1 host added, none removed. Connections before this item were decided by v9.</p></div></li>
+        <li class="ti"><div class="g"><span class="r l0 live"></span></div>
+          <div class="b" style="padding-block:2px"><div class="cx"><span class="mark ok" title="Allowed"><svg class="i"><use href="#i-check"/></svg></span><span class="dest">files.cdn.example<span class="p">:443</span> <span class="rq">CONNECT</span></span><span class="why"><b>Allowed</b> by rule <code>files.cdn.example</code></span><span class="outcome">Connected</span><span class="at">+3:09.0</span><button type="button" class="btn btn-ghost btn-xs rowbtn">Deny</button></div></div></li>
+      </ol>
+      <span class="cap">3 · other values of the Policy cell</span>
+      <dl class="kvs">
+        <div class="kv"><dt>Policy · ended run</dt><dd>enforce <a class="ver" href="#version">v9</a> <small class="mono">9f86d081884c</small></dd></div>
+        <div class="kv"><dt>Policy · hive baseline</dt><dd>enforce <a class="ver" href="#version">v14</a> <small>hive baseline</small></dd></div>
+        <div class="kv"><dt>Policy · not this server's</dt><dd><span tabindex="0" title="The run reported a digest that matches no version rendered here: a policy file on the machine, or a run started with --local.">observe <small class="mono">4b227777d4dd</small> <small>· not rendered here</small></span></dd></div>
+        <div class="kv"><dt>Policy · none reported</dt><dd>observe <small>no policy</small></dd></div>
+      </dl>
+    </div>
+
+    <!-- ============ STATES (specimen sheet) ============ -->
+    <div class="main-in" data-view="states" data-nav="policy" data-url="(specimens: not a page)" hidden>
+      <div class="page-head"><div><h1>States</h1><p>Every state of the composer, the row popover, the locked row and the messages, side by side. This sheet is part of the mock, not of the product.</p></div></div>
+
+      <div class="spec"><span class="tag">composer · valid, read back before saving</span>
+        <section class="sect"><form class="composer" onsubmit="return false"><div class="seg"><button type="button" aria-pressed="true">Allow</button><button type="button" class="deny" aria-pressed="false">Deny</button></div><input class="input m" value="*.internal.example" aria-label="Host"><input class="input m" placeholder="Every path, or /v1/* /health" aria-label="Paths"><button class="btn btn-primary" type="button">Add rule</button>
+          <div class="reads ok"><svg class="i"><use href="#i-check"/></svg><span>Reads as: <b>allow every host below <span class="mono" style="font-size:12px">internal.example</span></b>, on every path. It does not allow <span class="mono" style="font-size:12px">internal.example</span> itself.</span></div></form></section></div>
+
+      <div class="spec"><span class="tag">composer · valid, with paths</span>
+        <section class="sect"><form class="composer" onsubmit="return false"><div class="seg"><button type="button" aria-pressed="true">Allow</button><button type="button" class="deny" aria-pressed="false">Deny</button></div><input class="input m" value="api.example" aria-label="Host"><input class="input m" value="/v1/* /health" aria-label="Paths"><button class="btn btn-primary" type="button">Add rule</button>
+          <div class="reads ok"><svg class="i"><use href="#i-check"/></svg><span>Reads as: <b>allow <span class="mono" style="font-size:12px">api.example</span> on 2 paths</b>: everything below <span class="mono" style="font-size:12px">/v1/</span>, and <span class="mono" style="font-size:12px">/health</span> exactly. Behind a wall the proxy reads requests to this host to check the path.</span></div></form></section></div>
+
+      <div class="spec"><span class="tag">composer · not in the grammar: a URL was pasted</span>
+        <section class="sect"><form class="composer" onsubmit="return false"><div class="seg"><button type="button" aria-pressed="true">Allow</button><button type="button" class="deny" aria-pressed="false">Deny</button></div><input class="input m" value="https://API.Example:443/v1/messages" aria-invalid="true" aria-label="Host"><input class="input m" placeholder="Every path, or /v1/* /health" aria-label="Paths"><button class="btn btn-primary" type="button" disabled>Add rule</button>
+          <div class="reads bad" role="alert"><svg class="i"><use href="#i-warn"/></svg><span>A rule names a host and nothing else: lower case, no scheme, no port, no path. <button type="button" class="link fix">Use api.example with the path /v1/messages</button></span></div></form></section></div>
+
+      <div class="spec"><span class="tag">composer · not in the grammar: a wildcard in the middle, and a bad path</span>
+        <section class="sect"><form class="composer" onsubmit="return false"><div class="seg"><button type="button" aria-pressed="true">Allow</button><button type="button" class="deny" aria-pressed="false">Deny</button></div><input class="input m" value="api.*.example" aria-invalid="true" aria-label="Host"><input class="input m" value="/v1/*/files?x=1" aria-invalid="true" aria-label="Paths"><button class="btn btn-primary" type="button" disabled>Add rule</button>
+          <div class="reads bad" role="alert"><svg class="i"><use href="#i-warn"/></svg><span><code class="rule">*.</code> may only lead a host: <span class="mono" style="font-size:12px">*.example</span> matches every host below <span class="mono" style="font-size:12px">example</span>. A path starts with / and may end in one *; no other wildcard and no query, such as <span class="mono" style="font-size:12px">/v1/*</span>.</span></div></form></section></div>
+
+      <div class="spec"><span class="tag">composer · refusal: the document cannot say it</span>
+        <section class="sect"><form class="composer" onsubmit="return false"><div class="seg"><button type="button" aria-pressed="false">Allow</button><button type="button" class="deny" aria-pressed="true">Deny</button></div><input class="input m" value="files.cdn.example" aria-invalid="true" aria-label="Host"><input class="input m" placeholder="Every path" aria-label="Paths" disabled style="opacity:.5"><button class="btn btn-primary" type="button" disabled>Add rule</button>
+          <div class="notice err refusal" role="alert"><svg class="i"><use href="#i-block"/></svg><div><b>This rule cannot be said.</b> <code class="rule">*.cdn.example</code> is allowed, and the policy document can only list what is allowed: it has no way to take one host out from under a <code class="rule">*.</code> entry. Remove <code class="rule">*.cdn.example</code> and allow the hosts you want by name, or deny <code class="rule">*.cdn.example</code> whole.<div class="acts"><button type="button" class="link">Show *.cdn.example</button><button type="button" class="link">Deny *.cdn.example instead</button></div></div></div></form></section></div>
+
+      <div class="spec"><span class="tag">composer · already there, and already covered</span>
+        <section class="sect"><form class="composer" onsubmit="return false"><div class="seg"><button type="button" aria-pressed="true">Allow</button><button type="button" class="deny" aria-pressed="false">Deny</button></div><input class="input m" value="registry.example" aria-invalid="true" aria-label="Host"><input class="input m" placeholder="Every path" aria-label="Paths"><button class="btn btn-primary" type="button" disabled>Add rule</button>
+          <div class="reads bad" role="alert"><svg class="i"><use href="#i-warn"/></svg><span><span class="mono" style="font-size:12px">registry.example</span> is already allowed for the hive, by beekeeper on 2 Sep. <button type="button" class="link fix">Show it</button></span></div></form>
+          <form class="composer" onsubmit="return false"><div class="seg"><button type="button" aria-pressed="true">Allow</button><button type="button" class="deny" aria-pressed="false">Deny</button></div><input class="input m" value="tax.internal.example" aria-label="Host"><input class="input m" placeholder="Every path" aria-label="Paths"><button class="btn btn-primary" type="button">Add rule</button>
+          <div class="reads"><svg class="i"><use href="#i-info"/></svg><span>Already allowed by <code class="rule">*.internal.example</code>. Adding it changes nothing today and keeps the host allowed if the suffix rule is removed.</span></div></form></section></div>
+
+      <div class="spec-grid">
+        <div class="spec"><span class="tag">row popover · deny, run page</span>
+          <div class="pop static" role="group" aria-label="Deny registry.example"><header><span class="mark no"><svg class="i"><use href="#i-block"/></svg></span><h3>Deny <span class="host">registry.example</span></h3></header><div class="body">
+            <fieldset><legend>For</legend><label class="opt"><input type="radio" name="s1" checked><span><b>This repository</b> <span class="mono muted" style="font-size:12px">github.example/acme/shop</span></span><small>Disables the hive's allow rule here. Other repositories keep it.</small></label><label class="opt"><input type="radio" name="s1"><span><b>The whole hive</b></span><small>Replaces the hive's allow rule. 6 runs of 2 repositories reached this host in the last 7 days.</small></label></fieldset>
+            <p class="next"><svg class="i"><use href="#i-reload"/></svg><span>Takes effect in running sessions within a heartbeat, about 30 s. Open connections to the host are closed at the reload.</span></p></div>
+            <footer><button type="button" class="btn">Cancel</button><button type="button" class="btn btn-danger">Deny for this repository</button></footer></div></div>
+
+        <div class="spec"><span class="tag">row popover · hive connections page, several repositories</span>
+          <div class="pop static" role="group" aria-label="Allow files.cdn.example"><header><span class="mark ok"><svg class="i"><use href="#i-check"/></svg></span><h3>Allow <span class="host">files.cdn.example</span></h3></header><div class="body">
+            <fieldset><legend>For. Runs of 2 repositories reached this host</legend><label class="opt"><input type="radio" name="s2"><span><b>One repository</b></span><select class="input m" aria-label="Repository" style="height:28px"><option>github.example/acme/shop · 4 denied</option><option>github.example/acme/tax-service · 4 denied</option></select></label><label class="opt"><input type="radio" name="s2"><span><b>The whole hive</b></span><small>Every repository of Platform.</small></label></fieldset>
+            <p class="next"><svg class="i"><use href="#i-reload"/></svg><span>Takes effect in running sessions within a heartbeat, about 30 s.</span></p></div>
+            <footer><button type="button" class="btn">Cancel</button><button type="button" class="btn btn-primary" disabled>Allow</button></footer></div></div>
+
+        <div class="spec"><span class="tag">row popover · a locked rule forbids it (member)</span>
+          <div class="pop static" role="group" aria-label="bin.paste.example cannot be allowed"><header><span class="mark no"><svg class="i"><use href="#i-lock"/></svg></span><h3><span class="host">bin.paste.example</span> stays denied</h3></header><div class="body">
+            <div class="notice warn"><svg class="i"><use href="#i-lock"/></svg><div>A locked hive rule denies <code class="rule">*.paste.example</code>. It holds against every repository, so no rule added here would change what happens. Locked by beekeeper@example.com on 2 Sep 2026. Only an owner can change or unlock it.</div></div></div>
+            <footer><button type="button" class="btn">Close</button><a class="btn" href="#policy">Show the locked rule</a></footer></div></div>
+
+        <div class="spec"><span class="tag">toast · after allowing from a row</span>
+          <div class="toast" role="status"><svg class="i"><use href="#i-check"/></svg><div><b>files.cdn.example is allowed for github.example/acme/shop.</b><span>Version 10. Running sessions have it within a heartbeat.</span></div><button type="button" class="link" style="font-size:12.5px">Undo</button></div>
+          <span class="tag" style="margin-top:12px">toast · a change that made no version</span>
+          <div class="toast" role="status"><svg class="i"><use href="#i-check"/></svg><div><b>telemetry.example is denied for the hive.</b><span>No new version: the document did not list it.</span></div><button type="button" class="link" style="font-size:12.5px">Undo</button></div>
+          <span class="tag" style="margin-top:12px">row after · the run reloaded</span>
+          <div class="after" style="margin:0"><span class="badge badge-success"><svg class="i sm" style="width:11px;height:11px"><use href="#i-shieldok"/></svg>In force in this run</span><span>Allowed for this repository in <a class="link mono" style="font-size:12px" href="#version">v10</a>. The run reloaded at <a class="link mono" style="font-size:12px" href="#run">#0046</a>.</span></div>
+          <span class="tag" style="margin-top:12px">row after · the run has ended</span>
+          <div class="after" style="margin:0"><span class="badge"><svg class="i sm" style="width:11px;height:11px"><use href="#i-shieldok"/></svg>Rule added</span><span>Allowed for this repository in <a class="link mono" style="font-size:12px" href="#version">v10</a>. This run has ended; the next run of the repository has it.</span></div></div>
+      </div>
+
+      <div class="spec"><span class="tag">errors · the write was refused or failed</span>
+        <div style="display:grid;gap:8px;max-width:760px">
+          <div class="notice err"><svg class="i"><use href="#i-warn"/></svg><div><b>The rule was not saved.</b> With it the rendered document would not pass the runner's policy schema, so nothing was changed and version 14 stays in force. The server log has the reason.</div></div>
+          <div class="notice err"><svg class="i"><use href="#i-warn"/></svg><div><b>Someone changed the policy while you were editing.</b> beekeeper@example.com removed <code class="rule">registry.example</code> 4 s ago. The list below is current; add your rule again if it still applies.</div></div>
+          <div class="notice"><svg class="i"><use href="#i-info"/></svg><div><b>The policy could not be loaded.</b> Reload the page; if it keeps happening, the server log has the reason.</div></div>
+        </div></div>
+    </div>
+
+    <!-- ============ NEW HIVE ============ -->
+    <div class="main-in" data-view="empty" data-nav="policy" data-url="/hive/policy" hidden>
+      <div class="page-head"><div><h1>Policy</h1><p>What the runs of this <span class="term" tabindex="0" data-tip="team">hive</span> may reach through the runner's proxy. The policy can only allow: what no rule names is denied under enforce, and let through and recorded under observe.</p></div>
+        <div class="head-side"><span class="vpill"><span class="dg">No version yet</span></span></div></div>
+      <nav class="tabs" aria-label="Policy"><a href="#empty" aria-current="page"><svg class="i"><use href="#i-shieldok"/></svg>Rules</a><a href="#empty"><svg class="i"><use href="#i-repo"/></svg>Repositories</a><a href="#empty"><svg class="i"><use href="#i-clock"/></svg>History</a><a href="#empty"><svg class="i"><use href="#i-doc"/></svg>Document</a></nav>
+      <div class="mode" role="radiogroup" aria-label="Mode">
+        <button type="button" class="mode-card" role="radio" aria-checked="true"><span class="dot" aria-hidden="true"></span><h3><svg class="i"><use href="#i-eye"/></svg>Observe <span class="badge">In force</span></h3><p>Records every connection and denies none. A host no rule names is let through, and the record says so.</p><div class="fact">A new hive starts here. No run has reached out yet.</div></button>
+        <button type="button" class="mode-card" role="radio" aria-checked="false"><span class="dot" aria-hidden="true"></span><h3><svg class="i"><use href="#i-shield"/></svg>Enforce</h3><p>Denies a connection no rule allows, and records the denial. With no allow rule, a run reaches nothing.</p></button>
+      </div>
+      <div class="empty"><span class="hex"><svg class="i"><use href="#i-shieldok"/></svg></span><h2>No rules yet</h2><p>In observe mode with no rules, runs reach everything and every connection is recorded. Add the hosts your runs need here, or let a run reach out first and allow its hosts from the Connections page, one row at a time.</p>
+        <div class="acts"><button type="button" class="btn btn-primary"><svg class="i"><use href="#i-plus"/></svg>Add a host rule</button><a class="btn" href="#connections">Go to connections</a></div></div>
+      <p class="faint" style="font-size:12.5px;max-width:80ch">The first version is rendered when a rule is added, or when a machine first asks for its run configuration: observe, with an empty allow list.</p>
+    </div>
+
+    </main>
+  </div>
+</div>
+</div>
+
+<!-- ============ DIALOGS ============ -->
+<dialog class="modal" id="dlg-enforce" aria-labelledby="dlg-enforce-h">
+  <div class="modal-head"><h2 id="dlg-enforce-h">Switch the hive to enforce</h2><button type="button" class="btn btn-ghost btn-xs btn-square" data-close aria-label="Close"><svg class="i"><use href="#i-x"/></svg></button></div>
+  <div class="modal-body">
+    <p>From the next heartbeat, about 30 s, <b>a connection no rule allows is denied</b>, in every repository and in the 2 runs alive now. You can switch back at any time.</p>
+    <div class="would"><div><span>Let through in the last 7 days with no rule matching</span><span class="tnum" id="would-n">3 destinations</span></div>
+      <ul>
+        <li><span class="mark pend"><svg class="i"><use href="#i-block"/></svg></span><span class="dest">files.cdn.example<span class="p">:443</span></span><small>8 attempts · 3 runs</small><button type="button" class="btn btn-xs" data-would>Allow for the hive</button></li>
+        <li><span class="mark pend"><svg class="i"><use href="#i-block"/></svg></span><span class="dest">flags.example<span class="p">:443</span></span><small>9 attempts · 5 runs</small><button type="button" class="btn btn-xs" data-would>Allow for the hive</button></li>
+        <li><span class="mark pend"><svg class="i"><use href="#i-block"/></svg></span><span class="dest">metrics.example<span class="p">:80</span></span><small>14 attempts · 2 runs</small><button type="button" class="btn btn-xs" data-would>Allow for the hive</button></li>
+      </ul></div>
+    <p style="font-size:12.5px">Counted from recorded connections that today's rules still do not cover. Enforce will deny these. A destination no run has reached yet is not in this list.</p>
+  </div>
+  <div class="modal-foot"><button type="button" class="btn" data-close autofocus>Cancel</button><button type="button" class="btn btn-primary" data-confirm="enforce">Switch to enforce</button></div>
+</dialog>
+
+<dialog class="modal sm" id="dlg-observe" aria-labelledby="dlg-observe-h">
+  <div class="modal-head"><h2 id="dlg-observe-h">Switch the hive to observe</h2><button type="button" class="btn btn-ghost btn-xs btn-square" data-close aria-label="Close"><svg class="i"><use href="#i-x"/></svg></button></div>
+  <div class="modal-body"><p>From the next heartbeat, about 30 s, <b>nothing is denied</b>: every connection is let through and recorded, in every repository and in the 2 runs alive now. The rules stay as they are. Locked rules do not hold in observe mode either.</p></div>
+  <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button type="button" class="btn btn-danger" data-confirm="observe">Switch to observe</button></div>
+</dialog>
+
+<dialog class="modal sm" id="dlg-lock" aria-labelledby="dlg-lock-h">
+  <div class="modal-head"><h2 id="dlg-lock-h">Lock the deny rule <span class="mono" style="font-size:14px">telemetry.example</span></h2><button type="button" class="btn btn-ghost btn-xs btn-square" data-close aria-label="Close"><svg class="i"><use href="#i-x"/></svg></button></div>
+  <div class="modal-body"><p>A locked rule holds against every repository. <b>1 repository rule stops being in force</b>:</p>
+    <div class="would"><ul><li style="grid-template-columns:18px minmax(0,1fr) auto"><span class="mark ok"><svg class="i"><use href="#i-check"/></svg></span><span class="dest">telemetry.example</span><small class="mono">github.example/acme/docs</small></li></ul></div>
+    <p>The repository's rule is kept and shown as held. Only an owner can unlock.</p></div>
+  <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button type="button" class="btn btn-primary" data-close>Lock the rule</button></div>
+</dialog>
+
+<dialog class="modal" id="dlg-export" aria-labelledby="dlg-export-h">
+  <div class="modal-head"><h2 id="dlg-export-h">Export for a node without a server</h2><button type="button" class="btn btn-ghost btn-xs btn-square" data-close aria-label="Close"><svg class="i"><use href="#i-x"/></svg></button></div>
+  <div class="modal-body">
+    <p>The effective policy of <b class="mono" style="font-size:12.5px">github.example/acme/shop</b> as of <b>version 10</b>, as the file a runner takes with <span class="mono" style="font-size:12.5px">--policy</span>. It is a copy: it does not follow later changes.</p>
+    <div class="docwell"><div><span>acme-shop-policy.yaml</span><span style="display:flex;gap:2px"><button type="button" class="btn btn-ghost btn-xs"><svg class="i"><use href="#i-dl"/></svg>Download</button><button type="button" class="btn btn-ghost btn-xs" id="copy-export"><svg class="i"><use href="#i-copy"/></svg><span>Copy</span></button></span></div>
+<pre><span class="c"># Qory policy of github.example/acme/shop, version 10</span>
+<span class="c"># sha256=c41d7e02b9a61f0d83c5a97be6240d1e5f8b3a6c9d2e7f10a4b5c6d7e8f90a1b</span>
+<span class="k">version</span>: 1
+<span class="k">egress</span>:
+  <span class="k">mode</span>: enforce
+  <span class="k">allow</span>:
+    - "*.github.example"
+    - "*.internal.example"
+    - api.example
+    - files.cdn.example
+    - github.example
+    - mcp.acme.example
+    - registry.example
+  <span class="k">paths</span>:
+    api.example: ["/v1/*"]
+    mcp.acme.example: ["/health", "/mcp/*"]
+<span class="k">credentials</span>:
+  - {name: forge-token, argument: acme/shop}
+  - {name: model-key}</pre></div>
+    <div class="docwell"><div><span>on the node</span><button type="button" class="btn btn-ghost btn-xs"><svg class="i"><use href="#i-copy"/></svg>Copy</button></div><pre>qory run --local --policy ~/acme-shop-policy.yaml -- -p "…"</pre></div>
+    <p style="font-size:12.5px">Keep the file outside the checkout. A policy file only narrows what the machine's runner file allows, and it names credentials the machine must define. Deny rules and locks are already applied: the file lists what remains allowed.</p>
+  </div>
+  <div class="modal-foot"><button type="button" class="btn btn-primary" data-close>Done</button></div>
+</dialog>
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s); }, $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+  var main = $("#main"), app = $("#app");
+
+  // The hive policy's page head and tabs are the same on four views: written once here.
+  var head = '<div class="page-head"><div><h1>Policy</h1><p>What the runs of this <span class="term" tabindex="0" data-tip="team">hive</span> may reach through the runner\'s proxy. The policy can only allow: what no rule names is denied under enforce, and let through and recorded under observe.</p></div>' +
+    '<div class="head-side"><span class="vpill" title="sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"><a class="v" href="#history">v14</a><span class="dg"><i>sha256</i> e3b0c44298fc</span><button type="button" aria-label="Copy the digest" class="tip tip-end" data-tip="Copy the digest"><svg class="i sm"><use href="#i-copy"/></svg></button></span><a class="btn" href="#version/export"><svg class="i"><use href="#i-up"/></svg>Export</a></div></div>';
+  var tabs = [["rules", "#policy", "i-shieldok", "Rules", "9"], ["repositories", "#repositories", "i-repo", "Repositories", "4"], ["history", "#history", "i-clock", "History", "16"], ["document", "#version", "i-doc", "Document", ""]];
+  $$("[data-phead]").forEach(function (el) { el.innerHTML = head; });
+  $$("[data-ptabs]").forEach(function (el) { el.innerHTML = tabs.map(function (t) { return '<a href="' + t[1] + '"' + (el.getAttribute("data-cur") === t[0] ? ' aria-current="page"' : "") + '><svg class="i"><use href="#' + t[2] + '"/></svg>' + t[3] + (t[4] ? ' <span class="n">' + t[4] + "</span>" : "") + "</a>"; }).join(""); });
+
+  function placePop() { var p = $("#pop-live"), a = $("#pop-anchor"); if (!p || p.closest("[hidden]") || p.hidden) return; var r = a.getBoundingClientRect(), s = $("#stage").getBoundingClientRect(); p.style.top = (r.bottom - s.top + 6) + "px"; p.style.left = Math.max(12, r.right - s.left - p.offsetWidth) + "px"; }
+  function route() {
+    var h = (location.hash || "#policy").slice(1), parts = h.split("/"), view = parts[0], state = parts[1];
+    if (!$('[data-view="' + view + '"]')) view = "policy";
+    $$("dialog[open]").forEach(function (d) { d.close(); });
+    $$("[data-view]").forEach(function (v) { v.hidden = v.getAttribute("data-view") !== view; });
+    var el = $('[data-view="' + view + '"]');
+    $("#url").textContent = el.getAttribute("data-url") || "";
+    $$("a[data-nav]").forEach(function (a) { if (a.getAttribute("data-nav") === el.getAttribute("data-nav")) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
+    $$("#viewseg a").forEach(function (a) { a.setAttribute("aria-current", String(a.getAttribute("href") === "#" + view)); });
+    app.classList.remove("drawer"); main.scrollTop = 0;
+    if (state && $("#dlg-" + state)) { $("#dlg-" + state).showModal(); if (state === "export") $("#url").textContent = "/hive/policy/repositories/rp_5f2c81/versions/10/export"; }
+    var p = $("#pop-live"); p.hidden = state === "closed"; placePop();
+  }
+  window.addEventListener("hashchange", route); window.addEventListener("resize", placePop); main.addEventListener("scroll", placePop, { passive: true });
+
+  $$("tr[data-go]").forEach(function (tr) { tr.addEventListener("click", function () { location.hash = tr.getAttribute("data-go"); }); });
+  $$(".seg.in, .composer .seg").forEach(function (seg) { seg.addEventListener("click", function (e) { var b = e.target.closest("button"); if (!b) return; $$("button", seg).forEach(function (x) { x.setAttribute("aria-pressed", String(x === b)); }); }); });
+  $$("[data-close]").forEach(function (b) { b.addEventListener("click", function () { b.closest("dialog").close(); }); });
+  $("#open-export").addEventListener("click", function () { $("#dlg-export").showModal(); });
+  $("#pop-cancel").addEventListener("click", function () { $("#pop-live").hidden = true; $("#pop-anchor").setAttribute("aria-expanded", "false"); $("#pop-anchor").focus(); });
+  $("#pop-anchor").addEventListener("click", function () { var p = $("#pop-live"); p.hidden = !p.hidden; this.setAttribute("aria-expanded", String(!p.hidden)); placePop(); });
+
+  // Mode: choosing the other card asks first; the confirm makes the change.
+  $$("#mode .mode-card").forEach(function (c) { c.addEventListener("click", function () { if (c.getAttribute("aria-checked") === "true") return; $("#dlg-" + c.getAttribute("data-mode")).showModal(); }); });
+  $$("[data-confirm]").forEach(function (b) { b.addEventListener("click", function () { var m = b.getAttribute("data-confirm");
+    $$("#mode .mode-card").forEach(function (c) { var on = c.getAttribute("data-mode") === m; c.setAttribute("aria-checked", String(on)); var bd = $(".badge", c); if (on && !bd) $("h3", c).insertAdjacentHTML("beforeend", ' <span class="badge">In force</span>'); if (!on && bd) bd.remove(); });
+    $("#side-mode").textContent = m; b.closest("dialog").close(); }); });
+  $$("[data-would]").forEach(function (b) { b.addEventListener("click", function () { var li = b.closest("li"); $(".mark", li).className = "mark ok"; $(".mark use", li).setAttribute("href", "#i-check"); b.outerHTML = '<span class="done"><svg class="i sm"><use href="#i-check"/></svg>Allowed</span>';
+    var n = $$("#dlg-enforce [data-would]").length; $("#would-n").textContent = n === 0 ? "none left" : n + (n === 1 ? " destination" : " destinations"); }); });
+  $$(".lockbtn").forEach(function (b) { b.addEventListener("click", function () { if (b.getAttribute("aria-pressed") === "false" && /telemetry/.test(b.getAttribute("aria-label"))) { $("#dlg-lock").showModal(); return; } var on = b.getAttribute("aria-pressed") !== "true"; b.setAttribute("aria-pressed", String(on)); $("use", b).setAttribute("href", on ? "#i-lock" : "#i-unlock"); }); });
+  $$("[data-allow]").forEach(function (b) { b.addEventListener("click", function () { var row = $("#" + b.getAttribute("data-allow")); $(".mark", row).className = "mark ok"; $(".mark use", row).setAttribute("href", "#i-check"); $(".acts", row).innerHTML = '<span class="done"><svg class="i sm"><use href="#i-check"/></svg>Allowed here</span><button type="button" class="link" style="font-size:12.5px">Undo</button>'; }); });
+
+  // The composer reads a rule back in the contract's grammar before it can be added.
+  var HOST = /^(\*\.)?([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/, PATH = /^\/[^*?#\s]*\*?$/;
+  function reads() { var host = $("#c-host"), paths = $("#c-paths"), out = $("#c-reads"), add = $("#c-add"), h = host.value.trim(), ps = paths.value.trim().split(/\s+/).filter(Boolean), deny = $("#composer .deny").getAttribute("aria-pressed") === "true";
+    var badPath = ps.filter(function (p) { return !PATH.test(p); })[0], msg, kind = "";
+    host.removeAttribute("aria-invalid"); paths.removeAttribute("aria-invalid"); paths.disabled = deny; paths.style.opacity = deny ? "0.5" : ""; if (deny) ps = [];
+    if (!h) msg = 'A host name in lower case, or <code class="rule">*.</code> and a suffix for every host below it. No scheme, no port. Paths go in their own field, separated by spaces.';
+    else if (!HOST.test(h)) { kind = "bad"; host.setAttribute("aria-invalid", "true"); var m = h.toLowerCase().match(/^(?:[a-z]+:\/\/)?([^\/:]+)(?::\d+)?(\/.*)?$/);
+      msg = /\*/.test(h.replace(/^\*\./, "")) ? '<code class="rule">*.</code> may only lead a host: <span class="mono">*.example</span> matches every host below <span class="mono">example</span>.' : "A rule names a host and nothing else: lower case, no scheme, no port, no path." + (m && HOST.test(m[1]) ? ' <button type="button" class="link fix" id="c-fix" data-h="' + m[1] + '" data-p="' + (m[2] && m[2] !== "/" ? m[2] : "") + '">Use ' + m[1] + (m[2] && m[2] !== "/" ? " with the path " + m[2] : "") + "</button>" : ""); }
+    else if (badPath) { kind = "bad"; paths.setAttribute("aria-invalid", "true"); msg = 'A path starts with / and may end in one *; no other wildcard and no query, such as <span class="mono">/v1/*</span>.'; }
+    else if (deny && h === "files.cdn.example") { kind = "bad"; msg = "<b>This rule cannot be said.</b> See the refusal on the States sheet."; }
+    else { kind = "ok"; var wild = h.indexOf("*.") === 0, name = '<span class="mono">' + (wild ? h.slice(2) : h) + "</span>";
+      msg = "Reads as: <b>" + (deny ? "deny " : "allow ") + (wild ? "every host below " + name : name) + "</b>" + (ps.length ? " on " + ps.length + (ps.length === 1 ? " path" : " paths") : ", on every path") + "." + (wild ? " It does not " + (deny ? "deny " : "allow ") + name + " itself." : ""); }
+    out.className = "reads " + kind; out.innerHTML = '<svg class="i"><use href="#' + (kind === "ok" ? "i-check" : kind === "bad" ? "i-warn" : "i-info") + '"/></svg><span>' + msg + "</span>"; add.disabled = kind !== "ok";
+    var fix = $("#c-fix"); if (fix) fix.addEventListener("click", function () { host.value = fix.getAttribute("data-h"); if (fix.getAttribute("data-p")) paths.value = fix.getAttribute("data-p"); reads(); host.focus(); }); }
+  ["#c-host", "#c-paths"].forEach(function (s) { $(s).addEventListener("input", reads); }); $("#composer .seg").addEventListener("click", function () { setTimeout(reads, 0); });
+  $("#copy-export").addEventListener("click", function () { var s = $("span", this); s.textContent = "Copied"; setTimeout(function () { s.textContent = "Copy"; }, 1600); });
+
+  // Mock chrome: role, width and theme.
+  $("#roleseg").addEventListener("click", function (e) { var b = e.target.closest("button"); if (!b) return; $$("#roleseg button").forEach(function (x) { x.setAttribute("aria-pressed", String(x === b)); }); app.classList.toggle("member", b.getAttribute("data-r") === "member"); });
+  var wq = (location.search.match(/w=(phone-tall|phone)/) || [])[1]; if (wq) { $('#widthseg [data-w="phone"]').setAttribute("aria-pressed", "true"); $('#widthseg [data-w="desktop"]').setAttribute("aria-pressed", "false"); $("#stage").classList.add("phone"); if (wq === "phone-tall") $("#stage").classList.add("tall"); }
+  if (/role=member/.test(location.search)) $('#roleseg [data-r="member"]').click();
+  $("#widthseg").addEventListener("click", function (e) { var b = e.target.closest("button"); if (!b) return; $$("#widthseg button").forEach(function (x) { x.setAttribute("aria-pressed", String(x === b)); }); $("#stage").classList.toggle("phone", b.getAttribute("data-w") === "phone"); placePop(); });
+  function theme(t) { var r = document.documentElement; if (t === "auto") r.removeAttribute("data-theme"); else r.setAttribute("data-theme", t); try { if (t === "auto") localStorage.removeItem("qory:theme"); else localStorage.setItem("qory:theme", t); } catch (e) {}
+    $$("#themeseg button").forEach(function (x) { x.setAttribute("aria-pressed", String(x.getAttribute("data-t") === t)); }); }
+  $("#themeseg").addEventListener("click", function (e) { var b = e.target.closest("button"); if (b) theme(b.getAttribute("data-t")); });
+  theme(document.documentElement.getAttribute("data-theme") || "auto");
+  $("#drawer-open").addEventListener("click", function () { app.classList.add("drawer"); });
+  [$("#drawer-close"), $("#scrim")].forEach(function (el) { el.addEventListener("click", function () { app.classList.remove("drawer"); }); });
+  route();
+})();
+</script>
+</body>
+</html>
