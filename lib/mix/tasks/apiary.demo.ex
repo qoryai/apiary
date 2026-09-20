@@ -25,8 +25,8 @@ defmodule Mix.Tasks.Apiary.Demo do
   Once the runs are in, a hive that has no security policy yet is given one, through
   `Apiary.Policy` as a page would and in the name of the hive's first owner: enforce, a
   baseline of hosts, one held to paths, a locked deny, a credential, and in the repository
-  `git.example.com/acme/shop` an added host, a disabled one and an allow the lock
-  overrides; written rule by rule, so there are versions and a history to look at, and the
+  `git.example.com/acme/shop` an added host, a disabled one, an allow the lock
+  overrides and a mode of its own (observe, under a hive that enforces); written rule by rule, so there are versions and a history to look at, and the
   hive is a managed one, serving its run configuration. A hive whose policy anybody has
   changed, even back to nothing, is left as it is.
   """
@@ -129,7 +129,9 @@ defmodule Mix.Tasks.Apiary.Demo do
                 kind: "credential",
                 name: "product",
                 argument: "acme/shop"
-              })
+              }),
+              # The hive enforces; this repository is still being watched.
+              &Policy.set_mode(&1, shop, "observe")
             ]
           else
             []

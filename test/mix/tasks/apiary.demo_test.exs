@@ -214,7 +214,7 @@ defmodule Mix.Tasks.Apiary.DemoTest do
          %{scope: scope, access_key: access_key} do
       assert {:ok, _run} = Demo.replay(access_key, file("session-with-subagents"))
       refute Apiary.Policy.managed?(scope)
-      assert {:ok, 14} = Demo.policy(access_key)
+      assert {:ok, 15} = Demo.policy(access_key)
       assert Apiary.Policy.managed?(scope)
 
       assert Apiary.Policy.get_mode(scope) == "enforce"
@@ -246,13 +246,17 @@ defmodule Mix.Tasks.Apiary.DemoTest do
                )
 
       assert %{total: 10} = Apiary.Policy.list_changes(scope, nil)
-      assert %{total: 4} = Apiary.Policy.list_changes(scope, shop)
+      assert %{total: 5} = Apiary.Policy.list_changes(scope, shop)
+
+      assert %{mode: "observe", own: "observe", hive: "enforce"} =
+               Apiary.Policy.get_mode(scope, shop)
+
       assert {:ok, %{version: version}} = Apiary.Policy.current_configuration(scope, nil)
       assert version > 5
 
       # A second invocation leaves the policy as it is.
       assert :kept = Demo.policy(access_key)
-      assert %{total: 14} = Apiary.Policy.list_changes(scope, :all)
+      assert %{total: 15} = Apiary.Policy.list_changes(scope, :all)
     end
 
     test "without the demo's repository the baseline alone is written", %{
