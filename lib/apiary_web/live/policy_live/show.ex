@@ -152,6 +152,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
     socket
     |> assign(show: show, rule_target: target, page_title: "Policy")
     |> then(&if(target, do: push_event(&1, "policy:target", %{host: target}), else: &1))
+    |> then(&if(params["confirm"] == "enforce", do: confirm_enforce(&1), else: &1))
   end
 
   defp apply_action(socket, :repositories, params) do
@@ -332,6 +333,20 @@ defmodule ApiaryWeb.PolicyLive.Show do
   end
 
   ## Events
+
+  # `?confirm=enforce` (the overview's one-click nudge, brief-overview ol 3) lands with the
+  # enforce confirm open, as if Enforce had been chosen, and only for an owner of a hive
+  # that observes; the parameter is dropped from the address at once, so a reload or a
+  # shared link does not ask again. Any other value of `confirm` is ignored.
+  defp confirm_enforce(socket) do
+    # The address is cleaned once the page is up: a patch from the connected mount's own
+    # `handle_params` would be part of the join.
+    send(self(), :drop_confirm)
+
+    if socket.assigns.owner? and socket.assigns.mode != "enforce",
+      do: event("mode_ask", %{"mode" => "enforce"}, socket),
+      else: socket
+  end
 
   @impl true
   def handle_event(event, params, socket) do
@@ -604,6 +619,9 @@ defmodule ApiaryWeb.PolicyLive.Show do
   @impl true
   def handle_info({:policy_changed, change}, socket),
     do: {:noreply, Common.schedule_reload(socket, change)}
+
+  # `?confirm=enforce` did its work in `handle_params`; the address says the page alone.
+  def handle_info(:drop_confirm, socket), do: {:noreply, push_patch(socket, to: ~p"/hive/policy")}
 
   def handle_info(:policy_reload, socket) do
     touched = socket.assigns.touched

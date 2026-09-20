@@ -32,6 +32,8 @@ import {Terminal} from "./hooks/terminal"
 import {FocusOn} from "./hooks/focus_on"
 import {PolicyPage, RuleComposer, ChangeRow} from "./hooks/policy"
 import {RulePopover} from "./hooks/rule_popover"
+import {DaysChart, OverviewPage} from "./hooks/overview"
+import {FamilyBoxes} from "./hooks/family_boxes"
 
 // Copies `data-copy` (or the text content of the element `data-copy-target`
 // points at) to the clipboard, flips the button into its "Copied" state for
@@ -260,7 +262,7 @@ const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, CopyToClipboard, Modal, Menu, NavDrawer, Toast, Ticker, RunGroups, LiveEnd, TimelineKeys, Terminal, FocusOn, RulePopover, PolicyPage, RuleComposer, ChangeRow},
+  hooks: {...colocatedHooks, CopyToClipboard, Modal, Menu, NavDrawer, Toast, Ticker, RunGroups, LiveEnd, TimelineKeys, Terminal, FocusOn, RulePopover, PolicyPage, RuleComposer, ChangeRow, DaysChart, OverviewPage, FamilyBoxes},
   dom: {
     // showModal() sets `open` on the client; keep it across patches.
     onBeforeElUpdated(from, to) {

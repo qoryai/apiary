@@ -149,6 +149,10 @@
   --q-term-blue: oklch(78% 0.1 248);
   --q-term-magenta: oklch(78% 0.12 320);
   --q-term-cyan: oklch(82% 0.09 200);
+  /* NEW in M8: the overview's fourteen-day chart. Runs are a count, not a decision, so
+     their series is a neutral; today's column is the ink itself. */
+  --q-series-runs: oklch(62% 0.014 75);
+  --q-series-runs-today: oklch(21% 0.012 65);
 }
 
 [data-theme="qory-dark"] {
@@ -180,6 +184,8 @@
   --q-added-tint: color-mix(in oklab, var(--q-success-soft) 55%, var(--color-base-100));
   --q-term-bg: oklch(13.5% 0.005 70);
   --q-term-edge: oklch(27% 0.008 70);
+  --q-series-runs: oklch(58% 0.014 75);
+  --q-series-runs-today: oklch(94% 0.008 80);
 }
 
 /* Without the theme script (no JavaScript) the system preference decides. */
@@ -213,6 +219,8 @@
     --q-added-tint: color-mix(in oklab, var(--q-success-soft) 55%, var(--color-base-100));
     --q-term-bg: oklch(13.5% 0.005 70);
     --q-term-edge: oklch(27% 0.008 70);
+    --q-series-runs: oklch(58% 0.014 75);
+    --q-series-runs-today: oklch(94% 0.008 80);
   }
 }
 
@@ -247,6 +255,8 @@
   --color-term: var(--q-term-bg);
   --color-term-edge: var(--q-term-edge);
   --color-term-content: var(--q-term-fg);
+  --color-series-runs: var(--q-series-runs);
+  --color-series-runs-today: var(--q-series-runs-today);
 
   --shadow-xs: var(--q-shadow-xs);
   --shadow-pop: var(--q-shadow-pop);
@@ -1382,6 +1392,27 @@
   .q-filter-option:hover,
   .q-filter-option:has(:focus-visible) {
     background-color: var(--color-base-200);
+  }
+  /* The State menu's families: a heading row over its states, which are indented by the
+     heading's checkbox and the gap after it. daisyUI draws the dash of a mixed heading
+     (`:indeterminate`). The grouped menu has a fixed shape and never scrolls, so it does
+     not clip Closed's tooltip. */
+  .q-filter-menu:has(.q-filter-group) {
+    max-height: none;
+    overflow: visible;
+  }
+  .q-filter-group + .q-filter-group {
+    margin-top: 3px;
+  }
+  .q-filter-family {
+    font-weight: 500;
+  }
+  .q-filter-states {
+    display: grid;
+    gap: 1px;
+  }
+  .q-filter-states .q-filter-option {
+    padding-left: calc(0.5rem + 1rem + 0.5rem);
   }
   .q-filter-dates {
     display: grid;
@@ -4740,6 +4771,667 @@
     }
     .q-repos td.q-opt {
       display: none;
+    }
+  }
+}
+
+/* ==== The hive overview (M8): the components of overview_components.ex ==========
+   What the agents did and what needs you (docs/design/brief-overview.md). The rows are the
+   suggestion rows of M5 (pd6), the strip is the key and value strip of M4 (rd4) with
+   stat-sized values, the last runs are the runs table of M4 (rd8) without groups. */
+@layer qory {
+  /* ---- Layout (oe1): two columns from 1280 px, one below ---- */
+  .q-grid2 {
+    display: grid;
+    grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+  }
+  .q-stack {
+    display: grid;
+    min-width: 0;
+    gap: 16px;
+  }
+  @media (max-width: 1279.98px) {
+    .q-grid2 {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+  .q-sect > .q-part {
+    display: grid;
+    min-width: 0;
+    gap: 8px;
+    padding: 12px 16px 14px;
+    border-bottom: 1px solid var(--q-border-subtle);
+  }
+  .q-sect > .q-part:last-child {
+    border-bottom: 0;
+  }
+  .q-part-h {
+    display: flex;
+    min-height: 22px;
+    align-items: center;
+    gap: 8px;
+  }
+  .q-part-h h3 {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    line-height: 18px;
+  }
+  .q-part-h .q-sect-n {
+    font-variant-numeric: tabular-nums;
+  }
+  .q-sect > header .q-sect-n {
+    font-variant-numeric: tabular-nums;
+  }
+  .q-sect > header .q-link,
+  .q-part-h .q-link {
+    font-size: 0.8125rem;
+  }
+  .q-part-h .q-link {
+    font-size: 0.78125rem;
+  }
+  .q-link {
+    border: 0;
+    padding: 0;
+    background: none;
+    color: var(--color-accent);
+    font-size: inherit;
+    font-weight: 500;
+    text-decoration: underline;
+    text-decoration-color: transparent;
+    text-underline-offset: 3px;
+    cursor: pointer;
+    transition: text-decoration-color 120ms var(--q-ease-out);
+  }
+  .q-link:hover {
+    text-decoration-color: currentColor;
+  }
+
+  /* ---- Needs attention (od1): one list of acts ---- */
+  .q-att ul {
+    display: grid;
+  }
+  .q-att .q-sugg-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr) auto;
+  }
+  .q-att-subj {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.8125rem;
+  }
+  .q-att-subj .q-host {
+    font-weight: 500;
+  }
+  .q-att-subj .q-host .q-port,
+  .q-att-subj .q-host .q-path {
+    color: var(--q-faint);
+    font-weight: 400;
+  }
+  .q-att-task {
+    overflow: hidden;
+    min-width: 0;
+    font-weight: 500;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .q-att-rid {
+    color: var(--q-faint);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    line-height: 1rem;
+    white-space: nowrap;
+  }
+  .q-att-lead {
+    font-weight: 600;
+  }
+  .q-att .q-sugg-what .q-rule {
+    font-size: 0.71875rem;
+  }
+  .q-mark-amber {
+    background: none;
+    color: var(--q-primary-soft-content);
+  }
+  .q-mark-amber [class*="hero-"],
+  .q-mark-plain [class*="hero-"] {
+    width: 14px;
+    height: 14px;
+  }
+  .q-mark-dot::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-radius: 9999px;
+    background-color: currentColor;
+  }
+  .q-mark-plain {
+    background: none;
+    color: var(--q-muted);
+  }
+  .q-mark-faint {
+    color: var(--q-faint);
+  }
+  .q-mark-lock {
+    background-color: var(--color-base-200);
+    color: var(--color-base-content);
+  }
+  .q-mark-closed {
+    background-color: var(--color-base-200);
+    color: var(--q-muted);
+  }
+  .q-att li.q-resolved .q-sugg-what,
+  .q-att li.q-resolved .q-att-subj {
+    color: var(--q-faint);
+  }
+  .q-att li.q-resolved .q-att-subj :is(.q-host, .q-att-task) {
+    color: var(--q-muted);
+  }
+  /* A row that arrived while the page was open: opacity alone, never height (og). */
+  .q-att li.q-arrived,
+  .q-alive-row.q-arrived {
+    animation: q-appear 180ms var(--q-ease-out);
+  }
+  @keyframes q-appear {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  .q-btn-danger-ghost {
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
+    color: var(--color-error);
+  }
+  .q-btn-danger-ghost:hover {
+    border-color: transparent;
+    background-color: var(--q-error-soft);
+    color: var(--q-error-soft-content);
+  }
+
+  /* ---- The activity strip (od6): the key and value strip with stat-sized values ---- */
+  .q-strip .q-kv {
+    padding: 12px 16px 10px;
+  }
+  .q-strip .q-kv dd {
+    overflow: visible;
+    min-width: 4ch;
+    font-size: 1.5rem;
+    font-weight: 600;
+    line-height: 2rem;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+    white-space: normal;
+  }
+  .q-strip .q-kv dd.q-bad {
+    color: var(--q-error-soft-content);
+  }
+  .q-strip .q-kv dd.q-na {
+    color: var(--q-faint);
+    font-size: 1.25rem;
+    font-weight: 400;
+  }
+  .q-strip .q-kv small {
+    display: block;
+    color: var(--q-faint);
+    font-family: var(--font-sans);
+    font-size: 0.78125rem;
+    font-weight: 400;
+    line-height: 18px;
+    letter-spacing: 0;
+  }
+  .q-strip .q-kv small b {
+    color: var(--q-muted);
+    font-weight: 500;
+  }
+  .q-strip a.q-kv {
+    color: inherit;
+    transition: background-color 120ms var(--q-ease-out);
+  }
+  .q-strip a.q-kv:hover {
+    background-color: var(--color-base-200);
+  }
+  .q-strip .q-skel-v {
+    display: inline-block;
+    width: 3ch;
+    height: 24px;
+    vertical-align: middle;
+  }
+
+  /* ---- Alive rows (od3): state, task, repository, host, alive line; one link ---- */
+  .q-alive-row {
+    position: relative;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    min-height: 40px;
+    margin-inline: -8px;
+    padding: 4px 8px;
+    border-radius: var(--radius-field);
+    font-size: 0.8125rem;
+    transition: background-color 120ms var(--q-ease-out);
+  }
+  .q-alive-row:hover {
+    background-color: var(--color-base-200);
+  }
+  .q-alive-row .q-run-cell {
+    min-width: 0;
+  }
+  .q-alive-row .q-where {
+    display: grid;
+    min-width: 0;
+  }
+  .q-alive-row .q-repo {
+    overflow: hidden;
+    min-width: 0;
+    font-family: var(--font-mono);
+    font-size: 0.78125rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .q-alive-row .q-repo .q-forge {
+    color: var(--q-faint);
+    font-size: 0.75rem;
+  }
+  .q-alive-row .q-host {
+    color: var(--q-muted);
+    font-family: var(--font-mono);
+    font-size: 0.78125rem;
+    line-height: 18px;
+  }
+  .q-alive-row .q-alive {
+    margin-left: 0;
+    font-size: 0.78125rem;
+  }
+  .q-alive-row .q-alive .tooltip,
+  .q-alive-row .q-quiet {
+    position: relative;
+    z-index: 1;
+  }
+  .q-none {
+    color: var(--q-faint);
+    font-size: 0.8125rem;
+  }
+
+  /* ---- The fourteen-day chart (od5): two small multiples, one x axis, one tooltip ---- */
+  .q-chart {
+    position: relative;
+    display: grid;
+    gap: 6px;
+  }
+  .q-chart-totals {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 14px;
+    color: var(--q-muted);
+    font-size: 0.78125rem;
+  }
+  .q-chart-totals b {
+    color: var(--color-base-content);
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+  }
+  .q-chart-totals .grow {
+    flex: 1;
+  }
+  .q-chart-empty .q-chart-totals b {
+    color: var(--q-faint);
+    font-weight: 400;
+  }
+  .q-chart .q-tbtn[aria-pressed="true"] {
+    border-color: transparent;
+    background-color: var(--color-base-300);
+  }
+  .q-chart svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    overflow: visible;
+  }
+  .q-chart .q-ttl {
+    fill: var(--q-muted);
+    font: 500 11.5px/16px var(--font-sans);
+  }
+  .q-chart .q-max {
+    fill: var(--q-faint);
+    font: 11px/16px var(--font-sans);
+    font-variant-numeric: tabular-nums;
+  }
+  .q-chart .q-ax {
+    fill: var(--q-faint);
+    font: 11px/16px var(--font-sans);
+    font-variant-numeric: tabular-nums;
+    text-anchor: middle;
+  }
+  .q-chart .q-ax-today {
+    fill: var(--q-muted);
+    font-weight: 500;
+  }
+  .q-chart .q-base {
+    stroke: var(--q-border-subtle);
+    stroke-width: 1;
+  }
+  .q-chart .q-col-runs {
+    fill: var(--q-series-runs);
+  }
+  .q-chart .q-col-runs.q-col-today {
+    fill: var(--q-series-runs-today);
+  }
+  .q-chart .q-col-den {
+    fill: var(--color-error);
+  }
+  .q-chart .q-stub {
+    stroke: var(--q-border-strong);
+    stroke-width: 2;
+  }
+  .q-chart .q-slot {
+    fill: transparent;
+  }
+  .q-chart a:hover .q-slot,
+  .q-chart a:focus-visible .q-slot,
+  .q-chart a[aria-expanded="true"] .q-slot {
+    fill: var(--color-base-200);
+  }
+  .q-chart a:focus-visible {
+    outline: 2px solid var(--q-ring);
+    outline-offset: 0;
+    border-radius: 4px;
+  }
+  .q-chart-tt {
+    position: absolute;
+    z-index: 20;
+    padding: 6px 10px;
+    border-radius: var(--radius-field);
+    background-color: var(--color-neutral);
+    box-shadow: var(--q-shadow-pop);
+    color: var(--color-neutral-content);
+    font: 12px/16px var(--font-sans);
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 180ms var(--q-ease-out);
+  }
+  .q-chart-tt.q-on {
+    opacity: 1;
+  }
+  .q-chart-tt b {
+    display: block;
+    margin-bottom: 2px;
+    font-weight: 600;
+  }
+  .q-chart-tt span {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-variant-numeric: tabular-nums;
+  }
+  .q-chart-tt i {
+    width: 10px;
+    height: 2px;
+    border-radius: 1px;
+    background-color: var(--q-series-runs);
+  }
+  .q-chart-tt i.q-den {
+    background-color: var(--color-error);
+  }
+  .q-chart .q-chart-table {
+    margin-top: 2px;
+    font-size: 0.8125rem;
+  }
+  .q-foot {
+    color: var(--q-faint);
+    font-size: 0.78125rem;
+    line-height: 18px;
+  }
+  /* While the socket is away: the live cue reads Reconnecting. */
+  .q-live-off {
+    display: none;
+  }
+  .phx-client-error .q-live-on,
+  .phx-server-error .q-live-on {
+    display: none;
+  }
+  .phx-client-error .q-live-off,
+  .phx-server-error .q-live-off {
+    display: inline;
+  }
+
+  /* ---- Last runs (od4): the runs table without groups, 40 px rows ---- */
+  .q-last td {
+    height: 40px;
+    padding-block: 6px;
+  }
+  .q-last td.q-c-repo {
+    font-family: var(--font-mono);
+    font-size: 0.78125rem;
+  }
+  .q-last td.q-c-repo .q-forge {
+    color: var(--q-faint);
+    font-size: 0.75rem;
+  }
+
+  /* ---- Glance cards (od7, od9): a dl of facts, a few lines ---- */
+  .q-glance {
+    display: grid;
+    grid-template-columns: 96px minmax(0, 1fr);
+    align-items: baseline;
+    gap: 10px 12px;
+    padding: 12px 16px 14px;
+    font-size: 0.8125rem;
+  }
+  .q-glance dt {
+    color: var(--q-muted);
+    font-size: 0.75rem;
+    font-weight: 500;
+    line-height: 18px;
+  }
+  .q-glance dd {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 8px;
+    line-height: 18px;
+  }
+  .q-glance dd b {
+    font-weight: 500;
+  }
+  .q-glance dd .q-muted {
+    color: var(--q-muted);
+  }
+  .q-glance .badge {
+    height: 18px;
+    font-size: 0.6875rem;
+  }
+  .q-glance .q-vpill-sm {
+    height: 22px;
+  }
+  .q-lines {
+    display: grid;
+    gap: 4px;
+    padding: 12px 16px 14px;
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+    line-height: 19px;
+  }
+  .q-lines b {
+    color: var(--color-base-content);
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---- Access keys (od8) ---- */
+  .q-keyrows td {
+    height: 40px;
+    padding-block: 6px;
+  }
+  .q-kcell {
+    display: grid;
+  }
+  .q-kcell b {
+    font-weight: 500;
+  }
+  .q-kcell b .badge {
+    height: 18px;
+    margin-left: 6px;
+    font-size: 0.6875rem;
+    vertical-align: 1px;
+  }
+  .q-kcell span {
+    color: var(--q-faint);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    line-height: 1rem;
+  }
+  .q-lastrun {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .q-lastrun .q-lastrun-task {
+    overflow: hidden;
+    max-width: 24ch;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .q-lastrun:hover .q-lastrun-task {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  /* ---- The empty hive (oe6): the checklist card of brief.md h1 ---- */
+  .q-landed {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-top: 12px;
+    border-top: 1px solid var(--q-border-subtle);
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+  }
+  .q-landed [class*="hero-"] {
+    color: var(--color-success);
+  }
+
+  /* ---- Skeletons (oe5): the shape of the content, never a spinner ---- */
+  .q-skel-line {
+    display: block;
+    height: 12px;
+    border-radius: var(--radius-selector);
+  }
+
+  /* ---- Touch targets (oh) ---- */
+  @media (pointer: coarse) {
+    .q-att .q-sugg-acts .btn,
+    .q-chart .q-tbtn {
+      min-width: 40px;
+      height: 40px;
+    }
+  }
+
+  /* ---- Phone (oi) ---- */
+  @media (max-width: 767.98px) {
+    .q-att .q-sugg-row {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+    .q-att .q-sugg-what {
+      grid-column: 1 / -1;
+      grid-row: 2;
+    }
+    .q-att .q-sugg-acts .btn {
+      height: 32px;
+    }
+    .q-alive-row {
+      grid-template-columns: max-content minmax(0, 1fr);
+      row-gap: 2px;
+      padding-block: 8px;
+    }
+    .q-alive-row > .q-state-wrap {
+      justify-self: start;
+    }
+    .q-alive-row .q-where {
+      grid-column: 1 / -1;
+    }
+    .q-alive-row .q-host {
+      display: none;
+    }
+    .q-alive-row .q-alive {
+      grid-column: 1 / -1;
+    }
+    .q-glance {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 2px 0;
+    }
+    .q-glance dt {
+      margin-top: 8px;
+    }
+    .q-glance dt:first-child {
+      margin-top: 0;
+    }
+  }
+
+  /* The keys table reflows into blocks below 640 px, as the runs table does. */
+  @media (max-width: 639.98px) {
+    .q-keyrows thead,
+    .q-keyrows td.q-c-rv,
+    .q-keyrows td.q-c-hosts {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+    .q-keyrows,
+    .q-keyrows tbody {
+      display: block;
+    }
+    .q-keyrows tr {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 2px 12px;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--q-border-subtle);
+    }
+    .q-keyrows tbody tr:last-child {
+      border-bottom: 0;
+    }
+    .q-keyrows td {
+      display: block;
+      overflow: hidden;
+      height: auto;
+      padding: 0;
+      border: 0;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .q-keyrows td.q-c-key {
+      grid-column: 1;
+      grid-row: 1;
+    }
+    .q-keyrows td.q-c-seen {
+      grid-column: 2;
+      grid-row: 1;
+      justify-self: end;
+      font-size: 0.78125rem;
+    }
+    .q-keyrows td.q-c-last {
+      grid-column: 1 / -1;
+      grid-row: 2;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .q-att li.q-arrived,
+    .q-alive-row.q-arrived {
+      animation: none;
     }
   }
 }
