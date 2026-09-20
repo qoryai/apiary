@@ -47,7 +47,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
         </span>
       </.notice>
 
-      <div :if={!@load_error} class="grid gap-6">
+      <div :if={!@load_error} class="grid grid-cols-[minmax(0,1fr)] gap-6">
         <.filter_bar
           id="connections-filters"
           clear={Filters.any?(@filters) && path(Filters.clear(@filters))}

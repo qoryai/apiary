@@ -110,7 +110,10 @@ defmodule ApiaryWeb.Layouts do
         <main id="main" tabindex="-1" class="min-w-0 flex-1 scroll-pt-16 outline-none">
           <div class="mx-auto w-full px-4 pb-12 pt-5 md:px-6 md:pt-8 lg:px-10">
             <div class={["mx-auto", if(@width == "full", do: "max-w-[1200px]", else: "max-w-[960px]")]}>
-              <div class={["grid gap-6", @width == "narrow" && "max-w-[640px]"]}>
+              <div class={[
+                "grid grid-cols-[minmax(0,1fr)] gap-6",
+                @width == "narrow" && "max-w-[640px]"
+              ]}>
                 {render_slot(@inner_block)}
               </div>
             </div>

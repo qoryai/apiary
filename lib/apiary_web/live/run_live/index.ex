@@ -48,7 +48,10 @@ defmodule ApiaryWeb.RunLive.Index do
         </span>
       </.notice>
 
-      <div :if={!@load_error && !first_run?(@summary, @filters)} class="grid gap-6">
+      <div
+        :if={!@load_error && !first_run?(@summary, @filters)}
+        class="grid grid-cols-[minmax(0,1fr)] gap-6"
+      >
         <.filter_bar id="runs-filters" clear={Filters.any?(@filters) && path(Filters.clear(@filters))}>
           <.filter
             name="state"

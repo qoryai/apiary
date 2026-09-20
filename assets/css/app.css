@@ -1475,6 +1475,15 @@
   .q-cxt tbody tr.q-sub {
     border-bottom: 1px solid var(--q-border-subtle);
   }
+  .q-runs :where(th, td) {
+    padding-inline: 8px;
+  }
+  .q-runs :where(th, td):first-child {
+    padding-left: 16px;
+  }
+  .q-runs :where(th, td):last-child {
+    padding-right: 16px;
+  }
   .q-runs tr.q-group,
   .q-runs tr.q-group:hover {
     background-color: var(--color-base-200);
@@ -1558,7 +1567,7 @@
   }
   .q-run-cell {
     display: grid;
-    min-width: 180px;
+    min-width: 168px;
     max-width: 420px;
   }
   .q-run-cell b {
@@ -1836,8 +1845,11 @@
     line-height: 1rem;
     white-space: nowrap;
   }
+  .q-dest .q-rq {
+    margin-left: 0.75ch;
+  }
   td.q-why {
-    min-width: 220px;
+    min-width: 300px;
     max-width: 400px;
     overflow: visible;
     line-height: 1.125rem;
@@ -1954,7 +1966,7 @@
   }
   .q-hit {
     display: grid;
-    grid-template-columns: minmax(96px, auto) minmax(0, 1.2fr) minmax(0, 1fr) auto auto;
+    grid-template-columns: 120px minmax(0, 1.2fr) minmax(0, 1fr) 88px 120px;
     align-items: center;
     gap: 12px;
     margin-inline: -8px;
@@ -1965,6 +1977,10 @@
   }
   .q-hit:hover {
     background-color: var(--color-base-300);
+  }
+  .q-hit > :nth-child(4),
+  .q-hit > :nth-child(5) {
+    text-align: right;
   }
 
   /* ---- New items pill (rd15) ---- */
@@ -2002,6 +2018,9 @@
     display: block;
     height: 0.75rem;
     border-radius: var(--radius-selector);
+  }
+  .q-skel-row td {
+    height: 57px;
   }
 
   /* ---- Touch targets (rh) ---- */
@@ -2042,6 +2061,13 @@
     }
     .q-filters-grow {
       display: none;
+    }
+    .q-filters > * {
+      flex: none;
+    }
+    .q-filters .q-summary {
+      flex-wrap: nowrap;
+      white-space: nowrap;
     }
     /* A menu inside a scrolling row would be clipped: it becomes a sheet. */
     .q-filter {
@@ -2091,10 +2117,10 @@
       padding-left: 16px;
     }
     .q-hit {
-      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-columns: auto minmax(0, 1fr) auto;
     }
     .q-hit > :nth-child(3),
-    .q-hit > :nth-child(4) {
+    .q-hit > :nth-child(5) {
       display: none;
     }
   }

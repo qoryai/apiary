@@ -932,7 +932,9 @@ defmodule ApiaryWeb.RunComponents do
               />
               <span class="truncate">
                 <b :if={hit.run.task} class="font-medium">{hit.run.task}</b>
-                <span class="font-mono text-xs text-faint">{short_id(hit.run.run_id)}</span>
+                <span class={["font-mono text-xs text-faint", hit.run.task && "ml-1"]}>
+                  {short_id(hit.run.run_id)}
+                </span>
               </span>
               <span class="truncate font-mono text-xs text-muted">
                 {if hit.run.forge && hit.run.repository,
@@ -1017,7 +1019,7 @@ defmodule ApiaryWeb.RunComponents do
     ~H"""
     <span class="q-dest" title={"#{@c.host}:#{@c.port} #{@line}"}>
       {@c.host}<span class="text-faint">:{@c.port}</span>
-      <span :if={@line} class="text-muted">{middle(@line, 56)}</span>
+      <span :if={@line} class="q-rq text-muted">{middle(@line, 56)}</span>
     </span>
     """
   end
