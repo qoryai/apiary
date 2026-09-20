@@ -44,24 +44,44 @@ defmodule ApiaryWeb.CoreComponents do
   end
 
   @doc """
-  The mark with the wordmark, as a link to `/`.
+  The mark with the wordmark "Qory Apiary", as a link to `/`. `xs` is the
+  sidebar foot (18 px mark, grey wordmark: a signature, not a heading), `sm`
+  the no-hive top bar and the auth header strip (22 px mark), `lg` the auth
+  panel (28 px mark).
   """
   attr :class, :any, default: nil
   attr :href, :string, default: "/"
-  attr :size, :string, default: "sm", values: ~w(sm lg)
+  attr :size, :string, default: "sm", values: ~w(xs sm lg)
 
   def brand(assigns) do
     ~H"""
     <a
       href={@href}
-      class={["inline-flex items-center gap-2 rounded-field text-base-content", @class]}
+      class={[
+        "inline-flex items-center gap-2 rounded-field",
+        if(@size == "xs",
+          do: "text-muted transition-colors hover:text-base-content",
+          else: "text-base-content"
+        ),
+        @class
+      ]}
     >
-      <.logo_mark class={if @size == "lg", do: "size-7", else: "size-[22px]"} />
+      <.logo_mark class={
+        case @size do
+          "xs" -> "size-[18px]"
+          "sm" -> "size-[22px]"
+          "lg" -> "size-7"
+        end
+      } />
       <span class={[
-        "font-semibold tracking-[-0.03em]",
-        if(@size == "lg", do: "text-[19px]/6", else: "text-base/5")
+        "whitespace-nowrap tracking-[-0.03em]",
+        case @size do
+          "xs" -> "text-[13px]/[18px] font-medium"
+          "sm" -> "text-base/5 font-semibold"
+          "lg" -> "text-[19px]/6 font-semibold"
+        end
       ]}>
-        Qory
+        Qory Apiary
       </span>
     </a>
     """

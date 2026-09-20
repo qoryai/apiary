@@ -23,7 +23,7 @@ defmodule ApiaryWeb.UserLive.Confirmation do
     ~H"""
     <Layouts.auth flash={@flash} current_scope={@current_scope}>
       <Layouts.auth_heading>
-        {if @user.confirmed_at, do: "Welcome back", else: "Welcome to Qory"}
+        {if @user.confirmed_at, do: "Welcome back", else: "Welcome to Qory Apiary"}
         <:subtitle><span class="break-all">{@user.email}</span></:subtitle>
       </Layouts.auth_heading>
 

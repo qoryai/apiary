@@ -15,7 +15,7 @@ defmodule ApiaryWeb.UserLive.LoginTest do
     test "renders one form with one email field, in link mode", %{conn: conn} do
       {:ok, lv, html} = live(conn, ~p"/users/log-in")
 
-      assert html =~ "Log in to Qory"
+      assert html =~ "Log in to Qory Apiary"
       assert html =~ "Send me a log-in link"
       assert html =~ "Use a password instead"
       assert html =~ "Create an account"

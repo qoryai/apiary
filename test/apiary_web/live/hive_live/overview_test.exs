@@ -88,7 +88,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
       {:ok, view, html} = live(conn, ~p"/hive")
 
       assert html =~ scope.hive.name
-      assert html =~ ~r/<title[^>]*>\s*#{Regex.escape(scope.hive.name)} · Qory/
+      assert html =~ ~r{<title[^>]*>\s*#{Regex.escape(scope.hive.name)} · Qory Apiary\s*</title>}
       assert html =~ ~r/<abbr[^>]*data-tip="organisation"[^>]*>apiary<\/abbr>/
       assert html =~ ~r/<abbr[^>]*data-tip="workplace"[^>]*>hive<\/abbr>/
       refute html =~ "organisation</p>"

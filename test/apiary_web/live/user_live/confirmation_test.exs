@@ -18,7 +18,7 @@ defmodule ApiaryWeb.UserLive.ConfirmationTest do
         end)
 
       {:ok, _lv, html} = live(conn, ~p"/users/log-in/#{token}")
-      assert html =~ "Welcome to Qory"
+      assert html =~ "Welcome to Qory Apiary"
       assert html =~ "Confirm my account"
       assert html =~ "Keep me signed in"
     end

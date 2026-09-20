@@ -22,13 +22,13 @@ defmodule Apiary.Accounts.UserNotifier do
   Deliver instructions to update a user email.
   """
   def deliver_update_email_instructions(user, url) do
-    deliver(user.email, "Confirm your new email address for Qory", """
+    deliver(user.email, "Confirm your new email address for Qory Apiary", """
 
     ==============================
 
     Hi #{user.email},
 
-    You can change the email address of your Qory account by visiting the URL below:
+    You can change the email address of your Qory Apiary account by visiting the URL below:
 
     #{url}
 
@@ -49,13 +49,13 @@ defmodule Apiary.Accounts.UserNotifier do
   end
 
   defp deliver_magic_link_instructions(user, url) do
-    deliver(user.email, "Your Qory log-in link", """
+    deliver(user.email, "Your Qory Apiary log-in link", """
 
     ==============================
 
     Hi #{user.email},
 
-    You can log in to Qory by visiting the URL below:
+    You can log in to Qory Apiary by visiting the URL below:
 
     #{url}
 
@@ -66,17 +66,17 @@ defmodule Apiary.Accounts.UserNotifier do
   end
 
   defp deliver_confirmation_instructions(user, url) do
-    deliver(user.email, "Confirm your Qory account", """
+    deliver(user.email, "Confirm your Qory Apiary account", """
 
     ==============================
 
     Hi #{user.email},
 
-    You can confirm your Qory account by visiting the URL below:
+    You can confirm your Qory Apiary account by visiting the URL below:
 
     #{url}
 
-    If you did not create a Qory account, ignore this email.
+    If you did not create a Qory Apiary account, ignore this email.
 
     ==============================
     """)
@@ -86,13 +86,13 @@ defmodule Apiary.Accounts.UserNotifier do
   Deliver an invitation to join an organisation.
   """
   def deliver_invitation(email, inviter, organisation, url) do
-    deliver(email, "You are invited to #{organisation.name} on Qory", """
+    deliver(email, "You are invited to #{organisation.name} on Qory Apiary", """
 
     ==============================
 
     Hi #{email},
 
-    #{inviter.email} has invited you to join #{organisation.name} on Qory.
+    #{inviter.email} has invited you to join #{organisation.name} on Qory Apiary.
     You can accept the invitation by visiting the URL below:
 
     #{url}

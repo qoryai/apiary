@@ -14,7 +14,7 @@ defmodule ApiaryWeb.UserLive.Login do
 
       <div :if={!@sent_to} class="grid gap-4">
         <Layouts.auth_heading>
-          {if @current_scope, do: "Confirm it is you", else: "Log in to Qory"}
+          {if @current_scope, do: "Confirm it is you", else: "Log in to Qory Apiary"}
           <:subtitle>
             <%= cond do %>
               <% @current_scope -> %>
@@ -94,7 +94,7 @@ defmodule ApiaryWeb.UserLive.Login do
         </.form>
 
         <p :if={!@current_scope} class="mt-1 text-center text-[13px]/[18px] text-muted">
-          New to Qory?
+          New to Qory Apiary?
           <.button variant="link" navigate={~p"/users/register"}>Create an account</.button>
         </p>
       </div>
