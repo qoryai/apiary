@@ -8,7 +8,10 @@ defmodule Apiary.Policy do
   The contract's policy document can only allow: a mode, the hosts allowed, the paths a
   host is held to, the credentials of the machine's a run may use. The hive has a mode
   (`get_mode/1`, `set_mode/2`) and a baseline of rules; a repository has rules of its own
-  on top. A rule (`Apiary.Policy.Rule`) allows or denies a host or a credential. A deny is
+  on top, and follows the hive's mode unless it sets its own (`get_mode/2`, `set_mode/3`).
+  The mode and the rules are apart: a locked rule of the hive holds in a repository's
+  document whatever the repository's mode, and under `observe` nothing is denied, locked
+  deny or not: the document then only says what `enforce` would allow. A rule (`Apiary.Policy.Rule`) allows or denies a host or a credential. A deny is
   the apiary's own notion: it takes entries out of what is rendered, so a repository can
   disable a host of the hive, and a **locked** rule of the hive holds against every
   repository. How the rules come to one policy is `Apiary.Policy.Resolution`'s to say.
@@ -49,6 +52,7 @@ defmodule Apiary.Policy do
 
   @modes ~w(observe enforce)
   @page_size 25
+  @mode_is_an_owners "Only an owner changes the mode: it decides what runs are denied."
   # The most rules one list holds (the baseline's, or a repository's). With at most
   # `Grammar.paths_max/0` paths a rule, it bounds a change's `before` and `after`, which
   # repeat the list, and so the history's growth: quadratic in the rules, up to this.
@@ -83,7 +87,8 @@ defmodule Apiary.Policy do
   answers to batches name no digest of one), so its machines use the policy of their own
   `runner.yaml`: an upgrade, or a hive nobody has looked at, takes no machine's
   enforcement away. From the first change on, every run of the hive takes the hive's
-  policy. For the pages: "machines use their own policy until the first change here".
+  policy. The first change anywhere counts, a repository's rule or a repository's mode
+  included: it starts serving every repository of the hive, the others the baseline. For the pages: "machines use their own policy until the first change here".
   """
   @spec managed?(Scope.t()) :: boolean
   def managed?(%Scope{hive: %Hive{id: hive_id}}), do: managed_hive?(hive_id)
@@ -97,11 +102,23 @@ defmodule Apiary.Policy do
 
   @doc """
   The hive's repositories, by forge and path, each with `rule_count`, how many rules of
-  its own it has (a virtual count on the map, not the struct): `[%{repository: …,
-  rule_count: n}]`. At most 500.
+  its own it has (a virtual count on the map, not the struct), `own_mode`, the mode it
+  set for itself or nil when it follows the hive, and `mode`, the one in force for it:
+  `[%{repository: …, rule_count: n, own_mode: … | nil, mode: …}]`. At most 500.
   """
-  @spec list_repositories(Scope.t()) :: [%{repository: Repository.t(), rule_count: integer}]
-  def list_repositories(%Scope{hive: %Hive{id: hive_id}, organisation: %Organisation{id: org_id}}) do
+  @spec list_repositories(Scope.t()) :: [
+          %{
+            repository: Repository.t(),
+            rule_count: integer,
+            own_mode: String.t() | nil,
+            mode: String.t()
+          }
+        ]
+  def list_repositories(
+        %Scope{hive: %Hive{id: hive_id}, organisation: %Organisation{id: org_id}} = scope
+      ) do
+    hive_mode = get_mode(scope)
+
     Repo.all(
       from p in Repository,
         where: p.hive_id == ^hive_id and p.organisation_id == ^org_id,
@@ -112,6 +129,12 @@ defmodule Apiary.Policy do
         limit: 500,
         select: %{repository: p, rule_count: count(r.id)}
     )
+    |> Enum.map(fn %{repository: repository} = row ->
+      Map.merge(row, %{
+        own_mode: repository.egress_mode,
+        mode: repository.egress_mode || hive_mode
+      })
+    end)
   end
 
   @doc "One repository of the scope's hive by id."
@@ -140,18 +163,56 @@ defmodule Apiary.Policy do
     )
   end
 
+  @typedoc "A repository's mode: the one in force, its own (nil when it follows the hive) and the hive's."
+  @type repository_mode :: %{mode: String.t(), own: String.t() | nil, hive: String.t()}
+
   @doc """
-  Sets the mode of the hive, in either direction an owner's act: a member is refused
-  with a sentence. The mode is the hive's alone: a repository has none of its own.
+  With `nil` or `:hive`, `get_mode/1`: the hive's mode, a string. With a repository,
+  `%{mode:, own:, hive:}`: the mode in force for it, the mode it set for itself (nil when
+  it follows the hive, the default) and the hive's. A repository that is not the hive's
+  follows the hive.
+  """
+  @spec get_mode(Scope.t(), target) :: String.t() | repository_mode
+  def get_mode(%Scope{} = scope, target) when target in [nil, :hive], do: get_mode(scope)
+
+  def get_mode(%Scope{} = scope, target) do
+    hive = get_mode(scope)
+
+    own =
+      case target_id(scope, target) do
+        {:ok, id} ->
+          Repo.one(from p in repositories(scope), where: p.id == ^id, select: p.egress_mode)
+
+        {:error, _not_found} ->
+          nil
+      end
+
+    %{mode: own || hive, own: own, hive: hive}
+  end
+
+  @doc """
+  Sets the mode of the hive: `set_mode(scope, nil, mode)`. An owner's act in either
+  direction; a member is refused with a sentence. The hive's mode is the default of its
+  repositories: a change renders the baseline and every repository that follows the hive
+  again, and a repository with a mode of its own keeps it.
   """
   @spec set_mode(Scope.t(), String.t()) :: {:ok, String.t()} | refusal
-  def set_mode(%Scope{} = scope, mode) when mode in @modes do
+  def set_mode(%Scope{} = scope, mode), do: set_mode(scope, nil, mode)
+
+  @doc """
+  Sets the mode of the hive (`nil` or `:hive`: `{:ok, mode}`) or of a repository
+  (`{:ok, %{mode:, own:, hive:}}`). A repository takes `"observe"`, `"enforce"`, or
+  `:inherit` (also `"inherit"`) to follow the hive again, which is what every repository
+  does until somebody says otherwise. An owner's act, like the hive's. It is a change of
+  the repository's policy (`mode_changed`, with the repository's own mode, or
+  `"inherit"`, before and after) and renders the repository's configuration: a
+  repository with nothing but a mode of its own has a configuration of its own.
+  """
+  @spec set_mode(Scope.t(), target, String.t() | :inherit) ::
+          {:ok, String.t() | repository_mode} | refusal
+  def set_mode(%Scope{} = scope, target, mode) when target in [nil, :hive] and mode in @modes do
     with {:ok, membership} <- member(scope),
-         :ok <-
-           owner(
-             membership,
-             "Only an owner changes the mode: it decides what every run of the hive is denied."
-           ) do
+         :ok <- owner(membership, @mode_is_an_owners) do
       write(scope, nil, fn hive ->
         if hive.egress_mode != mode do
           Repo.update_all(from(h in Hive, where: h.id == ^hive.id),
@@ -164,8 +225,31 @@ defmodule Apiary.Policy do
     end
   end
 
-  def set_mode(%Scope{}, _mode) do
+  def set_mode(%Scope{} = scope, %Repository{} = repository, mode)
+      when mode in @modes or mode in [:inherit, "inherit"] do
+    own = if mode in @modes, do: mode
+
+    with {:ok, membership} <- member(scope),
+         :ok <- owner(membership, @mode_is_an_owners),
+         {:ok, repository_id} <- target_id(scope, repository) do
+      write(scope, repository_id, fn hive ->
+        Repo.update_all(from(p in Repository, where: p.id == ^repository_id),
+          set: [egress_mode: own, updated_at: DateTime.utc_now()]
+        )
+
+        {:ok, %{mode: own || hive.egress_mode, own: own, hive: hive.egress_mode}, "mode_changed",
+         nil}
+      end)
+    end
+  end
+
+  def set_mode(%Scope{}, target, _mode) when target in [nil, :hive] do
     {:error, Error.new(:invalid, "The mode is observe or enforce.", :mode)}
+  end
+
+  def set_mode(%Scope{}, _target, _mode) do
+    {:error,
+     Error.new(:invalid, "A repository's mode is observe, enforce, or the hive's.", :mode)}
   end
 
   ## Rules
@@ -197,8 +281,9 @@ defmodule Apiary.Policy do
   @doc """
   The policy in force for the baseline (`nil`) or for a repository: every rule that takes
   part as an `Apiary.Policy.Entry` (where it came from, whether it is in force, what
-  overrode it, what it overrides), and the `allow`, `paths` and `credentials` the document
-  says. A repository that is not the hive's gets the baseline.
+  overrode it, what it overrides), the `allow`, `paths` and `credentials` the document
+  says, and the `mode` in force with where it came from (`mode_source`, `:hive` or
+  `:repository`). A repository that is not the hive's gets the baseline.
   """
   @spec effective(Scope.t(), target) :: Effective.t()
   def effective(%Scope{} = scope, target) do
@@ -211,11 +296,24 @@ defmodule Apiary.Policy do
     hive_rules = rules(scope.hive.id, nil)
     own = if repository_id, do: rules(scope.hive.id, repository_id), else: []
 
-    case Resolution.resolve(get_mode(scope), hive_rules, own, repository_id) do
-      {:ok, effective} -> effective
+    %{mode: mode, own: own_mode, hive: hive_mode} =
+      case repository_id do
+        nil -> %{mode: get_mode(scope), own: nil, hive: get_mode(scope)}
+        id -> get_mode(scope, %Repository{id: id})
+      end
+
+    case Resolution.resolve_for(hive_mode, own_mode, hive_rules, own, repository_id) do
+      {:ok, effective} ->
+        effective
+
       # No write leaves rules that do not resolve; should one be there all the same, the
-      # page shows the hive's mode and nothing allowed rather than raise.
-      {:error, _error} -> %Effective{mode: get_mode(scope), repository_id: repository_id}
+      # page shows the mode and nothing allowed rather than raise.
+      {:error, _error} ->
+        %Effective{
+          mode: mode,
+          mode_source: if(own_mode, do: :repository, else: :hive),
+          repository_id: repository_id
+        }
     end
   end
 
@@ -846,9 +944,18 @@ defmodule Apiary.Policy do
     end
   end
 
+  # The mode is the target's own: the hive's for the baseline, and for a repository the
+  # one it set or "inherit", so its history shows its own changes and not the hive's.
+  defp snapshot_mode(%Hive{} = hive, nil), do: hive.egress_mode
+
+  defp snapshot_mode(%Hive{}, repository_id) do
+    Repo.one(from p in Repository, where: p.id == ^repository_id, select: p.egress_mode) ||
+      "inherit"
+  end
+
   defp snapshot(%Hive{} = hive, repository_id) do
     %{
-      "mode" => hive.egress_mode,
+      "mode" => snapshot_mode(hive, repository_id),
       "rules" =>
         for rule <- rules(hive.id, repository_id) do
           %{
@@ -878,8 +985,10 @@ defmodule Apiary.Policy do
     })
   end
 
-  # The baseline, and every repository that has rules of its own or has had a
-  # configuration of its own: a repository whose last rule went keeps its versions, and
+  # The baseline, and every repository that has rules or a mode of its own or has had a
+  # configuration of its own. A repository with a mode of its own renders the same bytes
+  # when the hive's mode changes, so it gets no new version; one that follows the hive does.
+  # The rest: a repository whose last rule went keeps its versions, and
   # its next one says what the baseline says.
   defp render_all(%Hive{} = hive, user, change) do
     hive_rules = rules(hive.id, nil)
@@ -896,10 +1005,20 @@ defmodule Apiary.Policy do
           select: c.repository_id
       )
 
-    targets = [nil | Enum.uniq(Map.keys(own) ++ rendered)]
+    modes =
+      Repo.all(
+        from p in Repository,
+          where: p.hive_id == ^hive.id and not is_nil(p.egress_mode),
+          select: {p.id, p.egress_mode}
+      )
+      |> Map.new()
+
+    targets = [nil | Enum.uniq(Map.keys(own) ++ rendered ++ Map.keys(modes))]
 
     Enum.reduce_while(targets, :ok, fn repository_id, :ok ->
-      case render(hive, user, change, repository_id, hive_rules, Map.get(own, repository_id, [])) do
+      rules = Map.get(own, repository_id, [])
+
+      case render(hive, user, change, repository_id, modes[repository_id], hive_rules, rules) do
         {:ok, configuration} ->
           if change && change.repository_id == repository_id do
             Repo.update_all(from(c in Change, where: c.id == ^change.id),
@@ -915,8 +1034,9 @@ defmodule Apiary.Policy do
     end)
   end
 
-  defp render(hive, user, change, repository_id, hive_rules, own) do
-    with {:ok, effective} <- Resolution.resolve(hive.egress_mode, hive_rules, own, repository_id),
+  defp render(hive, user, change, repository_id, own_mode, hive_rules, own) do
+    with {:ok, effective} <-
+           Resolution.resolve_for(hive.egress_mode, own_mode, hive_rules, own, repository_id),
          document = Render.document(effective),
          :ok <- small(document),
          :ok <- valid(document) do
@@ -1021,7 +1141,7 @@ defmodule Apiary.Policy do
       cond do
         is_nil(hive) -> {:error, not_found("There is no such hive.")}
         configuration = Repo.one(newest(hive_id, nil)) -> {:ok, configuration}
-        true -> render(hive, nil, nil, nil, rules(hive_id, nil), [])
+        true -> render(hive, nil, nil, nil, nil, rules(hive_id, nil), [])
       end
     end)
   end

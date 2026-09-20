@@ -34,6 +34,26 @@ defmodule Apiary.Policy.Resolution do
   @hive 1
 
   @doc """
+  Resolves a repository's policy from the hive's mode and the repository's own, nil
+  when it follows the hive: the repository's own mode wins, and the effective policy says
+  which it was in `mode_source`. The rules resolve as in `resolve/4`, whatever the mode:
+  a locked rule of the hive holds in a repository's document under either mode, and under
+  `observe` the document denies nothing, it only says what `enforce` would allow.
+  """
+  @spec resolve_for(String.t(), String.t() | nil, [Rule.t()], [Rule.t()], Ecto.UUID.t() | nil) ::
+          {:ok, Effective.t()} | {:error, Error.t()}
+  def resolve_for(hive_mode, own_mode, hive_rules, repository_rules, repository_id) do
+    {mode, source} =
+      if own_mode in ["observe", "enforce"] and not is_nil(repository_id),
+        do: {own_mode, :repository},
+        else: {hive_mode, :hive}
+
+    with {:ok, effective} <- resolve(mode, hive_rules, repository_rules, repository_id) do
+      {:ok, %{effective | mode_source: source}}
+    end
+  end
+
+  @doc """
   Resolves the rules. `repository_rules` is `[]` for the baseline and for a repository
   with no rules of its own.
   """

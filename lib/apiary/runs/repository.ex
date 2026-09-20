@@ -11,6 +11,9 @@ defmodule Apiary.Runs.Repository do
     field :forge, :string
     field :path, :string
     field :first_seen_at, :utc_datetime_usec
+    # The repository's own mode of the security policy; nil follows the hive's. Changed
+    # through `Apiary.Policy.set_mode/3`.
+    field :egress_mode, :string
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :hive, Apiary.Organisations.Hive

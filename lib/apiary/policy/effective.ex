@@ -3,6 +3,10 @@ defmodule Apiary.Policy.Effective do
   The security policy in force for the hive's baseline or for one repository: what
   `Apiary.Policy.Resolution` makes of the rules, and what the document is rendered from.
 
+  `mode` is the mode in force and `mode_source` where it came from: `:repository` when
+  the repository has a mode of its own, `:hive` when it follows the hive's (and for the
+  baseline).
+
   `entries` holds one `Apiary.Policy.Entry` per rule that took part, the hive's and the
   repository's, each saying where it came from and whether it is in force. `allow`,
   `paths` and `credentials` are what the document says, in its order.
@@ -12,6 +16,7 @@ defmodule Apiary.Policy.Effective do
 
   @type t :: %__MODULE__{
           mode: String.t(),
+          mode_source: :hive | :repository,
           repository_id: Ecto.UUID.t() | nil,
           entries: [Entry.t()],
           allow: [String.t()],
@@ -20,6 +25,7 @@ defmodule Apiary.Policy.Effective do
         }
 
   defstruct mode: "observe",
+            mode_source: :hive,
             repository_id: nil,
             entries: [],
             allow: [],
