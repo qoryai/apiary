@@ -7,18 +7,59 @@ shell, components, tone, accessibility) still holds and is not repeated. The ren
 `policy-mock.html` beside this file; where the two disagree, this brief wins. Section letters
 continue the pattern with a `p` prefix.
 
+## Amendment 1: mode per repository
+
+An owner's decision after the first issue of this brief. **The hive's mode is a default. Each
+repository either follows it or sets a mode of its own (observe or enforce). Setting a mode, the
+hive's or a repository's, is an owner's act; members read it.** Two earlier rulings are folded in:
+**no Dismiss on suggestions and no Undo in toasts** in M5, and **a new hive is served no policy by
+Qory until its first change**: until then machines run under their own. Every change below is
+marked **[A1]** where it stands. Nothing else moved.
+
+| Section | What changed |
+|---|---|
+| intro | the model sentence; per-repository mode leaves the out-of-scope list |
+| pb Sidebar, query parameters | `?mode=own` on Repositories; the tag is the hive's default, and says when repositories set their own |
+| pd2 | `<.mode_switch>` sets the **default**; badge "Hive default"; `can_edit` is owner-only; fact line counts the repositories that follow |
+| pd2a (new) | `<.repository_mode>`: Follow the hive · Observe · Enforce, with what is in effect and where it comes from |
+| pd6 | no Dismiss; no in-row Undo |
+| pd7 | a mode change re-renders the repositories that follow; a repository's mode change is a change of that repository |
+| pd8 | the popover's "what happens next" reads the run's own mode; no Undo in the toast |
+| pd9 | the mode in the Policy cell is the run's own, from `policy_applied`; never the hive's |
+| pe1 | the sentence under the cards; both confirms reworded and scoped to the repositories that follow; members cannot set the mode |
+| pe2 | a **Mode** column; the summary counts repositories with their own mode |
+| pe3 | the mode control above the suggestions; the repository's own confirms; the footer is the read-only summary; a locked deny under observe |
+| pe5 | the version strip gains **Mode** with its source |
+| pe7 | new hive: "Qory serves no policy yet"; history's first-version sentence |
+| pf1, pf2, pf5, pf6, pf7, pf8, pf9 | strings, all marked |
+| pg, ph, pi, pj, pk | one line each for the new control; checklist lines |
+| pl | questions 5 and 8 are closed by the rulings; 7 is answered; 10 to 12 are new |
+
+**What the builders must know.** (1) A repository that sets a mode now has run configurations of
+its own even with no rules of its own: "served the baseline" means *neither rules nor a mode*.
+(2) A change of the default re-renders only the repositories that follow it. (3) Setting a
+repository to the mode it already has in effect (own enforce while the default is enforce) changes
+no bytes: a change row, no version, no confirm. (4) No mode word on a run, a connection or a
+timeline item may come from the hive: it is the `mode` of that run's `policy_applied` event, or of
+the egress event. (5) A new hive has no configuration at all until its first change; the endpoint's
+answer for it is BACKEND's to choose within the contract, and the page only says "machines use
+their own policy until then".
+
+---
+
 Naming. The brand is **Qory**. Sample data is synthetic only: Acme, Platform, `acme/shop`,
 `acme/tax-service`, `acme/docs`, `github.example`, `gitlab.example`, `api.example`,
 `registry.example`, `files.cdn.example`, `mcp.acme.example`, `*.paste.example`,
 `beekeeper@example.com` (owner), `dana@example.com` (member), `build-01`.
 
 The model is fixed by the build brief and is not re-argued here: **the policy document can only
-allow**; the **mode is the hive's**; **deny** and **lock** are the control plane's notions that
+allow**; the **mode is the hive's default, which a repository follows or replaces with its own
+[A1]**; **deny** and **lock** are the control plane's notions that
 decide what the document lists; every write renders versions that are kept for ever. The UI calls
 `Apiary.Policy` and nothing else.
 
 Out of scope, not designed here: defining a credential's value (a machine's business), editing the
-machine's runner file, per-repository mode, scheduled or expiring rules, approval flows, policy
+machine's runner file, scheduled or expiring rules, approval flows, policy
 templates.
 
 ---
@@ -70,10 +111,15 @@ Manage
 …
 ```
 
-Icon `hero-shield-check-micro`. The trailing word is the hive's mode (`Policy.get_mode/1`), updated
-over PubSub `policy:<hive>`; its `title` is "The hive is in enforce mode". It is a word, not a
-colour: observe is not a fault. `Layouts.app` gains `nav={:policy}`; every page below sets it,
-including the repository pages. `counts` gains `:mode`.
+Icon `hero-shield-check-micro`. **[A1]** The trailing word stays, and it is the hive's **default**
+mode (`Policy.get_mode/1`), updated over PubSub `policy:<hive>`. While every repository follows
+it, it reads `enforce` with the `title` "The hive's default mode is enforce. Every repository
+follows it." When any repository sets its own, it reads `enforce · 1 own` (the count in the same
+faint mono at 75 %), with the `title` "The hive's default mode is enforce. 1 repository sets its own
+and observes." (or "2 repositories set their own."). The tag never claims what every run is under;
+it names the default and says how many differ. A new hive that serves nothing yet shows no tag.
+It is a word, not a colour: observe is not a fault. `Layouts.app` gains `nav={:policy}`; every page below sets it,
+including the repository pages. `counts` gains `:mode` and `:own_modes` [A1].
 
 ### Routes
 
@@ -107,6 +153,7 @@ Query parameters, all written with `push_patch`:
 | Page | Param | Values |
 |---|---|---|
 | Rules, effective policy | `show` | `allow`, `deny`, `locked` (hive); `hive`, `repository`, `overrides` (repository). Default all |
+| Repositories [A1] | `mode` | `own`: only the repositories that set their own mode (the link under the hive's mode cards) |
 | Rules, effective policy | `rule` | a host: scrolls to and highlights that rule (the target of "Show it", "Rule", "Open") |
 | History | `change` | a change id: opens that change's diff. `who`, `kind`, `host`, `page` filter and page |
 | Version | `compare` | a version number; default the one before. `view` = `changes`, `document`, `served` |
@@ -169,19 +216,54 @@ text (timeline head, summary line, run header) a version is not a pill but a **v
 ### pd2. Mode switch (`<.mode_switch>`)
 
 ```elixir
-attr :mode, :string, required: true, values: ~w(observe enforce)
-attr :can_edit, :boolean, default: true
+attr :mode, :string, required: true, values: ~w(observe enforce)   # the hive's default [A1]
+attr :can_edit, :boolean, default: false     # owners only [A1]
+attr :served, :boolean, default: true        # false on a new hive: nothing is served yet [A1]
+attr :following, :integer, default: 0        # repositories that follow the default [A1]
 attr :fact, :map, default: nil               # %{denied: 12, destinations: 3, days: 7} or %{uncovered: …}
 ```
 
 A `role="radiogroup"` of two cards side by side (stacked on phones). Card: `rounded-box border
 p-[14px_16px] grid grid-cols-[16px_1fr] gap-x-2.5`; unselected `bg-base-200 border-line
 text-muted`, hover `border-line-field`; selected `bg-base-100 border-line-field shadow-xs` with the
-radio dot in honey (the checked state is one of honey's three uses) and a neutral badge "In force".
+radio dot in honey (the checked state is one of honey's three uses) and a neutral badge **Hive
+default** [A1] (not "In force": a repository may differ).
 Head: 16 px icon in faint (`hero-eye-micro`, `hero-shield-exclamation-micro`) and the name in 14
 semibold. One sentence under it (pf1). The selected card ends with a fact line above a hairline,
 from recorded connections (pf1). Choosing the other card never switches at once: it opens the
-confirm (pe1). Arrow keys move between the cards, Space or Enter asks.
+confirm (pe1). Arrow keys move between the cards, Space or Enter asks. **[A1]** For a member the
+group is `aria-disabled="true"`: the cards keep their look and their words, lose hover and the
+pointer, do nothing, and the line under them ends "Only an owner sets a mode." The fact line counts
+only the repositories that follow the default.
+
+### pd2a. Repository mode (`<.repository_mode>`) [A1]
+
+```elixir
+attr :id, :string, required: true
+attr :setting, :string, required: true, values: ~w(follow observe enforce)
+attr :effective, :string, required: true, values: ~w(observe enforce)
+attr :hive_default, :string, required: true, values: ~w(observe enforce)
+attr :can_edit, :boolean, default: false     # owners only
+attr :locked_denies, :list, default: []      # locked hive denies in the list, for the observe note
+```
+
+One compact card, the first thing under the repository's tabs: `grid grid-cols-[auto_auto_1fr]
+gap-x-4 items-center px-4 py-2.5`. Parts: the heading **Mode** (15 semibold); a segmented
+**radio group** (`role="radiogroup"` labelled by the heading; three `role="radio"` buttons, 26 px,
+in the `bg-base-300` track of the other segmented controls): **Follow the hive · Observe ·
+Enforce**; then one sentence of what is in effect and where it comes from (pf1). It is compact on
+purpose: the hive page explains the two modes once, in cards; here the choice is whose mode, and
+the sentence carries the rest.
+
+- Choosing a setting that **changes what is in effect** opens this repository's confirm (pe3).
+  Choosing one that does not (Enforce while following an enforce default, or back to Follow when
+  the default equals the own mode) is immediate, with a toast that says nothing changes today.
+- While the repository **observes** and the effective list holds a locked hive deny, an info
+  `<.notice>` spans the card under the row (pf1): the lock is real, and under observe it denies
+  nothing. Say so where the mode is set, not in a tooltip.
+- A member sees the same card: the checked radio as it is, the other two at 45 % and
+  `aria-disabled`, and the sentence ends "Only an owner sets a mode."
+- Below 768 px the three parts stack and the radios become three equal 36 px cells.
 
 ### pd3. Rule composer (`<.rule_composer>`)
 
@@ -309,12 +391,13 @@ A section card above the effective policy, shown only when there is something to
 here** ("Allow all 4 here"; absent for one), and one sentence (pf5). One 44 px row per host: a
 **dashed** red mark (not allowed yet: outline, not solid, because nothing was decided), the host,
 a sentence of what the record says, and the actions: a split `btn-xs` **Allow here** with a caret
-menu (Allow for the hive, Allow with paths…) and a ghost **Dismiss**. One click allows: the mark
-turns to the soft green check in place, the actions become "✓ Allowed here" and an **Undo** link,
-and the row leaves at the next navigation. A host a locked deny covers has no button and reads "A
+menu (Allow for the hive, Allow with paths…). **[A1]** There is no Dismiss and no Undo in M5. One
+click allows: the mark turns to the soft green check in place, the actions become "✓ Allowed
+here", and the row leaves at the next navigation; a mistake is undone by removing the rule in the
+list below. A host a locked deny covers has no button and reads "A
 locked hive rule denies `*.paste.example`. Only an owner can change it." The footer lists what
-is already covered. Dismissed hosts are kept per repository and return if the harness's list
-changes.
+is already covered. In a repository that observes, the sentence reads "Let through 9 times with no
+rule" and the mark stays dashed: the host is still not allowed [A1].
 
 ### pd7. History (`<.change_list>`, `<.change_row>`, `<.policy_diff>`)
 
@@ -343,7 +426,12 @@ and the link "Open v13"), then two panels side by side (stacked on phones):
 
 Every `+` and `−` is a character in a gutter with an `sr-only` "Added:" / "Removed:"; colour is the
 third carrier, not the first. On a repository's history, a change made on the hive that re-rendered
-this repository appears with a small neutral chip **hive** after the time.
+this repository appears with a small neutral chip **hive** after the time. **[A1]** A change of the
+hive's default mode appears there only for a repository that follows it, and its diff bar says how
+many followed: "re-rendered 1 repository that follows the default; 1 sets its own mode and did not
+change". A repository's own mode change is a change of that repository (pf6), with the same two
+panels: rules "− Mode enforce, the hive's default / + Mode observe, its own", document the `mode`
+line.
 
 ### pd8. Connection row actions (`<.rule_action>` and `<.rule_popover>`, in `run_components.ex`)
 
@@ -399,7 +487,10 @@ Contents, top to bottom:
    `repo` filter set, that repository is checked. A deny adds the consequence under each radio:
    "Disables the hive's allow rule here. Other repositories keep it." / "Replaces the hive's allow
    rule. 6 runs of 2 repositories reached this host in the last 7 days."
-4. **What happens next**, a reload icon and one sentence (pf7).
+4. **What happens next**, a reload icon and one sentence (pf7). **[A1]** The sentence reads the mode
+   of the run's own policy (the `mode` of its last `policy_applied`), on the hive connections page
+   the effective mode of the repository chosen under "For": under observe the icon is the eye and
+   the sentence says the connection is already let through.
 5. Footer: Cancel, then the act named in full: **Allow for this repository**, **Allow for the
    hive**, **Deny for this repository** (danger), **Deny for the hive** (danger).
 
@@ -408,8 +499,8 @@ Contents, top to bottom:
 **Close** and **Show the locked rule**. It is the same for owner and member, except the last
 sentence; an owner changes a lock on the policy page, never from a row.
 
-**After.** The popover closes, focus returns to the slot's button (now **Rule**), a toast names the
-change and the version with **Undo** (5 s; undo is `remove_rule/2`). The row keeps its mark, its
+**After.** The popover closes, focus returns to the slot's button (now **Rule**), and a toast names
+the change and the version. **[A1]** No Undo in M5: the **Rule** button is the way back. The row keeps its mark, its
 counts, its reason and its tint. The reason cell gains an **after line** (12.5 px, muted) with a
 badge that moves through three states as the record allows:
 
@@ -436,6 +527,11 @@ attr :in_force, :map, required: true
 attr :last_seq, :integer, required: true
 attr :interval, :integer, default: 30
 ```
+
+**[A1]** The mode in this cell is the run's own: the `mode` of its last `policy_applied` event,
+never the hive's default and never the repository's setting read now. The version page it links to
+says where that mode came from (pe5). A reload that changed only the mode shows as drift and then
+as "Policy applied again" like any other.
 
 The cell reads the mode, then the **version link** `v9` (to that exact version), then the first
 twelve characters of the digest in mono faint. When the run is alive and its last reported digest
@@ -473,14 +569,15 @@ allow: what no rule names is denied under enforce, and let through and recorded 
 
 [ Rules 9 ]  Repositories 4   History 16   Document
 +------------------------------------------+ +------------------------------------------+
-| ( ) Observe                              | | (•) Enforce  [In force]                  |
+| ( ) Observe                              | | (•) Enforce  [Hive default]              |
 |     Records every connection and denies  | |     Denies a connection no rule allows,  |
 |     none. …                              | |     …                                    |
 |                                          | |     ------------------------------------ |
-|                                          | |     In the last 7 days it denied 12      |
-|                                          | |     attempts to 3 destinations. See them |
+|                                          | |     In the last 7 days it denied 12 …,   |
+|                                          | |     in the 3 repositories that follow it |
 +------------------------------------------+ +------------------------------------------+
-The mode is the hive's: every repository runs under it. …
+This is the hive's default. A repository follows it unless an owner sets a mode of its own:
+1 of 4 repositories does, and observes. …                                              [A1]
 
 + Host rules 8 ------------------------------------------ [All | Allow 6 | Deny 2 | Locked 2] +
 | [Allow|Deny] [ api.example or *.internal.example ] [ Every path, or /v1/* /health ] [Add rule]|
@@ -507,31 +604,37 @@ default button **Export**. There is no primary in the header: the page's primary
 **Add rule**. The tabs are `<.tabs>` of `brief-runs.md` rd9 with counts: Rules (host rules plus
 credentials), Repositories, History (changes), Document.
 
-**Going to enforce** opens a `lg` modal, "Switch the hive to enforce": the consequence sentence
-(pf1), then a bordered list headed "Let through in the last 7 days with no rule matching" and the
-count on the right. One 38 px row per destination (at most 8, then "and 4 more on the connections
+**Going to enforce** opens a `lg` modal, "Set the hive's default to enforce" [A1]: the consequence
+sentence (pf1), which names how many repositories follow and which do not change, then a bordered
+list headed "Let through in the last 7 days with no rule matching, in those repositories" and the
+count on the right. The list is counted over the repositories that follow the default only. One 38 px row per destination (at most 8, then "and 4 more on the connections
 page"): a dashed red mark, host and port, "8 attempts · 3 runs", and a default `btn-xs` **Allow for
 the hive**, which adds the rule there and then (the mark turns green, the button becomes "✓
 Allowed", the count drops). A closing line says how the list was counted. Footer: Cancel (initial
-focus), **Switch to enforce** (primary). When nothing would be denied the list is replaced by
+focus), **Set the default to enforce** (primary). When nothing would be denied the list is replaced by
 "Every destination your runs reached in the last 7 days is covered by a rule." The list is built
 from recorded connections that today's rules still do not cover; when that cannot be computed the
 modal shows the consequence sentence alone, never an estimate.
 
-**Going to observe** opens a `sm` modal with the danger button **Switch to observe**: it loosens
-the hive, so it asks too. **Locking** a rule is immediate, with a toast, unless it would put
+**Going to observe** opens a `sm` modal with the danger button **Set the default to observe**: it
+loosens every repository that follows, so it asks too. **Locking** a rule is immediate, with a toast, unless it would put
 repository rules out of force; then a `sm` modal lists them (pf2).
 
-Members see everything and can do everything except what concerns a lock; the page does not grey
-itself out for them.
+**[A1]** Members see everything and edit rules and credentials; what concerns a **mode** or a
+**lock** is an owner's. The page does not grey itself out for them: the mode cards and locks keep
+their look and say who can change them.
 
 ### pe2. Repositories (`/hive/policy/repositories`)
 
-Summary line, then one table: **Repository** (forge faint, path 500, mono; the row link) · **Policy**
+Summary line ("4 repositories have posted runs · 2 with rules of their own · 1 sets its own mode
+· 1 with suggestions" [A1]), then one table: **Repository** (forge faint, path 500, mono; the row
+link) · **Mode** [A1] (the effective mode as a word in 500, then a source chip: **Hive default**,
+neutral, or **Its own**, the bordered `base-100` chip of "This repository"; two wordings and two
+chip styles, no status hue) · **Policy**
 (`<.source_chip>`-style chip: "Own rules" or "Hive baseline") · Own rules · Overrides · Suggestions
 (an info chip "2 to review", or 0 in faint) · Version (mono, `v10` and the short digest) · Last
 change. Sorted: suggestions first, then the most recent change. Phones: rows reflow to the name,
-the chip and the suggestion chip. Footnote in pf.
+the mode with its source, the chip and the suggestion chip. Footnote in pf.
 
 ### pe3. Repository policy (`/hive/policy/repositories/:repository_id`)
 
@@ -542,11 +645,12 @@ What runs of this repository may reach: the hive's rules, then this repository's
 two meet on a host, the repository wins, unless the hive's rule is locked.
 
 [ Effective policy 10 ]  History 10   Document   Runs 5   Connections
++ Mode  [Follow the hive | Observe | Enforce]  In effect: enforce, the hive's default. …  [A1] +
 + Declared by the harness  2 to review ------------------------------------ [Allow both here] +
 | Hosts the runtime says it needs, from the policy applied event of this repository's last 5  |
 | runs. A declaration allows nothing by itself.                                               |
-| [⦸] flags.example           Declared by claude in 5 runs. Denied 9 times, …  [Allow here|v] Dismiss |
-| [⦸] downloads.runtime.example  Declared by claude in 5 runs. No run has tried…  [Allow here|v] Dismiss |
+| [⦸] flags.example           Declared by claude in 5 runs. Denied 9 times, …  [Allow here|v] |
+| [⦸] downloads.runtime.example  Declared by claude in 5 runs. No run has tried…  [Allow here|v] |
 | 2 more declared hosts are already allowed: api.example by the hive, mcp.acme.example by …   |
 +---------------------------------------------------------------------------------------------+
 + Effective policy  10 rules · 7 hosts allowed --- [All | From the hive 6 | This repository 4 | Overrides 2] +
@@ -561,7 +665,7 @@ two meet on a host, the repository wins, unless the hive's rule is locked.
 | [✓] mcp.acme.example    [/mcp/*][/health][This repository]   46 allowed             Remove   |
 | [✓] files.cdn.example (New in v10)       [This repository]   3 denied before it     Remove   |
 | [✓] registry.example    every path       [Hive]              65 allowed             Disable here|
-| Mode enforce, from the hive. Credentials: model-key from the hive, forge-token …            |
+| Mode enforce, the hive's default. Credentials: model-key from the hive, forge-token …  [A1] |
 +---------------------------------------------------------------------------------------------+
 ```
 
@@ -570,8 +674,35 @@ two meet on a host, the repository wins, unless the hive's rule is locked.
 the rows that have a beaten rule under them. A repository without rules of its own shows the same
 page: every row comes from the hive, the pill reads the baseline's version with the sub value
 "hive baseline", and an info notice sits above the list: "This repository has no rules of its own.
-It is served the hive baseline, version 14. The first rule added here gives it versions of its
-own." Credentials live in the footer sentence with the link "Edit credentials", which opens the
+It is served the hive baseline, version 14. The first rule added here, or a mode of its own, gives
+it versions of its own." [A1] **[A1] Mode.** `<.repository_mode>` (pd2a) sits first, above the suggestions. Its two confirms are
+this repository's own:
+
+- **To enforce** (from observe, its own or followed): a `lg` modal "Enforce
+  `github.example/acme/tax-service`", the consequence sentence (pf1), then the same bordered list
+  as the hive's confirm, counted from **this repository's** recorded connections that today's
+  effective rules still do not cover, each row with **Allow here** (a repository rule). A
+  destination a locked hive deny covers has no button: it reads a padlock and "Locked deny", with
+  the lock's tooltip. Footer: Cancel (initial focus), **Enforce this repository** (primary).
+- **To observe**: a `sm` modal "Observe `github.example/acme/shop`" with the danger button
+  **Observe this repository**; its second paragraph names the locked denies that stop denying.
+- **To follow the hive**: the confirm of whichever of the two it amounts to, with the sentence
+  "The mode follows the hive's default from now on, and changes when it does." in place of "becomes
+  this repository's own". No confirm when what is in effect stays the same.
+
+**A locked hive deny in a repository that observes.** The row stays in the list exactly as it is
+(deny mark, "Hive, locked", its beaten rule under it): the rule exists and shapes the document, so
+the hosts it covers are not in the allow list. What changes is what happens: under observe nothing
+is denied, so runs reach those hosts and the record says "No rule matches. Observe mode lets it
+through." The mode card's notice says this in full (pf1), and the row's "Last 7 days" reads "2 let
+through" in muted rather than "denied". The page never implies a lock protects an observing
+repository.
+
+The card's **footer** keeps the mode as a read-only summary of the control, "Mode **enforce**, the
+hive's default." or "Mode **observe**, this repository's own.", so the list can be read without
+scrolling back up.
+
+Credentials live in the footer sentence with the link "Edit credentials", which opens the
 credential composer and rows in place of the footer; they are few and rarely touched.
 
 ### pe4. History (`…/history`)
@@ -587,8 +718,9 @@ tabs.
 Policy › github.example/acme/shop › Version 10
 Version 10  [✓ In force]                                                          [↥ Export]
 +-----------------+------------------+---------------------------+----------------------+--------------------------+
-| Rendered        | Changed by       | Change                    | ~Digest~             | Runs under it            |
-| Today, 14:02:54 | dana@example.com | Allowed files.cdn.example | sha256=c41d7e02b9a6… | 1 run · 1 alive is behind|
+| Rendered        | Changed by       | Change                    | Mode [A1]            | ~Digest~  | Runs under it |
+| Today, 14:02:54 | dana@example.com | Allowed files.cdn.example | enforce              | sha256=…  | 1 run · …     |
+|                 |                  |                           | the hive's default   |           |               |
 +-----------------+------------------+---------------------------+----------------------+--------------------------+
 [Changes from v9 | Document | As served]              Compare with [v9 · 9f86d081884c ⌄]    + Versions 10 ---+
 + run-configuration.json · v9 → v10 · 1 line added ---------------- [Copy document] +        | v10 Allowed files… |
@@ -597,6 +729,11 @@ Version 10  [✓ In force]                                                      
 |  …                                                                                |        | 6 earlier versions |
 +-----------------------------------------------------------------------------------+        +--------------------+
 ```
+
+**[A1]** The strip's **Mode** cell reads the document's `egress.mode` and, as the sub value, where
+it came from when this version was rendered: "the hive's default" or "this repository's own" (a
+hive baseline version reads "the hive's default" always). It is the version's fact, not today's
+setting.
 
 The state badge is success **In force**, or neutral **Superseded** with the sub line "by v11 after
 2 d 4 h". The three views are a segmented control in the URL: the diff against the compared version
@@ -629,14 +766,14 @@ not read from the policy tables. A reload that changed only the mode reads "relo
 
 | Where | State | What renders |
 |---|---|---|
-| Hive rules | new hive | the mode switch with Observe in force and the fact "A new hive starts here. No run has reached out yet."; pill "No version yet"; `<.empty_state icon="hero-shield-check">` **No rules yet** "In observe mode with no rules, runs reach everything and every connection is recorded. Add the hosts your runs need here, or let a run reach out first and allow its hosts from the Connections page, one row at a time." `[Add a host rule]` primary (reveals and focuses the composer) `[Go to connections]` default; footnote on the first version (pf) |
+| Hive rules | new hive [A1] | the mode switch with Observe checked, badge "Hive default", fact "Not served yet: it applies from the first change here."; pill "No version yet"; no sidebar tag; `<.empty_state icon="hero-shield-check">` **Qory serves no policy yet** "Until the first change here, every machine of this hive runs under its own policy, the one in its runner file. The first rule you add, or a mode you set, renders version 1, and machines take their policy from Qory from then on. You can also let a run reach out first and allow its hosts from the Connections page, one row at a time." `[Add a host rule]` primary (reveals and focuses the composer) `[Go to connections]` default; footnote on the first version (pf2). A member reads "The first rule you add, or a mode an owner sets, …" |
 | Hive rules | filter matches nothing | inside the card, a one-line row in faint: "No locked rules." / "No deny rules." |
 | Credentials | none | one faint row: "No credentials. A run that needs none runs without." |
 | Repositories | none has posted | neutral empty state **No repositories yet** "A repository appears here once a run names it with its forge and repository labels." |
 | Repository | not in this hive | neutral empty state, `heading="h1"` **This repository is not in this hive** `[Back to policy]` |
 | Repository | no own rules | the info notice of pe3 |
 | Suggestions | harness declared nothing, or all covered | the card is absent |
-| History | one version, no changes | "No changes yet. Version 1 was rendered on 2 Sep 2026 when a machine first asked." |
+| History | no change yet [A1] | "No changes yet. Qory serves no policy for this hive until the first one." |
 | Version | `:n` does not exist | neutral empty state **There is no version 31** "The latest is version 14." `[Open version 14]` |
 | Any list | loading | skeleton rows in the shape of the columns; never a spinner |
 | Any list | query failed | info `<.notice>` "The policy could not be loaded. Reload the page; if it keeps happening, the server log has the reason." |
@@ -656,15 +793,26 @@ not read from the policy tables. A reload that changed only the mode reads "relo
 | Repository description | What runs of this repository may reach: the hive's rules, then this repository's own. Where the two meet on a host, the repository wins, unless the hive's rule is locked. |
 | Observe | Records every connection and denies none. A host no rule names is let through, and the record says so. |
 | Enforce | Denies a connection no rule allows, and records the denial. With no allow rule, a run reaches nothing. |
-| Fact, enforce in force | In the last 7 days it denied **12** attempts to **3** destinations. `See them` (to `/hive/connections?decision=denied`) |
-| Fact, observe in force | In the last 7 days **14** attempts to **2** destinations had no rule. Enforce would deny them. `See them` |
+| Badge on the checked card [A1] | Hive default |
+| Fact, enforce is the default [A1] | In the last 7 days it denied **12** attempts to **3** destinations, in the 3 repositories that follow it. `See them` (to `/hive/connections?decision=denied`). With every repository following: "… destinations." and no tail |
+| Fact, observe is the default [A1] | In the last 7 days **14** attempts to **2** destinations had no rule, in the 3 repositories that follow it. Enforce would deny them. `See them` |
+| Fact, new hive [A1] | Not served yet: it applies from the first change here. |
 | Fact, nothing recorded | No run has reached out in the last 7 days. |
-| Under the cards | The mode is the hive's: every repository runs under it. A wall's own refusals (the machine's address, a path that reads two ways) hold in either mode. |
-| Confirm, to enforce | **Switch the hive to enforce** / From the next heartbeat, about 30 s, **a connection no rule allows is denied**, in every repository and in the 2 runs alive now. You can switch back at any time. / list head "Let through in the last 7 days with no rule matching" · "3 destinations" / "Counted from recorded connections that today's rules still do not cover. Enforce will deny these. A destination no run has reached yet is not in this list." / `[Cancel]` `[Switch to enforce]` |
-| Confirm, to observe | **Switch the hive to observe** / From the next heartbeat, about 30 s, **nothing is denied**: every connection is let through and recorded, in every repository and in the 2 runs alive now. The rules stay as they are. Locked rules do not hold in observe mode either. / `[Cancel]` `[Switch to observe]` |
-| Toasts | The hive is in enforce mode. Version 15. / The hive is in observe mode. Version 15. |
+| Under the cards [A1] | This is the hive's default. A repository follows it unless an owner sets a mode of its own: `1 of 4 repositories does`, and observes. A wall's own refusals (the machine's address, a path that reads two ways) hold in either mode. The link goes to `/hive/policy/repositories?mode=own`. None: "… of its own. None does." Several with different modes: "`2 of 4 repositories do`: 1 observes, 1 enforces." A member's line adds "Only an owner sets a mode." |
+| Confirm, default to enforce [A1] | **Set the hive's default to enforce** / From the next heartbeat, about 30 s, **a connection no rule allows is denied** in the 3 repositories that follow the hive's default, and in their 2 runs alive now. `github.example/acme/tax-service` sets its own mode and does not change. You can switch back at any time. / list head "Let through in the last 7 days with no rule matching, in those repositories" · "3 destinations" / "Counted from recorded connections that today's rules still do not cover. Enforce will deny these. A destination no run has reached yet is not in this list." / `[Cancel]` `[Set the default to enforce]` |
+| Confirm, default to observe [A1] | **Set the hive's default to observe** / From the next heartbeat, about 30 s, **nothing is denied** in the 3 repositories that follow the hive's default, and in their 2 runs alive now: every connection is let through and recorded. A repository that sets its own mode does not change. The rules stay as they are, locked ones too: under observe a deny shapes the document and denies nothing. / `[Cancel]` `[Set the default to observe]` |
+| Toasts [A1] | The hive's default is enforce. 3 repositories follow it. Version 15. / The hive's default is observe. 3 repositories follow it. Version 15. |
+| Repository mode, the radios [A1] | Follow the hive · Observe · Enforce |
+| In effect, following [A1] | In effect: **enforce**, the hive's default. It changes when the hive's does. |
+| In effect, own [A1] | In effect: **observe**, this repository's own. The hive's default is enforce. |
+| In effect, member [A1] | … Only an owner sets a mode. |
+| Note, observing with a locked deny [A1] | **This repository observes: nothing is denied, locked rules included.** The locked deny `*.paste.example` still shapes the document, so the hosts it covers are not in the allow list. Under observe a run reaches them all the same, and the record says no rule matched. It denies again the moment this repository enforces. |
+| Confirm, repository to enforce [A1] | **Enforce `github.example/acme/tax-service`** / From the next heartbeat, about 30 s, **a connection no rule allows is denied** in this repository's runs, 1 of them alive now. The mode becomes this repository's own: it stays enforce whatever the hive's default becomes. Other repositories do not change. / list head "Let through in this repository's runs, last 7 days, with no rule matching" · "2 destinations" · row button `Allow here` · locked row "Locked deny" / "Counted from this repository's recorded connections that today's rules still do not cover. Enforce will deny these. A destination no run has reached yet is not in this list." / `[Cancel]` `[Enforce this repository]` |
+| Confirm, repository to observe [A1] | **Observe `github.example/acme/shop`** / From the next heartbeat, about 30 s, **nothing is denied in this repository's runs**, 1 of them alive now: every connection is let through and recorded. The mode becomes this repository's own; the hive's default stays enforce and other repositories do not change. / The rules stay as they are, locked ones too. Under observe a deny shapes the document and denies nothing: `*.paste.example` will be reachable from this repository. / `[Cancel]` `[Observe this repository]` danger |
+| Confirm, back to the hive [A1] | the same two, with "The mode follows the hive's default from now on, and changes when it does." in place of the "becomes this repository's own" sentence, and the buttons `[Follow the hive]` |
+| Toasts, repository [A1] | github.example/acme/shop observes on its own. Version 11. / github.example/acme/shop enforces on its own. Nothing changes today: the hive's default is enforce too. / github.example/acme/shop follows the hive: enforce. Version 12. |
 
-"in the 2 runs alive now" is left out at zero.
+"and in their 2 runs alive now" / "1 of them alive now" is left out at zero.
 
 ### pf2. Rules, locks, credentials
 
@@ -682,11 +830,11 @@ not read from the policy tables. A reload that changed only the mode reads "relo
 | Lock tooltips | Lock: hold this rule against every repository / Locked: no repository can override it. Select to unlock. / Locked by beekeeper@example.com on 2 Sep 2026. Only an owner can change or unlock it. |
 | Lock confirm | **Lock the deny rule `telemetry.example`** / A locked rule holds against every repository. **1 repository rule stops being in force**: … / The repository's rule is kept and shown as held. Only an owner can unlock. / `[Cancel]` `[Lock the rule]` |
 | Remove confirm (only when a hive rule that repositories override or that is locked) | **Remove the allow rule `gitlab.example`** / 1 repository disables this rule; its own rule then has nothing to override and is kept. This takes effect within a heartbeat. / `[Cancel]` `[Remove the rule]` danger |
-| Toasts | `files.cdn.example` is allowed for the hive. Version 15. / `gitlab.example` is denied for github.example/acme/shop. Version 11. / `api.example` is locked. No repository can override it. / `telemetry.example` is denied for the hive. No new version: the document did not list it. / The rule `errors.example` is removed. Version 14. |
+| Toasts (no Undo in M5 [A1]; a dismiss X) | `files.cdn.example` is allowed for the hive. Version 15. / `gitlab.example` is denied for github.example/acme/shop. Version 11. / `api.example` is locked. No repository can override it. / `telemetry.example` is denied for the hive. No new version: the document did not list it. / The rule `errors.example` is removed. Version 14. |
 | Credentials description | Credentials a run may use, by name. The policy names one; it never holds one. Each machine defines its credentials in its runner file, and a name a machine does not define is no run. |
 | Credential fields | Name, such as forge-token / Argument (optional), such as acme/shop / `[Add credential]` |
-| Repositories footnote | A repository appears here once a run names it. A repository without rules of its own is served the hive baseline, and so is a run that names no repository. |
-| First version footnote | The first version is rendered when a rule is added, or when a machine first asks for its run configuration: observe, with an empty allow list. |
+| Repositories footnote [A1] | A repository appears here once a run names it. A repository with neither rules nor a mode of its own is served the hive baseline, and so is a run that names no repository. |
+| First version footnote [A1] | Version 1 is rendered by the first change, never by a machine asking. Until it exists, a machine that asks is told there is no policy here and keeps its own. |
 
 ### pf3. Validation, in the contract's grammar
 
@@ -723,14 +871,14 @@ not read from the policy tables. A reload that changed only the mode reads "relo
 | Override line, repository allows what the hive denies | **Overrides the hive's rule** ~~deny telemetry.example~~ Allowed here by dana · 9 Sep. |
 | Lock line | **Holds against this repository's rule** ~~allow bin.paste.example~~ dana · 28 Aug. It is not in force. `Remove it` |
 | Row actions | Disable here / Allow here / Remove / Restore / Open |
-| Card footer | Mode **enforce**, from the hive. Credentials: `model-key` from the hive, `forge-token` argument `acme/shop` from this repository. `Edit credentials` |
+| Card footer [A1] | Mode **enforce**, the hive's default. (or "Mode **observe**, this repository's own.") Credentials: `model-key` from the hive, `forge-token` argument `acme/shop` from this repository. `Edit credentials` |
 | Suggestions description | Hosts the runtime says it needs, from the policy applied event of this repository's last 5 runs. A declaration allows nothing by itself. |
 | Suggestion, denied | Declared by **claude** in 5 runs. **Denied 9 times**, last 2 minutes ago. |
 | Suggestion, let through (observe) | Declared by **claude** in 5 runs. Let through 9 times with no rule. |
 | Suggestion, never reached | Declared by **claude** in 5 runs. No run has tried to reach it. |
 | Suggestion, locked | A locked hive rule denies `*.paste.example`. Only an owner can change it. |
 | Suggestion footer | 2 more declared hosts are already allowed: `api.example` by the hive, `mcp.acme.example` by this repository. |
-| After one click | ✓ Allowed here · `Undo` |
+| After one click [A1] | ✓ Allowed here |
 
 ### pf6. History sentences
 
@@ -743,13 +891,18 @@ Subject is the author's email in 500; rules are mono chips. Built from `policy_c
 | paths changed | … changed the paths of `api.example` from every path to `/v1/*` |
 | replaced | … replaced allow `gitlab.example` with deny |
 | locked, unlocked | … locked `github.example` / unlocked `github.example` |
-| mode | … switched the hive from observe to **enforce** |
+| default mode [A1] | … switched the hive's default mode from observe to **enforce** |
+| repository mode, own [A1] | … set this repository's mode to **observe** · second line "Its own from now on. It followed the hive's default, enforce." |
+| repository mode, no effect [A1] | … set this repository's mode to **enforce** · "Its own from now on. The hive's default is enforce too, so the document did not change." · "no new version" |
+| repository mode, follow [A1] | … set this repository to **follow the hive** · "It observed on its own. The hive's default is enforce." |
+| on the hive's Repositories-wide reading [A1] | where a repository's change is quoted outside its own history (a diff bar, a toast), "this repository" becomes its name: "set the mode of `github.example/acme/tax-service` to observe" |
 | credential | … added the credential `model-key` / removed the credential `forge-token` `acme/shop` |
 | origin line | From a connection row of run `0191d2aa` / From a suggestion / From the enforce confirm |
 | no version line | The lock holds against repositories. The document did not change. |
 | version cell | the pill, or "no new version" |
 | diff bar | 1 line changed · re-rendered 2 repositories with rules of their own |
-| footer | Showing 6 of 16. A change that leaves the document's bytes the same is kept here and makes no new version. Changes to a repository's own rules are in that repository's history. |
+| diff bar, default mode [A1] | 1 line changed · re-rendered 1 repository that follows the default; 1 sets its own mode and did not change |
+| footer | Showing 6 of 16. A change to the default mode re-renders every repository that follows it. A change that leaves the document's bytes the same is kept here and makes no new version. Changes to a repository's own rules are in that repository's history. |
 
 ### pf7. Connection row
 
@@ -758,8 +911,21 @@ Subject is the author's email in 500; rules are mono chips. Built from `policy_c
 | Next, run alive | Takes effect in running sessions within a heartbeat, about 30 s. This run is alive: its next attempt can succeed. |
 | Next, run ended or hive page | Takes effect in running sessions within a heartbeat, about 30 s. |
 | Next, deny | Takes effect in running sessions within a heartbeat, about 30 s. Open connections to the host are closed at the reload. |
+| Next, allow, the run's policy observes [A1] | This run's policy observes, so the connection is already let through. The rule changes what the record says from the next heartbeat, about 30 s, and what happens once the repository enforces. |
+| Next, deny, the run's policy observes [A1] | This run's policy observes, so nothing is denied. The deny takes the host out of the document from the next heartbeat, about 30 s, and denies it once the repository enforces. |
+| Next, hive page, "The whole hive" chosen [A1] | Takes effect in running sessions within a heartbeat, about 30 s. 1 repository observes on its own: nothing is denied there. |
+| After line under observe [A1] | the same three badges; the sentence ends "… The run's policy observes: it was let through before, and is allowed by a rule from the reload." |
 | Footnote, run connections (replaces the last sentence of M4's) | … A rule added here changes what happens next; what the record already says stays as it was. |
-| Toast | `files.cdn.example` is allowed for github.example/acme/shop. / Version 10. Running sessions have it within a heartbeat. `Undo` |
+| Toast [A1] | `files.cdn.example` is allowed for github.example/acme/shop. / Version 10. Running sessions have it within a heartbeat. (no Undo) |
+
+**[A1] One rule for every mode word near a run.** The reason sentences of `brief-runs.md` rf
+("Enforce mode denies it.", "Observe mode lets it through.") are built from the `mode` field of the
+egress event; the run header, the connections summary ("policy **enforce** `v9`") and the timeline's
+policy items from the `mode` of `policy_applied`. None may read the hive's default or the
+repository's setting. On `/hive/connections` a destination's reason is the last attempt's, so two
+repositories in different modes can give "Observe mode lets it through. · last attempt" on a row
+that also has denials; the sub-row's runs each carry their own counts, which is where the
+difference is read.
 
 "about 30 s" is the run's `heartbeat_interval_seconds` on a run page and the contract's default on
 the hive pages.
@@ -769,6 +935,7 @@ the hive pages.
 | Where | Text |
 |---|---|
 | Caption | Shown indented for reading. "As served" is the exact bytes, 388 of them, that the digest is taken over. Deny rules and locks are not in the document: they decide what it lists. |
+| Mode cell [A1] | enforce · "the hive's default" / observe · "this repository's own" |
 | Runs under it | `1 run` · 1 alive is behind, on v9 / No run has reported this version. |
 | Export lead | The effective policy of **github.example/acme/shop** as of **version 10**, as the file a runner takes with `--policy`. It is a copy: it does not follow later changes. |
 | Export caveats | Keep the file outside the checkout. A policy file only narrows what the machine's runner file allows, and it names credentials the machine must define. Deny rules and locks are already applied: the file lists what remains allowed. |
@@ -780,10 +947,13 @@ the hive pages.
 | digest | The sha256 of the exact bytes a runner is served. Two runs with the same digest had the same policy. |
 | hive baseline | The hive's rules with no repository's own: what a repository without rules, or a run that names none, is served. |
 | locked | A hive rule no repository can override. Only an owner can lock or unlock. |
+| hive default [A1] | The mode a repository runs under unless an owner sets one for it. |
+| its own [A1] | An owner set this repository's mode. It no longer changes with the hive's default. |
 | harness | The runtime's own needs: hosts it declares in the policy applied event. Declared hosts are reported, never allowed by that. |
 
 Announcements (one polite region per page): "Rule added. Version 15." "Rule removed. Version 15."
-"The hive is in enforce mode." "files.cdn.example is allowed for this repository." "The run
+"The hive's default is enforce." "This repository observes on its own." "This repository follows
+the hive: enforce." [A1] "files.cdn.example is allowed for this repository." "The run
 reloaded its policy: version 10." "This run is behind the policy in force."
 
 ---
@@ -793,6 +963,7 @@ reloaded its policy: version 10." "This run is behind the policy in force."
 | What | Behaviour | Reduced motion |
 |---|---|---|
 | Mode cards, source chips, rows, tabs | 120 ms colour, as `brief.md` | 0 |
+| Repository mode radios [A1] | 120 ms colour on the pressed cell; the "In effect" sentence swaps at once; the observe note appears and leaves with no height animation (it sits at the card's end, nothing below jumps more than the note's height once) | same |
 | Reading line | text swap, no fade, no height animation: the line always reserves one row (two on phones) | same |
 | New rule row, one-click allow | the row appears in place with `bg-added`; the mark swaps from dashed red to green at once; nothing slides | same |
 | Popover | 180 ms, opacity and 4 px towards the button, scale 0.98, as the dropdown; sheet on phones 240 ms from the bottom edge | appears |
@@ -832,6 +1003,22 @@ lines carry `+` / `−` and an `sr-only` "Added:" / "Removed:". A beaten rule is
 also prefixed `sr-only` "not in force:". The drift mark is a triangle and the words "Behind v10".
 Locked is a padlock and the word.
 
+**[A1] The mode controls.** Both are radio groups with names. Hive: `role="radiogroup"
+aria-label="Default mode"`; each card `role="radio"`, named by its heading, described by its
+sentence and the fact line. Repository: `role="radiogroup"` labelled by the heading "Mode"; radios
+named "Follow the hive", "Observe", "Enforce"; the group is `aria-describedby` the "In effect"
+sentence, so a screen reader hears "Mode, radio group, Follow the hive, selected, 1 of 3. In
+effect: enforce, the hive's default." One tab stop each, roving `tabindex`, arrows move the focus
+**without** selecting (selection asks a confirm, so it is never a side effect of an arrow key);
+Space or Enter chooses. After a confirm, focus lands on the radio now checked; after Cancel, on the
+radio that was checked. For a member the group is `aria-disabled="true"`, stays focusable so the
+sentence can be read, and "Only an owner sets a mode." is part of the description. The source is a
+word in every place ("Hive default", "Its own"); the chip's border is the second carrier, never the
+only one. The observe note is `role="note"`, not an alert: it is a standing fact.
+
+**Keyboard path, repository.** … tabs → **mode radiogroup** → suggestions → filter segments →
+composer → table.
+
 **Keyboard path, hive rules.** Skip link → sidebar → version pill → Export → tabs → mode
 radiogroup (one tab stop; arrows move, Space or Enter asks) → filter segments → composer (action
 segments, host, paths, Add rule) → table region → per row: lock toggle, `⋯` menu → credentials. A
@@ -840,7 +1027,7 @@ field has focus: `a` focuses the composer's host field, `/` the History filter, 
 
 **Focus after actions.** Add rule: the host field, cleared; the new row is announced by the polite
 region, not focused. Remove: the next row's actions, or the composer when the table empties. Lock
-toggle: stays on the toggle. One-click allow in suggestions: the row's **Undo** link. Popover
+toggle: stays on the toggle. One-click allow in suggestions: the next suggestion's **Allow here**, or the composer's host field after the last one [A1]. Popover
 opens: the first radio (the refusal: **Close**); closes: the slot's button, which now reads
 **Rule**. Confirm modals: Cancel first, as `brief.md`; after confirming, the radio card now in
 force. Export: the **Copy** button; after copying, focus stays and "Copied" is announced. Opening a
@@ -868,7 +1055,9 @@ the As served line and the tabs scroll inside themselves.
 ## pi. Phone layout (below 768 px)
 
 Header: title and description, then the version pill full width, then Export full width (40 px).
-Tabs scroll sideways. Mode cards stack. The composer stacks: action segments, host, paths, button,
+Tabs scroll sideways. Mode cards stack. **[A1]** The repository's mode card stacks too: heading,
+then the three radios as equal 36 px cells across the full width, then the sentence, then the note.
+The repositories list keeps the mode and its source on the row's second line. The composer stacks: action segments, host, paths, button,
 reading line, all 40 px with 16 px text in the fields so the phone does not zoom. Rule rows reflow
 inside the same table into blocks (keep `role="row"` / `role="cell"`): line one the mark and host
 with the action on the right; then paths (only when there are any), the source chip, the last 7
@@ -903,6 +1092,11 @@ tap.
 7. **Row actions cost nothing until used.** The slot's standing (`:can_allow`, `:locked_deny`, …)
    is derived once per page from the effective policy held in assigns, not per row by query. The
    popover's repository list is loaded when it opens.
+7a. **[A1] Modes cost one read.** The repositories list reads each repository's setting with the
+   list's own query (no query per row); the sidebar's `:own_modes` is one count, cached with the
+   mode and refreshed on `policy:<hive>`. A repository's enforce confirm runs its bounded query when
+   the modal opens, scoped to that repository. A change of the default re-renders only the
+   repositories that follow it; the toast's "3 repositories follow it" is the number re-rendered.
 8. **Drift is a comparison, not a poll.** The run page holds `policy_digest_reported` and reads
    `policy_digest_in_force` at mount and on each `policy:<hive>` message; the mark is the
    inequality while the run is alive. No timer decides it.
@@ -914,16 +1108,25 @@ tap.
 ## pk. Done checklist
 
 Navigation and URLs
+- [ ] [A1] Sidebar tag is the hive's default, with "· n own" when repositories set their own; absent on a new hive
 - [ ] Sidebar item Policy with the mode word; `nav={:policy}` on every page below `/hive/policy`
 - [ ] Tabs, filters, the opened change, the compared version and the export modal are in the URL; a copied URL reproduces the view
 - [ ] Repository policy under `/hive/policy/repositories/:id`; reachable from the run header, a row's Rule button, the connections page with `repo`, the runs list group header, the Repositories tab
 
 Rules
+- [ ] [A1] Hive mode cards set the **default**: badge "Hive default", the line under them counts and links the repositories with their own mode, confirms scoped to the repositories that follow
+- [ ] [A1] Repository mode: Follow the hive · Observe · Enforce, the "In effect" sentence with its source, this repository's two confirms, no confirm when nothing changes in effect, the footer summary
+- [ ] [A1] A locked hive deny in an observing repository: the row stays, the note says nothing is denied, "let through" not "denied" in the counts
+- [ ] [A1] Modes are an owner's: members see both controls read-only with "Only an owner sets a mode."
+- [ ] [A1] Repositories list has the Mode column (effective mode and "Hive default" / "Its own")
+- [ ] [A1] Version strip shows Mode and where it came from; history reads a repository's mode change as a sentence
+- [ ] [A1] Every mode word near a run comes from that run's events, never from the hive
+- [ ] [A1] New hive: "Qory serves no policy yet", no version, no sidebar tag; no Dismiss on suggestions; no Undo in any toast
 - [ ] Mode switch asks before either change; the enforce confirm lists what would be denied, from the record, with one-click allow; no estimate when it cannot be counted
 - [ ] Composer validates in the contract's grammar as you type, reads the rule back, repairs a pasted URL, and refuses the exact-host deny under an allowed suffix with the sentence of pf4
 - [ ] Hive list: mark, wildcard, paths, last 7 days, added, lock; owners toggle locks, members read them
 - [ ] Repository list: one list, source chip per row, beaten rules struck under their winner, Disable here / Allow here / Remove / Restore / Open
-- [ ] Suggestions from `harness_hosts` with one-click allow, undo, dismiss, and the locked case
+- [ ] Suggestions from `harness_hosts` with one-click allow and the locked case (no dismiss, no undo [A1])
 - [ ] Credentials by name with an optional argument; never a value
 
 Versions
@@ -964,16 +1167,27 @@ Quality
    design hides the list rather than show that.
 4. **"Last 7 days" per rule** needs `connections` grouped by `rule` per scope. If it is too costly
    for M5, the column is dropped, not faked; the page works without it.
-5. **Dismissed suggestions** need somewhere to live (a small table or a column per repository).
-   Without it, drop Dismiss; the list then shrinks only by allowing.
+5. ~~Dismissed suggestions.~~ **Closed [A1]:** no Dismiss in M5.
 6. **Export form.** The design exports a YAML policy file for `qory run --policy` (S7 says "the
    runner file's inline document"). If an `egress:` block for `runner.yaml` is wanted as well, it
    is a second segment in the same modal ("Policy file | Runner file section"); the credentials
    cannot go in that one, since there they are definitions, not names.
-7. **Observe and locks.** The observe confirm says locked rules do not hold in observe mode, which
-   follows from "observe denies none". Confirm that no one expects a locked deny to deny under
-   observe.
-8. **Undo** is `remove_rule/2` (or restoring the replaced rule) and makes a version of its own. If
-   a replaced rule cannot be restored in one call, the toast drops Undo for replacements.
+7. ~~Observe and locks.~~ **Answered [A1]:** a locked deny is applied to the document and denies
+   nothing under observe; the page says so in the mode card's note and in both observe confirms.
+8. ~~Undo.~~ **Closed [A1]:** no Undo in M5; the row's **Rule** button and the list's Remove are the
+   way back.
 9. **The runs list group header** gains a "Policy" link and the hive connections description a
    link; both touch M4 components owned by another builder.
+10. **[A1] The domain API for modes.** The design assumes `get_mode/1` (the default),
+    `set_mode/2` (owners), and for a repository something like `repository_mode(scope, repository)`
+    returning `%{setting: :follow | :observe | :enforce, effective: …}` and
+    `set_repository_mode/3` (owners), plus a count of repositories with their own mode and, per
+    configuration version, where its mode came from at render time (for the version strip). Names
+    are BACKEND's.
+11. **[A1] A new hive and the wire.** "Served no policy until the first change" has to be an answer
+    the runner treats as "use your own policy" and not as "no run"; the contract says anything but
+    200 is no run. The page only promises the sentence; the mechanism is BACKEND's and the
+    runner's to settle.
+12. **[A1] "Let through" per rule.** Under observe the "Last 7 days" of a locked deny should read
+    "2 let through", which needs the same grouped query as question 4 to tell let-through from
+    denied for hosts a deny covers. If it cannot, show the count as "2 attempts".
