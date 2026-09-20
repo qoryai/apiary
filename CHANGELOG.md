@@ -222,6 +222,13 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
   apiary.prune` (`Apiary.Release.prune/1` in a release) runs it by hand, `--dry-run`
   counts without deleting. A rebuild leaves a run alone whose events are pruned, or due to
   be: its projection is all that is left of it.
+- Live reload, proven end to end: `e2e/run.sh`, and the workflow `End to end` in CI, start
+  a test instance on a database of its own, run `qory run` behind a Docker wall on a Linux
+  node against it under an `enforce` policy, let the session be refused a host, allow the
+  host the way the connection's row does, and assert the second policy applied event with
+  the new digest, the allowed connection after it, and the time between the allow and that
+  connection, under thirty-five seconds. `e2e/README.md` says what runs where and what the
+  number means.
 - The documentation ships with the application: the guides under `guides/` (quickstart,
   install and configure, upgrading, backup and restore, retention, the hosting checklist,
   the security policy, the runner file's `server` section, the server contract) and the
