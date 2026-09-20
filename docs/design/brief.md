@@ -1,5 +1,12 @@
 # Qory console: design brief
 
+## Amendment 3: the Qory Apiary menu
+
+An owner's decision of 21 Sep 2026: the docs are the product's, not the person's, so **the brand
+foot becomes the Qory Apiary menu** (Docs, Changelog, Source on GitHub) and **Docs leaves the
+account menu**. Marked **[A3]** where it stands; the brand foot in *The sidebar*, the copy table,
+the checklist.
+
 ## Amendment 2: the shell
 
 An owner's decision after the first issue of this brief, 20 Sep 2026. Four changes to the
@@ -458,14 +465,19 @@ row's lower edge read as one line across the screen.
    the drawer items are `h-10 text-sm`. `<nav aria-label="Main">` for Hive, `<nav
    aria-label="Manage">` for Manage, `gap-px px-2`. Do not use daisyUI `menu` here.
 3. **Spacer** `flex-1`.
-4. **Brand foot** [A2]. `m-2 h-9 px-2 flex items-center gap-2 rounded-field` (`h-10` in the
-   drawer). `<.brand size="xs" />`: the 18 px mark at full colour, then "Qory Apiary" in
-   `text-[13px]/[18px] font-medium text-muted whitespace-nowrap`, `hover:text-base-content`, a link
-   to `/`. Then, `ml-auto`, the version: `font-mono text-[11.5px]/4 text-faint tabular-nums`, the
-   text "0.1.0", `title="Version 0.1.0"`; `Application.spec(:apiary, :vsn)` read at compile time.
-   If it is nil, render nothing, never "unknown". The version sits outside the link so the link's
-   name stays "Qory Apiary". The foot is not a button and opens nothing: it is the signature at the
-   bottom of the page, the last thing in the sidebar's tab order.
+4. **Brand foot** [A2, A3]. `m-2`, and in it the **Qory Apiary menu**: one button, `h-9 w-full
+   px-2 flex items-center gap-2 rounded-field text-muted` (`h-10` in the drawer),
+   `hover:bg-base-300 hover:text-base-content`, the same while expanded. In it the 18 px mark
+   at full colour, "Qory Apiary" in `text-[13px]/[18px] font-medium whitespace-nowrap`, then
+   `ml-auto` the version `font-mono text-[11.5px]/4 text-faint tabular-nums`, "0.1.0",
+   `title="Version 0.1.0"` (`Application.spec(:apiary, :vsn)` at render time; nil renders
+   nothing, never "unknown"), then a `chevron-up` micro in `text-faint`. `aria-label` "Qory
+   Apiary menu, version 0.1.0". It opens upward (`dropdown-top`, the menu arrives from 4 px
+   below) with the `Menu` hook's manners, and holds what is about the product, not the person:
+   **Docs** (`/docs`), **Changelog** (`/docs/changelog.html`), a divider, **Source on GitHub**
+   (the repository, new tab, with the external-link micro at the right). Docs left the account
+   menu for it [A3]. Without a sidebar the same menu sits at the left of the bar, `h-8`, opening
+   downward with a `chevron-down`. It is the last thing in the sidebar's tab order.
 
 The user card at the foot of the sidebar is gone [A2]; its contents are the account menu in the
 top bar. The standalone "Theme" row is gone too.
@@ -519,8 +531,9 @@ was (no transition on colour or `color-scheme`).
 | Theme toggle | Theme | `aria-label` and tooltip; items Auto · Light · Dark |
 | Account button | Account menu, beekeeper@example.com | `aria-label`; tooltip "Account" |
 | Account menu header | beekeeper@example.com / Owner of Acme | or Member of Acme · Not part of an apiary yet |
-| Account menu items | Account settings · Docs · Log out | in this order |
-| Brand foot | Qory Apiary · 0.1.0 | link name "Qory Apiary"; version `title` "Version 0.1.0" |
+| Account menu items | Account settings · Log out | in this order |
+| Brand menu | Qory Apiary · 0.1.0 | `aria-label` "Qory Apiary menu, version 0.1.0"; version `title` "Version 0.1.0" |
+| Brand menu items | Docs · Changelog · Source on GitHub | in this order; the last opens a new tab |
 | Page title | Members · Qory Apiary | default "Qory Apiary" |
 
 **Page header.** `flex flex-wrap items-start justify-between gap-4`, 24 px below it.
@@ -1142,9 +1155,10 @@ Tokens
 Shell
 - [ ] Sidebar 240 px visible from 768 px; one sidebar in the DOM; active item per spec; tags and counts shown
 - [ ] [A2] Sidebar order: apiary row, Hive, Manage, spacer, brand foot with "Qory Apiary" and the version; no user card, no theme row
+- [ ] [A3] The brand foot is the Qory Apiary menu: Docs, Changelog, Source on GitHub, opening upward; the same menu at the left of the bar without a sidebar
 - [ ] [A2] Apiary block: text with one membership (chevron slot empty, not disabled), the switcher with several; switching posts to the same endpoint; the Close menu button in the same row in the drawer
 - [ ] [A2] Top bar at every width, 52 px: theme toggle and account menu at the right; below 768 px the menu button and the apiary label at the left, from 768 px nothing at the left
-- [ ] [A2] Account menu: header, Account settings, Docs, Log out; pointer open keeps focus on the button, keyboard open moves it to the first item; Escape returns it
+- [ ] [A2, A3] Account menu: header, Account settings, Log out; pointer open keeps focus on the button, keyboard open moves it to the first item; Escape returns it
 - [ ] [A2] Tab order sidebar → top bar → main (`drawer-side` first in the DOM); drawer: scrim, Escape, closes on navigation, focus managed, the whole content column inert
 - [ ] [A2] No-hive: no sidebar, no menu button, the brand at the left of the bar
 - [ ] Page header anatomy and content widths (960 / 640) on every page

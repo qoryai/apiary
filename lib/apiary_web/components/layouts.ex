@@ -143,7 +143,9 @@ defmodule ApiaryWeb.Layouts do
     <% else %>
       <div id="shell" class="flex min-h-dvh min-w-0 flex-col bg-base-100">
         <.top_bar>
-          <.brand class="ml-2" />
+          <div class="ml-1 flex min-w-0 items-center">
+            <.brand_menu version={version()} direction="down" />
+          </div>
           <:controls>
             <.theme_menu tooltip="tooltip-bottom" />
             <.account_menu
@@ -287,19 +289,8 @@ defmodule ApiaryWeb.Layouts do
 
       <div class="flex-1" />
 
-      <div
-        id="brand-foot"
-        class="m-2 flex h-9 flex-none items-center gap-2 rounded-field px-2 max-md:h-10"
-      >
-        <.brand size="xs" />
-        <span
-          :if={@version}
-          id="brand-version"
-          class="ml-auto font-mono text-[11.5px]/4 text-faint tabular-nums"
-          title={"Version #{@version}"}
-        >
-          {@version}
-        </span>
+      <div id="brand-foot" class="m-2 flex-none">
+        <.brand_menu version={@version} direction="up" />
       </div>
     </aside>
     """
@@ -443,9 +434,9 @@ defmodule ApiaryWeb.Layouts do
   attr :organisation, :any, required: true
   attr :membership, :any, required: true
 
-  # The account menu at the right end of the top bar: who you are, then settings,
-  # docs and log out. No theme row (the toggle's), no switching (the sidebar's), no
-  # version (the foot's).
+  # The account menu at the right end of the top bar: who you are, then settings and
+  # log out. No theme row (the toggle's), no switching (the sidebar's), no docs and no
+  # version (the brand menu's).
   defp account_menu(assigns) do
     ~H"""
     <div
@@ -486,15 +477,90 @@ defmodule ApiaryWeb.Layouts do
             <.icon name="hero-user-circle-micro" class="size-4" /> Account settings
           </.link>
         </li>
-        <li role="none">
-          <.link href={~p"/docs"} role="menuitem" id="user-menu-docs">
-            <.icon name="hero-book-open-micro" class="size-4" /> Docs
-          </.link>
-        </li>
         <li class="menu-divider" role="separator"></li>
         <li role="none">
           <.link href={~p"/users/log-out"} method="delete" role="menuitem" id="user-menu-log-out">
             <.icon name="hero-arrow-right-start-on-rectangle-micro" class="size-4" /> Log out
+          </.link>
+        </li>
+      </ul>
+    </div>
+    """
+  end
+
+  attr :version, :any, required: true
+  attr :direction, :string, required: true, values: ~w(up down)
+
+  # The product's menu, on the brand: the mark and "Qory Apiary" with the version at the
+  # right, opening upward from the sidebar's foot and downward from the bar when there is
+  # no sidebar. It holds what is about Qory Apiary itself, not about the person: the
+  # docs served by this instance, its changelog, and the source.
+  defp brand_menu(assigns) do
+    ~H"""
+    <div
+      id="brand-menu"
+      class={["dropdown block", @direction == "up" && "dropdown-top w-full"]}
+      phx-hook="Menu"
+      phx-mounted={JS.ignore_attributes(["class"])}
+    >
+      <button
+        id="brand-menu-button"
+        type="button"
+        class={[
+          "flex cursor-pointer items-center gap-2 rounded-field px-2 text-left text-muted transition-colors hover:bg-base-300 hover:text-base-content aria-expanded:bg-base-300 aria-expanded:text-base-content",
+          if(@direction == "up", do: "h-9 w-full max-md:h-10", else: "h-8")
+        ]}
+        aria-haspopup="menu"
+        aria-expanded="false"
+        aria-label={"Qory Apiary menu" <> if(@version, do: ", version #{@version}", else: "")}
+        phx-mounted={JS.ignore_attributes(["aria-expanded"])}
+      >
+        <.logo_mark class="size-[18px]" />
+        <span class="whitespace-nowrap text-[13px]/[18px] font-medium tracking-[-0.03em]">
+          Qory Apiary
+        </span>
+        <span
+          :if={@version}
+          id="brand-version"
+          class="ml-auto font-mono text-[11.5px]/4 text-faint tabular-nums"
+          title={"Version #{@version}"}
+        >
+          {@version}
+        </span>
+        <.icon
+          name={if @direction == "up", do: "hero-chevron-up-micro", else: "hero-chevron-down-micro"}
+          class={["size-4 text-faint", @direction == "down" && "-ml-0.5"]}
+        />
+      </button>
+      <ul
+        class={[
+          "menu menu-sm dropdown-content w-56",
+          if(@direction == "up", do: "left-0 bottom-full mb-1.5", else: "left-0 top-full mt-1.5")
+        ]}
+        role="menu"
+        aria-label="Qory Apiary"
+      >
+        <li role="none">
+          <.link href={~p"/docs"} role="menuitem" id="brand-menu-docs">
+            <.icon name="hero-book-open-micro" class="size-4" /> Docs
+          </.link>
+        </li>
+        <li role="none">
+          <.link href={~p"/docs/changelog.html"} role="menuitem" id="brand-menu-changelog">
+            <.icon name="hero-list-bullet-micro" class="size-4" /> Changelog
+          </.link>
+        </li>
+        <li class="menu-divider" role="separator"></li>
+        <li role="none">
+          <.link
+            href="https://github.com/qoryai/apiary"
+            target="_blank"
+            rel="noopener"
+            role="menuitem"
+            id="brand-menu-source"
+          >
+            <.icon name="hero-code-bracket-micro" class="size-4" /> Source on GitHub
+            <.icon name="hero-arrow-top-right-on-square-micro" class="ml-auto size-3.5 text-faint" />
           </.link>
         </li>
       </ul>

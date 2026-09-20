@@ -841,7 +841,8 @@
   }
   /* The shell's menus open by the Menu hook, never by focus alone: Tab passes over
      a closed menu's trigger and on to the next control. */
-  :where(#theme-menu, #user-menu, #workspace-menu):not(.dropdown-open) > :where(.dropdown-content) {
+  :where(#theme-menu, #user-menu, #workspace-menu, #brand-menu):not(.dropdown-open)
+    > :where(.dropdown-content) {
     display: none;
   }
   @keyframes q-menu-in-up {

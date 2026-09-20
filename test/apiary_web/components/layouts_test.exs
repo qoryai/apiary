@@ -51,7 +51,7 @@ defmodule ApiaryWeb.LayoutsTest do
       refute has_element?(view, "#apiary-label a, #apiary-label button")
     end
 
-    test "the account menu: who you are, then Account settings, Docs and Log out", %{
+    test "the account menu: who you are, then Account settings and Log out", %{
       conn: conn,
       user: user,
       scope: scope
@@ -62,10 +62,11 @@ defmodule ApiaryWeb.LayoutsTest do
       menu = view |> element("#user-menu ul[role='menu'][aria-label='Account']") |> render()
       assert menu =~ user.email
       assert menu =~ "Owner of #{scope.organisation.name}"
-      assert before?(menu, "Account settings", "Docs")
-      assert before?(menu, "Docs", "Log out")
-      assert length(Regex.scan(~r/role="menuitem"/, menu)) == 3
+      assert before?(menu, "Account settings", "Log out")
+      assert length(Regex.scan(~r/role="menuitem"/, menu)) == 2
       refute menu =~ "Theme"
+      # the docs are the product's, so they are in the brand menu, not here
+      refute menu =~ "Docs"
       refute menu =~ ~p"/organisations/switch"
 
       # a keyboard open focuses the first item: it is the first focusable thing in the list
@@ -73,8 +74,6 @@ defmodule ApiaryWeb.LayoutsTest do
                view,
                "#user-menu .dropdown-content li:nth-child(3) a#user-menu-settings[role='menuitem'][href='/users/settings']"
              )
-
-      assert has_element?(view, "#user-menu a#user-menu-docs[href='/docs']")
 
       assert has_element?(
                view,
@@ -130,14 +129,44 @@ defmodule ApiaryWeb.LayoutsTest do
              )
     end
 
-    test "the brand foot links home as Qory Apiary and shows the version", %{conn: conn} do
+    test "the brand foot is the Qory Apiary menu: the version on it, docs, changelog and source in it",
+         %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/hive")
 
-      assert has_element?(view, "#brand-foot a[href='/']", "Qory Apiary")
       version = :apiary |> Application.spec(:vsn) |> List.to_string()
-      assert has_element?(view, "#brand-foot #brand-version[title='Version #{version}']", version)
-      refute has_element?(view, "#brand-foot a", version)
-      refute has_element?(view, "#brand-foot button")
+      assert has_element?(view, "#brand-foot #brand-menu.dropdown-top[phx-hook='Menu']")
+
+      assert has_element?(
+               view,
+               "#brand-menu button#brand-menu-button[aria-haspopup='menu'][aria-label='Qory Apiary menu, version #{version}']",
+               "Qory Apiary"
+             )
+
+      assert has_element?(
+               view,
+               "#brand-menu-button #brand-version[title='Version #{version}']",
+               version
+             )
+
+      refute has_element?(view, "#brand-menu [tabindex]")
+
+      menu = view |> element("#brand-menu ul[role='menu'][aria-label='Qory Apiary']") |> render()
+      assert before?(menu, "Docs", "Changelog")
+      assert before?(menu, "Changelog", "Source on GitHub")
+      assert length(Regex.scan(~r/role="menuitem"/, menu)) == 3
+
+      assert has_element?(
+               view,
+               "#brand-menu .dropdown-content li:first-child a#brand-menu-docs[href='/docs']"
+             )
+
+      assert has_element?(view, "#brand-menu a#brand-menu-changelog[href='/docs/changelog.html']")
+
+      assert has_element?(
+               view,
+               "#brand-menu a#brand-menu-source[href='https://github.com/qoryai/apiary'][rel='noopener'][target='_blank']"
+             )
+
       # the brand is at the foot, not the top
       sidebar = view |> element("#sidebar") |> render()
       assert before?(sidebar, ~s(id="apiary-row"), "Qory Apiary")
@@ -158,7 +187,14 @@ defmodule ApiaryWeb.LayoutsTest do
 
       refute has_element?(view, "#sidebar")
       refute has_element?(view, "#nav-drawer, #nav-drawer-open")
-      assert has_element?(view, "#top-bar a[href='/']", "Qory Apiary")
+
+      assert has_element?(
+               view,
+               "#top-bar #brand-menu:not(.dropdown-top) #brand-menu-button",
+               "Qory Apiary"
+             )
+
+      assert has_element?(view, "#top-bar #brand-menu a#brand-menu-docs[href='/docs']")
       assert has_element?(view, "#top-bar #theme-menu-button")
 
       assert has_element?(
@@ -167,7 +203,7 @@ defmodule ApiaryWeb.LayoutsTest do
              )
 
       assert has_element?(view, "#user-menu-level", "Not part of an apiary yet")
-      assert before?(html, ~s(href="/"), ~s(id="theme-menu-button"))
+      assert before?(html, ~s(id="brand-menu-button"), ~s(id="theme-menu-button"))
       assert html =~ ~r{<title[^>]*>\s*No hive yet · Qory Apiary\s*</title>}
     end
   end
