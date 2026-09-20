@@ -23,7 +23,7 @@ defmodule Apiary.Runs do
   alias Apiary.Organisations
   alias Apiary.Organisations.{Hive, Organisation}
   alias Apiary.Repo
-  alias Apiary.Runs.{Connection, Filters, Run}
+  alias Apiary.Runs.{Connection, Filters, Repository, Run}
 
   @default_limit 50
   @max_limit 200
@@ -84,7 +84,11 @@ defmodule Apiary.Runs do
 
   @doc "How many runs of the hive are alive now: pending or running."
   def count_alive(%Scope{} = scope) do
-    Repo.aggregate(from(r in in_scope(scope), where: r.state in ^Run.alive_states()), :count)
+    # Tagged, so that what measures a page's own reads can tell the sidebar's timed count
+    # from them (`metadata.options[:sidebar]` of the repo's telemetry event).
+    Repo.aggregate(from(r in in_scope(scope), where: r.state in ^Run.alive_states()), :count,
+      telemetry_options: [sidebar: true]
+    )
   end
 
   @doc "One run of the scope's hive by its row id; raises when the hive has none such."
@@ -607,6 +611,26 @@ defmodule Apiary.Runs do
         }
     )
   end
+
+  @doc """
+  The repository of the scope's hive that runs name with this forge and path, or nil: one
+  indexed read, however many repositories the hive has.
+  """
+  def fetch_repository(
+        %Scope{organisation: %Organisation{id: organisation_id}, hive: %Hive{id: hive_id}},
+        forge,
+        path
+      )
+      when is_binary(forge) and is_binary(path) do
+    Repo.one(
+      from p in Repository,
+        where: p.organisation_id == ^organisation_id and p.hive_id == ^hive_id,
+        where: p.forge == ^forge and p.path == ^path,
+        limit: 1
+    )
+  end
+
+  def fetch_repository(%Scope{}, _forge, _path), do: nil
 
   @doc """
   One connection of the scope's hive by its row id, whole. `:error` for an id that is not

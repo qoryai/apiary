@@ -275,6 +275,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
        effective: nil,
        acts: nil,
        popover: nil,
+       own: [],
        policy_flush_scheduled: false
      )}
   end
@@ -401,7 +402,16 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           popover.choice
       end
 
-    {:noreply, assign(socket, popover: %{popover | level: level, choice: choice, error: nil})}
+    popover = %{popover | level: level, choice: choice, error: nil}
+
+    # What a rule for the chosen repository would be is decided by that repository's
+    # policy, which is read when it is chosen.
+    popover =
+      if choice != popover.chosen,
+        do: describe(socket, popover, chosen_effective(socket, choice)),
+        else: popover
+
+    {:noreply, assign(socket, popover: popover)}
   end
 
   def handle_event("rule_cancel", _params, socket), do: {:noreply, close_popover(socket)}
@@ -414,11 +424,18 @@ defmodule ApiaryWeb.ConnectionLive.Index do
       when level in [:repository, :hive] do
     scope = socket.assigns.current_scope
 
-    with {:ok, from} <- rule_source(popover),
+    # Sent only while the policy is still the one the popover opened on.
+    with :ok <- still(socket, popover),
+         {:ok, from} <- rule_source(popover),
          {:ok, connection} <- Runs.fetch_connection(scope, from.connection_id),
-         {:ok, _rule} <- Policy.rule_from_connection(scope, connection, popover.action, level) do
+         {:ok, rule} <- Policy.rule_from_connection(scope, connection, popover.action, level) do
       where = if level == :repository, do: from.label, else: "the hive"
       target = if level == :repository, do: from.repository
+
+      own =
+        if level == :hive and popover.own_rule,
+          do: " A repository's own rule for this host still decides there.",
+          else: ""
 
       {:noreply,
        socket
@@ -426,9 +443,14 @@ defmodule ApiaryWeb.ConnectionLive.Index do
        |> refresh_policy()
        |> put_flash(
          :info,
-         "#{popover.host} is #{if popover.action == :deny, do: "denied", else: "allowed"} for #{where}.#{version_words(scope, target)} Running sessions have it within a heartbeat."
+         Rules.toast(rule, popover.action, popover.host, popover.path, where) <>
+           version_words(scope, target) <>
+           own <> " Running sessions have it within a heartbeat."
        )}
     else
+      :stale ->
+        {:noreply, socket |> refresh_policy() |> policy_moved()}
+
       {:error, %Policy.Error{message: message}} ->
         {:noreply, assign(socket, popover: %{popover | error: message})}
 
@@ -455,6 +477,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
          open: loaded.open,
          repository: loaded.repository,
          effective: loaded.effective,
+         own: loaded.own,
          stale: false,
          load_error: false
        )
@@ -492,8 +515,10 @@ defmodule ApiaryWeb.ConnectionLive.Index do
     end
   end
 
-  def handle_info(:policy_flush, socket),
-    do: {:noreply, socket |> assign(policy_flush_scheduled: false) |> refresh_policy()}
+  def handle_info(:policy_flush, socket) do
+    {:noreply,
+     socket |> assign(policy_flush_scheduled: false) |> refresh_policy() |> recheck_popover()}
+  end
 
   def handle_info(_other, socket), do: {:noreply, socket}
 
@@ -526,7 +551,8 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           facets: Runs.destination_facets(scope, filters, now: now, narrow: narrow),
           open: open,
           repository: repository,
-          effective: Policy.effective(scope, repository)
+          effective: Policy.effective(scope, repository),
+          own: if(repository, do: [], else: Rules.own_hosts(scope))
         }
       end)
     else
@@ -538,19 +564,18 @@ defmodule ApiaryWeb.ConnectionLive.Index do
 
   # The repository `repo` names, when the hive has it: its policy is what the rows stand
   # against, and where "Its policy" leads.
-  defp repository_of(scope, {forge, path}) do
-    scope
-    |> Policy.list_repositories()
-    |> Enum.find_value(fn %{repository: repository} ->
-      if repository.forge == forge and repository.path == path, do: repository
-    end)
-  end
-
+  defp repository_of(scope, {forge, path}), do: Runs.fetch_repository(scope, forge, path)
   defp repository_of(_scope, _repo), do: nil
 
   defp refresh_policy(%{assigns: %{listing: %{}}} = socket) do
     %{current_scope: scope, repository: repository} = socket.assigns
-    socket |> assign(effective: Policy.effective(scope, repository)) |> assign_acts()
+
+    socket
+    |> assign(
+      effective: Policy.effective(scope, repository),
+      own: if(repository, do: [], else: Rules.own_hosts(scope))
+    )
+    |> assign_acts()
   end
 
   defp refresh_policy(socket), do: socket
@@ -561,7 +586,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
        ) do
     %{current_scope: scope, repository: repository} = socket.assigns
     page = if repository, do: :run, else: :hive
-    standings = Enum.map(rows, &{&1, Rules.standing(&1, effective, page)})
+    standings = Enum.map(rows, &{&1, Rules.standing(&1, effective, page, socket.assigns.own)})
     changes = Rules.changes(scope, repository, Enum.map(standings, &elem(&1, 1)))
     open = socket.assigns.popover && socket.assigns.popover.anchor
 
@@ -636,8 +661,8 @@ defmodule ApiaryWeb.ConnectionLive.Index do
     # With `repo` set that repository is chosen; among several, none is: no guessed scope.
     choice = filtered && Enum.find_value(repositories, &(&1.id == filtered.id && &1.id))
 
-    assign(socket,
-      popover: %{
+    popover =
+      %{
         anchor: "#{destination_id(row)}-act",
         any_connection_id: reached |> List.first() |> then(&(&1 && &1.connection_id)),
         action: action,
@@ -648,16 +673,26 @@ defmodule ApiaryWeb.ConnectionLive.Index do
         repository: nil,
         repositories: repositories,
         choice: choice,
-        host_paths: Rules.held_paths(effective, act.host),
+        # The page holds the baseline, or with `repo` the repository's; the other is read.
+        baseline: if(filtered, do: Policy.effective(scope, nil), else: effective),
+        standing: act.standing,
+        chosen: nil,
+        what: %{repository: nil, hive: nil},
+        own_rule: false,
+        seen: nil,
+        consequence: %{},
         hive: scope.hive.name,
         alive: false,
         fetched: false,
         interval: @default_beat,
-        consequence: deny_consequence(act[:entry]),
         error: nil,
         refusal: nil
       }
-    )
+
+    chosen = if choice, do: effective
+
+    socket
+    |> assign(popover: describe(socket, popover, chosen))
     |> assign_acts()
   end
 
@@ -723,21 +758,87 @@ defmodule ApiaryWeb.ConnectionLive.Index do
     end
   end
 
-  defp deny_consequence(%{source: :hive}) do
+  # The policy of the repository chosen in the popover: the page's when `repo` names it.
+  defp chosen_effective(_socket, nil), do: nil
+
+  defp chosen_effective(socket, id) do
+    %{current_scope: scope, repository: filtered, effective: effective} = socket.assigns
+
+    cond do
+      filtered && filtered.id == id ->
+        effective
+
+      true ->
+        case Policy.get_repository(scope, id) do
+          {:ok, repository} -> Policy.effective(scope, repository)
+          _ -> nil
+        end
+    end
+  end
+
+  # What the popover says of each scope, from that scope's own policy: what the rule would
+  # be (the host, or a path of it), what a deny does there, and what it saw.
+  defp describe(socket, popover, chosen) do
+    %{host: host, path: path, baseline: baseline} = popover
+    own? = Rules.own_touches?(socket.assigns.own, host) or Rules.own_rule?(chosen, host)
+
     %{
-      repository: "Disables the hive's allow rule there. Other repositories keep it.",
-      hive: "Replaces the hive's allow rule."
+      popover
+      | chosen: popover.choice,
+        what: %{
+          repository: Rules.what(chosen, host, path),
+          hive: Rules.what(baseline, host, path)
+        },
+        own_rule: own?,
+        seen: {Rules.seen(baseline, host), Rules.seen(chosen, host)},
+        consequence: %{
+          repository: chosen && repository_consequence(chosen, host),
+          hive: hive_consequence(baseline, host, own?)
+        }
     }
   end
 
-  defp deny_consequence(%{source: :repository}) do
-    %{
-      repository: "Replaces the repository's allow rule.",
-      hive: "A repository's own allow rule still holds there."
-    }
+  defp repository_consequence(effective, host) do
+    if Rules.own_rule?(effective, host),
+      do: "Replaces the repository's own rule for the host.",
+      else: "Disables the hive's allow rule there. Other repositories keep it."
   end
 
-  defp deny_consequence(_entry), do: %{}
+  defp hive_consequence(baseline, host, own?) do
+    cond do
+      own? -> "A repository's own allow rule still holds there."
+      Rules.seen(baseline, host) != [] -> "Replaces the hive's allow rule."
+      true -> nil
+    end
+  end
+
+  defp still(socket, popover) do
+    %{current_scope: scope, repository: filtered, listing: %{rows: rows}} = socket.assigns
+    effective = Policy.effective(scope, filtered)
+    baseline = if filtered, do: Policy.effective(scope, nil), else: effective
+    own = if filtered, do: [], else: Rules.own_hosts(scope)
+    page = if filtered, do: :run, else: :hive
+    chosen = chosen_effective(assign(socket, effective: effective), popover.chosen)
+    row = Enum.find(rows, &("#{destination_id(&1)}-act" == popover.anchor))
+
+    if (row && Rules.standing(row, effective, page, own).standing == popover.standing) and
+         {Rules.seen(baseline, popover.host), Rules.seen(chosen, popover.host)} == popover.seen,
+       do: :ok,
+       else: :stale
+  end
+
+  defp policy_moved(socket) do
+    socket
+    |> close_popover()
+    |> put_flash(:error, "The policy changed; look at the row again.")
+  end
+
+  defp recheck_popover(%{assigns: %{popover: %{refusal: nil} = popover}} = socket) do
+    if still(socket, popover) == :ok, do: socket, else: policy_moved(socket)
+  end
+
+  defp recheck_popover(%{assigns: %{popover: %{}}} = socket), do: close_popover(socket)
+  defp recheck_popover(socket), do: socket
 
   defp hits(socket, row, limit) do
     %{current_scope: scope, filters: filters} = socket.assigns

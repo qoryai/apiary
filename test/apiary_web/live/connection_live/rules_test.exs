@@ -189,6 +189,138 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
     end
   end
 
+  describe "a repository's own rule on the unfiltered page" do
+    @extra %{"host" => "extra.example", "rule" => "extra.example"}
+
+    test "Deny for the hive warns that the repository's rule still holds, and Deny stays reachable",
+         %{conn: conn, scope: scope} do
+      github = repository(scope, "github.example")
+      {:ok, _} = Policy.allow(scope, github, %{host: "extra.example"})
+      started_run(scope, shop(), egress: [@extra])
+
+      view = open(conn)
+      d = dst("extra.example")
+      assert text(view, "##{d}-act") == "Deny"
+      view |> element("##{d}-act") |> render_click()
+      view |> form("#rule-popover-form", %{"for" => "hive"}) |> render_change()
+      assert text(view, "#rule-popover") =~ "A repository's own allow rule still holds there."
+
+      assert text(view, "#rule-popover-own-rule") ==
+               "A repository's own rule for this host still decides there."
+
+      view |> form("#rule-popover-form") |> render_submit()
+      assert render(view) =~ "A repository&#39;s own rule for this host still decides there."
+
+      # the baseline's deny is not the answer to this row: the repository still allows it
+      assert "extra.example" in Policy.effective(scope, github).allow
+      refute has_element?(view, "##{d}-after")
+      assert text(view, "button##{d}-act") == "Deny"
+
+      # so the deny for that repository can still be made from here
+      view |> element("##{d}-act") |> render_click()
+
+      view
+      |> form("#rule-popover-form", %{"for" => "repository", "repository" => github.id})
+      |> render_change()
+
+      assert text(view, "#rule-popover") =~ "Replaces the repository's own rule for the host."
+      view |> form("#rule-popover-form") |> render_submit()
+      refute "extra.example" in Policy.effective(scope, github).allow
+    end
+
+    test "a baseline rule is not said to answer a row a repository's own rule decides", %{
+      conn: conn,
+      scope: scope
+    } do
+      github = repository(scope, "github.example")
+      {:ok, _} = Policy.deny(scope, nil, %{host: "extra.example"})
+      {:ok, _} = Policy.allow(scope, github, %{host: "extra.example"})
+      # and the other way round: the hive allows, the repository denies
+      {:ok, _} = Policy.allow(scope, nil, %{host: "files.cdn.example"})
+      {:ok, _} = Policy.deny(scope, github, %{host: "files.cdn.example"})
+      started_run(scope, shop(), egress: [@extra])
+
+      view = open(conn)
+      refute has_element?(view, "##{dst("extra.example")}-after")
+      assert text(view, "button##{dst("extra.example")}-act") == "Deny"
+      refute has_element?(view, "##{dst("files.cdn.example")}-after")
+      assert text(view, "button##{dst("files.cdn.example")}-act") == "Allow"
+
+      # with repo set the rows stand against that repository's policy, and it answers
+      view = open(conn, ~p"/hive/connections?forge=github.example&repo=acme/shop")
+      assert text(view, "##{dst("files.cdn.example")}-act") == "Allow"
+      refute has_element?(view, "##{dst("files.cdn.example")}-after")
+    end
+
+    test "what the rule will be is said for the repository chosen, and the toast says what was made",
+         %{conn: conn, scope: scope} do
+      github = repository(scope, "github.example")
+      {:ok, _} = Policy.allow(scope, github, %{host: "api.pathed.example", paths: ["/ok/*"]})
+
+      started_run(scope, shop(),
+        egress: [
+          %{
+            "host" => "api.pathed.example",
+            "path" => "/v2/x",
+            "request_method" => "GET",
+            "decision" => "denied",
+            "rule" => "api.pathed.example",
+            "outcome" => "refused"
+          }
+        ]
+      )
+
+      view = open(conn)
+      d = dst("api.pathed.example", 443, "/v2/x")
+      view |> element("##{d}-act") |> render_click()
+
+      # nothing chosen: nothing is promised
+      assert text(view, "#rule-popover-title") == "Allow api.pathed.example"
+      refute has_element?(view, "#rule-popover-what-set")
+
+      view
+      |> form("#rule-popover-form", %{"for" => "repository", "repository" => github.id})
+      |> render_change()
+
+      assert text(view, "#rule-popover-title") == "Allow on api.pathed.example"
+      assert text(view, "#rule-popover-what") =~ "This path /v2/x is added"
+
+      view |> form("#rule-popover-form", %{"for" => "hive"}) |> render_change()
+      assert text(view, "#rule-popover-title") == "Allow api.pathed.example"
+
+      view |> form("#rule-popover-form", %{"for" => "repository"}) |> render_change()
+      view |> form("#rule-popover-form") |> render_submit()
+
+      assert [%{paths: ["/ok/*", "/v2/x"]}] = Policy.list_rules(scope, github)
+
+      assert render(view) =~
+               "/v2/x on api.pathed.example is allowed for github.example/acme/shop."
+    end
+
+    test "a stale popover is not sent", %{conn: conn, scope: scope} do
+      view = open(conn)
+      view |> element("##{dst("files.cdn.example")}-act") |> render_click()
+      view |> form("#rule-popover-form", %{"for" => "hive"}) |> render_change()
+
+      {:ok, rule} = Policy.deny(scope, nil, %{host: "files.cdn.example"})
+      {:ok, _} = Policy.lock(scope, rule)
+      view |> form("#rule-popover-form") |> render_submit()
+
+      assert [%{action: "deny", locked: true}] =
+               Enum.filter(Policy.list_rules(scope, nil), &(&1.host == "files.cdn.example"))
+
+      refute has_element?(view, "#rule-popover")
+      assert render(view) =~ "The policy changed; look at the row again."
+    end
+
+    test "the repository's select is not part of the radio's name", %{conn: conn} do
+      view = open(conn)
+      view |> element("##{dst("files.cdn.example")}-act") |> render_click()
+      assert has_element?(view, "#rule-popover-repository")
+      refute has_element?(view, "#rule-popover label select")
+    end
+  end
+
   describe "tenancy of the row's events" do
     test "a destination or a repository of another hive is not found", %{conn: conn, scope: scope} do
       other = scope_fixture()
@@ -282,6 +414,44 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
           ] do
         assert %{standing: :unnameable} = Rules.standing(row(host, "denied", nil), effective)
       end
+    end
+
+    test "the change of a credential named like a host says nothing of the host's rule", %{
+      effective: effective
+    } do
+      entry = Enum.find(effective.entries, &(&1.host == "registry.example"))
+      at = DateTime.utc_now()
+
+      credential = %{
+        subject: "registry.example",
+        action: "rule_added",
+        after: %{"rules" => [%{"kind" => "credential", "name" => "registry.example"}]},
+        version_after: 9,
+        changed_by: nil,
+        changed_by_id: nil,
+        inserted_at: at
+      }
+
+      host = %{
+        credential
+        | after: %{"rules" => [%{"kind" => "host", "host" => "registry.example"}]},
+          version_after: 4
+      }
+
+      assert Rules.change_for(entry, %{hive: [credential]}) == nil
+      assert %{version: 4} = Rules.change_for(entry, %{hive: [credential, host]})
+    end
+
+    test "past what can be read of the repositories' own rules, the baseline claims nothing", %{
+      effective: effective
+    } do
+      row = row("registry.example", "denied", nil)
+      assert %{standing: {:rule_added, :allow}} = Rules.standing(row, effective, :hive, [])
+      assert %{standing: :can_allow} = Rules.standing(row, effective, :hive, :unknown)
+      assert %{standing: :can_allow} = Rules.standing(row, effective, :hive, ["*.example"])
+
+      assert %{standing: {:rule_added, :allow}} =
+               Rules.standing(row, effective, :hive, ["x.example"])
     end
 
     test "a row allowed by a repository's own rule can be denied from the hive's page", %{
