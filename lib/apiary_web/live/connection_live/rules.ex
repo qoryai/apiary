@@ -14,6 +14,8 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   grammar before it is compared with a rule, and nothing here becomes an atom.
   """
 
+  use ApiaryWeb, :verified_routes
+
   alias Apiary.Policy
   alias Apiary.Policy.{Effective, Entry, Grammar}
 
@@ -22,22 +24,19 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   @doc "The page of one version of the baseline (`nil`) or of a repository."
   def version_path(repository_id, n, query \\ %{})
 
-  def version_path(nil, n, query), do: with_query("/hive/policy/versions/#{n}", query)
+  def version_path(nil, n, query), do: ~p"/hive/policy/versions/#{n}?#{query}"
 
   def version_path(repository_id, n, query),
-    do: with_query("/hive/policy/repositories/#{repository_id}/versions/#{n}", query)
+    do: ~p"/hive/policy/repositories/#{repository_id}/versions/#{n}?#{query}"
 
   @doc "The rule of `host` on the hive's policy page (`nil`) or on a repository's."
-  def rule_path(nil, host), do: with_query("/hive/policy", %{"rule" => host})
+  def rule_path(nil, host), do: ~p"/hive/policy?#{%{"rule" => host}}"
 
   def rule_path(repository_id, host),
-    do: with_query("/hive/policy/repositories/#{repository_id}", %{"rule" => host})
+    do: ~p"/hive/policy/repositories/#{repository_id}?#{%{"rule" => host}}"
 
   @doc "A repository's policy page."
-  def repository_path(repository_id), do: "/hive/policy/repositories/#{repository_id}"
-
-  defp with_query(path, query) when map_size(query) == 0, do: path
-  defp with_query(path, query), do: path <> "?" <> URI.encode_query(query)
+  def repository_path(repository_id), do: ~p"/hive/policy/repositories/#{repository_id}"
 
   ## Versions
 
