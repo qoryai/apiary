@@ -56,8 +56,9 @@ the SHA-256 of the body as sent:
 the events endpoint below, and the `run` URL the run configuration endpoint after it.
 
 The `run` section is there only for a hive whose policy somebody has made: a hive with at
-least one change in its policy's history, the first rule or the first change of mode. A hive
-nobody has given a policy is answered the document without `run`, and its machines run under
+least one change in its policy's history, the first rule or the first change of mode, in the
+hive or in any one repository: the first change anywhere starts serving every repository of
+the hive, the others the hive's baseline. A hive nobody has given a policy is answered the document without `run`, and its machines run under
 the policy of their own `runner.yaml`, as the contract has it for a server that names no
 section. So an upgrade, or a hive nobody has looked at, never replaces a machine's own
 enforcement with an empty policy. The document is therefore one of two, by hive, and so is
@@ -158,8 +159,12 @@ quoted), `X-Qory-Configuration` and `Cache-Control: no-store`:
 The body is the bytes that were stored when the policy was last changed; nothing is rendered
 for a request, so the digest is of exactly what is sent. It is the configuration of the
 key's hive for the repository the two labels name. A repository the hive has not seen, one
-with no rules of its own, and a request that names none (or one label of the two) get the
-hive's baseline. A hive whose policy nobody has made serves none: `404`
+with neither rules nor a mode of its own, and a request that names none (or one label of the
+two) get the hive's baseline. `egress.mode` is the hive's, unless the repository has set its
+own, `observe` or `enforce`; a repository that has not follows the hive, later changes of the
+hive's mode included, and a repository the hive has not seen gets the hive's. The rules
+resolve the same under either mode: a locked rule of the hive holds in a repository's
+document whatever its mode, and under `observe` a runner denies nothing. A hive whose policy nobody has made serves none: `404`
 `{"error":"not_found"}`, nothing rendered; discovery named it no `run` section, so a runner
 does not ask. The endpoint spends a token of the key's rate limit, the events endpoint's
 bucket: `429 {"error":"rate_limited"}` with `Retry-After` beyond it, which to a runner is no

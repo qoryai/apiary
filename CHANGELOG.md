@@ -116,7 +116,9 @@ a restart does before doing it (`docs/upgrading.md`).
 - For development, `mix apiary.demo` replays the synthetic recorded runs under `priv/demo/` into a hive through the receiver's own ingest, as new runs that end now (dev and test only), and prints each run's page. The records cover a session with two subagents, a failed run, a running one, one stopped at its time limit, one that only pinged and one without labels under an observing policy.
 
 - The security policy (`Apiary.Policy`): the hive has a mode, `observe` or `enforce`, and a
-  baseline of rules; a repository has rules of its own on top. A rule allows or denies a host
+  baseline of rules; a repository has rules of its own on top, and follows the hive's mode
+  unless an owner sets its own (so one repository is enforced while the hive still watches,
+  or the reverse). A locked rule of the hive holds in a repository whatever its mode. A rule allows or denies a host
   (a name or a `*.` suffix, on every path or held to a list of paths) or a credential of the
   machine's by name, and never holds a credential. The contract's policy document can only
   allow, so a deny is the apiary's own: it takes entries out of what is rendered, which is
@@ -228,15 +230,19 @@ a restart does before doing it (`docs/upgrading.md`).
   to the repository. All new and empty; each reverses by dropping its table.
 - `20260923000500`: `deliveries.run_configuration_digest`, a nullable column: what a batch
   said the run holds. Instant; reversible. Deliveries recorded before it keep null.
+- `20260923000600`: `repositories.egress_mode`, nullable, `observe` or `enforce` by a
+  `CHECK`; null, which every repository that exists gets, follows the hive's mode. Instant;
+  reversible.
 
 ### Upgrading
 
 - The upgrade changes no machine's policy. A hive serves a run configuration only once
   somebody has made its policy in the console, by the first rule or the first change of
   mode; until then discovery names no `run` section and every machine keeps the `egress`
-  section of its own `runner.yaml`, enforcement included. The first change is the moment
-  the hive takes over, for every machine under its keys and for the runs in flight, which
-  reload within a heartbeat: from then on the hive's policy is the policy and the machine's
+  section of its own `runner.yaml`, enforcement included. The first change anywhere, a
+  repository's rule or a repository's mode included, is the moment the hive takes over,
+  for every repository, every machine under its keys and the runs in flight, which reload
+  within a heartbeat: from then on the hive's policy is the policy and the machine's
   own is not merged with it. So before the first change, say in the hive everything the
   machines' own lists say (the mode is `observe` until an owner sets it, which denies
   nothing), or keep a machine on its own policy with `qory run --local`. It does not go back
