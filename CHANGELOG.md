@@ -76,6 +76,27 @@ a restart does before doing it (`docs/upgrading.md`).
   attempt in a sentence, and the runs that reached each destination; filtered by decision,
   repository, host and time range. With a repository chosen it is the per-repository view,
   which the runs list links to.
+- The run page, `/hive/runs/:run_id` (the id the runner prints): a header with everything
+  `run.started`, `run.exited` and the policy applied say, the labels and whether the run is
+  still heard from, and four tabs that are URLs. **Timeline**: the session read in sequence
+  order, a tool call's events paired into one item with its input and its response, one
+  lane per agent bracketed by the subagent's start and finish, a connection inside a call
+  only when exactly one call was open ("while", never "because"), the background tasks the
+  runtime last listed, and a sentence wherever the record has no session to show; it
+  follows a live run, inserting at the live end and counting elsewhere, holds a window of
+  at most 600 items however long the run, and has a keyboard path. **Terminal**: the raw
+  bytes in xterm.js, dark in both themes, tailing, with search, wrap, download and a stream
+  switch on pipes. **Connections**: one row per destination with the reason and the outcome
+  of the last attempt. **Details**: the command, the policy in force, the record, and
+  closing a run that went quiet, behind a confirmation.
+- `GET /hive/runs/:run_id/log?after=<sequence>&limit=<chunks>&stream=<name>`: the decoded
+  bytes of a run's log as `application/octet-stream`, chunked, with the last sequence sent
+  in `x-qory-log-through`; `download=1` sends the whole log as an attachment. Signed-in
+  members of the run's hive only; a run of another hive is not found. No log byte crosses
+  the LiveView socket.
+- xterm.js 6.0.0 with its fit and search add-ons is vendored under `assets/vendor/xterm`
+  (MIT; versions and checksums in `assets/vendor/README.md`) and built as its own bundle,
+  which only the terminal tab loads.
 - The sidebar has two sections, Hive (Overview, Runs, Connections) and Manage; Runs shows
   how many runs are alive now on every page of the hive. The overview links to the runs.
 - For development, `mix apiary.demo` replays the synthetic recorded runs under `priv/demo/` into a hive through the receiver's own ingest, as new runs that end now (dev and test only), and prints each run's page. The records cover a session with two subagents, a failed run, a running one, one stopped at its time limit, one that only pinged and one without labels under an observing policy.

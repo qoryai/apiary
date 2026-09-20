@@ -17,6 +17,7 @@ defmodule Apiary.Runs.Record do
   alias Apiary.Accounts.Scope
   alias Apiary.Organisations.{Hive, Organisation}
   alias Apiary.Repo
+  alias Apiary.Runs
   alias Apiary.Runs.{Connection, Event, LogChunk, Run}
   alias Apiary.Runs.Record.Timeline
 
@@ -35,12 +36,11 @@ defmodule Apiary.Runs.Record do
   `:error` for a subject the hive has not seen and for anything that is not a UUID.
   """
   def fetch_run(%Scope{} = scope, run_id) do
-    with {:ok, run_id} <- cast_uuid(run_id),
-         %Run{} = run <- Repo.one(from r in runs(scope), where: r.run_id == ^run_id) do
-      {:ok, Repo.preload(run, :access_key)}
-    else
-      _ -> :error
+    with {:ok, run_id} <- cast_uuid(run_id) do
+      {:ok, scope |> Runs.get_run_by_run_id!(run_id) |> Repo.preload(:access_key)}
     end
+  rescue
+    Ecto.NoResultsError -> :error
   end
 
   # `Ecto.UUID.cast/1` takes sixteen raw bytes too; a URL never means those.
