@@ -243,7 +243,8 @@ defmodule ApiaryWeb.UserAuth do
          :current_scope,
          Organisations.load_scope(scope, session["organisation_id"])
        )
-       |> Phoenix.Component.assign(:memberships, Organisations.list_memberships(scope.user))}
+       |> Phoenix.Component.assign(:memberships, Organisations.list_memberships(scope.user))
+       |> follow_membership_changes()}
     else
       {:cont, Phoenix.Component.assign(socket, :memberships, [])}
     end
@@ -271,6 +272,49 @@ defmodule ApiaryWeb.UserAuth do
         |> Phoenix.LiveView.redirect(to: ~p"/users/log-in")
 
       {:halt, socket}
+    end
+  end
+
+  # An open page follows a change of the user's own membership: a new level is
+  # loaded into the scope, a membership that is gone sends the page to /hive (and
+  # from there to wherever the user still belongs). The contexts authorize on the
+  # database whatever the page holds; this keeps what the page shows honest.
+  defp follow_membership_changes(socket) do
+    if Phoenix.LiveView.connected?(socket) do
+      Phoenix.PubSub.subscribe(
+        Apiary.PubSub,
+        Organisations.membership_topic(socket.assigns.current_scope.user.id)
+      )
+    end
+
+    Phoenix.LiveView.attach_hook(socket, :membership_changed, :handle_info, fn
+      {:membership_changed, _change}, socket -> {:halt, reload_membership(socket)}
+      _message, socket -> {:cont, socket}
+    end)
+  end
+
+  defp reload_membership(socket) do
+    scope = socket.assigns.current_scope
+    organisation_id = scope.organisation && scope.organisation.id
+
+    reloaded =
+      Organisations.load_scope(
+        %{scope | organisation: nil, hive: nil, membership: nil},
+        organisation_id
+      )
+
+    if organisation_id && reloaded.organisation && reloaded.organisation.id == organisation_id do
+      socket
+      |> Phoenix.Component.assign(:current_scope, reloaded)
+      |> Phoenix.Component.assign(:memberships, Organisations.list_memberships(scope.user))
+      |> then(fn socket ->
+        # The pages that show owner-only controls keep the answer in `owner?`.
+        if is_map_key(socket.assigns, :owner?),
+          do: Phoenix.Component.assign(socket, :owner?, Organisations.owner?(reloaded)),
+          else: socket
+      end)
+    else
+      Phoenix.LiveView.redirect(socket, to: ~p"/hive")
     end
   end
 

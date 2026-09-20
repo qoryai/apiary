@@ -57,13 +57,22 @@ configuration are later milestones. A runner that fetches them now gets the appl
 ## Failure
 
 Every failure is `401` with the body `{"error":"unauthorized"}` and nothing else, whether
-the cause is a missing header, an empty header, a key id that does not exist, a revoked key,
+the cause is a missing header, an empty header, a key id that is not of the exact form
+`ak_` and 16 lowercase Crockford base32 characters (including one that is not valid UTF-8;
+such a value is refused before any lookup), a key id that does not exist, a revoked key,
 a timestamp that is not an integer, a timestamp outside the window, or a signature that does
 not match. The body never says which. Nothing about the request's headers is logged.
 
 On success the key records the time, the runner version from `User-Agent` (when it is of the
 form `qory-runner/<version>`) and the contract version from `X-Qory-Contract-Version` (when
-present and an integer).
+present and an integer). What is recorded never decides the answer:
+
+- the runner version is kept to its first 80 characters; a `User-Agent` that is not valid
+  UTF-8, or a version with non-printable characters, records no version;
+- a contract version outside `0..32767` records no version;
+- if recording the use fails, the request still succeeds.
+
+No header value makes the endpoint answer `500`.
 
 ## Assumed
 
@@ -78,7 +87,10 @@ The contract has not fixed these; Apiary chose, and the runner should match:
   only when non-empty, so `/path` and `/path?` sign differently.
 - A header sent twice fails; the first value is not taken and the request is refused.
 - `User-Agent` that is not `qory-runner/<version>` is accepted; only the recorded runner
-  version is left empty.
+  version is left empty. The same holds for a version that is not printable text, and a
+  version longer than 80 characters is recorded truncated.
+- `X-Qory-Contract-Version` is a decimal integer in `0..32767`; any other value is accepted
+  and ignored, it does not fail the request.
 - The discovery path is `/.well-known/qory-configuration`, without a trailing slash, and
   answers JSON only (no content negotiation on `Accept`).
 - The public base URL of the document comes from the application's own URL configuration,

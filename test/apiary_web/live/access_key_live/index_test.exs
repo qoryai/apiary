@@ -116,6 +116,45 @@ defmodule ApiaryWeb.AccessKeyLive.IndexTest do
       assert {:error, {_, %{to: "/hive/keys"}}} = live(conn, ~p"/hive/keys/#{key.id}/rotate")
     end
 
+    test "M1: a page whose membership is gone is refused and sent to /hive", %{
+      conn: conn,
+      scope: scope
+    } do
+      %{access_key: key} = access_key_fixture(scope, label: "runner-c")
+      {:ok, lv, _html} = live(conn, ~p"/hive/keys/#{key.id}/revoke")
+
+      # Removed behind the page's back: no announcement reaches it.
+      Apiary.Repo.delete!(scope.membership)
+
+      lv |> element("#revoke-key button", "Revoke key") |> render_click()
+      {path, flash} = assert_redirect(lv)
+      assert path == ~p"/hive"
+      assert flash["error"] =~ "no longer a member"
+      assert {:ok, _active} = AccessKeys.fetch_for_verification(key.key_id)
+    end
+
+    test "M1: a page whose membership is gone cannot create a key", %{conn: conn, scope: scope} do
+      {:ok, lv, _html} = live(conn, ~p"/hive/keys/new")
+      Apiary.Repo.delete!(scope.membership)
+
+      lv |> form("#access-key-form", access_key: %{label: "after"}) |> render_submit()
+      assert_redirect(lv, ~p"/hive")
+      assert Apiary.Repo.all(AccessKey) == []
+    end
+
+    test "H2: the page holds no secret of a listed key", %{conn: conn, scope: scope} do
+      %{access_key: key, secret: secret} = access_key_fixture(scope, label: "runner-d")
+      {:ok, _, second_secret} = AccessKeys.rotate_access_key(scope, key)
+
+      {:ok, lv, html} = live(conn, ~p"/hive/keys")
+      assert html =~ "Rotating"
+
+      state = :sys.get_state(lv.pid)
+      dump = inspect(state, limit: :infinity, printable_limit: :infinity, structs: false)
+      refute dump =~ secret
+      refute dump =~ second_secret
+    end
+
     test "cannot reach a key of another hive", %{conn: conn} do
       other = Apiary.OrganisationsFixtures.scope_fixture()
       %{access_key: key} = access_key_fixture(other, label: "elsewhere")

@@ -7,6 +7,11 @@ defmodule ApiaryWeb.Contract.SignedRequest do
   its query and the timestamp (`Apiary.Contract.Signature`). The timestamp must
   be within five minutes of the server clock. Every failure, whatever its cause,
   is a 401 with the same body. Nothing in this module logs a header value.
+
+  No input makes this plug raise. The key id is checked for its exact shape
+  before it reaches the database; what is recorded about the caller (runner
+  version, contract version) is reduced to what the columns hold, and dropped
+  when it does not fit; a failure to record the use does not fail the request.
   """
 
   import Plug.Conn
@@ -16,12 +21,19 @@ defmodule ApiaryWeb.Contract.SignedRequest do
   alias Apiary.Contract.Signature
 
   @window_seconds 300
+  @key_id_format ~r/^ak_[0-9a-hjkmnp-tv-z]{16}$/
+  @runner_version_max 80
+  # String.printable?/1 lets escape sequences through; a version has no control characters.
+  @printable ~r/\A[^[:cntrl:]]+\z/u
+  # The column is a Postgres integer; a contract version is a small number.
+  @contract_version_range 0..32_767
   @unauthorized %{error: "unauthorized"}
 
   def init(opts), do: opts
 
   def call(conn, _opts) do
     with {:ok, key_id} <- header(conn, "x-qory-access-key"),
+         true <- valid_key_id?(key_id),
          {:ok, timestamp} <- header(conn, "x-qory-timestamp"),
          {:ok, signature} <- header(conn, "x-qory-signature-256"),
          {:ok, seconds} <- parse_integer(timestamp),
@@ -29,8 +41,7 @@ defmodule ApiaryWeb.Contract.SignedRequest do
          {:ok, %AccessKey{} = access_key} <- AccessKeys.fetch_for_verification(key_id),
          canonical = Signature.canonical_string(conn.method, path_with_query(conn), timestamp),
          true <- Signature.verify(AccessKey.secrets(access_key), canonical, signature) do
-      {:ok, access_key} = AccessKeys.touch(access_key, touch_attrs(conn))
-      assign(conn, :access_key, access_key)
+      assign(conn, :access_key, touch(access_key, conn))
     else
       _ -> unauthorized(conn)
     end
@@ -41,6 +52,19 @@ defmodule ApiaryWeb.Contract.SignedRequest do
     |> put_status(:unauthorized)
     |> Phoenix.Controller.json(@unauthorized)
     |> halt()
+  end
+
+  defp valid_key_id?(key_id), do: String.valid?(key_id) and Regex.match?(@key_id_format, key_id)
+
+  # Recording the use is bookkeeping: the request is already verified, and an
+  # error here (a lost connection, a value the row refuses) leaves it a success.
+  defp touch(access_key, conn) do
+    case AccessKeys.touch(access_key, touch_attrs(conn)) do
+      {:ok, touched} -> touched
+      {:error, _changeset} -> access_key
+    end
+  rescue
+    _exception -> access_key
   end
 
   defp header(conn, name) do
@@ -77,8 +101,10 @@ defmodule ApiaryWeb.Contract.SignedRequest do
 
   defp runner_version(conn) do
     with {:ok, user_agent} <- header(conn, "user-agent"),
-         [_, version] <- Regex.run(~r{^qory-runner/(\S+)}, user_agent) do
-      version
+         true <- String.valid?(user_agent),
+         [_, version] <- Regex.run(~r{^qory-runner/(\S+)}, user_agent),
+         true <- Regex.match?(@printable, version) do
+      String.slice(version, 0, @runner_version_max)
     else
       _ -> nil
     end
@@ -86,7 +112,8 @@ defmodule ApiaryWeb.Contract.SignedRequest do
 
   defp contract_version(conn) do
     with {:ok, value} <- header(conn, "x-qory-contract-version"),
-         {:ok, version} <- parse_integer(value) do
+         {:ok, version} <- parse_integer(value),
+         true <- version in @contract_version_range do
       version
     else
       _ -> nil

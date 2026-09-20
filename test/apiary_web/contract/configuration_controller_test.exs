@@ -87,6 +87,73 @@ defmodule ApiaryWeb.Contract.ConfigurationControllerTest do
     assert touched.last_contract_version == nil
   end
 
+  test "M2: a key id that is not valid UTF-8 is 401, not a crash", %{conn: conn, secret: secret} do
+    for key_id <- [
+          "ak_" <> <<0xFF, 0xFE>> <> "00000000000000",
+          <<0xC3, 0x28>>,
+          "ak_0000000000000000\0",
+          "ak_000000000000000",
+          "AK_0000000000000000",
+          "ak_000000000000000i",
+          String.duplicate("a", 10_000)
+        ] do
+      conn = signed_get(conn, key_id, secret)
+      assert json_response(conn, 401) == @unauthorized
+    end
+  end
+
+  test "M2: an over-long User-Agent succeeds and is recorded truncated", %{
+    conn: conn,
+    key: key,
+    secret: secret,
+    scope: scope
+  } do
+    long = "qory-runner/" <> String.duplicate("9", 5_000)
+
+    assert %{"version" => 1} =
+             conn |> signed_get(key.key_id, secret, user_agent: long) |> json_response(200)
+
+    touched = AccessKeys.get_access_key!(scope, key.id)
+    assert touched.last_used_at
+    assert touched.last_runner_version == String.duplicate("9", 80)
+  end
+
+  test "M2: a User-Agent that is not printable text succeeds and records no version", %{
+    conn: conn,
+    key: key,
+    secret: secret,
+    scope: scope
+  } do
+    for user_agent <- [
+          "qory-runner/" <> <<0xFF, 0xFE>>,
+          "qory-runner/1.0\e[31m",
+          "qory-runner/1\0"
+        ] do
+      conn = signed_get(conn, key.key_id, secret, user_agent: user_agent)
+      assert %{"version" => 1} = json_response(conn, 200)
+      assert AccessKeys.get_access_key!(scope, key.id).last_runner_version == nil
+    end
+  end
+
+  test "M2: an oversized contract version succeeds and is not recorded", %{
+    conn: conn,
+    key: key,
+    secret: secret,
+    scope: scope
+  } do
+    for version <- ["99999999999999999999", "2147483648", "32768", "-1"] do
+      conn = signed_get(conn, key.key_id, secret, contract_version: version)
+      assert %{"version" => 1} = json_response(conn, 200)
+
+      touched = AccessKeys.get_access_key!(scope, key.id)
+      assert touched.last_used_at
+      assert touched.last_contract_version == nil
+    end
+
+    signed_get(conn, key.key_id, secret, contract_version: 32_767)
+    assert AccessKeys.get_access_key!(scope, key.id).last_contract_version == 32_767
+  end
+
   test "the secondary secret verifies during a rotation", %{
     conn: conn,
     key: key,

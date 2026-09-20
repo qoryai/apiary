@@ -40,8 +40,13 @@ defmodule Apiary.AccessKeysTest do
       assert key.key_id =~ ~r/^ak_[0-9abcdefghjkmnpqrstvwxyz]{16}$/
       assert byte_size(secret) == 43
       assert {:ok, <<_::binary-size(32)>>} = Base.url_decode64(secret, padding: false)
-      assert key.secret_primary == secret
+      # The returned key never carries a secret; the stored one is the secret returned.
+      assert key.secret_primary == nil
       assert key.secret_secondary == nil
+
+      assert {:ok, %AccessKey{secret_primary: ^secret, secret_secondary: nil}} =
+               AccessKeys.fetch_for_verification(key.key_id)
+
       assert key.created_by_id == user.id
       assert key.hive_id == scope.hive.id
       assert AccessKey.status(key) == :active
@@ -59,6 +64,11 @@ defmodule Apiary.AccessKeysTest do
                AccessKeys.create_access_key(scope, %{label: String.duplicate("x", 81)})
 
       assert %{label: [_]} = errors_on(changeset)
+
+      for label <- ["line\nbreak", "bell\a", "esc\e[31m", "nul\0"] do
+        assert {:error, changeset} = AccessKeys.create_access_key(scope, %{label: label})
+        assert %{label: ["must not contain control characters"]} = errors_on(changeset)
+      end
 
       %{access_key: key} = access_key_fixture(scope, %{label: "dup"})
       assert {:error, changeset} = AccessKeys.create_access_key(scope, %{label: "dup"})
@@ -83,6 +93,38 @@ defmodule Apiary.AccessKeysTest do
 
       assert [second.id, first.id, third.id] ==
                scope |> AccessKeys.list_access_keys() |> Enum.map(& &1.id)
+    end
+
+    test "H2: listed and fetched keys carry no secrets, only whether one is rotating" do
+      %{scope: scope} = sign_up_fixture()
+      %{access_key: plain} = access_key_fixture(scope)
+      %{access_key: rotated} = access_key_fixture(scope)
+      {:ok, _, _} = AccessKeys.rotate_access_key(scope, rotated)
+
+      listed = AccessKeys.list_access_keys(scope)
+      assert length(listed) == 2
+
+      for key <- [AccessKeys.get_access_key!(scope, rotated.id) | listed] do
+        assert key.secret_primary == nil
+        assert key.secret_secondary == nil
+        assert key.key_id
+        assert key.label
+      end
+
+      assert %{rotating: false} = plain_listed = Enum.find(listed, &(&1.id == plain.id))
+      assert %{rotating: true} = rotated_listed = Enum.find(listed, &(&1.id == rotated.id))
+      assert AccessKey.status(plain_listed) == :active
+      assert AccessKey.status(rotated_listed) == :rotating
+      assert AccessKey.status(AccessKeys.get_access_key!(scope, rotated.id)) == :rotating
+
+      # The mutations work from a listed key: they load the secrets themselves.
+      assert {:ok, _key, _secret} = AccessKeys.rotate_access_key(scope, plain_listed)
+    end
+
+    test "get_access_key!/2 is scoped to the hive" do
+      %{scope: scope} = sign_up_fixture()
+      %{scope: other_scope} = sign_up_fixture()
+      %{access_key: first} = access_key_fixture(scope)
 
       assert AccessKeys.get_access_key!(scope, first.id).id == first.id
 
@@ -100,12 +142,15 @@ defmodule Apiary.AccessKeysTest do
 
       assert {:ok, key, new_secret} = AccessKeys.rotate_access_key(scope, key)
       assert new_secret != old_secret
-      assert key.secret_primary == new_secret
-      assert key.secret_secondary == old_secret
+      assert key.secret_primary == nil
+      assert key.secret_secondary == nil
+      assert key.rotating
       assert key.rotated_at
       assert AccessKey.status(key) == :rotating
 
       {:ok, loaded} = AccessKeys.fetch_for_verification(key.key_id)
+      assert loaded.secret_primary == new_secret
+      assert loaded.secret_secondary == old_secret
 
       assert Signature.verify(
                AccessKey.secrets(loaded),
@@ -121,8 +166,8 @@ defmodule Apiary.AccessKeysTest do
 
       # A second rotation drops the oldest secret.
       assert {:ok, key, third_secret} = AccessKeys.rotate_access_key(scope, key)
-      assert key.secret_secondary == new_secret
       {:ok, loaded} = AccessKeys.fetch_for_verification(key.key_id)
+      assert loaded.secret_secondary == new_secret
 
       refute Signature.verify(
                AccessKey.secrets(loaded),
@@ -131,7 +176,7 @@ defmodule Apiary.AccessKeysTest do
              )
 
       assert {:ok, key} = AccessKeys.retire_previous_secret(scope, key)
-      assert key.secret_secondary == nil
+      refute key.rotating
       assert AccessKey.status(key) == :active
       {:ok, loaded} = AccessKeys.fetch_for_verification(key.key_id)
 
@@ -152,6 +197,51 @@ defmodule Apiary.AccessKeysTest do
       assert AccessKey.status(key) == :revoked
       assert :error = AccessKeys.fetch_for_verification(key.key_id)
       assert {:error, :revoked} = AccessKeys.rotate_access_key(scope, key)
+    end
+
+    test "H1: a stale struct rotates from the current row and cannot resurrect an old secret" do
+      %{scope: scope} = sign_up_fixture()
+      %{access_key: stale, secret: first_secret} = access_key_fixture(scope)
+      canonical = Signature.canonical_string("get", "/x", 1)
+
+      assert {:ok, _key, second_secret} = AccessKeys.rotate_access_key(scope, stale)
+      # The same struct again, as a second browser tab would send it.
+      assert {:ok, _key, third_secret} = AccessKeys.rotate_access_key(scope, stale)
+
+      {:ok, loaded} = AccessKeys.fetch_for_verification(stale.key_id)
+      assert loaded.secret_primary == third_secret
+      assert loaded.secret_secondary == second_secret
+
+      refute Signature.verify(
+               AccessKey.secrets(loaded),
+               canonical,
+               Signature.sign(first_secret, canonical)
+             )
+
+      # A struct that still believes the key is active does not un-revoke it.
+      assert {:ok, revoked} = AccessKeys.revoke_access_key(scope, stale)
+      assert {:error, :revoked} = AccessKeys.rotate_access_key(scope, stale)
+      assert {:ok, again} = AccessKeys.revoke_access_key(scope, stale)
+      assert again.revoked_at == revoked.revoked_at
+      assert {:ok, retired} = AccessKeys.retire_previous_secret(scope, stale)
+      assert AccessKey.status(retired) == :revoked
+      assert :error = AccessKeys.fetch_for_verification(stale.key_id)
+    end
+
+    test "M1: a scope whose membership is gone cannot create, rotate, retire or revoke" do
+      %{scope: scope} = sign_up_fixture()
+      %{scope: member_scope, membership: membership} = member_fixture(scope, :member)
+      %{access_key: key} = access_key_fixture(member_scope)
+
+      assert {:ok, _} = Apiary.Organisations.remove_member(scope, membership.id)
+
+      assert {:error, :unauthorized} = AccessKeys.create_access_key(member_scope, %{label: "x"})
+      assert {:error, :unauthorized} = AccessKeys.rotate_access_key(member_scope, key)
+      assert {:error, :unauthorized} = AccessKeys.retire_previous_secret(member_scope, key)
+      assert {:error, :unauthorized} = AccessKeys.revoke_access_key(member_scope, key)
+
+      assert {:ok, %AccessKey{revoked_at: nil, rotated_at: nil}} =
+               AccessKeys.fetch_for_verification(key.key_id)
     end
 
     test "fetch_for_verification/1 is :error for unknown ids" do

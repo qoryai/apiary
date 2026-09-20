@@ -3,7 +3,13 @@ defmodule Apiary.Organisations do
   Organisations, their hives, memberships and invitations.
 
   Every function that acts on behalf of a caller takes an `Apiary.Accounts.Scope`
-  loaded with `load_scope/2`; authorization is the scope's membership level.
+  loaded with `load_scope/2`. The scope says who is calling; authorization never
+  trusts the membership it carries, which may be as old as the LiveView that
+  holds it. Every mutation reads the caller's membership again and decides on
+  that row.
+
+  A level change or a removal is announced on the `Apiary.PubSub` topic
+  `membership_topic(user_id)` so the user's open pages reload their scope.
   """
 
   import Ecto.Query, warn: false
@@ -13,6 +19,7 @@ defmodule Apiary.Organisations do
   alias Apiary.Organisations.{Hive, Invitation, Membership, Organisation}
 
   @default_hive_name "Main"
+  @max_pending_invitations 50
 
   ## Scope
 
@@ -67,12 +74,17 @@ defmodule Apiary.Organisations do
   With a valid pending token the invitation is accepted instead: no organisation
   is created and the membership is at the invitation's level. An invalid or
   expired token behaves as no token.
+
+  The invitation may also be given as the struct `get_invitation_by_token/1`
+  returned earlier. Either way it is claimed inside the transaction: when someone
+  else accepted it in the meantime, nothing is created and the changeset carries
+  an error on `:email`.
   """
-  def sign_up_user(attrs, invitation_token \\ nil) do
+  def sign_up_user(attrs, invitation_or_token \\ nil) do
     user_changeset = User.email_changeset(%User{}, attrs)
 
     multi =
-      case invitation_token && get_invitation_by_token(invitation_token) do
+      case pending_invitation(invitation_or_token) do
         %Invitation{} = invitation -> invited_sign_up_multi(user_changeset, invitation)
         _ -> fresh_sign_up_multi(user_changeset)
       end
@@ -106,10 +118,19 @@ defmodule Apiary.Organisations do
     |> Ecto.Multi.insert(:user, user_changeset)
     |> Ecto.Multi.put(:organisation, invitation.organisation)
     |> Ecto.Multi.put(:hive, invitation.hive)
+    |> Ecto.Multi.run(:invitation, fn _repo, _changes ->
+      # Lost to a concurrent accept: an error on the form rather than a second
+      # membership from one invitation.
+      with {:error, :invalid} <- claim_invitation(invitation) do
+        {:error,
+         user_changeset
+         |> Ecto.Changeset.add_error(:email, "was invited, but the invitation is no longer valid")
+         |> Map.put(:action, :insert)}
+      end
+    end)
     |> Ecto.Multi.insert(:membership, fn %{user: user} ->
       membership_changeset(invitation.organisation, invitation.hive, user, invitation.level)
     end)
-    |> Ecto.Multi.update(:invitation, accept_changeset(invitation))
   end
 
   defp membership_changeset(%Organisation{} = organisation, %Hive{} = hive, %User{} = user, level) do
@@ -132,10 +153,8 @@ defmodule Apiary.Organisations do
 
   @doc "Renames the scope's organisation. Owners only."
   def update_organisation(%Scope{organisation: %Organisation{} = organisation} = scope, attrs) do
-    if owner?(scope) do
+    with :ok <- authorize_owner(scope) do
       organisation |> Organisation.changeset(attrs) |> Repo.update()
-    else
-      {:error, :unauthorized}
     end
   end
 
@@ -145,10 +164,8 @@ defmodule Apiary.Organisations do
 
   @doc "Renames the scope's hive. Owners only."
   def update_hive(%Scope{hive: %Hive{} = hive} = scope, attrs) do
-    if owner?(scope) do
+    with :ok <- authorize_owner(scope) do
       hive |> Hive.changeset(attrs) |> Repo.update()
-    else
-      {:error, :unauthorized}
     end
   end
 
@@ -177,14 +194,17 @@ defmodule Apiary.Organisations do
   def set_member_level(%Scope{} = scope, membership_id, level) do
     level = normalise_level(level)
 
-    with :ok <- authorize_owner(scope),
-         true <- level in Membership.levels() || {:error, :not_found} do
-      Repo.transact(fn ->
-        with {:ok, membership} <- lock_member(scope, membership_id),
+    with true <- level in Membership.levels() || {:error, :not_found} do
+      fn ->
+        with :ok <- lock_owners(scope),
+             :ok <- authorize_owner(scope),
+             {:ok, membership} <- get_member(scope, membership_id),
              :ok <- ensure_not_last_owner(membership, level) do
           membership |> Membership.changeset(%{level: level}) |> Repo.update()
         end
-      end)
+      end
+      |> Repo.transact()
+      |> broadcast_membership_change()
     end
   end
 
@@ -193,30 +213,65 @@ defmodule Apiary.Organisations do
   remove themselves when another owner remains.
   """
   def remove_member(%Scope{} = scope, membership_id) do
-    with :ok <- authorize_owner(scope) do
-      Repo.transact(fn ->
-        with {:ok, membership} <- lock_member(scope, membership_id),
-             :ok <- ensure_not_last_owner(membership, :removed) do
-          Repo.delete(membership)
-        end
-      end)
+    fn ->
+      with :ok <- lock_owners(scope),
+           :ok <- authorize_owner(scope),
+           {:ok, membership} <- get_member(scope, membership_id),
+           :ok <- ensure_not_last_owner(membership, :removed) do
+        Repo.delete(membership)
+      end
     end
+    |> Repo.transact()
+    |> broadcast_membership_change()
   end
 
-  defp lock_member(%Scope{organisation: %Organisation{id: organisation_id}}, membership_id) do
-    # Owners of the organisation are locked so two concurrent changes cannot
-    # both see a second owner and remove them.
+  # Owners of the organisation are locked so two concurrent changes cannot both
+  # see a second owner and remove them. The caller is authorized after the lock,
+  # so a concurrent demotion of the caller is seen too.
+  defp lock_owners(%Scope{organisation: %Organisation{id: organisation_id}}) do
     Repo.all(
       from m in Membership,
         where: m.organisation_id == ^organisation_id and m.level == :owner,
+        select: m.id,
         lock: "FOR UPDATE"
     )
 
-    case Repo.get_by(Membership, id: membership_id, organisation_id: organisation_id) do
-      %Membership{} = membership -> {:ok, membership}
-      nil -> {:error, :not_found}
+    :ok
+  end
+
+  defp lock_owners(_scope), do: :ok
+
+  defp get_member(
+         %Scope{organisation: %Organisation{id: organisation_id}, hive: %Hive{id: hive_id}},
+         membership_id
+       ) do
+    with {:ok, membership_id} <- Ecto.UUID.cast(membership_id),
+         %Membership{} = membership <-
+           Repo.get_by(Membership,
+             id: membership_id,
+             organisation_id: organisation_id,
+             hive_id: hive_id
+           ) do
+      {:ok, membership}
+    else
+      _ -> {:error, :not_found}
     end
   end
+
+  @doc "The PubSub topic that announces changes to a user's memberships."
+  def membership_topic(user_id), do: "membership:#{user_id}"
+
+  defp broadcast_membership_change({:ok, %Membership{} = membership} = result) do
+    Phoenix.PubSub.broadcast(
+      Apiary.PubSub,
+      membership_topic(membership.user_id),
+      {:membership_changed, %{organisation_id: membership.organisation_id}}
+    )
+
+    result
+  end
+
+  defp broadcast_membership_change(result), do: result
 
   defp ensure_not_last_owner(%Membership{level: :owner} = membership, new_level)
        when new_level != :owner do
@@ -279,6 +334,7 @@ defmodule Apiary.Organisations do
         }
         |> Invitation.changeset(attrs)
         |> refuse_existing_member(organisation)
+        |> refuse_over_pending_cap(organisation)
 
       result =
         Repo.transact(fn ->
@@ -295,10 +351,48 @@ defmodule Apiary.Organisations do
         end)
 
       with {:ok, invitation} <- result do
-        UserNotifier.deliver_invitation(invitation.email, inviter, organisation, url_fun.(token))
-        {:ok, invitation}
+        case deliver_invitation(invitation, inviter, organisation, url_fun.(token)) do
+          :ok ->
+            {:ok, invitation}
+
+          :error ->
+            # An invitation nobody received must not occupy the pending slot.
+            Repo.delete(invitation, allow_stale: true)
+            {:error, :delivery_failed}
+        end
       end
     end
+  end
+
+  defp deliver_invitation(%Invitation{email: email}, inviter, organisation, url) do
+    case UserNotifier.deliver_invitation(email, inviter, organisation, url) do
+      {:ok, _email} -> :ok
+      _error -> :error
+    end
+  rescue
+    # The reason may quote the message, which carries the link: not logged.
+    _exception -> :error
+  end
+
+  defp refuse_over_pending_cap(%Ecto.Changeset{valid?: false} = changeset, _organisation),
+    do: changeset
+
+  defp refuse_over_pending_cap(changeset, %Organisation{id: organisation_id}) do
+    now = DateTime.utc_now()
+
+    pending =
+      Repo.aggregate(
+        from(i in Invitation,
+          where:
+            i.organisation_id == ^organisation_id and is_nil(i.accepted_at) and
+              i.expires_at > ^now
+        ),
+        :count
+      )
+
+    if pending >= @max_pending_invitations,
+      do: Ecto.Changeset.add_error(changeset, :email, "too many pending invitations"),
+      else: changeset
   end
 
   defp refuse_existing_member(changeset, %Organisation{id: organisation_id}) do
@@ -373,12 +467,20 @@ defmodule Apiary.Organisations do
 
   def get_invitation_by_token(_token), do: nil
 
+  defp pending_invitation(%Invitation{} = invitation),
+    do: Repo.preload(invitation, [:organisation, :hive])
+
+  defp pending_invitation(token), do: get_invitation_by_token(token)
+
   @doc """
   Accepts an invitation on behalf of a signed-in user: a membership at the
-  invitation's level, and the invitation marked accepted.
+  invitation's level, and the invitation marked accepted. Takes the URL token or
+  the invitation `get_invitation_by_token/1` returned earlier; the invitation is
+  claimed inside the transaction, so it makes one membership however many
+  callers hold it: the others get `{:error, :invalid}`.
   """
-  def accept_invitation(%User{} = user, token) do
-    case get_invitation_by_token(token) do
+  def accept_invitation(%User{} = user, invitation_or_token) do
+    case pending_invitation(invitation_or_token) do
       nil ->
         {:error, :invalid}
 
@@ -390,34 +492,73 @@ defmodule Apiary.Organisations do
              ) do
             {:error, :already_member}
           else
-            with {:ok, membership} <-
-                   Repo.insert(
-                     membership_changeset(
-                       invitation.organisation,
-                       invitation.hive,
-                       user,
-                       invitation.level
-                     )
-                   ),
-                 {:ok, _invitation} <- Repo.update(accept_changeset(invitation)) do
-              {:ok, membership}
+            with {:ok, _invitation} <- claim_invitation(invitation) do
+              Repo.insert(
+                membership_changeset(
+                  invitation.organisation,
+                  invitation.hive,
+                  user,
+                  invitation.level
+                )
+              )
             end
           end
         end)
     end
   end
 
-  defp accept_changeset(%Invitation{} = invitation) do
-    Ecto.Changeset.change(invitation, accepted_at: DateTime.utc_now())
+  # One invitation makes one membership: the row is claimed with a conditional
+  # update, so of two concurrent accepts exactly one sees a count of 1. The
+  # other waits on the row lock and then matches nothing.
+  defp claim_invitation(%Invitation{id: id} = invitation) do
+    now = DateTime.utc_now()
+
+    claim =
+      from i in Invitation,
+        where: i.id == ^id and is_nil(i.accepted_at) and i.expires_at > ^now
+
+    case Repo.update_all(claim, set: [accepted_at: now, updated_at: now]) do
+      {1, _} -> {:ok, %{invitation | accepted_at: now}}
+      {0, _} -> {:error, :invalid}
+    end
   end
 
   ## Authorization
 
-  @doc "Whether the scope's membership is an owner membership."
+  @doc """
+  Whether the scope's membership is an owner membership, as loaded. For what a
+  page shows; a mutation authorizes on `fetch_membership/1`.
+  """
   def owner?(%Scope{membership: %Membership{level: :owner}}), do: true
   def owner?(_scope), do: false
 
+  @doc """
+  The caller's membership as it is in the database now, or
+  `{:error, :unauthorized}` when it is gone or the scope carries none.
+  """
+  def fetch_membership(%Scope{
+        user: %User{id: user_id},
+        organisation: %Organisation{id: organisation_id},
+        hive: %Hive{id: hive_id},
+        membership: %Membership{id: membership_id}
+      }) do
+    case Repo.get_by(Membership,
+           id: membership_id,
+           user_id: user_id,
+           organisation_id: organisation_id,
+           hive_id: hive_id
+         ) do
+      %Membership{} = membership -> {:ok, membership}
+      nil -> {:error, :unauthorized}
+    end
+  end
+
+  def fetch_membership(_scope), do: {:error, :unauthorized}
+
   defp authorize_owner(scope) do
-    if owner?(scope), do: :ok, else: {:error, :unauthorized}
+    case fetch_membership(scope) do
+      {:ok, %Membership{level: :owner}} -> :ok
+      _ -> {:error, :unauthorized}
+    end
   end
 end

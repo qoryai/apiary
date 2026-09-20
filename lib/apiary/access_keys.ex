@@ -12,29 +12,45 @@ defmodule Apiary.AccessKeys do
   alias Apiary.Repo
   alias Apiary.Accounts.Scope
   alias Apiary.AccessKeys.AccessKey
-  alias Apiary.Organisations.{Hive, Membership, Organisation}
+  alias Apiary.Organisations
+  alias Apiary.Organisations.{Hive, Organisation}
 
   defguardp key_in_scope(scope, access_key)
             when access_key.organisation_id == scope.organisation.id and
                    access_key.hive_id == scope.hive.id
 
-  @doc "The hive's keys: active first, then revoked; newest first within each."
+  @doc """
+  The hive's keys: active first, then revoked; newest first within each. The
+  secret columns are not loaded; `rotating` says whether a previous secret exists.
+  """
   def list_access_keys(%Scope{
         organisation: %Organisation{id: organisation_id},
         hive: %Hive{id: hive_id}
       }) do
     Repo.all(
-      from k in AccessKey,
+      from k in without_secrets_query(),
         where: k.organisation_id == ^organisation_id and k.hive_id == ^hive_id,
         order_by: [asc: not is_nil(k.revoked_at), desc: k.inserted_at, desc: k.id]
     )
   end
 
+  @doc "One key of the scope's hive, without its secrets (see `list_access_keys/1`)."
   def get_access_key!(
         %Scope{organisation: %Organisation{id: organisation_id}, hive: %Hive{id: hive_id}},
         id
       ) do
-    Repo.get_by!(AccessKey, id: id, organisation_id: organisation_id, hive_id: hive_id)
+    Repo.one!(
+      from k in without_secrets_query(),
+        where: k.id == ^id and k.organisation_id == ^organisation_id and k.hive_id == ^hive_id
+    )
+  end
+
+  # Decrypted secrets have no business in a LiveView's state: the web layer gets
+  # rows selected without the secret columns.
+  defp without_secrets_query do
+    from k in AccessKey,
+      select: struct(k, ^AccessKey.public_fields()),
+      select_merge: %{rotating: not is_nil(k.secret_secondary)}
   end
 
   def change_access_key(%AccessKey{} = access_key, attrs \\ %{}) do
@@ -42,74 +58,120 @@ defmodule Apiary.AccessKeys do
   end
 
   @doc """
-  Creates a key for the scope's hive. Any member. Returns the key and its secret,
-  the only time the secret is available in clear.
+  Creates a key for the scope's hive. Any member, read again from the database:
+  a caller whose membership is gone gets `{:error, :unauthorized}`. Returns the
+  key (without secrets) and its secret, the only time the secret is available in
+  clear.
   """
   def create_access_key(
         %Scope{
           user: user,
           organisation: %Organisation{id: organisation_id},
-          hive: %Hive{id: hive_id},
-          membership: %Membership{}
-        },
+          hive: %Hive{id: hive_id}
+        } = scope,
         attrs
       ) do
-    secret = AccessKey.generate_secret()
+    with {:ok, _membership} <- Organisations.fetch_membership(scope) do
+      secret = AccessKey.generate_secret()
 
-    changeset =
-      %AccessKey{
-        organisation_id: organisation_id,
-        hive_id: hive_id,
-        created_by_id: user.id,
-        key_id: AccessKey.generate_key_id(),
-        # A closure, so the query log sees a function and never the secret
-        # (Ecto logs the cast parameters; Cloak unwraps the closure on dump).
-        secret_primary: fn -> secret end
-      }
-      |> AccessKey.changeset(attrs)
+      changeset =
+        %AccessKey{
+          organisation_id: organisation_id,
+          hive_id: hive_id,
+          created_by_id: user.id,
+          key_id: AccessKey.generate_key_id(),
+          # A closure, so the query log sees a function and never the secret
+          # (Ecto logs the cast parameters; Cloak unwraps the closure on dump).
+          secret_primary: fn -> secret end
+        }
+        |> AccessKey.changeset(attrs)
 
-    with {:ok, access_key} <- Repo.insert(changeset) do
-      {:ok, %{access_key | secret_primary: secret}, secret}
+      with {:ok, access_key} <- Repo.insert(changeset) do
+        {:ok, AccessKey.without_secrets(%{access_key | secret_primary: nil}), secret}
+      end
     end
   end
 
   @doc """
   Rotates the key: a new primary secret, the old primary kept as the secondary
   so a node still on it keeps verifying; a previous secondary is dropped.
+
+  The row is read again and locked, so the secret kept as the secondary is the
+  one in the database now, whatever the struct passed in remembers.
   """
   def rotate_access_key(%Scope{} = scope, %AccessKey{} = access_key)
       when key_in_scope(scope, access_key) do
-    if access_key.revoked_at do
-      {:error, :revoked}
-    else
-      secret = AccessKey.generate_secret()
-      previous = access_key.secret_primary
+    mutate(scope, access_key, fn
+      %AccessKey{revoked_at: revoked_at} when not is_nil(revoked_at) ->
+        {:error, :revoked}
 
-      with {:ok, access_key} <-
-             access_key
-             |> Ecto.Changeset.change(
-               secret_primary: fn -> secret end,
-               secret_secondary: fn -> previous end,
-               rotated_at: DateTime.utc_now()
-             )
-             |> Repo.update() do
-        {:ok, %{access_key | secret_primary: secret, secret_secondary: previous}, secret}
-      end
-    end
+      %AccessKey{secret_primary: previous} = current ->
+        secret = AccessKey.generate_secret()
+
+        with {:ok, updated} <-
+               current
+               |> Ecto.Changeset.change(
+                 secret_primary: fn -> secret end,
+                 secret_secondary: fn -> previous end,
+                 rotated_at: DateTime.utc_now()
+               )
+               |> Repo.update() do
+          {:ok, {updated, secret}}
+        end
+    end)
   end
 
   @doc "Drops the secondary secret: the rotation is complete."
   def retire_previous_secret(%Scope{} = scope, %AccessKey{} = access_key)
       when key_in_scope(scope, access_key) do
-    access_key |> Ecto.Changeset.change(secret_secondary: nil) |> Repo.update()
+    mutate(scope, access_key, fn current ->
+      current |> Ecto.Changeset.change(secret_secondary: nil) |> Repo.update()
+    end)
   end
 
   @doc "Revokes the key: verification fails from now on."
   def revoke_access_key(%Scope{} = scope, %AccessKey{} = access_key)
       when key_in_scope(scope, access_key) do
-    access_key
-    |> Ecto.Changeset.change(revoked_at: access_key.revoked_at || DateTime.utc_now())
-    |> Repo.update()
+    mutate(scope, access_key, fn current ->
+      current
+      |> Ecto.Changeset.change(revoked_at: current.revoked_at || DateTime.utc_now())
+      |> Repo.update()
+    end)
+  end
+
+  # Authorizes on the caller's membership as it is now, then hands `fun` the
+  # key as it is now, locked for the rest of the transaction. The result leaves
+  # without secrets.
+  defp mutate(%Scope{} = scope, %AccessKey{id: id}, fun) do
+    fn ->
+      with {:ok, _membership} <- Organisations.fetch_membership(scope),
+           {:ok, current} <- lock_access_key(scope, id) do
+        fun.(current)
+      end
+    end
+    |> Repo.transact()
+    |> case do
+      {:ok, %AccessKey{} = access_key} ->
+        {:ok, AccessKey.without_secrets(access_key)}
+
+      {:ok, {%AccessKey{} = access_key, secret}} ->
+        {:ok, AccessKey.without_secrets(access_key), secret}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp lock_access_key(%Scope{organisation: organisation, hive: hive}, id) do
+    query =
+      from k in AccessKey,
+        where: k.id == ^id and k.organisation_id == ^organisation.id and k.hive_id == ^hive.id,
+        lock: "FOR UPDATE"
+
+    case Repo.one(query) do
+      %AccessKey{} = access_key -> {:ok, access_key}
+      nil -> {:error, :unauthorized}
+    end
   end
 
   @doc "The active key behind a key id, secrets decrypted, for request verification."

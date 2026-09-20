@@ -19,5 +19,8 @@ defmodule Apiary.Organisations.Organisation do
     |> cast(attrs, [:name])
     |> validate_required([:name])
     |> validate_length(:name, min: 1, max: 120)
+    |> validate_format(:name, ~r/\A[^[:cntrl:]]+\z/u,
+      message: "must not contain control characters"
+    )
   end
 end

@@ -50,10 +50,11 @@ defmodule Apiary.Application do
   # One JSON line per request, from the endpoint's `Plug.Telemetry` stop event. The
   # line carries method, path, status, duration, remote ip and user agent; never
   # request headers or bodies. The Phoenix request logger is off in production
-  # (config/prod.exs) so each request is logged once.
+  # (config/prod.exs) so each request is logged once. `ApiaryWeb.RequestLog` replaces
+  # the bearer token in the paths that carry one before the line is written.
   defp attach_request_log do
     if Application.get_env(:apiary, :json_logs, false) do
-      LoggerJSON.Plug.attach("apiary-request-log", [:phoenix, :endpoint, :stop], :info)
+      ApiaryWeb.RequestLog.attach()
     end
   end
 end

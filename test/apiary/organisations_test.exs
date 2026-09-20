@@ -102,6 +102,16 @@ defmodule Apiary.OrganisationsTest do
       assert {:error, %Ecto.Changeset{}} =
                Organisations.update_organisation(owner_scope, %{name: ""})
 
+      for name <- ["two\nlines", "bell\a", "esc\e[2J", "nul\0"] do
+        assert {:error, changeset} = Organisations.update_organisation(owner_scope, %{name: name})
+        assert %{name: ["must not contain control characters"]} = errors_on(changeset)
+        assert {:error, changeset} = Organisations.update_hive(owner_scope, %{name: name})
+        assert %{name: ["must not contain control characters"]} = errors_on(changeset)
+      end
+
+      assert {:ok, %Organisation{name: "Übergrößen & Söhne"}} =
+               Organisations.update_organisation(owner_scope, %{name: "Übergrößen & Söhne"})
+
       assert %Ecto.Changeset{} = Organisations.change_organisation(%Organisation{})
     end
   end
@@ -129,11 +139,96 @@ defmodule Apiary.OrganisationsTest do
       assert {:ok, %Membership{level: :owner}} =
                Organisations.set_member_level(scope, membership.id, "owner")
 
-      assert {:ok, %Membership{level: :member}} =
-               Organisations.set_member_level(scope, owner_membership.id, :member)
-
       assert {:error, :not_found} =
                Organisations.set_member_level(scope, Ecto.UUID.generate(), :member)
+
+      assert {:error, :not_found} = Organisations.set_member_level(scope, "not-a-uuid", :member)
+
+      assert {:ok, %Membership{level: :member}} =
+               Organisations.set_member_level(scope, owner_membership.id, :member)
+    end
+
+    test "M1: a scope loaded before a demotion has no owner rights left" do
+      %{scope: scope} = sign_up_fixture()
+      %{scope: stale, membership: stale_membership} = member_fixture(scope, :owner)
+      %{membership: third} = member_fixture(scope, :member)
+      %{invitation: invitation} = invitation_fixture(scope)
+
+      assert Organisations.owner?(stale)
+      assert {:ok, _} = Organisations.set_member_level(scope, stale_membership.id, :member)
+      # The struct still says owner; the database does not.
+      assert Organisations.owner?(stale)
+
+      assert {:error, :unauthorized} = Organisations.set_member_level(stale, third.id, :owner)
+      assert {:error, :unauthorized} = Organisations.remove_member(stale, third.id)
+
+      assert {:error, :unauthorized} =
+               Organisations.invite_member(
+                 stale,
+                 %{"email" => "late@example.com", "level" => "owner"},
+                 &"http://localhost/invitations/#{&1}"
+               )
+
+      assert {:error, :unauthorized} = Organisations.revoke_invitation(stale, invitation.id)
+      assert {:error, :unauthorized} = Organisations.update_organisation(stale, %{name: "Mine"})
+      assert {:error, :unauthorized} = Organisations.update_hive(stale, %{name: "Mine"})
+
+      assert Repo.get!(Membership, third.id).level == :member
+      assert Repo.get!(Organisations.Organisation, scope.organisation.id).name != "Mine"
+    end
+
+    test "M1: a scope loaded before a removal has no rights left" do
+      %{scope: scope} = sign_up_fixture()
+      %{scope: stale, membership: stale_membership} = member_fixture(scope, :owner)
+      %{membership: third} = member_fixture(scope, :member)
+
+      assert {:ok, _} = Organisations.remove_member(scope, stale_membership.id)
+
+      assert {:error, :unauthorized} = Organisations.set_member_level(stale, third.id, :owner)
+      assert {:error, :unauthorized} = Organisations.remove_member(stale, third.id)
+      assert {:error, :unauthorized} = Organisations.update_organisation(stale, %{name: "Mine"})
+      assert {:error, :unauthorized} = Organisations.update_hive(stale, %{name: "Mine"})
+
+      assert {:error, :unauthorized} =
+               Organisations.invite_member(
+                 stale,
+                 %{"email" => "late@example.com", "level" => "owner"},
+                 &"http://localhost/invitations/#{&1}"
+               )
+    end
+
+    test "M1: a level change and a removal are announced to the member's open pages" do
+      %{scope: scope} = sign_up_fixture()
+      %{user: member, membership: membership} = member_fixture(scope, :member)
+      organisation_id = scope.organisation.id
+
+      Phoenix.PubSub.subscribe(Apiary.PubSub, Organisations.membership_topic(member.id))
+
+      assert {:ok, _} = Organisations.set_member_level(scope, membership.id, :owner)
+      assert_receive {:membership_changed, %{organisation_id: ^organisation_id}}
+
+      assert {:ok, _} = Organisations.remove_member(scope, membership.id)
+      assert_receive {:membership_changed, %{organisation_id: ^organisation_id}}
+    end
+
+    test "H7: a membership of another hive of the organisation is not found" do
+      %{scope: scope, organisation: organisation} = sign_up_fixture()
+      %{user: outsider} = sign_up_fixture()
+
+      other_hive =
+        Repo.insert!(%Organisations.Hive{organisation_id: organisation.id, name: "Second"})
+
+      elsewhere =
+        Repo.insert!(%Membership{
+          organisation_id: organisation.id,
+          hive_id: other_hive.id,
+          user_id: outsider.id,
+          level: :member
+        })
+
+      assert {:error, :not_found} = Organisations.set_member_level(scope, elsewhere.id, :owner)
+      assert {:error, :not_found} = Organisations.remove_member(scope, elsewhere.id)
+      assert Repo.get!(Membership, elsewhere.id).level == :member
     end
 
     test "remove_member/2 removes members, owners only, never the last owner" do
@@ -245,6 +340,107 @@ defmodule Apiary.OrganisationsTest do
       %{token: token} = invitation_fixture(scope)
       assert {:error, :already_member} = Organisations.accept_invitation(user, token)
       assert {:error, :invalid} = Organisations.accept_invitation(user, "garbage")
+    end
+
+    test "M3: one invitation makes one membership, whoever holds it" do
+      %{scope: scope, organisation: organisation} = sign_up_fixture()
+      %{token: token} = invitation_fixture(scope, %{"level" => "owner"})
+      first = user_fixture()
+      second = user_fixture()
+
+      # Both callers read the invitation while it was pending, as two concurrent
+      # requests do; then both accept.
+      held_by_first = Organisations.get_invitation_by_token(token)
+      held_by_second = Organisations.get_invitation_by_token(token)
+
+      assert {:ok, %Membership{}} = Organisations.accept_invitation(first, held_by_first)
+      assert {:error, :invalid} = Organisations.accept_invitation(second, held_by_second)
+      assert {:error, :invalid} = Organisations.accept_invitation(second, token)
+
+      assert [_founder, _first] =
+               Repo.all(from m in Membership, where: m.organisation_id == ^organisation.id)
+    end
+
+    test "M3: an invited sign-up that lost the invitation creates nothing" do
+      %{scope: scope, organisation: organisation} = sign_up_fixture()
+      %{token: token} = invitation_fixture(scope, %{"level" => "owner"})
+      held = Organisations.get_invitation_by_token(token)
+
+      assert {:ok, %Membership{}} = Organisations.accept_invitation(user_fixture(), token)
+
+      email = unique_user_email()
+
+      assert {:error, %Ecto.Changeset{} = changeset} =
+               Organisations.sign_up_user(%{email: email}, held)
+
+      assert %{email: [_]} = errors_on(changeset)
+      assert Apiary.Accounts.get_user_by_email(email) == nil
+
+      assert 2 ==
+               Repo.aggregate(
+                 from(m in Membership, where: m.organisation_id == ^organisation.id),
+                 :count
+               )
+    end
+
+    test "M3: concurrent accepts of one invitation make one membership" do
+      %{scope: scope, organisation: organisation} = sign_up_fixture()
+      %{token: token} = invitation_fixture(scope)
+      users = for _ <- 1..4, do: user_fixture()
+      parent = self()
+
+      results =
+        users
+        |> Enum.map(fn user ->
+          Task.async(fn ->
+            Ecto.Adapters.SQL.Sandbox.allow(Repo, parent, self())
+            Organisations.accept_invitation(user, token)
+          end)
+        end)
+        |> Task.await_many()
+
+      assert [{:ok, %Membership{}}] = Enum.filter(results, &match?({:ok, _}, &1))
+      assert Enum.count(results, &(&1 == {:error, :invalid})) == 3
+
+      assert 2 ==
+               Repo.aggregate(
+                 from(m in Membership, where: m.organisation_id == ^organisation.id),
+                 :count
+               )
+    end
+
+    test "H4: an organisation holds at most 50 pending invitations" do
+      %{scope: scope, organisation: organisation, hive: hive} = sign_up_fixture()
+      now = DateTime.utc_now()
+
+      rows =
+        for n <- 1..50 do
+          %{
+            id: Ecto.UUID.generate(),
+            organisation_id: organisation.id,
+            hive_id: hive.id,
+            email: "pending-#{n}@example.com",
+            level: :member,
+            token_hash: :crypto.strong_rand_bytes(32),
+            expires_at: DateTime.add(now, 7, :day),
+            inserted_at: now,
+            updated_at: now
+          }
+        end
+
+      assert {50, _} = Repo.insert_all(Invitation, rows)
+
+      assert {:error, %Ecto.Changeset{} = changeset} =
+               Organisations.invite_member(
+                 scope,
+                 %{"email" => "one-more@example.com", "level" => "member"},
+                 &"http://localhost/invitations/#{&1}"
+               )
+
+      assert %{email: ["too many pending invitations"]} = errors_on(changeset)
+
+      # Another organisation is not affected.
+      assert %{invitation: %Invitation{}} = invitation_fixture(sign_up_fixture().scope)
     end
 
     test "revoke_invitation/2 deletes the row; owners only" do

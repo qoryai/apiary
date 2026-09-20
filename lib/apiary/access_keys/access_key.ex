@@ -18,6 +18,9 @@ defmodule Apiary.AccessKeys.AccessKey do
     field :last_used_at, :utc_datetime_usec
     field :last_runner_version, :string
     field :last_contract_version, :integer
+    # Set by the queries that leave the secret columns unloaded (listings and
+    # everything handed to the web layer): whether a previous secret still verifies.
+    field :rotating, :boolean, virtual: true, default: false
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :hive, Apiary.Organisations.Hive
@@ -31,6 +34,9 @@ defmodule Apiary.AccessKeys.AccessKey do
     |> cast(attrs, [:label])
     |> validate_required([:label])
     |> validate_length(:label, min: 1, max: 80)
+    |> validate_format(:label, ~r/\A[^[:cntrl:]]+\z/u,
+      message: "must not contain control characters"
+    )
     |> unique_constraint([:organisation_id, :hive_id, :label],
       name: :access_keys_active_label_index,
       error_key: :label,
@@ -47,8 +53,22 @@ defmodule Apiary.AccessKeys.AccessKey do
 
   @doc "`:revoked` once revoked, `:rotating` while a previous secret still verifies, else `:active`."
   def status(%__MODULE__{revoked_at: revoked_at}) when not is_nil(revoked_at), do: :revoked
+  def status(%__MODULE__{rotating: true}), do: :rotating
   def status(%__MODULE__{secret_secondary: secondary}) when not is_nil(secondary), do: :rotating
   def status(%__MODULE__{}), do: :active
+
+  @doc "The schema fields a listing loads: everything except the two secret columns."
+  def public_fields, do: __schema__(:fields) -- [:secret_primary, :secret_secondary]
+
+  @doc "The key as the web layer may hold it: no secrets, `rotating` set from the secondary."
+  def without_secrets(%__MODULE__{} = access_key) do
+    %{
+      access_key
+      | rotating: access_key.rotating || not is_nil(access_key.secret_secondary),
+        secret_primary: nil,
+        secret_secondary: nil
+    }
+  end
 
   def never_used?(%__MODULE__{last_used_at: last_used_at}), do: is_nil(last_used_at)
 

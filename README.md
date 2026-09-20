@@ -42,7 +42,7 @@ upgrade is `docker compose pull` (or `--build`) and `docker compose up`; read
 | Secret key base | `SECRET_KEY_BASE` (required; `mix phx.gen.secret`) |
 | Encryption key | `CLOAK_KEY` (required; `openssl rand -base64 32`; encrypts access key secrets at rest, keep it with the database backups) |
 | Public URL | `PUBLIC_URL` (required, with scheme, e.g. `https://apiary.example.com`), `PORT` (default 4100) |
-| Mail | `SMTP_RELAY`, `SMTP_PORT` (587), `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_TLS` (`always`, `if_available`, `never`), `MAIL_FROM` (default `apiary@<public host>`) |
+| Mail | `SMTP_RELAY`, `SMTP_PORT` (587), `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_TLS` (`always`, `if_available`, `never`), `MAIL_FROM` (default `apiary@<public host>`), `MAIL_TO_LOG` (trial only, see below) |
 | Clustering | `DNS_CLUSTER_QUERY` (optional) |
 
 A missing or malformed required variable stops the boot with a message naming it.
@@ -52,8 +52,12 @@ requests are redirected and HSTS is sent, so the reverse proxy must pass
 `X-Forwarded-Proto: https`. With an `http://` public URL (a LAN, a trial on one machine)
 nothing is redirected.
 
-Without `SMTP_RELAY`, every email is written to the log in full at level `info`, so a
-magic link for the first sign-in can be copied from `docker compose logs apiary`.
+Mail delivery is required: without `SMTP_RELAY` the release refuses to boot, with a
+message naming `SMTP_RELAY` and `MAIL_TO_LOG`. For a trial on one machine, `MAIL_TO_LOG=true`
+writes every email to the log in full at level `info` instead, so the magic link for the
+first sign-in can be copied from `docker compose logs apiary`. Log-in and invitation links
+are credentials; with `MAIL_TO_LOG=true` they are readable by anyone who can read the log,
+so never use it on an installation other people sign in to.
 
 ## Health and logs
 
@@ -63,7 +67,8 @@ magic link for the first sign-in can be copied from `docker compose logs apiary`
 
 In production the release writes one JSON object per line to stdout (`time`, `severity`,
 `message`, `metadata` with `request_id`; request lines add `request` with method, path,
-status, duration, client ip and user agent; never headers or bodies). Any log shipper
+status, duration, client ip and user agent; never headers or bodies). The token in the path
+of an invitation, log-in or email-change link is logged as `:token`. Any log shipper
 that reads container stdout can take them as they are. Development keeps the
 human-readable format.
 

@@ -18,6 +18,9 @@ defmodule Apiary.Organisations.Hive do
     |> cast(attrs, [:name])
     |> validate_required([:name])
     |> validate_length(:name, min: 1, max: 120)
+    |> validate_format(:name, ~r/\A[^[:cntrl:]]+\z/u,
+      message: "must not contain control characters"
+    )
     |> unique_constraint([:organisation_id, :name],
       error_key: :name,
       message: "is already the name of a hive in this organisation"

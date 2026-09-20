@@ -180,14 +180,30 @@ if config_env() == :prod do
   # Every email is sent from MAIL_FROM; `Apiary.Mailer.from/0` reads it.
   config :apiary, :mail_from, System.get_env("MAIL_FROM") || "apiary@#{public_host}"
 
-  case System.get_env("SMTP_RELAY") do
+  # An empty SMTP_RELAY (the line left blank in .env) is an unset one.
+  smtp_relay =
+    case System.get_env("SMTP_RELAY") do
+      nil -> nil
+      value -> if String.trim(value) == "", do: nil, else: String.trim(value)
+    end
+
+  case smtp_relay do
     nil ->
-      # No relay configured: emails (magic links, invitations) are written to the log
-      # in full at level info, so a single-machine trial still works.
-      config :apiary, Apiary.Mailer,
-        adapter: Swoosh.Adapters.Logger,
-        level: :info,
-        log_full_email: true
+      # No relay configured. Writing emails to the log puts log-in links and
+      # invitation links, which are credentials, in front of whoever reads the log,
+      # so it is never the silent fallback: the operator asks for it by name.
+      if System.get_env("MAIL_TO_LOG") == "true" do
+        config :apiary, Apiary.Mailer,
+          adapter: Swoosh.Adapters.Logger,
+          level: :info,
+          log_full_email: true
+      else
+        raise """
+        no mail delivery is configured.
+        Set SMTP_RELAY to the host of an SMTP relay, or, for a trial on one machine only,
+        set MAIL_TO_LOG=true to write every email (log-in links included) to the log.
+        """
+      end
 
     relay ->
       smtp_port = String.to_integer(System.get_env("SMTP_PORT") || "587")

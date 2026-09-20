@@ -315,6 +315,9 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign_form(socket, changeset)}
+
+      {:error, :unauthorized} ->
+        {:noreply, unauthorized(socket)}
     end
   end
 
@@ -328,17 +331,27 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
          socket
          |> put_flash(:error, "#{key.label} is revoked and cannot be rotated.")
          |> push_patch(to: ~p"/hive/keys")}
+
+      {:error, :unauthorized} ->
+        {:noreply, unauthorized(socket)}
     end
   end
 
   def handle_event("revoke", _params, %{assigns: %{key: %AccessKey{} = key}} = socket) do
-    {:ok, key} = AccessKeys.revoke_access_key(socket.assigns.current_scope, key)
+    case AccessKeys.revoke_access_key(socket.assigns.current_scope, key) do
+      {:ok, key} ->
+        {:noreply,
+         socket
+         |> put_flash(
+           :info,
+           "#{key.label} is revoked. Machines using it fail their next request."
+         )
+         |> load_keys()
+         |> push_patch(to: ~p"/hive/keys")}
 
-    {:noreply,
-     socket
-     |> put_flash(:info, "#{key.label} is revoked. Machines using it fail their next request.")
-     |> load_keys()
-     |> push_patch(to: ~p"/hive/keys")}
+      {:error, :unauthorized} ->
+        {:noreply, unauthorized(socket)}
+    end
   end
 
   def handle_event("retire", %{"id" => id}, socket) do
@@ -355,13 +368,24 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
         _params,
         %{assigns: %{retire_key: %AccessKey{} = key}} = socket
       ) do
-    {:ok, key} = AccessKeys.retire_previous_secret(socket.assigns.current_scope, key)
+    case AccessKeys.retire_previous_secret(socket.assigns.current_scope, key) do
+      {:ok, key} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "The previous secret of #{key.label} is retired.")
+         |> assign(:retire_key, nil)
+         |> load_keys()}
 
-    {:noreply,
-     socket
-     |> put_flash(:info, "The previous secret of #{key.label} is retired.")
-     |> assign(:retire_key, nil)
-     |> load_keys()}
+      {:error, :unauthorized} ->
+        {:noreply, unauthorized(socket)}
+    end
+  end
+
+  # The membership this page was opened with is gone.
+  defp unauthorized(socket) do
+    socket
+    |> put_flash(:error, "You are no longer a member of this hive.")
+    |> push_navigate(to: ~p"/hive")
   end
 
   defp reveal_for(key, secret) do

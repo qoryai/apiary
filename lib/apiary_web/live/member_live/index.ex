@@ -246,6 +246,14 @@ defmodule ApiaryWeb.MemberLive.Index do
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign(socket, :form, to_form(changeset, action: :insert))}
 
+      {:error, :delivery_failed} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "The invitation could not be sent, so it was not created. Try again."
+         )}
+
       {:error, :unauthorized} ->
         {:noreply, unauthorized(socket)}
     end
