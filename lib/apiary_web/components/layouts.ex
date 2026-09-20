@@ -484,6 +484,16 @@ defmodule ApiaryWeb.Layouts do
           <rect width="100%" height="100%" fill="url(#comb)" />
         </svg>
         <div class="relative"><.brand size="lg" /></div>
+        <div class="relative flex min-h-0 flex-1 items-center justify-center py-2">
+          <img
+            src={~p"/images/qbee-agent.png"}
+            alt=""
+            width="960"
+            height="960"
+            class="h-auto w-full max-w-[min(440px,42vh)] select-none drop-shadow-[0_24px_48px_rgba(0,0,0,0.35)]"
+            draggable="false"
+          />
+        </div>
         <div class="relative grid gap-3.5">
           <p class="max-w-[30ch] text-balance text-[26px]/8 font-semibold tracking-[-0.025em]">
             Can you trust your agents? With Qory <span class="text-accent">you don't have to</span>.
