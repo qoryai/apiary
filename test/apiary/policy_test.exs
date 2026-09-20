@@ -232,6 +232,45 @@ defmodule Apiary.PolicyTest do
     end
   end
 
+  describe "mode_summary/1" do
+    test "is managed, the hive's mode and the repositories' own modes, in one query", %{
+      scope: scope
+    } do
+      assert Policy.mode_summary(scope) == %{managed?: false, mode: "observe", own_modes: []}
+
+      site = repository_fixture(scope)
+      docs = repository_fixture(scope, "acme/docs")
+      _plain = repository_fixture(scope, "acme/plain")
+      {:ok, _} = Policy.set_mode(scope, "enforce")
+      {:ok, _} = Policy.set_mode(scope, site, "observe")
+      {:ok, _} = Policy.set_mode(scope, docs, "enforce")
+
+      handler = "mode-summary-#{System.unique_integer()}"
+      parent = self()
+
+      :telemetry.attach(
+        handler,
+        [:apiary, :repo, :query],
+        fn _event, _measurements, _meta, _config ->
+          if self() == parent, do: send(parent, :query)
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler) end)
+
+      summary = Policy.mode_summary(scope)
+      assert_received :query
+      refute_received :query
+
+      assert %{managed?: true, mode: "enforce", own_modes: own} = summary
+      assert Enum.sort(own) == ["enforce", "observe"]
+
+      %{scope: other} = sign_up_fixture()
+      assert Policy.mode_summary(other) == %{managed?: false, mode: "observe", own_modes: []}
+    end
+  end
+
   describe "rules" do
     test "a rule is added, changed and removed, each a change and a version", %{scope: scope} do
       Policy.subscribe(scope)

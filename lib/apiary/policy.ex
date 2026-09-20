@@ -98,6 +98,34 @@ defmodule Apiary.Policy do
     Repo.exists?(from c in Change, where: c.hive_id == ^hive_id)
   end
 
+  @doc """
+  What the sidebar shows of the policy, in one query: whether the hive's policy is
+  managed (`managed?/1`), the hive's mode, and the modes the hive's repositories set for
+  themselves, one per repository that has one, in no particular order: `%{managed?:,
+  mode:, own_modes:}`.
+  """
+  @spec mode_summary(Scope.t()) :: %{
+          managed?: boolean,
+          mode: String.t(),
+          own_modes: [String.t()]
+        }
+  def mode_summary(%Scope{hive: %Hive{id: hive_id}, organisation: %Organisation{id: org_id}}) do
+    {mode, managed?, own_modes} =
+      Repo.one!(
+        from h in Hive,
+          as: :hive,
+          where: h.id == ^hive_id and h.organisation_id == ^org_id,
+          select:
+            {h.egress_mode, exists(from(c in Change, where: c.hive_id == parent_as(:hive).id)),
+             fragment(
+               "ARRAY(SELECT p.egress_mode FROM repositories p WHERE p.hive_id = ? AND p.egress_mode IS NOT NULL)",
+               h.id
+             )}
+      )
+
+    %{managed?: managed?, mode: mode, own_modes: own_modes}
+  end
+
   ## Repositories
 
   @doc """
@@ -449,7 +477,7 @@ defmodule Apiary.Policy do
   it was last seen and in which `repositories`; the 50 with the most attempts, most first.
 
   Read from `connections` by the hive and when they were last seen, at most
-  #{Apiary.Policy.Activity.cap()} rows: beyond that the answer is `:unavailable`, never a
+  20,000 rows (`Apiary.Policy.Activity.cap/0`): beyond that the answer is `:unavailable`, never a
   count of a part. A connection counts whole when it was last seen since `since`.
   """
   @spec uncovered(Scope.t(), DateTime.t()) :: {:ok, [uncovered]} | :unavailable
