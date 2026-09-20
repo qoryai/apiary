@@ -99,6 +99,9 @@ defmodule ApiaryWeb.Router do
       live "/no-hive", HiveLive.NoHive, :index
     end
 
+    # The raw bytes of a run's log, for the terminal of the run page. Not a page.
+    get "/hive/runs/:run_id/log", RunLogController, :show
+
     post "/organisations/switch", OrganisationSessionController, :switch
     get "/invitations/:token/continue", OrganisationSessionController, :continue_invitation
   end
