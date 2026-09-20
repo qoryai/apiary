@@ -5,7 +5,7 @@ defmodule Apiary.Contract.RecordedRunPrunedTest do
   """
   use Apiary.DataCase, async: true
 
-  import Apiary.ContractFixtures
+  import Apiary.AccessKeysFixtures
   import Apiary.OrganisationsFixtures
 
   alias Apiary.Retention
@@ -21,9 +21,13 @@ defmodule Apiary.Contract.RecordedRunPrunedTest do
              dir |> Path.join("fixtures/run/*/events.jsonl") |> Path.wildcard() |> Enum.sort()
          end)
 
+  # A key of its own, not the contract's published one: `Apiary.Runs.Ingest` needs no
+  # signature, and the published key id is one row every contract test inserts, on which
+  # two tests at once wait for each other.
   setup do
     %{scope: scope} = sign_up_fixture()
-    %{scope: scope, key: published_key_fixture(scope)}
+    %{access_key: key} = access_key_fixture(scope)
+    %{scope: scope, key: key}
   end
 
   defp deliver(key, lines) do

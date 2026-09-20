@@ -112,10 +112,11 @@ defmodule ApiaryWeb.SettingsLiveTest do
       {:ok, _run} = Apiary.Runs.Projector.project(run)
 
       other = sign_up_fixture().scope
-      {:ok, _} = Apiary.Retention.update_retention(other, %{events_retention_days: 3})
+      {:ok, other_hive} = Apiary.Retention.update_retention(other, %{events_retention_days: 3})
 
       now = DateTime.add(DateTime.utc_now(), 40 * 86_400, :second)
-      assert {:ok, [_, _]} = Apiary.Retention.prune_all(now: now)
+      assert %{runs_pruned: 1} = Apiary.Retention.prune_hive(hive, now: now)
+      assert %{runs_pruned: 0} = Apiary.Retention.prune_hive(other_hive, now: now)
 
       {:ok, lv, _html} = live(conn, ~p"/hive/settings")
 

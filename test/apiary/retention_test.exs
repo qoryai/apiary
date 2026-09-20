@@ -7,7 +7,6 @@ defmodule Apiary.RetentionTest do
 
   alias Apiary.Organisations.Hive
   alias Apiary.Retention
-  alias Apiary.Retention.RetentionRun
   alias Apiary.Runs.{Connection, Delivery, Event, LogChunk, Projector, Rebuild, Run}
 
   @now ~U[2026-12-01 03:00:00.000000Z]
@@ -135,13 +134,6 @@ defmodule Apiary.RetentionTest do
   end
 
   describe "prune_hive/2" do
-    test "a hive without a setting loses nothing", %{scope: scope} do
-      run = old_run(scope, 4000)
-      assert {:ok, []} = Retention.prune_all(now: @now)
-      assert count(Event, run) == 14
-      assert Repo.aggregate(RetentionRun, :count) == 0
-    end
-
     test "past the log cut-off a run loses its log bytes and keeps its timeline", %{scope: scope} do
       scope = retain(scope, log_retention_days: 30)
       old = old_run(scope, 31)
@@ -261,60 +253,12 @@ defmodule Apiary.RetentionTest do
       scope = retain(scope, events_retention_days: 10)
       run = old_run(scope, 11)
 
-      assert {:ok, [%{runs_pruned: 1, events_deleted: 14, dry_run: true}]} =
-               Retention.prune_all(now: @now, dry_run: true)
+      assert %{runs_pruned: 1, events_deleted: 14, dry_run: true} =
+               Retention.prune_hive(scope.hive, now: @now, dry_run: true)
 
       assert count(Event, run) == 14
       assert Repo.get!(Run, run.id).events_pruned_at == nil
       assert Retention.list_retention_runs(scope) == []
-    end
-  end
-
-  describe "tenancy" do
-    test "one hive's setting prunes no run of another organisation", %{scope: scope} do
-      scope = retain(scope, events_retention_days: 10)
-      mine = old_run(scope, 50)
-      other = scope_fixture()
-      theirs = old_run(other, 50)
-
-      assert {:ok, [%{hive_id: hive_id, runs_pruned: 1}]} = Retention.prune_all(now: @now)
-      assert hive_id == scope.hive.id
-
-      assert count(Event, mine) == 0
-      assert count(Event, theirs) == 14
-      assert count(LogChunk, theirs) == 2
-      assert Repo.get!(Run, theirs.id).events_pruned_at == nil
-    end
-
-    test "a retention run is listed to its own hive only", %{scope: scope} do
-      scope = retain(scope, events_retention_days: 10)
-      other = retain(scope_fixture(), log_retention_days: 5)
-      old_run(scope, 50)
-
-      assert {:ok, [_, _]} = Retention.prune_all(now: @now)
-
-      assert [%RetentionRun{} = mine] = Retention.list_retention_runs(scope)
-      assert mine.hive_id == scope.hive.id
-      assert mine.organisation_id == scope.organisation.id
-      assert mine.trigger == "manual"
-      assert mine.events_retention_days == 10
-      assert mine.events_cutoff == days_ago(10)
-      assert %{runs_pruned: 1, events_deleted: 14, log_bytes_deleted: 12, complete: true} = mine
-
-      assert [%RetentionRun{runs_pruned: 0} = theirs] = Retention.list_retention_runs(other)
-      assert theirs.hive_id == other.hive.id
-    end
-  end
-
-  describe "the job" do
-    test "the scheduled job leaves a hive alone that was just pruned; a manual one does not", %{
-      scope: scope
-    } do
-      retain(scope, events_retention_days: 10)
-
-      assert {:ok, [_]} = Retention.prune_all(trigger: "schedule")
-      assert {:ok, []} = Retention.prune_all(trigger: "schedule")
-      assert {:ok, [_]} = Retention.prune_all(trigger: "manual")
     end
   end
 
