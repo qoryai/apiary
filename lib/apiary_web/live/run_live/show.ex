@@ -176,7 +176,7 @@ defmodule ApiaryWeb.RunLive.Show do
               else: "another configuration"}
             <span :if={@digests.reported} class="font-mono text-xs">{short_digest(@digests.reported)}</span>;
             v{@in_force.n} <span class="font-mono text-xs">{short_digest(@in_force.digest)}</span>
-            came into force <.relative_time id="run-behind-since" at={@in_force.rendered_at} />.
+            is in force (<.relative_time id="run-behind-since" at={@in_force.rendered_at} />).
             A run reloads at its next heartbeat; until it does, it decides by {if @reported_version,
               do: "v#{@reported_version.n}",
               else: "what it holds"}.

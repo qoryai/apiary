@@ -3164,13 +3164,15 @@
   .q-cxt :is(th, td):last-child {
     position: sticky;
     right: 0;
+    box-shadow: -1px 0 0 var(--q-border-subtle);
+  }
+  .q-cxt tr.q-sub > td:last-child {
+    position: static;
+    box-shadow: none;
   }
   .q-cxt th:last-child,
   .q-cxt tr:not(.q-denied):not(.q-sub) > td.q-slot-cell {
     background-color: var(--color-base-100);
-  }
-  .q-cxt thead th:last-child {
-    background-color: inherit;
   }
   .q-rowbtn {
     --size: 24px;

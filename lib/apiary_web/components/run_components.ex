@@ -1461,7 +1461,7 @@ defmodule ApiaryWeb.RunComponents do
           class="text-xs"
         /></span><span :if={@line.state != :in_force && @line.by}> by {@line.by}</span><span :if={
           @line.state != :in_force && @line.at
-        }>, <.relative_time at={@line.at} /></span>. {after_sentence(@line)}
+        }> · <.relative_time at={@line.at} /></span>. {after_sentence(@line)}
       </span>
     </div>
     """
