@@ -59,6 +59,25 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
   id, the newest runs, and closing a run, after which the receiver answers `410` for it.
 - The hive overview shows "Runs alive now", live; the access keys page shows each key's last
   heartbeat beside its last use.
+- The hive overview, `/hive`, is the landing page of `docs/design/brief-overview.md`: what
+  needs you first (**Needs attention**: denied destinations today's rules still do not
+  allow, with a one-click allow; quiet and lost runs, with a close in place; a run behind
+  the policy in force; observe with rules ready to enforce, or no policy served yet; idle
+  keys), then what the agents did (the activity strip in the three families, the alive
+  rows, a fourteen-day chart of runs and denied attempts per UTC day with a table twin, the
+  last runs), then the policy, the access keys (each with the hosts its runs came from: a key is
+  not a machine, a pool of ephemeral instances shares one) and retention at a glance. Every number is a count
+  the hive keeps; every list is bounded and ends in a link. The page follows the hive live
+  (rows patched in place, new rows appended, "1 new run" in words) and the empty hive's
+  checklist reads its three steps from the record, ticking the third on the first run.
+  `/hive/policy?confirm=enforce` lands on the policy page with the enforce confirm open.
+- Runs are counted in three families on every surface: alive (pending, running), ended well
+  (succeeded) and ended badly (failed, timed out, lost, closed). The runs list's State
+  filter is grouped by them, one click per family, and its summary line counts them; the
+  URL still carries the states alone.
+- The projection keeps, per run, the cost its sessions reported (`runs.cost_usd`, the sum of
+  `cost_usd` over the run's `session.result` events; null until a result carried one). The
+  overview's strip sums it over fourteen days and says how many runs reported one.
 - The projection keeps, per run, the count of its denied connections, and per connection the
   mode, path rule, credential name and request method of its last attempt, ranked by
   sequence like the rest and reproduced by a rebuild. `mix apiary.rebuild`
@@ -308,6 +327,14 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
   `CONCURRENTLY`, outside a transaction and without the migration lock, like
   `20260922000200`; reversible. Two instances must not boot this migration at the same
   moment.
+- `20260925000100`: `runs.cost_usd`, a nullable `numeric`: the cost the run reported.
+  Instant; reversible. Runs projected before it keep null until `mix apiary.rebuild`, which
+  now selects a run with a session result and no cost (see Upgrading).
+- `20260925000200`: the index `runs (hive_id, access_key_id, COALESCE(started_at,
+  inserted_at) DESC, id DESC)`, which the overview reads the last run of each key by. Built
+  `CONCURRENTLY`, outside a transaction and without the migration lock, like
+  `20260922000200`; reversible. Two instances must not boot this migration at the same
+  moment.
 - `20260924000500`: the run state `exited` becomes `succeeded`, in the rows and in the
   `CHECK` on `runs.state`. Outside a transaction, under the migration lock, every step
   idempotent: the `CHECK` is swapped for one that takes both words (`NOT VALID`, instant),
@@ -340,6 +367,11 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
   release `bin/apiary eval "Apiary.Release.rebuild()"`, does that: only the runs that need
   it, a hundred at a time, safely beside the running server, and it can be stopped and run
   again. `--all` (`all: true`) rebuilds every run.
+- The cost a run reported is folded from its events from this release on; a run projected
+  before it shows no cost, and the overview's "Cost reported" counts it as a run that did
+  not report one. `mix apiary.rebuild` (or `bin/apiary eval "Apiary.Release.rebuild()"`)
+  fills the column for the runs that have a session result and no cost yet, beside the
+  running server, and can be run again at any time.
 - Retention is off until an owner sets it: an upgrade prunes nothing. What the job deletes
   comes back only from a backup of Postgres.
 - A run that ended well is `succeeded`, no longer `exited`: on the badge, in the header

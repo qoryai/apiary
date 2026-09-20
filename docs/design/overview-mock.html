@@ -10,7 +10,7 @@
 <style>
 /* Static mock of milestone M8 (the hive overview: what the agents did and what needs you). Tokens and
    the M4/M5 components are copied from policy-mock.html and runs-mock.html; the block marked NEW in M8
-   is what brief-overview.md adds. Synthetic data only. */
+   is what brief-overview.md adds. Keys, not machines: one key often serves many hosts. Synthetic data only. */
 @font-face { font-family: "Geist"; src: url("../../priv/static/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
 @font-face { font-family: "Geist Mono"; src: url("../../priv/static/fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
 
@@ -348,7 +348,7 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
 .glance .vpill.sm { height: 22px; }
 .lines { padding: 12px 16px 14px; display: grid; gap: 4px; font-size: 13px; color: var(--q-muted); line-height: 19px; } .lines b { font-weight: 500; color: var(--color-base-content); font-variant-numeric: tabular-nums; }
 
-/* Machines table */
+/* Access keys table */
 .keys td { height: 40px; padding-block: 6px; } .keys .kcell { display: grid; } .keys .kcell b { font-weight: 500; } .keys .kcell span { font: 12px/16px var(--font-mono); color: var(--q-faint); }
 .keys .lastrun { display: inline-flex; align-items: center; gap: 8px; } .keys .lastrun .badge { height: 18px; font-size: 11px; }
 
@@ -400,7 +400,7 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
   .runs tr.row td, .keys tr td { display: block; padding: 0; border: 0; height: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
   .runs td.c-run { grid-column: 1; grid-row: 1; } .runs td.c-state { grid-column: 2; grid-row: 1; justify-self: end; } .runs td.c-repo { grid-column: 1; grid-row: 2; } .runs td.c-when { grid-column: 1; grid-row: 3; font-size: 12.5px; } .runs td.c-dur { grid-column: 2; grid-row: 3; font-size: 12.5px; justify-self: end; }
   .runs td.c-host { display: none; } .runs td.c-state { white-space: normal; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; } .runs td.c-den { grid-column: 2; grid-row: 2; justify-self: end; font-size: 12.5px; } .runs td.c-den:has(.zero) { display: none; }
-  .keys td.c-key { grid-column: 1; grid-row: 1; } .keys td.c-seen { grid-column: 2; grid-row: 1; font-size: 12.5px; justify-self: end; } .keys td.c-last { grid-column: 1 / -1; grid-row: 2; } .keys td.c-rv { display: none; }
+  .keys td.c-key { grid-column: 1; grid-row: 1; } .keys td.c-seen { grid-column: 2; grid-row: 1; font-size: 12.5px; justify-self: end; } .keys td.c-last { grid-column: 1 / -1; grid-row: 2; } .keys td.c-rv, .keys td.c-hosts { display: none; }
   .runs tbody tr:last-child, .keys tbody tr:last-child { border-bottom: 0; }
   .chart .ax.odd { display: none; }
 }
@@ -499,7 +499,7 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
           <li class="sugg-row" id="att-l1"><span class="subj"><span class="mark amber" title="Lost"><svg class="i"><use href="#i-nosig"/></svg><span class="sr-only">Lost</span></span><span class="badge badge-warning state"><svg class="i"><use href="#i-nosig"/></svg>Lost</span><span class="task trunc">nightly-mirror</span><span class="rid">0191c001</span></span>
             <span class="what">Lost. Last heard <time title="19 Sep 2026, 22:55:08 UTC">Yesterday, 22:55</time>, at least 8 m 30 s in. The run never posted its exit.</span>
             <span class="acts"><button type="button" class="btn btn-xs" data-close="att-l1" aria-label="Close nightly-mirror">Close</button><a class="btn btn-xs btn-ghost" href="#overview" aria-label="Open nightly-mirror">Open</a></span></li>
-          <li class="sugg-row" id="att-k1"><span class="subj"><span class="mark plain faint" title="Access key"><svg class="i"><use href="#i-key"/></svg><span class="sr-only">Access key</span></span><span class="task trunc">old-runner</span><span class="rid">qk_0c44e1a97d52</span></span>
+          <li class="sugg-row" id="att-k1"><span class="subj"><span class="mark plain faint" title="Access key"><svg class="i"><use href="#i-key"/></svg><span class="sr-only">Access key</span></span><span class="task trunc">old-runner</span><span class="rid">ak_0c44e1a97d52</span></span>
             <span class="what">Not seen for <b>34 days</b>; last runner 0.4.1. A key nobody uses is a key to revoke.</span>
             <span class="acts"><a class="btn btn-xs btn-danger-ghost" href="#overview" aria-label="Revoke old-runner">Revoke</a></span></li>
         </ul>
@@ -532,10 +532,10 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
       <div data-phead></div>
       <section class="sect onboard" aria-labelledby="ob-h1">
         <div>
-          <div><h2 id="ob-h1">Connect your first machine</h2><p class="lead">Nothing has posted to this <span class="term" tabindex="0" data-tip="team">hive</span> yet. An access key is all a machine needs to start.</p></div>
+          <div><h2 id="ob-h1">Send your first run</h2><p class="lead">Nothing has posted to this <span class="term" tabindex="0" data-tip="team">hive</span> yet. An access key is all a machine needs to start.</p></div>
           <ol class="steps">
             <li class="step cur" aria-current="step"><span class="disc">1</span><div><b>Create an access key</b><p>Label it after the machine or environment.</p></div></li>
-            <li class="step"><span class="disc">2</span><div><b>Paste the server block into the runner file</b><p>The secret is shown once, in the dialog that creates it.</p></div></li>
+            <li class="step"><span class="disc">2</span><div><b>Paste the server block into the runner file</b><p>The secret is shown once, in the dialog that creates it. One key can serve many hosts: a pool of ephemeral instances shares one.</p></div></li>
             <li class="step"><span class="disc">3</span><div><b>See runs here</b><p>From the first post on, every run of that machine lands in this hive.</p></div></li>
           </ol>
           <div><a class="btn btn-primary" href="#keys"><svg class="i"><use href="#i-plus"/></svg>Create an access key</a></div>
@@ -544,8 +544,8 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
           <span class="cap-label">What you will paste</span>
           <div class="code"><div>~/.config/qory/runner.yaml</div><pre><span class="k">server</span>:
   <span class="k">url</span>: https://qory.example
-  <span class="k">key_id</span>: <span class="ph">qk_············</span>
-  <span class="k">secret</span>: <span class="ph">qs_live_························</span></pre></div>
+  <span class="k">key_id</span>: <span class="ph">ak_············</span>
+  <span class="k">secret</span>: <span class="ph">························</span></pre></div>
           <span class="listen"><span class="ripple"></span><span>Listening for the first post from a machine.</span></span>
         </div>
       </section>
@@ -557,10 +557,10 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
       <div data-phead></div>
       <section class="sect onboard" aria-labelledby="ob-h2">
         <div>
-          <div><h2 id="ob-h2">Connect a machine</h2><p class="lead">The key is made. Paste its server block into the runner file on the machine; the secret was shown once, when the key was created.</p></div>
+          <div><h2 id="ob-h2">Send your first run</h2><p class="lead">The key is made. Paste its server block into the runner file on the machine; the secret was shown once, when the key was created.</p></div>
           <ol class="steps">
             <li class="step done"><span class="disc"><svg class="i"><use href="#i-check"/></svg><span class="sr-only">Done:</span></span><div><b>Create an access key</b><p>Label it after the machine or environment.</p></div></li>
-            <li class="step cur" aria-current="step"><span class="disc">2</span><div><b>Paste the server block into the runner file</b><p>The secret is shown once, in the dialog that creates it.</p></div></li>
+            <li class="step cur" aria-current="step"><span class="disc">2</span><div><b>Paste the server block into the runner file</b><p>The secret is shown once, in the dialog that creates it. One key can serve many hosts: a pool of ephemeral instances shares one.</p></div></li>
             <li class="step"><span class="disc">3</span><div><b>See runs here</b><p>From the first post on, every run of that machine lands in this hive.</p></div></li>
           </ol>
           <div><a class="btn" href="#keys">Manage access keys</a></div>
@@ -569,17 +569,17 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
           <span class="cap-label">What you will paste</span>
           <div class="code"><div>~/.config/qory/runner.yaml</div><pre><span class="k">server</span>:
   <span class="k">url</span>: https://qory.example
-  <span class="k">key_id</span>: qk_7f3a9c2e41d8
-  <span class="k">secret</span>: <span class="ph">qs_live_························</span></pre></div>
+  <span class="k">key_id</span>: ak_7f3a9c2e41d8
+  <span class="k">secret</span>: <span class="ph">························</span></pre></div>
           <span class="listen"><span class="ripple"></span><span>Listening for the first post from a machine.</span></span>
         </div>
       </section>
       <span class="listen only-phone"><span class="ripple"></span><span>Listening for the first post from a machine.</span></span>
       <section class="sect" aria-labelledby="mk-h1">
-        <header><h2 id="mk-h1">Machines</h2><span class="n">1</span></header>
-        <div class="table-wrap" tabindex="0" role="region" aria-label="Machines">
-          <table class="table keys"><thead><tr><th>Key</th><th>Last seen</th><th>Runner</th><th>Last run</th></tr></thead>
-          <tbody><tr><td class="c-key"><div class="kcell"><b>build-01</b><span>qk_7f3a9c2e41d8</span></div></td><td class="c-seen meta"><span class="faint">Never posted</span></td><td class="c-rv meta"><span class="faint">n/a</span></td><td class="c-last"><span class="faint">No run yet</span></td></tr></tbody></table>
+        <header><h2 id="mk-h1">Access keys</h2><span class="n">1</span></header>
+        <div class="table-wrap" tabindex="0" role="region" aria-label="Access keys">
+          <table class="table keys"><thead><tr><th>Key</th><th>Last seen</th><th>Runner</th><th>Hosts, 7 days</th><th>Last run</th></tr></thead>
+          <tbody><tr><td class="c-key"><div class="kcell"><b>build-01</b><span>ak_7f3a9c2e41d8</span></div></td><td class="c-seen meta"><span class="faint">Never posted</span></td><td class="c-rv meta"><span class="faint">n/a</span></td><td class="c-hosts meta"><span class="faint">none</span></td><td class="c-last"><span class="faint">No run yet</span></td></tr></tbody></table>
         </div>
       </section>
     </div>
@@ -589,10 +589,10 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
       <div data-phead></div>
       <section class="sect onboard" aria-labelledby="ob-h3">
         <div>
-          <div><h2 id="ob-h3">Connect a machine</h2><p class="lead">The key is made. Paste its server block into the runner file on the machine; the secret was shown once, when the key was created.</p></div>
+          <div><h2 id="ob-h3">Send your first run</h2><p class="lead">The key is made. Paste its server block into the runner file on the machine; the secret was shown once, when the key was created.</p></div>
           <ol class="steps">
             <li class="step done"><span class="disc"><svg class="i"><use href="#i-check"/></svg><span class="sr-only">Done:</span></span><div><b>Create an access key</b><p>Label it after the machine or environment.</p></div></li>
-            <li class="step done"><span class="disc"><svg class="i"><use href="#i-check"/></svg><span class="sr-only">Done:</span></span><div><b>Paste the server block into the runner file</b><p>The secret is shown once, in the dialog that creates it.</p></div></li>
+            <li class="step done"><span class="disc"><svg class="i"><use href="#i-check"/></svg><span class="sr-only">Done:</span></span><div><b>Paste the server block into the runner file</b><p>The secret is shown once, in the dialog that creates it. One key can serve many hosts: a pool of ephemeral instances shares one.</p></div></li>
             <li class="step cur" aria-current="step"><span class="disc">3</span><div><b>See runs here</b><p>The machine has verified with its key. The first run it starts lands here.</p></div></li>
           </ol>
           <div><a class="btn" href="#keys">Manage access keys</a></div>
@@ -601,17 +601,17 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
           <span class="cap-label">What you pasted</span>
           <div class="code"><div>~/.config/qory/runner.yaml</div><pre><span class="k">server</span>:
   <span class="k">url</span>: https://qory.example
-  <span class="k">key_id</span>: qk_7f3a9c2e41d8
-  <span class="k">secret</span>: <span class="ph">qs_live_························</span></pre></div>
+  <span class="k">key_id</span>: ak_7f3a9c2e41d8
+  <span class="k">secret</span>: <span class="ph">························</span></pre></div>
           <span class="listen"><span class="ripple"></span><span>Listening for the first run. <span class="mono">build-01</span>&nbsp;verified <time title="20 Sep 2026, 14:02:11 UTC">2 minutes ago</time>.</span></span>
         </div>
       </section>
       <span class="listen only-phone"><span class="ripple"></span><span>Listening for the first run. <span class="mono">build-01</span>&nbsp;verified 2 minutes ago.</span></span>
       <section class="sect" aria-labelledby="mk-h2">
-        <header><h2 id="mk-h2">Machines</h2><span class="n">1</span></header>
-        <div class="table-wrap" tabindex="0" role="region" aria-label="Machines">
-          <table class="table keys"><thead><tr><th>Key</th><th>Last seen</th><th>Runner</th><th>Last run</th></tr></thead>
-          <tbody><tr><td class="c-key"><div class="kcell"><b>build-01</b><span>qk_7f3a9c2e41d8</span></div></td><td class="c-seen meta"><time title="20 Sep 2026, 14:02:11 UTC">2 minutes ago</time></td><td class="c-rv meta"><span class="mono">0.4.2</span> <span class="faint mono" style="font-size:11.5px" title="Contract version v1">v1</span></td><td class="c-last"><span class="faint">No run yet</span></td></tr></tbody></table>
+        <header><h2 id="mk-h2">Access keys</h2><span class="n">1</span></header>
+        <div class="table-wrap" tabindex="0" role="region" aria-label="Access keys">
+          <table class="table keys"><thead><tr><th>Key</th><th>Last seen</th><th>Runner</th><th>Hosts, 7 days</th><th>Last run</th></tr></thead>
+          <tbody><tr><td class="c-key"><div class="kcell"><b>build-01</b><span>ak_7f3a9c2e41d8</span></div></td><td class="c-seen meta"><time title="20 Sep 2026, 14:02:11 UTC">2 minutes ago</time></td><td class="c-rv meta"><span class="mono">0.4.2</span> <span class="faint mono" style="font-size:11.5px" title="Contract version v1">v1</span></td><td class="c-hosts meta"><span class="mono">build-01</span></td><td class="c-last"><span class="faint">No run yet</span></td></tr></tbody></table>
         </div>
       </section>
     </div>
@@ -621,10 +621,10 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
       <div data-phead></div>
       <section class="sect onboard" aria-labelledby="ob-h4">
         <div>
-          <div><h2 id="ob-h4">Connect a machine</h2><p class="lead">The key is made. Paste its server block into the runner file on the machine; the secret was shown once, when the key was created.</p></div>
+          <div><h2 id="ob-h4">Send your first run</h2><p class="lead">The key is made. Paste its server block into the runner file on the machine; the secret was shown once, when the key was created.</p></div>
           <ol class="steps">
             <li class="step done"><span class="disc"><svg class="i"><use href="#i-check"/></svg><span class="sr-only">Done:</span></span><div><b>Create an access key</b><p>Label it after the machine or environment.</p></div></li>
-            <li class="step done"><span class="disc"><svg class="i"><use href="#i-check"/></svg><span class="sr-only">Done:</span></span><div><b>Paste the server block into the runner file</b><p>The secret is shown once, in the dialog that creates it.</p></div></li>
+            <li class="step done"><span class="disc"><svg class="i"><use href="#i-check"/></svg><span class="sr-only">Done:</span></span><div><b>Paste the server block into the runner file</b><p>The secret is shown once, in the dialog that creates it. One key can serve many hosts: a pool of ephemeral instances shares one.</p></div></li>
             <li class="step done"><span class="disc"><svg class="i"><use href="#i-check"/></svg><span class="sr-only">Done:</span></span><div><b>See runs here</b><p>From the first post on, every run of that machine lands in this hive.</p></div></li>
           </ol>
           <div class="landed"><svg class="i"><use href="#i-check"/></svg>The first run has landed. <a class="link" href="#overview">Open it</a></div>
@@ -633,8 +633,8 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
           <span class="cap-label">What you pasted</span>
           <div class="code"><div>~/.config/qory/runner.yaml</div><pre><span class="k">server</span>:
   <span class="k">url</span>: https://qory.example
-  <span class="k">key_id</span>: qk_7f3a9c2e41d8
-  <span class="k">secret</span>: <span class="ph">qs_live_························</span></pre></div>
+  <span class="k">key_id</span>: ak_7f3a9c2e41d8
+  <span class="k">secret</span>: <span class="ph">························</span></pre></div>
         </div>
       </section>
       <dl class="kvs strip">
@@ -669,9 +669,9 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
             <div class="table-wrap" tabindex="0" role="region" aria-label="Last runs"><table class="table runs"><thead><tr><th>State</th><th>Run</th><th>Repository</th><th>Host</th><th>Started</th><th class="num">Duration</th><th class="num">Denials</th></tr></thead><tbody>
               <tr class="row"><td class="c-state"><span class="badge badge-info state state-running"><i></i>Running</span></td><td class="c-run"><div class="run-cell"><a class="rowlink" href="#overview"><b>checkout-tax</b></a><span>0191f2a4</span></div></td><td class="c-repo"><span class="f">github.example/</span>acme/shop</td><td class="c-host meta mono">build-01</td><td class="c-when meta"><time title="20 Sep 2026, 14:02:11 UTC">2 minutes ago</time></td><td class="c-dur num meta">2 m 14 s</td><td class="c-den num"><span class="zero">0</span></td></tr>
             </tbody></table></div></section>
-      <section class="sect" aria-labelledby="mk-h4"><header><h2 id="mk-h4">Machines</h2><span class="n">1</span><span class="grow"></span><a class="link" href="#keys">Connect another machine</a></header>
-            <div class="table-wrap" tabindex="0" role="region" aria-label="Machines"><table class="table keys"><thead><tr><th>Key</th><th>Last seen</th><th>Runner</th><th>Last run</th></tr></thead>
-            <tbody><tr><td class="c-key"><div class="kcell"><b>build-01</b><span>qk_7f3a9c2e41d8</span></div></td><td class="c-seen meta"><time title="20 Sep 2026, 14:04:00 UTC">4 s ago</time></td><td class="c-rv meta"><span class="mono">0.4.2</span> <span class="faint mono" style="font-size:11.5px" title="Contract version v1">v1</span></td><td class="c-last"><a class="lastrun" href="#overview"><span class="badge badge-info state state-running"><i></i>Running</span><span>checkout-tax</span><span class="faint">2 min ago</span></a></td></tr></tbody></table></div></section>
+      <section class="sect" aria-labelledby="mk-h4"><header><h2 id="mk-h4">Access keys</h2><span class="n">1</span><span class="grow"></span><a class="link" href="#keys">Create another access key</a></header>
+            <div class="table-wrap" tabindex="0" role="region" aria-label="Access keys"><table class="table keys"><thead><tr><th>Key</th><th>Last seen</th><th>Runner</th><th>Hosts, 7 days</th><th>Last run</th></tr></thead>
+            <tbody><tr><td class="c-key"><div class="kcell"><b>build-01</b><span>ak_7f3a9c2e41d8</span></div></td><td class="c-seen meta"><time title="20 Sep 2026, 14:04:00 UTC">4 s ago</time></td><td class="c-rv meta"><span class="mono">0.4.2</span> <span class="faint mono" style="font-size:11.5px" title="Contract version v1">v1</span></td><td class="c-hosts meta"><span class="mono">build-01</span></td><td class="c-last"><a class="lastrun" href="#overview"><span class="badge badge-info state state-running"><i></i>Running</span><span>checkout-tax</span><span class="faint">2 min ago</span></a></td></tr></tbody></table></div></section>
     </div>
 
     <!-- ============ STATES: a specimen sheet ============ -->
@@ -711,7 +711,7 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
             <span class="what">Allowed for the hive by <b>dana@example.com</b>, <time>just now</time>.</span><span class="acts"></span></li>
           <li class="sugg-row resolved" id="sp-r4"><span class="subj"><span class="mark plain faint" title="Resumed"><svg class="i"><use href="#i-check"/></svg><span class="sr-only">Resolved</span></span><span class="badge badge-info state state-running"><i></i>Running</span><span class="task trunc">mirror-sync</span><span class="rid">0191f29d</span></span>
             <span class="what">Heartbeats resumed.</span><span class="acts"></span></li>
-          <li class="sugg-row" id="sp-k2"><span class="subj"><span class="mark plain faint" title="Access key"><svg class="i"><use href="#i-key"/></svg><span class="sr-only">Access key</span></span><span class="task trunc">dana-laptop</span><span class="rid">qk_29e6c7710b3f</span></span>
+          <li class="sugg-row" id="sp-k2"><span class="subj"><span class="mark plain faint" title="Access key"><svg class="i"><use href="#i-key"/></svg><span class="sr-only">Access key</span></span><span class="task trunc">dana-laptop</span><span class="rid">ak_29e6c7710b3f</span></span>
             <span class="what">Never used since it was created <b>34 days</b> ago. A key nobody uses is a key to revoke.</span>
             <span class="acts"><a class="btn btn-xs btn-danger-ghost" href="#states" aria-label="Revoke dana-laptop">Revoke</a></span></li>
         </ul>
@@ -728,7 +728,7 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
           <section class="sect" aria-busy="true" aria-label="Activity, loading"><div class="part"><div class="part-h"><h3>Alive now</h3></div><span class="skel w3"></span><span class="skel w2"></span></div><div class="part"><div class="chart" data-chart="skeleton"></div></div><div class="part"><div class="part-h"><h3>Last runs</h3></div><span class="skel w3"></span><span class="skel w3"></span><span class="skel w2"></span><span class="skel w3"></span><span class="skel w1"></span></div></section>
           <div class="stack">
             <section class="sect" aria-busy="true"><header><h2>Policy</h2></header><div class="lines"><span class="skel w3"></span><span class="skel w2"></span></div></section>
-            <section class="sect" aria-busy="true"><header><h2>Machines</h2></header><div class="lines"><span class="skel w3"></span><span class="skel w2"></span></div></section>
+            <section class="sect" aria-busy="true"><header><h2>Access keys</h2></header><div class="lines"><span class="skel w3"></span><span class="skel w2"></span></div></section>
             <section class="sect"><header><h2>Activity</h2></header><div class="lines"><div class="notice"><svg class="i"><use href="#i-info"/></svg><span>This could not be loaded. Reload the page; if it keeps happening, the server log has the reason.</span></div></div></section>
           </div>
         </div>
@@ -779,12 +779,12 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
         </div>
       </div>
 
-      <div class="spec"><span class="tag">Machines: never used, rotating, and more than five</span>
-        <section class="sect"><header><h2>Machines</h2><span class="n">7</span><span class="grow"></span><a class="link" href="#states">Connect another machine</a></header>
-          <div class="table-wrap" tabindex="0" role="region" aria-label="Machines"><table class="table keys"><thead><tr><th>Key</th><th>Last seen</th><th>Runner</th><th>Last run</th></tr></thead><tbody>
-            <tr><td class="c-key"><div class="kcell"><b>build-01</b><span>qk_7f3a9c2e41d8</span></div></td><td class="c-seen meta"><time title="20 Sep 2026, 14:04:00 UTC">4 s ago</time></td><td class="c-rv meta"><span class="mono">0.4.2</span> <span class="faint mono" style="font-size:11.5px" title="Contract version v1">v1</span></td><td class="c-last"><a class="lastrun" href="#states"><span class="badge badge-info state state-running"><i></i>Running</span><span>checkout-tax</span><span class="faint">2 min ago</span></a></td></tr>
-            <tr><td class="c-key"><div class="kcell"><b>staging-runners <span class="badge badge-warning">Rotating</span></b><span>qk_b81d04f6a2c9</span></div></td><td class="c-seen meta"><time title="19 Sep 2026, 17:20:00 UTC">Yesterday, 17:20</time></td><td class="c-rv meta"><span class="mono">0.4.1</span> <span class="faint mono" style="font-size:11.5px" title="Contract version v1">v1</span></td><td class="c-last"><a class="lastrun" href="#states"><span class="badge badge-error state"><svg class="i"><use href="#i-x"/></svg>Failed <span class="mono" style="font-size:11px">exit 1</span></span><span>fix-flaky-cart-test</span><span class="faint">Yesterday</span></a></td></tr>
-            <tr><td class="c-key"><div class="kcell"><b>dana-laptop</b><span>qk_29e6c7710b3f</span></div></td><td class="c-seen meta"><span class="faint">Never posted</span></td><td class="c-rv meta"><span class="faint">n/a</span></td><td class="c-last"><span class="faint">No run yet</span></td></tr>
+      <div class="spec"><span class="tag">Access keys: never used, rotating, and more than five</span>
+        <section class="sect"><header><h2>Access keys</h2><span class="n">7</span><span class="grow"></span><a class="link" href="#states">Create another access key</a></header>
+          <div class="table-wrap" tabindex="0" role="region" aria-label="Access keys"><table class="table keys"><thead><tr><th>Key</th><th>Last seen</th><th>Runner</th><th>Hosts, 7 days</th><th>Last run</th></tr></thead><tbody>
+            <tr><td class="c-key"><div class="kcell"><b>build-01</b><span>ak_7f3a9c2e41d8</span></div></td><td class="c-seen meta"><time title="20 Sep 2026, 14:04:00 UTC">4 s ago</time></td><td class="c-rv meta"><span class="mono">0.4.2</span> <span class="faint mono" style="font-size:11.5px" title="Contract version v1">v1</span></td><td class="c-hosts meta"><span class="mono">build-01</span></td><td class="c-last"><a class="lastrun" href="#states"><span class="badge badge-info state state-running"><i></i>Running</span><span>checkout-tax</span><span class="faint">2 min ago</span></a></td></tr>
+            <tr><td class="c-key"><div class="kcell"><b>staging-runners <span class="badge badge-warning">Rotating</span></b><span>ak_b81d04f6a2c9</span></div></td><td class="c-seen meta"><time title="19 Sep 2026, 17:20:00 UTC">Yesterday, 17:20</time></td><td class="c-rv meta"><span class="mono">0.4.1</span> <span class="faint mono" style="font-size:11.5px" title="Contract version v1">v1</span></td><td class="c-hosts meta"><span class="mono">12 hosts</span></td><td class="c-last"><a class="lastrun" href="#states"><span class="badge badge-error state"><svg class="i"><use href="#i-x"/></svg>Failed <span class="mono" style="font-size:11px">exit 1</span></span><span>fix-flaky-cart-test</span><span class="faint">Yesterday</span></a></td></tr>
+            <tr><td class="c-key"><div class="kcell"><b>dana-laptop</b><span>ak_29e6c7710b3f</span></div></td><td class="c-seen meta"><span class="faint">Never posted</span></td><td class="c-rv meta"><span class="faint">n/a</span></td><td class="c-hosts meta"><span class="faint">none</span></td><td class="c-last"><span class="faint">No run yet</span></td></tr>
           </tbody></table></div>
           <footer><a class="link" href="#states">and 4 more</a></footer>
         </section>
@@ -847,11 +847,11 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
     '<section class="sect" aria-labelledby="ret-h"><header><h2 id="ret-h">Retention</h2><span class="grow"></span><a class="link" href="#overview">Settings</a></header>' +
     '<div class="lines"><span>Log output is pruned after 30 days, events after 90 days.</span><span>Last night pruned <b>12 runs</b>: 4,120 events and 38.2 MB of log output in 610 chunks.</span></div></section>';
   $$("[data-glance]").forEach(function (el) { el.innerHTML = glance; });
-  var machines = '<section class="sect" aria-labelledby="mk-h"><header><h2 id="mk-h">Machines</h2><span class="n">3</span><span class="grow"></span><a class="link" href="#keys">Connect another machine</a></header>' +
-    '<div class="table-wrap" tabindex="0" role="region" aria-label="Machines"><table class="table keys"><thead><tr><th>Key</th><th>Last seen</th><th>Runner</th><th>Last run</th></tr></thead><tbody>' +
-    '<tr><td class="c-key"><div class="kcell"><b>build-01</b><span>qk_7f3a9c2e41d8</span></div></td><td class="c-seen meta"><time title="20 Sep 2026, 14:04:00 UTC">4 s ago</time></td><td class="c-rv meta"><span class="mono">0.4.2</span> <span class="faint mono" style="font-size:11.5px" title="Contract version v1">v1</span></td><td class="c-last"><a class="lastrun" href="#overview"><span class="badge badge-info state state-running"><i></i>Running</span><span>checkout-tax</span><span class="faint">2 min ago</span></a></td></tr>' +
-    '<tr><td class="c-key"><div class="kcell"><b>build-02</b><span>qk_b81d04f6a2c9</span></div></td><td class="c-seen meta"><time title="19 Sep 2026, 17:20:00 UTC">Yesterday, 17:20</time></td><td class="c-rv meta"><span class="mono">0.4.2</span> <span class="faint mono" style="font-size:11.5px" title="Contract version v1">v1</span></td><td class="c-last"><a class="lastrun" href="#overview"><span class="badge badge-error state"><svg class="i"><use href="#i-x"/></svg>Failed <span class="mono" style="font-size:11px">exit 1</span></span><span>fix-flaky-cart-test</span><span class="faint">Yesterday</span></a></td></tr>' +
-    '<tr><td class="c-key"><div class="kcell"><b>dev-laptop</b><span>qk_29e6c7710b3f</span></div></td><td class="c-seen meta"><time title="16 Sep 2026, 18:05:12 UTC">16 Sep, 18:05</time></td><td class="c-rv meta"><span class="mono">0.4.1</span> <span class="faint mono" style="font-size:11.5px" title="Contract version v1">v1</span></td><td class="c-last"><a class="lastrun" href="#overview"><span class="badge badge-success state"><svg class="i"><use href="#i-check"/></svg>Succeeded</span><span class="mono">claude -p "bump …"</span><span class="faint">16 Sep</span></a></td></tr>' +
+  var machines = '<section class="sect" aria-labelledby="mk-h"><header><h2 id="mk-h">Access keys</h2><span class="n">3</span><span class="grow"></span><a class="link" href="#keys">Create another access key</a></header>' +
+    '<div class="table-wrap" tabindex="0" role="region" aria-label="Access keys"><table class="table keys"><thead><tr><th>Key</th><th>Last seen</th><th>Runner</th><th>Hosts, 7 days</th><th>Last run</th></tr></thead><tbody>' +
+    '<tr><td class="c-key"><div class="kcell"><b>build-01</b><span>ak_7f3a9c2e41d8</span></div></td><td class="c-seen meta"><time title="20 Sep 2026, 14:04:00 UTC">4 s ago</time></td><td class="c-rv meta"><span class="mono">0.4.2</span> <span class="faint mono" style="font-size:11.5px" title="Contract version v1">v1</span></td><td class="c-hosts meta"><span class="mono">build-01</span></td><td class="c-last"><a class="lastrun" href="#overview"><span class="badge badge-info state state-running"><i></i>Running</span><span>checkout-tax</span><span class="faint">2 min ago</span></a></td></tr>' +
+    '<tr><td class="c-key"><div class="kcell"><b>build-02</b><span>ak_b81d04f6a2c9</span></div></td><td class="c-seen meta"><time title="19 Sep 2026, 17:20:00 UTC">Yesterday, 17:20</time></td><td class="c-rv meta"><span class="mono">0.4.2</span> <span class="faint mono" style="font-size:11.5px" title="Contract version v1">v1</span></td><td class="c-hosts meta"><span class="mono">build-01</span></td><td class="c-last"><a class="lastrun" href="#overview"><span class="badge badge-error state"><svg class="i"><use href="#i-x"/></svg>Failed <span class="mono" style="font-size:11px">exit 1</span></span><span>fix-flaky-cart-test</span><span class="faint">Yesterday</span></a></td></tr>' +
+    '<tr><td class="c-key"><div class="kcell"><b>dev-laptop</b><span>ak_29e6c7710b3f</span></div></td><td class="c-seen meta"><time title="16 Sep 2026, 18:05:12 UTC">16 Sep, 18:05</time></td><td class="c-rv meta"><span class="mono">0.4.1</span> <span class="faint mono" style="font-size:11.5px" title="Contract version v1">v1</span></td><td class="c-hosts meta"><span class="mono">build-01</span></td><td class="c-last"><a class="lastrun" href="#overview"><span class="badge badge-success state"><svg class="i"><use href="#i-check"/></svg>Succeeded</span><span class="mono">claude -p "bump …"</span><span class="faint">16 Sep</span></a></td></tr>' +
     '</tbody></table></div></section>';
   $$("[data-machines]").forEach(function (el) { el.innerHTML = machines; });
 

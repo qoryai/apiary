@@ -292,6 +292,16 @@ The contract has not fixed these; Apiary chose, and the runner should match:
   its repository's configuration a moment ago is not answered the baseline's digest and sent
   to fetch again. A runner told a digest it does not hold fetches once and remembers the
   answer it tried, so the worst case is one fetch that changes nothing.
+- The `cost_usd` of `ai.qory.session.result` is the runtime's own total for the session:
+  what Claude Code prints as `total_cost_usd` in its result line, which counts the tokens of
+  the subagents the session ran as well as its own. `ai.qory.session.subagent_finished`
+  carries no cost. So the apiary folds a run's cost as the sum of `cost_usd` over the run's
+  result events, once each (`runs.cost_usd`), and never adds anything for a subagent: a
+  result whose cost already includes its subagents is counted once, and a second result in
+  the same run (a second session) is a second total. A result without a cost adds nothing;
+  a run whose results carried none has no cost (null), which the console reads as
+  unrecorded, not as free. A value that is not a JSON number, negative or absurd (a billion
+  dollars or more) is read as absent.
 - What the runner's proxy does with the policy document, read from `internal/proxy`,
   `internal/policy` and `session` of the runner at the pinned ref, and what the apiary
   renders for it:

@@ -89,8 +89,8 @@ opens. The only state kept is the reading preference of the chart's table toggle
 | Activity, "All runs" | `/hive/runs` |
 | Activity, a chart column | `/hive/runs?from=2026-09-14&to=2026-09-14` (that day); a denial column adds `&denials=1` |
 | Policy at a glance | `/hive/policy`, `/hive/policy/repositories`, `/hive/policy/repositories?mode=own`, `/hive/policy/repositories/:id`, `/hive/policy/versions/:n` |
-| Machines, a key row | `/hive/keys` (the key row is not its own page; the row's last run links to the run) |
-| Machines, "Connect another machine" | `/hive/keys/new` |
+| Access keys, a key row | `/hive/keys` (the key row is not its own page; the row's last run links to the run) |
+| Access keys, "Create another access key" | `/hive/keys/new` |
 | Retention | `/hive/settings#retention` |
 
 ### Sidebar
@@ -311,21 +311,27 @@ Nothing on this card is a control: the mode is set on the policy page, where the
 list of what enforce would deny live. The `:enforce` attention item is the one place the overview
 nudges.
 
-### od8. Machines (`<.machines>`)
+### od8. Access keys (`<.access_keys>`)
 
-A full-width card under Last runs, headed **Machines** with the count of active keys in mono
-faint and, once the first run has landed, the link **Connect another machine** on the right (to
+An access key is not a machine: one key often serves many hosts (a pool of ephemeral CI
+instances shares one), so the card is about keys and counts their hosts. A full-width card
+under Last runs, headed **Access keys** with the count of active keys in mono faint and, once
+the first run has landed, the link **Create another access key** on the right (to
 `/hive/keys/new`). A `<.table>` of at most five active keys, most recently seen first, then the
 never-seen: **Key** (the label in 500, the key id in mono faint under it) · **Last seen**
 (`<.relative_time at={last_used_at}>`; "Never posted" faint) · **Runner** (`last_runner_version`
 mono, then `last_contract_version` as `v1` in mono faint 11.5 beside it with the title "Contract
-version 1"; "n/a" faint when the key never posted) · **Last run** (`<.run_state>` and the task or
-short id, the start relative; a link to the run; "No run yet" faint). "and 2 more" under the table when
-the hive has more active keys, to `/hive/keys`. Revoked keys are not here (they are on the keys
-page). A key rotating shows the warning badge **Rotating** after its label, as the keys page does.
-The last run per key is one query (`DISTINCT ON (access_key_id)` ordered by `started_at desc`,
-oj 5). Below 640 px the rows reflow: label and last seen on the first line, the last run on the
-second; the runner cell is dropped (one tap away).
+version 1"; "n/a" faint when the key never posted) · **Hosts, 7 days** (the distinct `runs.host`
+of the key's runs in the last seven days: the one host's name in mono when there is one, "3
+hosts" when more, "none" faint when the key posted no run with a host in the window) · **Last
+run** (`<.run_state>` and the task or short id, the start relative; a link to the run; "No run
+yet" faint). "and 2 more" under the table when the hive has more active keys, to `/hive/keys`.
+Revoked keys are not here (they are on the keys page). A key rotating shows the warning badge
+**Rotating** after its label, as the keys page does. The last run per key is one query
+(`DISTINCT ON (access_key_id)` ordered by `started_at desc`, oj 5) and the hosts another, grouped
+by key over the same index and the window. Below 640 px the rows reflow: label and last seen on
+the first line, the last run on the second; the runner and hosts cells are dropped (one tap
+away).
 
 ### od9. Retention (`<.retention_glance>`)
 
@@ -391,11 +397,11 @@ The ~hive~ of the Acme ~apiary~.
 | x Failed exit 1  fix-flaky-cart-test  github.exa…   build-02  Yesterday  6 m 51 s  ⊘ 1 |
 | ✓ Succeeded  claude -p "bump the changelog"  no repository  dev-laptop  16 Sep  48 s  0 |
 +----------------------------------------------------------------------------------------+
-+ Machines  3 ------------------------------------------------- Connect another machine +
-| Key                 Last seen         Runner     Last run                              |
-| build-01 qk_7f3a…   4 s ago           0.4.2 v1   (•) Running checkout-tax  2 min ago   |
-| build-02 qk_b81d…   Yesterday, 17:20  0.4.2 v1   x Failed exit 1  fix-flaky…  Yesterday|
-| dev-laptop qk_29e…  16 Sep, 18:05     0.4.1 v1   ✓ Succeeded  claude -p "bump …" 16 Sep |
++ Access keys  3 --------------------------------------------- Create another access key +
+| Key                 Last seen         Runner     Hosts, 7 days  Last run                |
+| build-01 ak_7f3a…   4 s ago           0.4.2 v1   build-01       (•) Running checkout-tax |
+| ci-pool ak_b81d…    Yesterday, 17:20  0.4.2 v1   12 hosts       x Failed exit 1  fix-fl… |
+| dev-laptop ak_29e…  16 Sep, 18:05     0.4.1 v1   dev-laptop     ✓ Succeeded  claude -p … |
 +----------------------------------------------------------------------------------------+
 ```
 
@@ -404,7 +410,7 @@ vocabulary's surface words, with the term hovers on the first occurrence), no ac
 page's acts are in its rows. Order top to bottom: Needs attention (od1), the Activity strip
 (od6), then a two-column grid `minmax(0, 1.55fr) minmax(0, 1fr)` with the **Activity** card (alive
 rows and the chart, divided by a hairline inside one card) on the left and the two glance cards
-(Policy, Retention) stacked on the right, then **Last runs** (od4) and **Machines** (od8) at full
+(Policy, Retention) stacked on the right, then **Last runs** (od4) and **Access keys** (od8) at full
 width. The right column is `align-start`; the Activity card sets the height and the right column
 never stretches to match it. Below a 1280 px viewport the grid is one column in the order
 Activity, Policy, Retention, and the two tables follow as before.
@@ -457,11 +463,13 @@ px (`brief.md` h1), with the steps of `<.steps>` and the state of each step read
 | 2 Paste the server block into the runner file | any key has `last_used_at` (a machine verified with it: a ping, a heartbeat, a batch) | keys exist, none used |
 | 3 See runs here | any run has landed (`Runs.list_runs(scope, limit: 1) != []`) | a key was used, no run yet |
 
-- **No key** (`/hive`, nothing posted, no keys): `brief.md` h1 as it is: title **Connect your
-  first machine**, "Nothing has posted to this ~hive~ yet. An access key is all a machine needs to
+- **No key** (`/hive`, nothing posted, no keys): `brief.md` h1 as it is: title **Send your
+  first run**, "Nothing has posted to this ~hive~ yet. An access key is all a machine needs to
   start.", step 1 current, the primary button **Create an access key**, the right column with the
   server block preview and the listening line "Listening for the first post from a machine."
-- **Keys, nothing posted**: the same card, title **Connect a machine**, step 1 done, step 2
+  Step 2's sub-line reads "The secret is shown once, in the dialog that creates it. One key can
+  serve many hosts: a pool of ephemeral instances shares one."
+- **Keys, nothing posted**: the same card, the same title, step 1 done, step 2
   current, the sentence "The key is made. Paste its server block into the runner file on the
   machine; the secret was shown once, when the key was created." Actions: default **Manage access
   keys**. Listening line unchanged. The right column shows the preview with the real key id of the
@@ -474,9 +482,9 @@ px (`brief.md` h1), with the steps of `<.steps>` and the state of each step read
   step) and the card leaves at the next navigation, not under the reader: while the page is open
   the card stays with all three steps done and a line under the steps "The first run has landed.
   Open it" (link to the run), and the Activity strip and cards render under it. On the next mount
-  the card is gone and the Machines card header holds the link **Connect another machine**.
+  the card is gone and the Access keys card header holds the link **Create another access key**.
 
-Under the checklist, while it shows, nothing else renders except the Machines card once a key
+Under the checklist, while it shows, nothing else renders except the Access keys card once a key
 exists (so the key just created is visible with "Never posted"); no chart, no policy card, no
 retention card: an empty hive has nothing to glance at, and the three cards would say "nothing"
 three times.
@@ -500,9 +508,9 @@ three times.
 | Policy | new hive | "No version yet", **Not served**, the sub sentence |
 | Policy | nothing to review | "Nothing declared and unallowed." faint |
 | Policy | suggestions unavailable (a repository's read over its cap) | that repository is left out of the count, and the row ends "· 1 repository not counted" faint with the title "More connections than one read counts; open the repository to see its suggestions." |
-| Machines | no active key | the card is absent (the checklist is the page) |
-| Machines | a key never used | "Never posted" faint, "n/a", "No run yet" |
-| Machines | more than five | five rows and "and n more" |
+| Access keys | no active key | the card is absent (the checklist is the page) |
+| Access keys | a key never used | "Never posted" faint, "n/a", "none", "No run yet" |
+| Access keys | more than five | five rows and "and n more" |
 | Retention | keeps everything | "This hive keeps everything." one line, the link |
 | Retention | set, no prune yet | the setting, then "No prune has run yet. The job runs nightly." |
 | Retention | last prune found nothing | "Nothing was old enough to prune last night." |
@@ -567,7 +575,7 @@ three times.
 | Card foot | Counted from the hive's runs by the day they started, UTC. Updated as batches land. |
 | Foot, unavailable | Denied destinations were not counted: this hive recorded more than 20,000 connections in 7 days. The connections page counts them by destination. |
 
-**Policy, Machines, Retention**
+**Policy, Access keys, Retention**
 
 | Where | Text |
 |---|---|
@@ -578,9 +586,9 @@ three times.
 | In force | [v14 · e3b0c44298fc] since 16 Sep / No version yet |
 | Repositories | **4** have posted runs · **2** with rules of their own |
 | To review | [3 to review] in 2 repositories / Nothing declared and unallowed. |
-| Machines head | Machines `3` · Connect another machine |
-| Machines columns | Key · Last seen · Runner (0.4.2 v1) · Last run |
-| Machines cells | Never posted · n/a · No run yet · and 2 more |
+| Access keys head | Access keys `3` · Create another access key |
+| Access keys columns | Key · Last seen · Runner (0.4.2 v1) · Hosts, 7 days (build-01 / 12 hosts / none) · Last run |
+| Access keys cells | Never posted · n/a · none · No run yet · and 2 more |
 | Retention lines | Log output is pruned after 30 days, events after 90 days. / This hive keeps everything. |
 | Last prune | Last night pruned **12 runs**: 4,120 events and 38.2 MB of log output in 610 chunks. Pruned log output from before 21 Aug, events from before 22 Jun. |
 | Last prune, on a date | On 14 Sep pruned … |
@@ -592,15 +600,15 @@ three times.
 
 | Where | Text |
 |---|---|
-| No key, title | Connect your first machine |
+| No key, title | Send your first run |
 | No key, lead | Nothing has posted to this ~hive~ yet. An access key is all a machine needs to start. |
-| Keys, title | Connect a machine |
+| Keys, title | Send your first run |
 | Keys, lead | The key is made. Paste its server block into the runner file on the machine; the secret was shown once, when the key was created. |
 | Step 3 current | The machine has verified with its key. The first run it starts lands here. |
 | Listening | Listening for the first post from a machine. / Listening for the first run. `build-01` verified 2 minutes ago. |
 | First run landed | The first run has landed. `Open it` |
 | Steps | Create an access key · Paste the server block into the runner file · See runs here |
-| Buttons | Create an access key · Manage access keys · Connect another machine |
+| Buttons | Create an access key · Manage access keys · Create another access key |
 
 **Term hovers** (the first occurrence per page): hive → team, apiary → organisation, and on the
 attention rows `lost`, `enforce`, `observe` with the sentences of `brief-runs.md` rf.
@@ -629,10 +637,10 @@ chart card has a fixed height, the attention list only appends, the strip's cell
 ## oh. Accessibility
 
 **Landmarks and order.** One `<h1>` (the hive name). Sections: `<section aria-labelledby>` for
-Needs attention, Activity, Policy, Machines, Retention; the strip is a `<dl>`. Keyboard path: skip
+Needs attention, Activity, Policy, Access keys, Retention; the strip is a `<dl>`. Keyboard path: skip
 link → sidebar → Needs attention rows (each row's actions, in order) → the strip's links → alive
 rows → the chart's slots (fourteen tab stops; `Home` and `End` jump; the table toggle) → All runs
-→ the last-runs rows → the policy card's links → the machines rows → the retention link. A row's
+→ the last-runs rows → the policy card's links → the access key rows → the retention link. A row's
 link covers the row (rd8), so a row is one tab stop plus its buttons.
 
 **Names.** Attention actions name their object: "Allow files.cdn.example for acme/shop", "Close
@@ -678,7 +686,7 @@ third day below 400 px.
 the actions on the right; the sentence on the second line (the pd6 phone rule). The strip is two
 columns by two. The Activity card: alive rows become two lines (state and task; repository and
 the alive line); the chart keeps fourteen columns (16 px wide, 2 px gap) with labels every third
-day; the last-runs rows reflow as rd8. The three glance cards stack under it. The machines rows
+day; the last-runs rows reflow as rd8. The three glance cards stack under it. The access key rows
 reflow (od8). The checklist drops its right column and the listening line sits under the card
 (`brief.md` h1). Tooltips open on tap; the chart slot's tap opens the tooltip on the first tap
 and follows the link on the second (`aria-expanded` on the slot), so a phone reader can read the
@@ -695,7 +703,7 @@ reads; every region is `assign_async` and lands within 200 ms on a hive of 100,0
 1. **First paint is the shell.** Mount reads `Runs.count_alive/1`, `AccessKeys.list_access_keys/1`
    (already needed for the checklist and the sidebar count) and `Policy.mode_summary/1` (one
    query, already read for the sidebar), and renders the skeletons. Everything else is
-   `assign_async` in four tasks: attention, activity, policy, machines-and-retention.
+   `assign_async` in four tasks: attention, activity, policy, keys-and-retention.
 2. **Two subscriptions.** `Runs.subscribe/1` (`{:run_changed, run}`) and `Policy.subscribe/1`. A
    run change re-reads the alive rows, the last runs, the strip and today's column of the chart
    (one grouped query with `started_at >= today`), coalesced to one re-read per 250 ms; it never
@@ -716,10 +724,11 @@ reads; every region is `assign_async` and lands within 200 ms on a hive of 100,0
    `Policy.digests/2` for the alive runs already read (at most 6). Idle keys: from the keys already
    read. `:enforce`'s count is `Policy.uncovered/2`, which shares the activity read's cap and
    answers `:unavailable` honestly.
-5. **Machines is two queries.** The keys (already read) and the last run per key:
+5. **Access keys is three queries.** The keys (already read), the last run per key:
    `SELECT DISTINCT ON (access_key_id) … FROM runs WHERE hive_id = $1 AND access_key_id = ANY($2)
-   ORDER BY access_key_id, started_at DESC` for the at most six keys shown; add the index
-   `(hive_id, access_key_id, started_at desc)`.
+   ORDER BY access_key_id, started_at DESC` for the at most six keys shown, and the hosts per
+   key (`count(distinct host)` grouped by `access_key_id` over the last seven days); add the
+   index `(hive_id, access_key_id, started_at desc)`.
 6. **Suggestions are counted, not listed.** The Policy card's "To review" reads
    `Policy.suggestions/3` for at most five repositories, those with a run in the last 14 days by
    most recent run; a count function that reads them in one query (`Policy.suggestion_counts/1`,
@@ -749,11 +758,11 @@ The page
 - [ ] Last runs: five rows of `<.runs_table>` with the Repository column, at full width; "All runs"
 - [ ] Runs are counted in the three families (alive, ended well, ended badly) in the strip, the chart's tooltip and table; the state is "succeeded", never "exited"
 - [ ] Policy card: mode with its source and the repositories that differ, the version pill, the repository counts, "to review"; the new-hive wording
-- [ ] Machines: five active keys at full width, last seen, runner with the contract version, last run; "Connect another machine" once a run has landed
+- [ ] Access keys: five active keys at full width, last seen, runner with the contract version, the hosts of the last 7 days, last run; "Create another access key" once a run has landed
 - [ ] Retention: the setting and the last prune in the settings page's words
 
 The empty hive
-- [ ] Step 1 ticks on a key, step 2 on `last_used_at`, step 3 on the first run; the card leaves on the next navigation after the first run, and the Machines card takes the link
+- [ ] Step 1 ticks on a key, step 2 on `last_used_at`, step 3 on the first run; the card leaves on the next navigation after the first run, and the Access keys card takes the link
 - [ ] No chart, policy or retention card while the checklist shows
 
 Live and quiet
