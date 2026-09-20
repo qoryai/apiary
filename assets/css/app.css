@@ -1357,6 +1357,13 @@
   .q-filter-search {
     width: 100%;
   }
+  .q-filter-options {
+    display: grid;
+    gap: 1px;
+  }
+  .q-filter-options > li[hidden] {
+    display: none;
+  }
   .q-filter-option {
     display: flex;
     height: 1.875rem;
@@ -1475,9 +1482,15 @@
   .q-runs tr.q-group td {
     padding-block: 7px;
   }
+  .q-group-in {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
   .q-group button {
     display: flex;
-    width: 100%;
+    min-width: 0;
+    flex: 1;
     align-items: center;
     gap: 8px;
     font-size: 0.8125rem;

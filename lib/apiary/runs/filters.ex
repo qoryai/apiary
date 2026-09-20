@@ -126,6 +126,40 @@ defmodule Apiary.Runs.Filters do
   @doc "Sets fields and returns to page 1, which every change of a filter does."
   def put(%__MODULE__{} = f, changes), do: struct!(%{f | page: 1}, changes)
 
+  @doc """
+  The filters after a change in a filter's menu: `form` is what the menu's form sends, the
+  name of the filter in `_filter` and its fields. Read through `parse/2` like a URL, so a
+  value the page did not offer is dropped all the same. Returns to page 1.
+  """
+  @spec change(t(), map()) :: t()
+  def change(%__MODULE__{} = f, %{"_filter" => name} = form) do
+    current = f |> to_params() |> Map.delete("page")
+
+    changed =
+      case name do
+        "state" ->
+          states = form["state"] |> List.wrap() |> Enum.filter(&is_binary/1) |> Enum.join(",")
+          Map.put(current, "state", states)
+
+        "since" ->
+          if form["_target"] in [["from"], ["to"]] do
+            current |> Map.delete("since") |> Map.merge(Map.take(form, ["from", "to"]))
+          else
+            current |> Map.drop(["from", "to"]) |> Map.merge(Map.take(form, ["since"]))
+          end
+
+        name when name in ~w(repo task runtime host) ->
+          Map.merge(current, Map.take(form, [name]))
+
+        _other ->
+          current
+      end
+
+    parse(changed, f.kind)
+  end
+
+  def change(%__MODULE__{} = f, _form), do: f
+
   @doc "The instants the range covers, `{from, to}`, either of them nil for open."
   @spec bounds(t(), DateTime.t()) :: {DateTime.t() | nil, DateTime.t() | nil}
   def bounds(%__MODULE__{from: from, to: to}, _now) when not is_nil(from) or not is_nil(to) do

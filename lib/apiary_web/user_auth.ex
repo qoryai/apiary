@@ -245,7 +245,8 @@ defmodule ApiaryWeb.UserAuth do
        |> Phoenix.Component.assign(:current_scope, scope)
        |> Phoenix.Component.assign(:memberships, Organisations.list_memberships(scope.user))
        |> Phoenix.Component.assign(:nav_counts, nav_counts(scope))
-       |> follow_membership_changes()}
+       |> follow_membership_changes()
+       |> follow_alive_runs()}
     else
       {:cont, Phoenix.Component.assign(socket, memberships: [], nav_counts: nil)}
     end
@@ -277,15 +278,73 @@ defmodule ApiaryWeb.UserAuth do
   end
 
   @doc """
-  The counts the sidebar shows beside Access keys (active keys) and Members.
+  The counts the sidebar shows beside Runs (alive now), Access keys (active keys) and
+  Members.
   """
   def nav_counts(%Scope{organisation: nil}), do: nil
 
   def nav_counts(%Scope{} = scope) do
     %{
       keys: scope |> AccessKeys.list_access_keys() |> Enum.count(&is_nil(&1.revoked_at)),
-      members: scope |> Organisations.list_members() |> length()
+      members: scope |> Organisations.list_members() |> length(),
+      alive: Apiary.Runs.count_alive(scope)
     }
+  end
+
+  # The sidebar's count of alive runs follows the hive on every page. It listens on a
+  # topic of its own (`Apiary.Runs.touched_topic/1`), so no page has to handle a message
+  # it did not ask for. The count is one indexed query, made at once on the first change
+  # and then at most once a second while changes keep coming.
+  @alive_window 1_000
+
+  defp follow_alive_runs(socket) do
+    scope = socket.assigns.current_scope
+
+    if scope.hive && Phoenix.LiveView.connected?(socket) do
+      Apiary.Runs.subscribe_touched(scope)
+    end
+
+    socket
+    |> Phoenix.LiveView.put_private(:alive_window, :closed)
+    |> Phoenix.LiveView.attach_hook(:alive_runs, :handle_info, fn
+      {:runs_touched, _hive_id}, socket ->
+        case socket.private[:alive_window] do
+          :closed ->
+            Process.send_after(self(), :alive_window_over, @alive_window)
+
+            {:halt,
+             socket |> refresh_alive() |> Phoenix.LiveView.put_private(:alive_window, :open)}
+
+          _open_or_dirty ->
+            {:halt, Phoenix.LiveView.put_private(socket, :alive_window, :dirty)}
+        end
+
+      :alive_window_over, socket ->
+        case socket.private[:alive_window] do
+          :dirty ->
+            Process.send_after(self(), :alive_window_over, @alive_window)
+
+            {:halt,
+             socket |> refresh_alive() |> Phoenix.LiveView.put_private(:alive_window, :open)}
+
+          _open ->
+            {:halt, Phoenix.LiveView.put_private(socket, :alive_window, :closed)}
+        end
+
+      _message, socket ->
+        {:cont, socket}
+    end)
+  end
+
+  defp refresh_alive(socket) do
+    scope = socket.assigns.current_scope
+
+    if scope && scope.hive do
+      counts = Map.put(socket.assigns.nav_counts || %{}, :alive, Apiary.Runs.count_alive(scope))
+      Phoenix.Component.assign(socket, :nav_counts, counts)
+    else
+      socket
+    end
   end
 
   # An open page follows a change of the user's own membership: a new level is

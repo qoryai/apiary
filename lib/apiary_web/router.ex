@@ -81,6 +81,17 @@ defmodule ApiaryWeb.Router do
         {ApiaryWeb.UserAuth, :require_organisation}
       ] do
       live "/hive", HiveLive.Overview, :index
+      # The record: the runs of the hive, and where they reached out to. With the rest of
+      # the hive's pages, behind sign-in with an organisation loaded, so the scope they
+      # query through is there; every filter is a query parameter.
+      live "/hive/runs", RunLive.Index, :index
+      live "/hive/connections", ConnectionLive.Index, :index
+      # One run: four tabs of one LiveView, so a tab is a patch. `:run_id` is the run's
+      # subject, the id the runner prints, not the row's id.
+      live "/hive/runs/:run_id", RunLive.Show, :timeline
+      live "/hive/runs/:run_id/terminal", RunLive.Show, :terminal
+      live "/hive/runs/:run_id/connections", RunLive.Show, :connections
+      live "/hive/runs/:run_id/details", RunLive.Show, :details
       live "/hive/keys", AccessKeyLive.Index, :index
       live "/hive/keys/new", AccessKeyLive.Index, :new
       live "/hive/keys/:id/rotate", AccessKeyLive.Index, :rotate

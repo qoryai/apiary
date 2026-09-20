@@ -11,11 +11,20 @@ defmodule ApiaryWeb.Layouts do
   # and other static content.
   embed_templates "layouts/*"
 
+  # Two sections: the record first, because it is why people open the console.
   @nav [
-    {:overview, "Overview", "hero-squares-2x2-micro", "/hive"},
-    {:keys, "Access keys", "hero-key-micro", "/hive/keys"},
-    {:members, "Members", "hero-users-micro", "/hive/members"},
-    {:settings, "Settings", "hero-cog-6-tooth-micro", "/hive/settings"}
+    {"Hive", "Main",
+     [
+       {:overview, "Overview", "hero-squares-2x2-micro", "/hive"},
+       {:runs, "Runs", "hero-play-circle-micro", "/hive/runs"},
+       {:connections, "Connections", "hero-arrows-right-left-micro", "/hive/connections"}
+     ]},
+    {"Manage", "Manage",
+     [
+       {:keys, "Access keys", "hero-key-micro", "/hive/keys"},
+       {:members, "Members", "hero-users-micro", "/hive/members"},
+       {:settings, "Settings", "hero-cog-6-tooth-micro", "/hive/settings"}
+     ]}
   ]
 
   @doc """
@@ -35,8 +44,15 @@ defmodule ApiaryWeb.Layouts do
 
   attr :memberships, :list, default: [], doc: "the user's memberships, for the switcher"
   attr :nav, :atom, default: nil, doc: "the active navigation item"
-  attr :counts, :map, default: nil, doc: "%{keys: active keys, members: members}"
-  attr :width, :string, default: "wide", values: ~w(wide narrow), doc: "960 or 640 px column"
+
+  attr :counts, :map,
+    default: nil,
+    doc: "%{keys: active keys, members: members, alive: runs alive now}"
+
+  attr :width, :string,
+    default: "wide",
+    values: ~w(wide narrow full),
+    doc: "960 or 640 px column; full is 1200 px, for the runs, run and connections pages"
 
   slot :inner_block, required: true
 
@@ -91,9 +107,9 @@ defmodule ApiaryWeb.Layouts do
           <.avatar :if={@user} name={@user.email} kind="self" />
         </header>
 
-        <main id="main" tabindex="-1" class="min-w-0 flex-1 outline-none">
+        <main id="main" tabindex="-1" class="min-w-0 flex-1 scroll-pt-16 outline-none">
           <div class="mx-auto w-full px-4 pb-12 pt-5 md:px-6 md:pt-8 lg:px-10">
-            <div class="mx-auto max-w-[960px]">
+            <div class={["mx-auto", if(@width == "full", do: "max-w-[1200px]", else: "max-w-[960px]")]}>
               <div class={["grid gap-6", @width == "narrow" && "max-w-[640px]"]}>
                 {render_slot(@inner_block)}
               </div>
@@ -156,36 +172,49 @@ defmodule ApiaryWeb.Layouts do
         memberships={@memberships}
       />
 
-      <p :if={@organisation} class="px-4 pb-1 pt-3 text-[11.5px]/4 font-medium text-faint">
-        <.term word="Hive" />
-      </p>
-      <nav :if={@organisation} class="grid gap-px px-2" aria-label="Main">
-        <.link
-          :for={{key, label, icon, path} <- @nav_items}
-          navigate={path}
-          aria-current={@nav == key && "page"}
-          class={[
-            "group flex h-8 items-center gap-2.5 rounded-field px-2 text-[13px] font-medium transition-colors",
-            "-outline-offset-2 hover:bg-base-300 hover:text-base-content max-md:h-10 max-md:text-sm",
-            if(@nav == key, do: "bg-base-300 text-base-content", else: "text-muted")
-          ]}
-        >
-          <.icon
-            name={icon}
+      <div :for={{section, label, items} <- (@organisation && @nav_items) || []} class="contents">
+        <p class="px-4 pb-1 pt-3 text-[11.5px]/4 font-medium text-faint">
+          <.term :if={section == "Hive"} word="Hive" />
+          <span :if={section != "Hive"}>{section}</span>
+        </p>
+        <nav class="grid gap-px px-2" aria-label={label}>
+          <.link
+            :for={{key, label, icon, path} <- items}
+            id={"nav-#{key}"}
+            navigate={path}
+            aria-current={@nav == key && "page"}
             class={[
-              "size-4 transition-colors",
-              if(@nav == key, do: "text-accent", else: "text-faint")
+              "group flex h-8 items-center gap-2.5 rounded-field px-2 text-[13px] font-medium transition-colors",
+              "-outline-offset-2 hover:bg-base-300 hover:text-base-content max-md:h-10 max-md:text-sm",
+              if(@nav == key, do: "bg-base-300 text-base-content", else: "text-muted")
             ]}
-          />
-          {label}
-          <span
-            :if={count = nav_count(@counts, key)}
-            class="ml-auto font-mono text-[11.5px]/4 text-faint tabular-nums"
           >
-            {count}
-          </span>
-        </.link>
-      </nav>
+            <.icon
+              name={icon}
+              class={[
+                "size-4 transition-colors",
+                if(@nav == key, do: "text-accent", else: "text-faint")
+              ]}
+            />
+            {label}
+            <span
+              :if={key == :runs && alive_count(@counts) > 0}
+              id="nav-runs-alive"
+              class="ml-auto inline-flex items-center gap-1.5 font-mono text-[11.5px]/4 text-info-soft-content tabular-nums"
+              title={alive_title(alive_count(@counts))}
+            >
+              <span class="q-dot q-ripple !size-1.5" aria-hidden="true"></span>
+              {alive_count(@counts)}
+            </span>
+            <span
+              :if={count = nav_count(@counts, key)}
+              class="ml-auto font-mono text-[11.5px]/4 text-faint tabular-nums"
+            >
+              {count}
+            </span>
+          </.link>
+        </nav>
+      </div>
 
       <div class="flex-1" />
 
@@ -202,6 +231,12 @@ defmodule ApiaryWeb.Layouts do
   defp nav_count(%{keys: n}, :keys), do: n
   defp nav_count(%{members: n}, :members), do: n
   defp nav_count(_counts, _key), do: nil
+
+  defp alive_count(%{alive: n}) when is_integer(n), do: n
+  defp alive_count(_counts), do: 0
+
+  defp alive_title(1), do: "1 run alive now"
+  defp alive_title(n), do: "#{n} runs alive now"
 
   attr :organisation, :any, required: true
   attr :hive, :any, required: true

@@ -25,6 +25,7 @@ import {LiveSocket} from "phoenix_live_view"
 import {hooks as colocatedHooks} from "phoenix-colocated/apiary"
 import topbar from "../vendor/topbar"
 import {Ticker} from "./hooks/ticker"
+import {RunGroups, NewRuns} from "./hooks/runs"
 
 // Copies `data-copy` (or the text content of the element `data-copy-target`
 // points at) to the clipboard, flips the button into its "Copied" state for
@@ -253,7 +254,7 @@ const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, CopyToClipboard, Modal, Menu, NavDrawer, Toast, Ticker},
+  hooks: {...colocatedHooks, CopyToClipboard, Modal, Menu, NavDrawer, Toast, Ticker, RunGroups, NewRuns},
   dom: {
     // showModal() sets `open` on the client; keep it across patches.
     onBeforeElUpdated(from, to) {

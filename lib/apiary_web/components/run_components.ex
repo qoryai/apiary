@@ -578,7 +578,7 @@ defmodule ApiaryWeb.RunComponents do
     ~H"""
     <div
       id={@id}
-      class={["q-filter dropdown", @set? && "q-filter-set"]}
+      class="q-filter dropdown"
       phx-hook="Menu"
       phx-mounted={JS.ignore_attributes(["class"])}
     >
@@ -608,66 +608,67 @@ defmodule ApiaryWeb.RunComponents do
           <.icon name="hero-x-mark-micro" class="size-3" />
         </.link>
       </span>
-      <form
-        id={"#{@id}-form"}
-        class="dropdown-content q-filter-menu left-0 top-full mt-1.5"
-        phx-change={@event}
-        phx-submit={@event}
-      >
-        <input type="hidden" name="_filter" value={@name} />
+      <div class="dropdown-content q-filter-menu left-0 top-full mt-1.5">
         <input
           :if={length(@options) > 8}
+          id={"#{@id}-search"}
           type="search"
           class="input input-sm q-filter-search"
           placeholder={"Find a #{String.downcase(@label)}"}
           aria-label={"Find a #{String.downcase(@label)}"}
           data-filter-search
           phx-update="ignore"
-          id={"#{@id}-search"}
           autocomplete="off"
         />
-        <ul class="menu menu-sm w-full min-w-0 !shadow-none !p-0" aria-label={@label}>
-          <li :if={@options == []} class="menu-title">Nothing to filter by yet</li>
-          <li
-            :for={{label, value, count} <- @options}
-            data-filter-option={String.downcase(to_string(label))}
-          >
-            <label class="q-filter-option">
+        <form id={"#{@id}-form"} phx-change={@event} phx-submit={@event}>
+          <input type="hidden" name="_filter" value={@name} />
+          <ul class="q-filter-options" aria-label={@label}>
+            <li :if={@options == []} class="px-2 py-1.5 text-xs text-faint">
+              Nothing to filter by yet
+            </li>
+            <li
+              :for={{label, value, count} <- @options}
+              data-filter-option={String.downcase(to_string(label))}
+            >
+              <label class="q-filter-option" data-menu-close={!@multiple}>
+                <input
+                  type={if @multiple, do: "checkbox", else: "radio"}
+                  name={if @multiple, do: "#{@name}[]", else: @name}
+                  value={value}
+                  checked={to_string(value) in @values}
+                  class={if @multiple, do: "checkbox checkbox-xs", else: "radio radio-xs"}
+                />
+                <span class="min-w-0 flex-1 truncate" title={label}>{label}</span>
+                <span :if={count} class="font-mono text-[11.5px] text-faint tabular-nums">
+                  {count}
+                </span>
+              </label>
+            </li>
+          </ul>
+          <div :if={@dates} class="q-filter-dates">
+            <label>
+              <span>From</span>
               <input
-                type={if @multiple, do: "checkbox", else: "radio"}
-                name={if @multiple, do: "#{@name}[]", else: @name}
-                value={value}
-                checked={to_string(value) in @values}
-                class={if @multiple, do: "checkbox checkbox-xs", else: "radio radio-xs"}
+                type="date"
+                name="from"
+                value={@dates[:from]}
+                class="input input-sm"
+                phx-debounce="blur"
               />
-              <span class="min-w-0 flex-1 truncate" title={label}>{label}</span>
-              <span :if={count} class="font-mono text-[11.5px] text-faint tabular-nums">{count}</span>
             </label>
-          </li>
-        </ul>
-        <div :if={@dates} class="q-filter-dates">
-          <label>
-            <span>From</span>
-            <input
-              type="date"
-              name="from"
-              value={@dates[:from]}
-              class="input input-sm"
-              phx-debounce="blur"
-            />
-          </label>
-          <label>
-            <span>To</span>
-            <input
-              type="date"
-              name="to"
-              value={@dates[:to]}
-              class="input input-sm"
-              phx-debounce="blur"
-            />
-          </label>
-        </div>
-      </form>
+            <label>
+              <span>To</span>
+              <input
+                type="date"
+                name="to"
+                value={@dates[:to]}
+                class="input input-sm"
+                phx-debounce="blur"
+              />
+            </label>
+          </div>
+        </form>
+      </div>
     </div>
     """
   end
