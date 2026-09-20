@@ -504,22 +504,60 @@ defmodule Apiary.Policy do
 
   ## Suggestions
 
+  @typedoc """
+  A declared host no rule covers or denies. `allowed` and `denied` are the attempts to it
+  in the repository's runs since the window's start, nil when they could not be counted
+  within the bound.
+  """
+  @type suggestion :: %{
+          host: String.t(),
+          runs: pos_integer,
+          last_seen_at: DateTime.t(),
+          allowed: non_neg_integer | nil,
+          denied: non_neg_integer | nil
+        }
+
   @doc """
   The hosts the repository's harness declared (`harness_hosts` of its runs' policy
   applied events, the newest runs first) that the repository's effective policy neither
-  covers nor denies: `[%{host:, runs:, last_seen_at:}]`, at most 50. Hosts that are not in the
+  covers nor denies: `[%{host:, runs:, last_seen_at:, allowed:, denied:}]`, at most 50.
+  `allowed` and `denied` count the attempts to the host in the repository's runs since
+  `since` (the last seven days by default), from `connections`, bounded: nil when there
+  are more connections in the window than one answer reads. Hosts that are not in the
   contract's grammar are left out.
   """
-  @spec suggestions(Scope.t(), Repository.t()) :: [
-          %{host: String.t(), runs: pos_integer, last_seen_at: DateTime.t()}
-        ]
-  def suggestions(%Scope{} = scope, %Repository{} = repository) do
+  @spec suggestions(Scope.t(), Repository.t(), DateTime.t() | nil) :: [suggestion]
+  def suggestions(%Scope{} = scope, %Repository{} = repository, since \\ nil),
+    do: declared_hosts(scope, repository, since).suggested
+
+  @doc """
+  The declared hosts shown against the rules (S5): `%{suggested: [suggestion], covered:
+  [%{host:, by:, source:, rule_id:}]}`. `suggested` is `suggestions/3`. `covered` is the
+  declared hosts a rule already allows, at most 20, by host: `by` is the entry of `allow`
+  that covers the host as a runner would report it (the host itself, or a `*.` suffix),
+  `source` is `:hive` or `:repository`, where that rule was written, and `rule_id` its id.
+  A repository that is not the hive's has neither.
+  """
+  @spec declared_hosts(Scope.t(), Repository.t(), DateTime.t() | nil) :: %{
+          suggested: [suggestion],
+          covered: [
+            %{
+              host: String.t(),
+              by: String.t(),
+              source: :hive | :repository,
+              rule_id: Ecto.UUID.t()
+            }
+          ]
+        }
+  def declared_hosts(%Scope{} = scope, %Repository{} = repository, since \\ nil) do
+    since = since || DateTime.add(DateTime.utc_now(), -7, :day)
+
     case target_id(scope, repository) do
       {:ok, repository_id} ->
-        Suggestions.list(scope.hive.id, repository_id, effective(scope, repository))
+        Suggestions.report(scope.hive.id, repository_id, effective(scope, repository), since)
 
       {:error, _not_found} ->
-        []
+        %{suggested: [], covered: []}
     end
   end
 

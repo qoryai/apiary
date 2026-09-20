@@ -4,7 +4,7 @@ Every release of the apiary, newest first, in the shape of [Keep a Changelog](ht
 The version numbers follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html); before 1.0 a minor
 release may change what an existing installation does, and says so under Upgrading. Every
 section names the database migrations the release runs on boot, so a self-hoster knows what
-a restart does before doing it (`docs/upgrading.md`).
+a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
 
 ## [Unreleased]
 
@@ -137,7 +137,9 @@ a restart does before doing it (`docs/upgrading.md`).
   hive and of each repository is kept with the rules before and after, and is diffable.
   Changes are announced on `Apiary.PubSub` (`policy:<hive>`).
 - Suggestions: the hosts a repository's harness declared, from its runs' policy applied
-  events, that its policy neither covers nor denies. Allow and deny from a connection's row:
+  events, that its policy neither covers nor denies. Each is shown against the record, the
+  attempts to it that the repository's runs were allowed and denied in the last seven days,
+  and beside the declared hosts a rule already covers, with the rule that does. Allow and deny from a connection's row:
   the host, or the path when the host is held to paths, in the repository or in the hive.
   Export of the effective policy for a node without a server: the `egress` section of
   `runner.yaml`, and a `--policy` file when there are paths or credentials.

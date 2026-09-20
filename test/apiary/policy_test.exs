@@ -940,6 +940,36 @@ defmodule Apiary.PolicyTest do
       assert [%{host: "registry.example", runs: 2, last_seen_at: %DateTime{}}] =
                Policy.suggestions(scope, repository)
 
+      # Shown against the record and against the rules.
+      started_run(scope, shop(),
+        egress: [
+          %{"host" => "registry.example", "decision" => "denied"},
+          %{"host" => "registry.example", "decision" => "denied"},
+          %{"host" => "api.example", "decision" => "allowed"}
+        ]
+      )
+
+      assert [%{host: "registry.example", allowed: 0, denied: 2}] =
+               Policy.suggestions(scope, repository)
+
+      future = DateTime.add(DateTime.utc_now(), 60, :second)
+      assert [%{allowed: 0, denied: 0}] = Policy.suggestions(scope, repository, future)
+
+      hive_rule = Enum.find(Policy.list_rules(scope, nil), &(&1.host == "api.example"))
+
+      assert %{
+               suggested: [%{host: "registry.example", denied: 2}],
+               covered: [
+                 %{host: "api.example", by: "api.example", source: :hive, rule_id: rule_id},
+                 %{host: "docs.s.example", by: "*.s.example", source: :repository}
+               ]
+             } = Policy.declared_hosts(scope, repository)
+
+      assert rule_id == hive_rule.id
+
+      %{scope: other} = sign_up_fixture()
+      assert %{suggested: [], covered: []} = Policy.declared_hosts(other, repository)
+
       # A host somebody denied is not suggested; one allowed is covered.
       {:ok, _} = Policy.deny(scope, nil, %{host: "registry.example"})
       assert [] = Policy.suggestions(scope, repository)
