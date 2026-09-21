@@ -503,9 +503,11 @@ defmodule Apiary.Runs do
     read = fn page ->
       Repo.all(
         from d in subquery(query),
+          # Denied first, then by first seen, newest first, so a row the page holds does
+          # not move when it is seen again (see Record.connections/3).
           order_by: [
             desc: d.last_decision == "denied",
-            desc: d.last_seen_at,
+            desc: d.first_seen_at,
             asc: d.host,
             asc: d.port,
             asc: d.path

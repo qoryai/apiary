@@ -11,6 +11,14 @@ Naming. The brand is **Qory**. Inside the product an organisation is an **apiary
 `github.example`, `gitlab.example`, `api.example`, `registry.example`, `files.cdn.example`,
 `build-01`. No people appear in a run.
 
+## Amendment 2: rows hold still
+
+21 Sep 2026. On a live run, the connections tables were ordered by last seen, so two denied
+hosts retried every few seconds swapped places between an owner's look and their click, and
+the Allow went to the other host. Both tables (rd13, the run's tab and the hive's page) now
+order by first seen after the denied group: a row moves only when a new destination arrives.
+Marked **[A2]** where it stands.
+
 ## Amendment 1: state families
 
 An owner's ruling after the first issue of this brief. **Run states read as three families on
@@ -627,8 +635,11 @@ allowed/denied bar.
 Outcome · First and last seen · (slot). Numbers right-aligned `tabular-nums`; a zero is `text-faint`;
 a non-zero Denied is `text-error-soft-content font-medium`. "First and last seen" is two
 `<.offset>`s joined by "to", one when they are equal. The Reason cell wraps to at most three lines
-(`max-w-[400px]`); every other cell is one line. Sort: denied destinations first, then by last
-seen, newest first. Above the table: a segmented filter All 6 · Allowed 4 · Denied 2 (`?decision=`)
+(`max-w-[400px]`); every other cell is one line. Sort **[A2]**: denied destinations first, then by
+first seen, newest first: a row moves only when a new destination arrives, never because one
+the page holds was seen again (a live run retries a denied host every few seconds, and an
+order by last seen swapped two denied rows under the pointer between the look and the click;
+the buttons in the slot are the reason the rows must hold still). Above the table: a segmented filter All 6 · Allowed 4 · Denied 2 (`?decision=`)
 and the summary "37 attempts to 6 destinations · policy enforce `9f86d081884c`".
 
 **Per hive and per repository (C2)**, one row per (host, port, path) across the runs in range:

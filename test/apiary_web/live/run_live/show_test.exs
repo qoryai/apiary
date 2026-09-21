@@ -729,6 +729,45 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert has_element?(lv, "#decision button[aria-pressed='true']", "All")
     end
 
+    test "a row holds its place when it is seen again: the order is by first seen", %{
+      conn: conn,
+      scope: scope
+    } do
+      denied = fn host ->
+        egress_data(%{
+          "host" => host,
+          "decision" => "denied",
+          "rule" => "",
+          "outcome" => "refused"
+        })
+      end
+
+      t = DateTime.utc_now()
+      at = &DateTime.add(t, &1, :second)
+
+      run =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "run.egress", denied.("first.example"), time: at.(1)},
+          {3, "run.egress", denied.("second.example"), time: at.(2)}
+        ])
+
+      hosts = fn html ->
+        html
+        |> LazyHTML.from_document()
+        |> LazyHTML.query("#run-connections > tr .q-dest")
+        |> LazyHTML.text()
+      end
+
+      {:ok, _lv, html} = live(conn, ~p"/hive/runs/#{run.run_id}/connections")
+      assert hosts.(html) =~ ~r/second\.example.*first\.example/s
+
+      # the first host is refused again, later than the second: it stays below it
+      project_more(run, [{4, "run.egress", denied.("first.example"), time: at.(30)}])
+      {:ok, _lv, html} = live(conn, ~p"/hive/runs/#{run.run_id}/connections")
+      assert hosts.(html) =~ ~r/second\.example.*first\.example/s
+    end
+
     test "no egress: the sentence, never an empty table", %{conn: conn, scope: scope} do
       run = projected(scope, [{1, "run.started", started_data()}])
       {:ok, _lv, html} = live(conn, ~p"/hive/runs/#{run.run_id}/connections")

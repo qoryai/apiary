@@ -451,10 +451,13 @@ defmodule Apiary.Runs.Record do
     rows =
       Repo.all(
         from c in query,
+          # Denied first, then by first seen, newest first: a row moves only when a new
+          # destination arrives, never because one the page holds was seen again. A
+          # live run retries a denied host every few seconds, and an order by last seen
+          # swapped two denied rows under the pointer between the look and the click.
           order_by: [
             desc: c.denied > 0,
-            desc: c.last_seen_at,
-            desc: c.last_sequence,
+            desc: c.first_seen_at,
             asc: c.host,
             asc: c.id
           ],
