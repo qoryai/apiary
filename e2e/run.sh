@@ -127,7 +127,14 @@ YAML
   docker save "$wall_image" | "${compose[@]}" exec -T node docker load >/dev/null
   # The server contract lets a runner speak plain http to a loopback address only, so
   # the node reaches the test instance as 127.0.0.1, the way a tunnel would bring it.
-  "${compose[@]}" exec --detach node socat "TCP-LISTEN:$E2E_PORT,bind=127.0.0.1,fork,reuseaddr" "TCP:host.docker.internal:$E2E_PORT"
+  # The host behind the tunnel: on Linux the host's own address on the node's network,
+  # since host.docker.internal there is the default bridge, whose traffic the engine
+  # keeps apart from this one; on a Mac the engine's name for the host.
+  case "$(uname -s)" in
+    Linux) host_from_node="$(docker network inspect apiary-e2e_outside --format '{{(index .IPAM.Config 0).Gateway}}')" ;;
+    *) host_from_node=host.docker.internal ;;
+  esac
+  "${compose[@]}" exec --detach node socat "TCP-LISTEN:$E2E_PORT,bind=127.0.0.1,fork,reuseaddr" "TCP:$host_from_node:$E2E_PORT"
 
   export E2E_RUNNER_FILE="$E2E_WORK/config/qory/runner.yaml"
   export E2E_RUNNER_TAIL="$E2E_WORK/runner-tail.yaml"
