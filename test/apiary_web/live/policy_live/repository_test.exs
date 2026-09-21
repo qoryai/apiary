@@ -85,7 +85,7 @@ defmodule ApiaryWeb.PolicyLive.RepositoryTest do
     assert text(view, "#policy-no-own") =~ "This repository has no rules of its own."
     assert text(view, "#policy-no-own") =~ "It is served the hive baseline, version"
     assert text(view, "#policy-baseline") == "hive baseline"
-    assert text(view, "#policy-effective-n") == "4 rules · 2 hosts allowed"
+    assert text(view, "#policy-effective-n") == "4 rules · 2 hosts allowed · 2 denied"
     assert text(view, "##{row(view, "registry.example")}") =~ "Hive"
     assert text(view, "##{row(view, "registry.example")}") =~ "Disable here"
     assert text(view, "##{row(view, "telemetry.example")}") =~ "Allow here"
@@ -208,16 +208,31 @@ defmodule ApiaryWeb.PolicyLive.RepositoryTest do
     assert Enum.all?(Policy.list_rules(scope, nil), &(&1.host != "mcp.acme.example"))
   end
 
-  test "a deny under the hive's suffix is refused with the way out for a repository",
-       %{conn: conn, scope: scope, path: path} do
+  test "a deny under the hive's suffix is accepted and said; under a locked suffix it is refused",
+       %{conn: conn, scope: scope, repository: repository, path: path} do
     {:ok, _} = Policy.allow(scope, nil, %{host: "*.cdn.example"})
+    {:ok, _} = Policy.allow(scope, nil, %{host: "*.internal.example", locked: true})
     view = open(conn, path)
 
     view |> element("#policy-composer button", "Deny") |> render_click()
     view |> form("#policy-composer", rule: %{host: "files.cdn.example"}) |> render_change()
 
-    assert text(view, "#policy-composer-reads") =~ "*.cdn.example is allowed by the hive"
-    assert has_element?(view, "#policy-composer-reads button", "Disable *.cdn.example here")
+    assert text(view, "#policy-composer-reads") =~
+             "*.cdn.example still allows the other hosts below it."
+
+    refute has_element?(view, "#policy-composer-add[disabled]")
+    view |> form("#policy-composer") |> render_submit()
+
+    assert "files.cdn.example" in Policy.effective(scope, repository).deny
+    assert has_element?(view, "#policy-rules .q-host", "files.cdn.example")
+
+    view |> element("#policy-composer button", "Deny") |> render_click()
+    view |> form("#policy-composer", rule: %{host: "tax.internal.example"}) |> render_change()
+
+    assert text(view, "#policy-composer-reads") =~
+             "A locked hive rule allows *.internal.example"
+
+    assert has_element?(view, "#policy-composer-add[disabled]")
   end
 
   test "a member is told only an owner changes the lock", %{scope: scope, path: path} do
@@ -261,7 +276,10 @@ defmodule ApiaryWeb.PolicyLive.RepositoryTest do
                "The mode becomes this repository's own: it stays enforce"
 
       assert text(view, "#mode-would") =~ "Let through in this repository's runs"
-      assert text(view, "#mode-would") =~ "Locked deny"
+      # A host the locked deny covers is denied in either mode already: enforcing this
+      # repository would not start denying it, so it is not in the list.
+      refute text(view, "#mode-would") =~ "bin.paste.example"
+      assert text(view, "#mode-would") =~ "1 destination"
 
       view |> element("#mode-would button", "Allow here") |> render_click()
       assert own(scope, repository, "files.cdn.example")
@@ -280,7 +298,7 @@ defmodule ApiaryWeb.PolicyLive.RepositoryTest do
       assert text(view, "#policy-effective-foot") =~ "Mode enforce , this repository's own."
     end
 
-    test "to observe names the locked denies that stop denying, and the card keeps saying so",
+    test "to observe names the locked denies that still hold, and the card keeps saying so",
          %{conn: conn, scope: scope, repository: repository, path: path} do
       {:ok, _} = Policy.set_mode(scope, "enforce")
       view = open(conn, path)
@@ -289,16 +307,19 @@ defmodule ApiaryWeb.PolicyLive.RepositoryTest do
       view |> element("#policy-repository-mode-observe") |> render_click()
 
       assert text(view, "#repository-mode-observe") =~
-               "nothing is denied in this repository's runs"
+               "only what a deny rule names is denied in this repository's runs"
 
       assert text(view, "#repository-mode-observe") =~
-               "*.paste.example will be reachable from this repository"
+               "A deny holds in either mode : *.paste.example stays denied in this repository"
 
       view |> element("#repository-mode-confirm", "Observe this repository") |> render_click()
       assert Policy.get_mode(scope, repository).own == "observe"
 
       assert text(view, "#policy-repository-mode-locked-note") =~
-               "This repository observes: nothing is denied, locked rules included."
+               "This repository observes: the locked deny still holds."
+
+      assert text(view, "#policy-repository-mode-locked-note") =~
+               "under observe it is the only thing denied here"
 
       view |> element("#policy-repository-mode-follow") |> render_click()
 

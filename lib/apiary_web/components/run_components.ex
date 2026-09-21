@@ -1830,12 +1830,9 @@ defmodule ApiaryWeb.RunComponents do
   defp popover_ready?(%{level: :repository, choice: choice}) when is_binary(choice), do: true
   defp popover_ready?(_popover), do: false
 
-  # Under observe the mode, not the rule, decides what a run does: the rule is written
-  # for the day the mode is enforce, and the sentence says so instead of promising a
-  # refusal that observe never makes.
-  defp next_sentence(%{action: :deny, mode: "observe"}),
-    do: "This run observes, so nothing is denied yet: the rule holds once the mode is enforce."
-
+  # Under observe an allow changes what the record says, not what the run does: the
+  # connection is let through already. A deny holds in either mode, so its sentence is
+  # the same under observe as under enforce.
   defp next_sentence(%{action: :allow, mode: "observe"}),
     do:
       "This run observes, so the connection is already let through: the rule records that it may be."

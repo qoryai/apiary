@@ -231,24 +231,25 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       refute has_element?(view, "#policy-composer-add[disabled]")
     end
 
-    test "refuses a deny under an allowed suffix, with the ways out", %{conn: conn, scope: scope} do
+    test "accepts a deny under an allowed suffix, and says the suffix still allows the rest",
+         %{conn: conn, scope: scope} do
       {:ok, _} = Policy.allow(scope, nil, %{host: "*.cdn.example"})
       view = open(conn)
 
       view |> element("#policy-composer button", "Deny") |> render_click()
       type(view, %{host: "files.cdn.example"})
 
-      assert has_element?(view, "#policy-composer-reads[role=alert]")
-      assert text(view, "#policy-composer-reads") =~ "This rule cannot be said."
-      assert text(view, "#policy-composer-reads") =~ "Remove *.cdn.example and allow the hosts"
-      assert has_element?(view, "#policy-composer-add[disabled]")
+      refute has_element?(view, "#policy-composer-reads[role=alert]")
+      assert text(view, "#policy-composer-reads") =~ "It is denied in either mode, observe too."
 
-      view
-      |> element("#policy-composer-reads button", "Deny *.cdn.example instead")
-      |> render_click()
+      assert text(view, "#policy-composer-reads") =~
+               "*.cdn.example still allows the other hosts below it."
 
-      assert text(view, "#policy-composer-reads") =~ "Replace" or
-               text(view, "#policy-composer-reads") =~ "Adding this deny replaces"
+      refute has_element?(view, "#policy-composer-add[disabled]")
+      view |> form("#policy-composer") |> render_submit()
+
+      assert %{allow: ["*.cdn.example"], deny: ["files.cdn.example"]} =
+               Policy.effective(scope, nil)
     end
 
     test "a pasted list fills the composer with the first and queues the rest",
@@ -524,14 +525,20 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert Policy.get_mode(scope) == "observe"
     end
 
-    test "going back to observe asks too, and says locks do not hold", %{conn: conn, scope: scope} do
+    test "going back to observe asks too, and says a deny still holds", %{
+      conn: conn,
+      scope: scope
+    } do
       {:ok, _} = Policy.set_mode(scope, "enforce")
       view = open(conn)
 
       view |> element("#policy-mode-observe") |> render_click()
 
       assert text(view, "#mode-observe") =~
-               "The rules stay as they are, locked ones too: under observe a deny shapes the document and denies nothing."
+               "only what a deny rule names is denied in the runs that name no repository"
+
+      assert text(view, "#mode-observe") =~
+               "The rules stay as they are, locked ones too: a deny holds in either mode."
 
       view |> element("#mode-confirm") |> render_click()
       assert Policy.get_mode(scope) == "observe"
@@ -642,8 +649,10 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
 
   describe "history" do
     setup %{scope: scope} do
-      {:ok, _} = Policy.allow(scope, nil, %{host: "registry.example"})
+      {:ok, rule} = Policy.allow(scope, nil, %{host: "registry.example"})
+      # A deny is in the document, so it renders a version; a lock renders the same bytes.
       {:ok, _} = Policy.deny(scope, nil, %{host: "telemetry.example"})
+      {:ok, _} = Policy.lock(scope, rule)
       {:ok, _} = Policy.set_mode(scope, "enforce")
       :ok
     end
@@ -652,17 +661,18 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
          %{conn: conn, user: user} do
       view = open(conn, "/hive/policy/history")
 
-      assert text(view, "#history-summary") =~ "3 changes"
-      assert text(view, "#history-summary") =~ "2 versions"
+      assert text(view, "#history-summary") =~ "4 changes"
+      assert text(view, "#history-summary") =~ "3 versions"
 
       assert text(view, "#history-list") =~
                "#{user.email} switched the hive's default mode from observe to enforce"
 
       assert text(view, "#history-list") =~ "allowed registry.example"
       assert text(view, "#history-list") =~ "denied telemetry.example"
+      assert text(view, "#history-list") =~ "locked registry.example"
       assert text(view, "#history-list") =~ "no new version"
       assert text(view, "#history-list") =~ "Today"
-      assert text(view, "#history-foot") =~ "Showing 3 of 3."
+      assert text(view, "#history-foot") =~ "Showing 4 of 4."
     end
 
     test "opening a change is in the URL and shows its diff in rules and in lines",
@@ -683,7 +693,9 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert text(view, "#chg-#{change.id}-diff .q-dlines:not(.q-dlines-sem) .q-add") =~
                ~s("mode" : "enforce")
 
-      assert text(view, "#chg-#{change.id}-diff") =~ "Open v2"
+      assert text(view, "#chg-#{change.id}-diff") =~ ~s("deny")
+      assert text(view, "#chg-#{change.id}-diff") =~ "telemetry.example"
+      assert text(view, "#chg-#{change.id}-diff") =~ "Open v3"
 
       view |> element("#chg-#{change.id}-summary") |> render_click()
       assert_patch(view, "/hive/policy/history")

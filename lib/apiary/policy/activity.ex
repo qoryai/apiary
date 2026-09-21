@@ -17,9 +17,12 @@ defmodule Apiary.Policy.Activity do
   A connection is held to the effective policy of its own run's repository, its mode
   included (the baseline
   for a run that names none), resolved once per repository, and matched as the runner's
-  proxy matches: the host against `allow` in the rendered order, first match; then, on a
-  host held to paths, the path against that host's list. Hosts and paths are a runner's
-  words: compared, never made atoms of, and what is not a host is no rule's.
+  proxy matches: the host against `deny` first and then against `allow`, each in the
+  rendered order, first match; then, on a host held to paths, the path against that
+  host's list. A host a deny covers is denied in either mode, so it is not what enforce
+  would start denying, though it is still a denied destination the rules do not allow.
+  Hosts and paths are a runner's words: compared, never made atoms of, and what is not a
+  host is no rule's.
   """
 
   import Ecto.Query, warn: false
@@ -56,7 +59,8 @@ defmodule Apiary.Policy.Activity do
     |> Enum.flat_map(fn row ->
       case cover(policies[row.repository_id], row) do
         {:uncovered, path} -> [{{row.host, path}, row}]
-        _covered -> []
+        # Covered, or denied by a rule that holds in either mode: enforce changes nothing.
+        _decided -> []
       end
     end)
     |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
@@ -116,6 +120,8 @@ defmodule Apiary.Policy.Activity do
       case cover(policy, row) do
         # Allowed since: nothing to offer.
         :covered -> []
+        # A deny rule holds it: still not allowed, and the page says which rule.
+        :denied -> [{{row.host, row.port, row.path || ""}, {row, nil, policy}}]
         {:uncovered, path} -> [{{row.host, row.port, row.path || ""}, {row, path, policy}}]
       end
     end)
@@ -260,7 +266,6 @@ defmodule Apiary.Policy.Activity do
           into: %{},
           do: {{entry.action, entry.host}, id}
 
-    denies = for %{kind: :host, action: :deny, host: host} <- in_force, do: host
     locked = for %{kind: :host, action: :deny, locked: true, host: host} <- in_force, do: host
 
     %{
@@ -269,8 +274,9 @@ defmodule Apiary.Policy.Activity do
       follows_hive: effective.mode_source == :hive,
       allow: effective.allow,
       paths: effective.paths,
-      # Names before suffixes, as `allow` is: the most exact deny is the one named.
-      denies: Enum.sort_by(denies, &{Grammar.wildcard?(&1), &1}),
+      # The document's own list, names before suffixes as `allow` is: what the runner
+      # decides first, and the most exact entry is the one it names.
+      denies: effective.deny,
       by_host: by_host,
       credentials:
         for(
@@ -281,14 +287,18 @@ defmodule Apiary.Policy.Activity do
     }
   end
 
-  # `:covered`, or `{:uncovered, path}` with the path when it is the path that no rule
-  # covers and nil when it is the host.
+  # `:covered`, `:denied` (a deny entry names the host: decided first, in either mode), or
+  # `{:uncovered, path}` with the path when it is the path that no rule covers and nil
+  # when it is the host.
   defp cover(policy, row) do
-    case first_match(policy.allow, row.host) do
-      nil ->
+    cond do
+      first_match(policy.denies, row.host) ->
+        :denied
+
+      is_nil(first_match(policy.allow, row.host)) ->
         {:uncovered, nil}
 
-      _entry ->
+      true ->
         case held(policy.paths, row.host) do
           nil ->
             :covered
@@ -314,10 +324,11 @@ defmodule Apiary.Policy.Activity do
     end
   end
 
+  # The rule the runner reports: the first of `deny`, then the first of `allow`.
   defp host_rule(policy, host) do
     cond do
-      entry = first_match(policy.allow, host) -> policy.by_host[{:allow, entry}]
       entry = first_match(policy.denies, host) -> policy.by_host[{:deny, entry}]
+      entry = first_match(policy.allow, host) -> policy.by_host[{:allow, entry}]
       true -> nil
     end
   end

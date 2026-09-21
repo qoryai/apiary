@@ -5,8 +5,9 @@ defmodule Apiary.Policy.Render do
 
   Deterministic: members in a fixed order, lists sorted by `Apiary.Policy.Resolution`, no
   insignificant whitespace, so the same rules give the same bytes and the same digest.
-  `allow` is always written, empty when nothing is allowed; `paths` and `credentials` only
-  when they hold something.
+  `allow` is always written, empty when nothing is allowed; `deny`, `paths` and
+  `credentials` only when they hold something, so a policy without a deny renders the
+  bytes it always did.
   """
 
   alias Apiary.Policy.Effective
@@ -32,6 +33,7 @@ defmodule Apiary.Policy.Render do
   def security_policy(%Effective{} = effective) do
     egress =
       [mode: effective.mode, allow: effective.allow] ++
+        if(effective.deny != [], do: [deny: effective.deny], else: []) ++
         if(map_size(effective.paths) > 0,
           do: [paths: effective.paths |> Enum.sort() |> ordered()],
           else: []

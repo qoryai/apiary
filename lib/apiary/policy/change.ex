@@ -5,11 +5,13 @@ defmodule Apiary.Policy.Change do
   credential's name; nil for the mode), the rule set `before` and `after` as JSON
   (`%{"mode" => …, "rules" => […]}`), who and when. `version_after` is the version of the
   target's run configuration in force once the change was made; a change that rendered
-  the same bytes names the version that stayed.
+  the same bytes names the version that stayed. A `rerendered` change is no change of the
+  rules (`before` equals `after`): the documents were rendered again by
+  `mix apiary.policy.rerender` after an upgrade that changed what a render says.
   """
   use Ecto.Schema
 
-  @actions ~w(rule_added rule_changed rule_removed rule_locked rule_unlocked mode_changed)
+  @actions ~w(rule_added rule_changed rule_removed rule_locked rule_unlocked mode_changed rerendered)
 
   @type t :: %__MODULE__{}
 

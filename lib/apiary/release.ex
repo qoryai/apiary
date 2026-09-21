@@ -45,6 +45,31 @@ defmodule Apiary.Release do
   end
 
   @doc """
+  Renders every managed hive's run configurations again, as `mix apiary.policy.rerender`
+  does where there is Mix: `bin/apiary eval "Apiary.Release.policy_rerender()"`. See
+  `Apiary.Policy.rerender_all/0`.
+  """
+  def policy_rerender do
+    load_app()
+
+    for repo <- repos() do
+      {:ok, result, _} =
+        Ecto.Migrator.with_repo(repo, fn _repo ->
+          # A new version is announced; outside the running application nobody listens,
+          # but the name has to exist.
+          {:ok, pubsub} =
+            Supervisor.start_link([{Phoenix.PubSub, name: Apiary.PubSub}], strategy: :one_for_one)
+
+          result = Apiary.Policy.rerender_all()
+          Supervisor.stop(pubsub)
+          result
+        end)
+
+      result
+    end
+  end
+
+  @doc """
   Runs the retention job now, as `mix apiary.prune` does where there is Mix:
   `bin/apiary eval "Apiary.Release.prune()"`. `dry_run: true` deletes nothing and prints
   the same counts. See `Apiary.Retention`.

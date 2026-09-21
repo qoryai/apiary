@@ -37,7 +37,7 @@ defmodule ApiaryWeb.RunLive.Show do
 
   @wall_tip "The enclosure the agent runs in. Its only route out leads to the runner's proxy."
   @no_wall_tip "This run had no wall. A program that ignores the proxy is not seen."
-  @mode_tip "Enforce: a connection no rule allows is denied. Observe: it is let through and recorded."
+  @mode_tip "Enforce: a connection no rule allows is denied. Observe: it is let through and recorded. A deny rule holds in either mode."
   @digest_tip "The sha256 of the policy this run ran under. Two runs with the same digest had the same policy."
   @terminated_tip "A host whose requests the proxy reads, because the run holds a credential or path rules for it. Every other host is a blind tunnel."
   @lane_tip "One agent's events: the main session, or a subagent from its start to its finish."
@@ -659,6 +659,8 @@ defmodule ApiaryWeb.RunLive.Show do
           </dd>
           <dt>Allowed hosts</dt>
           <dd class="font-mono">{strings(@policy.allow, @policy.allow_count) || "none"}</dd>
+          <dt>Denied hosts</dt>
+          <dd class="font-mono">{strings(@policy.deny, @policy.deny_count) || "none"}</dd>
           <dt>
             <.term
               word="Reads requests to"

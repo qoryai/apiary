@@ -815,17 +815,17 @@ defmodule ApiaryWeb.PolicyLive.Repository do
       on_cancel={JS.push("dialog_cancel")}
     >
       <p class="text-muted">
-        From the next heartbeat, about 30 s, <b class="font-medium text-base-content">nothing is denied in this repository's runs</b>: every connection is let through and recorded. {whose_words(
+        From the next heartbeat, about 30 s, <b class="font-medium text-base-content">only what a deny rule names is denied in this repository's runs</b>: every other connection is let through and recorded. {whose_words(
           @setting,
           "observe"
         )}
         <span :if={@setting != "follow"}>The hive's default stays {@hive} and other repositories do not change.</span>
       </p>
       <p class="text-muted">
-        The rules stay as they are, locked ones too. Under observe a deny shapes the document and denies nothing<span :if={
+        The rules stay as they are, locked ones too. A deny holds in either mode<span :if={
           @locked_denies != []
         }>: <code :for={host <- @locked_denies} class="q-rule mr-1">{host}</code>
-          will be reachable from this repository</span>.
+          stays denied in this repository</span>.
       </p>
       <:footer>
         <.button phx-click="dialog_cancel" data-autofocus>Cancel</.button>
@@ -840,6 +840,11 @@ defmodule ApiaryWeb.PolicyLive.Repository do
       </:footer>
     </.modal>
     """
+  end
+
+  defp effective_count(rows, effective) do
+    "#{Common.plural(length(rows), "rule")} · #{Common.plural(length(effective.allow), "host")} allowed" <>
+      if(effective.deny == [], do: "", else: " · #{length(effective.deny)} denied")
   end
 
   defp whose_words("follow", _mode),
@@ -939,13 +944,12 @@ defmodule ApiaryWeb.PolicyLive.Repository do
       suggestions={@suggestions}
       covered={@covered}
       allowed={@allowed}
-      observing={@mode.mode == "observe"}
     />
 
     <.sect
       id="policy-effective"
       title="Effective policy"
-      count={"#{Common.plural(length(@rows), "rule")} · #{Common.plural(length(@effective.allow), "host")} allowed"}
+      count={effective_count(@rows, @effective)}
     >
       <:trailing>
         <.segments id="policy-show" label="Show">
@@ -985,7 +989,6 @@ defmodule ApiaryWeb.PolicyLive.Repository do
         activity={async_value(@activity)}
         fresh={@fresh}
         target={@rule_target}
-        observing={@mode.mode == "observe"}
         empty={empty_words(@show, @rows)}
       />
       <.credential_composer

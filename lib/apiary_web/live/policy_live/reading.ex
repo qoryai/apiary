@@ -222,9 +222,6 @@ defmodule ApiaryWeb.PolicyLive.Reading do
           fix: {"Show it", "show_rule", %{"host" => host}}
         )
 
-      suffix = action == "deny" && allowed_suffix_above(host, context) ->
-        cannot_be_said(host, suffix, context)
-
       existing && existing.action != action ->
         reading(
           :note,
@@ -298,23 +295,34 @@ defmodule ApiaryWeb.PolicyLive.Reading do
   end
 
   defp reads_as("deny", host, _paths, context) do
-    case {Grammar.wildcard?(host), context.scope} do
-      {true, _scope} ->
-        ["Reads as: ", {:b, subject("deny", host)}, ", and every allow rule it covers."]
+    lead =
+      case {Grammar.wildcard?(host), context.scope} do
+        {true, _scope} ->
+          ["Reads as: ", {:b, subject("deny", host)}, ", and every allow rule it covers."]
 
-      {false, :hive} ->
-        [
-          "Reads as: ",
-          {:b, subject("deny", host)},
-          ". It takes the host out of what the hive allows; a repository can still allow it unless you lock this rule."
-        ]
+        {false, :hive} ->
+          [
+            "Reads as: ",
+            {:b, subject("deny", host)},
+            ". It takes the host out of what the hive allows; a repository can still allow it unless you lock this rule."
+          ]
 
-      {false, :repository} ->
-        [
-          "Reads as: ",
-          {:b, subject("deny", host)},
-          ". It takes the host out of what this repository is allowed; other repositories are not touched."
-        ]
+        {false, :repository} ->
+          [
+            "Reads as: ",
+            {:b, subject("deny", host)},
+            ". It takes the host out of what this repository is allowed; other repositories are not touched."
+          ]
+      end
+
+    lead ++ [" It is denied in either mode, observe too."] ++ under_suffix(host, context)
+  end
+
+  # A deny below an allowed `*.` suffix stands beside it: the runner decides deny first.
+  defp under_suffix(host, context) do
+    case allowed_suffix_above(host, context) do
+      nil -> []
+      suffix -> [" ", {:code, suffix.host}, " still allows the other hosts below it."]
     end
   end
 
@@ -357,60 +365,17 @@ defmodule ApiaryWeb.PolicyLive.Reading do
     end)
   end
 
-  defp cannot_be_said(_host, %{source: :hive} = suffix, %{scope: :repository}) do
-    text = [
-      {:b, ["This rule cannot be said."]},
-      " ",
-      {:code, suffix.host},
-      " is allowed by the hive, and the policy document can only list what is allowed: it has no way to take one host out from under a ",
-      {:code, "*."},
-      " entry. Disable ",
-      {:code, suffix.host},
-      " for this repository and allow the hosts you want by name."
-    ]
-
-    acts =
-      if suffix.locked,
-        do: [],
-        else: [
-          {"Disable #{suffix.host} here", "composer_use",
-           %{"host" => suffix.host, "action" => "deny"}}
-        ]
-
-    refusal(text, acts)
-  end
-
-  defp cannot_be_said(_host, suffix, _context) do
-    refusal(
-      [
-        {:b, ["This rule cannot be said."]},
-        " ",
-        {:code, suffix.host},
-        " is allowed, and the policy document can only list what is allowed: it has no way to take one host out from under a ",
-        {:code, "*."},
-        " entry. Remove ",
-        {:code, suffix.host},
-        " and allow the hosts you want by name, or deny ",
-        {:code, suffix.host},
-        " whole."
-      ],
-      [
-        {"Show #{suffix.host}", "show_rule", %{"host" => suffix.host}},
-        {"Deny #{suffix.host} instead", "composer_use",
-         %{"host" => suffix.host, "action" => "deny"}}
-      ]
-    )
-  end
-
   # On a repository page: the locked rule of the hive that decides the host whatever is
-  # added here. A locked deny holds against an allow, a locked allow against a deny.
+  # added here. A locked deny holds against an allow below it, a locked allow against a
+  # deny below it.
   defp locked_above(_action, _host, %{scope: :hive}), do: nil
 
   defp locked_above(action, host, context) do
     Enum.find(context.entries, fn entry ->
       entry.kind == :host and entry.source == :hive and entry.locked and
         (entry.host == host or
-           (action == "allow" and entry.action == :deny and Grammar.covers?(entry.host, host)))
+           (action == "allow" and entry.action == :deny and Grammar.covers?(entry.host, host)) or
+           (action == "deny" and entry.action == :allow and Grammar.covers?(entry.host, host)))
     end)
   end
 

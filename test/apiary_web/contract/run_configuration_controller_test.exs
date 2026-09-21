@@ -50,7 +50,7 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
   end
 
   test "from the first change on it is served, in the contract's shape, under its digest", ctx do
-    # The first change may render nothing new: a deny of a host nothing allows.
+    # The first change: a deny of a host nothing allows, in the document's deny list.
     {:ok, _} = Policy.deny(ctx.scope, nil, %{host: "ads.example"})
     assert Policy.managed?(ctx.scope)
 
@@ -63,7 +63,7 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
              "version" => 1,
              "security_policy" => %{
                "version" => 1,
-               "egress" => %{"mode" => "observe", "allow" => []}
+               "egress" => %{"mode" => "observe", "allow" => [], "deny" => ["ads.example"]}
              }
            }
 
@@ -222,11 +222,14 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
                |> File.read!()
                |> Schema.validate()
 
-      # The enforce fixture's policy, said as rules, is served in the fixture's shape.
+      # The enforce fixture's policy, said as rules, is served in the fixture's shape: a
+      # deny below the allowed suffix stands beside it in the deny list.
       {:ok, _} = Policy.set_mode(ctx.scope, "enforce")
 
       for host <- ["api.example", "github.com", "*.github.com"],
           do: {:ok, _} = Policy.allow(ctx.scope, nil, %{host: host})
+
+      {:ok, _} = Policy.deny(ctx.scope, nil, %{host: "gist.github.com"})
 
       fixture =
         dir
@@ -241,6 +244,37 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
 
       assert Enum.sort(served["security_policy"]["egress"]["allow"]) ==
                Enum.sort(fixture["security_policy"]["egress"]["allow"])
+
+      assert Enum.sort(served["security_policy"]["egress"]["deny"]) ==
+               Enum.sort(fixture["security_policy"]["egress"]["deny"] || [])
+    end
+
+    test "run-configuration/observe-deny.json: observe with a deny list, said as rules, is served as the fixture",
+         ctx do
+      fixture =
+        contract_dir()
+        |> Path.join("fixtures/run-configuration/observe-deny.json")
+        |> File.read!()
+        |> Jason.decode!()
+
+      egress = fixture["security_policy"]["egress"]
+      assert egress["mode"] == "observe"
+
+      for host <- egress["allow"], do: {:ok, _} = Policy.allow(ctx.scope, nil, %{host: host})
+      for host <- egress["deny"], do: {:ok, _} = Policy.deny(ctx.scope, nil, %{host: host})
+
+      conn = fetch(ctx, "")
+      assert :ok = Schema.validate(conn.resp_body)
+      served = Jason.decode!(conn.resp_body)
+
+      # The same document but for the order of the lists, which the apiary fixes: names
+      # before suffixes, so the deny below the allowed suffix is said and holds under observe.
+      assert served["version"] == fixture["version"]
+      assert served["security_policy"]["version"] == fixture["security_policy"]["version"]
+      assert served["security_policy"]["egress"]["mode"] == "observe"
+      assert Enum.sort(served["security_policy"]["egress"]["allow"]) == Enum.sort(egress["allow"])
+      assert Enum.sort(served["security_policy"]["egress"]["deny"]) == Enum.sort(egress["deny"])
+      assert Map.keys(served["security_policy"]["egress"]) |> Enum.sort() == ~w(allow deny mode)
     end
 
     test "the vendored schemas are the contract's" do

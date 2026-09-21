@@ -4,27 +4,43 @@ defmodule Apiary.Policy.Resolution do
   `Apiary.Policy.Effective` out, or the sentence that says why the rules cannot be
   rendered.
 
-  The contract's document can only allow. A deny is the apiary's own: it takes entries out
-  of the rendered `allow`, so that a repository can disable a host of the hive and a locked
-  deny of the hive holds against a repository.
+  The contract's document says what is denied and what is allowed: `egress.deny` is
+  decided by the runner first and holds in either mode, `egress.allow` decides after it and
+  only under `enforce`. So a deny rule is written to the document, which is how a
+  repository disables a host of the hive, how a locked deny of the hive holds against a
+  repository, and how a host is denied while the mode is still `observe`.
 
   1. **Precedence.** A locked rule of the hive, then the repository's rule, then an unlocked
      rule of the hive. Rules meet on the same host string (or the same credential name),
      and the one that wins decides the host whole: action and paths.
-  2. **A `*.` deny** also removes every allow entry it covers (`*.example` covers
-     `api.example` and `*.eu.example`), unless the allow has the higher precedence.
-  3. **What the document cannot say is refused**, never rendered wider than the page shows:
-     a deny of a host below an allowed `*.` suffix, when the deny does not lose to that
-     allow by precedence (there is no way to allow every host below a suffix except one);
-     and a `*.` suffix held to paths above another allowed entry (the runner holds a host
-     to the path list of whichever entry of `paths` it finds first).
-  4. A host held to paths is rendered in `allow` and in `paths`: the runner's proxy decides
-     the connection by `allow` first and only then the request by `paths`
-     (`docs/contract-assumptions.md`).
+  2. **A `*.` deny** also takes out every allow entry it covers (`*.example` covers
+     `api.example` and `*.eu.example`), unless the allow has the higher precedence. The
+     runner would deny those hosts by the deny anyway, deny being decided first; they are
+     taken out of `allow` all the same so the document lists what is reachable and nothing
+     else, and the page's count of hosts allowed is the truth.
+  3. **A deny below a `*.` allow** stands beside it when it does not lose to that allow by
+     precedence: `allow: ["*.example"], deny: ["tracker.example"]` denies `tracker.example`
+     and reaches `api.example`, in either mode. When the allow outranks it (a locked
+     `*.example` of the hive over a repository's deny) the deny is overridden. The one
+     shape the document cannot say is the mirror: a `*.` deny with an allow below it that
+     outranks the deny (the hive's unlocked `*.example` deny, a repository's own
+     `api.example` allow). The allow wins by precedence and is rendered; the deny still
+     takes out the allow entries it does outrank, but is **not written to `deny`**, since
+     an entry there would deny the winning host too. Under `enforce` the hosts it covers
+     are denied by having no allow, as before; under `observe` they are reached and
+     recorded with no rule.
+  4. **What the document cannot say is refused**: a `*.` suffix held to paths above another
+     allowed entry (the runner holds a host to the path list of whichever entry of `paths`
+     it finds first).
+  5. A host held to paths is rendered in `allow` and in `paths`: the runner's proxy decides
+     the connection by `deny`, then by `allow`, and only then the request by `paths`
+     (`docs/contract-assumptions.md`). A denied host is never reached, so its paths and a
+     credential for it never apply.
 
-  `allow` is sorted with names before `*.` suffixes, each alphabetically, so the rule a
-  runner reports for a connection is the most exact one; `paths` and `credentials` are
-  sorted by host and by name. The same rules always give the same effective policy.
+  `allow` and `deny` are sorted with names before `*.` suffixes, each alphabetically, so
+  the rule a runner reports for a connection is the most exact one; `paths` and
+  `credentials` are sorted by host and by name. The same rules always give the same
+  effective policy.
   """
 
   alias Apiary.Policy.{Effective, Entry, Error, Grammar, Rule}
@@ -37,8 +53,9 @@ defmodule Apiary.Policy.Resolution do
   Resolves a repository's policy from the hive's mode and the repository's own, nil
   when it follows the hive: the repository's own mode wins, and the effective policy says
   which it was in `mode_source`. The rules resolve as in `resolve/4`, whatever the mode:
-  a locked rule of the hive holds in a repository's document under either mode, and under
-  `observe` the document denies nothing, it only says what `enforce` would allow.
+  a locked rule of the hive holds in a repository's document under either mode: its
+  `deny` is denied under `observe` as under `enforce`, and its `allow` says what `enforce`
+  would reach.
   """
   @spec resolve_for(String.t(), String.t() | nil, [Rule.t()], [Rule.t()], Ecto.UUID.t() | nil) ::
           {:ok, Effective.t()} | {:error, Error.t()}
@@ -67,10 +84,9 @@ defmodule Apiary.Policy.Resolution do
       |> Enum.with_index()
       |> Map.new(fn {entry, index} -> {index, entry} end)
 
-    entries = entries |> same_subject() |> covered_by_deny()
+    entries = entries |> same_subject() |> covered_by_deny() |> under_allow()
 
-    with {:ok, entries} <- under_allow(entries),
-         :ok <- one_path_list(entries) do
+    with :ok <- one_path_list(entries) do
       {:ok, effective(mode, repository_id, entries)}
     end
   end
@@ -129,34 +145,30 @@ defmodule Apiary.Policy.Resolution do
     end)
   end
 
-  # A deny below an allowed `*.` suffix: lost to the allow when the allow outranks it,
-  # and otherwise something the document cannot say.
+  # A deny below an allowed `*.` suffix is lost to the allow when the allow outranks it (a
+  # locked allow of the hive over a repository's deny); otherwise the two stand, the deny
+  # decided first by the runner.
   defp under_allow(entries) do
     allows =
       for {index, %{action: :allow} = entry} <- in_force(entries, :host),
           Grammar.wildcard?(entry.host),
           do: {index, entry}
 
-    Enum.reduce_while(in_force(entries, :host), {:ok, entries}, fn
-      {index, %{action: :deny} = deny}, {:ok, entries} ->
-        above =
-          Enum.filter(allows, fn {_index, allow} ->
-            allow.host != deny.host and Grammar.covers?(allow.host, deny.host)
-          end)
-
-        case Enum.find(above, fn {_index, allow} -> rank(deny) >= rank(allow) end) do
-          {_index, allow} ->
-            {:halt, {:error, cannot_deny_under(deny, allow)}}
-
-          nil ->
-            case Enum.max_by(above, fn {_index, allow} -> rank(allow) end, fn -> nil end) do
-              nil -> {:cont, {:ok, entries}}
-              {allow, _entry} -> {:cont, {:ok, override(entries, index, allow)}}
-            end
+    Enum.reduce(in_force(entries, :host), entries, fn
+      {index, %{action: :deny} = deny}, entries ->
+        allows
+        |> Enum.filter(fn {_index, allow} ->
+          allow.host != deny.host and Grammar.covers?(allow.host, deny.host) and
+            rank(allow) > rank(deny)
+        end)
+        |> Enum.max_by(fn {_index, allow} -> rank(allow) end, fn -> nil end)
+        |> case do
+          nil -> entries
+          {allow, _entry} -> override(entries, index, allow)
         end
 
-      _allow, acc ->
-        {:cont, acc}
+      _allow, entries ->
+        entries
     end)
   end
 
@@ -187,19 +199,6 @@ defmodule Apiary.Policy.Resolution do
     end
   end
 
-  defp cannot_deny_under(deny, allow) do
-    "*." <> suffix = allow.host
-
-    Error.new(
-      :conflict,
-      "#{deny.host} cannot be denied #{where(deny)} while #{allow.host} is allowed #{where(allow)}. " <>
-        "The policy document can only allow: it has no way to allow every host below " <>
-        "#{suffix} except this one. Remove #{allow.host} and allow the hosts below it by " <>
-        "name, or leave #{deny.host} allowed.",
-      :host
-    )
-  end
-
   defp where(%Entry{source: :hive, locked: true}), do: "in the hive (locked)"
   defp where(%Entry{source: :hive}), do: "in the hive"
   defp where(%Entry{source: :repository}), do: "in the repository"
@@ -220,6 +219,14 @@ defmodule Apiary.Policy.Resolution do
 
   defp effective(mode, repository_id, entries) do
     hosts = for {_index, %{action: :allow} = entry} <- in_force(entries, :host), do: entry
+    denies = for {_index, %{action: :deny} = entry} <- in_force(entries, :host), do: entry
+
+    # A deny with an allow in force below it (one that outranks the deny, or it would have
+    # been taken out) cannot be written: the runner would deny the winning host too.
+    said =
+      Enum.reject(denies, fn deny ->
+        Enum.any?(hosts, &(&1.host != deny.host and Grammar.covers?(deny.host, &1.host)))
+      end)
 
     credentials =
       for {_index, %{action: :allow} = entry} <- in_force(entries, :credential) do
@@ -236,6 +243,7 @@ defmodule Apiary.Policy.Resolution do
         |> Map.values()
         |> Enum.sort_by(&{&1.kind != :host, sort_key(&1.host || &1.name), &1.source != :hive}),
       allow: hosts |> Enum.map(& &1.host) |> Enum.sort_by(&sort_key/1),
+      deny: said |> Enum.map(& &1.host) |> Enum.sort_by(&sort_key/1),
       paths:
         for(
           %{paths: paths} = entry when is_list(paths) <- hosts,

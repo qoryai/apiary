@@ -5,16 +5,19 @@ defmodule Apiary.Policy do
 
   ## The model
 
-  The contract's policy document can only allow: a mode, the hosts allowed, the paths a
-  host is held to, the credentials of the machine's a run may use. The hive has a mode
-  (`get_mode/1`, `set_mode/2`) and a baseline of rules; a repository has rules of its own
-  on top, and follows the hive's mode unless it sets its own (`get_mode/2`, `set_mode/3`).
-  The mode and the rules are apart: a locked rule of the hive holds in a repository's
-  document whatever the repository's mode, and under `observe` nothing is denied, locked
-  deny or not: the document then only says what `enforce` would allow. A rule (`Apiary.Policy.Rule`) allows or denies a host or a credential. A deny is
-  the apiary's own notion: it takes entries out of what is rendered, so a repository can
-  disable a host of the hive, and a **locked** rule of the hive holds against every
-  repository. How the rules come to one policy is `Apiary.Policy.Resolution`'s to say.
+  The contract's policy document says a mode, the hosts denied, the hosts allowed, the
+  paths a host is held to, the credentials of the machine's a run may use. The hive has a
+  mode (`get_mode/1`, `set_mode/2`) and a baseline of rules; a repository has rules of its
+  own on top, and follows the hive's mode unless it sets its own (`get_mode/2`,
+  `set_mode/3`). The mode and the rules are apart: a locked rule of the hive holds in a
+  repository's document whatever the repository's mode, and a deny holds in either mode:
+  `egress.deny` is decided by the runner first, so under `observe` a host a deny names is
+  denied and everything else is let through and recorded, and the document's `allow`
+  says what `enforce` would reach. A rule (`Apiary.Policy.Rule`) allows or denies a host
+  or a credential. A deny is written to the document and takes the allow entries it
+  covers out of it, so a repository can disable a host of the hive, and a **locked** rule
+  of the hive holds against every repository. How the rules come to one policy is
+  `Apiary.Policy.Resolution`'s to say.
 
   ## Writes
 
@@ -178,7 +181,7 @@ defmodule Apiary.Policy do
 
   ## Mode
 
-  @doc "Every mode: `observe` records and denies nothing, `enforce` denies what no rule allows."
+  @doc "Every mode: `observe` records and denies only what a deny rule names, `enforce` denies what no rule allows as well."
   def modes, do: @modes
 
   @doc "The mode of the hive's policy, `\"observe\"` or `\"enforce\"`, as it is now."
@@ -366,8 +369,8 @@ defmodule Apiary.Policy do
 
   @doc """
   Denies a host or a credential in the target, as `allow/3` allows one. A deny takes the
-  whole host: `paths` is not read. A deny of a host below an allowed `*.` suffix is
-  refused with a sentence, since the document could not say it.
+  whole host: `paths` is not read. A deny holds in either mode, and a deny of a host below
+  an allowed `*.` suffix stands beside the allow: the runner decides `deny` first.
   """
   @spec deny(Scope.t(), target, map) :: {:ok, Rule.t()} | refusal
   def deny(%Scope{} = scope, target, attrs), do: put_rule(scope, target, "deny", attrs)
@@ -1188,7 +1191,7 @@ defmodule Apiary.Policy do
           else
             change = insert_change(hive, user, repository_id, action, subject, before, after_)
 
-            with :ok <- render_all(hive, user, change), do: {:ok, {value, change}}
+            with :ok <- render_all(hive, change), do: {:ok, {value, change}}
           end
         end
       end)
@@ -1253,12 +1256,124 @@ defmodule Apiary.Policy do
     })
   end
 
+  @doc """
+  Renders the documents of every managed hive again through today's resolution, in the
+  hive's lock, for `mix apiary.policy.rerender`: a target whose bytes change gets a new
+  version and a `rerendered` change (no change of the rules: `before` equals `after`),
+  and unchanged bytes write nothing. What an upgrade that changed what a render says
+  (a release that put `deny` in the document) needs once. `%{hives: n, versions: m}`,
+  the hives visited and the versions written.
+  """
+  @spec rerender_all() :: %{hives: non_neg_integer, versions: non_neg_integer}
+  def rerender_all do
+    Repo.all(from c in Change, distinct: true, select: c.hive_id)
+    |> Enum.reduce(%{hives: 0, versions: 0}, fn hive_id, totals ->
+      case rerender(hive_id) do
+        {:ok, versions} -> %{hives: totals.hives + 1, versions: totals.versions + versions}
+        {:error, _error} -> totals
+      end
+    end)
+  end
+
+  @doc false
+  # One hive: in its lock, as any write. Nothing is announced when nothing was written.
+  def rerender(hive_id) do
+    result =
+      Repo.transact(fn ->
+        hive = Repo.one!(from h in Hive, where: h.id == ^hive_id, lock: "FOR NO KEY UPDATE")
+
+        if managed_hive?(hive.id) do
+          render_targets(hive, fn repository_id, rendered, store ->
+            with {:ok, document} <- rendered do
+              digest = Render.digest(document)
+
+              case Repo.one(newest(hive.id, repository_id)) do
+                %RunConfiguration{digest: ^digest} ->
+                  {:ok, 0}
+
+                nil ->
+                  {:ok, 0}
+
+                %RunConfiguration{} = current ->
+                  snapshot = snapshot(hive, repository_id)
+
+                  change =
+                    insert_change(hive, nil, repository_id, "rerendered", nil, snapshot, snapshot)
+
+                  configuration = store.(change)
+
+                  Repo.update_all(from(c in Change, where: c.id == ^change.id),
+                    set: [version_after: configuration.version]
+                  )
+
+                  Logger.info(
+                    "policy rerendered hive=#{hive.id} target=#{repository_id || "baseline"} " <>
+                      "version=#{current.version}->#{configuration.version}"
+                  )
+
+                  {:ok, 1}
+              end
+            end
+          end)
+        else
+          {:ok, 0}
+        end
+      end)
+
+    case result do
+      {:ok, 0} ->
+        {:ok, 0}
+
+      {:ok, versions} ->
+        Phoenix.PubSub.broadcast(
+          Apiary.PubSub,
+          topic(hive_id),
+          {:policy_changed, %{hive_id: hive_id, repository_id: nil, action: "rerendered"}}
+        )
+
+        {:ok, versions}
+
+      {:error, %Error{} = error} ->
+        Logger.warning("policy rerender refused hive=#{hive_id}: #{error.message}")
+        {:error, error}
+    end
+  end
+
   # The baseline, and every repository that has rules or a mode of its own or has had a
   # configuration of its own. A repository with a mode of its own renders the same bytes
   # when the hive's mode changes, so it gets no new version; one that follows the hive does.
   # The rest: a repository whose last rule went keeps its versions, and
   # its next one says what the baseline says.
-  defp render_all(%Hive{} = hive, user, change) do
+  defp render_all(%Hive{} = hive, change) do
+    render_targets(hive, fn repository_id, rendered, store ->
+      case rendered do
+        {:ok, _document} ->
+          configuration = store.(change)
+
+          if change && change.repository_id == repository_id do
+            Repo.update_all(from(c in Change, where: c.id == ^change.id),
+              set: [version_after: configuration.version]
+            )
+          end
+
+          :ok
+
+        {:error, error} ->
+          {:error, elsewhere(error, hive, change, repository_id)}
+      end
+    end)
+    |> case do
+      {:ok, _count} -> :ok
+      {:error, _error} = refusal -> refusal
+    end
+  end
+
+  # Every target of the hive, each handed `fun.(repository_id, rendered, store)`:
+  # `rendered` is `{:ok, document}` or the refusal, and `store.(change)` keeps the document
+  # under the change (or nil) and answers the configuration in force, the one that was
+  # there when the bytes are the same. `fun` answers `:ok` or `{:ok, count}` to go on, or
+  # `{:error, _}` to stop: `{:ok, sum}` or the first refusal.
+  defp render_targets(%Hive{} = hive, fun) do
     hive_rules = rules(hive.id, nil)
 
     own =
@@ -1283,51 +1398,52 @@ defmodule Apiary.Policy do
 
     targets = [nil | Enum.uniq(Map.keys(own) ++ rendered ++ Map.keys(modes))]
 
-    Enum.reduce_while(targets, :ok, fn repository_id, :ok ->
+    Enum.reduce_while(targets, {:ok, 0}, fn repository_id, {:ok, count} ->
       rules = Map.get(own, repository_id, [])
+      rendered = document(hive, repository_id, modes[repository_id], hive_rules, rules)
 
-      case render(hive, user, change, repository_id, modes[repository_id], hive_rules, rules) do
-        {:ok, configuration} ->
-          if change && change.repository_id == repository_id do
-            Repo.update_all(from(c in Change, where: c.id == ^change.id),
-              set: [version_after: configuration.version]
-            )
-          end
+      store = fn change ->
+        {:ok, document} = rendered
+        store(hive, change, repository_id, document)
+      end
 
-          {:cont, :ok}
-
-        {:error, error} ->
-          {:halt, {:error, elsewhere(error, hive, change, repository_id)}}
+      case fun.(repository_id, rendered, store) do
+        :ok -> {:cont, {:ok, count}}
+        {:ok, n} -> {:cont, {:ok, count + n}}
+        {:error, _error} = refusal -> {:halt, refusal}
       end
     end)
   end
 
-  defp render(hive, user, change, repository_id, own_mode, hive_rules, own) do
+  defp document(hive, repository_id, own_mode, hive_rules, own) do
     with {:ok, effective} <-
            Resolution.resolve_for(hive.egress_mode, own_mode, hive_rules, own, repository_id),
          document = Render.document(effective),
          :ok <- small(document),
          :ok <- valid(document) do
-      digest = Render.digest(document)
+      {:ok, document}
+    end
+  end
 
-      case Repo.one(newest(hive.id, repository_id)) do
-        %RunConfiguration{digest: ^digest} = current ->
-          {:ok, current}
+  defp store(hive, change, repository_id, document) do
+    digest = Render.digest(document)
 
-        current ->
-          {:ok,
-           Repo.insert!(%RunConfiguration{
-             organisation_id: hive.organisation_id,
-             hive_id: hive.id,
-             repository_id: repository_id,
-             version: if(current, do: current.version + 1, else: 1),
-             document: document,
-             digest: digest,
-             rendered_at: DateTime.utc_now(),
-             changed_by_id: user_id(user),
-             policy_change_id: change && change.id
-           })}
-      end
+    case Repo.one(newest(hive.id, repository_id)) do
+      %RunConfiguration{digest: ^digest} = current ->
+        current
+
+      current ->
+        Repo.insert!(%RunConfiguration{
+          organisation_id: hive.organisation_id,
+          hive_id: hive.id,
+          repository_id: repository_id,
+          version: if(current, do: current.version + 1, else: 1),
+          document: document,
+          digest: digest,
+          rendered_at: DateTime.utc_now(),
+          changed_by_id: change && change.changed_by_id,
+          policy_change_id: change && change.id
+        })
     end
   end
 

@@ -697,7 +697,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
           Policy
           <:subtitle>
             What the runs of this <.term word="hive" />
-            may reach through the runner's proxy. The policy can only allow: what no rule names is denied under enforce, and let through and recorded under observe.
+            may reach through the runner's proxy. What no rule names is denied under enforce, and let through and recorded under observe; a deny rule holds in either mode.
           </:subtitle>
           <:actions>
             <div :if={@managed? && @version} class="q-head-side">
@@ -1000,7 +1000,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         empty={empty_words(@show, @rows)}
       />
       <:footer>
-        Locked rules come first, then deny, then allow, each by host read from the right, so a suffix sits beside the hosts below it. A deny takes allowed hosts out of the document; the document itself can only allow.
+        Locked rules come first, then deny, then allow, each by host read from the right, so a suffix sits beside the hosts below it. A deny is written to the document's deny list, which a runner decides first and in either mode, and takes the allowed hosts it covers out of its allow list.
       </:footer>
     </.sect>
 
@@ -1301,8 +1301,8 @@ defmodule ApiaryWeb.PolicyLive.Show do
     >
       <p class="text-muted">
         From the next heartbeat, about 30 s,
-        <b class="font-medium text-base-content">nothing is denied</b>
-        {where_words(@following)}{alive_words(@alive)}: every connection is let through and recorded. A repository that sets its own mode does not change. The rules stay as they are, locked ones too: under observe a deny shapes the document and denies nothing.
+        <b class="font-medium text-base-content">only what a deny rule names is denied</b>
+        {where_words(@following)}{alive_words(@alive)}: every other connection is let through and recorded. A repository that sets its own mode does not change. The rules stay as they are, locked ones too: a deny holds in either mode.
       </p>
       <:footer>
         <.button phx-click="dialog_cancel" data-autofocus>Cancel</.button>

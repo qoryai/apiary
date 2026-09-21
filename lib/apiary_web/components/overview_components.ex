@@ -44,7 +44,8 @@ defmodule ApiaryWeb.OverviewComponents do
       "Nothing was heard for three heartbeat intervals. The run may still be going; the record is not."
 
   defp mode_tip,
-    do: "Enforce: a connection no rule allows is denied. Observe: it is let through and recorded."
+    do:
+      "Enforce: a connection no rule allows is denied. Observe: it is let through and recorded. A deny rule holds in either mode."
 
   ## od1. Needs attention
 

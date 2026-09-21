@@ -308,8 +308,9 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
 
   def held_paths(_effective, _host), do: nil
 
-  defp allowed_now?(%Effective{allow: allow} = effective, host, path) do
-    Grammar.matches?(allow, host) and
+  # As the runner decides: `deny` first, in either mode, then `allow`, then the paths.
+  defp allowed_now?(%Effective{allow: allow, deny: deny} = effective, host, path) do
+    not Grammar.matches?(deny, host) and Grammar.matches?(allow, host) and
       case held_paths(effective, host) do
         nil -> true
         held -> path in [nil, ""] or Enum.any?(held, &Grammar.path_matches?(&1, path))

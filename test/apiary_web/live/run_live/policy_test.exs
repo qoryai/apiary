@@ -371,6 +371,50 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
                "The runner fetched its run configuration again; the digest is the one it had."
     end
 
+    test "a reload's deny list: the count on the item, chips with the deny mark, the Details",
+         %{conn: conn, scope: scope} do
+      run = run_fixture(scope)
+      time = DateTime.add(DateTime.utc_now(), -60, :second)
+      event_fixture(run, 2, "run.started", started_data(%{"labels" => shop()}), time: time)
+
+      event_fixture(
+        run,
+        3,
+        "run.policy_applied",
+        Map.put(applied(nil, ["api.example"], "observe"), "deny", ["t.example"]),
+        time: time
+      )
+
+      event_fixture(
+        run,
+        9,
+        "run.policy_applied",
+        Map.put(applied(nil, ["api.example"], "observe"), "deny", ["u.example", "v.example"]),
+        time: time
+      )
+
+      {:ok, run} = Projector.project(run)
+      {:ok, view, _html} = live(conn, ~p"/hive/runs/#{run.run_id}")
+
+      assert text(view, "#e-3") =~ "observe · 1 host allowed · denies 1 host"
+      assert text(view, "#e-9") =~ "reloaded · observe · 1 host allowed · denies 2 hosts"
+
+      html = view |> element("#e-9") |> render()
+      assert length(Regex.scan(~r/q-delta-deny-add/, html)) == 2
+      assert length(Regex.scan(~r/q-delta-deny-del/, html)) == 1
+      assert html =~ "hero-no-symbol-micro"
+      assert text(view, "#e-9 .q-delta-deny-del") == "− Deny removed: t.example"
+      refute has_element?(view, "#e-9 .q-delta-add")
+
+      assert text(view, "#e-9-reload") =~
+               "the same hosts are allowed; denies 2 hosts more and 1 host fewer."
+
+      {:ok, _view, html} = live(conn, ~p"/hive/runs/#{run.run_id}/details")
+      details = html |> String.replace(~r/<[^>]+>/, " ") |> String.replace(~r/\s+/, " ")
+      assert details =~ "Allowed hosts api.example"
+      assert details =~ "Denied hosts u.example, v.example"
+    end
+
     test "a host of an event is text, whatever it holds", %{conn: conn, scope: scope} do
       run = run_fixture(scope)
       time = DateTime.add(DateTime.utc_now(), -60, :second)
@@ -624,7 +668,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       assert has_element?(view, ~s(a#cx-#{id}-act[href="/hive/policy?rule=registry.example"]))
     end
 
-    test "denying a host no rule decides writes the rule, and under observe says what it does",
+    test "denying a host no rule decides writes the rule, and holds under observe too",
          %{conn: conn, scope: scope} do
       # this run's own policy observes (the mode of its last policy_applied)
       observed = %{"host" => "files.cdn.example", "rule" => "", "mode" => "observe"}
@@ -639,11 +683,16 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       assert has_element?(view, ~s(#cx-#{id}-act[aria-expanded=false]))
       assert text(view, "#rule-popover-submit") == "Deny for this repository"
 
+      # A deny holds in either mode: the sentence is the one of enforce, not a promise
+      # deferred to the day the mode changes.
       assert text(view, "#rule-popover-next") =~
-               "This run observes, so nothing is denied yet: the rule holds once the mode is enforce."
+               "Open connections to the host are closed at the reload."
+
+      refute text(view, "#rule-popover-next") =~ "observes"
 
       view |> form("#rule-popover-form") |> render_submit()
       repository = Runs.fetch_repository(scope, "github.example", "acme/shop")
+      assert "files.cdn.example" in Policy.effective(scope, repository).deny
 
       assert [%{action: "deny"}] =
                Enum.filter(
@@ -658,11 +707,21 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       conn: conn,
       scope: scope
     } do
-      {:ok, _} = Policy.allow(scope, nil, %{host: "*.cdn.example"})
+      # A path allowed by a pattern cannot be taken out of it: the domain refuses.
+      {:ok, _} = Policy.allow(scope, nil, %{host: "files.cdn.example", paths: ["/v1/*"]})
 
       run =
         policy_run(scope,
-          egress: [%{"host" => "files.cdn.example", "rule" => "*.cdn.example"}]
+          egress: [
+            %{
+              "host" => "files.cdn.example",
+              "rule" => "files.cdn.example",
+              "method" => "GET",
+              "request_method" => "GET",
+              "path" => "/v1/a",
+              "path_rule" => "/v1/*"
+            }
+          ]
         )
 
       id = connection_id(run, "files.cdn.example")

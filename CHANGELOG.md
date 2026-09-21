@@ -152,15 +152,19 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
   unless an owner sets its own (so one repository is enforced while the hive still watches,
   or the reverse). A locked rule of the hive holds in a repository whatever its mode. A rule allows or denies a host
   (a name or a `*.` suffix, on every path or held to a list of paths) or a credential of the
-  machine's by name, and never holds a credential. The contract's policy document can only
-  allow, so a deny is the apiary's own: it takes entries out of what is rendered, which is
-  how a repository disables a host of the hive. On a conflict the repository wins, unless the
-  hive's rule is locked: a locked rule holds against every repository. Members edit; only an
-  owner changes the mode, and only an owner locks, unlocks, changes or removes a locked
-  rule. A list holds at most 500 rules, a rule 100 paths, and a change whose run
-  configuration would be over 1 MiB, more than a runner reads, is refused. What the document cannot say is
-  refused when it is written, with a sentence that says what to do instead: a deny of a host
-  below an allowed `*.` suffix, and a `*.` suffix held to paths above another allowed entry.
+  machine's by name, and never holds a credential. A deny is written to the document's
+  `egress.deny`, which a runner decides first and in either mode, and takes the allow
+  entries it covers out of `egress.allow`, which is how a repository disables a host of the
+  hive. So under `observe` a run is denied exactly what a deny rule names, a locked deny
+  included, and everything else is let through and recorded; under `enforce` a host no rule
+  allows is denied as well. A deny of a host below an allowed `*.` suffix stands beside the
+  allow (`*.example` allowed, `tracker.example` denied). On a conflict the repository wins,
+  unless the hive's rule is locked: a locked rule holds against every repository. Members
+  edit; only an owner changes the mode, and only an owner locks, unlocks, changes or removes
+  a locked rule. A list holds at most 500 rules, a rule 100 paths, and a change whose run
+  configuration would be over 1 MiB, more than a runner reads, is refused. What the document
+  cannot say is refused when it is written, with a sentence that says what to do instead: a
+  `*.` suffix held to paths above another allowed entry.
 - Run configurations: every change renders the baseline and every repository with rules of
   its own, in the same transaction, as canonical JSON validated against the contract's
   schemas (vendored under `priv/contract/`; `jsv` is a runtime dependency now). Each version
@@ -174,7 +178,16 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
   and beside the declared hosts a rule already covers, with the rule that does. Allow and deny from a connection's row:
   the host, or the path when the host is held to paths, in the repository or in the hive.
   Export of the effective policy for a node without a server: the `egress` section of
-  `runner.yaml`, and a `--policy` file when there are paths or credentials.
+  `runner.yaml`, `deny` included, and a `--policy` file when there are paths or credentials.
+- `mix apiary.policy.rerender` (in a release `bin/apiary eval
+  "Apiary.Release.policy_rerender()"`): renders every managed hive's run configurations
+  again through today's resolution, in the hive's lock; a target whose bytes change gets a
+  new version and a `rerendered` row in its history (no change of the rules), and unchanged
+  bytes write nothing, so it can be run again at any time.
+- The run's timeline and Details read the `deny` list of `run.policy_applied` beside
+  `allow`: "denies 2 hosts" on the policy items, "Denied hosts" in the Details, and on a
+  reload a chip with the deny mark for each host that came into or left the deny list,
+  bounded as the allow chips are.
 - The run configuration endpoint of the server contract, `GET /v1/run-configuration`: a
   signed request answered with the stored bytes for the key's hive and the labelled
   repository, the baseline for any other, the digest in `X-Qory-Run-Configuration` and as the
@@ -361,6 +374,16 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
 
 ### Upgrading
 
+- A deny holds in either mode from this release on: the run configurations carry
+  `egress.deny`, and a runner of 0.4.0 or later denies what it names under `observe` too.
+  The versions in force were rendered before the document had a deny list, so a hive with
+  deny rules keeps serving documents without one until its next change. Run
+  `mix apiary.policy.rerender` once after the upgrade (in a release `bin/apiary eval
+  "Apiary.Release.policy_rerender()"`): it renders every managed hive's documents again,
+  writes a new version only where the bytes change, with a `rerendered` row in the history,
+  and runs in flight take it within a heartbeat. A hive without deny rules renders the
+  bytes it always did and gets nothing. Before that, read the hive's deny rules as what a
+  run under `observe` will start being denied.
 - The upgrade changes no machine's policy. A hive serves a run configuration only once
   somebody has made its policy in the console, by the first rule or the first change of
   mode; until then discovery names no `run` section and every machine keeps the `egress`
@@ -370,7 +393,7 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
   within a heartbeat: from then on the hive's policy is the policy and the machine's
   own is not merged with it. So before the first change, say in the hive everything the
   machines' own lists say (the mode is `observe` until an owner sets it, which denies
-  nothing), or keep a machine on its own policy with `qory run --local`. It does not go back
+  only what a deny rule names), or keep a machine on its own policy with `qory run --local`. It does not go back
   by removing the rules: a hive that was given a policy keeps serving it.
 - First release; nothing to upgrade. Set the variables in `.env.example`; `CLOAK_KEY` must
   never change once a key has been created, or every stored secret becomes unreadable.

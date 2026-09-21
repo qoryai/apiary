@@ -9,9 +9,9 @@ defmodule Apiary.Policy.Rule do
   with an `argument` when its adapter takes one, or denies it. A rule names a credential
   and never holds one.
 
-  A deny is the apiary's own notion: the contract's document can only allow, so a deny
-  takes entries out of what is rendered. Only a rule of the hive can be `locked`, which
-  holds it against every repository.
+  A deny is written to the document's `egress.deny`, which a runner decides first and in
+  either mode, and takes the allow entries it covers out of what is rendered. Only a rule
+  of the hive can be `locked`, which holds it against every repository.
   """
   use Ecto.Schema
 

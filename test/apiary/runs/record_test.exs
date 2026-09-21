@@ -297,6 +297,7 @@ defmodule Apiary.Runs.RecordTest do
              "mode" => "enforce",
              "source" => "config",
              "allow" => for(n <- 1..500, do: "h#{n}." <> String.duplicate("x", 1000)) ++ [7, %{}],
+             "deny" => for(n <- 1..60, do: "d#{n}." <> String.duplicate("y", 300)) ++ [7],
              "terminated" => "not a list",
              "credentials" =>
                for(
@@ -312,6 +313,9 @@ defmodule Apiary.Runs.RecordTest do
       assert length(policy.allow) == 50
       assert policy.allow_count == 502
       assert Enum.all?(policy.allow, &(String.length(&1) <= 255))
+      assert length(policy.deny) == 50
+      assert policy.deny_count == 61
+      assert Enum.all?(policy.deny, &(String.length(&1) <= 255))
       assert policy.terminated == [] and policy.terminated_count == 0
       assert length(policy.credentials) == 20
       assert %{"name" => "c1", "hosts" => hosts} = hd(policy.credentials)

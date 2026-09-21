@@ -97,8 +97,9 @@ defmodule Apiary.Policy.RepairTest do
   test "the only version of a managed baseline stays, whatever made it" do
     %{scope: scope} = sign_up_fixture()
     orphan!(scope)
-    # The first change rendered the same bytes: no version 2, and version 1 is what is served.
-    {:ok, _} = Policy.deny(scope, nil, %{host: "ads.example"})
+    # The first change rendered the same bytes (a credential deny is not in the document):
+    # no version 2, and version 1 is what is served.
+    {:ok, _} = Policy.deny(scope, nil, %{kind: "credential", name: "model"})
     assert versions(scope) == [{1, false}]
 
     repair!()

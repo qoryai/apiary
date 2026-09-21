@@ -206,9 +206,12 @@ defmodule Apiary.PolicyTest do
       for mode <- ["observe", "enforce"] do
         {:ok, _} = Policy.set_mode(scope, repository, mode)
 
+        # The locked deny is in the document's deny list under either mode: the runner
+        # decides it first, so the repository is denied mcp.example while it observes too.
         assert policy(current!(scope, repository))["egress"] == %{
                  "mode" => mode,
-                 "allow" => ["api.example"]
+                 "allow" => ["api.example"],
+                 "deny" => ["mcp.example"]
                }
       end
     end
@@ -337,13 +340,14 @@ defmodule Apiary.PolicyTest do
     end
 
     test "a change that renders the same bytes writes a change and no version", %{scope: scope} do
-      {:ok, _rule} = Policy.deny(scope, nil, %{host: "ads.example"})
+      {:ok, _rule} = Policy.deny(scope, nil, %{kind: "credential", name: "model"})
 
       # The first change renders version 1 whatever it changed in the bytes.
       assert %{total: 1, items: [%Change{version_after: 1}]} = Policy.list_changes(scope, nil)
       assert %{version: 1, changed_by_id: changed_by} = current!(scope, nil)
       assert changed_by == scope.user.id
-      {:ok, _rule} = Policy.deny(scope, nil, %{host: "more.example"})
+      # A credential deny is not in the document: the same bytes, no version.
+      {:ok, _rule} = Policy.deny(scope, nil, %{kind: "credential", name: "product"})
       assert %{version: 1} = current!(scope, nil)
 
       {:ok, rule} = Policy.allow(scope, nil, %{host: "api.example"})
@@ -403,25 +407,44 @@ defmodule Apiary.PolicyTest do
              ]
     end
 
-    test "an exact deny under an allowed suffix is refused and nothing is kept", %{scope: scope} do
+    test "an exact deny under an allowed suffix is accepted and written to deny", %{scope: scope} do
       {:ok, _rule} = Policy.allow(scope, nil, %{host: "*.s.example"})
       before = current!(scope, nil)
 
-      assert {:error, %Error{reason: :conflict, message: message}} =
+      assert {:ok, %Rule{action: "deny", host: "a.s.example"}} =
                Policy.deny(scope, nil, %{host: "a.s.example"})
 
-      assert message =~ "can only allow"
-      assert [%Rule{host: "*.s.example"}] = Policy.list_rules(scope, nil)
-      assert current!(scope, nil).id == before.id
-      assert %{total: 1} = Policy.list_changes(scope, nil)
+      assert current!(scope, nil).version == before.version + 1
+
+      assert policy(current!(scope, nil))["egress"] == %{
+               "mode" => "observe",
+               "allow" => ["*.s.example"],
+               "deny" => ["a.s.example"]
+             }
+
+      assert %{total: 2} = Policy.list_changes(scope, nil)
+    end
+
+    test "a deny of a host nothing allows renders a version: it holds under observe", %{
+      scope: scope
+    } do
+      {:ok, _rule} = Policy.deny(scope, nil, %{host: "ads.example"})
+
+      assert %{version: 1} = current!(scope, nil)
+
+      assert policy(current!(scope, nil))["egress"] == %{
+               "mode" => "observe",
+               "allow" => [],
+               "deny" => ["ads.example"]
+             }
     end
 
     test "a hive change a repository's rules cannot take is refused and names it", %{scope: scope} do
       repository = repository_fixture(scope)
-      {:ok, _rule} = Policy.deny(scope, repository, %{host: "a.s.example"})
+      {:ok, _rule} = Policy.allow(scope, repository, %{host: "git.example", paths: ["/a"]})
 
       assert {:error, %Error{reason: :conflict, message: message}} =
-               Policy.allow(scope, nil, %{host: "*.s.example"})
+               Policy.allow(scope, nil, %{host: "*.example", paths: ["/b"]})
 
       assert message =~ "In the repository github.example/acme/site"
       assert [] = Policy.list_rules(scope, nil)
@@ -706,7 +729,7 @@ defmodule Apiary.PolicyTest do
                by_change[cdn.id]
 
       # A change that rendered the same bytes has no key.
-      {:ok, _} = Policy.deny(ctx.scope, nil, %{host: "ads.example"})
+      {:ok, _} = Policy.deny(ctx.scope, nil, %{kind: "credential", name: "model"})
       %{items: [same | _]} = Policy.list_changes(ctx.scope, nil)
       assert Policy.configurations_for_changes(ctx.scope, [same.id]) == %{}
     end
@@ -1117,6 +1140,44 @@ defmodule Apiary.PolicyTest do
                allow:
                  - "api.example"
                  - "*.example"
+             """
+    end
+
+    test "a deny is in the egress section and in the policy file, and observe's note says so",
+         %{scope: scope} do
+      {:ok, _} = Policy.allow(scope, nil, %{host: "*.example"})
+      {:ok, _} = Policy.deny(scope, nil, %{host: "tracker.example"})
+      {:ok, _} = Policy.deny(scope, nil, %{host: "*.ads.example"})
+
+      assert {:ok, %{runner_file: runner_file, policy_file: nil, notes: [note]}} =
+               Policy.export(scope, nil)
+
+      assert runner_file == """
+             # ~/.config/qory/runner.yaml
+             egress:
+               mode: observe
+               allow:
+                 - "*.example"
+               deny:
+                 - "tracker.example"
+                 - "*.ads.example"
+             """
+
+      assert note =~ "only a host in deny is denied"
+
+      {:ok, _} = Policy.allow(scope, nil, %{host: "git.example", paths: ["/a/*"]})
+      assert {:ok, %{policy_file: policy_file}} = Policy.export(scope, nil)
+
+      assert policy_file =~ """
+             egress:
+               mode: observe
+               allow:
+                 - "git.example"
+                 - "*.example"
+               deny:
+                 - "tracker.example"
+                 - "*.ads.example"
+               paths:
              """
     end
 

@@ -459,8 +459,10 @@ defmodule ApiaryWeb.RunPageComponents do
     """
   end
 
-  # pe6: a reload. What it changed is taken from the allow lists of the two events, which
-  # are the record's; the policy tables are not asked. Every host is a runner's string.
+  # pe6: a reload. What it changed is taken from the allow and deny lists of the two
+  # events, which are the record's; the policy tables are not asked. Every host is a
+  # runner's string. A deny chip carries the deny mark: a host that came into `deny` is
+  # denied from this item on, in either mode.
   defp item_body(%{item: %{kind: :policy_applied, again: true}} = assigns) do
     ~H"""
     <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind="Policy applied again">
@@ -470,13 +472,36 @@ defmodule ApiaryWeb.RunPageComponents do
       <% else %>
         {@item.mode || "n/a"}
       <% end %>
-      · {count_noun(@item.allowed_hosts, "host")} allowed
+      · {count_noun(@item.allowed_hosts, "host")} allowed<span :if={@item.denied_hosts > 0}> · denies {count_noun(
+        @item.denied_hosts,
+        "host"
+      )}</span>
       <:chips :if={@item.delta}>
         <span :for={host <- @item.delta.added} class="q-delta q-delta-add" title={host}>
           <span aria-hidden="true">+</span><span class="sr-only">Added:</span> {middle(host, 48)}
         </span>
         <span :for={host <- @item.delta.removed} class="q-delta q-delta-del" title={host}>
           <span aria-hidden="true">−</span><span class="sr-only">Removed:</span> {middle(host, 48)}
+        </span>
+        <span
+          :for={host <- @item.delta.deny_added}
+          class="q-delta q-delta-deny q-delta-deny-add"
+          title={"Denied from here: #{host}"}
+        >
+          <span aria-hidden="true">+</span><.icon name="hero-no-symbol-micro" class="size-3" /><span class="sr-only">Deny added:</span> {middle(
+            host,
+            48
+          )}
+        </span>
+        <span
+          :for={host <- @item.delta.deny_removed}
+          class="q-delta q-delta-deny q-delta-deny-del"
+          title={"No longer denied: #{host}"}
+        >
+          <span aria-hidden="true">−</span><.icon name="hero-no-symbol-micro" class="size-3" /><span class="sr-only">Deny removed:</span> {middle(
+            host,
+            48
+          )}
         </span>
         <span :if={delta_more(@item.delta) > 0} class="text-xs text-faint">
           and {delimited(delta_more(@item.delta))} more
@@ -505,9 +530,13 @@ defmodule ApiaryWeb.RunPageComponents do
     ~H"""
     <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind="Policy applied">
       <:version><.item_version version={@item[:version]} /></:version>
-      {@item.mode || "n/a"} · {count_noun(@item.allowed_hosts, "host")} allowed · {policy_source(
-        @item.source
-      )}
+      {@item.mode || "n/a"} · {count_noun(@item.allowed_hosts, "host")} allowed<span :if={
+        @item.denied_hosts > 0
+      }> · denies {count_noun(
+        @item.denied_hosts,
+        "host"
+      )}</span>
+      · {policy_source(@item.source)}
       <span :if={@item.terminated != []}>
         · reads requests to
         <span :for={{host, i} <- Enum.with_index(@item.terminated)}>
@@ -747,15 +776,33 @@ defmodule ApiaryWeb.RunPageComponents do
   defp reload_sentence(_item), do: "The runner applied a policy again."
 
   defp delta_more(delta) do
-    delta.added_count - length(delta.added) + (delta.removed_count - length(delta.removed))
+    delta.added_count - length(delta.added) + (delta.removed_count - length(delta.removed)) +
+      (delta.deny_added_count - length(delta.deny_added)) +
+      (delta.deny_removed_count - length(delta.deny_removed))
   end
 
   defp delta_words(nil), do: "the lists are too long to compare here."
 
-  defp delta_words(%{added_count: 0, removed_count: 0}), do: "the same hosts are allowed."
+  defp delta_words(delta) do
+    allow =
+      case delta do
+        %{added_count: 0, removed_count: 0} ->
+          "the same hosts are allowed"
 
-  defp delta_words(%{added_count: added, removed_count: removed}) do
-    "#{hosts_words(added)} added, #{if removed == 0, do: "none", else: hosts_words(removed)} removed."
+        %{added_count: added, removed_count: removed} ->
+          "#{hosts_words(added)} added, #{if removed == 0, do: "none", else: hosts_words(removed)} removed"
+      end
+
+    deny =
+      case delta do
+        %{deny_added_count: 0, deny_removed_count: 0} ->
+          ""
+
+        %{deny_added_count: added, deny_removed_count: removed} ->
+          "; denies #{hosts_words(added)} more and #{if removed == 0, do: "none", else: hosts_words(removed)} fewer"
+      end
+
+    allow <> deny <> "."
   end
 
   defp hosts_words(0), do: "no host"

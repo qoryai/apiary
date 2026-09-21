@@ -9,7 +9,8 @@ defmodule Apiary.Policy.Effective do
 
   `entries` holds one `Apiary.Policy.Entry` per rule that took part, the hive's and the
   repository's, each saying where it came from and whether it is in force. `allow`,
-  `paths` and `credentials` are what the document says, in its order.
+  `deny`, `paths` and `credentials` are what the document says, in its order: `deny` is
+  what the runner denies in either mode, `allow` what it reaches under `enforce`.
   """
 
   alias Apiary.Policy.Entry
@@ -20,6 +21,7 @@ defmodule Apiary.Policy.Effective do
           repository_id: Ecto.UUID.t() | nil,
           entries: [Entry.t()],
           allow: [String.t()],
+          deny: [String.t()],
           paths: %{optional(String.t()) => [String.t()]},
           credentials: [%{required(:name) => String.t(), optional(:argument) => String.t()}]
         }
@@ -29,6 +31,7 @@ defmodule Apiary.Policy.Effective do
             repository_id: nil,
             entries: [],
             allow: [],
+            deny: [],
             paths: %{},
             credentials: []
 end

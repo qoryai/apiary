@@ -111,7 +111,8 @@ defmodule Apiary.Runs.Record do
 
   @doc """
   The policy in force, from the run's last `run.policy_applied`: `%{sequence, time, mode,
-  source, allow, allow_count, terminated, terminated_count, credentials}`; the lists hold
+  source, allow, allow_count, deny, deny_count, terminated, terminated_count,
+  credentials}`; the lists hold
   at most fifty strings, the credentials at most twenty `%{name, hosts}`. nil when the run
   has none.
   """
@@ -128,6 +129,8 @@ defmodule Apiary.Runs.Record do
           source: fragment("left(? ->> 'source', 40)", e.data),
           allow: strings(e.data, "allow", 50, 255),
           allow_count: array_length(e.data, "allow"),
+          deny: strings(e.data, "deny", 50, 255),
+          deny_count: array_length(e.data, "deny"),
           terminated: strings(e.data, "terminated", 50, 255),
           terminated_count: array_length(e.data, "terminated"),
           credentials:
@@ -321,11 +324,13 @@ defmodule Apiary.Runs.Record do
     CASE WHEN jsonb_typeof(e.data -> 'cost_usd') = 'number' AND (e.data ->> 'cost_usd') ~ '^-?[0-9]{1,12}(\\.[0-9]{1,12})?([eE]-?[0-9]{1,2})?$' THEN (e.data ->> 'cost_usd')::float8 END AS cost_usd,
     (e.data -> 'interrupted' = 'true'::jsonb) IS TRUE AS interrupted,
     (x.i -> 'run_in_background' = 'true'::jsonb) IS TRUE AS in_background,
-    CASE WHEN jsonb_typeof(e.data -> 'allow') = 'array' THEN jsonb_array_length(e.data -> 'allow') ELSE 0 END AS allow_count,
+    #{Enum.map_join(~w(allow deny), ",\n  ", fn list -> """
+    CASE WHEN jsonb_typeof(e.data -> '#{list}') = 'array' THEN jsonb_array_length(e.data -> '#{list}') ELSE 0 END AS #{list}_count,
     CASE WHEN e.type = 'ai.qory.run.policy_applied' THEN
       (SELECT coalesce(jsonb_agg(left(v #>> '{}', 255)), '[]'::jsonb)
-         FROM (SELECT v FROM jsonb_array_elements(CASE WHEN jsonb_typeof(e.data -> 'allow') = 'array' THEN e.data -> 'allow' ELSE '[]'::jsonb END) WITH ORDINALITY a(v, n)
-               WHERE jsonb_typeof(v) = 'string' ORDER BY n LIMIT #{Timeline.max_allow()}) q) END AS allow,
+         FROM (SELECT v FROM jsonb_array_elements(CASE WHEN jsonb_typeof(e.data -> '#{list}') = 'array' THEN e.data -> '#{list}' ELSE '[]'::jsonb END) WITH ORDINALITY a(v, n)
+               WHERE jsonb_typeof(v) = 'string' ORDER BY n LIMIT #{Timeline.max_allow()}) q) END AS #{list}\
+    """ end)},
     (SELECT coalesce(jsonb_agg(left(v #>> '{}', 120)), '[]'::jsonb)
        FROM (SELECT v FROM jsonb_array_elements(CASE WHEN jsonb_typeof(e.data -> 'terminated') = 'array' THEN e.data -> 'terminated' ELSE '[]'::jsonb END) WITH ORDINALITY a(v, n)
              WHERE jsonb_typeof(v) = 'string' ORDER BY n LIMIT 5) q) AS terminated,
@@ -389,6 +394,7 @@ defmodule Apiary.Runs.Record do
     |> Map.update!(:time, &utc/1)
     |> Map.update!(:terminated, &(&1 || []))
     |> Map.update!(:allow, &(&1 || []))
+    |> Map.update!(:deny, &(&1 || []))
     |> Map.put(:summary, Timeline.tool_summary(row.tool, input, row.input_first))
     |> Map.take(Timeline.slim_keys())
     |> Map.new(fn

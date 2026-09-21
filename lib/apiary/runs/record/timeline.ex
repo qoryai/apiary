@@ -81,7 +81,7 @@ defmodule Apiary.Runs.Record.Timeline do
   @doc "How many tasks of one list are read, at most."
   def max_listed, do: @max_listed
 
-  @doc "How many hosts of a policy applied event's allow list are read, at most."
+  @doc "How many hosts of a policy applied event's allow list, and of its deny list, are read, at most."
   def max_allow, do: @max_allow
 
   @doc "The event types the index needs, with the `ai.qory.` prefix."
@@ -682,13 +682,14 @@ defmodule Apiary.Runs.Record.Timeline do
       source: event.source,
       digest: event[:run_configuration],
       allowed_hosts: event.allow_count || 0,
+      denied_hosts: event.deny_count || 0,
       terminated: event.terminated || [],
       terminated_count: event.terminated_count || 0,
       again: is_integer(item[:previous_seq]),
       previous_seq: item[:previous_seq],
       previous_digest: is_map(previous) && previous[:run_configuration],
       was_mode: if(is_map(previous) and previous.mode != event.mode, do: previous.mode),
-      delta: if(is_map(previous), do: allow_delta(previous, event))
+      delta: if(is_map(previous), do: delta(previous, event))
     }
   end
 
@@ -790,26 +791,43 @@ defmodule Apiary.Runs.Record.Timeline do
   end
 
   @doc """
-  What a reload changed in the allow list, from the two events alone: `%{added:, removed:,
-  added_count:, removed_count:}`, the hosts at most #{@max_delta} each. nil when either event listed
-  more hosts than were read (#{@max_allow}): half a list says nothing of what was added.
+  What a reload changed in the allow list and in the deny list, from the two events alone:
+  `%{added:, removed:, added_count:, removed_count:, deny_added:, deny_removed:,
+  deny_added_count:, deny_removed_count:}`, the hosts at most #{@max_delta} each side. nil
+  when either event listed more hosts than were read (#{@max_allow}) in either list: half
+  a list says nothing of what was added.
   """
-  def allow_delta(previous, event) do
-    before = previous[:allow] || []
-    now = event[:allow] || []
+  def delta(previous, event) do
+    with {:ok, allow} <- list_delta(previous, event, :allow, :allow_count),
+         {:ok, deny} <- list_delta(previous, event, :deny, :deny_count) do
+      Map.merge(allow, %{
+        deny_added: deny.added,
+        deny_removed: deny.removed,
+        deny_added_count: deny.added_count,
+        deny_removed_count: deny.removed_count
+      })
+    else
+      :unread -> nil
+    end
+  end
 
-    if (previous[:allow_count] || 0) > length(before) or (event[:allow_count] || 0) > length(now) do
-      nil
+  defp list_delta(previous, event, key, count) do
+    before = previous[key] || []
+    now = event[key] || []
+
+    if (previous[count] || 0) > length(before) or (event[count] || 0) > length(now) do
+      :unread
     else
       added = Enum.uniq(now -- before)
       removed = Enum.uniq(before -- now)
 
-      %{
-        added: Enum.take(added, @max_delta),
-        removed: Enum.take(removed, @max_delta),
-        added_count: length(added),
-        removed_count: length(removed)
-      }
+      {:ok,
+       %{
+         added: Enum.take(added, @max_delta),
+         removed: Enum.take(removed, @max_delta),
+         added_count: length(added),
+         removed_count: length(removed)
+       }}
     end
   end
 
@@ -916,7 +934,7 @@ defmodule Apiary.Runs.Record.Timeline do
   @slim_keys ~w(sequence type time tool agent_id agent_type runtime runtime_version host wall mode source
     model cwd kind outcome reason signal method request_method path decision rule path_rule credential
     port exit_code duration_ms turns cost_usd interrupted in_background allow allow_count
-    run_configuration terminated
+    deny deny_count run_configuration terminated
     terminated_count summary text text_bytes error error_bytes error_lines details details_bytes
     details_lines input input_bytes response response_bytes response_lines stdout stdout_bytes
     stdout_lines stderr stderr_bytes stderr_lines response_json response_json_bytes)a
@@ -982,8 +1000,10 @@ defmodule Apiary.Runs.Record.Timeline do
       cost_usd: if(is_number(data["cost_usd"]), do: data["cost_usd"]),
       interrupted: data["interrupted"] == true,
       in_background: input["run_in_background"] == true,
-      allow: allow(data["allow"]),
+      allow: hosts(data["allow"]),
       allow_count: if(is_list(data["allow"]), do: length(data["allow"]), else: 0),
+      deny: hosts(data["deny"]),
+      deny_count: if(is_list(data["deny"]), do: length(data["deny"]), else: 0),
       run_configuration: string(data, "run_configuration"),
       terminated:
         terminated |> Enum.filter(&is_binary/1) |> Enum.take(5) |> Enum.map(&bound(&1, 120)),
@@ -1056,8 +1076,8 @@ defmodule Apiary.Runs.Record.Timeline do
 
   ## Reading untrusted data
 
-  # The allow list of a policy applied event, bounded like everything a runner sends.
-  defp allow(list) when is_list(list) do
+  # The allow or deny list of a policy applied event, bounded like everything a runner sends.
+  defp hosts(list) when is_list(list) do
     # Cut as the query cuts them (`left(v, 255)`), so a delta is the same either way.
     list
     |> Enum.filter(&is_binary/1)
@@ -1065,7 +1085,7 @@ defmodule Apiary.Runs.Record.Timeline do
     |> Enum.map(&String.slice(&1, 0, 255))
   end
 
-  defp allow(_other), do: []
+  defp hosts(_other), do: []
 
   defp string(data, key) when is_map(data) do
     case data[key] do

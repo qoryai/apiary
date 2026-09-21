@@ -3,10 +3,10 @@ defmodule Apiary.Policy.Export do
   An effective policy as the text a node without a server is given (S7).
 
   The runner file, `~/.config/qory/runner.yaml`, holds the machine's policy inline as its
-  `egress` section, which says a mode and the hosts allowed and nothing else. Paths and
-  credentials are said by a policy document, the contract's own format, given to one run
-  with `qory run --policy <file>`; it narrows the machine's section and never widens it,
-  so the two are exported together and agree.
+  `egress` section, which says a mode, the hosts allowed, the hosts denied and nothing
+  else. Paths and credentials are said by a policy document, the contract's own format,
+  given to one run with `qory run --policy <file>`; it narrows the machine's section and
+  never widens it, so the two are exported together and agree.
 
   Every scalar is written as a JSON string, which YAML reads as it is, with the line
   breaks YAML knows and JSON does not (U+0085, U+2028, U+2029) escaped.
@@ -53,6 +53,10 @@ defmodule Apiary.Policy.Export do
         allow ->
           [[indent, "allow:\n"], for(host <- allow, do: [indent, "  - ", quoted(host), "\n"])]
       end,
+      case effective.deny do
+        [] -> []
+        deny -> [[indent, "deny:\n"], for(host <- deny, do: [indent, "  - ", quoted(host), "\n"])]
+      end,
       if with_paths and map_size(effective.paths) > 0 do
         [
           [indent, "paths:\n"],
@@ -96,7 +100,7 @@ defmodule Apiary.Policy.Export do
     List.flatten([
       if(effective.mode == "observe",
         do:
-          "Under observe every connection is recorded and none is denied; the list says what enforce would allow.",
+          "Under observe every connection is recorded and only a host in deny is denied; the allow list says what enforce would allow.",
         else: []
       ),
       if(narrowed,

@@ -55,7 +55,7 @@ defmodule ApiaryWeb.PolicyLive.ReadingTest do
              "allow api.example on 2 paths: everything below /v1/, and /health exactly."
 
     assert flat(read(%{"host" => "*.paste.example", "action" => "deny"}).text) ==
-             "Reads as: deny every host below paste.example, and every allow rule it covers."
+             "Reads as: deny every host below paste.example, and every allow rule it covers. It is denied in either mode, observe too."
 
     assert %{kind: :ok, invalid: [], button: nil} = read(%{"host" => "api.example"})
   end
@@ -109,38 +109,41 @@ defmodule ApiaryWeb.PolicyLive.ReadingTest do
     assert %{kind: :error} = read(%{"host" => "api.example", "paths" => "/v1/*"}, context)
   end
 
-  test "covered by an allowed suffix is a note; a deny under it is the refusal" do
+  test "covered by an allowed suffix is a note; a deny under it is said, with the suffix" do
     context = context(entries: [entry(host: "*.cdn.example")])
 
     assert %{kind: :note} = reading = read(%{"host" => "files.cdn.example"}, context)
     assert flat(reading.text) =~ "Already allowed by *.cdn.example."
 
-    assert %{
-             kind: :refusal,
-             acts: [
-               {"Show *.cdn.example", _, _},
-               {"Deny *.cdn.example instead", "composer_use", %{"action" => "deny"}}
-             ]
-           } =
-             refusal = read(%{"host" => "files.cdn.example", "action" => "deny"}, context)
+    # A deny below an allowed suffix stands beside it: the runner decides deny first.
+    assert %{kind: :ok, acts: []} =
+             reading = read(%{"host" => "files.cdn.example", "action" => "deny"}, context)
 
-    assert flat(refusal.text) =~ "This rule cannot be said."
+    assert flat(reading.text) ==
+             "Reads as: deny files.cdn.example. It takes the host out of what the hive allows; a repository can still allow it unless you lock this rule. It is denied in either mode, observe too. *.cdn.example still allows the other hosts below it."
 
-    # A narrower suffix under a broader one cannot be said either.
-    assert %{kind: :refusal} = read(%{"host" => "*.eu.cdn.example", "action" => "deny"}, context)
+    # A narrower suffix under a broader one is said the same way.
+    assert %{kind: :ok} =
+             reading = read(%{"host" => "*.eu.cdn.example", "action" => "deny"}, context)
+
+    assert flat(reading.text) =~ "*.cdn.example still allows the other hosts below it."
     # A suffix that is out of force covers nothing.
     assert %{kind: :ok} =
+             reading =
              read(
                %{"host" => "files.cdn.example", "action" => "deny"},
                context(entries: [entry(host: "*.cdn.example", in_force: false)])
              )
+
+    refute flat(reading.text) =~ "still allows"
   end
 
-  test "on a repository page the hive's suffix has another way out, and a lock refuses" do
+  test "on a repository page the hive's suffix is said, a locked one refuses, and a lock refuses" do
     entries = [
       entry(host: "*.cdn.example"),
       entry(host: "*.paste.example", action: :deny, locked: true),
-      entry(host: "github.example", locked: true)
+      entry(host: "github.example", locked: true),
+      entry(host: "*.internal.example", locked: true)
     ]
 
     context =
@@ -151,8 +154,17 @@ defmodule ApiaryWeb.PolicyLive.ReadingTest do
         locked_by: %{"*.paste.example" => %{by: "beekeeper@example.com", at: "2 Sep 2026"}}
       )
 
-    assert %{kind: :refusal, acts: [{"Disable *.cdn.example here", "composer_use", _}]} =
-             read(%{"host" => "files.cdn.example", "action" => "deny"}, context)
+    assert %{kind: :ok} =
+             reading = read(%{"host" => "files.cdn.example", "action" => "deny"}, context)
+
+    assert flat(reading.text) =~ "*.cdn.example still allows the other hosts below it."
+
+    # A locked allow of a suffix holds against a deny below it.
+    assert %{kind: :refusal} =
+             refusal = read(%{"host" => "tax.internal.example", "action" => "deny"}, context)
+
+    assert flat(refusal.text) =~
+             "A locked hive rule allows *.internal.example. It holds against every repository, so a deny added here would change nothing."
 
     refusal = read(%{"host" => "bin.paste.example"}, context)
     assert refusal.kind == :refusal

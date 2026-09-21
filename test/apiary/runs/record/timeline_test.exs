@@ -766,6 +766,37 @@ defmodule Apiary.Runs.Record.TimelineTest do
       assert again.previous_digest == "sha256=" <> String.duplicate("a", 64)
     end
 
+    test "the deny list has a delta of its own, beside the allow list's" do
+      [_, again] =
+        build([
+          applied(3, ["a"], %{"deny" => ["t.example", "u.example"]}),
+          applied(9, ["a", "b"], %{"deny" => ["u.example", "v.example"]})
+        ])
+
+      assert again.denied_hosts == 2
+
+      assert %{
+               added: ["b"],
+               removed: [],
+               deny_added: ["v.example"],
+               deny_removed: ["t.example"],
+               deny_added_count: 1,
+               deny_removed_count: 1
+             } = again.delta
+
+      # An event without a deny list has an empty one: nothing to compare, nothing added.
+      [_, again] = build([applied(3, ["a"]), applied(9, ["a"], %{"deny" => ["t.example"]})])
+      assert %{deny_added: ["t.example"], deny_removed: [], added_count: 0} = again.delta
+      [first, _] = build([applied(3, ["a"]), applied(9, ["a"])])
+      assert first.denied_hosts == 0
+
+      # A deny list longer than what is read gives no delta at all, as the allow list does.
+      long = for n <- 1..(Timeline.max_allow() + 1), do: "h#{n}.example"
+      [_, again] = build([applied(3, ["a"]), applied(9, ["a"], %{"deny" => long})])
+      assert again.delta == nil
+      assert again.denied_hosts == Timeline.max_allow() + 1
+    end
+
     test "each reload is compared with the one before it, not with the first" do
       [_, _, third] = build([applied(3, ["a"]), applied(10, ["a", "b"]), applied(20, ["b"])])
       assert %{previous_seq: 10, delta: %{added: [], removed: ["a"]}} = third

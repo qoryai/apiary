@@ -275,7 +275,7 @@ defmodule ApiaryWeb.PolicyComponents do
           :for={
             {mode, name, icon, sentence} <- [
               {"observe", "Observe", "hero-eye-micro",
-               "Records every connection and denies none. A host no rule names is let through, and the record says so."},
+               "Records every connection and denies only what a deny rule names. A host no rule names is let through, and the record says so."},
               {"enforce", "Enforce", "hero-shield-exclamation-micro",
                "Denies a connection no rule allows, and records the denial. With no allow rule, a run reaches nothing."}
             ]
@@ -396,8 +396,8 @@ defmodule ApiaryWeb.PolicyComponents do
   A repository's mode: follow the hive, observe or enforce, with what is in effect and
   where it comes from. Compact on purpose: the hive's page explains the two modes once;
   here the choice is whose mode. A radio sends `repository_mode_ask`. While the repository
-  observes and its list holds locked denies of the hive, a notice says that they deny
-  nothing here.
+  observes and its list holds locked denies of the hive, a notice says that they hold
+  here all the same: a deny is denied in either mode.
   """
   attr :id, :string, required: true
   attr :setting, :string, required: true, values: ~w(follow observe enforce)
@@ -452,9 +452,9 @@ defmodule ApiaryWeb.PolicyComponents do
       <div :if={@effective == "observe" && @locked_denies != []} class="px-4 pb-3">
         <.notice kind={:info}>
           <span id={"#{@id}-locked-note"}>
-            <b>This repository observes: nothing is denied, locked rules included.</b>
+            <b>This repository observes: the locked deny still holds.</b>
             The locked deny <code :for={host <- @locked_denies} class="q-rule mr-1">{host}</code>
-            still shapes the document, so the hosts it covers are not in the allow list. Under observe a run reaches them all the same, and the record says no rule matched. It denies again the moment this repository enforces.
+            is denied in either mode, and under observe it is the only thing denied here: every other host is let through and recorded. It holds whatever mode this repository is in.
           </span>
         </.notice>
       </div>
@@ -714,7 +714,6 @@ defmodule ApiaryWeb.PolicyComponents do
   attr :activity, :any, default: :unavailable
   attr :fresh, :any, default: %{}, doc: "%{rule id => version}: new in the version in force"
   attr :target, :string, default: nil, doc: "the host `?rule=` points at"
-  attr :observing, :boolean, default: false, doc: "the repository observes: a deny denies nothing"
   attr :empty, :string, default: nil, doc: "the one faint line of a filter that matches nothing"
 
   def rules_table(assigns) do
@@ -750,7 +749,6 @@ defmodule ApiaryWeb.PolicyComponents do
             seen={@seen? && seen(@activity, row)}
             seen?={@seen?}
             fresh={Map.get(@fresh, row.id)}
-            let_through={@observing && row.action == "deny"}
             target={@target != nil && @target == row.host}
           />
         </tbody>
@@ -779,7 +777,6 @@ defmodule ApiaryWeb.PolicyComponents do
   attr :seen?, :boolean, default: false
   attr :fresh, :any, default: nil
   attr :target, :boolean, default: false
-  attr :let_through, :boolean, default: false
 
   def rule_row(assigns) do
     ~H"""
@@ -805,7 +802,7 @@ defmodule ApiaryWeb.PolicyComponents do
         <.source_chip source={@rule.source} />
       </td>
       <td :if={@seen?} role="cell" class="q-c-seen q-num">
-        <.seen seen={@seen} let_through={@let_through} />
+        <.seen seen={@seen} />
       </td>
       <td :if={@scope == :hive} role="cell" class="q-c-by">
         <.who_when by={@rule.by} at={@rule.at} />
@@ -921,7 +918,6 @@ defmodule ApiaryWeb.PolicyComponents do
 
   attr :seen, :any, required: true
   attr :noun, :string, default: nil
-  attr :let_through, :boolean, default: false
 
   defp seen(%{seen: :loading} = assigns) do
     ~H|<span class="skeleton q-skel inline-block w-16 align-middle" aria-hidden="true"></span>|
@@ -929,23 +925,6 @@ defmodule ApiaryWeb.PolicyComponents do
 
   defp seen(%{seen: %{allowed: 0, denied: 0}} = assigns) do
     ~H|<span class="q-zero">not seen</span>|
-  end
-
-  # A deny in a repository that observes denies nothing: what reached it was let through.
-  defp seen(%{let_through: true, seen: %{allowed: allowed}} = assigns) when allowed > 0 do
-    ~H"""
-    <span class="text-muted">{RunComponents.delimited(@seen.allowed)} let through</span>
-    <span class="sr-only"> in the last 7 days</span>
-    """
-  end
-
-  defp seen(%{let_through: true} = assigns) do
-    ~H"""
-    <span class="text-muted">
-      {RunComponents.count_noun(@seen.allowed + @seen.denied, "attempt")}
-    </span>
-    <span class="sr-only"> in the last 7 days</span>
-    """
   end
 
   defp seen(%{noun: noun} = assigns) when is_binary(noun) do
@@ -1206,7 +1185,10 @@ defmodule ApiaryWeb.PolicyComponents do
   attr :suggestions, :list, required: true
   attr :covered, :list, default: [], doc: "[%{host:, by:, source:}]: declared and already allowed"
   attr :allowed, :any, default: %{}, doc: "%{host => rule id}"
-  attr :observing, :boolean, default: false, doc: "the repository observes: nothing is denied"
+
+  attr :observing, :boolean,
+    default: false,
+    doc: "the repository observes: a host no rule names is let through"
 
   def suggestions(assigns) do
     open = Enum.reject(assigns.suggestions, &Map.has_key?(assigns.allowed, &1.host))

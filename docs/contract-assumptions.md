@@ -166,6 +166,13 @@ quoted), `X-Qory-Configuration` and `Cache-Control: no-store`:
 {"version":1,"security_policy":{"version":1,"egress":{"mode":"enforce","allow":["api.example"]}}}
 ```
 
+With deny rules the `egress` section carries `deny` after `allow`, the hosts a runner denies
+before it consults `allow` or the mode:
+
+```json
+{"version":1,"security_policy":{"version":1,"egress":{"mode":"observe","allow":["*.example"],"deny":["tracker.example"]}}}
+```
+
 The body is the bytes that were stored when the policy was last changed; nothing is rendered
 for a request, so the digest is of exactly what is sent. It is the configuration of the
 key's hive for the repository the two labels name. A repository the hive has not seen, one
@@ -174,16 +181,19 @@ two) get the hive's baseline. `egress.mode` is the hive's, unless the repository
 own, `observe` or `enforce`; a repository that has not follows the hive, later changes of the
 hive's mode included, and a repository the hive has not seen gets the hive's. The rules
 resolve the same under either mode: a locked rule of the hive holds in a repository's
-document whatever its mode, and under `observe` a runner denies nothing. A hive whose policy nobody has made serves none: `404`
+document whatever its mode, and a deny holds in either mode, since `egress.deny` is decided
+first: under `observe` a runner denies what `deny` names and nothing else, and `allow` says
+what `enforce` would reach. A hive whose policy nobody has made serves none: `404`
 `{"error":"not_found"}`, nothing rendered; discovery named it no `run` section, so a runner
 does not ask. The endpoint spends a token of the key's rate limit, the events endpoint's
 bucket: `429 {"error":"rate_limited"}` with `Retry-After` beyond it, which to a runner is no
 run or a reload that failed and is tried again on the next answer.
 
-Rendering is canonical: members in a fixed order, no whitespace, `allow` sorted with names
-before `*.` suffixes (so the rule a runner reports for a connection is the most exact one),
-`paths` by host with each list sorted, `credentials` by name; `allow` is always present,
-`paths` and `credentials` only when they hold something. The same rules give the same bytes
+Rendering is canonical: members in a fixed order (`mode`, `allow`, `deny`, `paths`), no
+whitespace, `allow` and `deny` sorted with names before `*.` suffixes (so the rule a runner
+reports for a connection is the most exact one), `paths` by host with each list sorted,
+`credentials` by name; `allow` is always present, `deny`, `paths` and `credentials` only when
+they hold something, so a policy without a deny renders the bytes it always did. The same rules give the same bytes
 and the same digest, a change that renders the same bytes makes no new version, and every
 document is validated against the contract's `run-configuration.schema.json` and
 `policy.schema.json` (vendored under `priv/contract/`) before it is stored: a change whose
@@ -340,10 +350,12 @@ The contract has not fixed these; Apiary chose, and the runner should match:
 - What the runner's proxy does with the policy document, read from `internal/proxy`,
   `internal/policy` and `session` of the runner at the pinned ref, and what the apiary
   renders for it:
-  - A connection is decided by `egress.allow` first (`Proxy.decide`), and only a connection
-    that was allowed is terminated and held to `egress.paths`. A host that is only in
-    `paths` is denied under `enforce`. So a host held to paths is rendered in **both**
-    `allow` and `paths`, always.
+  - A connection is decided by `egress.deny` first (`Proxy.decide`), in either mode and
+    with the first matching deny entry as the rule, then by `egress.allow` and the mode,
+    and only a connection that was allowed is terminated and held to `egress.paths`. A
+    host that is only in `paths` is denied under `enforce`. So a host held to paths is
+    rendered in **both** `allow` and `paths`, always, and a denied host is never in
+    `paths`: it is never reached.
   - The path rules of a host are those of the first key of `paths` that matches it
     (`terminator.rules`), and `paths` is a Go map, whose order is not fixed: with `*.example`
     and `git.example` both in `paths`, which list holds `git.example` changes from run to
@@ -351,10 +363,19 @@ The contract has not fixed these; Apiary chose, and the runner should match:
     own rule says. The apiary therefore refuses, at write time and with a sentence, a `*.`
     suffix held to paths above any other allowed entry; a name held to paths under a `*.`
     suffix that is free of paths is fine and rendered.
-  - The document can only allow: there is no way to say "every host below `example` except
-    one". A deny of a host below an allowed `*.` suffix is refused at write time unless the
-    allow outranks the deny (then the page shows the deny as overridden); nothing is ever
-    rendered that allows more than the page shows.
+  - `deny` beats `allow` whatever the shapes, so a deny of a host below an allowed `*.`
+    suffix is said as it is: `allow: ["*.example"]`, `deny: ["tracker.example"]`. A `*.`
+    deny still takes the allow entries it covers out of `allow` (the runner would deny
+    those hosts by the deny anyway), so the document lists what is reachable and nothing
+    else, and a policy's count of hosts allowed is the truth. The one shape the document
+    cannot say is a `*.` deny with an allow below it that outranks the deny (the hive's
+    unlocked `*.example`, a repository's own `api.example`): the allow wins by precedence
+    and is rendered, and the deny is not written to `deny`, since an entry there would
+    deny the winning host too; it still takes out the allow entries it outranks, so under
+    `enforce` those hosts are denied by having no allow, and under `observe` they are
+    reached and recorded with no rule (`Apiary.Policy.Resolution`). Nothing is ever
+    rendered that allows more than the page shows, or denies what the page says is
+    allowed.
   - A policy with `paths` or `credentials` needs a wall: without one the runner refuses to
     start the run, in either mode, and on a reload it takes the hosts held to paths out of
     `allow` and refuses a configuration that selects credentials. The apiary renders what

@@ -7,13 +7,41 @@ shell, components, tone, accessibility) still holds and is not repeated. The ren
 `policy-mock.html` beside this file; where the two disagree, this brief wins. Section letters
 continue the pattern with a `p` prefix.
 
+## Amendment 3: deny holds in either mode
+
+An owner's decision of 21 Sep 2026: "if we have default observe and we added a rule to deny some
+host, then all connections which do not match the deny rule should be allowed but the one which
+is in rules should be denied even when the policy is in observe." The runner contract gains
+`egress.deny`, a list in `allow`'s grammar that the runner decides **first and in either mode**;
+the apiary writes every deny rule that wins on its host to it. So a deny is no longer the
+control plane's private notion that only shapes the allow list: it is in the document, it
+holds under observe, and the record names it as the rule. Marked **[A3]** where it lands.
+
+| Where | What changed |
+|---|---|
+| intro, pa 1 | the model sentence: the document says what is denied and what is allowed |
+| pd2a | the note under an observing repository with a locked deny: the lock holds, and under observe it is the only thing denied |
+| pd3, pf4 | the exact-host deny under an allowed `*.` suffix is **accepted** and rendered; the "cannot be said" refusal goes |
+| pd8, pf7 | the popover's next sentence for a deny is the same in either mode; the observe-deny sentence of Amendment 2 goes |
+| pe1, pe3, pf1 | the Observe card, both observe confirms and the locked-deny note say "only what a deny rule names" |
+| pe6, pd9 | the timeline's policy items read `deny`: "denies 2 hosts", deny chips on a reload |
+| pf2 | a deny always changes the document, so the "No new version: the document did not list it" toast no longer arises for one |
+| pk, pl | checklist lines; question 7 is superseded |
+
+**What the builders must know.** (1) A `*.` deny still takes the allow entries it covers out of
+`allow`, so the list says what is reachable; the runner would deny them by the deny anyway. (2)
+The one shape the wire cannot say is a `*.` deny with a repository's own allow below it that
+outranks it: the allow wins and is rendered, the deny is not written to `deny` (it would deny the
+winning host too) and still takes out what it outranks; `Apiary.Policy.Resolution` says so. (3)
+The versions in force before this amendment carry no `deny`; `mix apiary.policy.rerender`
+renders them again once after the upgrade.
+
 ## Amendment 2: deny from a row no rule decides
 
 An owner's decision of 21 Sep 2026. A connection let through under observe with no rule, or
 denied by default under enforce, offered only **Allow**; while a hive observes, the policy is
 written from the record, and a decision against a host is as common as one for it. Such a row
-now holds a **Deny** before the **Allow** (pd8), bordered like it, Deny in the danger tone and Allow in the success tone, the tones of the decision marks, since a ghost beside a bordered button read as text, and a deny under observe says what it
-does: nothing yet, until the mode is enforce. Marked **[A2]** where it stands.
+now holds a **Deny** before the **Allow** (pd8), bordered like it, Deny in the danger tone and Allow in the success tone, the tones of the decision marks, since a ghost beside a bordered button read as text. ~~A deny under observe says what it does: nothing yet, until the mode is enforce.~~ [A3]: a deny holds in either mode, and its sentence is the same under observe. Marked **[A2]** where it stands.
 
 ## Amendment 1: mode per repository
 
@@ -60,11 +88,12 @@ Naming. The brand is **Qory**. Sample data is synthetic only: Acme, Platform, `a
 `registry.example`, `files.cdn.example`, `mcp.acme.example`, `*.paste.example`,
 `beekeeper@example.com` (owner), `dana@example.com` (member), `build-01`.
 
-The model is fixed by the build brief and is not re-argued here: **the policy document can only
-allow**; the **mode is the hive's default, which a repository follows or replaces with its own
-[A1]**; **deny** and **lock** are the control plane's notions that
-decide what the document lists; every write renders versions that are kept for ever. The UI calls
-`Apiary.Policy` and nothing else.
+The model is fixed by the build brief and is not re-argued here: **the policy document says what
+is denied, in either mode, and what is allowed under enforce [A3]**; the **mode is the hive's
+default, which a repository follows or replaces with its own [A1]**; **deny** is written to the
+document's deny list and **lock** is the control plane's notion that decides what the document
+lists [A3]; every write renders versions that are kept for ever. The UI calls `Apiary.Policy` and
+nothing else.
 
 Out of scope, not designed here: defining a credential's value (a machine's business), editing the
 machine's runner file, scheduled or expiring rules, approval flows, policy
@@ -77,10 +106,10 @@ templates.
 The principles of `brief.md` and `brief-runs.md` apply; these six are added.
 
 1. **The page says only what the document can say.** Every control maps to a field of
-   `policy.schema.json` (`egress.mode`, `egress.allow`, `egress.paths`, `credentials`) or to one of
-   the two notions the control plane owns (deny, lock). Nothing else is offered: no ports, no
-   schemes, no methods, no "block list". When a rule cannot be said, the page refuses it in a
-   sentence that names the reason and the two ways out (pf4).
+   `policy.schema.json` (`egress.mode`, `egress.allow`, `egress.deny` [A3], `egress.paths`,
+   `credentials`) or to the one notion the control plane owns (lock). Nothing else is offered: no
+   ports, no schemes, no methods. When a rule cannot be said, the page refuses it in a sentence
+   that names the reason and the two ways out (pf4).
 2. **A rule is read back before it is saved.** The composer validates in the contract's grammar as
    you type and answers with the rule in plain words: "allow every host below `internal.example`,
    on every path. It does not allow `internal.example` itself." The button is off until the
@@ -267,8 +296,8 @@ the sentence carries the rest.
   Choosing one that does not (Enforce while following an enforce default, or back to Follow when
   the default equals the own mode) is immediate, with a toast that says nothing changes today.
 - While the repository **observes** and the effective list holds a locked hive deny, an info
-  `<.notice>` spans the card under the row (pf1): the lock is real, and under observe it denies
-  nothing. Say so where the mode is set, not in a tooltip.
+  `<.notice>` spans the card under the row (pf1): the lock holds, and under observe it is the
+  only thing denied [A3]. Say so where the mode is set, not in a tooltip.
 - A member sees the same card: the checked radio as it is, the other two at 45 % and
   `aria-disabled`, and the sentence ends "Only an owner sets a mode."
 - Below 768 px the three parts stack and the radios become three equal 36 px cells.
@@ -499,8 +528,9 @@ Contents, top to bottom:
 4. **What happens next**, a reload icon and one sentence (pf7). **[A1]** The sentence reads the mode
    of the run's own policy (the `mode` of its last `policy_applied`), on the hive connections page
    the effective mode of the repository chosen under "For": under observe the icon is the eye and
-   the sentence says the connection is already let through. **[A2]** A deny under observe says
-   "This run observes, so nothing is denied yet: the rule holds once the mode is enforce."
+   the sentence says the connection is already let through. **[A3]** A deny reads the same in
+   either mode: "Open connections to the host are closed at the reload." (the observe-deny
+   sentence of [A2] is gone: a deny holds under observe).
 5. Footer: Cancel, then the act named in full: **Allow for this repository**, **Allow for the
    hive**, **Deny for this repository** (danger), **Deny for the hive** (danger).
 
@@ -627,7 +657,8 @@ from recorded connections that today's rules still do not cover; when that canno
 modal shows the consequence sentence alone, never an estimate.
 
 **Going to observe** opens a `sm` modal with the danger button **Set the default to observe**: it
-loosens every repository that follows, so it asks too. **Locking** a rule is immediate, with a toast, unless it would put
+loosens every repository that follows, so it asks too; the sentence says that only what a deny
+rule names stays denied [A3]. **Locking** a rule is immediate, with a toast, unless it would put
 repository rules out of force; then a `sm` modal lists them (pf2).
 
 **[A1]** Members see everything and edit rules and credentials; what concerns a **mode** or a
@@ -691,22 +722,25 @@ this repository's own:
 - **To enforce** (from observe, its own or followed): a `lg` modal "Enforce
   `github.example/acme/tax-service`", the consequence sentence (pf1), then the same bordered list
   as the hive's confirm, counted from **this repository's** recorded connections that today's
-  effective rules still do not cover, each row with **Allow here** (a repository rule). A
+  effective rules still do not cover, each row with **Allow here** (a repository rule). ~~A
   destination a locked hive deny covers has no button: it reads a padlock and "Locked deny", with
-  the lock's tooltip. Footer: Cancel (initial focus), **Enforce this repository** (primary).
+  the lock's tooltip.~~ [A3] A destination a deny covers is denied in either mode already, so
+  enforcing would not start denying it: it is not in the list. Footer: Cancel (initial focus),
+  **Enforce this repository** (primary).
 - **To observe**: a `sm` modal "Observe `github.example/acme/shop`" with the danger button
-  **Observe this repository**; its second paragraph names the locked denies that stop denying.
+  **Observe this repository**; its second paragraph names the locked denies that stay denied
+  [A3].
 - **To follow the hive**: the confirm of whichever of the two it amounts to, with the sentence
   "The mode follows the hive's default from now on, and changes when it does." in place of "becomes
   this repository's own". No confirm when what is in effect stays the same.
 
-**A locked hive deny in a repository that observes.** The row stays in the list exactly as it is
-(deny mark, "Hive, locked", its beaten rule under it): the rule exists and shapes the document, so
-the hosts it covers are not in the allow list. What changes is what happens: under observe nothing
-is denied, so runs reach those hosts and the record says "No rule matches. Observe mode lets it
-through." The mode card's notice says this in full (pf1), and the row's "Last 7 days" reads "2 let
-through" in muted rather than "denied". The page never implies a lock protects an observing
-repository.
+**A locked hive deny in a repository that observes [A3].** The row stays in the list exactly as
+it is (deny mark, "Hive, locked", its beaten rule under it): the rule is in the document's deny
+list, the hosts it covers are not in the allow list, and under observe it is the only thing
+denied: runs are denied those hosts and the record says "Rule `*.paste.example`", as under
+enforce. The mode card's notice says this in full (pf1), and the row's "Last 7 days" reads
+"2 denied" as any deny row does. A run recorded by a runner before 0.4.0 was let through, and
+its row says so; the count is what the record says.
 
 The card's **footer** keeps the mode as a read-only summary of the control, "Mode **enforce**, the
 hive's default." or "Mode **observe**, this repository's own.", so the list can be read without
@@ -765,11 +799,15 @@ notice under the strip. In the timeline the first `run.policy_applied` stays **P
 gains the version link before its offset. Every later one is **Policy applied again**, square node
 with `hero-arrow-path-micro`: "reloaded · enforce · 7 hosts allowed", then one delta chip per host
 added (`+ files.cdn.example`, success-soft) or removed (`− gitlab.example`, error-soft), at most
-three and "and 2 more", the version link, the offset. Its body is one muted sentence: "The runner
+three and "and 2 more", the version link, the offset. **[A3]** The head reads "· denies 2 hosts"
+after the allowed count when the deny list holds anything, and the delta gains a chip per host
+that came into the deny list (`+ ⊘ tracker.example`, error-soft, the deny mark) or left it
+(`− ⊘ tracker.example`, neutral, struck through), at most three a side and counted with the rest. Its body is one muted sentence: "The runner
 fetched a new run configuration after the server's answer named a new digest. Compared with the
 policy applied at `#0003`: 1 host added, none removed. Connections before this item were decided by
-v9." The delta is computed from the `allow` lists of the two events, which are in the record; it is
-not read from the policy tables. A reload that changed only the mode reads "reloaded · **observe**
+v9." The delta is computed from the `allow` and `deny` lists [A3] of the two events, which are in
+the record; it is not read from the policy tables; the sentence ends "; denies 1 host more and none
+fewer." when the deny list changed. A reload that changed only the mode reads "reloaded · **observe**
 (was enforce) · 7 hosts allowed". Announcement: "The run reloaded its policy: version 10."
 
 ### pe7. Empty, loading, error and refusal states
@@ -799,9 +837,9 @@ not read from the policy tables. A reload that changed only the mode reads "relo
 
 | Where | Text |
 |---|---|
-| Page title, description | **Policy** / What the runs of this ~hive~ may reach through the runner's proxy. The policy can only allow: what no rule names is denied under enforce, and let through and recorded under observe. |
+| Page title, description [A3] | **Policy** / What the runs of this ~hive~ may reach through the runner's proxy. What no rule names is denied under enforce, and let through and recorded under observe; a deny rule holds in either mode. |
 | Repository description | What runs of this repository may reach: the hive's rules, then this repository's own. Where the two meet on a host, the repository wins, unless the hive's rule is locked. |
-| Observe | Records every connection and denies none. A host no rule names is let through, and the record says so. |
+| Observe [A3] | Records every connection and denies only what a deny rule names. A host no rule names is let through, and the record says so. |
 | Enforce | Denies a connection no rule allows, and records the denial. With no allow rule, a run reaches nothing. |
 | Badge on the checked card [A1] | Hive default |
 | Fact, enforce is the default [A1] | In the last 7 days it denied **12** attempts to **3** destinations, in the 3 repositories that follow it. `See them` (to `/hive/connections?decision=denied`). With every repository following: "… destinations." and no tail |
@@ -810,15 +848,15 @@ not read from the policy tables. A reload that changed only the mode reads "relo
 | Fact, nothing recorded | No run has reached out in the last 7 days. |
 | Under the cards [A1] | This is the hive's default. A repository follows it unless an owner sets a mode of its own: `1 of 4 repositories does`, and observes. A wall's own refusals (the machine's address, a path that reads two ways) hold in either mode. The link goes to `/hive/policy/repositories?mode=own`. None: "… of its own. None does." Several with different modes: "`2 of 4 repositories do`: 1 observes, 1 enforces." A member's line adds "Only an owner sets a mode." |
 | Confirm, default to enforce [A1] | **Set the hive's default to enforce** / From the next heartbeat, about 30 s, **a connection no rule allows is denied** in the 3 repositories that follow the hive's default, and in their 2 runs alive now. `github.example/acme/tax-service` sets its own mode and does not change. You can switch back at any time. / list head "Let through in the last 7 days with no rule matching, in those repositories" · "3 destinations" / "Counted from recorded connections that today's rules still do not cover. Enforce will deny these. A destination no run has reached yet is not in this list." / `[Cancel]` `[Set the default to enforce]` |
-| Confirm, default to observe [A1] | **Set the hive's default to observe** / From the next heartbeat, about 30 s, **nothing is denied** in the 3 repositories that follow the hive's default, and in their 2 runs alive now: every connection is let through and recorded. A repository that sets its own mode does not change. The rules stay as they are, locked ones too: under observe a deny shapes the document and denies nothing. / `[Cancel]` `[Set the default to observe]` |
+| Confirm, default to observe [A1] [A3] | **Set the hive's default to observe** / From the next heartbeat, about 30 s, **only what a deny rule names is denied** in the 3 repositories that follow the hive's default, and in their 2 runs alive now: every other connection is let through and recorded. A repository that sets its own mode does not change. The rules stay as they are, locked ones too: a deny holds in either mode. / `[Cancel]` `[Set the default to observe]` |
 | Toasts [A1] | The hive's default is enforce. 3 repositories follow it. Version 15. / The hive's default is observe. 3 repositories follow it. Version 15. |
 | Repository mode, the radios [A1] | Follow the hive · Observe · Enforce |
 | In effect, following [A1] | In effect: **enforce**, the hive's default. It changes when the hive's does. |
 | In effect, own [A1] | In effect: **observe**, this repository's own. The hive's default is enforce. |
 | In effect, member [A1] | … Only an owner sets a mode. |
-| Note, observing with a locked deny [A1] | **This repository observes: nothing is denied, locked rules included.** The locked deny `*.paste.example` still shapes the document, so the hosts it covers are not in the allow list. Under observe a run reaches them all the same, and the record says no rule matched. It denies again the moment this repository enforces. |
+| Note, observing with a locked deny [A1] [A3] | **This repository observes: the locked deny still holds.** The locked deny `*.paste.example` is denied in either mode, and under observe it is the only thing denied here: every other host is let through and recorded. It holds whatever mode this repository is in. |
 | Confirm, repository to enforce [A1] | **Enforce `github.example/acme/tax-service`** / From the next heartbeat, about 30 s, **a connection no rule allows is denied** in this repository's runs, 1 of them alive now. The mode becomes this repository's own: it stays enforce whatever the hive's default becomes. Other repositories do not change. / list head "Let through in this repository's runs, last 7 days, with no rule matching" · "2 destinations" · row button `Allow here` · locked row "Locked deny" / "Counted from this repository's recorded connections that today's rules still do not cover. Enforce will deny these. A destination no run has reached yet is not in this list." / `[Cancel]` `[Enforce this repository]` |
-| Confirm, repository to observe [A1] | **Observe `github.example/acme/shop`** / From the next heartbeat, about 30 s, **nothing is denied in this repository's runs**, 1 of them alive now: every connection is let through and recorded. The mode becomes this repository's own; the hive's default stays enforce and other repositories do not change. / The rules stay as they are, locked ones too. Under observe a deny shapes the document and denies nothing: `*.paste.example` will be reachable from this repository. / `[Cancel]` `[Observe this repository]` danger |
+| Confirm, repository to observe [A1] [A3] | **Observe `github.example/acme/shop`** / From the next heartbeat, about 30 s, **only what a deny rule names is denied in this repository's runs**, 1 of them alive now: every other connection is let through and recorded. The mode becomes this repository's own; the hive's default stays enforce and other repositories do not change. / The rules stay as they are, locked ones too. A deny holds in either mode: `*.paste.example` stays denied in this repository. / `[Cancel]` `[Observe this repository]` danger |
 | Confirm, back to the hive [A1] | the same two, with "The mode follows the hive's default from now on, and changes when it does." in place of the "becomes this repository's own" sentence, and the buttons `[Follow the hive]` |
 | Toasts, repository [A1] | github.example/acme/shop observes on its own. Version 11. / github.example/acme/shop enforces on its own. Nothing changes today: the hive's default is enforce too. / github.example/acme/shop follows the hive: enforce. Version 12. |
 
@@ -835,12 +873,12 @@ not read from the policy tables. A reload that changed only the mode reads "relo
 | Reads as, deny | Reads as: **deny `telemetry.example`**. It takes the host out of what the hive allows; a repository can still allow it unless you lock this rule. |
 | Reads as, deny suffix | Reads as: **deny every host below `paste.example`**, and every allow rule it covers. |
 | Note, covered | Already allowed by `*.internal.example`. Adding it changes nothing today and keeps the host allowed if the suffix rule is removed. |
-| Card footer | Locked rules come first, then deny, then allow, each by host read from the right, so a suffix sits beside the hosts below it. A deny takes allowed hosts out of the document; the document itself can only allow. |
+| Card footer [A3] | Locked rules come first, then deny, then allow, each by host read from the right, so a suffix sits beside the hosts below it. A deny is written to the document's deny list, which a runner decides first and in either mode, and takes the allowed hosts it covers out of its allow list. |
 | Wildcard tooltip | Every host below github.example, and not github.example itself. |
 | Lock tooltips | Lock: hold this rule against every repository / Locked: no repository can override it. Select to unlock. / Locked by beekeeper@example.com on 2 Sep 2026. Only an owner can change or unlock it. |
 | Lock confirm | **Lock the deny rule `telemetry.example`** / A locked rule holds against every repository. **1 repository rule stops being in force**: … / The repository's rule is kept and shown as held. Only an owner can unlock. / `[Cancel]` `[Lock the rule]` |
 | Remove confirm (only when a hive rule that repositories override or that is locked) | **Remove the allow rule `gitlab.example`** / 1 repository disables this rule; its own rule then has nothing to override and is kept. This takes effect within a heartbeat. / `[Cancel]` `[Remove the rule]` danger |
-| Toasts (no Undo in M5 [A1]; a dismiss X) | `files.cdn.example` is allowed for the hive. Version 15. / `gitlab.example` is denied for github.example/acme/shop. Version 11. / `api.example` is locked. No repository can override it. / `telemetry.example` is denied for the hive. No new version: the document did not list it. / The rule `errors.example` is removed. Version 14. |
+| Toasts (no Undo in M5 [A1]; a dismiss X) | `files.cdn.example` is allowed for the hive. Version 15. / `gitlab.example` is denied for github.example/acme/shop. Version 11. / `api.example` is locked. No repository can override it. / ~~`telemetry.example` is denied for the hive. No new version: the document did not list it.~~ [A3] a deny always changes the document / The rule `errors.example` is removed. Version 14. |
 | Credentials description | Credentials a run may use, by name. The policy names one; it never holds one. Each machine defines its credentials in its runner file, and a name a machine does not define is no run. |
 | Credential fields | Name, such as forge-token / Argument (optional), such as acme/shop / `[Add credential]` |
 | Repositories footnote [A1] | A repository appears here once a run names it. A repository with neither rules nor a mode of its own is served the hive baseline, and so is a run that names no repository. |
@@ -864,8 +902,8 @@ not read from the policy tables. A reload that changed only the mode reads "relo
 
 | Case | Sentence |
 |---|---|
-| an exact-host deny under an allowed `*.` suffix (or a narrower suffix under a broader one) | **This rule cannot be said.** `*.cdn.example` is allowed, and the policy document can only list what is allowed: it has no way to take one host out from under a `*.` entry. Remove `*.cdn.example` and allow the hosts you want by name, or deny `*.cdn.example` whole. `Show *.cdn.example` `Deny *.cdn.example instead` |
-| the same, on a repository page, where the suffix is the hive's | … `*.cdn.example` is allowed by the hive, and … Disable `*.cdn.example` for this repository and allow the hosts you want by name. `Disable *.cdn.example here` |
+| ~~an exact-host deny under an allowed `*.` suffix~~ [A3] | No refusal: the deny is accepted and written to the deny list. The reading line says "Reads as: **deny `files.cdn.example`**. It takes the host out of what the hive allows; a repository can still allow it unless you lock this rule. It is denied in either mode, observe too. `*.cdn.example` still allows the other hosts below it." |
+| the same, on a repository page, where the hive's suffix is **locked** [A3] | the locked-allow refusal below: A locked hive rule allows `*.cdn.example`. It holds against every repository, so a deny added here would change nothing. … |
 | a locked deny, member | A locked hive rule denies `*.paste.example`. It holds against every repository, so no rule added here would change what happens. Locked by beekeeper@example.com on 2 Sep 2026. Only an owner can change or unlock it. |
 | a locked deny, owner | … on 2 Sep 2026. You can change or unlock it on the hive's policy page. |
 | a locked allow, on Deny | A locked hive rule allows `github.example`. It holds against every repository, so a deny added here would change nothing. … |
@@ -922,8 +960,8 @@ Subject is the author's email in 500; rules are mono chips. Built from `policy_c
 | Next, run ended or hive page | Takes effect in running sessions within a heartbeat, about 30 s. |
 | Next, deny | Takes effect in running sessions within a heartbeat, about 30 s. Open connections to the host are closed at the reload. |
 | Next, allow, the run's policy observes [A1] | This run's policy observes, so the connection is already let through. The rule changes what the record says from the next heartbeat, about 30 s, and what happens once the repository enforces. |
-| Next, deny, the run's policy observes [A1] | This run's policy observes, so nothing is denied. The deny takes the host out of the document from the next heartbeat, about 30 s, and denies it once the repository enforces. |
-| Next, hive page, "The whole hive" chosen [A1] | Takes effect in running sessions within a heartbeat, about 30 s. 1 repository observes on its own: nothing is denied there. |
+| Next, deny, the run's policy observes [A1] [A3] | the same as "Next, deny": a deny holds in either mode. Takes effect in running sessions within a heartbeat, about 30 s. Open connections to the host are closed at the reload. |
+| Next, hive page, "The whole hive" chosen [A1] [A3] | Takes effect in running sessions within a heartbeat, about 30 s. |
 | After line under observe [A1] | the same three badges; the sentence ends "… The run's policy observes: it was let through before, and is allowed by a rule from the reload." |
 | Footnote, run connections (replaces the last sentence of M4's) | … A rule added here changes what happens next; what the record already says stays as it was. |
 | Toast [A1] | `files.cdn.example` is allowed for github.example/acme/shop. / Version 10. Running sessions have it within a heartbeat. (no Undo) |
@@ -1126,14 +1164,14 @@ Navigation and URLs
 Rules
 - [ ] [A1] Hive mode cards set the **default**: badge "Hive default", the line under them counts and links the repositories with their own mode, confirms scoped to the repositories that follow
 - [ ] [A1] Repository mode: Follow the hive · Observe · Enforce, the "In effect" sentence with its source, this repository's two confirms, no confirm when nothing changes in effect, the footer summary
-- [ ] [A1] A locked hive deny in an observing repository: the row stays, the note says nothing is denied, "let through" not "denied" in the counts
+- [ ] [A1] [A3] A locked hive deny in an observing repository: the row stays, the note says the lock holds and is the only thing denied, the counts read as any deny row's
 - [ ] [A1] Modes are an owner's: members see both controls read-only with "Only an owner sets a mode."
 - [ ] [A1] Repositories list has the Mode column (effective mode and "Hive default" / "Its own")
 - [ ] [A1] Version strip shows Mode and where it came from; history reads a repository's mode change as a sentence
 - [ ] [A1] Every mode word near a run comes from that run's events, never from the hive
 - [ ] [A1] New hive: "Qory serves no policy yet", no version, no sidebar tag; no Dismiss on suggestions; no Undo in any toast
 - [ ] Mode switch asks before either change; the enforce confirm lists what would be denied, from the record, with one-click allow; no estimate when it cannot be counted
-- [ ] Composer validates in the contract's grammar as you type, reads the rule back, repairs a pasted URL, and refuses the exact-host deny under an allowed suffix with the sentence of pf4
+- [ ] Composer validates in the contract's grammar as you type, reads the rule back, repairs a pasted URL, and accepts the exact-host deny under an allowed suffix, saying the suffix still allows the rest [A3]
 - [ ] Hive list: mark, wildcard, paths, last 7 days, added, lock; owners toggle locks, members read them
 - [ ] Repository list: one list, source chip per row, beaten rules struck under their winner, Disable here / Allow here / Remove / Restore / Open
 - [ ] Suggestions from `harness_hosts` with one-click allow and the locked case (no dismiss, no undo [A1])
@@ -1150,7 +1188,9 @@ Connections and runs
 - [ ] Popover: path choice only when the host has path rules; repository is the default scope on a run page; no default among several repositories; the heartbeat sentence; bottom sheet on phones
 - [ ] The row after: unchanged record plus the after line; "In force in this run" only when the run reported the new digest
 - [ ] Run header: version link to the exact version; "Behind v10" only while alive and unequal; the notice; never on an ended run
-- [ ] Timeline: "Policy applied again" with the delta from the two events
+- [ ] Timeline: "Policy applied again" with the delta from the two events, deny chips included [A3]
+- [ ] [A3] Every sentence about observe says "denies only what a deny rule names"; none says observe denies nothing
+- [ ] [A3] `mix apiary.policy.rerender` renders the versions in force again once after the upgrade; unchanged bytes write nothing
 
 Quality
 - [ ] Both themes, at 1440, 1024, 768, 375; no page-level horizontal scroll at 320
@@ -1167,9 +1207,8 @@ Quality
    rule on the same host, so "allow this path for this repository" must be written as the paths in
    force plus the new one, or it would silently drop `/v1/*`. The design assumes
    `rule_from_connection/4` merges. Confirm, or the popover must say "replaces the hive's paths".
-2. **A narrower suffix under a broader allowed suffix** (`deny *.eu.cdn.example` under `allow
-   *.cdn.example`) cannot be said either, by the same reasoning as the exact host. The brief treats
-   both as the pf4 refusal; the build brief names only the exact host.
+2. ~~**A narrower suffix under a broader allowed suffix** cannot be said either.~~ **Closed
+   [A3]:** both are said by `egress.deny`; neither is refused.
 3. **What "would have been denied" is counted from.** The enforce confirm and the observe fact line
    want recorded connections that *today's* rules do not cover (a function such as
    `Policy.uncovered(scope, since)`), which is not in the domain API yet. The fallback is the
@@ -1182,8 +1221,9 @@ Quality
    runner file's inline document"). If an `egress:` block for `runner.yaml` is wanted as well, it
    is a second segment in the same modal ("Policy file | Runner file section"); the credentials
    cannot go in that one, since there they are definitions, not names.
-7. ~~Observe and locks.~~ **Answered [A1]:** a locked deny is applied to the document and denies
-   nothing under observe; the page says so in the mode card's note and in both observe confirms.
+7. ~~Observe and locks.~~ ~~**Answered [A1]:** a locked deny is applied to the document and denies
+   nothing under observe.~~ **Superseded [A3]:** a deny, locked or not, is in the document's deny
+   list and holds under observe; the mode card's note and both observe confirms say so.
 8. ~~Undo.~~ **Closed [A1]:** no Undo in M5; the row's **Rule** button and the list's Remove are the
    way back.
 9. **The runs list group header** gains a "Policy" link and the hive connections description a

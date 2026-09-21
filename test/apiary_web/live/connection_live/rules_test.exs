@@ -454,7 +454,35 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       {:ok, _} = Policy.lock(scope, rule)
       {:ok, rule} = Policy.allow(scope, nil, %{host: "github.example"})
       {:ok, _} = Policy.lock(scope, rule)
+      # A deny below the allowed suffix: decided first by the runner, in either mode.
+      {:ok, _} = Policy.deny(scope, nil, %{host: "tracker.internal.example"})
       %{effective: Policy.effective(scope, nil)}
+    end
+
+    test "a host a deny covers is not allowed now, though a suffix above it allows", %{
+      effective: effective
+    } do
+      assert effective.deny == ["tracker.internal.example", "*.paste.example"]
+
+      # Let through by an old runner with no rule: not allowed now, since the deny is decided
+      # before the suffix that allows the rest, so the row keeps its Allow and no second
+      # deny is offered (`answered/3` then says the deny answered it).
+      assert %{standing: :can_allow, deny: false, entry: %{action: :deny}} =
+               Rules.standing(row("tracker.internal.example", "allowed", ""), effective)
+
+      # Denied by the rule: the same.
+      assert %{standing: :can_allow, deny: false, entry: %{action: :deny}} =
+               Rules.standing(
+                 row("tracker.internal.example", "denied", "tracker.internal.example"),
+                 effective
+               )
+
+      # Another host below the suffix is allowed now, as before.
+      assert %{standing: :can_deny} =
+               Rules.standing(
+                 row("tax.internal.example", "allowed", "*.internal.example"),
+                 effective
+               )
     end
 
     defp row(host, decision, rule, extra \\ %{}) do

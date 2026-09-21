@@ -196,6 +196,20 @@ defmodule Apiary.Policy.ActivityTest do
       assert counts[ctx.mcp.id] == %{allowed: 0, denied: 1}
     end
 
+    test "a host a deny covers is counted on the deny, decided before the suffix that allows it",
+         ctx do
+      {:ok, deny} = Policy.deny(ctx.scope, nil, %{host: "x.cdn.example"})
+      assert {:ok, counts} = Policy.rule_activity(ctx.scope, nil, since())
+      # The record says the old runner let it through; the rule it is counted on is the deny.
+      assert counts[deny.id] == %{allowed: 1, denied: 0}
+      refute Map.has_key?(counts, ctx.cdn.id)
+
+      # Denied in either mode already: enforcing would not start denying it.
+      assert {:ok, uncovered} = Policy.uncovered(ctx.scope, since())
+      refute Enum.any?(uncovered, &(&1.host == "x.cdn.example"))
+      assert Enum.any?(uncovered, &(&1.host == "new.example"))
+    end
+
     test "an exact name is reported before the suffix that also matches", ctx do
       {:ok, exact} = Policy.allow(ctx.scope, nil, %{host: "x.cdn.example"})
       assert {:ok, counts} = Policy.rule_activity(ctx.scope, nil, since())

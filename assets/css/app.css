@@ -3495,6 +3495,20 @@
     background-color: var(--q-error-soft);
     color: var(--q-error-soft-content);
   }
+  /* ---- Deny in either mode (A3): the deny chips of a reload carry the deny mark ---- */
+  .q-delta-deny {
+    gap: 3px;
+  }
+  .q-delta-deny-add {
+    background-color: var(--q-error-soft);
+    color: var(--q-error-soft-content);
+  }
+  .q-delta-deny-del {
+    background-color: var(--color-base-300);
+    color: var(--q-muted);
+    text-decoration: line-through;
+  }
+  /* ---- end A3 ---- */
   .q-reload-say {
     max-width: 80ch;
     margin-top: 2px;
