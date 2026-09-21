@@ -7,6 +7,29 @@ shell, components, tone, accessibility) still holds and is not repeated. The ren
 `policy-mock.html` beside this file; where the two disagree, this brief wins. Section letters
 continue the pattern with a `p` prefix.
 
+## Amendment 4: a rule's action changes from its row
+
+The owner, 21 Sep 2026, on `/hive/policy`: "I can't edit the rule for yahoo here to deny
+access. It constantly switches to stockanalysis rule. I would expect a popup for edition,
+with clear deny/allow buttons." Two things were wrong. The row's `⋯` menu offered no way to
+turn an allow into a deny: that lived only in the composer, as "Replace with deny", which
+nothing on the row points at. And a closed row menu was hit-testable: the app's `.menu`
+rule set `display` in a layer above daisyUI's closed-dropdown rule, so every closed menu
+hung, transparent, over the row below, and a click on the next row's `⋯` landed on the
+menu above it (its first item, "Edit paths", which filled the composer with the wrong host).
+Marked **[A4]** where it lands.
+
+| Where | What changed |
+|---|---|
+| pd4 | the `⋯` menu gains **Change to deny** on an allow rule and **Change to allow** on a deny rule, after Edit paths; it writes at once through the domain, which replaces the rule for the host, and the toast is the composer's |
+| pf2 | the toast row: "`finance.example` is denied for the hive. Version 11." from the row as from the composer |
+| ph (app.css) | a closed dropdown is `display: none` in the app's own layer, mirroring daisyUI's condition, for every dropdown; a hook-driven menu opens by the hook alone |
+
+The edit popup the owner pictured is not built: a menu item that does the one thing is
+shorter than a dialog with the same two buttons, and Edit paths already opens the composer
+for the rest. Should more per-rule fields arrive (a note, an expiry), that is when a rule
+dialog earns its place.
+
 ## Amendment 3: deny holds in either mode
 
 An owner's decision of 21 Sep 2026: "if we have default observe and we added a rule to deny some
@@ -384,8 +407,8 @@ Added · (lock and actions)**. On a repository page: **Rule · Paths · Comes fr
   Select to unlock." Members: a static closed padlock and the word "Locked", focusable, tooltip
   "Locked by beekeeper@example.com on 2 Sep 2026. Only an owner can change or unlock it."; an
   unlocked rule shows nothing in this place.
-- **Actions**. Hive page: a `⋯` menu (Edit paths, Lock / Unlock for owners, a divider, Remove in
-  error tone). A member sees no menu on a locked rule. Repository page: one ghost `btn-xs` whose
+- **Actions**. Hive page: a `⋯` menu (Edit paths, Change to deny / Change to allow [A4], Lock /
+  Unlock for owners, a divider, Remove in error tone). A member sees no menu on a locked rule. Repository page: one ghost `btn-xs` whose
   word is the act: a hive rule reads **Disable here** (allow) or **Allow here** (deny); the
   repository's own rule reads **Remove**, or **Restore** when it exists only to disable a hive rule;
   a locked hive rule reads the link **Open** (to `/hive/policy?rule=…`).
@@ -878,7 +901,7 @@ fewer." when the deny list changed. A reload that changed only the mode reads "r
 | Lock tooltips | Lock: hold this rule against every repository / Locked: no repository can override it. Select to unlock. / Locked by beekeeper@example.com on 2 Sep 2026. Only an owner can change or unlock it. |
 | Lock confirm | **Lock the deny rule `telemetry.example`** / A locked rule holds against every repository. **1 repository rule stops being in force**: … / The repository's rule is kept and shown as held. Only an owner can unlock. / `[Cancel]` `[Lock the rule]` |
 | Remove confirm (only when a hive rule that repositories override or that is locked) | **Remove the allow rule `gitlab.example`** / 1 repository disables this rule; its own rule then has nothing to override and is kept. This takes effect within a heartbeat. / `[Cancel]` `[Remove the rule]` danger |
-| Toasts (no Undo in M5 [A1]; a dismiss X) | `files.cdn.example` is allowed for the hive. Version 15. / `gitlab.example` is denied for github.example/acme/shop. Version 11. / `api.example` is locked. No repository can override it. / ~~`telemetry.example` is denied for the hive. No new version: the document did not list it.~~ [A3] a deny always changes the document / The rule `errors.example` is removed. Version 14. |
+| Toasts (no Undo in M5 [A1]; a dismiss X; the row's Change to deny / allow [A4] gives the same toast as the composer) | `files.cdn.example` is allowed for the hive. Version 15. / `gitlab.example` is denied for github.example/acme/shop. Version 11. / `api.example` is locked. No repository can override it. / ~~`telemetry.example` is denied for the hive. No new version: the document did not list it.~~ [A3] a deny always changes the document / The rule `errors.example` is removed. Version 14. |
 | Credentials description | Credentials a run may use, by name. The policy names one; it never holds one. Each machine defines its credentials in its runner file, and a name a machine does not define is no run. |
 | Credential fields | Name, such as forge-token / Argument (optional), such as acme/shop / `[Add credential]` |
 | Repositories footnote [A1] | A repository appears here once a run names it. A repository with neither rules nor a mode of its own is served the hive baseline, and so is a run that names no repository. |

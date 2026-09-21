@@ -161,7 +161,7 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
   allow (`*.example` allowed, `tracker.example` denied). On a conflict the repository wins,
   unless the hive's rule is locked: a locked rule holds against every repository. Members
   edit; only an owner changes the mode, and only an owner locks, unlocks, changes or removes
-  a locked rule. A list holds at most 500 rules, a rule 100 paths, and a change whose run
+  a locked rule. A rule's row turns it from allow to deny and back from its menu. A list holds at most 500 rules, a rule 100 paths, and a change whose run
   configuration would be over 1 MiB, more than a runner reads, is refused. What the document
   cannot say is refused when it is written, with a sentence that says what to do instead: a
   `*.` suffix held to paths above another allowed entry.

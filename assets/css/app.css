@@ -839,10 +839,16 @@
   :where(.dropdown-top) > :where(.dropdown-content) {
     animation-name: q-menu-in-up;
   }
-  /* The shell's menus open by the Menu hook, never by focus alone: Tab passes over
-     a closed menu's trigger and on to the next control. */
-  :where(#theme-menu, #user-menu, #workspace-menu, #brand-menu):not(.dropdown-open)
-    > :where(.dropdown-content) {
+  /* A closed dropdown is not there. daisyUI hides it with `display`, and the `.menu`
+     rule below, in this layer, would win over that and leave a transparent menu hanging
+     over whatever is under it (a row's closed menu took the click meant for the row
+     below). So the closed condition is said again here, as daisyUI has it. */
+  :where(.dropdown):not(.dropdown-open, :focus-within) > :where(.dropdown-content) {
+    display: none;
+  }
+  /* A menu the Menu hook drives opens by the hook alone, never by focus: Tab passes
+     over a closed menu's trigger and on to the next control. */
+  :where(.dropdown[phx-hook="Menu"]):not(.dropdown-open) > :where(.dropdown-content) {
     display: none;
   }
   @keyframes q-menu-in-up {

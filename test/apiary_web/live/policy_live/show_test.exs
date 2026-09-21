@@ -388,6 +388,28 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert has_element?(view, "#policy-composer-paths[value='/v1/*']")
     end
 
+    test "the menu changes a rule's action, and the toast names the version",
+         %{conn: conn, scope: scope} do
+      view = open(conn)
+      id = rule(scope, "api.example").id
+
+      assert has_element?(view, "#rule-#{id}-menu button", "Change to deny")
+      refute has_element?(view, "#rule-#{id}-menu button", "Change to allow")
+
+      view |> element("#rule-#{id}-menu button", "Change to deny") |> render_click()
+
+      assert rule(scope, "api.example").action == "deny"
+      assert text(view, "#flash-info") =~ "api.example is denied for the hive. Version"
+
+      id = rule(scope, "api.example").id
+      assert has_element?(view, "#rule-#{id}-menu button", "Change to allow")
+
+      view |> element("#rule-#{id}-menu button", "Change to allow") |> render_click()
+
+      assert rule(scope, "api.example").action == "allow"
+      assert text(view, "#flash-info") =~ "api.example is allowed for the hive. Version"
+    end
+
     test "a credential is added by name and removed", %{conn: conn, scope: scope} do
       view = open(conn)
 

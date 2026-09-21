@@ -1030,6 +1030,20 @@ defmodule ApiaryWeb.PolicyComponents do
             <.icon name="hero-pencil-square-micro" class="size-4" /> Edit paths
           </button>
         </li>
+        <li role="none">
+          <button
+            type="button"
+            role="menuitem"
+            data-menu-close
+            phx-click={JS.push("change_action", value: %{id: @rule.id})}
+          >
+            <.icon
+              name={if @rule.action == "allow", do: "hero-no-symbol-micro", else: "hero-check-micro"}
+              class="size-4"
+            />
+            {if @rule.action == "allow", do: "Change to deny", else: "Change to allow"}
+          </button>
+        </li>
         <li :if={@can_lock} role="none">
           <button
             type="button"

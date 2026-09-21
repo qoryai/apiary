@@ -482,6 +482,23 @@ defmodule ApiaryWeb.PolicyLive.Show do
     end
   end
 
+  # The other action for the same host: the domain replaces the rule, as the composer's
+  # "Replace with deny" does, and the toast names the version it made.
+  defp event("change_action", %{"id" => id}, socket) do
+    scope = socket.assigns.current_scope
+
+    case Policy.get_rule(scope, id) do
+      {:ok, %{kind: "host", repository_id: nil, action: "allow"} = rule} ->
+        changed(socket, Policy.deny(scope, nil, %{host: rule.host}), rule.host, "deny")
+
+      {:ok, %{kind: "host", repository_id: nil, action: "deny"} = rule} ->
+        changed(socket, Policy.allow(scope, nil, %{host: rule.host}), rule.host, "allow")
+
+      _ ->
+        load(socket)
+    end
+  end
+
   defp event("remove", %{"id" => id}, socket) do
     scope = socket.assigns.current_scope
 
@@ -560,6 +577,17 @@ defmodule ApiaryWeb.PolicyLive.Show do
         Common.refused(socket, error)
     end
   end
+
+  defp changed(socket, {:ok, rule}, host, action) do
+    Common.wrote(
+      socket,
+      rule,
+      "#{host} is #{Common.past(action)} #{Common.for_target(socket)}.",
+      "Rule changed."
+    )
+  end
+
+  defp changed(socket, {:error, error}, _host, _action), do: Common.refused(socket, error)
 
   defp remove(socket, rule) do
     rows = socket.assigns.rows
