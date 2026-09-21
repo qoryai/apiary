@@ -10,8 +10,10 @@ defmodule Apiary.Policy.Schema do
   shape, not the guard of a host, a path or a name: that is `Apiary.Policy.Grammar`, whose
   patterns are anchored with `\\A` and `\\z` and which every rule passes before it is stored.
 
-  The validator is built once and kept in `:persistent_term`. Nothing is fetched: a
-  reference outside the two files does not resolve.
+  The validator is built once and kept in `:persistent_term`, with the modification
+  times of the two files; a validation after either file changed builds it again, so a
+  checkout running with a code reloader takes a new schema without a restart. Nothing is
+  fetched: a reference outside the two files does not resolve.
   """
 
   @behaviour JSV.Resolver
@@ -41,19 +43,31 @@ defmodule Apiary.Policy.Schema do
   end
 
   defp root do
+    stamp = stamp()
+
     case :persistent_term.get(__MODULE__, nil) do
-      nil ->
+      {^stamp, root} ->
+        root
+
+      _stale_or_none ->
         root =
           JSV.build!(%{"$ref" => @base <> "run-configuration.schema.json"},
             resolver: __MODULE__,
             formats: true
           )
 
-        :persistent_term.put(__MODULE__, root)
+        :persistent_term.put(__MODULE__, {stamp, root})
         root
+    end
+  end
 
-      root ->
-        root
+  # The files as they are on disk: a stat each, which a write, the one caller, can afford.
+  defp stamp do
+    for file <- @files do
+      case File.stat(path(file), time: :posix) do
+        {:ok, %File.Stat{mtime: mtime, size: size}} -> {file, mtime, size}
+        {:error, reason} -> {file, reason}
+      end
     end
   end
 
