@@ -1,3 +1,3 @@
-# The commit of qoryai/runner whose contracts/runner/v1 the :contract tests replay in CI.
-# It moves to the tag v0.4.0 once that tag exists.
-bcb3f47ab935d9e0df266abad375cb5a948eeac5
+# The commit of qoryai/runner whose contracts/runner/v1 the :contract tests replay in CI:
+# the tag v0.4.1.
+96ce53fd1ab8841aa78e822709f1e2a25639a68c
