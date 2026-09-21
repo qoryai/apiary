@@ -6,7 +6,7 @@ release may change what an existing installation does, and says so under Upgradi
 section names the database migrations the release runs on boot, so a self-hoster knows what
 a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
 
-## [Unreleased]
+## [0.1.0] - 2026-09-21
 
 ### Added
 
@@ -424,3 +424,5 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
   `20260924000500` renames on boot. A saved link with `state=exited` still opens the same
   list and is rewritten to `state=succeeded`. The previous release does not read
   `succeeded`, so going back to it means rolling that migration back first.
+
+[0.1.0]: https://github.com/qoryai/apiary/releases/tag/v0.1.0
