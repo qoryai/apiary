@@ -1,17 +1,21 @@
 # Live reload, end to end
 
-One job that shows the thing the console promises: a session behind a wall is refused a
+One job that shows two things the console promises. A session behind a wall is refused a
 host, a person allows the host from the connection's row, and the same session reaches it
-without being restarted, within thirty-five seconds.
+without being restarted, within thirty-five seconds. Then the hive goes to observe, the
+person denies the host from the same row, and the same session is refused it by name,
+under observe, within the same budget: a deny holds in either mode.
 
     e2e/run.sh        # one run
     e2e/run.sh 3      # three, each on a fresh database and a fresh node
 
 It leaves with status 0 only when every assertion held, and prints the timings:
 
-    allow -> second policy applied, seen stored here     4.17 s
-    allow -> allowed connection, seen stored here        6.17 s   (budget 35 s)
-    E2E PASS  allow_to_applied_ms=4173 allow_to_allowed_ms=6167
+    allow -> second policy applied, seen stored here     4.09 s
+    allow -> allowed connection, seen stored here        6.06 s   (budget 35 s)
+    deny  -> third policy applied, seen stored here      4.17 s
+    deny  -> denied connection, seen stored here         5.64 s   (budget 35 s)
+    E2E PASS  allow_to_applied_ms=4090 allow_to_allowed_ms=6059 deny_to_applied_ms=4170 deny_to_denied_ms=5645
 
 ## What runs where
 
@@ -19,7 +23,7 @@ It leaves with status 0 only when every assertion held, and prints the timings:
 |---|---|
 | The test instance | This application with production's settings (`MIX_ENV=prod`, migrations on boot, JSON logs), on a database of its own, `apiary_e2e`, and a port of its own, 4180. `run.sh` starts it with `mix run e2e/scenario.exs`, so the scenario runs in the virtual machine that answers the runner. The database is dropped before and after; a `DATABASE_URL` that does not end in `_e2e` is refused. |
 | The node | `compose.yaml`'s `node`: a Linux machine with a container engine of its own (Docker in Docker). `qory run` runs here, built from the pinned source for Linux, and builds its wall with the node's engine: an internal network, the agent's container on it and on nothing else, the relay's container beside it. The node has its own `XDG_CONFIG_HOME`; nobody's `~/.config/qory` is read or written. |
-| The session | `checkout/bin/fake-runtime`, started by `qory run` as the runtime, in the wall's container (`curlimages/curl`). Not a model: a loop that asks for one page of the target every few seconds. It first tries to go around the proxy and leaves with 3 if that works, so a pass also says there was a wall. |
+| The session | `checkout/bin/fake-runtime`, started by `qory run` as the runtime, in the wall's container (`curlimages/curl`). Not a model: a loop that asks for one page of the target every few seconds, and keeps asking after it got through, so the deny can refuse it. It first tries to go around the proxy and leaves with 3 if that works, so a pass also says there was a wall. |
 | The target | `compose.yaml`'s `target`: nginx with a certificate made for the run, on the node's network under the name `files.e2e.test`. No site outside the job is asked for anything. |
 
 The server contract lets a runner speak plain http to a loopback address only. So the node
@@ -114,4 +118,5 @@ commit in `.qory-e2e-ref` and the runner at the one in `.runner-contract-ref`.
 - A real runtime. The events of a session inside a runtime (hooks, tool calls) play no part
   in a reload and are not produced here.
 - A tunnel that is open when a host is denied (the contract's second reload rule), and TLS
-  termination (the third). The job allows; it does not deny.
+  termination (the third). The session opens a fresh connection for every try, so the deny
+  refuses a new tunnel, never closes an open one.

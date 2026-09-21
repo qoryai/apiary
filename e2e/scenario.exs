@@ -6,7 +6,9 @@
 # allowed, writes the node's runner file, starts the session on the node, waits for the
 # denied connection to arrive, allows its host the way the connection's row does, and
 # then watches the run's record for the second policy applied event and the allowed
-# connection. It prints the timings and leaves with status 0 only when every assertion
+# connection. Then it puts the hive in observe, denies the host from the same row, and
+# watches for the third policy applied event and the denied connection, refused by name
+# under observe. It prints the timings and leaves with status 0 only when every assertion
 # held. It never prints the secret: the runner file is the one place it goes.
 
 defmodule E2E do
@@ -154,6 +156,55 @@ defmodule E2E do
 
     t_allowed = System.monotonic_time(:millisecond)
 
+    # The second thing the console promises: a deny holds in either mode. The hive goes
+    # to observe, the host is denied from the same row, and the same session, which kept
+    # asking, is refused by name.
+    step("observe, then deny as the connection's row does")
+    {:ok, "observe"} = Policy.set_mode(scope, "observe")
+    deny_wall = DateTime.utc_now()
+    t1 = System.monotonic_time(:millisecond)
+    {:ok, row} = Runs.fetch_connection(scope, connection.id)
+    {:ok, deny_rule} = Policy.rule_from_connection(scope, row, :deny, level)
+
+    {:ok, %{digest: deny_digest, version: deny_version}} =
+      Policy.current_configuration(scope, target(scope, Repo.get!(Run, run.id), level))
+
+    true = deny_digest != new_digest
+
+    say(
+      "hive in observe; rule #{deny_rule.action} #{deny_rule.host} at the #{level}'s level; version #{deny_version}, digest #{short(deny_digest)}"
+    )
+
+    third =
+      await(
+        "a third policy applied event with the deny digest",
+        budget_ms + 30_000,
+        session_task,
+        fn ->
+          Enum.find(
+            applied(run),
+            &(&1.sequence > second.sequence and &1.data["run_configuration"] == deny_digest)
+          )
+        end
+      )
+
+    t_deny_applied = System.monotonic_time(:millisecond)
+
+    denied =
+      await("a denied connection to #{host} after it", budget_ms + 30_000, session_task, fn ->
+        Repo.one(
+          from e in Event,
+            where:
+              e.run_id == ^run.id and e.type == @egress and e.sequence > ^third.sequence and
+                fragment("?->>'host' = ?", e.data, ^host) and
+                fragment("?->>'decision' = 'denied'", e.data),
+            order_by: e.sequence,
+            limit: 1
+        )
+      end)
+
+    t_denied = System.monotonic_time(:millisecond)
+
     step("the rest of the record")
     status = Task.await(session_task, 120_000)
 
@@ -166,7 +217,8 @@ defmodule E2E do
       end)
 
     digests = Policy.digests(scope, run)
-    denied_after = denied_after(run, host, second.sequence)
+    denied_between = denied_between(run, host, second.sequence, third.sequence)
+    allowed_after = allowed_after(run, host, third.sequence)
     applied_count = length(applied(run))
 
     say(
@@ -174,7 +226,7 @@ defmodule E2E do
     )
 
     say(
-      "policy applied events: #{applied_count}; denied connections to #{host} after the second: #{denied_after}"
+      "policy applied events: #{applied_count}; connections to #{host} denied between the allow and the deny: #{denied_between}; allowed after the deny: #{allowed_after}"
     )
 
     say(
@@ -183,6 +235,8 @@ defmodule E2E do
 
     to_applied = t_applied - t0
     to_allowed = t_allowed - t0
+    deny_to_applied = t_deny_applied - t1
+    deny_to_denied = t_denied - t1
 
     IO.puts("""
 
@@ -194,6 +248,13 @@ defmodule E2E do
       allow -> allowed connection                      #{seconds(DateTime.diff(allowed.time, allow_wall, :millisecond))}
     second policy applied: sequence #{second.sequence}, source #{second.data["source"]}, allow #{inspect(second.data["allow"])}
     allowed connection:    sequence #{allowed.sequence}, #{allowed.data["method"]} #{allowed.data["host"]}:#{allowed.data["port"]}, rule #{inspect(allowed.data["rule"])}
+    deny  -> third policy applied, seen stored here    #{seconds(deny_to_applied)}
+    deny  -> denied connection, seen stored here       #{seconds(deny_to_denied)}   (budget #{div(budget_ms, 1000)} s)
+    by the node's clock, for comparison:
+      deny -> third policy applied                     #{seconds(DateTime.diff(third.time, deny_wall, :millisecond))}
+      deny -> denied connection                        #{seconds(DateTime.diff(denied.time, deny_wall, :millisecond))}
+    third policy applied:  sequence #{third.sequence}, mode #{inspect(third.data["mode"])}, allow #{inspect(third.data["allow"])}, deny #{inspect(third.data["deny"])}
+    denied connection:     sequence #{denied.sequence}, #{denied.data["method"]} #{denied.data["host"]}:#{denied.data["port"]}, mode #{inspect(denied.data["mode"])}, rule #{inspect(denied.data["rule"])}
     """)
 
     failures =
@@ -203,8 +264,18 @@ defmodule E2E do
         {host in (second.data["allow"] || []), "the second policy applied allows #{host}"},
         {to_allowed < budget_ms, "allow to allowed connection under #{div(budget_ms, 1000)} s"},
         {run.wall == "docker", "the run was behind the docker wall"},
-        {denied_after == 0, "no connection to #{host} was denied after the reload"},
-        {status == 0 and run.exit_code == 0, "the session reached the host and left with 0"},
+        {denied_between == 0,
+         "no connection to #{host} was denied between the allow reload and the deny"},
+        {third.data["mode"] == "observe", "the third policy applied is under observe"},
+        {host in (third.data["deny"] || []), "the third policy applied denies #{host}"},
+        {host not in (third.data["allow"] || []),
+         "the third policy applied no longer allows #{host}"},
+        {denied.data["mode"] == "observe" and denied.data["rule"] == host,
+         "the denied connection was refused under observe by the rule #{host}"},
+        {deny_to_denied < budget_ms, "deny to denied connection under #{div(budget_ms, 1000)} s"},
+        {allowed_after == 0, "no connection to #{host} was allowed after the deny reload"},
+        {status == 0 and run.exit_code == 0,
+         "the session reached the host, was then refused, and left with 0"},
         {digests.applied == digests.in_force and not digests.drift,
          "the run ends on the digest in force, without drift"}
       ]
@@ -213,7 +284,9 @@ defmodule E2E do
 
     case failures do
       [] ->
-        IO.puts("E2E PASS  allow_to_applied_ms=#{to_applied} allow_to_allowed_ms=#{to_allowed}")
+        IO.puts(
+          "E2E PASS  allow_to_applied_ms=#{to_applied} allow_to_allowed_ms=#{to_allowed} deny_to_applied_ms=#{deny_to_applied} deny_to_denied_ms=#{deny_to_denied}"
+        )
 
       failures ->
         Enum.each(failures, &IO.puts("E2E FAIL  not true: #{&1}"))
@@ -241,13 +314,26 @@ defmodule E2E do
     )
   end
 
-  defp denied_after(%Run{id: id}, host, sequence) do
+  defp denied_between(%Run{id: id}, host, from_sequence, to_sequence) do
+    Repo.aggregate(
+      from(e in Event,
+        where:
+          e.run_id == ^id and e.type == @egress and e.sequence > ^from_sequence and
+            e.sequence < ^to_sequence and
+            fragment("?->>'host' = ?", e.data, ^host) and
+            fragment("?->>'decision' = 'denied'", e.data)
+      ),
+      :count
+    )
+  end
+
+  defp allowed_after(%Run{id: id}, host, sequence) do
     Repo.aggregate(
       from(e in Event,
         where:
           e.run_id == ^id and e.type == @egress and e.sequence > ^sequence and
             fragment("?->>'host' = ?", e.data, ^host) and
-            fragment("?->>'decision' = 'denied'", e.data)
+            fragment("?->>'decision' = 'allowed'", e.data)
       ),
       :count
     )

@@ -1,12 +1,14 @@
 #!/bin/sh
 # The session of the end to end job: not a model, a loop. It asks for one page of the
 # target host through the proxy the wall gave it, every E2E_RETRY_SECONDS, and says what
-# came of each try. It leaves once the page has come back E2E_SUCCESSES times, or
-# after E2E_SESSION_SECONDS. It reads nothing of its arguments.
+# came of each try. It leaves once the page has come back E2E_SUCCESSES times, or, with
+# E2E_THEN_DENIED set, once a try is refused after that (the job denied the host under
+# observe), or after E2E_SESSION_SECONDS. It reads nothing of its arguments.
 url="${E2E_TARGET_URL:?}"
 retry="${E2E_RETRY_SECONDS:-3}"
 wanted="${E2E_SUCCESSES:-2}"
 limit="${E2E_SESSION_SECONDS:-120}"
+then_denied="${E2E_THEN_DENIED:-}"
 
 echo "session $QORY_RUN_ID: asking for $url every ${retry}s"
 
@@ -29,9 +31,10 @@ while [ $(( $(date +%s) - start )) -lt "$limit" ]; do
   if curl --silent --show-error --insecure --max-time 5 --output /dev/null "$url" 2>/dev/null; then
     reached=$((reached + 1))
     echo "try $try: reached"
-    [ "$reached" -ge "$wanted" ] && { echo "done"; exit 0; }
+    [ "$reached" -ge "$wanted" ] && [ -z "$then_denied" ] && { echo "done"; exit 0; }
   else
     echo "try $try: refused"
+    [ "$reached" -ge "$wanted" ] && [ -n "$then_denied" ] && { echo "done: denied after reaching"; exit 0; }
   fi
   sleep "$retry"
 done

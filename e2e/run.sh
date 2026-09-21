@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# The end to end job of live reload (F3). See e2e/README.md for what it proves.
+# The end to end job of live reload (F3), and of a deny that holds under observe. See
+# e2e/README.md for what it proves.
 #
 #   e2e/run.sh            one run
 #   e2e/run.sh 3          three runs, each on a fresh database and a fresh node
@@ -113,7 +114,7 @@ wall:
   adapter: docker
   image: $wall_image
   user: "1000:1000"
-  env: [E2E_TARGET_URL, E2E_RETRY_SECONDS]
+  env: [E2E_TARGET_URL, E2E_RETRY_SECONDS, E2E_THEN_DENIED]
 YAML
   openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj "/CN=$E2E_TARGET_HOST" \
     -keyout "$E2E_WORK/tls/target.key" -out "$E2E_WORK/tls/target.crt" >/dev/null 2>&1
@@ -132,7 +133,7 @@ YAML
   export E2E_RUNNER_TAIL="$E2E_WORK/runner-tail.yaml"
   export E2E_SESSION_LOG="$E2E_WORK/session-$n.log"
   export E2E_PREPARE_COMMAND="${compose[*]} exec -T -e E2E_PORT -e E2E_FORGE -e E2E_REPOSITORY node /e2e/prepare.sh"
-  export E2E_SESSION_COMMAND="${compose[*]} exec -T -e E2E_TARGET_URL=https://$E2E_TARGET_HOST/ -e E2E_RETRY_SECONDS node /e2e/session.sh"
+  export E2E_SESSION_COMMAND="${compose[*]} exec -T -e E2E_TARGET_URL=https://$E2E_TARGET_HOST/ -e E2E_RETRY_SECONDS -e E2E_THEN_DENIED=1 node /e2e/session.sh"
 
   local status=0
   "${mix[@]}" run e2e/scenario.exs 2>&1 | tee "$log" || status=$?
