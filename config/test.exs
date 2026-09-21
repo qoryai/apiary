@@ -14,7 +14,10 @@ config :apiary, Apiary.Repo,
   hostname: "localhost",
   database: "apiary_test#{System.get_env("MIX_TEST_PARTITION")}",
   pool: Ecto.Adapters.SQL.Sandbox,
-  pool_size: System.schedulers_online() * 2
+  pool_size: System.schedulers_online() * 2,
+  # The read budgets ask the database for a few hundred MiB in one statement, which a
+  # CI machine answers in more than the 15 s default. ExUnit's own limit still holds.
+  timeout: 120_000
 
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
