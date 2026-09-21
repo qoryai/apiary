@@ -1256,7 +1256,14 @@ defmodule ApiaryWeb.RunComponents do
   defp reason_kind(%{decision: "denied", rule: "wall:own-address"}), do: :own_address
   defp reason_kind(%{decision: "denied", path_rule: "wall:ambiguous-path"}), do: :ambiguous_path
   defp reason_kind(%{decision: "denied", rule: nil}), do: :denied_no_rule
-  defp reason_kind(%{decision: "denied", path_rule: nil}), do: :denied_no_path_rule
+
+  # A request inside a terminated tunnel was denied on its path: the row names the path,
+  # the host's rule let the connection in, and no path entry matched. A denial without a
+  # path is the host's, by a deny entry, and the rule is that entry.
+  defp reason_kind(%{decision: "denied", path: path, path_rule: path_rule})
+       when is_binary(path) and path != "" and path_rule in [nil, ""],
+       do: :denied_no_path_rule
+
   defp reason_kind(%{decision: "denied"}), do: :denied_by_rule
   defp reason_kind(%{decision: "allowed", rule: nil}), do: :allowed_no_rule
   defp reason_kind(%{decision: "allowed"}), do: :allowed_by_rule

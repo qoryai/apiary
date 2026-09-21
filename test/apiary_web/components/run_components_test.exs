@@ -260,8 +260,22 @@ defmodule ApiaryWeb.RunComponentsTest do
     end
 
     test "denied on a path of an allowed host" do
-      html = row(%{last_decision: "denied", last_rule: "api.example", last_path_rule: ""})
+      html =
+        row(%{
+          last_decision: "denied",
+          last_rule: "api.example",
+          path: "/v2/models",
+          last_path_rule: ""
+        })
+
       assert text(html) =~ "Host allowed, no path rule matches. Enforce mode denies it."
+    end
+
+    test "denied by a deny entry: the rule, in either mode" do
+      html = row(%{last_decision: "denied", last_rule: "tracker.example", last_mode: "observe"})
+      assert text(html) =~ "Rule tracker.example"
+      refute text(html) =~ "Host allowed"
+      refute text(html) =~ "No rule matches"
     end
 
     test "the wall's own refusals, in either mode" do

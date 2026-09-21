@@ -1936,7 +1936,7 @@ defmodule ApiaryWeb.RunLive.Show do
         socket
         |> then(
           &if("ai.qory.run.policy_applied" in types,
-            do: &1 |> assign(policy: Record.policy(scope, run)) |> announce_reload(),
+            do: &1 |> assign(policy: Record.policy(scope, run)) |> announce_reload() |> reline(),
             else: &1
           )
         )
@@ -1948,6 +1948,13 @@ defmodule ApiaryWeb.RunLive.Show do
   end
 
   defp flush(socket), do: assign(socket, range: nil)
+
+  # A reload arrived: the lines after the rows say at which sequence the run reloaded,
+  # and they were made when the run's row changed, before this event was read.
+  defp reline(%{assigns: %{live_action: :connections, effective: %Policy.Effective{}}} = socket),
+    do: assign_acts(socket)
+
+  defp reline(socket), do: socket
 
   defp announce_reload(%{assigns: %{index: index, policy: %{sequence: sequence}}} = socket) do
     reload? =

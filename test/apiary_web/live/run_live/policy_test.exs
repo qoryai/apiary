@@ -611,6 +611,38 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       assert text(view, "button#cx-#{registry}-act") == "Deny"
     end
 
+    test "the line names the reload that carried the rule, whichever message lands first",
+         %{conn: conn, scope: scope} do
+      digest = in_force(scope, nil).digest
+      run = policy_run(scope, applied: digest, egress: [@denied])
+      repository = repository(scope, run)
+      view = connections(conn, run)
+      id = connection_id(run, "files.cdn.example")
+
+      {:ok, _} = Policy.allow(scope, repository, %{host: "files.cdn.example"})
+      new = in_force(scope, repository)
+      # the page hears of the change first, coalesced; ask for that read at once
+      send(view.pid, :policy_flush)
+      assert text(view, "#cx-#{id}-after") =~ "has not reloaded yet"
+
+      # the reload and the report land in one batch: the run's row changes, and the
+      # events follow, in whichever order the page hears of them
+      event_fixture(run, 30, "run.policy_applied", applied(new.digest, ["files.cdn.example"]),
+        time: DateTime.utc_now()
+      )
+
+      {:ok, run} = Projector.project(run)
+      run = report(run, new.digest)
+      Runs.broadcast_projected(run, 30, 30)
+      # the page coalesces its reads; ask for the read at once, after the messages above
+      send(view.pid, :flush)
+      render(view)
+
+      line = text(view, "#cx-#{id}-after")
+      assert line =~ "In force in this run"
+      assert line =~ "The run reloaded at #0030."
+    end
+
     test "a run that takes no policy from here is not promised a reload", %{
       conn: conn,
       run: run
