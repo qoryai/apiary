@@ -94,12 +94,14 @@ configuration document and the events endpoint are enough.
 ## The `egress` section and the hive's policy
 
 The runner file's `egress` section is the machine's own policy: a mode, `observe` or
-`enforce`, and the hosts allowed.
+`enforce`, the hosts allowed and the hosts denied. A host in `deny` is denied in either
+mode, before `allow` is consulted; under `observe` it is the only thing denied.
 
 ```yaml
 egress:
   mode: enforce
   allow: [api.example, "*.internal.example"]
+  deny: [tracker.internal.example]
 ```
 
 It applies:

@@ -197,6 +197,8 @@ baseline. The labels are compared to the stored ones byte for byte after the que
 percent-decoding.
 
 The `security_policy` is the policy: the runner does not merge it with the machine's own.
+When the policy has deny rules its `egress` carries `deny` after `allow`, the hosts the
+runner denies first and in either mode; without any, the section is as above.
 
 ## A receiver of your own
 

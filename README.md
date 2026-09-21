@@ -95,7 +95,8 @@ it ends, with its timeline, terminal and connections.
 
 Under **Policy**, add the hosts your agents may reach: a name, `api.example`, or a suffix,
 `*.internal.example`; a host held to paths, `/acme/*`; a credential of the machine, by name.
-A hive starts in observe, which records every connection and denies none. When the rules
+A hive starts in observe, which records every connection and denies only what a deny rule
+names. When the rules
 are complete, an owner switches to enforce; the confirmation lists what enforce would start
 denying, from the record. A repository can have rules and a mode of its own, so one
 repository is enforced first and the rest when the record says they are ready.

@@ -32,9 +32,11 @@ A rule allows or denies one thing:
 Paths and credentials need a wall. Without one the runner refuses to start a run whose
 policy has either.
 
-The policy document the runner reads can only allow. A deny is the server's own notion: it
-takes entries out of the document that is rendered. That is how a repository disables a
-host the hive allows, and why a deny rule is never found in the document itself.
+The policy document the runner reads has a deny list and an allow list. The runner decides
+the deny list first, in either mode: a host a deny rule names is denied under observe as
+under enforce, and the denial is recorded with the rule. A deny rule is written to that
+list and takes the allowed hosts it covers out of the allow list, which is how a repository
+disables a host the hive allows.
 
 ## The hive's baseline and a repository's rules
 
@@ -64,19 +66,26 @@ decides the host whole, its action and its paths.
 So where the two meet on a host, the repository wins, unless the hive's rule is locked.
 
 A deny of a `*.` suffix also removes every allow entry it covers, `*.example` covers
-`api.example` and `*.eu.example`, unless the allow has the higher precedence.
+`api.example` and `*.eu.example`, unless the allow has the higher precedence. A deny below
+an allowed `*.` suffix stands beside it: `*.example` allowed and `tracker.example` denied
+reaches `api.example` and denies `tracker.example`, since the runner decides deny first.
+
+One shape has no form on the wire: a `*.` deny of the hive with a repository's own allow
+below it, where the repository wins by precedence. The allow is rendered, the deny still
+takes out the hive's allow entries below it, but it is not written to the document's deny
+list, since that would deny the repository's host too. Under enforce the other hosts below
+the suffix are denied by having no allow; under observe they are let through in that
+repository, and the record says no rule matched.
 
 A host held to paths is rendered both in the document's `allow` and in its `paths`, because
-the runner's proxy decides the connection by `allow` first and the request by `paths` after.
+the runner's proxy decides the connection by `deny` and then `allow` first, and the request
+by `paths` after. A denied host is never reached, so its paths never apply.
 
 ### What is refused
 
 What the document cannot say is refused when it is written, with a sentence that says what
 to do instead. Nothing is ever rendered that allows more than the page shows.
 
-- **A deny of a host below an allowed `*.` suffix**, when the deny does not lose to that
-  allow by precedence. The document has no way to allow every host below a suffix except
-  one. Remove the suffix rule and allow the hosts you want by name, or deny the suffix whole.
 - **A `*.` suffix held to paths above another allowed entry.** The runner holds a host to
   the path list of whichever entry it finds first, and the order is not fixed. A name held
   to paths under a suffix that is free of paths is fine.
@@ -98,9 +107,9 @@ Members edit rules. Only an owner locks, unlocks, changes or removes a locked ru
 
 The hive has a mode, shown as two cards at the top of `/hive/policy`.
 
-- **Observe** records every connection and denies none. A host no rule names is let through,
-  and the record says so. Locked rules do not hold in observe mode either: the document then
-  only says what enforce would allow.
+- **Observe** records every connection and denies only what a deny rule names. A host no
+  rule names is let through, and the record says so. A deny holds in observe as in enforce,
+  a locked one included; the allow list then only says what enforce would reach.
 - **Enforce** denies a connection no rule allows, and records the denial. With no allow
   rule, a run reaches nothing.
 
@@ -114,7 +123,8 @@ hive**, **Observe** or **Enforce**, with what is in effect and where it comes fr
 of the hive's mode reaches the repositories that follow it and leaves the others as they
 are. The mode and the rules are apart: a repository in enforce under a hive in observe is
 held to its effective rules, the hive's locked rules included, and a repository in observe
-is denied nothing. That is the way to enforce one repository first and the rest later.
+is denied only what a deny rule names. That is the way to enforce one repository first and
+the rest later.
 
 The confirmation of a switch to enforce lists what enforce **would start denying**: the
 destinations that were let through in the last seven days and that today's rules still do
@@ -125,8 +135,8 @@ the same as a fact: how many attempts to how many destinations had no rule.
 ## Versions
 
 Every change renders the baseline and every repository with rules of its own, in the same
-transaction, as canonical JSON: members in a fixed order, no whitespace, `allow` sorted with
-names before `*.` suffixes. Each render is validated against the contract's schemas before
+transaction, as canonical JSON: members in a fixed order, no whitespace, `allow` and `deny`
+sorted with names before `*.` suffixes. Each render is validated against the contract's schemas before
 it is stored.
 
 - A version is kept as the **exact bytes served**, under its digest: `sha256=` and the
@@ -171,8 +181,8 @@ policy page and on a version's page, `/hive/policy/versions/:n/export` and
 `/hive/policy/repositories/:repository_id/versions/:n/export`, gives the effective policy of
 that version as text, with **Download**:
 
-- the `egress` section for the machine's runner file, which says a mode and the hosts
-  allowed and nothing else;
+- the `egress` section for the machine's runner file, which says a mode, the hosts
+  allowed, the hosts denied and nothing else;
 - when the policy has paths or credentials, a policy file in the contract's own format,
   given to one run with `qory run --policy <file>`. It narrows the runner file's section and
   never widens it, so the two are exported together and agree.
@@ -183,10 +193,13 @@ egress:
   mode: enforce
   allow:
     - "api.example"
+  deny:
+    - "tracker.example"
 ```
 
 The export is a copy: it does not follow later changes. Keep a policy file outside the
-checkout. Deny rules and locks are already applied: the files list what remains allowed.
+checkout. Deny rules and locks are already applied: the files list what is denied and
+what remains allowed.
 With a server configured, `qory run` refuses `--policy` unless `--local` is given too.
 
 ## Limits
@@ -218,13 +231,14 @@ takes over:
   section is not merged with it;
 - in the mode the hive is in, which is observe until an owner sets it. A machine that
   enforced a list of its own is, after the first change, under a hive that observes and
-  denies nothing, until an owner switches the hive to enforce.
+  denies only what a deny rule names, until an owner switches the hive to enforce.
 
 So before the first change:
 
 1. Collect what the machines' own lists say, the `egress.allow` of every runner file.
 2. Say all of it in the hive. The first rule you add already takes over, so add
-   the rest straight after it; while the hive is in observe nothing is denied in between.
+   the rest straight after it; while the hive is in observe only what a deny rule names is
+   denied in between.
 3. When the rules are complete, an owner switches to enforce. The confirmation lists what
    would start being denied, from the record.
 
