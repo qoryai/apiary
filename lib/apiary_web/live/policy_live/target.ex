@@ -19,7 +19,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
   alias Apiary.Policy.Grammar
   alias ApiaryWeb.PolicyLive.Show
 
-  @shows ~w(hive repository overrides)
+  @shows ~w(hive target overrides)
 
   @impl true
   def mount(%{"target_id" => id}, _session, socket) do
@@ -364,7 +364,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
   end
 
   defp event("suggest_allow", %{"host" => host, "level" => level}, socket)
-       when is_binary(host) and level in ~w(repository hive) do
+       when is_binary(host) and level in ~w(target hive) do
     case allow_suggestion(socket, host, level) do
       {:ok, socket} -> Common.focus(socket, suggestion_id(host) <> "-done")
       {:error, socket} -> socket
@@ -378,7 +378,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
           do: suggestion.host
 
     Enum.reduce_while(hosts, socket, fn host, socket ->
-      case allow_suggestion(socket, host, "repository") do
+      case allow_suggestion(socket, host, "target") do
         {:ok, socket} -> {:cont, socket}
         {:error, socket} -> {:halt, socket}
       end
@@ -441,7 +441,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
 
         socket
         |> Common.wrote(nil, sentence, "This repository's mode is #{mode.mode}.")
-        |> Common.focus("policy-repository-mode-#{setting}")
+        |> Common.focus("policy-target-mode-#{setting}")
 
       {:error, error} ->
         Common.refused(socket, error)
@@ -589,7 +589,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
               <.icon name="hero-chevron-right-micro" class="size-3" />
               <span class="q-here" aria-current="page">Version {@v.configuration.version}</span>
             <% else %>
-              <.link navigate={~p"/hive/policy/repositories"}>Repositories</.link>
+              <.link navigate={~p"/hive/policy/targets"}>Repositories</.link>
               <.icon name="hero-chevron-right-micro" class="size-3" />
               <span class="q-here font-mono text-xs" aria-current="page">
                 <span class="text-faint">{@holder.system}/</span>{@holder.path}
@@ -724,7 +724,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
 
     ~H"""
     <.modal
-      id="repository-mode-enforce"
+      id="target-mode-enforce"
       title={"Enforce #{@name}"}
       size="lg"
       on_cancel={JS.push("dialog_cancel")}
@@ -795,7 +795,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
       <:footer>
         <.button phx-click="dialog_cancel" data-autofocus>Cancel</.button>
         <.button
-          id="repository-mode-confirm"
+          id="target-mode-confirm"
           variant="primary"
           phx-click="target_mode_confirm"
           loading_text="Setting"
@@ -810,7 +810,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
   defp target_mode_dialog(assigns) do
     ~H"""
     <.modal
-      id="repository-mode-observe"
+      id="target-mode-observe"
       title={"Observe #{@name}"}
       size="sm"
       on_cancel={JS.push("dialog_cancel")}
@@ -831,7 +831,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
       <:footer>
         <.button phx-click="dialog_cancel" data-autofocus>Cancel</.button>
         <.button
-          id="repository-mode-confirm"
+          id="target-mode-confirm"
           variant="danger"
           phx-click="target_mode_confirm"
           loading_text="Setting"
@@ -905,7 +905,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
     shown =
       case assigns.show do
         "hive" -> Enum.filter(rows, &(&1.source in [:hive, :hive_locked]))
-        "repository" -> Enum.filter(rows, &(&1.source == :target))
+        "target" -> Enum.filter(rows, &(&1.source == :target))
         "overrides" -> Enum.filter(rows, &(&1.beaten != []))
         nil -> rows
       end
@@ -925,7 +925,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
 
     ~H"""
     <.target_mode
-      id="policy-repository-mode"
+      id="policy-target-mode"
       setting={@mode.own || "follow"}
       effective={@mode.mode}
       hive_default={@mode.hive}
@@ -963,8 +963,8 @@ defmodule ApiaryWeb.PolicyLive.Target do
             From the hive
           </:segment>
           <:segment
-            patch={"#{@base}?show=repository"}
-            pressed={@show == "repository"}
+            patch={"#{@base}?show=target"}
+            pressed={@show == "target"}
             count={@counts.target}
           >
             This repository
@@ -1050,7 +1050,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
 
   defp empty_words(_show, []), do: "No rule is in force for this repository yet."
   defp empty_words("hive", _rows), do: "No rules from the hive."
-  defp empty_words("repository", _rows), do: "No rules of this repository's own."
+  defp empty_words("target", _rows), do: "No rules of this repository's own."
   defp empty_words("overrides", _rows), do: "No overrides."
   defp empty_words(_show, _rows), do: nil
 

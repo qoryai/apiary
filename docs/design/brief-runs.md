@@ -149,9 +149,9 @@ Query parameters, runs list:
 
 | Param | Values | Default |
 |---|---|---|
-| `group` | `repository`, `task`, `none` | `repository` |
+| `group` | `target`, `task`, `none` | `target` |
 | `state` | comma list of `pending,running,succeeded,failed,timed_out,lost,closed` | all |
-| `repo` | `{forge}:{path}`, e.g. `github.example:acme/shop`; `none` for unassigned | all |
+| `system`, `target` | the system and the path, e.g. `system=github.example&target=acme/shop`; `target=none` for unassigned | all |
 | `task` | the label's value; `none` for runs without | all |
 | `runtime` | e.g. `claude` | all |
 | `host` | e.g. `build-01` | all |
@@ -162,8 +162,8 @@ Query parameters, runs list:
 
 Run page: `?seq=18` scrolls to and highlights event 18 (the permalink behind every `#0018`);
 `?lane=main` or `?lane=agent-7c1e` isolates a lane; `?cx=0` hides inline connections. Run
-connections: `?decision=allowed|denied`. Hive connections: `decision`, `repo`, `host`, `since`,
-`from`, `to`, `page`. "Per repository" (C2) is the hive page with `repo` set; the group header of
+connections: `?decision=allowed|denied`. Hive connections: `decision`, `system`, `target`, `host`, `since`,
+`from`, `to`, `page`. "Per repository" (C2) is the hive page with `target` set; the group header of
 the runs list links there.
 
 Unknown parameter values are dropped silently and the URL is rewritten without them. A run id that
@@ -174,7 +174,7 @@ does not exist in this hive renders the not-found state (rh7), never another hiv
 `brief.md` rules out breadcrumbs on the top-level pages; that stays. The run page is the console's
 first second-level page and gets one line above its title: `Runs › github.example/acme/shop ›
 0191f2a4`. "Runs" links to `/hive/runs` with the filters the reader came from (kept in the
-LiveView's `return_to`, default none); the repository links to `/hive/runs?repo=…`; the last item is
+LiveView's `return_to`, default none); the repository links to `/hive/runs?target=…`; the last item is
 the short id with `aria-current="page"`. An unassigned run drops the middle item.
 
 ### Content width

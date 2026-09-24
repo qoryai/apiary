@@ -28,7 +28,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     {:ok, _} = Policy.allow(scope, nil, %{host: "registry.example"})
     {:ok, _} = Policy.allow(scope, nil, %{kind: "credential", name: "model-key"})
 
-    %{target: target, path: "/hive/policy/repositories/#{target.id}"}
+    %{target: target, path: "/hive/policy/targets/#{target.id}"}
   end
 
   defp open(conn, path) do
@@ -67,7 +67,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     [%{target: theirs}] = Policy.list_targets(other)
     {:ok, _} = Policy.allow(other, theirs, %{host: "secret.example"})
 
-    for path <- ["/hive/policy/repositories/#{theirs.id}", "/hive/policy/repositories/nope"] do
+    for path <- ["/hive/policy/targets/#{theirs.id}", "/hive/policy/targets/nope"] do
       {:ok, view, html} = live(conn, path)
       assert html =~ "This repository is not in this hive"
       refute html =~ "secret.example"
@@ -100,9 +100,9 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     assert text(view, "#policy-effective-foot") =~
              "Mode observe , the hive's default. Credentials: model-key from the hive."
 
-    assert has_element?(view, "#policy-tab-runs[href*='repo=acme%2Fshop']")
+    assert has_element?(view, "#policy-tab-runs[href*='target=acme%2Fshop']")
     assert text(view, "#policy-tab-runs") == "Runs 1"
-    assert has_element?(view, "#policy-tab-connections[href*='forge=github.example']")
+    assert has_element?(view, "#policy-tab-connections[href*='system=github.example']")
   end
 
   test "disable here, then restore: the beaten rule hangs under the rule that beat it",
@@ -251,9 +251,9 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
          %{conn: conn, path: path} do
       view = open(conn, path)
 
-      assert has_element?(view, "#policy-repository-mode-follow[aria-checked=true]")
+      assert has_element?(view, "#policy-target-mode-follow[aria-checked=true]")
 
-      assert text(view, "#policy-repository-mode-effect") ==
+      assert text(view, "#policy-target-mode-effect") ==
                "In effect: observe , the hive's default. It changes when the hive's does."
     end
 
@@ -267,12 +267,12 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
       )
 
       view = open(conn, path)
-      view |> element("#policy-repository-mode-enforce") |> render_click()
+      view |> element("#policy-target-mode-enforce") |> render_click()
 
       assert Policy.get_mode(scope, target).own == nil
-      assert text(view, "#repository-mode-enforce") =~ "Enforce github.example/acme/shop"
+      assert text(view, "#target-mode-enforce") =~ "Enforce github.example/acme/shop"
 
-      assert text(view, "#repository-mode-enforce") =~
+      assert text(view, "#target-mode-enforce") =~
                "The mode becomes this repository's own: it stays enforce"
 
       assert text(view, "#mode-would") =~ "Let through in this repository's runs"
@@ -284,15 +284,15 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
       view |> element("#mode-would button", "Allow here") |> render_click()
       assert own(scope, target, "files.cdn.example")
 
-      view |> element("#repository-mode-confirm", "Enforce this repository") |> render_click()
+      view |> element("#target-mode-confirm", "Enforce this repository") |> render_click()
 
       assert %{mode: "enforce", own: "enforce", hive: "observe"} =
                Policy.get_mode(scope, target)
 
-      assert has_element?(view, "#policy-repository-mode-enforce[aria-checked=true]")
+      assert has_element?(view, "#policy-target-mode-enforce[aria-checked=true]")
       assert text(view, "#flash-info") =~ "github.example/acme/shop enforces on its own. Version"
 
-      assert text(view, "#policy-repository-mode-effect") =~
+      assert text(view, "#policy-target-mode-effect") =~
                "In effect: enforce , this repository's own. The hive's default is observe."
 
       assert text(view, "#policy-effective-foot") =~ "Mode enforce , this repository's own."
@@ -302,31 +302,31 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
          %{conn: conn, scope: scope, target: target, path: path} do
       {:ok, _} = Policy.set_mode(scope, "enforce")
       view = open(conn, path)
-      refute has_element?(view, "#policy-repository-mode-locked-note")
+      refute has_element?(view, "#policy-target-mode-locked-note")
 
-      view |> element("#policy-repository-mode-observe") |> render_click()
+      view |> element("#policy-target-mode-observe") |> render_click()
 
-      assert text(view, "#repository-mode-observe") =~
+      assert text(view, "#target-mode-observe") =~
                "only what a deny rule names is denied in this repository's runs"
 
-      assert text(view, "#repository-mode-observe") =~
+      assert text(view, "#target-mode-observe") =~
                "A deny holds in either mode : *.paste.example stays denied in this repository"
 
-      view |> element("#repository-mode-confirm", "Observe this repository") |> render_click()
+      view |> element("#target-mode-confirm", "Observe this repository") |> render_click()
       assert Policy.get_mode(scope, target).own == "observe"
 
-      assert text(view, "#policy-repository-mode-locked-note") =~
+      assert text(view, "#policy-target-mode-locked-note") =~
                "This repository observes: the locked deny still holds."
 
-      assert text(view, "#policy-repository-mode-locked-note") =~
+      assert text(view, "#policy-target-mode-locked-note") =~
                "under observe it is the only thing denied here"
 
-      view |> element("#policy-repository-mode-follow") |> render_click()
+      view |> element("#policy-target-mode-follow") |> render_click()
 
-      assert text(view, "#repository-mode-enforce") =~
+      assert text(view, "#target-mode-enforce") =~
                "The mode follows the hive's default from now on"
 
-      view |> element("#repository-mode-confirm", "Follow the hive") |> render_click()
+      view |> element("#target-mode-confirm", "Follow the hive") |> render_click()
       assert Policy.get_mode(scope, target).own == nil
       assert text(view, "#flash-info") =~ "github.example/acme/shop follows the hive: enforce."
     end
@@ -334,9 +334,9 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     test "a setting that changes nothing today is immediate, and says so",
          %{conn: conn, scope: scope, target: target, path: path} do
       view = open(conn, path)
-      view |> element("#policy-repository-mode-observe") |> render_click()
+      view |> element("#policy-target-mode-observe") |> render_click()
 
-      refute has_element?(view, "#repository-mode-observe")
+      refute has_element?(view, "#target-mode-observe")
       assert Policy.get_mode(scope, target).own == "observe"
 
       assert text(view, "#flash-info") =~
@@ -364,11 +364,11 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
       %{user: member} = member_fixture(scope, :member)
       view = open(log_in_user(build_conn(), member), path)
 
-      assert has_element?(view, "#policy-repository-mode-enforce[aria-disabled=true]")
-      assert text(view, "#policy-repository-mode-owners") == "Only an owner sets a mode."
+      assert has_element?(view, "#policy-target-mode-enforce[aria-disabled=true]")
+      assert text(view, "#policy-target-mode-owners") == "Only an owner sets a mode."
 
       render_hook(view, "target_mode_ask", %{"setting" => "enforce"})
-      refute has_element?(view, "#repository-mode-enforce")
+      refute has_element?(view, "#target-mode-enforce")
       assert Policy.get_mode(scope, target).own == nil
     end
   end

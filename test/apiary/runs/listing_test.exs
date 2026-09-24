@@ -51,8 +51,8 @@ defmodule Apiary.Runs.ListingTest do
         parse(%{
           "group" => "colour",
           "state" => "failed,bogus,lost,failed",
-          "forge" => "github.example",
-          "repo" => "acme/shop",
+          "system" => "github.example",
+          "target" => "acme/shop",
           "task" => "none",
           "since" => "90d",
           "denials" => "yes",
@@ -60,7 +60,7 @@ defmodule Apiary.Runs.ListingTest do
           "other" => "x"
         })
 
-      assert filters.group == "repository"
+      assert filters.group == "target"
       assert filters.states == ["failed", "lost"]
       assert filters.target == {"github.example", "acme/shop"}
       assert filters.task == :none
@@ -70,8 +70,8 @@ defmodule Apiary.Runs.ListingTest do
 
       assert Filters.to_params(filters) == %{
                "state" => "failed,lost",
-               "forge" => "github.example",
-               "repo" => "acme/shop",
+               "system" => "github.example",
+               "target" => "acme/shop",
                "task" => "none"
              }
 
@@ -181,30 +181,32 @@ defmodule Apiary.Runs.ListingTest do
     end
 
     test "a target is two parameters, so a system may hold a colon" do
-      filters = parse(%{"forge" => "git.example:8443", "repo" => "acme/shop:v2"})
+      filters = parse(%{"system" => "git.example:8443", "target" => "acme/shop:v2"})
       assert filters.target == {"git.example:8443", "acme/shop:v2"}
 
       assert Filters.to_params(filters) == %{
-               "forge" => "git.example:8443",
-               "repo" => "acme/shop:v2"
+               "system" => "git.example:8443",
+               "target" => "acme/shop:v2"
              }
 
       assert Filters.target_params("git.example:8443", "acme/shop") == %{
-               "forge" => "git.example:8443",
-               "repo" => "acme/shop"
+               "system" => "git.example:8443",
+               "target" => "acme/shop"
              }
 
-      assert Filters.target_params(nil, nil) == %{"repo" => "none"}
+      assert Filters.target_params(nil, nil) == %{"target" => "none"}
 
-      assert parse(%{"repo" => "none"}).target == :none
-      assert %{target: nil, dropped: ["repo"]} = parse(%{"repo" => "acme/shop"})
-      assert %{target: nil, dropped: ["repo"]} = parse(%{"forge" => "git.example"})
+      assert parse(%{"target" => "none"}).target == :none
+      assert %{target: nil, dropped: ["target"]} = parse(%{"target" => "acme/shop"})
+      assert %{target: nil, dropped: ["target"]} = parse(%{"system" => "git.example"})
 
       # The menu's one value reads back to the same pair, whatever it holds.
       value = Filters.target_value({"git.example:8443", ~s(we"ird/pa,th)})
-      changed = Filters.change(parse(%{}), %{"_filter" => "repo", "repo" => value})
+      changed = Filters.change(parse(%{}), %{"_filter" => "target", "target" => value})
       assert changed.target == {"git.example:8443", ~s(we"ird/pa,th)}
-      assert Filters.change(parse(%{}), %{"_filter" => "repo", "repo" => "none"}).target == :none
+
+      assert Filters.change(parse(%{}), %{"_filter" => "target", "target" => "none"}).target ==
+               :none
     end
 
     test "the hive's connections are read over at most 90 days" do
@@ -272,15 +274,15 @@ defmodule Apiary.Runs.ListingTest do
 
       assert by.(%{"state" => "failed"}) == [c.id]
       assert by.(%{"state" => "running,failed"}) == Enum.sort([a.id, b.id, c.id])
-      assert by.(%{"forge" => "github.example", "repo" => "acme/shop"}) == [a.id]
-      assert by.(%{"forge" => "gitlab.example", "repo" => "acme/shop"}) == [b.id]
-      assert by.(%{"repo" => "none"}) == [c.id]
+      assert by.(%{"system" => "github.example", "target" => "acme/shop"}) == [a.id]
+      assert by.(%{"system" => "gitlab.example", "target" => "acme/shop"}) == [b.id]
+      assert by.(%{"target" => "none"}) == [c.id]
       assert by.(%{"task" => "mirror-sync"}) == [b.id]
       assert by.(%{"task" => "none"}) == [c.id]
       assert by.(%{"runtime" => "otherrt"}) == [c.id]
       assert by.(%{"host" => "build-03"}) == [b.id]
       assert by.(%{"denials" => "1"}) == [a.id]
-      assert by.(%{"forge" => "github.example", "repo" => "nothing/here"}) == []
+      assert by.(%{"system" => "github.example", "target" => "nothing/here"}) == []
     end
 
     test "pages of fifty keep the total, and a page past the end is the last", %{scope: scope} do
@@ -359,7 +361,7 @@ defmodule Apiary.Runs.ListingTest do
     } do
       filters = parse(%{})
       page = Runs.page_runs(scope, filters, @now)
-      groups = Runs.group_runs(page.runs, "repository")
+      groups = Runs.group_runs(page.runs, "target")
 
       assert Enum.map(groups, & &1.key) == [
                {"gitlab.example", "acme/shop"},
@@ -599,7 +601,11 @@ defmodule Apiary.Runs.ListingTest do
 
       assert hosts.(%{"decision" => "allowed"}) == ["registry.example"]
       assert hosts.(%{"decision" => "denied"}) == ["files.cdn.example", "registry.example"]
-      assert hosts.(%{"forge" => "gitlab.example", "repo" => "acme/shop"}) == ["registry.example"]
+
+      assert hosts.(%{"system" => "gitlab.example", "target" => "acme/shop"}) == [
+               "registry.example"
+             ]
+
       assert hosts.(%{"host" => "files.cdn.example"}) == ["files.cdn.example"]
       assert hosts.(%{"since" => "90d"}) == ["files.cdn.example", "registry.example"]
       assert hosts.(%{"since" => "1h"}) == ["files.cdn.example", "registry.example"]
@@ -638,7 +644,7 @@ defmodule Apiary.Runs.ListingTest do
       narrowed =
         Runs.destination_facets(scope, cx(%{}),
           now: @now,
-          narrow: %{"host" => "CDN", "repo" => "gitlab"}
+          narrow: %{"host" => "CDN", "target" => "gitlab"}
         )
 
       assert narrowed.host.options == [{"files.cdn.example", "files.cdn.example", 1}]

@@ -49,7 +49,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
   end
 
   def base(nil), do: ~p"/hive/policy"
-  def base(%{id: id}), do: ~p"/hive/policy/repositories/#{id}"
+  def base(%{id: id}), do: ~p"/hive/policy/targets/#{id}"
 
   def owner?(%{membership: %{level: :owner}}), do: true
   def owner?(_scope), do: false

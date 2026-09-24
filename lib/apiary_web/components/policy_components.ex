@@ -172,7 +172,7 @@ defmodule ApiaryWeb.PolicyComponents do
   end
 
   defp source_class(:hive), do: nil
-  defp source_class(:target), do: "q-src-repo"
+  defp source_class(:target), do: "q-src-target"
   defp source_class(:hive_locked), do: "q-src-lock"
 
   defp source_words(:hive), do: "Hive"
@@ -318,7 +318,7 @@ defmodule ApiaryWeb.PolicyComponents do
         This is the hive's default. A repository follows it unless an owner sets a mode of its own:
         <span :if={@own == []}>none does.</span>
         <span :if={@own != []}>
-          <.link navigate="/hive/policy/repositories?mode=own" class="q-link">{own_count(@own, @following)}</.link>{own_modes(
+          <.link navigate="/hive/policy/targets?mode=own" class="q-link">{own_count(@own, @following)}</.link>{own_modes(
             @own
           )}
         </span>
@@ -1250,9 +1250,7 @@ defmodule ApiaryWeb.PolicyComponents do
               id={"#{suggestion_id(suggestion.host)}-allow"}
               type="button"
               class="btn btn-xs"
-              phx-click={
-                JS.push("suggest_allow", value: %{host: suggestion.host, level: "repository"})
-              }
+              phx-click={JS.push("suggest_allow", value: %{host: suggestion.host, level: "target"})}
             >
               Allow here
             </button>

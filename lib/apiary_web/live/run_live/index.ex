@@ -70,9 +70,9 @@ defmodule ApiaryWeb.RunLive.Index do
             remove={path(Filters.put(@filters, states: []))}
           />
           <.filter
-            name="repo"
+            name="target"
             total={facet_total(@facets, :target)}
-            query={@narrow["repo"]}
+            query={@narrow["target"]}
             label="Repository"
             value={Filters.target_value(@filters.target)}
             options={
@@ -144,7 +144,7 @@ defmodule ApiaryWeb.RunLive.Index do
             <.segments id="runs-group" label="Group by">
               <:segment
                 :for={
-                  {label, value} <- [{"Repository", "repository"}, {"Task", "task"}, {"None", "none"}]
+                  {label, value} <- [{"Repository", "target"}, {"Task", "task"}, {"None", "none"}]
                 }
                 patch={path(Filters.put(@filters, group: value))}
                 pressed={@filters.group == value}
@@ -378,16 +378,16 @@ defmodule ApiaryWeb.RunLive.Index do
         <.icon name="hero-chevron-right-micro" class="q-chev size-4" />
         <%= case @group.kind do %>
           <% :target -> %>
-            <span class="q-forge">{@group.system}</span>
+            <span class="q-system">{@group.system}</span>
             <span class="q-path">{@group.path}</span>
           <% :unassigned -> %>
             <span class="q-path q-plain">Unassigned</span>
-            <span class="q-forge q-plain">no forge or repository label</span>
+            <span class="q-system q-plain">no forge or repository label</span>
           <% :task -> %>
             <span class="q-path q-plain">{@group.title}</span>
           <% :no_task -> %>
             <span class="q-path q-plain">No task</span>
-            <span class="q-forge q-plain">no task label</span>
+            <span class="q-system q-plain">no task label</span>
         <% end %>
       </button>
       <span class="q-g-meta">
@@ -452,7 +452,7 @@ defmodule ApiaryWeb.RunLive.Index do
           </span>
         </div>
       </td>
-      <td :if={@group_by == "none"} class="q-c-repo font-mono text-[12.5px]" role="cell">
+      <td :if={@group_by == "none"} class="q-c-target font-mono text-[12.5px]" role="cell">
         <span :if={@run.target_system && @run.target_path}>
           <span class="text-faint">{@run.target_system}/</span>{@run.target_path}
         </span>
@@ -832,7 +832,7 @@ defmodule ApiaryWeb.RunLive.Index do
   defp hidden_sentence(1), do: "1 run is hidden by them."
   defp hidden_sentence(n), do: "#{delimited(n)} runs are hidden by them."
 
-  defp group_words("repository"), do: "grouped by repository"
+  defp group_words("target"), do: "grouped by repository"
   defp group_words("task"), do: "grouped by task"
   defp group_words(_none), do: "not grouped"
 

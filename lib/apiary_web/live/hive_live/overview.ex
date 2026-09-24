@@ -795,13 +795,13 @@ defmodule ApiaryWeb.HiveLive.Overview do
       ) do
     level =
       case params["for"] do
-        "repository" when popover.targets != [] -> :target
+        "target" when popover.targets != [] -> :target
         "hive" -> :hive
         _ -> popover.level
       end
 
     choice =
-      case params["repository"] do
+      case params["target"] do
         id when is_binary(id) -> if Enum.any?(popover.targets, &(&1.id == id)), do: id
         _ -> popover.choice
       end
@@ -885,8 +885,8 @@ defmodule ApiaryWeb.HiveLive.Overview do
     {level, choice} =
       case {level, targets} do
         {"hive", _} -> {:hive, nil}
-        {"repository", [one]} -> {:target, one.id}
-        {"repository", _} -> {nil, nil}
+        {"target", [one]} -> {:target, one.id}
+        {"target", _} -> {nil, nil}
         _ -> {nil, nil}
       end
 

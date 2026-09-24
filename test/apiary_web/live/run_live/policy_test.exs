@@ -171,7 +171,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
 
       {:ok, view, _html} = live(conn, ~p"/hive/runs/#{run.run_id}")
 
-      path = "/hive/policy/repositories/#{target.id}/versions/#{configuration.version}"
+      path = "/hive/policy/targets/#{target.id}/versions/#{configuration.version}"
 
       assert has_element?(
                view,
@@ -225,7 +225,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       assert notice =~ "github.example/acme/shop's v1"
       assert notice =~ "is in force"
       # the two numberings do not compare: the link opens the version in force
-      path = "/hive/policy/repositories/#{target.id}/versions/1"
+      path = "/hive/policy/targets/#{target.id}/versions/1"
 
       assert has_element?(
                view,
@@ -282,7 +282,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
                "it decides by github.example/acme/shop's v#{old.version}"
 
       compare =
-        "/hive/policy/repositories/#{target.id}/versions/#{new.version}?compare=#{old.version}"
+        "/hive/policy/targets/#{target.id}/versions/#{new.version}?compare=#{old.version}"
 
       assert has_element?(view, ~s(#run-behind-diff[href="#{compare}"]))
       assert text(view, "#run-announcer") == "This run is behind the policy in force."
@@ -487,7 +487,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       view |> element("#cx-#{id}-act") |> render_click()
 
       assert text(view, "#rule-popover-title") == "Allow files.cdn.example"
-      assert has_element?(view, ~s(#rule-popover input[name=for][value=repository][checked]))
+      assert has_element?(view, ~s(#rule-popover input[name=for][value=target][checked]))
       assert text(view, "#rule-popover") =~ "This repository github.example/acme/shop"
       assert text(view, "#rule-popover") =~ "The whole hive"
       assert has_element?(view, ~s(#cx-#{id}-act[aria-expanded=true]))
@@ -545,7 +545,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       assert line =~ "The run has not reloaded yet."
       refute line =~ "In force in this run"
 
-      rule = "/hive/policy/repositories/#{target.id}?rule=files.cdn.example"
+      rule = "/hive/policy/targets/#{target.id}?rule=files.cdn.example"
       assert has_element?(view, ~s(a#cx-#{id}-act[href="#{rule}"]), "Rule")
 
       # the toast names the change and the version
@@ -950,7 +950,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       render_change(view, "rule_change", %{"for" => "hive"})
       render_submit(view, "rule_submit", %{"for" => "hive"})
       render_click(view, "rule_open", %{"id" => id, "action" => "allow"})
-      render_submit(view, "rule_submit", %{"for" => "repository"})
+      render_submit(view, "rule_submit", %{"for" => "target"})
 
       assert [%{action: "deny", locked: true}] =
                Enum.filter(Policy.list_rules(scope, nil), &(&1.host == "files.cdn.example"))

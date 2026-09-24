@@ -27,7 +27,7 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
 
     %{
       target: target,
-      path: "/hive/policy/repositories/#{target.id}",
+      path: "/hive/policy/targets/#{target.id}",
       locked: locked,
       plain: plain,
       denied: denied,
@@ -215,9 +215,9 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
       for query <- [
             "/hive/policy?show=%00&rule=%00",
             "/hive/policy?show[]=allow&rule[a]=b",
-            "/hive/policy/repositories?mode=",
-            "/hive/policy/repositories?mode=own%00",
-            "/hive/policy/repositories?mode[]=own",
+            "/hive/policy/targets?mode=",
+            "/hive/policy/targets?mode=own%00",
+            "/hive/policy/targets?mode[]=own",
             "/hive/policy/history?page=-1",
             "/hive/policy/history?page=99999999999999999999",
             "/hive/policy/history?page[]=2&change[]=x",

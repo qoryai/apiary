@@ -586,7 +586,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert text(view, "#policy-mode-under") =~
                "A repository follows it unless an owner sets a mode of its own: 1 of 2 repositories does , and enforces."
 
-      assert has_element?(view, "#policy-mode-under a[href='/hive/policy/repositories?mode=own']")
+      assert has_element?(view, "#policy-mode-under a[href='/hive/policy/targets?mode=own']")
       assert text(view, "#nav-policy-mode") == "observe · 1 own"
 
       assert has_element?(
@@ -613,27 +613,27 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
 
     test "the targets list has a Mode column, and ?mode=own keeps those with their own",
          %{conn: conn, docs: docs} do
-      view = open(conn, "/hive/policy/repositories")
-      assert text(view, "#repositories-summary") =~ "1 sets its own mode"
-      assert text(view, "#repo-#{docs.id} .q-c-mode") == "enforce Its own"
-      assert text(view, "#policy-repositories") =~ "observe Hive default"
+      view = open(conn, "/hive/policy/targets")
+      assert text(view, "#targets-summary") =~ "1 sets its own mode"
+      assert text(view, "#target-#{docs.id} .q-c-mode") == "enforce Its own"
+      assert text(view, "#policy-targets") =~ "observe Hive default"
 
-      view = open(conn, "/hive/policy/repositories?mode=own")
-      assert has_element?(view, "#repo-#{docs.id}")
+      view = open(conn, "/hive/policy/targets?mode=own")
+      assert has_element?(view, "#target-#{docs.id}")
 
       assert view
              |> render()
              |> LazyHTML.from_fragment()
-             |> LazyHTML.query(".q-repo-row")
+             |> LazyHTML.query(".q-target-row")
              |> Enum.count() == 1
 
-      assert text(view, "#repositories-own-only") =~ "Showing those that set their own mode."
+      assert text(view, "#targets-own-only") =~ "Showing those that set their own mode."
     end
   end
 
   describe "targets" do
     test "none has posted", %{conn: conn} do
-      view = open(conn, "/hive/policy/repositories")
+      view = open(conn, "/hive/policy/targets")
       assert has_element?(view, "h2", "No repositories yet")
     end
 
@@ -647,24 +647,24 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       {:ok, _} = Policy.allow(scope, nil, %{host: "registry.example"})
       {:ok, _} = Policy.deny(scope, target, %{host: "registry.example"})
 
-      view = open(conn, "/hive/policy/repositories")
+      view = open(conn, "/hive/policy/targets")
 
-      assert text(view, "#repositories-summary") =~ "2 repositories have posted runs"
-      assert text(view, "#repositories-summary") =~ "1 with rules of their own"
-      assert text(view, "#repo-#{target.id}") =~ "Own rules"
-      assert text(view, "#repo-#{target.id}") =~ "v1"
+      assert text(view, "#targets-summary") =~ "2 repositories have posted runs"
+      assert text(view, "#targets-summary") =~ "1 with rules of their own"
+      assert text(view, "#target-#{target.id}") =~ "Own rules"
+      assert text(view, "#target-#{target.id}") =~ "v1"
       # Whose version each row shows, and no bare 0 where nothing is to review.
-      assert text(view, "#repo-#{target.id} .q-vpill") =~ "of github.example/acme/shop"
-      assert text(view, "#policy-repositories") =~ "of hive baseline"
+      assert text(view, "#target-#{target.id} .q-vpill") =~ "of github.example/acme/shop"
+      assert text(view, "#policy-targets") =~ "of hive baseline"
 
-      refute view |> element("#repo-#{target.id} td.q-num:nth-of-type(6)") |> render() =~
+      refute view |> element("#target-#{target.id} td.q-num:nth-of-type(6)") |> render() =~
                ">0<"
 
-      assert text(view, "#policy-repositories") =~ "Hive baseline"
+      assert text(view, "#policy-targets") =~ "Hive baseline"
 
       assert has_element?(
                view,
-               "#repo-#{target.id} a[href='/hive/policy/repositories/#{target.id}']"
+               "#target-#{target.id} a[href='/hive/policy/targets/#{target.id}']"
              )
     end
   end

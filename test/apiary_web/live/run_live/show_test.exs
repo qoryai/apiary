@@ -127,7 +127,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert html =~ "This run had no wall"
       refute html =~ "Labels"
       # unassigned: the breadcrumb has no target
-      refute html =~ "repo="
+      refute html =~ "runs?system="
     end
 
     test "a pending run says Ping only and waits on every tab but Details", %{

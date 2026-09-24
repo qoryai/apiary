@@ -14,8 +14,8 @@ defmodule Apiary.Runs.Filters do
   their range is bounded: `since=90d` is the widest, and dates cover at most
   90 days, counted back from `to` (or on from `from` when only it is given).
 
-  A target is two parameters, `forge` (the system) and `repo` (the path), because either may
-  hold any character, a colon included; `repo=none` without a `forge` is "no target".
+  A target is two parameters, `system` and `target` (the path), because either may
+  hold any character, a colon included; `target=none` without a `system` is "no target".
   `target_params/2` writes them, for every link to a filtered page.
 
   A value that is present and refused (not one the page offers, not a string, longer than
@@ -28,7 +28,7 @@ defmodule Apiary.Runs.Filters do
 
   alias Apiary.Runs.Run
 
-  @groups ~w(repository task none)
+  @groups ~w(target task none)
   # The three families every surface reads the states as, in the order they are shown.
   # `closed` is stopped by the hive, not a failure of the run, and sits with the bad endings
   # for scanning. Only their states go in a URL: `state=failed,timed_out,lost,closed`.
@@ -51,7 +51,7 @@ defmodule Apiary.Runs.Filters do
   @max_page 100_000
 
   defstruct kind: :runs,
-            group: "repository",
+            group: "target",
             states: [],
             target: nil,
             task: nil,
@@ -161,7 +161,7 @@ defmodule Apiary.Runs.Filters do
 
         %{
           filters
-          | group: group || "repository",
+          | group: group || "target",
             states: states,
             task: task,
             runtime: runtime,
@@ -194,10 +194,10 @@ defmodule Apiary.Runs.Filters do
   @spec to_params(t()) :: %{optional(String.t()) => String.t()}
   def to_params(%__MODULE__{} = f) do
     [
-      {"group", f.group != "repository" && f.kind == :runs && f.group},
+      {"group", f.group != "target" && f.kind == :runs && f.group},
       {"state", f.states != [] && Enum.join(f.states, ",")},
-      {"forge", match?({_system, _path}, f.target) && elem(f.target, 0)},
-      {"repo", target_param(f.target)},
+      {"system", match?({_system, _path}, f.target) && elem(f.target, 0)},
+      {"target", target_param(f.target)},
       {"task", if(f.task == :none, do: "none", else: f.task)},
       {"runtime", f.runtime},
       {"host", f.host},
@@ -265,8 +265,10 @@ defmodule Apiary.Runs.Filters do
             current |> Map.drop(["from", "to"]) |> Map.merge(Map.take(form, ["since"]))
           end
 
-        "repo" ->
-          current |> Map.drop(["forge", "repo"]) |> Map.merge(target_from_value(form["repo"]))
+        "target" ->
+          current
+          |> Map.drop(["system", "target"])
+          |> Map.merge(target_from_value(form["target"]))
 
         name when name in ~w(task runtime host) ->
           Map.merge(current, Map.take(form, [name]))
@@ -325,13 +327,13 @@ defmodule Apiary.Runs.Filters do
 
   @doc """
   The two parameters of a target, for a link to a filtered page:
-  `%{"forge" => system, "repo" => path}`; `%{"repo" => "none"}` for runs without one.
+  `%{"system" => system, "target" => path}`; `%{"target" => "none"}` for runs without one.
   """
   @spec target_params(String.t() | nil, String.t() | nil) :: %{String.t() => String.t()}
   def target_params(system, path) when is_binary(system) and is_binary(path),
-    do: %{"forge" => system, "repo" => path}
+    do: %{"system" => system, "target" => path}
 
-  def target_params(_system, _path), do: %{"repo" => "none"}
+  def target_params(_system, _path), do: %{"target" => "none"}
 
   @doc """
   A target as the one value of a menu's option: `none`, or the JSON of `[system, path]`,
@@ -341,7 +343,7 @@ defmodule Apiary.Runs.Filters do
   def target_value(:none), do: "none"
   def target_value({system, path}), do: Jason.encode!([system, path])
 
-  defp target_from_value("none"), do: %{"repo" => "none"}
+  defp target_from_value("none"), do: %{"target" => "none"}
 
   defp target_from_value(value) when is_binary(value) do
     case Jason.decode(value) do
@@ -349,7 +351,7 @@ defmodule Apiary.Runs.Filters do
         target_params(system, path)
 
       _ ->
-        %{"repo" => value}
+        %{"target" => value}
     end
   end
 
@@ -359,9 +361,9 @@ defmodule Apiary.Runs.Filters do
   defp target_param(:none), do: "none"
   defp target_param({_system, path}), do: path
 
-  # `repo=none` alone is "no target"; otherwise both parts, or neither.
+  # `target=none` alone is "no target"; otherwise both parts, or neither.
   defp target(params) do
-    case {Map.fetch(params, "forge"), Map.fetch(params, "repo")} do
+    case {Map.fetch(params, "system"), Map.fetch(params, "target")} do
       {:error, :error} ->
         {nil, []}
 
@@ -369,10 +371,10 @@ defmodule Apiary.Runs.Filters do
         {:none, []}
 
       {{:ok, system}, {:ok, path}} ->
-        if text(system) && text(path), do: {{system, path}, []}, else: {nil, ["repo"]}
+        if text(system) && text(path), do: {{system, path}, []}, else: {nil, ["target"]}
 
       _one_without_the_other ->
-        {nil, ["repo"]}
+        {nil, ["target"]}
     end
   end
 

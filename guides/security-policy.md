@@ -41,8 +41,8 @@ disables a host the hive allows.
 ## The hive's baseline and a repository's rules
 
 The hive has a baseline of rules, on `/hive/policy`. A repository has rules of its own on
-top, on `/hive/policy/repositories/:repository_id`; the list of repositories is
-`/hive/policy/repositories`. A repository appears there once a run names it, by the `forge`
+top, on `/hive/policy/targets/:target_id`; the list of repositories is
+`/hive/policy/targets`. A repository appears there once a run names it, by the `forge`
 and `repository` labels the runner takes from the checkout's origin remote
 ([The runner file's `server` section](runner-file.md)).
 
@@ -118,7 +118,7 @@ change is confirmed. A wall's own refusals, the machine's own address say, hold 
 mode.
 
 The hive's mode is a default. A repository follows it until an owner gives the repository a
-mode of its own, on the repository's page under `/hive/policy/repositories`: **Follow the
+mode of its own, on the repository's page under `/hive/policy/targets`: **Follow the
 hive**, **Observe** or **Enforce**, with what is in effect and where it comes from. A change
 of the hive's mode reaches the repositories that follow it and leaves the others as they
 are. The mode and the rules are apart: a repository in enforce under a hive in observe is
@@ -146,12 +146,12 @@ it is stored.
   version**. The change is still in the history. A lock often does this: it holds against
   repositories and leaves the hive's document as it was.
 - **History**, `/hive/policy/history` and
-  `/hive/policy/repositories/:repository_id/history`, has every change with who made it,
+  `/hive/policy/targets/:target_id/history`, has every change with who made it,
   when, the rules before and after, the version it made or that it made none, and its diff
   in rules and in document lines. Changes to a repository's own rules are in that
   repository's history.
 - **A version's page**, `/hive/policy/versions/:n` and
-  `/hive/policy/repositories/:repository_id/versions/:n`, has the changes from any earlier
+  `/hive/policy/targets/:target_id/versions/:n`, has the changes from any earlier
   version, the document indented for reading, and the bytes as served.
   `/hive/policy/document` is the document in force.
 
@@ -178,7 +178,7 @@ record already says stays as it was.
 
 A machine that reports to no server can be given the same policy as files. **Export**, on the
 policy page and on a version's page, `/hive/policy/versions/:n/export` and
-`/hive/policy/repositories/:repository_id/versions/:n/export`, gives the effective policy of
+`/hive/policy/targets/:target_id/versions/:n/export`, gives the effective policy of
 that version as text, with **Download**:
 
 - the `egress` section for the machine's runner file, which says a mode, the hosts

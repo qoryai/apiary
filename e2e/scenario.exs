@@ -34,10 +34,10 @@ defmodule E2E do
     session = env!("E2E_SESSION_COMMAND")
     session_log = env!("E2E_SESSION_LOG")
     budget_ms = String.to_integer(System.get_env("E2E_BUDGET_SECONDS", "35")) * 1000
-    # `E2E_LEVEL` says `repository` (the software body's word) or `hive`.
+    # `E2E_LEVEL` says `target` or `hive`, as the popover's level does.
     level =
-      case System.get_env("E2E_LEVEL", "repository") do
-        "repository" -> :target
+      case System.get_env("E2E_LEVEL", "target") do
+        "target" -> :target
         "hive" -> :hive
       end
 

@@ -50,7 +50,7 @@ answers.
 4. Allows the host with the two calls the row's popover makes
    (`ApiaryWeb.RunLive.Show`, `ApiaryWeb.ConnectionLive.Index`):
    `Apiary.Runs.fetch_connection/2`, then `Apiary.Policy.rule_from_connection/4` with
-   `:allow` and the level, `:repository` unless `E2E_LEVEL=hive`. The clock starts before
+   `:allow` and the level, `:target` unless `E2E_LEVEL=hive`. The clock starts before
    the first of them.
 5. Polls the run's stored events, every 50 ms, for a second `ai.qory.run.policy_applied`
    whose `run_configuration` is the new digest, then for an `ai.qory.run.egress` to the

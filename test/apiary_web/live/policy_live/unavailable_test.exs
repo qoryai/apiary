@@ -50,7 +50,7 @@ defmodule ApiaryWeb.PolicyLive.UnavailableTest do
     refute has_element?(view, "#policy-rules td.q-c-seen")
     refute view |> element("#policy-rules") |> render() =~ "not seen"
 
-    view = open(conn, "/hive/policy/repositories/#{target.id}")
+    view = open(conn, "/hive/policy/targets/#{target.id}")
     assert has_element?(view, "#policy-rules .q-host", "registry.example")
     refute has_element?(view, "#policy-rules th", "Last 7 days")
 

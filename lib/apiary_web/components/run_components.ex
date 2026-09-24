@@ -1740,7 +1740,7 @@ defmodule ApiaryWeb.RunComponents do
               <input
                 type="radio"
                 name="for"
-                value="repository"
+                value="target"
                 checked={@popover.level == :target}
               />
               <span>
@@ -1755,7 +1755,7 @@ defmodule ApiaryWeb.RunComponents do
               <input
                 type="radio"
                 name="for"
-                value="repository"
+                value="target"
                 checked={@popover.level == :target}
               />
               <span><b>One repository</b></span>
@@ -1769,8 +1769,8 @@ defmodule ApiaryWeb.RunComponents do
               class="q-popt-more"
             >
               <select
-                name="repository"
-                id={"#{@id}-repository"}
+                name="target"
+                id={"#{@id}-target"}
                 class="select select-sm q-pop-select"
                 aria-label="Repository"
               >

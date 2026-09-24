@@ -1368,7 +1368,7 @@ defmodule ApiaryWeb.RunLive.Show do
       ) do
     level =
       case params["for"] do
-        "repository" when not is_nil(popover.target) -> :target
+        "target" when not is_nil(popover.target) -> :target
         "hive" -> :hive
         _ -> popover.level
       end

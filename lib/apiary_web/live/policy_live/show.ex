@@ -155,7 +155,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
     |> then(&if(params["confirm"] == "enforce", do: confirm_enforce(&1), else: &1))
   end
 
-  defp apply_action(socket, :repositories, params) do
+  defp apply_action(socket, :targets, params) do
     socket
     |> assign(page_title: "Repositories · Policy", own_only: params["mode"] == "own")
     |> load_targets(:all)
@@ -658,7 +658,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
     # be superseded now, a history may have a change more.
     socket =
       case socket.assigns.live_action do
-        :repositories -> load_targets(socket, touched)
+        :targets -> load_targets(socket, touched)
         action when action in [:history, :version, :export] -> reapply(socket, action)
         _ -> socket
       end
@@ -773,7 +773,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
 
         <.rules_tab :if={@live_action == :rules} {assigns} />
         <.targets_tab
-          :if={@live_action == :repositories}
+          :if={@live_action == :targets}
           rows={target_rows(@target_list, @target_details, @target_suggestions)}
           own_only={@own_only}
         />
@@ -891,9 +891,9 @@ defmodule ApiaryWeb.PolicyLive.Show do
         Rules
       </:tab>
       <:tab
-        patch={~p"/hive/policy/repositories"}
+        patch={~p"/hive/policy/targets"}
         icon="hero-book-open-micro"
-        current={@live_action == :repositories}
+        current={@live_action == :targets}
         count={@targets > 0 && @targets}
       >
         Repositories
@@ -1077,8 +1077,8 @@ defmodule ApiaryWeb.PolicyLive.Show do
       )
 
     ~H"""
-    <div id="policy-repositories" class="grid grid-cols-[minmax(0,1fr)] gap-6">
-      <div id="repositories-summary" class="q-summary">
+    <div id="policy-targets" class="grid grid-cols-[minmax(0,1fr)] gap-6">
+      <div id="targets-summary" class="q-summary">
         <span>
           <b>{length(@rows)}</b> {if length(@rows) == 1,
             do: "repository has posted runs",
@@ -1093,9 +1093,9 @@ defmodule ApiaryWeb.PolicyLive.Show do
         </span>
         <span><b>{Enum.count(@rows, &(is_integer(&1.suggestions) and &1.suggestions > 0))}</b>
         with suggestions</span>
-        <span :if={@own_only} id="repositories-own-only">
+        <span :if={@own_only} id="targets-own-only">
           Showing those that set their own mode.
-          <.link patch={~p"/hive/policy/repositories"} class="q-link">Show all</.link>
+          <.link patch={~p"/hive/policy/targets"} class="q-link">Show all</.link>
         </span>
       </div>
       <div
@@ -1104,7 +1104,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         role="region"
         aria-label="Repositories and their policy"
       >
-        <table class="table q-repos" role="table">
+        <table class="table q-targets" role="table">
           <thead>
             <tr role="row">
               <th role="columnheader">Repository</th>
@@ -1123,13 +1123,13 @@ defmodule ApiaryWeb.PolicyLive.Show do
                 No repository sets its own mode. Every one follows the hive's default.
               </td>
             </tr>
-            <tr :for={row <- @shown} id={"repo-#{row.id}"} role="row" class="q-repo-row">
-              <td role="cell" class="q-c-repo">
+            <tr :for={row <- @shown} id={"target-#{row.id}"} role="row" class="q-target-row">
+              <td role="cell" class="q-c-target">
                 <.link
-                  navigate={~p"/hive/policy/repositories/#{row.id}"}
-                  class="q-repo-name q-rowlink"
+                  navigate={~p"/hive/policy/targets/#{row.id}"}
+                  class="q-target-name q-rowlink"
                 >
-                  <span class="q-repo-f">{row.system}/</span><span class="q-repo-p">{row.path}</span>
+                  <span class="q-target-system">{row.system}/</span><span class="q-target-path">{row.path}</span>
                 </.link>
               </td>
               <td role="cell" class="q-c-mode">
@@ -1190,7 +1190,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
                       if is_nil(row.detail.version.target_id),
                         do: ~p"/hive/policy/versions/#{row.detail.version.version}",
                         else:
-                          ~p"/hive/policy/repositories/#{row.id}/versions/#{row.detail.version.version}"
+                          ~p"/hive/policy/targets/#{row.id}/versions/#{row.detail.version.version}"
                     }
                   />
                   <span :if={!row.detail.version} class="text-faint font-sans text-[13px]">

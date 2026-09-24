@@ -18,7 +18,7 @@
 #   E2E_PORT            the test instance's port                      (default 4180)
 #   E2E_WORK            (default tmp/e2e under the repository)
 #   E2E_RETRY_SECONDS   how often the session asks for the host       (default 3)
-#   E2E_LEVEL           repository or hive: where the row's rule goes (default repository)
+#   E2E_LEVEL           target or hive: where the row's rule goes (default target)
 #   E2E_BUDGET_SECONDS  (default 35)
 set -euo pipefail
 
@@ -34,7 +34,7 @@ export E2E_FORGE="${E2E_FORGE:-git.e2e.test}"
 export E2E_REPOSITORY="${E2E_REPOSITORY:-acme/shop}"
 export E2E_RETRY_SECONDS="${E2E_RETRY_SECONDS:-3}"
 export E2E_BUDGET_SECONDS="${E2E_BUDGET_SECONDS:-35}"
-export E2E_LEVEL="${E2E_LEVEL:-repository}"
+export E2E_LEVEL="${E2E_LEVEL:-target}"
 database_url="${E2E_DATABASE_URL:-ecto://postgres:postgres@localhost:5432/apiary_e2e}"
 wall_image="${E2E_WALL_IMAGE:-curlimages/curl:8.16.0}"
 

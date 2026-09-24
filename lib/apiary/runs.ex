@@ -191,7 +191,7 @@ defmodule Apiary.Runs do
 
   def group_facts(%Scope{}, %Filters{}, [], _now), do: %{}
 
-  def group_facts(%Scope{} = scope, %Filters{group: "repository"} = filters, keys, now) do
+  def group_facts(%Scope{} = scope, %Filters{group: "target"} = filters, keys, now) do
     condition =
       Enum.reduce(keys, dynamic(false), fn
         :none, acc ->
@@ -252,7 +252,7 @@ defmodule Apiary.Runs do
   def group_runs(runs, "none"),
     do: [%{key: :all, kind: :none, system: nil, path: nil, title: nil, runs: runs}]
 
-  def group_runs(runs, group) when group in ["repository", "task"] do
+  def group_runs(runs, group) when group in ["target", "task"] do
     runs
     |> Enum.group_by(&group_key(&1, group))
     |> Enum.map(fn {key, runs} -> group(key, group, runs) end)
@@ -260,16 +260,16 @@ defmodule Apiary.Runs do
   end
 
   @doc "The key of the group a run falls in."
-  def group_key(%Run{target_id: nil}, "repository"), do: :none
-  def group_key(%Run{target_system: system, target_path: path}, "repository"), do: {system, path}
+  def group_key(%Run{target_id: nil}, "target"), do: :none
+  def group_key(%Run{target_system: system, target_path: path}, "target"), do: {system, path}
   def group_key(%Run{task: nil}, "task"), do: :none
   def group_key(%Run{task: task}, "task"), do: task
   def group_key(%Run{}, _group), do: :all
 
-  defp group(:none, "repository", runs),
+  defp group(:none, "target", runs),
     do: %{key: :none, kind: :unassigned, system: nil, path: nil, title: "Unassigned", runs: runs}
 
-  defp group({system, path} = key, "repository", runs),
+  defp group({system, path} = key, "target", runs),
     do: %{key: key, kind: :target, system: system, path: path, title: path, runs: runs}
 
   defp group(:none, "task", runs),
@@ -301,7 +301,7 @@ defmodule Apiary.Runs do
 
     %{
       state: state_facet(scope, filters, now),
-      target: run_target_facet(scope, filters, now, narrow["repo"]),
+      target: run_target_facet(scope, filters, now, narrow["target"]),
       task: text_facet(scope, filters, now, :task, "No task", narrow["task"]),
       runtime: text_facet(scope, filters, now, :runtime, nil, narrow["runtime"]),
       host: text_facet(scope, filters, now, :host, nil, narrow["host"])
@@ -687,7 +687,7 @@ defmodule Apiary.Runs do
         target_facet(
           connections_in(scope, %{filters | target: nil}, now),
           filters.target,
-          narrow["repo"]
+          narrow["target"]
         ),
       host: destination_host_facet(scope, filters, now, narrow["host"])
     }

@@ -95,7 +95,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       # two targets reached it: neither is chosen, nor the hive, and nothing can be sent
       refute has_element?(view, "#rule-popover input[name=for][checked]")
       assert has_element?(view, "#rule-popover-submit[disabled]")
-      options = text(view, "#rule-popover-repository")
+      options = text(view, "#rule-popover-target")
       assert options =~ "github.example/acme/shop · 1 run"
       assert options =~ "gitlab.example/acme/shop · 1 run"
 
@@ -103,7 +103,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
                "Takes effect in running sessions within a heartbeat, about 30 s."
 
       # "One repository" alone is not a scope yet
-      view |> form("#rule-popover-form", %{"for" => "repository"}) |> render_change()
+      view |> form("#rule-popover-form", %{"for" => "target"}) |> render_change()
       assert has_element?(view, "#rule-popover-submit[disabled]")
     end
 
@@ -136,7 +136,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       view |> element("##{dst("files.cdn.example")}-act") |> render_click()
 
       view
-      |> form("#rule-popover-form", %{"for" => "repository", "repository" => gitlab.id})
+      |> form("#rule-popover-form", %{"for" => "target", "target" => gitlab.id})
       |> render_change()
 
       assert text(view, "#rule-popover-submit") == "Allow for the repository"
@@ -153,20 +153,20 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       scope: scope
     } do
       github = target(scope, "github.example")
-      view = open(conn, ~p"/hive/connections?forge=github.example&repo=acme/shop")
+      view = open(conn, ~p"/hive/connections?system=github.example&target=acme/shop")
 
       assert has_element?(
                view,
-               ~s(#connections-repo-policy[href="/hive/policy/repositories/#{github.id}"]),
+               ~s(#connections-target-policy[href="/hive/policy/targets/#{github.id}"]),
                "Its policy"
              )
 
       view |> element("##{dst("files.cdn.example")}-act") |> render_click()
-      assert has_element?(view, ~s(#rule-popover input[name=for][value=repository][checked]))
+      assert has_element?(view, ~s(#rule-popover input[name=for][value=target][checked]))
 
       assert has_element?(
                view,
-               ~s(#rule-popover-repository option[value="#{github.id}"][selected])
+               ~s(#rule-popover-target option[value="#{github.id}"][selected])
              )
 
       view |> form("#rule-popover-form") |> render_submit()
@@ -243,7 +243,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       view |> element("##{d}-act") |> render_click()
 
       view
-      |> form("#rule-popover-form", %{"for" => "repository", "repository" => github.id})
+      |> form("#rule-popover-form", %{"for" => "target", "target" => github.id})
       |> render_change()
 
       assert text(view, "#rule-popover") =~ "Replaces the repository's own rule for the host."
@@ -270,7 +270,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       assert text(view, "button##{dst("files.cdn.example")}-act") == "Allow"
 
       # with repo set the rows stand against that target's policy, and it answers
-      view = open(conn, ~p"/hive/connections?forge=github.example&repo=acme/shop")
+      view = open(conn, ~p"/hive/connections?system=github.example&target=acme/shop")
       assert text(view, "##{dst("files.cdn.example")}-act") == "Allow"
       refute has_element?(view, "##{dst("files.cdn.example")}-after")
     end
@@ -302,7 +302,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       refute has_element?(view, "#rule-popover-what-set")
 
       view
-      |> form("#rule-popover-form", %{"for" => "repository", "repository" => github.id})
+      |> form("#rule-popover-form", %{"for" => "target", "target" => github.id})
       |> render_change()
 
       assert text(view, "#rule-popover-title") == "Allow on api.pathed.example"
@@ -311,7 +311,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       view |> form("#rule-popover-form", %{"for" => "hive"}) |> render_change()
       assert text(view, "#rule-popover-title") == "Allow api.pathed.example"
 
-      view |> form("#rule-popover-form", %{"for" => "repository"}) |> render_change()
+      view |> form("#rule-popover-form", %{"for" => "target"}) |> render_change()
       view |> form("#rule-popover-form") |> render_submit()
 
       assert [%{paths: ["/ok/*", "/v2/x"]}] = Policy.list_rules(scope, github)
@@ -402,7 +402,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
     test "the target's select is not part of the radio's name", %{conn: conn} do
       view = open(conn)
       view |> element("##{dst("files.cdn.example")}-act") |> render_click()
-      assert has_element?(view, "#rule-popover-repository")
+      assert has_element?(view, "#rule-popover-target")
       refute has_element?(view, "#rule-popover label select")
     end
   end
@@ -424,9 +424,9 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
 
       # and a target of another hive cannot be chosen
       view |> element("##{dst("files.cdn.example")}-act") |> render_click()
-      render_change(view, "rule_change", %{"for" => "repository", "repository" => theirs.id})
+      render_change(view, "rule_change", %{"for" => "target", "target" => theirs.id})
       assert has_element?(view, "#rule-popover-submit[disabled]")
-      render_submit(view, "rule_submit", %{"for" => "repository", "repository" => theirs.id})
+      render_submit(view, "rule_submit", %{"for" => "target", "target" => theirs.id})
 
       assert Policy.list_rules(other, theirs) == []
       assert Policy.list_rules(other, nil) == []

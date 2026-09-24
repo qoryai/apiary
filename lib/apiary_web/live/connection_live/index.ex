@@ -45,13 +45,13 @@ defmodule ApiaryWeb.ConnectionLive.Index do
         <:subtitle>
           Where the runs of this <.term word="hive" />
           reached out to, and what the policy made of it. One row per host, port and path, across runs.
-          <span :if={@filters.target} id="connections-repo-note">
+          <span :if={@filters.target} id="connections-target-note">
             Showing
             <.mono>{target_label(@filters.target)}</.mono>
             only.
             <.link
               :if={@target}
-              id="connections-repo-policy"
+              id="connections-target-policy"
               navigate={Rules.target_policy_path(@target.id)}
               class="q-link"
             >
@@ -86,9 +86,9 @@ defmodule ApiaryWeb.ConnectionLive.Index do
             </:segment>
           </.segments>
           <.filter
-            name="repo"
+            name="target"
             total={facet_total(@facets, :target)}
-            query={@narrow["repo"]}
+            query={@narrow["target"]}
             label="Repository"
             value={Filters.target_value(@filters.target)}
             options={
@@ -391,14 +391,14 @@ defmodule ApiaryWeb.ConnectionLive.Index do
       ) do
     level =
       case params["for"] do
-        "repository" when popover.targets != [] -> :target
+        "target" when popover.targets != [] -> :target
         "hive" -> :hive
         _ -> popover.level
       end
 
     # Only a target the popover listed can be chosen.
     choice =
-      case params["repository"] do
+      case params["target"] do
         id when is_binary(id) ->
           if Enum.any?(popover.targets, &(&1.id == id)), do: id
 

@@ -103,17 +103,17 @@ defmodule ApiaryWeb.Router do
       # export modal are in the URL. `:target_id` is the target row's id, because
       # a system and a path hold slashes.
       live "/hive/policy", PolicyLive.Show, :rules
-      live "/hive/policy/repositories", PolicyLive.Show, :repositories
+      live "/hive/policy/targets", PolicyLive.Show, :targets
       live "/hive/policy/history", PolicyLive.Show, :history
       live "/hive/policy/document", PolicyLive.Show, :document
       live "/hive/policy/versions/:n", PolicyLive.Show, :version
       live "/hive/policy/versions/:n/export", PolicyLive.Show, :export
-      live "/hive/policy/repositories/:target_id", PolicyLive.Target, :rules
-      live "/hive/policy/repositories/:target_id/history", PolicyLive.Target, :history
-      live "/hive/policy/repositories/:target_id/document", PolicyLive.Target, :document
-      live "/hive/policy/repositories/:target_id/versions/:n", PolicyLive.Target, :version
+      live "/hive/policy/targets/:target_id", PolicyLive.Target, :rules
+      live "/hive/policy/targets/:target_id/history", PolicyLive.Target, :history
+      live "/hive/policy/targets/:target_id/document", PolicyLive.Target, :document
+      live "/hive/policy/targets/:target_id/versions/:n", PolicyLive.Target, :version
 
-      live "/hive/policy/repositories/:target_id/versions/:n/export",
+      live "/hive/policy/targets/:target_id/versions/:n/export",
            PolicyLive.Target,
            :export
 

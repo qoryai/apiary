@@ -27,16 +27,16 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   def version_path(nil, n, query), do: ~p"/hive/policy/versions/#{n}?#{query}"
 
   def version_path(target_id, n, query),
-    do: ~p"/hive/policy/repositories/#{target_id}/versions/#{n}?#{query}"
+    do: ~p"/hive/policy/targets/#{target_id}/versions/#{n}?#{query}"
 
   @doc "The rule of `host` on the hive's policy page (`nil`) or on a target's."
   def rule_path(nil, host), do: ~p"/hive/policy?#{%{"rule" => host}}"
 
   def rule_path(target_id, host),
-    do: ~p"/hive/policy/repositories/#{target_id}?#{%{"rule" => host}}"
+    do: ~p"/hive/policy/targets/#{target_id}?#{%{"rule" => host}}"
 
   @doc "A target's policy page."
-  def target_policy_path(target_id), do: ~p"/hive/policy/repositories/#{target_id}"
+  def target_policy_path(target_id), do: ~p"/hive/policy/targets/#{target_id}"
 
   ## Versions
 

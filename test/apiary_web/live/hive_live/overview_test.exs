@@ -229,14 +229,14 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
 
       assert text(view, "#alive-n") == "2"
       assert has_element?(view, "#alive-#{running.run_id} .q-state-running")
-      assert has_element?(view, "#alive-#{running.run_id} .q-repo", "acme/shop")
+      assert has_element?(view, "#alive-#{running.run_id} .q-target", "acme/shop")
       assert has_element?(view, "#alive-#{running.run_id} .q-host", "build-01")
       assert has_element?(view, "#alive-#{running.run_id} .q-alive", "Alive")
       assert has_element?(view, "#alive-#{quiet.run_id} .q-alive-amber", "No heartbeat for")
       refute has_element?(view, "#alive-#{ended.run_id}")
 
-      assert has_element?(view, "#last-runs tr#run-#{running.run_id} .q-c-repo", "acme/shop")
-      assert has_element?(view, "#last-runs tr#run-#{ended.run_id} .q-c-repo", "no repository")
+      assert has_element?(view, "#last-runs tr#run-#{running.run_id} .q-c-target", "acme/shop")
+      assert has_element?(view, "#last-runs tr#run-#{ended.run_id} .q-c-target", "no repository")
       assert has_element?(view, "#last-runs tr#run-#{ended.run_id} .q-c-dur", "48 s")
       assert has_element?(view, "#last-runs-all[href='/hive/runs']", "All runs")
 
@@ -329,7 +329,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
                "observe Not served Machines use their own policy until the first change here."
 
       assert has_element?(view, "#overview-policy-version", "No version yet")
-      assert text(view, "#overview-policy-repositories") =~ "1 has posted a run"
+      assert text(view, "#overview-policy-targets") =~ "1 has posted a run"
       assert has_element?(view, "#overview-policy-review", "Nothing declared and unallowed.")
       assert has_element?(view, "#overview-policy-open[href='/hive/policy']")
 

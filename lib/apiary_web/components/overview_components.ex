@@ -391,7 +391,7 @@ defmodule ApiaryWeb.OverviewComponents do
         aria-label={"Allow #{@item.host} for #{@target.system}/#{@target.path}"}
         aria-haspopup="dialog"
         aria-expanded={to_string(@item[:expanded] == true)}
-        phx-click={JS.push("rule_open", value: %{id: @item.id, level: "repository"})}
+        phx-click={JS.push("rule_open", value: %{id: @item.id, level: "target"})}
       >
         Allow here
       </button>
@@ -419,7 +419,7 @@ defmodule ApiaryWeb.OverviewComponents do
         <li role="none">
           <.link
             role="menuitem"
-            navigate={~p"/hive/policy/repositories/#{@target.id}?#{%{"rule" => @item.host}}"}
+            navigate={~p"/hive/policy/targets/#{@target.id}?#{%{"rule" => @item.host}}"}
           >
             Allow with paths…
           </.link>
@@ -798,9 +798,9 @@ defmodule ApiaryWeb.OverviewComponents do
         <span>{short_id(@run.run_id)}</span>
       </div>
       <span class="q-where">
-        <span class="q-repo">
+        <span class="q-target">
           <span :if={@run.target_system && @run.target_path}>
-            <span class="q-forge">{@run.target_system}/</span>{@run.target_path}
+            <span class="q-system">{@run.target_system}/</span>{@run.target_path}
           </span>
           <span :if={!(@run.target_system && @run.target_path)} class="font-sans text-faint">no repository</span>
         </span>
@@ -1225,8 +1225,8 @@ defmodule ApiaryWeb.OverviewComponents do
             do: " · no task label"}</span>
         </div>
       </td>
-      <td class="q-c-repo">
-        <span :if={@run.target_system && @run.target_path}><span class="q-forge">{@run.target_system}/</span>{@run.target_path}</span>
+      <td class="q-c-target">
+        <span :if={@run.target_system && @run.target_path}><span class="q-system">{@run.target_system}/</span>{@run.target_path}</span>
         <span :if={!(@run.target_system && @run.target_path)} class="font-sans text-faint">no repository</span>
       </td>
       <td class="q-c-host q-meta">
@@ -1299,16 +1299,14 @@ defmodule ApiaryWeb.OverviewComponents do
                   <% [one] -> %>
                     1 sets its own:
                     <.link
-                      navigate={~p"/hive/policy/repositories/#{one.target.id}"}
+                      navigate={~p"/hive/policy/targets/#{one.target.id}"}
                       class="q-link font-mono text-[12.5px]"
                     >
                       {one.target.system}/{one.target.path}
                     </.link>
                     {one.own_mode}s
                   <% many -> %>
-                    <.link navigate={~p"/hive/policy/repositories?mode=own"} class="q-link">{length(
-                      many
-                    )} set their own</.link>
+                    <.link navigate={~p"/hive/policy/targets?mode=own"} class="q-link">{length(many)} set their own</.link>
                 <% end %>
             <% end %>
           </span>
@@ -1328,14 +1326,14 @@ defmodule ApiaryWeb.OverviewComponents do
           <% end %>
         </dd>
         <dt>Repositories</dt>
-        <dd id={"#{@id}-repositories"}>
-          <.link navigate={~p"/hive/policy/repositories"} class="q-link">
+        <dd id={"#{@id}-targets"}>
+          <.link navigate={~p"/hive/policy/targets"} class="q-link">
             <b>{@policy.targets}</b> {if @policy.targets == 1,
               do: "has posted a run",
               else: "have posted runs"}
           </.link>
           <span class="q-muted">·</span>
-          <.link :if={@policy.with_rules > 0} navigate={~p"/hive/policy/repositories"} class="q-link">
+          <.link :if={@policy.with_rules > 0} navigate={~p"/hive/policy/targets"} class="q-link">
             <b>{@policy.with_rules}</b>
             with rules of {if @policy.with_rules == 1, do: "its", else: "their"} own
           </.link>
@@ -1349,7 +1347,7 @@ defmodule ApiaryWeb.OverviewComponents do
             <% @policy.suggestions.hosts == 0 -> %>
               <span class="text-faint">Nothing declared and unallowed.</span>
             <% true -> %>
-              <.link navigate={~p"/hive/policy/repositories"} class="badge badge-info">
+              <.link navigate={~p"/hive/policy/targets"} class="badge badge-info">
                 {@policy.suggestions.hosts} to review
               </.link>
               <span class="q-muted">
