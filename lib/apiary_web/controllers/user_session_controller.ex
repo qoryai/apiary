@@ -5,11 +5,11 @@ defmodule ApiaryWeb.UserSessionController do
   alias ApiaryWeb.UserAuth
 
   def create(conn, %{"_action" => "confirmed"} = params) do
-    create(conn, params, "Your account is confirmed.")
+    create(conn, params, gettext("Your account is confirmed."))
   end
 
   def create(conn, params) do
-    create(conn, params, "You are logged in.")
+    create(conn, params, gettext("You are logged in."))
   end
 
   # magic link login
@@ -24,7 +24,7 @@ defmodule ApiaryWeb.UserSessionController do
 
       _ ->
         conn
-        |> put_flash(:error, "That link has expired. Ask for a new one below.")
+        |> put_flash(:error, gettext("That link has expired. Ask for a new one below."))
         |> redirect(to: ~p"/users/log-in")
     end
   end
@@ -40,7 +40,7 @@ defmodule ApiaryWeb.UserSessionController do
     else
       # In order to prevent user enumeration attacks, don't disclose whether the email is registered.
       conn
-      |> put_flash(:error, "That email and password do not match.")
+      |> put_flash(:error, gettext("That email and password do not match."))
       |> put_flash(:email, String.slice(email, 0, 160))
       |> redirect(to: ~p"/users/log-in")
     end
@@ -56,12 +56,12 @@ defmodule ApiaryWeb.UserSessionController do
 
     conn
     |> put_session(:user_return_to, ~p"/users/settings")
-    |> create(params, "Your password is updated.")
+    |> create(params, gettext("Your password is updated."))
   end
 
   def delete(conn, _params) do
     conn
-    |> put_flash(:info, "You are logged out.")
+    |> put_flash(:info, gettext("You are logged out."))
     |> UserAuth.log_out_user()
   end
 end

@@ -11,7 +11,8 @@ defmodule ApiaryWeb.PageControllerTest do
     assert response =~ "Create an account"
     assert response =~ ~p"/users/log-in"
     assert response =~ ~p"/users/register"
-    assert response =~ ~r/<abbr[^>]*data-tip="workplace"[^>]*>hive<\/abbr>/
+    assert response =~ "Give your workplace an access key"
+    refute response =~ ~r/\b(hive|apiary)\b/
   end
 
   test "GET / sends a signed-in user to the hive", %{conn: conn} do

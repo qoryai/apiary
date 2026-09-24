@@ -21,7 +21,7 @@ defmodule ApiaryWeb.DocsController do
     else
       conn
       |> put_status(:not_found)
-      |> render(:not_built, page_title: "Documentation")
+      |> render(:not_built, page_title: gettext("Documentation"))
     end
   end
 

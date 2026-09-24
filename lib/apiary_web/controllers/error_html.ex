@@ -6,19 +6,19 @@ defmodule ApiaryWeb.ErrorHTML do
   """
   use ApiaryWeb, :html
 
-  # If you want to customize your error pages,
-  # uncomment the embed_templates/1 call below
-  # and add pages to the error directory:
-  #
-  #   * lib/apiary_web/controllers/error_html/404.html.heex
-  #   * lib/apiary_web/controllers/error_html/500.html.heex
-  #
-  # embed_templates "error_html/*"
+  # The status lines a page may show, marked for extraction; any other status shows
+  # Phoenix's message as it is.
+  @messages %{
+    "404" => gettext_noop("Not Found"),
+    "500" => gettext_noop("Internal Server Error")
+  }
 
-  # The default is to render a plain text page based on
-  # the template name. For example, "404.html" becomes
-  # "Not Found".
+  # The default is to render a plain text page based on the template name. For example,
+  # "404.html" becomes "Not Found", in the body's words.
   def render(template, _assigns) do
-    Phoenix.Controller.status_message_from_template(template)
+    case Map.fetch(@messages, template |> String.split(".") |> hd()) do
+      {:ok, msgid} -> Gettext.gettext(ApiaryWeb.Gettext, msgid)
+      :error -> Phoenix.Controller.status_message_from_template(template)
+    end
   end
 end

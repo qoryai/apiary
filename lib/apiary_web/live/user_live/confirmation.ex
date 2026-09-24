@@ -9,11 +9,13 @@ defmodule ApiaryWeb.UserLive.Confirmation do
     <Layouts.auth flash={@flash} current_scope={@current_scope}>
       <.hex_tile icon="hero-clock" tone="neutral" />
       <Layouts.auth_heading>
-        That link has expired
-        <:subtitle>Log-in links work once and for a short time. Ask for a new one.</:subtitle>
+        {gettext("That link has expired")}
+        <:subtitle>
+          {gettext("Log-in links work once and for a short time. Ask for a new one.")}
+        </:subtitle>
       </Layouts.auth_heading>
       <.button variant="primary" size="md" class="btn-block" navigate={~p"/users/log-in"}>
-        Send a new link
+        {gettext("Send a new link")}
       </.button>
     </Layouts.auth>
     """
@@ -23,7 +25,9 @@ defmodule ApiaryWeb.UserLive.Confirmation do
     ~H"""
     <Layouts.auth flash={@flash} current_scope={@current_scope}>
       <Layouts.auth_heading>
-        {if @user.confirmed_at, do: "Welcome back", else: "Welcome to Qory Apiary"}
+        {if @user.confirmed_at,
+          do: gettext("Welcome back"),
+          else: gettext("Welcome to Qory Apiary")}
         <:subtitle><span class="break-all">{@user.email}</span></:subtitle>
       </Layouts.auth_heading>
 
@@ -42,22 +46,22 @@ defmodule ApiaryWeb.UserLive.Confirmation do
           :if={!@current_scope}
           field={@form[:remember_me]}
           type="checkbox"
-          label="Keep me signed in"
+          label={gettext("Keep me signed in")}
           checked={@form[:remember_me].value != "false"}
         />
         <.button
           variant="primary"
           size="md"
           class="btn-block"
-          loading_text={if @user.confirmed_at, do: "Logging in", else: "Confirming"}
+          loading_text={if @user.confirmed_at, do: gettext("Logging in"), else: gettext("Confirming")}
           phx-mounted={JS.focus()}
         >
-          {if @user.confirmed_at, do: "Log in", else: "Confirm my account"}
+          {if @user.confirmed_at, do: gettext("Log in"), else: gettext("Confirm my account")}
         </.button>
       </.form>
 
       <p :if={!@user.confirmed_at} class="text-center text-[13px]/[18px] text-muted">
-        Prefer a password? You can set one in account settings.
+        {gettext("Prefer a password? You can set one in account settings.")}
       </p>
     </Layouts.auth>
     """
@@ -73,7 +77,7 @@ defmodule ApiaryWeb.UserLive.Confirmation do
        user: user,
        form: form,
        trigger_submit: false,
-       page_title: if(user, do: "Log in", else: "That link has expired")
+       page_title: if(user, do: gettext("Log in"), else: gettext("That link has expired"))
      ), temporary_assigns: [form: nil]}
   end
 

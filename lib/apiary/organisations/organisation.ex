@@ -1,6 +1,7 @@
 defmodule Apiary.Organisations.Organisation do
   @moduledoc "The tenant: an apiary in product words."
   use Ecto.Schema
+  use Gettext, backend: ApiaryWeb.Gettext
   import Ecto.Changeset
 
   @primary_key {:id, :binary_id, autogenerate: true}
@@ -20,7 +21,7 @@ defmodule Apiary.Organisations.Organisation do
     |> validate_required([:name])
     |> validate_length(:name, min: 1, max: 120)
     |> validate_format(:name, ~r/\A[^[:cntrl:]]+\z/u,
-      message: "must not contain control characters"
+      message: dgettext_noop("errors", "must not contain control characters")
     )
   end
 end

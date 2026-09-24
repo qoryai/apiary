@@ -10,23 +10,32 @@ defmodule ApiaryWeb.UserLive.Registration do
     ~H"""
     <Layouts.auth flash={@flash} current_scope={@current_scope}>
       <.check_your_email :if={@sent_to}>
-        We sent a confirmation link to <strong class="font-medium text-base-content">{@sent_to}</strong>.
-        It works for 15 minutes.
+        {rich(
+          gettext("We sent a confirmation link to %{email}. It works for 15 minutes.",
+            email: bold(@sent_to)
+          ),
+          "font-medium text-base-content"
+        )}
       </.check_your_email>
 
       <div :if={!@sent_to} class="grid gap-4">
         <Layouts.auth_heading>
-          Create your account
+          {gettext("Create your account")}
           <:subtitle>
-            Start an <.term word="apiary" /> for your workplace. We will email you a link to confirm;
-            no password needed.
+            {gettext(
+              "Start an organisation and its first hive. We will email you a link to confirm; no password needed."
+            )}
           </:subtitle>
         </Layouts.auth_heading>
 
         <.notice :if={@invitation} kind={:info}>
-          You are invited to the <strong>{@invitation.hive.name}</strong>
-          <.term word="hive" /> at <strong>{@invitation.organisation.name}</strong>.
-          Your account joins it as soon as you confirm.
+          {rich(
+            gettext(
+              "You are invited to the %{hive} hive at %{organisation}. Your account joins it as soon as you confirm.",
+              hive: bold(@invitation.hive.name),
+              organisation: bold(@invitation.organisation.name)
+            )
+          )}
         </.notice>
 
         <.form
@@ -39,21 +48,21 @@ defmodule ApiaryWeb.UserLive.Registration do
           <.input
             field={@form[:email]}
             type="email"
-            label="Email"
+            label={gettext("Email")}
             size="md"
             autocomplete="username"
             spellcheck="false"
             required
             phx-mounted={JS.focus()}
           />
-          <.button variant="primary" size="md" class="btn-block" loading_text="Creating">
-            Create account
+          <.button variant="primary" size="md" class="btn-block" loading_text={gettext("Creating")}>
+            {gettext("Create account")}
           </.button>
         </.form>
 
         <p class="mt-1 text-center text-[13px]/[18px] text-muted">
-          Already have an account?
-          <.button variant="link" navigate={~p"/users/log-in"}>Log in</.button>
+          {gettext("Already have an account?")}
+          <.button variant="link" navigate={~p"/users/log-in"}>{gettext("Log in")}</.button>
         </p>
       </div>
 
@@ -77,7 +86,7 @@ defmodule ApiaryWeb.UserLive.Registration do
 
     {:ok,
      socket
-     |> assign(:page_title, "Create your account")
+     |> assign(:page_title, gettext("Create your account"))
      |> assign(:sent_to, nil)
      |> assign(:invitation_token, if(invitation, do: token, else: nil))
      |> assign(:invitation, invitation)

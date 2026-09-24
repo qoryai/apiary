@@ -14,8 +14,28 @@ msgstr ""
 msgid "can't be blank"
 msgstr ""
 
+#: lib/apiary/organisations/hive.ex
+#, elixir-autogen, elixir-format
+msgid "cannot be longer than the events are kept: the log goes with a run's events"
+msgstr ""
+
+#: lib/apiary/accounts/user.ex
+#, elixir-autogen, elixir-format
+msgid "did not change"
+msgstr ""
+
 ## From Ecto.Changeset.validate_confirmation/3
 msgid "does not match confirmation"
+msgstr ""
+
+#: lib/apiary/accounts/user.ex
+#, elixir-autogen, elixir-format
+msgid "does not match password"
+msgstr ""
+
+#: lib/apiary/organisations/invitation.ex
+#, elixir-autogen, elixir-format
+msgid "has already been invited"
 msgstr ""
 
 ## From Ecto.Changeset.unique_constraint/3
@@ -28,6 +48,17 @@ msgstr ""
 
 ## From Ecto.Changeset.validate_format/3
 msgid "has invalid format"
+msgstr ""
+
+#: lib/apiary/organisations.ex
+#: lib/apiary/organisations/membership.ex
+#, elixir-autogen, elixir-format
+msgid "is already a member of this organisation"
+msgstr ""
+
+#: lib/apiary/access_keys/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "is already the label of an active key in this hive"
 msgstr ""
 
 #: lib/apiary/organisations/hive.ex
@@ -51,6 +82,11 @@ msgstr ""
 msgid "must be accepted"
 msgstr ""
 
+#: lib/apiary/organisations/hive.ex
+#, elixir-autogen, elixir-format
+msgid "must be between 1 and 3650 days, or empty to keep everything"
+msgstr ""
+
 msgid "must be equal to %{number}"
 msgstr ""
 
@@ -65,6 +101,19 @@ msgid "must be less than %{number}"
 msgstr ""
 
 msgid "must be less than or equal to %{number}"
+msgstr ""
+
+#: lib/apiary/accounts/user.ex
+#: lib/apiary/organisations/invitation.ex
+#, elixir-autogen, elixir-format
+msgid "must have the @ sign and no spaces"
+msgstr ""
+
+#: lib/apiary/access_keys/access_key.ex
+#: lib/apiary/organisations/hive.ex
+#: lib/apiary/organisations/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "must not contain control characters"
 msgstr ""
 
 msgid "should be %{count} byte(s)"
@@ -112,3 +161,13 @@ msgid "should have at most %{count} item(s)"
 msgid_plural "should have at most %{count} item(s)"
 msgstr[0] ""
 msgstr[1] ""
+
+#: lib/apiary/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "too many pending invitations"
+msgstr ""
+
+#: lib/apiary/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "was invited, but the invitation is no longer valid"
+msgstr ""

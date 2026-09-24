@@ -16,12 +16,12 @@ defmodule ApiaryWeb.UserLive.Settings do
       width="narrow"
     >
       <.header>
-        Account settings
-        <:subtitle>Your email address and password.</:subtitle>
+        {gettext("Account settings")}
+        <:subtitle>{gettext("Your email address and password.")}</:subtitle>
       </.header>
 
       <.card>
-        <:title>Email</:title>
+        <:title>{gettext("Email")}</:title>
         <.form
           for={@email_form}
           id="email_form"
@@ -32,22 +32,22 @@ defmodule ApiaryWeb.UserLive.Settings do
           <.input
             field={@email_form[:email]}
             type="email"
-            label="Email"
+            label={gettext("Email")}
             autocomplete="username"
             spellcheck="false"
             required
           />
         </.form>
         <:footer>
-          <span>We send a confirmation link to the new address.</span>
-          <.button type="submit" form="email_form" loading_text="Sending">
-            Change email
+          <span>{gettext("We send a confirmation link to the new address.")}</span>
+          <.button type="submit" form="email_form" loading_text={gettext("Sending")}>
+            {gettext("Change email")}
           </.button>
         </:footer>
       </.card>
 
       <.card>
-        <:title>Password</:title>
+        <:title>{gettext("Password")}</:title>
         <.form
           for={@password_form}
           id="password_form"
@@ -68,8 +68,8 @@ defmodule ApiaryWeb.UserLive.Settings do
           <.input
             field={@password_form[:password]}
             type="password"
-            label="New password"
-            hint="At least 12 characters."
+            label={gettext("New password")}
+            hint={gettext("At least 12 characters.")}
             autocomplete="new-password"
             spellcheck="false"
             required
@@ -77,15 +77,15 @@ defmodule ApiaryWeb.UserLive.Settings do
           <.input
             field={@password_form[:password_confirmation]}
             type="password"
-            label="Confirm new password"
+            label={gettext("Confirm new password")}
             autocomplete="new-password"
             spellcheck="false"
           />
         </.form>
         <:footer>
-          <span>Optional. Log-in links keep working either way.</span>
-          <.button type="submit" form="password_form" loading_text="Saving">
-            Save password
+          <span>{gettext("Optional. Log-in links keep working either way.")}</span>
+          <.button type="submit" form="password_form" loading_text={gettext("Saving")}>
+            {gettext("Save password")}
           </.button>
         </:footer>
       </.card>
@@ -98,10 +98,10 @@ defmodule ApiaryWeb.UserLive.Settings do
     socket =
       case Accounts.update_user_email(socket.assigns.current_scope.user, token) do
         {:ok, _user} ->
-          put_flash(socket, :info, "Your email address is changed.")
+          put_flash(socket, :info, gettext("Your email address is changed."))
 
         {:error, _} ->
-          put_flash(socket, :error, "That link has expired. Ask for a new one below.")
+          put_flash(socket, :error, gettext("That link has expired. Ask for a new one below."))
       end
 
     {:ok, push_navigate(socket, to: ~p"/users/settings")}
@@ -114,7 +114,7 @@ defmodule ApiaryWeb.UserLive.Settings do
 
     socket =
       socket
-      |> assign(:page_title, "Account settings")
+      |> assign(:page_title, gettext("Account settings"))
       |> assign(:current_email, user.email)
       |> assign(:email_form, to_form(email_changeset))
       |> assign(:password_form, to_form(password_changeset))
@@ -150,7 +150,9 @@ defmodule ApiaryWeb.UserLive.Settings do
           &url(~p"/users/settings/confirm-email/#{&1}")
         )
 
-        info = "A link to confirm your email change is on its way to the new address."
+        info =
+          gettext("A link to confirm your email change is on its way to the new address.")
+
         {:noreply, socket |> put_flash(:info, info)}
 
       changeset ->

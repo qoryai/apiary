@@ -26,7 +26,7 @@ defmodule Apiary.Organisations.Hive do
     |> validate_required([:name])
     |> validate_length(:name, min: 1, max: 120)
     |> validate_format(:name, ~r/\A[^[:cntrl:]]+\z/u,
-      message: "must not contain control characters"
+      message: dgettext_noop("errors", "must not contain control characters")
     )
     |> unique_constraint([:organisation_id, :name],
       error_key: :name,
@@ -35,6 +35,13 @@ defmodule Apiary.Organisations.Hive do
   end
 
   @retention_days 1..3650
+
+  # The message names the range above: a message built at compile time could not be
+  # extracted for the catalogue.
+  @retention_message dgettext_noop(
+                       "errors",
+                       "must be between 1 and 3650 days, or empty to keep everything"
+                     )
 
   @doc "The days a retention setting may hold; nil, unlimited, is always allowed."
   def retention_days, do: @retention_days
@@ -51,12 +58,12 @@ defmodule Apiary.Organisations.Hive do
     |> validate_number(:events_retention_days,
       greater_than_or_equal_to: first,
       less_than_or_equal_to: last,
-      message: "must be between #{first} and #{last} days, or empty to keep everything"
+      message: @retention_message
     )
     |> validate_number(:log_retention_days,
       greater_than_or_equal_to: first,
       less_than_or_equal_to: last,
-      message: "must be between #{first} and #{last} days, or empty to keep everything"
+      message: @retention_message
     )
     |> validate_log_within_events()
     |> check_constraint(:events_retention_days, name: :hives_events_retention_days_check)
@@ -71,7 +78,10 @@ defmodule Apiary.Organisations.Hive do
       add_error(
         changeset,
         :log_retention_days,
-        "cannot be longer than the events are kept: the log goes with a run's events"
+        dgettext_noop(
+          "errors",
+          "cannot be longer than the events are kept: the log goes with a run's events"
+        )
       )
     else
       changeset
