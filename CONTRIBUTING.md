@@ -58,7 +58,8 @@ mix test                           # creates and migrates the test database, the
 mix format                         # CI runs mix format --check-formatted
 mix compile --warnings-as-errors
 mix docs --warnings-as-errors      # the guides and the module reference, into priv/static/docs
-mix precommit                      # the four above plus deps.unlock --unused; run it before a pull request
+mix gettext.extract --merge        # after changing a visible string; see docs/lingo.md
+mix precommit                      # the above plus deps.unlock --unused and the Gettext check; run it before a pull request
 mix phx.server                     # http://localhost:4100
 ```
 
@@ -93,6 +94,9 @@ The web side is under `lib/apiary_web/`:
 - `controllers/`: health, the home page, and the session controllers.
 - `components/`: `core_components.ex` and the layouts. A page composes these; it does not
   write its own button.
+- `lingo.ex`: the body's words. Every visible string goes through Gettext in engine words,
+  and `priv/gettext/en@software/` says them in the software body's; see
+  [docs/lingo.md](docs/lingo.md).
 - `router.ex` and `user_auth.ex`: the pipelines, the `live_session` blocks, and what a
   mount loads into the scope.
 
