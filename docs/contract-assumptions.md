@@ -95,7 +95,7 @@ first refusal that applies is the answer:
 | `401` | any failure of authentication (see Failure) | `{"error":"unauthorized"}` |
 | `415` | the content type is not `application/cloudevents-batch+json` (its case and any parameters are ignored) | `{"error":"unsupported_media_type"}` |
 | `429` | the key has delivered more than its rate; `Retry-After` says how many seconds to wait | `{"error":"rate_limited"}` |
-| `400` | `X-Qory-Contract-Version` is sent and is not `1` | `{"error":"unsupported_contract_version","supported":[1]}` |
+| `400` | `X-Qory-Contract-Version` is sent and is not an integer from `1` up (a later revision than the server knows is accepted) | `{"error":"unsupported_contract_version","supported":[1,2]}` |
 | `400` | the body is not a batch, or is over a limit below | `{"error":"invalid_batch"}` |
 | `410` | the hive has closed the run, or retention has pruned the run's events: the delivery is recorded, no event is stored | empty |
 | `503` | the batch could not be stored; nothing of it was | `{"error":"unavailable"}` |

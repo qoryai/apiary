@@ -397,16 +397,25 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
       assert response(conn, 202)
     end
 
+    test "every revision of v1 is accepted, a later one than the server knows too",
+         %{key: key, secret: secret} do
+      for version <- ["1", "2", "3"] do
+        {_subject, batch} = first_events()
+        conn = signed_post(build_conn(), key.key_id, secret, batch, contract_version: version)
+        assert response(conn, 202)
+      end
+    end
+
     test "an unsupported contract version is 400 and says what is served",
          %{scope: scope, key: key, secret: secret} do
       {subject, batch} = first_events()
 
-      for version <- ["2", "0", "one", "1.0"] do
+      for version <- ["0", "-1", "one", "1.0"] do
         conn = signed_post(build_conn(), key.key_id, secret, batch, contract_version: version)
 
         assert json_response(conn, 400) == %{
                  "error" => "unsupported_contract_version",
-                 "supported" => [1]
+                 "supported" => [1, 2]
                }
       end
 
