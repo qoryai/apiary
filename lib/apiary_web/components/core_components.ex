@@ -17,13 +17,6 @@ defmodule ApiaryWeb.CoreComponents do
   alias Phoenix.LiveView.JS
 
   # Qory's words and the standard term they show on hover.
-  @terms %{
-    "apiary" => "organisation",
-    "apiaries" => "organisations",
-    "hive" => "workplace",
-    "hives" => "workplaces"
-  }
-
   ## Brand
 
   @doc """
@@ -96,18 +89,14 @@ defmodule ApiaryWeb.CoreComponents do
 
       <.term word="wall" standard="The enclosure the agent runs in." />
 
-  Not for the tenant or the hive: a page says organisation and hive through Gettext, and
-  the body's catalogue says workplace (`docs/lingo.md`). The `apiary` and `hive` entries
-  serve the pages not converted yet.
+  Not a way to show the tenant or the hive: a page says organisation and hive through
+  Gettext, and the body's catalogue says workplace (`docs/lingo.md`).
   """
   attr :word, :string, required: true
-  attr :standard, :string, default: nil, doc: "override the standard term"
+  attr :standard, :string, required: true, doc: "the standard term, or what the word means"
   attr :class, :any, default: nil
 
   def term(assigns) do
-    standard = assigns.standard || Map.get(@terms, String.downcase(assigns.word), assigns.word)
-    assigns = assign(assigns, :standard, standard)
-
     ~H"""
     <abbr
       class={["term tooltip", @class]}
