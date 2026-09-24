@@ -1,8 +1,8 @@
 # Retention
 
-A hive keeps everything its runs sent until an owner says otherwise. Retention is two
-settings of the hive, each a number of days or empty for unlimited, and a nightly job that
-deletes what is older and says what it deleted.
+A workplace keeps everything its runs sent until an owner says otherwise. Retention is two
+settings of the workplace, each a number of days or empty for unlimited, and a nightly job
+that deletes what is older and says what it deleted.
 
 ## The two settings
 
@@ -40,13 +40,13 @@ pruned, however long it has run.
 What stays, in both cases, is the run itself: its row in the runs list with its state, what
 it worked on, its runtime, host, start, duration and exit, the number of events it sent and
 the number of connections it was denied, and its connections, one row per destination with
-the attempts, the decision, the rule and the outcome of the last attempt. The hive's
+the attempts, the decision, the rule and the outcome of the last attempt. The workplace's
 connections page and the counts on the policy pages read those rows and are unchanged.
 
 A pruned run takes nothing more. A runner that delivers a batch of it again, from a spool
-that outlived the retention, is answered `410` once the events are pruned, as for a run the
-hive closed, and nothing is stored. A run that lost only its log output still takes its
-other events, without storing one twice, and no log event.
+that outlived the retention, is answered `410` once the events are pruned, as for a run
+the workplace closed, and nothing is stored. A run that lost only its log output still
+takes its other events, without storing one twice, and no log event.
 
 A run whose events are pruned cannot be projected again, because a projection is rebuilt
 from events. `mix apiary.rebuild` and `Apiary.Release.rebuild/1` never select such a run,
@@ -62,28 +62,28 @@ A run that lost only its log output is rebuilt from the events it still has.
 ## The nightly job
 
 `Apiary.Retention.Scheduler` runs in every instance. It wakes at three o'clock UTC plus a
-random part of an hour, and prunes every hive that has a setting.
+random part of an hour, and prunes every workplace that has a setting.
 
-- With several nodes, one prunes: the job takes a Postgres advisory lock, and a hive pruned
-  in the last twelve hours is left alone by the node that wakes second.
+- With several nodes, one prunes: the job takes a Postgres advisory lock, and a workplace
+  pruned in the last twelve hours is left alone by the node that wakes second.
 - Every delete is one statement over at most 2,000 rows of one run, found through an index,
   in its own short transaction. No statement scans `events`, and none holds a lock for longer
   than its batch, so the receiver keeps writing while the job runs.
-- One night prunes at most 10,000 runs of a hive, oldest first, and the next night goes on.
-  The first night after a setting is shortened is the long one.
+- One night prunes at most 10,000 runs of a workplace, oldest first, and the next night
+  goes on. The first night after a setting is shortened is the long one.
 - Postgres reuses the space of deleted rows; it does not give it back to the operating
   system. The database's files stop growing, they do not shrink. `VACUUM FULL` or
   `pg_repack` gives the space back, and neither is needed for the instance to work.
 
 ## What it says
 
-Every run of the job writes one row per hive, and the settings page lists the last five
-under **Pruned**: when, how many runs, how many events, how much log output in how many
-chunks, and the dates before which it pruned. A row is marked *By hand* when it came from
-the task below, and *Not finished* when the job stopped at its bound or a run failed; the
-next night goes on from there.
+Every run of the job writes one row per workplace, and the settings page lists the last
+five under **Pruned**: when, how many runs, how many events, how much log output in how
+many chunks, and the dates before which it pruned. A row is marked *By hand* when it came
+from the task below, and *Not finished* when the job stopped at its bound or a run failed;
+the next night goes on from there.
 
-The same is one line in the server's log per hive:
+The same is one line in the server's log per workplace, which names it `hive`:
 
 ```text
 retention pruned hive=6f1c… trigger=schedule runs=12 events=48210 log_chunks=9120 log_bytes=73400320 deliveries=640 events_cutoff=2026-06-01T03:12:44Z log_cutoff=2026-08-02T03:12:44Z complete=true duration_ms=8450

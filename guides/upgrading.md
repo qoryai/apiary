@@ -48,9 +48,10 @@ possible:
   which Ecto runs outside a transaction), so a busy instance keeps serving.
 - **Every migration has a `down`.** `bin/apiary eval "Apiary.Release.rollback(Apiary.Repo, <version>)"`
   reverts to the migration version the changelog names for the previous release.
-- **The keys of the organisation and the hive come first.** Every table carries
-  `organisation_id`, and every table that belongs to a hive carries `hive_id` beside it with
-  the composite foreign key, from its first migration; no migration retrofits them.
+- **The keys of the organisation and the workplace come first.** Every table carries
+  `organisation_id`, and every table that belongs to a workplace carries `hive_id` beside
+  it with the composite foreign key, from its first migration; no migration retrofits
+  them.
 
 ## Rolling back
 

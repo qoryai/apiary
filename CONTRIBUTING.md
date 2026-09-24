@@ -8,7 +8,7 @@ Everywhere. Four kinds are the most useful:
 
 - **A page or a context feature of the console.** A LiveView under `lib/apiary_web/live/`
   or a function in one of the contexts under `lib/apiary/`, with its test. The console is
-  what an organisation sees: its hive, the members, the access keys, the settings.
+  what an organisation sees: its workplace, the members, the access keys, the settings.
 - **The receiver of the server contract.** Discovery and the events endpoint exist; the run
   configuration, which the discovery document does not name yet, is the next endpoint to
   build, behind the same signed request. What the endpoints assume beyond the contract is
@@ -190,8 +190,9 @@ what answers the events URL; **run configuration** is what the runner fetches be
 **security policy** is `SECURITY.md`. An organisation is never a team, a tenant in prose, a
 workspace or an account; a hive is never a team or a project; an access key is never an
 API key or a token; a secret is never a password. The product surface is the one place
-with other words: there an organisation is an **apiary** and a hive is a **hive**, and a
-page, an email or a flash says those and nothing else. Code, schemas, migrations and this
+with other words: a page, an email or a flash says a body's words through Gettext, and the
+software body calls a hive a **workplace** ([docs/lingo.md](docs/lingo.md)). So do the
+guides, which are written in the software body's words. Code, schemas, migrations and this
 file say organisation and hive.
 
 ## Releases

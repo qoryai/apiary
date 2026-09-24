@@ -10,7 +10,8 @@ A receiver of your own that implements the same contract takes the same runners.
 The contract is not in this repository. It is the `contracts/runner/v1` directory of the
 runner's repository: a README that defines every document and header, one JSON schema per
 document, and fixtures, among them signed requests with the status a receiver has to answer.
-This server implements version 1, revision 1.
+This server implements version 1, revision 2, the contract of runner 0.5.0, and serves a
+runner of revision 1 alike.
 
 Where this page and the contract disagree, the contract wins. Two files in the server's
 repository tie the two together:
@@ -27,17 +28,17 @@ and every run configuration is validated against them before it is stored.
 
 ## Who is asking: the access key
 
-Every request names an access key and is signed with that key's secret. The key decides the
-hive: a run is stored in the hive of the key that delivered it, and a run configuration is
-the one of the key's hive. After a rotation either of a key's two secrets verifies, until
-the previous one is retired or the key is revoked.
+Every request names an access key and is signed with that key's secret. The key decides
+the workplace: a run is stored in the workplace of the key that delivered it, and a run
+configuration is the one of the key's workplace. After a rotation either of a key's two
+secrets verifies, until the previous one is retired or the key is revoked.
 
 On every request:
 
 | Header | Value |
 |---|---|
 | `X-Qory-Access-Key` | the key id, `ak_` and 16 lower-case Crockford base32 characters |
-| `X-Qory-Contract-Version` | the revision the runner implements, `1` |
+| `X-Qory-Contract-Version` | the revision the runner implements: `2` from runner 0.5.0, `1` before it |
 | `User-Agent` | `qory-runner/<version>` |
 
 The server records the runner's version and the contract version on the key, which is what
@@ -119,10 +120,11 @@ The URLs are built from the server's `PUBLIC_URL`, never from the request's `Hos
 ([Install and configure](install.md)). A runner's `server.url` is that address, and the
 runner finds the other two endpoints through this document alone.
 
-The `run` section is there only for a hive whose policy somebody has made. A hive nobody has
-given a policy is answered the document without `run`, and its machines run under the policy
-of their own runner file ([The security policy](security-policy.md)). The document is
-therefore one of two, by hive, and so is its digest.
+The `run` section is there only for a workplace whose policy somebody has made. A
+workplace nobody has given a policy is answered the document without `run`, and its
+machines run under the policy of their own runner file ([The security
+policy](security-policy.md)). The document is therefore one of two, by workplace, and so
+is its digest.
 
 ### Events: `POST /v1/events`
 
@@ -135,9 +137,9 @@ this order, and the first refusal that applies is the answer:
 | `401` | any failure of authentication | `{"error":"unauthorized"}` |
 | `415` | the content type is not `application/cloudevents-batch+json` | `{"error":"unsupported_media_type"}` |
 | `429` | the key has delivered more than its rate; `Retry-After` says how many seconds to wait | `{"error":"rate_limited"}` |
-| `400` | `X-Qory-Contract-Version` is sent and is not `1` | `{"error":"unsupported_contract_version","supported":[1]}` |
+| `400` | `X-Qory-Contract-Version` is sent and is not `1` or `2` | `{"error":"unsupported_contract_version","supported":[1,2]}` |
 | `400` | the body is not a batch, or is over a limit | `{"error":"invalid_batch"}` |
-| `410` | the hive has closed the run: the delivery is recorded, no event is stored | empty |
+| `410` | the workplace has closed the run: the delivery is recorded, no event is stored | empty |
 | `503` | the batch could not be stored; nothing of it was | `{"error":"unavailable"}` |
 | `202` | stored | empty |
 
@@ -154,32 +156,34 @@ version does not.
 - **Delivery is at least once.** An event already held, by its `id`, is skipped. A delivery
   id the key has delivered before is answered `202` again and nothing is stored.
 - **Stored first, read later.** The batch is stored in one transaction before the answer.
-  The run is created on the first event of a subject the key's hive has not seen. The events
-  are projected into the run, its connections and its log after the answer, in order of
-  `sequence`, never of arrival.
+  The run is created on the first event of a subject the key's workplace has not seen. The
+  events are projected into the run, its connections and its log after the answer, in
+  order of `sequence`, never of arrival.
 - **The rate** is per access key and per node: 50 batches a second, 100 at once. Every
   request that passed the `413`, the `401` and the `415` spends one, whatever it is answered
   after that.
-- **The digests.** Every `202` and `410` carries `X-Qory-Configuration`, and for a hive with
-  a policy `X-Qory-Run-Configuration`, the digest in force for the run's repository. A
-  runner that holds another digest fetches the document again. That is how a change of the
-  policy reaches a run in flight, and the whole of it: nothing in an answer's body is read.
+- **The digests.** Every `202` and `410` carries `X-Qory-Configuration`, and for a
+  workplace with a policy `X-Qory-Run-Configuration`, the digest in force for the run's
+  repository. A runner that holds another digest fetches the document again. That is how a
+  change of the policy reaches a run in flight, and the whole of it: nothing in an
+  answer's body is read.
 - Neither the signature nor the body is logged, and no batch is answered `500`.
 
 ### The run configuration: `GET /v1/run-configuration`
 
 A signed GET, with the query signed as sent: one parameter per label of the run. A runner of
-the contract's revision 1 sends only `?forge=<label>&repository=<label>`, each parameter only
-when the run has that label; one of revision 2 sends every label. The server reads every
-parameter as a label and the hive's body says which of them name the target: for the
-software body, `forge` and `repository`. A target the hive does not know, or labels that
-name none, get the hive's baseline.
+the contract's revision 2, runner 0.5.0 and later, sends every label of the run, such as
+`?forge=github.com&issue=77&repository=acme%2Fshop`. One of revision 1 sends only
+`?forge=<label>&repository=<label>`, each parameter only when the run has that label. The
+server reads every parameter as a label and reads the repository from two of them, `forge`
+and `repository` (`Apiary.Body.Software`). Any other label names nothing. A repository the
+workplace does not know, or labels that name none, get the workplace's baseline.
 
 | Status | When | Body |
 |---|---|---|
-| `200` | the hive has a policy | the run configuration |
+| `200` | the workplace has a policy | the run configuration |
 | `401` | any failure of authentication | `{"error":"unauthorized"}` |
-| `404` | nobody has made the hive's policy; discovery named no `run` section, so a runner does not ask | `{"error":"not_found"}` |
+| `404` | nobody has made the workplace's policy; discovery named no `run` section, so a runner does not ask | `{"error":"not_found"}` |
 | `429` | the key's rate, the events endpoint's bucket, is spent; with `Retry-After` | `{"error":"rate_limited"}` |
 | `503` | the configuration could not be read | `{"error":"unavailable"}` |
 
@@ -193,12 +197,15 @@ quoted, `X-Qory-Configuration` and `Cache-Control: no-store`:
 {"version":1,"security_policy":{"version":1,"egress":{"mode":"enforce","allow":["api.example"]}}}
 ```
 
-The body is the bytes that were stored when the policy was last changed. Nothing is rendered
-for a request, so the digest is of exactly what is sent. It is the configuration of the key's
-hive for the repository the two labels name; a repository the hive has not seen, one with no
-rules of its own, and a request that names none, or one label of the two, get the hive's
-baseline. The labels are compared to the stored ones byte for byte after the query's
-percent-decoding.
+The body is the bytes that were stored when the policy was last changed. Nothing is
+rendered for a request, so the digest is of exactly what is sent. It is the configuration
+of the key's workplace for the repository the two labels name; a repository the workplace
+has not seen, one with no rules of its own, and a request that names none, or one label of
+the two, get the workplace's baseline. The labels are compared to the stored ones byte for
+byte after the query's percent-decoding. The server does not answer `400` to a query the
+contract's rules for labels refuse, as the reference receiver does: a `forge` or
+`repository` that cannot be a label names no repository, and of a parameter sent twice the
+last is read.
 
 The `security_policy` is the policy: the runner does not merge it with the machine's own.
 When the policy has deny rules its `egress` carries `deny` after `allow`, the hosts the
