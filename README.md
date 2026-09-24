@@ -149,7 +149,7 @@ it puts the proxy and the wall around the session and writes the record. This se
 where the record goes and where the policy comes from. What the two say to each other is
 the [runner contract](https://github.com/qoryai/runner/tree/main/contracts/runner/v1):
 signed requests, a configuration document, an events endpoint and a run configuration. The
-server implements version 1, revision 2, and replays the contract's fixtures in its tests;
+server implements version 1, revision 1, and replays the contract's fixtures in its tests;
 its reading of the contract is in
 [docs/contract-assumptions.md](docs/contract-assumptions.md) and
 [guides/contract.md](guides/contract.md). The command is

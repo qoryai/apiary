@@ -3,8 +3,8 @@ defmodule ApiaryWeb.Contract.RunConfigurationController do
   The run configuration endpoint of the server contract: a signed
   `GET /v1/run-configuration?<label>=<value>&…`, reached only through
   `ApiaryWeb.Contract.SignedRequest`, as discovery is. Every query parameter is one of the
-  run's labels: a runner of the contract's revision 2 sends every label of the run, one of
-  revision 1 only `forge` and `repository`. The hive's body (`Apiary.Body`) says which of
+  run's labels: runner 0.5.0 and later sends every label of the run, an earlier one only
+  `forge` and `repository`. The hive's body (`Apiary.Body`) says which of
   them name the target, so both are read the same way.
 
   The answer is `200`, `application/json`, the bytes as they were stored when the policy

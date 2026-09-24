@@ -33,7 +33,7 @@ defmodule ApiaryWeb.Contract.EventsController do
 
   @content_type "application/cloudevents-batch+json"
   # The revisions of contract v1 this server knows. A later one is accepted.
-  @known [1, 2]
+  @known [1]
 
   def create(conn, _params) do
     access_key = conn.assigns.access_key

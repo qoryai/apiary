@@ -155,7 +155,7 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
     assert mode.(fetch(ctx, "forge=github.example&repository=acme%2Funknown")) == "enforce"
   end
 
-  test "revision 2: every label is a parameter, and the body says which name the target",
+  test "every label is a parameter, and the body says which name the target",
        ctx do
     shop = target_fixture(ctx.scope, "git.example.com", "acme/shop")
     {:ok, _} = Policy.allow(ctx.scope, nil, %{host: "api.example"})

@@ -415,7 +415,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
 
         assert json_response(conn, 400) == %{
                  "error" => "unsupported_contract_version",
-                 "supported" => [1, 2]
+                 "supported" => [1]
                }
       end
 

@@ -149,7 +149,6 @@ groups runs and keeps repository rules by these two. The server compares them to
 stored labels byte for byte, so one repository reached through two remotes that spell it
 differently is two repositories unless the labels are named.
 
-A runner of the contract's revision 2, runner 0.5.0 and later, sends every label of the
-run on the run configuration request; an earlier one sends `forge` and `repository` alone.
+Runner 0.5.0 and later sends every label of the run on the run configuration request; an earlier one sends `forge` and `repository` alone.
 The server reads the repository from these two either way. Any other label names no
 repository.
