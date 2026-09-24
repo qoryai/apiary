@@ -202,7 +202,7 @@ defmodule ApiaryWeb.LayoutsTest do
                "#top-bar #user-menu-button[aria-label='Account menu, #{user.email}']"
              )
 
-      assert has_element?(view, "#user-menu-level", "Not part of an apiary yet")
+      assert has_element?(view, "#user-menu-level", "Not part of an organisation yet")
       assert before?(html, ~s(id="brand-menu-button"), ~s(id="theme-menu-button"))
       assert html =~ ~r{<title[^>]*>\s*No hive yet · Qory Apiary\s*</title>}
     end

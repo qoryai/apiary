@@ -19,7 +19,7 @@ defmodule ApiaryWeb.CoreComponents do
     "apiary" => "organisation",
     "apiaries" => "organisations",
     "hive" => "workplace",
-    "hives" => "teams"
+    "hives" => "workplaces"
   }
 
   ## Brand
@@ -92,8 +92,11 @@ defmodule ApiaryWeb.CoreComponents do
   @doc """
   Renders one of Qory's words with its standard term on hover and focus.
 
-      <.term word="apiary" />     # apiary, with "organisation" as the tip
-      <.term word="Hive" />       # Hive, with "workplace" as the tip
+      <.term word="wall" standard="The enclosure the agent runs in." />
+
+  Not for the tenant or the hive: a page says organisation and hive through Gettext, and
+  the body's catalogue says workplace (`docs/lingo.md`). The `apiary` and `hive` entries
+  serve the pages not converted yet.
   """
   attr :word, :string, required: true
   attr :standard, :string, default: nil, doc: "override the standard term"

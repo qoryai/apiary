@@ -12,6 +12,9 @@ defmodule Apiary.MixProject do
       deps: deps(),
       compilers: [:phoenix_live_view] ++ Mix.compilers(),
       listeners: [Phoenix.CodeReloader],
+      # Catalogues without line numbers and sorted by msgid, so moving code does not
+      # change them and CI can check they are extracted (docs/lingo.md).
+      gettext: [write_reference_line_numbers: false, sort_by_msgid: :case_sensitive],
       name: "Qory Apiary",
       docs: docs()
     ]
@@ -111,6 +114,7 @@ defmodule Apiary.MixProject do
         "compile --warnings-as-errors",
         "deps.unlock --unused",
         "format",
+        "gettext.extract --check-up-to-date",
         "docs --warnings-as-errors",
         "test"
       ]

@@ -1,6 +1,7 @@
 defmodule Apiary.Organisations.Hive do
   @moduledoc "The workplace inside an organisation: the unit of use."
   use Ecto.Schema
+  use Gettext, backend: ApiaryWeb.Gettext
   import Ecto.Changeset
 
   @primary_key {:id, :binary_id, autogenerate: true}
@@ -29,7 +30,7 @@ defmodule Apiary.Organisations.Hive do
     )
     |> unique_constraint([:organisation_id, :name],
       error_key: :name,
-      message: "is already the name of a hive in this organisation"
+      message: dgettext_noop("errors", "is already the name of a hive in this organisation")
     )
   end
 

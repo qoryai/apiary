@@ -13,21 +13,23 @@ defmodule ApiaryWeb.Layouts do
   # and other static content.
   embed_templates "layouts/*"
 
-  # Two sections: the record first, because it is why people open the console.
+  # Two sections: the record first, because it is why people open the console. The words
+  # are marked for extraction here and translated when the sidebar renders (`nav_text/1`).
   @nav [
-    {"Hive", "Main",
+    {gettext_noop("Hive"), gettext_noop("Main"),
      [
-       {:overview, "Overview", "hero-squares-2x2-micro", "/hive"},
-       {:runs, "Runs", "hero-play-circle-micro", "/hive/runs"},
-       {:connections, "Connections", "hero-arrows-right-left-micro", "/hive/connections"},
+       {:overview, gettext_noop("Overview"), "hero-squares-2x2-micro", "/hive"},
+       {:runs, gettext_noop("Runs"), "hero-play-circle-micro", "/hive/runs"},
+       {:connections, gettext_noop("Connections"), "hero-arrows-right-left-micro",
+        "/hive/connections"},
        # After Connections, because the policy is what the connections are judged by.
-       {:policy, "Policy", "hero-shield-check-micro", "/hive/policy"}
+       {:policy, gettext_noop("Policy"), "hero-shield-check-micro", "/hive/policy"}
      ]},
-    {"Manage", "Manage",
+    {gettext_noop("Manage"), gettext_noop("Manage"),
      [
-       {:keys, "Access keys", "hero-key-micro", "/hive/keys"},
-       {:members, "Members", "hero-users-micro", "/hive/members"},
-       {:settings, "Settings", "hero-cog-6-tooth-micro", "/hive/settings"}
+       {:keys, gettext_noop("Access keys"), "hero-key-micro", "/hive/keys"},
+       {:members, gettext_noop("Members"), "hero-users-micro", "/hive/members"},
+       {:settings, gettext_noop("Settings"), "hero-cog-6-tooth-micro", "/hive/settings"}
      ]}
   ]
 
@@ -235,10 +237,9 @@ defmodule ApiaryWeb.Layouts do
 
       <div :for={{section, label, items} <- @nav_items} class="contents">
         <p class="px-4 pb-1 pt-3 text-[11.5px]/4 font-medium text-faint">
-          <.term :if={section == "Hive"} word="Hive" />
-          <span :if={section != "Hive"}>{section}</span>
+          {nav_text(section)}
         </p>
-        <nav class="grid gap-px px-2" aria-label={label}>
+        <nav class="grid gap-px px-2" aria-label={nav_text(label)}>
           <.link
             :for={{key, label, icon, path} <- items}
             id={"nav-#{key}"}
@@ -257,7 +258,7 @@ defmodule ApiaryWeb.Layouts do
                 if(@nav == key, do: "text-accent", else: "text-faint")
               ]}
             />
-            {label}
+            {nav_text(label)}
             <span
               :if={key == :runs && alive_count(@counts) > 0}
               id="nav-runs-alive"
@@ -304,6 +305,8 @@ defmodule ApiaryWeb.Layouts do
       vsn -> List.to_string(vsn)
     end
   end
+
+  defp nav_text(msgid), do: Gettext.gettext(ApiaryWeb.Gettext, msgid)
 
   defp nav_count(%{keys: n}, :keys), do: n
   defp nav_count(%{members: n}, :members), do: n
@@ -360,7 +363,7 @@ defmodule ApiaryWeb.Layouts do
         class="grid w-full cursor-pointer grid-cols-[28px_1fr_auto] items-center gap-2.5 rounded-field border border-line bg-base-100 px-2 py-1.5 text-left shadow-xs transition-colors hover:border-line-strong"
         aria-haspopup="menu"
         aria-expanded="false"
-        aria-label={"Switch apiary, current: #{@organisation.name}"}
+        aria-label={gettext("Switch organisation, current: %{name}", name: @organisation.name)}
         phx-mounted={JS.ignore_attributes(["aria-expanded"])}
       >
         <.apiary_names organisation={@organisation} hive={@hive} />
@@ -372,8 +375,12 @@ defmodule ApiaryWeb.Layouts do
         class="dropdown-content left-0 top-full mt-1.5 w-full"
       >
         <input type="hidden" name="_csrf_token" value={get_csrf_token()} />
-        <ul class="menu menu-sm w-full min-w-0" role="menu" aria-label="Switch apiary">
-          <li class="menu-title" role="presentation">Switch <.term word="apiary" /></li>
+        <ul
+          class="menu menu-sm w-full min-w-0"
+          role="menu"
+          aria-label={gettext("Switch organisation")}
+        >
+          <li class="menu-title" role="presentation">{gettext("Switch organisation")}</li>
           <li :for={m <- @memberships} role="none">
             <button
               type="submit"
@@ -568,9 +575,13 @@ defmodule ApiaryWeb.Layouts do
     """
   end
 
-  defp level_sentence(%{level: :owner}, %{name: name}), do: "Owner of #{name}"
-  defp level_sentence(%{level: :member}, %{name: name}), do: "Member of #{name}"
-  defp level_sentence(_membership, _organisation), do: "Not part of an apiary yet"
+  defp level_sentence(%{level: :owner}, %{name: name}),
+    do: gettext("Owner of %{name}", name: name)
+
+  defp level_sentence(%{level: :member}, %{name: name}),
+    do: gettext("Member of %{name}", name: name)
+
+  defp level_sentence(_membership, _organisation), do: gettext("Not part of an organisation yet")
 
   defp scope_field(nil, _field), do: nil
   defp scope_field(scope, field), do: Map.get(scope, field)
