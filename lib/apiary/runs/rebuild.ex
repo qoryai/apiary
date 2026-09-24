@@ -27,8 +27,8 @@ defmodule Apiary.Runs.Rebuild do
   alias Apiary.Runs.{Connection, Event, Projector, Run}
 
   @default_batch 100
-  @result "ai.qory.session.result"
-  @started "ai.qory.run.started"
+  @result "dev.qory.session.result"
+  @started "dev.qory.run.started"
 
   @doc "Rebuilds the runs that need it (or all); returns `%{rebuilt: n, failed: n}`."
   @spec run(keyword()) :: %{rebuilt: non_neg_integer(), failed: non_neg_integer()}

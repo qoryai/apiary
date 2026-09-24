@@ -45,8 +45,8 @@ defmodule Mix.Tasks.Apiary.Demo do
 
   @batch_size 20
   @source_prefix "urn:qory:run:"
-  @ping "ai.qory.ping"
-  @policy_applied "ai.qory.run.policy_applied"
+  @ping "dev.qory.ping"
+  @policy_applied "dev.qory.run.policy_applied"
 
   @impl Mix.Task
   def run(args) do

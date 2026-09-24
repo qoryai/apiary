@@ -29,15 +29,15 @@ defmodule Apiary.Runs.Fold do
   clock and a runner's clock may be anywhere.
   """
 
-  @ping "ai.qory.ping"
-  @started "ai.qory.run.started"
-  @policy_applied "ai.qory.run.policy_applied"
-  @heartbeat "ai.qory.run.heartbeat"
-  @log "ai.qory.run.log"
-  @resized "ai.qory.run.resized"
-  @egress "ai.qory.run.egress"
-  @exited "ai.qory.run.exited"
-  @result "ai.qory.session.result"
+  @ping "dev.qory.ping"
+  @started "dev.qory.run.started"
+  @policy_applied "dev.qory.run.policy_applied"
+  @heartbeat "dev.qory.run.heartbeat"
+  @log "dev.qory.run.log"
+  @resized "dev.qory.run.resized"
+  @egress "dev.qory.run.egress"
+  @exited "dev.qory.run.exited"
+  @result "dev.qory.session.result"
 
   @runner_version "runner_version"
   @terminal_rank "terminal"
@@ -285,7 +285,7 @@ defmodule Apiary.Runs.Fold do
       do: Decimal.normalize(cost)
   end
 
-  @doc "The run state an `ai.qory.run.exited` with this `state` and `reason` means."
+  @doc "The run state an `dev.qory.run.exited` with this `state` and `reason` means."
   def exit_state("succeeded", _reason), do: "succeeded"
   def exit_state("failed", "timeout"), do: "timed_out"
   def exit_state(_state, _reason), do: "failed"

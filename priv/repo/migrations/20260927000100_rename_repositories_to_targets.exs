@@ -17,6 +17,15 @@ defmodule Apiary.Repo.Migrations.RenameRepositoriesToTargets do
   #
   # One migration, not expand and contract: 0.1.0 has almost no installations, and the
   # release that carries this one says so (decision 0065, amended 2026-09-24).
+  #
+  # The same release reads the runner's events under their new names: the type of every
+  # event is `dev.qory.*` from runner 0.5.1 on, where it was `ai.qory.*`, and the stored
+  # events are renamed with it, so the record, the projector and retention find them by
+  # the one name. `events.type` is the only column that holds one. The rewrite is one
+  # set-based UPDATE of the rows that carry the old prefix (8 bytes; the new one is 9):
+  # it takes the table's row lock, which leaves reads alone, and writes a new version of
+  # each row it changes, every index with it, so the table holds both until vacuum. On
+  # boot it runs before the endpoint takes a delivery, and 0.1.0's events are few.
 
   @tables_with_a_target ~w(runs policy_rules policy_changes run_configurations)
 
@@ -61,9 +70,13 @@ defmodule Apiary.Repo.Migrations.RenameRepositoriesToTargets do
         do: execute("ALTER TABLE #{table} RENAME CONSTRAINT #{old} TO #{new}")
 
     not_null_names("targets", "repositories", "targets")
+
+    execute(event_types_sql("ai.qory.", "dev.qory."))
   end
 
   def down do
+    execute(event_types_sql("dev.qory.", "ai.qory."))
+
     for {table, old, new} <- @constraints,
         do: execute("ALTER TABLE #{table} RENAME CONSTRAINT #{new} TO #{old}")
 
@@ -80,6 +93,17 @@ defmodule Apiary.Repo.Migrations.RenameRepositoriesToTargets do
     rename table(:targets), to: table(:repositories)
 
     not_null_names("repositories", "targets", "repositories")
+  end
+
+  @doc """
+  The statement that renames every stored event type beginning `from` to begin `to`
+  instead: `ai.qory.` to `dev.qory.` up, back down. Neither prefix holds a `%` or `_`.
+  """
+  def event_types_sql(from, to) do
+    """
+    UPDATE events SET type = '#{to}' || substr(type, #{String.length(from) + 1})
+    WHERE type LIKE '#{from}%'
+    """
   end
 
   # Postgres 18 names each NOT NULL constraint `<table>_<column>_not_null` and keeps the

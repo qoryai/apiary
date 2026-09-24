@@ -15,7 +15,7 @@ defmodule ApiaryWeb.RunLogController do
   A run on a pseudo-terminal whose record says its size is answered at that size: the
   bytes of one answer were all written to a terminal of `x-qory-log-size`, `<cols>x<rows>`,
   the size in force right after `after`. An answer stops short of the next
-  `ai.qory.run.resized`, and once every chunk before it is sent `x-qory-log-through` is
+  `dev.qory.run.resized`, and once every chunk before it is sent `x-qory-log-through` is
   the resize's own sequence, so the reader's next question is answered at the new size.
   No header on a run on pipes, on one recorded before the runner reported its size, on a
   single stream of pipes and on a download, which is every chunk whatever the size.

@@ -32,8 +32,8 @@ defmodule Apiary.Runs.Ingest do
   alias Apiary.Runs.{Batch, Delivery, Event, Projector, Run}
 
   @digest ~r/\Asha256=[0-9a-f]{64}\z/
-  @heartbeat "ai.qory.run.heartbeat"
-  @log "ai.qory.run.log"
+  @heartbeat "dev.qory.run.heartbeat"
+  @log "dev.qory.run.log"
   @insert_chunk 500
 
   @typedoc """

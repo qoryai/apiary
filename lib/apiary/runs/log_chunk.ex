@@ -1,6 +1,6 @@
 defmodule Apiary.Runs.LogChunk do
   @moduledoc """
-  The decoded bytes of one `ai.qory.run.log` event, keyed by the event's
+  The decoded bytes of one `dev.qory.run.log` event, keyed by the event's
   sequence. A projection: rebuilt from `events`.
   """
   use Ecto.Schema

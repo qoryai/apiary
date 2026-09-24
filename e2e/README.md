@@ -52,8 +52,8 @@ answers.
    `Apiary.Runs.fetch_connection/2`, then `Apiary.Policy.rule_from_connection/4` with
    `:allow` and the level, `:target` unless `E2E_LEVEL=hive`. The clock starts before
    the first of them.
-5. Polls the run's stored events, every 50 ms, for a second `ai.qory.run.policy_applied`
-   whose `run_configuration` is the new digest, then for an `ai.qory.run.egress` to the
+5. Polls the run's stored events, every 50 ms, for a second `dev.qory.run.policy_applied`
+   whose `run_configuration` is the new digest, then for an `dev.qory.run.egress` to the
    host after it in sequence with `decision: allowed` and `outcome: connected`.
 6. Waits for the session to leave and for the exit to be projected.
 
@@ -63,7 +63,7 @@ answers.
   the host;
 - an allowed, connected egress event to the host, later in sequence;
 - the time from the allow to that event being stored here, under `E2E_BUDGET_SECONDS` (35);
-- the run was behind the docker wall (`wall` of `ai.qory.run.started`), and the session
+- the run was behind the docker wall (`wall` of `dev.qory.run.started`), and the session
   found no way around the proxy;
 - no connection to the host was denied after the reload;
 - the session left with 0, and the run ends on the digest in force with no drift

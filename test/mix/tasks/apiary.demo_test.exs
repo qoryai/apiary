@@ -33,7 +33,7 @@ defmodule Mix.Tasks.Apiary.DemoTest do
   # session's events, in the order the lanes first appear.
   defp lanes(events) do
     events
-    |> Enum.filter(&String.starts_with?(&1.type, "ai.qory.session."))
+    |> Enum.filter(&String.starts_with?(&1.type, "dev.qory.session."))
     |> Enum.map(&{&1.data["agent_id"], &1.data["agent_type"]})
     |> Enum.uniq()
   end
@@ -102,7 +102,7 @@ defmodule Mix.Tasks.Apiary.DemoTest do
       for host <- ["registry.example", "metrics.example"] do
         index = Enum.find_index(events, &(&1.data["host"] == host))
 
-        assert %{type: "ai.qory.session.tool_started", data: %{"tool" => "Bash"} = data} =
+        assert %{type: "dev.qory.session.tool_started", data: %{"tool" => "Bash"} = data} =
                  Enum.at(events, index - 1)
 
         assert data["input"]["command"] =~ host
@@ -137,7 +137,7 @@ defmodule Mix.Tasks.Apiary.DemoTest do
       assert is_nil(run.exited_at)
       assert run.heartbeat_interval_seconds == 600
 
-      assert %Event{type: "ai.qory.run.heartbeat", time: time} = List.last(events(run))
+      assert %Event{type: "dev.qory.run.heartbeat", time: time} = List.last(events(run))
       assert DateTime.diff(now, time, :millisecond) in 0..1
 
       # Not lost for as long as a run whose heartbeats stop is not.
@@ -201,7 +201,7 @@ defmodule Mix.Tasks.Apiary.DemoTest do
       File.write!(path, "")
       assert {:error, :empty} = Demo.replay(access_key, path)
 
-      File.write!(path, ~s({"type":"ai.qory.ping","time":"2026-09-18T09:00:00.000Z"}\n))
+      File.write!(path, ~s({"type":"dev.qory.ping","time":"2026-09-18T09:00:00.000Z"}\n))
       assert {:error, :not_a_batch} = Demo.replay(access_key, path)
 
       assert {:error, :enoent} = Demo.replay(access_key, path <> ".none")

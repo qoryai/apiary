@@ -2,7 +2,7 @@ defmodule Apiary.Policy.Suggestions do
   @moduledoc """
   The hosts a target's harness declared and its policy neither covers nor denies (S5).
 
-  A run's `ai.qory.run.policy_applied` events report `harness_hosts`, the hosts the
+  A run's `dev.qory.run.policy_applied` events report `harness_hosts`, the hosts the
   harness's modules declared; they decide nothing. Read here from the target's newest
   runs, bounded at every step: the events are a runner's, so a host that is not in the
   contract's grammar is left out and nothing becomes an atom.
@@ -21,7 +21,7 @@ defmodule Apiary.Policy.Suggestions do
   alias Apiary.Repo
   alias Apiary.Runs.{Connection, Event, Target, Run}
 
-  @policy_applied "ai.qory.run.policy_applied"
+  @policy_applied "dev.qory.run.policy_applied"
   @runs 20
   @events 100
   @hosts_per_event 200

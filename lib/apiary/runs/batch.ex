@@ -3,7 +3,7 @@ defmodule Apiary.Runs.Batch do
   A delivery's body read as a batch: a non-empty JSON array of events of one run.
 
   Only the envelope is checked, what the receiver needs to key, order and store
-  an event: `id` and `subject` (UUIDs), `type` (in the `ai.qory.` namespace),
+  an event: `id` and `subject` (UUIDs), `type` (in the `dev.qory.` namespace),
   `sequence` (ten digits, from `0000000001`), `source` (`urn:qory:run:<subject>`),
   `time` (RFC 3339, from 1970 to 9999) and `data` (an object). A type this
   release does not know is kept; `data` is not validated against its type's
@@ -26,7 +26,7 @@ defmodule Apiary.Runs.Batch do
 
   @uuid ~r/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/
   @sequence ~r/\A[0-9]{10}\z/
-  @type_prefix "ai.qory."
+  @type_prefix "dev.qory."
   @source_prefix "urn:qory:run:"
   @max_events 1000
   @max_depth 64

@@ -506,7 +506,7 @@ defmodule Apiary.Runs.ProjectorTest do
             run_id: run.id,
             sequence: sequence,
             event_id: Ecto.UUID.generate(),
-            type: "ai.qory.session.started",
+            type: "dev.qory.session.started",
             time: now,
             data: %{},
             received_at: now

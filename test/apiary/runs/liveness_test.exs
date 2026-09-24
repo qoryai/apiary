@@ -182,7 +182,7 @@ defmodule Apiary.Runs.LivenessTest do
             run_id: run.id,
             sequence: 1,
             event_id: Ecto.UUID.generate(),
-            type: "ai.qory.session.started",
+            type: "dev.qory.session.started",
             time: now,
             data: %{},
             received_at: DateTime.add(now, -(20 + n), :second)

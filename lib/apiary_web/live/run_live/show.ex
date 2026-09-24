@@ -2052,11 +2052,11 @@ defmodule ApiaryWeb.RunLive.Show do
 
       rows ->
         types = MapSet.new(rows, & &1.type)
-        egress? = "ai.qory.run.egress" in types
+        egress? = "dev.qory.run.egress" in types
 
         socket
         |> then(
-          &if("ai.qory.run.policy_applied" in types,
+          &if("dev.qory.run.policy_applied" in types,
             do: &1 |> assign(policy: Record.policy(scope, run)) |> announce_reload() |> reline(),
             else: &1
           )
@@ -2122,14 +2122,14 @@ defmodule ApiaryWeb.RunLive.Show do
   end
 
   defp flush_tab(socket, :connections, _old, types, _range) do
-    if "ai.qory.run.egress" in types,
+    if "dev.qory.run.egress" in types,
       do:
         read_tab(socket, :connections, socket.assigns.decision, socket.assigns.connections.page),
       else: socket
   end
 
   defp flush_tab(socket, :details, _old, types, _range) do
-    if "ai.qory.session.started" in types,
+    if "dev.qory.session.started" in types,
       do: read_tab(socket, :details, nil, 1),
       else: socket
   end

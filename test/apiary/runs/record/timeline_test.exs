@@ -9,7 +9,7 @@ defmodule Apiary.Runs.Record.TimelineTest do
 
   # A full event; the light form the index reads is made from it the way the query does.
   defp event(sequence, type, data \\ %{}) do
-    %{sequence: sequence, type: "ai.qory." <> type, time: at(sequence), data: data}
+    %{sequence: sequence, type: "dev.qory." <> type, time: at(sequence), data: data}
   end
 
   defp light(events) do
@@ -86,7 +86,7 @@ defmodule Apiary.Runs.Record.TimelineTest do
         ])
 
       assert Enum.map(index.items, &{&1.seq, &1.kind}) == [{2, :run_started}, {6, :prompt}]
-      assert Timeline.kind("ai.qory.run.resized") == nil
+      assert Timeline.kind("dev.qory.run.resized") == nil
       assert index.session_items == 1
       assert index.hook_events == 1
     end

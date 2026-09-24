@@ -31,7 +31,7 @@ defmodule Apiary.Runs.Record.Timeline do
 
   use Gettext, backend: ApiaryWeb.Gettext
 
-  @prefix "ai.qory."
+  @prefix "dev.qory."
 
   @kinds %{
     "run.started" => :run_started,
@@ -86,7 +86,7 @@ defmodule Apiary.Runs.Record.Timeline do
   @doc "How many hosts of a policy applied event's allow list, and of its deny list, are read, at most."
   def max_allow, do: @max_allow
 
-  @doc "The event types the index needs, with the `ai.qory.` prefix."
+  @doc "The event types the index needs, with the `dev.qory.` prefix."
   def types, do: Enum.map(Map.keys(@kinds), &(@prefix <> &1))
 
   @doc "The kind of item an event type makes, or nil when it makes none."

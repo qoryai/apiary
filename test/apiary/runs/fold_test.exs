@@ -47,7 +47,7 @@ defmodule Apiary.Runs.FoldTest do
 
     %{
       sequence: sequence,
-      type: "ai.qory." <> type,
+      type: "dev.qory." <> type,
       data: data,
       time: at(seconds),
       received_at: at(seconds + 100)
@@ -119,7 +119,7 @@ defmodule Apiary.Runs.FoldTest do
     )
   end
 
-  describe "ai.qory.ping" do
+  describe "dev.qory.ping" do
     test "records the versions and leaves the run pending" do
       data = %{"runner_version" => "v0.4.0", "contract_version" => 1, "events" => []}
       %{run: run} = Fold.fold(@run, [event(1, "ping", data)])
@@ -157,7 +157,7 @@ defmodule Apiary.Runs.FoldTest do
     end
   end
 
-  describe "ai.qory.run.started" do
+  describe "dev.qory.run.started" do
     test "fills the header, the labels and what is read from them, and the run is running" do
       %{run: run} = Fold.fold(@run, [started(2)])
 
@@ -187,7 +187,7 @@ defmodule Apiary.Runs.FoldTest do
 
     test "arriving after the exit, it fills the header and leaves the state" do
       %{run: run} = Fold.fold(@run, [exited(9, %{"state" => "succeeded"})])
-      %{run: run} = Fold.fold(run, [started(2)], %{"ai.qory.run.exited" => 9})
+      %{run: run} = Fold.fold(run, [started(2)], %{"dev.qory.run.exited" => 9})
 
       assert run.state == "succeeded"
       assert run.runtime == "claude"
@@ -225,7 +225,7 @@ defmodule Apiary.Runs.FoldTest do
     end
   end
 
-  describe "ai.qory.run.resized" do
+  describe "dev.qory.run.resized" do
     test "moves the run to the new size, the later by sequence deciding in any order" do
       events = [started(2, pty(120, 40)), resized(6, 100, 30), resized(9, 80, 24)]
 
@@ -264,13 +264,13 @@ defmodule Apiary.Runs.FoldTest do
     end
 
     test "its ranks are the terminal's, shared with the start" do
-      assert Fold.ranks("ai.qory.run.resized") == ["terminal"]
-      assert "terminal" in Fold.ranks("ai.qory.run.started")
-      assert Fold.rank_types("terminal") == ["ai.qory.run.started", "ai.qory.run.resized"]
+      assert Fold.ranks("dev.qory.run.resized") == ["terminal"]
+      assert "terminal" in Fold.ranks("dev.qory.run.started")
+      assert Fold.rank_types("terminal") == ["dev.qory.run.started", "dev.qory.run.resized"]
     end
   end
 
-  describe "ai.qory.run.policy_applied" do
+  describe "dev.qory.run.policy_applied" do
     @digest String.duplicate("ab", 32)
 
     test "keeps both digests" do
@@ -292,7 +292,7 @@ defmodule Apiary.Runs.FoldTest do
     end
   end
 
-  describe "ai.qory.run.heartbeat" do
+  describe "dev.qory.run.heartbeat" do
     test "records the beat at the time this server received it" do
       %{run: run} = Fold.fold(%{@run | state: "running"}, [heartbeat(5, 30)])
 
@@ -337,7 +337,7 @@ defmodule Apiary.Runs.FoldTest do
 
     test "a lost run that beats again is running again" do
       lost = %{@run | state: "lost", lost_at: at(100), last_heartbeat_at: at(10)}
-      %{run: run} = Fold.fold(lost, [heartbeat(7, 120)], %{"ai.qory.run.heartbeat" => 4})
+      %{run: run} = Fold.fold(lost, [heartbeat(7, 120)], %{"dev.qory.run.heartbeat" => 4})
 
       assert run.state == "running"
       assert run.lost_at == nil
@@ -345,7 +345,7 @@ defmodule Apiary.Runs.FoldTest do
 
     test "an earlier beat arriving late does not revive a lost run" do
       lost = %{@run | state: "lost", lost_at: at(100), last_heartbeat_at: at(10)}
-      %{run: run} = Fold.fold(lost, [heartbeat(3, 5)], %{"ai.qory.run.heartbeat" => 4})
+      %{run: run} = Fold.fold(lost, [heartbeat(3, 5)], %{"dev.qory.run.heartbeat" => 4})
 
       assert run.state == "lost"
       assert run.lost_at == at(100)
@@ -360,7 +360,7 @@ defmodule Apiary.Runs.FoldTest do
     end
   end
 
-  describe "ai.qory.run.log" do
+  describe "dev.qory.run.log" do
     test "decodes the bytes, in sequence order" do
       events = [
         event(7, "run.log", %{"stream" => "stderr", "bytes" => Base.encode64("two\n")}),
@@ -386,7 +386,7 @@ defmodule Apiary.Runs.FoldTest do
     end
   end
 
-  describe "ai.qory.run.egress" do
+  describe "dev.qory.run.egress" do
     test "one delta per host, port and path, counting every attempt once" do
       events = [
         egress(6, %{}),
@@ -474,7 +474,7 @@ defmodule Apiary.Runs.FoldTest do
     end
   end
 
-  describe "ai.qory.run.exited" do
+  describe "dev.qory.run.exited" do
     test "maps the contract's states onto the run's" do
       for {data, state} <- [
             {%{"state" => "succeeded"}, "succeeded"},
@@ -533,7 +533,7 @@ defmodule Apiary.Runs.FoldTest do
     end
   end
 
-  describe "ai.qory.session.result" do
+  describe "dev.qory.session.result" do
     test "adds the cost the session reported to the run's, once per result" do
       events = [
         event(4, "session.result", %{"outcome" => "success", "cost_usd" => 0.8412}),

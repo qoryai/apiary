@@ -48,7 +48,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
       assert run.last_event_at
       assert run.contract_version == 1
 
-      assert [%Event{sequence: 1, type: "ai.qory.ping"}, %Event{sequence: 2} = started] =
+      assert [%Event{sequence: 1, type: "dev.qory.ping"}, %Event{sequence: 2} = started] =
                events(run)
 
       # Stored as received.
@@ -202,7 +202,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
       event = wire_event(subject, 1, "session.something_new", %{"anything" => [1, %{"a" => nil}]})
       assert build_conn() |> signed_post(key.key_id, secret, [event]) |> response(202)
 
-      assert [%Event{type: "ai.qory.session.something_new", data: data}] =
+      assert [%Event{type: "dev.qory.session.something_new", data: data}] =
                scope |> run!(subject) |> events()
 
       assert data == %{"anything" => [1, %{"a" => nil}]}
@@ -328,7 +328,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
         assert build_conn() |> signed_post(key.key_id, secret, [usurper]) |> response(202)
       end)
 
-      assert [%Event{type: "ai.qory.ping"}] = scope |> run!(subject) |> events()
+      assert [%Event{type: "dev.qory.ping"}] = scope |> run!(subject) |> events()
     end
   end
 
@@ -440,7 +440,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
         Jason.encode!([%{good | "id" => String.upcase(good["id"])}]),
         Jason.encode!([%{good | "subject" => "not-a-uuid"}]),
         Jason.encode!([%{good | "type" => "com.example.other"}]),
-        Jason.encode!([%{good | "type" => "ai.qory.a\u0000b"}]),
+        Jason.encode!([%{good | "type" => "dev.qory.a\u0000b"}]),
         Jason.encode!([%{good | "sequence" => "1"}]),
         Jason.encode!([%{good | "sequence" => 1}]),
         # The contract numbers from 0000000001.

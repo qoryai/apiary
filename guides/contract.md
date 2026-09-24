@@ -10,8 +10,10 @@ A receiver of your own that implements the same contract takes the same runners.
 The contract is not in this repository. It is the `contracts/runner/v1` directory of the
 runner's repository: a README that defines every document and header, one JSON schema per
 document, and fixtures, among them signed requests with the status a receiver has to answer.
-This server implements version 1, revision 1, as runner 0.5.0 amended it, and serves an
-earlier runner alike.
+This server implements version 1, revision 1, as runner 0.5.1 amended it. A runner before
+0.5.1 names its events `ai.qory.*` where the contract now names them `dev.qory.*`: every
+batch it sends, the ping among them, is answered `400`, so its runs do not start until the
+runner is updated.
 
 Where this page and the contract disagree, the contract wins. Two files in the server's
 repository tie the two together:
@@ -149,7 +151,7 @@ any other: a `202` lets the run start, and a revoked key, a bad signature or an 
 version does not.
 
 - **The envelope is checked, the data is not.** Each event has `id` and `subject` (lower-case
-  UUIDs), `type` (beginning `ai.qory.`), `sequence` (ten digits, from `0000000001`),
+  UUIDs), `type` (beginning `dev.qory.`), `sequence` (ten digits, from `0000000001`),
   `source`, `time` (RFC 3339) and `data` (an object), all of one subject. A batch holds at
   most 1000 events; a runner cuts one at a hundred. A type this release does not know is
   stored like any other, so a newer runner's events are kept until a release reads them.

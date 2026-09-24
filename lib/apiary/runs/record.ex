@@ -25,11 +25,11 @@ defmodule Apiary.Runs.Record do
   alias Apiary.Runs.{Connection, Event, LogChunk, Run}
   alias Apiary.Runs.Record.Timeline
 
-  @policy_applied "ai.qory.run.policy_applied"
-  @session_started "ai.qory.session.started"
-  @started "ai.qory.run.started"
-  @resized "ai.qory.run.resized"
-  @list_types ["ai.qory.session.turn_finished", "ai.qory.session.subagent_finished"]
+  @policy_applied "dev.qory.run.policy_applied"
+  @session_started "dev.qory.session.started"
+  @started "dev.qory.run.started"
+  @resized "dev.qory.run.resized"
+  @list_types ["dev.qory.session.turn_finished", "dev.qory.session.subagent_finished"]
 
   @log_page 200
   @default_log_limit 2_000
@@ -326,7 +326,7 @@ defmodule Apiary.Runs.Record do
     (x.i -> 'run_in_background' = 'true'::jsonb) IS TRUE AS in_background,
     #{Enum.map_join(~w(allow deny), ",\n  ", fn list -> """
     CASE WHEN jsonb_typeof(e.data -> '#{list}') = 'array' THEN jsonb_array_length(e.data -> '#{list}') ELSE 0 END AS #{list}_count,
-    CASE WHEN e.type = 'ai.qory.run.policy_applied' THEN
+    CASE WHEN e.type = 'dev.qory.run.policy_applied' THEN
       (SELECT coalesce(jsonb_agg(left(v #>> '{}', 255)), '[]'::jsonb)
          FROM (SELECT v FROM jsonb_array_elements(CASE WHEN jsonb_typeof(e.data -> '#{list}') = 'array' THEN e.data -> '#{list}' ELSE '[]'::jsonb END) WITH ORDINALITY a(v, n)
                WHERE jsonb_typeof(v) = 'string' ORDER BY n LIMIT #{Timeline.max_allow()}) q) END AS #{list}\
@@ -347,8 +347,8 @@ defmodule Apiary.Runs.Record do
            WHEN jsonb_typeof(x.r #> '{file,content}') = 'string' THEN x.r #>> '{file,content}' END AS plain,
       CASE WHEN jsonb_typeof(x.r -> 'stdout') = 'string' THEN x.r ->> 'stdout' END AS out,
       CASE WHEN jsonb_typeof(x.r -> 'stderr') = 'string' THEN x.r ->> 'stderr' END AS err,
-      CASE e.type WHEN 'ai.qory.session.prompt_submitted' THEN e.data -> 'prompt'
-                  WHEN 'ai.qory.session.result' THEN e.data -> 'result'
+      CASE e.type WHEN 'dev.qory.session.prompt_submitted' THEN e.data -> 'prompt'
+                  WHEN 'dev.qory.session.result' THEN e.data -> 'result'
                   ELSE e.data -> 'message' END AS body) w
   CROSS JOIN LATERAL (SELECT
       CASE WHEN jsonb_typeof(w.body) = 'string' THEN w.body #>> '{}' END AS text,
@@ -587,8 +587,8 @@ defmodule Apiary.Runs.Record do
 
   @doc """
   The size of the terminal the chunks right after `after_sequence` were written to:
-  `{cols, rows}`, the last `ai.qory.run.resized` at or below it, else `terminal` of
-  `ai.qory.run.started`; nil when the record says none, a run on pipes or one recorded
+  `{cols, rows}`, the last `dev.qory.run.resized` at or below it, else `terminal` of
+  `dev.qory.run.started`; nil when the record says none, a run on pipes or one recorded
   before the runner reported the size. A size is read like the fold reads it.
   """
   def terminal_size(%Scope{} = scope, %Run{} = run, after_sequence) do
@@ -615,7 +615,7 @@ defmodule Apiary.Runs.Record do
   end
 
   @doc """
-  The first `ai.qory.run.resized` after `after_sequence` that is a size, `%{sequence,
+  The first `dev.qory.run.resized` after `after_sequence` that is a size, `%{sequence,
   cols, rows}`, or nil: where a read of the log has to stop, since the chunks after it
   were written to a terminal of another size.
   """

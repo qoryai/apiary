@@ -12,7 +12,7 @@ defmodule Apiary.Retention do
   event of it before the cut-off, by this server's clock alone (`runs.last_event_at`, or
   `inserted_at` for a run that never sent one).
 
-    * Past the log cut-off, the run's `log_chunks` and its `ai.qory.run.log` events are
+    * Past the log cut-off, the run's `log_chunks` and its `dev.qory.run.log` events are
       deleted and `runs.log_pruned_at` is set. The timeline stays whole.
     * Past the events cut-off, all the run's `events`, its `log_chunks` and its
       `deliveries` are deleted and `runs.events_pruned_at` (and `log_pruned_at`) is set.
@@ -54,7 +54,7 @@ defmodule Apiary.Retention do
   alias Apiary.Retention.RetentionRun
   alias Apiary.Runs.{Delivery, Event, LogChunk, Projector, Run}
 
-  @log_type "ai.qory.run.log"
+  @log_type "dev.qory.run.log"
   @default_batch 2_000
   @default_max_runs 10_000
   @runs_page 100

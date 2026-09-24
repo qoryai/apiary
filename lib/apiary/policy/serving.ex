@@ -36,7 +36,7 @@ defmodule Apiary.Policy.Serving do
   alias Apiary.Runs.{Batch, Run, Target}
 
   @digest ~r/\Asha256=[0-9a-f]{64}\z/
-  @started "ai.qory.run.started"
+  @started "dev.qory.run.started"
 
   @doc """
   The run configuration in force for the key's hive and the target a run's `labels` name,

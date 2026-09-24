@@ -72,7 +72,7 @@ defmodule Apiary.Runs.SchemaTest do
       run_id: run.id,
       sequence: 1,
       event_id: Ecto.UUID.generate(),
-      type: "ai.qory.ping",
+      type: "dev.qory.ping",
       time: DateTime.utc_now(),
       received_at: DateTime.utc_now(),
       data: %{}
@@ -104,7 +104,7 @@ defmodule Apiary.Runs.SchemaTest do
         run_id: run.id,
         sequence: 1,
         event_id: Ecto.UUID.generate(),
-        type: "ai.qory.ping",
+        type: "dev.qory.ping",
         time: DateTime.utc_now(),
         received_at: DateTime.utc_now()
       })

@@ -22,8 +22,8 @@ defmodule E2E do
   alias Apiary.Runs
   alias Apiary.Runs.{Connection, Event, Run}
 
-  @policy_applied "ai.qory.run.policy_applied"
-  @egress "ai.qory.run.egress"
+  @policy_applied "dev.qory.run.policy_applied"
+  @egress "dev.qory.run.egress"
   @poll_ms 50
 
   def main do

@@ -109,14 +109,16 @@ hive without a policy of its own is never answered the second. No other status c
 run start, and a revoked key, a bad signature or an unsupported version does not.
 
 A batch is a non-empty JSON array of at most 1000 objects (a runner cuts a batch at a
-hundred), each with `id` and `subject` (lowercase UUIDs), `type` (beginning `ai.qory.`),
+hundred), each with `id` and `subject` (lowercase UUIDs), `type` (beginning `dev.qory.`),
 `sequence` (ten digits, from `0000000001`: `0000000000` is no sequence), `source`
 (`urn:qory:run:` and the subject), `time` (RFC 3339, in the years 1970 to 9999) and `data`
 (an object, nested no deeper than 64 levels), all of one subject. The limits are what the
 tables hold: what passes them is stored, and no batch is answered `500`. Only this envelope is
 checked: `data` is not validated against the schema of its type, and a type this release does
 not know is stored like any other, so a newer runner's events are kept until a release reads
-them.
+them. A type outside `dev.qory.` fails the envelope: a runner before 0.5.1 names its events
+`ai.qory.*`, and every batch of it, the ping among them, is answered `400 invalid_batch`.
+The events 0.1.0 stored under the old names are renamed by migration 20260927000100.
 
 What is stored, in one transaction, before the answer:
 
@@ -131,7 +133,7 @@ What is stored, in one transaction, before the answer:
   more of a run whose events it pruned, and says so the way it does for a closed run: `410`,
   the delivery recorded, no event stored. A run that lost only its log output (the log's
   days are shorter than the events') still takes events, deduplicated against the ones it
-  keeps, but no `ai.qory.run.log` event: its log events are gone, so a replayed one could
+  keeps, but no `dev.qory.run.log` event: its log events are gone, so a replayed one could
   not be recognised, and one that is new would be older than the hive keeps log output.
   Such events are answered like duplicates, within a `202`. Neither case arises for a run
   that is alive: retention only prunes a run that has ended or gone silent for days;
@@ -206,7 +208,7 @@ at most 100 paths.
 
 ## The log and the terminal
 
-`ai.qory.run.log` is stored like any event and its bytes, decoded, are the run's
+`dev.qory.run.log` is stored like any event and its bytes, decoded, are the run's
 `log_chunks`, one row a chunk, keyed by the event's sequence; `output.log` is their
 concatenation in sequence order, which is what the log endpoint of the console streams. How
 the runner cuts the chunks is its own affair and the apiary reads nothing into a boundary:
@@ -215,8 +217,8 @@ pseudo-terminal it is one redraw, 4096 bytes or a quiet gap of 50 ms after the r
 last write, never inside a character. The terminal of the run page hands the bytes to
 xterm.js as bytes, so a character cut in two is still one character.
 
-The size of the pseudo-terminal is in the record: `terminal` of `ai.qory.run.started`
-(`cols`, `rows`, present exactly when `interactive` is true) and one `ai.qory.run.resized`
+The size of the pseudo-terminal is in the record: `terminal` of `dev.qory.run.started`
+(`cols`, `rows`, present exactly when `interactive` is true) and one `dev.qory.run.resized`
 per change, at the sequence where the new size took effect, so the chunks before it were
 written to the old size and the chunks after it to the new. The projection keeps the size
 the record last said, `runs.terminal_cols` and `runs.terminal_rows`, the later of the start
@@ -340,9 +342,9 @@ The contract has not fixed these; Apiary chose, and the runner should match:
   its repository's configuration a moment ago is not answered the baseline's digest and sent
   to fetch again. A runner told a digest it does not hold fetches once and remembers the
   answer it tried, so the worst case is one fetch that changes nothing.
-- The `cost_usd` of `ai.qory.session.result` is the runtime's own total for the session:
+- The `cost_usd` of `dev.qory.session.result` is the runtime's own total for the session:
   what Claude Code prints as `total_cost_usd` in its result line, which counts the tokens of
-  the subagents the session ran as well as its own. `ai.qory.session.subagent_finished`
+  the subagents the session ran as well as its own. `dev.qory.session.subagent_finished`
   carries no cost. So the apiary folds a run's cost as the sum of `cost_usd` over the run's
   result events, once each (`runs.cost_usd`), and never adds anything for a subagent: a
   result whose cost already includes its subagents is counted once, and a second result in
