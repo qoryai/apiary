@@ -1,7 +1,7 @@
 defmodule Apiary.Policy.Rule do
   @moduledoc """
-  One rule of the security policy: of the hive's baseline when `repository_id` is nil, of
-  a repository otherwise.
+  One rule of the security policy: of the hive's baseline when `target_id` is nil, of
+  a target otherwise.
 
   A `host` rule allows a host (the contract's grammar: a lower-case name or a `*.` suffix)
   on every path (`paths` nil) or on the paths listed (an empty list is no path at all), or
@@ -11,7 +11,7 @@ defmodule Apiary.Policy.Rule do
 
   A deny is written to the document's `egress.deny`, which a runner decides first and in
   either mode, and takes the allow entries it covers out of what is rendered. Only a rule
-  of the hive can be `locked`, which holds it against every repository.
+  of the hive can be `locked`, which holds it against every target.
   """
   use Ecto.Schema
 
@@ -37,7 +37,7 @@ defmodule Apiary.Policy.Rule do
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :hive, Apiary.Organisations.Hive
-    belongs_to :repository, Apiary.Runs.Repository
+    belongs_to :target, Apiary.Runs.Target
     belongs_to :created_by, Apiary.Accounts.User
 
     timestamps(type: :utc_datetime_usec)

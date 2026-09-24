@@ -3,7 +3,7 @@ defmodule Mix.Tasks.Apiary.Policy.Rerender do
 
   @moduledoc """
   Renders the run configurations of every managed hive again, the baseline and every
-  repository with rules or a mode of its own, through today's resolution and in the
+  target with rules or a mode of its own, through today's resolution and in the
   hive's lock: what an upgrade that changed what a render says needs once. A holder
   whose bytes change gets a new version and a `rerendered` row in its history, no change
   of the rules; unchanged bytes write nothing, so the task can be run again at any time.

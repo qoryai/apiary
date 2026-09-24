@@ -320,7 +320,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
   end
 
   describe "the glances (od7 to od9)" do
-    test "policy: a new hive, then a managed one with a version, repositories and things to review",
+    test "policy: a new hive, then a managed one with a version, targets and things to review",
          %{conn: conn, scope: scope} do
       run = started_run(scope, shop())
       view = open(conn)
@@ -349,8 +349,8 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
       assert has_element?(view, "#overview-policy-review a.badge", "2 to review")
       assert text(view, "#overview-policy-review") =~ "in 1 repository"
 
-      repository = Repo.get!(Apiary.Runs.Repository, run.repository_id)
-      {:ok, _} = Policy.set_mode(scope, repository, "observe")
+      target = Repo.get!(Apiary.Runs.Target, run.target_id)
+      {:ok, _} = Policy.set_mode(scope, target, "observe")
       render_async(view, 5_000)
 
       assert text(view, "#overview-policy-mode") =~
@@ -662,10 +662,10 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
 
       view |> element("#rule-popover form") |> render_submit()
 
-      repository = Repo.get!(Apiary.Runs.Repository, run.repository_id)
+      target = Repo.get!(Apiary.Runs.Target, run.target_id)
 
       assert [%{host: "files.cdn.example", action: "allow"}] =
-               Policy.list_rules(scope, repository)
+               Policy.list_rules(scope, target)
 
       refute has_element?(view, "#rule-popover")
       assert has_element?(view, "##{item}.q-resolved .q-mark-ok")
@@ -675,7 +675,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
                "files.cdn.example is allowed for github.example/acme/shop."
 
       # The policy topic re-reads the list: the struck row stays where it is, and the hive
-      # is managed now, so the unmanaged item resolves in words too. A repository's rule
+      # is managed now, so the unmanaged item resolves in words too. A target's rule
       # is no allow rule of the hive: no enforce nudge.
       render_async(view, 5_000)
       assert has_element?(view, "##{item}.q-resolved")
@@ -702,7 +702,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
         |> LazyHTML.attribute("id")
 
       assert text(view, "##{item}") =~ "Denied 2 times in 2 runs of 2 repositories"
-      # Several repositories: the page does not guess a scope.
+      # Several targets: the page does not guess a scope.
       assert has_element?(
                view,
                "##{item}-act[aria-label='Allow flags.example, choose a scope']",

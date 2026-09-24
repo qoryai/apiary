@@ -17,7 +17,7 @@ defmodule ApiaryWeb.Contract.EventsController do
   Every `202` and `410` carries the digests in force: `X-Qory-Configuration`, the
   digest the hive's discovery answer carries, and, for a hive whose policy somebody has
   made, `X-Qory-Run-Configuration`, the digest of the run configuration for the run's
-  repository (`Apiary.Policy.Serving.digest_for/4`: read, never rendered here), which
+  target (`Apiary.Policy.Serving.digest_for/4`: read, never rendered here), which
   is how a run learns that its policy changed. A hive nobody has given a policy names
   no run configuration anywhere, and its machines keep their own. The
   digest the request reported is stored on the delivery and on the run. Errors are

@@ -138,7 +138,7 @@ defmodule ApiaryWeb.PolicyLive.ReadingTest do
     refute flat(reading.text) =~ "still allows"
   end
 
-  test "on a repository page the hive's suffix is said, a locked one refuses, and a lock refuses" do
+  test "on a target page the hive's suffix is said, a locked one refuses, and a lock refuses" do
     entries = [
       entry(host: "*.cdn.example"),
       entry(host: "*.paste.example", action: :deny, locked: true),
@@ -148,7 +148,7 @@ defmodule ApiaryWeb.PolicyLive.ReadingTest do
 
     context =
       context(
-        scope: :repository,
+        scope: :target,
         entries: entries,
         owner: false,
         locked_by: %{"*.paste.example" => %{by: "beekeeper@example.com", at: "2 Sep 2026"}}

@@ -21,61 +21,61 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
 
   ## Paths of the policy pages
 
-  @doc "The page of one version of the baseline (`nil`) or of a repository."
-  def version_path(repository_id, n, query \\ %{})
+  @doc "The page of one version of the baseline (`nil`) or of a target."
+  def version_path(target_id, n, query \\ %{})
 
   def version_path(nil, n, query), do: ~p"/hive/policy/versions/#{n}?#{query}"
 
-  def version_path(repository_id, n, query),
-    do: ~p"/hive/policy/repositories/#{repository_id}/versions/#{n}?#{query}"
+  def version_path(target_id, n, query),
+    do: ~p"/hive/policy/repositories/#{target_id}/versions/#{n}?#{query}"
 
-  @doc "The rule of `host` on the hive's policy page (`nil`) or on a repository's."
+  @doc "The rule of `host` on the hive's policy page (`nil`) or on a target's."
   def rule_path(nil, host), do: ~p"/hive/policy?#{%{"rule" => host}}"
 
-  def rule_path(repository_id, host),
-    do: ~p"/hive/policy/repositories/#{repository_id}?#{%{"rule" => host}}"
+  def rule_path(target_id, host),
+    do: ~p"/hive/policy/repositories/#{target_id}?#{%{"rule" => host}}"
 
-  @doc "A repository's policy page."
-  def repository_path(repository_id), do: ~p"/hive/policy/repositories/#{repository_id}"
+  @doc "A target's policy page."
+  def target_policy_path(target_id), do: ~p"/hive/policy/repositories/#{target_id}"
 
   ## Versions
 
   @doc """
-  The version a digest names for the repository (or the baseline, `nil`): `%{n, digest,
-  scope, repository_id, label, path, rendered_at}`, or nil when this hive rendered nothing
+  The version a digest names for the target (or the baseline, `nil`): `%{n, digest,
+  scope, target_id, label, path, rendered_at}`, or nil when this hive rendered nothing
   with that digest. One indexed read.
   """
-  def version(_scope, _repository, digest) when not is_binary(digest), do: nil
+  def version(_scope, _target, digest) when not is_binary(digest), do: nil
 
-  def version(scope, repository, digest) do
-    case Policy.configuration_for_digest(scope, repository, digest) do
-      {:ok, configuration} -> version_of(configuration, repository)
+  def version(scope, target, digest) do
+    case Policy.configuration_for_digest(scope, target, digest) do
+      {:ok, configuration} -> version_of(configuration, target)
       _ -> nil
     end
   end
 
   @doc """
   A run configuration as the pages here name a version. Versions count per holder, the
-  baseline's apart from each repository's, so every version is named with its `label`:
-  "hive baseline", or the repository's forge and path when `repository` is the one the
+  baseline's apart from each target's, so every version is named with its `label`:
+  "hive baseline", or the target's system and path when `target` is the one the
   configuration is of.
   """
-  def version_of(configuration, repository \\ nil) do
+  def version_of(configuration, target \\ nil) do
     %{
       n: configuration.version,
       digest: configuration.digest,
-      scope: if(configuration.repository_id, do: :repository, else: :hive),
-      repository_id: configuration.repository_id,
-      label: version_label(configuration.repository_id, repository),
+      scope: if(configuration.target_id, do: :target, else: :hive),
+      target_id: configuration.target_id,
+      label: version_label(configuration.target_id, target),
       rendered_at: configuration.rendered_at,
-      path: version_path(configuration.repository_id, configuration.version)
+      path: version_path(configuration.target_id, configuration.version)
     }
   end
 
   @doc "The words that say whose numbering a version is in."
-  def version_label(nil, _repository), do: "hive baseline"
-  def version_label(id, %{id: id, forge: forge, path: path}), do: "#{forge}/#{path}"
-  def version_label(_id, _repository), do: "repository"
+  def version_label(nil, _target), do: "hive baseline"
+  def version_label(id, %{id: id, system: system, path: path}), do: "#{system}/#{path}"
+  def version_label(_id, _target), do: "repository"
 
   @doc """
   `Policy.digests/2`, whatever shape it answers in, as `%{in_force, reported, applied,
@@ -97,11 +97,11 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   when one does. A `:can_allow` row carries `deny: true` when no rule decides its host:
   a host let through under observe, or denied by default under enforce, can be denied
   outright as well, so the policy is written while the record is read. `page` is `:run` or `:hive`: on the hive's page a row allowed by a rule
-  the baseline does not hold (a repository's own) can still be denied.
+  the baseline does not hold (a target's own) can still be denied.
 
   `own` matters on the hive's page, where the rows stand against the baseline alone: the
-  hosts repositories have rules of their own for (`own_hosts/1`), or `:unknown`. There a
-  baseline rule is said to answer a row only when no repository's own rule could be what
+  hosts targets have rules of their own for (`own_hosts/1`), or `:unknown`. There a
+  baseline rule is said to answer a row only when no target's own rule could be what
   decides it; otherwise the row keeps its button, since the baseline is not the whole
   answer.
   """
@@ -164,7 +164,7 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
     end
   end
 
-  @doc "Whether a repository's own rule could be what decides `host`, from `own_hosts/1`."
+  @doc "Whether a target's own rule could be what decides `host`, from `own_hosts/1`."
   def own_touches?(own, host, page \\ :hive)
   def own_touches?(_own, _host, :run), do: false
   def own_touches?(_own, nil, _page), do: false
@@ -176,20 +176,20 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   def own_touches?(_own, _host, _page), do: false
 
   @doc """
-  The hosts the hive's repositories have rules of their own for, from the rules of every
-  repository that has any: one read for the list and one a repository with rules, fifty
-  of them at most. `:unknown` past that, and past the five hundred repositories the list
+  The hosts the hive's targets have rules of their own for, from the rules of every
+  target that has any: one read for the list and one a target with rules, fifty
+  of them at most. `:unknown` past that, and past the five hundred targets the list
   holds: then nothing is claimed of a row from the baseline alone.
   """
   def own_hosts(scope) do
-    listed = Policy.list_repositories(scope)
+    listed = Policy.list_targets(scope)
     with_rules = Enum.filter(listed, &(&1.rule_count > 0))
 
     if length(listed) >= 500 or length(with_rules) > 50 do
       :unknown
     else
-      for %{repository: repository} <- with_rules,
-          %{kind: "host", host: host} <- Policy.list_rules(scope, repository),
+      for %{target: target} <- with_rules,
+          %{kind: "host", host: host} <- Policy.list_rules(scope, target),
           uniq: true,
           do: host
     end
@@ -209,11 +209,11 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
 
   def what(_effective, _host, _path), do: nil
 
-  @doc "Whether the repository of this effective policy has a rule of its own that touches the host."
+  @doc "Whether the target of this effective policy has a rule of its own that touches the host."
   def own_rule?(%Effective{entries: entries}, host) when is_binary(host) do
     Enum.any?(
       entries,
-      &(&1.kind == :host and &1.source == :repository and
+      &(&1.kind == :host and &1.source == :target and
           (Grammar.covers?(&1.host, host) or Grammar.covers?(host, &1.host)))
     )
   end
@@ -361,7 +361,7 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   the pages already read, so a page of rows costs one read a scope.
   """
   def change_for(%Entry{} = entry, changes) when is_map(changes) do
-    key = if entry.source == :repository, do: :repository, else: :hive
+    key = if entry.source == :target, do: :target, else: :hive
 
     changes
     |> Map.get(key, [])
@@ -393,10 +393,10 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
 
   @doc """
   The newest page of changes of each scope the entries of these standings were written
-  in: `%{hive: [...], repository: [...]}`. At most two reads, and none when no row has a
+  in: `%{hive: [...], target: [...]}`. At most two reads, and none when no row has a
   rule to speak of.
   """
-  def changes(scope, repository, standings) do
+  def changes(scope, target, standings) do
     sources =
       for %{standing: standing, entry: %Entry{source: source}} <- standings,
           match?({:rule_added, _}, standing) or standing in [:can_deny, :can_allow],
@@ -404,8 +404,9 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
           do: source
 
     for source <- sources, into: %{} do
-      holder = if source == :repository, do: repository, else: nil
-      key = if source == :repository, do: :repository, else: :hive
+      holder = if source == :target, do: target, else: nil
+      key = if source == :target, do: :target, else: :hive
+
       {key, Policy.list_changes(scope, holder, 1).items}
     end
   end

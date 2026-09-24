@@ -383,7 +383,7 @@ defmodule ApiaryWeb.HiveLive.Overview do
 
   defp read_policy(scope, now) do
     summary = Policy.mode_summary(scope)
-    repositories = Policy.list_repositories(scope)
+    targets = Policy.list_targets(scope)
     rules = Policy.list_rules(scope, nil)
 
     version =
@@ -394,10 +394,10 @@ defmodule ApiaryWeb.HiveLive.Overview do
 
     %{
       summary: summary,
-      repositories: length(repositories),
-      with_rules: Enum.count(repositories, &(&1.rule_count > 0)),
-      following: Enum.count(repositories, &is_nil(&1.own_mode)),
-      own: Enum.filter(repositories, &(&1.own_mode != nil)),
+      targets: length(targets),
+      with_rules: Enum.count(targets, &(&1.rule_count > 0)),
+      following: Enum.count(targets, &is_nil(&1.own_mode)),
+      own: Enum.filter(targets, &(&1.own_mode != nil)),
       version: version,
       allow_rules: Enum.count(rules, &(&1.kind == "host" and &1.action == "allow")),
       suggestions:
@@ -414,17 +414,17 @@ defmodule ApiaryWeb.HiveLive.Overview do
     if reported == [] do
       %{}
     else
-      holders = reported |> Enum.map(& &1.repository_id) |> Enum.reject(&is_nil/1) |> Enum.uniq()
+      holders = reported |> Enum.map(& &1.target_id) |> Enum.reject(&is_nil/1) |> Enum.uniq()
       versions = Policy.newest_versions(scope, [nil | holders])
 
       for run <- reported,
-          in_force = versions[run.repository_id] || versions[nil],
+          in_force = versions[run.target_id] || versions[nil],
           in_force.digest != run.reported_run_configuration_digest,
           into: %{} do
         reported_version =
           case Policy.configuration_for_digest(
                  scope,
-                 holder_of(scope, run.repository_id),
+                 holder_of(scope, run.target_id),
                  run.reported_run_configuration_digest
                ) do
             {:ok, configuration} -> version_map(configuration)
@@ -438,9 +438,9 @@ defmodule ApiaryWeb.HiveLive.Overview do
 
   defp holder_of(_scope, nil), do: nil
 
-  defp holder_of(scope, repository_id) do
-    case Policy.get_repository(scope, repository_id) do
-      {:ok, repository} -> repository
+  defp holder_of(scope, target_id) do
+    case Policy.get_target(scope, target_id) do
+      {:ok, target} -> target
       _ -> nil
     end
   end
@@ -450,8 +450,8 @@ defmodule ApiaryWeb.HiveLive.Overview do
       n: configuration.version,
       digest: configuration.digest,
       rendered_at: configuration.rendered_at,
-      repository_id: configuration.repository_id,
-      path: Rules.version_path(configuration.repository_id, configuration.version)
+      target_id: configuration.target_id,
+      path: Rules.version_path(configuration.target_id, configuration.version)
     }
   end
 
@@ -776,7 +776,7 @@ defmodule ApiaryWeb.HiveLive.Overview do
   def handle_event("close_confirm", _params, socket), do: {:noreply, socket}
 
   ## The one-click allow of a denied destination (od2): the popover of pd8, called with the
-  ## destination's repositories, exactly as the connections page calls it.
+  ## destination's targets, exactly as the connections page calls it.
 
   def handle_event("rule_open", %{"id" => id, "level" => level}, socket) do
     case find_item(socket, id) do
@@ -795,14 +795,14 @@ defmodule ApiaryWeb.HiveLive.Overview do
       ) do
     level =
       case params["for"] do
-        "repository" when popover.repositories != [] -> :repository
+        "repository" when popover.targets != [] -> :target
         "hive" -> :hive
         _ -> popover.level
       end
 
     choice =
       case params["repository"] do
-        id when is_binary(id) -> if Enum.any?(popover.repositories, &(&1.id == id)), do: id
+        id when is_binary(id) -> if Enum.any?(popover.targets, &(&1.id == id)), do: id
         _ -> popover.choice
       end
 
@@ -823,15 +823,15 @@ defmodule ApiaryWeb.HiveLive.Overview do
         _params,
         %{assigns: %{popover: %{refusal: nil, level: level} = popover}} = socket
       )
-      when level in [:repository, :hive] do
+      when level in [:target, :hive] do
     scope = socket.assigns.current_scope
 
     with :ok <- still(socket, popover),
          {:ok, from} <- rule_source(popover),
          {:ok, connection} <- Runs.fetch_connection(scope, from.connection_id),
          {:ok, rule} <- Policy.rule_from_connection(scope, connection, :allow, level) do
-      where = if level == :repository, do: from.label, else: "the hive"
-      done = if level == :repository, do: "Allowed here", else: "Allowed for the hive"
+      where = if level == :target, do: from.label, else: "the hive"
+      done = if level == :target, do: "Allowed here", else: "Allowed for the hive"
 
       socket =
         socket
@@ -870,22 +870,22 @@ defmodule ApiaryWeb.HiveLive.Overview do
     scope = socket.assigns.current_scope
 
     reached =
-      Runs.destination_repositories(scope, @denied_filters, {item.host, item.port, item.path})
+      Runs.destination_targets(scope, @denied_filters, {item.host, item.port, item.path})
 
-    repositories =
-      for %{repository_id: id} = r when is_binary(id) <- reached do
+    targets =
+      for %{target_id: id} = r when is_binary(id) <- reached do
         %{
           id: id,
-          label: "#{r.forge}/#{r.repository}",
+          label: "#{r.system}/#{r.path}",
           runs: r.runs,
           connection_id: r.connection_id
         }
       end
 
     {level, choice} =
-      case {level, repositories} do
+      case {level, targets} do
         {"hive", _} -> {:hive, nil}
-        {"repository", [one]} -> {:repository, one.id}
+        {"repository", [one]} -> {:target, one.id}
         {"repository", _} -> {nil, nil}
         _ -> {nil, nil}
       end
@@ -902,13 +902,13 @@ defmodule ApiaryWeb.HiveLive.Overview do
       path: item.path,
       page: :hive,
       level: level,
-      repository: nil,
-      repositories: repositories,
+      target: nil,
+      targets: targets,
       choice: choice,
       baseline: baseline,
       standing: :can_allow,
       chosen: nil,
-      what: %{repository: nil, hive: nil},
+      what: %{target: nil, hive: nil},
       own_rule: false,
       seen: nil,
       consequence: %{},
@@ -934,24 +934,24 @@ defmodule ApiaryWeb.HiveLive.Overview do
 
   defp mark_expanded(socket), do: socket
 
-  defp rule_source(%{level: :repository, choice: choice, repositories: repositories})
+  defp rule_source(%{level: :target, choice: choice, targets: targets})
        when is_binary(choice) do
-    case Enum.find(repositories, &(&1.id == choice)) do
-      %{} = repository -> {:ok, Map.put(repository, :repository, %{id: repository.id})}
+    case Enum.find(targets, &(&1.id == choice)) do
+      %{} = target -> {:ok, Map.put(target, :target, %{id: target.id})}
       nil -> :error
     end
   end
 
   defp rule_source(%{level: :hive, any_connection_id: id}) when is_binary(id),
-    do: {:ok, %{connection_id: id, label: "the hive", repository: nil}}
+    do: {:ok, %{connection_id: id, label: "the hive", target: nil}}
 
   defp rule_source(_popover), do: :error
 
   defp chosen_effective(_socket, nil), do: nil
 
   defp chosen_effective(socket, id) do
-    case Policy.get_repository(socket.assigns.current_scope, id) do
-      {:ok, repository} -> Policy.effective(socket.assigns.current_scope, repository)
+    case Policy.get_target(socket.assigns.current_scope, id) do
+      {:ok, target} -> Policy.effective(socket.assigns.current_scope, target)
       _ -> nil
     end
   end
@@ -964,19 +964,19 @@ defmodule ApiaryWeb.HiveLive.Overview do
       popover
       | chosen: popover.choice,
         what: %{
-          repository: Rules.what(chosen, host, path),
+          target: Rules.what(chosen, host, path),
           hive: Rules.what(baseline, host, path)
         },
         own_rule: own?,
         seen: {Rules.seen(baseline, host), Rules.seen(chosen, host)},
         consequence: %{
-          repository: chosen && repository_consequence(chosen, host),
+          target: chosen && target_consequence(chosen, host),
           hive: hive_consequence(baseline, host, own?)
         }
     }
   end
 
-  defp repository_consequence(effective, host) do
+  defp target_consequence(effective, host) do
     if Rules.own_rule?(effective, host),
       do: "Replaces the repository's own rule for the host.",
       else: "Disables the hive's allow rule there. Other repositories keep it."
@@ -1129,8 +1129,8 @@ defmodule ApiaryWeb.HiveLive.Overview do
     end
   end
 
-  defp compare_path(in_force, %{n: m, repository_id: same}) when same == in_force.repository_id,
-    do: Rules.version_path(in_force.repository_id, in_force.n, %{"compare" => m})
+  defp compare_path(in_force, %{n: m, target_id: same}) when same == in_force.target_id,
+    do: Rules.version_path(in_force.target_id, in_force.n, %{"compare" => m})
 
   defp compare_path(in_force, _reported), do: in_force.path
 

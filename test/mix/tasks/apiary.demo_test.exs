@@ -64,8 +64,8 @@ defmodule Mix.Tasks.Apiary.DemoTest do
       assert run.exit_code == 0
       assert run.runtime == "claude"
       assert run.wall == "docker"
-      assert run.forge == "git.example.com"
-      assert run.repository == "acme/shop"
+      assert run.target_system == "git.example.com"
+      assert run.target_path == "acme/shop"
       assert run.task == "checkout-redesign"
       assert run.runner_version == "0.10.0"
       assert run.contract_version == 1
@@ -109,14 +109,14 @@ defmodule Mix.Tasks.Apiary.DemoTest do
       end
     end
 
-    test "failed-run is a bare runtime that failed, in another repository of the same task",
+    test "failed-run is a bare runtime that failed, in another target of the same task",
          %{access_key: access_key} do
       assert {:ok, run} = Demo.replay(access_key, file("failed-run"))
 
       assert run.state == "failed"
       assert run.exit_code == 2
 
-      assert {run.forge, run.repository, run.task} ==
+      assert {run.target_system, run.target_path, run.task} ==
                {"github.example", "acme/api", "checkout-redesign"}
 
       assert lanes(events(run)) == []
@@ -133,7 +133,7 @@ defmodule Mix.Tasks.Apiary.DemoTest do
       assert {:ok, run} = Demo.replay(access_key, file("running"), now)
 
       assert run.state == "running"
-      assert run.repository == "acme/shop"
+      assert run.target_path == "acme/shop"
       assert is_nil(run.exited_at)
       assert run.heartbeat_interval_seconds == 600
 
@@ -145,14 +145,14 @@ defmodule Mix.Tasks.Apiary.DemoTest do
       assert Repo.get!(Run, run.id).state == "running"
     end
 
-    test "timed-out was stopped at its limit, in the other forge's acme/shop", %{
+    test "timed-out was stopped at its limit, in the other system's acme/shop", %{
       access_key: access_key
     } do
       assert {:ok, run} = Demo.replay(access_key, file("timed-out"))
 
       assert run.state == "timed_out"
       assert {run.reason, run.exit_code, run.duration_ms} == {"timeout", -1, 3_600_000}
-      assert {run.forge, run.repository} == {"github.example", "acme/shop"}
+      assert {run.target_system, run.target_path} == {"github.example", "acme/shop"}
       assert run.denied_count == 0
     end
 
@@ -162,7 +162,7 @@ defmodule Mix.Tasks.Apiary.DemoTest do
       assert {:ok, run} = Demo.replay(access_key, file("ping-only"))
 
       assert run.state == "pending"
-      assert {run.started_at, run.runtime, run.repository_id} == {nil, nil, nil}
+      assert {run.started_at, run.runtime, run.target_id} == {nil, nil, nil}
       assert run.runner_version == "0.10.0"
     end
 
@@ -172,7 +172,7 @@ defmodule Mix.Tasks.Apiary.DemoTest do
       assert {:ok, run} = Demo.replay(access_key, file("unassigned"))
 
       assert run.state == "succeeded"
-      assert {run.forge, run.repository, run.task, run.wall} == {nil, nil, nil, nil}
+      assert {run.target_system, run.target_path, run.task, run.wall} == {nil, nil, nil, nil}
 
       assert [%{last_rule: "", last_mode: "observe", last_decision: "allowed"}, _telemetry] =
                Repo.all(from c in Connection, where: c.run_id == ^run.id, order_by: c.host)
@@ -219,8 +219,8 @@ defmodule Mix.Tasks.Apiary.DemoTest do
 
       assert Apiary.Policy.get_mode(scope) == "enforce"
 
-      [%{repository: shop}] =
-        Enum.filter(Apiary.Policy.list_repositories(scope), &(&1.rule_count > 0))
+      [%{target: shop}] =
+        Enum.filter(Apiary.Policy.list_targets(scope), &(&1.rule_count > 0))
 
       effective = Apiary.Policy.effective(scope, shop)
 
@@ -242,7 +242,7 @@ defmodule Mix.Tasks.Apiary.DemoTest do
       assert %{in_force: false, overridden_by: %{locked: true}} =
                Enum.find(
                  effective.entries,
-                 &(&1.host == "telemetry.llm.example" and &1.source == :repository)
+                 &(&1.host == "telemetry.llm.example" and &1.source == :target)
                )
 
       assert %{total: 10} = Apiary.Policy.list_changes(scope, nil)
@@ -259,7 +259,7 @@ defmodule Mix.Tasks.Apiary.DemoTest do
       assert %{total: 15} = Apiary.Policy.list_changes(scope, :all)
     end
 
-    test "without the demo's repository the baseline alone is written", %{
+    test "without the demo's target the baseline alone is written", %{
       scope: scope,
       access_key: access_key
     } do

@@ -126,7 +126,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert has_element?(lv, "h1#run-title", "Run #{String.slice(run.run_id, 0, 8)}")
       assert html =~ "This run had no wall"
       refute html =~ "Labels"
-      # unassigned: the breadcrumb has no repository
+      # unassigned: the breadcrumb has no target
       refute html =~ "repo="
     end
 

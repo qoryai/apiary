@@ -85,13 +85,13 @@ defmodule ApiaryWeb.RunLive.Show do
       <div class="q-run-head">
         <nav class="q-crumbs" aria-label="Breadcrumb">
           <.link navigate={~p"/hive/runs"}>Runs</.link>
-          <%= if @run.forge && @run.repository do %>
+          <%= if @run.target_system && @run.target_path do %>
             <.icon name="hero-chevron-right-micro" class="size-3" />
             <.link
-              navigate={~p"/hive/runs?#{Filters.repo_params(@run.forge, @run.repository)}"}
+              navigate={~p"/hive/runs?#{Filters.target_params(@run.target_system, @run.target_path)}"}
               class="font-mono text-xs"
             >
-              <span class="text-faint">{@run.forge}/</span>{@run.repository}
+              <span class="text-faint">{@run.target_system}/</span>{@run.target_path}
             </.link>
           <% end %>
           <.icon name="hero-chevron-right-micro" class="size-3" />
@@ -362,7 +362,7 @@ defmodule ApiaryWeb.RunLive.Show do
         rails={@index.rails}
         started_at={@run.started_at}
         seq_path={&tab_path(@run, :timeline, Map.put(@timeline_query, "seq", &1))}
-        target={@target && "e-#{@target}"}
+        target={@focused && "e-#{@focused}"}
         isolate={@lane}
         connections={@cx}
         earlier={@earlier}
@@ -848,7 +848,7 @@ defmodule ApiaryWeb.RunLive.Show do
        window_loaded: false,
        index: Timeline.new(),
        policy: nil,
-       repository: nil,
+       target: nil,
        digests: %{in_force: nil, reported: nil, applied: nil, drift: false},
        reported_version: nil,
        in_force: nil,
@@ -861,7 +861,7 @@ defmodule ApiaryWeb.RunLive.Show do
        counts: %{all: 0, allowed: 0, denied: 0, attempts: 0},
        connections: %{rows: [], page: 1, pages: 1, total: 0},
        log: %{chunks: 0, bytes: 0, through: 0, streams: []},
-       target: nil,
+       focused: nil,
        lane: nil,
        cx: true,
        decision: nil,
@@ -914,7 +914,7 @@ defmodule ApiaryWeb.RunLive.Show do
             index: Record.timeline(scope, run),
             policy: Record.policy(scope, run),
             counts: Record.connection_counts(scope, run),
-            repository: repository_of(scope, run),
+            target: target_of(scope, run),
             versions: %{},
             effective: nil,
             acts: nil,
@@ -944,7 +944,7 @@ defmodule ApiaryWeb.RunLive.Show do
     %{index: index, run: run, live_action: tab} = socket.assigns
 
     seq = tab == :timeline && sequence(params["seq"])
-    target = seq && index.by_seq[seq]
+    focused = seq && index.by_seq[seq]
     lane = tab == :timeline && Timeline.lane(index, params["lane"])
     cx = not (tab == :timeline and params["cx"] == "0")
 
@@ -961,7 +961,7 @@ defmodule ApiaryWeb.RunLive.Show do
     socket =
       socket
       |> assign(
-        target: target || nil,
+        focused: focused || nil,
         lane: (lane && lane.id) || nil,
         cx: cx,
         decision: decision || nil,
@@ -972,7 +972,7 @@ defmodule ApiaryWeb.RunLive.Show do
     canonical =
       case tab do
         :timeline ->
-          put_if(timeline_query, "seq", target && Integer.to_string(seq))
+          put_if(timeline_query, "seq", focused && Integer.to_string(seq))
 
         :connections ->
           page = socket.assigns.connections.page
@@ -1009,7 +1009,7 @@ defmodule ApiaryWeb.RunLive.Show do
       connections: Record.connections(scope, run, decision: decision, page: page),
       # The effective policy is read when the tab opens and when the policy changes, and
       # every row's standing is derived from it: no query per row (pj7).
-      effective: socket.assigns.effective || Policy.effective(scope, socket.assigns.repository)
+      effective: socket.assigns.effective || Policy.effective(scope, socket.assigns.target)
     )
     |> assign_acts()
   end
@@ -1060,9 +1060,9 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp label_path(_run, "task", value), do: ~p"/hive/runs?#{%{task: value}}"
 
-  defp label_path(%Run{forge: forge, repository: repository}, key, _value)
-       when key in ~w(forge repository) and is_binary(forge) and is_binary(repository),
-       do: ~p"/hive/runs?#{Filters.repo_params(forge, repository)}"
+  defp label_path(%Run{target_system: system, target_path: path}, key, _value)
+       when key in ~w(forge repository) and is_binary(system) and is_binary(path),
+       do: ~p"/hive/runs?#{Filters.target_params(system, path)}"
 
   defp label_path(_run, _key, _value), do: nil
 
@@ -1076,13 +1076,13 @@ defmodule ApiaryWeb.RunLive.Show do
   ## The window of the timeline
 
   # The stream holds a window of the index. It is loaded when the tab opens and when the
-  # target is outside it; a parameter that only toggles a lane leaves it alone.
+  # focused item is outside it; a parameter that only toggles a lane leaves it alone.
   defp ensure_window(socket) do
-    %{target: target, window_loaded: loaded?} = socket.assigns
+    %{focused: focused, window_loaded: loaded?} = socket.assigns
 
     cond do
-      not loaded? -> reset_window(socket, target)
-      target && not in_window?(socket, target) -> reset_window(socket, target)
+      not loaded? -> reset_window(socket, focused)
+      focused && not in_window?(socket, focused) -> reset_window(socket, focused)
       true -> socket
     end
   end
@@ -1098,7 +1098,7 @@ defmodule ApiaryWeb.RunLive.Show do
 
     start =
       case around && Enum.find_index(items, &(&1.seq == around)) do
-        # Around the target, and a whole window even when the target is near the end.
+        # Around the focused item, and a whole window even when it is near the end.
         index when is_integer(index) ->
           (index - div(@window, 2)) |> min(length(items) - @window) |> max(0)
 
@@ -1136,13 +1136,13 @@ defmodule ApiaryWeb.RunLive.Show do
   # held already; any other digest costs one indexed read, and a build asks for at most
   # #{@max_versions}, whatever a runner put in its events.
   defp with_versions(items, socket) do
-    %{current_scope: scope, repository: repository, versions: known} = socket.assigns
+    %{current_scope: scope, target: target, versions: known} = socket.assigns
 
     {items, _known} =
       Enum.map_reduce(items, known, fn
         %{kind: :policy_applied} = item, known ->
-          {version, known} = lookup_version(known, scope, repository, item[:digest])
-          {previous, known} = lookup_version(known, scope, repository, item[:previous_digest])
+          {version, known} = lookup_version(known, scope, target, item[:digest])
+          {previous, known} = lookup_version(known, scope, target, item[:previous_digest])
           {Map.merge(item, %{version: version, previous_version: previous}), known}
 
         item, known ->
@@ -1152,10 +1152,10 @@ defmodule ApiaryWeb.RunLive.Show do
     items
   end
 
-  defp lookup_version(known, _scope, _repository, digest) when not is_binary(digest),
+  defp lookup_version(known, _scope, _target, digest) when not is_binary(digest),
     do: {nil, known}
 
-  defp lookup_version(known, scope, repository, digest) do
+  defp lookup_version(known, scope, target, digest) do
     case known do
       %{^digest => version} ->
         {version, known}
@@ -1164,7 +1164,7 @@ defmodule ApiaryWeb.RunLive.Show do
         {nil, known}
 
       _ ->
-        version = Rules.version(scope, repository, digest)
+        version = Rules.version(scope, target, digest)
         {version, Map.put(known, digest, version)}
     end
   end
@@ -1368,7 +1368,7 @@ defmodule ApiaryWeb.RunLive.Show do
       ) do
     level =
       case params["for"] do
-        "repository" when not is_nil(popover.repository) -> :repository
+        "repository" when not is_nil(popover.target) -> :target
         "hive" -> :hive
         _ -> popover.level
       end
@@ -1385,7 +1385,7 @@ defmodule ApiaryWeb.RunLive.Show do
         _params,
         %{assigns: %{popover: %{refusal: nil, level: level} = popover}} = socket
       )
-      when level in [:repository, :hive] do
+      when level in [:target, :hive] do
     %{current_scope: scope, run: run} = socket.assigns
 
     # What the popover said was true of the policy it opened on. It is sent only while
@@ -1405,7 +1405,7 @@ defmodule ApiaryWeb.RunLive.Show do
            popover.action,
            popover.host,
            popover.path,
-           if(level == :repository, do: "this repository", else: "the hive")
+           if(level == :target, do: "this repository", else: "the hive")
          ),
          :now
        )}
@@ -1428,13 +1428,13 @@ defmodule ApiaryWeb.RunLive.Show do
   def handle_event(_event, _params, socket), do: {:noreply, socket}
 
   defp open_popover(socket, row, act, action) do
-    %{run: run, repository: repository, current_scope: scope, effective: effective} =
+    %{run: run, target: target, current_scope: scope, effective: effective} =
       socket.assigns
 
     path = row.path || ""
-    # The page holds the repository's policy; the hive's is read when a popover opens,
+    # The page holds the target's policy; the hive's is read when a popover opens,
     # since what a rule for the hive would be is decided by the hive's own paths.
-    baseline = if repository, do: Policy.effective(scope, nil), else: effective
+    baseline = if target, do: Policy.effective(scope, nil), else: effective
 
     assign(socket,
       popover: %{
@@ -1445,15 +1445,15 @@ defmodule ApiaryWeb.RunLive.Show do
         path: path,
         mode: Rules.mode(row),
         page: :run,
-        level: if(repository, do: :repository, else: :hive),
-        repository: repository && %{label: "#{repository.forge}/#{repository.path}"},
-        repositories: [],
+        level: if(target, do: :target, else: :hive),
+        target: target && %{label: "#{target.system}/#{target.path}"},
+        targets: [],
         choice: nil,
         what: %{
-          repository: repository && Rules.what(effective, act.host, path),
+          target: target && Rules.what(effective, act.host, path),
           hive: Rules.what(baseline, act.host, path)
         },
-        own_rule: repository != nil and Rules.own_rule?(effective, act.host),
+        own_rule: target != nil and Rules.own_rule?(effective, act.host),
         seen: {Rules.seen(effective, act.host), Rules.seen(baseline, act.host)},
         standing: act.standing,
         hive: scope.hive.name,
@@ -1519,14 +1519,14 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp deny_consequence(%{source: :hive}) do
     %{
-      repository: "Disables the hive's allow rule here. Other repositories keep it.",
+      target: "Disables the hive's allow rule here. Other repositories keep it.",
       hive: "Replaces the hive's allow rule."
     }
   end
 
-  defp deny_consequence(%{source: :repository}) do
+  defp deny_consequence(%{source: :target}) do
     %{
-      repository: "Replaces this repository's allow rule.",
+      target: "Replaces this repository's allow rule.",
       hive: "This repository's own allow rule still holds here."
     }
   end
@@ -1535,9 +1535,9 @@ defmodule ApiaryWeb.RunLive.Show do
 
   # Whether the policy is still the one the popover opened on, for the host it is about.
   defp still(socket, popover) do
-    %{current_scope: scope, repository: repository, connections: %{rows: rows}} = socket.assigns
-    effective = Policy.effective(scope, repository)
-    baseline = if repository, do: Policy.effective(scope, nil), else: effective
+    %{current_scope: scope, target: target, connections: %{rows: rows}} = socket.assigns
+    effective = Policy.effective(scope, target)
+    baseline = if target, do: Policy.effective(scope, nil), else: effective
     row = Enum.find(rows, &(&1.id == popover.connection_id))
 
     if (row && Rules.standing(row, effective, :run).standing == popover.standing) and
@@ -1561,12 +1561,12 @@ defmodule ApiaryWeb.RunLive.Show do
   defp recheck_popover(socket), do: socket
 
   defp rule_toast(socket, popover, rule, level) do
-    %{current_scope: scope, repository: repository} = socket.assigns
-    holder = if level == :repository, do: repository, else: nil
+    %{current_scope: scope, target: target} = socket.assigns
+    holder = if level == :target, do: target, else: nil
 
     where =
-      if level == :repository and repository,
-        do: "#{repository.forge}/#{repository.path}",
+      if level == :target and target,
+        do: "#{target.system}/#{target.path}",
         else: "the hive"
 
     version =
@@ -1592,14 +1592,14 @@ defmodule ApiaryWeb.RunLive.Show do
 
   ## The policy facts of the header and of the rows
 
-  defp repository_of(scope, %Run{repository_id: id}) when is_binary(id) do
-    case Policy.get_repository(scope, id) do
-      {:ok, repository} -> repository
+  defp target_of(scope, %Run{target_id: id}) when is_binary(id) do
+    case Policy.get_target(scope, id) do
+      {:ok, target} -> target
       _ -> nil
     end
   end
 
-  defp repository_of(_scope, _run), do: nil
+  defp target_of(_scope, _run), do: nil
 
   # A run that holds a configuration fetched from this server is one that reloads.
   defp fetched?(%{assigns: %{digests: digests}}),
@@ -1608,18 +1608,18 @@ defmodule ApiaryWeb.RunLive.Show do
   # pj8: drift is a comparison, read at mount, on each message of the policy's topic and
   # when the run reports another digest. No timer decides it.
   defp assign_policy_facts(%{assigns: %{run: %Run{} = run}} = socket) do
-    %{current_scope: scope, repository: repository, versions: known} = socket.assigns
+    %{current_scope: scope, target: target, versions: known} = socket.assigns
     digests = Rules.digests(scope, run)
 
     {reported, known} =
-      lookup_version(known, scope, repository, digests.reported || digests.applied)
+      lookup_version(known, scope, target, digests.reported || digests.applied)
 
     behind? = alive?(run) and digests.drift
 
     in_force =
       if behind? do
-        case Policy.current_configuration(scope, repository) do
-          {:ok, configuration} -> Rules.version_of(configuration, repository)
+        case Policy.current_configuration(scope, target) do
+          {:ok, configuration} -> Rules.version_of(configuration, target)
           _ -> nil
         end
       end
@@ -1640,11 +1640,11 @@ defmodule ApiaryWeb.RunLive.Show do
   defp assign_policy_facts(socket), do: socket
 
   defp refresh_policy(%{assigns: %{run: %Run{}, loaded: true}} = socket) do
-    %{current_scope: scope, repository: repository, live_action: tab} = socket.assigns
+    %{current_scope: scope, target: target, live_action: tab} = socket.assigns
     socket = assign_policy_facts(socket)
 
     if tab == :connections,
-      do: socket |> assign(effective: Policy.effective(scope, repository)) |> assign_acts(),
+      do: socket |> assign(effective: Policy.effective(scope, target)) |> assign_acts(),
       else: assign(socket, effective: nil)
   end
 
@@ -1652,9 +1652,9 @@ defmodule ApiaryWeb.RunLive.Show do
 
   # What each row of the page may ask, and the line after the rows a rule already answers.
   defp assign_acts(%{assigns: %{effective: %Policy.Effective{} = effective}} = socket) do
-    %{current_scope: scope, repository: repository, connections: %{rows: rows}} = socket.assigns
+    %{current_scope: scope, target: target, connections: %{rows: rows}} = socket.assigns
     standings = Enum.map(rows, &{&1, Rules.standing(&1, effective, :run)})
-    changes = Rules.changes(scope, repository, Enum.map(standings, &elem(&1, 1)))
+    changes = Rules.changes(scope, target, Enum.map(standings, &elem(&1, 1)))
 
     standings =
       for {row, standing} <- standings, do: {row, Rules.answered(standing, row, changes)}
@@ -1671,8 +1671,8 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp act(socket, row, %{standing: {:rule_added, action}, entry: entry} = standing, changes)
        when not is_nil(entry) do
-    %{repository: repository, current_scope: scope} = socket.assigns
-    holder_id = if entry.source == :repository and repository, do: repository.id
+    %{target: target, current_scope: scope} = socket.assigns
+    holder_id = if entry.source == :target and target, do: target.id
     change = Rules.change_for(entry, changes)
 
     standing
@@ -1682,13 +1682,13 @@ defmodule ApiaryWeb.RunLive.Show do
       rule_path: Rules.rule_path(holder_id, entry.host),
       after: %{
         action: action,
-        level: if(entry.source == :repository, do: :repository, else: :hive),
+        level: if(entry.source == :target, do: :target, else: :hive),
         version:
           change && is_integer(change.version) &&
             %{
               n: change.version,
               path: Rules.version_path(holder_id, change.version),
-              label: Rules.version_label(holder_id, repository)
+              label: Rules.version_label(holder_id, target)
             },
         by: change && who(change, scope),
         at: (change && change.at) || (entry.rule && entry.rule.updated_at),
@@ -1730,12 +1730,12 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp reloaded_at(_socket), do: nil
 
-  defp comparable?(%{repository_id: id}, %{repository_id: id}), do: true
+  defp comparable?(%{target_id: id}, %{target_id: id}), do: true
   defp comparable?(_reported, _in_force), do: false
 
   defp behind_path(reported, in_force) do
     if comparable?(reported, in_force),
-      do: Rules.version_path(in_force.repository_id, in_force.n, %{"compare" => reported.n}),
+      do: Rules.version_path(in_force.target_id, in_force.n, %{"compare" => reported.n}),
       else: in_force.path
   end
 
@@ -2012,7 +2012,7 @@ defmodule ApiaryWeb.RunLive.Show do
 
     if is_nil(first) do
       # Nothing was on the page yet: the window starts with what arrived.
-      reset_window(socket, socket.assigns.target)
+      reset_window(socket, socket.assigns.focused)
     else
       old_in_window =
         for item <- old.items,

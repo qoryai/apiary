@@ -1,4 +1,4 @@
-defmodule ApiaryWeb.PolicyLive.RepositoryTest do
+defmodule ApiaryWeb.PolicyLive.TargetTest do
   use ApiaryWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
@@ -20,7 +20,7 @@ defmodule ApiaryWeb.PolicyLive.RepositoryTest do
 
   setup %{scope: scope} do
     started_run(scope, shop())
-    [%{repository: repository}] = Policy.list_repositories(scope)
+    [%{target: target}] = Policy.list_targets(scope)
 
     {:ok, _} = Policy.deny(scope, nil, %{host: "*.paste.example", locked: true})
     {:ok, _} = Policy.allow(scope, nil, %{host: "gitlab.example"})
@@ -28,7 +28,7 @@ defmodule ApiaryWeb.PolicyLive.RepositoryTest do
     {:ok, _} = Policy.allow(scope, nil, %{host: "registry.example"})
     {:ok, _} = Policy.allow(scope, nil, %{kind: "credential", name: "model-key"})
 
-    %{repository: repository, path: "/hive/policy/repositories/#{repository.id}"}
+    %{target: target, path: "/hive/policy/repositories/#{target.id}"}
   end
 
   defp open(conn, path) do
@@ -58,13 +58,13 @@ defmodule ApiaryWeb.PolicyLive.RepositoryTest do
     |> hd()
   end
 
-  defp own(scope, repository, host),
-    do: Enum.find(Policy.list_rules(scope, repository), &(&1.host == host))
+  defp own(scope, target, host),
+    do: Enum.find(Policy.list_rules(scope, target), &(&1.host == host))
 
-  test "another hive's repository is not found, nor is an id that is none", %{conn: conn} do
+  test "another hive's target is not found, nor is an id that is none", %{conn: conn} do
     other = scope_fixture()
     started_run(other, shop())
-    [%{repository: theirs}] = Policy.list_repositories(other)
+    [%{target: theirs}] = Policy.list_targets(other)
     {:ok, _} = Policy.allow(other, theirs, %{host: "secret.example"})
 
     for path <- ["/hive/policy/repositories/#{theirs.id}", "/hive/policy/repositories/nope"] do
@@ -77,7 +77,7 @@ defmodule ApiaryWeb.PolicyLive.RepositoryTest do
     end
   end
 
-  test "a repository without rules of its own is the hive's list, and says so",
+  test "a target without rules of its own is the hive's list, and says so",
        %{conn: conn, path: path} do
     view = open(conn, path)
 
@@ -106,12 +106,12 @@ defmodule ApiaryWeb.PolicyLive.RepositoryTest do
   end
 
   test "disable here, then restore: the beaten rule hangs under the rule that beat it",
-       %{conn: conn, scope: scope, repository: repository, path: path} do
+       %{conn: conn, scope: scope, target: target, path: path} do
     view = open(conn, path)
 
     view |> element("##{row(view, "gitlab.example")}-act", "Disable here") |> render_click()
 
-    rule = own(scope, repository, "gitlab.example")
+    rule = own(scope, target, "gitlab.example")
     assert rule.action == "deny"
 
     assert text(view, "#flash-info") =~
@@ -133,7 +133,7 @@ defmodule ApiaryWeb.PolicyLive.RepositoryTest do
     refute has_element?(view, "#policy-rules .q-host", "registry.example")
 
     view |> element("#rule-#{rule.id}-act", "Restore") |> render_click()
-    refute own(scope, repository, "gitlab.example")
+    refute own(scope, target, "gitlab.example")
     view = open(conn, path)
     assert text(view, "##{row(view, "gitlab.example")}") =~ "Disable here"
   end
@@ -141,13 +141,13 @@ defmodule ApiaryWeb.PolicyLive.RepositoryTest do
   test "allow here overrides the hive's deny", %{
     conn: conn,
     scope: scope,
-    repository: repository,
+    target: target,
     path: path
   } do
     view = open(conn, path)
     view |> element("##{row(view, "telemetry.example")}-act", "Allow here") |> render_click()
 
-    rule = own(scope, repository, "telemetry.example")
+    rule = own(scope, target, "telemetry.example")
     assert rule.action == "allow"
     assert text(view, "tr[id^='rule-#{rule.id}-over-']") =~ "not in force: deny telemetry.example"
     assert text(view, "tr[id^='rule-#{rule.id}-over-']") =~ "Allowed here by"
@@ -155,14 +155,14 @@ defmodule ApiaryWeb.PolicyLive.RepositoryTest do
   end
 
   test "a rule a lock holds is struck under the locked rule, and can be removed",
-       %{conn: conn, scope: scope, repository: repository, path: path} do
+       %{conn: conn, scope: scope, target: target, path: path} do
     {:ok, _} =
       Policy.unlock(
         scope,
         Enum.find(Policy.list_rules(scope, nil), &(&1.host == "*.paste.example"))
       )
 
-    {:ok, held} = Policy.allow(scope, repository, %{host: "*.paste.example"})
+    {:ok, held} = Policy.allow(scope, target, %{host: "*.paste.example"})
 
     {:ok, _} =
       Policy.lock(
@@ -178,11 +178,11 @@ defmodule ApiaryWeb.PolicyLive.RepositoryTest do
     assert text(view, "##{locked}-over-#{held.id}") =~ "It is not in force."
 
     view |> element("##{locked}-over-#{held.id} button", "Remove it") |> render_click()
-    refute own(scope, repository, "*.paste.example")
+    refute own(scope, target, "*.paste.example")
   end
 
-  test "the composer adds for the repository, and a locked hive rule refuses it",
-       %{conn: conn, scope: scope, repository: repository, path: path} do
+  test "the composer adds for the target, and a locked hive rule refuses it",
+       %{conn: conn, scope: scope, target: target, path: path} do
     view = open(conn, path)
     assert text(view, "#policy-composer-add") == "Add for this repository"
 
@@ -204,12 +204,12 @@ defmodule ApiaryWeb.PolicyLive.RepositoryTest do
 
     view |> form("#policy-composer") |> render_submit()
 
-    assert own(scope, repository, "mcp.acme.example").paths == ["/mcp/*"]
+    assert own(scope, target, "mcp.acme.example").paths == ["/mcp/*"]
     assert Enum.all?(Policy.list_rules(scope, nil), &(&1.host != "mcp.acme.example"))
   end
 
   test "a deny under the hive's suffix is accepted and said; under a locked suffix it is refused",
-       %{conn: conn, scope: scope, repository: repository, path: path} do
+       %{conn: conn, scope: scope, target: target, path: path} do
     {:ok, _} = Policy.allow(scope, nil, %{host: "*.cdn.example"})
     {:ok, _} = Policy.allow(scope, nil, %{host: "*.internal.example", locked: true})
     view = open(conn, path)
@@ -223,7 +223,7 @@ defmodule ApiaryWeb.PolicyLive.RepositoryTest do
     refute has_element?(view, "#policy-composer-add[disabled]")
     view |> form("#policy-composer") |> render_submit()
 
-    assert "files.cdn.example" in Policy.effective(scope, repository).deny
+    assert "files.cdn.example" in Policy.effective(scope, target).deny
     assert has_element?(view, "#policy-rules .q-host", "files.cdn.example")
 
     view |> element("#policy-composer button", "Deny") |> render_click()
@@ -246,7 +246,7 @@ defmodule ApiaryWeb.PolicyLive.RepositoryTest do
     assert text(view, "#policy-composer-reads") =~ "Only an owner can change or unlock it."
   end
 
-  describe "the repository's mode" do
+  describe "the target's mode" do
     test "follows the hive until an owner says otherwise, and says where it comes from",
          %{conn: conn, path: path} do
       view = open(conn, path)
@@ -257,8 +257,8 @@ defmodule ApiaryWeb.PolicyLive.RepositoryTest do
                "In effect: observe , the hive's default. It changes when the hive's does."
     end
 
-    test "to enforce asks with this repository's own list, and Allow here adds a repository rule",
-         %{conn: conn, scope: scope, repository: repository, path: path} do
+    test "to enforce asks with this target's own list, and Allow here adds a target rule",
+         %{conn: conn, scope: scope, target: target, path: path} do
       started_run(scope, shop(),
         egress: [
           %{"host" => "files.cdn.example", "decision" => "allowed", "rule" => ""},
@@ -269,7 +269,7 @@ defmodule ApiaryWeb.PolicyLive.RepositoryTest do
       view = open(conn, path)
       view |> element("#policy-repository-mode-enforce") |> render_click()
 
-      assert Policy.get_mode(scope, repository).own == nil
+      assert Policy.get_mode(scope, target).own == nil
       assert text(view, "#repository-mode-enforce") =~ "Enforce github.example/acme/shop"
 
       assert text(view, "#repository-mode-enforce") =~
@@ -277,17 +277,17 @@ defmodule ApiaryWeb.PolicyLive.RepositoryTest do
 
       assert text(view, "#mode-would") =~ "Let through in this repository's runs"
       # A host the locked deny covers is denied in either mode already: enforcing this
-      # repository would not start denying it, so it is not in the list.
+      # target would not start denying it, so it is not in the list.
       refute text(view, "#mode-would") =~ "bin.paste.example"
       assert text(view, "#mode-would") =~ "1 destination"
 
       view |> element("#mode-would button", "Allow here") |> render_click()
-      assert own(scope, repository, "files.cdn.example")
+      assert own(scope, target, "files.cdn.example")
 
       view |> element("#repository-mode-confirm", "Enforce this repository") |> render_click()
 
       assert %{mode: "enforce", own: "enforce", hive: "observe"} =
-               Policy.get_mode(scope, repository)
+               Policy.get_mode(scope, target)
 
       assert has_element?(view, "#policy-repository-mode-enforce[aria-checked=true]")
       assert text(view, "#flash-info") =~ "github.example/acme/shop enforces on its own. Version"
@@ -299,7 +299,7 @@ defmodule ApiaryWeb.PolicyLive.RepositoryTest do
     end
 
     test "to observe names the locked denies that still hold, and the card keeps saying so",
-         %{conn: conn, scope: scope, repository: repository, path: path} do
+         %{conn: conn, scope: scope, target: target, path: path} do
       {:ok, _} = Policy.set_mode(scope, "enforce")
       view = open(conn, path)
       refute has_element?(view, "#policy-repository-mode-locked-note")
@@ -313,7 +313,7 @@ defmodule ApiaryWeb.PolicyLive.RepositoryTest do
                "A deny holds in either mode : *.paste.example stays denied in this repository"
 
       view |> element("#repository-mode-confirm", "Observe this repository") |> render_click()
-      assert Policy.get_mode(scope, repository).own == "observe"
+      assert Policy.get_mode(scope, target).own == "observe"
 
       assert text(view, "#policy-repository-mode-locked-note") =~
                "This repository observes: the locked deny still holds."
@@ -327,17 +327,17 @@ defmodule ApiaryWeb.PolicyLive.RepositoryTest do
                "The mode follows the hive's default from now on"
 
       view |> element("#repository-mode-confirm", "Follow the hive") |> render_click()
-      assert Policy.get_mode(scope, repository).own == nil
+      assert Policy.get_mode(scope, target).own == nil
       assert text(view, "#flash-info") =~ "github.example/acme/shop follows the hive: enforce."
     end
 
     test "a setting that changes nothing today is immediate, and says so",
-         %{conn: conn, scope: scope, repository: repository, path: path} do
+         %{conn: conn, scope: scope, target: target, path: path} do
       view = open(conn, path)
       view |> element("#policy-repository-mode-observe") |> render_click()
 
       refute has_element?(view, "#repository-mode-observe")
-      assert Policy.get_mode(scope, repository).own == "observe"
+      assert Policy.get_mode(scope, target).own == "observe"
 
       assert text(view, "#flash-info") =~
                "github.example/acme/shop observes on its own. Nothing changes today: the hive's default is observe too."
@@ -346,10 +346,10 @@ defmodule ApiaryWeb.PolicyLive.RepositoryTest do
     test "its history words the change", %{
       conn: conn,
       scope: scope,
-      repository: repository,
+      target: target,
       path: path
     } do
-      {:ok, _} = Policy.set_mode(scope, repository, "enforce")
+      {:ok, _} = Policy.set_mode(scope, target, "enforce")
       view = open(conn, path <> "/history")
 
       assert text(view, "#history-list") =~ "set this repository's mode to enforce"
@@ -358,7 +358,7 @@ defmodule ApiaryWeb.PolicyLive.RepositoryTest do
 
     test "a member reads it, and a crafted event is refused", %{
       scope: scope,
-      repository: repository,
+      target: target,
       path: path
     } do
       %{user: member} = member_fixture(scope, :member)
@@ -367,14 +367,14 @@ defmodule ApiaryWeb.PolicyLive.RepositoryTest do
       assert has_element?(view, "#policy-repository-mode-enforce[aria-disabled=true]")
       assert text(view, "#policy-repository-mode-owners") == "Only an owner sets a mode."
 
-      render_hook(view, "repository_mode_ask", %{"setting" => "enforce"})
+      render_hook(view, "target_mode_ask", %{"setting" => "enforce"})
       refute has_element?(view, "#repository-mode-enforce")
-      assert Policy.get_mode(scope, repository).own == nil
+      assert Policy.get_mode(scope, target).own == nil
     end
   end
 
   describe "suggestions" do
-    setup %{scope: scope, repository: repository} do
+    setup %{scope: scope, target: target} do
       run = run_fixture(scope)
 
       event_fixture(run, 2, "run.started", started_data(%{"labels" => shop()}))
@@ -386,11 +386,11 @@ defmodule ApiaryWeb.PolicyLive.RepositoryTest do
       })
 
       {:ok, _run} = Apiary.Runs.Projector.project(run)
-      %{suggested: Policy.suggestions(scope, repository)}
+      %{suggested: Policy.suggestions(scope, target)}
     end
 
     test "hosts the harness declared and nothing covers, allowed with one click",
-         %{conn: conn, scope: scope, repository: repository, path: path, suggested: suggested} do
+         %{conn: conn, scope: scope, target: target, path: path, suggested: suggested} do
       assert Enum.map(suggested, & &1.host) |> Enum.sort() == [
                "downloads.runtime.example",
                "flags.example"
@@ -411,7 +411,7 @@ defmodule ApiaryWeb.PolicyLive.RepositoryTest do
       id = PolicyComponents.suggestion_id("flags.example")
       view |> element("##{id}-allow") |> render_click()
 
-      assert own(scope, repository, "flags.example").action == "allow"
+      assert own(scope, target, "flags.example").action == "allow"
       assert text(view, "##{id}") =~ "Allowed here"
       assert has_element?(view, "##{id} .q-mark-ok")
       assert text(view, "#policy-suggestions-n") == "1 to review"
@@ -419,7 +419,7 @@ defmodule ApiaryWeb.PolicyLive.RepositoryTest do
     end
 
     test "allow both here, and allow for the hive from the caret",
-         %{conn: conn, scope: scope, repository: repository, path: path} do
+         %{conn: conn, scope: scope, target: target, path: path} do
       view = open(conn, path)
       assert text(view, "#policy-suggestions-all") == "Allow both here"
 
@@ -433,7 +433,7 @@ defmodule ApiaryWeb.PolicyLive.RepositoryTest do
       other = PolicyComponents.suggestion_id("downloads.runtime.example")
       view |> element("##{other}-menu button", "Allow with paths") |> render_click()
       assert has_element?(view, "#policy-composer-host[value='downloads.runtime.example']")
-      refute own(scope, repository, "downloads.runtime.example")
+      refute own(scope, target, "downloads.runtime.example")
     end
 
     test "with nothing to review the card is absent", %{conn: conn, scope: scope, path: path} do
@@ -444,7 +444,7 @@ defmodule ApiaryWeb.PolicyLive.RepositoryTest do
   end
 
   test "credentials live in the footer, and open in place",
-       %{conn: conn, scope: scope, repository: repository, path: path} do
+       %{conn: conn, scope: scope, target: target, path: path} do
     view = open(conn, path)
     refute has_element?(view, "#policy-credential")
 
@@ -457,16 +457,16 @@ defmodule ApiaryWeb.PolicyLive.RepositoryTest do
 
     view |> form("#policy-credential") |> render_submit()
 
-    assert Enum.find(Policy.list_rules(scope, repository), &(&1.name == "forge-token"))
+    assert Enum.find(Policy.list_rules(scope, target), &(&1.name == "forge-token"))
 
     assert text(view, "#policy-effective-foot") =~
              "forge-token argument acme/shop from this repository, model-key from the hive."
   end
 
-  test "history, versions and export are the repository's own",
-       %{conn: conn, scope: scope, repository: repository, path: path} do
-    {:ok, _} = Policy.deny(scope, repository, %{host: "gitlab.example"})
-    [change] = Policy.list_changes(scope, repository, 1).items
+  test "history, versions and export are the target's own",
+       %{conn: conn, scope: scope, target: target, path: path} do
+    {:ok, _} = Policy.deny(scope, target, %{host: "gitlab.example"})
+    [change] = Policy.list_changes(scope, target, 1).items
 
     view = open(conn, path <> "/history?change=#{change.id}")
     assert text(view, "#history-summary") =~ "1 change"
@@ -485,7 +485,7 @@ defmodule ApiaryWeb.PolicyLive.RepositoryTest do
     assert text(view, "#export-lead") =~ "github.example/acme/shop"
     assert has_element?(view, "#export-download[download='acme-shop-policy.yaml']")
 
-    # The hive's change is not this repository's.
+    # The hive's change is not this target's.
     [hive_change | _] = Policy.list_changes(scope, nil, 1).items
     view = open(conn, path <> "/history?change=#{hive_change.id}")
     refute has_element?(view, ".q-chg[open]")
@@ -494,7 +494,7 @@ defmodule ApiaryWeb.PolicyLive.RepositoryTest do
     assert has_element?(view, "h2", "There is no version 9")
   end
 
-  test "a repository served the baseline has no versions of its own: Document is the hive's",
+  test "a target served the baseline has no versions of its own: Document is the hive's",
        %{conn: conn, path: path} do
     assert {:error, {:live_redirect, %{to: "/hive/policy/versions/" <> _}}} =
              live(conn, path <> "/document")

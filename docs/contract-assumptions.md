@@ -157,8 +157,11 @@ the body is logged.
 
 ## Signed GET: the run configuration
 
-`GET /v1/run-configuration?forge=<label>&repository=<label>`, signed like discovery, the
-query signed as sent. It answers `200`, `Content-Type: application/json`, with
+`GET /v1/run-configuration?<label>=<value>&…`, signed like discovery, the query signed as
+sent. Every query parameter is read as one of the run's labels: a revision-1 runner sends
+`forge` and `repository`, a revision-2 runner every label. The hive's body (`Apiary.Body`)
+says which labels name the target; the software body's are `forge` and `repository`, so
+both revisions are served alike. It answers `200`, `Content-Type: application/json`, with
 `X-Qory-Run-Configuration: sha256=<lowercase hex>`, `ETag: "sha256=<hex>"` (the same string,
 quoted), `X-Qory-Configuration` and `Cache-Control: no-store`:
 

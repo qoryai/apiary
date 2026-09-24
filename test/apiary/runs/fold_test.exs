@@ -18,8 +18,8 @@ defmodule Apiary.Runs.FoldTest do
     image: nil,
     labels: %{},
     task: nil,
-    forge: nil,
-    repository: nil,
+    target_system: nil,
+    target_path: nil,
     started_at: nil,
     exited_at: nil,
     exit_code: nil,
@@ -174,15 +174,15 @@ defmodule Apiary.Runs.FoldTest do
       assert run.wall == "docker"
       assert run.image == "example/agent:1"
       assert run.task == "issue-12"
-      assert run.forge == "git.example.com"
-      assert run.repository == "acme/shop"
+      assert run.target_system == "git.example.com"
+      assert run.target_path == "acme/shop"
       assert run.labels["task"] == "issue-12"
     end
 
     test "a run without labels has none" do
       %{run: run} = Fold.fold(@run, [started(2, %{"labels" => nil})])
       assert run.labels == %{}
-      assert run.forge == nil
+      assert run.target_system == nil
     end
 
     test "arriving after the exit, it fills the header and leaves the state" do

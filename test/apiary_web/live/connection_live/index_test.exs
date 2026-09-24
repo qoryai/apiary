@@ -198,7 +198,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       assert has_element?(view, "##{b}-toggle[aria-expanded=false]")
     end
 
-    test "every filter is the URL; per repository is the page with repo set", %{conn: conn} do
+    test "every filter is the URL; per target is the page with repo set", %{conn: conn} do
       view = open(conn, ~p"/hive/connections?forge=gitlab.example&repo=acme/shop")
 
       assert text(view, "#connections-repo-note") ==
@@ -230,13 +230,13 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       assert_patch(view, ~p"/hive/connections?decision=allowed&host=registry.example&since=1h")
     end
 
-    test "a forge with a colon filters and reads back", %{conn: conn, scope: scope} do
+    test "a system with a colon filters and reads back", %{conn: conn, scope: scope} do
       started_run(scope, %{"forge" => "git.example:8443", "repository" => "acme/shop"},
         egress: [%{"host" => "colon.example"}]
       )
 
       view = open(conn)
-      value = Apiary.Runs.Filters.repo_value({"git.example:8443", "acme/shop"})
+      value = Apiary.Runs.Filters.target_value({"git.example:8443", "acme/shop"})
       view |> form("#filter-repo-form") |> render_change(%{"repo" => value})
 
       assert_patch(

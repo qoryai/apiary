@@ -168,8 +168,12 @@ version does not.
 
 ### The run configuration: `GET /v1/run-configuration`
 
-A signed GET, with the query `?forge=<label>&repository=<label>` signed as sent, each
-parameter only when the run has that label.
+A signed GET, with the query signed as sent: one parameter per label of the run. A runner of
+the contract's revision 1 sends only `?forge=<label>&repository=<label>`, each parameter only
+when the run has that label; one of revision 2 sends every label. The server reads every
+parameter as a label and the hive's body says which of them name the target: for the
+software body, `forge` and `repository`. A target the hive does not know, or labels that
+name none, get the hive's baseline.
 
 | Status | When | Body |
 |---|---|---|

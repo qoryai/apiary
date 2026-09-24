@@ -4184,7 +4184,7 @@
   tr.q-fresh > td {
     background-color: var(--q-added-tint);
   }
-  tr.q-rule-target > td {
+  tr.q-ruled > td {
     background-color: var(--q-primary-soft);
   }
 
@@ -4693,7 +4693,7 @@
     .q-rules tr.q-fresh {
       background-color: var(--q-added-tint);
     }
-    .q-rules tr.q-rule-target {
+    .q-rules tr.q-ruled {
       background-color: var(--q-primary-soft);
     }
     .q-rules td.q-c-rule {

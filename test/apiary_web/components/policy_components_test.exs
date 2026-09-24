@@ -95,7 +95,7 @@ defmodule ApiaryWeb.PolicyComponentsTest do
   test "source_chip: three wordings, a label in their place" do
     assert render_component(&PolicyComponents.source_chip/1, source: :hive) |> text() == "Hive"
 
-    assert render_component(&PolicyComponents.source_chip/1, source: :repository) |> text() ==
+    assert render_component(&PolicyComponents.source_chip/1, source: :target) |> text() ==
              "This repository"
 
     locked = render_component(&PolicyComponents.source_chip/1, source: :hive_locked)
@@ -158,14 +158,14 @@ defmodule ApiaryWeb.PolicyComponentsTest do
       rendered_to_string(
         table(%{
           rows: rows,
-          scope: Keyword.get(opts, :scope, :repository),
+          scope: Keyword.get(opts, :scope, :target),
           can_lock: Keyword.get(opts, :can_lock, false),
           activity: Keyword.get(opts, :activity, :unavailable)
         })
       )
     end
 
-    test "a repository row names its source and its one act" do
+    test "a target row names its source and its one act" do
       html = render_table([row(%{})])
 
       assert text(html) =~ "Comes from"
@@ -193,7 +193,7 @@ defmodule ApiaryWeb.PolicyComponentsTest do
             id: "r2",
             action: "deny",
             host: "gitlab.example",
-            source: :repository,
+            source: :target,
             act: :restore,
             beaten: [beaten]
           })
@@ -210,12 +210,12 @@ defmodule ApiaryWeb.PolicyComponentsTest do
       assert text(html) =~ "Restore"
     end
 
-    test "a locked hive rule holds against the repository's, which can be removed" do
+    test "a locked hive rule holds against the target's, which can be removed" do
       beaten = %{
         id: "p1",
         action: "allow",
         host: "bin.paste.example",
-        source: :repository,
+        source: :target,
         kind: :lock,
         by: "dana",
         at: @at,
@@ -298,12 +298,12 @@ defmodule ApiaryWeb.PolicyComponentsTest do
     assert html =~ "&lt;u&gt;"
   end
 
-  test "the repository's mode is a radio group, its radios checked and never pressed" do
+  test "the target's mode is a radio group, its radios checked and never pressed" do
     assigns = %{}
 
     html =
       rendered_to_string(~H"""
-      <PolicyComponents.repository_mode
+      <PolicyComponents.target_mode
         id="rm"
         setting="follow"
         effective="enforce"

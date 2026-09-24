@@ -637,7 +637,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
       refute rows =~ secret
       refute rows =~ hex
 
-      for table <- ~w(runs events deliveries log_chunks connections repositories) do
+      for table <- ~w(runs events deliveries log_chunks connections targets) do
         %{rows: rows} = Repo.query!("SELECT row_to_json(t)::text FROM #{table} t", [], log: false)
         text = Enum.join(List.flatten(rows), "\n")
         refute text =~ secret

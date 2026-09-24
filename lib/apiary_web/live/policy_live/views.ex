@@ -1,6 +1,6 @@
 defmodule ApiaryWeb.PolicyLive.Views do
   @moduledoc """
-  The views the hive's policy and a repository's policy share
+  The views the hive's policy and a target's policy share
   (`docs/design/brief-policy.md`, pe4 and pe5): the history with its diffs, one version with
   its document, and the export. Function components; the two LiveViews load what they show
   through `ApiaryWeb.PolicyLive.Common`.
@@ -66,7 +66,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
             <span :if={@scope == :hive}>
               Qory serves no policy for this hive until the first one.
             </span>
-            <span :if={@scope == :repository}>
+            <span :if={@scope == :target}>
               The first rule here, or a mode of its own, starts this repository's history.
             </span>
           <% end %>
@@ -97,7 +97,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
           <span :if={@scope == :hive}>
             Changes to a repository's own rules are in that repository's history.
           </span>
-          <span :if={@scope == :repository}>
+          <span :if={@scope == :target}>
             Changes to the hive's rules, which re-render this repository too, are in the hive's history.
           </span>
         </p>
@@ -144,7 +144,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
           {@v.mode}
           <:sub :if={@v.mode_source}>
             <span class="font-sans">
-              {if @v.mode_source == :repository,
+              {if @v.mode_source == :target,
                 do: "this repository's own",
                 else: "the hive's default"}
             </span>

@@ -1126,8 +1126,8 @@ defmodule ApiaryWeb.RunComponents do
                 </span>
               </span>
               <span class="truncate font-mono text-xs text-muted">
-                {if hit.run.forge && hit.run.repository,
-                  do: "#{hit.run.forge}/#{hit.run.repository}",
+                {if hit.run.target_system && hit.run.target_path,
+                  do: "#{hit.run.target_system}/#{hit.run.target_path}",
                   else: "Unassigned"}
               </span>
               <span class={["tabular-nums", hit.denied > 0 && "q-bad"]}>
@@ -1585,7 +1585,7 @@ defmodule ApiaryWeb.RunComponents do
       </.badge>
       <span>
         {if @line.action == :deny, do: "Denied", else: "Allowed"} for {if @line.level ==
-                                                                            :repository,
+                                                                            :target,
                                                                           do: "this repository",
                                                                           else: "the hive"}<span :if={
           @line.version
@@ -1625,8 +1625,8 @@ defmodule ApiaryWeb.RunComponents do
   hook and a bottom sheet below 768 px. `popover` is the page's state of it:
 
       %{anchor:, action: :allow | :deny, host:, path:, page: :run | :hive, level:,
-        repository: %{label:} | nil, repositories: [%{id, label, runs}], choice:,
-        what: %{repository:, hive:}, own_rule:, hive:, alive:, fetched:, interval:, consequence:, error:,
+        target: %{label:} | nil, targets: [%{id, label, runs}], choice:,
+        what: %{target:, hive:}, own_rule:, hive:, alive:, fetched:, interval:, consequence:, error:,
         refusal: nil | %{standing:, rule:, locked_by:, locked_at:, owner:, rule_path:}}
 
   The form changes with `rule_change` and is sent with `rule_submit`; `rule_cancel`
@@ -1736,36 +1736,36 @@ defmodule ApiaryWeb.RunComponents do
 
           <fieldset>
             <legend>For</legend>
-            <label :if={@popover.page == :run and @popover.repository} class="q-popt">
+            <label :if={@popover.page == :run and @popover.target} class="q-popt">
               <input
                 type="radio"
                 name="for"
                 value="repository"
-                checked={@popover.level == :repository}
+                checked={@popover.level == :target}
               />
               <span>
                 <b>This repository</b>
-                <span class="font-mono text-xs text-muted">{middle(@popover.repository.label, 48)}</span>
+                <span class="font-mono text-xs text-muted">{middle(@popover.target.label, 48)}</span>
               </span>
-              <small :if={@deny && @popover.consequence[:repository]}>
-                {@popover.consequence.repository}
+              <small :if={@deny && @popover.consequence[:target]}>
+                {@popover.consequence.target}
               </small>
             </label>
-            <label :if={@popover.page == :hive and @popover.repositories != []} class="q-popt">
+            <label :if={@popover.page == :hive and @popover.targets != []} class="q-popt">
               <input
                 type="radio"
                 name="for"
                 value="repository"
-                checked={@popover.level == :repository}
+                checked={@popover.level == :target}
               />
               <span><b>One repository</b></span>
-              <small :if={@deny && @popover.consequence[:repository]}>
-                {@popover.consequence.repository}
+              <small :if={@deny && @popover.consequence[:target]}>
+                {@popover.consequence.target}
               </small>
             </label>
             <%!-- Outside the label: inside it, every option would be part of the radio's name. --%>
             <div
-              :if={@popover.page == :hive and @popover.repositories != []}
+              :if={@popover.page == :hive and @popover.targets != []}
               class="q-popt-more"
             >
               <select
@@ -1776,11 +1776,11 @@ defmodule ApiaryWeb.RunComponents do
               >
                 <option value="" selected={is_nil(@popover.choice)}>Choose a repository</option>
                 <option
-                  :for={repository <- @popover.repositories}
-                  value={repository.id}
-                  selected={@popover.choice == repository.id}
+                  :for={target <- @popover.targets}
+                  value={target.id}
+                  selected={@popover.choice == target.id}
                 >
-                  {middle(repository.label, 56)} · {count_noun(repository.runs, "run")}
+                  {middle(target.label, 56)} · {count_noun(target.runs, "run")}
                 </option>
               </select>
             </div>
@@ -1817,8 +1817,8 @@ defmodule ApiaryWeb.RunComponents do
           >
             {if @deny, do: "Deny", else: "Allow"} for {case @popover.level do
               :hive -> "the hive"
-              :repository when @popover.page == :run -> "this repository"
-              :repository -> "the repository"
+              :target when @popover.page == :run -> "this repository"
+              :target -> "the repository"
               _ -> "…"
             end}
           </.button>
@@ -1833,8 +1833,8 @@ defmodule ApiaryWeb.RunComponents do
   defp popover_what(_popover), do: nil
 
   defp popover_ready?(%{level: :hive}), do: true
-  defp popover_ready?(%{level: :repository, page: :run}), do: true
-  defp popover_ready?(%{level: :repository, choice: choice}) when is_binary(choice), do: true
+  defp popover_ready?(%{level: :target, page: :run}), do: true
+  defp popover_ready?(%{level: :target, choice: choice}) when is_binary(choice), do: true
   defp popover_ready?(_popover), do: false
 
   # Under observe an allow changes what the record says, not what the run does: the
@@ -1857,7 +1857,7 @@ defmodule ApiaryWeb.RunComponents do
 
   @doc """
   A version named on a run's pages: the link of pd1 and, since versions count per holder
-  (the baseline's apart from each repository's), the words that say whose it is.
+  (the baseline's apart from each target's), the words that say whose it is.
   `version` is `%{n, path, label}`; a missing label says nothing.
   """
   attr :version, :map, required: true
@@ -1894,7 +1894,7 @@ defmodule ApiaryWeb.RunComponents do
 
   @doc """
   The mark of a run that is alive and last reported a run configuration other than the one
-  in force for its repository: an amber badge, a triangle and words, never a pulse. It is
+  in force for its target: an amber badge, a triangle and words, never a pulse. It is
   a comparison of two digests of the record; no timer decides it.
   """
   attr :id, :string, default: "run-drift"

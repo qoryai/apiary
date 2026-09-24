@@ -23,7 +23,7 @@ defmodule Apiary.Runs do
   alias Apiary.Organisations
   alias Apiary.Organisations.{Hive, Organisation}
   alias Apiary.Repo
-  alias Apiary.Runs.{Connection, Filters, Repository, Run}
+  alias Apiary.Runs.{Connection, Filters, Target, Run}
 
   @default_limit 50
   @max_limit 200
@@ -154,7 +154,7 @@ defmodule Apiary.Runs do
     do: scope |> filtered(filters, now) |> page_query(filters.page)
 
   @doc """
-  What the summary line says of everything the filters return: `runs`, `repositories`,
+  What the summary line says of everything the filters return: `runs`, `targets`,
   `tasks`, the three families `alive`, `ended_well` and `ended_badly`
   (`Apiary.Runs.Filters.families/0`), and `with_denials`, all counted in one query.
   `hive_runs` is every run of the hive, filtered or not, for the empty state that says how
@@ -169,7 +169,7 @@ defmodule Apiary.Runs do
         from r in filtered(scope, filters, now),
           select: %{
             runs: count(r.id),
-            repositories: count(r.repository_id, :distinct),
+            targets: count(r.target_id, :distinct),
             tasks: count(r.task, :distinct),
             alive: filter(count(r.id), r.state in ^Run.alive_states()),
             ended_well: filter(count(r.id), r.state in ^ended_well),
@@ -184,8 +184,8 @@ defmodule Apiary.Runs do
   @doc """
   The facts of the groups with these keys (the groups on the page, so at most a page of
   them), over everything the filters return and not only the page:
-  `%{key => %{runs:, alive:, denials:, repositories:}}`. A key is `{forge, path}` or `:none`
-  grouped by repository, the task or `:none` grouped by task.
+  `%{key => %{runs:, alive:, denials:, targets:}}`. A key is `{system, path}` or `:none`
+  grouped by target, the task or `:none` grouped by task.
   """
   def group_facts(scope, filters, keys, now \\ DateTime.utc_now())
 
@@ -194,25 +194,30 @@ defmodule Apiary.Runs do
   def group_facts(%Scope{} = scope, %Filters{group: "repository"} = filters, keys, now) do
     condition =
       Enum.reduce(keys, dynamic(false), fn
-        :none, acc -> dynamic([r], ^acc or is_nil(r.repository_id))
-        {forge, path}, acc -> dynamic([r], ^acc or (r.forge == ^forge and r.repository == ^path))
-        _other, acc -> acc
+        :none, acc ->
+          dynamic([r], ^acc or is_nil(r.target_id))
+
+        {system, path}, acc ->
+          dynamic([r], ^acc or (r.target_system == ^system and r.target_path == ^path))
+
+        _other, acc ->
+          acc
       end)
 
     Repo.all(
       from r in filtered(scope, filters, now),
         where: ^condition,
-        group_by: [is_nil(r.repository_id), r.forge, r.repository],
+        group_by: [is_nil(r.target_id), r.target_system, r.target_path],
         select:
-          {is_nil(r.repository_id), r.forge, r.repository,
+          {is_nil(r.target_id), r.target_system, r.target_path,
            %{
              runs: count(r.id),
              alive: filter(count(r.id), r.state in ^Run.alive_states()),
              denials: coalesce(sum(r.denied_count), 0)
            }}
     )
-    |> Enum.reduce(%{}, fn {unassigned?, forge, path, facts}, acc ->
-      key = if unassigned?, do: :none, else: {forge, path}
+    |> Enum.reduce(%{}, fn {unassigned?, system, path, facts}, acc ->
+      key = if unassigned?, do: :none, else: {system, path}
       Map.update(acc, key, facts, &Map.merge(&1, facts, fn _k, a, b -> a + b end))
     end)
   end
@@ -231,7 +236,7 @@ defmodule Apiary.Runs do
              runs: count(r.id),
              alive: filter(count(r.id), r.state in ^Run.alive_states()),
              denials: coalesce(sum(r.denied_count), 0),
-             repositories: count(r.repository_id, :distinct)
+             targets: count(r.target_id, :distinct)
            }}
     )
     |> Map.new(fn {task, facts} -> {task || :none, facts} end)
@@ -241,11 +246,11 @@ defmodule Apiary.Runs do
 
   @doc """
   The page's runs in their groups, the groups by their most recent run with the group that
-  has no repository (or no task) last: `[%{key:, kind:, forge:, path:, title:, runs:}]`.
-  `kind` is `:repository`, `:unassigned`, `:task`, `:no_task` or `:none` (not grouped).
+  has no target (or no task) last: `[%{key:, kind:, system:, path:, title:, runs:}]`.
+  `kind` is `:target`, `:unassigned`, `:task`, `:no_task` or `:none` (not grouped).
   """
   def group_runs(runs, "none"),
-    do: [%{key: :all, kind: :none, forge: nil, path: nil, title: nil, runs: runs}]
+    do: [%{key: :all, kind: :none, system: nil, path: nil, title: nil, runs: runs}]
 
   def group_runs(runs, group) when group in ["repository", "task"] do
     runs
@@ -255,23 +260,23 @@ defmodule Apiary.Runs do
   end
 
   @doc "The key of the group a run falls in."
-  def group_key(%Run{repository_id: nil}, "repository"), do: :none
-  def group_key(%Run{forge: forge, repository: path}, "repository"), do: {forge, path}
+  def group_key(%Run{target_id: nil}, "repository"), do: :none
+  def group_key(%Run{target_system: system, target_path: path}, "repository"), do: {system, path}
   def group_key(%Run{task: nil}, "task"), do: :none
   def group_key(%Run{task: task}, "task"), do: task
   def group_key(%Run{}, _group), do: :all
 
   defp group(:none, "repository", runs),
-    do: %{key: :none, kind: :unassigned, forge: nil, path: nil, title: "Unassigned", runs: runs}
+    do: %{key: :none, kind: :unassigned, system: nil, path: nil, title: "Unassigned", runs: runs}
 
-  defp group({forge, path} = key, "repository", runs),
-    do: %{key: key, kind: :repository, forge: forge, path: path, title: path, runs: runs}
+  defp group({system, path} = key, "repository", runs),
+    do: %{key: key, kind: :target, system: system, path: path, title: path, runs: runs}
 
   defp group(:none, "task", runs),
-    do: %{key: :none, kind: :no_task, forge: nil, path: nil, title: "No task", runs: runs}
+    do: %{key: :none, kind: :no_task, system: nil, path: nil, title: "No task", runs: runs}
 
   defp group(task, "task", runs),
-    do: %{key: task, kind: :task, forge: nil, path: nil, title: task, runs: runs}
+    do: %{key: task, kind: :task, system: nil, path: nil, title: task, runs: runs}
 
   defp recency(%Run{} = run),
     do: DateTime.to_unix(run.started_at || run.inserted_at, :microsecond)
@@ -284,7 +289,7 @@ defmodule Apiary.Runs do
   @doc """
   The options of each filter of the runs list, counted from the data: every facet is counted
   under the other filters and the range, not under itself, so a chip shows what choosing
-  another value would give. `%{state:, repo:, task:, runtime:, host:}`, each
+  another value would give. `%{state:, target:, task:, runtime:, host:}`, each
   `%{options: [{label, value, count}], total: n}`: the #{@facet_size} most frequent values
   and the chosen one, with how many values there are. `narrow:` maps a facet's name to
   what the reader typed in its menu, matched anywhere in the value, case-insensitively, as
@@ -296,7 +301,7 @@ defmodule Apiary.Runs do
 
     %{
       state: state_facet(scope, filters, now),
-      repo: run_repo_facet(scope, filters, now, narrow["repo"]),
+      target: run_target_facet(scope, filters, now, narrow["repo"]),
       task: text_facet(scope, filters, now, :task, "No task", narrow["task"]),
       runtime: text_facet(scope, filters, now, :runtime, nil, narrow["runtime"]),
       host: text_facet(scope, filters, now, :host, nil, narrow["host"])
@@ -316,59 +321,64 @@ defmodule Apiary.Runs do
     %{options: options, total: length(options)}
   end
 
-  defp run_repo_facet(scope, filters, now, narrow),
-    do: repo_facet(filtered(scope, %{filters | repo: nil}, now), filters.repo, narrow)
+  defp run_target_facet(scope, filters, now, narrow),
+    do: target_facet(filtered(scope, %{filters | target: nil}, now), filters.target, narrow)
 
-  # `base` is a query with the run bound as `:run`; what is counted per repository is its
+  # `base` is a query with the run bound as `:run`; what is counted per target is its
   # distinct runs: the runs of the list, the runs that reached out on the connections page.
-  defp repo_facet(base, chosen, narrow) do
+  defp target_facet(base, chosen, narrow) do
     like = like(narrow)
 
     grouped =
       from [run: r] in base,
-        where: not is_nil(r.repository_id),
-        group_by: [r.forge, r.repository]
+        where: not is_nil(r.target_id),
+        group_by: [r.target_system, r.target_path]
 
     grouped =
       if like,
         do:
-          where(grouped, [run: r], ilike(fragment("? || '/' || ?", r.forge, r.repository), ^like)),
+          where(
+            grouped,
+            [run: r],
+            ilike(fragment("? || '/' || ?", r.target_system, r.target_path), ^like)
+          ),
         else: grouped
 
     rows =
       Repo.all(
         from [run: r] in grouped,
-          order_by: [desc: count(r.id, :distinct), asc: r.forge, asc: r.repository],
+          order_by: [desc: count(r.id, :distinct), asc: r.target_system, asc: r.target_path],
           limit: ^(@facet_size + 1),
-          select: {r.forge, r.repository, count(r.id, :distinct)}
+          select: {r.target_system, r.target_path, count(r.id, :distinct)}
       )
 
     total =
       if length(rows) > @facet_size,
-        do: Repo.one(from g in subquery(select(grouped, [run: r], r.forge)), select: count()),
+        do:
+          Repo.one(
+            from g in subquery(select(grouped, [run: r], r.target_system)), select: count()
+          ),
         else: length(rows)
 
     unassigned =
-      Repo.one(
-        from [run: r] in base, where: is_nil(r.repository_id), select: count(r.id, :distinct)
-      )
+      Repo.one(from [run: r] in base, where: is_nil(r.target_id), select: count(r.id, :distinct))
 
     options =
-      for {forge, path, n} <- Enum.take(rows, @facet_size),
-          do: {"#{forge}/#{path}", Filters.repo_value({forge, path}), n}
+      for {system, path, n} <- Enum.take(rows, @facet_size),
+          do: {"#{system}/#{path}", Filters.target_value({system, path}), n}
 
     options =
-      with {forge, path} <- chosen,
-           value = Filters.repo_value(chosen),
+      with {system, path} <- chosen,
+           value = Filters.target_value(chosen),
            false <- Enum.any?(options, &(elem(&1, 1) == value)) do
         n =
           Repo.one(
             from [run: r] in base,
-              where: r.forge == ^forge and r.repository == ^path,
+              where: r.target_system == ^system and r.target_path == ^path,
               select: count(r.id, :distinct)
           )
 
-        [{"#{forge}/#{path}", value, n} | options]
+        [{"#{system}/#{path}", value, n} | options]
       else
         _ -> options
       end
@@ -461,7 +471,7 @@ defmodule Apiary.Runs do
 
     in_scope(scope)
     |> where_if(f.states != [], dynamic([r], r.state in ^f.states))
-    |> where_repo(f.repo)
+    |> where_target(f.target)
     |> where_text(:task, f.task)
     |> where_text(:runtime, f.runtime)
     |> where_text(:host, f.host)
@@ -474,11 +484,11 @@ defmodule Apiary.Runs do
     if condition, do: where(query, ^dynamic), else: query
   end
 
-  defp where_repo(query, nil), do: query
-  defp where_repo(query, :none), do: where(query, [r], is_nil(r.repository_id))
+  defp where_target(query, nil), do: query
+  defp where_target(query, :none), do: where(query, [r], is_nil(r.target_id))
 
-  defp where_repo(query, {forge, path}),
-    do: where(query, [r], r.forge == ^forge and r.repository == ^path)
+  defp where_target(query, {system, path}),
+    do: where(query, [r], r.target_system == ^system and r.target_path == ^path)
 
   defp where_text(query, _field, nil), do: query
   defp where_text(query, field, :none), do: where(query, [r], is_nil(field(r, ^field)))
@@ -490,7 +500,7 @@ defmodule Apiary.Runs do
   A page of the hive's destinations across the runs in range: one row per host, port and
   path, with how many runs reached it, the attempts, and the decision, rule, outcome and
   the rest of the most recent attempt across those runs. Filters: `decision` (destinations
-  with any attempt so decided), `repo`, `host` (the destination's) and the range, which is
+  with any attempt so decided), `target`, `host` (the destination's) and the range, which is
   over when a run last reached the destination and never wider than
   `Apiary.Runs.Filters.max_window_days/0` days, so the aggregate is over a bounded set. Denied destinations come first, then the
   most recent.
@@ -586,13 +596,13 @@ defmodule Apiary.Runs do
   end
 
   @doc """
-  The repositories whose runs reached a destination under the same filters, the ones with
-  the most runs first, 25 at most: `%{repository_id:, forge:, repository:, runs:,
-  connection_id:}`, runs that name no repository as one entry with nil for the three.
-  `connection_id` is the most recent connection of the destination among the repository's
+  The targets whose runs reached a destination under the same filters, the ones with
+  the most runs first, 25 at most: `%{target_id:, system:, path:, runs:,
+  connection_id:}`, runs that name no target as one entry with nil for the three.
+  `connection_id` is the most recent connection of the destination among the target's
   runs: the row a rule made from the destination is made from (`fetch_connection/2`).
   """
-  def destination_repositories(
+  def destination_targets(
         %Scope{} = scope,
         %Filters{} = filters,
         {host, port, path},
@@ -604,13 +614,13 @@ defmodule Apiary.Runs do
     Repo.all(
       from [c, r] in connections_in(scope, filters, now),
         where: c.host == ^host and c.port == ^port and c.path == ^path,
-        group_by: [r.repository_id, r.forge, r.repository],
-        order_by: [desc: count(c.run_id, :distinct), asc: r.forge, asc: r.repository],
+        group_by: [r.target_id, r.target_system, r.target_path],
+        order_by: [desc: count(c.run_id, :distinct), asc: r.target_system, asc: r.target_path],
         limit: 25,
         select: %{
-          repository_id: r.repository_id,
-          forge: r.forge,
-          repository: r.repository,
+          target_id: r.target_id,
+          system: r.target_system,
+          path: r.target_path,
           runs: count(c.run_id, :distinct),
           connection_id:
             type(
@@ -622,24 +632,24 @@ defmodule Apiary.Runs do
   end
 
   @doc """
-  The repository of the scope's hive that runs name with this forge and path, or nil: one
-  indexed read, however many repositories the hive has.
+  The target of the scope's hive that runs name with this system and path, or nil: one
+  indexed read, however many targets the hive has.
   """
-  def fetch_repository(
+  def fetch_target(
         %Scope{organisation: %Organisation{id: organisation_id}, hive: %Hive{id: hive_id}},
-        forge,
+        system,
         path
       )
-      when is_binary(forge) and is_binary(path) do
+      when is_binary(system) and is_binary(path) do
     Repo.one(
-      from p in Repository,
+      from p in Target,
         where: p.organisation_id == ^organisation_id and p.hive_id == ^hive_id,
-        where: p.forge == ^forge and p.path == ^path,
+        where: p.system == ^system and p.path == ^path,
         limit: 1
     )
   end
 
-  def fetch_repository(%Scope{}, _forge, _path), do: nil
+  def fetch_target(%Scope{}, _system, _path), do: nil
 
   @doc """
   One connection of the scope's hive by its row id, whole. `:error` for an id that is not
@@ -664,7 +674,7 @@ defmodule Apiary.Runs do
   end
 
   @doc """
-  The options of the connections page's filters, `%{repo:, host:}`, each
+  The options of the connections page's filters, `%{target:, host:}`, each
   `%{options: [{label, value, count}], total: n}` like `run_facets/3`, counted in runs;
   `narrow:` as there.
   """
@@ -673,10 +683,10 @@ defmodule Apiary.Runs do
     narrow = Keyword.get(opts, :narrow, %{})
 
     %{
-      repo:
-        repo_facet(
-          connections_in(scope, %{filters | repo: nil}, now),
-          filters.repo,
+      target:
+        target_facet(
+          connections_in(scope, %{filters | target: nil}, now),
+          filters.target,
           narrow["repo"]
         ),
       host: destination_host_facet(scope, filters, now, narrow["host"])
@@ -719,7 +729,7 @@ defmodule Apiary.Runs do
     %{options: options, total: total}
   end
 
-  # The hive's connection rows under the filters, joined to their run (for the repository).
+  # The hive's connection rows under the filters, joined to their run (for the target).
   defp connections_in(
          %Scope{organisation: %Organisation{id: organisation_id}, hive: %Hive{id: hive_id}},
          %Filters{} = f,
@@ -737,14 +747,14 @@ defmodule Apiary.Runs do
     |> where_if(f.host, dynamic([c], c.host == ^f.host))
     |> where_if(from, dynamic([c], c.last_seen_at >= ^from))
     |> where_if(to, dynamic([c], c.last_seen_at < ^to))
-    |> where_run_repo(f.repo)
+    |> where_run_target(f.target)
   end
 
-  defp where_run_repo(query, nil), do: query
-  defp where_run_repo(query, :none), do: where(query, [_c, r], is_nil(r.repository_id))
+  defp where_run_target(query, nil), do: query
+  defp where_run_target(query, :none), do: where(query, [_c, r], is_nil(r.target_id))
 
-  defp where_run_repo(query, {forge, path}),
-    do: where(query, [_c, r], r.forge == ^forge and r.repository == ^path)
+  defp where_run_target(query, {system, path}),
+    do: where(query, [_c, r], r.target_system == ^system and r.target_path == ^path)
 
   # One row per destination. "Last" across runs is by the clock of the record: sequences
   # order the attempts of one run, and nothing but time orders two runs.

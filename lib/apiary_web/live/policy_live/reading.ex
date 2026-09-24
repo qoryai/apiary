@@ -37,7 +37,7 @@ defmodule ApiaryWeb.PolicyLive.Reading do
   `form` has string keys `"action"`, `"host"`, `"paths"` and `"every"` (`"true"` when every
   path was asked for in so many words). `context`:
 
-    * `scope`: `:hive` or `:repository`;
+    * `scope`: `:hive` or `:target`;
     * `own`: the rules of the scope being edited, maps or structs with `kind`, `action`,
       `host`, `paths`, `locked`, and `by`, `at` when the page knows them;
     * `entries`: the entries of the effective policy (`Apiary.Policy.Entry`);
@@ -307,7 +307,7 @@ defmodule ApiaryWeb.PolicyLive.Reading do
             ". It takes the host out of what the hive allows; a repository can still allow it unless you lock this rule."
           ]
 
-        {false, :repository} ->
+        {false, :target} ->
           [
             "Reads as: ",
             {:b, subject("deny", host)},
@@ -365,7 +365,7 @@ defmodule ApiaryWeb.PolicyLive.Reading do
     end)
   end
 
-  # On a repository page: the locked rule of the hive that decides the host whatever is
+  # On a target page: the locked rule of the hive that decides the host whatever is
   # added here. A locked deny holds against an allow below it, a locked allow against a
   # deny below it.
   defp locked_above(_action, _host, %{scope: :hive}), do: nil
@@ -424,7 +424,7 @@ defmodule ApiaryWeb.PolicyLive.Reading do
   defp past("deny"), do: "denied"
 
   defp for_scope(:hive), do: "for the hive"
-  defp for_scope(:repository), do: "for this repository"
+  defp for_scope(:target), do: "for this repository"
 
   defp by(%{by: by, at: at}) when is_binary(by) and is_binary(at), do: ", by #{by} on #{at}"
   defp by(%{at: at}) when is_binary(at), do: ", since #{at}"

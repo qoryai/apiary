@@ -1,10 +1,10 @@
 defmodule ApiaryWeb.PolicyLive.Common do
   @moduledoc """
-  What the hive's policy page and a repository's share: the rows of a rules table built
+  What the hive's policy page and a target's share: the rows of a rules table built
   from `Apiary.Policy`, the composer's state and its events, the history, the version and
   the export of a holder, and the words of a change.
 
-  A holder is `nil` for the hive's baseline or an `Apiary.Runs.Repository`. Everything is
+  A holder is `nil` for the hive's baseline or an `Apiary.Runs.Target`. Everything is
   read through `Apiary.Policy`; nothing here touches a schema's table.
   """
   use ApiaryWeb, :verified_routes
@@ -31,7 +31,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
     socket
     |> assign(
       holder: holder,
-      scope_kind: if(holder, do: :repository, else: :hive),
+      scope_kind: if(holder, do: :target, else: :hive),
       base: base(holder),
       owner?: owner?(scope),
       people: people(scope),
@@ -71,11 +71,11 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
   @doc "Asks for a reload of the page's policy, at most once per window. The page handles `:policy_reload`."
   def schedule_reload(socket, change \\ %{}) do
-    # Which repositories the changes of this window name; `:all` once one names the hive.
+    # Which targets the changes of this window name; `:all` once one names the hive.
     touched =
       case {socket.assigns.touched, change} do
         {:all, _} -> :all
-        {%MapSet{} = set, %{repository_id: id}} when is_binary(id) -> MapSet.put(set, id)
+        {%MapSet{} = set, %{target_id: id}} when is_binary(id) -> MapSet.put(set, id)
         _ -> :all
       end
 
@@ -142,7 +142,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
   end
 
   @doc """
-  The effective policy of a repository as rows: one per host rule in force, the rules it
+  The effective policy of a target as rows: one per host rule in force, the rules it
   beat hung under it.
   """
   def effective_rows(%Policy.Effective{entries: entries}, socket) do
@@ -174,19 +174,19 @@ defmodule ApiaryWeb.PolicyLive.Common do
   defp act(%{source: :hive, action: :allow}), do: :disable
   defp act(%{source: :hive, action: :deny}), do: :allow_here
 
-  defp act(%{source: :repository, action: :deny, overrides: overrides}) do
+  defp act(%{source: :target, action: :deny, overrides: overrides}) do
     if Enum.any?(overrides, &(&1.source == :hive)), do: :restore, else: :remove
   end
 
-  defp act(%{source: :repository}), do: :remove
+  defp act(%{source: :target}), do: :remove
 
   defp beaten(loser, winner, people) do
     kind =
       cond do
-        winner.locked and loser.source == :repository ->
+        winner.locked and loser.source == :target ->
           :lock
 
-        winner.source == :repository and loser.source == :hive and loser.host == winner.host ->
+        winner.source == :target and loser.source == :hive and loser.host == winner.host ->
           :override
 
         true ->
@@ -499,10 +499,12 @@ defmodule ApiaryWeb.PolicyLive.Common do
   def past("allow"), do: "allowed"
   def past("deny"), do: "denied"
 
-  def holder_name(%{assigns: %{holder: %{forge: forge, path: path}}}), do: "#{forge}/#{path}"
+  def holder_name(%{assigns: %{holder: %{system: system, path: path}}}), do: "#{system}/#{path}"
 
   def for_holder(%{assigns: %{holder: nil}}), do: "for the hive"
-  def for_holder(%{assigns: %{holder: %{forge: forge, path: path}}}), do: "for #{forge}/#{path}"
+
+  def for_holder(%{assigns: %{holder: %{system: system, path: path}}}),
+    do: "for #{system}/#{path}"
 
   @doc """
   After a write: the page is read again, the new rule is marked fresh, the toast and the
@@ -593,7 +595,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
     diff = Policy.diff(change)
 
     case {change.action, diff} do
-      {"mode_changed", %{mode: {from, to}}} when is_nil(change.repository_id) ->
+      {"mode_changed", %{mode: {from, to}}} when is_nil(change.target_id) ->
         ["switched the hive's default mode from #{from} to ", {:b, [to]}]
 
       {"mode_changed", %{mode: {_from, "inherit"}}} ->
@@ -669,7 +671,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
     diff = Policy.diff(change)
 
     case {change.action, diff} do
-      {"mode_changed", %{mode: {_from, to}}} when is_nil(change.repository_id) ->
+      {"mode_changed", %{mode: {_from, to}}} when is_nil(change.target_id) ->
         "Hive's default set to #{to}"
 
       {"mode_changed", %{mode: {_from, "inherit"}}} ->
@@ -890,10 +892,10 @@ defmodule ApiaryWeb.PolicyLive.Common do
   # The configuration a change made for the holder, or nil when the bytes stayed the same.
   defp made_version(versions, holder, change) do
     holder_id = holder && holder.id
-    Enum.find(versions[change.id] || [], &(&1.repository_id == holder_id))
+    Enum.find(versions[change.id] || [], &(&1.target_id == holder_id))
   end
 
-  defp origin(%{action: "mode_changed", repository_id: id} = change, made) when id != nil do
+  defp origin(%{action: "mode_changed", target_id: id} = change, made) when id != nil do
     case {change.before["mode"], change.after["mode"], made} do
       {"inherit", _to, nil} ->
         "Its own from now on. The hive's default is the same, so the document did not change."
@@ -925,7 +927,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
     holder_id = holder && holder.id
 
     with {:ok, change} <- Policy.get_change(scope, change_id),
-         true <- change.repository_id == holder_id do
+         true <- change.target_id == holder_id do
       # The row names the version; the diff needs its document, and the one before.
       made =
         with %{version: version} <-
@@ -1064,7 +1066,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
                words: (change && change_words(change)) || "First render",
                who: socket.assigns.people[item.changed_by_id],
                at: item.rendered_at,
-               hive: holder != nil and change != nil and is_nil(change.repository_id)
+               hive: holder != nil and change != nil and is_nil(change.target_id)
              }
            end,
          earlier: max(List.last(around).version - 1, 0),
@@ -1122,10 +1124,10 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
   @doc """
   The version a holder is served, one read and no document: `{configuration, own?}`, `own?` false when
-  a repository is served the hive's baseline. Only for a hive somebody has changed: before
+  a target is served the hive's baseline. Only for a hive somebody has changed: before
   that nothing is served, and nothing is read (`nil`).
   """
-  def served_version(_scope, _target, false), do: nil
+  def served_version(_scope, _holder, false), do: nil
 
   def served_version(scope, holder, true) do
     versions = Policy.newest_versions(scope, [nil | List.wrap(holder)])
@@ -1147,7 +1149,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
     subject =
       case holder do
         nil -> "the hive #{scope.hive.name}"
-        %{forge: forge, path: path} -> "#{forge}/#{path}"
+        %{system: system, path: path} -> "#{system}/#{path}"
       end
 
     slug =
@@ -1178,7 +1180,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
   end
 
   @doc """
-  The two comment lines over an exported text. The subject is a forge and a path from a
+  The two comment lines over an exported text. The subject is a system and a path from a
   run's labels, or a hive's name: whatever breaks a line in YAML is taken out of it, so
   nothing a runner or a person named can become a key of the text an operator pastes.
   """

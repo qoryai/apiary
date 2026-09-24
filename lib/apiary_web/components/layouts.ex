@@ -54,7 +54,7 @@ defmodule ApiaryWeb.Layouts do
   attr :counts, :map,
     default: nil,
     doc:
-      "%{keys: active keys, members: members, alive: runs alive now, mode: the policy's default mode, own_modes: the modes repositories set}"
+      "%{keys: active keys, members: members, alive: runs alive now, mode: the policy's default mode, own_modes: the modes targets set}"
 
   attr :width, :string,
     default: "wide",

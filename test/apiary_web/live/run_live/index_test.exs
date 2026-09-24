@@ -235,7 +235,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       }
     end
 
-    test "by repository: two forges with one path are two groups, unassigned is last", %{
+    test "by target: two systems with one path are two groups, unassigned is last", %{
       conn: conn
     } do
       view = open(conn)
@@ -258,7 +258,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert has_element?(view, "#runs-group button[aria-pressed=true]", "Repository")
     end
 
-    test "by task: one task spans repositories, each row leads with its repository", %{
+    test "by task: one task spans targets, each row leads with its target", %{
       conn: conn,
       github: github
     } do
@@ -274,7 +274,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert text(view, "#runs-summary") =~ "3 runs in 1 task"
     end
 
-    test "not grouped: no headers, and a repository column", %{conn: conn, github: github} do
+    test "not grouped: no headers, and a target column", %{conn: conn, github: github} do
       view = open(conn, ~p"/hive/runs?group=none")
       refute has_element?(view, "tr.q-group")
       assert has_element?(view, "th", "Repository")
@@ -593,18 +593,18 @@ defmodule ApiaryWeb.RunLive.IndexTest do
     end
   end
 
-  describe "repositories and menus at any size" do
-    test "a forge with a colon groups, links and filters", %{conn: conn, scope: scope} do
+  describe "targets and menus at any size" do
+    test "a system with a colon groups, links and filters", %{conn: conn, scope: scope} do
       run = started_run(scope, %{"forge" => "git.example:8443", "repository" => "acme/shop"})
       other = started_run(scope, shop())
       view = open(conn)
 
       connections =
-        ~p"/hive/connections?#{Apiary.Runs.Filters.repo_params("git.example:8443", "acme/shop")}"
+        ~p"/hive/connections?#{Apiary.Runs.Filters.target_params("git.example:8443", "acme/shop")}"
 
       assert has_element?(view, "tr.q-group a[href='#{connections}']")
 
-      value = Apiary.Runs.Filters.repo_value({"git.example:8443", "acme/shop"})
+      value = Apiary.Runs.Filters.target_value({"git.example:8443", "acme/shop"})
       view |> form("#filter-repo-form") |> render_change(%{"repo" => value})
 
       assert_patch(

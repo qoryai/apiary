@@ -1,7 +1,7 @@
 defmodule Apiary.Runs.Projector do
   @moduledoc """
   Folds a run's events into what the console reads: the `runs` row, its `connections`,
-  its `log_chunks` and the hive's `repositories`.
+  its `log_chunks` and the hive's `targets`.
 
   The receiver stores events and answers; it calls `project_async/1` after its
   transaction has committed. `project/1` is the same work done synchronously: the tests
@@ -35,13 +35,13 @@ defmodule Apiary.Runs.Projector do
 
   alias Apiary.Repo
   alias Apiary.Runs
-  alias Apiary.Runs.{Connection, Event, Fold, LogChunk, Repository, Run}
+  alias Apiary.Runs.{Connection, Event, Fold, LogChunk, Run, Target}
 
   # What the fold may change on the run's row.
   @folded_fields ~w(
     state runner_version contract_version runtime runtime_version command args dir
-    interactive terminal_cols terminal_rows host wall image labels task forge repository
-    started_at exited_at exit_code
+    interactive terminal_cols terminal_rows host wall image labels task
+    target_system target_path started_at exited_at exit_code
     signal reason duration_ms last_heartbeat_at elapsed_seconds heartbeat_interval_seconds
     policy_digest run_configuration_digest lost_at cost_usd
   )a
@@ -152,7 +152,7 @@ defmodule Apiary.Runs.Projector do
     |> Ecto.Changeset.change(
       state: state,
       projected_sequence: 0,
-      repository_id: nil,
+      target_id: nil,
       denied_count: 0
     )
     |> Repo.update()
@@ -273,7 +273,7 @@ defmodule Apiary.Runs.Projector do
         run
         |> Ecto.Changeset.change(Map.take(fold.run, @folded_fields))
         |> Ecto.Changeset.change(denied_count: run.denied_count + denied(fold.connections))
-        |> put_repository(fold.run)
+        |> put_target(fold.run)
         |> Repo.update!(log: false)
 
       insert_log_chunks(run, fold.log_chunks)
@@ -355,19 +355,19 @@ defmodule Apiary.Runs.Projector do
     connections |> Map.values() |> Enum.map(& &1.denied) |> Enum.sum()
   end
 
-  defp put_repository(changeset, %{forge: forge, repository: path})
-       when is_binary(forge) and is_binary(path) and forge != "" and path != "" do
+  defp put_target(changeset, %{target_system: system, target_path: path})
+       when is_binary(system) and is_binary(path) and system != "" and path != "" do
     run = changeset.data
     now = DateTime.utc_now()
 
     Repo.insert_all(
-      Repository,
+      Target,
       [
         %{
           id: Ecto.UUID.generate(),
           organisation_id: run.organisation_id,
           hive_id: run.hive_id,
-          forge: forge,
+          system: system,
           path: path,
           first_seen_at: now,
           inserted_at: now,
@@ -375,23 +375,23 @@ defmodule Apiary.Runs.Projector do
         }
       ],
       on_conflict: :nothing,
-      conflict_target: [:hive_id, :forge, :path],
+      conflict_target: [:hive_id, :system, :path],
       log: false
     )
 
-    repository_id =
+    target_id =
       Repo.one!(
-        from(p in Repository,
-          where: p.hive_id == ^run.hive_id and p.forge == ^forge and p.path == ^path,
-          select: p.id
+        from(t in Target,
+          where: t.hive_id == ^run.hive_id and t.system == ^system and t.path == ^path,
+          select: t.id
         ),
         log: false
       )
 
-    Ecto.Changeset.change(changeset, repository_id: repository_id)
+    Ecto.Changeset.change(changeset, target_id: target_id)
   end
 
-  defp put_repository(changeset, _run), do: changeset
+  defp put_target(changeset, _run), do: changeset
 
   defp insert_log_chunks(_run, []), do: :ok
 

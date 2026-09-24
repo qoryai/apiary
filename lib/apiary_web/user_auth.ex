@@ -294,7 +294,7 @@ defmodule ApiaryWeb.UserAuth do
   end
 
   # The word beside Policy: the hive's default mode, once the hive has a policy of Qory's,
-  # and the modes of the repositories that set their own. One read.
+  # and the modes of the targets that set their own. One read.
   defp policy_mode(%Scope{hive: nil}), do: %{mode: nil, own_modes: []}
 
   defp policy_mode(%Scope{} = scope) do

@@ -7,7 +7,7 @@ defmodule Apiary.Policy.ActivityTest do
 
   alias Apiary.Policy
   alias Apiary.Policy.Activity
-  alias Apiary.Runs.Repository
+  alias Apiary.Runs.Target
 
   @site %{"forge" => "github.example", "repository" => "acme/site"}
   @docs %{"forge" => "github.example", "repository" => "acme/docs"}
@@ -39,7 +39,7 @@ defmodule Apiary.Policy.ActivityTest do
     docs = started_run(scope, @docs, egress: [allowed("new.example"), allowed("mcp.example")])
     _plain = started_run(scope, %{}, egress: [allowed("new.example"), denied("other.example")])
 
-    repository = Repo.get!(Repository, site.repository_id)
+    target = Repo.get!(Target, site.target_id)
     {:ok, api} = Policy.allow(scope, nil, %{host: "api.example"})
     {:ok, cdn} = Policy.allow(scope, nil, %{host: "*.cdn.example"})
     {:ok, ads} = Policy.deny(scope, nil, %{host: "ads.example"})
@@ -47,27 +47,27 @@ defmodule Apiary.Policy.ActivityTest do
     {:ok, git} =
       Policy.allow(scope, nil, %{host: "git.example", paths: ["/acme/site.git/info/refs"]})
 
-    {:ok, mcp} = Policy.allow(scope, repository, %{host: "mcp.example"})
+    {:ok, mcp} = Policy.allow(scope, target, %{host: "mcp.example"})
 
-    %{scope: scope, repository: repository, docs: Repo.get!(Repository, docs.repository_id)}
+    %{scope: scope, target: target, docs: Repo.get!(Target, docs.target_id)}
     |> Map.merge(%{api: api, cdn: cdn, ads: ads, git: git, mcp: mcp})
   end
 
   describe "uncovered/2" do
-    test "what was let through and no rule of the run's repository covers, most attempts first",
+    test "what was let through and no rule of the run's target covers, most attempts first",
          ctx do
       assert {:ok, [new, push, mcp]} = Policy.uncovered(ctx.scope, since())
 
       assert %{host: "new.example", path: nil, attempts: 3, runs: 3, last_seen_at: %DateTime{}} =
                new
 
-      assert Enum.map(new.repositories, & &1.path) == ["acme/docs", "acme/site"]
+      assert Enum.map(new.targets, & &1.path) == ["acme/docs", "acme/site"]
 
       # A host held to paths: the path no entry matches is the destination.
       assert %{host: "git.example", path: "/acme/site.git/git-receive-pack", attempts: 1} = push
 
       # Allowed in acme/site by its own rule, uncovered in acme/docs.
-      assert %{host: "mcp.example", runs: 1, repositories: [%{path: "acme/docs"}]} = mcp
+      assert %{host: "mcp.example", runs: 1, targets: [%{path: "acme/docs"}]} = mcp
     end
 
     test "nothing older than since, and :unavailable beyond the cap", ctx do
@@ -89,8 +89,8 @@ defmodule Apiary.Policy.ActivityTest do
 
       assert %{host: "ads.example", port: 443, path: "", denied: 2, runs: 1, held: false} = ads
       assert ads.locked == nil
-      assert Enum.map(ads.repositories, & &1.path) == ["acme/site"]
-      assert %{host: "other.example", denied: 1, runs: 1, repositories: []} = other
+      assert Enum.map(ads.targets, & &1.path) == ["acme/site"]
+      assert %{host: "other.example", denied: 1, runs: 1, targets: []} = other
 
       # A locked deny is named, so the page can say that only an owner changes it.
       {:ok, _} = Policy.lock(ctx.scope, ctx.ads)
@@ -112,14 +112,14 @@ defmodule Apiary.Policy.ActivityTest do
     end
   end
 
-  describe "uncovered and a repository's own mode" do
-    test "the hive's form leaves out a repository that does not follow the hive", ctx do
+  describe "uncovered and a target's own mode" do
+    test "the hive's form leaves out a target that does not follow the hive", ctx do
       {:ok, _} = Policy.set_mode(ctx.scope, ctx.docs, "observe")
 
       assert {:ok, [new, push]} = Policy.uncovered(ctx.scope, since())
       # acme/docs reached new.example and mcp.example; enforcing the hive changes neither.
       assert %{host: "new.example", attempts: 2, runs: 2} = new
-      assert Enum.map(new.repositories, & &1.path) == ["acme/site"]
+      assert Enum.map(new.targets, & &1.path) == ["acme/site"]
       assert push.host == "git.example"
 
       assert {:ok, same} = Policy.uncovered(ctx.scope, nil, since())
@@ -129,7 +129,7 @@ defmodule Apiary.Policy.ActivityTest do
       assert {:ok, [_, _, %{host: "mcp.example"}]} = Policy.uncovered(ctx.scope, since())
     end
 
-    test "a repository's form is its own runs under its own rules, whatever its mode", ctx do
+    test "a target's form is its own runs under its own rules, whatever its mode", ctx do
       for mode <- ["observe", "enforce", :inherit] do
         {:ok, _} = Policy.set_mode(ctx.scope, ctx.docs, mode)
 
@@ -143,12 +143,12 @@ defmodule Apiary.Policy.ActivityTest do
                 %{host: "git.example", path: "/acme/site.git/git-receive-pack"},
                 %{host: "new.example"}
               ]} =
-               Policy.uncovered(ctx.scope, ctx.repository, since())
+               Policy.uncovered(ctx.scope, ctx.target, since())
     end
 
-    test "another hive's repository has nothing", ctx do
+    test "another hive's target has nothing", ctx do
       %{scope: other} = sign_up_fixture()
-      assert {:ok, []} = Policy.uncovered(other, ctx.repository, since())
+      assert {:ok, []} = Policy.uncovered(other, ctx.target, since())
     end
   end
 
@@ -182,16 +182,16 @@ defmodule Apiary.Policy.ActivityTest do
       assert counts[ctx.cdn.id] == %{allowed: 1, denied: 0}
       assert counts[ctx.git.id] == %{allowed: 2, denied: 0}
       assert counts[ctx.ads.id] == %{allowed: 0, denied: 2}
-      # The repository's rule decided its run's connection; the other repository's had none.
+      # The target's rule decided its run's connection; the other target's had none.
       assert counts[ctx.mcp.id] == %{allowed: 0, denied: 1}
       assert map_size(counts) == 5
     end
 
-    test "a repository's page reads its own runs, and names the hive's rules that decided", ctx do
+    test "a target's page reads its own runs, and names the hive's rules that decided", ctx do
       assert {:ok, counts} = Policy.rule_activity(ctx.scope, ctx.docs, since())
       assert counts == %{}
 
-      assert {:ok, counts} = Policy.rule_activity(ctx.scope, ctx.repository, since())
+      assert {:ok, counts} = Policy.rule_activity(ctx.scope, ctx.target, since())
       assert counts[ctx.api.id] == %{allowed: 2, denied: 0}
       assert counts[ctx.mcp.id] == %{allowed: 0, denied: 1}
     end
@@ -218,14 +218,14 @@ defmodule Apiary.Policy.ActivityTest do
     end
   end
 
-  test "tenancy: another hive reads nothing of this one, and its repository is not a holder",
+  test "tenancy: another hive reads nothing of this one, and its target is not a holder",
        ctx do
     %{scope: other} = sign_up_fixture()
 
     assert {:ok, []} = Policy.uncovered(other, since())
     assert {:ok, %{denied: 0, destinations: 0}} = Policy.denied_summary(other, since())
     assert {:ok, %{}} = Policy.rule_activity(other, nil, since())
-    assert {:ok, counts} = Policy.rule_activity(other, ctx.repository, since())
+    assert {:ok, counts} = Policy.rule_activity(other, ctx.target, since())
     assert counts == %{}
 
     # A rule of the same host in the other hive is not counted from this hive's record.

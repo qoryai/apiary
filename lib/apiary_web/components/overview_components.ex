@@ -284,7 +284,7 @@ defmodule ApiaryWeb.OverviewComponents do
       <b>Host allowed, no path rule matches</b> <code class="q-rule">{@item.path}</code>.
     </span>
     Denied <b>{times(@item.denied)}</b>
-    in {count_noun(@item.runs, "run")} {denied_where(@item.repositories)}, last
+    in {count_noun(@item.runs, "run")} {denied_where(@item.targets)}, last
     <.relative_time at={@item.last_seen_at} />.
     """
   end
@@ -374,8 +374,8 @@ defmodule ApiaryWeb.OverviewComponents do
     """
   end
 
-  defp attention_actions(%{item: %{kind: :denied, repositories: [repository]}} = assigns) do
-    assigns = assign(assigns, :repository, repository)
+  defp attention_actions(%{item: %{kind: :denied, targets: [target]}} = assigns) do
+    assigns = assign(assigns, :target, target)
 
     ~H"""
     <span
@@ -388,7 +388,7 @@ defmodule ApiaryWeb.OverviewComponents do
         id={"#{@item.id}-act"}
         type="button"
         class="btn btn-xs"
-        aria-label={"Allow #{@item.host} for #{@repository.forge}/#{@repository.path}"}
+        aria-label={"Allow #{@item.host} for #{@target.system}/#{@target.path}"}
         aria-haspopup="dialog"
         aria-expanded={to_string(@item[:expanded] == true)}
         phx-click={JS.push("rule_open", value: %{id: @item.id, level: "repository"})}
@@ -419,7 +419,7 @@ defmodule ApiaryWeb.OverviewComponents do
         <li role="none">
           <.link
             role="menuitem"
-            navigate={~p"/hive/policy/repositories/#{@repository.id}?#{%{"rule" => @item.host}}"}
+            navigate={~p"/hive/policy/repositories/#{@target.id}?#{%{"rule" => @item.host}}"}
           >
             Allow with paths…
           </.link>
@@ -429,7 +429,7 @@ defmodule ApiaryWeb.OverviewComponents do
     """
   end
 
-  defp attention_actions(%{item: %{kind: :denied, repositories: []}} = assigns) do
+  defp attention_actions(%{item: %{kind: :denied, targets: []}} = assigns) do
     ~H"""
     <button
       id={"#{@item.id}-act"}
@@ -592,13 +592,13 @@ defmodule ApiaryWeb.OverviewComponents do
 
   defp denied_where([]), do: "without a repository"
 
-  defp denied_where([%{forge: forge, path: path}]),
+  defp denied_where([%{system: system, path: path}]),
     do:
       Phoenix.HTML.raw(
-        ~s(of <span class="font-mono text-[12.5px]">#{escape(forge)}/#{escape(path)}</span>)
+        ~s(of <span class="font-mono text-[12.5px]">#{escape(system)}/#{escape(path)}</span>)
       )
 
-  defp denied_where(repositories), do: "of #{length(repositories)} repositories"
+  defp denied_where(targets), do: "of #{length(targets)} repositories"
 
   defp escape(text), do: text |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
 
@@ -692,7 +692,7 @@ defmodule ApiaryWeb.OverviewComponents do
   defp families_sub(%{runs: 0}), do: "none"
 
   defp families_sub(%{runs: 1, alive: 1} = facts) do
-    if facts[:repositories] == 1, do: "in 1 repository", else: "alive"
+    if facts[:targets] == 1, do: "in 1 repository", else: "alive"
   end
 
   defp families_sub(facts) do
@@ -799,10 +799,10 @@ defmodule ApiaryWeb.OverviewComponents do
       </div>
       <span class="q-where">
         <span class="q-repo">
-          <span :if={@run.forge && @run.repository}>
-            <span class="q-forge">{@run.forge}/</span>{@run.repository}
+          <span :if={@run.target_system && @run.target_path}>
+            <span class="q-forge">{@run.target_system}/</span>{@run.target_path}
           </span>
-          <span :if={!(@run.forge && @run.repository)} class="font-sans text-faint">no repository</span>
+          <span :if={!(@run.target_system && @run.target_path)} class="font-sans text-faint">no repository</span>
         </span>
         <span class="q-host">{@run.host || "n/a"}</span>
       </span>
@@ -1226,8 +1226,8 @@ defmodule ApiaryWeb.OverviewComponents do
         </div>
       </td>
       <td class="q-c-repo">
-        <span :if={@run.forge && @run.repository}><span class="q-forge">{@run.forge}/</span>{@run.repository}</span>
-        <span :if={!(@run.forge && @run.repository)} class="font-sans text-faint">no repository</span>
+        <span :if={@run.target_system && @run.target_path}><span class="q-forge">{@run.target_system}/</span>{@run.target_path}</span>
+        <span :if={!(@run.target_system && @run.target_path)} class="font-sans text-faint">no repository</span>
       </td>
       <td class="q-c-host q-meta">
         <span :if={@run.host} class="font-mono text-[12.5px]">{@run.host}</span>
@@ -1260,8 +1260,8 @@ defmodule ApiaryWeb.OverviewComponents do
   ## od7. Policy at a glance
 
   @doc """
-  The policy card (od7): the mode with its source and the repositories that differ, the
-  version in force, the repository counts and what there is to review. `policy` is nil
+  The policy card (od7): the mode with its source and the targets that differ, the
+  version in force, the target counts and what there is to review. `policy` is nil
   while the read is in flight; nothing on the card is a control.
   """
   attr :id, :string, default: "overview-policy"
@@ -1299,10 +1299,10 @@ defmodule ApiaryWeb.OverviewComponents do
                   <% [one] -> %>
                     1 sets its own:
                     <.link
-                      navigate={~p"/hive/policy/repositories/#{one.repository.id}"}
+                      navigate={~p"/hive/policy/repositories/#{one.target.id}"}
                       class="q-link font-mono text-[12.5px]"
                     >
-                      {one.repository.forge}/{one.repository.path}
+                      {one.target.system}/{one.target.path}
                     </.link>
                     {one.own_mode}s
                   <% many -> %>
@@ -1330,7 +1330,7 @@ defmodule ApiaryWeb.OverviewComponents do
         <dt>Repositories</dt>
         <dd id={"#{@id}-repositories"}>
           <.link navigate={~p"/hive/policy/repositories"} class="q-link">
-            <b>{@policy.repositories}</b> {if @policy.repositories == 1,
+            <b>{@policy.targets}</b> {if @policy.targets == 1,
               do: "has posted a run",
               else: "have posted runs"}
           </.link>
@@ -1353,7 +1353,7 @@ defmodule ApiaryWeb.OverviewComponents do
                 {@policy.suggestions.hosts} to review
               </.link>
               <span class="q-muted">
-                in {count_noun(@policy.suggestions.repositories, "repository", "repositories")}
+                in {count_noun(@policy.suggestions.targets, "repository", "repositories")}
               </span>
           <% end %>
         </dd>

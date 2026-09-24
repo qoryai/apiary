@@ -2,7 +2,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
   @moduledoc """
   The hive's security policy (`docs/design/brief-policy.md`, pe1, pe2, pe4, pe5): the mode
   with its two confirms, the host rules with the composer that reads a rule back before it
-  is saved, the credentials, the repositories and their policy, the history with diffs,
+  is saved, the credentials, the targets and their policy, the history with diffs,
   one version with its document, and the export.
 
   One LiveView, five live actions, so a tab is a patch. Filters, the opened change, the
@@ -29,12 +29,12 @@ defmodule ApiaryWeb.PolicyLive.Show do
     socket =
       socket
       |> Common.mount(nil)
-      |> assign(reload: &load/1, show: nil, rule_target: nil, repositories: nil)
+      |> assign(reload: &load/1, show: nil, ruled_host: nil, targets: nil)
       |> assign(history: nil, open_change: nil, diff: nil, v: nil, export: nil, missing: nil)
       |> assign(would: nil, composer_open: false, own_only: false, params: %{})
-      |> assign(repository_list: [], summary: nil)
-      |> assign(:repository_details, Phoenix.LiveView.AsyncResult.loading())
-      |> assign(:repository_suggestions, Phoenix.LiveView.AsyncResult.loading())
+      |> assign(target_list: [], summary: nil)
+      |> assign(:target_details, Phoenix.LiveView.AsyncResult.loading())
+      |> assign(:target_suggestions, Phoenix.LiveView.AsyncResult.loading())
 
     # The page is read once, by the connected mount: the first render is its skeleton.
     socket =
@@ -53,7 +53,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
     own = Policy.list_rules(scope, nil)
     changes = Policy.list_changes(scope, nil, 1)
     locks = Common.locks(changes)
-    repositories = Policy.list_repositories(scope)
+    targets = Policy.list_targets(scope)
 
     version =
       case Common.served_version(scope, nil, managed?) do
@@ -70,10 +70,10 @@ defmodule ApiaryWeb.PolicyLive.Show do
       locks: locks,
       version: version,
       change_total: changes.total,
-      repository_list: repositories,
-      repository_total: length(repositories),
-      following: Enum.count(repositories, &is_nil(&1.own_mode)),
-      own_modes: for(%{own_mode: mode} <- repositories, mode != nil, do: mode),
+      target_list: targets,
+      target_total: length(targets),
+      following: Enum.count(targets, &is_nil(&1.own_mode)),
+      own_modes: for(%{own_mode: mode} <- targets, mode != nil, do: mode),
       reload_pending: false,
       now: DateTime.utc_now()
     )
@@ -147,18 +147,18 @@ defmodule ApiaryWeb.PolicyLive.Show do
 
   defp apply_action(socket, :rules, params) do
     show = if params["show"] in @shows, do: params["show"]
-    target = Common.rule_param(params["rule"])
+    ruled_host = Common.rule_param(params["rule"])
 
     socket
-    |> assign(show: show, rule_target: target, page_title: "Policy")
-    |> then(&if(target, do: push_event(&1, "policy:target", %{host: target}), else: &1))
+    |> assign(show: show, ruled_host: ruled_host, page_title: "Policy")
+    |> then(&if(ruled_host, do: push_event(&1, "policy:rule", %{host: ruled_host}), else: &1))
     |> then(&if(params["confirm"] == "enforce", do: confirm_enforce(&1), else: &1))
   end
 
   defp apply_action(socket, :repositories, params) do
     socket
     |> assign(page_title: "Repositories · Policy", own_only: params["mode"] == "own")
-    |> load_repositories(:all)
+    |> load_targets(:all)
   end
 
   defp apply_action(socket, :history, params) do
@@ -218,59 +218,59 @@ defmodule ApiaryWeb.PolicyLive.Show do
     %{versions: (socket.assigns.version && socket.assigns.version.version) || 0, since: since}
   end
 
-  # The repositories tab. The list is the one read `load/1` made. What costs a read per
-  # repository is read off the render, in two tasks, for the first fifty (the ones with
+  # The targets tab. The list is the one read `load/1` made. What costs a read per
+  # target is read off the render, in two tasks, for the first fifty (the ones with
   # rules or a mode of their own first): the overrides and the version served, and the
-  # suggestions, which read events. A change that names one repository re-reads that
-  # repository alone.
+  # suggestions, which read events. A change that names one target re-reads that
+  # target alone.
   @detailed 50
-  defp load_repositories(socket, :all) do
+  defp load_targets(socket, :all) do
     scope = socket.assigns.current_scope
     managed? = socket.assigns.managed?
-    detailed = detailed(socket.assigns.repository_list)
+    detailed = detailed(socket.assigns.target_list)
 
     socket
-    |> assign_async(:repository_details, fn ->
-      {:ok, %{repository_details: details(scope, detailed, managed?)}}
+    |> assign_async(:target_details, fn ->
+      {:ok, %{target_details: details(scope, detailed, managed?)}}
     end)
-    |> assign_async(:repository_suggestions, fn ->
+    |> assign_async(:target_suggestions, fn ->
       {:ok,
        %{
-         repository_suggestions:
+         target_suggestions:
            Map.new(
              detailed,
-             &{&1.repository.id, length(Policy.suggestions(scope, &1.repository))}
+             &{&1.target.id, length(Policy.suggestions(scope, &1.target))}
            )
        }}
     end)
   end
 
-  defp load_repositories(socket, %MapSet{} = ids) do
-    %{repository_details: details, repository_suggestions: suggestions} = socket.assigns
+  defp load_targets(socket, %MapSet{} = ids) do
+    %{target_details: details, target_suggestions: suggestions} = socket.assigns
 
     if details.ok? and suggestions.ok? do
       scope = socket.assigns.current_scope
-      rows = Enum.filter(detailed(socket.assigns.repository_list), &(&1.repository.id in ids))
+      rows = Enum.filter(detailed(socket.assigns.target_list), &(&1.target.id in ids))
 
       socket
       |> assign(
-        :repository_details,
+        :target_details,
         Phoenix.LiveView.AsyncResult.ok(
           details,
           Map.merge(details.result, details(scope, rows, socket.assigns.managed?))
         )
       )
       |> assign(
-        :repository_suggestions,
+        :target_suggestions,
         Phoenix.LiveView.AsyncResult.ok(
           suggestions,
           Enum.reduce(rows, suggestions.result, fn row, map ->
-            Map.put(map, row.repository.id, length(Policy.suggestions(scope, row.repository)))
+            Map.put(map, row.target.id, length(Policy.suggestions(scope, row.target)))
           end)
         )
       )
     else
-      load_repositories(socket, :all)
+      load_targets(socket, :all)
     end
   end
 
@@ -279,56 +279,55 @@ defmodule ApiaryWeb.PolicyLive.Show do
   end
 
   # Two reads for all of them, the versions and the last changes, and the effective
-  # policy of each repository that has rules, for its overrides.
+  # policy of each target that has rules, for its overrides.
   defp details(scope, rows, managed?) do
-    repositories = Enum.map(rows, & &1.repository)
-    versions = if managed?, do: Policy.newest_versions(scope, [nil | repositories]), else: %{}
-    changes = Policy.last_changes(scope, repositories)
+    targets = Enum.map(rows, & &1.target)
+    versions = if managed?, do: Policy.newest_versions(scope, [nil | targets]), else: %{}
+    changes = Policy.last_changes(scope, targets)
 
-    Map.new(rows, fn %{repository: repository, rule_count: count} ->
+    Map.new(rows, fn %{target: target, rule_count: count} ->
       overrides =
         if count > 0 do
           Enum.count(
-            Policy.effective(scope, repository).entries,
-            &(&1.source == :repository and &1.in_force and &1.overrides != [])
+            Policy.effective(scope, target).entries,
+            &(&1.source == :target and &1.in_force and &1.overrides != [])
           )
         else
           0
         end
 
-      {repository.id,
+      {target.id,
        %{
          overrides: overrides,
-         version: versions[repository.id] || versions[nil],
-         changed: changes[repository.id] && changes[repository.id].inserted_at
+         version: versions[target.id] || versions[nil],
+         changed: changes[target.id] && changes[target.id].inserted_at
        }}
     end)
   end
 
-  defp repository_rows(list, details, suggestions) do
+  defp target_rows(list, details, suggestions) do
     details = if details.ok?, do: details.result
     suggestions = if suggestions.ok?, do: suggestions.result
 
     list
-    |> Enum.map(fn %{repository: repository} = row ->
-      detail = details && details[repository.id]
+    |> Enum.map(fn %{target: target} = row ->
+      detail = details && details[target.id]
 
       %{
-        id: repository.id,
-        forge: repository.forge,
-        path: repository.path,
+        id: target.id,
+        system: target.system,
+        path: target.path,
         own: row.rule_count,
         mode: row.mode,
         own_mode: row.own_mode,
         detail: if(details, do: detail || :none, else: :loading),
-        suggestions:
-          if(suggestions, do: Map.get(suggestions, repository.id, :none), else: :loading),
+        suggestions: if(suggestions, do: Map.get(suggestions, target.id, :none), else: :loading),
         changed: detail && detail.changed
       }
     end)
     |> Enum.sort_by(fn row ->
       {-if(is_integer(row.suggestions), do: row.suggestions, else: 0),
-       -((row.changed && DateTime.to_unix(row.changed)) || 0), row.forge, row.path}
+       -((row.changed && DateTime.to_unix(row.changed)) || 0), row.system, row.path}
     end)
   end
 
@@ -434,7 +433,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
 
     with true <- socket.assigns.owner?,
          {:ok, rule} <- Policy.get_rule(scope, id),
-         true <- is_nil(rule.repository_id) do
+         true <- is_nil(rule.target_id) do
       held = if rule.locked, do: [], else: held_by_lock(scope, rule)
 
       if held == [] do
@@ -465,7 +464,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
 
   defp event("edit_paths", %{"id" => id}, socket) do
     case Policy.get_rule(socket.assigns.current_scope, id) do
-      {:ok, %{kind: "host", repository_id: nil} = rule} ->
+      {:ok, %{kind: "host", target_id: nil} = rule} ->
         socket
         |> assign(:composer_open, true)
         |> Common.read(%{
@@ -488,10 +487,10 @@ defmodule ApiaryWeb.PolicyLive.Show do
     scope = socket.assigns.current_scope
 
     case Policy.get_rule(scope, id) do
-      {:ok, %{kind: "host", repository_id: nil, action: "allow"} = rule} ->
+      {:ok, %{kind: "host", target_id: nil, action: "allow"} = rule} ->
         changed(socket, Policy.deny(scope, nil, %{host: rule.host}), rule.host, "deny")
 
-      {:ok, %{kind: "host", repository_id: nil, action: "deny"} = rule} ->
+      {:ok, %{kind: "host", target_id: nil, action: "deny"} = rule} ->
         changed(socket, Policy.allow(scope, nil, %{host: rule.host}), rule.host, "allow")
 
       _ ->
@@ -503,14 +502,14 @@ defmodule ApiaryWeb.PolicyLive.Show do
     scope = socket.assigns.current_scope
 
     case Policy.get_rule(scope, id) do
-      {:ok, %{repository_id: nil, kind: "host"} = rule} ->
+      {:ok, %{target_id: nil, kind: "host"} = rule} ->
         overriders = overriders(scope, rule)
 
         if overriders != [] or rule.locked,
           do: assign(socket, :dialog, {:remove, rule, overriders}),
           else: remove(socket, rule)
 
-      {:ok, %{repository_id: nil} = rule} ->
+      {:ok, %{target_id: nil} = rule} ->
         remove(socket, rule)
 
       _ ->
@@ -537,7 +536,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
 
   defp fresh(socket, %{id: id, action: action, host: host}) do
     case Policy.get_rule(socket.assigns.current_scope, id) do
-      {:ok, %{action: ^action, host: ^host, repository_id: nil} = rule} ->
+      {:ok, %{action: ^action, host: ^host, target_id: nil} = rule} ->
         {:ok, rule}
 
       {:ok, _changed} ->
@@ -613,30 +612,30 @@ defmodule ApiaryWeb.PolicyLive.Show do
   defp subject(%{kind: "credential", name: name}), do: name
   defp subject(%{host: host}), do: host
 
-  # The repositories' own rules a lock of this rule would put out of force: a rule on the
-  # same host, or an allow below a locked `*.` deny. Read for the repositories that have
+  # The targets' own rules a lock of this rule would put out of force: a rule on the
+  # same host, or an allow below a locked `*.` deny. Read for the targets that have
   # rules of their own, at most fifty of them.
   defp held_by_lock(scope, rule) do
-    for {repository, own} <- repository_rules(scope),
+    for {target, own} <- target_rules(scope),
         other <- own,
         other.kind == "host",
         other.host == rule.host or
           (rule.action == "deny" and other.action == "allow" and
              Grammar.covers?(rule.host, other.host)),
-        do: %{repository: repository, rule: other}
+        do: %{target: target, rule: other}
   end
 
   defp overriders(scope, rule) do
-    for {repository, own} <- repository_rules(scope),
+    for {target, own} <- target_rules(scope),
         other <- own,
         other.kind == "host" and other.host == rule.host,
-        do: %{repository: repository, rule: other}
+        do: %{target: target, rule: other}
   end
 
-  defp repository_rules(scope) do
-    for %{repository: repository, rule_count: count} <- Policy.list_repositories(scope),
+  defp target_rules(scope) do
+    for %{target: target, rule_count: count} <- Policy.list_targets(scope),
         count > 0 do
-      repository
+      target
     end
     |> Enum.take(50)
     |> Enum.map(&{&1, Policy.list_rules(scope, &1)})
@@ -659,7 +658,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
     # be superseded now, a history may have a change more.
     socket =
       case socket.assigns.live_action do
-        :repositories -> load_repositories(socket, touched)
+        :repositories -> load_targets(socket, touched)
         action when action in [:history, :version, :export] -> reapply(socket, action)
         _ -> socket
       end
@@ -761,7 +760,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         <.policy_tabs
           live_action={@live_action}
           rules={length(@own)}
-          repositories={@repository_total}
+          targets={@target_total}
           changes={@change_total}
           document={@managed? && @version != nil}
         />
@@ -773,9 +772,9 @@ defmodule ApiaryWeb.PolicyLive.Show do
         </.notice>
 
         <.rules_tab :if={@live_action == :rules} {assigns} />
-        <.repositories_tab
+        <.targets_tab
           :if={@live_action == :repositories}
-          rows={repository_rows(@repository_list, @repository_details, @repository_suggestions)}
+          rows={target_rows(@target_list, @target_details, @target_suggestions)}
           own_only={@own_only}
         />
         <.history_view
@@ -876,7 +875,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
 
   attr :live_action, :atom, required: true
   attr :rules, :integer, required: true
-  attr :repositories, :integer, required: true
+  attr :targets, :integer, required: true
   attr :changes, :integer, required: true
   attr :document, :boolean, required: true
 
@@ -895,7 +894,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         patch={~p"/hive/policy/repositories"}
         icon="hero-book-open-micro"
         current={@live_action == :repositories}
-        count={@repositories > 0 && @repositories}
+        count={@targets > 0 && @targets}
       >
         Repositories
       </:tab>
@@ -1024,7 +1023,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         can_lock={@owner?}
         activity={async_value(@activity, :loading)}
         fresh={@fresh}
-        target={@rule_target}
+        ruled_host={@ruled_host}
         empty={empty_words(@show, @rows)}
       />
       <:footer>
@@ -1061,7 +1060,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
   attr :rows, :any, required: true
   attr :own_only, :boolean, default: false
 
-  defp repositories_tab(%{rows: []} = assigns) do
+  defp targets_tab(%{rows: []} = assigns) do
     ~H"""
     <.empty_state tone="neutral" icon="hero-book-open" title="No repositories yet">
       A repository appears here once a run names it with its forge and repository labels.
@@ -1069,7 +1068,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
     """
   end
 
-  defp repositories_tab(assigns) do
+  defp targets_tab(assigns) do
     assigns =
       assign(
         assigns,
@@ -1130,14 +1129,14 @@ defmodule ApiaryWeb.PolicyLive.Show do
                   navigate={~p"/hive/policy/repositories/#{row.id}"}
                   class="q-repo-name q-rowlink"
                 >
-                  <span class="q-repo-f">{row.forge}/</span><span class="q-repo-p">{row.path}</span>
+                  <span class="q-repo-f">{row.system}/</span><span class="q-repo-p">{row.path}</span>
                 </.link>
               </td>
               <td role="cell" class="q-c-mode">
                 <span class="mr-1.5 text-[13px] font-medium">{row.mode}</span>
                 <.source_chip
                   :if={row.own_mode}
-                  source={:repository}
+                  source={:target}
                   label="Its own"
                   class="q-src-bare"
                 />
@@ -1149,10 +1148,10 @@ defmodule ApiaryWeb.PolicyLive.Show do
                 />
               </td>
               <td role="cell">
-                <.source_chip :if={row.own > 0} source={:repository} label="Own rules" />
+                <.source_chip :if={row.own > 0} source={:target} label="Own rules" />
                 <.source_chip
                   :if={row.own == 0 && row.own_mode}
-                  source={:repository}
+                  source={:target}
                   label="Own mode"
                 />
                 <.source_chip
@@ -1183,12 +1182,12 @@ defmodule ApiaryWeb.PolicyLive.Show do
                     version={row.detail.version.version}
                     digest={row.detail.version.digest}
                     scope={
-                      if is_nil(row.detail.version.repository_id),
+                      if is_nil(row.detail.version.target_id),
                         do: "hive baseline",
-                        else: "#{row.forge}/#{row.path}"
+                        else: "#{row.system}/#{row.path}"
                     }
                     navigate={
-                      if is_nil(row.detail.version.repository_id),
+                      if is_nil(row.detail.version.target_id),
                         do: ~p"/hive/policy/versions/#{row.detail.version.version}",
                         else:
                           ~p"/hive/policy/repositories/#{row.id}/versions/#{row.detail.version.version}"
@@ -1214,7 +1213,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
     """
   end
 
-  # A cell read off the render: a skeleton while it loads, "n/a" for a repository past the
+  # A cell read off the render: a skeleton while it loads, "n/a" for a target past the
   # first fifty, never a number nobody counted.
   attr :value, :any, required: true
   attr :none, :string, required: true
@@ -1382,7 +1381,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
           <li :for={held <- @held} class="!grid-cols-[18px_minmax(0,1fr)_auto]">
             <.rule_mark action={held.rule.action} />
             <span class="q-dest">{held.rule.host}</span>
-            <small class="font-mono">{held.repository.forge}/{held.repository.path}</small>
+            <small class="font-mono">{held.target.system}/{held.target.path}</small>
           </li>
         </ul>
       </div>

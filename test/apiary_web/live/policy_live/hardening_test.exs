@@ -18,7 +18,7 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
     Application.put_env(:apiary, ApiaryWeb.PolicyLive, reload_window: 0, nav_window: 0)
 
     started_run(scope, shop())
-    [%{repository: repository}] = Policy.list_repositories(scope)
+    [%{target: target}] = Policy.list_targets(scope)
     {:ok, locked} = Policy.deny(scope, nil, %{host: "*.paste.example", locked: true})
     {:ok, plain} = Policy.allow(scope, nil, %{host: "github.example"})
     {:ok, denied} = Policy.deny(scope, nil, %{host: "telemetry.example"})
@@ -26,8 +26,8 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
     %{user: member} = member_fixture(scope, :member)
 
     %{
-      repository: repository,
-      path: "/hive/policy/repositories/#{repository.id}",
+      target: target,
+      path: "/hive/policy/repositories/#{target.id}",
       locked: locked,
       plain: plain,
       denied: denied,
@@ -49,7 +49,7 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
       view = open(conn, "/hive/policy")
       before = rules(scope)
 
-      for event <- ~w(mode_confirm lock_confirm remove_confirm repository_mode_confirm) do
+      for event <- ~w(mode_confirm lock_confirm remove_confirm target_mode_confirm) do
         render_hook(view, event, %{})
       end
 
@@ -78,18 +78,18 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
     end
   end
 
-  describe "a member's crafted events on a repository's page" do
+  describe "a member's crafted events on a target's page" do
     test "a locked hive rule is not disabled, and allowing for the hive stays a member's right",
-         %{member_conn: conn, scope: scope, repository: repository, path: path, locked: locked} do
+         %{member_conn: conn, scope: scope, target: target, path: path, locked: locked} do
       view = open(conn, path)
 
       render_hook(view, "row_act", %{"id" => locked.id, "act" => "allow_here"})
-      assert rules(scope, repository) == []
+      assert rules(scope, target) == []
       assert render(view) =~ "is locked"
 
-      render_hook(view, "repository_mode_ask", %{"setting" => "enforce"})
-      render_hook(view, "repository_mode_confirm", %{})
-      assert Policy.get_mode(scope, repository).own == nil
+      render_hook(view, "target_mode_ask", %{"setting" => "enforce"})
+      render_hook(view, "target_mode_confirm", %{})
+      assert Policy.get_mode(scope, target).own == nil
 
       # Rules are a member's to edit, the hive's too: these are allowed, not refused.
       render_hook(view, "suggest_allow", %{"host" => "flags.example", "level" => "hive"})
@@ -103,7 +103,7 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
     setup do
       other = scope_fixture()
       started_run(other, shop())
-      [%{repository: theirs}] = Policy.list_repositories(other)
+      [%{target: theirs}] = Policy.list_targets(other)
       {:ok, rule} = Policy.allow(other, nil, %{host: "secret.example"})
       {:ok, own} = Policy.allow(other, theirs, %{host: "inner.example"})
       %{other: other, their_rule: rule, their_own: own}
@@ -120,25 +120,25 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
       render_hook(hive, "remove_confirm", %{})
       refute render(hive) =~ "secret.example"
 
-      repository = open(conn, path)
+      target = open(conn, path)
 
       for act <- ~w(disable allow_here remove restore bogus), id <- [rule.id, own.id] do
-        render_hook(repository, "row_act", %{"id" => id, "act" => act})
+        render_hook(target, "row_act", %{"id" => id, "act" => act})
       end
 
-      render_hook(repository, "remove", %{"id" => own.id})
-      refute render(repository) =~ "inner.example"
+      render_hook(target, "remove", %{"id" => own.id})
+      refute render(target) =~ "inner.example"
 
       assert [%{host: "secret.example", locked: false}] = Policy.list_rules(other, nil)
       assert length(Policy.list_changes(other, :all, 1).items) == 2
-      assert Process.alive?(hive.pid) and Process.alive?(repository.pid)
+      assert Process.alive?(hive.pid) and Process.alive?(target.pid)
     end
   end
 
   describe "a rule that changed while a confirm was open" do
     test "a removed rule is not removed twice, and a lock is not put on what is gone",
-         %{conn: conn, scope: scope, locked: locked, plain: plain, repository: repository} do
-      {:ok, _} = Policy.deny(scope, repository, %{host: "github.example"})
+         %{conn: conn, scope: scope, locked: locked, plain: plain, target: target} do
+      {:ok, _} = Policy.deny(scope, target, %{host: "github.example"})
       view = open(conn, "/hive/policy")
 
       view |> element("#rule-#{plain.id}-lock") |> render_click()
@@ -155,14 +155,14 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
     end
 
     test "a row's act is matched against the rule as it is now",
-         %{conn: conn, scope: scope, repository: repository, path: path, denied: denied} do
+         %{conn: conn, scope: scope, target: target, path: path, denied: denied} do
       view = open(conn, path)
 
       # The hive's deny became an allow held to paths: "Allow here" must not open them.
       {:ok, _} = Policy.allow(scope, nil, %{host: "telemetry.example", paths: ["/v1/*"]})
       render_hook(view, "row_act", %{"id" => denied.id, "act" => "allow_here"})
 
-      assert rules(scope, repository) == []
+      assert rules(scope, target) == []
       assert render(view) =~ "changed while you were deciding"
     end
   end

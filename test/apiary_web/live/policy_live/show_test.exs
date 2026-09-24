@@ -188,7 +188,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
 
       view |> element("#policy-composer-reads button", "Show it") |> render_click()
       assert_patch(view, "/hive/policy?rule=registry.example")
-      assert has_element?(view, "tr.q-rule-target", "registry.example")
+      assert has_element?(view, "tr.q-ruled", "registry.example")
     end
 
     test "the opposite rule is replaced, and the button says so", %{conn: conn, scope: scope} do
@@ -342,11 +342,11 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       refute rule(scope, "github.example").locked
     end
 
-    test "a lock that puts a repository's rule out of force asks first",
+    test "a lock that puts a target's rule out of force asks first",
          %{conn: conn, scope: scope} do
       started_run(scope, shop())
-      [%{repository: repository}] = Policy.list_repositories(scope)
-      {:ok, _} = Policy.deny(scope, repository, %{host: "github.example"})
+      [%{target: target}] = Policy.list_targets(scope)
+      {:ok, _} = Policy.deny(scope, target, %{host: "github.example"})
 
       view = open(conn)
       id = rule(scope, "github.example").id
@@ -567,14 +567,14 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
     end
   end
 
-  describe "repositories that set their own mode" do
+  describe "targets that set their own mode" do
     setup %{scope: scope} do
       {:ok, _} = Policy.allow(scope, nil, %{host: "registry.example"})
       started_run(scope, shop())
       started_run(scope, %{"forge" => "github.example", "repository" => "acme/docs"})
 
       docs =
-        Enum.find(Policy.list_repositories(scope), &(&1.repository.path == "acme/docs")).repository
+        Enum.find(Policy.list_targets(scope), &(&1.target.path == "acme/docs")).target
 
       {:ok, _} = Policy.set_mode(scope, docs, "enforce")
       %{docs: docs}
@@ -611,7 +611,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert text(view, "#mode-enforce") =~ "1 repository sets its own mode and does not change."
     end
 
-    test "the repositories list has a Mode column, and ?mode=own keeps those with their own",
+    test "the targets list has a Mode column, and ?mode=own keeps those with their own",
          %{conn: conn, docs: docs} do
       view = open(conn, "/hive/policy/repositories")
       assert text(view, "#repositories-summary") =~ "1 sets its own mode"
@@ -631,40 +631,40 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
     end
   end
 
-  describe "repositories" do
+  describe "targets" do
     test "none has posted", %{conn: conn} do
       view = open(conn, "/hive/policy/repositories")
       assert has_element?(view, "h2", "No repositories yet")
     end
 
-    test "one row per repository, with what it has of its own", %{conn: conn, scope: scope} do
+    test "one row per target, with what it has of its own", %{conn: conn, scope: scope} do
       started_run(scope, shop())
       started_run(scope, %{"forge" => "github.example", "repository" => "acme/docs"})
 
-      repository =
-        Enum.find(Policy.list_repositories(scope), &(&1.repository.path == "acme/shop")).repository
+      target =
+        Enum.find(Policy.list_targets(scope), &(&1.target.path == "acme/shop")).target
 
       {:ok, _} = Policy.allow(scope, nil, %{host: "registry.example"})
-      {:ok, _} = Policy.deny(scope, repository, %{host: "registry.example"})
+      {:ok, _} = Policy.deny(scope, target, %{host: "registry.example"})
 
       view = open(conn, "/hive/policy/repositories")
 
       assert text(view, "#repositories-summary") =~ "2 repositories have posted runs"
       assert text(view, "#repositories-summary") =~ "1 with rules of their own"
-      assert text(view, "#repo-#{repository.id}") =~ "Own rules"
-      assert text(view, "#repo-#{repository.id}") =~ "v1"
+      assert text(view, "#repo-#{target.id}") =~ "Own rules"
+      assert text(view, "#repo-#{target.id}") =~ "v1"
       # Whose version each row shows, and no bare 0 where nothing is to review.
-      assert text(view, "#repo-#{repository.id} .q-vpill") =~ "of github.example/acme/shop"
+      assert text(view, "#repo-#{target.id} .q-vpill") =~ "of github.example/acme/shop"
       assert text(view, "#policy-repositories") =~ "of hive baseline"
 
-      refute view |> element("#repo-#{repository.id} td.q-num:nth-of-type(6)") |> render() =~
+      refute view |> element("#repo-#{target.id} td.q-num:nth-of-type(6)") |> render() =~
                ">0<"
 
       assert text(view, "#policy-repositories") =~ "Hive baseline"
 
       assert has_element?(
                view,
-               "#repo-#{repository.id} a[href='/hive/policy/repositories/#{repository.id}']"
+               "#repo-#{target.id} a[href='/hive/policy/repositories/#{target.id}']"
              )
     end
   end

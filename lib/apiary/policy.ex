@@ -1,32 +1,32 @@
 defmodule Apiary.Policy do
   @moduledoc """
-  The security policy of a hive and of its repositories, the run configurations rendered
+  The security policy of a hive and of its targets, the run configurations rendered
   from it, and the history of both. Pages call this module and nothing under it.
 
   ## The model
 
   The contract's policy document says a mode, the hosts denied, the hosts allowed, the
   paths a host is held to, the credentials of the machine's a run may use. The hive has a
-  mode (`get_mode/1`, `set_mode/2`) and a baseline of rules; a repository has rules of its
+  mode (`get_mode/1`, `set_mode/2`) and a baseline of rules; a target has rules of its
   own on top, and follows the hive's mode unless it sets its own (`get_mode/2`,
   `set_mode/3`). The mode and the rules are apart: a locked rule of the hive holds in a
-  repository's document whatever the repository's mode, and a deny holds in either mode:
+  target's document whatever the target's mode, and a deny holds in either mode:
   `egress.deny` is decided by the runner first, so under `observe` a host a deny names is
   denied and everything else is let through and recorded, and the document's `allow`
   says what `enforce` would reach. A rule (`Apiary.Policy.Rule`) allows or denies a host
   or a credential. A deny is written to the document and takes the allow entries it
-  covers out of it, so a repository can disable a host of the hive, and a **locked** rule
-  of the hive holds against every repository. How the rules come to one policy is
+  covers out of it, so a target can disable a host of the hive, and a **locked** rule
+  of the hive holds against every target. How the rules come to one policy is
   `Apiary.Policy.Resolution`'s to say.
 
   ## Writes
 
   Every write is one transaction: the rule, a `policy_changes` row, and the render of the
-  baseline and of every repository that has rules (or has had a configuration) of its own.
+  baseline and of every target that has rules (or has had a configuration) of its own.
   A render is validated against the contract's schema before it is stored; a change whose
   render the schema or the resolution refuses is rolled back and answered with a sentence.
   A render that gives the same bytes as the version in force writes no new version. After
-  the commit `{:policy_changed, %{hive_id:, repository_id:, action:}}` goes out on
+  the commit `{:policy_changed, %{hive_id:, target_id:, action:}}` goes out on
   `topic/1`, `"policy:<hive_id>"`.
 
   Members edit rules. Only an owner changes the mode (in either direction), and only an
@@ -38,8 +38,8 @@ defmodule Apiary.Policy do
   `{:error, %Apiary.Policy.Error{}}`, whose `message` is a sentence for the page.
 
   A holder is whose rules, mode and run configurations a call is about: `nil` or `:hive`
-  for the hive's baseline, or an `Apiary.Runs.Repository` of the scope's hive. Another
-  hive's repository, rule or configuration is not found.
+  for the hive's baseline, or an `Apiary.Runs.Target` of the scope's hive. Another
+  hive's target, rule or configuration is not found.
   """
 
   import Ecto.Query, warn: false
@@ -52,18 +52,18 @@ defmodule Apiary.Policy do
   alias Apiary.Policy.{Activity, Change, Effective, Error, Export, Grammar, Render, Resolution}
   alias Apiary.Policy.{Rule, RunConfiguration, Schema, Suggestions}
   alias Apiary.Repo
-  alias Apiary.Runs.{Connection, Repository, Run}
+  alias Apiary.Runs.{Connection, Target, Run}
 
   @modes ~w(observe enforce)
   @page_size 25
   @mode_is_an_owners "Only an owner changes the mode: it decides what runs are denied."
-  # The most rules one list holds (the baseline's, or a repository's). With at most
+  # The most rules one list holds (the baseline's, or a target's). With at most
   # `Grammar.paths_max/0` paths a rule, it bounds a change's `before` and `after`, which
   # repeat the list, and so the history's growth: quadratic in the rules, up to this.
   @rules_max 500
   @nobody "00000000-0000-0000-0000-000000000000"
 
-  @type holder :: nil | :hive | Repository.t()
+  @type holder :: nil | :hive | Target.t()
   @type refusal :: {:error, Error.t()}
   @type page(item) :: %{
           items: [item],
@@ -91,8 +91,8 @@ defmodule Apiary.Policy do
   answers to batches name no digest of one), so its machines use the policy of their own
   `runner.yaml`: an upgrade, or a hive nobody has looked at, takes no machine's
   enforcement away. From the first change on, every run of the hive takes the hive's
-  policy. The first change anywhere counts, a repository's rule or a repository's mode
-  included: it starts serving every repository of the hive, the others the baseline. For the pages: "machines use their own policy until the first change here".
+  policy. The first change anywhere counts, a target's rule or a target's mode
+  included: it starts serving every target of the hive, the others the baseline. For the pages: "machines use their own policy until the first change here".
   """
   @spec managed?(Scope.t()) :: boolean
   def managed?(%Scope{hive: %Hive{id: hive_id}}), do: managed_hive?(hive_id)
@@ -104,8 +104,8 @@ defmodule Apiary.Policy do
 
   @doc """
   What the sidebar shows of the policy, in one query: whether the hive's policy is
-  managed (`managed?/1`), the hive's mode, and the modes the hive's repositories set for
-  themselves, one per repository that has one, in no particular order: `%{managed?:,
+  managed (`managed?/1`), the hive's mode, and the modes the hive's targets set for
+  themselves, one per target that has one, in no particular order: `%{managed?:,
   mode:, own_modes:}`.
   """
   @spec mode_summary(Scope.t()) :: %{
@@ -122,7 +122,7 @@ defmodule Apiary.Policy do
           select:
             {h.egress_mode, exists(from(c in Change, where: c.hive_id == parent_as(:hive).id)),
              fragment(
-               "ARRAY(SELECT p.egress_mode FROM repositories p WHERE p.hive_id = ? AND p.egress_mode IS NOT NULL)",
+               "ARRAY(SELECT p.egress_mode FROM targets p WHERE p.hive_id = ? AND p.egress_mode IS NOT NULL)",
                h.id
              )}
       )
@@ -130,51 +130,51 @@ defmodule Apiary.Policy do
     %{managed?: managed?, mode: mode, own_modes: own_modes}
   end
 
-  ## Repositories
+  ## Targets
 
   @doc """
-  The hive's repositories, by forge and path, each with `rule_count`, how many rules of
+  The hive's targets, by system and path, each with `rule_count`, how many rules of
   its own it has (a virtual count on the map, not the struct), `own_mode`, the mode it
   set for itself or nil when it follows the hive, and `mode`, the one in force for it:
-  `[%{repository: …, rule_count: n, own_mode: … | nil, mode: …}]`. At most 500.
+  `[%{target: …, rule_count: n, own_mode: … | nil, mode: …}]`. At most 500.
   """
-  @spec list_repositories(Scope.t()) :: [
+  @spec list_targets(Scope.t()) :: [
           %{
-            repository: Repository.t(),
+            target: Target.t(),
             rule_count: integer,
             own_mode: String.t() | nil,
             mode: String.t()
           }
         ]
-  def list_repositories(
+  def list_targets(
         %Scope{hive: %Hive{id: hive_id}, organisation: %Organisation{id: org_id}} = scope
       ) do
     hive_mode = get_mode(scope)
 
     Repo.all(
-      from p in Repository,
+      from p in Target,
         where: p.hive_id == ^hive_id and p.organisation_id == ^org_id,
         left_join: r in Rule,
-        on: r.repository_id == p.id,
+        on: r.target_id == p.id,
         group_by: p.id,
-        order_by: [asc: p.forge, asc: p.path],
+        order_by: [asc: p.system, asc: p.path],
         limit: 500,
-        select: %{repository: p, rule_count: count(r.id)}
+        select: %{target: p, rule_count: count(r.id)}
     )
-    |> Enum.map(fn %{repository: repository} = row ->
+    |> Enum.map(fn %{target: target} = row ->
       Map.merge(row, %{
-        own_mode: repository.egress_mode,
-        mode: repository.egress_mode || hive_mode
+        own_mode: target.egress_mode,
+        mode: target.egress_mode || hive_mode
       })
     end)
   end
 
-  @doc "One repository of the scope's hive by id."
-  @spec get_repository(Scope.t(), String.t()) :: {:ok, Repository.t()} | refusal
-  def get_repository(%Scope{} = scope, id) do
+  @doc "One target of the scope's hive by id."
+  @spec get_target(Scope.t(), String.t()) :: {:ok, Target.t()} | refusal
+  def get_target(%Scope{} = scope, id) do
     with {:ok, id} <- Ecto.UUID.cast(id),
-         %Repository{} = repository <- Repo.one(from p in repositories(scope), where: p.id == ^id) do
-      {:ok, repository}
+         %Target{} = target <- Repo.one(from p in targets(scope), where: p.id == ^id) do
+      {:ok, target}
     else
       _ -> {:error, not_found("This hive has no such repository.")}
     end
@@ -195,16 +195,16 @@ defmodule Apiary.Policy do
     )
   end
 
-  @typedoc "A repository's mode: the one in force, its own (nil when it follows the hive) and the hive's."
-  @type repository_mode :: %{mode: String.t(), own: String.t() | nil, hive: String.t()}
+  @typedoc "A target's mode: the one in force, its own (nil when it follows the hive) and the hive's."
+  @type target_mode :: %{mode: String.t(), own: String.t() | nil, hive: String.t()}
 
   @doc """
-  With `nil` or `:hive`, `get_mode/1`: the hive's mode, a string. With a repository,
+  With `nil` or `:hive`, `get_mode/1`: the hive's mode, a string. With a target,
   `%{mode:, own:, hive:}`: the mode in force for it, the mode it set for itself (nil when
-  it follows the hive, the default) and the hive's. A repository that is not the hive's
+  it follows the hive, the default) and the hive's. A target that is not the hive's
   follows the hive.
   """
-  @spec get_mode(Scope.t(), holder) :: String.t() | repository_mode
+  @spec get_mode(Scope.t(), holder) :: String.t() | target_mode
   def get_mode(%Scope{} = scope, holder) when holder in [nil, :hive], do: get_mode(scope)
 
   def get_mode(%Scope{} = scope, holder) do
@@ -213,7 +213,7 @@ defmodule Apiary.Policy do
     own =
       case holder_id(scope, holder) do
         {:ok, id} ->
-          Repo.one(from p in repositories(scope), where: p.id == ^id, select: p.egress_mode)
+          Repo.one(from p in targets(scope), where: p.id == ^id, select: p.egress_mode)
 
         {:error, _not_found} ->
           nil
@@ -225,23 +225,23 @@ defmodule Apiary.Policy do
   @doc """
   Sets the mode of the hive: `set_mode(scope, nil, mode)`. An owner's act in either
   direction; a member is refused with a sentence. The hive's mode is the default of its
-  repositories: a change renders the baseline and every repository that follows the hive
-  again, and a repository with a mode of its own keeps it.
+  targets: a change renders the baseline and every target that follows the hive
+  again, and a target with a mode of its own keeps it.
   """
   @spec set_mode(Scope.t(), String.t()) :: {:ok, String.t()} | refusal
   def set_mode(%Scope{} = scope, mode), do: set_mode(scope, nil, mode)
 
   @doc """
-  Sets the mode of the hive (`nil` or `:hive`: `{:ok, mode}`) or of a repository
-  (`{:ok, %{mode:, own:, hive:}}`). A repository takes `"observe"`, `"enforce"`, or
-  `:inherit` (also `"inherit"`) to follow the hive again, which is what every repository
+  Sets the mode of the hive (`nil` or `:hive`: `{:ok, mode}`) or of a target
+  (`{:ok, %{mode:, own:, hive:}}`). A target takes `"observe"`, `"enforce"`, or
+  `:inherit` (also `"inherit"`) to follow the hive again, which is what every target
   does until somebody says otherwise. An owner's act, like the hive's. It is a change of
-  the repository's policy (`mode_changed`, with the repository's own mode, or
-  `"inherit"`, before and after) and renders the repository's configuration: a
-  repository with nothing but a mode of its own has a configuration of its own.
+  the target's policy (`mode_changed`, with the target's own mode, or
+  `"inherit"`, before and after) and renders the target's configuration: a
+  target with nothing but a mode of its own has a configuration of its own.
   """
   @spec set_mode(Scope.t(), holder, String.t() | :inherit) ::
-          {:ok, String.t() | repository_mode} | refusal
+          {:ok, String.t() | target_mode} | refusal
   def set_mode(%Scope{} = scope, holder, mode) when holder in [nil, :hive] and mode in @modes do
     with {:ok, membership} <- member(scope),
          :ok <- owner(membership, @mode_is_an_owners) do
@@ -257,15 +257,15 @@ defmodule Apiary.Policy do
     end
   end
 
-  def set_mode(%Scope{} = scope, %Repository{} = repository, mode)
+  def set_mode(%Scope{} = scope, %Target{} = target, mode)
       when mode in @modes or mode in [:inherit, "inherit"] do
     own = if mode in @modes, do: mode
 
     with {:ok, membership} <- member(scope),
          :ok <- owner(membership, @mode_is_an_owners),
-         {:ok, repository_id} <- holder_id(scope, repository) do
-      write(scope, repository_id, fn hive ->
-        Repo.update_all(from(p in Repository, where: p.id == ^repository_id),
+         {:ok, target_id} <- holder_id(scope, target) do
+      write(scope, target_id, fn hive ->
+        Repo.update_all(from(p in Target, where: p.id == ^target_id),
           set: [egress_mode: own, updated_at: DateTime.utc_now()]
         )
 
@@ -286,11 +286,11 @@ defmodule Apiary.Policy do
 
   ## Rules
 
-  @doc "The rules of the baseline (`nil`) or of a repository, hosts first, by host and name."
+  @doc "The rules of the baseline (`nil`) or of a target, hosts first, by host and name."
   @spec list_rules(Scope.t(), holder) :: [Rule.t()]
   def list_rules(%Scope{} = scope, holder) do
     case holder_id(scope, holder) do
-      {:ok, repository_id} -> rules(scope.hive.id, repository_id)
+      {:ok, target_id} -> rules(scope.hive.id, target_id)
       {:error, _not_found} -> []
     end
   end
@@ -311,30 +311,30 @@ defmodule Apiary.Policy do
   end
 
   @doc """
-  The policy in force for the baseline (`nil`) or for a repository: every rule that takes
+  The policy in force for the baseline (`nil`) or for a target: every rule that takes
   part as an `Apiary.Policy.Entry` (where it came from, whether it is in force, what
   overrode it, what it overrides), the `allow`, `paths` and `credentials` the document
   says, and the `mode` in force with where it came from (`mode_source`, `:hive` or
-  `:repository`). A repository that is not the hive's gets the baseline.
+  `:target`). A target that is not the hive's gets the baseline.
   """
   @spec effective(Scope.t(), holder) :: Effective.t()
   def effective(%Scope{} = scope, holder) do
-    repository_id =
+    target_id =
       case holder_id(scope, holder) do
-        {:ok, repository_id} -> repository_id
+        {:ok, target_id} -> target_id
         {:error, _not_found} -> nil
       end
 
     hive_rules = rules(scope.hive.id, nil)
-    own = if repository_id, do: rules(scope.hive.id, repository_id), else: []
+    own = if target_id, do: rules(scope.hive.id, target_id), else: []
 
     %{mode: mode, own: own_mode, hive: hive_mode} =
-      case repository_id do
+      case target_id do
         nil -> %{mode: get_mode(scope), own: nil, hive: get_mode(scope)}
-        id -> get_mode(scope, %Repository{id: id})
+        id -> get_mode(scope, %Target{id: id})
       end
 
-    case Resolution.resolve_for(hive_mode, own_mode, hive_rules, own, repository_id) do
+    case Resolution.resolve_for(hive_mode, own_mode, hive_rules, own, target_id) do
       {:ok, effective} ->
         effective
 
@@ -343,8 +343,8 @@ defmodule Apiary.Policy do
       {:error, _error} ->
         %Effective{
           mode: mode,
-          mode_source: if(own_mode, do: :repository, else: :hive),
-          repository_id: repository_id
+          mode_source: if(own_mode, do: :target, else: :hive),
+          target_id: target_id
         }
     end
   end
@@ -378,9 +378,9 @@ defmodule Apiary.Policy do
 
   @doc """
   Adds `path` to the paths `host` is held to in the holder. The paths in force for the
-  holder are taken as the start, so a repository that adds a path keeps the hive's and
+  holder are taken as the start, so a target that adds a path keeps the hive's and
   from then on has a list of its own. Refused when the host is already reached on every
-  path, and in a repository when the hive's rule for the host is locked.
+  path, and in a target when the hive's rule for the host is locked.
   """
   @spec allow_path(Scope.t(), holder, String.t(), String.t()) :: {:ok, Rule.t()} | refusal
   def allow_path(%Scope{} = scope, holder, host, path),
@@ -401,7 +401,7 @@ defmodule Apiary.Policy do
     with {:ok, membership} <- member(scope),
          {:ok, rule} <- get_rule(scope, rule_id(rule_or_id)) do
       # Who may remove it is decided on the rule as it is under the hive's lock.
-      write(scope, rule.repository_id, fn hive ->
+      write(scope, rule.target_id, fn hive ->
         with {:ok, rule} <- reread(hive, rule),
              :ok <- may_change(membership, rule) do
           Repo.delete_all(from r in Rule, where: r.id == ^rule.id)
@@ -411,7 +411,7 @@ defmodule Apiary.Policy do
     end
   end
 
-  @doc "Locks a rule of the hive, so no repository overrides it. Owners only."
+  @doc "Locks a rule of the hive, so no target overrides it. Owners only."
   @spec lock(Scope.t(), Rule.t() | String.t()) :: {:ok, Rule.t()} | refusal
   def lock(%Scope{} = scope, rule_or_id), do: set_locked(scope, rule_or_id, true)
 
@@ -421,14 +421,14 @@ defmodule Apiary.Policy do
 
   @doc """
   The rule a connection's row asks for (C4, C5): allow or deny its host, in the run's
-  repository (`:repository`) or in the hive (`:hive`). When the host is held to paths in
+  target (`:target`) or in the hive (`:hive`). When the host is held to paths in
   the holder and the connection names a path, the path is added to or taken out of those
   paths instead. The connection is one of the scope's hive.
   """
-  @spec rule_from_connection(Scope.t(), Connection.t(), :allow | :deny, :repository | :hive) ::
+  @spec rule_from_connection(Scope.t(), Connection.t(), :allow | :deny, :target | :hive) ::
           {:ok, Rule.t()} | refusal
   def rule_from_connection(%Scope{} = scope, %Connection{} = connection, action, level)
-      when action in [:allow, :deny] and level in [:repository, :hive] do
+      when action in [:allow, :deny] and level in [:target, :hive] do
     with {:ok, _membership} <- member(scope),
          {:ok, host} <- connection_host(scope, connection),
          {:ok, holder} <- connection_holder(scope, connection, level) do
@@ -469,16 +469,16 @@ defmodule Apiary.Policy do
           attempts: non_neg_integer,
           runs: non_neg_integer,
           last_seen_at: DateTime.t(),
-          repositories: [%{id: Ecto.UUID.t(), forge: String.t(), path: String.t()}]
+          targets: [%{id: Ecto.UUID.t(), system: String.t(), path: String.t()}]
         }
 
   @doc """
   The destinations that were let through since `since` and that today's rules do not
   cover: what enforce would start denying. A destination is a host, and a path as well
   where the host is held to paths. Each connection is held to the effective policy of
-  its own run's repository (the baseline for a run without one), matched as the runner
+  its own run's target (the baseline for a run without one), matched as the runner
   matches. Each destination says its allowed `attempts`, how many `runs` made them, when
-  it was last seen and in which `repositories`; the 50 with the most attempts, most first.
+  it was last seen and in which `targets`; the 50 with the most attempts, most first.
 
   Read from `connections` by the hive and when they were last seen, at most
   20,000 rows (`Apiary.Policy.Activity.cap/0`): beyond that the answer is `:unavailable`, never a
@@ -490,16 +490,16 @@ defmodule Apiary.Policy do
 
   @doc """
   `uncovered/2` for a holder. For the hive (`nil`, `:hive`) it is `uncovered/2`: what
-  enforcing the hive would start denying, so only the runs of repositories that follow the
-  hive's mode count, and the runs that name no repository; a repository with a mode of
-  its own would not change. For a repository: what enforcing that repository would start
+  enforcing the hive would start denying, so only the runs of targets that follow the
+  hive's mode count, and the runs that name no target; a target with a mode of
+  its own would not change. For a target: what enforcing that target would start
   denying, from its own runs under its own effective rules, whatever its mode is now.
-  A repository that is not the hive's has nothing.
+  A target that is not the hive's has nothing.
   """
   @spec uncovered(Scope.t(), holder, DateTime.t()) :: {:ok, [uncovered]} | :unavailable
   def uncovered(%Scope{hive: %Hive{}} = scope, holder, %DateTime{} = since) do
     case holder_id(scope, holder) do
-      {:ok, repository_id} -> Activity.uncovered(scope, repository_id, since)
+      {:ok, target_id} -> Activity.uncovered(scope, target_id, since)
       {:error, _not_found} -> {:ok, []}
     end
   end
@@ -523,18 +523,18 @@ defmodule Apiary.Policy do
           denied: pos_integer,
           runs: pos_integer,
           last_seen_at: DateTime.t(),
-          repositories: [%{id: Ecto.UUID.t(), forge: String.t(), path: String.t()}]
+          targets: [%{id: Ecto.UUID.t(), system: String.t(), path: String.t()}]
         }
 
   @doc """
   The destinations (host, port and path) that were denied since `since` and that today's
   effective policy still does not allow: what a member can act on, each held to the
-  policy of its own run's repository as `uncovered/2` holds them. A destination allowed
+  policy of its own run's target as `uncovered/2` holds them. A destination allowed
   since is left out: the record says it was denied, the rules say it no longer would be.
   `held` is true when the host is allowed and the path is what no rule covers; `locked`
   names the locked hive deny that covers the host, when one does, so a page can say that
   only an owner changes it. The 50 with the most denials, most first, with the
-  repositories whose runs were denied. Bounded as `uncovered/2` is, `:unavailable` beyond
+  targets whose runs were denied. Bounded as `uncovered/2` is, `:unavailable` beyond
   the cap.
   """
   @spec denied_destinations(Scope.t(), DateTime.t()) :: {:ok, [denied_destination]} | :unavailable
@@ -563,11 +563,11 @@ defmodule Apiary.Policy do
   @doc """
   Per rule id, the attempts allowed and denied since `since`: `%{rule_id => %{allowed: n,
   denied: n}}`, a rule nothing reached being absent. For the baseline (`nil`) every
-  connection of the hive is read, for a repository those of its runs; each is held to the
-  effective policy of its run's repository and counted on the rule the runner would
+  connection of the hive is read, for a target those of its runs; each is held to the
+  effective policy of its run's target and counted on the rule the runner would
   report: the first entry of `allow` that matches (names before `*.` suffixes), else the
   deny in force that covers the host; and on the credential rule the connection named.
-  So a repository's page may name rules of the hive, and the hive's page counts a hive
+  So a target's page may name rules of the hive, and the hive's page counts a hive
   rule wherever it decided. Bounded as `uncovered/2` is.
   """
   @spec rule_activity(Scope.t(), holder, DateTime.t()) ::
@@ -576,7 +576,7 @@ defmodule Apiary.Policy do
           | :unavailable
   def rule_activity(%Scope{hive: %Hive{}} = scope, holder, %DateTime{} = since) do
     case holder_id(scope, holder) do
-      {:ok, repository_id} -> Activity.rule_activity(scope, repository_id, since)
+      {:ok, target_id} -> Activity.rule_activity(scope, target_id, since)
       {:error, _not_found} -> {:ok, %{}}
     end
   end
@@ -585,7 +585,7 @@ defmodule Apiary.Policy do
 
   @typedoc """
   A declared host no rule covers or denies. `allowed` and `denied` are the attempts to it
-  in the repository's runs since the window's start, nil when they could not be counted
+  in the target's runs since the window's start, nil when they could not be counted
   within the bound.
   """
   @type suggestion :: %{
@@ -597,31 +597,31 @@ defmodule Apiary.Policy do
         }
 
   @doc """
-  The hosts the repository's harness declared (`harness_hosts` of its runs' policy
-  applied events, the newest runs first) that the repository's effective policy neither
+  The hosts the target's harness declared (`harness_hosts` of its runs' policy
+  applied events, the newest runs first) that the target's effective policy neither
   covers nor denies: `[%{host:, runs:, last_seen_at:, allowed:, denied:}]`, at most 50.
-  `allowed` and `denied` count the attempts to the host in the repository's runs since
+  `allowed` and `denied` count the attempts to the host in the target's runs since
   `since` (the last seven days by default), from `connections`, bounded: nil when there
   are more connections in the window than one answer reads. Hosts that are not in the
   contract's grammar are left out.
   """
-  @spec suggestions(Scope.t(), Repository.t(), DateTime.t() | nil) :: [suggestion]
-  def suggestions(%Scope{} = scope, %Repository{} = repository, since \\ nil),
-    do: declared_hosts(scope, repository, since).suggested
+  @spec suggestions(Scope.t(), Target.t(), DateTime.t() | nil) :: [suggestion]
+  def suggestions(%Scope{} = scope, %Target{} = target, since \\ nil),
+    do: declared_hosts(scope, target, since).suggested
 
   @doc """
-  How many declared hosts across the hive's repositories no rule covers or denies, counted
+  How many declared hosts across the hive's targets no rule covers or denies, counted
   and not listed, for a card that says "3 to review in 2 repositories":
-  `%{hosts: n, repositories: n}`. Read from the policy applied events of the newest runs
+  `%{hosts: n, targets: n}`. Read from the policy applied events of the newest runs
   since `since` (the last fourteen days by default), bounded at every step
-  (`Apiary.Policy.Suggestions`): the 100 most recent runs with a repository and
-  300 of their events, then each repository's effective policy resolved once from the
+  (`Apiary.Policy.Suggestions`): the 100 most recent runs with a target and
+  300 of their events, then each target's effective policy resolved once from the
   hive's rules, read once. Two bounded reads and the hive's mode, however many
-  repositories the hive has; no attempts are counted, so nothing here can be unavailable.
+  targets the hive has; no attempts are counted, so nothing here can be unavailable.
   """
   @spec suggestion_counts(Scope.t(), DateTime.t() | nil) :: %{
           hosts: non_neg_integer,
-          repositories: non_neg_integer
+          targets: non_neg_integer
         }
   def suggestion_counts(%Scope{hive: %Hive{} = hive}, since \\ nil) do
     since = since || DateTime.add(DateTime.utc_now(), -14, :day)
@@ -633,26 +633,26 @@ defmodule Apiary.Policy do
   [%{host:, by:, source:, rule_id:}]}`. `suggested` is `suggestions/3`. `covered` is the
   declared hosts a rule already allows, at most 20, by host: `by` is the entry of `allow`
   that covers the host as a runner would report it (the host itself, or a `*.` suffix),
-  `source` is `:hive` or `:repository`, where that rule was written, and `rule_id` its id.
-  A repository that is not the hive's has neither.
+  `source` is `:hive` or `:target`, where that rule was written, and `rule_id` its id.
+  A target that is not the hive's has neither.
   """
-  @spec declared_hosts(Scope.t(), Repository.t(), DateTime.t() | nil) :: %{
+  @spec declared_hosts(Scope.t(), Target.t(), DateTime.t() | nil) :: %{
           suggested: [suggestion],
           covered: [
             %{
               host: String.t(),
               by: String.t(),
-              source: :hive | :repository,
+              source: :hive | :target,
               rule_id: Ecto.UUID.t()
             }
           ]
         }
-  def declared_hosts(%Scope{} = scope, %Repository{} = repository, since \\ nil) do
+  def declared_hosts(%Scope{} = scope, %Target{} = target, since \\ nil) do
     since = since || DateTime.add(DateTime.utc_now(), -7, :day)
 
-    case holder_id(scope, repository) do
-      {:ok, repository_id} ->
-        Suggestions.report(scope.hive.id, repository_id, effective(scope, repository), since)
+    case holder_id(scope, target) do
+      {:ok, target_id} ->
+        Suggestions.report(scope.hive.id, target_id, effective(scope, target), since)
 
       {:error, _not_found} ->
         %{suggested: [], covered: []}
@@ -662,28 +662,28 @@ defmodule Apiary.Policy do
   ## Run configurations
 
   @doc """
-  The run configuration in force for the baseline (`nil`) or for a repository: the highest
-  version. A repository that never had rules of its own is served the baseline's, and the
-  row says so by its `repository_id`. A hive nobody has changed yet (`managed?/1` is
+  The run configuration in force for the baseline (`nil`) or for a target: the highest
+  version. A target that never had rules of its own is served the baseline's, and the
+  row says so by its `target_id`. A hive nobody has changed yet (`managed?/1` is
   false) has none: `{:error, %Error{reason: :unmanaged}}`, and nothing is rendered or
   stored by asking. The first version is written by the first change alone.
   """
   @spec current_configuration(Scope.t(), holder) :: {:ok, RunConfiguration.t()} | refusal
   def current_configuration(%Scope{hive: %Hive{} = hive} = scope, holder) do
-    with {:ok, repository_id} <- holder_id(scope, holder) do
-      in_force(hive.organisation_id, hive.id, repository_id)
+    with {:ok, target_id} <- holder_id(scope, holder) do
+      in_force(hive.organisation_id, hive.id, target_id)
     end
   end
 
-  @doc "One version of the baseline's (`nil`) or of a repository's run configurations."
+  @doc "One version of the baseline's (`nil`) or of a target's run configurations."
   @spec get_configuration(Scope.t(), holder, pos_integer | String.t()) ::
           {:ok, RunConfiguration.t()} | refusal
   def get_configuration(%Scope{} = scope, holder, version) do
-    with {:ok, repository_id} <- holder_id(scope, holder),
+    with {:ok, target_id} <- holder_id(scope, holder),
          {:ok, version} <- version(version),
          %RunConfiguration{} = configuration <-
            Repo.one(
-             from c in configurations(scope.hive.id, repository_id), where: c.version == ^version
+             from c in configurations(scope.hive.id, target_id), where: c.version == ^version
            ) do
       {:ok, configuration}
     else
@@ -692,17 +692,17 @@ defmodule Apiary.Policy do
   end
 
   @doc """
-  The run configuration a digest names, as a run reported it: the repository's own
+  The run configuration a digest names, as a run reported it: the target's own
   version with that digest when it has one, the baseline's otherwise; the newest when the
   same bytes were in force more than once.
   """
   @spec configuration_for_digest(Scope.t(), holder, String.t() | nil) ::
           {:ok, RunConfiguration.t()} | refusal
   def configuration_for_digest(%Scope{} = scope, holder, digest) when is_binary(digest) do
-    with {:ok, repository_id} <- holder_id(scope, holder),
+    with {:ok, target_id} <- holder_id(scope, holder),
          %RunConfiguration{} = configuration <-
-           by_digest(scope.hive.id, repository_id, digest) ||
-             (repository_id && by_digest(scope.hive.id, nil, digest)) do
+           by_digest(scope.hive.id, target_id, digest) ||
+             (target_id && by_digest(scope.hive.id, nil, digest)) do
       {:ok, configuration}
     else
       _ -> {:error, not_found("This hive served no run configuration with that digest.")}
@@ -712,12 +712,12 @@ defmodule Apiary.Policy do
   def configuration_for_digest(%Scope{}, _holder, _digest),
     do: {:error, not_found("This hive served no run configuration with that digest.")}
 
-  @doc "The versions of the baseline (`nil`) or of a repository, newest first, a page of #{@page_size}."
+  @doc "The versions of the baseline (`nil`) or of a target, newest first, a page of #{@page_size}."
   @spec list_configurations(Scope.t(), holder, pos_integer) :: page(RunConfiguration.t())
   def list_configurations(%Scope{} = scope, holder, page \\ 1) do
     case holder_id(scope, holder) do
-      {:ok, repository_id} ->
-        configurations(scope.hive.id, repository_id)
+      {:ok, target_id} ->
+        configurations(scope.hive.id, target_id)
         |> order_by([c], desc: c.version)
         |> preload(:changed_by)
         |> paginate(page)
@@ -747,7 +747,7 @@ defmodule Apiary.Policy do
           | refusal
   def digests(%Scope{hive: %Hive{id: hive_id} = hive}, %Run{hive_id: hive_id} = run) do
     in_force =
-      case in_force(hive.organisation_id, hive_id, run.repository_id) do
+      case in_force(hive.organisation_id, hive_id, run.target_id) do
         {:ok, configuration} -> configuration.digest
         {:error, _error} -> nil
       end
@@ -774,7 +774,7 @@ defmodule Apiary.Policy do
     :rendered_at,
     :organisation_id,
     :hive_id,
-    :repository_id,
+    :target_id,
     :changed_by_id,
     :policy_change_id
   ]
@@ -786,16 +786,16 @@ defmodule Apiary.Policy do
     :inserted_at,
     :organisation_id,
     :hive_id,
-    :repository_id,
+    :target_id,
     :changed_by_id
   ]
 
   @doc """
   The newest version of each holder's own run configurations, in one query and without
   the documents (`document` is nil): `%{key => %RunConfiguration{}}`, the key being the
-  repository's id, or nil for the baseline. `holders` holds `nil` or `:hive` for the
-  baseline, repositories, or repository ids; at most #{@bulk_max} are read. A holder with no
-  configuration of its own (a repository served the baseline's, another hive's, an id that
+  target's id, or nil for the baseline. `holders` holds `nil` or `:hive` for the
+  baseline, targets, or target ids; at most #{@bulk_max} are read. A holder with no
+  configuration of its own (a target served the baseline's, another hive's, an id that
   is none) has no key.
   """
   @spec newest_versions(Scope.t(), [holder | Ecto.UUID.t()]) :: %{
@@ -807,19 +807,19 @@ defmodule Apiary.Policy do
     Repo.all(
       from c in RunConfiguration,
         where: c.hive_id == ^hive_id,
-        where: c.repository_id in ^ids or (^baseline? and is_nil(c.repository_id)),
-        distinct: c.repository_id,
-        order_by: [asc: c.repository_id, desc: c.version],
+        where: c.target_id in ^ids or (^baseline? and is_nil(c.target_id)),
+        distinct: c.target_id,
+        order_by: [asc: c.target_id, desc: c.version],
         select: struct(c, ^@configuration_fields)
     )
-    |> Map.new(&{&1.repository_id, &1})
+    |> Map.new(&{&1.target_id, &1})
   end
 
   @doc """
   The run configuration versions each change made, in one query and without the
   documents: `%{change_id => [%RunConfiguration{}]}`, the baseline's first and then by
-  repository. A change of the hive may have rendered the baseline and several
-  repositories; one that rendered the same bytes made none and has no key, and neither
+  target. A change of the hive may have rendered the baseline and several
+  targets; one that rendered the same bytes made none and has no key, and neither
   has another hive's change. At most #{@bulk_max} ids are read.
   """
   @spec configurations_for_changes(Scope.t(), [Ecto.UUID.t()]) :: %{
@@ -832,7 +832,7 @@ defmodule Apiary.Policy do
     Repo.all(
       from c in RunConfiguration,
         where: c.hive_id == ^hive_id and c.policy_change_id in ^ids,
-        order_by: [asc_nulls_first: c.repository_id, asc: c.version],
+        order_by: [asc_nulls_first: c.target_id, asc: c.version],
         select: struct(c, ^@configuration_fields)
     )
     |> Enum.group_by(& &1.policy_change_id)
@@ -853,13 +853,13 @@ defmodule Apiary.Policy do
     Repo.all(
       from c in Change,
         where: c.hive_id == ^hive_id,
-        where: c.repository_id in ^ids or (^baseline? and is_nil(c.repository_id)),
-        distinct: c.repository_id,
-        order_by: [asc: c.repository_id, desc: c.inserted_at, desc: c.id],
+        where: c.target_id in ^ids or (^baseline? and is_nil(c.target_id)),
+        distinct: c.target_id,
+        order_by: [asc: c.target_id, desc: c.inserted_at, desc: c.id],
         select: struct(c, ^@change_fields),
         preload: [:changed_by]
     )
-    |> Map.new(&{&1.repository_id, &1})
+    |> Map.new(&{&1.target_id, &1})
   end
 
   defp holder_keys(holders) do
@@ -870,7 +870,7 @@ defmodule Apiary.Policy do
       uuids(
         for holder <- holders, holder not in [nil, :hive] do
           case holder do
-            %Repository{id: id} -> id
+            %Target{id: id} -> id
             id -> id
           end
         end
@@ -886,9 +886,9 @@ defmodule Apiary.Policy do
   ## History
 
   @doc """
-  The changes of the baseline (`nil`) or of a repository, newest first, a page of
+  The changes of the baseline (`nil`) or of a target, newest first, a page of
   #{@page_size}, `changed_by` preloaded. `:all` as the holder lists every change of the hive,
-  `repository` preloaded.
+  `target` preloaded.
   """
   @spec list_changes(Scope.t(), holder | :all, pos_integer) :: page(Change.t())
   def list_changes(%Scope{hive: %Hive{id: hive_id}} = scope, holder, page \\ 1) do
@@ -897,16 +897,16 @@ defmodule Apiary.Policy do
 
     case holder do
       :all ->
-        query |> preload([:changed_by, :repository]) |> paginate(page)
+        query |> preload([:changed_by, :target]) |> paginate(page)
 
       holder ->
         case holder_id(scope, holder) do
           {:ok, nil} ->
-            query |> where([c], is_nil(c.repository_id)) |> preload(:changed_by) |> paginate(page)
+            query |> where([c], is_nil(c.target_id)) |> preload(:changed_by) |> paginate(page)
 
-          {:ok, repository_id} ->
+          {:ok, target_id} ->
             query
-            |> where([c], c.repository_id == ^repository_id)
+            |> where([c], c.target_id == ^target_id)
             |> preload(:changed_by)
             |> paginate(page)
 
@@ -916,7 +916,7 @@ defmodule Apiary.Policy do
     end
   end
 
-  @doc "One change of the scope's hive by id, `changed_by` and `repository` preloaded."
+  @doc "One change of the scope's hive by id, `changed_by` and `target` preloaded."
   @spec get_change(Scope.t(), String.t()) :: {:ok, Change.t()} | refusal
   def get_change(%Scope{hive: %Hive{id: hive_id}}, id) do
     with {:ok, id} <- Ecto.UUID.cast(id),
@@ -924,7 +924,7 @@ defmodule Apiary.Policy do
            Repo.one(
              from c in Change,
                where: c.id == ^id and c.hive_id == ^hive_id,
-               preload: [:changed_by, :repository]
+               preload: [:changed_by, :target]
            ) do
       {:ok, change}
     else
@@ -974,11 +974,11 @@ defmodule Apiary.Policy do
   defp put_rule(scope, holder, action, attrs) do
     with {:ok, attrs} <- attrs(attrs),
          {:ok, membership} <- member(scope),
-         {:ok, repository_id} <- holder_id(scope, holder),
+         {:ok, target_id} <- holder_id(scope, holder),
          {:ok, candidate} <- candidate(action, attrs),
-         :ok <- lock_is_the_hives(repository_id, candidate.locked) do
-      write(scope, repository_id, fn hive ->
-        put(hive, scope.user, membership, repository_id, candidate, attrs)
+         :ok <- lock_is_the_hives(target_id, candidate.locked) do
+      write(scope, target_id, fn hive ->
+        put(hive, scope.user, membership, target_id, candidate, attrs)
       end)
     end
   end
@@ -990,20 +990,20 @@ defmodule Apiary.Policy do
   # Under the hive's lock: the rule already there is read here, so two writers of one
   # host meet as an add and a change, never as two adds, and who may change it is
   # decided on the row as it is now.
-  defp put(hive, user, membership, repository_id, candidate, attrs) do
-    existing = existing(hive.id, repository_id, candidate)
+  defp put(hive, user, membership, target_id, candidate, attrs) do
+    existing = existing(hive.id, target_id, candidate)
 
     with :ok <- may_change(membership, existing),
          :ok <- may_lock(membership, existing, attrs),
-         :ok <- room(hive.id, repository_id, existing) do
-      store(hive, user, repository_id, existing, candidate, attrs)
+         :ok <- room(hive.id, target_id, existing) do
+      store(hive, user, target_id, existing, candidate, attrs)
     end
   end
 
-  defp room(_hive_id, _repository_id, %Rule{}), do: :ok
+  defp room(_hive_id, _target_id, %Rule{}), do: :ok
 
-  defp room(hive_id, repository_id, nil) do
-    if length(rules(hive_id, repository_id)) < @rules_max do
+  defp room(hive_id, target_id, nil) do
+    if length(rules(hive_id, target_id)) < @rules_max do
       :ok
     else
       {:error,
@@ -1014,13 +1014,13 @@ defmodule Apiary.Policy do
     end
   end
 
-  defp store(hive, user, repository_id, nil, candidate, _attrs) do
+  defp store(hive, user, target_id, nil, candidate, _attrs) do
     rule =
       Repo.insert!(%{
         candidate
         | organisation_id: hive.organisation_id,
           hive_id: hive.id,
-          repository_id: repository_id,
+          target_id: target_id,
           created_by_id: user_id(user)
       })
 
@@ -1029,7 +1029,7 @@ defmodule Apiary.Policy do
 
   # What the caller did not name stays: the lock, and the paths and the argument of an
   # allow. Opening a host held to paths to every path takes `paths: nil`, said.
-  defp store(_hive, _user, _repository_id, %Rule{} = existing, candidate, attrs) do
+  defp store(_hive, _user, _target_id, %Rule{} = existing, candidate, attrs) do
     keep = fn key, given, held ->
       cond do
         candidate.action == "deny" -> nil
@@ -1059,16 +1059,16 @@ defmodule Apiary.Policy do
     host = host |> to_string() |> String.trim() |> String.downcase()
 
     with {:ok, membership} <- member(scope),
-         {:ok, repository_id} <- holder_id(scope, holder),
+         {:ok, target_id} <- holder_id(scope, holder),
          :ok <- a_path(path) do
-      write(scope, repository_id, fn hive ->
+      write(scope, target_id, fn hive ->
         effective = effective(scope, holder)
 
-        with :ok <- not_locked_above(effective, repository_id, host),
+        with :ok <- not_locked_above(effective, target_id, host),
              {:ok, paths} <- paths_after(effective, host, path, action),
              attrs = %{"host" => host, "paths" => paths},
              {:ok, candidate} <- candidate("allow", attrs) do
-          put(hive, scope.user, membership, repository_id, candidate, attrs)
+          put(hive, scope.user, membership, target_id, candidate, attrs)
         end
       end)
     end
@@ -1083,7 +1083,7 @@ defmodule Apiary.Policy do
 
   defp not_locked_above(_effective, nil, _host), do: :ok
 
-  defp not_locked_above(%Effective{entries: entries}, _repository_id, host) do
+  defp not_locked_above(%Effective{entries: entries}, _target_id, host) do
     if Enum.any?(
          entries,
          &(&1.kind == :host and &1.host == host and &1.source == :hive and &1.locked)
@@ -1154,7 +1154,7 @@ defmodule Apiary.Policy do
     with {:ok, membership} <- member(scope),
          :ok <- owner(membership, "Only an owner locks or unlocks a rule."),
          {:ok, rule} <- get_rule(scope, rule_id(rule_or_id)),
-         :ok <- lock_is_the_hives(rule.repository_id, true) do
+         :ok <- lock_is_the_hives(rule.target_id, true) do
       write(scope, nil, fn hive ->
         with {:ok, rule} <- reread(hive, rule) do
           rule = rule |> Ecto.Changeset.change(locked: locked) |> Repo.update!()
@@ -1177,20 +1177,20 @@ defmodule Apiary.Policy do
   # insert of an event or a run takes `FOR KEY SHARE` on its hive through the foreign
   # key, and a policy write must never make the receiver wait; then the change, its row in the history and
   # the renders. Whatever refuses rolls everything back.
-  defp write(%Scope{hive: %Hive{} = hive, user: user}, repository_id, fun) do
+  defp write(%Scope{hive: %Hive{} = hive, user: user}, target_id, fun) do
     result =
       Repo.transact(fn ->
         hive = Repo.one!(from h in Hive, where: h.id == ^hive.id, lock: "FOR NO KEY UPDATE")
-        before = snapshot(hive, repository_id)
+        before = snapshot(hive, target_id)
 
         with {:ok, value, action, subject} <- fun.(hive) do
           hive = Repo.one!(from h in Hive, where: h.id == ^hive.id)
-          after_ = snapshot(hive, repository_id)
+          after_ = snapshot(hive, target_id)
 
           if before == after_ do
             {:ok, {value, nil}}
           else
-            change = insert_change(hive, user, repository_id, action, subject, before, after_)
+            change = insert_change(hive, user, target_id, action, subject, before, after_)
 
             with :ok <- render_all(hive, change), do: {:ok, {value, change}}
           end
@@ -1206,7 +1206,7 @@ defmodule Apiary.Policy do
           Apiary.PubSub,
           topic(hive.id),
           {:policy_changed,
-           %{hive_id: hive.id, repository_id: change.repository_id, action: change.action}}
+           %{hive_id: hive.id, target_id: change.target_id, action: change.action}}
         )
 
         {:ok, value}
@@ -1216,20 +1216,20 @@ defmodule Apiary.Policy do
     end
   end
 
-  # The mode is the holder's own: the hive's for the baseline, and for a repository the
+  # The mode is the holder's own: the hive's for the baseline, and for a target the
   # one it set or "inherit", so its history shows its own changes and not the hive's.
   defp snapshot_mode(%Hive{} = hive, nil), do: hive.egress_mode
 
-  defp snapshot_mode(%Hive{}, repository_id) do
-    Repo.one(from p in Repository, where: p.id == ^repository_id, select: p.egress_mode) ||
+  defp snapshot_mode(%Hive{}, target_id) do
+    Repo.one(from p in Target, where: p.id == ^target_id, select: p.egress_mode) ||
       "inherit"
   end
 
-  defp snapshot(%Hive{} = hive, repository_id) do
+  defp snapshot(%Hive{} = hive, target_id) do
     %{
-      "mode" => snapshot_mode(hive, repository_id),
+      "mode" => snapshot_mode(hive, target_id),
       "rules" =>
-        for rule <- rules(hive.id, repository_id) do
+        for rule <- rules(hive.id, target_id) do
           %{
             "kind" => rule.kind,
             "action" => rule.action,
@@ -1243,11 +1243,11 @@ defmodule Apiary.Policy do
     }
   end
 
-  defp insert_change(hive, user, repository_id, action, subject, before, after_) do
+  defp insert_change(hive, user, target_id, action, subject, before, after_) do
     Repo.insert!(%Change{
       organisation_id: hive.organisation_id,
       hive_id: hive.id,
-      repository_id: repository_id,
+      target_id: target_id,
       action: action,
       subject: subject,
       before: before,
@@ -1284,11 +1284,11 @@ defmodule Apiary.Policy do
         hive = Repo.one!(from h in Hive, where: h.id == ^hive_id, lock: "FOR NO KEY UPDATE")
 
         if managed_hive?(hive.id) do
-          render_holders(hive, fn repository_id, rendered, store ->
+          render_holders(hive, fn target_id, rendered, store ->
             with {:ok, document} <- rendered do
               digest = Render.digest(document)
 
-              case Repo.one(newest(hive.id, repository_id)) do
+              case Repo.one(newest(hive.id, target_id)) do
                 %RunConfiguration{digest: ^digest} ->
                   {:ok, 0}
 
@@ -1296,10 +1296,10 @@ defmodule Apiary.Policy do
                   {:ok, 0}
 
                 %RunConfiguration{} = current ->
-                  snapshot = snapshot(hive, repository_id)
+                  snapshot = snapshot(hive, target_id)
 
                   change =
-                    insert_change(hive, nil, repository_id, "rerendered", nil, snapshot, snapshot)
+                    insert_change(hive, nil, target_id, "rerendered", nil, snapshot, snapshot)
 
                   configuration = store.(change)
 
@@ -1308,7 +1308,7 @@ defmodule Apiary.Policy do
                   )
 
                   Logger.info(
-                    "policy rerendered hive=#{hive.id} target=#{repository_id || "baseline"} " <>
+                    "policy rerendered hive=#{hive.id} target=#{target_id || "baseline"} " <>
                       "version=#{current.version}->#{configuration.version}"
                   )
 
@@ -1329,7 +1329,7 @@ defmodule Apiary.Policy do
         Phoenix.PubSub.broadcast(
           Apiary.PubSub,
           topic(hive_id),
-          {:policy_changed, %{hive_id: hive_id, repository_id: nil, action: "rerendered"}}
+          {:policy_changed, %{hive_id: hive_id, target_id: nil, action: "rerendered"}}
         )
 
         {:ok, versions}
@@ -1340,18 +1340,18 @@ defmodule Apiary.Policy do
     end
   end
 
-  # The baseline, and every repository that has rules or a mode of its own or has had a
-  # configuration of its own. A repository with a mode of its own renders the same bytes
+  # The baseline, and every target that has rules or a mode of its own or has had a
+  # configuration of its own. A target with a mode of its own renders the same bytes
   # when the hive's mode changes, so it gets no new version; one that follows the hive does.
-  # The rest: a repository whose last rule went keeps its versions, and
+  # The rest: a target whose last rule went keeps its versions, and
   # its next one says what the baseline says.
   defp render_all(%Hive{} = hive, change) do
-    render_holders(hive, fn repository_id, rendered, store ->
+    render_holders(hive, fn target_id, rendered, store ->
       case rendered do
         {:ok, _document} ->
           configuration = store.(change)
 
-          if change && change.repository_id == repository_id do
+          if change && change.target_id == target_id do
             Repo.update_all(from(c in Change, where: c.id == ^change.id),
               set: [version_after: configuration.version]
             )
@@ -1360,7 +1360,7 @@ defmodule Apiary.Policy do
           :ok
 
         {:error, error} ->
-          {:error, elsewhere(error, hive, change, repository_id)}
+          {:error, elsewhere(error, hive, change, target_id)}
       end
     end)
     |> case do
@@ -1369,7 +1369,7 @@ defmodule Apiary.Policy do
     end
   end
 
-  # Every holder of the hive, each handed `fun.(repository_id, rendered, store)`:
+  # Every holder of the hive, each handed `fun.(target_id, rendered, store)`:
   # `rendered` is `{:ok, document}` or the refusal, and `store.(change)` keeps the document
   # under the change (or nil) and answers the configuration in force, the one that was
   # there when the bytes are the same. `fun` answers `:ok` or `{:ok, count}` to go on, or
@@ -1378,20 +1378,20 @@ defmodule Apiary.Policy do
     hive_rules = rules(hive.id, nil)
 
     own =
-      Repo.all(from r in Rule, where: r.hive_id == ^hive.id and not is_nil(r.repository_id))
-      |> Enum.group_by(& &1.repository_id)
+      Repo.all(from r in Rule, where: r.hive_id == ^hive.id and not is_nil(r.target_id))
+      |> Enum.group_by(& &1.target_id)
 
     rendered =
       Repo.all(
         from c in RunConfiguration,
-          where: c.hive_id == ^hive.id and not is_nil(c.repository_id),
+          where: c.hive_id == ^hive.id and not is_nil(c.target_id),
           distinct: true,
-          select: c.repository_id
+          select: c.target_id
       )
 
     modes =
       Repo.all(
-        from p in Repository,
+        from p in Target,
           where: p.hive_id == ^hive.id and not is_nil(p.egress_mode),
           select: {p.id, p.egress_mode}
       )
@@ -1399,16 +1399,16 @@ defmodule Apiary.Policy do
 
     holders = [nil | Enum.uniq(Map.keys(own) ++ rendered ++ Map.keys(modes))]
 
-    Enum.reduce_while(holders, {:ok, 0}, fn repository_id, {:ok, count} ->
-      rules = Map.get(own, repository_id, [])
-      rendered = document(hive, repository_id, modes[repository_id], hive_rules, rules)
+    Enum.reduce_while(holders, {:ok, 0}, fn target_id, {:ok, count} ->
+      rules = Map.get(own, target_id, [])
+      rendered = document(hive, target_id, modes[target_id], hive_rules, rules)
 
       store = fn change ->
         {:ok, document} = rendered
-        store(hive, change, repository_id, document)
+        store(hive, change, target_id, document)
       end
 
-      case fun.(repository_id, rendered, store) do
+      case fun.(target_id, rendered, store) do
         :ok -> {:cont, {:ok, count}}
         {:ok, n} -> {:cont, {:ok, count + n}}
         {:error, _error} = refusal -> {:halt, refusal}
@@ -1416,9 +1416,9 @@ defmodule Apiary.Policy do
     end)
   end
 
-  defp document(hive, repository_id, own_mode, hive_rules, own) do
+  defp document(hive, target_id, own_mode, hive_rules, own) do
     with {:ok, effective} <-
-           Resolution.resolve_for(hive.egress_mode, own_mode, hive_rules, own, repository_id),
+           Resolution.resolve_for(hive.egress_mode, own_mode, hive_rules, own, target_id),
          document = Render.document(effective),
          :ok <- small(document),
          :ok <- valid(document) do
@@ -1426,10 +1426,10 @@ defmodule Apiary.Policy do
     end
   end
 
-  defp store(hive, change, repository_id, document) do
+  defp store(hive, change, target_id, document) do
     digest = Render.digest(document)
 
-    case Repo.one(newest(hive.id, repository_id)) do
+    case Repo.one(newest(hive.id, target_id)) do
       %RunConfiguration{digest: ^digest} = current ->
         current
 
@@ -1437,7 +1437,7 @@ defmodule Apiary.Policy do
         Repo.insert!(%RunConfiguration{
           organisation_id: hive.organisation_id,
           hive_id: hive.id,
-          repository_id: repository_id,
+          target_id: target_id,
           version: if(current, do: current.version + 1, else: 1),
           document: document,
           digest: digest,
@@ -1480,19 +1480,19 @@ defmodule Apiary.Policy do
   end
 
   # A refusal that comes from another holder than the one being changed says which.
-  defp elsewhere(%Error{} = error, _hive, %Change{repository_id: id}, id), do: error
-  defp elsewhere(%Error{} = error, _hive, nil, _repository_id), do: error
+  defp elsewhere(%Error{} = error, _hive, %Change{target_id: id}, id), do: error
+  defp elsewhere(%Error{} = error, _hive, nil, _target_id), do: error
 
   defp elsewhere(%Error{} = error, _hive, %Change{}, nil),
     do: %{error | message: "In the hive's baseline: " <> error.message}
 
-  defp elsewhere(%Error{} = error, hive, %Change{}, repository_id) do
-    case Repo.one(from p in Repository, where: p.id == ^repository_id and p.hive_id == ^hive.id) do
-      %Repository{forge: forge, path: path} ->
+  defp elsewhere(%Error{} = error, hive, %Change{}, target_id) do
+    case Repo.one(from p in Target, where: p.id == ^target_id and p.hive_id == ^hive.id) do
+      %Target{system: system, path: path} ->
         %{
           error
           | message:
-              "In the repository #{forge}/#{path}, which has rules of its own: " <> error.message
+              "In the repository #{system}/#{path}, which has rules of its own: " <> error.message
         }
 
       nil ->
@@ -1503,12 +1503,12 @@ defmodule Apiary.Policy do
   ## In force, for this module and for the wire (`Apiary.Policy.Serving`)
 
   @doc false
-  # The configuration in force for a repository of the hive, or the baseline's: a read,
+  # The configuration in force for a target of the hive, or the baseline's: a read,
   # and nothing but a read. A hive nobody has changed has no baseline row, and none is
   # made here: the first version is written by the first change and by nothing else
   # (`render_all/3`), so what a page shows as version 1 is what the first change made.
-  def in_force(_organisation_id, hive_id, repository_id) do
-    own = repository_id && Repo.one(newest(hive_id, repository_id))
+  def in_force(_organisation_id, hive_id, target_id) do
+    own = target_id && Repo.one(newest(hive_id, target_id))
 
     case own || Repo.one(newest(hive_id, nil)) do
       %RunConfiguration{} = configuration -> {:ok, configuration}
@@ -1525,26 +1525,26 @@ defmodule Apiary.Policy do
 
   @doc false
   # The newest version of one holder, read from `run_configurations_version_index`.
-  def newest(hive_id, repository_id) do
-    from c in configurations(hive_id, repository_id), order_by: [desc: c.version], limit: 1
+  def newest(hive_id, target_id) do
+    from c in configurations(hive_id, target_id), order_by: [desc: c.version], limit: 1
   end
 
   # The expression is the index's own, constant and all (`run_configurations_version_index`):
   # as a parameter it would match only under a custom plan, and a prepared statement
   # goes generic after a few runs.
-  defp configurations(hive_id, repository_id) do
+  defp configurations(hive_id, target_id) do
     from c in RunConfiguration,
       where:
         c.hive_id == ^hive_id and
           fragment(
             "COALESCE(?, '00000000-0000-0000-0000-000000000000'::uuid)",
-            c.repository_id
-          ) == type(^(repository_id || @nobody), Ecto.UUID)
+            c.target_id
+          ) == type(^(target_id || @nobody), Ecto.UUID)
   end
 
-  defp by_digest(hive_id, repository_id, digest) do
+  defp by_digest(hive_id, target_id, digest) do
     Repo.one(
-      from c in configurations(hive_id, repository_id),
+      from c in configurations(hive_id, target_id),
         where: c.digest == ^digest,
         order_by: [desc: c.version],
         limit: 1
@@ -1556,28 +1556,28 @@ defmodule Apiary.Policy do
   defp rules(hive_id, nil) do
     Repo.all(
       from r in Rule,
-        where: r.hive_id == ^hive_id and is_nil(r.repository_id),
+        where: r.hive_id == ^hive_id and is_nil(r.target_id),
         order_by: [desc: r.kind, asc: r.host, asc: r.name]
     )
   end
 
-  defp rules(hive_id, repository_id) do
+  defp rules(hive_id, target_id) do
     Repo.all(
       from r in Rule,
-        where: r.hive_id == ^hive_id and r.repository_id == ^repository_id,
+        where: r.hive_id == ^hive_id and r.target_id == ^target_id,
         order_by: [desc: r.kind, asc: r.host, asc: r.name]
     )
   end
 
-  defp repositories(%Scope{hive: %Hive{id: hive_id}, organisation: %Organisation{id: org_id}}) do
-    from p in Repository, where: p.hive_id == ^hive_id and p.organisation_id == ^org_id
+  defp targets(%Scope{hive: %Hive{id: hive_id}, organisation: %Organisation{id: org_id}}) do
+    from p in Target, where: p.hive_id == ^hive_id and p.organisation_id == ^org_id
   end
 
-  # The repository's id when it is one of the scope's hive, nil for the baseline.
+  # The target's id when it is one of the scope's hive, nil for the baseline.
   defp holder_id(%Scope{}, holder) when holder in [nil, :hive], do: {:ok, nil}
 
-  defp holder_id(%Scope{} = scope, %Repository{id: id}) when is_binary(id) do
-    case Repo.one(from p in repositories(scope), where: p.id == ^id, select: p.id) do
+  defp holder_id(%Scope{} = scope, %Target{id: id}) when is_binary(id) do
+    case Repo.one(from p in targets(scope), where: p.id == ^id, select: p.id) do
       nil -> {:error, not_found("This hive has no such repository.")}
       id -> {:ok, id}
     end
@@ -1585,10 +1585,10 @@ defmodule Apiary.Policy do
 
   defp holder_id(%Scope{}, _holder), do: {:error, not_found("This hive has no such repository.")}
 
-  defp existing(hive_id, repository_id, %Rule{kind: kind} = candidate) do
+  defp existing(hive_id, target_id, %Rule{kind: kind} = candidate) do
     subject = Rule.subject(candidate)
 
-    Enum.find(rules(hive_id, repository_id), &(&1.kind == kind and Rule.subject(&1) == subject))
+    Enum.find(rules(hive_id, target_id), &(&1.kind == kind and Rule.subject(&1) == subject))
   end
 
   defp member(%Scope{} = scope) do
@@ -1625,7 +1625,7 @@ defmodule Apiary.Policy do
 
   defp lock_is_the_hives(nil, _locked), do: :ok
 
-  defp lock_is_the_hives(_repository_id, true) do
+  defp lock_is_the_hives(_target_id, true) do
     {:error,
      Error.new(
        :invalid,
@@ -1633,7 +1633,7 @@ defmodule Apiary.Policy do
      )}
   end
 
-  defp lock_is_the_hives(_repository_id, _locked), do: :ok
+  defp lock_is_the_hives(_target_id, _locked), do: :ok
 
   # The changeset's errors as the first sentence, or the rule it describes.
   defp applied(%Ecto.Changeset{valid?: true} = changeset),
@@ -1720,18 +1720,18 @@ defmodule Apiary.Policy do
 
   defp connection_holder(_scope, _connection, :hive), do: {:ok, nil}
 
-  defp connection_holder(%Scope{} = scope, %Connection{run_id: run_id}, :repository) do
-    repository =
+  defp connection_holder(%Scope{} = scope, %Connection{run_id: run_id}, :target) do
+    target =
       Repo.one(
-        from p in repositories(scope),
+        from p in targets(scope),
           join: r in Run,
-          on: r.repository_id == p.id,
+          on: r.target_id == p.id,
           where: r.id == ^run_id and r.hive_id == ^scope.hive.id
       )
 
-    case repository do
-      %Repository{} = repository ->
-        {:ok, repository}
+    case target do
+      %Target{} = target ->
+        {:ok, target}
 
       nil ->
         {:error,

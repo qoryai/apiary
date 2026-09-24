@@ -189,7 +189,7 @@ defmodule Apiary.RetentionTest do
         :state,
         :runtime,
         :host,
-        :repository,
+        :target_path,
         :task,
         :exit_code,
         :duration_ms,

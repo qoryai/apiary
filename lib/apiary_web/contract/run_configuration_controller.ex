@@ -1,14 +1,17 @@
 defmodule ApiaryWeb.Contract.RunConfigurationController do
   @moduledoc """
   The run configuration endpoint of the server contract: a signed
-  `GET /v1/run-configuration?forge=<label>&repository=<label>`, reached only through
-  `ApiaryWeb.Contract.SignedRequest`, as discovery is.
+  `GET /v1/run-configuration?<label>=<value>&…`, reached only through
+  `ApiaryWeb.Contract.SignedRequest`, as discovery is. Every query parameter is one of the
+  run's labels: a runner of the contract's revision 2 sends every label of the run, one of
+  revision 1 only `forge` and `repository`. The hive's body (`Apiary.Body`) says which of
+  them name the target, so both are read the same way.
 
   The answer is `200`, `application/json`, the bytes as they were stored when the policy
   was rendered (never rendered again for a request, so the digest is of what is sent),
   with `X-Qory-Run-Configuration: sha256=<hex>`, the same string quoted as the `ETag`,
-  and `X-Qory-Configuration`. It is the configuration of the key's hive for the labelled
-  repository; a repository the hive does not know, one without rules of its own and a
+  and `X-Qory-Configuration`. It is the configuration of the key's hive for the target the
+  labels name; a target the hive does not know, one without rules of its own and a
   request that names none get the hive's baseline.
 
   A hive nobody has given a policy (`Apiary.Policy.managed?/1`) serves none: `404`
@@ -18,7 +21,7 @@ defmodule ApiaryWeb.Contract.RunConfigurationController do
 
   Never a `304`: to a runner anything but `200` is no run, so `If-None-Match` is not
   read. A parameter sent as anything but a string, or longer than a label may be, names
-  no repository and gets the baseline (of one sent twice the last is read); nothing of the query is logged or
+  no target and gets the baseline (of one sent twice the last is read); nothing of the query is logged or
   repeated. When the configuration cannot be read the answer is `503`, which is no run:
   the runner fails closed, as the contract has it.
   """
@@ -28,10 +31,10 @@ defmodule ApiaryWeb.Contract.RunConfigurationController do
   alias Apiary.Runs.RateLimit
   alias ApiaryWeb.Contract.Configuration
 
-  def show(conn, params) do
+  def show(conn, _params) do
     case RateLimit.check(conn.assigns.access_key.id) do
       :ok ->
-        serve(conn, params)
+        serve(conn)
 
       {:error, seconds} ->
         conn
@@ -41,8 +44,8 @@ defmodule ApiaryWeb.Contract.RunConfigurationController do
     end
   end
 
-  defp serve(conn, params) do
-    case Serving.fetch(conn.assigns.access_key, params["forge"], params["repository"]) do
+  defp serve(conn) do
+    case Serving.fetch(conn.assigns.access_key, conn.query_params) do
       {:ok, configuration} ->
         conn
         |> put_resp_header("x-qory-run-configuration", configuration.digest)

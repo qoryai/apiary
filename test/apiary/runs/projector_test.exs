@@ -6,7 +6,7 @@ defmodule Apiary.Runs.ProjectorTest do
   import ExUnit.CaptureLog
 
   alias Apiary.Runs
-  alias Apiary.Runs.{Connection, Event, LogChunk, Projector, Repository, Run}
+  alias Apiary.Runs.{Connection, Event, LogChunk, Projector, Target, Run}
 
   setup do
     scope = scope_fixture()
@@ -30,7 +30,7 @@ defmodule Apiary.Runs.ProjectorTest do
           :organisation,
           :hive,
           :access_key,
-          :repository_record,
+          :target,
           :closed_by,
           :events,
           :log_chunks,
@@ -94,8 +94,8 @@ defmodule Apiary.Runs.ProjectorTest do
       assert projected.args == ["-p", "fix the build"]
       assert projected.host == "dev-laptop"
       assert projected.task == "issue-12"
-      assert projected.forge == "git.example.com"
-      assert projected.repository == "acme/shop"
+      assert projected.target_system == "git.example.com"
+      assert projected.target_path == "acme/shop"
       assert projected.labels["repository"] == "acme/shop"
       assert projected.started_at == at(2)
       assert projected.exited_at == at(61.5)
@@ -132,7 +132,7 @@ defmodule Apiary.Runs.ProjectorTest do
       assert api.organisation_id == run.organisation_id
     end
 
-    test "creates the repository once per hive, and only from both labels", %{
+    test "creates the target once per hive, and only from both labels", %{
       scope: scope,
       run: run
     } do
@@ -143,13 +143,13 @@ defmodule Apiary.Runs.ProjectorTest do
       events_fixture(again, [{1, "run.started", started_data()}])
       {:ok, second} = Projector.project(again)
 
-      assert first.repository_id && first.repository_id == second.repository_id
+      assert first.target_id && first.target_id == second.target_id
 
-      assert [%Repository{forge: "git.example.com", path: "acme/shop"} = repository] =
-               Repo.all(Repository)
+      assert [%Target{system: "git.example.com", path: "acme/shop"} = target] =
+               Repo.all(Target)
 
-      assert repository.hive_id == run.hive_id
-      assert repository.organisation_id == run.organisation_id
+      assert target.hive_id == run.hive_id
+      assert target.organisation_id == run.organisation_id
 
       half = run_fixture(scope)
 
@@ -158,12 +158,14 @@ defmodule Apiary.Runs.ProjectorTest do
       ])
 
       {:ok, half} = Projector.project(half)
-      assert half.repository == "acme/other"
-      assert half.repository_id == nil
-      assert Repo.aggregate(Repository, :count) == 1
+      # One label names no target: the run keeps it among its labels, and nothing else.
+      assert half.labels["repository"] == "acme/other"
+      assert half.target_path == nil
+      assert half.target_id == nil
+      assert Repo.aggregate(Target, :count) == 1
     end
 
-    test "a label that cannot name a repository leaves the run unassigned, its labels as sent",
+    test "a label that cannot name a target leaves the run unassigned, its labels as sent",
          %{scope: scope, run: run} do
       bad = [
         "acme/shop\n# injected: true",
@@ -184,23 +186,24 @@ defmodule Apiary.Runs.ProjectorTest do
         events_fixture(run, [{1, "run.started", started_data(%{"labels" => labels})}])
 
         assert {:ok, projected} = Projector.project(run)
-        assert projected.repository_id == nil, inspect(label)
-        assert Map.get(projected, String.to_existing_atom(key)) == nil
+        assert projected.target_id == nil, inspect(label)
+        field = %{"repository" => :target_path, "forge" => :target_system}[key]
+        assert Map.get(projected, field) == nil
         # The run is kept, and what it said is kept.
         assert projected.state == "running"
         assert Map.has_key?(projected.labels, key)
       end
 
-      assert Repo.aggregate(Repository, :count) == 0
-      assert Repository.label("acme/shop") == "acme/shop"
-      assert Repository.label("äcme/shöp") == "äcme/shöp"
-      assert Repository.label(String.duplicate("a", 256))
-      assert Repository.label(<<255>>) == nil
-      assert Repository.label(7) == nil
-      assert Repository.label("acme/\u0000shop") == nil
+      assert Repo.aggregate(Target, :count) == 0
+      assert Target.label("acme/shop") == "acme/shop"
+      assert Target.label("äcme/shöp") == "äcme/shöp"
+      assert Target.label(String.duplicate("a", 256))
+      assert Target.label(<<255>>) == nil
+      assert Target.label(7) == nil
+      assert Target.label("acme/\u0000shop") == nil
     end
 
-    test "the same forge and path in another hive is another repository", %{run: run} do
+    test "the same system and path in another hive is another target", %{run: run} do
       other = run_fixture(scope_fixture())
 
       for run <- [run, other] do
@@ -208,7 +211,7 @@ defmodule Apiary.Runs.ProjectorTest do
         Projector.project(run)
       end
 
-      assert Repo.aggregate(Repository, :count) == 2
+      assert Repo.aggregate(Target, :count) == 2
     end
 
     test "is idempotent: a second pass folds nothing", %{run: run} do

@@ -1,8 +1,8 @@
 defmodule ApiaryWeb.RunLive.Index do
   @moduledoc """
   The runs of the hive (`docs/design/brief-runs.md`, re1): one row per run with its state,
-  what it worked on, where and for how long, and its denials; grouped by repository, by
-  task or not at all; filtered by state, repository, task, runtime, host, time range and
+  what it worked on, where and for how long, and its denials; grouped by target, by
+  task or not at all; filtered by state, target, task, runtime, host, time range and
   denials. Every filter, the grouping and the page are query parameters, read through
   `Apiary.Runs.Filters`: a value it does not know is dropped and the URL rewritten.
 
@@ -71,18 +71,18 @@ defmodule ApiaryWeb.RunLive.Index do
           />
           <.filter
             name="repo"
-            total={facet_total(@facets, :repo)}
+            total={facet_total(@facets, :target)}
             query={@narrow["repo"]}
             label="Repository"
-            value={Filters.repo_value(@filters.repo)}
+            value={Filters.target_value(@filters.target)}
             options={
               with_chosen(
-                facet_options(@facets, :repo),
-                Filters.repo_value(@filters.repo),
-                repo_label(@filters.repo)
+                facet_options(@facets, :target),
+                Filters.target_value(@filters.target),
+                target_label(@filters.target)
               )
             }
-            remove={path(Filters.put(@filters, repo: nil))}
+            remove={path(Filters.put(@filters, target: nil))}
           />
           <.filter
             name="task"
@@ -158,9 +158,9 @@ defmodule ApiaryWeb.RunLive.Index do
         <div id="runs-summary" class="q-summary">
           <span :if={@summary}>
             <b>{delimited(@summary.runs)}</b> {if @summary.runs == 1, do: "run", else: "runs"}
-            <span :if={@filters.group != "task" && @summary.repositories > 0}>
-              in <b>{delimited(@summary.repositories)}</b>
-              {if @summary.repositories == 1, do: "repository", else: "repositories"}
+            <span :if={@filters.group != "task" && @summary.targets > 0}>
+              in <b>{delimited(@summary.targets)}</b>
+              {if @summary.targets == 1, do: "repository", else: "repositories"}
             </span>
             <span :if={@filters.group == "task" && @summary.tasks > 0}>
               in
@@ -377,8 +377,8 @@ defmodule ApiaryWeb.RunLive.Index do
       >
         <.icon name="hero-chevron-right-micro" class="q-chev size-4" />
         <%= case @group.kind do %>
-          <% :repository -> %>
-            <span class="q-forge">{@group.forge}</span>
+          <% :target -> %>
+            <span class="q-forge">{@group.system}</span>
             <span class="q-path">{@group.path}</span>
           <% :unassigned -> %>
             <span class="q-path q-plain">Unassigned</span>
@@ -392,24 +392,24 @@ defmodule ApiaryWeb.RunLive.Index do
       </button>
       <span class="q-g-meta">
         <span>
-          {count_noun(@facts.runs, "run")}{if @facts[:repositories] && @facts.repositories > 1,
-            do: " in #{@facts.repositories} repositories"}
+          {count_noun(@facts.runs, "run")}{if @facts[:targets] && @facts.targets > 1,
+            do: " in #{@facts.targets} repositories"}
         </span>
         <span :if={@facts.alive > 0} class="q-opt">{@facts.alive} alive</span>
         <span :if={@facts.denials > 0} class="q-opt">{count_noun(@facts.denials, "denial")}</span>
         <.link
-          :if={@group.kind == :repository}
+          :if={@group.kind == :target}
           navigate={@connections_path.(@group.key)}
           class="q-opt"
-          aria-label={"Connections of #{@group.forge} #{@group.path}"}
+          aria-label={"Connections of #{@group.system} #{@group.path}"}
         >
           Connections
         </.link>
         <.link
-          :if={@group.kind == :repository && group_repository_id(@group)}
-          navigate={ApiaryWeb.ConnectionLive.Rules.repository_path(group_repository_id(@group))}
+          :if={@group.kind == :target && group_target_id(@group)}
+          navigate={ApiaryWeb.ConnectionLive.Rules.target_policy_path(group_target_id(@group))}
           class="q-g-policy"
-          aria-label={"Policy of #{@group.forge} #{@group.path}"}
+          aria-label={"Policy of #{@group.system} #{@group.path}"}
         >
           Policy
         </.link>
@@ -418,9 +418,9 @@ defmodule ApiaryWeb.RunLive.Index do
     """
   end
 
-  # The repository's row id, from any of the group's runs: they share it.
-  defp group_repository_id(%{runs: [%{repository_id: id} | _]}) when is_binary(id), do: id
-  defp group_repository_id(_group), do: nil
+  # The target's row id, from any of the group's runs: they share it.
+  defp group_target_id(%{runs: [%{target_id: id} | _]}) when is_binary(id), do: id
+  defp group_target_id(_group), do: nil
 
   attr :run, :map, required: true
   attr :group_by, :string, required: true
@@ -453,10 +453,10 @@ defmodule ApiaryWeb.RunLive.Index do
         </div>
       </td>
       <td :if={@group_by == "none"} class="q-c-repo font-mono text-[12.5px]" role="cell">
-        <span :if={@run.forge && @run.repository}>
-          <span class="text-faint">{@run.forge}/</span>{@run.repository}
+        <span :if={@run.target_system && @run.target_path}>
+          <span class="text-faint">{@run.target_system}/</span>{@run.target_path}
         </span>
-        <span :if={!(@run.forge && @run.repository)} class="font-sans text-faint">n/a</span>
+        <span :if={!(@run.target_system && @run.target_path)} class="font-sans text-faint">n/a</span>
       </td>
       <td class="q-c-rt q-meta" role="cell">
         <span :if={@run.runtime}>{@run.runtime} {@run.runtime_version}</span>
@@ -486,7 +486,7 @@ defmodule ApiaryWeb.RunLive.Index do
   attr :run, :map, required: true
   attr :group_by, :string, required: true
 
-  # The first line of the run cell: the task; grouped by task, the repository; without
+  # The first line of the run cell: the task; grouped by task, the target; without
   # either, the command as it was typed; for a run that has only pinged, that fact.
   defp run_lead(%{run: %{state: "pending", started_at: nil}} = assigns) do
     ~H"""
@@ -494,10 +494,10 @@ defmodule ApiaryWeb.RunLive.Index do
     """
   end
 
-  defp run_lead(%{group_by: "task", run: %{forge: forge, repository: path}} = assigns)
-       when is_binary(forge) and is_binary(path) do
+  defp run_lead(%{group_by: "task", run: %{target_system: system, target_path: path}} = assigns)
+       when is_binary(system) and is_binary(path) do
     ~H"""
-    <b class="font-mono text-[12.5px]"><span class="font-normal text-faint">{@run.forge}/</span>{@run.repository}</b>
+    <b class="font-mono text-[12.5px]"><span class="font-normal text-faint">{@run.target_system}/</span>{@run.target_path}</b>
     """
   end
 
@@ -822,8 +822,8 @@ defmodule ApiaryWeb.RunLive.Index do
 
   defp path(%Filters{} = filters), do: ~p"/hive/runs?#{Filters.to_params(filters)}"
 
-  defp connections_path({forge, path}),
-    do: ~p"/hive/connections?#{Filters.repo_params(forge, path)}"
+  defp connections_path({system, path}),
+    do: ~p"/hive/connections?#{Filters.target_params(system, path)}"
 
   # No run in the hive at all, and nothing narrowing the view: the first-run states.
   defp first_run?(%{hive_runs: 0}, filters), do: not Filters.any?(filters)
@@ -839,7 +839,7 @@ defmodule ApiaryWeb.RunLive.Index do
   defp group_aria(group, facts) do
     name =
       case group.kind do
-        :repository -> "#{group.forge} #{group.path}"
+        :target -> "#{group.system} #{group.path}"
         _other -> group.title
       end
 
@@ -950,9 +950,9 @@ defmodule ApiaryWeb.RunLive.Index do
   defp task_label(:none), do: "No task"
   defp task_label(task), do: task
 
-  defp repo_label(:none), do: "Unassigned"
-  defp repo_label({forge, path}), do: "#{forge}/#{path}"
-  defp repo_label(nil), do: nil
+  defp target_label(:none), do: "Unassigned"
+  defp target_label({system, path}), do: "#{system}/#{path}"
+  defp target_label(nil), do: nil
 
   defp range_value(%Filters{from: nil, to: nil, since: "all"}), do: nil
   defp range_value(%Filters{from: nil, to: nil, since: since}), do: since

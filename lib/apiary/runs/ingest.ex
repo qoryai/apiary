@@ -56,13 +56,13 @@ defmodule Apiary.Runs.Ingest do
   `heartbeat` says a heartbeat was among the new ones, and `repeated` says the
   delivery id had been recorded before; `managed` says whether the hive serves a run
   configuration (nil when that could not be read) and `run_configuration_digest` is
-  the digest in force for the run's repository, for the answer's headers (nil for a
+  the digest in force for the run's target, for the answer's headers (nil for a
   hive that is not managed, and when it could not be read). `{:error, :unavailable}` when the batch could not be stored.
 
   The digest the request reported (`meta.run_configuration`) is kept on the delivery
   and, as the last one reported, on the run. The digest in force is read after the
   commit, outside the run's lock, and never rendered: a read that says the hive is
-  managed, then one read of an index for the digest, two when the run's repository has
+  managed, then one read of an index for the digest, two when the run's target has
   no configuration of its own and the baseline's is read after it.
   """
   def ingest(%AccessKey{} = access_key, %Batch{} = batch, meta \\ %{}) do

@@ -41,7 +41,7 @@ defmodule ApiaryWeb.PolicyComponents do
   attr :scope, :string,
     default: nil,
     doc:
-      "whose version, when shown away from its own page: \"hive baseline\" or a forge/path; a quiet suffix"
+      "whose version, when shown away from its own page: \"hive baseline\" or a system/path; a quiet suffix"
 
   attr :class, :any, default: nil
 
@@ -142,17 +142,17 @@ defmodule ApiaryWeb.PolicyComponents do
 
   @doc """
   Where a rule comes from: three shapes, three wordings, no status hue. `label` replaces
-  the words where the same chip names a repository's policy ("Own rules", "Hive baseline")
+  the words where the same chip names a target's policy ("Own rules", "Hive baseline")
   or marks a change the hive made ("hive").
   """
-  attr :source, :atom, required: true, values: [:hive, :repository, :hive_locked]
+  attr :source, :atom, required: true, values: [:hive, :target, :hive_locked]
   attr :label, :string, default: nil
   attr :class, :any, default: nil
 
   def source_chip(assigns) do
     ~H"""
     <span class={["q-src", source_class(@source), @class]}>
-      <.icon :if={@source == :repository} name="hero-book-open-micro" class="size-3" />
+      <.icon :if={@source == :target} name="hero-book-open-micro" class="size-3" />
       <.icon :if={@source == :hive_locked} name="hero-lock-closed-micro" class="size-3" />
       <svg
         :if={@source == :hive}
@@ -172,11 +172,11 @@ defmodule ApiaryWeb.PolicyComponents do
   end
 
   defp source_class(:hive), do: nil
-  defp source_class(:repository), do: "q-src-repo"
+  defp source_class(:target), do: "q-src-repo"
   defp source_class(:hive_locked), do: "q-src-lock"
 
   defp source_words(:hive), do: "Hive"
-  defp source_words(:repository), do: "This repository"
+  defp source_words(:target), do: "This repository"
   defp source_words(:hive_locked), do: "Hive, locked"
 
   ## Rich text
@@ -252,8 +252,8 @@ defmodule ApiaryWeb.PolicyComponents do
   attr :mode, :string, required: true, values: ~w(observe enforce), doc: "the hive's default"
   attr :can_edit, :boolean, default: false, doc: "owners only"
   attr :served, :boolean, default: true, doc: "false on a new hive: nothing is served yet"
-  attr :following, :integer, default: 0, doc: "repositories that follow the default"
-  attr :own, :list, default: [], doc: "the modes of the repositories that set their own"
+  attr :following, :integer, default: 0, doc: "targets that follow the default"
+  attr :own, :list, default: [], doc: "the modes of the targets that set their own"
 
   attr :fact, :any,
     default: nil,
@@ -309,9 +309,7 @@ defmodule ApiaryWeb.PolicyComponents do
           <span :if={@mode == mode && (@fact || !@served)} id={"#{@id}-fact"} class="q-mode-fact">
             <.mode_fact
               fact={if @served, do: @fact, else: :unserved}
-              tail={
-                if @own != [], do: ", in the #{repositories(@following)} that follow it", else: ""
-              }
+              tail={if @own != [], do: ", in the #{targets(@following)} that follow it", else: ""}
             />
           </span>
         </button>
@@ -331,13 +329,13 @@ defmodule ApiaryWeb.PolicyComponents do
     """
   end
 
-  defp repositories(1), do: "1 repository"
-  defp repositories(n), do: "#{n} repositories"
+  defp targets(1), do: "1 repository"
+  defp targets(n), do: "#{n} repositories"
 
-  defp own_count([_one], following), do: "1 of #{repositories(following + 1)} does"
+  defp own_count([_one], following), do: "1 of #{targets(following + 1)} does"
 
   defp own_count(own, following),
-    do: "#{length(own)} of #{repositories(following + length(own))} do"
+    do: "#{length(own)} of #{targets(following + length(own))} do"
 
   defp own_modes([mode]), do: ", and #{mode}s."
 
@@ -390,12 +388,12 @@ defmodule ApiaryWeb.PolicyComponents do
     """
   end
 
-  ## pd2a. Repository mode
+  ## pd2a. Target mode
 
   @doc """
-  A repository's mode: follow the hive, observe or enforce, with what is in effect and
+  A target's mode: follow the hive, observe or enforce, with what is in effect and
   where it comes from. Compact on purpose: the hive's page explains the two modes once;
-  here the choice is whose mode. A radio sends `repository_mode_ask`. While the repository
+  here the choice is whose mode. A radio sends `target_mode_ask`. While the target
   observes and its list holds locked denies of the hive, a notice says that they hold
   here all the same: a deny is denied in either mode.
   """
@@ -406,7 +404,7 @@ defmodule ApiaryWeb.PolicyComponents do
   attr :can_edit, :boolean, default: false, doc: "owners only"
   attr :locked_denies, :list, default: [], doc: "the hosts of locked hive denies in the list"
 
-  def repository_mode(assigns) do
+  def target_mode(assigns) do
     ~H"""
     <section id={@id} class="q-sect q-rmode-sect" aria-labelledby={"#{@id}-h"}>
       <div class="q-rmode">
@@ -435,7 +433,7 @@ defmodule ApiaryWeb.PolicyComponents do
             tabindex={if @setting == setting, do: "0", else: "-1"}
             phx-click={
               @can_edit && @setting != setting &&
-                JS.push("repository_mode_ask", value: %{setting: setting})
+                JS.push("target_mode_ask", value: %{setting: setting})
             }
           >
             {label}
@@ -471,7 +469,7 @@ defmodule ApiaryWeb.PolicyComponents do
   """
   attr :id, :string, required: true
   attr :form, :any, required: true, doc: "action, host, paths, every"
-  attr :scope, :atom, required: true, values: [:hive, :repository]
+  attr :scope, :atom, required: true, values: [:hive, :target]
   attr :reading, :map, default: nil
   attr :queued, :integer, default: 0, doc: "pasted hosts still to add"
   attr :host_placeholder, :string, default: "api.example or *.internal.example"
@@ -701,7 +699,7 @@ defmodule ApiaryWeb.PolicyComponents do
   ## pd4. Rules table and rule row
 
   @doc """
-  The rules of the hive, or the effective policy of a repository: one list, every entry
+  The rules of the hive, or the effective policy of a target: one list, every entry
   saying where it came from. A row is a map the page builds (see `rule_row/1`).
   `activity` is `:loading`, `:unavailable` (the column is dropped, never faked) or the
   map of `Apiary.Policy.rule_activity/3`.
@@ -709,11 +707,11 @@ defmodule ApiaryWeb.PolicyComponents do
   attr :id, :string, required: true
   attr :label, :string, required: true
   attr :rows, :list, required: true
-  attr :scope, :atom, required: true, values: [:hive, :repository]
+  attr :scope, :atom, required: true, values: [:hive, :target]
   attr :can_lock, :boolean, default: false
   attr :activity, :any, default: :unavailable
   attr :fresh, :any, default: %{}, doc: "%{rule id => version}: new in the version in force"
-  attr :target, :string, default: nil, doc: "the host `?rule=` points at"
+  attr :ruled_host, :string, default: nil, doc: "the host `?rule=` points at"
   attr :empty, :string, default: nil, doc: "the one faint line of a filter that matches nothing"
 
   def rules_table(assigns) do
@@ -726,7 +724,7 @@ defmodule ApiaryWeb.PolicyComponents do
           <tr role="row">
             <th role="columnheader">Rule</th>
             <th role="columnheader">Paths</th>
-            <th :if={@scope == :repository} role="columnheader">Comes from</th>
+            <th :if={@scope == :target} role="columnheader">Comes from</th>
             <th :if={@seen?} role="columnheader" class="q-num">Last 7 days</th>
             <th :if={@scope == :hive} role="columnheader">Added</th>
             <th role="columnheader">
@@ -749,7 +747,7 @@ defmodule ApiaryWeb.PolicyComponents do
             seen={@seen? && seen(@activity, row)}
             seen?={@seen?}
             fresh={Map.get(@fresh, row.id)}
-            target={@target != nil && @target == row.host}
+            ruled={@ruled_host != nil && @ruled_host == row.host}
           />
         </tbody>
       </table>
@@ -762,9 +760,9 @@ defmodule ApiaryWeb.PolicyComponents do
 
   @doc """
   One rule. `rule` is a map: `id`, `action` (`"allow"`, `"deny"`), `host`, `paths`,
-  `locked`, `source` (`:hive`, `:repository`, `:hive_locked`), `by` (the local part of the
+  `locked`, `source` (`:hive`, `:target`, `:hive_locked`), `by` (the local part of the
   author's email), `at`, `locked_tip` (what a member reads on the padlock), `act` (the one
-  act of a repository row: `:disable`, `:allow_here`, `:remove`, `:restore`, `:open`),
+  act of a target row: `:disable`, `:allow_here`, `:remove`, `:restore`, `:open`),
   `beaten` (the rules it holds against: maps with `id`, `action`, `host`, `kind`
   (`:override`, `:lock`, `:cover`), `by`, `at`), `can_change` (false for a member on a
   locked rule).
@@ -776,7 +774,7 @@ defmodule ApiaryWeb.PolicyComponents do
   attr :seen, :any, default: nil
   attr :seen?, :boolean, default: false
   attr :fresh, :any, default: nil
-  attr :target, :boolean, default: false
+  attr :ruled, :boolean, default: false
 
   def rule_row(assigns) do
     ~H"""
@@ -786,7 +784,7 @@ defmodule ApiaryWeb.PolicyComponents do
       class={[
         "q-rule-row",
         @fresh && "q-fresh",
-        @target && "q-rule-target",
+        @ruled && "q-ruled",
         @rule.beaten != [] && "q-has-over"
       ]}
     >
@@ -798,7 +796,7 @@ defmodule ApiaryWeb.PolicyComponents do
         </div>
       </td>
       <td role="cell" class="q-c-paths"><.paths paths={@rule.paths} action={@rule.action} /></td>
-      <td :if={@scope == :repository} role="cell" class="q-c-src">
+      <td :if={@scope == :target} role="cell" class="q-c-src">
         <.source_chip source={@rule.source} />
       </td>
       <td :if={@seen?} role="cell" class="q-c-seen q-num">
@@ -812,7 +810,7 @@ defmodule ApiaryWeb.PolicyComponents do
           <.lock rule={@rule} can_lock={@can_lock} id={@id} />
           <.rule_menu :if={@rule.can_change} id={"#{@id}-menu"} rule={@rule} can_lock={@can_lock} />
         </span>
-        <.repository_act :if={@scope == :repository} rule={@rule} id={@id} />
+        <.target_act :if={@scope == :target} rule={@rule} id={@id} />
       </td>
     </tr>
     <tr
@@ -1078,7 +1076,7 @@ defmodule ApiaryWeb.PolicyComponents do
   attr :id, :string, required: true
   attr :rule, :map, required: true
 
-  defp repository_act(%{rule: %{act: :open}} = assigns) do
+  defp target_act(%{rule: %{act: :open}} = assigns) do
     ~H"""
     <span
       class="tooltip tooltip-left q-tip-wide"
@@ -1096,7 +1094,7 @@ defmodule ApiaryWeb.PolicyComponents do
     """
   end
 
-  defp repository_act(assigns) do
+  defp target_act(assigns) do
     ~H"""
     <button
       id={"#{@id}-act"}
@@ -1137,7 +1135,7 @@ defmodule ApiaryWeb.PolicyComponents do
           <tr role="row">
             <th role="columnheader">Name</th>
             <th role="columnheader">Argument</th>
-            <th :if={@scope == :repository} role="columnheader">Comes from</th>
+            <th :if={@scope == :target} role="columnheader">Comes from</th>
             <th :if={@seen?} role="columnheader" class="q-num">Last 7 days</th>
             <th role="columnheader">Added</th>
             <th role="columnheader"><span class="sr-only">Actions</span></th>
@@ -1161,7 +1159,7 @@ defmodule ApiaryWeb.PolicyComponents do
               <code :if={row.argument} class="q-rule">{row.argument}</code>
               <span :if={!row.argument} class="q-every">no argument</span>
             </td>
-            <td :if={@scope == :repository} role="cell" class="q-c-src">
+            <td :if={@scope == :target} role="cell" class="q-c-src">
               <.source_chip source={row.source} />
             </td>
             <td :if={@seen?} role="cell" class="q-c-seen q-num">
@@ -1191,7 +1189,7 @@ defmodule ApiaryWeb.PolicyComponents do
 
   @doc """
   The hosts the harness declared and the policy does not cover: shown only when there is
-  something to review. One click allows for the repository; the caret offers the hive and
+  something to review. One click allows for the target; the caret offers the hive and
   the composer with paths. A suggestion: `%{host:, runs:, last_seen_at:}`; `allowed` holds
   the hosts allowed from this card since the page opened, which stay until navigation.
   """
@@ -1202,7 +1200,7 @@ defmodule ApiaryWeb.PolicyComponents do
 
   attr :observing, :boolean,
     default: false,
-    doc: "the repository observes: a host no rule names is let through"
+    doc: "the target observes: a host no rule names is let through"
 
   def suggestions(assigns) do
     open = Enum.reject(assigns.suggestions, &Map.has_key?(assigns.allowed, &1.host))
@@ -1367,7 +1365,7 @@ defmodule ApiaryWeb.PolicyComponents do
   native `<details>`; opening one patches `?change=`, and the page computes its diff.
   `changes` are maps: `id`, `sentence` (rich), `origin` (a faint second line or nil),
   `who`, `at`, `version`, `digest`, `navigate` (the version page), `hive` (a change of the
-  hive shown in a repository's history), `patch`, `close`.
+  hive shown in a target's history), `patch`, `close`.
   """
   attr :id, :string, required: true
   attr :label, :string, required: true

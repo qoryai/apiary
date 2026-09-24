@@ -1,7 +1,7 @@
 defmodule Apiary.Policy.Change do
   @moduledoc """
-  One change of the security policy, of the hive's baseline (`repository_id` nil) or of a
-  repository's rules: what was done (`action`), to what (`subject`, a host or a
+  One change of the security policy, of the hive's baseline (`target_id` nil) or of a
+  target's rules: what was done (`action`), to what (`subject`, a host or a
   credential's name; nil for the mode), the rule set `before` and `after` as JSON
   (`%{"mode" => …, "rules" => […]}`), who and when. `version_after` is the version of the
   holder's run configuration in force once the change was made; a change that rendered
@@ -27,7 +27,7 @@ defmodule Apiary.Policy.Change do
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :hive, Apiary.Organisations.Hive
-    belongs_to :repository, Apiary.Runs.Repository
+    belongs_to :target, Apiary.Runs.Target
     belongs_to :changed_by, Apiary.Accounts.User
   end
 

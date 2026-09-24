@@ -34,8 +34,12 @@ defmodule E2E do
     session = env!("E2E_SESSION_COMMAND")
     session_log = env!("E2E_SESSION_LOG")
     budget_ms = String.to_integer(System.get_env("E2E_BUDGET_SECONDS", "35")) * 1000
-    level = String.to_existing_atom(System.get_env("E2E_LEVEL", "repository"))
-    true = level in [:repository, :hive]
+    # `E2E_LEVEL` says `repository` (the software body's word) or `hive`.
+    level =
+      case System.get_env("E2E_LEVEL", "repository") do
+        "repository" -> :target
+        "hive" -> :hive
+      end
 
     # A line per request is the instance's log, not this job's.
     Logger.configure(level: :warning)
@@ -90,7 +94,10 @@ defmodule E2E do
 
     run = Repo.get!(Run, connection.run_id)
     [first] = applied(run)
-    say("run #{run.run_id}, wall #{inspect(run.wall)}, repository #{run.forge}/#{run.repository}")
+
+    say(
+      "run #{run.run_id}, wall #{inspect(run.wall)}, target #{run.target_system}/#{run.target_path}"
+    )
 
     say(
       "first policy applied: sequence #{first.sequence}, run configuration #{short(first.data["run_configuration"])}"
@@ -303,9 +310,9 @@ defmodule E2E do
 
   defp holder(_scope, _run, :hive), do: nil
 
-  defp holder(scope, %Run{repository_id: id}, :repository) when is_binary(id) do
-    {:ok, repository} = Policy.get_repository(scope, id)
-    repository
+  defp holder(scope, %Run{target_id: id}, :target) when is_binary(id) do
+    {:ok, target} = Policy.get_target(scope, id)
+    target
   end
 
   defp applied(%Run{id: id}) do
