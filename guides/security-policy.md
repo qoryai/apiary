@@ -1,17 +1,19 @@
 # The security policy
 
-The security policy says what the runs of a hive may reach through the runner's proxy. It
-is edited in the console under **Policy**, `/hive/policy`, rendered into a run configuration
-for every repository, and served to the hive's machines, which apply it to the runs they
-start and to the runs already in flight. In the code it is `Apiary.Policy`.
+The security policy says what the runs of a workplace may reach through the runner's
+proxy. It is edited in the console under **Policy**, `/hive/policy`, rendered into a run
+configuration for every repository, and served to the workplace's machines, which apply it
+to the runs they start and to the runs already in flight. In the code it is
+`Apiary.Policy`.
 
-> #### A hive is served a policy only after its first change {: .warning}
+> #### A workplace is served a policy only after its first change {: .warning}
 >
 > Installing or upgrading the server changes no machine's policy. Until somebody makes the
-> hive's policy, by the first rule or the first change of mode, the server offers the hive's
-> machines no run configuration, and every machine keeps the `egress` section of its own
-> runner file, enforcement included. The first change takes over for every machine of the
-> hive at once. Read [The first change](#the-first-change) before you make it.
+> workplace's policy, by the first rule or the first change of mode, the server offers the
+> workplace's machines no run configuration, and every machine keeps the `egress` section
+> of its own runner file, enforcement included. The first change takes over for every
+> machine of the workplace at once. Read [The first change](#the-first-change) before you
+> make it.
 
 ## Rules
 
@@ -36,46 +38,47 @@ The policy document the runner reads has a deny list and an allow list. The runn
 the deny list first, in either mode: a host a deny rule names is denied under observe as
 under enforce, and the denial is recorded with the rule. A deny rule is written to that
 list and takes the allowed hosts it covers out of the allow list, which is how a repository
-disables a host the hive allows.
+disables a host the workplace allows.
 
-## The hive's baseline and a repository's rules
+## The workplace's baseline and a repository's rules
 
-The hive has a baseline of rules, on `/hive/policy`. A repository has rules of its own on
-top, on `/hive/policy/targets/:target_id`; the list of repositories is
-`/hive/policy/targets`. A repository appears there once a run names it, by the `forge`
-and `repository` labels the runner takes from the checkout's origin remote
-([The runner file's `server` section](runner-file.md)).
+The workplace has a baseline of rules, on `/hive/policy`. A repository has rules of its
+own on top, on `/hive/policy/targets/:target_id`; the list of repositories is
+`/hive/policy/targets`. A repository appears there once a run names it, by the `forge` and
+`repository` labels the runner takes from the checkout's origin remote ([The runner file's
+`server` section](runner-file.md)).
 
-A repository without rules of its own is served the hive baseline, and so is a run that
-names no repository.
+A repository without rules of its own is served the workplace baseline, and so is a run
+that names no repository.
 
 A repository's page shows its effective policy as one list, every rule with where it came
-from: **Hive**, **This repository**, or **Hive, locked**. A rule that lost is struck
-through under the rule that beat it. The row actions are **Disable here**, **Allow here**,
-**Remove** and **Restore**.
+from: **Workplace**, **This repository**, or **Workplace, locked**. A rule that lost is
+struck through under the rule that beat it. The row actions are **Disable here**, **Allow
+here**, **Remove** and **Restore**.
 
 ## How rules resolve
 
 Rules meet on the same host string, or the same credential name, and the one that wins
 decides the host whole, its action and its paths.
 
-1. A **locked** rule of the hive wins over everything.
+1. A **locked** rule of the workplace wins over everything.
 2. Then the repository's rule.
-3. Then an unlocked rule of the hive.
+3. Then an unlocked rule of the workplace.
 
-So where the two meet on a host, the repository wins, unless the hive's rule is locked.
+So where the two meet on a host, the repository wins, unless the workplace's rule is
+locked.
 
 A deny of a `*.` suffix also removes every allow entry it covers, `*.example` covers
 `api.example` and `*.eu.example`, unless the allow has the higher precedence. A deny below
 an allowed `*.` suffix stands beside it: `*.example` allowed and `tracker.example` denied
 reaches `api.example` and denies `tracker.example`, since the runner decides deny first.
 
-One shape has no form on the wire: a `*.` deny of the hive with a repository's own allow
-below it, where the repository wins by precedence. The allow is rendered, the deny still
-takes out the hive's allow entries below it, but it is not written to the document's deny
-list, since that would deny the repository's host too. Under enforce the other hosts below
-the suffix are denied by having no allow; under observe they are let through in that
-repository, and the record says no rule matched.
+One shape has no form on the wire: a `*.` deny of the workplace with a repository's own
+allow below it, where the repository wins by precedence. The allow is rendered, the deny
+still takes out the workplace's allow entries below it, but it is not written to the
+document's deny list, since that would deny the repository's host too. Under enforce the
+other hosts below the suffix are denied by having no allow; under observe they are let
+through in that repository, and the record says no rule matched.
 
 A host held to paths is rendered both in the document's `allow` and in its `paths`, because
 the runner's proxy decides the connection by `deny` and then `allow` first, and the request
@@ -97,15 +100,15 @@ to do instead. Nothing is ever rendered that allows more than the page shows.
 
 ## Locks
 
-A locked rule of the hive holds against every repository: a locked deny cannot be allowed by
-a repository, and a locked allow cannot be disabled by one. A repository's rule that a lock
-holds against is kept and shown as held; it is not in force.
+A locked rule of the workplace holds against every repository: a locked deny cannot be
+allowed by a repository, and a locked allow cannot be disabled by one. A repository's rule
+that a lock holds against is kept and shown as held; it is not in force.
 
 Members edit rules. Only an owner locks, unlocks, changes or removes a locked rule.
 
 ## Observe and enforce
 
-The hive has a mode, shown as two cards at the top of `/hive/policy`.
+The workplace has a mode, shown as two cards at the top of `/hive/policy`.
 
 - **Observe** records every connection and denies only what a deny rule names. A host no
   rule names is let through, and the record says so. A deny holds in observe as in enforce,
@@ -113,24 +116,24 @@ The hive has a mode, shown as two cards at the top of `/hive/policy`.
 - **Enforce** denies a connection no rule allows, and records the denial. With no allow
   rule, a run reaches nothing.
 
-A hive starts in observe. Only an owner changes the mode, in either direction, and each
-change is confirmed. A wall's own refusals, the machine's own address say, hold in either
-mode.
+A workplace starts in observe. Only an owner changes the mode, in either direction, and
+each change is confirmed. A wall's own refusals, the machine's own address say, hold in
+either mode.
 
-The hive's mode is a default. A repository follows it until an owner gives the repository a
-mode of its own, on the repository's page under `/hive/policy/targets`: **Follow the
-hive**, **Observe** or **Enforce**, with what is in effect and where it comes from. A change
-of the hive's mode reaches the repositories that follow it and leaves the others as they
-are. The mode and the rules are apart: a repository in enforce under a hive in observe is
-held to its effective rules, the hive's locked rules included, and a repository in observe
-is denied only what a deny rule names. That is the way to enforce one repository first and
-the rest later.
+The workplace's mode is a default. A repository follows it until an owner gives the
+repository a mode of its own, on the repository's page under `/hive/policy/targets`:
+**Follow the workplace**, **Observe** or **Enforce**, with what is in effect and where it
+comes from. A change of the workplace's mode reaches the repositories that follow it and
+leaves the others as they are. The mode and the rules are apart: a repository in enforce
+under a workplace in observe is held to its effective rules, the workplace's locked rules
+included, and a repository in observe is denied only what a deny rule names. That is the
+way to enforce one repository first and the rest later.
 
 The confirmation of a switch to enforce lists what enforce **would start denying**: the
 destinations that were let through in the last seven days and that today's rules still do
-not cover, counted from the recorded connections, each with **Allow** for the hive beside
-it. A destination no run has reached yet is not in that list. Under observe, the page says
-the same as a fact: how many attempts to how many destinations had no rule.
+not cover, counted from the recorded connections, each with **Allow** for the workplace
+beside it. A destination no run has reached yet is not in that list. Under observe, the
+page says the same as a fact: how many attempts to how many destinations had no rule.
 
 ## Versions
 
@@ -144,7 +147,7 @@ it is stored.
   policy.
 - A change that renders the **same bytes** as the version in force makes **no new
   version**. The change is still in the history. A lock often does this: it holds against
-  repositories and leaves the hive's document as it was.
+  repositories and leaves the workplace's document as it was.
 - **History**, `/hive/policy/history` and
   `/hive/policy/targets/:target_id/history`, has every change with who made it,
   when, the rules before and after, the version it made or that it made none, and its diff
@@ -206,7 +209,7 @@ With a server configured, `qory run` refuses `--policy` unless `--local` is give
 
 | Limit | Value |
 |---|---|
-| Rules in a list, the hive's baseline or one repository's | 500 |
+| Rules in a list, the workplace's baseline or one repository's | 500 |
 | Paths in a rule | 100 |
 | A rendered run configuration | 1 MiB, the most a runner reads of a document |
 
@@ -214,31 +217,32 @@ A change that would pass a limit is refused, and nothing is changed.
 
 ## The first change
 
-Until somebody has made the hive's policy:
+Until somebody has made the workplace's policy:
 
-- the server's discovery document names no `run` section for the hive's machines;
-- the run configuration endpoint answers `404` for the hive's keys;
+- the server's discovery document names no `run` section for the workplace's machines;
+- the run configuration endpoint answers `404` for the workplace's keys;
 - every machine runs under the `egress` section of its own runner file, in its own mode,
   enforcement included;
 - the policy page says: "Runs use each machine's own policy until the first change here."
 
-The first rule or the first change of mode, the hive's or a repository's, is the moment the hive
-takes over:
+The first rule or the first change of mode, the workplace's or a repository's, is the
+moment the workplace takes over:
 
-- for every machine under the hive's access keys, and for the runs in flight, which reload
-  within a heartbeat;
-- entirely: from then on the hive's policy is the policy, and a machine's own `egress`
-  section is not merged with it;
-- in the mode the hive is in, which is observe until an owner sets it. A machine that
-  enforced a list of its own is, after the first change, under a hive that observes and
-  denies only what a deny rule names, until an owner switches the hive to enforce.
+- for every machine under the workplace's access keys, and for the runs in flight, which
+  reload within a heartbeat;
+- entirely: from then on the workplace's policy is the policy, and a machine's own
+  `egress` section is not merged with it;
+- in the mode the workplace is in, which is observe until an owner sets it. A machine that
+  enforced a list of its own is, after the first change, under a workplace that observes
+  and denies only what a deny rule names, until an owner switches the workplace to
+  enforce.
 
 So before the first change:
 
 1. Collect what the machines' own lists say, the `egress.allow` of every runner file.
-2. Say all of it in the hive. The first rule you add already takes over, so add
-   the rest straight after it; while the hive is in observe only what a deny rule names is
-   denied in between.
+2. Say all of it in the workplace. The first rule you add already takes over, so add the
+   rest straight after it; while the workplace is in observe only what a deny rule names
+   is denied in between.
 3. When the rules are complete, an owner switches to enforce. The confirmation lists what
    would start being denied, from the record.
 
@@ -246,6 +250,6 @@ To keep one machine on its own policy, start its runs with `qory run --local`: t
 recorded to files only, under the machine's policy, and the server is not contacted, so
 that run does not appear in the console.
 
-It does not go back by removing the rules. A hive that was given a policy keeps serving it:
-with every rule removed it serves an empty policy, under which a run in enforce mode
-reaches nothing.
+It does not go back by removing the rules. A workplace that was given a policy keeps
+serving it: with every rule removed it serves an empty policy, under which a run in
+enforce mode reaches nothing.

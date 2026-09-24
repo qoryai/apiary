@@ -93,15 +93,15 @@ docker compose logs apiary | grep -o 'http://localhost:4100/users/log-in/[A-Za-z
 ```
 
 Open the link in the browser. The page reads **Welcome to Qory Apiary**; select **Confirm my
-account**. You land on the overview of your hive.
+account**. You land on the overview of your workplace.
 
-Signing up created an organisation, which the console calls an *apiary* and names after the
-part of your email before the `@`, one hive in it named *Main*, and your membership as its
-owner. Both can be renamed under **Settings**.
+Signing up created an organisation, named after the part of your email before the `@`, one
+workplace in it named *Main*, and your membership as its owner. Both can be renamed under
+**Settings**.
 
 ## 5. Create an access key
 
-An access key lets the machines of a hive post their runs.
+An access key lets the machines of a workplace post their runs.
 
 1. Select **Access keys** in the sidebar, `/hive/keys`.
 2. Select **New access key**.
@@ -184,9 +184,9 @@ the runner's version.
 
 ## Next
 
-- Until somebody changes the hive's policy, runs use each machine's own policy. Read
+- Until somebody changes the workplace's policy, runs use each machine's own policy. Read
   [The security policy](security-policy.md) before the first rule: the first change takes
-  over for every machine of the hive.
+  over for every machine of the workplace.
 - `qory run --local` records to files only and does not contact the server.
 - To stop the trial: `docker compose down`. The database stays in the `postgres-data`
   volume; `docker compose down --volumes` deletes it.
