@@ -73,7 +73,7 @@ curl http://localhost:4100/health
 ```
 
 ```text
-{"status":"ok","database":"ok","version":"0.1.0"}
+{"status":"ok","database":"ok","version":"0.2.0"}
 ```
 
 The members of the object may come in another order, and the version is the release's.
