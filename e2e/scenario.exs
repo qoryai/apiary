@@ -27,7 +27,7 @@ defmodule E2E do
   @poll_ms 50
 
   def main do
-    host = env!("E2E_TARGET_HOST")
+    host = env!("E2E_UPSTREAM_HOST")
     runner_file = env!("E2E_RUNNER_FILE")
     runner_tail = File.read!(env!("E2E_RUNNER_TAIL"))
     prepare = env!("E2E_PREPARE_COMMAND")
