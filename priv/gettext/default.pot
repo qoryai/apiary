@@ -650,6 +650,11 @@ msgstr ""
 msgid "%{hours} h %{minutes} m"
 msgstr ""
 
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{index} of %{total}"
+msgstr ""
+
 #: lib/apiary/accounts/user_notifier.ex
 #, elixir-autogen, elixir-format
 msgid "%{inviter} has invited you to join %{organisation} on Qory Apiary. You can accept the invitation by visiting the URL below:"
@@ -933,6 +938,7 @@ msgstr[0] ""
 msgstr[1] ""
 
 #: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} new line"
 msgid_plural "%{number} new lines"
@@ -2379,6 +2385,7 @@ msgid "Contract version %{version}"
 msgstr ""
 
 #: lib/apiary_web/components/core_components.ex
+#: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Copied"
 msgstr ""
@@ -4056,6 +4063,20 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Log output pruned"
 msgstr ""
+
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
+msgid "Log, %{number} line"
+msgid_plural "Log, %{number} lines"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
+msgid "Log, %{number} line, read only. Slash searches, Enter and Shift Enter move between matches, Escape clears, End follows the output, Home goes to the start. The link before this box opens the log as text."
+msgid_plural "Log, %{number} lines, read only. Slash searches, Enter and Shift Enter move between matches, Escape clears, End follows the output, Home goes to the start. The link before this box opens the log as text."
+msgstr[0] ""
+msgstr[1] ""
 
 #: lib/apiary_web/live/user_live/confirmation.ex
 #, elixir-autogen, elixir-format
@@ -6310,6 +6331,16 @@ msgstr ""
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "The locked deny %{hosts} is denied in either mode, and under observe it is the only thing denied here: every other host is let through and recorded."
+msgstr ""
+
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
+msgid "The log could not be loaded."
+msgstr ""
+
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
+msgid "The log stream dropped. Reconnecting."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex

@@ -84,9 +84,16 @@ const cellRatio = family => {
   return ctx.measureText("W").width / 100
 }
 
+// The words are the server's, in the body's language (`RunPageComponents.terminal_words/0`,
+// on the box as `data-words`); this script holds none. A count's words are [one, other].
+const fill = (template, bindings) =>
+  template.replace(/%\{(\w+)\}/g, (all, key) => (key in bindings ? String(bindings[key]) : all))
+const counted = ([one, other], n) => fill(n === 1 ? one : other, {number: n.toLocaleString("en-GB")})
+
 export const Terminal = {
   async mounted() {
     const q = selector => this.el.querySelector(selector)
+    this.words = JSON.parse(this.el.dataset.words)
     this.screen = q("[data-screen]")
     this.find = q("[data-find]")
     this.findCount = q("[data-find-count]")
@@ -202,7 +209,8 @@ export const Terminal = {
 
     this.search.onDidChangeResults(({resultIndex, resultCount}) => {
       this.findCount.textContent =
-        !this.find.value ? "" : resultCount === 0 ? "0 of 0" : `${resultIndex + 1} of ${resultCount}`
+        !this.find.value ? ""
+        : fill(this.words.found, resultCount === 0 ? {index: 0, total: 0} : {index: resultIndex + 1, total: resultCount})
     })
     // The reader scrolled away from the end: stop following, and let a screen reader in.
     this.term.onScroll(() => {
@@ -396,7 +404,7 @@ export const Terminal = {
   wrote(before) {
     const lines = this.term.buffer.active.length
     const label = this.screen
-    label.setAttribute("aria-label", `Log, ${lines.toLocaleString("en-GB")} lines`)
+    label.setAttribute("aria-label", counted(this.words.log, lines))
     this.labelInput(lines)
     if (!this.initial && lines > before) this.announce(lines - before)
     if (this.following) {
@@ -416,9 +424,7 @@ export const Terminal = {
   labelInput(lines) {
     const input = this.term.textarea
     if (!input) return
-    input.setAttribute("aria-label",
-      `Log, ${lines.toLocaleString("en-GB")} lines, read only. Slash searches, Enter and Shift Enter move between matches, ` +
-      "Escape clears, End follows the output, Home goes to the start. The link before this box opens the log as text.")
+    input.setAttribute("aria-label", counted(this.words.input, lines))
     input.setAttribute("aria-readonly", "true")
   },
 
@@ -429,7 +435,7 @@ export const Terminal = {
     const say = () => {
       this.saying = null
       if (this.dead || !this.unsaid) return
-      this.polite.textContent = `${this.unsaid.toLocaleString("en-GB")} new ${this.unsaid === 1 ? "line" : "lines"}`
+      this.polite.textContent = counted(this.words.newLines, this.unsaid)
       this.unsaid = 0
       this.saying = setTimeout(say, 10000)
     }
@@ -448,7 +454,7 @@ export const Terminal = {
 
   showFollowing() {
     this.followButton.setAttribute("aria-pressed", String(this.following))
-    this.followLabel.textContent = this.following ? "Following" : "Jump to end"
+    this.followLabel.textContent = this.following ? this.words.following : this.words.jumpToEnd
   },
 
   showPill() {
@@ -456,7 +462,7 @@ export const Terminal = {
     this.pill.classList.toggle("q-newpill-show", show)
     this.pill.setAttribute("aria-hidden", String(!show))
     this.pill.tabIndex = show ? 0 : -1
-    this.pillText.textContent = `${this.unseen.toLocaleString("en-GB")} new ${this.unseen === 1 ? "line" : "lines"}`
+    this.pillText.textContent = counted(this.words.newLines, this.unseen)
   },
 
   findNext(incremental) {
@@ -478,9 +484,9 @@ export const Terminal = {
   fail(final) {
     this.failures += 1
     if (final || this.failures >= 3) {
-      this.say("The log could not be loaded.", true)
+      this.say(this.words.notLoaded, true)
     } else {
-      this.say("The log stream dropped. Reconnecting.", false)
+      this.say(this.words.dropped, false)
       clearTimeout(this.retryTimer)
       this.retryTimer = setTimeout(() => this.pull(), 1000 * 2 ** (this.failures - 1))
     }

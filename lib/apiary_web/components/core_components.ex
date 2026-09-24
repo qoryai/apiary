@@ -414,6 +414,7 @@ defmodule ApiaryWeb.CoreComponents do
         id={@id}
         type="button"
         phx-hook="CopyToClipboard"
+        data-copied-words={gettext("Copied")}
         data-copy={@text}
         data-copy-target={@target}
         class="copy-btn btn btn-ghost btn-xs btn-square"
@@ -433,6 +434,7 @@ defmodule ApiaryWeb.CoreComponents do
       id={@id}
       type="button"
       phx-hook="CopyToClipboard"
+      data-copied-words={gettext("Copied")}
       data-copy={@text}
       data-copy-target={@target}
       class={["copy-btn btn btn-ghost btn-xs btn-keep font-sans", @class]}

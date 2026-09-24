@@ -1,6 +1,7 @@
 // Clocks tick in the browser (brief-runs rj7). Every `<time data-tick>` on the page is
 // re-rendered from one interval, once a second, paused while the tab is hidden, in the
-// same words the server rendered (ApiaryWeb.RunComponents). All times are UTC.
+// same words the server rendered (ApiaryWeb.RunComponents), which it also hands over. All
+// times are UTC.
 //
 //   data-tick="relative"  datetime=…    "2 minutes ago", "Yesterday, 16:40", "17 Sep, 09:30"
 //   data-tick="clock"     datetime=…    "Today, 14:02:11"
@@ -11,40 +12,61 @@
 // The hook itself only re-renders its element after a LiveView patch put the server's
 // text back; elements without the hook are picked up by the interval all the same.
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+// The words are the server's, in the body's language (`RunComponents.clock_words/0`, on
+// the body as `data-clock-words`); this script holds none. Without them an element keeps
+// the text the server rendered.
+let words
+const loadWords = () => {
+  if (words === undefined) {
+    try {
+      words = JSON.parse(document.body.dataset.clockWords || "null")
+    } catch (_err) {
+      words = null
+    }
+  }
+  return words
+}
+
+const fill = (template, bindings) =>
+  template.replace(/%\{(\w+)\}/g, (all, key) => (key in bindings ? String(bindings[key]) : all))
+
 const pad = n => String(n).padStart(2, "0")
 const hm = d => `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`
 const hms = d => `${hm(d)}:${pad(d.getUTCSeconds())}`
 const day = d => Math.floor(d.getTime() / 86400000)
+const month = (w, d) => w.months[d.getUTCMonth()]
 
-export const formatSeconds = s => {
+export const formatSeconds = (s, w = loadWords()) => {
+  if (!w) return null
   s = Math.max(0, Math.floor(s))
-  if (s < 60) return `${s} s`
-  if (s < 3600) return `${Math.floor(s / 60)} m ${pad(s % 60)} s`
-  return `${Math.floor(s / 3600)} h ${pad(Math.floor((s % 3600) / 60))} m`
+  if (s < 60) return fill(w.seconds, {seconds: s})
+  if (s < 3600) return fill(w.minutesSeconds, {minutes: Math.floor(s / 60), seconds: pad(s % 60)})
+  return fill(w.hoursMinutes, {hours: Math.floor(s / 3600), minutes: pad(Math.floor((s % 3600) / 60))})
 }
 
-export const formatRelative = (at, now) => {
+// As `RunComponents.relative_label/2`.
+export const formatRelative = (at, now, w = loadWords()) => {
+  if (!w) return null
   const seconds = Math.max(0, Math.floor((now - at) / 1000))
   const days = day(now) - day(at)
-  if (seconds < 5) return "Just now"
-  if (seconds < 60) return `${seconds} seconds ago`
-  if (seconds < 120) return "1 minute ago"
-  if (seconds < 3600) return `${Math.floor(seconds / 60)} minutes ago`
-  if (days <= 0 && seconds < 7200) return "1 hour ago"
-  if (days <= 0) return `${Math.floor(seconds / 3600)} hours ago`
-  if (days === 1) return `Yesterday, ${hm(at)}`
-  const date = `${at.getUTCDate()} ${MONTHS[at.getUTCMonth()]}`
+  if (seconds < 5) return w.justNow
+  if (seconds < 60) return w.secondsAgo[seconds]
+  if (seconds < 3600) return w.minutesAgo[Math.floor(seconds / 60)]
+  if (days <= 0) return w.hoursAgo[Math.floor(seconds / 3600)]
+  if (days === 1) return fill(w.yesterday, {time: hm(at)})
+  const date = `${at.getUTCDate()} ${month(w, at)}`
   return at.getUTCFullYear() === now.getUTCFullYear()
     ? `${date}, ${hm(at)}`
     : `${date} ${at.getUTCFullYear()}, ${hm(at)}`
 }
 
-export const formatClock = (at, now) => {
+// As `RunComponents.clock_label/2`.
+export const formatClock = (at, now, w = loadWords()) => {
+  if (!w) return null
   const days = day(now) - day(at)
-  if (days === 0) return `Today, ${hms(at)}`
-  if (days === 1) return `Yesterday, ${hms(at)}`
-  return `${at.getUTCDate()} ${MONTHS[at.getUTCMonth()]} ${at.getUTCFullYear()}, ${hms(at)}`
+  if (days === 0) return fill(w.today, {time: hms(at)})
+  if (days === 1) return fill(w.yesterday, {time: hms(at)})
+  return `${at.getUTCDate()} ${month(w, at)} ${at.getUTCFullYear()}, ${hms(at)}`
 }
 
 // The browser's clock is never trusted. Every ticking element carries the server's now at
@@ -80,7 +102,7 @@ const render = el => {
     kind === "relative" ? formatRelative(at, now)
     : kind === "clock" ? formatClock(at, now)
     : formatSeconds(base + Math.max(0, (now - at) / 1000))
-  if (el.textContent !== text) el.textContent = text
+  if (text !== null && el.textContent !== text) el.textContent = text
 }
 
 const tick = () => {

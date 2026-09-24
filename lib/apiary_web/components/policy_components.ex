@@ -71,6 +71,7 @@ defmodule ApiaryWeb.PolicyComponents do
         id={"#{@id}-copy"}
         type="button"
         phx-hook="CopyToClipboard"
+        data-copied-words={gettext("Copied")}
         data-copy={@digest}
         class="copy-btn q-vpill-copy tooltip tooltip-left"
         data-tip={gettext("Copy the digest")}

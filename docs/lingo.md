@@ -100,6 +100,15 @@ parts are bindings, and `<.rich>` renders the result.
   Mark the string with `gettext_noop("Overview")` and translate it at render with
   `Gettext.gettext(ApiaryWeb.Gettext, msgid)`. `ApiaryWeb.Layouts` does this for the
   navigation.
+- **Scripts** under `assets/js` hold no words. The server hands them their words in the
+  body's language, as a data attribute of the hook's element or of the body:
+  `RunComponents.clock_words/0` for the ticking clocks, `RunPageComponents.terminal_words/0`
+  for the log, and `data-copied-words` for the copy button. A template with bindings is
+  made with the bindings standing for themselves, `gettext("Today, %{time}", time: "%{time}")`,
+  and the script fills it in. A count that the script cannot know ahead of time is passed as
+  `[one, other]`, and the script takes `one` for 1. That is the plural rule of English. A
+  bounded count, such as the seconds of "N seconds ago", is passed with one string for every
+  value, so the language's own rule chooses the form.
 - **Changeset errors** are in the `errors` domain. `translate_error/1` translates them at
   render. A custom message is marked where it is written:
   `message: dgettext_noop("errors", "is already the name of a hive in this organisation")`

@@ -1191,6 +1191,41 @@ defmodule ApiaryWeb.RunPageComponents do
   ## rd14. Terminal
 
   @doc """
+  The words the log's script says (`assets/js/hooks/terminal.js`), in the body's language,
+  so the script holds none. A count's words are `[one, other]` with `%{number}` to fill:
+  the script takes `one` for 1 and `other` for any other count, which is the plural rule
+  of English and of the languages like it.
+  """
+  def terminal_words do
+    %{
+      log:
+        forms(fn n ->
+          ngettext("Log, %{number} line", "Log, %{number} lines", n, number: "%{number}")
+        end),
+      input:
+        forms(fn n ->
+          ngettext(
+            "Log, %{number} line, read only. Slash searches, Enter and Shift Enter move between matches, Escape clears, End follows the output, Home goes to the start. The link before this box opens the log as text.",
+            "Log, %{number} lines, read only. Slash searches, Enter and Shift Enter move between matches, Escape clears, End follows the output, Home goes to the start. The link before this box opens the log as text.",
+            n,
+            number: "%{number}"
+          )
+        end),
+      newLines:
+        forms(fn n ->
+          ngettext("%{number} new line", "%{number} new lines", n, number: "%{number}")
+        end),
+      following: gettext("Following"),
+      jumpToEnd: gettext("Jump to end"),
+      found: gettext("%{index} of %{total}", index: "%{index}", total: "%{total}"),
+      notLoaded: gettext("The log could not be loaded."),
+      dropped: gettext("The log stream dropped. Reconnecting.")
+    }
+  end
+
+  defp forms(say), do: [say.(1), say.(2)]
+
+  @doc """
   The terminal box: dark in both themes. The bar and the screen belong to the `Terminal`
   hook (`phx-update="ignore"`); the foot is the LiveView's, which sends numbers and never
   bytes. The hook reads the log from `src` and asks again when the LiveView says the log
@@ -1233,6 +1268,7 @@ defmodule ApiaryWeb.RunPageComponents do
       data-sized={to_string(@sized)}
       data-cols={@sized && @cols}
       data-rows={@sized && @rows}
+      data-words={Jason.encode!(terminal_words())}
     >
       <div id={"#{@id}-bar"} class="q-term-bar" phx-update="ignore">
         <a class="sr-only focus:not-sr-only q-tbtn" href={@src <> "?download=1"} download>

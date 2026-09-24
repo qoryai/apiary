@@ -394,6 +394,29 @@ defmodule ApiaryWeb.RunComponents do
     end
   end
 
+  @doc """
+  The words the browser's clocks tick in (`assets/js/hooks/ticker.js`), in the body's
+  language, so the script holds none: every "N seconds ago" up to a minute, every "N
+  minutes ago" up to an hour and every "N hours ago" up to a day, each chosen by the
+  language's own plural rule; the templates of `format_seconds/1` and of the days; and the
+  months as `Calendar.strftime/2` writes them. The root layout puts them on the body.
+  """
+  def clock_words do
+    %{
+      justNow: gettext("Just now"),
+      secondsAgo: for(n <- 0..59, do: ngettext("%{count} second ago", "%{count} seconds ago", n)),
+      minutesAgo: for(n <- 0..59, do: ngettext("%{count} minute ago", "%{count} minutes ago", n)),
+      hoursAgo: for(n <- 0..23, do: ngettext("%{count} hour ago", "%{count} hours ago", n)),
+      today: gettext("Today, %{time}", time: "%{time}"),
+      yesterday: gettext("Yesterday, %{time}", time: "%{time}"),
+      seconds: gettext("%{seconds} s", seconds: "%{seconds}"),
+      minutesSeconds:
+        gettext("%{minutes} m %{seconds} s", minutes: "%{minutes}", seconds: "%{seconds}"),
+      hoursMinutes: gettext("%{hours} h %{minutes} m", hours: "%{hours}", minutes: "%{minutes}"),
+      months: for(m <- 1..12, do: Calendar.strftime(Date.new!(2000, m, 1), "%b"))
+    }
+  end
+
   @doc "\"20 Sep 2026, 14:02:11 UTC\"."
   def absolute(%DateTime{} = at), do: Calendar.strftime(at, "%-d %b %Y, %H:%M:%S UTC")
   def absolute(_at), do: nil
