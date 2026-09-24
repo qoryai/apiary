@@ -1924,8 +1924,18 @@ msgstr "Allowed for the workplace"
 
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
+msgid "Allowed for the hive in %{version}"
+msgstr "Allowed for the workplace in %{version}"
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
 msgid "Allowed for this target"
 msgstr "Allowed for this repository"
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Allowed for this target in %{version}"
+msgstr "Allowed for this repository in %{version}"
 
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/live/hive_live/overview.ex
@@ -2669,8 +2679,18 @@ msgstr "Denied for the workplace"
 
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
+msgid "Denied for the hive in %{version}"
+msgstr "Denied for the workplace in %{version}"
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
 msgid "Denied for this target"
 msgstr "Denied for this repository"
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Denied for this target in %{version}"
+msgstr "Denied for this repository in %{version}"
 
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
@@ -7585,11 +7605,6 @@ msgstr "workplace"
 #, elixir-autogen, elixir-format
 msgid "hive baseline"
 msgstr "workplace baseline"
-
-#: lib/apiary_web/components/run_components.ex
-#, elixir-autogen, elixir-format
-msgid "in"
-msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format

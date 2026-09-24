@@ -18,6 +18,8 @@ defmodule ApiaryWeb.RunComponents do
   use Phoenix.Component
   use Gettext, backend: ApiaryWeb.Gettext
 
+  import ApiaryWeb.RichText
+
   import ApiaryWeb.CoreComponents,
     only: [badge: 1, button: 1, icon: 1, mono: 1, notice: 1, term: 1, short_date: 1]
 
@@ -523,12 +525,6 @@ defmodule ApiaryWeb.RunComponents do
   @doc "The first eight characters of a run id, as the runner prints it."
   def short_id(run_id) when is_binary(run_id), do: String.slice(run_id, 0, 8)
   def short_id(_run_id), do: gettext("n/a")
-
-  @doc "\"1 run\", \"3 runs\"; `plural` for the irregular."
-  def count_noun(count, noun, plural \\ nil)
-  def count_noun(1, noun, _plural), do: "1 #{noun}"
-  def count_noun(count, noun, nil), do: "#{delimited(count)} #{noun}s"
-  def count_noun(count, _noun, plural), do: "#{delimited(count)} #{plural}"
 
   @doc "1240 as \"1,240\"."
   def delimited(n) when is_integer(n) do
@@ -1707,11 +1703,9 @@ defmodule ApiaryWeb.RunComponents do
           else: gettext("Rule added")}
       </.badge>
       <span>
-        {after_head(@line)}<span :if={@line.version}>{" " <> gettext("in")}
-        <.scoped_version
-          version={@line.version}
-          class="text-xs"
-        /></span><span :if={@line.state != :in_force && @line.by}>{" " <>
+        <.rich text={after_head(@line)}>
+          <:part name={:version}><.scoped_version version={@line.version} class="text-xs" /></:part>
+        </.rich><span :if={@line.state != :in_force && @line.by}>{" " <>
           gettext("by %{name}", name: @line.by)}</span><span :if={
           @line.state != :in_force && @line.at
         }> · <.relative_time at={@line.at} /></span>. {after_sentence(@line)}
@@ -1725,10 +1719,25 @@ defmodule ApiaryWeb.RunComponents do
   defp after_color(:hive), do: "info"
   defp after_color(_state), do: "neutral"
 
-  defp after_head(%{action: :deny, level: :target}), do: gettext("Denied for this target")
-  defp after_head(%{action: :deny}), do: gettext("Denied for the hive")
-  defp after_head(%{level: :target}), do: gettext("Allowed for this target")
-  defp after_head(_line), do: gettext("Allowed for the hive")
+  # The head of the line, with the version the rule is in when it is known.
+  defp after_head(%{version: nil} = line), do: after_head_alone(line)
+
+  defp after_head(%{action: :deny, level: :target}),
+    do: rich_gettext("Denied for this target in %{version}", version: {:part, :version})
+
+  defp after_head(%{action: :deny}),
+    do: rich_gettext("Denied for the hive in %{version}", version: {:part, :version})
+
+  defp after_head(%{level: :target}),
+    do: rich_gettext("Allowed for this target in %{version}", version: {:part, :version})
+
+  defp after_head(_line),
+    do: rich_gettext("Allowed for the hive in %{version}", version: {:part, :version})
+
+  defp after_head_alone(%{action: :deny, level: :target}), do: gettext("Denied for this target")
+  defp after_head_alone(%{action: :deny}), do: gettext("Denied for the hive")
+  defp after_head_alone(%{level: :target}), do: gettext("Allowed for this target")
+  defp after_head_alone(_line), do: gettext("Allowed for the hive")
 
   defp after_sentence(%{state: :pending}), do: gettext("The run has not reloaded yet.")
 

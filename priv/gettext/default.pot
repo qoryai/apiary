@@ -1924,7 +1924,17 @@ msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
+msgid "Allowed for the hive in %{version}"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
 msgid "Allowed for this target"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Allowed for this target in %{version}"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -2669,7 +2679,17 @@ msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
+msgid "Denied for the hive in %{version}"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
 msgid "Denied for this target"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Denied for this target in %{version}"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -7584,11 +7604,6 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
 msgid "hive baseline"
-msgstr ""
-
-#: lib/apiary_web/components/run_components.ex
-#, elixir-autogen, elixir-format
-msgid "in"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
