@@ -1,5 +1,6 @@
 defmodule Apiary.Accounts.User do
   use Ecto.Schema
+  use Gettext, backend: ApiaryWeb.Gettext
   import Ecto.Changeset
 
   @primary_key {:id, :binary_id, autogenerate: true}
@@ -36,7 +37,7 @@ defmodule Apiary.Accounts.User do
       changeset
       |> validate_required([:email])
       |> validate_format(:email, ~r/^[^@,;\s]+@[^@,;\s]+$/,
-        message: "must have the @ sign and no spaces"
+        message: dgettext_noop("errors", "must have the @ sign and no spaces")
       )
       |> validate_length(:email, max: 160)
 
@@ -52,7 +53,7 @@ defmodule Apiary.Accounts.User do
 
   defp validate_email_changed(changeset) do
     if get_field(changeset, :email) && get_change(changeset, :email) == nil do
-      add_error(changeset, :email, "did not change")
+      add_error(changeset, :email, dgettext_noop("errors", "did not change"))
     else
       changeset
     end
@@ -76,7 +77,9 @@ defmodule Apiary.Accounts.User do
   def password_changeset(user, attrs, opts \\ []) do
     user
     |> cast(attrs, [:password])
-    |> validate_confirmation(:password, message: "does not match password")
+    |> validate_confirmation(:password,
+      message: dgettext_noop("errors", "does not match password")
+    )
     |> validate_password(opts)
   end
 

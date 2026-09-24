@@ -4,6 +4,7 @@ defmodule Apiary.AccessKeys.AccessKey do
   signing secrets, encrypted at rest and never shown after creation.
   """
   use Ecto.Schema
+  use Gettext, backend: ApiaryWeb.Gettext
   import Ecto.Changeset
 
   @typedoc "An access key of a hive."
@@ -39,12 +40,12 @@ defmodule Apiary.AccessKeys.AccessKey do
     |> validate_required([:label])
     |> validate_length(:label, min: 1, max: 80)
     |> validate_format(:label, ~r/\A[^[:cntrl:]]+\z/u,
-      message: "must not contain control characters"
+      message: dgettext_noop("errors", "must not contain control characters")
     )
     |> unique_constraint([:organisation_id, :hive_id, :label],
       name: :access_keys_active_label_index,
       error_key: :label,
-      message: "is already the label of an active key in this hive"
+      message: dgettext_noop("errors", "is already the label of an active key in this hive")
     )
   end
 

@@ -6,6 +6,7 @@ defmodule Apiary.Organisations.Invitation do
   pending while `accepted_at` is nil and `expires_at` is in the future.
   """
   use Ecto.Schema
+  use Gettext, backend: ApiaryWeb.Gettext
   import Ecto.Changeset
 
   @validity_days 7
@@ -34,13 +35,13 @@ defmodule Apiary.Organisations.Invitation do
     |> update_change(:email, &String.downcase(String.trim(&1)))
     |> validate_required([:email, :level])
     |> validate_format(:email, ~r/^[^@,;\s]+@[^@,;\s]+$/,
-      message: "must have the @ sign and no spaces"
+      message: dgettext_noop("errors", "must have the @ sign and no spaces")
     )
     |> validate_length(:email, max: 160)
     |> unique_constraint([:organisation_id, :email],
       name: :invitations_pending_email_index,
       error_key: :email,
-      message: "has already been invited"
+      message: dgettext_noop("errors", "has already been invited")
     )
   end
 
