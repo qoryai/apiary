@@ -60,7 +60,7 @@ const CopyToClipboard = {
       }
       this.el.setAttribute("data-copied", "")
       const live = this.el.querySelector("[aria-live]")
-      if (live) live.textContent = "Copied"
+      if (live) live.textContent = this.el.dataset.copiedWords || ""
       clearTimeout(this.timer)
       this.timer = setTimeout(() => {
         this.el.removeAttribute("data-copied")

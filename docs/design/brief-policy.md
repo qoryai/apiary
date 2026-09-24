@@ -188,17 +188,17 @@ All inside `live_session :hive`, all `width="full"` (1200).
 | Page | Path | LiveView, action |
 |---|---|---|
 | Hive policy, rules (default tab) | `/hive/policy` | `PolicyLive.Show, :rules` |
-| Repositories | `/hive/policy/repositories` | `PolicyLive.Show, :repositories` |
+| Repositories | `/hive/policy/targets` | `PolicyLive.Show, :targets` |
 | Hive history | `/hive/policy/history` | `PolicyLive.Show, :history` |
 | Hive version (Document tab opens the current one) | `/hive/policy/versions/:n` | `PolicyLive.Show, :version` |
 | Hive export (modal over the version) | `/hive/policy/versions/:n/export` | `PolicyLive.Show, :export` |
-| Repository, effective policy | `/hive/policy/repositories/:repository_id` | `PolicyLive.Repository, :rules` |
-| Repository history | `/hive/policy/repositories/:repository_id/history` | `…, :history` |
-| Repository version | `/hive/policy/repositories/:repository_id/versions/:n` | `…, :version` |
-| Repository export | `/hive/policy/repositories/:repository_id/versions/:n/export` | `…, :export` |
+| Repository, effective policy | `/hive/policy/targets/:target_id` | `PolicyLive.Target, :rules` |
+| Repository history | `/hive/policy/targets/:target_id/history` | `…, :history` |
+| Repository version | `/hive/policy/targets/:target_id/versions/:n` | `…, :version` |
+| Repository export | `/hive/policy/targets/:target_id/versions/:n/export` | `…, :export` |
 
-`/hive/policy/document` and `/hive/policy/repositories/:id/document` redirect to the current
-version, so "Document" is a stable link and a version URL is a permanent one. `:repository_id` is
+`/hive/policy/document` and `/hive/policy/targets/:id/document` redirect to the current
+version, so "Document" is a stable link and a version URL is a permanent one. `:target_id` is
 the repository row's id (a forge and path contain slashes). A repository of another hive renders
 the not-found state, never another hive's rules.
 
@@ -224,13 +224,13 @@ Query parameters, all written with `push_patch`:
    header's **Policy** cell links to the exact version the run reported (pe6), whose breadcrumb
    leads up to the repository's policy.
 2. **From connections**: the "Rule" button left in a row's slot after an allow or deny (pd8), and
-   on `/hive/connections?repo=…` the description's second sentence gains a link: "Showing
+   on `/hive/connections?target=…` the description's second sentence gains a link: "Showing
    `github.example/acme/shop` only. Its policy".
 3. **From the runs list**: the repository group header's facts gain a last item, the link
    "Policy", `text-xs text-muted`, shown on hover and focus of the header and always on touch.
 4. **From the policy page**: the Repositories tab lists every repository that has posted a run.
 5. **Back again**: the repository policy's tab row ends with two plain links, "Runs 5" and
-   "Connections", to `/hive/runs?repo=…` and `/hive/connections?repo=…`.
+   "Connections", to `/hive/runs?target=…` and `/hive/connections?target=…`.
 
 ---
 
@@ -545,7 +545,7 @@ Contents, top to bottom:
    connections page with several repositories: "One repository" with a select of the repositories
    whose runs reached the destination, each with its count, and "The whole hive"; nothing is
    checked, and the primary is disabled until one is: the page does not guess a scope. With the
-   `repo` filter set, that repository is checked. A deny adds the consequence under each radio:
+   `target` filter set, that repository is checked. A deny adds the consequence under each radio:
    "Disables the hive's allow rule here. Other repositories keep it." / "Replaces the hive's allow
    rule. 6 runs of 2 repositories reached this host in the last 7 days."
 4. **What happens next**, a reload icon and one sentence (pf7). **[A1]** The sentence reads the mode
@@ -688,7 +688,7 @@ repository rules out of force; then a `sm` modal lists them (pf2).
 **lock** is an owner's. The page does not grey itself out for them: the mode cards and locks keep
 their look and say who can change them.
 
-### pe2. Repositories (`/hive/policy/repositories`)
+### pe2. Repositories (`/hive/policy/targets`)
 
 Summary line ("4 repositories have posted runs · 2 with rules of their own · 1 sets its own mode
 · 1 with suggestions" [A1]), then one table: **Repository** (forge faint, path 500, mono; the row
@@ -700,7 +700,7 @@ chip styles, no status hue) · **Policy**
 change. Sorted: suggestions first, then the most recent change. Phones: rows reflow to the name,
 the mode with its source, the chip and the suggestion chip. Footnote in pf.
 
-### pe3. Repository policy (`/hive/policy/repositories/:repository_id`)
+### pe3. Repository policy (`/hive/policy/targets/:target_id`)
 
 ```
 Policy › Repositories › github.example/acme/shop
@@ -869,7 +869,7 @@ fewer." when the deny list changed. A reload that changed only the mode reads "r
 | Fact, observe is the default [A1] | In the last 7 days **14** attempts to **2** destinations had no rule, in the 3 repositories that follow it. Enforce would deny them. `See them` |
 | Fact, new hive [A1] | Not served yet: it applies from the first change here. |
 | Fact, nothing recorded | No run has reached out in the last 7 days. |
-| Under the cards [A1] | This is the hive's default. A repository follows it unless an owner sets a mode of its own: `1 of 4 repositories does`, and observes. A wall's own refusals (the machine's address, a path that reads two ways) hold in either mode. The link goes to `/hive/policy/repositories?mode=own`. None: "… of its own. None does." Several with different modes: "`2 of 4 repositories do`: 1 observes, 1 enforces." A member's line adds "Only an owner sets a mode." |
+| Under the cards [A1] | This is the hive's default. A repository follows it unless an owner sets a mode of its own: `1 of 4 repositories does`, and observes. A wall's own refusals (the machine's address, a path that reads two ways) hold in either mode. The link goes to `/hive/policy/targets?mode=own`. None: "… of its own. None does." Several with different modes: "`2 of 4 repositories do`: 1 observes, 1 enforces." A member's line adds "Only an owner sets a mode." |
 | Confirm, default to enforce [A1] | **Set the hive's default to enforce** / From the next heartbeat, about 30 s, **a connection no rule allows is denied** in the 3 repositories that follow the hive's default, and in their 2 runs alive now. `github.example/acme/tax-service` sets its own mode and does not change. You can switch back at any time. / list head "Let through in the last 7 days with no rule matching, in those repositories" · "3 destinations" / "Counted from recorded connections that today's rules still do not cover. Enforce will deny these. A destination no run has reached yet is not in this list." / `[Cancel]` `[Set the default to enforce]` |
 | Confirm, default to observe [A1] [A3] | **Set the hive's default to observe** / From the next heartbeat, about 30 s, **only what a deny rule names is denied** in the 3 repositories that follow the hive's default, and in their 2 runs alive now: every other connection is let through and recorded. A repository that sets its own mode does not change. The rules stay as they are, locked ones too: a deny holds in either mode. / `[Cancel]` `[Set the default to observe]` |
 | Toasts [A1] | The hive's default is enforce. 3 repositories follow it. Version 15. / The hive's default is observe. 3 repositories follow it. Version 15. |
@@ -1182,7 +1182,7 @@ Navigation and URLs
 - [ ] [A1] Sidebar tag is the hive's default, with "· n own" when repositories set their own; absent on a new hive
 - [ ] Sidebar item Policy with the mode word; `nav={:policy}` on every page below `/hive/policy`
 - [ ] Tabs, filters, the opened change, the compared version and the export modal are in the URL; a copied URL reproduces the view
-- [ ] Repository policy under `/hive/policy/repositories/:id`; reachable from the run header, a row's Rule button, the connections page with `repo`, the runs list group header, the Repositories tab
+- [ ] Repository policy under `/hive/policy/targets/:id`; reachable from the run header, a row's Rule button, the connections page with `target`, the runs list group header, the Repositories tab
 
 Rules
 - [ ] [A1] Hive mode cards set the **default**: badge "Hive default", the line under them counts and links the repositories with their own mode, confirms scoped to the repositories that follow

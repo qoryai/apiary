@@ -1,16 +1,16 @@
 defmodule Apiary.Policy.Resolution do
   @moduledoc """
-  What the rules of a hive and of one repository come to. Pure: rules in, an
+  What the rules of a hive and of one target come to. Pure: rules in, an
   `Apiary.Policy.Effective` out, or the sentence that says why the rules cannot be
   rendered.
 
   The contract's document says what is denied and what is allowed: `egress.deny` is
   decided by the runner first and holds in either mode, `egress.allow` decides after it and
   only under `enforce`. So a deny rule is written to the document, which is how a
-  repository disables a host of the hive, how a locked deny of the hive holds against a
-  repository, and how a host is denied while the mode is still `observe`.
+  target disables a host of the hive, how a locked deny of the hive holds against a
+  target, and how a host is denied while the mode is still `observe`.
 
-  1. **Precedence.** A locked rule of the hive, then the repository's rule, then an unlocked
+  1. **Precedence.** A locked rule of the hive, then the target's rule, then an unlocked
      rule of the hive. Rules meet on the same host string (or the same credential name),
      and the one that wins decides the host whole: action and paths.
   2. **A `*.` deny** also takes out every allow entry it covers (`*.example` covers
@@ -21,9 +21,9 @@ defmodule Apiary.Policy.Resolution do
   3. **A deny below a `*.` allow** stands beside it when it does not lose to that allow by
      precedence: `allow: ["*.example"], deny: ["tracker.example"]` denies `tracker.example`
      and reaches `api.example`, in either mode. When the allow outranks it (a locked
-     `*.example` of the hive over a repository's deny) the deny is overridden. The one
+     `*.example` of the hive over a target's deny) the deny is overridden. The one
      shape the document cannot say is the mirror: a `*.` deny with an allow below it that
-     outranks the deny (the hive's unlocked `*.example` deny, a repository's own
+     outranks the deny (the hive's unlocked `*.example` deny, a target's own
      `api.example` allow). The allow wins by precedence and is rendered; the deny still
      takes out the allow entries it does outrank, but is **not written to `deny`**, since
      an entry there would deny the winning host too. Under `enforce` the hosts it covers
@@ -43,51 +43,53 @@ defmodule Apiary.Policy.Resolution do
   effective policy.
   """
 
+  use Gettext, backend: ApiaryWeb.Gettext
+
   alias Apiary.Policy.{Effective, Entry, Error, Grammar, Rule}
 
   @locked 3
-  @repository 2
+  @target 2
   @hive 1
 
   @doc """
-  Resolves a repository's policy from the hive's mode and the repository's own, nil
-  when it follows the hive: the repository's own mode wins, and the effective policy says
+  Resolves a target's policy from the hive's mode and the target's own, nil
+  when it follows the hive: the target's own mode wins, and the effective policy says
   which it was in `mode_source`. The rules resolve as in `resolve/4`, whatever the mode:
-  a locked rule of the hive holds in a repository's document under either mode: its
+  a locked rule of the hive holds in a target's document under either mode: its
   `deny` is denied under `observe` as under `enforce`, and its `allow` says what `enforce`
   would reach.
   """
   @spec resolve_for(String.t(), String.t() | nil, [Rule.t()], [Rule.t()], Ecto.UUID.t() | nil) ::
           {:ok, Effective.t()} | {:error, Error.t()}
-  def resolve_for(hive_mode, own_mode, hive_rules, repository_rules, repository_id) do
+  def resolve_for(hive_mode, own_mode, hive_rules, target_rules, target_id) do
     {mode, source} =
-      if own_mode in ["observe", "enforce"] and not is_nil(repository_id),
-        do: {own_mode, :repository},
+      if own_mode in ["observe", "enforce"] and not is_nil(target_id),
+        do: {own_mode, :target},
         else: {hive_mode, :hive}
 
-    with {:ok, effective} <- resolve(mode, hive_rules, repository_rules, repository_id) do
+    with {:ok, effective} <- resolve(mode, hive_rules, target_rules, target_id) do
       {:ok, %{effective | mode_source: source}}
     end
   end
 
   @doc """
-  Resolves the rules. `repository_rules` is `[]` for the baseline and for a repository
+  Resolves the rules. `target_rules` is `[]` for the baseline and for a target
   with no rules of its own.
   """
   @spec resolve(String.t(), [Rule.t()], [Rule.t()], Ecto.UUID.t() | nil) ::
           {:ok, Effective.t()} | {:error, Error.t()}
-  def resolve(mode, hive_rules, repository_rules \\ [], repository_id \\ nil)
+  def resolve(mode, hive_rules, target_rules \\ [], target_id \\ nil)
       when mode in ["observe", "enforce"] do
     entries =
       (Enum.map(hive_rules, &entry(&1, :hive)) ++
-         Enum.map(repository_rules, &entry(&1, :repository)))
+         Enum.map(target_rules, &entry(&1, :target)))
       |> Enum.with_index()
       |> Map.new(fn {entry, index} -> {index, entry} end)
 
     entries = entries |> same_subject() |> covered_by_deny() |> under_allow()
 
     with :ok <- one_path_list(entries) do
-      {:ok, effective(mode, repository_id, entries)}
+      {:ok, effective(mode, target_id, entries)}
     end
   end
 
@@ -106,7 +108,7 @@ defmodule Apiary.Policy.Resolution do
   end
 
   defp rank(%Entry{source: :hive, locked: true}), do: @locked
-  defp rank(%Entry{source: :repository}), do: @repository
+  defp rank(%Entry{source: :target}), do: @target
   defp rank(%Entry{}), do: @hive
 
   # Rules that meet on the same host or name: the highest precedence decides it whole.
@@ -146,7 +148,7 @@ defmodule Apiary.Policy.Resolution do
   end
 
   # A deny below an allowed `*.` suffix is lost to the allow when the allow outranks it (a
-  # locked allow of the hive over a repository's deny); otherwise the two stand, the deny
+  # locked allow of the hive over a target's deny); otherwise the two stand, the deny
   # decided first by the runner.
   defp under_allow(entries) do
     allows =
@@ -190,18 +192,100 @@ defmodule Apiary.Policy.Resolution do
         {:error,
          Error.new(
            :conflict,
-           "#{above.host} #{where(above)} is held to paths, and #{below.host} below it has a rule " <>
-             "of its own #{where(below)}. A runner holds a host to one list of paths and cannot tell " <>
-             "which of the two applies. Put the paths on the hosts by name, or remove the rule " <>
-             "for #{below.host}.",
+           Enum.join(
+             [
+               held_and_below(where(above), where(below), above.host, below.host),
+               pgettext(
+                 "plain",
+                 "A runner holds a host to one list of paths and cannot tell which of the two applies."
+               ),
+               gettext("Put the paths on the hosts by name, or remove the rule for %{host}.",
+                 host: below.host
+               )
+             ],
+             " "
+           ),
            :host
          )}
     end
   end
 
-  defp where(%Entry{source: :hive, locked: true}), do: "in the hive (locked)"
-  defp where(%Entry{source: :hive}), do: "in the hive"
-  defp where(%Entry{source: :repository}), do: "in the repository"
+  defp where(%Entry{source: :hive, locked: true}), do: :locked
+  defp where(%Entry{source: :hive}), do: :hive
+  defp where(%Entry{source: :target}), do: :target
+
+  # Where each of the two rules is, as whole sentences.
+  defp held_and_below(:locked, :locked, above, below),
+    do:
+      gettext(
+        "%{above} in the hive (locked) is held to paths, and %{below} below it has a rule of its own in the hive (locked).",
+        above: above,
+        below: below
+      )
+
+  defp held_and_below(:locked, :hive, above, below),
+    do:
+      gettext(
+        "%{above} in the hive (locked) is held to paths, and %{below} below it has a rule of its own in the hive.",
+        above: above,
+        below: below
+      )
+
+  defp held_and_below(:locked, :target, above, below),
+    do:
+      gettext(
+        "%{above} in the hive (locked) is held to paths, and %{below} below it has a rule of its own in the target.",
+        above: above,
+        below: below
+      )
+
+  defp held_and_below(:hive, :locked, above, below),
+    do:
+      gettext(
+        "%{above} in the hive is held to paths, and %{below} below it has a rule of its own in the hive (locked).",
+        above: above,
+        below: below
+      )
+
+  defp held_and_below(:hive, :hive, above, below),
+    do:
+      gettext(
+        "%{above} in the hive is held to paths, and %{below} below it has a rule of its own in the hive.",
+        above: above,
+        below: below
+      )
+
+  defp held_and_below(:hive, :target, above, below),
+    do:
+      gettext(
+        "%{above} in the hive is held to paths, and %{below} below it has a rule of its own in the target.",
+        above: above,
+        below: below
+      )
+
+  defp held_and_below(:target, :locked, above, below),
+    do:
+      gettext(
+        "%{above} in the target is held to paths, and %{below} below it has a rule of its own in the hive (locked).",
+        above: above,
+        below: below
+      )
+
+  defp held_and_below(:target, :hive, above, below),
+    do:
+      gettext(
+        "%{above} in the target is held to paths, and %{below} below it has a rule of its own in the hive.",
+        above: above,
+        below: below
+      )
+
+  defp held_and_below(:target, :target, above, below),
+    do:
+      gettext(
+        "%{above} in the target is held to paths, and %{below} below it has a rule of its own in the target.",
+        above: above,
+        below: below
+      )
 
   defp in_force(entries, kind) do
     entries
@@ -217,7 +301,7 @@ defmodule Apiary.Policy.Resolution do
     |> Map.update!(winner, &%{&1 | overrides: &1.overrides ++ [bare.(entries[loser])]})
   end
 
-  defp effective(mode, repository_id, entries) do
+  defp effective(mode, target_id, entries) do
     hosts = for {_index, %{action: :allow} = entry} <- in_force(entries, :host), do: entry
     denies = for {_index, %{action: :deny} = entry} <- in_force(entries, :host), do: entry
 
@@ -237,7 +321,7 @@ defmodule Apiary.Policy.Resolution do
 
     %Effective{
       mode: mode,
-      repository_id: repository_id,
+      target_id: target_id,
       entries:
         entries
         |> Map.values()

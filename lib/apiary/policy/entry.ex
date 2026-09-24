@@ -4,10 +4,10 @@ defmodule Apiary.Policy.Entry do
 
     * `rule`: the `Apiary.Policy.Rule` itself; `kind`, `action`, `host`, `paths`, `name`,
       `argument` and `locked` repeat it for a page's convenience;
-    * `source`: `:hive` or `:repository`, where the rule was written;
+    * `source`: `:hive` or `:target`, where the rule was written;
     * `in_force`: whether the rule decides anything in this policy;
     * `overridden_by`: the entry that beat it when it is not in force (a locked rule of
-      the hive, the repository's own rule, a `*.` deny that covers it, a `*.` allow above
+      the hive, the target's own rule, a `*.` deny that covers it, a `*.` allow above
       it), without its own `overridden_by` and `overrides`;
     * `overrides`: the entries this one beat, likewise.
   """

@@ -22,20 +22,24 @@ defmodule E2E do
   alias Apiary.Runs
   alias Apiary.Runs.{Connection, Event, Run}
 
-  @policy_applied "ai.qory.run.policy_applied"
-  @egress "ai.qory.run.egress"
+  @policy_applied "dev.qory.run.policy_applied"
+  @egress "dev.qory.run.egress"
   @poll_ms 50
 
   def main do
-    host = env!("E2E_TARGET_HOST")
+    host = env!("E2E_UPSTREAM_HOST")
     runner_file = env!("E2E_RUNNER_FILE")
     runner_tail = File.read!(env!("E2E_RUNNER_TAIL"))
     prepare = env!("E2E_PREPARE_COMMAND")
     session = env!("E2E_SESSION_COMMAND")
     session_log = env!("E2E_SESSION_LOG")
     budget_ms = String.to_integer(System.get_env("E2E_BUDGET_SECONDS", "35")) * 1000
-    level = String.to_existing_atom(System.get_env("E2E_LEVEL", "repository"))
-    true = level in [:repository, :hive]
+    # `E2E_LEVEL` says `target` or `hive`, as the popover's level does.
+    level =
+      case System.get_env("E2E_LEVEL", "target") do
+        "target" -> :target
+        "hive" -> :hive
+      end
 
     # A line per request is the instance's log, not this job's.
     Logger.configure(level: :warning)
@@ -90,7 +94,10 @@ defmodule E2E do
 
     run = Repo.get!(Run, connection.run_id)
     [first] = applied(run)
-    say("run #{run.run_id}, wall #{inspect(run.wall)}, repository #{run.forge}/#{run.repository}")
+
+    say(
+      "run #{run.run_id}, wall #{inspect(run.wall)}, target #{run.target_system}/#{run.target_path}"
+    )
 
     say(
       "first policy applied: sequence #{first.sequence}, run configuration #{short(first.data["run_configuration"])}"
@@ -104,7 +111,7 @@ defmodule E2E do
     before_digest = first.data["run_configuration"]
 
     {:ok, %{digest: ^before_digest}} =
-      Policy.current_configuration(scope, target(scope, run, level))
+      Policy.current_configuration(scope, holder(scope, run, level))
 
     step("allow, as the connection's row does")
     # The two calls of the row's popover: ApiaryWeb.RunLive.Show and
@@ -117,7 +124,7 @@ defmodule E2E do
     t_written = System.monotonic_time(:millisecond)
 
     {:ok, %{digest: new_digest, version: version}} =
-      Policy.current_configuration(scope, target(scope, Repo.get!(Run, run.id), level))
+      Policy.current_configuration(scope, holder(scope, Repo.get!(Run, run.id), level))
 
     true = new_digest != before_digest
 
@@ -167,7 +174,7 @@ defmodule E2E do
     {:ok, deny_rule} = Policy.rule_from_connection(scope, row, :deny, level)
 
     {:ok, %{digest: deny_digest, version: deny_version}} =
-      Policy.current_configuration(scope, target(scope, Repo.get!(Run, run.id), level))
+      Policy.current_configuration(scope, holder(scope, Repo.get!(Run, run.id), level))
 
     true = deny_digest != new_digest
 
@@ -301,11 +308,11 @@ defmodule E2E do
     scope
   end
 
-  defp target(_scope, _run, :hive), do: nil
+  defp holder(_scope, _run, :hive), do: nil
 
-  defp target(scope, %Run{repository_id: id}, :repository) when is_binary(id) do
-    {:ok, repository} = Policy.get_repository(scope, id)
-    repository
+  defp holder(scope, %Run{target_id: id}, :target) when is_binary(id) do
+    {:ok, target} = Policy.get_target(scope, id)
+    target
   end
 
   defp applied(%Run{id: id}) do

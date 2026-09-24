@@ -54,5 +54,5 @@ defmodule Apiary.RunListFixtures do
     run
   end
 
-  def shop(forge \\ "github.example"), do: %{"forge" => forge, "repository" => "acme/shop"}
+  def shop(system \\ "github.example"), do: %{"forge" => system, "repository" => "acme/shop"}
 end

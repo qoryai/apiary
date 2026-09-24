@@ -33,15 +33,6 @@ defmodule ApiaryWeb.RunLive.Show do
   @quiet_tick_ms 5_000
   @announce_every_ms 10_000
   @max_versions 20
-  @unrendered_tip "The run reported a digest that matches no version rendered here: a policy file on the machine, or a run started with --local."
-
-  @wall_tip "The enclosure the agent runs in. Its only route out leads to the runner's proxy."
-  @no_wall_tip "This run had no wall. A program that ignores the proxy is not seen."
-  @mode_tip "Enforce: a connection no rule allows is denied. Observe: it is let through and recorded. A deny rule holds in either mode."
-  @digest_tip "The sha256 of the policy this run ran under. Two runs with the same digest had the same policy."
-  @terminated_tip "A host whose requests the proxy reads, because the run holds a credential or path rules for it. Every other host is a blind tunnel."
-  @lane_tip "One agent's events: the main session, or a subagent from its start to its finish."
-
   @impl true
   def render(%{run: nil} = assigns) do
     ~H"""
@@ -57,11 +48,11 @@ defmodule ApiaryWeb.RunLive.Show do
         tone="neutral"
         icon="hero-magnifying-glass"
         heading="h1"
-        title="This run is not in this hive"
+        title={gettext("This run is not in this hive")}
       >
-        The link may be for another <.term word="hive" />, or the run id is mistyped.
+        {gettext("The link may be for another hive, or the run id is mistyped.")}
         <:actions>
-          <.button navigate={~p"/hive/runs"}>Back to runs</.button>
+          <.button navigate={~p"/hive/runs"}>{gettext("Back to runs")}</.button>
         </:actions>
       </.empty_state>
     </Layouts.app>
@@ -83,15 +74,15 @@ defmodule ApiaryWeb.RunLive.Show do
       </div>
 
       <div class="q-run-head">
-        <nav class="q-crumbs" aria-label="Breadcrumb">
-          <.link navigate={~p"/hive/runs"}>Runs</.link>
-          <%= if @run.forge && @run.repository do %>
+        <nav class="q-crumbs" aria-label={gettext("Breadcrumb")}>
+          <.link navigate={~p"/hive/runs"}>{gettext("Runs")}</.link>
+          <%= if @run.target_system && @run.target_path do %>
             <.icon name="hero-chevron-right-micro" class="size-3" />
             <.link
-              navigate={~p"/hive/runs?#{Filters.repo_params(@run.forge, @run.repository)}"}
+              navigate={~p"/hive/runs?#{Filters.target_params(@run.target_system, @run.target_path)}"}
               class="font-mono text-xs"
             >
-              <span class="text-faint">{@run.forge}/</span>{@run.repository}
+              <span class="text-faint">{@run.target_system}/</span>{@run.target_path}
             </.link>
           <% end %>
           <.icon name="hero-chevron-right-micro" class="size-3" />
@@ -101,7 +92,9 @@ defmodule ApiaryWeb.RunLive.Show do
         <div class="q-run-title">
           <h1 :if={@run.task} id="run-title" tabindex="-1" phx-hook="FocusOn">{@run.task}</h1>
           <h1 :if={!@run.task} id="run-title" tabindex="-1" phx-hook="FocusOn">
-            Run <span class="font-mono text-[17px]">{short_id(@run.run_id)}</span>
+            <.rich text={
+              rich_gettext("Run %{id}", id: {:m, short_id(@run.run_id), "font-mono text-[17px]"})
+            } />
           </h1>
           <.run_state
             state={@run.state}
@@ -113,7 +106,9 @@ defmodule ApiaryWeb.RunLive.Show do
             closed_at={@run.closed_at}
             note={false}
           />
-          <span :if={@run.state == "pending"} class="text-[13px] text-faint">Ping only</span>
+          <span :if={@run.state == "pending"} class="text-[13px] text-faint">
+            {gettext("Ping only")}
+          </span>
           <.alive
             state={@run.state}
             last_heartbeat_at={@run.last_heartbeat_at}
@@ -125,36 +120,38 @@ defmodule ApiaryWeb.RunLive.Show do
         </div>
 
         <.kvs id="run-facts">
-          <.kv :if={ended?(@run)} label="Exit" mono>{exit_value(@run)}</.kv>
-          <.kv label="Started">
+          <.kv :if={ended?(@run)} label={gettext("Exit")} mono>{exit_value(@run)}</.kv>
+          <.kv label={gettext("Started")}>
             <.relative_time
               :if={@run.started_at}
               id="run-started"
               at={@run.started_at}
               format="clock"
             />
-            <span :if={!@run.started_at} class="text-faint">n/a</span>
+            <.na :if={!@run.started_at} />
           </.kv>
-          <.kv label="Duration">
+          <.kv label={gettext("Duration")}>
             <.run_duration run={@run} quiet={@quiet_for != nil} />
           </.kv>
-          <.kv label="Runtime" title={join([@run.runtime, @run.runtime_version])}>
+          <.kv label={gettext("Runtime")} title={join([@run.runtime, @run.runtime_version])}>
             {@run.runtime || na()}
             <:sub :if={@run.runtime_version}>{@run.runtime_version}</:sub>
           </.kv>
-          <.kv label="Host" mono title={@run.host}>{@run.host || na()}</.kv>
-          <.kv label="Wall" tip={@tips.wall} title={join([@run.wall, @run.image])}>
+          <.kv label={gettext("Host")} mono title={@run.host}>{@run.host || na()}</.kv>
+          <.kv label={gettext("Wall")} tip={@tips.wall} title={join([@run.wall, @run.image])}>
             <%= cond do %>
               <% @run.wall -> %>
                 {@run.wall}
               <% @run.state == "pending" -> %>
                 {na()}
               <% true -> %>
-                <span class="tooltip q-tip-wide" tabindex="0" data-tip={@tips.no_wall}>None</span>
+                <span class="tooltip q-tip-wide" tabindex="0" data-tip={@tips.no_wall}>
+                  {gettext("None")}
+                </span>
             <% end %>
             <:sub :if={@run.wall && @run.image}>{@run.image}</:sub>
           </.kv>
-          <.kv label="Policy" class="q-kv-policy">
+          <.kv label={gettext("Policy")} class="q-kv-policy">
             <.policy_value
               policy={@policy}
               digest={@run.policy_digest}
@@ -169,16 +166,32 @@ defmodule ApiaryWeb.RunLive.Show do
 
         <.notice :if={@in_force} kind={:warning} class="max-w-[100ch]">
           <span id="run-behind">
-            <b>This run is behind the policy in force.</b>
-            It last reported {version_words(@reported_version)}
-            <span :if={@digests.reported} class="font-mono text-xs">{short_digest(@digests.reported)}</span>; {version_words(
-              @in_force
-            )}
-            <span class="font-mono text-xs">{short_digest(@in_force.digest)}</span>
-            is in force (<.relative_time id="run-behind-since" at={@in_force.rendered_at} />).
-            A run reloads at its next heartbeat; until it does, it decides by {if @reported_version,
-              do: version_words(@reported_version),
-              else: "what it holds"}.
+            <b>{gettext("This run is behind the policy in force.")}</b>
+            <.rich
+              phx-no-format
+              text={
+                rich_gettext(
+                  "It last reported %{reported}; %{in_force} is in force (%{since}).",
+                  reported: {:part, :reported},
+                  in_force: {:part, :in_force},
+                  since: {:part, :since}
+                )
+              }
+            >
+              <:part name={:reported}>{version_words(@reported_version)}<span :if={@digests.reported}> <span class="font-mono text-xs">{short_digest(@digests.reported)}</span></span></:part>
+              <:part name={:in_force}>{version_words(@in_force)} <span class="font-mono text-xs">{short_digest(@in_force.digest)}</span></:part>
+              <:part name={:since}><.relative_time id="run-behind-since" at={@in_force.rendered_at} /></:part>
+            </.rich>
+            {if @reported_version,
+              do:
+                gettext(
+                  "A run reloads at its next heartbeat; until it does, it decides by %{version}.",
+                  version: version_words(@reported_version)
+                ),
+              else:
+                gettext(
+                  "A run reloads at its next heartbeat; until it does, it decides by what it holds."
+                )}
           </span>
           <div class="mt-1">
             <.link
@@ -188,14 +201,18 @@ defmodule ApiaryWeb.RunLive.Show do
             >
               {if comparable?(@reported_version, @in_force),
                 do:
-                  "What changed between v#{@reported_version.n} and v#{@in_force.n} of the #{@in_force.label}",
-                else: "Open #{version_words(@in_force)}"}
+                  gettext("What changed between v%{from} and v%{to} of the %{label}",
+                    from: @reported_version.n,
+                    to: @in_force.n,
+                    label: @in_force.label
+                  ),
+                else: gettext("Open %{version}", version: version_words(@in_force))}
             </.link>
           </div>
         </.notice>
 
         <div :if={ordered_labels(@run.labels) != []} class="q-labels">
-          <span>Labels</span>
+          <span>{gettext("Labels")}</span>
           <.label_chip
             :for={{key, value} <- ordered_labels(@run.labels)}
             key={to_string(key)}
@@ -205,21 +222,21 @@ defmodule ApiaryWeb.RunLive.Show do
         </div>
       </div>
 
-      <.tabs id="run-tabs" label="Run">
+      <.tabs id="run-tabs" label={gettext("Run")}>
         <:tab
           patch={tab_path(@run, :timeline, @timeline_query)}
           icon="hero-list-bullet-micro"
           current={@live_action == :timeline}
           count={@index.session_items > 0 && delimited(@index.session_items)}
         >
-          Timeline
+          {gettext("Timeline")}
         </:tab>
         <:tab
           patch={tab_path(@run, :terminal)}
           icon="hero-command-line-micro"
           current={@live_action == :terminal}
         >
-          Terminal
+          {gettext("Terminal")}
         </:tab>
         <:tab
           patch={tab_path(@run, :connections)}
@@ -228,20 +245,25 @@ defmodule ApiaryWeb.RunLive.Show do
           count={connections_count(@counts)}
           tone={@counts.denied > 0 && "error"}
         >
-          Connections
+          {gettext("Connections")}
         </:tab>
         <:tab
           patch={tab_path(@run, :details)}
           icon="hero-document-text-micro"
           current={@live_action == :details}
         >
-          Details
+          {gettext("Details")}
         </:tab>
       </.tabs>
 
       <%= cond do %>
         <% not @loaded -> %>
-          <div id="run-loading" class="grid gap-3" aria-busy="true" aria-label="Reading the record">
+          <div
+            id="run-loading"
+            class="grid gap-3"
+            aria-busy="true"
+            aria-label={gettext("Reading the record")}
+          >
             <span :for={width <- ~w(w-2/3 w-1/2 w-3/5 w-2/5 w-1/2)} class={["q-skel", width]}></span>
           </div>
         <% @run.state == "pending" and @index.items == [] and @live_action != :details -> %>
@@ -279,16 +301,19 @@ defmodule ApiaryWeb.RunLive.Show do
       <.modal
         :if={@confirm_close}
         id="close-run"
-        title="Close this run"
+        title={gettext("Close this run")}
         on_cancel={JS.push("close_cancel")}
       >
         <p class="text-muted">
-          The hive stops taking events for this run and the runner is told so on its next
-          delivery. The record kept so far stays. A close is final: nothing reopens the run.
+          {gettext(
+            "The hive stops taking events for this run and the runner is told so on its next delivery. The record kept so far stays. A close is final: nothing reopens the run."
+          )}
         </p>
         <:footer>
-          <.button phx-click="close_cancel" data-autofocus>Cancel</.button>
-          <.button variant="danger" phx-click="close_confirm" loading_text="Closing">Close run</.button>
+          <.button phx-click="close_cancel" data-autofocus>{gettext("Cancel")}</.button>
+          <.button variant="danger" phx-click="close_confirm" loading_text={gettext("Closing")}>
+            {gettext("Close run")}
+          </.button>
         </:footer>
       </.modal>
 
@@ -302,7 +327,7 @@ defmodule ApiaryWeb.RunLive.Show do
   defp timeline_tab(assigns) do
     ~H"""
     <div id="run-timeline" class="grid gap-4" phx-hook="LiveEnd" data-live={to_string(alive?(@run))}>
-      <div class="q-tl-bar" role="group" aria-label="Lanes">
+      <div class="q-tl-bar" role="group" aria-label={gettext("Lanes")}>
         <.lane
           :for={lane <- lane_chips(@index, @lane)}
           lane={lane}
@@ -314,14 +339,16 @@ defmodule ApiaryWeb.RunLive.Show do
           id="more-lanes"
           class="text-xs text-faint"
         >
-          and {delimited(@index.lane_count + 1 - length(@index.lanes))} more
+          {gettext("and %{number} more",
+            number: delimited(@index.lane_count + 1 - length(@index.lanes))
+          )}
         </span>
         <span
           :if={length(@index.lanes) > 1}
           class="tooltip q-tip-wide text-faint"
           tabindex="0"
           data-tip={@tips.lane}
-          aria-label={"lane (#{@tips.lane})"}
+          aria-label={gettext("lane (%{tip})", tip: @tips.lane)}
         >
           <.icon name="hero-information-circle-micro" class="size-4" />
         </span>
@@ -334,16 +361,19 @@ defmodule ApiaryWeb.RunLive.Show do
           aria-pressed={to_string(@cx)}
           class={["q-chip", @cx && "q-chip-on q-chip-plain"]}
         >
-          <.icon name="hero-arrows-right-left-micro" class="size-4" />Connections
-          <b>{if @cx, do: "inline", else: "hidden"}</b>
+          <.icon name="hero-arrows-right-left-micro" class="size-4" />{gettext("Connections")}
+          <b>{if @cx, do: gettext("inline"), else: gettext("hidden")}</b>
         </button>
       </div>
 
       <div :if={@unread > 0} id="unread-events">
         <.notice>
-          {count_noun(@unread, "event has", "events have")} arrived and {if @unread == 1,
-            do: "is",
-            else: "are"} being read.
+          {ngettext(
+            "%{number} event has arrived and is being read.",
+            "%{number} events have arrived and are being read.",
+            @unread,
+            number: delimited(@unread)
+          )}
         </.notice>
       </div>
 
@@ -362,7 +392,7 @@ defmodule ApiaryWeb.RunLive.Show do
         rails={@index.rails}
         started_at={@run.started_at}
         seq_path={&tab_path(@run, :timeline, Map.put(@timeline_query, "seq", &1))}
-        target={@target && "e-#{@target}"}
+        target={@focused && "e-#{@focused}"}
         isolate={@lane}
         connections={@cx}
         earlier={@earlier}
@@ -394,27 +424,27 @@ defmodule ApiaryWeb.RunLive.Show do
         type="button"
         tabindex="0"
         class="btn btn-ghost btn-xs btn-square"
-        aria-label="Keyboard shortcuts of the timeline"
+        aria-label={gettext("Keyboard shortcuts of the timeline")}
       >
         <.icon name="hero-question-mark-circle-micro" class="size-4" />
       </button>
       <div tabindex="0" class="dropdown-content q-keys" role="note">
-        <p class="font-medium">With focus in the timeline</p>
+        <p class="font-medium">{gettext("With focus in the timeline")}</p>
         <dl>
           <dt><kbd>j</kbd> <kbd>k</kbd></dt>
-          <dd>next and previous item</dd>
-          <dt><kbd>Enter</kbd></dt>
-          <dd>open or close the item</dd>
+          <dd>{gettext("next and previous item")}</dd>
+          <dt><kbd>{gettext("Enter")}</kbd></dt>
+          <dd>{gettext("open or close the item")}</dd>
           <dt><kbd>o</kbd></dt>
-          <dd>open every tool call</dd>
-          <dt><kbd>x</kbd> <kbd>Shift</kbd>+<kbd>x</kbd></dt>
-          <dd>next and previous denied connection</dd>
+          <dd>{gettext("open every tool call")}</dd>
+          <dt><kbd>x</kbd> <kbd>{gettext("Shift")}</kbd>+<kbd>x</kbd></dt>
+          <dd>{gettext("next and previous denied connection")}</dd>
           <dt><kbd>g</kbd> <kbd>e</kbd></dt>
-          <dd>the live end</dd>
+          <dd>{gettext("the live end")}</dd>
           <dt><kbd>g</kbd> <kbd>t</kbd></dt>
-          <dd>the top</dd>
+          <dd>{gettext("the top")}</dd>
           <dt><kbd>c</kbd></dt>
-          <dd>copy the item's link</dd>
+          <dd>{gettext("copy the item's link")}</dd>
         </dl>
       </div>
     </div>
@@ -470,40 +500,48 @@ defmodule ApiaryWeb.RunLive.Show do
     ~H"""
     <div class="grid gap-4">
       <.limits :if={@counts.all == 0} reason={:no_egress} variant="empty" />
-      <div :if={@counts.all > 0} class="q-filters" role="group" aria-label="Filters">
-        <.segments id="decision" label="Decision">
+      <div :if={@counts.all > 0} class="q-filters" role="group" aria-label={gettext("Filters")}>
+        <.segments id="decision" label={gettext("Decision")}>
           <:segment
             patch={tab_path(@run, :connections)}
             pressed={is_nil(@decision)}
             count={@counts.all}
           >
-            All
+            {gettext("All")}
           </:segment>
           <:segment
             patch={tab_path(@run, :connections, %{"decision" => "allowed"})}
             pressed={@decision == "allowed"}
             count={@counts.allowed}
           >
-            Allowed
+            {gettext("Allowed")}
           </:segment>
           <:segment
             patch={tab_path(@run, :connections, %{"decision" => "denied"})}
             pressed={@decision == "denied"}
             count={@counts.denied}
           >
-            Denied
+            {gettext("Denied")}
           </:segment>
         </.segments>
         <span class="flex-1"></span>
         <span class="q-summary">
           <span>
-            <b>{delimited(@counts.attempts)}</b>
-            {if @counts.attempts == 1, do: "attempt", else: "attempts"} to
-            <b>{delimited(@counts.all)}</b>
-            {if @counts.all == 1, do: "destination", else: "destinations"}
+            <.rich text={
+              rich_gettext("%{attempts} to %{destinations}",
+                attempts:
+                  rich_ngettext("%{number} attempt", "%{number} attempts", @counts.attempts,
+                    number: {:b, delimited(@counts.attempts)}
+                  ),
+                destinations:
+                  rich_ngettext("%{number} destination", "%{number} destinations", @counts.all,
+                    number: {:b, delimited(@counts.all)}
+                  )
+              )
+            } />
           </span>
           <span :if={@policy}>
-            policy <b>{@policy.mode}</b>
+            {gettext("policy")} <b>{@policy.mode}</b>
             <.scoped_version :if={@version} version={@version} />
             <span
               :if={!@version && @run.policy_digest}
@@ -525,7 +563,7 @@ defmodule ApiaryWeb.RunLive.Show do
       <.connections_table
         :if={@counts.all > 0}
         id="run-connections"
-        label="Connections of this run"
+        label={gettext("Connections of this run")}
         rows={@connections.rows}
         started_at={@run.started_at}
         acts={@acts}
@@ -536,27 +574,30 @@ defmodule ApiaryWeb.RunLive.Show do
         class="flex flex-wrap items-center justify-between gap-3"
       >
         <p class="text-[12.5px] text-faint">
-          Showing {delimited(length(@connections.rows))} of {delimited(@connections.total)}.
+          {gettext("Showing %{shown} of %{total}.",
+            shown: delimited(length(@connections.rows)),
+            total: delimited(@connections.total)
+          )}
         </p>
         <div :if={@connections.pages > 1} class="flex gap-2">
           <.button
             :if={@connections.page > 1}
             patch={tab_path(@run, :connections, connections_query(@decision, @connections.page - 1))}
           >
-            Previous
+            {gettext("Previous")}
           </.button>
           <.button
             :if={@connections.page < @connections.pages}
             patch={tab_path(@run, :connections, connections_query(@decision, @connections.page + 1))}
           >
-            Next
+            {gettext("Next")}
           </.button>
         </div>
       </div>
       <p :if={@counts.all > 0} id="connections-footnote" class="max-w-[80ch] text-[12.5px] text-faint">
-        Counted per host, port and path from the run's egress events. The reason and outcome are
-        those of the last attempt. A rule added here changes what happens next; what the record
-        already says stays as it was.
+        {gettext(
+          "Counted per host, port and path from the run's egress events. The reason and outcome are those of the last attempt. A rule added here changes what happens next; what the record already says stays as it was."
+        )}
       </p>
     </div>
     """
@@ -575,41 +616,45 @@ defmodule ApiaryWeb.RunLive.Show do
     ~H"""
     <div class="q-cards">
       <section class="q-card" aria-labelledby="card-command">
-        <h2 id="card-command">Command</h2>
+        <h2 id="card-command">{gettext("Command")}</h2>
         <dl class="q-dl">
-          <dt>Command</dt>
+          <dt>{gettext("Command")}</dt>
           <dd class="font-mono">{@run.command || na()}</dd>
-          <dt>Arguments</dt>
+          <dt>{gettext("Arguments")}</dt>
           <dd class="font-mono">
-            <span :if={@run.args == []} class="font-sans text-faint">none</span>
+            <span :if={@run.args == []} class="font-sans text-faint">{gettext("none")}</span>
             <span :for={arg <- Enum.take(@run.args, 64)} class="q-arg">{middle(arg, 600)}</span>
-            <span :if={length(@run.args) > 64} class="font-sans text-faint">and {length(@run.args) -
-              64} more</span>
+            <span :if={length(@run.args) > 64} class="font-sans text-faint">
+              {gettext("and %{number} more", number: delimited(length(@run.args) - 64))}
+            </span>
           </dd>
-          <dt>Directory</dt>
+          <dt>{gettext("Directory")}</dt>
           <dd class="font-mono">{@run.dir || na()}</dd>
-          <dt>Interactive</dt>
+          <dt>{gettext("Interactive")}</dt>
           <dd>{interactive_words(@run.interactive)}</dd>
-          <dt :if={@run.terminal_cols}>Terminal</dt>
+          <dt :if={@run.terminal_cols}>{gettext("Terminal")}</dt>
           <dd :if={@run.terminal_cols} class="font-mono">
             {@run.terminal_cols}×{@run.terminal_rows}
           </dd>
-          <dt>Runtime</dt>
+          <dt>{gettext("Runtime")}</dt>
           <dd>
             {@run.runtime || na()} <span class="font-mono text-faint">{@run.runtime_version}</span>
           </dd>
-          <dt>Runner</dt>
+          <dt>{gettext("Runner")}</dt>
           <dd class="font-mono">
-            {@run.runner_version || "n/a"}<span :if={@run.contract_version}> · contract {@run.contract_version}</span>
+            {@run.runner_version || gettext("n/a")}<span :if={@run.contract_version}> · {gettext(
+              "contract %{version}",
+              version: @run.contract_version
+            )}</span>
           </dd>
-          <dt>Host</dt>
+          <dt>{gettext("Host")}</dt>
           <dd class="font-mono">{@run.host || na()}</dd>
-          <dt>Wall</dt>
+          <dt>{gettext("Wall")}</dt>
           <dd>
-            {@run.wall || "None"}
+            {@run.wall || gettext("None")}
             <span :if={@run.image} class="font-mono text-faint">{@run.image}</span>
           </dd>
-          <dt>Access key</dt>
+          <dt>{gettext("Access key")}</dt>
           <dd>
             <%= if Ecto.assoc_loaded?(@run.access_key) && @run.access_key do %>
               {@run.access_key.label}
@@ -622,104 +667,126 @@ defmodule ApiaryWeb.RunLive.Show do
       </section>
 
       <section class="q-card" aria-labelledby="card-policy">
-        <h2 id="card-policy">Policy in force</h2>
+        <h2 id="card-policy">{gettext("Policy in force")}</h2>
         <dl :if={@policy} class="q-dl">
-          <dt>Mode</dt>
+          <dt>{gettext("Mode")}</dt>
           <dd>
-            <.term word={@policy.mode || "n/a"} standard={@tips.mode} class="q-tip-wide" />
+            <.term word={@policy.mode || gettext("n/a")} standard={@tips.mode} class="q-tip-wide" />
           </dd>
-          <dt>Source</dt>
+          <dt>{gettext("Source")}</dt>
           <dd>{policy_source_words(@policy.source)}</dd>
-          <dt><.term word="Digest" standard={@tips.digest} class="q-tip-wide tooltip-right" /></dt>
+          <dt>
+            <.term word={gettext("Digest")} standard={@tips.digest} class="q-tip-wide tooltip-right" />
+          </dt>
           <dd class="font-mono">
-            {@run.policy_digest || "n/a"}
+            {@run.policy_digest || gettext("n/a")}
             <.copy_button
               :if={@run.policy_digest}
               id="copy-digest"
               text={@run.policy_digest}
               icon_only
-              label="Copy the digest"
+              label={gettext("Copy the digest")}
             />
           </dd>
-          <dt>Run configuration</dt>
+          <dt>{gettext("Run configuration")}</dt>
           <dd class="font-mono">
-            {@run.run_configuration_digest || @run.reported_run_configuration_digest || "n/a"}
+            {@run.run_configuration_digest || @run.reported_run_configuration_digest || gettext("n/a")}
           </dd>
-          <dt :if={@version}>Version</dt>
+          <dt :if={@version}>{gettext("Version")}</dt>
           <dd :if={@version} id="policy-version">
             <.scoped_version version={@version} />
           </dd>
-          <dt :if={@version && @digests.in_force}>In force now</dt>
+          <dt :if={@version && @digests.in_force}>{gettext("In force now")}</dt>
           <dd :if={@version && @digests.in_force} id="policy-in-force">
             <.scoped_version :if={@in_force} version={@in_force} />
-            <span :if={!@in_force && @digests.in_force == @version.digest}>the same</span>
+            <span :if={!@in_force && @digests.in_force == @version.digest}>{gettext("the same")}</span>
             <span :if={!@in_force && @digests.in_force != @version.digest} class="font-mono">
               {short_digest(@digests.in_force)}
             </span>
           </dd>
-          <dt>Allowed hosts</dt>
-          <dd class="font-mono">{strings(@policy.allow, @policy.allow_count) || "none"}</dd>
-          <dt>Denied hosts</dt>
-          <dd class="font-mono">{strings(@policy.deny, @policy.deny_count) || "none"}</dd>
+          <dt>{gettext("Allowed hosts")}</dt>
+          <dd class="font-mono">{strings(@policy.allow, @policy.allow_count) || gettext("none")}</dd>
+          <dt>{gettext("Denied hosts")}</dt>
+          <dd class="font-mono">{strings(@policy.deny, @policy.deny_count) || gettext("none")}</dd>
           <dt>
             <.term
-              word="Reads requests to"
+              word={gettext("Reads requests to")}
               standard={@tips.terminated}
               class="q-tip-wide tooltip-right"
             />
           </dt>
-          <dd class="font-mono">{strings(@policy.terminated, @policy.terminated_count) || "none"}</dd>
-          <dt>Credentials</dt>
-          <dd class="font-mono">{credential_names(@policy.credentials) || "none"}</dd>
-          <dt>Applied at</dt>
+          <dd class="font-mono">
+            {strings(@policy.terminated, @policy.terminated_count) || gettext("none")}
+          </dd>
+          <dt>{gettext("Credentials")}</dt>
+          <dd class="font-mono">{credential_names(@policy.credentials) || gettext("none")}</dd>
+          <dt>{pgettext("plain", "Applied at")}</dt>
           <dd class="font-mono">#{pad(@policy.sequence)}</dd>
         </dl>
         <p :if={!@policy} class="px-5 py-4 text-[13px] text-muted">
           {if @run.events_pruned_at,
             do:
-              "The policy event was pruned with the run's events on #{short_date(@run.events_pruned_at)}.",
-            else: "No policy event has arrived for this run."}
+              gettext("The policy event was pruned with the run's events on %{date}.",
+                date: short_date(@run.events_pruned_at)
+              ),
+            else: gettext("No policy event has arrived for this run.")}
         </p>
       </section>
 
       <section class="q-card" aria-labelledby="card-record">
-        <h2 id="card-record">Record</h2>
+        <h2 id="card-record">{gettext("Record")}</h2>
         <dl class="q-dl">
-          <dt>Run id</dt>
+          <dt>{gettext("Run id")}</dt>
           <dd class="font-mono">
             <span id="run-id">{@run.run_id}</span>
-            <.copy_button id="copy-run-id" target="#run-id" icon_only label="Copy the run id" />
+            <.copy_button
+              id="copy-run-id"
+              target="#run-id"
+              icon_only
+              label={gettext("Copy the run id")}
+            />
           </dd>
-          <dt>State</dt>
+          <dt>{gettext("State")}</dt>
           <dd>{state_label(@run.state)}<span :if={@run.reason}> · {@run.reason}</span></dd>
-          <dt>Events</dt>
+          <dt>{gettext("Events")}</dt>
           <dd>
-            {delimited(@run.event_count)}, projected through
-            <span class="font-mono">#{pad(@run.projected_sequence)}</span>
+            <.rich text={
+              rich_gettext("%{number}, projected through %{sequence}",
+                number: delimited(@run.event_count),
+                sequence: {:m, "#" <> pad(@run.projected_sequence), "font-mono"}
+              )
+            } />
           </dd>
-          <dt>Last event</dt>
+          <dt>{gettext("Last event")}</dt>
           <dd><.clock at={@run.last_event_at} id="last-event" /></dd>
-          <dt>Last heartbeat</dt>
+          <dt>{gettext("Last heartbeat")}</dt>
           <dd>
             <.clock at={@run.last_heartbeat_at} id="last-heartbeat" /><span :if={
               @run.heartbeat_interval_seconds
-            }> · every {@run.heartbeat_interval_seconds} s</span><span :if={@run.elapsed_seconds}> · elapsed {@run.elapsed_seconds} s</span>
+            }> · {gettext("every %{seconds} s", seconds: @run.heartbeat_interval_seconds)}</span><span :if={
+              @run.elapsed_seconds
+            }> · {gettext("elapsed %{seconds} s", seconds: @run.elapsed_seconds)}</span>
           </dd>
-          <dt>Exited</dt>
+          <dt>{gettext("Exited")}</dt>
           <dd><.clock at={@run.exited_at} id="exited-at" /></dd>
-          <dt :if={@run.lost_at}>Lost</dt>
+          <dt :if={@run.lost_at}>{gettext("Lost")}</dt>
           <dd :if={@run.lost_at}><.clock at={@run.lost_at} id="lost-at" /></dd>
-          <dt :if={@run.closed_at}>Closed</dt>
-          <dd :if={@run.closed_at}><.clock at={@run.closed_at} id="closed-at" /> by a member</dd>
-          <dt>Session</dt>
-          <dd class="font-mono">{@session_id || "n/a"}</dd>
+          <dt :if={@run.closed_at}>{gettext("Closed")}</dt>
+          <dd :if={@run.closed_at}>
+            <.rich phx-no-format text={rich_gettext("%{time} by a member", time: {:part, :time})}><:part name={:time}><.clock at={@run.closed_at} id="closed-at" /></:part></.rich>
+          </dd>
+          <dt>{gettext("Session")}</dt>
+          <dd class="font-mono">{@session_id || gettext("n/a")}</dd>
         </dl>
         <div :if={@closable} class="q-card-foot">
           <p>
-            Closing tells the hive to take no more events for this run. It is for a run that went
-            quiet and will not post its exit.
+            {gettext(
+              "Closing tells the hive to take no more events for this run. It is for a run that went quiet and will not post its exit."
+            )}
           </p>
-          <.button id="close-run-button" variant="danger" phx-click="close">Close run</.button>
+          <.button id="close-run-button" variant="danger" phx-click="close">
+            {gettext("Close run")}
+          </.button>
         </div>
       </section>
     </div>
@@ -766,24 +833,35 @@ defmodule ApiaryWeb.RunLive.Show do
   attr :in_force, :any, default: nil, doc: "the version in force, only while the run is behind"
   attr :last_seq, :integer, default: nil
 
-  defp policy_value(%{policy: nil} = assigns), do: ~H|<span class="text-faint">n/a</span>|
+  defp policy_value(%{policy: nil} = assigns), do: ~H|<.na />|
 
   defp policy_value(%{policy: %{source: "none"}} = assigns) do
     ~H"""
     <.term word="observe" standard={@tips.mode} class="q-tip-wide tooltip-left" />
-    <small class="ml-1">no policy</small>
+    <small class="ml-1">{gettext("no policy")}</small>
     """
   end
 
   defp policy_value(assigns) do
     ~H"""
-    <.term word={@policy.mode || "n/a"} standard={@tips.mode} class="q-tip-wide tooltip-left" />
+    <.term
+      word={@policy.mode || gettext("n/a")}
+      standard={@tips.mode}
+      class="q-tip-wide tooltip-left"
+    />
     <%= cond do %>
       <% @version -> %>
         <.scoped_version
           version={@version}
           class="ml-1"
-          title={"Version #{@version.n} of the #{@version.label}, sha256 #{short_digest(@version.digest)}. Open the exact document."}
+          title={
+            gettext(
+              "Version %{n} of the %{label}, sha256 %{digest}. Open the exact document.",
+              n: @version.n,
+              label: @version.label,
+              digest: short_digest(@version.digest)
+            )
+          }
         />
         <small :if={!@in_force} class="ml-1 font-mono" title={@version.digest}>
           {short_digest(@version.digest)}
@@ -791,10 +869,12 @@ defmodule ApiaryWeb.RunLive.Show do
       <% @reported -> %>
         <span id="policy-unrendered" tabindex="0" title={@tips.unrendered}>
           <small class="ml-1 font-mono">{short_digest(@reported)}</small>
-          <small>· not rendered here</small>
+          <small>· {gettext("not rendered here")}</small>
         </span>
       <% @digest -> %>
-        <small class="ml-1 font-mono" title={"sha256 #{@digest}"}>{String.slice(@digest, 0, 12)}</small>
+        <small class="ml-1 font-mono" title={gettext("sha256 %{digest}", digest: @digest)}>
+          {String.slice(@digest, 0, 12)}
+        </small>
       <% true -> %>
     <% end %>
     <.drift :if={@in_force} reported={@version} in_force={@in_force} last_seq={@last_seq} />
@@ -807,11 +887,42 @@ defmodule ApiaryWeb.RunLive.Show do
   defp clock(assigns) do
     ~H"""
     <.relative_time :if={@at} id={@id} at={@at} format="clock" />
-    <span :if={!@at} class="text-faint">n/a</span>
+    <.na :if={!@at} />
     """
   end
 
-  defp na(assigns \\ %{}), do: ~H|<span class="text-faint">n/a</span>|
+  defp na(assigns \\ %{}), do: ~H|<span class="text-faint">{gettext("n/a")}</span>|
+
+  # The tips of the page's terms, in the body's words.
+  defp tips do
+    %{
+      wall:
+        gettext(
+          "The enclosure the agent runs in. Its only route out leads to the runner's proxy."
+        ),
+      no_wall: gettext("This run had no wall. A program that ignores the proxy is not seen."),
+      mode:
+        gettext(
+          "Enforce: a connection no rule allows is denied. Observe: it is let through and recorded. A deny rule holds in either mode."
+        ),
+      digest:
+        gettext(
+          "The sha256 of the policy this run ran under. Two runs with the same digest had the same policy."
+        ),
+      terminated:
+        gettext(
+          "A host whose requests the proxy reads, because the run holds a credential or path rules for it. Every other host is a blind tunnel."
+        ),
+      lane:
+        gettext(
+          "One agent's events: the main session, or a subagent from its start to its finish."
+        ),
+      unrendered:
+        gettext(
+          "The run reported a digest that matches no version rendered here: a policy file on the machine, or a run started with --local."
+        )
+    }
+  end
 
   ## Mount and parameters
 
@@ -828,16 +939,8 @@ defmodule ApiaryWeb.RunLive.Show do
        run: nil,
        loaded_id: nil,
        loaded: false,
-       page_title: "Run",
-       tips: %{
-         wall: @wall_tip,
-         no_wall: @no_wall_tip,
-         mode: @mode_tip,
-         digest: @digest_tip,
-         terminated: @terminated_tip,
-         lane: @lane_tip,
-         unrendered: @unrendered_tip
-       },
+       page_title: gettext("Run"),
+       tips: tips(),
        confirm_close: false,
        announcement: nil,
        announced_at: nil,
@@ -848,7 +951,7 @@ defmodule ApiaryWeb.RunLive.Show do
        window_loaded: false,
        index: Timeline.new(),
        policy: nil,
-       repository: nil,
+       target: nil,
        digests: %{in_force: nil, reported: nil, applied: nil, drift: false},
        reported_version: nil,
        in_force: nil,
@@ -861,7 +964,7 @@ defmodule ApiaryWeb.RunLive.Show do
        counts: %{all: 0, allowed: 0, denied: 0, attempts: 0},
        connections: %{rows: [], page: 1, pages: 1, total: 0},
        log: %{chunks: 0, bytes: 0, through: 0, streams: []},
-       target: nil,
+       focused: nil,
        lane: nil,
        cx: true,
        decision: nil,
@@ -914,7 +1017,7 @@ defmodule ApiaryWeb.RunLive.Show do
             index: Record.timeline(scope, run),
             policy: Record.policy(scope, run),
             counts: Record.connection_counts(scope, run),
-            repository: repository_of(scope, run),
+            target: target_of(scope, run),
             versions: %{},
             effective: nil,
             acts: nil,
@@ -926,7 +1029,7 @@ defmodule ApiaryWeb.RunLive.Show do
         end
 
       :error ->
-        assign(socket, run: nil, loaded_id: run_id, page_title: "Run not found")
+        assign(socket, run: nil, loaded_id: run_id, page_title: gettext("Run not found"))
     end
   end
 
@@ -934,7 +1037,10 @@ defmodule ApiaryWeb.RunLive.Show do
     assign(socket,
       run: run,
       quiet_for: quiet_for(run),
-      page_title: "#{run.task || "Run #{short_id(run.run_id)}"} · Runs"
+      page_title:
+        gettext("%{title} · Runs",
+          title: run.task || gettext("Run %{id}", id: short_id(run.run_id))
+        )
     )
   end
 
@@ -944,7 +1050,7 @@ defmodule ApiaryWeb.RunLive.Show do
     %{index: index, run: run, live_action: tab} = socket.assigns
 
     seq = tab == :timeline && sequence(params["seq"])
-    target = seq && index.by_seq[seq]
+    focused = seq && index.by_seq[seq]
     lane = tab == :timeline && Timeline.lane(index, params["lane"])
     cx = not (tab == :timeline and params["cx"] == "0")
 
@@ -961,7 +1067,7 @@ defmodule ApiaryWeb.RunLive.Show do
     socket =
       socket
       |> assign(
-        target: target || nil,
+        focused: focused || nil,
         lane: (lane && lane.id) || nil,
         cx: cx,
         decision: decision || nil,
@@ -972,7 +1078,7 @@ defmodule ApiaryWeb.RunLive.Show do
     canonical =
       case tab do
         :timeline ->
-          put_if(timeline_query, "seq", target && Integer.to_string(seq))
+          put_if(timeline_query, "seq", focused && Integer.to_string(seq))
 
         :connections ->
           page = socket.assigns.connections.page
@@ -1009,7 +1115,7 @@ defmodule ApiaryWeb.RunLive.Show do
       connections: Record.connections(scope, run, decision: decision, page: page),
       # The effective policy is read when the tab opens and when the policy changes, and
       # every row's standing is derived from it: no query per row (pj7).
-      effective: socket.assigns.effective || Policy.effective(scope, socket.assigns.repository)
+      effective: socket.assigns.effective || Policy.effective(scope, socket.assigns.target)
     )
     |> assign_acts()
   end
@@ -1060,9 +1166,9 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp label_path(_run, "task", value), do: ~p"/hive/runs?#{%{task: value}}"
 
-  defp label_path(%Run{forge: forge, repository: repository}, key, _value)
-       when key in ~w(forge repository) and is_binary(forge) and is_binary(repository),
-       do: ~p"/hive/runs?#{Filters.repo_params(forge, repository)}"
+  defp label_path(%Run{target_system: system, target_path: path}, key, _value)
+       when key in ~w(forge repository) and is_binary(system) and is_binary(path),
+       do: ~p"/hive/runs?#{Filters.target_params(system, path)}"
 
   defp label_path(_run, _key, _value), do: nil
 
@@ -1076,13 +1182,13 @@ defmodule ApiaryWeb.RunLive.Show do
   ## The window of the timeline
 
   # The stream holds a window of the index. It is loaded when the tab opens and when the
-  # target is outside it; a parameter that only toggles a lane leaves it alone.
+  # focused item is outside it; a parameter that only toggles a lane leaves it alone.
   defp ensure_window(socket) do
-    %{target: target, window_loaded: loaded?} = socket.assigns
+    %{focused: focused, window_loaded: loaded?} = socket.assigns
 
     cond do
-      not loaded? -> reset_window(socket, target)
-      target && not in_window?(socket, target) -> reset_window(socket, target)
+      not loaded? -> reset_window(socket, focused)
+      focused && not in_window?(socket, focused) -> reset_window(socket, focused)
       true -> socket
     end
   end
@@ -1098,7 +1204,7 @@ defmodule ApiaryWeb.RunLive.Show do
 
     start =
       case around && Enum.find_index(items, &(&1.seq == around)) do
-        # Around the target, and a whole window even when the target is near the end.
+        # Around the focused item, and a whole window even when it is near the end.
         index when is_integer(index) ->
           (index - div(@window, 2)) |> min(length(items) - @window) |> max(0)
 
@@ -1136,13 +1242,13 @@ defmodule ApiaryWeb.RunLive.Show do
   # held already; any other digest costs one indexed read, and a build asks for at most
   # #{@max_versions}, whatever a runner put in its events.
   defp with_versions(items, socket) do
-    %{current_scope: scope, repository: repository, versions: known} = socket.assigns
+    %{current_scope: scope, target: target, versions: known} = socket.assigns
 
     {items, _known} =
       Enum.map_reduce(items, known, fn
         %{kind: :policy_applied} = item, known ->
-          {version, known} = lookup_version(known, scope, repository, item[:digest])
-          {previous, known} = lookup_version(known, scope, repository, item[:previous_digest])
+          {version, known} = lookup_version(known, scope, target, item[:digest])
+          {previous, known} = lookup_version(known, scope, target, item[:previous_digest])
           {Map.merge(item, %{version: version, previous_version: previous}), known}
 
         item, known ->
@@ -1152,10 +1258,10 @@ defmodule ApiaryWeb.RunLive.Show do
     items
   end
 
-  defp lookup_version(known, _scope, _repository, digest) when not is_binary(digest),
+  defp lookup_version(known, _scope, _target, digest) when not is_binary(digest),
     do: {nil, known}
 
-  defp lookup_version(known, scope, repository, digest) do
+  defp lookup_version(known, scope, target, digest) do
     case known do
       %{^digest => version} ->
         {version, known}
@@ -1164,7 +1270,7 @@ defmodule ApiaryWeb.RunLive.Show do
         {nil, known}
 
       _ ->
-        version = Rules.version(scope, repository, digest)
+        version = Rules.version(scope, target, digest)
         {version, Map.put(known, digest, version)}
     end
   end
@@ -1253,7 +1359,15 @@ defmodule ApiaryWeb.RunLive.Show do
         |> stream(:items, socket |> build(light) |> Enum.reverse(), at: 0, limit: @max_dom)
         |> assign(win_first: hd(light).seq)
         |> trim_window(:after_prepend)
-        |> announce("#{count_noun(length(light), "earlier event")} loaded.", :now)
+        |> announce(
+          ngettext(
+            "%{number} earlier event loaded.",
+            "%{number} earlier events loaded.",
+            length(light),
+            number: delimited(length(light))
+          ),
+          :now
+        )
       end
 
     {:noreply, assign_window_counts(socket)}
@@ -1314,20 +1428,20 @@ defmodule ApiaryWeb.RunLive.Show do
         {:ok, closed} ->
           socket
           |> follow_run(closed)
-          |> put_flash(:info, "Run closed.")
+          |> put_flash(:info, gettext("Run closed."))
           # The button that had focus is gone with the state it belonged to.
           |> push_event("run:focus", %{id: "run-title"})
 
         {:error, :not_closable} ->
           socket
           |> refresh_run()
-          |> put_flash(:error, "This run has ended; its record keeps the end it posted.")
+          |> put_flash(:error, gettext("This run has ended; its record keeps the end it posted."))
 
         {:error, :unauthorized} ->
-          put_flash(socket, :error, "You are no longer a member of this hive.")
+          put_flash(socket, :error, gettext("You are no longer a member of this hive."))
 
         {:error, :not_found} ->
-          put_flash(socket, :error, "This run is no longer in this hive.")
+          put_flash(socket, :error, gettext("This run is no longer in this hive."))
       end
 
     {:noreply, assign(socket, confirm_close: false)}
@@ -1368,7 +1482,7 @@ defmodule ApiaryWeb.RunLive.Show do
       ) do
     level =
       case params["for"] do
-        "repository" when not is_nil(popover.repository) -> :repository
+        "target" when not is_nil(popover.target) -> :target
         "hive" -> :hive
         _ -> popover.level
       end
@@ -1385,7 +1499,7 @@ defmodule ApiaryWeb.RunLive.Show do
         _params,
         %{assigns: %{popover: %{refusal: nil, level: level} = popover}} = socket
       )
-      when level in [:repository, :hive] do
+      when level in [:target, :hive] do
     %{current_scope: scope, run: run} = socket.assigns
 
     # What the popover said was true of the policy it opened on. It is sent only while
@@ -1405,7 +1519,7 @@ defmodule ApiaryWeb.RunLive.Show do
            popover.action,
            popover.host,
            popover.path,
-           if(level == :repository, do: "this repository", else: "the hive")
+           if(level == :target, do: :this_target, else: :hive)
          ),
          :now
        )}
@@ -1420,7 +1534,7 @@ defmodule ApiaryWeb.RunLive.Show do
         {:noreply,
          socket
          |> close_popover()
-         |> put_flash(:error, "This connection is no longer in this run.")}
+         |> put_flash(:error, gettext("This connection is no longer in this run."))}
     end
   end
 
@@ -1428,13 +1542,13 @@ defmodule ApiaryWeb.RunLive.Show do
   def handle_event(_event, _params, socket), do: {:noreply, socket}
 
   defp open_popover(socket, row, act, action) do
-    %{run: run, repository: repository, current_scope: scope, effective: effective} =
+    %{run: run, target: target, current_scope: scope, effective: effective} =
       socket.assigns
 
     path = row.path || ""
-    # The page holds the repository's policy; the hive's is read when a popover opens,
+    # The page holds the target's policy; the hive's is read when a popover opens,
     # since what a rule for the hive would be is decided by the hive's own paths.
-    baseline = if repository, do: Policy.effective(scope, nil), else: effective
+    baseline = if target, do: Policy.effective(scope, nil), else: effective
 
     assign(socket,
       popover: %{
@@ -1445,15 +1559,15 @@ defmodule ApiaryWeb.RunLive.Show do
         path: path,
         mode: Rules.mode(row),
         page: :run,
-        level: if(repository, do: :repository, else: :hive),
-        repository: repository && %{label: "#{repository.forge}/#{repository.path}"},
-        repositories: [],
+        level: if(target, do: :target, else: :hive),
+        target: target && %{label: "#{target.system}/#{target.path}"},
+        targets: [],
         choice: nil,
         what: %{
-          repository: repository && Rules.what(effective, act.host, path),
+          target: target && Rules.what(effective, act.host, path),
           hive: Rules.what(baseline, act.host, path)
         },
-        own_rule: repository != nil and Rules.own_rule?(effective, act.host),
+        own_rule: target != nil and Rules.own_rule?(effective, act.host),
         seen: {Rules.seen(effective, act.host), Rules.seen(baseline, act.host)},
         standing: act.standing,
         hive: scope.hive.name,
@@ -1519,15 +1633,15 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp deny_consequence(%{source: :hive}) do
     %{
-      repository: "Disables the hive's allow rule here. Other repositories keep it.",
-      hive: "Replaces the hive's allow rule."
+      target: gettext("Disables the hive's allow rule here. Other targets keep it."),
+      hive: gettext("Replaces the hive's allow rule.")
     }
   end
 
-  defp deny_consequence(%{source: :repository}) do
+  defp deny_consequence(%{source: :target}) do
     %{
-      repository: "Replaces this repository's allow rule.",
-      hive: "This repository's own allow rule still holds here."
+      target: gettext("Replaces this target's allow rule."),
+      hive: gettext("This target's own allow rule still holds here.")
     }
   end
 
@@ -1535,9 +1649,9 @@ defmodule ApiaryWeb.RunLive.Show do
 
   # Whether the policy is still the one the popover opened on, for the host it is about.
   defp still(socket, popover) do
-    %{current_scope: scope, repository: repository, connections: %{rows: rows}} = socket.assigns
-    effective = Policy.effective(scope, repository)
-    baseline = if repository, do: Policy.effective(scope, nil), else: effective
+    %{current_scope: scope, target: target, connections: %{rows: rows}} = socket.assigns
+    effective = Policy.effective(scope, target)
+    baseline = if target, do: Policy.effective(scope, nil), else: effective
     row = Enum.find(rows, &(&1.id == popover.connection_id))
 
     if (row && Rules.standing(row, effective, :run).standing == popover.standing) and
@@ -1549,7 +1663,7 @@ defmodule ApiaryWeb.RunLive.Show do
   defp policy_moved(socket) do
     socket
     |> close_popover()
-    |> put_flash(:error, "The policy changed; look at the row again.")
+    |> put_flash(:error, gettext("The policy changed; look at the row again."))
   end
 
   # A change of the policy under an open popover closes it when it touches its host.
@@ -1561,45 +1675,52 @@ defmodule ApiaryWeb.RunLive.Show do
   defp recheck_popover(socket), do: socket
 
   defp rule_toast(socket, popover, rule, level) do
-    %{current_scope: scope, repository: repository} = socket.assigns
-    target = if level == :repository, do: repository, else: nil
+    %{current_scope: scope, target: target} = socket.assigns
+    holder = if level == :target, do: target, else: nil
 
     where =
-      if level == :repository and repository,
-        do: "#{repository.forge}/#{repository.path}",
-        else: "the hive"
+      cond do
+        level != :target -> :hive
+        target -> {:target, "#{target.system}/#{target.path}"}
+        true -> :this_target
+      end
 
     version =
-      case Policy.list_changes(scope, target, 1) do
-        %{items: [%{version_after: n} | _]} when is_integer(n) -> " Version #{n}."
-        _ -> ""
+      case Policy.list_changes(scope, holder, 1) do
+        %{items: [%{version_after: n} | _]} when is_integer(n) ->
+          gettext("Version %{n}.", n: n)
+
+        _ ->
+          nil
       end
 
     own =
       if level == :hive and popover.own_rule,
-        do: " This repository's own rule still decides here.",
-        else: ""
+        do: gettext("This target's own rule still decides here.")
 
-    Rules.toast(rule, popover.action, popover.host, popover.path, where) <>
-      version <>
-      own <>
-      if(fetched?(socket) or not alive?(socket.assigns.run),
-        do: " Running sessions have it within a heartbeat.",
+    reach =
+      if fetched?(socket) or not alive?(socket.assigns.run),
+        do: gettext("Running sessions have it within a heartbeat."),
         else:
-          " This run uses its machine's policy; sessions that take this one have it within a heartbeat."
-      )
+          gettext(
+            "This run uses its machine's policy; sessions that take this one have it within a heartbeat."
+          )
+
+    [Rules.toast(rule, popover.action, popover.host, popover.path, where), version, own, reach]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join(" ")
   end
 
   ## The policy facts of the header and of the rows
 
-  defp repository_of(scope, %Run{repository_id: id}) when is_binary(id) do
-    case Policy.get_repository(scope, id) do
-      {:ok, repository} -> repository
+  defp target_of(scope, %Run{target_id: id}) when is_binary(id) do
+    case Policy.get_target(scope, id) do
+      {:ok, target} -> target
       _ -> nil
     end
   end
 
-  defp repository_of(_scope, _run), do: nil
+  defp target_of(_scope, _run), do: nil
 
   # A run that holds a configuration fetched from this server is one that reloads.
   defp fetched?(%{assigns: %{digests: digests}}),
@@ -1608,25 +1729,25 @@ defmodule ApiaryWeb.RunLive.Show do
   # pj8: drift is a comparison, read at mount, on each message of the policy's topic and
   # when the run reports another digest. No timer decides it.
   defp assign_policy_facts(%{assigns: %{run: %Run{} = run}} = socket) do
-    %{current_scope: scope, repository: repository, versions: known} = socket.assigns
+    %{current_scope: scope, target: target, versions: known} = socket.assigns
     digests = Rules.digests(scope, run)
 
     {reported, known} =
-      lookup_version(known, scope, repository, digests.reported || digests.applied)
+      lookup_version(known, scope, target, digests.reported || digests.applied)
 
     behind? = alive?(run) and digests.drift
 
     in_force =
       if behind? do
-        case Policy.current_configuration(scope, repository) do
-          {:ok, configuration} -> Rules.version_of(configuration, repository)
+        case Policy.current_configuration(scope, target) do
+          {:ok, configuration} -> Rules.version_of(configuration, target)
           _ -> nil
         end
       end
 
     socket =
       if in_force && is_nil(socket.assigns.in_force),
-        do: announce(socket, "This run is behind the policy in force.", :now),
+        do: announce(socket, gettext("This run is behind the policy in force."), :now),
         else: socket
 
     assign(socket,
@@ -1640,11 +1761,11 @@ defmodule ApiaryWeb.RunLive.Show do
   defp assign_policy_facts(socket), do: socket
 
   defp refresh_policy(%{assigns: %{run: %Run{}, loaded: true}} = socket) do
-    %{current_scope: scope, repository: repository, live_action: tab} = socket.assigns
+    %{current_scope: scope, target: target, live_action: tab} = socket.assigns
     socket = assign_policy_facts(socket)
 
     if tab == :connections,
-      do: socket |> assign(effective: Policy.effective(scope, repository)) |> assign_acts(),
+      do: socket |> assign(effective: Policy.effective(scope, target)) |> assign_acts(),
       else: assign(socket, effective: nil)
   end
 
@@ -1652,9 +1773,9 @@ defmodule ApiaryWeb.RunLive.Show do
 
   # What each row of the page may ask, and the line after the rows a rule already answers.
   defp assign_acts(%{assigns: %{effective: %Policy.Effective{} = effective}} = socket) do
-    %{current_scope: scope, repository: repository, connections: %{rows: rows}} = socket.assigns
+    %{current_scope: scope, target: target, connections: %{rows: rows}} = socket.assigns
     standings = Enum.map(rows, &{&1, Rules.standing(&1, effective, :run)})
-    changes = Rules.changes(scope, repository, Enum.map(standings, &elem(&1, 1)))
+    changes = Rules.changes(scope, target, Enum.map(standings, &elem(&1, 1)))
 
     standings =
       for {row, standing} <- standings, do: {row, Rules.answered(standing, row, changes)}
@@ -1671,24 +1792,24 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp act(socket, row, %{standing: {:rule_added, action}, entry: entry} = standing, changes)
        when not is_nil(entry) do
-    %{repository: repository, current_scope: scope} = socket.assigns
-    target_id = if entry.source == :repository and repository, do: repository.id
+    %{target: target, current_scope: scope} = socket.assigns
+    holder_id = if entry.source == :target and target, do: target.id
     change = Rules.change_for(entry, changes)
 
     standing
     |> Map.merge(%{
       values: %{"id" => row.id},
       entry_host: entry.host,
-      rule_path: Rules.rule_path(target_id, entry.host),
+      rule_path: Rules.rule_path(holder_id, entry.host),
       after: %{
         action: action,
-        level: if(entry.source == :repository, do: :repository, else: :hive),
+        level: if(entry.source == :target, do: :target, else: :hive),
         version:
           change && is_integer(change.version) &&
             %{
               n: change.version,
-              path: Rules.version_path(target_id, change.version),
-              label: Rules.version_label(target_id, repository)
+              path: Rules.version_path(holder_id, change.version),
+              label: Rules.version_label(holder_id, target)
             },
         by: change && who(change, scope),
         at: (change && change.at) || (entry.rule && entry.rule.updated_at),
@@ -1707,7 +1828,7 @@ defmodule ApiaryWeb.RunLive.Show do
     })
   end
 
-  defp who(%{by_id: id}, %{user: %{id: id}}) when not is_nil(id), do: "you"
+  defp who(%{by_id: id}, %{user: %{id: id}}) when not is_nil(id), do: gettext("you")
   defp who(%{by: email}, _scope) when is_binary(email), do: email |> String.split("@") |> hd()
   defp who(_change, _scope), do: nil
 
@@ -1730,12 +1851,12 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp reloaded_at(_socket), do: nil
 
-  defp comparable?(%{repository_id: id}, %{repository_id: id}), do: true
+  defp comparable?(%{target_id: id}, %{target_id: id}), do: true
   defp comparable?(_reported, _in_force), do: false
 
   defp behind_path(reported, in_force) do
     if comparable?(reported, in_force),
-      do: Rules.version_path(in_force.repository_id, in_force.n, %{"compare" => reported.n}),
+      do: Rules.version_path(in_force.target_id, in_force.n, %{"compare" => reported.n}),
       else: in_force.path
   end
 
@@ -1780,7 +1901,7 @@ defmodule ApiaryWeb.RunLive.Show do
 
         socket =
           if is_nil(was) and now != nil,
-            do: announce(socket, "No heartbeat for #{now} s.", :now),
+            do: announce(socket, gettext("No heartbeat for %{seconds} s.", seconds: now), :now),
             else: socket
 
         socket = assign(socket, quiet_for: now)
@@ -1855,7 +1976,7 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp announce_change(socket, %Run{state: state}, %Run{state: state} = run, was_quiet?) do
     if was_quiet? and is_nil(quiet_for(run)) and state == "running",
-      do: announce(socket, "Heartbeats resumed.", :now),
+      do: announce(socket, gettext("Heartbeats resumed."), :now),
       else: socket
   end
 
@@ -1864,26 +1985,26 @@ defmodule ApiaryWeb.RunLive.Show do
   end
 
   defp state_sentence(%Run{state: "succeeded", duration_ms: ms}) when is_integer(ms),
-    do: "Run succeeded after #{format_duration_ms(ms)}."
+    do: gettext("Run succeeded after %{duration}.", duration: format_duration_ms(ms))
 
-  defp state_sentence(%Run{state: "succeeded"}), do: "Run succeeded."
+  defp state_sentence(%Run{state: "succeeded"}), do: gettext("Run succeeded.")
 
   defp state_sentence(%Run{state: "failed", signal: signal}) when is_binary(signal),
-    do: "Run failed with #{signal}."
+    do: gettext("Run failed with %{signal}.", signal: signal)
 
   defp state_sentence(%Run{state: "failed", exit_code: code}) when is_integer(code),
-    do: "Run failed with exit #{code}."
+    do: gettext("Run failed with exit %{code}.", code: code)
 
-  defp state_sentence(%Run{state: "failed"}), do: "Run failed."
-  defp state_sentence(%Run{state: "timed_out"}), do: "Run timed out."
+  defp state_sentence(%Run{state: "failed"}), do: gettext("Run failed.")
+  defp state_sentence(%Run{state: "timed_out"}), do: gettext("Run timed out.")
 
   defp state_sentence(%Run{state: "lost", heartbeat_interval_seconds: interval})
        when is_integer(interval),
-       do: "Run lost. No heartbeat for #{interval * 3} s."
+       do: gettext("Run lost. No heartbeat for %{seconds} s.", seconds: interval * 3)
 
-  defp state_sentence(%Run{state: "lost"}), do: "Run lost."
-  defp state_sentence(%Run{state: "closed"}), do: "Run closed."
-  defp state_sentence(%Run{state: "running"}), do: "Run started."
+  defp state_sentence(%Run{state: "lost"}), do: gettext("Run lost.")
+  defp state_sentence(%Run{state: "closed"}), do: gettext("Run closed.")
+  defp state_sentence(%Run{state: "running"}), do: gettext("Run started.")
   defp state_sentence(%Run{}), do: nil
 
   defp announce(socket, nil, _when), do: socket
@@ -1931,11 +2052,11 @@ defmodule ApiaryWeb.RunLive.Show do
 
       rows ->
         types = MapSet.new(rows, & &1.type)
-        egress? = "ai.qory.run.egress" in types
+        egress? = "dev.qory.run.egress" in types
 
         socket
         |> then(
-          &if("ai.qory.run.policy_applied" in types,
+          &if("dev.qory.run.policy_applied" in types,
             do: &1 |> assign(policy: Record.policy(scope, run)) |> announce_reload() |> reline(),
             else: &1
           )
@@ -1966,9 +2087,18 @@ defmodule ApiaryWeb.RunLive.Show do
     version = socket.assigns.versions[socket.assigns.run.run_configuration_digest]
 
     cond do
-      not reload? -> socket
-      version -> announce(socket, "The run reloaded its policy: version #{version.n}.", :now)
-      true -> announce(socket, "The run reloaded its policy.", :now)
+      not reload? ->
+        socket
+
+      version ->
+        announce(
+          socket,
+          gettext("The run reloaded its policy: version %{n}.", n: version.n),
+          :now
+        )
+
+      true ->
+        announce(socket, gettext("The run reloaded its policy."), :now)
     end
   end
 
@@ -1992,14 +2122,14 @@ defmodule ApiaryWeb.RunLive.Show do
   end
 
   defp flush_tab(socket, :connections, _old, types, _range) do
-    if "ai.qory.run.egress" in types,
+    if "dev.qory.run.egress" in types,
       do:
         read_tab(socket, :connections, socket.assigns.decision, socket.assigns.connections.page),
       else: socket
   end
 
   defp flush_tab(socket, :details, _old, types, _range) do
-    if "ai.qory.session.started" in types,
+    if "dev.qory.session.started" in types,
       do: read_tab(socket, :details, nil, 1),
       else: socket
   end
@@ -2012,7 +2142,7 @@ defmodule ApiaryWeb.RunLive.Show do
 
     if is_nil(first) do
       # Nothing was on the page yet: the window starts with what arrived.
-      reset_window(socket, socket.assigns.target)
+      reset_window(socket, socket.assigns.focused)
     else
       old_in_window =
         for item <- old.items,
@@ -2040,7 +2170,12 @@ defmodule ApiaryWeb.RunLive.Show do
         true ->
           socket
           |> assign(new_count: socket.assigns.new_count + length(appended))
-          |> announce("#{count_noun(length(appended), "new event")}.", :throttled)
+          |> announce(
+            ngettext("%{number} new event.", "%{number} new events.", length(appended),
+              number: delimited(length(appended))
+            ),
+            :throttled
+          )
       end
     end
   end
@@ -2050,19 +2185,21 @@ defmodule ApiaryWeb.RunLive.Show do
   defp alive?(%Run{state: state}), do: state in Run.alive_states()
   defp ended?(%Run{state: state}), do: state in ~w(succeeded failed timed_out)
 
-  defp exit_value(%Run{reason: "timeout"}), do: "timeout"
-  defp exit_value(%Run{reason: "runner_lost"}), do: "runner lost"
+  defp exit_value(%Run{reason: "timeout"}), do: gettext("timeout")
+  defp exit_value(%Run{reason: "runner_lost"}), do: gettext("runner lost")
   defp exit_value(%Run{signal: signal}) when is_binary(signal) and signal != "", do: signal
   defp exit_value(%Run{exit_code: code}) when is_integer(code), do: Integer.to_string(code)
-  defp exit_value(_run), do: "n/a"
+  defp exit_value(_run), do: gettext("n/a")
 
-  defp connections_count(%{denied: denied}) when denied > 0, do: "#{delimited(denied)} denied"
+  defp connections_count(%{denied: denied}) when denied > 0,
+    do: ngettext("%{number} denied", "%{number} denied", denied, number: delimited(denied))
+
   defp connections_count(%{all: all}) when all > 0, do: delimited(all)
   defp connections_count(_counts), do: nil
 
-  defp interactive_words(true), do: "Yes, on a pseudo-terminal"
-  defp interactive_words(false), do: "No, on pipes"
-  defp interactive_words(_unknown), do: "n/a"
+  defp interactive_words(true), do: gettext("Yes, on a pseudo-terminal")
+  defp interactive_words(false), do: gettext("No, on pipes")
+  defp interactive_words(_unknown), do: gettext("n/a")
 
   defp join(parts), do: parts |> Enum.reject(&is_nil/1) |> Enum.join(" ")
 
@@ -2071,7 +2208,11 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp strings(shown, count) when is_list(shown) do
     more = (count || 0) - length(shown)
-    Enum.join(shown, ", ") <> if(more > 0, do: " and #{delimited(more)} more", else: "")
+    list = Enum.join(shown, ", ")
+
+    if more > 0,
+      do: gettext("%{list} and %{number} more", list: list, number: delimited(more)),
+      else: list
   end
 
   defp strings(_other, _count), do: nil

@@ -8,7 +8,7 @@ Everywhere. Four kinds are the most useful:
 
 - **A page or a context feature of the console.** A LiveView under `lib/apiary_web/live/`
   or a function in one of the contexts under `lib/apiary/`, with its test. The console is
-  what an organisation sees: its hive, the members, the access keys, the settings.
+  what an organisation sees: its workplace, the members, the access keys, the settings.
 - **The receiver of the server contract.** Discovery and the events endpoint exist; the run
   configuration, which the discovery document does not name yet, is the next endpoint to
   build, behind the same signed request. What the endpoints assume beyond the contract is
@@ -58,7 +58,8 @@ mix test                           # creates and migrates the test database, the
 mix format                         # CI runs mix format --check-formatted
 mix compile --warnings-as-errors
 mix docs --warnings-as-errors      # the guides and the module reference, into priv/static/docs
-mix precommit                      # the four above plus deps.unlock --unused; run it before a pull request
+mix gettext.extract --merge        # after changing a visible string; see docs/lingo.md
+mix precommit                      # the above plus deps.unlock --unused and the Gettext check; run it before a pull request
 mix phx.server                     # http://localhost:4100
 ```
 
@@ -93,6 +94,9 @@ The web side is under `lib/apiary_web/`:
 - `controllers/`: health, the home page, and the session controllers.
 - `components/`: `core_components.ex` and the layouts. A page composes these; it does not
   write its own button.
+- `lingo.ex`: the body's words. Every visible string goes through Gettext in engine words,
+  and `priv/gettext/en@software/` says them in the software body's; see
+  [docs/lingo.md](docs/lingo.md).
 - `router.ex` and `user_auth.ex`: the pipelines, the `live_session` blocks, and what a
   mount loads into the scope.
 
@@ -186,8 +190,9 @@ what answers the events URL; **run configuration** is what the runner fetches be
 **security policy** is `SECURITY.md`. An organisation is never a team, a tenant in prose, a
 workspace or an account; a hive is never a team or a project; an access key is never an
 API key or a token; a secret is never a password. The product surface is the one place
-with other words: there an organisation is an **apiary** and a hive is a **hive**, and a
-page, an email or a flash says those and nothing else. Code, schemas, migrations and this
+with other words: a page, an email or a flash says a body's words through Gettext, and the
+software body calls a hive a **workplace** ([docs/lingo.md](docs/lingo.md)). So do the
+guides, which are written in the software body's words. Code, schemas, migrations and this
 file say organisation and hive.
 
 ## Releases

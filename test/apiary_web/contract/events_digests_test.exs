@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.Contract.EventsDigestsTest do
   @moduledoc """
   F1 and F2: every answer to a batch names the run configuration in force for the run's
-  repository, and what the run reported is kept per batch and on the run.
+  target, and what the run reported is kept per batch and on the run.
   """
   use ApiaryWeb.ConnCase, async: true
 
@@ -13,34 +13,34 @@ defmodule ApiaryWeb.Contract.EventsDigestsTest do
   alias Apiary.Policy
   alias Apiary.Repo
   alias Apiary.Runs
-  alias Apiary.Runs.{Delivery, Projector, Repository, Run}
+  alias Apiary.Runs.{Delivery, Projector, Target, Run}
   alias ApiaryWeb.Contract.Configuration
 
   setup do
     %{scope: scope} = sign_up_fixture()
     %{access_key: key, secret: secret} = access_key_fixture(scope)
 
-    # The repository of `first_events/1`'s labels, with a rule of its own.
-    repository =
-      Repo.insert!(%Repository{
+    # The target of `first_events/1`'s labels, with a rule of its own.
+    target =
+      Repo.insert!(%Target{
         organisation_id: scope.organisation.id,
         hive_id: scope.hive.id,
-        forge: "git.example.com",
+        system: "git.example.com",
         path: "acme/shop",
         first_seen_at: DateTime.utc_now()
       })
 
     {:ok, _} = Policy.allow(scope, nil, %{host: "api.example"})
-    {:ok, _} = Policy.allow(scope, repository, %{host: "mcp.example"})
+    {:ok, _} = Policy.allow(scope, target, %{host: "mcp.example"})
     {:ok, %{digest: baseline}} = Policy.current_configuration(scope, nil)
-    {:ok, %{digest: own}} = Policy.current_configuration(scope, repository)
+    {:ok, %{digest: own}} = Policy.current_configuration(scope, target)
     assert baseline != own
 
     %{
       scope: scope,
       key: key,
       secret: secret,
-      repository: repository,
+      target: target,
       baseline: baseline,
       own: own
     }
@@ -72,13 +72,13 @@ defmodule ApiaryWeb.Contract.EventsDigestsTest do
     assert in_force(deliver(ctx, [ping], run_configuration: stale)) == [ctx.baseline]
   end
 
-  test "the batch that starts the run is answered its repository's digest, before any projection",
+  test "the batch that starts the run is answered its target's digest, before any projection",
        ctx do
     {_subject, [_ping, started]} = first_events()
     assert in_force(deliver(ctx, [started])) == [ctx.own]
   end
 
-  test "once projected, the run's repository decides, and a change of policy changes the answer",
+  test "once projected, the run's target decides, and a change of policy changes the answer",
        ctx do
     {subject, [ping, started]} = first_events()
     deliver(ctx, [ping, started], run_configuration: ctx.own)
@@ -90,7 +90,7 @@ defmodule ApiaryWeb.Contract.EventsDigestsTest do
     assert in_force(deliver(ctx, [heartbeat], run_configuration: ctx.own)) == [ctx.own]
 
     {:ok, _} = Policy.allow(ctx.scope, nil, %{host: "cdn.example"})
-    {:ok, %{digest: next}} = Policy.current_configuration(ctx.scope, ctx.repository)
+    {:ok, %{digest: next}} = Policy.current_configuration(ctx.scope, ctx.target)
     assert next != ctx.own
 
     heartbeat =
@@ -136,7 +136,7 @@ defmodule ApiaryWeb.Contract.EventsDigestsTest do
     assert run!(ctx, subject).reported_run_configuration_digest == ctx.own
   end
 
-  test "a 410 carries both digests, the run configuration's for the closed run's repository",
+  test "a 410 carries both digests, the run configuration's for the closed run's target",
        ctx do
     {subject, [ping, started]} = first_events()
     deliver(ctx, [ping, started])

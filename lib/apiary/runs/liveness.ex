@@ -115,7 +115,7 @@ defmodule Apiary.Runs.Liveness do
   defp running_silent(now) do
     started =
       from e in Event,
-        where: e.run_id == parent_as(:run).id and e.type == "ai.qory.run.started",
+        where: e.run_id == parent_as(:run).id and e.type == "dev.qory.run.started",
         order_by: e.sequence,
         limit: 1,
         select: e.received_at

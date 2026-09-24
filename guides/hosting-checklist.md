@@ -30,7 +30,7 @@ being one. Every variable named here is described in [Install and configure](ins
 
 - **Health.** Point the load balancer or the monitor at `GET /health`: `200` with
   `"status":"ok"` when the database answers, `503` when it does not. It needs no
-  credentials and says nothing about any hive.
+  credentials and says nothing about any workplace.
 - **Logs.** The release writes one JSON object per line on stdout. Ship them as they are.
   A line never holds a request's headers or body, and the paths that carry a credential
   are rewritten before they are logged.
@@ -38,11 +38,13 @@ being one. Every variable named here is described in [Install and configure](ins
   organisation of their own; they see nothing of any other. Until sign-up can be closed by
   configuration, restrict who reaches `/users/register` at the reverse proxy if the
   instance is for one company.
-- **Retention.** Decide it per hive before the database decides it for you:
+- **Retention.** Decide it per workplace before the database decides it for you:
   [Retention](retention.md). Log output is most of what a run stores.
 - **The size of a request.** The receiver takes batches of up to 2 MiB; a proxy with a
   smaller limit on request bodies turns them into errors the runner retries for ever.
-  Allow at least 2 MiB on `/v1/events`.
+  Allow at least 2 MiB on `/v1/events`. Runner 0.5.0 and later sends every label
+  of a run in the query of `/v1/run-configuration`, which makes a request line of up to
+  about 13 KB; the release takes 16 KiB, and a proxy has to take as much.
 - **WebSockets.** The console is LiveView: the proxy has to pass the `Upgrade` header on
   `/live`, and should not cut idle connections before 60 seconds.
 
@@ -56,7 +58,7 @@ boot the same release at the same moment when its changelog says a migration bui
 
 ## Several nodes
 
-One node is enough for a hive of any size this release was tested with. With more than one,
-set `DNS_CLUSTER_QUERY` so the nodes find each other and a page on one node hears of a run
-received on another. The lost-run check and the retention job are safe on several nodes:
-each change is one statement or under a lock, and one node does the work.
+One node is enough for a workplace of any size this release was tested with. With more
+than one, set `DNS_CLUSTER_QUERY` so the nodes find each other and a page on one node
+hears of a run received on another. The lost-run check and the retention job are safe on
+several nodes: each change is one statement or under a lock, and one node does the work.

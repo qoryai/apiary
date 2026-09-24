@@ -12,16 +12,11 @@ defmodule ApiaryWeb.CoreComponents do
   use Phoenix.Component
   use Gettext, backend: ApiaryWeb.Gettext
 
+  import ApiaryWeb.RichText
+
   alias Phoenix.LiveView.JS
 
   # Qory's words and the standard term they show on hover.
-  @terms %{
-    "apiary" => "organisation",
-    "apiaries" => "organisations",
-    "hive" => "workplace",
-    "hives" => "teams"
-  }
-
   ## Brand
 
   @doc """
@@ -92,17 +87,16 @@ defmodule ApiaryWeb.CoreComponents do
   @doc """
   Renders one of Qory's words with its standard term on hover and focus.
 
-      <.term word="apiary" />     # apiary, with "organisation" as the tip
-      <.term word="Hive" />       # Hive, with "workplace" as the tip
+      <.term word="wall" standard="The enclosure the agent runs in." />
+
+  Not a way to show the tenant or the hive: a page says organisation and hive through
+  Gettext, and the body's catalogue says workplace (`docs/lingo.md`).
   """
   attr :word, :string, required: true
-  attr :standard, :string, default: nil, doc: "override the standard term"
+  attr :standard, :string, required: true, doc: "the standard term, or what the word means"
   attr :class, :any, default: nil
 
   def term(assigns) do
-    standard = assigns.standard || Map.get(@terms, String.downcase(assigns.word), assigns.word)
-    assigns = assign(assigns, :standard, standard)
-
     ~H"""
     <abbr
       class={["term tooltip", @class]}
@@ -278,12 +272,12 @@ defmodule ApiaryWeb.CoreComponents do
           tabindex="-1"
           phx-mounted={JS.focus()}
         >
-          Check your email
+          {gettext("Check your email")}
         </h1>
         <p class="text-sm/5 text-muted">{render_slot(@inner_block)}</p>
       </div>
       <.button :if={@on_back} variant="ghost" size="md" class="btn-block" phx-click={@on_back}>
-        Use a different email
+        {gettext("Use a different email")}
       </.button>
     </div>
     """
@@ -295,10 +289,13 @@ defmodule ApiaryWeb.CoreComponents do
   def dev_mailbox_note(assigns) do
     ~H"""
     <p :if={local_mail_adapter?()} class="text-center text-[12.5px]/[18px] text-faint">
-      Dev: sent mail is in the <a
-        href="/dev/mailbox"
-        class="underline decoration-line-field underline-offset-[3px] hover:text-base-content"
-      >mailbox</a>.
+      <.rich text={
+        rich_gettext("Dev: sent mail is in the %{mailbox}.",
+          mailbox:
+            {:href, "/dev/mailbox", gettext("mailbox"),
+             "underline decoration-line-field underline-offset-[3px] hover:text-base-content"}
+        )
+      } />
     </p>
     """
   end
@@ -391,10 +388,13 @@ defmodule ApiaryWeb.CoreComponents do
   attr :id, :string, required: true
   attr :text, :string, default: nil
   attr :target, :string, default: nil, doc: "a CSS selector whose text content is copied"
-  attr :label, :string, default: "Copy"
+  attr :label, :string, default: nil, doc: "defaults to Copy"
   attr :icon_only, :boolean, default: false
   attr :placement, :string, default: "top"
   attr :class, :any, default: nil
+
+  def copy_button(%{label: nil} = assigns),
+    do: copy_button(assign(assigns, :label, gettext("Copy")))
 
   def copy_button(%{icon_only: true} = assigns) do
     ~H"""
@@ -403,6 +403,7 @@ defmodule ApiaryWeb.CoreComponents do
         id={@id}
         type="button"
         phx-hook="CopyToClipboard"
+        data-copied-words={gettext("Copied")}
         data-copy={@text}
         data-copy-target={@target}
         class="copy-btn btn btn-ghost btn-xs btn-square"
@@ -422,6 +423,7 @@ defmodule ApiaryWeb.CoreComponents do
       id={@id}
       type="button"
       phx-hook="CopyToClipboard"
+      data-copied-words={gettext("Copied")}
       data-copy={@text}
       data-copy-target={@target}
       class={["copy-btn btn btn-ghost btn-xs btn-keep font-sans", @class]}
@@ -429,7 +431,7 @@ defmodule ApiaryWeb.CoreComponents do
       <span class="copy-idle">
         <.icon name="hero-clipboard-document-micro" class="size-4" />{@label}
       </span>
-      <span class="copy-done"><.icon name="hero-check-micro" class="size-4" />Copied</span>
+      <span class="copy-done"><.icon name="hero-check-micro" class="size-4" />{gettext("Copied")}</span>
       <span class="sr-only" aria-live="polite"></span>
     </button>
     """
@@ -604,7 +606,7 @@ defmodule ApiaryWeb.CoreComponents do
     ~H"""
     <label for={@for} class="text-[13px]/[18px] font-medium">
       {render_slot(@inner_block)}
-      <span :if={@optional} class="font-normal text-faint">(optional)</span>
+      <span :if={@optional} class="font-normal text-faint">{gettext("(optional)")}</span>
     </label>
     """
   end
@@ -782,7 +784,7 @@ defmodule ApiaryWeb.CoreComponents do
         </span>
         <div class="min-w-0">
           <p class="text-[13.5px]/6 font-medium">
-            <span :if={n < @current} class="sr-only">Done:</span>
+            <span :if={n < @current} class="sr-only">{gettext("Done:")}</span>
             {step.title}
           </p>
           <p :if={step.inner_block} class="text-[13px]/[18px] text-muted">{render_slot(step)}</p>
@@ -916,7 +918,7 @@ defmodule ApiaryWeb.CoreComponents do
   attr :id, :string, default: nil
   attr :code, :string, required: true
   attr :label, :string, default: nil
-  attr :copy_label, :string, default: "Copy block"
+  attr :copy_label, :string, default: nil, doc: "defaults to Copy block"
   attr :class, :any, default: nil
 
   def code_block(assigns) do
@@ -929,7 +931,12 @@ defmodule ApiaryWeb.CoreComponents do
         if(@id, do: "py-1.5", else: "py-2.5")
       ]}>
         <span>{@label}</span>
-        <.copy_button :if={@id} id={"#{@id}-copy"} text={@code} label={@copy_label} />
+        <.copy_button
+          :if={@id}
+          id={"#{@id}-copy"}
+          text={@code}
+          label={@copy_label || gettext("Copy block")}
+        />
       </div>
       <pre
         id={@id}
@@ -1196,14 +1203,23 @@ defmodule ApiaryWeb.CoreComponents do
     days = Date.diff(DateTime.to_date(now), DateTime.to_date(at))
 
     cond do
-      seconds < 60 -> "Just now"
-      seconds < 120 -> "1 minute ago"
-      seconds < 3600 -> "#{div(seconds, 60)} minutes ago"
-      days == 0 and seconds < 7200 -> "1 hour ago"
-      days == 0 -> "#{div(seconds, 3600)} hours ago"
-      days == 1 -> "Yesterday, #{Calendar.strftime(at, "%H:%M")}"
-      days <= 7 -> "#{days} days ago"
-      true -> short_date(at)
+      seconds < 60 ->
+        gettext("Just now")
+
+      seconds < 3600 ->
+        ngettext("%{count} minute ago", "%{count} minutes ago", div(seconds, 60))
+
+      days == 0 ->
+        ngettext("%{count} hour ago", "%{count} hours ago", div(seconds, 3600))
+
+      days == 1 ->
+        gettext("Yesterday, %{time}", time: Calendar.strftime(at, "%H:%M"))
+
+      days <= 7 ->
+        ngettext("%{count} day ago", "%{count} days ago", days)
+
+      true ->
+        short_date(at)
     end
   end
 

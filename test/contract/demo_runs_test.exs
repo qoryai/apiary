@@ -52,7 +52,7 @@ defmodule Apiary.Contract.DemoRunsTest do
       events = events(@file_path)
       [%{"subject" => subject, "type" => first} | _] = events
 
-      assert first == "ai.qory.ping"
+      assert first == "dev.qory.ping"
       assert Enum.all?(events, &(&1["subject"] == subject))
       assert Enum.all?(events, &(&1["source"] == "urn:qory:run:" <> subject))
 

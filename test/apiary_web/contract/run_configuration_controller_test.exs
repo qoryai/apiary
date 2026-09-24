@@ -8,7 +8,7 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
   alias Apiary.Policy
   alias Apiary.Policy.{Render, RunConfiguration, Schema}
   alias Apiary.Repo
-  alias Apiary.Runs.Repository
+  alias Apiary.Runs.Target
   alias ApiaryWeb.Contract.Configuration
 
   @path "/v1/run-configuration"
@@ -19,19 +19,19 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
     %{scope: scope, key: key, secret: secret}
   end
 
-  defp repository_fixture(scope, forge, path) do
-    Repo.insert!(%Repository{
+  defp target_fixture(scope, system, path) do
+    Repo.insert!(%Target{
       organisation_id: scope.organisation.id,
       hive_id: scope.hive.id,
-      forge: forge,
+      system: system,
       path: path,
       first_seen_at: DateTime.utc_now()
     })
   end
 
   defp fetch(ctx, query, opts \\ []) do
-    target = if query == "", do: @path, else: @path <> "?" <> query
-    signed_get(build_conn(), ctx.key.key_id, ctx.secret, target, opts)
+    url = if query == "", do: @path, else: @path <> "?" <> query
+    signed_get(build_conn(), ctx.key.key_id, ctx.secret, url, opts)
   end
 
   defp allow(conn), do: Jason.decode!(conn.resp_body)["security_policy"]["egress"]["allow"]
@@ -72,7 +72,7 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
     assert digest == Render.digest(conn.resp_body)
     assert get_resp_header(conn, "etag") == [~s("#{digest}")]
     assert get_resp_header(conn, "x-qory-configuration") == [Configuration.digest(true)]
-    assert [%RunConfiguration{version: 1, repository_id: nil}] = Repo.all(RunConfiguration)
+    assert [%RunConfiguration{version: 1, target_id: nil}] = Repo.all(RunConfiguration)
   end
 
   test "a key over its rate is 429 with Retry-After, from the events endpoint's bucket", ctx do
@@ -108,9 +108,9 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
     assert get_resp_header(conn, "x-qory-run-configuration") == [stored.digest]
   end
 
-  test "a repository with rules of its own gets its own; any other gets the baseline", ctx do
-    shop = repository_fixture(ctx.scope, "github.example", "acme/site")
-    _plain = repository_fixture(ctx.scope, "github.example", "acme/docs")
+  test "a target with rules of its own gets its own; any other gets the baseline", ctx do
+    shop = target_fixture(ctx.scope, "github.example", "acme/site")
+    _plain = target_fixture(ctx.scope, "github.example", "acme/docs")
     {:ok, _} = Policy.allow(ctx.scope, nil, %{host: "api.example"})
     {:ok, _} = Policy.allow(ctx.scope, shop, %{host: "mcp.example"})
 
@@ -140,8 +140,8 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
     end
   end
 
-  test "a repository with a mode of its own is served it; an unknown one gets the hive's", ctx do
-    site = repository_fixture(ctx.scope, "github.example", "acme/site")
+  test "a target with a mode of its own is served it; an unknown one gets the hive's", ctx do
+    site = target_fixture(ctx.scope, "github.example", "acme/site")
     {:ok, _} = Policy.set_mode(ctx.scope, site, "enforce")
     mode = fn conn -> Jason.decode!(conn.resp_body)["security_policy"]["egress"]["mode"] end
 
@@ -155,6 +155,33 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
     assert mode.(fetch(ctx, "forge=github.example&repository=acme%2Funknown")) == "enforce"
   end
 
+  test "every label is a parameter, and the body says which name the target",
+       ctx do
+    shop = target_fixture(ctx.scope, "git.example.com", "acme/shop")
+    {:ok, _} = Policy.allow(ctx.scope, nil, %{host: "api.example"})
+    {:ok, _} = Policy.allow(ctx.scope, shop, %{host: "mcp.example"})
+
+    # The labels in any order, the software body's two among them: the target's own.
+    for query <- [
+          "forge=git.example.com&issue=77&repository=acme%2Fshop&task=fix",
+          "task=fix&repository=acme%2Fshop&issue=77&forge=git.example.com"
+        ] do
+      assert allow(fetch(ctx, query)) == ["api.example", "mcp.example"], query
+    end
+
+    # Labels that do not name a target, however many: the baseline.
+    for query <- [
+          "issue=77&task=fix",
+          "issue=77&repository=acme%2Fshop&task=fix",
+          "forge=git.example.com&issue=77&task=fix",
+          "system=git.example.com&path=acme%2Fshop&task=fix"
+        ] do
+      conn = fetch(ctx, query)
+      assert conn.status == 200, query
+      assert allow(conn) == ["api.example"], query
+    end
+  end
+
   test "never a 304: a matching If-None-Match is answered 200 with the document", ctx do
     {:ok, _} = Policy.allow(ctx.scope, nil, %{host: "api.example"})
     first = fetch(ctx, "")
@@ -166,7 +193,7 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
   end
 
   test "another hive's key gets its own hive's configuration", ctx do
-    shop = repository_fixture(ctx.scope, "github.example", "acme/site")
+    shop = target_fixture(ctx.scope, "github.example", "acme/site")
     {:ok, _} = Policy.allow(ctx.scope, shop, %{host: "mcp.example"})
 
     %{scope: other} = sign_up_fixture()

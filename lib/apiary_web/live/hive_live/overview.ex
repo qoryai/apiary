@@ -28,7 +28,7 @@ defmodule ApiaryWeb.HiveLive.Overview do
   import ApiaryWeb.OverviewComponents
 
   import ApiaryWeb.RunComponents,
-    only: [rule_popover: 1, quiet_for: 2, beat: 1, count_noun: 2, delimited: 1]
+    only: [rule_popover: 1, quiet_for: 2, beat: 1, delimited: 1]
 
   alias Apiary.AccessKeys
   alias Apiary.AccessKeys.AccessKey
@@ -85,8 +85,9 @@ defmodule ApiaryWeb.HiveLive.Overview do
         <.header>
           {@current_scope.hive.name}
           <:subtitle>
-            The <.term word="hive" /> of the {@current_scope.organisation.name}
-            <.term word="apiary" />.
+            {gettext("The hive of the %{organisation} organisation.",
+              organisation: @current_scope.organisation.name
+            )}
           </:subtitle>
         </.header>
 
@@ -121,12 +122,12 @@ defmodule ApiaryWeb.HiveLive.Overview do
 
           <div class="q-grid2">
             <section class="q-sect" id="overview-activity" aria-labelledby="overview-activity-h">
-              <h2 class="sr-only" id="overview-activity-h">Activity</h2>
+              <h2 class="sr-only" id="overview-activity-h">{gettext("Activity")}</h2>
               <div class="q-part">
                 <%= cond do %>
                   <% @failed[:activity] -> %>
                     <.notice kind={:info}>
-                      <span id="activity-error">This could not be loaded. Reload the page; if it keeps happening, the server log has the reason.</span>
+                      <span id="activity-error">{not_loaded()}</span>
                     </.notice>
                   <% @alive_runs -> %>
                     <.alive_rows
@@ -137,7 +138,7 @@ defmodule ApiaryWeb.HiveLive.Overview do
                     />
                   <% true -> %>
                     <div class="q-part-h">
-                      <h3>Alive now</h3>
+                      <h3>{gettext("Alive now")}</h3>
                     </div>
                     <.skeleton_lines lines={3} />
                 <% end %>
@@ -153,23 +154,24 @@ defmodule ApiaryWeb.HiveLive.Overview do
               </div>
               <div class="q-part">
                 <p class="q-foot" id="activity-foot">
-                  Counted from the hive's runs by the day they started, UTC.
-                  <span class="q-live-on">Updated as batches land.</span>
-                  <span class="q-live-off">Reconnecting.</span>
+                  {gettext("Counted from the hive's runs by the day they started, UTC.")}
+                  <span class="q-live-on">{gettext("Updated as batches land.")}</span>
+                  <span class="q-live-off">{gettext("Reconnecting.")}</span>
                   <span :if={@connections == :unavailable} id="activity-uncounted" class="text-muted">
-                    Denied destinations were not counted: this hive recorded more than {delimited(
-                      Policy.Activity.cap()
-                    )} connections in 7 days. The connections page counts them by destination.
+                    {gettext(
+                      "Denied destinations were not counted: this hive recorded more than %{cap} connections in 7 days. The connections page counts them by destination.",
+                      cap: delimited(Policy.Activity.cap())
+                    )}
                   </span>
                 </p>
               </div>
             </section>
             <div class="q-stack">
               <%= if @failed[:policy] do %>
-                <.sect id="overview-policy" title="Policy">
+                <.sect id="overview-policy" title={gettext("Policy")}>
                   <div class="q-lines">
                     <.notice kind={:info}>
-                      <span id="policy-error">This could not be loaded. Reload the page; if it keeps happening, the server log has the reason.</span>
+                      <span id="policy-error">{not_loaded()}</span>
                     </.notice>
                   </div>
                 </.sect>
@@ -208,22 +210,27 @@ defmodule ApiaryWeb.HiveLive.Overview do
       <.modal
         :if={@confirm_close}
         id="close-run"
-        title="Close this run"
+        title={gettext("Close this run")}
         on_cancel={JS.push("close_cancel")}
         size="sm"
       >
         <p>
-          The hive stops taking events for <b class="font-medium">{run_title(@confirm_close)}</b>: the runner is told the run is gone at its next delivery. The record kept so far stays. A close is final: nothing reopens the run.
+          <.rich text={
+            rich_gettext(
+              "The hive stops taking events for %{run}: the runner is told the run is gone at its next delivery. The record kept so far stays. A close is final: nothing reopens the run.",
+              run: close_title(@confirm_close)
+            )
+          } />
         </p>
         <:footer>
-          <.button phx-click="close_cancel" data-autofocus>Cancel</.button>
+          <.button phx-click="close_cancel" data-autofocus>{gettext("Cancel")}</.button>
           <.button
             id="close-confirm"
             variant="danger"
             phx-click="close_confirm"
-            loading_text="Closing"
+            loading_text={gettext("Closing")}
           >
-            Close run
+            {gettext("Close run")}
           </.button>
         </:footer>
       </.modal>
@@ -383,7 +390,7 @@ defmodule ApiaryWeb.HiveLive.Overview do
 
   defp read_policy(scope, now) do
     summary = Policy.mode_summary(scope)
-    repositories = Policy.list_repositories(scope)
+    targets = Policy.list_targets(scope)
     rules = Policy.list_rules(scope, nil)
 
     version =
@@ -394,10 +401,10 @@ defmodule ApiaryWeb.HiveLive.Overview do
 
     %{
       summary: summary,
-      repositories: length(repositories),
-      with_rules: Enum.count(repositories, &(&1.rule_count > 0)),
-      following: Enum.count(repositories, &is_nil(&1.own_mode)),
-      own: Enum.filter(repositories, &(&1.own_mode != nil)),
+      targets: length(targets),
+      with_rules: Enum.count(targets, &(&1.rule_count > 0)),
+      following: Enum.count(targets, &is_nil(&1.own_mode)),
+      own: Enum.filter(targets, &(&1.own_mode != nil)),
       version: version,
       allow_rules: Enum.count(rules, &(&1.kind == "host" and &1.action == "allow")),
       suggestions:
@@ -414,17 +421,17 @@ defmodule ApiaryWeb.HiveLive.Overview do
     if reported == [] do
       %{}
     else
-      targets = reported |> Enum.map(& &1.repository_id) |> Enum.reject(&is_nil/1) |> Enum.uniq()
-      versions = Policy.newest_versions(scope, [nil | targets])
+      holders = reported |> Enum.map(& &1.target_id) |> Enum.reject(&is_nil/1) |> Enum.uniq()
+      versions = Policy.newest_versions(scope, [nil | holders])
 
       for run <- reported,
-          in_force = versions[run.repository_id] || versions[nil],
+          in_force = versions[run.target_id] || versions[nil],
           in_force.digest != run.reported_run_configuration_digest,
           into: %{} do
         reported_version =
           case Policy.configuration_for_digest(
                  scope,
-                 target_of(scope, run.repository_id),
+                 holder_of(scope, run.target_id),
                  run.reported_run_configuration_digest
                ) do
             {:ok, configuration} -> version_map(configuration)
@@ -436,11 +443,11 @@ defmodule ApiaryWeb.HiveLive.Overview do
     end
   end
 
-  defp target_of(_scope, nil), do: nil
+  defp holder_of(_scope, nil), do: nil
 
-  defp target_of(scope, repository_id) do
-    case Policy.get_repository(scope, repository_id) do
-      {:ok, repository} -> repository
+  defp holder_of(scope, target_id) do
+    case Policy.get_target(scope, target_id) do
+      {:ok, target} -> target
       _ -> nil
     end
   end
@@ -450,8 +457,8 @@ defmodule ApiaryWeb.HiveLive.Overview do
       n: configuration.version,
       digest: configuration.digest,
       rendered_at: configuration.rendered_at,
-      repository_id: configuration.repository_id,
-      path: Rules.version_path(configuration.repository_id, configuration.version)
+      target_id: configuration.target_id,
+      path: Rules.version_path(configuration.target_id, configuration.version)
     }
   end
 
@@ -527,7 +534,7 @@ defmodule ApiaryWeb.HiveLive.Overview do
 
     socket =
       if MapSet.size(new_ids) > MapSet.size(socket.assigns.new_ids),
-        do: announce(socket, count_noun(MapSet.size(new_ids), "new run")),
+        do: announce(socket, new_runs_text(MapSet.size(new_ids))),
         else: socket
 
     {:noreply, recompute(socket)}
@@ -759,24 +766,29 @@ defmodule ApiaryWeb.HiveLive.Overview do
         socket =
           socket
           |> remember([closed])
-          |> resolve_item("att-run-#{run.run_id}", %{mark: :closed, what: "Closed.", done: nil})
-          |> announce("#{run_title(run)} is closed.", :now)
+          |> resolve_item("att-run-#{run.run_id}", %{
+            mark: :closed,
+            what: gettext("Closed."),
+            done: nil
+          })
+          |> announce(gettext("%{run} is closed.", run: run_title(run)), :now)
           |> focus_after("att-run-#{run.run_id}")
 
         {:noreply, socket}
 
       {:error, :not_closable} ->
-        {:noreply, put_flash(socket, :error, "This run has ended; there is nothing to close.")}
+        {:noreply,
+         put_flash(socket, :error, gettext("This run has ended; there is nothing to close."))}
 
       {:error, _reason} ->
-        {:noreply, put_flash(socket, :error, "The run could not be closed.")}
+        {:noreply, put_flash(socket, :error, gettext("The run could not be closed."))}
     end
   end
 
   def handle_event("close_confirm", _params, socket), do: {:noreply, socket}
 
   ## The one-click allow of a denied destination (od2): the popover of pd8, called with the
-  ## destination's repositories, exactly as the connections page calls it.
+  ## destination's targets, exactly as the connections page calls it.
 
   def handle_event("rule_open", %{"id" => id, "level" => level}, socket) do
     case find_item(socket, id) do
@@ -795,14 +807,14 @@ defmodule ApiaryWeb.HiveLive.Overview do
       ) do
     level =
       case params["for"] do
-        "repository" when popover.repositories != [] -> :repository
+        "target" when popover.targets != [] -> :target
         "hive" -> :hive
         _ -> popover.level
       end
 
     choice =
-      case params["repository"] do
-        id when is_binary(id) -> if Enum.any?(popover.repositories, &(&1.id == id)), do: id
+      case params["target"] do
+        id when is_binary(id) -> if Enum.any?(popover.targets, &(&1.id == id)), do: id
         _ -> popover.choice
       end
 
@@ -823,15 +835,17 @@ defmodule ApiaryWeb.HiveLive.Overview do
         _params,
         %{assigns: %{popover: %{refusal: nil, level: level} = popover}} = socket
       )
-      when level in [:repository, :hive] do
+      when level in [:target, :hive] do
     scope = socket.assigns.current_scope
 
     with :ok <- still(socket, popover),
          {:ok, from} <- rule_source(popover),
          {:ok, connection} <- Runs.fetch_connection(scope, from.connection_id),
          {:ok, rule} <- Policy.rule_from_connection(scope, connection, :allow, level) do
-      where = if level == :repository, do: from.label, else: "the hive"
-      done = if level == :repository, do: "Allowed here", else: "Allowed for the hive"
+      where = if level == :target, do: {:target, from.label}, else: :hive
+
+      done =
+        if level == :target, do: gettext("Allowed here"), else: gettext("Allowed for the hive")
 
       socket =
         socket
@@ -849,7 +863,7 @@ defmodule ApiaryWeb.HiveLive.Overview do
          |> read(:attention)
          |> put_flash(
            :info,
-           "The policy changed under you; the rows were read again. Nothing was written."
+           gettext("The policy changed under you; the rows were read again. Nothing was written.")
          )}
 
       {:error, %Policy.Error{message: message}} ->
@@ -859,7 +873,10 @@ defmodule ApiaryWeb.HiveLive.Overview do
         {:noreply,
          socket
          |> close_popover()
-         |> put_flash(:error, "This destination is no longer among the connections shown.")}
+         |> put_flash(
+           :error,
+           gettext("This destination is no longer among the connections shown.")
+         )}
     end
   end
 
@@ -870,23 +887,23 @@ defmodule ApiaryWeb.HiveLive.Overview do
     scope = socket.assigns.current_scope
 
     reached =
-      Runs.destination_repositories(scope, @denied_filters, {item.host, item.port, item.path})
+      Runs.destination_targets(scope, @denied_filters, {item.host, item.port, item.path})
 
-    repositories =
-      for %{repository_id: id} = r when is_binary(id) <- reached do
+    targets =
+      for %{target_id: id} = r when is_binary(id) <- reached do
         %{
           id: id,
-          label: "#{r.forge}/#{r.repository}",
+          label: "#{r.system}/#{r.path}",
           runs: r.runs,
           connection_id: r.connection_id
         }
       end
 
     {level, choice} =
-      case {level, repositories} do
+      case {level, targets} do
         {"hive", _} -> {:hive, nil}
-        {"repository", [one]} -> {:repository, one.id}
-        {"repository", _} -> {nil, nil}
+        {"target", [one]} -> {:target, one.id}
+        {"target", _} -> {nil, nil}
         _ -> {nil, nil}
       end
 
@@ -902,13 +919,13 @@ defmodule ApiaryWeb.HiveLive.Overview do
       path: item.path,
       page: :hive,
       level: level,
-      repository: nil,
-      repositories: repositories,
+      target: nil,
+      targets: targets,
       choice: choice,
       baseline: baseline,
       standing: :can_allow,
       chosen: nil,
-      what: %{repository: nil, hive: nil},
+      what: %{target: nil, hive: nil},
       own_rule: false,
       seen: nil,
       consequence: %{},
@@ -934,24 +951,24 @@ defmodule ApiaryWeb.HiveLive.Overview do
 
   defp mark_expanded(socket), do: socket
 
-  defp rule_source(%{level: :repository, choice: choice, repositories: repositories})
+  defp rule_source(%{level: :target, choice: choice, targets: targets})
        when is_binary(choice) do
-    case Enum.find(repositories, &(&1.id == choice)) do
-      %{} = repository -> {:ok, Map.put(repository, :repository, %{id: repository.id})}
+    case Enum.find(targets, &(&1.id == choice)) do
+      %{} = target -> {:ok, Map.put(target, :target, %{id: target.id})}
       nil -> :error
     end
   end
 
   defp rule_source(%{level: :hive, any_connection_id: id}) when is_binary(id),
-    do: {:ok, %{connection_id: id, label: "the hive", repository: nil}}
+    do: {:ok, %{connection_id: id, label: gettext("the hive"), target: nil}}
 
   defp rule_source(_popover), do: :error
 
   defp chosen_effective(_socket, nil), do: nil
 
   defp chosen_effective(socket, id) do
-    case Policy.get_repository(socket.assigns.current_scope, id) do
-      {:ok, repository} -> Policy.effective(socket.assigns.current_scope, repository)
+    case Policy.get_target(socket.assigns.current_scope, id) do
+      {:ok, target} -> Policy.effective(socket.assigns.current_scope, target)
       _ -> nil
     end
   end
@@ -964,28 +981,28 @@ defmodule ApiaryWeb.HiveLive.Overview do
       popover
       | chosen: popover.choice,
         what: %{
-          repository: Rules.what(chosen, host, path),
+          target: Rules.what(chosen, host, path),
           hive: Rules.what(baseline, host, path)
         },
         own_rule: own?,
         seen: {Rules.seen(baseline, host), Rules.seen(chosen, host)},
         consequence: %{
-          repository: chosen && repository_consequence(chosen, host),
+          target: chosen && target_consequence(chosen, host),
           hive: hive_consequence(baseline, host, own?)
         }
     }
   end
 
-  defp repository_consequence(effective, host) do
+  defp target_consequence(effective, host) do
     if Rules.own_rule?(effective, host),
-      do: "Replaces the repository's own rule for the host.",
-      else: "Disables the hive's allow rule there. Other repositories keep it."
+      do: gettext("Replaces the target's own rule for the host."),
+      else: gettext("Disables the hive's allow rule there. Other targets keep it.")
   end
 
   defp hive_consequence(baseline, host, own?) do
     cond do
-      own? -> "A repository's own allow rule still holds there."
-      Rules.seen(baseline, host) != [] -> "Replaces the hive's allow rule."
+      own? -> gettext("A target's own allow rule still holds there.")
+      Rules.seen(baseline, host) != [] -> gettext("Replaces the hive's allow rule.")
       true -> nil
     end
   end
@@ -1129,8 +1146,8 @@ defmodule ApiaryWeb.HiveLive.Overview do
     end
   end
 
-  defp compare_path(in_force, %{n: m, repository_id: same}) when same == in_force.repository_id,
-    do: Rules.version_path(in_force.repository_id, in_force.n, %{"compare" => m})
+  defp compare_path(in_force, %{n: m, target_id: same}) when same == in_force.target_id,
+    do: Rules.version_path(in_force.target_id, in_force.n, %{"compare" => m})
 
   defp compare_path(in_force, _reported), do: in_force.path
 
@@ -1209,7 +1226,11 @@ defmodule ApiaryWeb.HiveLive.Overview do
         do:
           announce(
             socket,
-            "#{count_noun(length(arrived), "more item")} #{if length(arrived) == 1, do: "needs", else: "need"} attention."
+            ngettext(
+              "%{count} more item needs attention.",
+              "%{count} more items need attention.",
+              length(arrived)
+            )
           ),
         else: socket
     else
@@ -1228,39 +1249,54 @@ defmodule ApiaryWeb.HiveLive.Overview do
         %{
           count: count,
           navigate: ~p"/hive/connections?#{%{"decision" => "denied"}}",
-          title: "#{count_noun(count, "more item")}, on the connections page"
+          title:
+            ngettext(
+              "%{count} more item, on the connections page",
+              "%{count} more items, on the connections page",
+              count
+            )
         }
 
       kind when kind in [:lost, :quiet, :behind] ->
         %{
           count: count,
           navigate: ~p"/hive/runs?#{%{"state" => "pending,running,lost"}}",
-          title: "#{count_noun(count, "more item")}, on the runs list"
+          title:
+            ngettext(
+              "%{count} more item, on the runs list",
+              "%{count} more items, on the runs list",
+              count
+            )
         }
 
       _ ->
         %{
           count: count,
           navigate: ~p"/hive/keys",
-          title: "#{count_noun(count, "more item")}, on the keys page"
+          title:
+            ngettext(
+              "%{count} more item, on the keys page",
+              "%{count} more items, on the keys page",
+              count
+            )
         }
     end
   end
 
   # What became of an item that is no longer on the record's list, in words (oe7).
   defp resolution(%{kind: :denied}, _assigns),
-    do: %{mark: :allowed, what: "Allowed since.", done: nil}
+    do: %{mark: :allowed, what: gettext("Allowed since."), done: nil}
 
   defp resolution(%{kind: kind, run: run}, assigns) when kind in [:lost, :quiet, :behind] do
     current = Map.get(assigns.seen, run.id, run)
 
     what =
       cond do
-        current.state == "closed" -> "Closed."
-        kind == :behind and current.state in Run.alive_states() -> "Reloaded."
-        current.state in Run.alive_states() -> "Heartbeats resumed."
-        current.state == "lost" -> "Marked lost."
-        true -> "#{ApiaryWeb.RunComponents.state_label(current.state)}."
+        current.state == "closed" -> gettext("Closed.")
+        kind == :behind and current.state in Run.alive_states() -> gettext("Reloaded.")
+        current.state in Run.alive_states() -> gettext("Heartbeats resumed.")
+        current.state == "lost" -> gettext("Marked lost.")
+        true -> ended(current.state)
       end
 
     %{mark: if(current.state == "closed", do: :closed, else: :resolved), what: what, done: nil}
@@ -1269,17 +1305,21 @@ defmodule ApiaryWeb.HiveLive.Overview do
   defp resolution(%{kind: :enforce}, %{policy: policy}) do
     what =
       if policy && policy.summary.mode == "enforce",
-        do: "Enforce is the hive's default.",
-        else: "Nothing to enforce yet."
+        do: gettext("Enforce is the hive's default."),
+        else: gettext("Nothing to enforce yet.")
 
     %{mark: :resolved, what: what, done: nil}
   end
 
   defp resolution(%{kind: :unmanaged}, _assigns),
-    do: %{mark: :resolved, what: "Qory serves the policy now.", done: nil}
+    do: %{mark: :resolved, what: gettext("Qory serves the policy now."), done: nil}
 
   defp resolution(%{kind: :idle_key, key: key}, %{keys: keys}) do
-    what = if Enum.any?(keys, &(&1.id == key.id)), do: "Used again.", else: "Revoked."
+    what =
+      if Enum.any?(keys, &(&1.id == key.id)),
+        do: gettext("Used again."),
+        else: gettext("Revoked.")
+
     %{mark: :resolved, what: what, done: nil}
   end
 
@@ -1428,6 +1468,24 @@ defmodule ApiaryWeb.HiveLive.Overview do
       ApiaryWeb.Endpoint.url()
     )
   end
+
+  defp not_loaded,
+    do:
+      gettext(
+        "This could not be loaded. Reload the page; if it keeps happening, the server log has the reason."
+      )
+
+  # The run the close dialog names, in bold inside its sentence.
+  defp close_title(run), do: {:b, run_title(run), "font-medium"}
+
+  defp new_runs_text(n),
+    do: ngettext("%{number} new run", "%{number} new runs", n, number: delimited(n))
+
+  # What became of a run that ended while it was on the list.
+  defp ended("succeeded"), do: gettext("Succeeded.")
+  defp ended("failed"), do: gettext("Failed.")
+  defp ended("timed_out"), do: gettext("Timed out.")
+  defp ended(state), do: "#{ApiaryWeb.RunComponents.state_label(state)}."
 
   # `config :apiary, ApiaryWeb.HiveLive.Overview, coalesce: 0, quiet_tick: …` in a test.
   defp window(name, default) do

@@ -67,8 +67,8 @@ With a `server` section, every `qory run` on the machine:
 2. sends a ping, a batch of one event, to the events URL the document names, which on this
    server is `/v1/events`;
 3. when the document names a `run` section, fetches the run configuration for the checkout,
-   a signed `GET` of `/v1/run-configuration` with the run's `forge` and `repository` labels
-   as the query. That document is the run's security policy;
+   a signed `GET` of `/v1/run-configuration` with the run's labels as the query. That
+   document is the run's security policy;
 4. starts the runtime, and posts the run's events in signed batches while it runs.
 
 The run fails closed. A configuration fetch that fails or is refused, a ping the server
@@ -91,7 +91,7 @@ runner file that still has a `webhook` section is refused with a message that sa
 is configured with the same `server` section, and implements the same contract: the
 configuration document and the events endpoint are enough.
 
-## The `egress` section and the hive's policy
+## The `egress` section and the workplace's policy
 
 The runner file's `egress` section is the machine's own policy: a mode, `observe` or
 `enforce`, the hosts allowed and the hosts denied. A host in `deny` is denied in either
@@ -108,26 +108,27 @@ It applies:
 
 - on a machine with no `server` section;
 - with `qory run --local`, which records to files only and does not contact the server;
-- while the hive the access key belongs to has no policy yet. The server then names no run
-  configuration, and the machine's own policy stands, enforcement included.
+- while the workplace the access key belongs to has no policy yet. The server then names
+  no run configuration, and the machine's own policy stands, enforcement included.
 
-From the first change of the hive's policy in the console, the server's run configuration
-is the policy of every run under the hive's keys, and the file's `egress` section is not
-merged with it. [The security policy](security-policy.md) says what to do before that first
-change.
+From the first change of the workplace's policy in the console, the server's run
+configuration is the policy of every run under the workplace's keys, and the file's
+`egress` section is not merged with it. [The security policy](security-policy.md) says
+what to do before that first change.
 
 With a server configured, `qory run --policy <file>` is refused unless `--local` is given
 too: the server's run configuration is the policy.
 
-Two sections of the runner file still matter under a hive's policy. `credentials` defines
-what the machine has; the hive's policy selects credentials by name and defines none, and a
-name the machine does not define is no run. `wall` starts the runtime in a container; a
-policy with paths or credentials needs one.
+Two sections of the runner file still matter under a workplace's policy. `credentials`
+defines what the machine has; the workplace's policy selects credentials by name and
+defines none, and a name the machine does not define is no run. `wall` starts the runtime
+in a container; a policy with paths or credentials needs one.
 
 ## The `forge` and `repository` labels
 
-The server keeps a policy per repository, and the runner asks for the run configuration by
-two labels. Both come from the checkout's origin remote:
+The server keeps a policy per repository. The runner asks for the run configuration with
+the run's labels, and the server reads the repository from two of them, `forge` and
+`repository`. Both come from the checkout's origin remote:
 
 - `forge` is the remote's host;
 - `repository` is its path without the leading slash and without `.git`.
@@ -135,7 +136,7 @@ two labels. Both come from the checkout's origin remote:
 So the origin `git@git.example:acme/shop.git` gives `forge` `git.example` and `repository`
 `acme/shop`. Nothing else is read from the remote. A checkout with no origin remote, or one
 whose remote is on this machine, carries neither label: its runs are listed under
-**Unassigned** on the runs page and are served the hive baseline.
+**Unassigned** on the runs page and are served the workplace baseline.
 
 To override, name them, and the caller's labels win over the remote's:
 
@@ -143,7 +144,11 @@ To override, name them, and the caller's labels win over the remote's:
 qory run --label forge=git.example --label repository=acme/shop
 ```
 
-The labels go into the run's first event with every other `--label`, and the console groups
-runs and keeps repository rules by them. The server compares them to the stored labels byte
-for byte, so one repository reached through two remotes that spell it differently is two
-repositories unless the labels are named.
+The labels go into the run's first event with every other `--label`, and the console
+groups runs and keeps repository rules by these two. The server compares them to the
+stored labels byte for byte, so one repository reached through two remotes that spell it
+differently is two repositories unless the labels are named.
+
+Runner 0.5.0 and later sends every label of the run on the run configuration request; an earlier one sends `forge` and `repository` alone.
+The server reads the repository from these two either way. Any other label names no
+repository.

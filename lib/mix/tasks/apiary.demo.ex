@@ -24,7 +24,7 @@ defmodule Mix.Tasks.Apiary.Demo do
 
   Once the runs are in, a hive that has no security policy yet is given one, through
   `Apiary.Policy` as a page would and in the name of the hive's first owner: enforce, a
-  baseline of hosts, one held to paths, a locked deny, a credential, and in the repository
+  baseline of hosts, one held to paths, a locked deny, a credential, and in the target
   `git.example.com/acme/shop` an added host, a disabled one, an allow the lock
   overrides and a mode of its own (observe, under a hive that enforces); written rule by rule, so there are versions and a history to look at, and the
   hive is a managed one, serving its run configuration. A hive whose policy anybody has
@@ -41,12 +41,12 @@ defmodule Mix.Tasks.Apiary.Demo do
   alias Apiary.Organisations.{Hive, Membership}
   alias Apiary.Policy
   alias Apiary.Repo
-  alias Apiary.Runs.{Batch, Ingest, Projector, Repository, Run}
+  alias Apiary.Runs.{Batch, Ingest, Projector, Target, Run}
 
   @batch_size 20
   @source_prefix "urn:qory:run:"
-  @ping "ai.qory.ping"
-  @policy_applied "ai.qory.run.policy_applied"
+  @ping "dev.qory.ping"
+  @policy_applied "dev.qory.run.policy_applied"
 
   @impl Mix.Task
   def run(args) do
@@ -102,7 +102,7 @@ defmodule Mix.Tasks.Apiary.Demo do
     with %Scope{} = scope <- owner_scope(hive_id),
          false <- Policy.managed?(scope) do
       shop =
-        Repo.get_by(Repository, hive_id: hive_id, forge: "git.example.com", path: "acme/shop")
+        Repo.get_by(Target, hive_id: hive_id, system: "git.example.com", path: "acme/shop")
 
       steps =
         [
@@ -130,7 +130,7 @@ defmodule Mix.Tasks.Apiary.Demo do
                 name: "product",
                 argument: "acme/shop"
               }),
-              # The hive enforces; this repository is still being watched.
+              # The hive enforces; this target is still being watched.
               &Policy.set_mode(&1, shop, "observe")
             ]
           else

@@ -57,7 +57,7 @@ defmodule Apiary.RetentionTest do
 
   defp log_events(run) do
     Repo.aggregate(
-      from(e in Event, where: e.run_id == ^run.id and e.type == "ai.qory.run.log"),
+      from(e in Event, where: e.run_id == ^run.id and e.type == "dev.qory.run.log"),
       :count
     )
   end
@@ -189,7 +189,7 @@ defmodule Apiary.RetentionTest do
         :state,
         :runtime,
         :host,
-        :repository,
+        :target_path,
         :task,
         :exit_code,
         :duration_ms,

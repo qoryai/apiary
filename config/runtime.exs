@@ -175,7 +175,10 @@ if config_env() == :prod do
       # See the documentation on https://bandit.hexdocs.pm/Bandit.html#t:options/0
       # for details about using IPv6 vs IPv4 and loopback vs public addresses.
       ip: {0, 0, 0, 0, 0, 0, 0, 0},
-      port: String.to_integer(System.get_env("PORT") || "4100")
+      port: String.to_integer(System.get_env("PORT") || "4100"),
+      # A runner sends every label of a run as the run configuration request's query; at
+      # the contract's bounds that request line runs to about 13 KB, past Bandit's 10,000.
+      http_1_options: [max_request_line_length: 16_384]
     ],
     secret_key_base: secret_key_base
 

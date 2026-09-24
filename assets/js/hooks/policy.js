@@ -4,7 +4,7 @@
 //   "policy:focus"  {id}       focus after an action, so that it never falls to the body
 //   "policy:fields" {fields}   values the server put into a field that may have focus,
 //                              which a patch alone would leave as the reader typed it
-//   "policy:target" {host}     scroll to the rule ?rule= points at
+//   "policy:rule" {host}     scroll to the rule ?rule= points at
 //   keys, while no field has focus:  a  the composer's host field    ?  the list of keys
 //   arrows inside a [data-roving] radiogroup move between its radios
 //
@@ -25,7 +25,7 @@ export const PolicyPage = {
         if (el && el.value !== value) el.value = value
       }
     })
-    this.handleEvent("policy:target", () => this.reveal())
+    this.handleEvent("policy:rule", () => this.reveal())
     this.onKey = e => this.key(e)
     document.addEventListener("keydown", this.onKey)
     this.reveal()
@@ -50,7 +50,7 @@ export const PolicyPage = {
 
   reveal() {
     requestAnimationFrame(() => {
-      const row = this.el.querySelector(".q-rule-target")
+      const row = this.el.querySelector(".q-ruled")
       if (!row) return
       const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches
       row.scrollIntoView({block: "center", behavior: reduce ? "auto" : "smooth"})

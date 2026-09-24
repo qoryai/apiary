@@ -15,10 +15,11 @@ defmodule ApiaryWeb.InvitationLive.Accept do
         <% is_nil(@invitation) -> %>
           <.hex_tile icon="hero-envelope-open" tone="neutral" />
           <Layouts.auth_heading>
-            This invitation is no longer valid
+            {gettext("This invitation is no longer valid")}
             <:subtitle>
-              It may have been accepted already, revoked, or it expired after seven days. Ask
-              the person who invited you to send a new one.
+              {gettext(
+                "It may have been accepted already, revoked, or it expired after seven days. Ask the person who invited you to send a new one."
+              )}
             </:subtitle>
           </Layouts.auth_heading>
           <.button
@@ -28,7 +29,7 @@ defmodule ApiaryWeb.InvitationLive.Accept do
             class="btn-block"
             navigate={~p"/hive"}
           >
-            Go to your hive
+            {gettext("Go to your hive")}
           </.button>
           <.button
             :if={!@current_scope}
@@ -37,15 +38,18 @@ defmodule ApiaryWeb.InvitationLive.Accept do
             class="btn-block"
             navigate={~p"/users/log-in"}
           >
-            Log in
+            {gettext("Log in")}
           </.button>
         <% @current_scope -> %>
           <.invitation_summary invitation={@invitation} />
           <div class="flex items-center gap-2.5 rounded-field border border-line px-3 py-2.5">
             <.avatar name={@current_scope.user.email} kind="self" />
             <p class="min-w-0 truncate text-[13px]/[18px] text-muted">
-              Signed in as
-              <span class="font-medium text-base-content">{@current_scope.user.email}</span>
+              <.rich text={
+                rich_gettext("Signed in as %{email}",
+                  email: {:b, @current_scope.user.email, "font-medium text-base-content"}
+                )
+              } />
             </p>
           </div>
           <.button
@@ -53,13 +57,13 @@ defmodule ApiaryWeb.InvitationLive.Accept do
             size="md"
             class="btn-block"
             phx-click="accept"
-            loading_text="Joining"
+            loading_text={gettext("Joining")}
           >
-            Accept invitation
+            {gettext("Accept invitation")}
           </.button>
           <p class="text-center text-[13px]/[18px] text-muted">
             <.button variant="link" href={~p"/users/log-out"} method="delete">
-              Not you? Log out
+              {gettext("Not you? Log out")}
             </.button>
           </p>
           <.form
@@ -75,9 +79,12 @@ defmodule ApiaryWeb.InvitationLive.Accept do
         <% true -> %>
           <.invitation_summary invitation={@invitation} />
           <p class="text-sm/5 text-muted">
-            Create an account with
-            <strong class="font-medium text-base-content">{@invitation.email}</strong>
-            to join, or log in if you already have one.
+            <.rich text={
+              rich_gettext(
+                "Create an account with %{email} to join, or log in if you already have one.",
+                email: {:b, @invitation.email, "font-medium text-base-content"}
+              )
+            } />
           </p>
           <div class="grid gap-2">
             <.button
@@ -86,10 +93,10 @@ defmodule ApiaryWeb.InvitationLive.Accept do
               class="btn-block"
               navigate={~p"/users/register?invitation=#{@token}"}
             >
-              Create an account
+              {gettext("Create an account")}
             </.button>
             <.button size="md" class="btn-block" href={~p"/invitations/#{@token}/continue"}>
-              Log in
+              {gettext("Log in")}
             </.button>
           </div>
       <% end %>
@@ -102,14 +109,8 @@ defmodule ApiaryWeb.InvitationLive.Accept do
   defp invitation_summary(assigns) do
     ~H"""
     <Layouts.auth_heading>
-      Join {@invitation.hive.name}
-      <:subtitle>
-        You are invited to the
-        <strong class="font-medium text-base-content">{@invitation.hive.name}</strong>
-        <.term word="hive" /> of the
-        <strong class="font-medium text-base-content">{@invitation.organisation.name}</strong>
-        <.term word="apiary" />, as {level_word(@invitation.level)}.
-      </:subtitle>
+      {gettext("Join %{name}", name: @invitation.hive.name)}
+      <:subtitle><.rich text={invitation_sentence(@invitation)} /></:subtitle>
     </Layouts.auth_heading>
     """
   end
@@ -118,7 +119,7 @@ defmodule ApiaryWeb.InvitationLive.Accept do
   def mount(%{"token" => token}, _session, socket) do
     {:ok,
      assign(socket,
-       page_title: "Invitation",
+       page_title: gettext("Invitation"),
        token: token,
        invitation: Organisations.get_invitation_by_token(token),
        trigger_submit: false,
@@ -138,7 +139,10 @@ defmodule ApiaryWeb.InvitationLive.Accept do
       {:error, :already_member} ->
         {:noreply,
          socket
-         |> put_flash(:info, "You are already a member of #{invitation.organisation.name}.")
+         |> put_flash(
+           :info,
+           gettext("You are already a member of %{name}.", name: invitation.organisation.name)
+         )
          |> assign(organisation_id: invitation.organisation_id, trigger_submit: true)}
 
       {:error, :invalid} ->
@@ -146,6 +150,20 @@ defmodule ApiaryWeb.InvitationLive.Accept do
     end
   end
 
-  defp level_word(:owner), do: "an owner"
-  defp level_word(_level), do: "a member"
+  # One sentence per level: the article and the word go together.
+  defp invitation_sentence(%{level: :owner} = invitation) do
+    rich_gettext(
+      "You are invited to the %{hive} hive of the %{organisation} organisation, as an owner.",
+      hive: {:b, invitation.hive.name, "font-medium text-base-content"},
+      organisation: {:b, invitation.organisation.name, "font-medium text-base-content"}
+    )
+  end
+
+  defp invitation_sentence(invitation) do
+    rich_gettext(
+      "You are invited to the %{hive} hive of the %{organisation} organisation, as a member.",
+      hive: {:b, invitation.hive.name, "font-medium text-base-content"},
+      organisation: {:b, invitation.organisation.name, "font-medium text-base-content"}
+    )
+  end
 end

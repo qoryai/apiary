@@ -18,7 +18,7 @@
 #   E2E_PORT            the test instance's port                      (default 4180)
 #   E2E_WORK            (default tmp/e2e under the repository)
 #   E2E_RETRY_SECONDS   how often the session asks for the host       (default 3)
-#   E2E_LEVEL           repository or hive: where the row's rule goes (default repository)
+#   E2E_LEVEL           target or hive: where the row's rule goes (default target)
 #   E2E_BUDGET_SECONDS  (default 35)
 set -euo pipefail
 
@@ -29,12 +29,12 @@ cd "$root"
 
 export E2E_WORK="${E2E_WORK:-$root/tmp/e2e}"
 export E2E_PORT="${E2E_PORT:-4180}"
-export E2E_TARGET_HOST="${E2E_TARGET_HOST:-files.e2e.test}"
+export E2E_UPSTREAM_HOST="${E2E_UPSTREAM_HOST:-files.e2e.test}"
 export E2E_FORGE="${E2E_FORGE:-git.e2e.test}"
 export E2E_REPOSITORY="${E2E_REPOSITORY:-acme/shop}"
 export E2E_RETRY_SECONDS="${E2E_RETRY_SECONDS:-3}"
 export E2E_BUDGET_SECONDS="${E2E_BUDGET_SECONDS:-35}"
-export E2E_LEVEL="${E2E_LEVEL:-repository}"
+export E2E_LEVEL="${E2E_LEVEL:-target}"
 database_url="${E2E_DATABASE_URL:-ecto://postgres:postgres@localhost:5432/apiary_e2e}"
 wall_image="${E2E_WALL_IMAGE:-curlimages/curl:8.16.0}"
 
@@ -114,11 +114,11 @@ wall:
   adapter: docker
   image: $wall_image
   user: "1000:1000"
-  env: [E2E_TARGET_URL, E2E_RETRY_SECONDS, E2E_THEN_DENIED]
+  env: [E2E_UPSTREAM_URL, E2E_RETRY_SECONDS, E2E_THEN_DENIED]
 YAML
-  openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj "/CN=$E2E_TARGET_HOST" \
-    -keyout "$E2E_WORK/tls/target.key" -out "$E2E_WORK/tls/target.crt" >/dev/null 2>&1
-  chmod 644 "$E2E_WORK/tls/target.key"
+  openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj "/CN=$E2E_UPSTREAM_HOST" \
+    -keyout "$E2E_WORK/tls/upstream.key" -out "$E2E_WORK/tls/upstream.crt" >/dev/null 2>&1
+  chmod 644 "$E2E_WORK/tls/upstream.key"
 
   "${mix[@]}" ecto.create --quiet
 
@@ -140,7 +140,7 @@ YAML
   export E2E_RUNNER_TAIL="$E2E_WORK/runner-tail.yaml"
   export E2E_SESSION_LOG="$E2E_WORK/session-$n.log"
   export E2E_PREPARE_COMMAND="${compose[*]} exec -T -e E2E_PORT -e E2E_FORGE -e E2E_REPOSITORY node /e2e/prepare.sh"
-  export E2E_SESSION_COMMAND="${compose[*]} exec -T -e E2E_TARGET_URL=https://$E2E_TARGET_HOST/ -e E2E_RETRY_SECONDS -e E2E_THEN_DENIED=1 node /e2e/session.sh"
+  export E2E_SESSION_COMMAND="${compose[*]} exec -T -e E2E_UPSTREAM_URL=https://$E2E_UPSTREAM_HOST/ -e E2E_RETRY_SECONDS -e E2E_THEN_DENIED=1 node /e2e/session.sh"
 
   local status=0
   "${mix[@]}" run e2e/scenario.exs 2>&1 | tee "$log" || status=$?

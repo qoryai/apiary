@@ -396,12 +396,12 @@ defmodule Apiary.Runs.RecordTest do
 
       rows =
         [
-          {1, "ai.qory.session.tool_started",
+          {1, "dev.qory.session.tool_started",
            %{"tool" => "Bash", "tool_use_id" => "t", "input" => %{"command" => "fetch"}}}
         ] ++
           for(
             n <- 2..50_001,
-            do: {n, "ai.qory.run.egress", egress_data(%{"host" => "h#{rem(n, 50)}.example"})}
+            do: {n, "dev.qory.run.egress", egress_data(%{"host" => "h#{rem(n, 50)}.example"})}
           )
 
       rows

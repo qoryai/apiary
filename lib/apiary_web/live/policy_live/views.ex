@@ -1,6 +1,6 @@
 defmodule ApiaryWeb.PolicyLive.Views do
   @moduledoc """
-  The views the hive's policy and a repository's policy share
+  The views the hive's policy and a target's policy share
   (`docs/design/brief-policy.md`, pe4 and pe5): the history with its diffs, one version with
   its document, and the export. Function components; the two LiveViews load what they show
   through `ApiaryWeb.PolicyLive.Common`.
@@ -49,25 +49,43 @@ defmodule ApiaryWeb.PolicyLive.Views do
       <div class="q-filters">
         <span class="q-filters-grow"></span>
         <span id="history-summary" class="q-summary">
-          <span><b>{@history.total}</b> {if @history.total == 1, do: "change", else: "changes"}</span>
           <span>
-            <b>{@summary.versions}</b> {if @summary.versions == 1, do: "version", else: "versions"}
+            <.rich text={
+              rich_ngettext("%{number} change", "%{number} changes", @history.total,
+                number: {:b, to_string(@history.total), "font-medium text-base-content"}
+              )
+            } />
           </span>
-          <span :if={@summary.since}>since <b>{short_date(@summary.since)}</b></span>
+          <span>
+            <.rich text={
+              rich_ngettext("%{number} version", "%{number} versions", @summary.versions,
+                number: {:b, to_string(@summary.versions), "font-medium text-base-content"}
+              )
+            } />
+          </span>
+          <span :if={@summary.since}>
+            <.rich text={
+              rich_gettext("since %{date}",
+                date: {:b, short_date(@summary.since), "font-medium text-base-content"}
+              )
+            } />
+          </span>
         </span>
       </div>
 
-      <.sect :if={@history.rows == []} id="history-empty" title="No changes yet">
+      <.sect :if={@history.rows == []} id="history-empty" title={gettext("No changes yet")}>
         <p class="px-4 py-3 text-[13px] text-muted">
           <%= if @summary.since do %>
-            No changes yet. Version 1 was rendered on {short_date(@summary.since)}.
+            {gettext("No changes yet. Version 1 was rendered on %{date}.",
+              date: short_date(@summary.since)
+            )}
           <% else %>
-            No changes yet.
+            {gettext("No changes yet.")}
             <span :if={@scope == :hive}>
-              Qory serves no policy for this hive until the first one.
+              {gettext("Qory serves no policy for this hive until the first one.")}
             </span>
-            <span :if={@scope == :repository}>
-              The first rule here, or a mode of its own, starts this repository's history.
+            <span :if={@scope == :target}>
+              {gettext("The first rule here, or a mode of its own, starts this target's history.")}
             </span>
           <% end %>
         </p>
@@ -78,8 +96,8 @@ defmodule ApiaryWeb.PolicyLive.Views do
         id="history-list"
         label={
           if @scope == :hive,
-            do: "Changes to the hive baseline, newest first",
-            else: "Changes to this repository's rules, newest first"
+            do: gettext("Changes to the hive baseline, newest first"),
+            else: gettext("Changes to this target's rules, newest first")
         }
         changes={@history.rows}
         open={@open}
@@ -89,16 +107,23 @@ defmodule ApiaryWeb.PolicyLive.Views do
 
       <div class="flex flex-wrap items-center justify-between gap-3">
         <p id="history-foot" class="max-w-[70ch] text-[12.5px]/[18px] text-faint">
-          Showing {length(@history.rows)} of {@history.total}.
+          {gettext("Showing %{shown} of %{total}.",
+            shown: length(@history.rows),
+            total: @history.total
+          )}
           <span :if={@scope == :hive}>
-            A change to the default mode re-renders every repository that follows it.
+            {gettext("A change to the default mode re-renders every target that follows it.")}
           </span>
-          A change that leaves the document's bytes the same is kept here and makes no new version.
+          {gettext(
+            "A change that leaves the document's bytes the same is kept here and makes no new version."
+          )}
           <span :if={@scope == :hive}>
-            Changes to a repository's own rules are in that repository's history.
+            {gettext("Changes to a target's own rules are in that target's history.")}
           </span>
-          <span :if={@scope == :repository}>
-            Changes to the hive's rules, which re-render this repository too, are in the hive's history.
+          <span :if={@scope == :target}>
+            {gettext(
+              "Changes to the hive's rules, which re-render this target too, are in the hive's history."
+            )}
           </span>
         </p>
         <span :if={@history.pages > 1} class="flex gap-2">
@@ -107,20 +132,36 @@ defmodule ApiaryWeb.PolicyLive.Views do
             patch={page_path(@base, @history.page - 1)}
             disabled={@history.page <= 1}
           >
-            Newer
+            {gettext("Newer")}
           </.button>
           <.button
             id="history-older"
             patch={page_path(@base, @history.page + 1)}
             disabled={@history.page >= @history.pages}
           >
-            Older
+            {gettext("Older")}
           </.button>
         </span>
       </div>
     </div>
     """
   end
+
+  # The sentence under the document, split around the word that carries a tip.
+  defp served_sentence(bytes) do
+    rich_ngettext(
+      "\"As served\" is the exact byte, %{count} of it, that the %{digest} is taken over.",
+      "\"As served\" is the exact bytes, %{count} of them, that the %{digest} is taken over.",
+      bytes,
+      digest: :digest
+    )
+  end
+
+  defp digest_tip,
+    do:
+      gettext(
+        "The sha256 of the exact bytes a runner is served. Two runs with the same digest had the same policy."
+      )
 
   defp page_path(base, page) when page <= 1, do: base <> "/history"
   defp page_path(base, page), do: base <> "/history?page=#{page}"
@@ -135,45 +176,47 @@ defmodule ApiaryWeb.PolicyLive.Views do
     ~H"""
     <div id="policy-version" class="grid grid-cols-[minmax(0,1fr)] gap-6">
       <.kvs id="version-strip">
-        <.kv label="Rendered" title={absolute(@v.configuration.rendered_at)}>
+        <.kv label={gettext("Rendered")} title={absolute(@v.configuration.rendered_at)}>
           <.relative_time at={@v.configuration.rendered_at} />
         </.kv>
-        <.kv label="Changed by">{@v.changed_by || "n/a"}</.kv>
-        <.kv label="Change">{@v.change_words || "First render"}</.kv>
-        <.kv :if={@v.mode} label="Mode">
+        <.kv label={gettext("Changed by")}>{@v.changed_by || gettext("n/a")}</.kv>
+        <.kv label={gettext("Change")}>{@v.change_words || gettext("First render")}</.kv>
+        <.kv :if={@v.mode} label={gettext("Mode")}>
           {@v.mode}
           <:sub :if={@v.mode_source}>
             <span class="font-sans">
-              {if @v.mode_source == :repository,
-                do: "this repository's own",
-                else: "the hive's default"}
+              {if @v.mode_source == :target,
+                do: gettext("this target's own"),
+                else: gettext("the hive's default")}
             </span>
           </:sub>
         </.kv>
         <.kv
-          label="Digest"
-          tip="The sha256 of the exact bytes a runner is served. Two runs with the same digest had the same policy."
+          label={gettext("Digest")}
+          tip={digest_tip()}
           mono
           title={@v.configuration.digest}
         >
           sha256={short_digest(@v.configuration.digest)}…
         </.kv>
-        <.kv label="Size">{byte_size(@v.configuration.document)} bytes</.kv>
+        <.kv label={gettext("Size")}>
+          {ngettext("%{count} byte", "%{count} bytes", byte_size(@v.configuration.document))}
+        </.kv>
       </.kvs>
 
       <div class="q-twocol">
         <div class="grid min-w-0 gap-3">
           <div class="q-filters">
-            <.segments id="version-view" label="View">
+            <.segments id="version-view" label={gettext("View")}>
               <:segment
                 :for={
                   {label, view} <- [
                     {if(@v.compare,
-                       do: "Changes from v#{@v.compare.version}",
-                       else: "Changes"
+                       do: gettext("Changes from v%{version}", version: @v.compare.version),
+                       else: gettext("Changes")
                      ), "changes"},
-                    {"Document", "document"},
-                    {"As served", "served"}
+                    {gettext("Document"), "document"},
+                    {gettext("As served"), "served"}
                   ]
                 }
                 patch={version_path(@base, @v, view: view)}
@@ -189,7 +232,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
               phx-change="compare"
               class="flex items-center gap-2 text-[13px] text-muted"
             >
-              <label for="version-compare-select">Compare with</label>
+              <label for="version-compare-select">{gettext("Compare with")}</label>
               <select id="version-compare-select" name="compare" class="q-input q-input-m q-select">
                 <option
                   :for={option <- @v.compare_options}
@@ -210,7 +253,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
               <.copy_button
                 id="version-copy"
                 text={@v.configuration.document}
-                label="Copy document"
+                label={gettext("Copy document")}
               />
             </:actions>
             <.diff_lines
@@ -220,8 +263,11 @@ defmodule ApiaryWeb.PolicyLive.Views do
               label={
                 if @v.compare,
                   do:
-                    "Difference between version #{@v.compare.version} and version #{@v.configuration.version}",
-                  else: "Version #{@v.configuration.version}"
+                    gettext("Difference between version %{from} and version %{to}",
+                      from: @v.compare.version,
+                      to: @v.configuration.version
+                    ),
+                  else: gettext("Version %{version}", version: @v.configuration.version)
               }
             />
             <.code_lines :if={@v.view == "document"} id="version-pretty" text={@v.pretty} />
@@ -234,18 +280,21 @@ defmodule ApiaryWeb.PolicyLive.Views do
             >{@v.configuration.document}</pre>
           </.doc_well>
           <p class="max-w-[78ch] text-[12.5px]/[18px] text-faint">
-            <span :if={@v.view != "served"}>Shown indented for reading.</span>
-            "As served" is the exact bytes, {byte_size(@v.configuration.document)} of them, that the
-            <.term
-              word="digest"
-              standard="The sha256 of the exact bytes a runner is served. Two runs with the same digest had the same policy."
-              class="q-tip-wide"
-            /> is taken over. Deny rules and locks are not in the document: they decide what it lists.
+            <span :if={@v.view != "served"}>{gettext("Shown indented for reading.")}</span>
+            <%= for part <- served_sentence(byte_size(@v.configuration.document)) do %>
+              <.term
+                :if={part == :digest}
+                word={gettext("digest")}
+                standard={digest_tip()}
+                class="q-tip-wide"
+              /><span :if={part != :digest}>{part}</span>
+            <% end %>
+            {gettext("Deny rules and locks are not in the document: they decide what it lists.")}
           </p>
         </div>
 
-        <.sect id="version-list" title="Versions" count={@v.total} class="q-sect-side">
-          <nav class="q-vlist" aria-label="Versions">
+        <.sect id="version-list" title={gettext("Versions")} count={@v.total} class="q-sect-side">
+          <nav class="q-vlist" aria-label={gettext("Versions")}>
             <.link
               :for={item <- @v.versions}
               id={"ver-#{item.version}"}
@@ -263,7 +312,12 @@ defmodule ApiaryWeb.PolicyLive.Views do
                     ),
                     " · "
                   )}
-                  <.source_chip :if={item.hive} source={:hive} label="hive" class="q-src-xs" />
+                  <.source_chip
+                    :if={item.hive}
+                    source={:hive}
+                    label={gettext("hive")}
+                    class="q-src-xs"
+                  />
                 </small>
               </span>
               <span class="font-mono text-[11.5px] text-faint">
@@ -272,7 +326,9 @@ defmodule ApiaryWeb.PolicyLive.Views do
             </.link>
             <.link :if={@v.earlier > 0} navigate={"#{@base}/history"} class="!text-muted">
               <span></span>
-              <span>{@v.earlier} earlier {if @v.earlier == 1, do: "version", else: "versions"}</span>
+              <span>
+                {ngettext("%{count} earlier version", "%{count} earlier versions", @v.earlier)}
+              </span>
               <.icon name="hero-chevron-right-micro" class="size-3" />
             </.link>
           </nav>
@@ -305,21 +361,13 @@ defmodule ApiaryWeb.PolicyLive.Views do
     ~H"""
     <.modal
       id="policy-export"
-      title="Export for a node without a server"
+      title={gettext("Export for a node without a server")}
       size="lg"
       on_cancel={JS.patch(@close)}
     >
       <p id="export-lead" class="text-muted">
-        The effective policy of
-        <b :if={@export.hive} class="font-medium text-base-content">the hive {@export.hive}</b>
-        <b :if={!@export.hive} class="font-mono text-[12.5px] font-medium text-base-content">
-          {@export.subject}
-        </b>
-        as of <b class="font-medium text-base-content">version {@export.version}</b>, as the text a machine without a server takes:
-        <span :if={@export.policy_file}>
-          the file a runner takes with <span class="font-mono text-[12.5px]">--policy</span>, and
-        </span>
-        the egress section of its runner file. It is a copy: it does not follow later changes.
+        <.rich text={export_lead(@export)} />
+        {gettext("It is a copy: it does not follow later changes.")}
       </p>
 
       <.doc_well :if={@export.policy_file} id="export-policy">
@@ -331,35 +379,39 @@ defmodule ApiaryWeb.PolicyLive.Views do
             href={"data:text/yaml;charset=utf-8," <> URI.encode(@export.policy_file, &URI.char_unreserved?/1)}
             download={@export.file_name}
           >
-            <.icon name="hero-arrow-down-tray-micro" class="size-4" />Download
+            <.icon name="hero-arrow-down-tray-micro" class="size-4" />{gettext("Download")}
           </a>
-          <.copy_button id="export-policy-copy" text={@export.policy_file} label="Copy" />
+          <.copy_button id="export-policy-copy" text={@export.policy_file} label={gettext("Copy")} />
         </:actions>
         <.code_lines id="export-policy-text" text={@export.policy_file} />
       </.doc_well>
 
       <.doc_well :if={@export.policy_file} id="export-command">
-        <:caption>on the node</:caption>
+        <:caption>{gettext("on the node")}</:caption>
         <:actions>
-          <.copy_button id="export-command-copy" text={@export.command} label="Copy" />
+          <.copy_button id="export-command-copy" text={@export.command} label={gettext("Copy")} />
         </:actions>
         <pre tabindex="0" phx-no-format>{@export.command}</pre>
       </.doc_well>
 
       <.doc_well id="export-runner">
-        <:caption>runner.yaml · the egress section</:caption>
+        <:caption>{gettext("runner.yaml · the egress section")}</:caption>
         <:actions>
-          <.copy_button id="export-runner-copy" text={@export.runner_file} label="Copy" />
+          <.copy_button id="export-runner-copy" text={@export.runner_file} label={gettext("Copy")} />
         </:actions>
         <.code_lines id="export-runner-text" text={@export.runner_file} />
       </.doc_well>
 
       <p class="text-[12.5px]/[18px] text-muted">
         <span :for={note <- @export.notes}>{note}</span>
-        Keep a policy file outside the checkout. Deny rules and locks are already applied: the text lists what remains allowed.
+        {gettext("Keep a policy file outside the checkout.")}
+        {pgettext(
+          "plain",
+          "Deny rules and locks are already applied: the text lists what remains allowed."
+        )}
       </p>
       <:footer>
-        <.button variant="primary" patch={@close}>Done</.button>
+        <.button variant="primary" patch={@close}>{gettext("Done")}</.button>
       </:footer>
     </.modal>
     """
@@ -377,26 +429,55 @@ defmodule ApiaryWeb.PolicyLive.Views do
     >
       <div class="modal-box sm:max-w-[400px]">
         <div class="flex items-start justify-between gap-3 px-5 pt-5">
-          <h2 id="policy-keys-h" class="text-base/6 font-semibold tracking-[-0.01em]">Keys</h2>
+          <h2 id="policy-keys-h" class="text-base/6 font-semibold tracking-[-0.01em]">
+            {gettext("Keys")}
+          </h2>
         </div>
         <dl class="q-keys modal-body px-5 pb-5 pt-2 text-[13.5px]/5">
           <dt><kbd class="kbd kbd-sm">a</kbd></dt>
-          <dd>Add a rule: the composer's host field</dd>
-          <dt><kbd class="kbd kbd-sm">Enter</kbd></dt>
-          <dd>In the composer, save the rule once it reads back</dd>
+          <dd>{gettext("Add a rule: the composer's host field")}</dd>
+          <dt><kbd class="kbd kbd-sm">{pgettext("key", "Enter")}</kbd></dt>
+          <dd>{gettext("In the composer, save the rule once it reads back")}</dd>
           <dt><kbd class="kbd kbd-sm">←</kbd> <kbd class="kbd kbd-sm">→</kbd></dt>
-          <dd>Between the two modes; Space asks to switch</dd>
+          <dd>{gettext("Between the two modes; Space asks to switch")}</dd>
           <dt><kbd class="kbd kbd-sm">?</kbd></dt>
-          <dd>This list</dd>
+          <dd>{gettext("This list")}</dd>
         </dl>
         <form method="dialog" class="modal-action flex-none">
-          <button class="btn btn-sm" data-autofocus>Close</button>
+          <button class="btn btn-sm" data-autofocus>{gettext("Close")}</button>
         </form>
       </div>
       <form method="dialog" class="modal-backdrop">
-        <button tabindex="-1" aria-hidden="true">Close</button>
+        <button tabindex="-1" aria-hidden="true">{gettext("Close")}</button>
       </form>
     </dialog>
     """
+  end
+
+  # The lead of the export: what is exported, as of which version, and in which files.
+  defp export_lead(export) do
+    subject =
+      if export.hive,
+        do: {:b, gettext("the hive %{name}", name: export.hive), "font-medium text-base-content"},
+        else: {:b, export.subject, "font-mono text-[12.5px] font-medium text-base-content"}
+
+    version =
+      {:b, gettext("version %{version}", version: export.version),
+       "font-medium text-base-content"}
+
+    if export.policy_file,
+      do:
+        rich_gettext(
+          "The effective policy of %{subject} as of %{version}, as the text a machine without a server takes: the file a runner takes with %{flag}, and the egress section of its runner file.",
+          subject: subject,
+          version: version,
+          flag: {:m, "--policy", "font-mono text-[12.5px]"}
+        ),
+      else:
+        rich_gettext(
+          "The effective policy of %{subject} as of %{version}, as the text a machine without a server takes: the egress section of its runner file.",
+          subject: subject,
+          version: version
+        )
   end
 end

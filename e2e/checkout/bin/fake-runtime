@@ -1,10 +1,10 @@
 #!/bin/sh
 # The session of the end to end job: not a model, a loop. It asks for one page of the
-# target host through the proxy the wall gave it, every E2E_RETRY_SECONDS, and says what
+# upstream host through the proxy the wall gave it, every E2E_RETRY_SECONDS, and says what
 # came of each try. It leaves once the page has come back E2E_SUCCESSES times, or, with
 # E2E_THEN_DENIED set, once a try is refused after that (the job denied the host under
 # observe), or after E2E_SESSION_SECONDS. It reads nothing of its arguments.
-url="${E2E_TARGET_URL:?}"
+url="${E2E_UPSTREAM_URL:?}"
 retry="${E2E_RETRY_SECONDS:-3}"
 wanted="${E2E_SUCCESSES:-2}"
 limit="${E2E_SESSION_SECONDS:-120}"
@@ -26,7 +26,7 @@ reached=0
 try=0
 while [ $(( $(date +%s) - start )) -lt "$limit" ]; do
   try=$((try + 1))
-  # --insecure: the target's certificate is made for the job and signed by nobody. The
+  # --insecure: the upstream's certificate is made for the job and signed by nobody. The
   # job is about whether the connection is let through, not about whom it reaches.
   if curl --silent --show-error --insecure --max-time 5 --output /dev/null "$url" 2>/dev/null; then
     reached=$((reached + 1))

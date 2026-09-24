@@ -13,21 +13,23 @@ defmodule ApiaryWeb.Layouts do
   # and other static content.
   embed_templates "layouts/*"
 
-  # Two sections: the record first, because it is why people open the console.
+  # Two sections: the record first, because it is why people open the console. The words
+  # are marked for extraction here and translated when the sidebar renders (`nav_text/1`).
   @nav [
-    {"Hive", "Main",
+    {gettext_noop("Hive"), gettext_noop("Main"),
      [
-       {:overview, "Overview", "hero-squares-2x2-micro", "/hive"},
-       {:runs, "Runs", "hero-play-circle-micro", "/hive/runs"},
-       {:connections, "Connections", "hero-arrows-right-left-micro", "/hive/connections"},
+       {:overview, gettext_noop("Overview"), "hero-squares-2x2-micro", "/hive"},
+       {:runs, gettext_noop("Runs"), "hero-play-circle-micro", "/hive/runs"},
+       {:connections, gettext_noop("Connections"), "hero-arrows-right-left-micro",
+        "/hive/connections"},
        # After Connections, because the policy is what the connections are judged by.
-       {:policy, "Policy", "hero-shield-check-micro", "/hive/policy"}
+       {:policy, gettext_noop("Policy"), "hero-shield-check-micro", "/hive/policy"}
      ]},
-    {"Manage", "Manage",
+    {gettext_noop("Manage"), gettext_noop("Manage"),
      [
-       {:keys, "Access keys", "hero-key-micro", "/hive/keys"},
-       {:members, "Members", "hero-users-micro", "/hive/members"},
-       {:settings, "Settings", "hero-cog-6-tooth-micro", "/hive/settings"}
+       {:keys, gettext_noop("Access keys"), "hero-key-micro", "/hive/keys"},
+       {:members, gettext_noop("Members"), "hero-users-micro", "/hive/members"},
+       {:settings, gettext_noop("Settings"), "hero-cog-6-tooth-micro", "/hive/settings"}
      ]}
   ]
 
@@ -54,7 +56,7 @@ defmodule ApiaryWeb.Layouts do
   attr :counts, :map,
     default: nil,
     doc:
-      "%{keys: active keys, members: members, alive: runs alive now, mode: the policy's default mode, own_modes: the modes repositories set}"
+      "%{keys: active keys, members: members, alive: runs alive now, mode: the policy's default mode, own_modes: the modes targets set}"
 
   attr :width, :string,
     default: "wide",
@@ -77,7 +79,7 @@ defmodule ApiaryWeb.Layouts do
       href="#main"
       class="btn btn-sm sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[70]"
     >
-      Skip to content
+      {gettext("Skip to content")}
     </a>
 
     <%= if @organisation do %>
@@ -114,7 +116,7 @@ defmodule ApiaryWeb.Layouts do
               type="button"
               data-drawer-open
               class="btn btn-ghost btn-square md:hidden"
-              aria-label="Open menu"
+              aria-label={gettext("Open menu")}
               aria-controls="sidebar"
               aria-expanded="false"
               phx-mounted={JS.ignore_attributes(["aria-expanded"])}
@@ -174,7 +176,7 @@ defmodule ApiaryWeb.Layouts do
     ~H"""
     <header
       id="top-bar"
-      aria-label="Top bar"
+      aria-label={gettext("Top bar")}
       class="sticky top-0 z-30 flex h-13 flex-none items-center gap-1 border-b border-line bg-base-100/85 pl-2 pr-4 backdrop-blur md:px-4"
     >
       {render_slot(@inner_block)}
@@ -218,7 +220,7 @@ defmodule ApiaryWeb.Layouts do
     ~H"""
     <aside
       id="sidebar"
-      aria-label="Sidebar"
+      aria-label={gettext("Sidebar")}
       class="flex h-dvh w-72 flex-col border-r border-line bg-base-200 max-md:shadow-modal md:w-60"
     >
       <div id="apiary-row" class="flex h-13 flex-none items-center gap-1 px-2">
@@ -227,7 +229,7 @@ defmodule ApiaryWeb.Layouts do
           type="button"
           data-drawer-close
           class="btn btn-ghost btn-square md:hidden"
-          aria-label="Close menu"
+          aria-label={gettext("Close menu")}
         >
           <.icon name="hero-x-mark" class="size-5" />
         </button>
@@ -235,10 +237,9 @@ defmodule ApiaryWeb.Layouts do
 
       <div :for={{section, label, items} <- @nav_items} class="contents">
         <p class="px-4 pb-1 pt-3 text-[11.5px]/4 font-medium text-faint">
-          <.term :if={section == "Hive"} word="Hive" />
-          <span :if={section != "Hive"}>{section}</span>
+          {nav_text(section)}
         </p>
-        <nav class="grid gap-px px-2" aria-label={label}>
+        <nav class="grid gap-px px-2" aria-label={nav_text(label)}>
           <.link
             :for={{key, label, icon, path} <- items}
             id={"nav-#{key}"}
@@ -257,7 +258,7 @@ defmodule ApiaryWeb.Layouts do
                 if(@nav == key, do: "text-accent", else: "text-faint")
               ]}
             />
-            {label}
+            {nav_text(label)}
             <span
               :if={key == :runs && alive_count(@counts) > 0}
               id="nav-runs-alive"
@@ -273,9 +274,10 @@ defmodule ApiaryWeb.Layouts do
               class="ml-auto font-mono text-[11.5px]/4 text-faint"
               title={policy_mode_title(@counts)}
             >
-              {policy_mode(@counts)}<span :if={own_modes(@counts) != []} class="opacity-75"> · {length(
-                own_modes(@counts)
-              )} own</span>
+              {policy_mode(@counts)}<span :if={own_modes(@counts) != []} class="opacity-75"> · {gettext(
+                "%{count} own",
+                count: length(own_modes(@counts))
+              )}</span>
             </span>
             <span
               :if={count = nav_count(@counts, key)}
@@ -305,6 +307,8 @@ defmodule ApiaryWeb.Layouts do
     end
   end
 
+  defp nav_text(msgid), do: Gettext.gettext(ApiaryWeb.Gettext, msgid)
+
   defp nav_count(%{keys: n}, :keys), do: n
   defp nav_count(%{members: n}, :members), do: n
   defp nav_count(_counts, _key), do: nil
@@ -319,20 +323,23 @@ defmodule ApiaryWeb.Layouts do
 
   # The tag never claims what every run is under: it names the default and how many differ.
   defp policy_mode_title(counts) do
-    lead = "The hive's default mode is #{policy_mode(counts)}."
+    lead = gettext("The hive's default mode is %{mode}.", mode: policy_mode(counts))
 
-    case own_modes(counts) do
-      [] -> "#{lead} Every repository follows it."
-      [mode] -> "#{lead} 1 repository sets its own and #{mode}s."
-      modes -> "#{lead} #{length(modes)} repositories set their own."
-    end
+    lead <> " " <> own_modes_sentence(own_modes(counts))
   end
+
+  defp own_modes_sentence([]), do: gettext("Every target follows it.")
+  defp own_modes_sentence(["observe"]), do: gettext("1 target sets its own and observes.")
+  defp own_modes_sentence(["enforce"]), do: gettext("1 target sets its own and enforces.")
+
+  defp own_modes_sentence(modes),
+    do:
+      ngettext("%{count} target sets its own.", "%{count} targets set their own.", length(modes))
 
   defp alive_count(%{alive: n}) when is_integer(n), do: n
   defp alive_count(_counts), do: 0
 
-  defp alive_title(1), do: "1 run alive now"
-  defp alive_title(n), do: "#{n} runs alive now"
+  defp alive_title(n), do: ngettext("%{count} run alive now", "%{count} runs alive now", n)
 
   defp apiary_title(organisation, hive) do
     Enum.map_join([organisation, hive], " / ", &(&1 && &1.name))
@@ -360,7 +367,7 @@ defmodule ApiaryWeb.Layouts do
         class="grid w-full cursor-pointer grid-cols-[28px_1fr_auto] items-center gap-2.5 rounded-field border border-line bg-base-100 px-2 py-1.5 text-left shadow-xs transition-colors hover:border-line-strong"
         aria-haspopup="menu"
         aria-expanded="false"
-        aria-label={"Switch apiary, current: #{@organisation.name}"}
+        aria-label={gettext("Switch organisation, current: %{name}", name: @organisation.name)}
         phx-mounted={JS.ignore_attributes(["aria-expanded"])}
       >
         <.apiary_names organisation={@organisation} hive={@hive} />
@@ -372,8 +379,12 @@ defmodule ApiaryWeb.Layouts do
         class="dropdown-content left-0 top-full mt-1.5 w-full"
       >
         <input type="hidden" name="_csrf_token" value={get_csrf_token()} />
-        <ul class="menu menu-sm w-full min-w-0" role="menu" aria-label="Switch apiary">
-          <li class="menu-title" role="presentation">Switch <.term word="apiary" /></li>
+        <ul
+          class="menu menu-sm w-full min-w-0"
+          role="menu"
+          aria-label={gettext("Switch organisation")}
+        >
+          <li class="menu-title" role="presentation">{gettext("Switch organisation")}</li>
           <li :for={m <- @memberships} role="none">
             <button
               type="submit"
@@ -449,10 +460,10 @@ defmodule ApiaryWeb.Layouts do
         id="user-menu-button"
         type="button"
         class="tooltip tooltip-bottom btn btn-ghost btn-keep h-10 min-h-0 min-w-10 gap-1 rounded-field px-2 md:h-8 md:min-w-8 md:px-1 aria-expanded:bg-base-300"
-        data-tip="Account"
+        data-tip={gettext("Account")}
         aria-haspopup="menu"
         aria-expanded="false"
-        aria-label={"Account menu, #{@user.email}"}
+        aria-label={gettext("Account menu, %{email}", email: @user.email)}
         phx-mounted={JS.ignore_attributes(["aria-expanded"])}
       >
         <.avatar name={@user.email} kind="self" />
@@ -461,7 +472,7 @@ defmodule ApiaryWeb.Layouts do
       <ul
         class="menu menu-sm dropdown-content right-0 top-full mt-1.5 w-56"
         role="menu"
-        aria-label="Account"
+        aria-label={gettext("Account")}
       >
         <li role="presentation">
           <div class="grid cursor-default grid-flow-row gap-0 px-2 pb-2 pt-1.5 hover:bg-transparent">
@@ -474,13 +485,15 @@ defmodule ApiaryWeb.Layouts do
         <li class="menu-divider" role="separator"></li>
         <li role="none">
           <.link href={~p"/users/settings"} role="menuitem" id="user-menu-settings">
-            <.icon name="hero-user-circle-micro" class="size-4" /> Account settings
+            <.icon name="hero-user-circle-micro" class="size-4" /> {gettext("Account settings")}
           </.link>
         </li>
         <li class="menu-divider" role="separator"></li>
         <li role="none">
           <.link href={~p"/users/log-out"} method="delete" role="menuitem" id="user-menu-log-out">
-            <.icon name="hero-arrow-right-start-on-rectangle-micro" class="size-4" /> Log out
+            <.icon name="hero-arrow-right-start-on-rectangle-micro" class="size-4" /> {gettext(
+              "Log out"
+            )}
           </.link>
         </li>
       </ul>
@@ -512,7 +525,11 @@ defmodule ApiaryWeb.Layouts do
         ]}
         aria-haspopup="menu"
         aria-expanded="false"
-        aria-label={"Qory Apiary menu" <> if(@version, do: ", version #{@version}", else: "")}
+        aria-label={
+          if @version,
+            do: gettext("Qory Apiary menu, version %{version}", version: @version),
+            else: gettext("Qory Apiary menu")
+        }
         phx-mounted={JS.ignore_attributes(["aria-expanded"])}
       >
         <.logo_mark class="size-[18px]" />
@@ -523,7 +540,7 @@ defmodule ApiaryWeb.Layouts do
           :if={@version}
           id="brand-version"
           class="ml-auto font-mono text-[11.5px]/4 text-faint tabular-nums"
-          title={"Version #{@version}"}
+          title={gettext("Version %{version}", version: @version)}
         >
           {@version}
         </span>
@@ -542,12 +559,12 @@ defmodule ApiaryWeb.Layouts do
       >
         <li role="none">
           <.link href={~p"/docs"} role="menuitem" id="brand-menu-docs">
-            <.icon name="hero-book-open-micro" class="size-4" /> Docs
+            <.icon name="hero-book-open-micro" class="size-4" /> {gettext("Docs")}
           </.link>
         </li>
         <li role="none">
           <.link href={~p"/docs/changelog.html"} role="menuitem" id="brand-menu-changelog">
-            <.icon name="hero-list-bullet-micro" class="size-4" /> Changelog
+            <.icon name="hero-list-bullet-micro" class="size-4" /> {gettext("Changelog")}
           </.link>
         </li>
         <li class="menu-divider" role="separator"></li>
@@ -559,7 +576,7 @@ defmodule ApiaryWeb.Layouts do
             role="menuitem"
             id="brand-menu-source"
           >
-            <.icon name="hero-code-bracket-micro" class="size-4" /> Source on GitHub
+            <.icon name="hero-code-bracket-micro" class="size-4" /> {gettext("Source on GitHub")}
             <.icon name="hero-arrow-top-right-on-square-micro" class="ml-auto size-3.5 text-faint" />
           </.link>
         </li>
@@ -568,9 +585,30 @@ defmodule ApiaryWeb.Layouts do
     """
   end
 
-  defp level_sentence(%{level: :owner}, %{name: name}), do: "Owner of #{name}"
-  defp level_sentence(%{level: :member}, %{name: name}), do: "Member of #{name}"
-  defp level_sentence(_membership, _organisation), do: "Not part of an apiary yet"
+  defp level_sentence(%{level: :owner}, %{name: name}),
+    do: gettext("Owner of %{name}", name: name)
+
+  defp level_sentence(%{level: :member}, %{name: name}),
+    do: gettext("Member of %{name}", name: name)
+
+  defp level_sentence(_membership, _organisation), do: gettext("Not part of an organisation yet")
+
+  # A translated sentence with its accented words between asterisks, so the sentence stays
+  # whole in the catalogue: "With Qory *you don't have to*." Every part is escaped.
+  defp accented(text) do
+    ~r/\*[^*]+\*/
+    |> Regex.split(text, include_captures: true, trim: true)
+    |> Enum.map(fn
+      "*" <> _ = part ->
+        words =
+          part |> String.trim("*") |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
+
+        {:safe, [~s(<span class="text-accent">), words, "</span>"]}
+
+      part ->
+        part
+    end)
+  end
 
   defp scope_field(nil, _field), do: nil
   defp scope_field(scope, field), do: Map.get(scope, field)
@@ -594,7 +632,7 @@ defmodule ApiaryWeb.Layouts do
       href="#main"
       class="btn btn-sm sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[70]"
     >
-      Skip to content
+      {gettext("Skip to content")}
     </a>
 
     <div class="grid min-h-dvh lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
@@ -631,11 +669,12 @@ defmodule ApiaryWeb.Layouts do
         </div>
         <div class="relative grid gap-3.5">
           <p class="max-w-[30ch] text-balance text-[26px]/8 font-semibold tracking-[-0.025em]">
-            Can you trust your agents? With Qory <span class="text-accent">you don't have to</span>.
+            {accented(gettext("Can you trust your agents? With Qory *you don't have to*."))}
           </p>
           <p class="max-w-[46ch] text-[13px]/5 text-muted">
-            Every session runs behind a security wall, reaches only what you allow, never holds
-            your keys, and leaves a full record. Open source, so you can check all of that.
+            {gettext(
+              "Every session runs behind a security wall, reaches only what you allow, never holds your keys, and leaves a full record. Open source, so you can check all of that."
+            )}
           </p>
         </div>
       </aside>
@@ -701,7 +740,7 @@ defmodule ApiaryWeb.Layouts do
       <.flash
         id="client-error"
         kind={:error}
-        title="Connection lost."
+        title={gettext("Connection lost.")}
         spinner
         phx-disconnected={
           show(".phx-client-error #client-error")
@@ -710,13 +749,13 @@ defmodule ApiaryWeb.Layouts do
         phx-connected={hide("#client-error") |> JS.set_attribute({"hidden", ""})}
         hidden
       >
-        Reconnecting. Your changes are safe.
+        {gettext("Reconnecting. Your changes are safe.")}
       </.flash>
 
       <.flash
         id="server-error"
         kind={:error}
-        title="Something went wrong on our side."
+        title={gettext("Something went wrong on our side.")}
         spinner
         phx-disconnected={
           show(".phx-server-error #server-error")
@@ -725,7 +764,7 @@ defmodule ApiaryWeb.Layouts do
         phx-connected={hide("#server-error") |> JS.set_attribute({"hidden", ""})}
         hidden
       >
-        Reconnecting.
+        {gettext("Reconnecting.")}
       </.flash>
     </div>
     """
@@ -750,8 +789,8 @@ defmodule ApiaryWeb.Layouts do
         id="theme-menu-button"
         type="button"
         class={["tooltip btn btn-ghost btn-square inline-flex", @tooltip]}
-        data-tip="Theme"
-        aria-label="Theme"
+        data-tip={gettext("Theme")}
+        aria-label={gettext("Theme")}
         aria-haspopup="menu"
         aria-expanded="false"
         phx-mounted={JS.ignore_attributes(["aria-expanded"])}
@@ -759,13 +798,17 @@ defmodule ApiaryWeb.Layouts do
         <.icon name="hero-sun-micro" class="size-4 dark:hidden" />
         <.icon name="hero-moon-micro" class="hidden size-4 dark:inline-block" />
       </button>
-      <ul class="menu menu-sm dropdown-content mt-1.5 w-40 min-w-0" role="menu" aria-label="Theme">
+      <ul
+        class="menu menu-sm dropdown-content mt-1.5 w-40 min-w-0"
+        role="menu"
+        aria-label={gettext("Theme")}
+      >
         <li
           :for={
             {theme, icon, label} <- [
-              {"system", "hero-computer-desktop-micro", "Auto"},
-              {"light", "hero-sun-micro", "Light"},
-              {"dark", "hero-moon-micro", "Dark"}
+              {"system", "hero-computer-desktop-micro", gettext("Auto")},
+              {"light", "hero-sun-micro", gettext("Light")},
+              {"dark", "hero-moon-micro", gettext("Dark")}
             ]
           }
           role="none"

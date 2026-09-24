@@ -12,6 +12,7 @@ defmodule Apiary.Organisations do
   `membership_topic(user_id)` so the user's open pages reload their scope.
   """
 
+  use Gettext, backend: ApiaryWeb.Gettext
   import Ecto.Query, warn: false
 
   alias Apiary.Repo
@@ -124,7 +125,10 @@ defmodule Apiary.Organisations do
       with {:error, :invalid} <- claim_invitation(invitation) do
         {:error,
          user_changeset
-         |> Ecto.Changeset.add_error(:email, "was invited, but the invitation is no longer valid")
+         |> Ecto.Changeset.add_error(
+           :email,
+           dgettext_noop("errors", "was invited, but the invitation is no longer valid")
+         )
          |> Map.put(:action, :insert)}
       end
     end)
@@ -391,7 +395,12 @@ defmodule Apiary.Organisations do
       )
 
     if pending >= @max_pending_invitations,
-      do: Ecto.Changeset.add_error(changeset, :email, "too many pending invitations"),
+      do:
+        Ecto.Changeset.add_error(
+          changeset,
+          :email,
+          dgettext_noop("errors", "too many pending invitations")
+        ),
       else: changeset
   end
 
@@ -413,7 +422,7 @@ defmodule Apiary.Organisations do
             Ecto.Changeset.add_error(
               changeset,
               :email,
-              "is already a member of this organisation"
+              dgettext_noop("errors", "is already a member of this organisation")
             ),
           else: changeset
     end

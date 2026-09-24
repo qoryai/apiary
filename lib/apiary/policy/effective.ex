@@ -1,14 +1,14 @@
 defmodule Apiary.Policy.Effective do
   @moduledoc """
-  The security policy in force for the hive's baseline or for one repository: what
+  The security policy in force for the hive's baseline or for one target: what
   `Apiary.Policy.Resolution` makes of the rules, and what the document is rendered from.
 
-  `mode` is the mode in force and `mode_source` where it came from: `:repository` when
-  the repository has a mode of its own, `:hive` when it follows the hive's (and for the
+  `mode` is the mode in force and `mode_source` where it came from: `:target` when
+  the target has a mode of its own, `:hive` when it follows the hive's (and for the
   baseline).
 
   `entries` holds one `Apiary.Policy.Entry` per rule that took part, the hive's and the
-  repository's, each saying where it came from and whether it is in force. `allow`,
+  target's, each saying where it came from and whether it is in force. `allow`,
   `deny`, `paths` and `credentials` are what the document says, in its order: `deny` is
   what the runner denies in either mode, `allow` what it reaches under `enforce`.
   """
@@ -17,8 +17,8 @@ defmodule Apiary.Policy.Effective do
 
   @type t :: %__MODULE__{
           mode: String.t(),
-          mode_source: :hive | :repository,
-          repository_id: Ecto.UUID.t() | nil,
+          mode_source: :hive | :target,
+          target_id: Ecto.UUID.t() | nil,
           entries: [Entry.t()],
           allow: [String.t()],
           deny: [String.t()],
@@ -28,7 +28,7 @@ defmodule Apiary.Policy.Effective do
 
   defstruct mode: "observe",
             mode_source: :hive,
-            repository_id: nil,
+            target_id: nil,
             entries: [],
             allow: [],
             deny: [],

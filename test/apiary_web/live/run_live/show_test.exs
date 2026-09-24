@@ -54,7 +54,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       for id <- [theirs.run_id, theirs.id, Ecto.UUID.generate(), "0191f2a4"],
           path <- ["", "/terminal", "/connections", "/details"] do
         {:ok, _lv, html} = live(conn, "/hive/runs/#{id}#{path}")
-        assert html =~ "This run is not in this hive"
+        assert html =~ "This run is not in this workplace"
         assert html =~ "Back to runs"
         refute html =~ "dev-laptop"
       end
@@ -126,8 +126,8 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert has_element?(lv, "h1#run-title", "Run #{String.slice(run.run_id, 0, 8)}")
       assert html =~ "This run had no wall"
       refute html =~ "Labels"
-      # unassigned: the breadcrumb has no repository
-      refute html =~ "repo="
+      # unassigned: the breadcrumb has no target
+      refute html =~ "runs?system="
     end
 
     test "a pending run says Ping only and waits on every tab but Details", %{
@@ -1192,10 +1192,10 @@ defmodule ApiaryWeb.RunLive.ShowTest do
     test "close and close_confirm on a page without a run do nothing", %{conn: conn} do
       {:ok, lv, _html} = live(conn, "/hive/runs/#{Ecto.UUID.generate()}")
 
-      assert render_hook(lv, "close", %{}) =~ "This run is not in this hive"
-      assert render_hook(lv, "close_confirm", %{}) =~ "This run is not in this hive"
-      assert render_hook(lv, "show_all", %{"seq" => "1"}) =~ "This run is not in this hive"
-      assert render_hook(lv, "load_earlier", %{}) =~ "This run is not in this hive"
+      assert render_hook(lv, "close", %{}) =~ "This run is not in this workplace"
+      assert render_hook(lv, "close_confirm", %{}) =~ "This run is not in this workplace"
+      assert render_hook(lv, "show_all", %{"seq" => "1"}) =~ "This run is not in this workplace"
+      assert render_hook(lv, "load_earlier", %{}) =~ "This run is not in this workplace"
     end
 
     test "after a close, focus is sent to the page's heading", %{conn: conn, scope: scope} do

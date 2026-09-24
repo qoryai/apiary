@@ -93,13 +93,14 @@ defmodule ApiaryWeb.PolicyComponentsTest do
   end
 
   test "source_chip: three wordings, a label in their place" do
-    assert render_component(&PolicyComponents.source_chip/1, source: :hive) |> text() == "Hive"
+    assert render_component(&PolicyComponents.source_chip/1, source: :hive) |> text() ==
+             "Workplace"
 
-    assert render_component(&PolicyComponents.source_chip/1, source: :repository) |> text() ==
+    assert render_component(&PolicyComponents.source_chip/1, source: :target) |> text() ==
              "This repository"
 
     locked = render_component(&PolicyComponents.source_chip/1, source: :hive_locked)
-    assert text(locked) == "Hive, locked"
+    assert text(locked) == "Workplace, locked"
     assert locked =~ "hero-lock-closed-micro"
 
     assert render_component(&PolicyComponents.source_chip/1,
@@ -158,18 +159,18 @@ defmodule ApiaryWeb.PolicyComponentsTest do
       rendered_to_string(
         table(%{
           rows: rows,
-          scope: Keyword.get(opts, :scope, :repository),
+          scope: Keyword.get(opts, :scope, :target),
           can_lock: Keyword.get(opts, :can_lock, false),
           activity: Keyword.get(opts, :activity, :unavailable)
         })
       )
     end
 
-    test "a repository row names its source and its one act" do
+    test "a target row names its source and its one act" do
       html = render_table([row(%{})])
 
       assert text(html) =~ "Comes from"
-      assert text(html) =~ "Allow registry.example every path Hive Disable here"
+      assert text(html) =~ "Allow registry.example every path Workplace Disable here"
       assert html =~ ~s(aria-label="Disable registry.example for this repository")
       refute text(html) =~ "Last 7 days"
     end
@@ -193,7 +194,7 @@ defmodule ApiaryWeb.PolicyComponentsTest do
             id: "r2",
             action: "deny",
             host: "gitlab.example",
-            source: :repository,
+            source: :target,
             act: :restore,
             beaten: [beaten]
           })
@@ -205,17 +206,17 @@ defmodule ApiaryWeb.PolicyComponentsTest do
       assert html =~
                ~r{<s>\s*<span class="sr-only">not in force: </span>allow gitlab.example\s*</s>}
 
-      assert text(html) =~ "Overrides the hive's rule"
+      assert text(html) =~ "Overrides the workplace's rule"
       assert text(html) =~ "Disabled here by dana · 9 Sep"
       assert text(html) =~ "Restore"
     end
 
-    test "a locked hive rule holds against the repository's, which can be removed" do
+    test "a locked hive rule holds against the target's, which can be removed" do
       beaten = %{
         id: "p1",
         action: "allow",
         host: "bin.paste.example",
-        source: :repository,
+        source: :target,
         kind: :lock,
         by: "dana",
         at: @at,
@@ -236,7 +237,7 @@ defmodule ApiaryWeb.PolicyComponentsTest do
           })
         ])
 
-      assert text(html) =~ "Hive, locked"
+      assert text(html) =~ "Workplace, locked"
       assert text(html) =~ "Holds against this repository's rule"
       assert text(html) =~ "It is not in force."
       assert html =~ "Remove it"
@@ -289,21 +290,12 @@ defmodule ApiaryWeb.PolicyComponentsTest do
     end
   end
 
-  test "rich text is escaped at every level" do
-    assigns = %{text: ["a ", {:b, ["<b>", {:m, "<i>"}]}, {:code, "<u>"}]}
-    html = rendered_to_string(~H"<PolicyComponents.rich text={@text} />")
-
-    refute html =~ "<i>"
-    refute html =~ "<u>"
-    assert html =~ "&lt;u&gt;"
-  end
-
-  test "the repository's mode is a radio group, its radios checked and never pressed" do
+  test "the target's mode is a radio group, its radios checked and never pressed" do
     assigns = %{}
 
     html =
       rendered_to_string(~H"""
-      <PolicyComponents.repository_mode
+      <PolicyComponents.target_mode
         id="rm"
         setting="follow"
         effective="enforce"

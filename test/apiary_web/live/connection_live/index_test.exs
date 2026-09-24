@@ -198,10 +198,10 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       assert has_element?(view, "##{b}-toggle[aria-expanded=false]")
     end
 
-    test "every filter is the URL; per repository is the page with repo set", %{conn: conn} do
-      view = open(conn, ~p"/hive/connections?forge=gitlab.example&repo=acme/shop")
+    test "every filter is the URL; per target is the page with repo set", %{conn: conn} do
+      view = open(conn, ~p"/hive/connections?system=gitlab.example&target=acme/shop")
 
-      assert text(view, "#connections-repo-note") ==
+      assert text(view, "#connections-target-note") ==
                "Showing gitlab.example/acme/shop only. Its policy"
 
       assert has_element?(view, "##{dst("registry.example")}")
@@ -212,10 +212,10 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
 
       assert_patch(
         view,
-        ~p"/hive/connections?#{%{"decision" => "allowed", "forge" => "gitlab.example", "repo" => "acme/shop"}}"
+        ~p"/hive/connections?#{%{"decision" => "allowed", "system" => "gitlab.example", "target" => "acme/shop"}}"
       )
 
-      view |> element("#filter-repo-remove") |> render_click()
+      view |> element("#filter-target-remove") |> render_click()
       assert_patch(view, ~p"/hive/connections?decision=allowed")
       render_async(view, 2_000)
       refute has_element?(view, "##{dst("files.cdn.example")}")
@@ -230,25 +230,25 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       assert_patch(view, ~p"/hive/connections?decision=allowed&host=registry.example&since=1h")
     end
 
-    test "a forge with a colon filters and reads back", %{conn: conn, scope: scope} do
+    test "a system with a colon filters and reads back", %{conn: conn, scope: scope} do
       started_run(scope, %{"forge" => "git.example:8443", "repository" => "acme/shop"},
         egress: [%{"host" => "colon.example"}]
       )
 
       view = open(conn)
-      value = Apiary.Runs.Filters.repo_value({"git.example:8443", "acme/shop"})
-      view |> form("#filter-repo-form") |> render_change(%{"repo" => value})
+      value = Apiary.Runs.Filters.target_value({"git.example:8443", "acme/shop"})
+      view |> form("#filter-target-form") |> render_change(%{"target" => value})
 
       assert_patch(
         view,
-        ~p"/hive/connections?#{%{"forge" => "git.example:8443", "repo" => "acme/shop"}}"
+        ~p"/hive/connections?#{%{"system" => "git.example:8443", "target" => "acme/shop"}}"
       )
 
       render_async(view, 2_000)
       assert has_element?(view, "##{dst("colon.example")}")
       refute has_element?(view, "##{dst("registry.example")}")
 
-      assert text(view, "#connections-repo-note") ==
+      assert text(view, "#connections-target-note") ==
                "Showing git.example:8443/acme/shop only. Its policy"
     end
 

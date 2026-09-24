@@ -22,14 +22,14 @@ services:
 
   # The host the session asks for: a page over TLS, on the node's network and nowhere
   # else, under a name no resolver outside this job knows.
-  target:
+  upstream:
     image: nginx:1.29-alpine
     volumes:
-      - "./target/nginx.conf:/etc/nginx/conf.d/default.conf:ro"
+      - "./upstream/nginx.conf:/etc/nginx/conf.d/default.conf:ro"
       - "${E2E_WORK:?}/tls:/etc/nginx/tls:ro"
     networks:
       outside:
-        aliases: ["${E2E_TARGET_HOST:?}"]
+        aliases: ["${E2E_UPSTREAM_HOST:?}"]
 
 networks:
   outside: {}

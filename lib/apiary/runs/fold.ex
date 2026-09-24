@@ -29,15 +29,15 @@ defmodule Apiary.Runs.Fold do
   clock and a runner's clock may be anywhere.
   """
 
-  @ping "ai.qory.ping"
-  @started "ai.qory.run.started"
-  @policy_applied "ai.qory.run.policy_applied"
-  @heartbeat "ai.qory.run.heartbeat"
-  @log "ai.qory.run.log"
-  @resized "ai.qory.run.resized"
-  @egress "ai.qory.run.egress"
-  @exited "ai.qory.run.exited"
-  @result "ai.qory.session.result"
+  @ping "dev.qory.ping"
+  @started "dev.qory.run.started"
+  @policy_applied "dev.qory.run.policy_applied"
+  @heartbeat "dev.qory.run.heartbeat"
+  @log "dev.qory.run.log"
+  @resized "dev.qory.run.resized"
+  @egress "dev.qory.run.egress"
+  @exited "dev.qory.run.exited"
+  @result "dev.qory.session.result"
 
   @runner_version "runner_version"
   @terminal_rank "terminal"
@@ -118,6 +118,7 @@ defmodule Apiary.Runs.Fold do
     |> terminal_size(event, terminal(data))
     |> ranked(event, fn run ->
       labels = labels(data)
+      target = target(run, data)
 
       run
       |> Map.merge(%{
@@ -132,8 +133,8 @@ defmodule Apiary.Runs.Fold do
         image: string(data, "image"),
         labels: labels,
         task: labels["task"],
-        forge: repository_label(data, "forge"),
-        repository: repository_label(data, "repository"),
+        target_system: target && target.system,
+        target_path: target && target.path,
         started_at: event.time
       })
       |> started_state()
@@ -284,7 +285,7 @@ defmodule Apiary.Runs.Fold do
       do: Decimal.normalize(cost)
   end
 
-  @doc "The run state an `ai.qory.run.exited` with this `state` and `reason` means."
+  @doc "The run state an `dev.qory.run.exited` with this `state` and `reason` means."
   def exit_state("succeeded", _reason), do: "succeeded"
   def exit_state("failed", "timeout"), do: "timed_out"
   def exit_state(_state, _reason), do: "failed"
@@ -399,15 +400,17 @@ defmodule Apiary.Runs.Fold do
     end
   end
 
-  # The label as sent, whole, or nil: see `Apiary.Runs.Repository.label/1`. A label that
-  # cannot name a repository stays in `labels` (cut like the others) and the run is
+  # The target the labels as sent name, whole, by the hive's body (`Apiary.Body`), or nil.
+  # Labels that name no target stay in `labels` (cut like the others) and the run is
   # unassigned.
-  defp repository_label(data, key) do
-    case data do
-      %{"labels" => %{^key => value}} -> Apiary.Runs.Repository.label(value)
-      _ -> nil
+  defp target(run, %{"labels" => labels}) do
+    case Apiary.Body.target(Map.get(run, :hive_id), labels) do
+      {:ok, target} -> target
+      :none -> nil
     end
   end
+
+  defp target(_run, _data), do: nil
 
   defp labels(data) do
     case data do

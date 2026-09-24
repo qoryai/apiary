@@ -8,15 +8,15 @@ defmodule Apiary.Runs.Filters do
   given. Nothing here becomes an atom from input, and nothing is interpolated into a query:
   the values are compared as strings by `Apiary.Runs`.
 
-  The defaults (group by repository, the last seven days, page 1) are left out of the URL.
+  The defaults (group by target, the last seven days, page 1) are left out of the URL.
   On the runs list `since=all` is the way to say "no time range", which removing the range
   chip writes. The hive's connections are an aggregate over every connection in range, so
   their range is bounded: `since=90d` is the widest, and dates cover at most
   90 days, counted back from `to` (or on from `from` when only it is given).
 
-  A repository is two parameters, `forge` and `repo` (the path), because either may hold
-  any character, a colon included; `repo=none` without a forge is "no repository".
-  `repo_params/2` writes them, for every link to a filtered page.
+  A target is two parameters, `system` and `target` (the path), because either may
+  hold any character, a colon included; `target=none` without a `system` is "no target".
+  `target_params/2` writes them, for every link to a filtered page.
 
   A value that is present and refused (not one the page offers, not a string, longer than
   the column it is compared with, or holding a control character, which Postgres would
@@ -26,17 +26,19 @@ defmodule Apiary.Runs.Filters do
   not refused; the canonical query says the current name.
   """
 
+  use Gettext, backend: ApiaryWeb.Gettext
+
   alias Apiary.Runs.Run
 
-  @groups ~w(repository task none)
+  @groups ~w(target task none)
   # The three families every surface reads the states as, in the order they are shown.
   # `closed` is stopped by the hive, not a failure of the run, and sits with the bad endings
   # for scanning. Only their states go in a URL: `state=failed,timed_out,lost,closed`.
   # The three families every surface counts runs in (`Apiary.Runs.Run`): one definition.
   @families [
-    %{key: "alive", label: "Alive", states: Run.alive_states()},
-    %{key: "ended_well", label: "Ended well", states: Run.ended_well_states()},
-    %{key: "ended_badly", label: "Ended badly", states: Run.ended_badly_states()}
+    %{key: "alive", label: gettext_noop("Alive"), states: Run.alive_states()},
+    %{key: "ended_well", label: gettext_noop("Ended well"), states: Run.ended_well_states()},
+    %{key: "ended_badly", label: gettext_noop("Ended badly"), states: Run.ended_badly_states()}
   ]
   @family_keys Enum.map(@families, & &1.key)
   @ranges %{runs: ~w(1h 24h 7d 30d all), connections: ~w(1h 24h 7d 30d 90d)}
@@ -51,9 +53,9 @@ defmodule Apiary.Runs.Filters do
   @max_page 100_000
 
   defstruct kind: :runs,
-            group: "repository",
+            group: "target",
             states: [],
-            repo: nil,
+            target: nil,
             task: nil,
             runtime: nil,
             host: nil,
@@ -69,7 +71,7 @@ defmodule Apiary.Runs.Filters do
           kind: :runs | :connections,
           group: String.t(),
           states: [String.t()],
-          repo: nil | :none | {String.t(), String.t()},
+          target: nil | :none | {String.t(), String.t()},
           task: nil | :none | String.t(),
           runtime: nil | String.t(),
           host: nil | String.t(),
@@ -91,10 +93,12 @@ defmodule Apiary.Runs.Filters do
   @doc """
   The three families the states read as, in the order they are shown: alive (`pending`,
   `running`), ended well (`succeeded`) and ended badly (`failed`, `timed_out`, `lost`,
-  `closed`). Every state is in exactly one.
+  `closed`). Every state is in exactly one. The labels are in the body's words: translated
+  here, at call time, because the list is made at compile time.
   """
   @spec families() :: [family()]
-  def families, do: @families
+  def families,
+    do: Enum.map(@families, &%{&1 | label: Gettext.gettext(ApiaryWeb.Gettext, &1.label)})
 
   @doc "The states of a family, by its key; nil for a key that is not one."
   @spec family_states(String.t()) :: [String.t()] | nil
@@ -119,13 +123,13 @@ defmodule Apiary.Runs.Filters do
 
   def ranges(:runs),
     do: [
-      {"Last hour", "1h"},
-      {"Last 24 hours", "24h"},
-      {"Last 7 days", "7d"},
-      {"Last 30 days", "30d"}
+      {gettext("Last hour"), "1h"},
+      {gettext("Last 24 hours"), "24h"},
+      {gettext("Last 7 days"), "7d"},
+      {gettext("Last 30 days"), "30d"}
     ]
 
-  def ranges(:connections), do: ranges(:runs) ++ [{"Last 90 days", "90d"}]
+  def ranges(:connections), do: ranges(:runs) ++ [{gettext("Last 90 days"), "90d"}]
 
   @doc "Reads the parameters of the runs list (`:runs`) or the hive's connections (`:connections`)."
   @spec parse(map(), :runs | :connections) :: t()
@@ -135,14 +139,14 @@ defmodule Apiary.Runs.Filters do
     {from, to} = if from && to && Date.compare(from, to) == :gt, do: {to, from}, else: {from, to}
     {from, to} = clamp(from, to, kind)
 
-    {repo, d3} = repo(params)
+    {target, d3} = target(params)
     {host, d4} = read(params, "host", &text/1)
     {since, d5} = read(params, "since", &one_of(&1, @ranges[kind]))
     {page, d6} = read(params, "page", &page/1)
 
     filters = %__MODULE__{
       kind: kind,
-      repo: repo,
+      target: target,
       host: host,
       from: from,
       to: to,
@@ -161,7 +165,7 @@ defmodule Apiary.Runs.Filters do
 
         %{
           filters
-          | group: group || "repository",
+          | group: group || "target",
             states: states,
             task: task,
             runtime: runtime,
@@ -194,10 +198,10 @@ defmodule Apiary.Runs.Filters do
   @spec to_params(t()) :: %{optional(String.t()) => String.t()}
   def to_params(%__MODULE__{} = f) do
     [
-      {"group", f.group != "repository" && f.kind == :runs && f.group},
+      {"group", f.group != "target" && f.kind == :runs && f.group},
       {"state", f.states != [] && Enum.join(f.states, ",")},
-      {"forge", match?({_forge, _path}, f.repo) && elem(f.repo, 0)},
-      {"repo", repo_path(f.repo)},
+      {"system", match?({_system, _path}, f.target) && elem(f.target, 0)},
+      {"target", target_param(f.target)},
       {"task", if(f.task == :none, do: "none", else: f.task)},
       {"runtime", f.runtime},
       {"host", f.host},
@@ -214,7 +218,7 @@ defmodule Apiary.Runs.Filters do
 
   @doc "Whether anything narrows the list: the range counts when it is not the default."
   def any?(%__MODULE__{} = f) do
-    f.states != [] or f.repo != nil or f.task != nil or f.runtime != nil or f.host != nil or
+    f.states != [] or f.target != nil or f.task != nil or f.runtime != nil or f.host != nil or
       f.since != @default_since or f.denials or f.decision != nil
   end
 
@@ -265,8 +269,10 @@ defmodule Apiary.Runs.Filters do
             current |> Map.drop(["from", "to"]) |> Map.merge(Map.take(form, ["since"]))
           end
 
-        "repo" ->
-          current |> Map.drop(["forge", "repo"]) |> Map.merge(repo_from_value(form["repo"]))
+        "target" ->
+          current
+          |> Map.drop(["system", "target"])
+          |> Map.merge(target_from_value(form["target"]))
 
         name when name in ~w(task runtime host) ->
           Map.merge(current, Map.take(form, [name]))
@@ -307,69 +313,96 @@ defmodule Apiary.Runs.Filters do
   @doc "The range in words, for the chip: \"last 7 days\", \"14 Sep to 20 Sep\"."
   def range_label(%__MODULE__{from: nil, to: nil, since: since}) do
     case since do
-      "1h" -> "last hour"
-      "24h" -> "last 24 hours"
-      "7d" -> "last 7 days"
-      "30d" -> "last 30 days"
-      "90d" -> "last 90 days"
+      "1h" -> gettext("last hour")
+      "24h" -> gettext("last 24 hours")
+      "7d" -> gettext("last 7 days")
+      "30d" -> gettext("last 30 days")
+      "90d" -> gettext("last 90 days")
       _all -> nil
     end
   end
 
-  def range_label(%__MODULE__{from: from, to: nil}), do: "from #{day(from)}"
-  def range_label(%__MODULE__{from: nil, to: to}), do: "to #{day(to)}"
+  def range_label(%__MODULE__{from: from, to: nil}), do: gettext("from %{date}", date: day(from))
+  def range_label(%__MODULE__{from: nil, to: to}), do: gettext("to %{date}", date: day(to))
   def range_label(%__MODULE__{from: same, to: same}), do: day(same)
-  def range_label(%__MODULE__{from: from, to: to}), do: "#{day(from)} to #{day(to)}"
+
+  def range_label(%__MODULE__{from: from, to: to}),
+    do: gettext("%{from} to %{to}", from: day(from), to: day(to))
+
+  @doc """
+  The range as the end of a sentence, a phrase whole in itself: "in the last 7 days",
+  "up to 20 Sep 2026", "from 14 Sep 2026 to 20 Sep 2026"; nil when there is no range.
+  """
+  def range_phrase(%__MODULE__{from: nil, to: nil, since: since}) do
+    case since do
+      "1h" -> gettext("in the last hour")
+      "24h" -> gettext("in the last 24 hours")
+      "7d" -> gettext("in the last 7 days")
+      "30d" -> gettext("in the last 30 days")
+      "90d" -> gettext("in the last 90 days")
+      _all -> nil
+    end
+  end
+
+  def range_phrase(%__MODULE__{from: from, to: nil}), do: gettext("from %{date}", date: day(from))
+  def range_phrase(%__MODULE__{from: nil, to: to}), do: gettext("up to %{date}", date: day(to))
+  def range_phrase(%__MODULE__{from: same, to: same}), do: gettext("on %{date}", date: day(same))
+
+  def range_phrase(%__MODULE__{from: from, to: to}),
+    do: gettext("from %{from} to %{to}", from: day(from), to: day(to))
 
   defp day(date), do: Calendar.strftime(date, "%-d %b %Y")
 
   @doc """
-  The two parameters of a repository, for a link to a filtered page:
-  `%{"forge" => forge, "repo" => path}`; `%{"repo" => "none"}` for runs without one.
+  The two parameters of a target, for a link to a filtered page:
+  `%{"system" => system, "target" => path}`; `%{"target" => "none"}` for runs without one.
   """
-  @spec repo_params(String.t() | nil, String.t() | nil) :: %{String.t() => String.t()}
-  def repo_params(forge, path) when is_binary(forge) and is_binary(path),
-    do: %{"forge" => forge, "repo" => path}
+  @spec target_params(String.t() | nil, String.t() | nil) :: %{String.t() => String.t()}
+  def target_params(system, path) when is_binary(system) and is_binary(path),
+    do: %{"system" => system, "target" => path}
 
-  def repo_params(_forge, _path), do: %{"repo" => "none"}
+  def target_params(_system, _path), do: %{"target" => "none"}
 
   @doc """
-  A repository as the one value of a menu's option: `none`, or the JSON of `[forge, path]`,
-  which no forge or path can be mistaken for. `change/2` reads it back.
+  A target as the one value of a menu's option: `none`, or the JSON of `[system, path]`,
+  which no system or path can be mistaken for. `change/2` reads it back.
   """
-  def repo_value(nil), do: nil
-  def repo_value(:none), do: "none"
-  def repo_value({forge, path}), do: Jason.encode!([forge, path])
+  def target_value(nil), do: nil
+  def target_value(:none), do: "none"
+  def target_value({system, path}), do: Jason.encode!([system, path])
 
-  defp repo_from_value("none"), do: %{"repo" => "none"}
+  defp target_from_value("none"), do: %{"target" => "none"}
 
-  defp repo_from_value(value) when is_binary(value) do
+  defp target_from_value(value) when is_binary(value) do
     case Jason.decode(value) do
-      {:ok, [forge, path]} when is_binary(forge) and is_binary(path) -> repo_params(forge, path)
-      _ -> %{"repo" => value}
+      {:ok, [system, path]} when is_binary(system) and is_binary(path) ->
+        target_params(system, path)
+
+      _ ->
+        %{"target" => value}
     end
   end
 
-  defp repo_from_value(_value), do: %{}
+  defp target_from_value(_value), do: %{}
 
-  defp repo_path(nil), do: nil
-  defp repo_path(:none), do: "none"
-  defp repo_path({_forge, path}), do: path
+  defp target_param(nil), do: nil
+  defp target_param(:none), do: "none"
+  defp target_param({_system, path}), do: path
 
-  # `repo=none` alone is "no repository"; otherwise both parts, or neither.
-  defp repo(params) do
-    case {Map.fetch(params, "forge"), Map.fetch(params, "repo")} do
+  # `target=none` alone is "no target"; otherwise both parts, or neither.
+  defp target(params) do
+    case {Map.fetch(params, "system"), Map.fetch(params, "target")} do
       {:error, :error} ->
         {nil, []}
 
       {:error, {:ok, "none"}} ->
         {:none, []}
 
-      {{:ok, forge}, {:ok, path}} ->
-        if text(forge) && text(path), do: {{forge, path}, []}, else: {nil, ["repo"]}
+      {{:ok, system}, {:ok, path}} ->
+        if text(system) && text(path), do: {{system, path}, []}, else: {nil, ["target"]}
 
       _one_without_the_other ->
-        {nil, ["repo"]}
+        {nil, ["target"]}
     end
   end
 

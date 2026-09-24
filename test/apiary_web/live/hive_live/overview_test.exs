@@ -89,9 +89,8 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
 
       assert html =~ scope.hive.name
       assert html =~ ~r{<title[^>]*>\s*#{Regex.escape(scope.hive.name)} · Qory Apiary\s*</title>}
-      assert html =~ ~r/<abbr[^>]*data-tip="organisation"[^>]*>apiary<\/abbr>/
-      assert html =~ ~r/<abbr[^>]*data-tip="workplace"[^>]*>hive<\/abbr>/
-      refute html =~ "organisation</p>"
+      assert html =~ "The workplace of the #{scope.organisation.name} organisation."
+      refute html =~ ~r/<abbr[^>]*>(hive|apiary)<\/abbr>/
 
       assert has_element?(view, "#onboarding[data-step='1'] h2", "Send your first run")
       assert has_element?(view, "#onboarding .q-step-current", "Create an access key")
@@ -229,14 +228,14 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
 
       assert text(view, "#alive-n") == "2"
       assert has_element?(view, "#alive-#{running.run_id} .q-state-running")
-      assert has_element?(view, "#alive-#{running.run_id} .q-repo", "acme/shop")
+      assert has_element?(view, "#alive-#{running.run_id} .q-target", "acme/shop")
       assert has_element?(view, "#alive-#{running.run_id} .q-host", "build-01")
       assert has_element?(view, "#alive-#{running.run_id} .q-alive", "Alive")
       assert has_element?(view, "#alive-#{quiet.run_id} .q-alive-amber", "No heartbeat for")
       refute has_element?(view, "#alive-#{ended.run_id}")
 
-      assert has_element?(view, "#last-runs tr#run-#{running.run_id} .q-c-repo", "acme/shop")
-      assert has_element?(view, "#last-runs tr#run-#{ended.run_id} .q-c-repo", "no repository")
+      assert has_element?(view, "#last-runs tr#run-#{running.run_id} .q-c-target", "acme/shop")
+      assert has_element?(view, "#last-runs tr#run-#{ended.run_id} .q-c-target", "no repository")
       assert has_element?(view, "#last-runs tr#run-#{ended.run_id} .q-c-dur", "48 s")
       assert has_element?(view, "#last-runs-all[href='/hive/runs']", "All runs")
 
@@ -320,7 +319,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
   end
 
   describe "the glances (od7 to od9)" do
-    test "policy: a new hive, then a managed one with a version, repositories and things to review",
+    test "policy: a new hive, then a managed one with a version, targets and things to review",
          %{conn: conn, scope: scope} do
       run = started_run(scope, shop())
       view = open(conn)
@@ -329,7 +328,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
                "observe Not served Machines use their own policy until the first change here."
 
       assert has_element?(view, "#overview-policy-version", "No version yet")
-      assert text(view, "#overview-policy-repositories") =~ "1 has posted a run"
+      assert text(view, "#overview-policy-targets") =~ "1 has posted a run"
       assert has_element?(view, "#overview-policy-review", "Nothing declared and unallowed.")
       assert has_element?(view, "#overview-policy-open[href='/hive/policy']")
 
@@ -342,15 +341,15 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
       render_async(view, 5_000)
 
       assert text(view, "#overview-policy-mode") =~
-               "enforce Hive default Every repository follows it."
+               "enforce Workplace default Every repository follows it."
 
       assert has_element?(view, "#overview-policy-version .q-vpill", "v2")
       assert text(view, "#overview-policy-version") =~ "since"
       assert has_element?(view, "#overview-policy-review a.badge", "2 to review")
       assert text(view, "#overview-policy-review") =~ "in 1 repository"
 
-      repository = Repo.get!(Apiary.Runs.Repository, run.repository_id)
-      {:ok, _} = Policy.set_mode(scope, repository, "observe")
+      target = Repo.get!(Apiary.Runs.Target, run.target_id)
+      {:ok, _} = Policy.set_mode(scope, target, "observe")
       render_async(view, 5_000)
 
       assert text(view, "#overview-policy-mode") =~
@@ -360,7 +359,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
     test "retention: every sentence", %{conn: conn, scope: scope} do
       started_run(scope, shop())
       view = open(conn)
-      assert text(view, "#overview-retention") =~ "This hive keeps everything."
+      assert text(view, "#overview-retention") =~ "This workplace keeps everything."
       refute has_element?(view, "#overview-retention-last")
       assert has_element?(view, "#overview-retention-settings[href='/hive/settings#retention']")
 
@@ -495,14 +494,14 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
       assert has_element?(
                view,
                "#attention-list li[data-kind=denied]:first-child [role=menuitem]",
-               "Allow for the hive"
+               "Allow for the workplace"
              )
 
       locked = text(view, "#attention-list li[data-kind=denied]:nth-child(2)")
       assert locked =~ "bin.paste.example:443"
 
       assert locked =~
-               ~r"A locked hive rule denies \*\.paste\.example\s*\. Only an owner can change it\."
+               ~r"A locked workplace rule denies \*\.paste\.example\s*\. Only an owner can change it\."
 
       assert has_element?(
                view,
@@ -559,7 +558,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
       assert text(view, "#att-policy-unmanaged") =~ "Qory serves the policy now."
       assert has_element?(view, "#att-policy-unmanaged.q-resolved")
 
-      assert text(view, "#att-policy-enforce") =~ "Observe is the hive's default"
+      assert text(view, "#att-policy-enforce") =~ "Observe is the workplace's default"
 
       assert text(view, "#att-policy-enforce") =~
                "1 allow rule is in force and every destination reached in the last 7 days is covered. Enforce would deny nothing today."
@@ -662,10 +661,10 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
 
       view |> element("#rule-popover form") |> render_submit()
 
-      repository = Repo.get!(Apiary.Runs.Repository, run.repository_id)
+      target = Repo.get!(Apiary.Runs.Target, run.target_id)
 
       assert [%{host: "files.cdn.example", action: "allow"}] =
-               Policy.list_rules(scope, repository)
+               Policy.list_rules(scope, target)
 
       refute has_element?(view, "#rule-popover")
       assert has_element?(view, "##{item}.q-resolved .q-mark-ok")
@@ -675,7 +674,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
                "files.cdn.example is allowed for github.example/acme/shop."
 
       # The policy topic re-reads the list: the struck row stays where it is, and the hive
-      # is managed now, so the unmanaged item resolves in words too. A repository's rule
+      # is managed now, so the unmanaged item resolves in words too. A target's rule
       # is no allow rule of the hive: no enforce nudge.
       render_async(view, 5_000)
       assert has_element?(view, "##{item}.q-resolved")
@@ -702,7 +701,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
         |> LazyHTML.attribute("id")
 
       assert text(view, "##{item}") =~ "Denied 2 times in 2 runs of 2 repositories"
-      # Several repositories: the page does not guess a scope.
+      # Several targets: the page does not guess a scope.
       assert has_element?(
                view,
                "##{item}-act[aria-label='Allow flags.example, choose a scope']",
@@ -715,7 +714,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
       view |> element("#rule-popover form") |> render_submit()
 
       assert Enum.any?(Policy.list_rules(scope, nil), &(&1.host == "flags.example"))
-      assert has_element?(view, "##{item}-done", "Allowed for the hive")
+      assert has_element?(view, "##{item}-done", "Allowed for the workplace")
     end
   end
 

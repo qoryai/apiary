@@ -19,8 +19,10 @@ defmodule Apiary.Runs.Run do
   schema "runs" do
     field :run_id, Ecto.UUID
 
-    field :forge, :string
-    field :repository, :string
+    # The run's target as its labels named it (`Apiary.Body`): the system and the path,
+    # kept on the run beside `target_id`, both nil when the labels name none.
+    field :target_system, :string
+    field :target_path, :string
     field :task, :string
     field :labels, :map, default: %{}
     field :runtime, :string
@@ -74,7 +76,7 @@ defmodule Apiary.Runs.Run do
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :hive, Apiary.Organisations.Hive
     belongs_to :access_key, Apiary.AccessKeys.AccessKey
-    belongs_to :repository_record, Apiary.Runs.Repository, foreign_key: :repository_id
+    belongs_to :target, Apiary.Runs.Target
     belongs_to :closed_by, Apiary.Accounts.User
 
     has_many :events, Apiary.Runs.Event

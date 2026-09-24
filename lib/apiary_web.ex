@@ -54,6 +54,9 @@ defmodule ApiaryWeb do
     quote do
       use Phoenix.LiveView
 
+      # The body's words: the locale follows the scope the live_session loaded.
+      on_mount ApiaryWeb.Lingo
+
       unquote(html_helpers())
     end
   end
@@ -90,6 +93,8 @@ defmodule ApiaryWeb do
       import ApiaryWeb.CoreComponents, except: [relative_time: 1, relative_time: 2]
       # The components of the runs, run and connections pages
       import ApiaryWeb.RunComponents
+      # Whole translated sentences with marked-up parts
+      import ApiaryWeb.RichText
 
       # Common modules used in templates
       alias Phoenix.LiveView.JS

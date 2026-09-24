@@ -3,7 +3,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   Where the runs of the hive reached out to (`docs/design/brief-runs.md`, rd13 and re6): one
   row per host, port and path across the runs in range, with the reason and the outcome of
   the most recent attempt, and behind each row's chevron the runs that reached it. "Per
-  repository" is this page with `repo` set, which the runs list links to.
+  target" is this page with `repo` set, which the runs list links to.
 
   Every filter is a query parameter (`decision`, `repo`, `host`, `since`, `from`, `to`,
   `page`), read through `Apiary.Runs.Filters`. A destination's runs are read only when its
@@ -12,8 +12,8 @@ defmodule ApiaryWeb.ConnectionLive.Index do
 
   Each row may ask the policy for a rule (`docs/design/brief-policy.md`, pd8). A row's
   standing is derived from one effective policy the page holds: the hive's baseline, or
-  the repository's when `repo` names one. The scope of a new rule is never guessed: among
-  several repositories none is chosen until the reader chooses. The rule itself is made
+  the target's when `repo` names one. The scope of a new rule is never guessed: among
+  several targets none is chosen until the reader chooses. The rule itself is made
   by `Apiary.Policy.rule_from_connection/4` from the most recent connection of the
   destination in the chosen scope, and what the domain refuses is said in its sentence.
   """
@@ -41,21 +41,24 @@ defmodule ApiaryWeb.ConnectionLive.Index do
       width="full"
     >
       <.header>
-        Connections
+        {gettext("Connections")}
         <:subtitle>
-          Where the runs of this <.term word="hive" />
-          reached out to, and what the policy made of it. One row per host, port and path, across runs.
-          <span :if={@filters.repo} id="connections-repo-note">
-            Showing
-            <.mono>{repo_label(@filters.repo)}</.mono>
-            only.
+          {gettext(
+            "Where the runs of this hive reached out to, and what the policy made of it. One row per host, port and path, across runs."
+          )}
+          <span :if={@filters.target} id="connections-target-note">
+            <.rich text={
+              rich_gettext("Showing %{target} only.",
+                target: mono_part(target_label(@filters.target))
+              )
+            } />
             <.link
-              :if={@repository}
-              id="connections-repo-policy"
-              navigate={Rules.repository_path(@repository.id)}
+              :if={@target}
+              id="connections-target-policy"
+              navigate={Rules.target_policy_path(@target.id)}
               class="q-link"
             >
-              Its policy
+              {gettext("Its policy")}
             </.link>
           </span>
         </:subtitle>
@@ -63,7 +66,9 @@ defmodule ApiaryWeb.ConnectionLive.Index do
 
       <.notice :if={@load_error} kind={:error} class="max-w-[80ch]">
         <span id="connections-error">
-          The connections could not be loaded. Reload the page; if it keeps happening, the server log has the reason.
+          {gettext(
+            "The connections could not be loaded. Reload the page; if it keeps happening, the server log has the reason."
+          )}
         </span>
       </.notice>
 
@@ -76,9 +81,15 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           id="connections-filters"
           clear={Filters.any?(@filters) && path(Filters.clear(@filters))}
         >
-          <.segments id="connections-decision" label="Decision">
+          <.segments id="connections-decision" label={gettext("Decision")}>
             <:segment
-              :for={{label, value} <- [{"All", nil}, {"Allowed", "allowed"}, {"Denied", "denied"}]}
+              :for={
+                {label, value} <- [
+                  {gettext("All"), nil},
+                  {gettext("Allowed"), "allowed"},
+                  {gettext("Denied"), "denied"}
+                ]
+              }
               patch={path(Filters.put(@filters, decision: value))}
               pressed={@filters.decision == value}
             >
@@ -86,32 +97,32 @@ defmodule ApiaryWeb.ConnectionLive.Index do
             </:segment>
           </.segments>
           <.filter
-            name="repo"
-            total={facet_total(@facets, :repo)}
-            query={@narrow["repo"]}
-            label="Repository"
-            value={Filters.repo_value(@filters.repo)}
+            name="target"
+            total={facet_total(@facets, :target)}
+            query={@narrow["target"]}
+            label={gettext("Target")}
+            value={Filters.target_value(@filters.target)}
             options={
               with_chosen(
-                facet_options(@facets, :repo),
-                Filters.repo_value(@filters.repo),
-                repo_label(@filters.repo)
+                facet_options(@facets, :target),
+                Filters.target_value(@filters.target),
+                target_label(@filters.target)
               )
             }
-            remove={path(Filters.put(@filters, repo: nil))}
+            remove={path(Filters.put(@filters, target: nil))}
           />
           <.filter
             name="host"
             total={facet_total(@facets, :host)}
             query={@narrow["host"]}
-            label="Host"
+            label={gettext("Host")}
             value={@filters.host}
             options={with_chosen(facet_options(@facets, :host), @filters.host, @filters.host)}
             remove={path(Filters.put(@filters, host: nil))}
           />
           <.filter
             name="since"
-            label="Seen"
+            label={gettext("Seen")}
             value={range_value(@filters)}
             value_label={Filters.range_label(@filters)}
             options={for {label, value} <- Filters.ranges(:connections), do: {label, value, nil}}
@@ -128,19 +139,32 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           <:trailing>
             <span id="connections-summary" class="q-summary">
               <span :if={@listing}>
-                <b>{delimited(@listing.summary.destinations)}</b>
-                {if @listing.summary.destinations == 1, do: "destination", else: "destinations"}
+                <.rich text={
+                  rich_ngettext(
+                    "%{number} destination",
+                    "%{number} destinations",
+                    @listing.summary.destinations,
+                    number: {:b, delimited(@listing.summary.destinations)}
+                  )
+                } />
               </span>
               <span :if={@listing && @listing.summary.denied > 0}>
-                <b>{delimited(@listing.summary.denied)}</b> denied
+                <.rich text={
+                  rich_ngettext("%{number} denied", "%{number} denied", @listing.summary.denied,
+                    number: {:b, delimited(@listing.summary.denied)}
+                  )
+                } />
               </span>
               <span :if={@listing}>
-                <b>{delimited(@listing.summary.runs)}</b>
-                {if @listing.summary.runs == 1, do: "run", else: "runs"}
+                <.rich text={
+                  rich_ngettext("%{number} run", "%{number} runs", @listing.summary.runs,
+                    number: {:b, delimited(@listing.summary.runs)}
+                  )
+                } />
               </span>
               <span :if={!@listing} class="skeleton q-skel w-44"></span>
               <.link :if={@stale} id="connections-refresh" phx-click="refresh" href="#">
-                New activity
+                {gettext("New activity")}
               </.link>
             </span>
           </:trailing>
@@ -158,13 +182,13 @@ defmodule ApiaryWeb.ConnectionLive.Index do
                 <th :for={
                   label <-
                     [
-                      "Destination",
-                      "Runs",
-                      "Attempts",
-                      "Allowed / denied",
-                      "Reason",
-                      "Outcome",
-                      "Last seen"
+                      gettext("Destination"),
+                      gettext("Runs"),
+                      gettext("Attempts"),
+                      gettext("Allowed / denied"),
+                      gettext("Reason"),
+                      gettext("Outcome"),
+                      gettext("Last seen")
                     ]
                 }>
                   {label}
@@ -190,7 +214,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
         <.connections_table
           :if={@listing && @listing.rows != []}
           id="destinations"
-          label="Connections of this hive"
+          label={gettext("Connections of this hive")}
           variant="hive"
           rows={@listing.rows}
           row_id={&destination_id/1}
@@ -207,9 +231,11 @@ defmodule ApiaryWeb.ConnectionLive.Index do
         >
           <span id="connections-empty">
             {if narrowed?(@filters),
-              do: "No destination matches them in this range.",
+              do: gettext("No destination matches them in this range."),
               else:
-                "Widen the range, or wait for a run to reach out. Only programs that honour the proxy variables are seen."}
+                gettext(
+                  "Widen the range, or wait for a run to reach out. Only programs that honour the proxy variables are seen."
+                )}
           </span>
           <:actions>
             <.button
@@ -217,7 +243,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
               id="connections-clear"
               patch={path(Filters.clear(@filters))}
             >
-              Clear filters
+              {gettext("Clear filters")}
             </.button>
           </:actions>
         </.empty_state>
@@ -227,7 +253,9 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           class="flex flex-wrap items-center justify-between gap-3"
         >
           <p id="connections-footer" class="max-w-[80ch] text-[12.5px] text-faint">
-            Denied destinations come first, then the most recent. The reason and outcome are those of the last attempt across the runs shown. A rule added here changes what happens next; what the record already says stays as it was.
+            {gettext(
+              "Denied destinations come first, then the most recent. The reason and outcome are those of the last attempt across the runs shown. A rule added here changes what happens next; what the record already says stays as it was."
+            )}
           </p>
           <div :if={@listing.pages > 1} class="flex items-center gap-2">
             <.button
@@ -235,14 +263,14 @@ defmodule ApiaryWeb.ConnectionLive.Index do
               patch={path(%{@filters | page: @listing.page - 1})}
               disabled={@listing.page <= 1}
             >
-              Previous
+              {gettext("Previous")}
             </.button>
             <.button
               id="connections-next"
               patch={path(%{@filters | page: @listing.page + 1})}
               disabled={@listing.page >= @listing.pages}
             >
-              Next
+              {gettext("Next")}
             </.button>
           </div>
         </div>
@@ -262,7 +290,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
 
     {:ok,
      assign(socket,
-       page_title: "Connections",
+       page_title: gettext("Connections"),
        filters: %Filters{kind: :connections},
        listing: nil,
        facets: %{},
@@ -271,7 +299,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
        load_error: false,
        dropped: [],
        narrow: %{},
-       repository: nil,
+       target: nil,
        effective: nil,
        acts: nil,
        popover: nil,
@@ -358,7 +386,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
 
   ## A row's Allow and Deny (pd8). What the browser names is matched whole against the rows
   ## the page holds, and the rule is made from a connection read through the scope: a
-  ## destination or a repository of another hive finds nothing.
+  ## destination or a target of another hive finds nothing.
 
   def handle_event("rule_open", %{"action" => action} = params, socket)
       when action in ~w(allow deny) do
@@ -391,16 +419,16 @@ defmodule ApiaryWeb.ConnectionLive.Index do
       ) do
     level =
       case params["for"] do
-        "repository" when popover.repositories != [] -> :repository
+        "target" when popover.targets != [] -> :target
         "hive" -> :hive
         _ -> popover.level
       end
 
-    # Only a repository the popover listed can be chosen.
+    # Only a target the popover listed can be chosen.
     choice =
-      case params["repository"] do
+      case params["target"] do
         id when is_binary(id) ->
-          if Enum.any?(popover.repositories, &(&1.id == id)), do: id
+          if Enum.any?(popover.targets, &(&1.id == id)), do: id
 
         _ ->
           popover.choice
@@ -408,7 +436,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
 
     popover = %{popover | level: level, choice: choice, error: nil}
 
-    # What a rule for the chosen repository would be is decided by that repository's
+    # What a rule for the chosen target would be is decided by that target's
     # policy, which is read when it is chosen.
     popover =
       if choice != popover.chosen,
@@ -425,7 +453,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
         _params,
         %{assigns: %{popover: %{refusal: nil, level: level} = popover}} = socket
       )
-      when level in [:repository, :hive] do
+      when level in [:target, :hive] do
     scope = socket.assigns.current_scope
 
     # Sent only while the policy is still the one the popover opened on.
@@ -433,24 +461,25 @@ defmodule ApiaryWeb.ConnectionLive.Index do
          {:ok, from} <- rule_source(popover),
          {:ok, connection} <- Runs.fetch_connection(scope, from.connection_id),
          {:ok, rule} <- Policy.rule_from_connection(scope, connection, popover.action, level) do
-      where = if level == :repository, do: from.label, else: "the hive"
-      target = if level == :repository, do: from.repository
+      where = if level == :target, do: {:target, from.label}, else: :hive
+      holder = if level == :target, do: from.target
 
       own =
         if level == :hive and popover.own_rule,
-          do: " A repository's own rule for this host still decides there.",
-          else: ""
+          do: gettext("A target's own rule for this host still decides there.")
+
+      sentences = [
+        Rules.toast(rule, popover.action, popover.host, popover.path, where),
+        version_words(scope, holder),
+        own,
+        gettext("Running sessions have it within a heartbeat.")
+      ]
 
       {:noreply,
        socket
        |> close_popover()
        |> refresh_policy()
-       |> put_flash(
-         :info,
-         Rules.toast(rule, popover.action, popover.host, popover.path, where) <>
-           version_words(scope, target) <>
-           own <> " Running sessions have it within a heartbeat."
-       )}
+       |> put_flash(:info, sentences |> Enum.reject(&is_nil/1) |> Enum.join(" "))}
     else
       :stale ->
         {:noreply, socket |> refresh_policy() |> policy_moved()}
@@ -462,7 +491,10 @@ defmodule ApiaryWeb.ConnectionLive.Index do
         {:noreply,
          socket
          |> close_popover()
-         |> put_flash(:error, "This destination is no longer among the connections shown.")}
+         |> put_flash(
+           :error,
+           gettext("This destination is no longer among the connections shown.")
+         )}
     end
   end
 
@@ -479,7 +511,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
          listing: loaded.listing,
          facets: loaded.facets,
          open: loaded.open,
-         repository: loaded.repository,
+         target: loaded.target,
          effective: loaded.effective,
          own: loaded.own,
          stale: false,
@@ -547,16 +579,16 @@ defmodule ApiaryWeb.ConnectionLive.Index do
              )}
           end
 
-        repository = repository_of(scope, filters.repo)
+        target = target_of(scope, filters.target)
 
         %{
           filters: filters,
           listing: listing,
           facets: Runs.destination_facets(scope, filters, now: now, narrow: narrow),
           open: open,
-          repository: repository,
-          effective: Policy.effective(scope, repository),
-          own: if(repository, do: [], else: Rules.own_hosts(scope))
+          target: target,
+          effective: Policy.effective(scope, target),
+          own: if(target, do: [], else: Rules.own_hosts(scope))
         }
       end)
     else
@@ -566,18 +598,18 @@ defmodule ApiaryWeb.ConnectionLive.Index do
 
   ## The rows and the policy
 
-  # The repository `repo` names, when the hive has it: its policy is what the rows stand
+  # The target `repo` names, when the hive has it: its policy is what the rows stand
   # against, and where "Its policy" leads.
-  defp repository_of(scope, {forge, path}), do: Runs.fetch_repository(scope, forge, path)
-  defp repository_of(_scope, _repo), do: nil
+  defp target_of(scope, {system, path}), do: Runs.fetch_target(scope, system, path)
+  defp target_of(_scope, _target), do: nil
 
   defp refresh_policy(%{assigns: %{listing: %{}}} = socket) do
-    %{current_scope: scope, repository: repository} = socket.assigns
+    %{current_scope: scope, target: target} = socket.assigns
 
     socket
     |> assign(
-      effective: Policy.effective(scope, repository),
-      own: if(repository, do: [], else: Rules.own_hosts(scope))
+      effective: Policy.effective(scope, target),
+      own: if(target, do: [], else: Rules.own_hosts(scope))
     )
     |> assign_acts()
   end
@@ -588,10 +620,10 @@ defmodule ApiaryWeb.ConnectionLive.Index do
          %{assigns: %{effective: %Policy.Effective{} = effective, listing: %{rows: rows}}} =
            socket
        ) do
-    %{current_scope: scope, repository: repository} = socket.assigns
-    page = if repository, do: :run, else: :hive
+    %{current_scope: scope, target: target} = socket.assigns
+    page = if target, do: :run, else: :hive
     standings = Enum.map(rows, &{&1, Rules.standing(&1, effective, page, socket.assigns.own)})
-    changes = Rules.changes(scope, repository, Enum.map(standings, &elem(&1, 1)))
+    changes = Rules.changes(scope, target, Enum.map(standings, &elem(&1, 1)))
 
     standings =
       for {row, standing} <- standings, do: {row, Rules.answered(standing, row, changes)}
@@ -617,23 +649,23 @@ defmodule ApiaryWeb.ConnectionLive.Index do
 
   defp act(row, %{standing: {:rule_added, action}, entry: entry} = standing, changes, socket)
        when not is_nil(entry) do
-    %{current_scope: scope, repository: repository} = socket.assigns
-    target_id = if entry.source == :repository and repository, do: repository.id
+    %{current_scope: scope, target: target} = socket.assigns
+    holder_id = if entry.source == :target and target, do: target.id
     change = Rules.change_for(entry, changes)
 
     Map.merge(standing, %{
       values: row_values(row),
       entry_host: entry.host,
-      rule_path: Rules.rule_path(target_id, entry.host),
+      rule_path: Rules.rule_path(holder_id, entry.host),
       after: %{
         action: action,
-        level: if(entry.source == :repository, do: :repository, else: :hive),
+        level: if(entry.source == :target, do: :target, else: :hive),
         version:
           change && is_integer(change.version) &&
             %{
               n: change.version,
-              path: Rules.version_path(target_id, change.version),
-              label: Rules.version_label(target_id, repository)
+              path: Rules.version_path(holder_id, change.version),
+              label: Rules.version_label(holder_id, target)
             },
         by: change && who(change, scope),
         at: (change && change.at) || (entry.rule && entry.rule.updated_at),
@@ -656,28 +688,28 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   defp row_values(row),
     do: %{"host" => row.host, "port" => Integer.to_string(row.port), "path" => row.path || ""}
 
-  defp who(%{by_id: id}, %{user: %{id: id}}) when not is_nil(id), do: "you"
+  defp who(%{by_id: id}, %{user: %{id: id}}) when not is_nil(id), do: gettext("you")
   defp who(%{by: email}, _scope) when is_binary(email), do: email |> String.split("@") |> hd()
   defp who(_change, _scope), do: nil
 
   defp open_popover(socket, row, act, action) do
-    %{current_scope: scope, filters: filters, effective: effective, repository: filtered} =
+    %{current_scope: scope, filters: filters, effective: effective, target: filtered} =
       socket.assigns
 
-    reached = Runs.destination_repositories(scope, filters, {row.host, row.port, row.path || ""})
+    reached = Runs.destination_targets(scope, filters, {row.host, row.port, row.path || ""})
 
-    repositories =
-      for %{repository_id: id} = r when is_binary(id) <- reached do
+    targets =
+      for %{target_id: id} = r when is_binary(id) <- reached do
         %{
           id: id,
-          label: "#{r.forge}/#{r.repository}",
+          label: "#{r.system}/#{r.path}",
           runs: r.runs,
           connection_id: r.connection_id
         }
       end
 
-    # With `repo` set that repository is chosen; among several, none is: no guessed scope.
-    choice = filtered && Enum.find_value(repositories, &(&1.id == filtered.id && &1.id))
+    # With `repo` set that target is chosen; among several, none is: no guessed scope.
+    choice = filtered && Enum.find_value(targets, &(&1.id == filtered.id && &1.id))
 
     popover =
       %{
@@ -688,15 +720,15 @@ defmodule ApiaryWeb.ConnectionLive.Index do
         path: row.path || "",
         mode: Rules.mode(row),
         page: :hive,
-        level: if(choice, do: :repository),
-        repository: nil,
-        repositories: repositories,
+        level: if(choice, do: :target),
+        target: nil,
+        targets: targets,
         choice: choice,
-        # The page holds the baseline, or with `repo` the repository's; the other is read.
+        # The page holds the baseline, or with `repo` the target's; the other is read.
         baseline: if(filtered, do: Policy.effective(scope, nil), else: effective),
         standing: act.standing,
         chosen: nil,
-        what: %{repository: nil, hive: nil},
+        what: %{target: nil, hive: nil},
         own_rule: false,
         seen: nil,
         consequence: %{},
@@ -743,27 +775,27 @@ defmodule ApiaryWeb.ConnectionLive.Index do
 
   defp close_popover(socket), do: socket |> assign(popover: nil) |> assign_acts()
 
-  # The connection the rule is made from: the chosen repository's, or for the hive any of
+  # The connection the rule is made from: the chosen target's, or for the hive any of
   # the destination's.
-  defp rule_source(%{level: :repository, choice: choice, repositories: repositories})
+  defp rule_source(%{level: :target, choice: choice, targets: targets})
        when is_binary(choice) do
-    case Enum.find(repositories, &(&1.id == choice)) do
-      %{} = repository -> {:ok, Map.put(repository, :repository, %{id: repository.id})}
+    case Enum.find(targets, &(&1.id == choice)) do
+      %{} = target -> {:ok, Map.put(target, :target, %{id: target.id})}
       nil -> :error
     end
   end
 
   defp rule_source(%{level: :hive, any_connection_id: id}) when is_binary(id),
-    do: {:ok, %{connection_id: id, label: "the hive", repository: nil}}
+    do: {:ok, %{connection_id: id, label: gettext("the hive"), target: nil}}
 
   defp rule_source(_popover), do: :error
 
-  defp version_words(scope, target) do
-    target =
-      case target do
+  defp version_words(scope, holder) do
+    holder =
+      case holder do
         %{id: id} ->
-          case Policy.get_repository(scope, id) do
-            {:ok, repository} -> repository
+          case Policy.get_target(scope, id) do
+            {:ok, target} -> target
             _ -> nil
           end
 
@@ -771,25 +803,28 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           nil
       end
 
-    case Policy.list_changes(scope, target, 1) do
-      %{items: [%{version_after: n} | _]} when is_integer(n) -> " Version #{n}."
-      _ -> ""
+    case Policy.list_changes(scope, holder, 1) do
+      %{items: [%{version_after: n} | _]} when is_integer(n) ->
+        gettext("Version %{number}.", number: n)
+
+      _ ->
+        nil
     end
   end
 
-  # The policy of the repository chosen in the popover: the page's when `repo` names it.
+  # The policy of the target chosen in the popover: the page's when `repo` names it.
   defp chosen_effective(_socket, nil), do: nil
 
   defp chosen_effective(socket, id) do
-    %{current_scope: scope, repository: filtered, effective: effective} = socket.assigns
+    %{current_scope: scope, target: filtered, effective: effective} = socket.assigns
 
     cond do
       filtered && filtered.id == id ->
         effective
 
       true ->
-        case Policy.get_repository(scope, id) do
-          {:ok, repository} -> Policy.effective(scope, repository)
+        case Policy.get_target(scope, id) do
+          {:ok, target} -> Policy.effective(scope, target)
           _ -> nil
         end
     end
@@ -805,34 +840,34 @@ defmodule ApiaryWeb.ConnectionLive.Index do
       popover
       | chosen: popover.choice,
         what: %{
-          repository: Rules.what(chosen, host, path),
+          target: Rules.what(chosen, host, path),
           hive: Rules.what(baseline, host, path)
         },
         own_rule: own?,
         seen: {Rules.seen(baseline, host), Rules.seen(chosen, host)},
         consequence: %{
-          repository: chosen && repository_consequence(chosen, host),
+          target: chosen && target_consequence(chosen, host),
           hive: hive_consequence(baseline, host, own?)
         }
     }
   end
 
-  defp repository_consequence(effective, host) do
+  defp target_consequence(effective, host) do
     if Rules.own_rule?(effective, host),
-      do: "Replaces the repository's own rule for the host.",
-      else: "Disables the hive's allow rule there. Other repositories keep it."
+      do: gettext("Replaces the target's own rule for the host."),
+      else: gettext("Disables the hive's allow rule there. Other targets keep it.")
   end
 
   defp hive_consequence(baseline, host, own?) do
     cond do
-      own? -> "A repository's own allow rule still holds there."
-      Rules.seen(baseline, host) != [] -> "Replaces the hive's allow rule."
+      own? -> gettext("A target's own allow rule still holds there.")
+      Rules.seen(baseline, host) != [] -> gettext("Replaces the hive's allow rule.")
       true -> nil
     end
   end
 
   defp still(socket, popover) do
-    %{current_scope: scope, repository: filtered, listing: %{rows: rows}} = socket.assigns
+    %{current_scope: scope, target: filtered, listing: %{rows: rows}} = socket.assigns
     effective = Policy.effective(scope, filtered)
     baseline = if filtered, do: Policy.effective(scope, nil), else: effective
     own = if filtered, do: [], else: Rules.own_hosts(scope)
@@ -849,7 +884,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   defp policy_moved(socket) do
     socket
     |> close_popover()
-    |> put_flash(:error, "The policy changed; look at the row again.")
+    |> put_flash(:error, gettext("The policy changed; look at the row again."))
   end
 
   defp recheck_popover(%{assigns: %{popover: %{refusal: nil} = popover}} = socket) do
@@ -885,30 +920,67 @@ defmodule ApiaryWeb.ConnectionLive.Index do
       else: assign(socket, :dropped, [])
   end
 
+  # "applied" is the ordinary word here: a filter is applied to the list.
   defp dropped_sentence([name]),
-    do: "The link's #{name} filter could not be read, so it is not applied."
+    do:
+      pgettext("plain", "The link's %{name} filter could not be read, so it is not applied.",
+        name: name
+      )
 
   defp dropped_sentence(names),
-    do: "The link's #{Enum.join(names, ", ")} filters could not be read, so they are not applied."
+    do:
+      pgettext(
+        "plain",
+        "The link's %{names} filters could not be read, so they are not applied.",
+        names: Enum.join(names, ", ")
+      )
 
   defp path(%Filters{} = filters), do: ~p"/hive/connections?#{Filters.to_params(filters)}"
   defp run_path(run), do: ~p"/hive/runs/#{run.run_id}/connections"
 
-  defp narrowed?(%Filters{} = f), do: f.decision != nil or f.repo != nil or f.host != nil
+  defp narrowed?(%Filters{} = f), do: f.decision != nil or f.target != nil or f.host != nil
 
   defp empty_title(%Filters{} = filters) do
-    cond do
-      narrowed?(filters) -> "No connections match these filters"
-      label = Filters.range_label(filters) -> "No connections in the #{label}" |> tidy_range()
-      true -> "No connections recorded"
+    if narrowed?(filters),
+      do: gettext("No connections match these filters"),
+      else: range_title(filters)
+  end
+
+  # One whole title per range, as `Filters.range_label/1` names the ranges.
+  defp range_title(%Filters{from: nil, to: nil, since: since}) do
+    case since do
+      "1h" -> gettext("No connections in the last hour")
+      "24h" -> gettext("No connections in the last 24 hours")
+      "7d" -> gettext("No connections in the last 7 days")
+      "30d" -> gettext("No connections in the last 30 days")
+      "90d" -> gettext("No connections in the last 90 days")
+      _all -> gettext("No connections recorded")
     end
   end
 
-  # "in the last 7 days" reads; "in the 14 Sep 2026 to 16 Sep 2026" does not.
-  defp tidy_range("No connections in the last" <> _ = title), do: title
-  defp tidy_range("No connections in the from " <> rest), do: "No connections from " <> rest
-  defp tidy_range("No connections in the to " <> rest), do: "No connections up to " <> rest
-  defp tidy_range("No connections in the " <> rest), do: "No connections in " <> rest
+  defp range_title(%Filters{from: from, to: nil}),
+    do: gettext("No connections from %{date}", date: day(from))
+
+  defp range_title(%Filters{from: nil, to: to}),
+    do: gettext("No connections up to %{date}", date: day(to))
+
+  defp range_title(%Filters{from: same, to: same}),
+    do: gettext("No connections in %{date}", date: day(same))
+
+  defp range_title(%Filters{from: from, to: to}),
+    do: gettext("No connections in %{from} to %{to}", from: day(from), to: day(to))
+
+  # As `Filters.range_label/1` writes a day.
+  defp day(date), do: Calendar.strftime(date, "%-d %b %Y")
+
+  # The target's name inside a sentence, set in mono.
+  defp mono_part(text) do
+    assigns = %{text: text}
+
+    ~H"""
+    <.mono>{@text}</.mono>
+    """
+  end
 
   defp facet_options(facets, name), do: (facets[name] || %{options: []}).options
   defp facet_total(facets, name), do: facets[name] && facets[name].total
@@ -923,9 +995,9 @@ defmodule ApiaryWeb.ConnectionLive.Index do
       else: [{label, value, 0} | options]
   end
 
-  defp repo_label(:none), do: "Unassigned"
-  defp repo_label({forge, path}), do: "#{forge}/#{path}"
-  defp repo_label(nil), do: nil
+  defp target_label(:none), do: gettext("Unassigned")
+  defp target_label({system, path}), do: "#{system}/#{path}"
+  defp target_label(nil), do: nil
 
   defp range_value(%Filters{from: nil, to: nil, since: "all"}), do: nil
   defp range_value(%Filters{from: nil, to: nil, since: since}), do: since

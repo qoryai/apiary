@@ -36,13 +36,13 @@ defmodule Apiary.ContractFixtures do
     })
   end
 
-  @doc "An event as it is on the wire. `type` is given without the `ai.qory.` prefix."
+  @doc "An event as it is on the wire. `type` is given without the `dev.qory.` prefix."
   def wire_event(subject, sequence, type, data \\ %{}, opts \\ []) do
     %{
       "specversion" => "1.0",
       "id" => Keyword.get_lazy(opts, :id, &Ecto.UUID.generate/0),
       "source" => "urn:qory:run:" <> subject,
-      "type" => "ai.qory." <> type,
+      "type" => "dev.qory." <> type,
       "subject" => subject,
       "time" => Keyword.get(opts, :time, "2026-09-16T12:00:00.000Z"),
       "sequence" => sequence |> Integer.to_string() |> String.pad_leading(10, "0"),

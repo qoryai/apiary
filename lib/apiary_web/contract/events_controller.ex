@@ -9,15 +9,17 @@ defmodule ApiaryWeb.Contract.EventsController do
   (`ApiaryWeb.Contract.SignedRequest`, over the raw bytes, before anything is
   parsed). Then: a content type other than `application/cloudevents-batch+json`
   is `415`; a key over its rate is `429` with `Retry-After`; a
-  `X-Qory-Contract-Version` other than `1` is `400` and says which versions are
-  served (absent is accepted: a plain client of the contract); a body that is
+  `X-Qory-Contract-Version` that is not a revision of v1 (an integer from 1 up) is
+  `400` and says which revisions are known (absent is accepted: a plain client of the
+  contract; a later revision than the ones known is accepted too, since a revision
+  only adds and the server serves what it knows); a body that is
   not a batch is `400`; a run the hive has closed is `410`; anything else is
   stored and answered `202`, with nothing projected yet.
 
   Every `202` and `410` carries the digests in force: `X-Qory-Configuration`, the
   digest the hive's discovery answer carries, and, for a hive whose policy somebody has
   made, `X-Qory-Run-Configuration`, the digest of the run configuration for the run's
-  repository (`Apiary.Policy.Serving.digest_for/4`: read, never rendered here), which
+  target (`Apiary.Policy.Serving.digest_for/4`: read, never rendered here), which
   is how a run learns that its policy changed. A hive nobody has given a policy names
   no run configuration anywhere, and its machines keep their own. The
   digest the request reported is stored on the delivery and on the run. Errors are
@@ -30,7 +32,8 @@ defmodule ApiaryWeb.Contract.EventsController do
   alias ApiaryWeb.Contract.{Configuration, SignedRequest}
 
   @content_type "application/cloudevents-batch+json"
-  @supported [1]
+  # The revisions of contract v1 this server knows. A later one is accepted.
+  @known [1]
 
   def create(conn, _params) do
     access_key = conn.assigns.access_key
@@ -102,7 +105,7 @@ defmodule ApiaryWeb.Contract.EventsController do
 
       [value] ->
         case Integer.parse(value) do
-          {version, ""} when version in @supported -> :ok
+          {version, ""} when version >= 1 -> :ok
           _ -> unsupported_contract_version()
         end
 
@@ -112,7 +115,7 @@ defmodule ApiaryWeb.Contract.EventsController do
   end
 
   defp unsupported_contract_version do
-    {:refuse, 400, %{error: "unsupported_contract_version", supported: @supported}, []}
+    {:refuse, 400, %{error: "unsupported_contract_version", supported: @known}, []}
   end
 
   defp batch(raw_body) do

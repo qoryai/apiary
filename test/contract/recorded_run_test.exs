@@ -118,8 +118,8 @@ defmodule Apiary.Contract.RecordedRunTest do
 
       # And what is projected from it says what the record says.
       %{run: projected, log: log} = projected(run)
-      exited = Enum.find(wire, &(&1["type"] == "ai.qory.run.exited"))
-      started = Enum.find(wire, &(&1["type"] == "ai.qory.run.started"))
+      exited = Enum.find(wire, &(&1["type"] == "dev.qory.run.exited"))
+      started = Enum.find(wire, &(&1["type"] == "dev.qory.run.started"))
 
       assert projected.state == "succeeded"
       assert projected.exit_code == exited["data"]["exit_code"]
@@ -130,7 +130,7 @@ defmodule Apiary.Contract.RecordedRunTest do
       # start's; a start on pipes leaves none.
       last_size =
         wire
-        |> Enum.filter(&(&1["type"] == "ai.qory.run.resized"))
+        |> Enum.filter(&(&1["type"] == "dev.qory.run.resized"))
         |> List.last()
         |> case do
           nil -> started["data"]["terminal"]

@@ -4,14 +4,18 @@
       icon="hero-book-open"
       tone="neutral"
       heading="h1"
-      title="The documentation is not built"
+      title={gettext("The documentation is not built")}
     >
-      A release image builds it and serves it here. In a checkout, run
-      <code class="q-rule">mix docs</code>
-      and reload this page. The guides are also in the <code class="q-rule">guides</code>
-      directory of the repository, as Markdown.
+      <.rich text={
+        rich_pgettext(
+          "plain",
+          "A release image builds it and serves it here. In a checkout, run %{command} and reload this page. The guides are also in the %{directory} directory of the repository, as Markdown.",
+          command: {:code, "mix docs"},
+          directory: {:code, "guides"}
+        )
+      } />
       <:actions>
-        <.button navigate={~p"/"}>Back to Qory Apiary</.button>
+        <.button navigate={~p"/"}>{gettext("Back to Qory Apiary")}</.button>
       </:actions>
     </.empty_state>
   </div>

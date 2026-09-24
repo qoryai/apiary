@@ -2,8 +2,8 @@ defmodule Apiary.Policy.RunConfiguration do
   @moduledoc """
   A run configuration as it was served: immutable. `document` is the exact bytes a
   runner is given, `digest` is `sha256=` and the hex of those bytes, the string of the
-  `X-Qory-Run-Configuration` header. `version` counts from 1 per hive and repository; the
-  baseline's rows have no repository. The current one is the highest version.
+  `X-Qory-Run-Configuration` header. `version` counts from 1 per hive and target; the
+  baseline's rows have no target. The current one is the highest version.
   """
   use Ecto.Schema
 
@@ -19,7 +19,7 @@ defmodule Apiary.Policy.RunConfiguration do
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :hive, Apiary.Organisations.Hive
-    belongs_to :repository, Apiary.Runs.Repository
+    belongs_to :target, Apiary.Runs.Target
     belongs_to :changed_by, Apiary.Accounts.User
     belongs_to :policy_change, Apiary.Policy.Change
   end

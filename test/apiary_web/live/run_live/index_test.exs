@@ -235,7 +235,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       }
     end
 
-    test "by repository: two forges with one path are two groups, unassigned is last", %{
+    test "by target: two systems with one path are two groups, unassigned is last", %{
       conn: conn
     } do
       view = open(conn)
@@ -252,13 +252,13 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
       assert has_element?(
                view,
-               "tr.q-group a[href='/hive/connections?forge=github.example&repo=acme%2Fshop']"
+               "tr.q-group a[href='/hive/connections?system=github.example&target=acme%2Fshop']"
              )
 
       assert has_element?(view, "#runs-group button[aria-pressed=true]", "Repository")
     end
 
-    test "by task: one task spans repositories, each row leads with its repository", %{
+    test "by task: one task spans targets, each row leads with its target", %{
       conn: conn,
       github: github
     } do
@@ -274,11 +274,11 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert text(view, "#runs-summary") =~ "3 runs in 1 task"
     end
 
-    test "not grouped: no headers, and a repository column", %{conn: conn, github: github} do
+    test "not grouped: no headers, and a target column", %{conn: conn, github: github} do
       view = open(conn, ~p"/hive/runs?group=none")
       refute has_element?(view, "tr.q-group")
       assert has_element?(view, "th", "Repository")
-      assert text(view, "#{row(github)} .q-c-repo") == "github.example/ acme/shop"
+      assert text(view, "#{row(github)} .q-c-target") == "github.example/ acme/shop"
     end
   end
 
@@ -301,13 +301,13 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       view =
         open(
           conn,
-          ~p"/hive/runs?state=failed&forge=github.example&repo=acme/shop&task=fix-cart&runtime=claude&host=build-02&denials=1&since=24h"
+          ~p"/hive/runs?state=failed&system=github.example&target=acme/shop&task=fix-cart&runtime=claude&host=build-02&denials=1&since=24h"
         )
 
       assert has_element?(view, row(failed))
       refute has_element?(view, row(running))
       assert has_element?(view, "#filter-state-button[aria-label='State: Failed, change']")
-      assert has_element?(view, "#filter-repo-button", "github.example/acme/shop")
+      assert has_element?(view, "#filter-target-button", "github.example/acme/shop")
       assert has_element?(view, "#filter-since-button", "last 24 hours")
       assert has_element?(view, "#filter-denials[aria-pressed=true]")
 
@@ -386,7 +386,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
              )
 
       assert text(view, "#filter-state-tip-closed") =~
-               "Stopped by the hive: a member closed it after it went quiet. Counted with the runs that ended badly."
+               "Stopped by the workplace: a member closed it after it went quiet. Counted with the runs that ended badly."
 
       refute has_element?(view, "#{form} input[name=family_alive][checked]")
       refute has_element?(view, "#{form} input[name=family_alive][aria-checked]")
@@ -593,30 +593,30 @@ defmodule ApiaryWeb.RunLive.IndexTest do
     end
   end
 
-  describe "repositories and menus at any size" do
-    test "a forge with a colon groups, links and filters", %{conn: conn, scope: scope} do
+  describe "targets and menus at any size" do
+    test "a system with a colon groups, links and filters", %{conn: conn, scope: scope} do
       run = started_run(scope, %{"forge" => "git.example:8443", "repository" => "acme/shop"})
       other = started_run(scope, shop())
       view = open(conn)
 
       connections =
-        ~p"/hive/connections?#{Apiary.Runs.Filters.repo_params("git.example:8443", "acme/shop")}"
+        ~p"/hive/connections?#{Apiary.Runs.Filters.target_params("git.example:8443", "acme/shop")}"
 
       assert has_element?(view, "tr.q-group a[href='#{connections}']")
 
-      value = Apiary.Runs.Filters.repo_value({"git.example:8443", "acme/shop"})
-      view |> form("#filter-repo-form") |> render_change(%{"repo" => value})
+      value = Apiary.Runs.Filters.target_value({"git.example:8443", "acme/shop"})
+      view |> form("#filter-target-form") |> render_change(%{"target" => value})
 
       assert_patch(
         view,
-        ~p"/hive/runs?#{%{"forge" => "git.example:8443", "repo" => "acme/shop"}}"
+        ~p"/hive/runs?#{%{"system" => "git.example:8443", "target" => "acme/shop"}}"
       )
 
       render_async(view)
 
       assert has_element?(view, row(run))
       refute has_element?(view, row(other))
-      assert has_element?(view, "#filter-repo-button", "git.example:8443/acme/shop")
+      assert has_element?(view, "#filter-target-button", "git.example:8443/acme/shop")
     end
 
     test "a long menu shows fifty values, says so, and narrows on the server", %{

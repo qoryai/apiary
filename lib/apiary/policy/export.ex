@@ -12,6 +12,8 @@ defmodule Apiary.Policy.Export do
   breaks YAML knows and JSON does not (U+0085, U+2028, U+2029) escaped.
   """
 
+  use Gettext, backend: ApiaryWeb.Gettext
+
   alias Apiary.Policy.Effective
 
   @doc false
@@ -35,7 +37,11 @@ defmodule Apiary.Policy.Export do
 
   defp policy_file(effective) do
     IO.iodata_to_binary([
-      "# A file outside the checkout, given with: qory run --policy <file>\n",
+      "# ",
+      gettext("A file outside the checkout, given with: %{command}",
+        command: "qory run --policy <file>"
+      ),
+      "\n",
       "version: 1\n",
       "egress:\n",
       egress(effective, "  ", true),
@@ -100,14 +106,22 @@ defmodule Apiary.Policy.Export do
     List.flatten([
       if(effective.mode == "observe",
         do:
-          "Under observe every connection is recorded and only a host in deny is denied; the allow list says what enforce would allow.",
+          gettext(
+            "Under observe every connection is recorded and only a host in deny is denied; the allow list says what enforce would allow."
+          ),
         else: []
       ),
       if(narrowed,
         do: [
-          "The runner file's egress section says a mode and hosts only. The paths and the credentials are in the policy file, given to a run with --policy; it narrows the runner file's section.",
-          "Paths and credentials need a wall: without one the runner refuses to start the run.",
-          "A credential is named here and defined on the machine, in the credentials section of its runner file."
+          gettext(
+            "The runner file's egress section says a mode and hosts only. The paths and the credentials are in the policy file, given to a run with --policy; it narrows the runner file's section."
+          ),
+          gettext(
+            "Paths and credentials need a wall: without one the runner refuses to start the run."
+          ),
+          gettext(
+            "A credential is named here and defined on the machine, in the credentials section of its runner file."
+          )
         ],
         else: []
       )

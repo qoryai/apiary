@@ -48,7 +48,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
       assert run.last_event_at
       assert run.contract_version == 1
 
-      assert [%Event{sequence: 1, type: "ai.qory.ping"}, %Event{sequence: 2} = started] =
+      assert [%Event{sequence: 1, type: "dev.qory.ping"}, %Event{sequence: 2} = started] =
                events(run)
 
       # Stored as received.
@@ -202,7 +202,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
       event = wire_event(subject, 1, "session.something_new", %{"anything" => [1, %{"a" => nil}]})
       assert build_conn() |> signed_post(key.key_id, secret, [event]) |> response(202)
 
-      assert [%Event{type: "ai.qory.session.something_new", data: data}] =
+      assert [%Event{type: "dev.qory.session.something_new", data: data}] =
                scope |> run!(subject) |> events()
 
       assert data == %{"anything" => [1, %{"a" => nil}]}
@@ -328,7 +328,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
         assert build_conn() |> signed_post(key.key_id, secret, [usurper]) |> response(202)
       end)
 
-      assert [%Event{type: "ai.qory.ping"}] = scope |> run!(subject) |> events()
+      assert [%Event{type: "dev.qory.ping"}] = scope |> run!(subject) |> events()
     end
   end
 
@@ -397,11 +397,20 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
       assert response(conn, 202)
     end
 
+    test "every revision of v1 is accepted, a later one than the server knows too",
+         %{key: key, secret: secret} do
+      for version <- ["1", "2", "3"] do
+        {_subject, batch} = first_events()
+        conn = signed_post(build_conn(), key.key_id, secret, batch, contract_version: version)
+        assert response(conn, 202)
+      end
+    end
+
     test "an unsupported contract version is 400 and says what is served",
          %{scope: scope, key: key, secret: secret} do
       {subject, batch} = first_events()
 
-      for version <- ["2", "0", "one", "1.0"] do
+      for version <- ["0", "-1", "one", "1.0"] do
         conn = signed_post(build_conn(), key.key_id, secret, batch, contract_version: version)
 
         assert json_response(conn, 400) == %{
@@ -431,7 +440,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
         Jason.encode!([%{good | "id" => String.upcase(good["id"])}]),
         Jason.encode!([%{good | "subject" => "not-a-uuid"}]),
         Jason.encode!([%{good | "type" => "com.example.other"}]),
-        Jason.encode!([%{good | "type" => "ai.qory.a\u0000b"}]),
+        Jason.encode!([%{good | "type" => "dev.qory.a\u0000b"}]),
         Jason.encode!([%{good | "sequence" => "1"}]),
         Jason.encode!([%{good | "sequence" => 1}]),
         # The contract numbers from 0000000001.
@@ -637,7 +646,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
       refute rows =~ secret
       refute rows =~ hex
 
-      for table <- ~w(runs events deliveries log_chunks connections repositories) do
+      for table <- ~w(runs events deliveries log_chunks connections targets) do
         %{rows: rows} = Repo.query!("SELECT row_to_json(t)::text FROM #{table} t", [], log: false)
         text = Enum.join(List.flatten(rows), "\n")
         refute text =~ secret

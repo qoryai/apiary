@@ -634,7 +634,7 @@ dialog.modal::backdrop { background: var(--q-overlay); backdrop-filter: blur(2px
     </div>
 
     <!-- ============ REPOSITORIES ============ -->
-    <div class="main-in" data-view="repositories" data-nav="policy" data-url="/hive/policy/repositories" hidden>
+    <div class="main-in" data-view="repositories" data-nav="policy" data-url="/hive/policy/targets" hidden>
       <div data-phead="hive"></div>
       <nav class="tabs" aria-label="Policy" data-ptabs="hive" data-cur="repositories"></nav>
       <div class="summary"><span><b>4</b> repositories have posted runs</span><span><b>2</b> with rules of their own</span><span><b>1</b> sets its own mode</span><span><b>1</b> with suggestions</span></div>
@@ -653,7 +653,7 @@ dialog.modal::backdrop { background: var(--q-overlay); backdrop-filter: blur(2px
     </div>
 
     <!-- ============ REPOSITORY POLICY ============ -->
-    <div class="main-in" data-view="repo" data-nav="policy" data-url="/hive/policy/repositories/rp_5f2c81" hidden>
+    <div class="main-in" data-view="repo" data-nav="policy" data-url="/hive/policy/targets/rp_5f2c81" hidden>
       <div style="display:grid;gap:12px">
         <nav class="crumbs" aria-label="Breadcrumb"><a href="#policy">Policy</a><svg class="i"><use href="#i-chev"/></svg><a href="#repositories">Repositories</a><svg class="i"><use href="#i-chev"/></svg><span class="mono" style="font-size:12px" aria-current="page"><span class="faint">github.example/</span>acme/shop</span></nav>
         <div class="page-head">
@@ -756,7 +756,7 @@ dialog.modal::backdrop { background: var(--q-overlay); backdrop-filter: blur(2px
     </div>
 
     <!-- ============ VERSION / DOCUMENT ============ -->
-    <div class="main-in" data-view="version" data-nav="policy" data-url="/hive/policy/repositories/rp_5f2c81/versions/10?compare=9" hidden>
+    <div class="main-in" data-view="version" data-nav="policy" data-url="/hive/policy/targets/rp_5f2c81/versions/10?compare=9" hidden>
       <div style="display:grid;gap:12px">
         <nav class="crumbs" aria-label="Breadcrumb"><a href="#policy">Policy</a><svg class="i"><use href="#i-chev"/></svg><a href="#repo"><span class="mono" style="font-size:12px"><span class="faint">github.example/</span>acme/shop</span></a><svg class="i"><use href="#i-chev"/></svg><span aria-current="page">Version 10</span></nav>
         <div class="page-head"><div class="run-title"><h1>Version 10</h1><span class="badge badge-success" style="padding-left:5px"><svg class="i sm" style="width:12px;height:12px"><use href="#i-check"/></svg>In force</span></div>
@@ -1120,7 +1120,7 @@ dialog.modal::backdrop { background: var(--q-overlay); backdrop-filter: blur(2px
     $$("a[data-nav]").forEach(function (a) { if (a.getAttribute("data-nav") === el.getAttribute("data-nav")) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
     $$("#viewseg a").forEach(function (a) { a.setAttribute("aria-current", String(a.getAttribute("href") === "#" + view)); });
     app.classList.remove("drawer"); main.scrollTop = 0;
-    if (state && $("#dlg-" + state)) { $("#dlg-" + state).showModal(); if (state === "export") $("#url").textContent = "/hive/policy/repositories/rp_5f2c81/versions/10/export"; }
+    if (state && $("#dlg-" + state)) { $("#dlg-" + state).showModal(); if (state === "export") $("#url").textContent = "/hive/policy/targets/rp_5f2c81/versions/10/export"; }
     var p = $("#pop-live"); p.hidden = state === "closed"; placePop();
   }
   window.addEventListener("hashchange", route); window.addEventListener("resize", placePop); main.addEventListener("scroll", placePop, { passive: true });

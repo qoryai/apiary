@@ -10,19 +10,26 @@ defmodule ApiaryWeb.SettingsLiveTest do
   describe "as an owner" do
     setup :register_and_log_in_user
 
-    test "renames the apiary and the hive", %{conn: conn, user: user, scope: scope} do
+    test "renames the organisation and the hive", %{conn: conn, user: user, scope: scope} do
       {:ok, lv, html} = live(conn, ~p"/hive/settings")
 
-      assert html =~ ~r/<abbr[^>]*data-tip="organisation"/
-      assert html =~ ~r/<abbr[^>]*data-tip="workplace"/
+      # The software body's words, and no apiary word: the hive reads workplace.
+      assert has_element?(lv, "h2", "Organisation name")
+      assert has_element?(lv, "h2", "Workplace name")
+      assert html =~ "The names of this organisation and its workplace"
+      assert has_element?(lv, "#sidebar p", "Workplace")
+
+      page = lv |> element("#main") |> render() |> LazyHTML.from_fragment() |> LazyHTML.text()
+      refute page =~ ~r/\b(apiary|apiaries|hive|hives)\b/i
+
       assert html =~ scope.organisation.name
       assert html =~ scope.hive.name
 
       html = lv |> form("#organisation-form", organisation: %{name: "Acme"}) |> render_submit()
-      assert html =~ "Apiary renamed to Acme"
+      assert html =~ "Organisation renamed to Acme"
 
       html = lv |> form("#hive-form", hive: %{name: "Platform"}) |> render_submit()
-      assert html =~ "Hive renamed to Platform"
+      assert html =~ "Workplace renamed to Platform"
 
       reloaded = Organisations.load_scope(Scope.for_user(user))
       assert reloaded.organisation.name == "Acme"
@@ -56,8 +63,8 @@ defmodule ApiaryWeb.SettingsLiveTest do
 
     test "sets the retention, within the bounds, and clears it", %{conn: conn, scope: scope} do
       {:ok, lv, html} = live(conn, ~p"/hive/settings")
-      assert html =~ "This hive keeps everything."
-      assert html =~ "Nothing is pruned: this hive keeps everything."
+      assert html =~ "This workplace keeps everything."
+      assert html =~ "Nothing is pruned: this workplace keeps everything."
 
       html =
         lv

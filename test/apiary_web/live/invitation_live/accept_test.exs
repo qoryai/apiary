@@ -27,7 +27,9 @@ defmodule ApiaryWeb.InvitationLive.AcceptTest do
     assert html =~ "bee@example.com"
     assert html =~ ~p"/users/register?invitation=#{token}"
     assert html =~ ~p"/invitations/#{token}/continue"
-    assert html =~ ~r/<abbr[^>]*data-tip="organisation"[^>]*>apiary<\/abbr>/
+    assert html =~ "workplace of the"
+    assert html =~ "organisation, as a member."
+    refute html =~ "<abbr"
 
     # the log in link remembers where to return
     conn = get(conn, ~p"/invitations/#{token}/continue")

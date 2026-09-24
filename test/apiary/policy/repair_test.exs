@@ -32,13 +32,18 @@ defmodule Apiary.Policy.RepairTest do
     })
   end
 
-  defp repair!,
-    do: Repo.transaction(fn -> for sql <- Migration.repair_sql(), do: Repo.query!(sql) end)
+  # The repair's SQL names `repository_id`, since renamed `target_id` by 20260927000100.
+  defp repair! do
+    Repo.transaction(fn ->
+      for sql <- Migration.repair_sql(),
+          do: Repo.query!(String.replace(sql, "repository_id", "target_id"))
+    end)
+  end
 
   defp versions(scope) do
     Repo.all(
       from c in RunConfiguration,
-        where: c.hive_id == ^scope.hive.id and is_nil(c.repository_id),
+        where: c.hive_id == ^scope.hive.id and is_nil(c.target_id),
         order_by: c.version,
         select: {c.version, not is_nil(c.policy_change_id)}
     )
@@ -61,16 +66,16 @@ defmodule Apiary.Policy.RepairTest do
     {:ok, _} = Policy.set_mode(scope, "enforce")
     {:ok, _} = Policy.allow(scope, nil, %{host: "api.example"})
 
-    repository =
-      Repo.insert!(%Apiary.Runs.Repository{
+    target =
+      Repo.insert!(%Apiary.Runs.Target{
         organisation_id: scope.organisation.id,
         hive_id: scope.hive.id,
-        forge: "f",
+        system: "f",
         path: "p",
         first_seen_at: DateTime.utc_now()
       })
 
-    {:ok, _} = Policy.allow(scope, repository, %{host: "mcp.example"})
+    {:ok, _} = Policy.allow(scope, target, %{host: "mcp.example"})
     assert versions(scope) == [{1, false}, {2, true}, {3, true}]
 
     repair!()
@@ -79,14 +84,14 @@ defmodule Apiary.Policy.RepairTest do
 
     assert Repo.all(
              from c in Change,
-               where: is_nil(c.repository_id),
+               where: is_nil(c.target_id),
                order_by: c.inserted_at,
                select: c.version_after
            ) == [1, 2]
 
-    # The repository's own versions are untouched, and the repair is idempotent.
+    # The target's own versions are untouched, and the repair is idempotent.
     assert [%{version: 1}] =
-             Repo.all(from c in RunConfiguration, where: c.repository_id == ^repository.id)
+             Repo.all(from c in RunConfiguration, where: c.target_id == ^target.id)
 
     repair!()
     assert versions(scope) == [{1, true}, {2, true}]

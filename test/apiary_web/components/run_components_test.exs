@@ -213,6 +213,22 @@ defmodule ApiaryWeb.RunComponentsTest do
       assert RunComponents.clock_label(~U[2026-09-20 14:02:11Z], now) == "Today, 14:02:11"
     end
 
+    test "the browser's clocks are handed the server's words, one per count" do
+      words = RunComponents.clock_words()
+      assert Enum.at(words.secondsAgo, 1) == "1 second ago"
+      assert Enum.at(words.secondsAgo, 40) == "40 seconds ago"
+      assert length(words.minutesAgo) == 60 and length(words.hoursAgo) == 24
+      assert words.yesterday == "Yesterday, %{time}"
+      assert words.minutesSeconds == "%{minutes} m %{seconds} s"
+      assert Enum.at(words.months, 8) == "Sep"
+    end
+
+    test "the log's script is handed its words, a count's as one and other" do
+      words = ApiaryWeb.RunPageComponents.terminal_words()
+      assert words.newLines == ["%{number} new line", "%{number} new lines"]
+      assert words.found == "%{index} of %{total}"
+    end
+
     test "offsets from the run's start" do
       from = ~U[2026-09-20 14:02:11.120Z]
       assert RunComponents.format_offset(~U[2026-09-20 14:02:19.250Z], from) == "+0:08.1"

@@ -24,7 +24,7 @@ defmodule Apiary.RunEventsFixtures do
   end
 
   @doc """
-  Stores one event of the run, unprojected. `type` is given without the `ai.qory.`
+  Stores one event of the run, unprojected. `type` is given without the `dev.qory.`
   prefix; `time:` defaults to `sequence` seconds after `t0/0` and `received_at:` to a
   hundred seconds after the time, so that the two clocks are told apart and two receptions
   of one record project the same.
@@ -38,7 +38,7 @@ defmodule Apiary.RunEventsFixtures do
       run_id: run.id,
       sequence: sequence,
       event_id: Ecto.UUID.generate(),
-      type: "ai.qory." <> type,
+      type: "dev.qory." <> type,
       time: time,
       data: data,
       received_at: Keyword.get(opts, :received_at) || DateTime.add(time, 100, :second)

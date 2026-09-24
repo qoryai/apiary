@@ -25,8 +25,8 @@ defmodule ApiaryWeb.PolicyLive.UnavailableTest do
       egress: [%{"host" => "registry.example", "rule" => "registry.example"}]
     )
 
-    [%{repository: repository}] = Policy.list_repositories(scope)
-    %{repository: repository}
+    [%{target: target}] = Policy.list_targets(scope)
+    %{target: target}
   end
 
   defp restore(nil), do: Application.delete_env(:apiary, Apiary.Policy.Activity)
@@ -39,7 +39,7 @@ defmodule ApiaryWeb.PolicyLive.UnavailableTest do
   end
 
   test "the count is unavailable, so the fact line and the column are left out",
-       %{conn: conn, scope: scope, repository: repository} do
+       %{conn: conn, scope: scope, target: target} do
     assert Policy.rule_activity(scope, nil, DateTime.add(DateTime.utc_now(), -7, :day)) ==
              :unavailable
 
@@ -50,7 +50,7 @@ defmodule ApiaryWeb.PolicyLive.UnavailableTest do
     refute has_element?(view, "#policy-rules td.q-c-seen")
     refute view |> element("#policy-rules") |> render() =~ "not seen"
 
-    view = open(conn, "/hive/policy/repositories/#{repository.id}")
+    view = open(conn, "/hive/policy/targets/#{target.id}")
     assert has_element?(view, "#policy-rules .q-host", "registry.example")
     refute has_element?(view, "#policy-rules th", "Last 7 days")
 

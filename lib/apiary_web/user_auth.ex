@@ -1,5 +1,6 @@
 defmodule ApiaryWeb.UserAuth do
   use ApiaryWeb, :verified_routes
+  use Gettext, backend: ApiaryWeb.Gettext
 
   import Plug.Conn
   import Phoenix.Controller
@@ -226,7 +227,7 @@ defmodule ApiaryWeb.UserAuth do
     else
       socket =
         socket
-        |> Phoenix.LiveView.put_flash(:error, "You must log in to access this page.")
+        |> Phoenix.LiveView.put_flash(:error, gettext("You must log in to access this page."))
         |> Phoenix.LiveView.redirect(to: ~p"/users/log-in")
 
       {:halt, socket}
@@ -271,7 +272,10 @@ defmodule ApiaryWeb.UserAuth do
     else
       socket =
         socket
-        |> Phoenix.LiveView.put_flash(:error, "You must re-authenticate to access this page.")
+        |> Phoenix.LiveView.put_flash(
+          :error,
+          gettext("You must re-authenticate to access this page.")
+        )
         |> Phoenix.LiveView.redirect(to: ~p"/users/log-in")
 
       {:halt, socket}
@@ -294,7 +298,7 @@ defmodule ApiaryWeb.UserAuth do
   end
 
   # The word beside Policy: the hive's default mode, once the hive has a policy of Qory's,
-  # and the modes of the repositories that set their own. One read.
+  # and the modes of the targets that set their own. One read.
   defp policy_mode(%Scope{hive: nil}), do: %{mode: nil, own_modes: []}
 
   defp policy_mode(%Scope{} = scope) do
@@ -515,7 +519,7 @@ defmodule ApiaryWeb.UserAuth do
       conn
     else
       conn
-      |> put_flash(:error, "You must log in to access this page.")
+      |> put_flash(:error, gettext("You must log in to access this page."))
       |> maybe_store_return_to()
       |> redirect(to: ~p"/users/log-in")
       |> halt()

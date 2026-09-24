@@ -80,7 +80,7 @@ opens. The only state kept is the reading preference of the chart's table toggle
 | Needs attention, a denied destination | the suggestion row's own **Allow** (in place, od2); "See them" → `/hive/connections?decision=denied` |
 | Needs attention, a quiet run | `/hive/runs/:run_id` |
 | Needs attention, a lost run | **Close** (in place, the existing `Runs.close_run/2` and its confirm); "Open" → the run |
-| Needs attention, a run behind the policy | `/hive/runs/:run_id` and "What changed" → `/hive/policy/repositories/:id/versions/:n?compare=:m` |
+| Needs attention, a run behind the policy | `/hive/runs/:run_id` and "What changed" → `/hive/policy/targets/:id/versions/:n?compare=:m` |
 | Needs attention, observing with rules ready | `/hive/policy?confirm=enforce` (opens the pe1 confirm on arrival; ol 3) |
 | Needs attention, no policy yet | `/hive/policy` |
 | Needs attention, an idle key | `/hive/keys/:id/revoke` (the keys page with its revoke confirm open; the existing patch route) |
@@ -88,7 +88,7 @@ opens. The only state kept is the reading preference of the chart's table toggle
 | Activity, "n alive" / "and n more" | `/hive/runs?state=pending,running` |
 | Activity, "All runs" | `/hive/runs` |
 | Activity, a chart column | `/hive/runs?from=2026-09-14&to=2026-09-14` (that day); a denial column adds `&denials=1` |
-| Policy at a glance | `/hive/policy`, `/hive/policy/repositories`, `/hive/policy/repositories?mode=own`, `/hive/policy/repositories/:id`, `/hive/policy/versions/:n` |
+| Policy at a glance | `/hive/policy`, `/hive/policy/targets`, `/hive/policy/targets?mode=own`, `/hive/policy/targets/:id`, `/hive/policy/versions/:n` |
 | Access keys, a key row | `/hive/keys` (the key row is not its own page; the row's last run links to the run) |
 | Access keys, "Create another access key" | `/hive/keys/new` |
 | Retention | `/hive/settings#retention` |

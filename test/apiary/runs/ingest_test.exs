@@ -80,7 +80,7 @@ defmodule Apiary.Runs.IngestTest do
     batch = batch!([ping])
     # Past the parser on purpose: a NUL, which no text column holds.
     [event] = batch.events
-    poisoned = %{batch | events: [%{event | type: "ai.qory.secret-looking\0payload"}]}
+    poisoned = %{batch | events: [%{event | type: "dev.qory.secret-looking\0payload"}]}
 
     log =
       ExUnit.CaptureLog.capture_log(fn ->

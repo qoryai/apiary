@@ -6,7 +6,7 @@ defmodule Apiary.Policy.SuggestionCountsTest do
   import Apiary.RunListFixtures
 
   alias Apiary.Policy
-  alias Apiary.Runs.Repository
+  alias Apiary.Runs.Target
 
   setup do
     %{scope: scope} = sign_up_fixture()
@@ -14,8 +14,8 @@ defmodule Apiary.Policy.SuggestionCountsTest do
   end
 
   describe "suggestion_counts/2" do
-    test "counts the open declared hosts across the hive's repositories, bounded", %{scope: scope} do
-      assert %{hosts: 0, repositories: 0} = Policy.suggestion_counts(scope)
+    test "counts the open declared hosts across the hive's targets, bounded", %{scope: scope} do
+      assert %{hosts: 0, targets: 0} = Policy.suggestion_counts(scope)
 
       shop = started_run(scope, shop())
       docs = started_run(scope, %{"forge" => "github.example", "repository" => "acme/docs"})
@@ -26,21 +26,21 @@ defmodule Apiary.Policy.SuggestionCountsTest do
 
       event_fixture(shop, 11, "run.policy_applied", %{"harness_hosts" => ["registry.example"]})
       event_fixture(docs, 10, "run.policy_applied", %{"harness_hosts" => ["docs.s.example"]})
-      # A run without a repository declares nothing anybody could allow for it.
+      # A run without a target declares nothing anybody could allow for it.
       plain = started_run(scope, %{})
       event_fixture(plain, 10, "run.policy_applied", %{"harness_hosts" => ["plain.example"]})
 
-      assert %{hosts: 3, repositories: 2} = Policy.suggestion_counts(scope)
+      assert %{hosts: 3, targets: 2} = Policy.suggestion_counts(scope)
 
       {:ok, _} = Policy.allow(scope, nil, %{host: "api.example"})
-      assert %{hosts: 2, repositories: 2} = Policy.suggestion_counts(scope)
+      assert %{hosts: 2, targets: 2} = Policy.suggestion_counts(scope)
 
-      repository = Repo.get!(Repository, docs.repository_id)
-      {:ok, _} = Policy.allow(scope, repository, %{host: "*.s.example"})
-      assert %{hosts: 1, repositories: 1} = Policy.suggestion_counts(scope)
+      target = Repo.get!(Target, docs.target_id)
+      {:ok, _} = Policy.allow(scope, target, %{host: "*.s.example"})
+      assert %{hosts: 1, targets: 1} = Policy.suggestion_counts(scope)
 
       {:ok, _} = Policy.deny(scope, nil, %{host: "registry.example"})
-      assert %{hosts: 0, repositories: 0} = Policy.suggestion_counts(scope)
+      assert %{hosts: 0, targets: 0} = Policy.suggestion_counts(scope)
 
       # Nothing older than since, and another hive counts nothing of this one.
       {:ok, _} =
@@ -51,9 +51,9 @@ defmodule Apiary.Policy.SuggestionCountsTest do
 
       assert %{hosts: 1} = Policy.suggestion_counts(scope)
       future = DateTime.add(DateTime.utc_now(), 60, :second)
-      assert %{hosts: 0, repositories: 0} = Policy.suggestion_counts(scope, future)
+      assert %{hosts: 0, targets: 0} = Policy.suggestion_counts(scope, future)
       %{scope: other} = sign_up_fixture()
-      assert %{hosts: 0, repositories: 0} = Policy.suggestion_counts(other)
+      assert %{hosts: 0, targets: 0} = Policy.suggestion_counts(other)
     end
   end
 end

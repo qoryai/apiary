@@ -202,9 +202,9 @@ defmodule ApiaryWeb.LayoutsTest do
                "#top-bar #user-menu-button[aria-label='Account menu, #{user.email}']"
              )
 
-      assert has_element?(view, "#user-menu-level", "Not part of an apiary yet")
+      assert has_element?(view, "#user-menu-level", "Not part of an organisation yet")
       assert before?(html, ~s(id="brand-menu-button"), ~s(id="theme-menu-button"))
-      assert html =~ ~r{<title[^>]*>\s*No hive yet · Qory Apiary\s*</title>}
+      assert html =~ ~r{<title[^>]*>\s*No workplace yet · Qory Apiary\s*</title>}
     end
   end
 
@@ -214,6 +214,31 @@ defmodule ApiaryWeb.LayoutsTest do
       assert response =~ ~s(<title phx-r data-default="Qory Apiary" data-suffix=" · Qory Apiary">)
       assert response =~ ~r{<title[^>]*>\s*Welcome · Qory Apiary\s*</title>}
       assert response =~ "Welcome to Qory Apiary"
+    end
+  end
+
+  describe "the auth panel" do
+    test "the slogan is one sentence with its accented words", %{conn: conn} do
+      response = conn |> get(~p"/") |> html_response(200)
+
+      assert response =~
+               ~s(Can you trust your agents? With Qory <span class="text-accent">you don&#39;t have to</span>.)
+    end
+  end
+
+  describe "relative_time/2" do
+    test "says the time as people say it, with the count's plural" do
+      now = ~U[2026-09-20 14:04:00Z]
+      time = &ApiaryWeb.CoreComponents.relative_time(&1, now)
+
+      assert time.(~U[2026-09-20 14:03:30Z]) == "Just now"
+      assert time.(~U[2026-09-20 14:03:00Z]) == "1 minute ago"
+      assert time.(~U[2026-09-20 14:02:00Z]) == "2 minutes ago"
+      assert time.(~U[2026-09-20 13:00:00Z]) == "1 hour ago"
+      assert time.(~U[2026-09-20 11:00:00Z]) == "3 hours ago"
+      assert time.(~U[2026-09-19 16:40:03Z]) == "Yesterday, 16:40"
+      assert time.(~U[2026-09-17 10:00:00Z]) == "3 days ago"
+      assert time.(~U[2026-09-01 10:00:00Z]) == "1 Sep 2026"
     end
   end
 end

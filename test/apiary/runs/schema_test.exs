@@ -72,7 +72,7 @@ defmodule Apiary.Runs.SchemaTest do
       run_id: run.id,
       sequence: 1,
       event_id: Ecto.UUID.generate(),
-      type: "ai.qory.ping",
+      type: "dev.qory.ping",
       time: DateTime.utc_now(),
       received_at: DateTime.utc_now(),
       data: %{}
@@ -104,7 +104,7 @@ defmodule Apiary.Runs.SchemaTest do
         run_id: run.id,
         sequence: 1,
         event_id: Ecto.UUID.generate(),
-        type: "ai.qory.ping",
+        type: "dev.qory.ping",
         time: DateTime.utc_now(),
         received_at: DateTime.utc_now()
       })
@@ -121,28 +121,28 @@ defmodule Apiary.Runs.SchemaTest do
     end
   end
 
-  test "a run cannot name a repository of another hive" do
+  test "a run cannot name a target of another hive" do
     %{scope: scope} = sign_up_fixture()
     %{scope: other} = sign_up_fixture()
     now = DateTime.utc_now()
 
-    repository =
-      Repo.insert!(%Apiary.Runs.Repository{
+    target =
+      Repo.insert!(%Apiary.Runs.Target{
         organisation_id: other.organisation.id,
         hive_id: other.hive.id,
-        forge: "git.example.com",
+        system: "git.example.com",
         path: "acme/shop",
         first_seen_at: now
       })
 
-    assert_raise Ecto.ConstraintError, ~r/runs_repository_id_fkey/, fn ->
-      run_fixture(scope, %{repository_id: repository.id})
+    assert_raise Ecto.ConstraintError, ~r/runs_target_id_fkey/, fn ->
+      run_fixture(scope, %{target_id: target.id})
     end
 
-    # In its own hive it may, and the run outlives the repository.
-    run = run_fixture(other, %{repository_id: repository.id})
-    Repo.delete!(repository)
-    assert %Run{repository_id: nil, hive_id: hive_id} = Repo.get!(Run, run.id)
+    # In its own hive it may, and the run outlives the target.
+    run = run_fixture(other, %{target_id: target.id})
+    Repo.delete!(target)
+    assert %Run{target_id: nil, hive_id: hive_id} = Repo.get!(Run, run.id)
     assert hive_id == other.hive.id
   end
 

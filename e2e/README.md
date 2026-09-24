@@ -23,8 +23,8 @@ It leaves with status 0 only when every assertion held, and prints the timings:
 |---|---|
 | The test instance | This application with production's settings (`MIX_ENV=prod`, migrations on boot, JSON logs), on a database of its own, `apiary_e2e`, and a port of its own, 4180. `run.sh` starts it with `mix run e2e/scenario.exs`, so the scenario runs in the virtual machine that answers the runner. The database is dropped before and after; a `DATABASE_URL` that does not end in `_e2e` is refused. |
 | The node | `compose.yaml`'s `node`: a Linux machine with a container engine of its own (Docker in Docker). `qory run` runs here, built from the pinned source for Linux, and builds its wall with the node's engine: an internal network, the agent's container on it and on nothing else, the relay's container beside it. The node has its own `XDG_CONFIG_HOME`; nobody's `~/.config/qory` is read or written. |
-| The session | `checkout/bin/fake-runtime`, started by `qory run` as the runtime, in the wall's container (`curlimages/curl`). Not a model: a loop that asks for one page of the target every few seconds, and keeps asking after it got through, so the deny can refuse it. It first tries to go around the proxy and leaves with 3 if that works, so a pass also says there was a wall. |
-| The target | `compose.yaml`'s `target`: nginx with a certificate made for the run, on the node's network under the name `files.e2e.test`. No site outside the job is asked for anything. |
+| The session | `checkout/bin/fake-runtime`, started by `qory run` as the runtime, in the wall's container (`curlimages/curl`). Not a model: a loop that asks for one page of the upstream every few seconds, and keeps asking after it got through, so the deny can refuse it. It first tries to go around the proxy and leaves with 3 if that works, so a pass also says there was a wall. |
+| The upstream | `compose.yaml`'s `upstream`: nginx with a certificate made for the run, on the node's network under the name `files.e2e.test`. No site outside the job is asked for anything. |
 
 The server contract lets a runner speak plain http to a loopback address only. So the node
 reaches the test instance as `http://127.0.0.1:4180`, which is also the instance's
@@ -50,10 +50,10 @@ answers.
 4. Allows the host with the two calls the row's popover makes
    (`ApiaryWeb.RunLive.Show`, `ApiaryWeb.ConnectionLive.Index`):
    `Apiary.Runs.fetch_connection/2`, then `Apiary.Policy.rule_from_connection/4` with
-   `:allow` and the level, `:repository` unless `E2E_LEVEL=hive`. The clock starts before
+   `:allow` and the level, `:target` unless `E2E_LEVEL=hive`. The clock starts before
    the first of them.
-5. Polls the run's stored events, every 50 ms, for a second `ai.qory.run.policy_applied`
-   whose `run_configuration` is the new digest, then for an `ai.qory.run.egress` to the
+5. Polls the run's stored events, every 50 ms, for a second `dev.qory.run.policy_applied`
+   whose `run_configuration` is the new digest, then for an `dev.qory.run.egress` to the
    host after it in sequence with `decision: allowed` and `outcome: connected`.
 6. Waits for the session to leave and for the exit to be projected.
 
@@ -63,7 +63,7 @@ answers.
   the host;
 - an allowed, connected egress event to the host, later in sequence;
 - the time from the allow to that event being stored here, under `E2E_BUDGET_SECONDS` (35);
-- the run was behind the docker wall (`wall` of `ai.qory.run.started`), and the session
+- the run was behind the docker wall (`wall` of `dev.qory.run.started`), and the session
   found no way around the proxy;
 - no connection to the host was denied after the reload;
 - the session left with 0, and the run ends on the digest in force with no drift

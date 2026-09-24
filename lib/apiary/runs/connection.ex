@@ -1,7 +1,7 @@
 defmodule Apiary.Runs.Connection do
   @moduledoc """
   The egress of a run to one destination (host, port, path; the path is `""`
-  when the events carry none), counted over the run's `ai.qory.run.egress`
+  when the events carry none), counted over the run's `dev.qory.run.egress`
   events. A projection: rebuilt from `events`.
   """
   use Ecto.Schema

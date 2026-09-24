@@ -18,6 +18,8 @@ defmodule ApiaryWeb.RunComponents do
   use Phoenix.Component
   use Gettext, backend: ApiaryWeb.Gettext
 
+  import ApiaryWeb.RichText
+
   import ApiaryWeb.CoreComponents,
     only: [badge: 1, button: 1, icon: 1, mono: 1, notice: 1, term: 1, short_date: 1]
 
@@ -26,8 +28,16 @@ defmodule ApiaryWeb.RunComponents do
 
   alias Phoenix.LiveView.JS
 
-  @outcome_tip "What became of the connection. Connected: the dial succeeded. Dial failed: allowed, but the host did not answer. Refused: never dialled."
-  @at_least_tip "Elapsed at the last heartbeat. The clock stops counting when heartbeats stop."
+  @outcome_tip gettext_noop(
+                 "What became of the connection. Connected: the dial succeeded. Dial failed: allowed, but the host did not answer. Refused: never dialled."
+               )
+  @at_least_tip gettext_noop(
+                  "Elapsed at the last heartbeat. The clock stops counting when heartbeats stop."
+                )
+
+  # Where an element sits in a translated sentence: the binding's value, which `spliced/1`
+  # cuts the sentence at. It never reaches the page.
+  @hole "\u0000"
 
   ## rd1. Run state
 
@@ -83,16 +93,18 @@ defmodule ApiaryWeb.RunComponents do
         tabindex="0"
         data-tip={quiet_tip(@interval)}
       >
-        <.icon name="hero-exclamation-triangle-micro" class="size-3" /> No heartbeat for
-        <time
-          :if={@quiet_since}
-          data-tick="seconds"
-          data-since={iso(@quiet_since)}
-          data-now={iso(DateTime.utc_now())}
-          aria-live="off"
-          class="tabular-nums"
-        >{format_seconds(@quiet_for)}</time>
-        <span :if={!@quiet_since} class="tabular-nums">{format_seconds(@quiet_for)}</span>
+        <.icon name="hero-exclamation-triangle-micro" class="size-3" />
+        <.spliced text={gettext("No heartbeat for %{duration}", duration: hole())}>
+          <time
+            :if={@quiet_since}
+            data-tick="seconds"
+            data-since={iso(@quiet_since)}
+            data-now={iso(DateTime.utc_now())}
+            aria-live="off"
+            class="tabular-nums"
+          >{format_seconds(@quiet_for)}</time>
+          <span :if={!@quiet_since} class="tabular-nums">{format_seconds(@quiet_for)}</span>
+        </.spliced>
         <span class="sr-only">. {quiet_tip(@interval)}</span>
       </span>
     </span>
@@ -100,13 +112,32 @@ defmodule ApiaryWeb.RunComponents do
   end
 
   @doc "The word of a state, as the badge says it."
-  def state_label("pending"), do: "Pending"
-  def state_label("running"), do: "Running"
-  def state_label("succeeded"), do: "Succeeded"
-  def state_label("failed"), do: "Failed"
-  def state_label("timed_out"), do: "Timed out"
-  def state_label("lost"), do: "Lost"
-  def state_label("closed"), do: "Closed"
+  def state_label("pending"), do: gettext("Pending")
+  def state_label("running"), do: gettext("Running")
+  def state_label("succeeded"), do: gettext("Succeeded")
+  def state_label("failed"), do: gettext("Failed")
+  def state_label("timed_out"), do: gettext("Timed out")
+  def state_label("lost"), do: gettext("Lost")
+  def state_label("closed"), do: gettext("Closed")
+
+  # A translated sentence with one element in it. `text` is the sentence, translated with the
+  # element's binding set to `hole/0`; the slot is rendered where the binding stood.
+  attr :text, :string, required: true
+  slot :inner_block, required: true
+
+  defp spliced(assigns) do
+    {before, rest} =
+      case String.split(assigns.text, @hole, parts: 2) do
+        [before, rest] -> {before, rest}
+        [before] -> {before, ""}
+      end
+
+    assigns = assign(assigns, before: before, rest: rest)
+
+    ~H"{@before}{render_slot(@inner_block)}{@rest}"
+  end
+
+  defp hole, do: @hole
 
   defp state_color("running", true), do: "warning"
   defp state_color("running", false), do: "info"
@@ -127,21 +158,28 @@ defmodule ApiaryWeb.RunComponents do
 
   defp exit_word(%{state: "failed", exit_code: code})
        when is_integer(code) and code not in [0, -1],
-       do: "exit #{code}"
+       do: gettext("exit %{code}", code: code)
 
   defp exit_word(_assigns), do: nil
 
   defp quiet_tip(interval) when is_integer(interval) do
-    "Heartbeats are due every #{format_seconds(interval)}. After #{format_seconds(interval * 3)} of silence the run is marked lost."
+    gettext(
+      "Heartbeats are due every %{interval}. After %{silence} of silence the run is marked lost.",
+      interval: format_seconds(interval),
+      silence: format_seconds(interval * 3)
+    )
   end
 
   defp quiet_tip(_interval),
-    do: "Heartbeats have stopped. After three missed intervals the run is marked lost."
+    do: gettext("Heartbeats have stopped. After three missed intervals the run is marked lost.")
 
   defp closed_tip(%DateTime{} = at),
-    do: "Closed by a member on #{short_date(at)}. The run never posted its exit."
+    do:
+      gettext("Closed by a member on %{date}. The run never posted its exit.",
+        date: short_date(at)
+      )
 
-  defp closed_tip(_at), do: "Closed by a member. The run never posted its exit."
+  defp closed_tip(_at), do: gettext("Closed by a member. The run never posted its exit.")
 
   # What `Apiary.Runs.Liveness` holds a run to when it announced no interval, and its bounds.
   @default_beat 30
@@ -231,13 +269,13 @@ defmodule ApiaryWeb.RunComponents do
         data-now={iso(@now)}
         aria-live="off"
       >{format_seconds(@elapsed_seconds + max(DateTime.diff(@now, @elapsed_at, :second), 0))}</time>
-      <small :if={@so_far} class="text-xs text-faint">so far</small>
+      <small :if={@so_far} class="text-xs text-faint">{gettext("so far")}</small>
     </span>
     """
   end
 
   def duration(%{at_least_seconds: seconds} = assigns) when is_integer(seconds) do
-    assigns = assign(assigns, :tip, @at_least_tip)
+    assigns = assign(assigns, :tip, Gettext.gettext(ApiaryWeb.Gettext, @at_least_tip))
 
     ~H"""
     <span
@@ -246,34 +284,43 @@ defmodule ApiaryWeb.RunComponents do
       tabindex="0"
       data-tip={@tip}
     >
-      at least {format_seconds(@at_least_seconds)}<span class="sr-only">. {@tip}</span>
+      {gettext("at least %{duration}", duration: format_seconds(@at_least_seconds))}<span class="sr-only">. {@tip}</span>
     </span>
     """
   end
 
   def duration(assigns) do
     ~H"""
-    <span id={@id} class={["text-faint", @class]}>n/a</span>
+    <span id={@id} class={["text-faint", @class]}>{gettext("n/a")}</span>
     """
   end
 
   @doc "\"41 ms\", \"48 s\" (or \"3.4 s\" when precise), \"6 m 51 s\", \"1 h 00 m\"."
   def format_duration_ms(ms, precise \\ false)
-  def format_duration_ms(ms, _precise) when ms < 1000, do: "#{ms} ms"
+  def format_duration_ms(ms, _precise) when ms < 1000, do: gettext("%{ms} ms", ms: ms)
 
   def format_duration_ms(ms, true) when ms < 60_000,
-    do: "#{:erlang.float_to_binary(ms / 1000, decimals: 1)} s"
+    do: gettext("%{seconds} s", seconds: :erlang.float_to_binary(ms / 1000, decimals: 1))
 
   def format_duration_ms(ms, _precise), do: format_seconds(div(ms, 1000))
 
   @doc "\"48 s\", \"6 m 51 s\", \"1 h 00 m\"."
-  def format_seconds(seconds) when seconds < 60, do: "#{max(seconds, 0)} s"
+  def format_seconds(seconds) when seconds < 60,
+    do: gettext("%{seconds} s", seconds: max(seconds, 0))
 
   def format_seconds(seconds) when seconds < 3600,
-    do: "#{div(seconds, 60)} m #{pad(rem(seconds, 60))} s"
+    do:
+      gettext("%{minutes} m %{seconds} s",
+        minutes: div(seconds, 60),
+        seconds: pad(rem(seconds, 60))
+      )
 
   def format_seconds(seconds),
-    do: "#{div(seconds, 3600)} h #{pad(div(rem(seconds, 3600), 60))} m"
+    do:
+      gettext("%{hours} h %{minutes} m",
+        hours: div(seconds, 3600),
+        minutes: pad(div(rem(seconds, 3600), 60))
+      )
 
   defp pad(n), do: n |> Integer.to_string() |> String.pad_leading(2, "0")
 
@@ -305,7 +352,7 @@ defmodule ApiaryWeb.RunComponents do
 
   def relative_time(assigns) do
     ~H"""
-    <span id={@id} class={["text-faint", @class]}>n/a</span>
+    <span id={@id} class={["text-faint", @class]}>{gettext("n/a")}</span>
     """
   end
 
@@ -315,25 +362,59 @@ defmodule ApiaryWeb.RunComponents do
     days = Date.diff(DateTime.to_date(now), DateTime.to_date(at))
 
     cond do
-      seconds < 5 -> "Just now"
-      seconds < 60 -> "#{seconds} seconds ago"
-      seconds < 120 -> "1 minute ago"
-      seconds < 3600 -> "#{div(seconds, 60)} minutes ago"
-      days <= 0 and seconds < 7200 -> "1 hour ago"
-      days <= 0 -> "#{div(seconds, 3600)} hours ago"
-      days == 1 -> "Yesterday, #{Calendar.strftime(at, "%H:%M")}"
-      at.year == now.year -> Calendar.strftime(at, "%-d %b, %H:%M")
-      true -> Calendar.strftime(at, "%-d %b %Y, %H:%M")
+      seconds < 5 ->
+        gettext("Just now")
+
+      seconds < 60 ->
+        ngettext("%{count} second ago", "%{count} seconds ago", seconds)
+
+      seconds < 3600 ->
+        ngettext("%{count} minute ago", "%{count} minutes ago", div(seconds, 60))
+
+      days <= 0 ->
+        ngettext("%{count} hour ago", "%{count} hours ago", div(seconds, 3600))
+
+      days == 1 ->
+        gettext("Yesterday, %{time}", time: Calendar.strftime(at, "%H:%M"))
+
+      at.year == now.year ->
+        Calendar.strftime(at, "%-d %b, %H:%M")
+
+      true ->
+        Calendar.strftime(at, "%-d %b %Y, %H:%M")
     end
   end
 
   @doc false
   def clock_label(%DateTime{} = at, now \\ DateTime.utc_now()) do
     case Date.diff(DateTime.to_date(now), DateTime.to_date(at)) do
-      0 -> "Today, #{Calendar.strftime(at, "%H:%M:%S")}"
-      1 -> "Yesterday, #{Calendar.strftime(at, "%H:%M:%S")}"
+      0 -> gettext("Today, %{time}", time: Calendar.strftime(at, "%H:%M:%S"))
+      1 -> gettext("Yesterday, %{time}", time: Calendar.strftime(at, "%H:%M:%S"))
       _ -> Calendar.strftime(at, "%-d %b %Y, %H:%M:%S")
     end
+  end
+
+  @doc """
+  The words the browser's clocks tick in (`assets/js/hooks/ticker.js`), in the body's
+  language, so the script holds none: every "N seconds ago" up to a minute, every "N
+  minutes ago" up to an hour and every "N hours ago" up to a day, each chosen by the
+  language's own plural rule; the templates of `format_seconds/1` and of the days; and the
+  months as `Calendar.strftime/2` writes them. The root layout puts them on the body.
+  """
+  def clock_words do
+    %{
+      justNow: gettext("Just now"),
+      secondsAgo: for(n <- 0..59, do: ngettext("%{count} second ago", "%{count} seconds ago", n)),
+      minutesAgo: for(n <- 0..59, do: ngettext("%{count} minute ago", "%{count} minutes ago", n)),
+      hoursAgo: for(n <- 0..23, do: ngettext("%{count} hour ago", "%{count} hours ago", n)),
+      today: gettext("Today, %{time}", time: "%{time}"),
+      yesterday: gettext("Yesterday, %{time}", time: "%{time}"),
+      seconds: gettext("%{seconds} s", seconds: "%{seconds}"),
+      minutesSeconds:
+        gettext("%{minutes} m %{seconds} s", minutes: "%{minutes}", seconds: "%{seconds}"),
+      hoursMinutes: gettext("%{hours} h %{minutes} m", hours: "%{hours}", minutes: "%{minutes}"),
+      months: for(m <- 1..12, do: Calendar.strftime(Date.new!(2000, m, 1), "%b"))
+    }
   end
 
   @doc "\"20 Sep 2026, 14:02:11 UTC\"."
@@ -363,7 +444,7 @@ defmodule ApiaryWeb.RunComponents do
 
     cond do
       ms < 0 ->
-        "before start"
+        gettext("before start")
 
       ms >= 3_600_000 ->
         s = div(ms, 1000)
@@ -375,7 +456,7 @@ defmodule ApiaryWeb.RunComponents do
     end
   end
 
-  def format_offset(_at, _from), do: "n/a"
+  def format_offset(_at, _from), do: gettext("n/a")
 
   defp absolute_ms(%DateTime{} = at) do
     ms =
@@ -466,13 +547,7 @@ defmodule ApiaryWeb.RunComponents do
 
   @doc "The first eight characters of a run id, as the runner prints it."
   def short_id(run_id) when is_binary(run_id), do: String.slice(run_id, 0, 8)
-  def short_id(_run_id), do: "n/a"
-
-  @doc "\"1 run\", \"3 runs\"; `plural` for the irregular."
-  def count_noun(count, noun, plural \\ nil)
-  def count_noun(1, noun, _plural), do: "1 #{noun}"
-  def count_noun(count, noun, nil), do: "#{delimited(count)} #{noun}s"
-  def count_noun(count, _noun, plural), do: "#{delimited(count)} #{plural}"
+  def short_id(_run_id), do: gettext("n/a")
 
   @doc "1240 as \"1,240\"."
   def delimited(n) when is_integer(n) do
@@ -510,18 +585,24 @@ defmodule ApiaryWeb.RunComponents do
         <% @state == "running" and @quiet -> %>
           <span class="q-dot" aria-hidden="true"></span>
           <span class="tooltip tooltip-left q-tip-wide" tabindex="0" data-tip={quiet_tip(@interval)}>
-            No heartbeat for
-            <.seconds_since at={@since} /><span class="sr-only">. {quiet_tip(@interval)}</span>
+            <.spliced text={gettext("No heartbeat for %{duration}", duration: hole())}>
+              <.seconds_since at={@since} />
+            </.spliced><span class="sr-only">. {quiet_tip(@interval)}</span>
           </span>
         <% @state == "running" and @since -> %>
           <span class="q-dot q-ripple" aria-hidden="true"></span>
           <span class="q-alive-on">
-            Alive, {if is_nil(@last_heartbeat_at), do: "last event "}<.seconds_since at={@since} />
-            ago
+            <.spliced text={
+              if is_nil(@last_heartbeat_at),
+                do: gettext("Alive, last event %{duration} ago", duration: hole()),
+                else: gettext("Alive, %{duration} ago", duration: hole())
+            }>
+              <.seconds_since at={@since} />
+            </.spliced>
           </span>
-          <span class="q-alive-off">Reconnecting</span>
+          <span class="q-alive-off">{gettext("Reconnecting")}</span>
         <% @state == "running" -> %>
-          <span>Alive</span>
+          <span>{gettext("Alive")}</span>
         <% true -> %>
           <span>{ended_sentence(@state, @run)}</span>
       <% end %>
@@ -545,36 +626,42 @@ defmodule ApiaryWeb.RunComponents do
     """
   end
 
-  defp ended_sentence("pending", _run), do: "Ping only"
+  defp ended_sentence("pending", _run), do: gettext("Ping only")
 
   defp ended_sentence("succeeded", %{duration_ms: ms}) when is_integer(ms),
-    do: "Succeeded #{format_duration_ms(ms)} after it started"
+    do: gettext("Succeeded %{duration} after it started", duration: format_duration_ms(ms))
 
-  defp ended_sentence("succeeded", _run), do: "Succeeded"
+  defp ended_sentence("succeeded", _run), do: gettext("Succeeded")
 
   defp ended_sentence("failed", %{signal: signal}) when is_binary(signal) and signal != "",
-    do: "Failed with #{signal}"
+    do: gettext("Failed with %{signal}", signal: signal)
 
   defp ended_sentence("failed", %{exit_code: code}) when is_integer(code) and code != -1,
-    do: "Failed with exit #{code}"
+    do: gettext("Failed with exit %{code}", code: code)
 
-  defp ended_sentence("failed", _run), do: "Failed"
+  defp ended_sentence("failed", _run), do: gettext("Failed")
 
   defp ended_sentence("timed_out", %{duration_ms: ms}) when is_integer(ms),
-    do: "Timed out after #{format_duration_ms(ms)}"
+    do: gettext("Timed out after %{duration}", duration: format_duration_ms(ms))
 
-  defp ended_sentence("timed_out", _run), do: "Timed out"
+  defp ended_sentence("timed_out", _run), do: gettext("Timed out")
 
   defp ended_sentence("lost", %{} = run) do
     case Map.get(run, :last_heartbeat_at) || Map.get(run, :last_event_at) do
-      %DateTime{} = at -> "Lost. Last heard #{Calendar.strftime(at, "%-d %b %Y, %H:%M")}"
-      _ -> "Lost"
+      %DateTime{} = at ->
+        gettext("Lost. Last heard %{time}", time: Calendar.strftime(at, "%-d %b %Y, %H:%M"))
+
+      _ ->
+        gettext("Lost")
     end
   end
 
-  defp ended_sentence("lost", _run), do: "Lost"
-  defp ended_sentence("closed", %{closed_at: %DateTime{} = at}), do: "Closed #{short_date(at)}"
-  defp ended_sentence("closed", _run), do: "Closed"
+  defp ended_sentence("lost", _run), do: gettext("Lost")
+
+  defp ended_sentence("closed", %{closed_at: %DateTime{} = at}),
+    do: gettext("Closed %{date}", date: short_date(at))
+
+  defp ended_sentence("closed", _run), do: gettext("Closed")
 
   ## rd7. Filter bar
 
@@ -583,15 +670,17 @@ defmodule ApiaryWeb.RunComponents do
   """
   attr :id, :string, required: true
   attr :clear, :string, default: nil, doc: "patch target with no filters; shows Clear"
-  attr :label, :string, default: "Filters"
+  attr :label, :string, default: nil, doc: "the group's accessible name; nil says Filters"
   slot :inner_block, required: true
   slot :trailing, doc: "the group-by control, the summary"
 
   def filter_bar(assigns) do
     ~H"""
-    <div id={@id} class="q-filters" role="group" aria-label={@label}>
+    <div id={@id} class="q-filters" role="group" aria-label={@label || gettext("Filters")}>
       {render_slot(@inner_block)}
-      <.link :if={@clear} id={"#{@id}-clear"} patch={@clear} class="q-filters-clear">Clear</.link>
+      <.link :if={@clear} id={"#{@id}-clear"} patch={@clear} class="q-filters-clear">
+        {gettext("Clear")}
+      </.link>
       <span class="q-filters-grow"></span>
       {render_slot(@trailing)}
     </div>
@@ -664,7 +753,9 @@ defmodule ApiaryWeb.RunComponents do
           aria-controls={"#{@id}-panel"}
           aria-expanded="false"
           aria-label={
-            if @set?, do: "#{@label}: #{@shown}, change", else: "Filter by #{String.downcase(@label)}"
+            if @set?,
+              do: gettext("%{filter}: %{value}, change", filter: @label, value: @shown),
+              else: gettext("Filter by %{filter}", filter: String.downcase(@label))
           }
           phx-mounted={JS.ignore_attributes(["aria-expanded"])}
         >
@@ -677,7 +768,12 @@ defmodule ApiaryWeb.RunComponents do
           id={"#{@id}-remove"}
           patch={@remove}
           class="q-chip-x"
-          aria-label={"Remove filter: #{String.downcase(@label)} #{@shown}"}
+          aria-label={
+            gettext("Remove filter: %{filter} %{value}",
+              filter: String.downcase(@label),
+              value: @shown
+            )
+          }
         >
           <.icon name="hero-x-mark-micro" class="size-3" />
         </.link>
@@ -685,7 +781,7 @@ defmodule ApiaryWeb.RunComponents do
       <div
         id={"#{@id}-panel"}
         role="dialog"
-        aria-label={"Filter by #{String.downcase(@label)}"}
+        aria-label={gettext("Filter by %{filter}", filter: String.downcase(@label))}
         class="dropdown-content q-filter-menu left-0 top-full mt-1.5"
       >
         <form
@@ -701,8 +797,8 @@ defmodule ApiaryWeb.RunComponents do
             name="q"
             value={@query}
             class="input input-sm q-filter-search"
-            placeholder={"Find a #{String.downcase(@label)}"}
-            aria-label={"Find a #{String.downcase(@label)}"}
+            placeholder={gettext("Find a %{filter}", filter: String.downcase(@label))}
+            aria-label={gettext("Find a %{filter}", filter: String.downcase(@label))}
             phx-debounce="250"
             autocomplete="off"
           />
@@ -712,7 +808,10 @@ defmodule ApiaryWeb.RunComponents do
           id={"#{@id}-more"}
           class="px-2 pb-1 text-xs text-faint"
         >
-          Showing {length(@options)} of {delimited(@total)}: type to narrow
+          {gettext("Showing %{shown} of %{total}: type to narrow",
+            shown: length(@options),
+            total: delimited(@total)
+          )}
         </p>
         <form
           id={"#{@id}-form"}
@@ -723,7 +822,9 @@ defmodule ApiaryWeb.RunComponents do
           <input type="hidden" name="_filter" value={@name} />
           <ul :if={!@grouped?} class="q-filter-options" aria-label={@label}>
             <li :if={@options == []} class="px-2 py-1.5 text-xs text-faint">
-              {if @query in [nil, ""], do: "Nothing to filter by yet", else: "Nothing matches"}
+              {if @query in [nil, ""],
+                do: gettext("Nothing to filter by yet"),
+                else: gettext("Nothing matches")}
             </li>
             <li :for={{label, value, count} <- @options}>
               <label class="q-filter-option" data-menu-close={!@multiple}>
@@ -795,7 +896,7 @@ defmodule ApiaryWeb.RunComponents do
           </ul>
           <div :if={@dates} class="q-filter-dates">
             <label>
-              <span>From</span>
+              <span>{gettext("From")}</span>
               <input
                 type="date"
                 name="from"
@@ -805,7 +906,7 @@ defmodule ApiaryWeb.RunComponents do
               />
             </label>
             <label>
-              <span>To</span>
+              <span>{gettext("To")}</span>
               <input
                 type="date"
                 name="to"
@@ -844,7 +945,8 @@ defmodule ApiaryWeb.RunComponents do
   defp shown_value([a, b], options),
     do: "#{option_label(a, options)}, #{option_label(b, options)}"
 
-  defp shown_value(values, _options), do: "#{length(values)} selected"
+  defp shown_value(values, _options),
+    do: ngettext("%{count} selected", "%{count} selected", length(values))
 
   defp option_label(value, options) do
     Enum.find_value(options, value, fn {label, v, _count} ->
@@ -960,9 +1062,9 @@ defmodule ApiaryWeb.RunComponents do
     """
   end
 
-  defp decision_word("denied"), do: "Denied"
-  defp decision_word("allowed"), do: "Allowed"
-  defp decision_word(_other), do: "Unknown decision"
+  defp decision_word("denied"), do: gettext("Denied")
+  defp decision_word("allowed"), do: gettext("Allowed")
+  defp decision_word(_other), do: gettext("Unknown decision")
 
   @doc """
   One connection, the same wherever it appears. `inline` is the 32 px row of the timeline,
@@ -1066,7 +1168,9 @@ defmodule ApiaryWeb.RunComponents do
             phx-value-path={@c.path}
             aria-expanded={to_string(@open != nil)}
             aria-controls={"#{@id}-runs"}
-            aria-label={"Runs that reached #{destination_words(@c)}"}
+            aria-label={
+              gettext("Runs that reached %{destination}", destination: destination_words(@c))
+            }
           >
             <.icon name="hero-chevron-right-micro" class="size-3" />
           </button>
@@ -1089,7 +1193,7 @@ defmodule ApiaryWeb.RunComponents do
         <.reason c={@c} variant="hive" /><span
           :if={@c.allowed > 0 and @c.denied > 0}
           class="text-faint"
-        > · last attempt</span>
+        > · {gettext("last attempt")}</span>
         <.after_line :if={@act && @act[:after]} id={"#{@id}-after"} line={@act.after} />
       </td>
       <td><.outcome value={@c.outcome} /></td>
@@ -1104,7 +1208,14 @@ defmodule ApiaryWeb.RunComponents do
     <tr :if={@open} id={"#{@id}-runs"} class="q-sub">
       <td colspan="8">
         <div class="q-sub-in">
-          <h3>{count_noun(@open.total, "run")} reached this destination</h3>
+          <h3>
+            {ngettext(
+              "%{number} run reached this destination",
+              "%{number} runs reached this destination",
+              @open.total,
+              number: delimited(@open.total)
+            )}
+          </h3>
           <div class="q-hits">
             <.link
               :for={hit <- @open.runs}
@@ -1126,14 +1237,20 @@ defmodule ApiaryWeb.RunComponents do
                 </span>
               </span>
               <span class="truncate font-mono text-xs text-muted">
-                {if hit.run.forge && hit.run.repository,
-                  do: "#{hit.run.forge}/#{hit.run.repository}",
-                  else: "Unassigned"}
+                {if hit.run.target_system && hit.run.target_path,
+                  do: "#{hit.run.target_system}/#{hit.run.target_path}",
+                  else: gettext("Unassigned")}
               </span>
               <span class={["tabular-nums", hit.denied > 0 && "q-bad"]}>
                 {if hit.denied > 0,
-                  do: "#{delimited(hit.denied)} denied",
-                  else: "#{delimited(hit.allowed)} allowed"}
+                  do:
+                    ngettext("%{number} denied", "%{number} denied", hit.denied,
+                      number: delimited(hit.denied)
+                    ),
+                  else:
+                    ngettext("%{number} allowed", "%{number} allowed", hit.allowed,
+                      number: delimited(hit.allowed)
+                    )}
               </span>
               <.relative_time at={hit.last_seen_at} class="text-[12.5px] text-muted" />
             </.link>
@@ -1148,7 +1265,11 @@ defmodule ApiaryWeb.RunComponents do
             phx-value-port={@c.port}
             phx-value-path={@c.path}
           >
-            Show {min(10, @open.total - length(@open.runs))} more
+            {ngettext(
+              "Show %{count} more",
+              "Show %{count} more",
+              min(10, @open.total - length(@open.runs))
+            )}
           </button>
         </div>
       </td>
@@ -1224,31 +1345,36 @@ defmodule ApiaryWeb.RunComponents do
     assigns = assign(assigns, :kind, reason_kind(assigns.c))
 
     ~H"""
-    <b :if={@variant == "inline" && @c.decision == "denied"}>Denied. </b>
+    <b :if={@variant == "inline" && @c.decision == "denied"}>{gettext("Denied.")}</b>
     <%= case @kind do %>
       <% :own_address -> %>
-        <b>The wall refuses the machine's own address,</b> in either mode.
+        <b>{gettext("The wall refuses the machine's own address,")}</b> {gettext("in either mode.")}
       <% :ambiguous_path -> %>
-        <b>The path can be read two ways.</b> The wall denies it in either mode.
+        <b>{gettext("The path can be read two ways.")}</b> {gettext(
+          "The wall denies it in either mode."
+        )}
       <% :denied_no_rule -> %>
-        <b>No rule matches.</b> {mode_sentence(@c.mode, :denies)}
+        <b>{gettext("No rule matches.")}</b> {mode_sentence(@c.mode, :denies)}
       <% :denied_no_path_rule -> %>
-        <b>Host allowed, no path rule matches.</b> {mode_sentence(@c.mode, :denies)}
+        <b>{gettext("Host allowed, no path rule matches.")}</b> {mode_sentence(@c.mode, :denies)}
       <% :denied_by_rule -> %>
-        Rule
-        <.rule value={@c.rule} /><span :if={@c.path_rule}>, path <.rule value={@c.path_rule} /></span>
+        {gettext("Rule")}
+        <.rule value={@c.rule} /><span :if={@c.path_rule}>, {gettext("path")}
+        <.rule value={@c.path_rule} /></span>
       <% :allowed_no_rule -> %>
-        <b>No rule matches.</b> {mode_sentence(@c.mode, :lets_through)}
+        <b>{gettext("No rule matches.")}</b> {mode_sentence(@c.mode, :lets_through)}
       <% :allowed_by_rule -> %>
-        <span :if={@variant == "inline"}><b>Allowed</b> by rule</span><span :if={@variant != "inline"}>Rule</span>
-        <.rule value={@c.rule} /><span :if={@c.path_rule}>, path <.rule value={@c.path_rule} /></span><span :if={
-          @c.credential
-        }>, credential <.rule value={@c.credential} /></span>
+        <span :if={@variant == "inline"}><b>{gettext("Allowed")}</b> {gettext("by rule")}</span><span :if={
+          @variant != "inline"
+        }>{gettext("Rule")}</span>
+        <.rule value={@c.rule} /><span :if={@c.path_rule}>, {gettext("path")}
+        <.rule value={@c.path_rule} /></span><span :if={@c.credential}>, {gettext("credential")}
+        <.rule value={@c.credential} /></span>
       <% :unknown -> %>
-        <span class="text-faint">n/a</span>
+        <span class="text-faint">{gettext("n/a")}</span>
     <% end %>
     <span :if={@c.decision == "allowed" && @c.outcome == "refused"}>
-      Closed when a new policy denied the host.
+      {gettext("Closed when a new policy denied the host.")}
     </span>
     """
   end
@@ -1270,10 +1396,10 @@ defmodule ApiaryWeb.RunComponents do
   defp reason_kind(_c), do: :unknown
 
   # The mode is the event's; a row projected before the mode was kept says only what it knows.
-  defp mode_sentence("enforce", :denies), do: "Enforce mode denies it."
-  defp mode_sentence("observe", :lets_through), do: "Observe mode lets it through."
-  defp mode_sentence(_mode, :denies), do: "The policy denies it."
-  defp mode_sentence(_mode, :lets_through), do: "It was let through."
+  defp mode_sentence("enforce", :denies), do: gettext("Enforce mode denies it.")
+  defp mode_sentence("observe", :lets_through), do: gettext("Observe mode lets it through.")
+  defp mode_sentence(_mode, :denies), do: gettext("The policy denies it.")
+  defp mode_sentence(_mode, :lets_through), do: gettext("It was let through.")
 
   attr :value, :string, required: true
 
@@ -1287,11 +1413,13 @@ defmodule ApiaryWeb.RunComponents do
 
   defp outcome(assigns) do
     ~H"""
-    <span :if={@value == "connected"} class="q-outcome">Connected</span>
-    <span :if={@value == "dial_failed"} class="q-outcome q-outcome-dial">Dial failed</span>
-    <span :if={@value == "refused"} class="q-outcome q-outcome-refused">Refused</span>
+    <span :if={@value == "connected"} class="q-outcome">{gettext("Connected")}</span>
+    <span :if={@value == "dial_failed"} class="q-outcome q-outcome-dial">
+      {gettext("Dial failed")}
+    </span>
+    <span :if={@value == "refused"} class="q-outcome q-outcome-refused">{gettext("Refused")}</span>
     <span :if={@value not in ~w(connected dial_failed refused)} class="text-xs text-faint">
-      {@value || "n/a"}
+      {@value || gettext("n/a")}
     </span>
     """
   end
@@ -1303,7 +1431,7 @@ defmodule ApiaryWeb.RunComponents do
     ~H"""
     <.offset at={@c.first_seen_at} from={@started_at} class="!text-[12.5px] !text-muted" />
     <span :if={@c.first_seen_at != @c.last_seen_at}>
-      <span class="text-faint">to</span>
+      <span class="text-faint">{gettext("to")}</span>
       <.offset at={@c.last_seen_at} from={@started_at} class="!text-[12.5px] !text-muted" />
     </span>
     """
@@ -1313,7 +1441,7 @@ defmodule ApiaryWeb.RunComponents do
     ~H"""
     <.relative_time at={@c.first_seen_at} />
     <span :if={@c.first_seen_at != @c.last_seen_at}>
-      <span class="text-faint">to</span> <.relative_time at={@c.last_seen_at} />
+      <span class="text-faint">{gettext("to")}</span> <.relative_time at={@c.last_seen_at} />
     </span>
     """
   end
@@ -1349,7 +1477,7 @@ defmodule ApiaryWeb.RunComponents do
     assigns =
       assigns
       |> assign(:row_id, assigns.row_id || (&default_row_id/1))
-      |> assign(:outcome_tip, @outcome_tip)
+      |> assign(:outcome_tip, Gettext.gettext(ApiaryWeb.Gettext, @outcome_tip))
 
     ~H"""
     <div
@@ -1361,28 +1489,36 @@ defmodule ApiaryWeb.RunComponents do
       <table class="table q-cxt">
         <thead>
           <tr :if={@variant == "table"}>
-            <th scope="col">Destination</th>
-            <th scope="col" class="q-num">Attempts</th>
-            <th scope="col" class="q-num">Allowed</th>
-            <th scope="col" class="q-num">Denied</th>
-            <th scope="col">Reason</th>
+            <th scope="col">{gettext("Destination")}</th>
+            <th scope="col" class="q-num">{gettext("Attempts")}</th>
+            <th scope="col" class="q-num">{gettext("Allowed")}</th>
+            <th scope="col" class="q-num">{gettext("Denied")}</th>
+            <th scope="col">{gettext("Reason")}</th>
             <th scope="col">
-              <.term word="Outcome" standard={@outcome_tip} class="q-tip-wide tooltip-bottom" />
+              <.term
+                word={gettext("Outcome")}
+                standard={@outcome_tip}
+                class="q-tip-wide tooltip-bottom"
+              />
             </th>
-            <th scope="col">First and last seen</th>
-            <th scope="col" class="w-px"><span class="sr-only">Rule actions</span></th>
+            <th scope="col">{gettext("First and last seen")}</th>
+            <th scope="col" class="w-px"><span class="sr-only">{gettext("Rule actions")}</span></th>
           </tr>
           <tr :if={@variant == "hive"}>
-            <th scope="col">Destination</th>
-            <th scope="col" class="q-num">Runs</th>
-            <th scope="col" class="q-num">Attempts</th>
-            <th scope="col">Allowed / denied</th>
-            <th scope="col">Reason</th>
+            <th scope="col">{gettext("Destination")}</th>
+            <th scope="col" class="q-num">{gettext("Runs")}</th>
+            <th scope="col" class="q-num">{gettext("Attempts")}</th>
+            <th scope="col">{gettext("Allowed / denied")}</th>
+            <th scope="col">{gettext("Reason")}</th>
             <th scope="col">
-              <.term word="Outcome" standard={@outcome_tip} class="q-tip-wide tooltip-bottom" />
+              <.term
+                word={gettext("Outcome")}
+                standard={@outcome_tip}
+                class="q-tip-wide tooltip-bottom"
+              />
             </th>
-            <th scope="col">Last seen</th>
-            <th scope="col" class="w-px"><span class="sr-only">Rule actions</span></th>
+            <th scope="col">{gettext("Last seen")}</th>
+            <th scope="col" class="w-px"><span class="sr-only">{gettext("Rule actions")}</span></th>
           </tr>
         </thead>
         <tbody id={@id}>
@@ -1473,9 +1609,9 @@ defmodule ApiaryWeb.RunComponents do
         phx-click={JS.push("rule_open", value: Map.put(@values, "action", "deny"))}
         aria-haspopup="dialog"
         aria-expanded={to_string(@expanded and @expanded_action == :deny)}
-        aria-label={"Deny #{@connection.host}"}
+        aria-label={gettext("Deny %{host}", host: @connection.host)}
       >
-        Deny
+        {gettext("Deny")}
       </button>
       <button
         type="button"
@@ -1484,9 +1620,9 @@ defmodule ApiaryWeb.RunComponents do
         phx-click={JS.push("rule_open", value: Map.put(@values, "action", "allow"))}
         aria-haspopup="dialog"
         aria-expanded={to_string(@expanded and @expanded_action != :deny)}
-        aria-label={"Allow #{@connection.host}"}
+        aria-label={gettext("Allow %{host}", host: @connection.host)}
       >
-        Allow
+        {gettext("Allow")}
       </button>
     </span>
     """
@@ -1506,21 +1642,27 @@ defmodule ApiaryWeb.RunComponents do
       phx-click={JS.push("rule_open", value: Map.put(@values, "action", @action))}
       aria-haspopup="dialog"
       aria-expanded={to_string(@expanded)}
-      aria-label={"#{String.capitalize(@action)} #{@connection.host}"}
+      aria-label={
+        if @action == "deny",
+          do: gettext("Deny %{host}", host: @connection.host),
+          else: gettext("Allow %{host}", host: @connection.host)
+      }
     >
-      {String.capitalize(@action)}
+      {if @action == "deny", do: gettext("Deny"), else: gettext("Allow")}
     </button>
     """
   end
 
   def rule_action(%{standing: standing} = assigns)
       when standing in [:locked_deny, :locked_allow] do
-    assigns =
-      assign(
-        assigns,
-        :tip,
-        "A locked hive rule #{if standing == :locked_deny, do: "denies", else: "allows"} #{assigns.entry_host || assigns.connection.host}"
-      )
+    host = assigns.entry_host || assigns.connection.host
+
+    tip =
+      if standing == :locked_deny,
+        do: gettext("A locked hive rule denies %{host}", host: host),
+        else: gettext("A locked hive rule allows %{host}", host: host)
+
+    assigns = assign(assigns, :tip, tip)
 
     ~H"""
     <button
@@ -1549,19 +1691,19 @@ defmodule ApiaryWeb.RunComponents do
       id={@id}
       navigate={@rule_path}
       class="btn btn-ghost btn-xs q-rowbtn"
-      aria-label={"The rule for #{@connection.host}"}
+      aria-label={gettext("The rule for %{host}", host: @connection.host)}
     >
-      Rule
+      {gettext("Rule")}
     </.link>
     """
   end
 
   def rule_action(%{standing: :wall} = assigns) do
-    ~H|<span id={@id} class="sr-only">No rule changes this</span>|
+    ~H|<span id={@id} class="sr-only">{gettext("No rule changes this")}</span>|
   end
 
   def rule_action(assigns) do
-    ~H|<span id={@id} class="sr-only">No rule can name this host</span>|
+    ~H|<span id={@id} class="sr-only">{gettext("No rule can name this host")}</span>|
   end
 
   @doc """
@@ -1580,20 +1722,16 @@ defmodule ApiaryWeb.RunComponents do
     <div id={@id} class="q-after" data-state={@line.state}>
       <.badge color={after_color(@line.state)}>
         <.icon name="hero-shield-check-micro" class="size-3" />{if @line.state == :in_force,
-          do: "In force in this run",
-          else: "Rule added"}
+          do: gettext("In force in this run"),
+          else: gettext("Rule added")}
       </.badge>
       <span>
-        {if @line.action == :deny, do: "Denied", else: "Allowed"} for {if @line.level ==
-                                                                            :repository,
-                                                                          do: "this repository",
-                                                                          else: "the hive"}<span :if={
-          @line.version
-        }> in <.scoped_version version={@line.version} class="text-xs" /></span><span :if={
-          @line.state != :in_force && @line.by
-        }> by {@line.by}</span><span :if={@line.state != :in_force && @line.at}> · <.relative_time at={@line.at} /></span>. {after_sentence(
-          @line
-        )}
+        <.rich text={after_head(@line)}>
+          <:part name={:version}><.scoped_version version={@line.version} class="text-xs" /></:part>
+        </.rich><span :if={@line.state != :in_force && @line.by}>{" " <>
+          gettext("by %{name}", name: @line.by)}</span><span :if={
+          @line.state != :in_force && @line.at
+        }> · <.relative_time at={@line.at} /></span>. {after_sentence(@line)}
       </span>
     </div>
     """
@@ -1604,18 +1742,41 @@ defmodule ApiaryWeb.RunComponents do
   defp after_color(:hive), do: "info"
   defp after_color(_state), do: "neutral"
 
-  defp after_sentence(%{state: :pending}), do: "The run has not reloaded yet."
+  # The head of the line, with the version the rule is in when it is known.
+  defp after_head(%{version: nil} = line), do: after_head_alone(line)
+
+  defp after_head(%{action: :deny, level: :target}),
+    do: rich_gettext("Denied for this target in %{version}", version: {:part, :version})
+
+  defp after_head(%{action: :deny}),
+    do: rich_gettext("Denied for the hive in %{version}", version: {:part, :version})
+
+  defp after_head(%{level: :target}),
+    do: rich_gettext("Allowed for this target in %{version}", version: {:part, :version})
+
+  defp after_head(_line),
+    do: rich_gettext("Allowed for the hive in %{version}", version: {:part, :version})
+
+  defp after_head_alone(%{action: :deny, level: :target}), do: gettext("Denied for this target")
+  defp after_head_alone(%{action: :deny}), do: gettext("Denied for the hive")
+  defp after_head_alone(%{level: :target}), do: gettext("Allowed for this target")
+  defp after_head_alone(_line), do: gettext("Allowed for the hive")
+
+  defp after_sentence(%{state: :pending}), do: gettext("The run has not reloaded yet.")
 
   defp after_sentence(%{state: :in_force, reloaded_at: seq}) when is_integer(seq),
-    do: "The run reloaded at ##{seq |> Integer.to_string() |> String.pad_leading(4, "0")}."
+    do:
+      gettext("The run reloaded at #%{seq}.",
+        seq: seq |> Integer.to_string() |> String.pad_leading(4, "0")
+      )
 
-  defp after_sentence(%{state: :in_force}), do: "The run has reported it."
+  defp after_sentence(%{state: :in_force}), do: gettext("The run has reported it.")
 
   defp after_sentence(%{state: :ended}),
-    do: "This run has ended; the next run of the repository has it."
+    do: gettext("This run has ended; the next run of the target has it.")
 
   defp after_sentence(%{state: :machine}),
-    do: "This run uses its machine's policy and does not take this one."
+    do: gettext("This run uses its machine's policy and does not take this one.")
 
   defp after_sentence(_line), do: nil
 
@@ -1625,8 +1786,8 @@ defmodule ApiaryWeb.RunComponents do
   hook and a bottom sheet below 768 px. `popover` is the page's state of it:
 
       %{anchor:, action: :allow | :deny, host:, path:, page: :run | :hive, level:,
-        repository: %{label:} | nil, repositories: [%{id, label, runs}], choice:,
-        what: %{repository:, hive:}, own_rule:, hive:, alive:, fetched:, interval:, consequence:, error:,
+        target: %{label:} | nil, targets: [%{id, label, runs}], choice:,
+        what: %{target:, hive:}, own_rule:, hive:, alive:, fetched:, interval:, consequence:, error:,
         refusal: nil | %{standing:, rule:, locked_by:, locked_at:, owner:, rule_path:}}
 
   The form changes with `rule_change` and is sent with `rule_submit`; `rule_cancel`
@@ -1649,35 +1810,53 @@ defmodule ApiaryWeb.RunComponents do
       <header>
         <.icon name="hero-lock-closed-micro" class="size-4 text-faint" />
         <h3 id={"#{@id}-title"}>
-          <span class="q-pop-host">{middle(@popover.host, 40)}</span>
-          stays {if @popover.refusal.standing == :locked_deny, do: "denied", else: "allowed"}
+          <.spliced text={
+            if @popover.refusal.standing == :locked_deny,
+              do: gettext("%{host} stays denied", host: hole()),
+              else: gettext("%{host} stays allowed", host: hole())
+          }>
+            <span class="q-pop-host">{middle(@popover.host, 40)}</span>
+          </.spliced>
         </h3>
       </header>
       <div class="q-pop-body">
         <.notice kind={:warning}>
           <span id={"#{@id}-refusal"}>
-            A locked hive rule {if @popover.refusal.standing == :locked_deny,
-              do: "denies",
-              else: "allows"}
-            <.mono bare>{@popover.refusal.rule}</.mono>. It holds against every repository, so {if @popover.refusal.standing ==
-                                                                                                     :locked_deny,
-                                                                                                   do:
-                                                                                                     "no rule added here would change what happens.",
-                                                                                                   else:
-                                                                                                     "a deny added here would change nothing."}
+            <.spliced text={
+              if @popover.refusal.standing == :locked_deny,
+                do: gettext("A locked hive rule denies %{rule}.", rule: hole()),
+                else: gettext("A locked hive rule allows %{rule}.", rule: hole())
+            }>
+              <.mono bare>{@popover.refusal.rule}</.mono>
+            </.spliced>
+            {if @popover.refusal.standing == :locked_deny,
+              do:
+                gettext(
+                  "It holds against every target, so no rule added here would change what happens."
+                ),
+              else:
+                gettext("It holds against every target, so a deny added here would change nothing.")}
             <span :if={@popover.refusal.locked_by}>
-              Locked by {@popover.refusal.locked_by}<span :if={@popover.refusal.locked_at}> on {short_date(@popover.refusal.locked_at)}</span>.
+              {if @popover.refusal.locked_at,
+                do:
+                  gettext("Locked by %{name} on %{date}.",
+                    name: @popover.refusal.locked_by,
+                    date: short_date(@popover.refusal.locked_at)
+                  ),
+                else: gettext("Locked by %{name}.", name: @popover.refusal.locked_by)}
             </span>
             {if @popover.refusal.owner,
-              do: "You can change or unlock it on the hive's policy page.",
-              else: "Only an owner can change or unlock it."}
+              do: gettext("You can change or unlock it on the hive's policy page."),
+              else: gettext("Only an owner can change or unlock it.")}
           </span>
         </.notice>
       </div>
       <footer>
-        <.button id={"#{@id}-close"} phx-click="rule_cancel" data-autofocus>Close</.button>
+        <.button id={"#{@id}-close"} phx-click="rule_cancel" data-autofocus>
+          {gettext("Close")}
+        </.button>
         <.button id={"#{@id}-locked-rule"} navigate={@popover.refusal.rule_path}>
-          Show the locked rule
+          {gettext("Show the locked rule")}
         </.button>
       </footer>
     </div>
@@ -1705,8 +1884,12 @@ defmodule ApiaryWeb.RunComponents do
         <header>
           <PolicyComponents.rule_mark action={if @deny, do: "deny", else: "allow"} />
           <h3 id={"#{@id}-title"}>
-            {if @deny, do: "Deny", else: "Allow"}{if @what && @what.kind == :path, do: " on"}
-            <span class="q-pop-host" title={@popover.host}>{middle(@popover.host, 40)}</span>
+            <.spliced text={popover_title(@deny, @what && @what.kind == :path)}>
+              <span
+                class="q-pop-host"
+                title={@popover.host}
+              >{middle(@popover.host, 40)}</span>
+            </.spliced>
           </h3>
         </header>
         <div class="q-pop-body">
@@ -1716,84 +1899,92 @@ defmodule ApiaryWeb.RunComponents do
 
           <fieldset :if={@what && @what.kind == :path} id={"#{@id}-what-set"}>
             <legend>
-              What. This host has path rules:
+              {gettext("What. This host has path rules:")}
               <.mono :for={path <- Enum.take(@what.paths, 6)} bare class="q-rule">
                 {middle(path, 40)}
               </.mono>
               <span :if={length(@what.paths) > 6}>
-                and {length(@what.paths) - 6} more
+                {ngettext("and %{count} more", "and %{count} more", length(@what.paths) - 6)}
               </span>
-              <span :if={@what.paths == []}>none, so no path is allowed</span>
+              <span :if={@what.paths == []}>{gettext("none, so no path is allowed")}</span>
             </legend>
             <p id={"#{@id}-what"} class="q-pop-what">
-              <b>This path</b>
+              <b>{gettext("This path")}</b>
               <.mono bare class="q-rule">{middle(@popover.path, 64)}</.mono>
               {if @deny,
-                do: "is taken out of the paths in force for the host.",
-                else: "is added to the paths in force for the host."}
+                do: gettext("is taken out of the paths in force for the host."),
+                else: gettext("is added to the paths in force for the host.")}
             </p>
           </fieldset>
 
           <fieldset>
-            <legend>For</legend>
-            <label :if={@popover.page == :run and @popover.repository} class="q-popt">
+            <legend>{gettext("For")}</legend>
+            <label :if={@popover.page == :run and @popover.target} class="q-popt">
               <input
                 type="radio"
                 name="for"
-                value="repository"
-                checked={@popover.level == :repository}
+                value="target"
+                checked={@popover.level == :target}
               />
               <span>
-                <b>This repository</b>
-                <span class="font-mono text-xs text-muted">{middle(@popover.repository.label, 48)}</span>
+                <b>{gettext("This target")}</b>
+                <span class="font-mono text-xs text-muted">{middle(@popover.target.label, 48)}</span>
               </span>
-              <small :if={@deny && @popover.consequence[:repository]}>
-                {@popover.consequence.repository}
+              <small :if={@deny && @popover.consequence[:target]}>
+                {@popover.consequence.target}
               </small>
             </label>
-            <label :if={@popover.page == :hive and @popover.repositories != []} class="q-popt">
+            <label :if={@popover.page == :hive and @popover.targets != []} class="q-popt">
               <input
                 type="radio"
                 name="for"
-                value="repository"
-                checked={@popover.level == :repository}
+                value="target"
+                checked={@popover.level == :target}
               />
-              <span><b>One repository</b></span>
-              <small :if={@deny && @popover.consequence[:repository]}>
-                {@popover.consequence.repository}
+              <span><b>{gettext("One target")}</b></span>
+              <small :if={@deny && @popover.consequence[:target]}>
+                {@popover.consequence.target}
               </small>
             </label>
             <%!-- Outside the label: inside it, every option would be part of the radio's name. --%>
             <div
-              :if={@popover.page == :hive and @popover.repositories != []}
+              :if={@popover.page == :hive and @popover.targets != []}
               class="q-popt-more"
             >
               <select
-                name="repository"
-                id={"#{@id}-repository"}
+                name="target"
+                id={"#{@id}-target"}
                 class="select select-sm q-pop-select"
-                aria-label="Repository"
+                aria-label={gettext("Target")}
               >
-                <option value="" selected={is_nil(@popover.choice)}>Choose a repository</option>
+                <option value="" selected={is_nil(@popover.choice)}>
+                  {gettext("Choose a target")}
+                </option>
                 <option
-                  :for={repository <- @popover.repositories}
-                  value={repository.id}
-                  selected={@popover.choice == repository.id}
+                  :for={target <- @popover.targets}
+                  value={target.id}
+                  selected={@popover.choice == target.id}
                 >
-                  {middle(repository.label, 56)} · {count_noun(repository.runs, "run")}
+                  {middle(target.label, 56)} · {ngettext(
+                    "%{number} run",
+                    "%{number} runs",
+                    target.runs,
+                    number: delimited(target.runs)
+                  )}
                 </option>
               </select>
             </div>
             <label class="q-popt">
               <input type="radio" name="for" value="hive" checked={@popover.level == :hive} />
-              <span><b>The whole hive</b></span>
+              <span><b>{gettext("The whole hive")}</b></span>
               <small>
-                Every repository of {@popover.hive}. {if @deny, do: @popover.consequence[:hive]}
+                {gettext("Every target of %{hive}.", hive: @popover.hive)} {if @deny,
+                  do: @popover.consequence[:hive]}
               </small>
               <small :if={@popover[:own_rule]} id={"#{@id}-own-rule"}>
                 {if @popover.page == :run,
-                  do: "This repository's own rule still decides here.",
-                  else: "A repository's own rule for this host still decides there."}
+                  do: gettext("This target's own rule still decides here."),
+                  else: gettext("A target's own rule for this host still decides there.")}
               </small>
             </label>
           </fieldset>
@@ -1801,26 +1992,23 @@ defmodule ApiaryWeb.RunComponents do
           <p class="q-pop-next">
             <.icon name="hero-arrow-path-micro" class="size-3.5" />
             <span id={"#{@id}-next"}>
-              Takes effect in running sessions within a heartbeat, about {@popover.interval} s. {next_sentence(
-                @popover
-              )}
+              {gettext("Takes effect in running sessions within a heartbeat, about %{seconds} s.",
+                seconds: @popover.interval
+              )} {next_sentence(@popover)}
             </span>
           </p>
         </div>
         <footer>
-          <.button id={"#{@id}-cancel"} type="button" phx-click="rule_cancel">Cancel</.button>
+          <.button id={"#{@id}-cancel"} type="button" phx-click="rule_cancel">
+            {gettext("Cancel")}
+          </.button>
           <.button
             id={"#{@id}-submit"}
             type="submit"
             variant={if @deny, do: "danger", else: "primary"}
             disabled={!@ready}
           >
-            {if @deny, do: "Deny", else: "Allow"} for {case @popover.level do
-              :hive -> "the hive"
-              :repository when @popover.page == :run -> "this repository"
-              :repository -> "the repository"
-              _ -> "…"
-            end}
+            {submit_label(@deny, @popover)}
           </.button>
         </footer>
       </form>
@@ -1833,8 +2021,8 @@ defmodule ApiaryWeb.RunComponents do
   defp popover_what(_popover), do: nil
 
   defp popover_ready?(%{level: :hive}), do: true
-  defp popover_ready?(%{level: :repository, page: :run}), do: true
-  defp popover_ready?(%{level: :repository, choice: choice}) when is_binary(choice), do: true
+  defp popover_ready?(%{level: :target, page: :run}), do: true
+  defp popover_ready?(%{level: :target, choice: choice}) when is_binary(choice), do: true
   defp popover_ready?(_popover), do: false
 
   # Under observe an allow changes what the record says, not what the run does: the
@@ -1842,22 +2030,39 @@ defmodule ApiaryWeb.RunComponents do
   # the same under observe as under enforce.
   defp next_sentence(%{action: :allow, mode: "observe"}),
     do:
-      "This run observes, so the connection is already let through: the rule records that it may be."
+      gettext(
+        "This run observes, so the connection is already let through: the rule records that it may be."
+      )
 
   defp next_sentence(%{action: :deny}),
-    do: "Open connections to the host are closed at the reload."
+    do: gettext("Open connections to the host are closed at the reload.")
 
   defp next_sentence(%{page: :run, alive: true, fetched: true}),
-    do: "This run is alive: its next attempt can succeed."
+    do: gettext("This run is alive: its next attempt can succeed.")
 
   defp next_sentence(%{page: :run, alive: true}),
-    do: "This run uses its machine's policy and does not take this one."
+    do: gettext("This run uses its machine's policy and does not take this one.")
 
   defp next_sentence(_popover), do: nil
 
+  # The popover's title, with the host's element where `hole/0` stands.
+  defp popover_title(true = _deny, true = _path), do: gettext("Deny on %{host}", host: hole())
+  defp popover_title(true, _path), do: gettext("Deny %{host}", host: hole())
+  defp popover_title(_deny, true), do: gettext("Allow on %{host}", host: hole())
+  defp popover_title(_deny, _path), do: gettext("Allow %{host}", host: hole())
+
+  defp submit_label(true = _deny, %{level: :hive}), do: gettext("Deny for the hive")
+  defp submit_label(true, %{level: :target, page: :run}), do: gettext("Deny for this target")
+  defp submit_label(true, %{level: :target}), do: gettext("Deny for the target")
+  defp submit_label(true, _popover), do: gettext("Deny for …")
+  defp submit_label(_deny, %{level: :hive}), do: gettext("Allow for the hive")
+  defp submit_label(_deny, %{level: :target, page: :run}), do: gettext("Allow for this target")
+  defp submit_label(_deny, %{level: :target}), do: gettext("Allow for the target")
+  defp submit_label(_deny, _popover), do: gettext("Allow for …")
+
   @doc """
-  A version named on a run's pages: the link of pd1 and, since versions count per target
-  (the baseline's apart from each repository's), the words that say whose it is.
+  A version named on a run's pages: the link of pd1 and, since versions count per holder
+  (the baseline's apart from each target's), the words that say whose it is.
   `version` is `%{n, path, label}`; a missing label says nothing.
   """
   attr :version, :map, required: true
@@ -1870,11 +2075,8 @@ defmodule ApiaryWeb.RunComponents do
       <PolicyComponents.version_link
         version={@version.n}
         navigate={@version[:path]}
-        title={
-          @title ||
-            "Version #{@version.n}#{if @version[:label], do: " of the #{@version.label}"}. Open the exact document."
-        }
-      /><small :if={@version[:label]} class="q-sver-of" title={@version.label}><span aria-hidden="true"> · </span><span class="sr-only"> of </span>{middle(
+        title={@title || version_title(@version)}
+      /><small :if={@version[:label]} class="q-sver-of" title={@version.label}><span aria-hidden="true"> · </span><span class="sr-only"> {gettext("of")} </span>{middle(
         @version.label,
         32
       )}</small>
@@ -1882,19 +2084,29 @@ defmodule ApiaryWeb.RunComponents do
     """
   end
 
-  @doc "A version in a sentence: \"the hive baseline's v3\", \"acme/shop's v1\"."
-  def version_words(%{n: n, label: label}) when is_binary(label), do: "#{possessive(label)} v#{n}"
-  def version_words(%{n: n}), do: "v#{n}"
-  def version_words(_version), do: "another configuration"
+  defp version_title(%{n: n, label: label}) when is_binary(label),
+    do: gettext("Version %{n} of the %{holder}. Open the exact document.", n: n, holder: label)
 
-  defp possessive("hive baseline"), do: "the hive baseline's"
-  defp possessive(label), do: middle(label, 40) <> "'s"
+  defp version_title(%{n: n}), do: gettext("Version %{n}. Open the exact document.", n: n)
+
+  @doc "A version in a sentence: \"the hive baseline's v3\", \"acme/shop's v1\"."
+  def version_words(%{n: n, label: label}) when is_binary(label) do
+    if baseline?(label),
+      do: gettext("the hive baseline's v%{n}", n: n),
+      else: gettext("%{holder}'s v%{n}", holder: middle(label, 40), n: n)
+  end
+
+  def version_words(%{n: n}), do: gettext("v%{n}", n: n)
+  def version_words(_version), do: gettext("another configuration")
+
+  # The baseline's label is made elsewhere, in engine words or already in the body's.
+  defp baseline?(label), do: label in ["hive baseline", gettext("hive baseline")]
 
   ## pd9. The drift mark
 
   @doc """
   The mark of a run that is alive and last reported a run configuration other than the one
-  in force for its repository: an amber badge, a triangle and words, never a pulse. It is
+  in force for its target: an amber badge, a triangle and words, never a pulse. It is
   a comparison of two digests of the record; no timer decides it.
   """
   attr :id, :string, default: "run-drift"
@@ -1915,7 +2127,9 @@ defmodule ApiaryWeb.RunComponents do
       tabindex="0"
       data-tip={drift_tip(@reported, @in_force, @last_seq)}
     >
-      <.icon name="hero-exclamation-triangle-micro" class="size-[11px]" />Behind v{@in_force.n}<span
+      <.icon name="hero-exclamation-triangle-micro" class="size-[11px]" />{gettext("Behind v%{n}",
+        n: @in_force.n
+      )}<span
         :if={@in_force[:label]}
         class="q-drift-of"
       > · {middle(@in_force.label, 24)}</span>
@@ -1925,13 +2139,19 @@ defmodule ApiaryWeb.RunComponents do
 
   defp drift_tip(reported, in_force, last_seq) do
     [
-      "The run last reported #{version_words(reported)}" <>
-        if(is_integer(last_seq) and last_seq > 0,
-          do: " at ##{last_seq |> Integer.to_string() |> String.pad_leading(4, "0")}.",
-          else: "."
-        ),
-      "#{String.capitalize(version_words(in_force))} has been in force since #{clock_label(in_force.rendered_at)}.",
-      "A run reloads at its next heartbeat."
+      if(is_integer(last_seq) and last_seq > 0,
+        do:
+          gettext("The run last reported %{version} at #%{seq}.",
+            version: version_words(reported),
+            seq: last_seq |> Integer.to_string() |> String.pad_leading(4, "0")
+          ),
+        else: gettext("The run last reported %{version}.", version: version_words(reported))
+      ),
+      gettext("%{version} has been in force since %{time}.",
+        version: String.capitalize(version_words(in_force)),
+        time: clock_label(in_force.rendered_at)
+      ),
+      gettext("A run reloads at its next heartbeat.")
     ]
     |> Enum.join(" ")
   end
@@ -1945,7 +2165,7 @@ defmodule ApiaryWeb.RunComponents do
   """
   attr :id, :string, required: true
   attr :count, :integer, required: true
-  attr :noun, :string, default: "event"
+  attr :noun, :string, default: "event", values: ~w(event run line)
   attr :target, :string, required: true
   attr :on_click, :any, default: nil
   attr :rest, :global
@@ -1964,8 +2184,17 @@ defmodule ApiaryWeb.RunComponents do
       {@rest}
     >
       <.icon name="hero-arrow-down-micro" class="size-4" />
-      <span>{delimited(@count)} new {if @count == 1, do: @noun, else: @noun <> "s"}</span>
+      <span>{new_words(@count, @noun)}</span>
     </button>
     """
   end
+
+  defp new_words(count, "run"),
+    do: ngettext("%{number} new run", "%{number} new runs", count, number: delimited(count))
+
+  defp new_words(count, "line"),
+    do: ngettext("%{number} new line", "%{number} new lines", count, number: delimited(count))
+
+  defp new_words(count, _event),
+    do: ngettext("%{number} new event", "%{number} new events", count, number: delimited(count))
 end
