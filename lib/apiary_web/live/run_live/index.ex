@@ -25,8 +25,10 @@ defmodule ApiaryWeb.RunLive.Index do
   @quiet_tick 5_000
   @summary_window 1_000
   # Closed's tooltip in the State menu: what the state means and where it is counted.
-  @closed_menu_tip "Stopped by the hive: a member closed it after it went quiet. " <>
-                     "Counted with the runs that ended badly."
+  @closed_menu_tip [
+    gettext_noop("Stopped by the hive: a member closed it after it went quiet."),
+    gettext_noop("Counted with the runs that ended badly.")
+  ]
   @flush_window 250
 
   @impl true
@@ -41,15 +43,17 @@ defmodule ApiaryWeb.RunLive.Index do
       width="full"
     >
       <.header>
-        Runs
+        {gettext("Runs")}
         <:subtitle>
-          Every run the machines of this <.term word="hive" /> have posted, as their events tell it.
+          {gettext("Every run the machines of this hive have posted, as their events tell it.")}
         </:subtitle>
       </.header>
 
       <.notice :if={@load_error} kind={:error} class="max-w-[80ch]">
         <span id="runs-error">
-          The runs could not be loaded. Reload the page; if it keeps happening, the server log has the reason.
+          {gettext(
+            "The runs could not be loaded. Reload the page; if it keeps happening, the server log has the reason."
+          )}
         </span>
       </.notice>
 
@@ -60,7 +64,7 @@ defmodule ApiaryWeb.RunLive.Index do
         <.filter_bar id="runs-filters" clear={Filters.any?(@filters) && path(Filters.clear(@filters))}>
           <.filter
             name="state"
-            label="State"
+            label={gettext("State")}
             multiple
             value={@filters.states}
             value_label={family_words(@filters.states)}
@@ -73,7 +77,7 @@ defmodule ApiaryWeb.RunLive.Index do
             name="target"
             total={facet_total(@facets, :target)}
             query={@narrow["target"]}
-            label="Repository"
+            label={gettext("Target")}
             value={Filters.target_value(@filters.target)}
             options={
               with_chosen(
@@ -88,7 +92,7 @@ defmodule ApiaryWeb.RunLive.Index do
             name="task"
             total={facet_total(@facets, :task)}
             query={@narrow["task"]}
-            label="Task"
+            label={gettext("Task")}
             value={task_param(@filters.task)}
             options={
               with_chosen(
@@ -103,7 +107,7 @@ defmodule ApiaryWeb.RunLive.Index do
             name="runtime"
             total={facet_total(@facets, :runtime)}
             query={@narrow["runtime"]}
-            label="Runtime"
+            label={gettext("Runtime")}
             value={@filters.runtime}
             options={
               with_chosen(facet_options(@facets, :runtime), @filters.runtime, @filters.runtime)
@@ -114,14 +118,14 @@ defmodule ApiaryWeb.RunLive.Index do
             name="host"
             total={facet_total(@facets, :host)}
             query={@narrow["host"]}
-            label="Host"
+            label={gettext("Host")}
             value={@filters.host}
             options={with_chosen(facet_options(@facets, :host), @filters.host, @filters.host)}
             remove={path(Filters.put(@filters, host: nil))}
           />
           <.filter
             name="since"
-            label="Started"
+            label={gettext("Started")}
             value={range_value(@filters)}
             value_label={Filters.range_label(@filters)}
             options={for {label, value} <- Filters.ranges(), do: {label, value, nil}}
@@ -135,16 +139,20 @@ defmodule ApiaryWeb.RunLive.Index do
           />
           <.filter_toggle
             name="denials"
-            label="Has denials"
+            label={gettext("Has denials")}
             icon="hero-no-symbol-micro"
             pressed={@filters.denials}
             patch={path(Filters.put(@filters, denials: !@filters.denials))}
           />
           <:trailing>
-            <.segments id="runs-group" label="Group by">
+            <.segments id="runs-group" label={gettext("Group by")}>
               <:segment
                 :for={
-                  {label, value} <- [{"Repository", "target"}, {"Task", "task"}, {"None", "none"}]
+                  {label, value} <- [
+                    {gettext("Target"), "target"},
+                    {gettext("Task"), "task"},
+                    {gettext("None"), "none"}
+                  ]
                 }
                 patch={path(Filters.put(@filters, group: value))}
                 pressed={@filters.group == value}
@@ -156,36 +164,48 @@ defmodule ApiaryWeb.RunLive.Index do
         </.filter_bar>
 
         <div id="runs-summary" class="q-summary">
-          <span :if={@summary}>
-            <b>{delimited(@summary.runs)}</b> {if @summary.runs == 1, do: "run", else: "runs"}
-            <span :if={@filters.group != "task" && @summary.targets > 0}>
-              in <b>{delimited(@summary.targets)}</b>
-              {if @summary.targets == 1, do: "repository", else: "repositories"}
-            </span>
-            <span :if={@filters.group == "task" && @summary.tasks > 0}>
-              in
-              <b>{delimited(@summary.tasks)}</b> {if @summary.tasks == 1, do: "task", else: "tasks"}
-            </span>
+          <span :if={@summary}>{summary_runs(@summary, @filters.group)}</span>
+          <span :if={@summary && @summary.alive > 0}>
+            {bold(
+              ngettext("%{number} alive", "%{number} alive", @summary.alive, number: mark(1)),
+              [@summary.alive]
+            )}
           </span>
-          <span :if={@summary && @summary.alive > 0}><b>{delimited(@summary.alive)}</b> alive</span>
           <span :if={@summary && @summary.ended_well > 0}>
-            <b>{delimited(@summary.ended_well)}</b> ended well
+            {bold(
+              ngettext("%{number} ended well", "%{number} ended well", @summary.ended_well,
+                number: mark(1)
+              ),
+              [@summary.ended_well]
+            )}
           </span>
           <span :if={@summary && @summary.ended_badly > 0}>
-            <b>{delimited(@summary.ended_badly)}</b> ended badly
+            {bold(
+              ngettext("%{number} ended badly", "%{number} ended badly", @summary.ended_badly,
+                number: mark(1)
+              ),
+              [@summary.ended_badly]
+            )}
           </span>
           <span :if={@summary && @summary.with_denials > 0}>
-            <b>{delimited(@summary.with_denials)}</b> with denials
+            {bold(
+              ngettext("%{number} with denials", "%{number} with denials", @summary.with_denials,
+                number: mark(1)
+              ),
+              [@summary.with_denials]
+            )}
           </span>
           <span :if={!@summary} class="skeleton q-skel w-56"></span>
           <%!-- Never followed for the reader: a screen reader's cursor leaves focus on the
           body, which looks like "nothing focused". The link is shown and said politely. --%>
           <span id="runs-new-status" role="status" aria-live="polite">
             <.link :if={MapSet.size(@new_ids) > 0} id="runs-new" phx-click="show_new" href="#">
-              {count_noun(MapSet.size(@new_ids), "new run")}
+              {ngettext("%{number} new run", "%{number} new runs", MapSet.size(@new_ids),
+                number: delimited(MapSet.size(@new_ids))
+              )}
             </.link>
           </span>
-          <span class="text-faint">Updated as batches land</span>
+          <span class="text-faint">{gettext("Updated as batches land")}</span>
         </div>
 
         <.runs_table
@@ -214,14 +234,14 @@ defmodule ApiaryWeb.RunLive.Index do
               id="runs-clear"
               patch={path(Filters.clear(@filters))}
             >
-              Clear filters
+              {gettext("Clear filters")}
             </.button>
             <.button
               :if={!Filters.any?(@filters)}
               id="runs-all-time"
               patch={path(Filters.put(@filters, since: "all"))}
             >
-              Show every run
+              {gettext("Show every run")}
             </.button>
           </:actions>
         </.empty_state>
@@ -231,7 +251,21 @@ defmodule ApiaryWeb.RunLive.Index do
           class="flex flex-wrap items-center justify-between gap-3"
         >
           <p id="runs-footer" class="max-w-[80ch] text-[12.5px] text-faint">
-            Showing {delimited(length(@listing.runs))} of {delimited(@listing.total)}. A run's state comes from its events alone: a run that stops posting is <b class="font-medium">lost</b>, never assumed finished.
+            {ngettext(
+              "Showing %{shown} of %{total}.",
+              "Showing %{shown} of %{total}.",
+              @listing.total,
+              shown: delimited(length(@listing.runs)),
+              total: delimited(@listing.total)
+            )}
+            {bold(
+              gettext(
+                "A run's state comes from its events alone: a run that stops posting is %{lost}, never assumed finished.",
+                lost: mark(1)
+              ),
+              [gettext("lost")],
+              "font-medium"
+            )}
           </p>
           <div :if={@listing.pages > 1} class="flex items-center gap-2">
             <.button
@@ -239,14 +273,14 @@ defmodule ApiaryWeb.RunLive.Index do
               patch={path(%{@filters | page: @listing.page - 1})}
               disabled={@listing.page <= 1}
             >
-              Previous
+              {gettext("Previous")}
             </.button>
             <.button
               id="runs-next"
               patch={path(%{@filters | page: @listing.page + 1})}
               disabled={@listing.page >= @listing.pages}
             >
-              Next
+              {gettext("Next")}
             </.button>
           </div>
         </div>
@@ -257,23 +291,27 @@ defmodule ApiaryWeb.RunLive.Index do
       </.notice>
 
       <div :if={!@load_error && first_run?(@summary, @filters)} class="grid gap-4">
-        <.empty_state :if={!@has_keys} icon="hero-play-circle" title="No runs yet">
-          A run appears here when a machine with an access key of this <.term word="hive" />
-          starts one. Create a key, paste its server block into the runner file on the machine, and start a run.
+        <.empty_state :if={!@has_keys} icon="hero-play-circle" title={gettext("No runs yet")}>
+          {gettext("A run appears here when a machine with an access key of this hive starts one.")}
+          {gettext(
+            "Create a key, paste its server block into the runner file on the machine, and start a run."
+          )}
           <:actions>
             <.button id="runs-create-key" variant="primary" navigate={~p"/hive/keys/new"}>
-              Create an access key
+              {gettext("Create an access key")}
             </.button>
           </:actions>
         </.empty_state>
-        <.empty_state :if={@has_keys} icon="hero-play-circle" title="No runs yet">
-          No machine has posted a run to this <.term word="hive" />
-          yet. The server block to paste into the runner file is on the access keys page.
+        <.empty_state :if={@has_keys} icon="hero-play-circle" title={gettext("No runs yet")}>
+          {gettext("No machine has posted a run to this hive yet.")}
+          {gettext("The server block to paste into the runner file is on the access keys page.")}
           <:actions>
-            <.button id="runs-go-to-keys" navigate={~p"/hive/keys"}>Go to access keys</.button>
+            <.button id="runs-go-to-keys" navigate={~p"/hive/keys"}>
+              {gettext("Go to access keys")}
+            </.button>
           </:actions>
         </.empty_state>
-        <.listening :if={@has_keys}>Listening for the first run.</.listening>
+        <.listening :if={@has_keys}>{gettext("Listening for the first run.")}</.listening>
       </div>
     </Layouts.app>
     """
@@ -297,22 +335,22 @@ defmodule ApiaryWeb.RunLive.Index do
       class="overflow-x-auto rounded-box border border-line bg-base-100 shadow-xs"
       tabindex="0"
       role="region"
-      aria-label={"Runs, #{group_words(@group_by)}"}
+      aria-label={table_name(@group_by)}
       aria-busy={to_string(@loading)}
     >
       <table id={@id} class="table q-runs" phx-hook="RunGroups" role="table">
         <thead role="rowgroup">
           <tr role="row">
-            <th scope="col" role="columnheader">State</th>
+            <th scope="col" role="columnheader">{gettext("State")}</th>
             <th scope="col" role="columnheader">
-              {if @group_by == "task", do: "Repository", else: "Run"}
+              {if @group_by == "task", do: gettext("Target"), else: gettext("Run")}
             </th>
-            <th :if={@group_by == "none"} scope="col" role="columnheader">Repository</th>
-            <th scope="col" role="columnheader">Runtime</th>
-            <th scope="col" role="columnheader">Host</th>
-            <th scope="col" role="columnheader">Started</th>
-            <th scope="col" role="columnheader" class="q-num">Duration</th>
-            <th scope="col" role="columnheader" class="q-num">Denials</th>
+            <th :if={@group_by == "none"} scope="col" role="columnheader">{gettext("Target")}</th>
+            <th scope="col" role="columnheader">{gettext("Runtime")}</th>
+            <th scope="col" role="columnheader">{gettext("Host")}</th>
+            <th scope="col" role="columnheader">{gettext("Started")}</th>
+            <th scope="col" role="columnheader" class="q-num">{gettext("Duration")}</th>
+            <th scope="col" role="columnheader" class="q-num">{gettext("Denials")}</th>
           </tr>
         </thead>
         <tbody :if={@loading} id={"#{@id}-loading"} role="rowgroup">
@@ -381,37 +419,38 @@ defmodule ApiaryWeb.RunLive.Index do
             <span class="q-system">{@group.system}</span>
             <span class="q-path">{@group.path}</span>
           <% :unassigned -> %>
-            <span class="q-path q-plain">Unassigned</span>
-            <span class="q-system q-plain">no forge or repository label</span>
+            <span class="q-path q-plain">{gettext("Unassigned")}</span>
+            <span class="q-system q-plain">{gettext("no system or target label")}</span>
           <% :task -> %>
             <span class="q-path q-plain">{@group.title}</span>
           <% :no_task -> %>
-            <span class="q-path q-plain">No task</span>
-            <span class="q-system q-plain">no task label</span>
+            <span class="q-path q-plain">{gettext("No task")}</span>
+            <span class="q-system q-plain">{gettext("no task label")}</span>
         <% end %>
       </button>
       <span class="q-g-meta">
-        <span>
-          {count_noun(@facts.runs, "run")}{if @facts[:targets] && @facts.targets > 1,
-            do: " in #{@facts.targets} repositories"}
-        </span>
-        <span :if={@facts.alive > 0} class="q-opt">{@facts.alive} alive</span>
-        <span :if={@facts.denials > 0} class="q-opt">{count_noun(@facts.denials, "denial")}</span>
+        <span>{group_runs(@facts)}</span>
+        <span :if={@facts.alive > 0} class="q-opt">{alive_words(@facts.alive)}</span>
+        <span :if={@facts.denials > 0} class="q-opt">{denial_words(@facts.denials)}</span>
         <.link
           :if={@group.kind == :target}
           navigate={@connections_path.(@group.key)}
           class="q-opt"
-          aria-label={"Connections of #{@group.system} #{@group.path}"}
+          aria-label={
+            gettext("Connections of %{system} %{path}", system: @group.system, path: @group.path)
+          }
         >
-          Connections
+          {gettext("Connections")}
         </.link>
         <.link
           :if={@group.kind == :target && group_target_id(@group)}
           navigate={ApiaryWeb.ConnectionLive.Rules.target_policy_path(group_target_id(@group))}
           class="q-g-policy"
-          aria-label={"Policy of #{@group.system} #{@group.path}"}
+          aria-label={
+            gettext("Policy of %{system} %{path}", system: @group.system, path: @group.path)
+          }
         >
-          Policy
+          {gettext("Policy")}
         </.link>
       </span>
     </div>
@@ -448,7 +487,8 @@ defmodule ApiaryWeb.RunLive.Index do
             <.run_lead run={@run} group_by={@group_by} />
           </.link>
           <span>
-            {short_id(@run.run_id)}{if !@pending? && is_nil(@run.task), do: " · no task label"}
+            {short_id(@run.run_id)}{if !@pending? && is_nil(@run.task),
+              do: " · " <> gettext("no task label")}
           </span>
         </div>
       </td>
@@ -456,15 +496,17 @@ defmodule ApiaryWeb.RunLive.Index do
         <span :if={@run.target_system && @run.target_path}>
           <span class="text-faint">{@run.target_system}/</span>{@run.target_path}
         </span>
-        <span :if={!(@run.target_system && @run.target_path)} class="font-sans text-faint">n/a</span>
+        <span :if={!(@run.target_system && @run.target_path)} class="font-sans text-faint">
+          {gettext("n/a")}
+        </span>
       </td>
       <td class="q-c-rt q-meta" role="cell">
         <span :if={@run.runtime}>{@run.runtime} {@run.runtime_version}</span>
-        <span :if={!@run.runtime} class="text-faint">n/a</span>
+        <span :if={!@run.runtime} class="text-faint">{gettext("n/a")}</span>
       </td>
       <td class="q-c-host q-meta" role="cell">
         <span :if={@run.host} class="font-mono text-[12.5px]">{@run.host}</span>
-        <span :if={!@run.host} class="text-faint">n/a</span>
+        <span :if={!@run.host} class="text-faint">{gettext("n/a")}</span>
       </td>
       <td class="q-c-when q-meta" role="cell">
         <.relative_time at={@run.started_at || @run.inserted_at} />
@@ -476,7 +518,7 @@ defmodule ApiaryWeb.RunLive.Index do
         <span :if={@run.denied_count == 0} class="q-zero">0</span>
         <span :if={@run.denied_count > 0} class="q-denials">
           <.icon name="hero-no-symbol-micro" class="size-3" />{delimited(@run.denied_count)}
-          <span class="sr-only">denied</span>
+          <span class="sr-only">{gettext("denied")}</span>
         </span>
       </td>
     </tr>
@@ -490,7 +532,7 @@ defmodule ApiaryWeb.RunLive.Index do
   # either, the command as it was typed; for a run that has only pinged, that fact.
   defp run_lead(%{run: %{state: "pending", started_at: nil}} = assigns) do
     ~H"""
-    <b class="!font-normal text-faint">Ping only</b>
+    <b class="!font-normal text-faint">{gettext("Ping only")}</b>
     """
   end
 
@@ -560,7 +602,7 @@ defmodule ApiaryWeb.RunLive.Index do
 
     {:ok,
      assign(socket,
-       page_title: "Runs",
+       page_title: gettext("Runs"),
        filters: %Filters{},
        listing: nil,
        groups: [],
@@ -611,11 +653,13 @@ defmodule ApiaryWeb.RunLive.Index do
      socket
      |> assign(:narrow, narrow)
      |> start_async(:facets, fn ->
-       %{
-         filters: filters,
-         narrow: narrow,
-         facets: Runs.run_facets(scope, filters, narrow: narrow)
-       }
+       ApiaryWeb.Lingo.with_locale(scope, fn ->
+         %{
+           filters: filters,
+           narrow: narrow,
+           facets: Runs.run_facets(scope, filters, narrow: narrow)
+         }
+       end)
      end)}
   end
 
@@ -757,11 +801,13 @@ defmodule ApiaryWeb.RunLive.Index do
     socket
     |> assign(:summary_window, :open)
     |> start_async(:summary, fn ->
-      %{
-        filters: filters,
-        summary: Runs.summarise_runs(scope, filters),
-        facts: Runs.group_facts(scope, filters, keys)
-      }
+      ApiaryWeb.Lingo.with_locale(scope, fn ->
+        %{
+          filters: filters,
+          summary: Runs.summarise_runs(scope, filters),
+          facts: Runs.group_facts(scope, filters, keys)
+        }
+      end)
     end)
   end
 
@@ -773,19 +819,23 @@ defmodule ApiaryWeb.RunLive.Index do
     if connected?(socket) do
       narrow = socket.assigns.narrow
 
+      # The task does not inherit the process's locale: what `Apiary.Runs` names in it
+      # (a group without a task, a facet's option) is named in the hive's body all the same.
       start_async(socket, :load, fn ->
-        now = DateTime.utc_now()
-        listing = Runs.page_runs(scope, filters, now)
-        keys = listing.runs |> Enum.map(&Runs.group_key(&1, filters.group)) |> Enum.uniq()
+        ApiaryWeb.Lingo.with_locale(scope, fn ->
+          now = DateTime.utc_now()
+          listing = Runs.page_runs(scope, filters, now)
+          keys = listing.runs |> Enum.map(&Runs.group_key(&1, filters.group)) |> Enum.uniq()
 
-        %{
-          filters: filters,
-          at: now,
-          listing: listing,
-          summary: Runs.summarise_runs(scope, filters, now),
-          facts: Runs.group_facts(scope, filters, keys, now),
-          facets: Runs.run_facets(scope, filters, now: now, narrow: narrow)
-        }
+          %{
+            filters: filters,
+            at: now,
+            listing: listing,
+            summary: Runs.summarise_runs(scope, filters, now),
+            facts: Runs.group_facts(scope, filters, keys, now),
+            facets: Runs.run_facets(scope, filters, now: now, narrow: narrow)
+          }
+        end)
       end)
     else
       socket
@@ -814,11 +864,15 @@ defmodule ApiaryWeb.RunLive.Index do
       else: assign(socket, :dropped, [])
   end
 
-  defp dropped_sentence([name]),
-    do: "The link's #{name} filter could not be read, so it is not applied."
-
-  defp dropped_sentence(names),
-    do: "The link's #{Enum.join(names, ", ")} filters could not be read, so they are not applied."
+  defp dropped_sentence(names) do
+    pngettext(
+      "plain",
+      "The link's %{names} filter could not be read, so it is not applied.",
+      "The link's %{names} filters could not be read, so they are not applied.",
+      length(names),
+      names: Enum.join(names, ", ")
+    )
+  end
 
   defp path(%Filters{} = filters), do: ~p"/hive/runs?#{Filters.to_params(filters)}"
 
@@ -829,12 +883,85 @@ defmodule ApiaryWeb.RunLive.Index do
   defp first_run?(%{hive_runs: 0}, filters), do: not Filters.any?(filters)
   defp first_run?(_summary, _filters), do: false
 
-  defp hidden_sentence(1), do: "1 run is hidden by them."
-  defp hidden_sentence(n), do: "#{delimited(n)} runs are hidden by them."
+  defp hidden_sentence(n) do
+    ngettext("%{number} run is hidden by them.", "%{number} runs are hidden by them.", n,
+      number: delimited(n)
+    )
+  end
 
-  defp group_words("target"), do: "grouped by repository"
-  defp group_words("task"), do: "grouped by task"
-  defp group_words(_none), do: "not grouped"
+  defp table_name("target"), do: gettext("Runs, grouped by target")
+  defp table_name("task"), do: gettext("Runs, grouped by task")
+  defp table_name(_none), do: gettext("Runs, not grouped")
+
+  # The summary's first item: the runs, and what they are in when the page is grouped by
+  # it, the numbers in bold.
+  defp summary_runs(summary, group) do
+    runs = run_words(summary.runs, mark(1))
+
+    cond do
+      group != "task" && summary.targets > 0 ->
+        bold(
+          gettext("%{runs} in %{targets}",
+            runs: runs,
+            targets: target_words(summary.targets, mark(2))
+          ),
+          [summary.runs, summary.targets]
+        )
+
+      group == "task" && summary.tasks > 0 ->
+        bold(
+          gettext("%{runs} in %{tasks}", runs: runs, tasks: task_words(summary.tasks, mark(2))),
+          [summary.runs, summary.tasks]
+        )
+
+      true ->
+        bold(runs, [summary.runs])
+    end
+  end
+
+  # A group's runs, and its targets when it has more than one.
+  defp group_runs(%{targets: targets} = facts) when is_integer(targets) and targets > 1,
+    do:
+      gettext("%{runs} in %{targets}",
+        runs: run_words(facts.runs),
+        targets: target_words(targets)
+      )
+
+  defp group_runs(facts), do: run_words(facts.runs)
+
+  defp run_words(n, number \\ nil),
+    do: ngettext("%{number} run", "%{number} runs", n, number: number || delimited(n))
+
+  defp target_words(n, number \\ nil),
+    do: ngettext("%{number} target", "%{number} targets", n, number: number || delimited(n))
+
+  defp task_words(n, number),
+    do: ngettext("%{number} task", "%{number} tasks", n, number: number)
+
+  defp alive_words(n),
+    do: ngettext("%{number} alive", "%{number} alive", n, number: delimited(n))
+
+  defp denial_words(n),
+    do: ngettext("%{number} denial", "%{number} denials", n, number: delimited(n))
+
+  # A translated sentence with some of its words in bold. Each word stands in the sentence
+  # as a mark, a control character no text holds; the sentence is escaped whole, then each
+  # mark becomes its word, escaped too, so nothing of a catalogue or a binding is markup.
+  defp bold(text, words, class \\ nil) do
+    open = if class, do: ~s(<b class="#{class}">), else: "<b>"
+
+    words
+    |> Enum.with_index(1)
+    |> Enum.reduce(escape(text), fn {word, i}, html ->
+      word = if is_integer(word), do: delimited(word), else: word
+      String.replace(html, mark(i), open <> escape(word) <> "</b>")
+    end)
+    |> raw()
+  end
+
+  defp mark(i), do: <<i>>
+
+  defp escape(text), do: text |> html_escape() |> safe_to_string()
 
   defp group_aria(group, facts) do
     name =
@@ -845,9 +972,9 @@ defmodule ApiaryWeb.RunLive.Index do
 
     [
       name,
-      count_noun(facts.runs, "run"),
-      facts.alive > 0 && "#{facts.alive} alive",
-      facts.denials > 0 && count_noun(facts.denials, "denial")
+      run_words(facts.runs),
+      facts.alive > 0 && alive_words(facts.alive),
+      facts.denials > 0 && denial_words(facts.denials)
     ]
     |> Enum.filter(& &1)
     |> Enum.join(", ")
@@ -884,11 +1011,14 @@ defmodule ApiaryWeb.RunLive.Index do
     end
   end
 
-  defp family_checkbox_name("alive"), do: "Every alive state"
-  defp family_checkbox_name("ended_well"), do: "Every state that ended well"
-  defp family_checkbox_name("ended_badly"), do: "Every state that ended badly"
+  defp family_checkbox_name("alive"), do: gettext("Every alive state")
+  defp family_checkbox_name("ended_well"), do: gettext("Every state that ended well")
+  defp family_checkbox_name("ended_badly"), do: gettext("Every state that ended badly")
 
-  defp state_tips, do: %{"closed" => @closed_menu_tip}
+  defp state_tips do
+    tip = Enum.map_join(@closed_menu_tip, " ", &Gettext.gettext(ApiaryWeb.Gettext, &1))
+    %{"closed" => tip}
+  end
 
   # The chosen states as family words when they are whole families ("ended badly", "alive,
   # ended badly"); nil otherwise, and the chip reads the states as it does for any filter.
@@ -899,36 +1029,31 @@ defmodule ApiaryWeb.RunLive.Index do
     end
   end
 
-  defp family_word(key) do
-    Filters.families() |> Enum.find(&(&1.key == key)) |> Map.fetch!(:label) |> String.downcase()
-  end
+  defp family_word("alive"), do: gettext("alive")
+  defp family_word("ended_well"), do: gettext("ended well")
+  defp family_word("ended_badly"), do: gettext("ended badly")
 
   # The funnel empty state's title: the family in the sentence when the states are exactly
   # one family ("No runs ended badly in the last 7 days."), the plain title otherwise.
   defp empty_title(%Filters{states: states} = filters) do
     case Filters.families_of(states) do
-      [key] -> "No runs #{family_word(key)}#{empty_range(filters)}."
-      _other -> "No runs match these filters"
+      [key] -> empty_family_title(key, Filters.range_phrase(filters))
+      _other -> gettext("No runs match these filters")
     end
   end
 
-  defp empty_range(%Filters{from: nil, to: nil} = filters) do
-    case Filters.range_label(filters) do
-      nil -> ""
-      words -> " in the #{words}"
-    end
-  end
+  defp empty_family_title("alive", nil), do: gettext("No runs alive.")
+  defp empty_family_title("ended_well", nil), do: gettext("No runs ended well.")
+  defp empty_family_title("ended_badly", nil), do: gettext("No runs ended badly.")
 
-  defp empty_range(%Filters{from: from, to: nil}),
-    do: " #{Filters.range_label(%Filters{from: from})}"
+  defp empty_family_title("alive", range),
+    do: gettext("No runs alive %{range}.", range: range)
 
-  defp empty_range(%Filters{from: nil, to: to}),
-    do: " up #{Filters.range_label(%Filters{to: to})}"
+  defp empty_family_title("ended_well", range),
+    do: gettext("No runs ended well %{range}.", range: range)
 
-  defp empty_range(%Filters{from: same, to: same} = filters),
-    do: " on #{Filters.range_label(filters)}"
-
-  defp empty_range(%Filters{} = filters), do: " from #{Filters.range_label(filters)}"
+  defp empty_family_title("ended_badly", range),
+    do: gettext("No runs ended badly %{range}.", range: range)
 
   defp facet_options(facets, name), do: (facets[name] || %{options: []}).options
   defp facet_total(facets, name), do: facets[name] && facets[name].total
@@ -947,10 +1072,10 @@ defmodule ApiaryWeb.RunLive.Index do
   defp task_param(:none), do: "none"
   defp task_param(task), do: task
 
-  defp task_label(:none), do: "No task"
+  defp task_label(:none), do: gettext("No task")
   defp task_label(task), do: task
 
-  defp target_label(:none), do: "Unassigned"
+  defp target_label(:none), do: gettext("Unassigned")
   defp target_label({system, path}), do: "#{system}/#{path}"
   defp target_label(nil), do: nil
 
@@ -958,7 +1083,7 @@ defmodule ApiaryWeb.RunLive.Index do
   defp range_value(%Filters{from: nil, to: nil, since: since}), do: since
   defp range_value(%Filters{}), do: "dates"
 
-  defp command_line(%{command: nil}), do: "n/a"
+  defp command_line(%{command: nil}), do: gettext("n/a")
   defp command_line(%{command: command, args: args}), do: Enum.join([command | args || []], " ")
 
   defp middle_or_end(line) do

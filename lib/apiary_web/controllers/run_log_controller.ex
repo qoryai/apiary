@@ -37,8 +37,8 @@ defmodule ApiaryWeb.RunLogController do
          {:ok, opts} <- options(params) do
       send_log(conn, scope, run, opts)
     else
-      :error -> send_plain(conn, 404, "not found")
-      {:error, :bad_request} -> send_plain(conn, 400, "bad request")
+      :error -> send_plain(conn, 404, gettext("not found"))
+      {:error, :bad_request} -> send_plain(conn, 400, gettext("bad request"))
     end
   end
 

@@ -11,18 +11,21 @@ defmodule ApiaryWeb.RunPageComponents do
   at all: the `Terminal` hook feeds them to xterm.js.
   """
   use Phoenix.Component
+  use Gettext, backend: ApiaryWeb.Gettext
 
   import ApiaryWeb.CoreComponents,
     only: [badge: 1, icon: 1, notice: 1, empty_state: 1, listening: 1, term: 1]
 
   import ApiaryWeb.RunComponents,
-    only: [connection_row: 1, duration: 1, offset: 1, count_noun: 2, delimited: 1, middle: 2]
+    only: [connection_row: 1, duration: 1, offset: 1, delimited: 1, middle: 2]
 
   alias ApiaryWeb.RunComponents
 
   alias Phoenix.LiveView.JS
 
-  @background_tip "The runtime lists what is still running at the end of each turn. A task counts as running until a list leaves it out."
+  @background_tip gettext_noop(
+                    "The runtime lists what is still running at the end of each turn. A task counts as running until a list leaves it out."
+                  )
 
   ## rd10. The lane key
 
@@ -47,9 +50,9 @@ defmodule ApiaryWeb.RunPageComponents do
     >
       <i aria-hidden="true"></i>
       <%= if @lane.id == "main" do %>
-        Main session
+        {gettext("Main session")}
       <% else %>
-        {@lane.type || "Subagent"} <small>{@lane.id}</small>
+        {@lane.type || gettext("Subagent")} <small>{@lane.id}</small>
       <% end %>
     </button>
     """
@@ -63,7 +66,7 @@ defmodule ApiaryWeb.RunPageComponents do
   def who(assigns) do
     ~H"""
     <span class={["q-who", "q-lane-#{@lane.color}"]}>
-      {if @lane.id == "main", do: "Main session", else: @lane.type || @lane.id}
+      {if @lane.id == "main", do: gettext("Main session"), else: @lane.type || @lane.id}
     </span>
     """
   end
@@ -79,7 +82,11 @@ defmodule ApiaryWeb.RunPageComponents do
   attr :ended, :boolean, default: false
 
   def background_tasks(assigns) do
-    assigns = assign(assigns, shown: Enum.take(assigns.background.tasks, 3), tip: @background_tip)
+    assigns =
+      assign(assigns,
+        shown: Enum.take(assigns.background.tasks, 3),
+        tip: Gettext.gettext(ApiaryWeb.Gettext, @background_tip)
+      )
 
     ~H"""
     <div
@@ -87,35 +94,56 @@ defmodule ApiaryWeb.RunPageComponents do
       id={@id}
       class="q-bgtasks"
       role="status"
-      aria-label="Background tasks"
+      aria-label={gettext("Background tasks")}
     >
       <%= for {task, i} <- Enum.with_index(@shown) do %>
         <span class={["q-spin", @ended && "q-spin-still"]} aria-hidden="true"></span>
         <span class="truncate">
           <b :if={i == 0} class="font-medium">
-            {count_noun(@background.count, "task")}
-            {if @ended,
-              do:
-                "#{if @background.count == 1, do: "was", else: "were"} still listed when the run ended",
-              else: "still running in the background"}
+            {background_words(@background.count, @ended)}
           </b>
           <span class={["font-mono text-[12.5px] text-muted", i == 0 && "ml-1.5"]}>{task.what ||
-            task.type || "task"}</span>
+            task.type || gettext("task")}</span>
         </span>
         <span
           class="q-bgtasks-since tooltip tooltip-left q-tip-wide text-xs text-faint"
           tabindex="0"
           data-tip={@tip}
         >
-          {task.type || "task"} {task.id} · listed at #{pad(task.listed_at)}
+          {gettext("%{task} %{id} · listed at #%{sequence}",
+            task: task.type || gettext("task"),
+            id: task.id,
+            sequence: pad(task.listed_at)
+          )}
         </span>
       <% end %>
       <span :if={@background.count > 3} class="col-start-2 text-xs text-faint">
-        and {delimited(@background.count - 3)} more
+        {and_more(@background.count - 3)}
       </span>
     </div>
     """
   end
+
+  defp background_words(count, true) do
+    ngettext(
+      "%{number} task was still listed when the run ended",
+      "%{number} tasks were still listed when the run ended",
+      count,
+      number: delimited(count)
+    )
+  end
+
+  defp background_words(count, false) do
+    ngettext(
+      "%{number} task still running in the background",
+      "%{number} tasks still running in the background",
+      count,
+      number: delimited(count)
+    )
+  end
+
+  defp and_more(n),
+    do: ngettext("and %{number} more", "and %{number} more", n, number: delimited(n))
 
   ## rd16. Limits
 
@@ -148,7 +176,9 @@ defmodule ApiaryWeb.RunPageComponents do
     ~H"""
     <.notice class="q-limits">
       <.limit_sentence reason={@reason} runtime={@runtime} />
-      <span :if={@only_result}>Only the result, read from the runtime's output, is shown.</span>
+      <span :if={@only_result}>
+        {gettext("Only the result, read from the runtime's output, is shown.")}
+      </span>
     </.notice>
     """
   end
@@ -167,8 +197,8 @@ defmodule ApiaryWeb.RunPageComponents do
         class="mt-3 justify-center"
       >
         {if @reason == :not_started,
-          do: "Listening for the run's first event.",
-          else: "Listening for the first bytes."}
+          do: gettext("Listening for the run's first event."),
+          else: gettext("Listening for the first bytes.")}
       </.listening>
     </.empty_state>
     """
@@ -180,55 +210,89 @@ defmodule ApiaryWeb.RunPageComponents do
 
   defp limit_sentence(%{reason: :pruned} = assigns) do
     ~H"""
-    This run's events were pruned on {ApiaryWeb.CoreComponents.short_date(@at)}, under the hive's retention. The run keeps its header, its counts and its connections; the timeline and the log output are gone.
+    {gettext(
+      "This run's events were pruned on %{date}, under the hive's retention. The run keeps its header, its counts and its connections; the timeline and the log output are gone.",
+      date: ApiaryWeb.CoreComponents.short_date(@at)
+    )}
     """
   end
 
   defp limit_sentence(%{reason: :log_pruned} = assigns) do
     ~H"""
-    This run's log output was pruned on {ApiaryWeb.CoreComponents.short_date(@at)}, under the hive's retention. The timeline and the connections are whole.
+    {gettext(
+      "This run's log output was pruned on %{date}, under the hive's retention. The timeline and the connections are whole.",
+      date: ApiaryWeb.CoreComponents.short_date(@at)
+    )}
     """
   end
 
   defp limit_sentence(%{reason: :not_started} = assigns) do
-    ~H"The runner has pinged. The run's first event has not arrived."
+    ~H"""
+    {gettext("The runner has pinged. The run's first event has not arrived.")}
+    """
   end
 
   defp limit_sentence(%{reason: :other_runtime} = assigns) do
     ~H"""
-    Session events exist only for Claude Code. This run used <code class="q-rule">{@runtime}</code>, so it has a terminal and connections, and no timeline.
+    <.phrase text={
+      gettext(
+        "Session events exist only for Claude Code. This run used %{runtime}, so it has a terminal and connections, and no timeline.",
+        runtime: "%{runtime}"
+      )
+    }>
+      <:part name="runtime"><code class="q-rule">{@runtime}</code></:part>
+    </.phrase>
     """
   end
 
   defp limit_sentence(%{reason: :vm_wall} = assigns) do
     ~H"""
-    This run was behind a
-    <.term
-      word="wall"
-      standard="The enclosure the agent runs in. Its only route out leads to the runner's proxy."
-      class="q-tip-wide"
-    />
-    on an engine inside a virtual machine, where the runtime's hook socket does not reach the runner. It has a terminal and connections, and no session timeline.
+    <.phrase text={
+      gettext(
+        "This run was behind a %{wall} on an engine inside a virtual machine, where the runtime's hook socket does not reach the runner. It has a terminal and connections, and no session timeline.",
+        wall: "%{wall}"
+      )
+    }>
+      <:part name="wall">
+        <.term
+          word={gettext("wall")}
+          standard={
+            gettext(
+              "The enclosure the agent runs in. Its only route out leads to the runner's proxy."
+            )
+          }
+          class="q-tip-wide"
+        />
+      </:part>
+    </.phrase>
     """
   end
 
   defp limit_sentence(%{reason: :no_hooks} = assigns) do
-    ~H"No session events arrived. They come from the runtime's hooks over a local socket; when the socket is not working the run still has its terminal and connections."
+    ~H"""
+    {gettext(
+      "No session events arrived. They come from the runtime's hooks over a local socket; when the socket is not working the run still has its terminal and connections."
+    )}
+    """
   end
 
   defp limit_sentence(%{reason: :no_egress} = assigns) do
-    ~H"No connection went through the runner's proxy. Only programs that honour the proxy variables are seen."
+    ~H"""
+    {gettext(
+      "No connection went through the runner's proxy. Only programs that honour the proxy variables are seen."
+    )}
+    """
   end
 
   defp limit_sentence(assigns), do: ~H""
 
-  defp limit_title(:pruned, _live), do: "Events pruned"
-  defp limit_title(:log_pruned, _live), do: "Log output pruned"
-  defp limit_title(:not_started, _live), do: "Waiting for the run to start"
-  defp limit_title(:no_egress, _live), do: "No connections recorded"
-  defp limit_title(:no_log, true), do: "No output yet"
-  defp limit_title(:no_log, false), do: "This run wrote no output"
-  defp limit_title(_reason, _live), do: "No session timeline"
+  defp limit_title(:pruned, _live), do: gettext("Events pruned")
+  defp limit_title(:log_pruned, _live), do: gettext("Log output pruned")
+  defp limit_title(:not_started, _live), do: gettext("Waiting for the run to start")
+  defp limit_title(:no_egress, _live), do: gettext("No connections recorded")
+  defp limit_title(:no_log, true), do: gettext("No output yet")
+  defp limit_title(:no_log, false), do: gettext("This run wrote no output")
+  defp limit_title(_reason, _live), do: gettext("No session timeline")
 
   defp limit_icon(:pruned), do: "hero-archive-box-x-mark"
   defp limit_icon(:log_pruned), do: "hero-archive-box-x-mark"
@@ -268,7 +332,7 @@ defmodule ApiaryWeb.RunPageComponents do
         class="q-tl-more"
         phx-click="load_earlier"
       >
-        <.icon name="hero-arrow-up-micro" class="size-3" /> {count_noun(@earlier, "earlier event")}
+        <.icon name="hero-arrow-up-micro" class="size-3" /> {earlier_events(@earlier)}
       </button>
       <ol
         id={@id}
@@ -298,25 +362,40 @@ defmodule ApiaryWeb.RunPageComponents do
         class="q-tl-more"
         phx-click="load_later"
       >
-        <.icon name="hero-arrow-down-micro" class="size-3" /> Load newer
-        <span class="text-faint">· {count_noun(@later, "later event")}</span>
+        <.icon name="hero-arrow-down-micro" class="size-3" /> {gettext("Load newer")}
+        <span class="text-faint">· {later_events(@later)}</span>
       </button>
     </div>
     """
   end
 
   # "Oldest first" is only true of a list that starts at the start.
-  defp timeline_label(0, 0), do: "Session timeline, oldest first"
+  defp timeline_label(0, 0), do: gettext("Session timeline, oldest first")
+
+  defp timeline_label(earlier, 0) do
+    gettext("Session timeline, in sequence order; %{earlier} not loaded",
+      earlier: earlier_events(earlier)
+    )
+  end
+
+  defp timeline_label(0, later) do
+    gettext("Session timeline, in sequence order; %{later} not loaded",
+      later: later_events(later)
+    )
+  end
 
   defp timeline_label(earlier, later) do
-    [
-      "Session timeline, in sequence order",
-      earlier > 0 && "#{count_noun(earlier, "earlier event")} not loaded",
-      later > 0 && "#{count_noun(later, "later event")} not loaded"
-    ]
-    |> Enum.filter(& &1)
-    |> Enum.join("; ")
+    gettext("Session timeline, in sequence order; %{earlier} not loaded; %{later} not loaded",
+      earlier: earlier_events(earlier),
+      later: later_events(later)
+    )
   end
+
+  defp earlier_events(n),
+    do: ngettext("%{number} earlier event", "%{number} earlier events", n, number: delimited(n))
+
+  defp later_events(n),
+    do: ngettext("%{number} later event", "%{number} later events", n, number: delimited(n))
 
   @doc """
   One item: the gutter with the rails open at its sequence and its node, then the body.
@@ -350,7 +429,10 @@ defmodule ApiaryWeb.RunPageComponents do
       </div>
       <div class={["q-b", connection?(@item) && "q-b-cx"]}>
         <span :if={@item.lane.id != "main"} class="sr-only">
-          in {@item.lane.type || "subagent"} {short_agent(@item.lane.id)}:
+          {gettext("in %{agent} %{id}:",
+            agent: @item.lane.type || gettext("subagent"),
+            id: short_agent(@item.lane.id)
+          )}
         </span>
         <.item_body id={@id} item={@item} started_at={@started_at} seq_path={@seq_path} />
       </div>
@@ -451,10 +533,8 @@ defmodule ApiaryWeb.RunPageComponents do
 
   defp item_body(%{item: %{kind: :run_started}} = assigns) do
     ~H"""
-    <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind="Run started">
-      {@item.runtime || "n/a"} {@item.runtime_version} on {@item.host || "n/a"}, {if @item.wall,
-        do: "behind a #{@item.wall} wall",
-        else: "without a wall"}
+    <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind={gettext("Run started")}>
+      {run_started_words(@item)}
     </.head>
     """
   end
@@ -465,30 +545,45 @@ defmodule ApiaryWeb.RunPageComponents do
   # denied from this item on, in either mode.
   defp item_body(%{item: %{kind: :policy_applied, again: true}} = assigns) do
     ~H"""
-    <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind="Policy applied again">
-      reloaded ·
+    <.head
+      item={@item}
+      started_at={@started_at}
+      seq_path={@seq_path}
+      kind={pgettext("plain", "Policy applied again")}
+    >
+      {gettext("reloaded")} ·
       <%= if @item.was_mode do %>
-        <b class="font-semibold text-base-content">{@item.mode || "n/a"}</b> (was {@item.was_mode})
+        <b class="font-semibold text-base-content">{@item.mode || gettext("n/a")}</b> {gettext(
+          "(was %{mode})",
+          mode: @item.was_mode
+        )}
       <% else %>
-        {@item.mode || "n/a"}
+        {@item.mode || gettext("n/a")}
       <% end %>
-      · {count_noun(@item.allowed_hosts, "host")} allowed<span :if={@item.denied_hosts > 0}> · denies {count_noun(
-        @item.denied_hosts,
-        "host"
+      · {hosts_allowed(@item.allowed_hosts)}<span :if={@item.denied_hosts > 0}> · {hosts_denied(
+        @item.denied_hosts
       )}</span>
       <:chips :if={@item.delta}>
         <span :for={host <- @item.delta.added} class="q-delta q-delta-add" title={host}>
-          <span aria-hidden="true">+</span><span class="sr-only">Added:</span> {middle(host, 48)}
+          <span aria-hidden="true">+</span><span class="sr-only">{gettext("Added:")}</span> {middle(
+            host,
+            48
+          )}
         </span>
         <span :for={host <- @item.delta.removed} class="q-delta q-delta-del" title={host}>
-          <span aria-hidden="true">−</span><span class="sr-only">Removed:</span> {middle(host, 48)}
+          <span aria-hidden="true">−</span><span class="sr-only">{gettext("Removed:")}</span> {middle(
+            host,
+            48
+          )}
         </span>
         <span
           :for={host <- @item.delta.deny_added}
           class="q-delta q-delta-deny q-delta-deny-add"
-          title={"Denied from here: #{host}"}
+          title={gettext("Denied from here: %{host}", host: host)}
         >
-          <span aria-hidden="true">+</span><.icon name="hero-no-symbol-micro" class="size-3" /><span class="sr-only">Deny added:</span> {middle(
+          <span aria-hidden="true">+</span><.icon name="hero-no-symbol-micro" class="size-3" /><span class="sr-only">{gettext(
+            "Deny added:"
+          )}</span> {middle(
             host,
             48
           )}
@@ -496,15 +591,17 @@ defmodule ApiaryWeb.RunPageComponents do
         <span
           :for={host <- @item.delta.deny_removed}
           class="q-delta q-delta-deny q-delta-deny-del"
-          title={"No longer denied: #{host}"}
+          title={gettext("No longer denied: %{host}", host: host)}
         >
-          <span aria-hidden="true">−</span><.icon name="hero-no-symbol-micro" class="size-3" /><span class="sr-only">Deny removed:</span> {middle(
+          <span aria-hidden="true">−</span><.icon name="hero-no-symbol-micro" class="size-3" /><span class="sr-only">{gettext(
+            "Deny removed:"
+          )}</span> {middle(
             host,
             48
           )}
         </span>
         <span :if={delta_more(@item.delta) > 0} class="text-xs text-faint">
-          and {delimited(delta_more(@item.delta))} more
+          {and_more(delta_more(@item.delta))}
         </span>
       </:chips>
       <:version><.item_version version={@item[:version]} /></:version>
@@ -512,15 +609,20 @@ defmodule ApiaryWeb.RunPageComponents do
     <p id={"#{@id}-reload"} class="q-reload-say">
       {reload_sentence(@item)}
       <span :if={@item.previous_seq}>
-        Compared with the policy applied at <.link
-          patch={@seq_path.(@item.previous_seq)}
-          class="q-link font-mono text-xs"
-        >#{pad(@item.previous_seq)}</.link>: {delta_words(@item.delta)}
+        <.phrase
+          text={
+            pgettext("plain", "Compared with the policy applied at %{sequence}: %{difference}",
+              sequence: "%{sequence}",
+              difference: delta_words(@item.delta)
+            )
+          }
+          phx-no-format
+        ><:part name="sequence"><.link patch={@seq_path.(@item.previous_seq)} class="q-link font-mono text-xs">#{pad(@item.previous_seq)}</.link></:part></.phrase>
       </span>
       <span :if={@item[:previous_version]}>
-        Connections before this item were decided by {RunComponents.version_words(
-          @item.previous_version
-        )}.
+        {gettext("Connections before this item were decided by %{version}.",
+          version: RunComponents.version_words(@item.previous_version)
+        )}
       </span>
     </p>
     """
@@ -528,23 +630,29 @@ defmodule ApiaryWeb.RunPageComponents do
 
   defp item_body(%{item: %{kind: :policy_applied}} = assigns) do
     ~H"""
-    <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind="Policy applied">
+    <.head
+      item={@item}
+      started_at={@started_at}
+      seq_path={@seq_path}
+      kind={pgettext("plain", "Policy applied")}
+    >
       <:version><.item_version version={@item[:version]} /></:version>
-      {@item.mode || "n/a"} · {count_noun(@item.allowed_hosts, "host")} allowed<span :if={
+      {@item.mode || gettext("n/a")} · {hosts_allowed(@item.allowed_hosts)}<span :if={
         @item.denied_hosts > 0
-      }> · denies {count_noun(
-        @item.denied_hosts,
-        "host"
-      )}</span>
+      }> · {hosts_denied(@item.denied_hosts)}</span>
       · {policy_source(@item.source)}
       <span :if={@item.terminated != []}>
-        · reads requests to
-        <span :for={{host, i} <- Enum.with_index(@item.terminated)}>
-          {if i > 0, do: ", "}<span class="font-mono text-[12.5px]">{host}</span>
-        </span>
-        <span :if={@item.terminated_count > length(@item.terminated)}>
-          and {@item.terminated_count - length(@item.terminated)} more
-        </span>
+        ·
+        <.phrase text={gettext("reads requests to %{hosts}", hosts: "%{hosts}")}>
+          <:part name="hosts">
+            <span :for={{host, i} <- Enum.with_index(@item.terminated)}>
+              {if i > 0, do: ", "}<span class="font-mono text-[12.5px]">{host}</span>
+            </span>
+            <span :if={@item.terminated_count > length(@item.terminated)}>
+              {and_more(@item.terminated_count - length(@item.terminated))}
+            </span>
+          </:part>
+        </.phrase>
       </span>
     </.head>
     """
@@ -552,8 +660,15 @@ defmodule ApiaryWeb.RunPageComponents do
 
   defp item_body(%{item: %{kind: :session_started}} = assigns) do
     ~H"""
-    <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind="Session started">
-      <span :if={@item.model}>model <span class="font-mono text-[12.5px]">{@item.model}</span></span>
+    <.head
+      item={@item}
+      started_at={@started_at}
+      seq_path={@seq_path}
+      kind={gettext("Session started")}
+    >
+      <span :if={@item.model}><.phrase text={gettext("model %{model}", model: "%{model}")}>
+        <:part name="model"><span class="font-mono text-[12.5px]">{@item.model}</span></:part>
+      </.phrase></span>
       <span :if={@item.source}> · {@item.source}</span>
       <span :if={@item.cwd}> · <span class="font-mono text-[12.5px]">{@item.cwd}</span></span>
     </.head>
@@ -562,7 +677,7 @@ defmodule ApiaryWeb.RunPageComponents do
 
   defp item_body(%{item: %{kind: :prompt}} = assigns) do
     ~H"""
-    <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind="Prompt" />
+    <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind={gettext("Prompt")} />
     <.say item={@item} class="q-say-prompt" />
     """
   end
@@ -580,19 +695,26 @@ defmodule ApiaryWeb.RunPageComponents do
         <span class="q-k q-k-mono">{@item.tool}</span>
         <.who :if={@item.who} lane={@item.lane} />
         <span class="q-s q-s-mono"><.tool_summary summary={@item.summary} /></span>
-        <.badge :if={@item.in_background} color="info" class="self-center">In background</.badge>
+        <.badge :if={@item.in_background} color="info" class="self-center">
+          {gettext("In background")}
+        </.badge>
         <.tail item={@item} started_at={@started_at} seq_path={@seq_path}>
           <span :if={@item.status == :failed} class="q-bad">{if @item.interrupted,
-            do: "Interrupted",
-            else: "Failed"}</span>
-          <span :if={@item.status == :open} class="q-running">Running</span>
-          <span :if={@item.status == :no_end} class="q-no-end">No end recorded</span>
+            do: gettext("Interrupted"),
+            else: gettext("Failed")}</span>
+          <span :if={@item.status == :open} class="q-running">{gettext("Running")}</span>
+          <span :if={@item.status == :no_end} class="q-no-end">{gettext("No end recorded")}</span>
           <.duration :if={@item.duration_ms} ms={@item.duration_ms} precise class="q-d" />
         </.tail>
       </summary>
       <div :if={@item.connections != []} class="q-during">
         <small>
-          {count_noun(@item.connections_count, "connection")} while this call was open
+          {ngettext(
+            "%{number} connection while this call was open",
+            "%{number} connections while this call was open",
+            @item.connections_count,
+            number: delimited(@item.connections_count)
+          )}
         </small>
         <.connection_row
           :for={cx <- @item.connections}
@@ -602,7 +724,7 @@ defmodule ApiaryWeb.RunPageComponents do
           started_at={@started_at}
         />
         <small :if={@item.connections_count > length(@item.connections)}>
-          {delimited(@item.connections_count - length(@item.connections))} more are counted on the Connections tab.
+          {more_counted(@item.connections_count - length(@item.connections))}
         </small>
       </div>
       <div :if={@item.wells != []} class="q-io">
@@ -617,8 +739,8 @@ defmodule ApiaryWeb.RunPageComponents do
     ~H"""
     <div class="q-hd">
       <span class="q-k">{if @item.kind == :subagent_started,
-        do: "Subagent started",
-        else: "Subagent finished"}</span>
+        do: gettext("Subagent started"),
+        else: gettext("Subagent finished")}</span>
       <.who lane={@item.lane} />
       <span class="q-s font-mono text-xs">{if @item.kind == :subagent_started, do: @item.agent_id}</span>
       <.tail item={@item} started_at={@started_at} seq_path={@seq_path}>
@@ -631,7 +753,7 @@ defmodule ApiaryWeb.RunPageComponents do
 
   defp item_body(%{item: %{kind: :notification}} = assigns) do
     ~H"""
-    <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind="Notification">
+    <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind={gettext("Notification")}>
       {[@item.notification_kind, @item.message] |> Enum.reject(&is_nil/1) |> Enum.join(" · ")}
     </.head>
     """
@@ -639,14 +761,20 @@ defmodule ApiaryWeb.RunPageComponents do
 
   defp item_body(%{item: %{kind: :turn_finished}} = assigns) do
     ~H"""
-    <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind="Turn finished" />
+    <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind={gettext("Turn finished")} />
     <.say item={@item} />
     """
   end
 
   defp item_body(%{item: %{kind: :turn_failed}} = assigns) do
     ~H"""
-    <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind="Turn failed" tone="error">
+    <.head
+      item={@item}
+      started_at={@started_at}
+      seq_path={@seq_path}
+      kind={gettext("Turn failed")}
+      tone="error"
+    >
       {[@item.error, @item.message] |> Enum.reject(&is_nil/1) |> Enum.join(" · ")}
     </.head>
     <div :if={@item.wells != []} class="q-io">
@@ -657,7 +785,7 @@ defmodule ApiaryWeb.RunPageComponents do
 
   defp item_body(%{item: %{kind: :result}} = assigns) do
     ~H"""
-    <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind="Result">
+    <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind={gettext("Result")}>
       {result_words(@item)}
     </.head>
     <.say item={@item} />
@@ -666,7 +794,7 @@ defmodule ApiaryWeb.RunPageComponents do
 
   defp item_body(%{item: %{kind: :session_ended}} = assigns) do
     ~H"""
-    <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind="Session ended">
+    <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind={gettext("Session ended")}>
       {@item.reason}
     </.head>
     """
@@ -674,7 +802,7 @@ defmodule ApiaryWeb.RunPageComponents do
 
   defp item_body(%{item: %{kind: :run_exited}} = assigns) do
     ~H"""
-    <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind="Run exited">
+    <.head item={@item} started_at={@started_at} seq_path={@seq_path} kind={gettext("Run exited")}>
       {exit_words(@item)}
       <span :if={@item.duration_ms}> · <.duration ms={@item.duration_ms} /></span>
     </.head>
@@ -688,7 +816,7 @@ defmodule ApiaryWeb.RunPageComponents do
       connection={@item.connection}
       variant="inline"
       started_at={@started_at}
-      caption={@item.open_calls > 1 && "while #{@item.open_calls} calls were open"}
+      caption={@item.open_calls > 1 && calls_open(@item.open_calls)}
     />
     """
   end
@@ -704,12 +832,23 @@ defmodule ApiaryWeb.RunPageComponents do
         <.icon name="hero-chevron-right-micro" class="q-chev size-3" />
         <span class="q-dest">{@item.host}<span class="q-port">:{@item.port}</span></span>
         <span class="text-muted">
-          · {count_noun(@item.connections_count, "allowed connection")}
-          <span :if={@item.open_calls > 1} class="text-faint">· while {@item.open_calls} calls were open</span>
+          · {ngettext(
+            "%{number} allowed connection",
+            "%{number} allowed connections",
+            @item.connections_count,
+            number: delimited(@item.connections_count)
+          )}
+          <span :if={@item.open_calls > 1} class="text-faint">· {calls_open(@item.open_calls)}</span>
         </span>
         <span class="q-cx-at ml-auto">
-          <.offset at={@item.first_at} from={@started_at} /> to
-          <.offset at={@item.last_at} from={@started_at} />
+          <.phrase text={gettext("%{from} to %{to}", from: "%{from}", to: "%{to}")}>
+            <:part name="from">
+              <.offset
+                at={@item.first_at}
+                from={@started_at}
+              />
+            </:part><:part name="to"><.offset at={@item.last_at} from={@started_at} /></:part>
+          </.phrase>
         </span>
       </summary>
       <div class="q-during">
@@ -721,10 +860,76 @@ defmodule ApiaryWeb.RunPageComponents do
           started_at={@started_at}
         />
         <small :if={@item.connections_count > length(@item.connections)}>
-          {delimited(@item.connections_count - length(@item.connections))} more are counted on the Connections tab.
+          {more_counted(@item.connections_count - length(@item.connections))}
         </small>
       </div>
     </details>
+    """
+  end
+
+  defp run_started_words(item) do
+    bindings = [
+      runtime: item.runtime || gettext("n/a"),
+      version: item.runtime_version,
+      host: item.host || gettext("n/a")
+    ]
+
+    if item.wall,
+      do:
+        gettext(
+          "%{runtime} %{version} on %{host}, behind a %{wall} wall",
+          [wall: item.wall] ++ bindings
+        ),
+      else: gettext("%{runtime} %{version} on %{host}, without a wall", bindings)
+  end
+
+  defp hosts_allowed(n),
+    do: ngettext("%{number} host allowed", "%{number} hosts allowed", n, number: delimited(n))
+
+  defp hosts_denied(n),
+    do: ngettext("denies %{number} host", "denies %{number} hosts", n, number: delimited(n))
+
+  defp more_counted(n) do
+    ngettext(
+      "%{number} more is counted on the Connections tab.",
+      "%{number} more are counted on the Connections tab.",
+      n,
+      number: delimited(n)
+    )
+  end
+
+  defp calls_open(n),
+    do: ngettext("while %{count} call was open", "while %{count} calls were open", n)
+
+  # A translated sentence with markup in it (docs/lingo.md: whole sentences). `text` is the
+  # result of a gettext call whose `%{name}` placeholders for markup were bound to themselves
+  # (`gettext("This run used %{runtime}, ...", runtime: "%{runtime}")`); each such
+  # placeholder is filled with the `:part` slot of that name, so a link, a code or a term
+  # sits inside the sentence without cutting it into pieces. A placeholder no part names
+  # stays as text.
+  attr :text, :string, required: true
+
+  slot :part do
+    attr :name, :string, required: true
+  end
+
+  defp phrase(assigns) do
+    parts = Map.new(assigns.part, &{&1.name, &1})
+
+    pieces =
+      ~r/%\{(\w+)\}/
+      |> Regex.split(assigns.text, include_captures: true, trim: true)
+      |> Enum.map(fn piece ->
+        case Regex.run(~r/\A%\{(\w+)\}\z/, piece) do
+          [_, name] when is_map_key(parts, name) -> {:part, parts[name]}
+          _ -> {:text, piece}
+        end
+      end)
+
+    assigns = assign(assigns, :pieces, pieces)
+
+    ~H"""
+    <span phx-no-format><%= for piece <- @pieces do %><%= case piece do %><% {:part, part} -> %>{render_slot(part)}<% {:text, text} -> %>{text}<% end %><% end %></span>
     """
   end
 
@@ -766,14 +971,16 @@ defmodule ApiaryWeb.RunPageComponents do
 
   # "New" is said only of a digest that is not the one before it.
   defp reload_sentence(%{source: "fetched", digest: digest, previous_digest: previous})
-       when is_binary(digest) and digest != previous,
-       do:
-         "The runner fetched a new run configuration after the server's answer named a new digest."
+       when is_binary(digest) and digest != previous do
+    gettext(
+      "The runner fetched a new run configuration after the server's answer named a new digest."
+    )
+  end
 
   defp reload_sentence(%{source: "fetched"}),
-    do: "The runner fetched its run configuration again; the digest is the one it had."
+    do: gettext("The runner fetched its run configuration again; the digest is the one it had.")
 
-  defp reload_sentence(_item), do: "The runner applied a policy again."
+  defp reload_sentence(_item), do: pgettext("plain", "The runner applied a policy again.")
 
   defp delta_more(delta) do
     delta.added_count - length(delta.added) + (delta.removed_count - length(delta.removed)) +
@@ -781,32 +988,49 @@ defmodule ApiaryWeb.RunPageComponents do
       (delta.deny_removed_count - length(delta.deny_removed))
   end
 
-  defp delta_words(nil), do: "the lists are too long to compare here."
+  defp delta_words(nil), do: gettext("the lists are too long to compare here.")
 
   defp delta_words(delta) do
-    allow =
-      case delta do
-        %{added_count: 0, removed_count: 0} ->
-          "the same hosts are allowed"
+    same? = delta.added_count == 0 and delta.removed_count == 0
+    denies? = delta.deny_added_count != 0 or delta.deny_removed_count != 0
 
-        %{added_count: added, removed_count: removed} ->
-          "#{hosts_words(added)} added, #{if removed == 0, do: "none", else: hosts_words(removed)} removed"
-      end
+    bindings = [
+      added: hosts_words(delta.added_count),
+      removed: hosts_or_none(delta.removed_count),
+      deny_added: hosts_words(delta.deny_added_count),
+      deny_removed: hosts_or_none(delta.deny_removed_count)
+    ]
 
-    deny =
-      case delta do
-        %{deny_added_count: 0, deny_removed_count: 0} ->
-          ""
+    case {same?, denies?} do
+      {true, false} ->
+        gettext("the same hosts are allowed.")
 
-        %{deny_added_count: added, deny_removed_count: removed} ->
-          "; denies #{hosts_words(added)} more and #{if removed == 0, do: "none", else: hosts_words(removed)} fewer"
-      end
+      {true, true} ->
+        gettext(
+          "the same hosts are allowed; denies %{deny_added} more and %{deny_removed} fewer.",
+          deny_added: bindings[:deny_added],
+          deny_removed: bindings[:deny_removed]
+        )
 
-    allow <> deny <> "."
+      {false, false} ->
+        gettext("%{added} added, %{removed} removed.",
+          added: bindings[:added],
+          removed: bindings[:removed]
+        )
+
+      {false, true} ->
+        gettext(
+          "%{added} added, %{removed} removed; denies %{deny_added} more and %{deny_removed} fewer.",
+          bindings
+        )
+    end
   end
 
-  defp hosts_words(0), do: "no host"
-  defp hosts_words(n), do: count_noun(n, "host")
+  defp hosts_words(0), do: gettext("no host")
+  defp hosts_words(n), do: ngettext("%{number} host", "%{number} hosts", n, number: delimited(n))
+
+  defp hosts_or_none(0), do: gettext("none")
+  defp hosts_or_none(n), do: hosts_words(n)
 
   attr :item, :map, required: true
   attr :started_at, :any, required: true
@@ -829,7 +1053,11 @@ defmodule ApiaryWeb.RunPageComponents do
 
   defp tool_summary(%{summary: {:pattern, _pattern, _path}} = assigns) do
     ~H"""
-    {elem(@summary, 1)} <span class="text-faint">in</span> {elem(@summary, 2)}
+    {elem(@summary, 1)}
+    <span class="text-faint">{pgettext("a pattern in a path", "in")}</span> {elem(
+      @summary,
+      2
+    )}
     """
   end
 
@@ -869,8 +1097,9 @@ defmodule ApiaryWeb.RunPageComponents do
 
   defp show_all(assigns) do
     ~H"""
-    <button type="button" class="q-show-all" phx-click="show_all" phx-value-seq={@seq}>Show all {format_bytes(
-      @bytes
+    <button type="button" class="q-show-all" phx-click="show_all" phx-value-seq={@seq}>{gettext(
+      "Show all %{size}",
+      size: format_bytes(@bytes)
     )}</button>
     """
   end
@@ -888,35 +1117,47 @@ defmodule ApiaryWeb.RunPageComponents do
   end
 
   defp well_size(%{lines: lines, bytes: bytes}) when is_integer(lines),
-    do: "#{format_bytes(bytes)} · #{count_noun(lines, "line")}"
+    do:
+      gettext("%{size} · %{lines}",
+        size: format_bytes(bytes),
+        lines: ngettext("%{number} line", "%{number} lines", lines, number: delimited(lines))
+      )
 
   defp well_size(%{bytes: bytes}), do: format_bytes(bytes)
 
   @doc "A byte count in the words of the terminal's foot: \"812 B\", \"48.2 KB\", \"1.4 MB\"."
-  def format_bytes(bytes) when bytes < 1024, do: "#{bytes} B"
-  def format_bytes(bytes) when bytes < 1024 * 1024, do: "#{Float.round(bytes / 1024, 1)} KB"
-  def format_bytes(bytes), do: "#{Float.round(bytes / (1024 * 1024), 1)} MB"
+  def format_bytes(bytes) when bytes < 1024, do: gettext("%{number} B", number: bytes)
+
+  def format_bytes(bytes) when bytes < 1024 * 1024,
+    do: gettext("%{number} KB", number: Float.round(bytes / 1024, 1))
+
+  def format_bytes(bytes),
+    do: gettext("%{number} MB", number: Float.round(bytes / (1024 * 1024), 1))
 
   ## Words
 
-  defp policy_source("fetched"), do: "fetched from the run configuration"
-  defp policy_source("config"), do: "given to the runner as a policy document"
-  defp policy_source("none"), do: "no policy, every connection is observed"
-  defp policy_source(_other), do: "source n/a"
+  defp policy_source("fetched"), do: gettext("fetched from the run configuration")
+  defp policy_source("config"), do: gettext("given to the runner as a policy document")
+  defp policy_source("none"), do: gettext("no policy, every connection is observed")
+  defp policy_source(_other), do: gettext("source n/a")
 
   @doc "The source of a policy in words, for the Details tab too."
   def policy_source_words(source), do: policy_source(source)
 
-  defp exit_words(%{reason: "timeout"}), do: "timeout"
-  defp exit_words(%{reason: "runner_lost"}), do: "runner lost"
+  defp exit_words(%{reason: "timeout"}), do: gettext("timeout")
+  defp exit_words(%{reason: "runner_lost"}), do: gettext("runner lost")
   defp exit_words(%{signal: signal}) when is_binary(signal), do: signal
-  defp exit_words(%{exit_code: code}) when is_integer(code), do: "exit #{code}"
-  defp exit_words(_item), do: "n/a"
+
+  defp exit_words(%{exit_code: code}) when is_integer(code),
+    do: gettext("exit %{code}", code: code)
+
+  defp exit_words(_item), do: gettext("n/a")
 
   defp result_words(item) do
     [
       item.outcome,
-      item.turns && count_noun(item.turns, "turn"),
+      item.turns &&
+        ngettext("%{number} turn", "%{number} turns", item.turns, number: delimited(item.turns)),
       item.duration_ms && ApiaryWeb.RunComponents.format_duration_ms(item.duration_ms),
       item.cost_usd && cost(item.cost_usd)
     ]
@@ -932,7 +1173,7 @@ defmodule ApiaryWeb.RunPageComponents do
   def pad(sequence) when is_integer(sequence),
     do: sequence |> Integer.to_string() |> String.pad_leading(4, "0")
 
-  def pad(_sequence), do: "n/a"
+  def pad(_sequence), do: gettext("n/a")
 
   ## P6. The live end
 
@@ -947,13 +1188,20 @@ defmodule ApiaryWeb.RunPageComponents do
     <p id="live-end" class="q-tail">
       <span class="listening-dot mx-1" aria-hidden="true" />
       <span>
-        Listening for the next batch.
-        <span :if={@last_sequence}>
-          Last event #{pad(@last_sequence)}<span :if={@last_event_at}>,
-            <time data-tick="seconds" data-since={DateTime.to_iso8601(@last_event_at)} aria-live="off">{ApiaryWeb.RunComponents.format_seconds(
-                max(DateTime.diff(DateTime.utc_now(), @last_event_at), 0)
-              )}</time>
-            ago</span>.
+        {gettext("Listening for the next batch.")}
+        <span :if={@last_sequence && !@last_event_at}>
+          {gettext("Last event #%{sequence}.", sequence: pad(@last_sequence))}
+        </span>
+        <span :if={@last_sequence && @last_event_at}>
+          <.phrase
+            text={
+              gettext("Last event #%{sequence}, %{time} ago.",
+                sequence: pad(@last_sequence),
+                time: "%{time}"
+              )
+            }
+            phx-no-format
+          ><:part name="time"><time data-tick="seconds" data-since={DateTime.to_iso8601(@last_event_at)} aria-live="off">{ApiaryWeb.RunComponents.format_seconds(max(DateTime.diff(DateTime.utc_now(), @last_event_at), 0))}</time></:part></.phrase>
         </span>
       </span>
     </p>
@@ -962,7 +1210,11 @@ defmodule ApiaryWeb.RunPageComponents do
 
   def live_end(assigns) do
     ~H"""
-    <p id="live-end" class="q-tail">End of the record. {count_noun(@events, "event")}.</p>
+    <p id="live-end" class="q-tail">
+      {gettext("End of the record.")} {ngettext("%{number} event.", "%{number} events.", @events,
+        number: delimited(@events)
+      )}
+    </p>
     """
   end
 
@@ -1000,7 +1252,7 @@ defmodule ApiaryWeb.RunPageComponents do
       id={@id}
       class="q-termbox"
       role="region"
-      aria-label="Terminal output"
+      aria-label={gettext("Terminal output")}
       phx-hook="Terminal"
       data-src={@src}
       data-script={@script}
@@ -1014,30 +1266,36 @@ defmodule ApiaryWeb.RunPageComponents do
     >
       <div id={"#{@id}-bar"} class="q-term-bar" phx-update="ignore">
         <a class="sr-only focus:not-sr-only q-tbtn" href={@src <> "?download=1"} download>
-          Read the log as text
+          {gettext("Read the log as text")}
         </a>
-        <div class="q-tseg" role="group" aria-label="Stream">
+        <div class="q-tseg" role="group" aria-label={gettext("Stream")}>
           <%= if length(@streams) > 1 do %>
             <button :for={stream <- @streams} type="button" data-stream={stream} aria-pressed="false">
               {stream}
             </button>
-            <button type="button" data-stream="" aria-pressed="true">both</button>
+            <button type="button" data-stream="" aria-pressed="true">{gettext("both")}</button>
           <% else %>
-            <span class="q-tseg-one">{List.first(@streams) || "terminal"}</span>
+            <span class="q-tseg-one">{List.first(@streams) || gettext("terminal")}</span>
           <% end %>
         </div>
         <label class="q-term-find">
           <.icon name="hero-magnifying-glass-micro" class="size-4" />
-          <span class="sr-only">Search the log</span>
-          <input type="text" data-find spellcheck="false" autocomplete="off" placeholder="Search" />
+          <span class="sr-only">{gettext("Search the log")}</span>
+          <input
+            type="text"
+            data-find
+            spellcheck="false"
+            autocomplete="off"
+            placeholder={gettext("Search")}
+          />
           <span data-find-count aria-live="polite"></span>
         </label>
         <button
           :if={!@sized}
           type="button"
           class="q-tbtn tooltip tooltip-left"
-          data-tip="Wrap long lines"
-          aria-label="Wrap long lines"
+          data-tip={gettext("Wrap long lines")}
+          aria-label={gettext("Wrap long lines")}
           aria-pressed="false"
           data-wrap
         >
@@ -1046,15 +1304,15 @@ defmodule ApiaryWeb.RunPageComponents do
         <span
           :if={@sized}
           class="q-term-size tooltip tooltip-left"
-          data-tip="The size the runtime ran at"
+          data-tip={gettext("The size the runtime ran at")}
           data-size
         >
           {@cols}×{@rows}
         </span>
         <a
           class="q-tbtn tooltip tooltip-left"
-          data-tip="Download the raw bytes"
-          aria-label="Download the raw bytes"
+          data-tip={gettext("Download the raw bytes")}
+          aria-label={gettext("Download the raw bytes")}
           href={@src <> "?download=1"}
           download
         >
@@ -1062,31 +1320,43 @@ defmodule ApiaryWeb.RunPageComponents do
         </a>
         <button type="button" class="q-tbtn" aria-pressed={to_string(@live)} data-follow>
           <.icon name="hero-arrow-down-micro" class="size-4" />
-          <span class="q-tbtn-lbl" data-follow-label>{if @live, do: "Following", else: "Jump to end"}</span>
+          <span class="q-tbtn-lbl" data-follow-label>{if @live,
+            do: gettext("Following"),
+            else: gettext("Jump to end")}</span>
         </button>
       </div>
       <div id={"#{@id}-screen"} class="q-term-screen" phx-update="ignore">
-        <div data-screen role="log" aria-live="off" aria-label="Log"></div>
+        <div data-screen role="log" aria-live="off" aria-label={gettext("Log")}></div>
         <span class="sr-only" data-announce aria-live="polite"></span>
         <button type="button" class="q-newpill q-term-pill" data-pill tabindex="-1" aria-hidden="true">
-          <.icon name="hero-arrow-down-micro" class="size-4" /> <span data-pill-text>New lines</span>
+          <.icon name="hero-arrow-down-micro" class="size-4" />
+          <span data-pill-text>{gettext("New lines")}</span>
         </button>
         <div class="q-term-msg" data-message hidden>
           <p data-message-text></p>
-          <button type="button" class="q-tbtn" data-retry hidden>Try again</button>
+          <button type="button" class="q-tbtn" data-retry hidden>{gettext("Try again")}</button>
         </div>
       </div>
       <div class="q-term-foot">
-        <span :if={@live} class="q-term-live"><i></i>Live</span>
-        <span :if={!@live}>Ended</span>
+        <span :if={@live} class="q-term-live"><i></i>{gettext("Live")}</span>
+        <span :if={!@live}>{gettext("Ended")}</span>
         <span>{format_bytes(@bytes)}</span>
-        <span class="q-term-opt">{count_noun(@chunks, "chunk")}</span>
-        <span class="q-term-opt">through #{pad(@through)}</span>
+        <span class="q-term-opt">
+          {ngettext("%{number} chunk", "%{number} chunks", @chunks, number: delimited(@chunks))}
+        </span>
+        <span class="q-term-opt">{gettext("through #%{sequence}", sequence: pad(@through))}</span>
       </div>
     </div>
     <p class="mt-3 text-[12.5px] text-faint">
-      The bytes as the runtime wrote them, terminal escapes included,
-      <span :if={@sized}>replayed at the size the runtime ran at. </span><span :if={!@sized}>fitted to this box. </span>Nothing here is interpreted; the timeline is where the session is read.
+      {if @sized,
+        do:
+          gettext(
+            "The bytes as the runtime wrote them, terminal escapes included, replayed at the size the runtime ran at. Nothing here is interpreted; the timeline is where the session is read."
+          ),
+        else:
+          gettext(
+            "The bytes as the runtime wrote them, terminal escapes included, fitted to this box. Nothing here is interpreted; the timeline is where the session is read."
+          )}
     </p>
     """
   end

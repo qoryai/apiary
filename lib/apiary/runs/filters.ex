@@ -26,6 +26,8 @@ defmodule Apiary.Runs.Filters do
   not refused; the canonical query says the current name.
   """
 
+  use Gettext, backend: ApiaryWeb.Gettext
+
   alias Apiary.Runs.Run
 
   @groups ~w(target task none)
@@ -34,9 +36,9 @@ defmodule Apiary.Runs.Filters do
   # for scanning. Only their states go in a URL: `state=failed,timed_out,lost,closed`.
   # The three families every surface counts runs in (`Apiary.Runs.Run`): one definition.
   @families [
-    %{key: "alive", label: "Alive", states: Run.alive_states()},
-    %{key: "ended_well", label: "Ended well", states: Run.ended_well_states()},
-    %{key: "ended_badly", label: "Ended badly", states: Run.ended_badly_states()}
+    %{key: "alive", label: gettext_noop("Alive"), states: Run.alive_states()},
+    %{key: "ended_well", label: gettext_noop("Ended well"), states: Run.ended_well_states()},
+    %{key: "ended_badly", label: gettext_noop("Ended badly"), states: Run.ended_badly_states()}
   ]
   @family_keys Enum.map(@families, & &1.key)
   @ranges %{runs: ~w(1h 24h 7d 30d all), connections: ~w(1h 24h 7d 30d 90d)}
@@ -91,10 +93,12 @@ defmodule Apiary.Runs.Filters do
   @doc """
   The three families the states read as, in the order they are shown: alive (`pending`,
   `running`), ended well (`succeeded`) and ended badly (`failed`, `timed_out`, `lost`,
-  `closed`). Every state is in exactly one.
+  `closed`). Every state is in exactly one. The labels are in the body's words: translated
+  here, at call time, because the list is made at compile time.
   """
   @spec families() :: [family()]
-  def families, do: @families
+  def families,
+    do: Enum.map(@families, &%{&1 | label: Gettext.gettext(ApiaryWeb.Gettext, &1.label)})
 
   @doc "The states of a family, by its key; nil for a key that is not one."
   @spec family_states(String.t()) :: [String.t()] | nil
@@ -119,13 +123,13 @@ defmodule Apiary.Runs.Filters do
 
   def ranges(:runs),
     do: [
-      {"Last hour", "1h"},
-      {"Last 24 hours", "24h"},
-      {"Last 7 days", "7d"},
-      {"Last 30 days", "30d"}
+      {gettext("Last hour"), "1h"},
+      {gettext("Last 24 hours"), "24h"},
+      {gettext("Last 7 days"), "7d"},
+      {gettext("Last 30 days"), "30d"}
     ]
 
-  def ranges(:connections), do: ranges(:runs) ++ [{"Last 90 days", "90d"}]
+  def ranges(:connections), do: ranges(:runs) ++ [{gettext("Last 90 days"), "90d"}]
 
   @doc "Reads the parameters of the runs list (`:runs`) or the hive's connections (`:connections`)."
   @spec parse(map(), :runs | :connections) :: t()
@@ -309,19 +313,43 @@ defmodule Apiary.Runs.Filters do
   @doc "The range in words, for the chip: \"last 7 days\", \"14 Sep to 20 Sep\"."
   def range_label(%__MODULE__{from: nil, to: nil, since: since}) do
     case since do
-      "1h" -> "last hour"
-      "24h" -> "last 24 hours"
-      "7d" -> "last 7 days"
-      "30d" -> "last 30 days"
-      "90d" -> "last 90 days"
+      "1h" -> gettext("last hour")
+      "24h" -> gettext("last 24 hours")
+      "7d" -> gettext("last 7 days")
+      "30d" -> gettext("last 30 days")
+      "90d" -> gettext("last 90 days")
       _all -> nil
     end
   end
 
-  def range_label(%__MODULE__{from: from, to: nil}), do: "from #{day(from)}"
-  def range_label(%__MODULE__{from: nil, to: to}), do: "to #{day(to)}"
+  def range_label(%__MODULE__{from: from, to: nil}), do: gettext("from %{date}", date: day(from))
+  def range_label(%__MODULE__{from: nil, to: to}), do: gettext("to %{date}", date: day(to))
   def range_label(%__MODULE__{from: same, to: same}), do: day(same)
-  def range_label(%__MODULE__{from: from, to: to}), do: "#{day(from)} to #{day(to)}"
+
+  def range_label(%__MODULE__{from: from, to: to}),
+    do: gettext("%{from} to %{to}", from: day(from), to: day(to))
+
+  @doc """
+  The range as the end of a sentence, a phrase whole in itself: "in the last 7 days",
+  "up to 20 Sep 2026", "from 14 Sep 2026 to 20 Sep 2026"; nil when there is no range.
+  """
+  def range_phrase(%__MODULE__{from: nil, to: nil, since: since}) do
+    case since do
+      "1h" -> gettext("in the last hour")
+      "24h" -> gettext("in the last 24 hours")
+      "7d" -> gettext("in the last 7 days")
+      "30d" -> gettext("in the last 30 days")
+      "90d" -> gettext("in the last 90 days")
+      _all -> nil
+    end
+  end
+
+  def range_phrase(%__MODULE__{from: from, to: nil}), do: gettext("from %{date}", date: day(from))
+  def range_phrase(%__MODULE__{from: nil, to: to}), do: gettext("up to %{date}", date: day(to))
+  def range_phrase(%__MODULE__{from: same, to: same}), do: gettext("on %{date}", date: day(same))
+
+  def range_phrase(%__MODULE__{from: from, to: to}),
+    do: gettext("from %{from} to %{to}", from: day(from), to: day(to))
 
   defp day(date), do: Calendar.strftime(date, "%-d %b %Y")
 

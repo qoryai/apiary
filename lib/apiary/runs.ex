@@ -16,6 +16,8 @@ defmodule Apiary.Runs do
       the lowest and highest sequence it folded, and `{:run_changed, %Run{}}` as above.
   """
 
+  use Gettext, backend: ApiaryWeb.Gettext
+
   import Ecto.Query, warn: false
 
   alias Apiary.AccessKeys.AccessKey
@@ -267,13 +269,27 @@ defmodule Apiary.Runs do
   def group_key(%Run{}, _group), do: :all
 
   defp group(:none, "target", runs),
-    do: %{key: :none, kind: :unassigned, system: nil, path: nil, title: "Unassigned", runs: runs}
+    do: %{
+      key: :none,
+      kind: :unassigned,
+      system: nil,
+      path: nil,
+      title: gettext("Unassigned"),
+      runs: runs
+    }
 
   defp group({system, path} = key, "target", runs),
     do: %{key: key, kind: :target, system: system, path: path, title: path, runs: runs}
 
   defp group(:none, "task", runs),
-    do: %{key: :none, kind: :no_task, system: nil, path: nil, title: "No task", runs: runs}
+    do: %{
+      key: :none,
+      kind: :no_task,
+      system: nil,
+      path: nil,
+      title: gettext("No task"),
+      runs: runs
+    }
 
   defp group(task, "task", runs),
     do: %{key: task, kind: :task, system: nil, path: nil, title: task, runs: runs}
@@ -302,7 +318,7 @@ defmodule Apiary.Runs do
     %{
       state: state_facet(scope, filters, now),
       target: run_target_facet(scope, filters, now, narrow["target"]),
-      task: text_facet(scope, filters, now, :task, "No task", narrow["task"]),
+      task: text_facet(scope, filters, now, :task, gettext("No task"), narrow["task"]),
       runtime: text_facet(scope, filters, now, :runtime, nil, narrow["runtime"]),
       host: text_facet(scope, filters, now, :host, nil, narrow["host"])
     }
@@ -385,7 +401,7 @@ defmodule Apiary.Runs do
 
     options =
       if unassigned > 0 and is_nil(like),
-        do: options ++ [{"Unassigned", "none", unassigned}],
+        do: options ++ [{gettext("Unassigned"), "none", unassigned}],
         else: options
 
     %{options: options, total: total + if(unassigned > 0, do: 1, else: 0)}
