@@ -18,6 +18,8 @@ defmodule ApiaryWeb.PolicyComponents do
   import ApiaryWeb.CoreComponents,
     only: [avatar: 1, badge: 1, button: 1, icon: 1, notice: 1, term: 1]
 
+  import ApiaryWeb.RichText
+
   # `RunComponents` uses the shared components of this module, so nothing of it is imported
   # here: its functions are called by their full name, which is no compile-time dependency.
   alias ApiaryWeb.RunComponents
@@ -48,7 +50,7 @@ defmodule ApiaryWeb.PolicyComponents do
   def version_pill(%{version: nil} = assigns) do
     ~H"""
     <span id={@id} class={["q-vpill", @size == "sm" && "q-vpill-sm", @class]}>
-      <span class="q-vpill-dg">No version yet</span>
+      <span class="q-vpill-dg">{gettext("No version yet")}</span>
     </span>
     """
   end
@@ -57,13 +59,13 @@ defmodule ApiaryWeb.PolicyComponents do
     ~H"""
     <span id={@id} class={["q-vpill", @size == "sm" && "q-vpill-sm", @class]} title={@digest}>
       <.link :if={@navigate} navigate={@navigate} class="q-vpill-v">
-        <span class="sr-only">Version </span>v{@version}
+        <span class="sr-only">{gettext("Version")} </span>v{@version}
       </.link>
-      <span :if={!@navigate} class="q-vpill-v"><span class="sr-only">Version </span>v{@version}</span>
+      <span :if={!@navigate} class="q-vpill-v"><span class="sr-only">{gettext("Version")} </span>v{@version}</span>
       <span :if={@digest} class="q-vpill-dg">
         <i :if={@size == "md"}>sha256</i>{short_digest(@digest)}
       </span>
-      <span :if={@scope} class="q-vpill-scope"><span class="sr-only">of </span>{@scope}</span>
+      <span :if={@scope} class="q-vpill-scope"><span class="sr-only">{gettext("of")} </span>{@scope}</span>
       <button
         :if={@copy && @size == "md" && @digest && @id}
         id={"#{@id}-copy"}
@@ -71,8 +73,8 @@ defmodule ApiaryWeb.PolicyComponents do
         phx-hook="CopyToClipboard"
         data-copy={@digest}
         class="copy-btn q-vpill-copy tooltip tooltip-left"
-        data-tip="Copy the digest"
-        aria-label="Copy the digest"
+        data-tip={gettext("Copy the digest")}
+        aria-label={gettext("Copy the digest")}
       >
         <span class="copy-idle"><.icon name="hero-clipboard-document-micro" class="size-3" /></span>
         <span class="copy-done"><.icon name="hero-check-micro" class="size-3" /></span>
@@ -134,9 +136,9 @@ defmodule ApiaryWeb.PolicyComponents do
   defp rule_mark_class("deny"), do: "q-mark-no"
   defp rule_mark_class("pending"), do: "q-mark-pend"
 
-  defp rule_mark_word("allow"), do: "Allow"
-  defp rule_mark_word("deny"), do: "Deny"
-  defp rule_mark_word("pending"), do: "Not allowed"
+  defp rule_mark_word("allow"), do: gettext("Allow")
+  defp rule_mark_word("deny"), do: gettext("Deny")
+  defp rule_mark_word("pending"), do: gettext("Not allowed")
 
   ## pd5. Source chip
 
@@ -175,15 +177,18 @@ defmodule ApiaryWeb.PolicyComponents do
   defp source_class(:target), do: "q-src-target"
   defp source_class(:hive_locked), do: "q-src-lock"
 
-  defp source_words(:hive), do: "Hive"
-  defp source_words(:target), do: "This repository"
-  defp source_words(:hive_locked), do: "Hive, locked"
+  defp source_words(:hive), do: gettext("Hive")
+  defp source_words(:target), do: gettext("This target")
+  defp source_words(:hive_locked), do: gettext("Hive, locked")
 
   ## Rich text
 
   @doc """
   The rich text of a reading or of a sentence built from data: binaries, `{:b, rich}`,
-  `{:m, mono}` and `{:code, chip}`. Everything is interpolated, so everything is escaped.
+  `{:m, mono}`, `{:code, chip}`, `{:bad, rich}` (the denied hue), `{:link, path, rich}`
+  and `{:term, word, standard}` (`CoreComponents.term/1`). A translated sentence becomes
+  rich text with `ApiaryWeb.RichText.rich_gettext/2`. Everything is interpolated, so
+  everything is escaped.
   """
   attr :text, :any, required: true
 
@@ -202,6 +207,21 @@ defmodule ApiaryWeb.PolicyComponents do
   def rich(%{text: {:code, code}} = assigns) do
     assigns = assign(assigns, :code, code)
     ~H|<code class="q-rule">{@code}</code>|
+  end
+
+  def rich(%{text: {:bad, inner}} = assigns) do
+    assigns = assign(assigns, :inner, inner)
+    ~H|<span class="q-bad"><.rich text={@inner} /></span>|
+  end
+
+  def rich(%{text: {:link, navigate, inner}} = assigns) do
+    assigns = assign(assigns, navigate: navigate, inner: inner)
+    ~H|<.link navigate={@navigate} class="q-link"><.rich text={@inner} /></.link>|
+  end
+
+  def rich(%{text: {:term, word, standard}} = assigns) do
+    assigns = assign(assigns, word: word, standard: standard)
+    ~H|<.term word={@word} standard={@standard} class="q-tip-wide" />|
   end
 
   def rich(%{text: parts} = assigns) when is_list(parts) do
@@ -262,7 +282,7 @@ defmodule ApiaryWeb.PolicyComponents do
   def mode_switch(assigns) do
     ~H"""
     <section class="grid gap-2.5" aria-labelledby={"#{@id}-h"}>
-      <h2 id={"#{@id}-h"} class="sr-only">Mode</h2>
+      <h2 id={"#{@id}-h"} class="sr-only">{gettext("Mode")}</h2>
       <div
         id={@id}
         class="q-mode"
@@ -274,10 +294,14 @@ defmodule ApiaryWeb.PolicyComponents do
         <button
           :for={
             {mode, name, icon, sentence} <- [
-              {"observe", "Observe", "hero-eye-micro",
-               "Records every connection and denies only what a deny rule names. A host no rule names is let through, and the record says so."},
-              {"enforce", "Enforce", "hero-shield-exclamation-micro",
-               "Denies a connection no rule allows, and records the denial. With no allow rule, a run reaches nothing."}
+              {"observe", gettext("Observe"), "hero-eye-micro",
+               gettext(
+                 "Records every connection and denies only what a deny rule names. A host no rule names is let through, and the record says so."
+               )},
+              {"enforce", gettext("Enforce"), "hero-shield-exclamation-micro",
+               gettext(
+                 "Denies a connection no rule allows, and records the denial. With no allow rule, a run reaches nothing."
+               )}
             ]
           }
           id={"#{@id}-#{mode}"}
@@ -303,90 +327,159 @@ defmodule ApiaryWeb.PolicyComponents do
           <span class="q-mode-dot" aria-hidden="true"></span>
           <span class="q-mode-h">
             <.icon name={icon} class="size-4 text-faint" />{name}
-            <.badge :if={@mode == mode}>Hive default</.badge>
+            <.badge :if={@mode == mode}>{gettext("Hive default")}</.badge>
           </span>
           <span id={"#{@id}-#{mode}-p"} class="q-mode-p">{sentence}</span>
           <span :if={@mode == mode && (@fact || !@served)} id={"#{@id}-fact"} class="q-mode-fact">
             <.mode_fact
               fact={if @served, do: @fact, else: :unserved}
-              tail={if @own != [], do: ", in the #{targets(@following)} that follow it", else: ""}
+              following={if @own != [], do: @following}
             />
           </span>
         </button>
       </div>
       <p id={"#{@id}-under"} class="text-[12.5px]/[18px] text-faint">
-        This is the hive's default. A repository follows it unless an owner sets a mode of its own:
-        <span :if={@own == []}>none does.</span>
-        <span :if={@own != []}>
-          <.link navigate="/hive/policy/targets?mode=own" class="q-link">{own_count(@own, @following)}</.link>{own_modes(
-            @own
-          )}
-        </span>
-        A wall's own refusals (the machine's address, a path that reads two ways) hold in either mode.
-        <span :if={!@can_edit} id={"#{@id}-owners"}>Only an owner sets a mode.</span>
+        {gettext("This is the hive's default.")}
+        <.rich text={own_sentence(@own, @following)} />
+        {gettext(
+          "A wall's own refusals (the machine's address, a path that reads two ways) hold in either mode."
+        )}
+        <span :if={!@can_edit} id={"#{@id}-owners"}>{gettext("Only an owner sets a mode.")}</span>
       </p>
     </section>
     """
   end
 
-  defp targets(1), do: "1 repository"
-  defp targets(n), do: "#{n} repositories"
+  # Whether the targets follow the default: a whole sentence per case, the count a link to
+  # the targets that set their own.
+  defp own_sentence([], _following),
+    do: [gettext("A target follows it unless an owner sets a mode of its own: none does.")]
 
-  defp own_count([_one], following), do: "1 of #{targets(following + 1)} does"
+  defp own_sentence([mode], following) do
+    own =
+      {:link, "/hive/policy/targets?mode=own",
+       ngettext("1 of %{count} target does", "1 of %{count} targets does", following + 1)}
 
-  defp own_count(own, following),
-    do: "#{length(own)} of #{targets(following + length(own))} do"
+    if mode == "observe",
+      do:
+        rich_gettext(
+          "A target follows it unless an owner sets a mode of its own: %{own}, and observes.",
+          own: own
+        ),
+      else:
+        rich_gettext(
+          "A target follows it unless an owner sets a mode of its own: %{own}, and enforces.",
+          own: own
+        )
+  end
 
-  defp own_modes([mode]), do: ", and #{mode}s."
+  defp own_sentence(modes, following) do
+    observe = Enum.count(modes, &(&1 == "observe"))
+    enforce = length(modes) - observe
 
-  defp own_modes(own) do
-    observe = Enum.count(own, &(&1 == "observe"))
-    enforce = length(own) - observe
+    own =
+      {:link, "/hive/policy/targets?mode=own",
+       ngettext(
+         "%{number} of %{count} target do",
+         "%{number} of %{count} targets do",
+         following + length(modes),
+         number: length(modes)
+       )}
 
     cond do
-      enforce == 0 -> ", and observe."
-      observe == 0 -> ", and enforce."
-      true -> ": #{observe} #{verb(observe, "observe")}, #{enforce} #{verb(enforce, "enforce")}."
+      enforce == 0 ->
+        rich_gettext(
+          "A target follows it unless an owner sets a mode of its own: %{own}, and observe.",
+          own: own
+        )
+
+      observe == 0 ->
+        rich_gettext(
+          "A target follows it unless an owner sets a mode of its own: %{own}, and enforce.",
+          own: own
+        )
+
+      true ->
+        rich_gettext(
+          "A target follows it unless an owner sets a mode of its own: %{own}: %{observe}, %{enforce}.",
+          own: own,
+          observe: ngettext("%{count} observes", "%{count} observe", observe),
+          enforce: ngettext("%{count} enforces", "%{count} enforce", enforce)
+        )
     end
   end
 
-  defp verb(1, word), do: word <> "s"
-  defp verb(_n, word), do: word
-
   attr :fact, :any, required: true
-  attr :tail, :string, default: ""
+  attr :following, :integer, default: nil, doc: "the targets that follow, when some do not"
 
   defp mode_fact(%{fact: :loading} = assigns) do
     ~H|<span class="skeleton q-skel inline-block w-64 align-middle"></span>|
   end
 
   defp mode_fact(%{fact: :unserved} = assigns) do
-    ~H"Not served yet: it applies from the first change here."
+    ~H"""
+    {pgettext("plain", "Not served yet: it applies from the first change here.")}
+    """
   end
 
   defp mode_fact(%{fact: :none} = assigns) do
-    ~H"No run has reached out in the last 7 days."
+    ~H"""
+    {gettext("No run has reached out in the last 7 days.")}
+    """
   end
 
   defp mode_fact(%{fact: %{denied: _}} = assigns) do
     ~H"""
-    In the last 7 days it denied <b>{RunComponents.delimited(@fact.denied)}</b>
-    {if @fact.denied == 1, do: "attempt", else: "attempts"} to
-    <b>{RunComponents.delimited(@fact.destinations)}</b>
-    {if @fact.destinations == 1, do: "destination", else: "destinations"}.
-    <.link navigate="/hive/connections?decision=denied&since=7d" class="q-link">See them</.link>
+    <.rich text={denied_sentence(@fact)} />
+    <.link navigate="/hive/connections?decision=denied&since=7d" class="q-link">
+      {gettext("See them")}
+    </.link>
     """
   end
 
   defp mode_fact(%{fact: %{uncovered: _}} = assigns) do
     ~H"""
-    In the last 7 days <b>{RunComponents.delimited(@fact.uncovered)}</b>
-    {if @fact.uncovered == 1, do: "attempt", else: "attempts"} to
-    <b>{RunComponents.delimited(@fact.destinations)}</b>
-    {if @fact.destinations == 1, do: "destination", else: "destinations"} had no rule{@tail}. Enforce would deny them.
-    <.link navigate="/hive/connections?since=7d" class="q-link">See them</.link>
+    <.rich text={uncovered_sentence(@fact, @following)} />
+    {gettext("Enforce would deny them.")}
+    <.link navigate="/hive/connections?since=7d" class="q-link">{gettext("See them")}</.link>
     """
   end
+
+  defp denied_sentence(fact) do
+    rich_gettext("In the last 7 days it denied %{attempts} to %{destinations}.",
+      attempts: attempts(fact.denied),
+      destinations: destinations(fact.destinations)
+    )
+  end
+
+  defp uncovered_sentence(fact, nil) do
+    rich_gettext("In the last 7 days %{attempts} to %{destinations} had no rule.",
+      attempts: attempts(fact.uncovered),
+      destinations: destinations(fact.destinations)
+    )
+  end
+
+  defp uncovered_sentence(fact, following) do
+    rich_ngettext(
+      "In the last 7 days %{attempts} to %{destinations} had no rule, in the %{count} target that follows it.",
+      "In the last 7 days %{attempts} to %{destinations} had no rule, in the %{count} targets that follow it.",
+      following,
+      attempts: attempts(fact.uncovered),
+      destinations: destinations(fact.destinations)
+    )
+  end
+
+  defp attempts(n),
+    do:
+      rich_ngettext("%{number} attempt", "%{number} attempts", n,
+        number: {:b, RunComponents.delimited(n)}
+      )
+
+  defp destinations(n),
+    do:
+      rich_ngettext("%{number} destination", "%{number} destinations", n,
+        number: {:b, RunComponents.delimited(n)}
+      )
 
   ## pd2a. Target mode
 
@@ -408,7 +501,7 @@ defmodule ApiaryWeb.PolicyComponents do
     ~H"""
     <section id={@id} class="q-sect q-rmode-sect" aria-labelledby={"#{@id}-h"}>
       <div class="q-rmode">
-        <h2 id={"#{@id}-h"}>Mode</h2>
+        <h2 id={"#{@id}-h"}>{gettext("Mode")}</h2>
         <div
           id={"#{@id}-radios"}
           class="q-seg q-rmode-seg"
@@ -420,9 +513,9 @@ defmodule ApiaryWeb.PolicyComponents do
           <button
             :for={
               {setting, label} <- [
-                {"follow", "Follow the hive"},
-                {"observe", "Observe"},
-                {"enforce", "Enforce"}
+                {"follow", gettext("Follow the hive")},
+                {"observe", gettext("Observe")},
+                {"enforce", gettext("Enforce")}
               ]
             }
             id={"#{@id}-#{setting}"}
@@ -440,24 +533,41 @@ defmodule ApiaryWeb.PolicyComponents do
           </button>
         </div>
         <p id={"#{@id}-effect"} class="q-rmode-effect">
-          In effect: <b>{@effective}</b>,
-          <span :if={@setting == "follow"}>the hive's default. It changes when the hive's does.</span><span :if={
-            @setting != "follow"
-          }>this repository's own. The hive's default is {@hive_default}.</span>
-          <span :if={!@can_edit} id={"#{@id}-owners"}>Only an owner sets a mode.</span>
+          <.rich text={in_effect_sentence(@setting, @effective, @hive_default)} />
+          <span :if={!@can_edit} id={"#{@id}-owners"}>{gettext("Only an owner sets a mode.")}</span>
         </p>
       </div>
       <div :if={@effective == "observe" && @locked_denies != []} class="px-4 pb-3">
         <.notice kind={:info}>
           <span id={"#{@id}-locked-note"}>
-            <b>This repository observes: the locked deny still holds.</b>
-            The locked deny <code :for={host <- @locked_denies} class="q-rule mr-1">{host}</code>
-            is denied in either mode, and under observe it is the only thing denied here: every other host is let through and recorded. It holds whatever mode this repository is in.
+            <b>{gettext("This target observes: the locked deny still holds.")}</b>
+            <.rich text={locked_deny_sentence(@locked_denies)} />
+            {gettext("It holds whatever mode this target is in.")}
           </span>
         </.notice>
       </div>
     </section>
     """
+  end
+
+  defp in_effect_sentence("follow", effective, _hive_default),
+    do:
+      rich_gettext("In effect: %{mode}, the hive's default. It changes when the hive's does.",
+        mode: {:b, effective}
+      )
+
+  defp in_effect_sentence(_setting, effective, hive_default),
+    do:
+      rich_gettext("In effect: %{mode}, this target's own. The hive's default is %{default}.",
+        mode: {:b, effective},
+        default: hive_default
+      )
+
+  defp locked_deny_sentence(hosts) do
+    rich_gettext(
+      "The locked deny %{hosts} is denied in either mode, and under observe it is the only thing denied here: every other host is let through and recorded.",
+      hosts: hosts |> Enum.map(&{:code, &1}) |> Enum.intersperse(" ")
+    )
   end
 
   ## pd3. Rule composer
@@ -472,7 +582,10 @@ defmodule ApiaryWeb.PolicyComponents do
   attr :scope, :atom, required: true, values: [:hive, :target]
   attr :reading, :map, default: nil
   attr :queued, :integer, default: 0, doc: "pasted hosts still to add"
-  attr :host_placeholder, :string, default: "api.example or *.internal.example"
+
+  attr :host_placeholder, :string,
+    default: nil,
+    doc: "nil says \"api.example or *.internal.example\""
 
   def rule_composer(assigns) do
     reading =
@@ -492,7 +605,11 @@ defmodule ApiaryWeb.PolicyComponents do
       for={@form}
       id={@id}
       class="q-composer"
-      aria-label={if @scope == :hive, do: "Add a host rule", else: "Add a rule for this repository"}
+      aria-label={
+        if @scope == :hive,
+          do: gettext("Add a host rule"),
+          else: gettext("Add a rule for this target")
+      }
       phx-change="composer_change"
       phx-submit="composer_save"
       phx-hook="RuleComposer"
@@ -500,13 +617,13 @@ defmodule ApiaryWeb.PolicyComponents do
     >
       <input type="hidden" name={@form[:action].name} value={@form[:action].value} />
       <input type="hidden" name={@form[:every].name} value={@form[:every].value} />
-      <div class="q-seg q-composer-seg" role="group" aria-label="Action">
+      <div class="q-seg q-composer-seg" role="group" aria-label={gettext("Action")}>
         <button
           type="button"
           aria-pressed={to_string(!@deny?)}
           phx-click={JS.push("composer_action", value: %{action: "allow"})}
         >
-          Allow
+          {gettext("Allow")}
         </button>
         <button
           type="button"
@@ -514,18 +631,18 @@ defmodule ApiaryWeb.PolicyComponents do
           aria-pressed={to_string(@deny?)}
           phx-click={JS.push("composer_action", value: %{action: "deny"})}
         >
-          Deny
+          {gettext("Deny")}
         </button>
       </div>
       <label>
-        <span class="sr-only">Host</span>
+        <span class="sr-only">{gettext("Host")}</span>
         <input
           type="text"
           id={"#{@id}-host"}
           name={@form[:host].name}
           value={@form[:host].value}
           class="q-input q-input-m"
-          placeholder={@host_placeholder}
+          placeholder={@host_placeholder || gettext("api.example or *.internal.example")}
           spellcheck="false"
           autocomplete="off"
           autocapitalize="off"
@@ -537,7 +654,7 @@ defmodule ApiaryWeb.PolicyComponents do
         />
       </label>
       <label>
-        <span class="sr-only">Paths, optional</span>
+        <span class="sr-only">{gettext("Paths, optional")}</span>
         <input
           type="text"
           id={"#{@id}-paths"}
@@ -546,9 +663,9 @@ defmodule ApiaryWeb.PolicyComponents do
           class="q-input q-input-m"
           placeholder={
             cond do
-              @deny? -> "A deny is of the whole host"
-              @every? -> "Every path"
-              true -> "Every path, or /v1/* /health"
+              @deny? -> gettext("A deny is of the whole host")
+              @every? -> gettext("Every path")
+              true -> gettext("Every path, or /v1/* /health")
             end
           }
           spellcheck="false"
@@ -563,7 +680,8 @@ defmodule ApiaryWeb.PolicyComponents do
         />
       </label>
       <.button type="submit" variant="primary" id={"#{@id}-add"} disabled={!@ready?}>
-        {@reading.button || if(@scope == :hive, do: "Add rule", else: "Add for this repository")}
+        {@reading.button ||
+          if(@scope == :hive, do: gettext("Add rule"), else: gettext("Add for this target"))}
       </.button>
       <.reading_line id={"#{@id}-reads"} reading={@reading} queued={@queued} />
     </.form>
@@ -587,20 +705,20 @@ defmodule ApiaryWeb.PolicyComponents do
       for={@form}
       id={@id}
       class={["q-composer q-composer-cred", @class]}
-      aria-label="Add a credential"
+      aria-label={gettext("Add a credential")}
       phx-change="credential_change"
       phx-submit="credential_save"
       autocomplete="off"
     >
       <label>
-        <span class="sr-only">Name</span>
+        <span class="sr-only">{gettext("Name")}</span>
         <input
           type="text"
           id={"#{@id}-name"}
           name={@form[:name].name}
           value={@form[:name].value}
           class="q-input q-input-m"
-          placeholder="Name, such as forge-token"
+          placeholder={gettext("Name, such as forge-token")}
           spellcheck="false"
           autocomplete="off"
           autocapitalize="off"
@@ -611,14 +729,14 @@ defmodule ApiaryWeb.PolicyComponents do
         />
       </label>
       <label>
-        <span class="sr-only">Argument, optional</span>
+        <span class="sr-only">{gettext("Argument, optional")}</span>
         <input
           type="text"
           id={"#{@id}-argument"}
           name={@form[:argument].name}
           value={@form[:argument].value}
           class="q-input q-input-m"
-          placeholder="Argument (optional), such as acme/shop"
+          placeholder={gettext("Argument (optional), such as acme/shop")}
           spellcheck="false"
           autocomplete="off"
           autocapitalize="off"
@@ -629,7 +747,7 @@ defmodule ApiaryWeb.PolicyComponents do
         />
       </label>
       <.button type="submit" id={"#{@id}-add"} disabled={!@ready?}>
-        {@reading.button || "Add credential"}
+        {@reading.button || gettext("Add credential")}
       </.button>
       <.reading_line
         :if={@reading.kind in [:error, :note, :refusal]}
@@ -673,7 +791,7 @@ defmodule ApiaryWeb.PolicyComponents do
         <.rich text={@reading.text} />
         <.reading_act :if={@reading.fix} act={@reading.fix} />
         <span :if={@queued > 0} id={"#{@id}-queued"} class="q-reads-queued">
-          {@queued} more to add
+          {ngettext("%{count} more to add", "%{count} more to add", @queued)}
         </span>
       </span>
     </div>
@@ -722,13 +840,15 @@ defmodule ApiaryWeb.PolicyComponents do
       <table class="table q-rules" role="table">
         <thead>
           <tr role="row">
-            <th role="columnheader">Rule</th>
-            <th role="columnheader">Paths</th>
-            <th :if={@scope == :target} role="columnheader">Comes from</th>
-            <th :if={@seen?} role="columnheader" class="q-num">Last 7 days</th>
-            <th :if={@scope == :hive} role="columnheader">Added</th>
+            <th role="columnheader">{gettext("Rule")}</th>
+            <th role="columnheader">{gettext("Paths")}</th>
+            <th :if={@scope == :target} role="columnheader">{gettext("Comes from")}</th>
+            <th :if={@seen?} role="columnheader" class="q-num">{gettext("Last 7 days")}</th>
+            <th :if={@scope == :hive} role="columnheader">{gettext("Added")}</th>
             <th role="columnheader">
-              <span class="sr-only">{if @scope == :hive, do: "Lock and actions", else: "Actions"}</span>
+              <span class="sr-only">
+                {if @scope == :hive, do: gettext("Lock and actions"), else: gettext("Actions")}
+              </span>
             </th>
           </tr>
         </thead>
@@ -792,7 +912,7 @@ defmodule ApiaryWeb.PolicyComponents do
         <div class="q-rcell">
           <.rule_mark action={@rule.action} />
           <.host host={@rule.host} />
-          <span :if={@fresh} class="q-newdot">New in v{@fresh}</span>
+          <span :if={@fresh} class="q-newdot">{gettext("New in v%{version}", version: @fresh)}</span>
         </div>
       </td>
       <td role="cell" class="q-c-paths"><.paths paths={@rule.paths} action={@rule.action} /></td>
@@ -824,7 +944,7 @@ defmodule ApiaryWeb.PolicyComponents do
           <.icon :if={beaten.kind == :lock} name="hero-lock-closed-micro" class="size-3" />
           <b>{beaten_lead(beaten)}</b>
           <s>
-            <span class="sr-only">not in force: </span>{beaten.action} {beaten.host}
+            <span class="sr-only">{gettext("not in force:")} </span>{beaten.action} {beaten.host}
           </s>
           <span>{beaten_tail(beaten)}</span>
           <button
@@ -832,9 +952,9 @@ defmodule ApiaryWeb.PolicyComponents do
             type="button"
             class="q-link"
             phx-click={JS.push("row_act", value: %{id: beaten.id, act: "remove"})}
-            aria-label={"Remove this repository's rule for #{beaten.host}"}
+            aria-label={gettext("Remove this target's rule for %{host}", host: beaten.host)}
           >
-            Remove it
+            {gettext("Remove it")}
           </button>
         </div>
       </td>
@@ -842,31 +962,46 @@ defmodule ApiaryWeb.PolicyComponents do
     """
   end
 
-  defp beaten_lead(%{kind: :lock}), do: "Holds against this repository's rule"
-  defp beaten_lead(%{kind: :override}), do: "Overrides the hive's rule"
-  defp beaten_lead(%{kind: :cover, source: :hive}), do: "Covers the hive's rule"
-  defp beaten_lead(%{kind: :cover}), do: "Covers this repository's rule"
+  defp beaten_lead(%{kind: :lock}), do: gettext("Holds against this target's rule")
+  defp beaten_lead(%{kind: :override}), do: gettext("Overrides the hive's rule")
+  defp beaten_lead(%{kind: :cover, source: :hive}), do: gettext("Covers the hive's rule")
+  defp beaten_lead(%{kind: :cover}), do: gettext("Covers this target's rule")
 
-  defp beaten_tail(%{kind: :lock} = beaten),
-    do: "#{who_when_words(beaten)} It is not in force."
+  defp beaten_tail(%{kind: :lock, by: by, at: %DateTime{} = at}) when is_binary(by),
+    do: gettext("%{by} · %{date}. It is not in force.", by: by, date: day(at))
 
-  defp beaten_tail(%{kind: :override, action: "allow"} = beaten),
-    do: "Disabled here#{by_words(beaten)}. Other repositories keep it."
+  defp beaten_tail(%{kind: :lock, at: %DateTime{} = at}),
+    do: gettext("%{date}. It is not in force.", date: day(at))
 
-  defp beaten_tail(%{kind: :override} = beaten), do: "Allowed here#{by_words(beaten)}."
-  defp beaten_tail(%{kind: :cover}), do: "It changes nothing while this rule stands."
+  defp beaten_tail(%{kind: :lock}), do: gettext("It is not in force.")
 
-  defp who_when_words(%{by: by, at: %DateTime{} = at}) when is_binary(by),
-    do: "#{by} · #{day(at)}."
+  defp beaten_tail(%{kind: :override, action: "allow"} = beaten) do
+    case beaten do
+      %{winner_by: by, winner_at: %DateTime{} = at} when is_binary(by) ->
+        gettext("Disabled here by %{by} · %{date}. Other targets keep it.", by: by, date: day(at))
 
-  defp who_when_words(%{at: %DateTime{} = at}), do: "#{day(at)}."
-  defp who_when_words(_beaten), do: ""
+      %{winner_at: %DateTime{} = at} ->
+        gettext("Disabled here · %{date}. Other targets keep it.", date: day(at))
 
-  defp by_words(%{winner_by: by, winner_at: %DateTime{} = at}) when is_binary(by),
-    do: " by #{by} · #{day(at)}"
+      _beaten ->
+        gettext("Disabled here. Other targets keep it.")
+    end
+  end
 
-  defp by_words(%{winner_at: %DateTime{} = at}), do: " · #{day(at)}"
-  defp by_words(_beaten), do: ""
+  defp beaten_tail(%{kind: :override} = beaten) do
+    case beaten do
+      %{winner_by: by, winner_at: %DateTime{} = at} when is_binary(by) ->
+        gettext("Allowed here by %{by} · %{date}.", by: by, date: day(at))
+
+      %{winner_at: %DateTime{} = at} ->
+        gettext("Allowed here · %{date}.", date: day(at))
+
+      _beaten ->
+        gettext("Allowed here.")
+    end
+  end
+
+  defp beaten_tail(%{kind: :cover}), do: gettext("It changes nothing while this rule stands.")
 
   @doc "A host in mono; the leading `*.` of a suffix in accent, with what it means on hover."
   attr :host, :string, required: true
@@ -879,8 +1014,10 @@ defmodule ApiaryWeb.PolicyComponents do
     <span
       class={["q-host tooltip q-tip-wide", @class]}
       tabindex="0"
-      aria-description={"Every host below #{@suffix}, and not #{@suffix} itself."}
-      data-tip={"Every host below #{@suffix}, and not #{@suffix} itself."}
+      aria-description={
+        gettext("Every host below %{suffix}, and not %{suffix} itself.", suffix: @suffix)
+      }
+      data-tip={gettext("Every host below %{suffix}, and not %{suffix} itself.", suffix: @suffix)}
     ><span class="q-host-w">*.</span>{@suffix}</span>
     """
   end
@@ -892,18 +1029,25 @@ defmodule ApiaryWeb.PolicyComponents do
   attr :paths, :any, required: true
   attr :action, :string, default: "allow"
 
-  defp paths(%{action: "deny"} = assigns), do: ~H|<span class="q-every">every path</span>|
-  defp paths(%{paths: nil} = assigns), do: ~H|<span class="q-every">every path</span>|
+  defp paths(%{action: "deny"} = assigns),
+    do: ~H|<span class="q-every">{gettext("every path")}</span>|
+
+  defp paths(%{paths: nil} = assigns),
+    do: ~H|<span class="q-every">{gettext("every path")}</span>|
 
   defp paths(%{paths: []} = assigns) do
     ~H"""
     <span
       class="q-every tooltip q-tip-wide"
       tabindex="0"
-      aria-description="The host is listed with no path: every request to it is denied under enforce."
-      data-tip="The host is listed with no path: every request to it is denied under enforce."
+      aria-description={
+        gettext("The host is listed with no path: every request to it is denied under enforce.")
+      }
+      data-tip={
+        gettext("The host is listed with no path: every request to it is denied under enforce.")
+      }
     >
-      no path
+      {gettext("no path")}
     </span>
     """
   end
@@ -915,28 +1059,37 @@ defmodule ApiaryWeb.PolicyComponents do
   end
 
   attr :seen, :any, required: true
-  attr :noun, :string, default: nil
+  attr :noun, :atom, default: nil, values: [nil, :request]
 
   defp seen(%{seen: :loading} = assigns) do
     ~H|<span class="skeleton q-skel inline-block w-16 align-middle" aria-hidden="true"></span>|
   end
 
   defp seen(%{seen: %{allowed: 0, denied: 0}} = assigns) do
-    ~H|<span class="q-zero">not seen</span>|
+    ~H|<span class="q-zero">{gettext("not seen")}</span>|
   end
 
-  defp seen(%{noun: noun} = assigns) when is_binary(noun) do
-    ~H|<span class="text-muted">{RunComponents.count_noun(@seen.allowed + @seen.denied, @noun)}</span>|
+  defp seen(%{noun: :request} = assigns) do
+    ~H"""
+    <span class="text-muted">{requests(@seen.allowed + @seen.denied)}</span>
+    """
   end
 
   defp seen(assigns) do
     ~H"""
-    <span :if={@seen.allowed > 0} class="text-muted">{RunComponents.delimited(@seen.allowed)} allowed</span>
+    <span :if={@seen.allowed > 0} class="text-muted">
+      {gettext("%{number} allowed", number: RunComponents.delimited(@seen.allowed))}
+    </span>
     <span :if={@seen.allowed > 0 && @seen.denied > 0} class="text-muted"> · </span>
-    <span :if={@seen.denied > 0} class="q-bad">{RunComponents.delimited(@seen.denied)} denied</span>
-    <span class="sr-only"> in the last 7 days</span>
+    <span :if={@seen.denied > 0} class="q-bad">
+      {gettext("%{number} denied", number: RunComponents.delimited(@seen.denied))}
+    </span>
+    <span class="sr-only">{gettext("in the last 7 days")}</span>
     """
   end
+
+  defp requests(n),
+    do: ngettext("%{number} request", "%{number} requests", n, number: RunComponents.delimited(n))
 
   attr :by, :string, default: nil
   attr :at, :any, default: nil
@@ -961,11 +1114,11 @@ defmodule ApiaryWeb.PolicyComponents do
       type="button"
       class="q-lockbtn tooltip tooltip-left q-tip-wide"
       aria-pressed={to_string(@rule.locked)}
-      aria-label={"Lock #{@rule.host}"}
+      aria-label={gettext("Lock %{host}", host: @rule.host)}
       data-tip={
         if @rule.locked,
-          do: "Locked: no repository can override it. Select to unlock.",
-          else: "Lock: hold this rule against every repository"
+          do: gettext("Locked: no target can override it. Select to unlock."),
+          else: gettext("Lock: hold this rule against every target")
       }
       phx-click={JS.push("lock_toggle", value: %{id: @rule.id})}
     >
@@ -973,7 +1126,7 @@ defmodule ApiaryWeb.PolicyComponents do
         name={if @rule.locked, do: "hero-lock-closed-micro", else: "hero-lock-open-micro"}
         class="size-3"
       />
-      <span :if={@rule.locked}>Locked</span>
+      <span :if={@rule.locked}>{gettext("Locked")}</span>
     </button>
     """
   end
@@ -984,10 +1137,10 @@ defmodule ApiaryWeb.PolicyComponents do
       id={"#{@id}-lock"}
       class="q-locked tooltip tooltip-left q-tip-wide"
       tabindex="0"
-      aria-description={@rule.locked_tip || "Locked. Only an owner can change or unlock it."}
-      data-tip={@rule.locked_tip || "Locked. Only an owner can change or unlock it."}
+      aria-description={@rule.locked_tip || gettext("Locked. Only an owner can change or unlock it.")}
+      data-tip={@rule.locked_tip || gettext("Locked. Only an owner can change or unlock it.")}
     >
-      <.icon name="hero-lock-closed-micro" class="size-3 text-muted" />Locked
+      <.icon name="hero-lock-closed-micro" class="size-3 text-muted" />{gettext("Locked")}
     </span>
     """
   end
@@ -1012,7 +1165,7 @@ defmodule ApiaryWeb.PolicyComponents do
         class="btn btn-ghost btn-xs btn-square"
         aria-haspopup="menu"
         aria-expanded="false"
-        aria-label={"Actions for #{@rule.host}"}
+        aria-label={gettext("Actions for %{host}", host: @rule.host)}
         phx-mounted={JS.ignore_attributes(["aria-expanded"])}
       >
         <.icon name="hero-ellipsis-horizontal-micro" class="size-4" />
@@ -1025,7 +1178,7 @@ defmodule ApiaryWeb.PolicyComponents do
             data-menu-close
             phx-click={JS.push("edit_paths", value: %{id: @rule.id})}
           >
-            <.icon name="hero-pencil-square-micro" class="size-4" /> Edit paths
+            <.icon name="hero-pencil-square-micro" class="size-4" /> {gettext("Edit paths")}
           </button>
         </li>
         <li role="none">
@@ -1039,7 +1192,9 @@ defmodule ApiaryWeb.PolicyComponents do
               name={if @rule.action == "allow", do: "hero-no-symbol-micro", else: "hero-check-micro"}
               class="size-4"
             />
-            {if @rule.action == "allow", do: "Change to deny", else: "Change to allow"}
+            {if @rule.action == "allow",
+              do: gettext("Change to deny"),
+              else: gettext("Change to allow")}
           </button>
         </li>
         <li :if={@can_lock} role="none">
@@ -1053,7 +1208,7 @@ defmodule ApiaryWeb.PolicyComponents do
               name={if @rule.locked, do: "hero-lock-open-micro", else: "hero-lock-closed-micro"}
               class="size-4"
             />
-            {if @rule.locked, do: "Unlock", else: "Lock"}
+            {if @rule.locked, do: gettext("Unlock"), else: gettext("Lock")}
           </button>
         </li>
         <li class="menu-divider" role="separator"></li>
@@ -1065,7 +1220,7 @@ defmodule ApiaryWeb.PolicyComponents do
             data-menu-close
             phx-click={JS.push("remove", value: %{id: @rule.id})}
           >
-            <.icon name="hero-trash-micro" class="size-4" /> Remove
+            <.icon name="hero-trash-micro" class="size-4" /> {gettext("Remove")}
           </button>
         </li>
       </ul>
@@ -1080,15 +1235,15 @@ defmodule ApiaryWeb.PolicyComponents do
     ~H"""
     <span
       class="tooltip tooltip-left q-tip-wide"
-      data-tip="A locked hive rule. It is changed on the hive's policy page, by an owner."
+      data-tip={gettext("A locked hive rule. It is changed on the hive's policy page, by an owner.")}
     >
       <.link
         id={"#{@id}-act"}
         navigate={"/hive/policy?rule=#{URI.encode_www_form(@rule.host)}"}
         class="q-link q-link-xs pr-2"
-        aria-label={"Open the hive's locked rule for #{@rule.host}"}
+        aria-label={gettext("Open the hive's locked rule for %{host}", host: @rule.host)}
       >
-        Open
+        {gettext("Open")}
       </.link>
     </span>
     """
@@ -1108,15 +1263,17 @@ defmodule ApiaryWeb.PolicyComponents do
     """
   end
 
-  defp act_word(:disable), do: "Disable here"
-  defp act_word(:allow_here), do: "Allow here"
-  defp act_word(:remove), do: "Remove"
-  defp act_word(:restore), do: "Restore"
+  defp act_word(:disable), do: gettext("Disable here")
+  defp act_word(:allow_here), do: gettext("Allow here")
+  defp act_word(:remove), do: gettext("Remove")
+  defp act_word(:restore), do: gettext("Restore")
 
-  defp act_label(:disable, host), do: "Disable #{host} for this repository"
-  defp act_label(:allow_here, host), do: "Allow #{host} for this repository"
-  defp act_label(:remove, host), do: "Remove this repository's rule for #{host}"
-  defp act_label(:restore, host), do: "Restore the hive's rule for #{host} in this repository"
+  defp act_label(:disable, host), do: gettext("Disable %{host} for this target", host: host)
+  defp act_label(:allow_here, host), do: gettext("Allow %{host} for this target", host: host)
+  defp act_label(:remove, host), do: gettext("Remove this target's rule for %{host}", host: host)
+
+  defp act_label(:restore, host),
+    do: gettext("Restore the hive's rule for %{host} in this target", host: host)
 
   @doc "The credentials of a scope as a table. Rows: `id`, `name`, `argument`, `source`, `by`, `at`, `can_change`."
   attr :id, :string, required: true
@@ -1133,18 +1290,18 @@ defmodule ApiaryWeb.PolicyComponents do
       <table class="table q-rules" role="table">
         <thead>
           <tr role="row">
-            <th role="columnheader">Name</th>
-            <th role="columnheader">Argument</th>
-            <th :if={@scope == :target} role="columnheader">Comes from</th>
-            <th :if={@seen?} role="columnheader" class="q-num">Last 7 days</th>
-            <th role="columnheader">Added</th>
-            <th role="columnheader"><span class="sr-only">Actions</span></th>
+            <th role="columnheader">{gettext("Name")}</th>
+            <th role="columnheader">{gettext("Argument")}</th>
+            <th :if={@scope == :target} role="columnheader">{gettext("Comes from")}</th>
+            <th :if={@seen?} role="columnheader" class="q-num">{gettext("Last 7 days")}</th>
+            <th role="columnheader">{gettext("Added")}</th>
+            <th role="columnheader"><span class="sr-only">{gettext("Actions")}</span></th>
           </tr>
         </thead>
         <tbody>
           <tr :if={@rows == []} role="row">
             <td role="cell" colspan="6" class="!whitespace-normal text-[13px] text-faint">
-              No credentials. A run that needs none runs without.
+              {gettext("No credentials. A run that needs none runs without.")}
             </td>
           </tr>
           <tr :for={row <- @rows} id={"rule-#{row.id}"} role="row" class="q-rule-row">
@@ -1152,18 +1309,18 @@ defmodule ApiaryWeb.PolicyComponents do
               <div class="q-rcell">
                 <.icon name="hero-key-micro" class="size-4 text-faint" />
                 <span class="q-host">{row.name}</span>
-                <.badge :if={row.action == "deny"} color="error">Denied</.badge>
+                <.badge :if={row.action == "deny"} color="error">{gettext("Denied")}</.badge>
               </div>
             </td>
             <td role="cell" class="q-c-paths">
               <code :if={row.argument} class="q-rule">{row.argument}</code>
-              <span :if={!row.argument} class="q-every">no argument</span>
+              <span :if={!row.argument} class="q-every">{gettext("no argument")}</span>
             </td>
             <td :if={@scope == :target} role="cell" class="q-c-src">
               <.source_chip source={row.source} />
             </td>
             <td :if={@seen?} role="cell" class="q-c-seen q-num">
-              <.seen seen={seen(@activity, row)} noun="request" />
+              <.seen seen={seen(@activity, row)} noun={:request} />
             </td>
             <td role="cell" class="q-c-by"><.who_when by={row.by} at={row.at} /></td>
             <td role="cell" class="q-c-acts">
@@ -1172,10 +1329,10 @@ defmodule ApiaryWeb.PolicyComponents do
                 id={"rule-#{row.id}-remove"}
                 type="button"
                 class="btn btn-ghost btn-xs"
-                aria-label={"Remove the credential #{row.name}"}
+                aria-label={gettext("Remove the credential %{name}", name: row.name)}
                 phx-click={JS.push("remove", value: %{id: row.id})}
               >
-                Remove
+                {gettext("Remove")}
               </button>
             </td>
           </tr>
@@ -1210,8 +1367,12 @@ defmodule ApiaryWeb.PolicyComponents do
     <.sect
       :if={@suggestions != []}
       id={@id}
-      title="Declared by the harness"
-      count={if @open == [], do: "all allowed", else: "#{length(@open)} to review"}
+      title={gettext("Declared by the harness")}
+      count={
+        if @open == [],
+          do: gettext("all allowed"),
+          else: ngettext("%{count} to review", "%{count} to review", length(@open))
+      }
     >
       <:trailing>
         <button
@@ -1221,11 +1382,16 @@ defmodule ApiaryWeb.PolicyComponents do
           class="btn btn-xs"
           phx-click="suggest_allow_all"
         >
-          {if length(@open) == 2, do: "Allow both here", else: "Allow all #{length(@open)} here"}
+          {if length(@open) == 2,
+            do: gettext("Allow both here"),
+            else: ngettext("Allow all %{count} here", "Allow all %{count} here", length(@open))}
         </button>
       </:trailing>
       <:description>
-        Hosts the runtime says it needs, from the policy applied events of this repository's latest runs. A declaration allows nothing by itself.
+        {gettext(
+          "Hosts the runtime says it needs, from the policy applied events of this target's latest runs."
+        )}
+        {gettext("A declaration allows nothing by itself.")}
       </:description>
       <div :for={suggestion <- @suggestions} id={suggestion_id(suggestion.host)} class="q-sugg-row">
         <span class="q-rcell">
@@ -1235,8 +1401,7 @@ defmodule ApiaryWeb.PolicyComponents do
           <span class="q-host truncate" title={suggestion.host}>{middle(suggestion.host)}</span>
         </span>
         <span class="q-sugg-what">
-          Declared by the <.term word="harness" standard={harness_tip()} class="q-tip-wide" />
-          in <b>{RunComponents.count_noun(suggestion.runs, "run")}</b>.
+          <.rich text={declared_sentence(suggestion.runs)} />
           <.suggestion_record suggestion={suggestion} observing={@observing} />
         </span>
         <span :if={!Map.has_key?(@allowed, suggestion.host)} class="q-sugg-acts">
@@ -1252,14 +1417,14 @@ defmodule ApiaryWeb.PolicyComponents do
               class="btn btn-xs"
               phx-click={JS.push("suggest_allow", value: %{host: suggestion.host, level: "target"})}
             >
-              Allow here
+              {gettext("Allow here")}
             </button>
             <button
               type="button"
               class="btn btn-xs"
               aria-haspopup="menu"
               aria-expanded="false"
-              aria-label={"More ways to allow #{suggestion.host}"}
+              aria-label={gettext("More ways to allow %{host}", host: suggestion.host)}
               phx-mounted={JS.ignore_attributes(["aria-expanded"])}
             >
               <.icon name="hero-chevron-down-micro" class="size-3" />
@@ -1272,7 +1437,7 @@ defmodule ApiaryWeb.PolicyComponents do
                   data-menu-close
                   phx-click={JS.push("suggest_allow", value: %{host: suggestion.host, level: "hive"})}
                 >
-                  Allow for the hive
+                  {gettext("Allow for the hive")}
                 </button>
               </li>
               <li role="none">
@@ -1282,7 +1447,7 @@ defmodule ApiaryWeb.PolicyComponents do
                   data-menu-close
                   phx-click={JS.push("composer_use", value: %{host: suggestion.host, focus: "paths"})}
                 >
-                  Allow with paths…
+                  {gettext("Allow with paths…")}
                 </button>
               </li>
             </ul>
@@ -1290,20 +1455,12 @@ defmodule ApiaryWeb.PolicyComponents do
         </span>
         <span :if={Map.has_key?(@allowed, suggestion.host)} class="q-sugg-acts">
           <span class="q-done" id={"#{suggestion_id(suggestion.host)}-done"} tabindex="-1">
-            <.icon name="hero-check-micro" class="size-3" />Allowed {allowed_where(
-              @allowed[suggestion.host]
-            )}
+            <.icon name="hero-check-micro" class="size-3" />{allowed_where(@allowed[suggestion.host])}
           </span>
         </span>
       </div>
       <:footer :if={@covered != []}>
-        <span id={"#{@id}-covered"}>
-          {covered_lead(length(@covered))}
-          <span :for={{covered, index} <- Enum.with_index(@covered, 1)}>
-            <code class="q-rule">{covered.host}</code>
-            {covered_by(covered)}{if index == length(@covered), do: ".", else: ","}
-          </span>
-        </span>
+        <span id={"#{@id}-covered"}><.rich text={covered_sentence(@covered)} /></span>
       </:footer>
     </.sect>
     """
@@ -1317,39 +1474,67 @@ defmodule ApiaryWeb.PolicyComponents do
        when is_integer(allowed) and is_integer(denied) do
     ~H"""
     <span :if={@suggestion.denied > 0} class="q-bad">
-      Denied {times(@suggestion.denied)}<span :if={@suggestion.allowed == 0}>.</span>
+      {gettext("Denied %{times}.", times: times(@suggestion.denied))}
     </span>
     <span :if={@suggestion.allowed > 0}>
-      {if @suggestion.denied > 0, do: "and let", else: "Let"} through {times(@suggestion.allowed)} with no rule.
+      {gettext("Let through %{times} with no rule.", times: times(@suggestion.allowed))}
     </span>
     <span :if={@suggestion.allowed == 0 && @suggestion.denied == 0}>
-      No run has tried to reach it in the last 7 days.
+      {gettext("No run has tried to reach it in the last 7 days.")}
     </span>
     """
   end
 
   defp suggestion_record(assigns), do: ~H""
 
-  defp times(1), do: "once"
-  defp times(n), do: "#{RunComponents.delimited(n)} times"
+  defp declared_sentence(runs) do
+    rich_gettext("Declared by the %{harness} in %{runs}.",
+      harness: {:term, gettext("harness"), harness_tip()},
+      runs:
+        {:b,
+         ngettext("%{number} run", "%{number} runs", runs, number: RunComponents.delimited(runs))}
+    )
+  end
 
-  defp covered_lead(1), do: "1 more declared host is already allowed:"
-  defp covered_lead(n), do: "#{n} more declared hosts are already allowed:"
+  defp times(1), do: gettext("once")
 
-  defp covered_by(%{host: host, by: host, source: :hive}), do: "by the hive"
-  defp covered_by(%{host: host, by: host}), do: "by this repository"
-  defp covered_by(%{by: by, source: :hive}), do: "by the hive's #{by}"
-  defp covered_by(%{by: by}), do: "by this repository's #{by}"
+  defp times(n),
+    do: ngettext("%{number} time", "%{number} times", n, number: RunComponents.delimited(n))
 
-  defp allowed_where(%{level: "hive"}), do: "for the hive"
-  defp allowed_where(_allowed), do: "here"
+  # The declared hosts already allowed, each with what allows it, in one sentence.
+  defp covered_sentence(covered) do
+    rich_ngettext(
+      "%{count} more declared host is already allowed: %{hosts}.",
+      "%{count} more declared hosts are already allowed: %{hosts}.",
+      length(covered),
+      hosts: covered |> Enum.map(&covered_by/1) |> Enum.intersperse(", ")
+    )
+  end
+
+  defp covered_by(%{host: host, by: host, source: :hive}),
+    do: rich_gettext("%{host} by the hive", host: {:code, host})
+
+  defp covered_by(%{host: host, by: host}),
+    do: rich_gettext("%{host} by this target", host: {:code, host})
+
+  defp covered_by(%{host: host, by: by, source: :hive}),
+    do: rich_gettext("%{host} by the hive's %{rule}", host: {:code, host}, rule: by)
+
+  defp covered_by(%{host: host, by: by}),
+    do: rich_gettext("%{host} by this target's %{rule}", host: {:code, host}, rule: by)
+
+  defp allowed_where(%{level: "hive"}), do: gettext("Allowed for the hive")
+  defp allowed_where(_allowed), do: gettext("Allowed here")
 
   @doc "The DOM id of a suggestion's row."
   def suggestion_id(host), do: "sg-#{:erlang.phash2(host, 4_294_967_296)}"
 
   defp harness_tip,
     do:
-      "The runtime's own needs: hosts it declares in the policy applied event. Declared hosts are reported, never allowed by that."
+      pgettext(
+        "plain",
+        "The runtime's own needs: hosts it declares in the policy applied event. Declared hosts are reported, never allowed by that."
+      )
 
   defp middle(host) when byte_size(host) > 48,
     do: String.slice(host, 0, 22) <> "…" <> String.slice(host, -22, 22)
@@ -1407,12 +1592,17 @@ defmodule ApiaryWeb.PolicyComponents do
         <.icon name="hero-chevron-right-micro" class="q-chg-chev size-3" />
         <.avatar name={@change.who} />
         <span class="q-chg-say">
-          <b>{@change.who || "Someone who has left"}</b> <.rich text={@change.sentence} />
+          <.rich text={@change.sentence} />
           <small :if={@change.origin}>{@change.origin}</small>
         </span>
         <span class="q-chg-when">
           <RunComponents.relative_time at={@change.at} />
-          <.source_chip :if={@change.hive} source={:hive} label="hive" class="q-src-xs" />
+          <.source_chip
+            :if={@change.hive}
+            source={:hive}
+            label={gettext("hive")}
+            class="q-src-xs"
+          />
         </span>
         <span class="q-chg-v">
           <.version_pill
@@ -1421,7 +1611,7 @@ defmodule ApiaryWeb.PolicyComponents do
             version={@change.version}
             digest={@change.digest}
           />
-          <span :if={!@change.version} class="q-nov">no new version</span>
+          <span :if={!@change.version} class="q-nov">{gettext("no new version")}</span>
         </span>
       </summary>
       <.policy_diff :if={@open && @diff} id={"#{@id}-diff"} diff={@diff} />
@@ -1452,14 +1642,13 @@ defmodule ApiaryWeb.PolicyComponents do
         <span>{@diff.summary}</span>
         <span class="grow"></span>
         <.link :if={@diff.navigate} navigate={@diff.navigate} class="q-link">
-          Open v{@diff.to.version}
+          {gettext("Open v%{version}", version: @diff.to.version)}
         </.link>
       </div>
       <div class="q-dpanel">
         <div>
-          <span>rules</span><span>{RunComponents.count_noun(
-            length(Enum.reject(@diff.rules, &(elem(&1, 0) == :ctx))),
-            "change"
+          <span>{gettext("rules")}</span><span>{changes(
+            Enum.count(@diff.rules, &(elem(&1, 0) != :ctx))
           )}</span>
         </div>
         <div class="q-dlines q-dlines-sem">
@@ -1469,14 +1658,20 @@ defmodule ApiaryWeb.PolicyComponents do
         </div>
       </div>
       <div :if={@diff.document} class="q-dpanel">
-        <div><span>document</span><span>application/json · {@diff.bytes} bytes</span></div>
-        <.diff_lines lines={@diff.document} label="Difference of the rendered document" />
+        <div>
+          <span>{gettext("document")}</span><span>{ngettext(
+            "application/json · %{count} byte",
+            "application/json · %{count} bytes",
+            @diff.bytes
+          )}</span>
+        </div>
+        <.diff_lines lines={@diff.document} label={gettext("Difference of the rendered document")} />
       </div>
       <div :if={!@diff.document} class="q-dpanel">
-        <div><span>document</span><span>unchanged</span></div>
+        <div><span>{gettext("document")}</span><span>{gettext("unchanged")}</span></div>
         <div class="q-dlines q-dlines-sem">
           <.diff_line kind={:ctx}>
-            The rendered bytes stayed the same, so no version was made.
+            {gettext("The rendered bytes stayed the same, so no version was made.")}
           </.diff_line>
         </div>
       </div>
@@ -1504,13 +1699,16 @@ defmodule ApiaryWeb.PolicyComponents do
     ~H"""
     <div class={[@kind == :add && "q-add", @kind == :del && "q-del", @kind == :ctx && "q-ctx"]}>
       <i aria-hidden="true">{gutter(@kind)}</i>
-      <span><span :if={@kind == :add} class="sr-only">Added: </span><span
+      <span><span :if={@kind == :add} class="sr-only">{gettext("Added:")}</span><span
         :if={@kind == :del}
         class="sr-only"
-      >Removed: </span>{render_slot(@inner_block)}</span>
+      >{gettext("Removed:")} </span>{render_slot(@inner_block)}</span>
     </div>
     """
   end
+
+  defp changes(n),
+    do: ngettext("%{number} change", "%{number} changes", n, number: RunComponents.delimited(n))
 
   defp gutter(:add), do: "+"
   defp gutter(:del), do: "−"
@@ -1579,8 +1777,8 @@ defmodule ApiaryWeb.PolicyComponents do
 
   defp day_bar(%DateTime{} = at, %DateTime{} = now) do
     case Date.diff(DateTime.to_date(now), DateTime.to_date(at)) do
-      0 -> "Today"
-      1 -> "Yesterday"
+      0 -> gettext("Today")
+      1 -> gettext("Yesterday")
       _ -> Calendar.strftime(at, "%-d %b %Y")
     end
   end

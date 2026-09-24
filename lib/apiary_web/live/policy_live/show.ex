@@ -15,8 +15,10 @@ defmodule ApiaryWeb.PolicyLive.Show do
   """
   use ApiaryWeb, :live_view
 
+  import ApiaryWeb.CoreComponents, except: [relative_time: 1, relative_time: 2, rich: 1, rich: 2]
   import ApiaryWeb.PolicyComponents
   import ApiaryWeb.PolicyLive.Views
+  import ApiaryWeb.RichText
 
   alias Apiary.Policy
   alias Apiary.Policy.Grammar
@@ -40,7 +42,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
     socket =
       if connected?(socket),
         do: socket |> load() |> assign(:loaded, true),
-        else: assign(socket, loaded: false, page_title: "Policy")
+        else: assign(socket, loaded: false, page_title: gettext("Policy"))
 
     {:ok, socket}
   end
@@ -150,19 +152,19 @@ defmodule ApiaryWeb.PolicyLive.Show do
     ruled_host = Common.rule_param(params["rule"])
 
     socket
-    |> assign(show: show, ruled_host: ruled_host, page_title: "Policy")
+    |> assign(show: show, ruled_host: ruled_host, page_title: gettext("Policy"))
     |> then(&if(ruled_host, do: push_event(&1, "policy:rule", %{host: ruled_host}), else: &1))
     |> then(&if(params["confirm"] == "enforce", do: confirm_enforce(&1), else: &1))
   end
 
   defp apply_action(socket, :targets, params) do
     socket
-    |> assign(page_title: "Repositories · Policy", own_only: params["mode"] == "own")
+    |> assign(page_title: gettext("Targets · Policy"), own_only: params["mode"] == "own")
     |> load_targets(:all)
   end
 
   defp apply_action(socket, :history, params) do
-    socket = assign(socket, :page_title, "History · Policy")
+    socket = assign(socket, :page_title, gettext("History · Policy"))
     history = Common.history(socket, Common.page_param(params["page"]))
 
     {open, diff} =
@@ -184,7 +186,11 @@ defmodule ApiaryWeb.PolicyLive.Show do
   defp apply_action(socket, action, %{"n" => n} = params) when action in [:version, :export] do
     case Common.version(socket, n, params) do
       {:ok, v} ->
-        socket = assign(socket, v: v, page_title: "Version #{v.configuration.version} · Policy")
+        socket =
+          assign(socket,
+            v: v,
+            page_title: gettext("Version %{version} · Policy", version: v.configuration.version)
+          )
 
         cond do
           action == :export and v.current? ->
@@ -201,7 +207,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         assign(socket,
           v: nil,
           missing: %{n: n, latest: socket.assigns.version},
-          page_title: "Policy"
+          page_title: gettext("Policy")
         )
     end
   end
@@ -362,7 +368,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
   defp event("mode_ask", %{"mode" => mode}, socket) when mode in ~w(observe enforce) do
     cond do
       not socket.assigns.owner? ->
-        assign(socket, :write_error, "Only an owner sets a mode.")
+        assign(socket, :write_error, gettext("Only an owner sets a mode."))
 
       mode == socket.assigns.mode ->
         socket
@@ -385,14 +391,19 @@ defmodule ApiaryWeb.PolicyLive.Show do
         |> assign(:dialog, nil)
         |> then(fn socket ->
           following = socket.assigns.following
+          default = default_sentence(mode)
 
           Common.wrote(
             socket,
             nil,
-            "The hive's default is #{mode}. " <>
-              "#{Common.plural(following, "repository", "repositories")} " <>
-              "#{if following == 1, do: "follows", else: "follow"} it.",
-            "The hive's default is #{mode}."
+            default <>
+              " " <>
+              ngettext(
+                "%{count} target follows it.",
+                "%{count} targets follow it.",
+                following
+              ),
+            default
           )
         end)
         |> Common.focus("policy-mode-#{mode}")
@@ -420,7 +431,10 @@ defmodule ApiaryWeb.PolicyLive.Show do
             socket
             |> load()
             |> assign(:would, Common.would(scope, nil, would))
-            |> assign(:announce, "#{destination.host} is allowed for the hive.")
+            |> assign(
+              :announce,
+              gettext("%{host} is allowed for the hive.", host: destination.host)
+            )
 
           {:error, error} ->
             assign(socket, :would, Map.put(would, :error, error.message))
@@ -443,7 +457,11 @@ defmodule ApiaryWeb.PolicyLive.Show do
       end
     else
       false ->
-        assign(socket, :write_error, "Only an owner can lock, unlock or change a locked rule.")
+        assign(
+          socket,
+          :write_error,
+          gettext("Only an owner can lock, unlock or change a locked rule.")
+        )
 
       {:error, error} ->
         Common.refused(socket, error)
@@ -544,7 +562,10 @@ defmodule ApiaryWeb.PolicyLive.Show do
          %Policy.Error{
            reason: :conflict,
            message:
-             "The rule for #{host} changed while you were deciding. The list below is current."
+             gettext(
+               "The rule for %{host} changed while you were deciding. The list below is current.",
+               host: host
+             )
          }}
 
       {:error, _gone} ->
@@ -552,7 +573,10 @@ defmodule ApiaryWeb.PolicyLive.Show do
          %Policy.Error{
            reason: :not_found,
            message:
-             "The rule for #{host} was removed while you were deciding. The list below is current."
+             gettext(
+               "The rule for %{host} was removed while you were deciding. The list below is current.",
+               host: host
+             )
          }}
     end
   end
@@ -565,11 +589,14 @@ defmodule ApiaryWeb.PolicyLive.Show do
       {:ok, rule} ->
         sentence =
           if locked,
-            do: "#{subject(rule)} is locked. No repository can override it.",
-            else: "#{subject(rule)} is unlocked. A repository can override it again."
+            do: gettext("%{rule} is locked. No target can override it.", rule: subject(rule)),
+            else:
+              gettext("%{rule} is unlocked. A target can override it again.", rule: subject(rule))
+
+        announce = if locked, do: gettext("Rule locked."), else: gettext("Rule unlocked.")
 
         socket
-        |> Common.wrote(nil, sentence, if(locked, do: "Rule locked.", else: "Rule unlocked."))
+        |> Common.wrote(nil, sentence, announce)
         |> Common.focus("rule-#{rule.id}-lock")
 
       {:error, error} ->
@@ -577,13 +604,14 @@ defmodule ApiaryWeb.PolicyLive.Show do
     end
   end
 
+  # The page is the hive's: the rule is the hive's, never a target's.
   defp changed(socket, {:ok, rule}, host, action) do
-    Common.wrote(
-      socket,
-      rule,
-      "#{host} is #{Common.past(action)} #{Common.for_holder(socket)}.",
-      "Rule changed."
-    )
+    sentence =
+      if action == "deny",
+        do: gettext("%{host} is denied for the hive.", host: host),
+        else: gettext("%{host} is allowed for the hive.", host: host)
+
+    Common.wrote(socket, rule, sentence, gettext("Rule changed."))
   end
 
   defp changed(socket, {:error, error}, _host, _action), do: Common.refused(socket, error)
@@ -597,11 +625,11 @@ defmodule ApiaryWeb.PolicyLive.Show do
       {:ok, rule} ->
         words =
           if rule.kind == "credential",
-            do: "The credential #{rule.name} is removed.",
-            else: "The rule #{rule.host} is removed."
+            do: gettext("The credential %{name} is removed.", name: rule.name),
+            else: gettext("The rule %{host} is removed.", host: rule.host)
 
         socket
-        |> Common.wrote(nil, words, "Rule removed.")
+        |> Common.wrote(nil, words, gettext("Rule removed."))
         |> Common.focus(if(next, do: "rule-#{next.id}-menu-button", else: "policy-composer-host"))
 
       {:error, error} ->
@@ -611,6 +639,9 @@ defmodule ApiaryWeb.PolicyLive.Show do
 
   defp subject(%{kind: "credential", name: name}), do: name
   defp subject(%{host: host}), do: host
+
+  defp default_sentence("enforce"), do: gettext("The hive's default is enforce.")
+  defp default_sentence(_observe), do: gettext("The hive's default is observe.")
 
   # The targets' own rules a lock of this rule would put out of force: a rule on the
   # same host, or an allow below a locked `*.` deny. Read for the targets that have
@@ -695,7 +726,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
       nav={:policy}
       width="full"
     >
-      <.page_skeleton title="Policy" />
+      <.page_skeleton title={gettext("Policy")} />
     </Layouts.app>
     """
   end
@@ -712,19 +743,23 @@ defmodule ApiaryWeb.PolicyLive.Show do
     >
       <div id="policy-page" phx-hook="PolicyPage" class="grid grid-cols-[minmax(0,1fr)] gap-6">
         <div :if={@live_action in [:version, :export] && @v} class="grid gap-3">
-          <nav class="q-crumbs" aria-label="Breadcrumb">
-            <.link navigate={~p"/hive/policy"}>Policy</.link>
+          <nav class="q-crumbs" aria-label={gettext("Breadcrumb")}>
+            <.link navigate={~p"/hive/policy"}>{gettext("Policy")}</.link>
             <.icon name="hero-chevron-right-micro" class="size-3" />
-            <span class="q-here" aria-current="page">Version {@v.configuration.version}</span>
+            <span class="q-here" aria-current="page">
+              {gettext("Version %{version}", version: @v.configuration.version)}
+            </span>
           </nav>
           <.version_head v={@v} base={@base} />
         </div>
 
         <.header :if={!(@live_action in [:version, :export] && @v)}>
-          Policy
+          {gettext("Policy")}
           <:subtitle>
-            What the runs of this <.term word="hive" />
-            may reach through the runner's proxy. What no rule names is denied under enforce, and let through and recorded under observe; a deny rule holds in either mode.
+            {gettext("What the runs of this hive may reach through the runner's proxy.")}
+            {gettext(
+              "What no rule names is denied under enforce, and let through and recorded under observe; a deny rule holds in either mode."
+            )}
           </:subtitle>
           <:actions>
             <div :if={@managed? && @version} class="q-head-side">
@@ -739,18 +774,18 @@ defmodule ApiaryWeb.PolicyLive.Show do
                 id="policy-export-button"
                 navigate={~p"/hive/policy/versions/#{@version.version}/export"}
               >
-                <.icon name="hero-arrow-up-tray-micro" class="size-4" />Export
+                <.icon name="hero-arrow-up-tray-micro" class="size-4" />{gettext("Export")}
               </.button>
             </div>
             <div :if={!(@managed? && @version)} class="q-head-side">
               <.version_pill id="policy-version-pill" />
               <.tooltip
-                tip="Nothing to export yet: the first change here renders version 1."
+                tip={gettext("Nothing to export yet: the first change here renders version 1.")}
                 placement="left"
                 class="q-tip-wide"
               >
                 <.button id="policy-export-button" disabled aria-disabled="true">
-                  <.icon name="hero-arrow-up-tray-micro" class="size-4" />Export
+                  <.icon name="hero-arrow-up-tray-micro" class="size-4" />{gettext("Export")}
                 </.button>
               </.tooltip>
             </div>
@@ -792,18 +827,22 @@ defmodule ApiaryWeb.PolicyLive.Show do
           :if={@missing}
           tone="neutral"
           icon="hero-magnifying-glass"
-          title={"There is no version #{String.slice(@missing.n, 0, 12)}"}
+          title={gettext("There is no version %{version}", version: String.slice(@missing.n, 0, 12))}
         >
-          <span :if={@missing.latest}>The latest is version {@missing.latest.version}.</span>
-          <span :if={!@missing.latest}>This hive has no version yet.</span>
+          <span :if={@missing.latest}>
+            {gettext("The latest is version %{version}.", version: @missing.latest.version)}
+          </span>
+          <span :if={!@missing.latest}>{gettext("This hive has no version yet.")}</span>
           <:actions>
             <.button
               :if={@missing.latest}
               navigate={~p"/hive/policy/versions/#{@missing.latest.version}"}
             >
-              Open version {@missing.latest.version}
+              {gettext("Open version %{version}", version: @missing.latest.version)}
             </.button>
-            <.button :if={!@missing.latest} navigate={~p"/hive/policy"}>Back to policy</.button>
+            <.button :if={!@missing.latest} navigate={~p"/hive/policy"}>
+              {gettext("Back to policy")}
+            </.button>
           </:actions>
         </.empty_state>
       </div>
@@ -845,32 +884,42 @@ defmodule ApiaryWeb.PolicyLive.Show do
     <header class="flex flex-wrap items-start justify-between gap-4">
       <div class="q-run-title">
         <h1 class="text-xl/7 font-semibold tracking-[-0.017em]">
-          Version {@v.configuration.version}
+          {gettext("Version %{version}", version: @v.configuration.version)}
         </h1>
         <.badge :if={@v.current?} color="success">
-          <.icon name="hero-check-micro" class="size-3" />In force
+          <.icon name="hero-check-micro" class="size-3" />{gettext("In force")}
         </.badge>
-        <.badge :if={!@v.current?}>Superseded</.badge>
+        <.badge :if={!@v.current?}>{gettext("Superseded")}</.badge>
         <span :if={@v.superseded_by} id="version-superseded" class="text-[13px] text-muted">
-          by
-          <.version_link
-            version={@v.superseded_by.version}
-            navigate={"#{@base}/versions/#{@v.superseded_by.version}"}
-          />
-          after {format_seconds(
-            max(DateTime.diff(@v.superseded_by.rendered_at, @v.configuration.rendered_at), 0)
-          )}
+          <%= for part <- superseded_words(@v) do %>
+            <.version_link
+              :if={part == :version}
+              version={@v.superseded_by.version}
+              navigate={"#{@base}/versions/#{@v.superseded_by.version}"}
+            />{if part != :version, do: part}
+          <% end %>
         </span>
       </div>
       <div class="q-head-side">
         <.button id="version-export" patch={"#{@base}/versions/#{@v.latest}/export"}>
           <.icon name="hero-arrow-up-tray-micro" class="size-4" />{if @v.current?,
-            do: "Export",
-            else: "Export the version in force"}
+            do: gettext("Export"),
+            else: gettext("Export the version in force")}
         </.button>
       </div>
     </header>
     """
+  end
+
+  # "by v3 after 2 h", with the version a link: the sentence split at its bindings.
+  defp superseded_words(v) do
+    rich_gettext("by %{version} after %{time}",
+      version: :version,
+      time:
+        format_seconds(
+          max(DateTime.diff(v.superseded_by.rendered_at, v.configuration.rendered_at), 0)
+        )
+    )
   end
 
   attr :live_action, :atom, required: true
@@ -881,14 +930,14 @@ defmodule ApiaryWeb.PolicyLive.Show do
 
   defp policy_tabs(assigns) do
     ~H"""
-    <.tabs id="policy-tabs" label="Policy">
+    <.tabs id="policy-tabs" label={gettext("Policy")}>
       <:tab
         patch={~p"/hive/policy"}
         icon="hero-shield-check-micro"
         current={@live_action == :rules}
         count={@rules > 0 && @rules}
       >
-        Rules
+        {gettext("Rules")}
       </:tab>
       <:tab
         patch={~p"/hive/policy/targets"}
@@ -896,7 +945,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         current={@live_action == :targets}
         count={@targets > 0 && @targets}
       >
-        Repositories
+        {gettext("Targets")}
       </:tab>
       <:tab
         patch={~p"/hive/policy/history"}
@@ -904,7 +953,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         current={@live_action == :history}
         count={@changes > 0 && @changes}
       >
-        History
+        {gettext("History")}
       </:tab>
       <:tab
         :if={@document}
@@ -912,7 +961,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         icon="hero-document-text-micro"
         current={@live_action in [:version, :export, :document]}
       >
-        Document
+        {gettext("Document")}
       </:tab>
     </.tabs>
     """
@@ -952,21 +1001,26 @@ defmodule ApiaryWeb.PolicyLive.Show do
     <div :if={@empty?} id="policy-empty" class="grid gap-4">
       <.empty_state
         icon="hero-shield-check"
-        title={if @managed?, do: "No rules yet", else: "Qory serves no policy yet"}
+        title={if @managed?, do: gettext("No rules yet"), else: gettext("Qory serves no policy yet")}
       >
         <span :if={!@managed?} id="policy-unmanaged">
-          Until the first change here, every machine of this hive runs under its own policy, the one in its runner file. The first rule you add, or a mode you set, renders version 1, and machines take their policy from Qory from then on. You can also let a run reach out first and allow its hosts from the Connections page, one row at a time.
+          {gettext(
+            "Until the first change here, every machine of this hive runs under its own policy, the one in its runner file. The first rule you add, or a mode you set, renders version 1, and machines take their policy from Qory from then on. You can also let a run reach out first and allow its hosts from the Connections page, one row at a time."
+          )}
         </span>
         <span :if={@managed?}>
-          With no rules, {if @mode == "observe",
-            do: "runs reach everything and every connection is recorded.",
-            else: "a run under enforce reaches nothing."} Add the hosts your runs need here, or let a run reach out first and allow its hosts from the Connections page, one row at a time.
+          {if @mode == "observe",
+            do: gettext("With no rules, runs reach everything and every connection is recorded."),
+            else: gettext("With no rules, a run under enforce reaches nothing.")}
+          {gettext(
+            "Add the hosts your runs need here, or let a run reach out first and allow its hosts from the Connections page, one row at a time."
+          )}
         </span>
         <:actions>
           <.button id="policy-first-rule" variant="primary" phx-click="composer_open">
-            <.icon name="hero-plus-micro" class="size-4" />Add a host rule
+            <.icon name="hero-plus-micro" class="size-4" />{gettext("Add a host rule")}
           </.button>
-          <.button navigate={~p"/hive/connections"}>Go to connections</.button>
+          <.button navigate={~p"/hive/connections"}>{gettext("Go to connections")}</.button>
         </:actions>
       </.empty_state>
       <p
@@ -974,37 +1028,42 @@ defmodule ApiaryWeb.PolicyLive.Show do
         id="policy-first-version"
         class="max-w-[80ch] text-[12.5px]/[18px] text-faint"
       >
-        Version 1 is rendered by the first change, never by a machine asking. Until it exists, a machine that asks is told there is no policy here and keeps its own.
+        {gettext(
+          "Version 1 is rendered by the first change, never by a machine asking. Until it exists, a machine that asks is told there is no policy here and keeps its own."
+        )}
       </p>
       <p
         :if={@managed? && @version}
         id="policy-first-version"
         class="max-w-[80ch] text-[12.5px]/[18px] text-faint"
       >
-        Version {@version.version} is what machines are served now: the mode, with nothing allowed. A rule added here renders the next one.
+        {gettext(
+          "Version %{version} is what machines are served now: the mode, with nothing allowed. A rule added here renders the next one.",
+          version: @version.version
+        )}
       </p>
     </div>
 
-    <.sect :if={!@empty?} id="policy-hosts" title="Host rules" count={length(@rows)}>
+    <.sect :if={!@empty?} id="policy-hosts" title={gettext("Host rules")} count={length(@rows)}>
       <:trailing>
-        <.segments id="policy-show" label="Show">
-          <:segment patch={~p"/hive/policy"} pressed={@show == nil}>All</:segment>
+        <.segments id="policy-show" label={gettext("Show")}>
+          <:segment patch={~p"/hive/policy"} pressed={@show == nil}>{gettext("All")}</:segment>
           <:segment
             patch={~p"/hive/policy?show=allow"}
             pressed={@show == "allow"}
             count={@counts.allow}
           >
-            Allow
+            {gettext("Allow")}
           </:segment>
           <:segment patch={~p"/hive/policy?show=deny"} pressed={@show == "deny"} count={@counts.deny}>
-            Deny
+            {gettext("Deny")}
           </:segment>
           <:segment
             patch={~p"/hive/policy?show=locked"}
             pressed={@show == "locked"}
             count={@counts.locked}
           >
-            Locked
+            {gettext("Locked")}
           </:segment>
         </.segments>
       </:trailing>
@@ -1017,7 +1076,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
       />
       <.rules_table
         id="policy-rules"
-        label="Host rules of the hive"
+        label={gettext("Host rules of the hive")}
         rows={@shown}
         scope={:hive}
         can_lock={@owner?}
@@ -1027,18 +1086,27 @@ defmodule ApiaryWeb.PolicyLive.Show do
         empty={empty_words(@show, @rows)}
       />
       <:footer>
-        Locked rules come first, then deny, then allow, each by host read from the right, so a suffix sits beside the hosts below it. A deny is written to the document's deny list, which a runner decides first and in either mode, and takes the allowed hosts it covers out of its allow list.
+        {gettext(
+          "Locked rules come first, then deny, then allow, each by host read from the right, so a suffix sits beside the hosts below it. A deny is written to the document's deny list, which a runner decides first and in either mode, and takes the allowed hosts it covers out of its allow list."
+        )}
       </:footer>
     </.sect>
 
-    <.sect :if={!@empty?} id="policy-credentials" title="Credentials" count={length(@credentials)}>
+    <.sect
+      :if={!@empty?}
+      id="policy-credentials"
+      title={gettext("Credentials")}
+      count={length(@credentials)}
+    >
       <:description>
-        Credentials a run may use, by name. The policy names one; it never holds one. Each machine defines its credentials in its runner file, and a name a machine does not define is no run.
+        {gettext(
+          "Credentials a run may use, by name. The policy names one; it never holds one. Each machine defines its credentials in its runner file, and a name a machine does not define is no run."
+        )}
       </:description>
       <.credential_composer id="policy-credential" form={@credential} reading={@credential_reading} />
       <.credentials_table
         id="policy-credential-rows"
-        label="Credentials of the hive"
+        label={gettext("Credentials of the hive")}
         rows={@credentials}
         scope={:hive}
         activity={async_value(@activity, :loading)}
@@ -1047,10 +1115,10 @@ defmodule ApiaryWeb.PolicyLive.Show do
     """
   end
 
-  defp empty_words(_show, []), do: "No host rules yet. Add the first above."
-  defp empty_words("locked", _rows), do: "No locked rules."
-  defp empty_words("deny", _rows), do: "No deny rules."
-  defp empty_words("allow", _rows), do: "No allow rules."
+  defp empty_words(_show, []), do: gettext("No host rules yet. Add the first above.")
+  defp empty_words("locked", _rows), do: gettext("No locked rules.")
+  defp empty_words("deny", _rows), do: gettext("No deny rules.")
+  defp empty_words("allow", _rows), do: gettext("No allow rules.")
   defp empty_words(_show, _rows), do: nil
 
   defp async_value(%Phoenix.LiveView.AsyncResult{ok?: true, result: result}, _loading), do: result
@@ -1062,8 +1130,8 @@ defmodule ApiaryWeb.PolicyLive.Show do
 
   defp targets_tab(%{rows: []} = assigns) do
     ~H"""
-    <.empty_state tone="neutral" icon="hero-book-open" title="No repositories yet">
-      A repository appears here once a run names it with its forge and repository labels.
+    <.empty_state tone="neutral" icon="hero-book-open" title={gettext("No targets yet")}>
+      {gettext("A target appears here once a run names it with its system and target labels.")}
     </.empty_state>
     """
   end
@@ -1080,47 +1148,73 @@ defmodule ApiaryWeb.PolicyLive.Show do
     <div id="policy-targets" class="grid grid-cols-[minmax(0,1fr)] gap-6">
       <div id="targets-summary" class="q-summary">
         <span>
-          <b>{length(@rows)}</b> {if length(@rows) == 1,
-            do: "repository has posted runs",
-            else: "repositories have posted runs"}
+          <.rich text={
+            rich_ngettext(
+              "%{number} target has posted runs",
+              "%{number} targets have posted runs",
+              length(@rows),
+              number: {:b, to_string(length(@rows))}
+            )
+          } />
         </span>
-        <span><b>{Enum.count(@rows, &(&1.own > 0))}</b> with rules of their own</span>
         <span>
-          <b>{Enum.count(@rows, & &1.own_mode)}</b>
-          {if Enum.count(@rows, & &1.own_mode) == 1,
-            do: "sets its own mode",
-            else: "set their own mode"}
+          <.rich text={
+            rich_ngettext(
+              "%{number} with rules of their own",
+              "%{number} with rules of their own",
+              Enum.count(@rows, &(&1.own > 0)),
+              number: {:b, to_string(Enum.count(@rows, &(&1.own > 0)))}
+            )
+          } />
         </span>
-        <span><b>{Enum.count(@rows, &(is_integer(&1.suggestions) and &1.suggestions > 0))}</b>
-        with suggestions</span>
+        <span>
+          <.rich text={
+            rich_ngettext(
+              "%{number} sets its own mode",
+              "%{number} set their own mode",
+              Enum.count(@rows, & &1.own_mode),
+              number: {:b, to_string(Enum.count(@rows, & &1.own_mode))}
+            )
+          } />
+        </span>
+        <span>
+          <.rich text={
+            rich_ngettext(
+              "%{number} with suggestions",
+              "%{number} with suggestions",
+              Enum.count(@rows, &suggested?/1),
+              number: {:b, to_string(Enum.count(@rows, &suggested?/1))}
+            )
+          } />
+        </span>
         <span :if={@own_only} id="targets-own-only">
-          Showing those that set their own mode.
-          <.link patch={~p"/hive/policy/targets"} class="q-link">Show all</.link>
+          {gettext("Showing those that set their own mode.")}
+          <.link patch={~p"/hive/policy/targets"} class="q-link">{gettext("Show all")}</.link>
         </span>
       </div>
       <div
         class="overflow-x-auto rounded-box border border-line bg-base-100 shadow-xs"
         tabindex="0"
         role="region"
-        aria-label="Repositories and their policy"
+        aria-label={gettext("Targets and their policy")}
       >
         <table class="table q-targets" role="table">
           <thead>
             <tr role="row">
-              <th role="columnheader">Repository</th>
-              <th role="columnheader">Mode</th>
-              <th role="columnheader">Policy</th>
-              <th role="columnheader" class="q-num">Own rules</th>
-              <th role="columnheader" class="q-num">Overrides</th>
-              <th role="columnheader" class="q-num">Suggestions</th>
-              <th role="columnheader">Version</th>
-              <th role="columnheader">Last change</th>
+              <th role="columnheader">{gettext("Target")}</th>
+              <th role="columnheader">{gettext("Mode")}</th>
+              <th role="columnheader">{gettext("Policy")}</th>
+              <th role="columnheader" class="q-num">{gettext("Own rules")}</th>
+              <th role="columnheader" class="q-num">{gettext("Overrides")}</th>
+              <th role="columnheader" class="q-num">{gettext("Suggestions")}</th>
+              <th role="columnheader">{gettext("Version")}</th>
+              <th role="columnheader">{gettext("Last change")}</th>
             </tr>
           </thead>
           <tbody>
             <tr :if={@shown == []} role="row">
               <td role="cell" colspan="8" class="!whitespace-normal text-[13px] text-faint">
-                No repository sets its own mode. Every one follows the hive's default.
+                {gettext("No target sets its own mode. Every one follows the hive's default.")}
               </td>
             </tr>
             <tr :for={row <- @shown} id={"target-#{row.id}"} role="row" class="q-target-row">
@@ -1137,45 +1231,47 @@ defmodule ApiaryWeb.PolicyLive.Show do
                 <.source_chip
                   :if={row.own_mode}
                   source={:target}
-                  label="Its own"
+                  label={gettext("Its own")}
                   class="q-src-bare"
                 />
                 <.source_chip
                   :if={!row.own_mode}
                   source={:hive}
-                  label="Hive default"
+                  label={gettext("Hive default")}
                   class="q-src-bare"
                 />
               </td>
               <td role="cell">
-                <.source_chip :if={row.own > 0} source={:target} label="Own rules" />
+                <.source_chip :if={row.own > 0} source={:target} label={gettext("Own rules")} />
                 <.source_chip
                   :if={row.own == 0 && row.own_mode}
                   source={:target}
-                  label="Own mode"
+                  label={gettext("Own mode")}
                 />
                 <.source_chip
                   :if={row.own == 0 && !row.own_mode}
                   source={:hive}
-                  label="Hive baseline"
+                  label={gettext("Hive baseline")}
                 />
               </td>
               <td role="cell" class={["q-num q-opt", row.own == 0 && "q-zero"]}>{row.own}</td>
               <td role="cell" class="q-num q-opt">
-                <.cell value={row.detail} none="n/a">
+                <.cell value={row.detail} none={gettext("n/a")}>
                   <span class={row.detail.overrides == 0 && "q-zero"}>{row.detail.overrides}</span>
                 </.cell>
               </td>
               <td role="cell" class="q-num">
-                <.cell value={row.suggestions} none="n/a">
-                  <span :if={row.suggestions > 0} class="q-newdot">{row.suggestions} to review</span>
+                <.cell value={row.suggestions} none={gettext("n/a")}>
+                  <span :if={row.suggestions > 0} class="q-newdot">
+                    {gettext("%{count} to review", count: row.suggestions)}
+                  </span>
                   <span :if={row.suggestions == 0} class="q-zero">
-                    <span class="sr-only">none</span><span aria-hidden="true">–</span>
+                    <span class="sr-only">{gettext("none")}</span><span aria-hidden="true">–</span>
                   </span>
                 </.cell>
               </td>
               <td role="cell" class="q-opt font-mono text-[12.5px]">
-                <.cell value={row.detail} none="n/a">
+                <.cell value={row.detail} none={gettext("n/a")}>
                   <.version_pill
                     :if={row.detail.version}
                     size="sm"
@@ -1183,7 +1279,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
                     digest={row.detail.version.digest}
                     scope={
                       if is_nil(row.detail.version.target_id),
-                        do: "hive baseline",
+                        do: gettext("hive baseline"),
                         else: "#{row.system}/#{row.path}"
                     }
                     navigate={
@@ -1194,20 +1290,22 @@ defmodule ApiaryWeb.PolicyLive.Show do
                     }
                   />
                   <span :if={!row.detail.version} class="text-faint font-sans text-[13px]">
-                    no version yet
+                    {gettext("no version yet")}
                   </span>
                 </.cell>
               </td>
               <td role="cell" class="q-opt text-muted tabular-nums">
                 <.relative_time :if={row.changed} at={row.changed} />
-                <span :if={!row.changed} class="text-faint">n/a</span>
+                <span :if={!row.changed} class="text-faint">{gettext("n/a")}</span>
               </td>
             </tr>
           </tbody>
         </table>
       </div>
       <p class="max-w-[80ch] text-[12.5px]/[18px] text-faint">
-        A repository appears here once a run names it. A repository with neither rules nor a mode of its own is served the hive baseline, and so is a run that names no repository.
+        {gettext(
+          "A target appears here once a run names it. A target with neither rules nor a mode of its own is served the hive baseline, and so is a run that names no target."
+        )}
       </p>
     </div>
     """
@@ -1224,10 +1322,12 @@ defmodule ApiaryWeb.PolicyLive.Show do
   end
 
   defp cell(%{value: :none} = assigns) do
-    ~H|<span class="q-zero font-sans" title="Open the repository to see it">{@none}</span>|
+    ~H|<span class="q-zero font-sans" title={gettext("Open the target to see it")}>{@none}</span>|
   end
 
   defp cell(assigns), do: ~H"{render_slot(@inner_block)}"
+
+  defp suggested?(row), do: is_integer(row.suggestions) and row.suggestions > 0
 
   ## Dialogs
 
@@ -1248,23 +1348,36 @@ defmodule ApiaryWeb.PolicyLive.Show do
     ~H"""
     <.modal
       id="mode-enforce"
-      title="Set the hive's default to enforce"
+      title={gettext("Set the hive's default to enforce")}
       size="lg"
       on_cancel={JS.push("dialog_cancel")}
     >
       <p class="text-muted">
-        From the next heartbeat, about 30 s,
-        <b class="font-medium text-base-content">a connection no rule allows is denied</b>
-        {where_words(@following)}{alive_words(@alive)}. {own_words(@own)} You can switch back at any time.
+        <%= for part <- effect_words("enforce", @following, @alive) do %>
+          <b :if={part == :effect} class="font-medium text-base-content">
+            {effect_phrase("enforce")}
+          </b>{if part !=
+                                                                                                                             :effect,
+                                                                                                                           do:
+                                                                                                                             part}
+        <% end %>
+        {own_words(@own)}
+        {gettext("You can switch back at any time.")}
         <span :if={!@started}>
-          This is the hive's first change: it renders version 1, and machines take their policy from Qory from then on.
+          {gettext(
+            "This is the hive's first change: it renders version 1, and machines take their policy from Qory from then on."
+          )}
         </span>
       </p>
       <div :if={@would && @would.destinations != []} id="mode-would" class="q-would">
         <div>
-          <span>Let through in the last 7 days with no rule matching, in those repositories</span>
+          <span>
+            {gettext("Let through in the last 7 days with no rule matching, in those targets")}
+          </span>
           <span id="mode-would-n" class="tabular-nums">
-            {if @left == 0, do: "none left", else: Common.plural(@left, "destination")}
+            {if @left == 0,
+              do: gettext("none left"),
+              else: ngettext("%{count} destination", "%{count} destinations", @left)}
           </span>
         </div>
         <ul>
@@ -1276,9 +1389,10 @@ defmodule ApiaryWeb.PolicyLive.Show do
               {destination.host}<span :if={destination.path} class="text-muted">{destination.path}</span>
             </span>
             <small>
-              {Common.plural(destination.attempts, "attempt")} · {Common.plural(
-                destination.runs,
-                "run"
+              {ngettext("%{count} attempt", "%{count} attempts", destination.attempts)} · {ngettext(
+                "%{count} run",
+                "%{count} runs",
+                destination.runs
               )}
             </small>
             <button
@@ -1287,31 +1401,44 @@ defmodule ApiaryWeb.PolicyLive.Show do
               class="btn btn-xs"
               phx-click={JS.push("would_allow", value: %{key: would_key(destination)})}
             >
-              Allow for the hive
+              {gettext("Allow for the hive")}
             </button>
             <span :if={!MapSet.member?(@would.open, would_key(destination))} class="q-done">
-              <.icon name="hero-check-micro" class="size-3" />Allowed
+              <.icon name="hero-check-micro" class="size-3" />{gettext("Allowed")}
             </span>
           </li>
         </ul>
         <p :if={length(@would.destinations) > 8} class="q-would-more">
-          and {length(@would.destinations) - 8} more on the
-          <.link navigate={~p"/hive/connections?since=7d"} class="q-link">connections page</.link>
+          <%= for part <- more_words(length(@would.destinations) - 8) do %>
+            <.link :if={part == :link} navigate={~p"/hive/connections?since=7d"} class="q-link">
+              {gettext("connections page")}
+            </.link>{if part !=
+                                                                                                                                                               :link,
+                                                                                                                                                             do:
+                                                                                                                                                               part}
+          <% end %>
         </p>
       </div>
       <p :if={@would && @would[:error]} class="text-error-soft-content" role="alert">
         {@would[:error]}
       </p>
       <p :if={@would && @would.destinations == []} id="mode-would-none" class="text-muted">
-        Every destination your runs reached in the last 7 days is covered by a rule.
+        {gettext("Every destination your runs reached in the last 7 days is covered by a rule.")}
       </p>
       <p :if={@would && @would.destinations != []} class="text-[12.5px]/[18px] text-muted">
-        Counted from recorded connections that today's rules still do not cover. Enforce will deny these. A destination no run has reached yet is not in this list.
+        {gettext(
+          "Counted from recorded connections that today's rules still do not cover. Enforce will deny these. A destination no run has reached yet is not in this list."
+        )}
       </p>
       <:footer>
-        <.button phx-click="dialog_cancel" data-autofocus>Cancel</.button>
-        <.button id="mode-confirm" variant="primary" phx-click="mode_confirm" loading_text="Setting">
-          Set the default to enforce
+        <.button phx-click="dialog_cancel" data-autofocus>{gettext("Cancel")}</.button>
+        <.button
+          id="mode-confirm"
+          variant="primary"
+          phx-click="mode_confirm"
+          loading_text={gettext("Setting")}
+        >
+          {gettext("Set the default to enforce")}
         </.button>
       </:footer>
     </.modal>
@@ -1322,38 +1449,123 @@ defmodule ApiaryWeb.PolicyLive.Show do
     ~H"""
     <.modal
       id="mode-observe"
-      title="Set the hive's default to observe"
+      title={gettext("Set the hive's default to observe")}
       size="sm"
       on_cancel={JS.push("dialog_cancel")}
     >
       <p class="text-muted">
-        From the next heartbeat, about 30 s,
-        <b class="font-medium text-base-content">only what a deny rule names is denied</b>
-        {where_words(@following)}{alive_words(@alive)}: every other connection is let through and recorded. A repository that sets its own mode does not change. The rules stay as they are, locked ones too: a deny holds in either mode.
+        <%= for part <- effect_words("observe", @following, @alive) do %>
+          <b :if={part == :effect} class="font-medium text-base-content">
+            {effect_phrase("observe")}
+          </b>{if part !=
+                                                                                                                             :effect,
+                                                                                                                           do:
+                                                                                                                             part}
+        <% end %>
+        {gettext(
+          "A target that sets its own mode does not change. The rules stay as they are, locked ones too: a deny holds in either mode."
+        )}
       </p>
       <:footer>
-        <.button phx-click="dialog_cancel" data-autofocus>Cancel</.button>
-        <.button id="mode-confirm" variant="danger" phx-click="mode_confirm" loading_text="Setting">
-          Set the default to observe
+        <.button phx-click="dialog_cancel" data-autofocus>{gettext("Cancel")}</.button>
+        <.button
+          id="mode-confirm"
+          variant="danger"
+          phx-click="mode_confirm"
+          loading_text={gettext("Setting")}
+        >
+          {gettext("Set the default to observe")}
         </.button>
       </:footer>
     </.modal>
     """
   end
 
-  defp where_words(0), do: "in the runs that name no repository"
+  # The first sentence of a mode's confirm: what the mode denies, in whose runs. Each
+  # case is a whole sentence; the effect is a bold phrase of its own, `:effect` here.
+  defp effect_words(mode, following, alive) do
+    effect = :effect
+    runs = ngettext("%{count} run", "%{count} runs", alive)
 
-  defp where_words(following),
-    do:
-      "in the #{Common.plural(following, "repository", "repositories")} that " <>
-        "#{if following == 1, do: "follows", else: "follow"} the hive's default"
+    case {mode, following, alive} do
+      {"enforce", 0, 0} ->
+        rich_gettext(
+          "From the next heartbeat, about 30 s, %{effect} in the runs that name no target.",
+          effect: effect
+        )
+
+      {"enforce", 0, _alive} ->
+        rich_gettext(
+          "From the next heartbeat, about 30 s, %{effect} in the runs that name no target, and among the %{runs} alive now.",
+          effect: effect,
+          runs: runs
+        )
+
+      {"enforce", _following, 0} ->
+        rich_ngettext(
+          "From the next heartbeat, about 30 s, %{effect} in the %{count} target that follows the hive's default.",
+          "From the next heartbeat, about 30 s, %{effect} in the %{count} targets that follow the hive's default.",
+          following,
+          effect: effect
+        )
+
+      {"enforce", _following, _alive} ->
+        rich_ngettext(
+          "From the next heartbeat, about 30 s, %{effect} in the %{count} target that follows the hive's default, and among the %{runs} alive now.",
+          "From the next heartbeat, about 30 s, %{effect} in the %{count} targets that follow the hive's default, and among the %{runs} alive now.",
+          following,
+          effect: effect,
+          runs: runs
+        )
+
+      {_observe, 0, 0} ->
+        rich_gettext(
+          "From the next heartbeat, about 30 s, %{effect} in the runs that name no target: every other connection is let through and recorded.",
+          effect: effect
+        )
+
+      {_observe, 0, _alive} ->
+        rich_gettext(
+          "From the next heartbeat, about 30 s, %{effect} in the runs that name no target, and among the %{runs} alive now: every other connection is let through and recorded.",
+          effect: effect,
+          runs: runs
+        )
+
+      {_observe, _following, 0} ->
+        rich_ngettext(
+          "From the next heartbeat, about 30 s, %{effect} in the %{count} target that follows the hive's default: every other connection is let through and recorded.",
+          "From the next heartbeat, about 30 s, %{effect} in the %{count} targets that follow the hive's default: every other connection is let through and recorded.",
+          following,
+          effect: effect
+        )
+
+      {_observe, _following, _alive} ->
+        rich_ngettext(
+          "From the next heartbeat, about 30 s, %{effect} in the %{count} target that follows the hive's default, and among the %{runs} alive now: every other connection is let through and recorded.",
+          "From the next heartbeat, about 30 s, %{effect} in the %{count} targets that follow the hive's default, and among the %{runs} alive now: every other connection is let through and recorded.",
+          following,
+          effect: effect,
+          runs: runs
+        )
+    end
+  end
+
+  defp effect_phrase("enforce"), do: gettext("a connection no rule allows is denied")
+  defp effect_phrase(_observe), do: gettext("only what a deny rule names is denied")
 
   defp own_words(0), do: ""
-  defp own_words(1), do: "1 repository sets its own mode and does not change."
-  defp own_words(n), do: "#{n} repositories set their own mode and do not change."
 
-  defp alive_words(0), do: ""
-  defp alive_words(n), do: ", and among the #{Common.plural(n, "run")} alive now"
+  defp own_words(n),
+    do:
+      ngettext(
+        "%{count} target sets its own mode and does not change.",
+        "%{count} targets set their own mode and do not change.",
+        n
+      )
+
+  # "and 4 more on the connections page", with the page a link.
+  defp more_words(more),
+    do: rich_gettext("and %{more} more on the %{link}", more: to_string(more), link: :link)
 
   @doc false
   def would_key(destination), do: Common.would_key(destination)
@@ -1365,16 +1577,17 @@ defmodule ApiaryWeb.PolicyLive.Show do
     ~H"""
     <.modal
       id="lock-confirm"
-      title={"Lock the #{@rule.action} rule #{@rule.host}"}
+      title={lock_title(@rule)}
       size="sm"
       on_cancel={JS.push("dialog_cancel")}
     >
       <p class="text-muted">
-        A locked rule holds against every repository. <b class="font-medium text-base-content">
-          {Common.plural(length(@held), "repository rule")} {if length(@held) == 1,
-            do: "stops",
-            else: "stop"} being in force
-        </b>:
+        {gettext("A locked rule holds against every target.")}
+        <b class="font-medium text-base-content">{ngettext(
+            "%{count} target rule stops being in force",
+            "%{count} target rules stop being in force",
+            length(@held)
+          )}</b>:
       </p>
       <div class="q-would">
         <ul>
@@ -1386,12 +1599,12 @@ defmodule ApiaryWeb.PolicyLive.Show do
         </ul>
       </div>
       <p class="text-muted">
-        The repository's rule is kept and shown as held. Only an owner can unlock.
+        {gettext("The target's rule is kept and shown as held. Only an owner can unlock.")}
       </p>
       <:footer>
-        <.button phx-click="dialog_cancel" data-autofocus>Cancel</.button>
+        <.button phx-click="dialog_cancel" data-autofocus>{gettext("Cancel")}</.button>
         <.button id="lock-confirm-button" variant="primary" phx-click="lock_confirm">
-          Lock the rule
+          {gettext("Lock the rule")}
         </.button>
       </:footer>
     </.modal>
@@ -1405,36 +1618,42 @@ defmodule ApiaryWeb.PolicyLive.Show do
     ~H"""
     <.modal
       id="remove-confirm"
-      title={"Remove the #{@rule.action} rule #{@rule.host}"}
+      title={remove_title(@rule)}
       size="sm"
       on_cancel={JS.push("dialog_cancel")}
     >
       <p class="text-muted">
         <span :if={@rule.locked}>
-          This rule is locked: it holds against every repository, and removing it lets their own rules decide again.
+          {gettext(
+            "This rule is locked: it holds against every target, and removing it lets their own rules decide again."
+          )}
         </span>
         <span :if={@overriders != []}>
-          {Common.plural(length(@overriders), "repository", "repositories")} {if length(@overriders) ==
-                                                                                   1,
-                                                                                 do: "has",
-                                                                                 else: "have"} a rule of {if length(
-                                                                                                               @overriders
-                                                                                                             ) ==
-                                                                                                               1,
-                                                                                                             do:
-                                                                                                               "its",
-                                                                                                             else:
-                                                                                                               "their"} own on this host; it then has nothing to override and is kept.
+          {ngettext(
+            "%{count} target has a rule of its own on this host; it then has nothing to override and is kept.",
+            "%{count} targets have a rule of their own on this host; it then has nothing to override and is kept.",
+            length(@overriders)
+          )}
         </span>
-        This takes effect within a heartbeat.
+        {gettext("This takes effect within a heartbeat.")}
       </p>
       <:footer>
-        <.button phx-click="dialog_cancel" data-autofocus>Cancel</.button>
+        <.button phx-click="dialog_cancel" data-autofocus>{gettext("Cancel")}</.button>
         <.button id="remove-confirm-button" variant="danger" phx-click="remove_confirm">
-          Remove the rule
+          {gettext("Remove the rule")}
         </.button>
       </:footer>
     </.modal>
     """
   end
+
+  defp lock_title(%{action: "deny", host: host}),
+    do: gettext("Lock the deny rule %{host}", host: host)
+
+  defp lock_title(%{host: host}), do: gettext("Lock the allow rule %{host}", host: host)
+
+  defp remove_title(%{action: "deny", host: host}),
+    do: gettext("Remove the deny rule %{host}", host: host)
+
+  defp remove_title(%{host: host}), do: gettext("Remove the allow rule %{host}", host: host)
 end

@@ -19,6 +19,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   """
   use ApiaryWeb, :live_view
 
+  import ApiaryWeb.CoreComponents, except: [relative_time: 1, relative_time: 2, bold: 1]
   import ApiaryWeb.OverviewComponents, only: [sentence: 2, bold: 1]
 
   alias Apiary.Policy

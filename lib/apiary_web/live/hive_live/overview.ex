@@ -25,6 +25,7 @@ defmodule ApiaryWeb.HiveLive.Overview do
   """
   use ApiaryWeb, :live_view
 
+  import ApiaryWeb.CoreComponents, except: [relative_time: 1, relative_time: 2, bold: 1]
   import ApiaryWeb.OverviewComponents
 
   import ApiaryWeb.RunComponents,

@@ -15,6 +15,7 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   """
 
   use ApiaryWeb, :verified_routes
+  use Gettext, backend: ApiaryWeb.Gettext
 
   alias Apiary.Policy
   alias Apiary.Policy.{Effective, Entry, Grammar}
@@ -73,9 +74,9 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   end
 
   @doc "The words that say whose numbering a version is in."
-  def version_label(nil, _target), do: "hive baseline"
+  def version_label(nil, _target), do: gettext("hive baseline")
   def version_label(id, %{id: id, system: system, path: path}), do: "#{system}/#{path}"
-  def version_label(_id, _target), do: "repository"
+  def version_label(_id, _target), do: gettext("target")
 
   @doc """
   `Policy.digests/2`, whatever shape it answers in, as `%{in_force, reported, applied,
@@ -266,17 +267,71 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
 
   def answered(standing, _row, _changes), do: standing
 
-  @doc "The words of the toast, from the rule the domain made."
+  @doc """
+  The words of the toast, from the rule the domain made. `where` is the holder the rule
+  went to: `:hive`, `:this_target`, or `{:target, label}` for a target named by its label
+  (`version_label/2`). The older spellings, "the hive", "this repository" or a label as a
+  binary, are read as those.
+  """
+  def toast(rule, action, host, path, "the hive"), do: toast(rule, action, host, path, :hive)
+
+  def toast(rule, action, host, path, "this repository"),
+    do: toast(rule, action, host, path, :this_target)
+
+  def toast(rule, action, host, path, label) when is_binary(label),
+    do: toast(rule, action, host, path, {:target, label})
+
   def toast(rule, action, host, path, where) do
     pathed? = is_list(rule.paths) and path not in [nil, ""] and rule.action == "allow"
 
     cond do
-      pathed? and action == :allow -> "#{path} on #{host} is allowed for #{where}."
-      pathed? -> "#{path} on #{host} is no longer allowed for #{where}."
-      rule.action == "deny" -> "#{host} is denied for #{where}."
-      true -> "#{host} is allowed for #{where}."
+      pathed? and action == :allow -> path_allowed(where, path, host)
+      pathed? -> path_no_longer_allowed(where, path, host)
+      rule.action == "deny" -> host_denied(where, host)
+      true -> host_allowed(where, host)
     end
   end
+
+  defp path_allowed(:hive, path, host),
+    do: gettext("%{path} on %{host} is allowed for the hive.", path: path, host: host)
+
+  defp path_allowed(:this_target, path, host),
+    do: gettext("%{path} on %{host} is allowed for this target.", path: path, host: host)
+
+  defp path_allowed({:target, label}, path, host),
+    do:
+      gettext("%{path} on %{host} is allowed for %{label}.", path: path, host: host, label: label)
+
+  defp path_no_longer_allowed(:hive, path, host),
+    do: gettext("%{path} on %{host} is no longer allowed for the hive.", path: path, host: host)
+
+  defp path_no_longer_allowed(:this_target, path, host),
+    do:
+      gettext("%{path} on %{host} is no longer allowed for this target.", path: path, host: host)
+
+  defp path_no_longer_allowed({:target, label}, path, host),
+    do:
+      gettext("%{path} on %{host} is no longer allowed for %{label}.",
+        path: path,
+        host: host,
+        label: label
+      )
+
+  defp host_denied(:hive, host), do: gettext("%{host} is denied for the hive.", host: host)
+
+  defp host_denied(:this_target, host),
+    do: gettext("%{host} is denied for this target.", host: host)
+
+  defp host_denied({:target, label}, host),
+    do: gettext("%{host} is denied for %{label}.", host: host, label: label)
+
+  defp host_allowed(:hive, host), do: gettext("%{host} is allowed for the hive.", host: host)
+
+  defp host_allowed(:this_target, host),
+    do: gettext("%{host} is allowed for this target.", host: host)
+
+  defp host_allowed({:target, label}, host),
+    do: gettext("%{host} is allowed for %{label}.", host: host, label: label)
 
   # A row wants an allow when its last attempt was denied, or was let through with no rule.
   defp needs_allow?(%{decision: "denied"}), do: true

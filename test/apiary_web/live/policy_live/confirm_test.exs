@@ -25,7 +25,7 @@ defmodule ApiaryWeb.PolicyLive.ConfirmTest do
       assert_patch(view, ~p"/hive/policy")
       render_async(view, 5_000)
 
-      assert has_element?(view, "#mode-enforce", "Set the hive's default to enforce")
+      assert has_element?(view, "#mode-enforce", "Set the workplace's default to enforce")
       assert has_element?(view, "#mode-confirm", "Set the default to enforce")
 
       view |> element("#mode-confirm") |> render_click()

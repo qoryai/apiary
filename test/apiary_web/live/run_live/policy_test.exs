@@ -197,7 +197,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
                ~s(#run-facts a.q-ver[href="/hive/policy/versions/#{configuration.version}"])
              )
 
-      assert text(view, "#run-facts") =~ "v#{configuration.version} · of hive baseline"
+      assert text(view, "#run-facts") =~ "v#{configuration.version} · of workplace baseline"
     end
 
     test "behind a target's version while on the baseline's: both numberings are named", %{
@@ -211,7 +211,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       baseline = in_force(scope, nil)
       run = report(run, baseline.digest)
       {:ok, view, _html} = live(conn, ~p"/hive/runs/#{run.run_id}")
-      assert text(view, "#run-facts") =~ "v#{baseline.version} · of hive baseline"
+      assert text(view, "#run-facts") =~ "v#{baseline.version} · of workplace baseline"
 
       # the target's first rule gives it a numbering of its own, at v1
       {:ok, _} = Policy.allow(scope, target, %{host: "files.cdn.example"})
@@ -235,7 +235,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
 
       # the details tab names both
       {:ok, view, _html} = live(conn, ~p"/hive/runs/#{run.run_id}/details")
-      assert text(view, "#policy-version") =~ "v#{baseline.version} · of hive baseline"
+      assert text(view, "#policy-version") =~ "v#{baseline.version} · of workplace baseline"
       assert text(view, "#policy-in-force") =~ "v1 · of github.example/acme/shop"
     end
 
@@ -355,7 +355,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       assert text(view, "#e-30-reload") =~
                "Connections before this item were decided by the workplace baseline's v#{v1.version}."
 
-      assert text(view, "#e-30 .q-pv") == "v#{v2.version} · of hive baseline"
+      assert text(view, "#e-30 .q-pv") == "v#{v2.version} · of workplace baseline"
     end
 
     test "a reload that names the digest it had is not called new", %{conn: conn, scope: scope} do

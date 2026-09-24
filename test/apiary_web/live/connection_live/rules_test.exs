@@ -127,7 +127,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       assert line =~ "Rule added"
 
       assert line =~
-               "Allowed for the workplace in v#{configuration.version} · of hive baseline by you"
+               "Allowed for the workplace in v#{configuration.version} · of workplace baseline by you"
 
       refute line =~ "run"
       assert has_element?(view, ~s(a##{cdn}-act[href="/hive/policy?rule=files.cdn.example"]))
@@ -195,7 +195,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       cdn = dst("files.cdn.example")
 
       assert has_element?(view, ~s(tr##{cdn}[data-decision=allowed]))
-      assert text(view, "##{cdn}-after") =~ "Allowed for the workplace in v2 · of hive baseline"
+      assert text(view, "##{cdn}-after") =~ "Allowed for the workplace in v2 · of workplace baseline"
       assert text(view, "a##{cdn}-act") == "Rule"
     end
 
