@@ -63,6 +63,9 @@ jobs:
       - name: Compile without warnings
         run: mix compile --warnings-as-errors
 
+      - name: Check the Gettext catalogues are extracted
+        run: mix gettext.extract --check-up-to-date
+
       - name: Build the documentation without warnings
         run: mix docs --warnings-as-errors
 

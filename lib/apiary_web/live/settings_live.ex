@@ -1,14 +1,16 @@
 defmodule ApiaryWeb.SettingsLive do
   @moduledoc """
-  Apiary (organisation) and hive settings: names, the owners, and retention: how long
-  the hive keeps a run's events and log output, and what the nightly job last pruned.
+  Organisation and hive settings: names, the owners, and retention: how long the hive
+  keeps a run's events and log output, and what the nightly job last pruned.
+
+  The proof of the body's words (`docs/lingo.md`): every sentence is a gettext call in
+  engine words, and the software body's catalogue says organisation and workplace.
   """
   use ApiaryWeb, :live_view
 
   alias Apiary.Organisations
   alias Apiary.Retention
 
-  import ApiaryWeb.RunComponents, only: [count_noun: 2]
   import ApiaryWeb.RunPageComponents, only: [format_bytes: 1]
 
   @impl true
@@ -23,19 +25,20 @@ defmodule ApiaryWeb.SettingsLive do
       width="narrow"
     >
       <.header>
-        Settings
+        {gettext("Settings")}
         <:subtitle>
-          The names of this <.term word="apiary" /> and its <.term word="hive" />, who owns
-          them, and how long runs are kept.
+          {gettext(
+            "The names of this organisation and its hive, who owns them, and how long runs are kept."
+          )}
         </:subtitle>
       </.header>
 
       <.notice :if={!@owner?} kind={:info}>
-        Only owners can change these settings. Ask an owner if a name needs to change.
+        {gettext("Only owners can change these settings. Ask an owner if a name needs to change.")}
       </.notice>
 
       <.card>
-        <:title><.term word="Apiary" /> name</:title>
+        <:title>{gettext("Organisation name")}</:title>
         <.form
           for={@organisation_form}
           id="organisation-form"
@@ -46,7 +49,7 @@ defmodule ApiaryWeb.SettingsLive do
           <.input
             field={@organisation_form[:name]}
             type="text"
-            label="Name"
+            label={gettext("Name")}
             debounce="200"
             autocomplete="off"
             disabled={!@owner?}
@@ -54,21 +57,21 @@ defmodule ApiaryWeb.SettingsLive do
           />
         </.form>
         <:footer>
-          <span>Shown in the sidebar and in invitations.</span>
+          <span>{gettext("Shown in the sidebar and in invitations.")}</span>
           <.button
             :if={@owner?}
             type="submit"
             form="organisation-form"
             disabled={!@organisation_form.source.valid?}
-            loading_text="Saving"
+            loading_text={gettext("Saving")}
           >
-            Save
+            {gettext("Save")}
           </.button>
         </:footer>
       </.card>
 
       <.card>
-        <:title><.term word="Hive" /> name</:title>
+        <:title>{gettext("Hive name")}</:title>
         <.form
           for={@hive_form}
           id="hive-form"
@@ -79,7 +82,7 @@ defmodule ApiaryWeb.SettingsLive do
           <.input
             field={@hive_form[:name]}
             type="text"
-            label="Name"
+            label={gettext("Name")}
             debounce="200"
             autocomplete="off"
             disabled={!@owner?}
@@ -87,21 +90,21 @@ defmodule ApiaryWeb.SettingsLive do
           />
         </.form>
         <:footer>
-          <span>Shown in the sidebar and as the overview title.</span>
+          <span>{gettext("Shown in the sidebar and as the overview title.")}</span>
           <.button
             :if={@owner?}
             type="submit"
             form="hive-form"
             disabled={!@hive_form.source.valid?}
-            loading_text="Saving"
+            loading_text={gettext("Saving")}
           >
-            Save
+            {gettext("Save")}
           </.button>
         </:footer>
       </.card>
 
       <.card>
-        <:title>Retention</:title>
+        <:title>{gettext("Retention")}</:title>
         <.form
           for={@retention_form}
           id="retention-form"
@@ -112,8 +115,8 @@ defmodule ApiaryWeb.SettingsLive do
           <.input
             field={@retention_form[:events_retention_days]}
             type="number"
-            label="Keep a run's events for"
-            placeholder="Forever"
+            label={gettext("Keep a run's events for")}
+            placeholder={gettext("Forever")}
             min="1"
             max="3650"
             step="1"
@@ -124,8 +127,8 @@ defmodule ApiaryWeb.SettingsLive do
           <.input
             field={@retention_form[:log_retention_days]}
             type="number"
-            label="Keep a run's log output for"
-            placeholder="Forever"
+            label={gettext("Keep a run's log output for")}
+            placeholder={gettext("Forever")}
             min="1"
             max="3650"
             step="1"
@@ -135,10 +138,9 @@ defmodule ApiaryWeb.SettingsLive do
           />
         </.form>
         <p class="max-w-[60ch] text-[13px]/[20px] text-muted">
-          In days; empty keeps everything. A run that ended is pruned whole, counted from its
-          last event: first its log output, then its timeline. The run stays in the list with
-          its state, its counts and its connections, and its page says what was pruned and
-          when. Pruned data comes back only from a backup.
+          {gettext(
+            "In days; empty keeps everything. A run that ended is pruned whole, counted from its last event: first its log output, then its timeline. The run stays in the list with its state, its counts and its connections, and its page says what was pruned and when. Pruned data comes back only from a backup."
+          )}
         </p>
         <:footer>
           <span id="retention-summary">{retention_summary(@current_scope.hive)}</span>
@@ -147,19 +149,19 @@ defmodule ApiaryWeb.SettingsLive do
             type="submit"
             form="retention-form"
             disabled={!@retention_form.source.valid?}
-            loading_text="Saving"
+            loading_text={gettext("Saving")}
           >
-            Save
+            {gettext("Save")}
           </.button>
         </:footer>
       </.card>
 
       <.card padding={false}>
-        <:title>Pruned</:title>
+        <:title>{gettext("Pruned")}</:title>
         <p :if={@retention_runs == []} id="retention-runs-empty" class="px-5 py-4 text-muted">
           {if retention_set?(@current_scope.hive),
-            do: "Nothing has been pruned yet. The job runs every night.",
-            else: "Nothing is pruned: this hive keeps everything."}
+            do: gettext("Nothing has been pruned yet. The job runs every night."),
+            else: gettext("Nothing is pruned: this hive keeps everything.")}
         </p>
         <ul :if={@retention_runs != []} id="retention-runs" class="divide-y divide-line">
           <li
@@ -168,20 +170,26 @@ defmodule ApiaryWeb.SettingsLive do
             class="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 px-5 py-2.5"
           >
             <span class="font-medium tabular-nums">{short_datetime(run.started_at)}</span>
-            <.badge :if={run.trigger == "manual"}>By hand</.badge>
-            <.badge :if={!run.complete} color="warning">Not finished</.badge>
+            <.badge :if={run.trigger == "manual"}>{gettext("By hand")}</.badge>
+            <.badge :if={!run.complete} color="warning">{gettext("Not finished")}</.badge>
             <span class="w-full text-[13px]/[20px] text-muted">{pruned_sentence(run)}</span>
           </li>
         </ul>
         <:footer>
-          <span>The last {length(@retention_runs)} of the nightly job. Each is also a line in the server's log.</span>
+          <span>
+            {ngettext(
+              "The last run of the nightly job. It is also a line in the server's log.",
+              "The last %{count} runs of the nightly job. Each is also a line in the server's log.",
+              length(@retention_runs)
+            )}
+          </span>
         </:footer>
       </.card>
 
       <.card padding={false}>
-        <:title>Owners</:title>
+        <:title>{gettext("Owners")}</:title>
         <:actions>
-          <.button navigate={~p"/hive/members"}>Manage members</.button>
+          <.button navigate={~p"/hive/members"}>{gettext("Manage members")}</.button>
         </:actions>
         <ul id="owners" class="divide-y divide-line">
           <li
@@ -194,14 +202,14 @@ defmodule ApiaryWeb.SettingsLive do
               kind={if owner.user_id == @current_scope.user.id, do: "self", else: "person"}
             />
             <span class="min-w-0 truncate font-medium">{owner.user.email}</span>
-            <.badge :if={owner.user_id == @current_scope.user.id}>You</.badge>
+            <.badge :if={owner.user_id == @current_scope.user.id}>{gettext("You")}</.badge>
             <span class="ml-auto text-[13px]/[18px] tabular-nums text-faint">
-              since {short_date(owner.inserted_at)}
+              {gettext("since %{date}", date: short_date(owner.inserted_at))}
             </span>
           </li>
         </ul>
         <:footer>
-          <span>The last owner cannot be removed or demoted.</span>
+          <span>{gettext("The last owner cannot be removed or demoted.")}</span>
         </:footer>
       </.card>
     </Layouts.app>
@@ -214,7 +222,7 @@ defmodule ApiaryWeb.SettingsLive do
 
     {:ok,
      socket
-     |> assign(page_title: "Settings", owner?: Organisations.owner?(scope))
+     |> assign(page_title: gettext("Settings"), owner?: Organisations.owner?(scope))
      |> assign_forms()
      |> load_owners()
      |> load_retention_runs()}
@@ -239,7 +247,7 @@ defmodule ApiaryWeb.SettingsLive do
          socket
          |> assign(:current_scope, %{scope | organisation: organisation})
          |> assign_forms()
-         |> put_flash(:info, "Apiary renamed to #{organisation.name}.")}
+         |> put_flash(:info, gettext("Organisation renamed to %{name}.", name: organisation.name))}
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign(socket, :organisation_form, to_form(changeset))}
@@ -267,7 +275,7 @@ defmodule ApiaryWeb.SettingsLive do
          socket
          |> assign(:current_scope, %{scope | hive: hive})
          |> assign_forms()
-         |> put_flash(:info, "Hive renamed to #{hive.name}.")}
+         |> put_flash(:info, gettext("Hive renamed to %{name}.", name: hive.name))}
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign(socket, :hive_form, to_form(changeset))}
@@ -295,7 +303,7 @@ defmodule ApiaryWeb.SettingsLive do
          socket
          |> assign(:current_scope, %{scope | hive: hive})
          |> assign_forms()
-         |> put_flash(:info, "Retention saved. #{retention_summary(hive)}")}
+         |> put_flash(:info, gettext("Retention saved.") <> " " <> retention_summary(hive))}
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign(socket, :retention_form, to_form(changeset, as: :retention))}
@@ -336,44 +344,67 @@ defmodule ApiaryWeb.SettingsLive do
     do: is_integer(hive.events_retention_days) or is_integer(hive.log_retention_days)
 
   defp retention_summary(%{events_retention_days: nil, log_retention_days: nil}),
-    do: "This hive keeps everything."
+    do: gettext("This hive keeps everything.")
 
   defp retention_summary(%{events_retention_days: events, log_retention_days: nil}),
-    do: "Events and log output are pruned after #{days(events)}."
+    do: gettext("Events and log output are pruned after %{days}.", days: days(events))
 
   defp retention_summary(%{events_retention_days: nil, log_retention_days: log}),
-    do: "Log output is pruned after #{days(log)}; events are kept."
+    do: gettext("Log output is pruned after %{days}; events are kept.", days: days(log))
 
-  defp retention_summary(%{events_retention_days: events, log_retention_days: log}),
-    do: "Log output is pruned after #{days(log)}, events after #{days(events)}."
-
-  defp days(1), do: "1 day"
-  defp days(n), do: "#{n} days"
-
-  defp pruned_sentence(%{runs_pruned: 0}), do: "Nothing was old enough to prune."
-
-  defp pruned_sentence(run) do
-    "#{count_noun(run.runs_pruned, "run")}: #{count_noun(run.events_deleted, "event")} and " <>
-      "#{format_bytes(run.log_bytes_deleted)} of log output in " <>
-      "#{count_noun(run.log_chunks_deleted, "chunk")}." <> cutoffs(run)
+  defp retention_summary(%{events_retention_days: events, log_retention_days: log}) do
+    gettext("Log output is pruned after %{log_days}, events after %{events_days}.",
+      log_days: days(log),
+      events_days: days(events)
+    )
   end
 
-  defp cutoffs(run) do
+  defp days(n), do: ngettext("%{count} day", "%{count} days", n)
+
+  defp pruned_sentence(%{runs_pruned: 0}), do: gettext("Nothing was old enough to prune.")
+
+  defp pruned_sentence(run) do
+    pruned =
+      gettext("%{runs}: %{events} and %{bytes} of log output in %{chunks}.",
+        runs:
+          ngettext("%{number} run", "%{number} runs", run.runs_pruned,
+            number: delimited(run.runs_pruned)
+          ),
+        events:
+          ngettext("%{number} event", "%{number} events", run.events_deleted,
+            number: delimited(run.events_deleted)
+          ),
+        bytes: format_bytes(run.log_bytes_deleted),
+        chunks:
+          ngettext("%{number} chunk", "%{number} chunks", run.log_chunks_deleted,
+            number: delimited(run.log_chunks_deleted)
+          )
+      )
+
+    Enum.join([pruned | cutoffs(run)], " ")
+  end
+
+  defp cutoffs(%{log_cutoff: nil, events_cutoff: nil}), do: []
+
+  defp cutoffs(%{log_cutoff: log, events_cutoff: nil}),
+    do: [gettext("Pruned log output from before %{date}.", date: short_date(log))]
+
+  defp cutoffs(%{log_cutoff: nil, events_cutoff: events}),
+    do: [gettext("Pruned events from before %{date}.", date: short_date(events))]
+
+  defp cutoffs(%{log_cutoff: log, events_cutoff: events}) do
     [
-      run.log_cutoff && "log output from before #{short_date(run.log_cutoff)}",
-      run.events_cutoff && "events from before #{short_date(run.events_cutoff)}"
+      gettext("Pruned log output from before %{log_date}, events from before %{events_date}.",
+        log_date: short_date(log),
+        events_date: short_date(events)
+      )
     ]
-    |> Enum.filter(& &1)
-    |> case do
-      [] -> ""
-      parts -> " Pruned " <> Enum.join(parts, ", ") <> "."
-    end
   end
 
   defp unauthorized(socket) do
     socket
     |> assign(:owner?, false)
     |> assign_forms()
-    |> put_flash(:error, "Only owners can change these settings.")
+    |> put_flash(:error, gettext("Only owners can change these settings."))
   end
 end

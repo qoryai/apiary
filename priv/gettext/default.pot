@@ -1,0 +1,323 @@
+## This file is a PO Template file.
+##
+## "msgid"s here are often extracted from source code.
+## Add new messages manually only if they're dynamic
+## messages that can't be statically extracted.
+##
+## Run "mix gettext.extract" to bring this file up to
+## date. Leave "msgstr"s empty as changing them here has no
+## effect: edit them in PO (.po) files instead.
+#
+msgid ""
+msgstr ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "%{count} day"
+msgid_plural "%{count} days"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} chunk"
+msgid_plural "%{number} chunks"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} event"
+msgid_plural "%{number} events"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} run"
+msgid_plural "%{number} runs"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "%{runs}: %{events} and %{bytes} of log output in %{chunks}."
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Access keys"
+msgstr ""
+
+#: lib/apiary_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "Actions"
+msgstr ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "By hand"
+msgstr ""
+
+#: lib/apiary_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "Close"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Connections"
+msgstr ""
+
+#: lib/apiary_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "Dismiss"
+msgstr ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "Events and log output are pruned after %{days}."
+msgstr ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "Forever"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Hive"
+msgstr ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "Hive name"
+msgstr ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "Hive renamed to %{name}."
+msgstr ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "In days; empty keeps everything. A run that ended is pruned whole, counted from its last event: first its log output, then its timeline. The run stays in the list with its state, its counts and its connections, and its page says what was pruned and when. Pruned data comes back only from a backup."
+msgstr ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "Keep a run's events for"
+msgstr ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "Keep a run's log output for"
+msgstr ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "Log output is pruned after %{days}; events are kept."
+msgstr ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "Log output is pruned after %{log_days}, events after %{events_days}."
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Main"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Manage"
+msgstr ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "Manage members"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Member of %{name}"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Members"
+msgstr ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "Name"
+msgstr ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "Not finished"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Not part of an organisation yet"
+msgstr ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "Nothing has been pruned yet. The job runs every night."
+msgstr ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "Nothing is pruned: this hive keeps everything."
+msgstr ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "Nothing was old enough to prune."
+msgstr ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "Only owners can change these settings."
+msgstr ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "Only owners can change these settings. Ask an owner if a name needs to change."
+msgstr ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "Organisation name"
+msgstr ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "Organisation renamed to %{name}."
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Overview"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Owner of %{name}"
+msgstr ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "Owners"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Policy"
+msgstr ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "Pruned"
+msgstr ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "Pruned events from before %{date}."
+msgstr ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "Pruned log output from before %{date}."
+msgstr ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "Pruned log output from before %{log_date}, events from before %{events_date}."
+msgstr ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "Retention"
+msgstr ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "Retention saved."
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Runs"
+msgstr ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "Save"
+msgstr ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "Saving"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "Settings"
+msgstr ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "Shown in the sidebar and as the overview title."
+msgstr ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "Shown in the sidebar and in invitations."
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Switch organisation"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Switch organisation, current: %{name}"
+msgstr ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "The last owner cannot be removed or demoted."
+msgstr ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "The last run of the nightly job. It is also a line in the server's log."
+msgid_plural "The last %{count} runs of the nightly job. Each is also a line in the server's log."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "The names of this organisation and its hive, who owns them, and how long runs are kept."
+msgstr ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "This hive keeps everything."
+msgstr ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "You"
+msgstr ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "since %{date}"
+msgstr ""
