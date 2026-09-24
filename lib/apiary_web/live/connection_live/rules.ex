@@ -270,17 +270,8 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   @doc """
   The words of the toast, from the rule the domain made. `where` is the holder the rule
   went to: `:hive`, `:this_target`, or `{:target, label}` for a target named by its label
-  (`version_label/2`). The older spellings, "the hive", "this repository" or a label as a
-  binary, are read as those.
+  (`version_label/2`).
   """
-  def toast(rule, action, host, path, "the hive"), do: toast(rule, action, host, path, :hive)
-
-  def toast(rule, action, host, path, "this repository"),
-    do: toast(rule, action, host, path, :this_target)
-
-  def toast(rule, action, host, path, label) when is_binary(label),
-    do: toast(rule, action, host, path, {:target, label})
-
   def toast(rule, action, host, path, where) do
     pathed? = is_list(rule.paths) and path not in [nil, ""] and rule.action == "allow"
 

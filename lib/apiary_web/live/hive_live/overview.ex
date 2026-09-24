@@ -842,7 +842,7 @@ defmodule ApiaryWeb.HiveLive.Overview do
          {:ok, from} <- rule_source(popover),
          {:ok, connection} <- Runs.fetch_connection(scope, from.connection_id),
          {:ok, rule} <- Policy.rule_from_connection(scope, connection, :allow, level) do
-      where = if level == :target, do: from.label, else: gettext("the hive")
+      where = if level == :target, do: {:target, from.label}, else: :hive
 
       done =
         if level == :target, do: gettext("Allowed here"), else: gettext("Allowed for the hive")

@@ -1519,7 +1519,7 @@ defmodule ApiaryWeb.RunLive.Show do
            popover.action,
            popover.host,
            popover.path,
-           if(level == :target, do: gettext("this target"), else: gettext("the hive"))
+           if(level == :target, do: :this_target, else: :hive)
          ),
          :now
        )}
@@ -1679,9 +1679,11 @@ defmodule ApiaryWeb.RunLive.Show do
     holder = if level == :target, do: target, else: nil
 
     where =
-      if level == :target and target,
-        do: "#{target.system}/#{target.path}",
-        else: gettext("the hive")
+      cond do
+        level != :target -> :hive
+        target -> {:target, "#{target.system}/#{target.path}"}
+        true -> :this_target
+      end
 
     version =
       case Policy.list_changes(scope, holder, 1) do

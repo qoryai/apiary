@@ -7998,7 +7998,6 @@ msgstr ""
 
 #: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/hive_live/overview.ex
-#: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "the hive"
 msgstr "the workplace"
@@ -8048,11 +8047,6 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "the top"
 msgstr ""
-
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "this target"
-msgstr "this repository"
 
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
