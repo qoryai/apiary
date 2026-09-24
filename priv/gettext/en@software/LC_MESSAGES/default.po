@@ -134,10 +134,24 @@ msgid_plural "%{number} chunks"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} denied"
+msgid_plural "%{number} denied"
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} denied attempt"
 msgid_plural "%{number} denied attempts"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} destination"
+msgid_plural "%{number} destinations"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -182,6 +196,7 @@ msgstr[0] ""
 msgstr[1] ""
 
 #: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} run"
@@ -253,10 +268,16 @@ msgstr ""
 msgid "A locked hive rule denies %{rule}. Only an owner can change it."
 msgstr "A locked workplace rule denies %{rule}. Only an owner can change it."
 
+#: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/hive_live/overview.ex
 #, elixir-autogen, elixir-format
 msgid "A target's own allow rule still holds there."
 msgstr "A repository's own allow rule still holds there."
+
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "A target's own rule for this host still decides there."
+msgstr "A repository's own rule for this host still decides there."
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
@@ -288,6 +309,11 @@ msgstr ""
 #: lib/apiary_web/live/hive_live/overview.ex
 #, elixir-autogen, elixir-format
 msgid "Alive now"
+msgstr ""
+
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "All"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -331,8 +357,14 @@ msgid "Allow with paths…"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/live/connection_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Allowed"
+msgstr ""
+
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Allowed / denied"
 msgstr ""
 
 #: lib/apiary_web/live/hive_live/overview.ex
@@ -365,6 +397,11 @@ msgstr ""
 msgid "As a table"
 msgstr ""
 
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Attempts"
+msgstr ""
+
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Behind the policy in force"
@@ -378,6 +415,11 @@ msgstr ""
 #: lib/apiary_web/live/hive_live/overview.ex
 #, elixir-autogen, elixir-format
 msgid "Cancel"
+msgstr ""
+
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Clear filters"
 msgstr ""
 
 #: lib/apiary_web/components/core_components.ex
@@ -417,9 +459,15 @@ msgid "Closing"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
+#: lib/apiary_web/live/connection_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Connections"
 msgstr ""
+
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Connections of this hive"
+msgstr "Connections of this workplace"
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
@@ -453,9 +501,19 @@ msgstr ""
 msgid "Day"
 msgstr ""
 
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Decision"
+msgstr ""
+
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Denials"
+msgstr ""
+
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Denied"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -492,11 +550,22 @@ msgid_plural "Denied attempts, %{count} days"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Denied destinations come first, then the most recent. The reason and outcome are those of the last attempt across the runs shown. A rule added here changes what happens next; what the record already says stays as it was."
+msgstr ""
+
 #: lib/apiary_web/live/hive_live/overview.ex
 #, elixir-autogen, elixir-format
 msgid "Denied destinations were not counted: this hive recorded more than %{cap} connections in 7 days. The connections page counts them by destination."
 msgstr "Denied destinations were not counted: this workplace recorded more than %{cap} connections in 7 days. The connections page counts them by destination."
 
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Destination"
+msgstr ""
+
+#: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/hive_live/overview.ex
 #, elixir-autogen, elixir-format
 msgid "Disables the hive's allow rule there. Other targets keep it."
@@ -586,6 +655,7 @@ msgid "Hive renamed to %{name}."
 msgstr "Workplace renamed to %{name}."
 
 #: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/live/connection_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Host"
 msgstr ""
@@ -608,6 +678,11 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "In force"
+msgstr ""
+
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Its policy"
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -651,6 +726,7 @@ msgid "Last runs"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/live/connection_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Last seen"
 msgstr ""
@@ -770,6 +846,76 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Never used since it was created %{days} ago. A key nobody uses is a key to revoke."
+msgstr ""
+
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "New activity"
+msgstr ""
+
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Next"
+msgstr ""
+
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No connections from %{date}"
+msgstr ""
+
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No connections in %{date}"
+msgstr ""
+
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No connections in %{from} to %{to}"
+msgstr ""
+
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No connections in the last 24 hours"
+msgstr ""
+
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No connections in the last 30 days"
+msgstr ""
+
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No connections in the last 7 days"
+msgstr ""
+
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No connections in the last 90 days"
+msgstr ""
+
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No connections in the last hour"
+msgstr ""
+
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No connections match these filters"
+msgstr ""
+
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No connections recorded"
+msgstr ""
+
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No connections up to %{date}"
+msgstr ""
+
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No destination matches them in this range."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -942,6 +1088,11 @@ msgstr ""
 msgid "Organisation renamed to %{name}."
 msgstr ""
 
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Outcome"
+msgstr ""
+
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Overview"
@@ -972,6 +1123,11 @@ msgstr ""
 #: lib/apiary_web/live/hive_live/overview.ex
 #, elixir-autogen, elixir-format
 msgid "Policy"
+msgstr ""
+
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Previous"
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -1012,6 +1168,11 @@ msgstr ""
 msgid "Quiet"
 msgstr ""
 
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Reason"
+msgstr ""
+
 #: lib/apiary_web/live/hive_live/overview.ex
 #, elixir-autogen, elixir-format
 msgid "Reconnecting."
@@ -1022,11 +1183,13 @@ msgstr ""
 msgid "Reloaded."
 msgstr ""
 
+#: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/hive_live/overview.ex
 #, elixir-autogen, elixir-format
 msgid "Replaces the hive's allow rule."
 msgstr "Replaces the workplace's allow rule."
 
+#: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/hive_live/overview.ex
 #, elixir-autogen, elixir-format
 msgid "Replaces the target's own rule for the host."
@@ -1083,8 +1246,14 @@ msgstr ""
 msgid "Runner"
 msgstr ""
 
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Running sessions have it within a heartbeat."
+msgstr ""
+
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/live/connection_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Runs"
 msgstr ""
@@ -1121,6 +1290,11 @@ msgstr ""
 msgid "See runs here"
 msgstr ""
 
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Seen"
+msgstr ""
+
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Send your first run"
@@ -1141,6 +1315,11 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Show the chart as a table"
+msgstr ""
+
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Showing %{target} only."
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -1184,6 +1363,7 @@ msgid "Switch organisation, current: %{name}"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/live/connection_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Target"
 msgstr "Repository"
@@ -1192,6 +1372,11 @@ msgstr "Repository"
 #, elixir-autogen, elixir-format
 msgid "Targets"
 msgstr "Repositories"
+
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "The connections could not be loaded. Reload the page; if it keeps happening, the server log has the reason."
+msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
@@ -1225,6 +1410,18 @@ msgid_plural "The last %{count} runs of the nightly job. Each is also a line in 
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "The link's %{names} filters could not be read, so they are not applied."
+msgstr ""
+
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "The link's %{name} filter could not be read, so it is not applied."
+msgstr ""
+
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "The machine has verified with its key. The first run it starts lands here."
@@ -1238,6 +1435,11 @@ msgstr "The names of this organisation and its workplace, who owns them, and how
 #: lib/apiary_web/live/hive_live/overview.ex
 #, elixir-autogen, elixir-format
 msgid "The policy changed under you; the rows were read again. Nothing was written."
+msgstr ""
+
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "The policy changed; look at the row again."
 msgstr ""
 
 #: lib/apiary_web/live/hive_live/overview.ex
@@ -1255,6 +1457,7 @@ msgstr ""
 msgid "This could not be loaded. Reload the page; if it keeps happening, the server log has the reason."
 msgstr ""
 
+#: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/hive_live/overview.ex
 #, elixir-autogen, elixir-format
 msgid "This destination is no longer among the connections shown."
@@ -1286,6 +1489,11 @@ msgstr ""
 msgid "Today"
 msgstr ""
 
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Unassigned"
+msgstr ""
+
 #: lib/apiary_web/live/hive_live/overview.ex
 #, elixir-autogen, elixir-format
 msgid "Updated as batches land."
@@ -1294,6 +1502,11 @@ msgstr ""
 #: lib/apiary_web/live/hive_live/overview.ex
 #, elixir-autogen, elixir-format
 msgid "Used again."
+msgstr ""
+
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Version %{number}."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -1319,6 +1532,16 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "What you will paste"
+msgstr ""
+
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Where the runs of this hive reached out to, and what the policy made of it. One row per host, port and path, across runs."
+msgstr "Where the runs of this workplace reached out to, and what the policy made of it. One row per host, port and path, across runs."
+
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Widen the range, or wait for a run to reach out. Only programs that honour the proxy variables are seen."
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -1447,6 +1670,7 @@ msgstr ""
 msgid "starting or running"
 msgstr ""
 
+#: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/hive_live/overview.ex
 #, elixir-autogen, elixir-format
 msgid "the hive"
@@ -1462,4 +1686,9 @@ msgstr[1] ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "today"
+msgstr ""
+
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "you"
 msgstr ""
