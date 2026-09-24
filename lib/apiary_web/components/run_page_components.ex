@@ -13,6 +13,8 @@ defmodule ApiaryWeb.RunPageComponents do
   use Phoenix.Component
   use Gettext, backend: ApiaryWeb.Gettext
 
+  import ApiaryWeb.RichText
+
   import ApiaryWeb.CoreComponents,
     only: [badge: 1, icon: 1, notice: 1, empty_state: 1, listening: 1, term: 1]
 
@@ -234,26 +236,26 @@ defmodule ApiaryWeb.RunPageComponents do
 
   defp limit_sentence(%{reason: :other_runtime} = assigns) do
     ~H"""
-    <.phrase text={
-      gettext(
+    <.rich text={
+      rich_gettext(
         "Session events exist only for Claude Code. This run used %{runtime}, so it has a terminal and connections, and no timeline.",
-        runtime: "%{runtime}"
+        runtime: {:part, :runtime}
       )
     }>
-      <:part name="runtime"><code class="q-rule">{@runtime}</code></:part>
-    </.phrase>
+      <:part name={:runtime}><code class="q-rule">{@runtime}</code></:part>
+    </.rich>
     """
   end
 
   defp limit_sentence(%{reason: :vm_wall} = assigns) do
     ~H"""
-    <.phrase text={
-      gettext(
+    <.rich text={
+      rich_gettext(
         "This run was behind a %{wall} on an engine inside a virtual machine, where the runtime's hook socket does not reach the runner. It has a terminal and connections, and no session timeline.",
-        wall: "%{wall}"
+        wall: {:part, :wall}
       )
     }>
-      <:part name="wall">
+      <:part name={:wall}>
         <.term
           word={gettext("wall")}
           standard={
@@ -264,7 +266,7 @@ defmodule ApiaryWeb.RunPageComponents do
           class="q-tip-wide"
         />
       </:part>
-    </.phrase>
+    </.rich>
     """
   end
 
@@ -609,15 +611,15 @@ defmodule ApiaryWeb.RunPageComponents do
     <p id={"#{@id}-reload"} class="q-reload-say">
       {reload_sentence(@item)}
       <span :if={@item.previous_seq}>
-        <.phrase
+        <.rich
           text={
-            pgettext("plain", "Compared with the policy applied at %{sequence}: %{difference}",
-              sequence: "%{sequence}",
+            rich_pgettext("plain", "Compared with the policy applied at %{sequence}: %{difference}",
+              sequence: {:part, :sequence},
               difference: delta_words(@item.delta)
             )
           }
           phx-no-format
-        ><:part name="sequence"><.link patch={@seq_path.(@item.previous_seq)} class="q-link font-mono text-xs">#{pad(@item.previous_seq)}</.link></:part></.phrase>
+        ><:part name={:sequence}><.link patch={@seq_path.(@item.previous_seq)} class="q-link font-mono text-xs">#{pad(@item.previous_seq)}</.link></:part></.rich>
       </span>
       <span :if={@item[:previous_version]}>
         {gettext("Connections before this item were decided by %{version}.",
@@ -643,8 +645,8 @@ defmodule ApiaryWeb.RunPageComponents do
       · {policy_source(@item.source)}
       <span :if={@item.terminated != []}>
         ·
-        <.phrase text={gettext("reads requests to %{hosts}", hosts: "%{hosts}")}>
-          <:part name="hosts">
+        <.rich text={rich_gettext("reads requests to %{hosts}", hosts: {:part, :hosts})}>
+          <:part name={:hosts}>
             <span :for={{host, i} <- Enum.with_index(@item.terminated)}>
               {if i > 0, do: ", "}<span class="font-mono text-[12.5px]">{host}</span>
             </span>
@@ -652,7 +654,7 @@ defmodule ApiaryWeb.RunPageComponents do
               {and_more(@item.terminated_count - length(@item.terminated))}
             </span>
           </:part>
-        </.phrase>
+        </.rich>
       </span>
     </.head>
     """
@@ -666,9 +668,9 @@ defmodule ApiaryWeb.RunPageComponents do
       seq_path={@seq_path}
       kind={gettext("Session started")}
     >
-      <span :if={@item.model}><.phrase text={gettext("model %{model}", model: "%{model}")}>
-        <:part name="model"><span class="font-mono text-[12.5px]">{@item.model}</span></:part>
-      </.phrase></span>
+      <span :if={@item.model}><.rich text={rich_gettext("model %{model}", model: {:part, :model})}>
+        <:part name={:model}><span class="font-mono text-[12.5px]">{@item.model}</span></:part>
+      </.rich></span>
       <span :if={@item.source}> · {@item.source}</span>
       <span :if={@item.cwd}> · <span class="font-mono text-[12.5px]">{@item.cwd}</span></span>
     </.head>
@@ -841,14 +843,14 @@ defmodule ApiaryWeb.RunPageComponents do
           <span :if={@item.open_calls > 1} class="text-faint">· {calls_open(@item.open_calls)}</span>
         </span>
         <span class="q-cx-at ml-auto">
-          <.phrase text={gettext("%{from} to %{to}", from: "%{from}", to: "%{to}")}>
-            <:part name="from">
+          <.rich text={rich_gettext("%{from} to %{to}", from: {:part, :from}, to: {:part, :to})}>
+            <:part name={:from}>
               <.offset
                 at={@item.first_at}
                 from={@started_at}
               />
-            </:part><:part name="to"><.offset at={@item.last_at} from={@started_at} /></:part>
-          </.phrase>
+            </:part><:part name={:to}><.offset at={@item.last_at} from={@started_at} /></:part>
+          </.rich>
         </span>
       </summary>
       <div class="q-during">
@@ -900,38 +902,6 @@ defmodule ApiaryWeb.RunPageComponents do
 
   defp calls_open(n),
     do: ngettext("while %{count} call was open", "while %{count} calls were open", n)
-
-  # A translated sentence with markup in it (docs/lingo.md: whole sentences). `text` is the
-  # result of a gettext call whose `%{name}` placeholders for markup were bound to themselves
-  # (`gettext("This run used %{runtime}, ...", runtime: "%{runtime}")`); each such
-  # placeholder is filled with the `:part` slot of that name, so a link, a code or a term
-  # sits inside the sentence without cutting it into pieces. A placeholder no part names
-  # stays as text.
-  attr :text, :string, required: true
-
-  slot :part do
-    attr :name, :string, required: true
-  end
-
-  defp phrase(assigns) do
-    parts = Map.new(assigns.part, &{&1.name, &1})
-
-    pieces =
-      ~r/%\{(\w+)\}/
-      |> Regex.split(assigns.text, include_captures: true, trim: true)
-      |> Enum.map(fn piece ->
-        case Regex.run(~r/\A%\{(\w+)\}\z/, piece) do
-          [_, name] when is_map_key(parts, name) -> {:part, parts[name]}
-          _ -> {:text, piece}
-        end
-      end)
-
-    assigns = assign(assigns, :pieces, pieces)
-
-    ~H"""
-    <span phx-no-format><%= for piece <- @pieces do %><%= case piece do %><% {:part, part} -> %>{render_slot(part)}<% {:text, text} -> %>{text}<% end %><% end %></span>
-    """
-  end
 
   ## The head row
 
@@ -1193,15 +1163,15 @@ defmodule ApiaryWeb.RunPageComponents do
           {gettext("Last event #%{sequence}.", sequence: pad(@last_sequence))}
         </span>
         <span :if={@last_sequence && @last_event_at}>
-          <.phrase
+          <.rich
             text={
-              gettext("Last event #%{sequence}, %{time} ago.",
+              rich_gettext("Last event #%{sequence}, %{time} ago.",
                 sequence: pad(@last_sequence),
-                time: "%{time}"
+                time: {:part, :time}
               )
             }
             phx-no-format
-          ><:part name="time"><time data-tick="seconds" data-since={DateTime.to_iso8601(@last_event_at)} aria-live="off">{ApiaryWeb.RunComponents.format_seconds(max(DateTime.diff(DateTime.utc_now(), @last_event_at), 0))}</time></:part></.phrase>
+          ><:part name={:time}><time data-tick="seconds" data-since={DateTime.to_iso8601(@last_event_at)} aria-live="off">{ApiaryWeb.RunComponents.format_seconds(max(DateTime.diff(DateTime.utc_now(), @last_event_at), 0))}</time></:part></.rich>
         </span>
       </span>
     </p>
