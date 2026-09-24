@@ -391,7 +391,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       view |> form("#rule-popover-form", %{"for" => "hive"}) |> render_change()
       view |> form("#rule-popover-form") |> render_submit()
 
-      assert render(view) =~ "flags.example is denied for the hive."
+      assert render(view) =~ "flags.example is denied for the workplace."
       # the row is the record and stays let through; the line after says what holds now
       assert has_element?(view, ~s(tr##{id}[data-decision=allowed]))
       assert text(view, "##{id}-after") =~ "Denied for the hive in v"

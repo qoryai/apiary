@@ -89,9 +89,8 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
 
       assert html =~ scope.hive.name
       assert html =~ ~r{<title[^>]*>\s*#{Regex.escape(scope.hive.name)} · Qory Apiary\s*</title>}
-      assert html =~ ~r/<abbr[^>]*data-tip="organisation"[^>]*>apiary<\/abbr>/
-      assert html =~ ~r/<abbr[^>]*data-tip="workplace"[^>]*>hive<\/abbr>/
-      refute html =~ "organisation</p>"
+      assert html =~ "The workplace of the #{scope.organisation.name} organisation."
+      refute html =~ ~r/<abbr[^>]*>(hive|apiary)<\/abbr>/
 
       assert has_element?(view, "#onboarding[data-step='1'] h2", "Send your first run")
       assert has_element?(view, "#onboarding .q-step-current", "Create an access key")
@@ -342,7 +341,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
       render_async(view, 5_000)
 
       assert text(view, "#overview-policy-mode") =~
-               "enforce Hive default Every repository follows it."
+               "enforce Workplace default Every repository follows it."
 
       assert has_element?(view, "#overview-policy-version .q-vpill", "v2")
       assert text(view, "#overview-policy-version") =~ "since"
@@ -360,7 +359,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
     test "retention: every sentence", %{conn: conn, scope: scope} do
       started_run(scope, shop())
       view = open(conn)
-      assert text(view, "#overview-retention") =~ "This hive keeps everything."
+      assert text(view, "#overview-retention") =~ "This workplace keeps everything."
       refute has_element?(view, "#overview-retention-last")
       assert has_element?(view, "#overview-retention-settings[href='/hive/settings#retention']")
 
@@ -495,14 +494,14 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
       assert has_element?(
                view,
                "#attention-list li[data-kind=denied]:first-child [role=menuitem]",
-               "Allow for the hive"
+               "Allow for the workplace"
              )
 
       locked = text(view, "#attention-list li[data-kind=denied]:nth-child(2)")
       assert locked =~ "bin.paste.example:443"
 
       assert locked =~
-               ~r"A locked hive rule denies \*\.paste\.example\s*\. Only an owner can change it\."
+               ~r"A locked workplace rule denies \*\.paste\.example\s*\. Only an owner can change it\."
 
       assert has_element?(
                view,
@@ -559,7 +558,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
       assert text(view, "#att-policy-unmanaged") =~ "Qory serves the policy now."
       assert has_element?(view, "#att-policy-unmanaged.q-resolved")
 
-      assert text(view, "#att-policy-enforce") =~ "Observe is the hive's default"
+      assert text(view, "#att-policy-enforce") =~ "Observe is the workplace's default"
 
       assert text(view, "#att-policy-enforce") =~
                "1 allow rule is in force and every destination reached in the last 7 days is covered. Enforce would deny nothing today."
@@ -715,7 +714,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
       view |> element("#rule-popover form") |> render_submit()
 
       assert Enum.any?(Policy.list_rules(scope, nil), &(&1.host == "flags.example"))
-      assert has_element?(view, "##{item}-done", "Allowed for the hive")
+      assert has_element?(view, "##{item}-done", "Allowed for the workplace")
     end
   end
 

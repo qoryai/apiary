@@ -204,7 +204,7 @@ defmodule ApiaryWeb.LayoutsTest do
 
       assert has_element?(view, "#user-menu-level", "Not part of an organisation yet")
       assert before?(html, ~s(id="brand-menu-button"), ~s(id="theme-menu-button"))
-      assert html =~ ~r{<title[^>]*>\s*No hive yet · Qory Apiary\s*</title>}
+      assert html =~ ~r{<title[^>]*>\s*No workplace yet · Qory Apiary\s*</title>}
     end
   end
 
