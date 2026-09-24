@@ -29,6 +29,8 @@ defmodule Apiary.Runs.Record.Timeline do
   and nothing here is marked safe.
   """
 
+  use Gettext, backend: ApiaryWeb.Gettext
+
   @prefix "ai.qory."
 
   @kinds %{
@@ -715,7 +717,7 @@ defmodule Apiary.Runs.Record.Timeline do
       for seq <- item.inner, egress = events[seq], is_map(egress), do: connection(egress)
 
     %{
-      tool: source.tool || "tool",
+      tool: source.tool || gettext("tool"),
       summary: source.summary,
       status: status,
       interrupted: status == :failed and ended.interrupted == true,
@@ -753,7 +755,7 @@ defmodule Apiary.Runs.Record.Timeline do
       wells:
         List.wrap(
           well(
-            "details",
+            gettext("details"),
             :text,
             event.details,
             event.details_bytes,
@@ -780,7 +782,7 @@ defmodule Apiary.Runs.Record.Timeline do
 
   defp body(%{kind: :connection_group} = item, event, events, _limit) do
     %{
-      host: event.host || "n/a",
+      host: event.host || gettext("n/a"),
       port: event.port,
       connections:
         for(seq <- item.inner, egress = events[seq], is_map(egress), do: connection(egress)),
@@ -836,7 +838,7 @@ defmodule Apiary.Runs.Record.Timeline do
     %{
       sequence: event.sequence,
       at: event.time,
-      host: event.host || "n/a",
+      host: event.host || gettext("n/a"),
       port: event.port,
       method: event.method,
       request_method: event.request_method,
@@ -853,17 +855,27 @@ defmodule Apiary.Runs.Record.Timeline do
   defp failed?(%{type: type}), do: type == @prefix <> "session.tool_failed"
 
   defp wells(source, ended, status, limit) do
-    input = well("input", :json, source.input, source.input_bytes, nil, limit)
+    input = well(gettext("input"), :json, source.input, source.input_bytes, nil, limit)
 
     result =
       case status do
         :failed ->
-          [well("error", :text, ended.error, ended.error_bytes, ended.error_lines, limit, :error)]
+          [
+            well(
+              gettext("error"),
+              :text,
+              ended.error,
+              ended.error_bytes,
+              ended.error_lines,
+              limit,
+              :error
+            )
+          ]
 
         :finished ->
           [
             well(
-              "response",
+              gettext("response"),
               :text,
               ended.response,
               ended.response_bytes,
@@ -880,7 +892,14 @@ defmodule Apiary.Runs.Record.Timeline do
               limit,
               :error
             ),
-            well("response", :json, ended.response_json, ended.response_json_bytes, nil, limit)
+            well(
+              gettext("response"),
+              :json,
+              ended.response_json,
+              ended.response_json_bytes,
+              nil,
+              limit
+            )
           ]
 
         _open ->

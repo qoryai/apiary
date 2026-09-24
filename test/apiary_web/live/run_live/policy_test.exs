@@ -221,7 +221,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
 
       assert text(view, "#run-drift") == "Behind v1 · github.example/acme/shop"
       notice = text(view, "#run-behind")
-      assert notice =~ "It last reported the hive baseline's v#{baseline.version}"
+      assert notice =~ "It last reported the workplace baseline's v#{baseline.version}"
       assert notice =~ "github.example/acme/shop's v1"
       assert notice =~ "is in force"
       # the two numberings do not compare: the link opens the version in force
@@ -353,7 +353,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       assert text(view, "#e-30-reload") =~ "#0003 : 1 host added, none removed."
 
       assert text(view, "#e-30-reload") =~
-               "Connections before this item were decided by the hive baseline's v#{v1.version}."
+               "Connections before this item were decided by the workplace baseline's v#{v1.version}."
 
       assert text(view, "#e-30 .q-pv") == "v#{v2.version} · of hive baseline"
     end
@@ -471,7 +471,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
 
       assert has_element?(
                view,
-               ~s(button#{id.("bin.paste.example")}[aria-label="A locked hive rule denies *.paste.example"])
+               ~s(button#{id.("bin.paste.example")}[aria-label="A locked workplace rule denies *.paste.example"])
              )
 
       assert text(view, "span" <> id.("169.254.169.254")) == "No rule changes this"
@@ -489,7 +489,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       assert text(view, "#rule-popover-title") == "Allow files.cdn.example"
       assert has_element?(view, ~s(#rule-popover input[name=for][value=target][checked]))
       assert text(view, "#rule-popover") =~ "This repository github.example/acme/shop"
-      assert text(view, "#rule-popover") =~ "The whole hive"
+      assert text(view, "#rule-popover") =~ "The whole workplace"
       assert has_element?(view, ~s(#cx-#{id}-act[aria-expanded=true]))
       assert text(view, "#rule-popover-submit") == "Allow for this repository"
 
@@ -498,7 +498,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
                "Takes effect in running sessions within a heartbeat, about 30 s. This run uses its machine's policy"
 
       view |> form("#rule-popover-form", %{"for" => "hive"}) |> render_change()
-      assert text(view, "#rule-popover-submit") == "Allow for the hive"
+      assert text(view, "#rule-popover-submit") == "Allow for the workplace"
 
       view |> element("#rule-popover-cancel") |> render_click()
       refute has_element?(view, "#rule-popover")
@@ -680,10 +680,10 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       view |> element("#cx-#{id}-act") |> render_click()
 
       assert text(view, "#rule-popover") =~
-               "Disables the hive's allow rule here. Other repositories keep it."
+               "Disables the workplace's allow rule here. Other repositories keep it."
 
       view |> form("#rule-popover-form", %{"for" => "hive"}) |> render_change()
-      assert text(view, "#rule-popover-submit") == "Deny for the hive"
+      assert text(view, "#rule-popover-submit") == "Deny for the workplace"
 
       assert text(view, "#rule-popover-next") =~
                "Open connections to the host are closed at the reload."
@@ -696,7 +696,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
              )
 
       assert has_element?(view, ~s(tr#cx-#{id}[data-decision=allowed]))
-      assert text(view, "#cx-#{id}-after") =~ "Denied for the hive"
+      assert text(view, "#cx-#{id}-after") =~ "Denied for the workplace"
       assert has_element?(view, ~s(a#cx-#{id}-act[href="/hive/policy?rule=registry.example"]))
     end
 
@@ -783,10 +783,10 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       refute has_element?(view, "#rule-popover-submit")
 
       refusal = text(view, "#rule-popover-refusal")
-      assert refusal =~ "A locked hive rule denies *.paste.example ."
+      assert refusal =~ "A locked workplace rule denies *.paste.example ."
       assert refusal =~ "so no rule added here would change what happens."
       assert refusal =~ "Locked by"
-      assert refusal =~ "You can change or unlock it on the hive's policy page."
+      assert refusal =~ "You can change or unlock it on the workplace's policy page."
 
       assert has_element?(
                view,
@@ -851,7 +851,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       assert text(view, "#rule-popover-own-rule") ==
                "This repository's own rule still decides here."
 
-      assert text(view, "#rule-popover-submit") == "Allow for the hive"
+      assert text(view, "#rule-popover-submit") == "Allow for the workplace"
 
       view |> form("#rule-popover-form") |> render_submit()
 
@@ -859,7 +859,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
                Enum.filter(Policy.list_rules(scope, nil), &(&1.host == "api.pathed.example"))
 
       html = render(view)
-      assert html =~ "api.pathed.example is allowed for the hive."
+      assert html =~ "api.pathed.example is allowed for the workplace."
       assert html =~ "This repository&#39;s own rule still decides here."
 
       # and the row is not said to be answered: for this target the path is still not allowed

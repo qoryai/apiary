@@ -386,7 +386,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
              )
 
       assert text(view, "#filter-state-tip-closed") =~
-               "Stopped by the hive: a member closed it after it went quiet. Counted with the runs that ended badly."
+               "Stopped by the workplace: a member closed it after it went quiet. Counted with the runs that ended badly."
 
       refute has_element?(view, "#{form} input[name=family_alive][checked]")
       refute has_element?(view, "#{form} input[name=family_alive][aria-checked]")
