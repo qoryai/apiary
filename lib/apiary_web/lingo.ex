@@ -12,8 +12,8 @@ defmodule ApiaryWeb.Lingo do
   The body belongs to the hive, so the locale follows the scope: `locale_for/1` answers it
   and this module sets it for a request (as a plug, after the scope is fetched) and for a
   LiveView (as an `on_mount` hook, which every LiveView runs after its `live_session`
-  hooks have loaded the scope). Every hive is of the software body today, and a page
-  outside a hive (log-in, registration) reads the default body. The default locale of
+  hooks have loaded the scope). The hive's body (`Apiary.Body.for_hive/1`) names the
+  locale, and a page outside a hive (log-in, registration) reads the default body. The default locale of
   `ApiaryWeb.Gettext` is the same one, so a render outside both, such as a mail sent from
   a job or an error page, never falls back to the engine's English.
   """
@@ -31,6 +31,7 @@ defmodule ApiaryWeb.Lingo do
       iex> ApiaryWeb.Lingo.locale_for(nil)
       "en@software"
   """
+  def locale_for(%{hive: %{} = hive}), do: Apiary.Body.for_hive(hive).locale()
   def locale_for(_scope), do: @default_locale
 
   @doc "Sets the scope's locale for the calling process; returns the locale."
