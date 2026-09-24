@@ -8,21 +8,26 @@ defmodule ApiaryWeb.UserLive.Login do
     ~H"""
     <Layouts.auth flash={@flash} current_scope={@current_scope}>
       <.check_your_email :if={@sent_to} on_back="use_different_email">
-        If <strong class="font-medium text-base-content">{@sent_to}</strong>
-        has an account, a log-in link is on its way. It works for 15 minutes.
+        {rich(
+          gettext(
+            "If %{email} has an account, a log-in link is on its way. It works for 15 minutes.",
+            email: bold(@sent_to)
+          ),
+          "font-medium text-base-content"
+        )}
       </.check_your_email>
 
       <div :if={!@sent_to} class="grid gap-4">
         <Layouts.auth_heading>
-          {if @current_scope, do: "Confirm it is you", else: "Log in to Qory Apiary"}
+          {if @current_scope, do: gettext("Confirm it is you"), else: gettext("Log in to Qory Apiary")}
           <:subtitle>
             <%= cond do %>
               <% @current_scope -> %>
-                Log in again to change sensitive account settings.
+                {gettext("Log in again to change sensitive account settings.")}
               <% @mode == :password -> %>
-                Enter the password you set in account settings.
+                {gettext("Enter the password you set in account settings.")}
               <% true -> %>
-                We will email you a link. No password needed.
+                {gettext("We will email you a link. No password needed.")}
             <% end %>
           </:subtitle>
         </Layouts.auth_heading>
@@ -41,7 +46,7 @@ defmodule ApiaryWeb.UserLive.Login do
             readonly={!!@current_scope}
             field={f[:email]}
             type="email"
-            label="Email"
+            label={gettext("Email")}
             size="md"
             autocomplete="username"
             spellcheck="false"
@@ -54,7 +59,7 @@ defmodule ApiaryWeb.UserLive.Login do
               <.input
                 field={f[:password]}
                 type="password"
-                label="Password"
+                label={gettext("Password")}
                 size="md"
                 autocomplete="current-password"
                 spellcheck="false"
@@ -66,7 +71,7 @@ defmodule ApiaryWeb.UserLive.Login do
               :if={!@current_scope}
               field={f[:remember_me]}
               type="checkbox"
-              label="Keep me signed in"
+              label={gettext("Keep me signed in")}
               checked={@remember_me}
             />
           </div>
@@ -75,9 +80,11 @@ defmodule ApiaryWeb.UserLive.Login do
               variant="primary"
               size="md"
               class="btn-block"
-              loading_text={if @mode == :password, do: "Logging in", else: "Sending"}
+              loading_text={
+                if @mode == :password, do: gettext("Logging in"), else: gettext("Sending")
+              }
             >
-              {if @mode == :password, do: "Log in", else: "Send me a log-in link"}
+              {if @mode == :password, do: gettext("Log in"), else: gettext("Send me a log-in link")}
             </.button>
             <.button
               type="button"
@@ -88,14 +95,18 @@ defmodule ApiaryWeb.UserLive.Login do
               aria-expanded={to_string(@mode == :password)}
               aria-controls="login_password"
             >
-              {if @mode == :password, do: "Email me a link instead", else: "Use a password instead"}
+              {if @mode == :password,
+                do: gettext("Email me a link instead"),
+                else: gettext("Use a password instead")}
             </.button>
           </div>
         </.form>
 
         <p :if={!@current_scope} class="mt-1 text-center text-[13px]/[18px] text-muted">
-          New to Qory Apiary?
-          <.button variant="link" navigate={~p"/users/register"}>Create an account</.button>
+          {gettext("New to Qory Apiary?")}
+          <.button variant="link" navigate={~p"/users/register"}>
+            {gettext("Create an account")}
+          </.button>
         </p>
       </div>
 
@@ -121,7 +132,7 @@ defmodule ApiaryWeb.UserLive.Login do
        remember_me: true,
        sent_to: nil,
        trigger_submit: false,
-       page_title: "Log in"
+       page_title: gettext("Log in")
      )}
   end
 

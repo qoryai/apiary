@@ -18,6 +18,69 @@ msgid_plural "%{count} days"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{count} day ago"
+msgid_plural "%{count} days ago"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{count} hour ago"
+msgid_plural "%{count} hours ago"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{count} minute ago"
+msgid_plural "%{count} minutes ago"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "%{count} run alive now"
+msgid_plural "%{count} runs alive now"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{email} is now a member."
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{email} is now an owner."
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{email} is removed."
+msgstr ""
+
+#: lib/apiary/accounts/user_notifier.ex
+#, elixir-autogen, elixir-format
+msgid "%{inviter} has invited you to join %{organisation} on Qory Apiary. You can accept the invitation by visiting the URL below:"
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{label} is already revoked."
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{label} is revoked and cannot be rotated."
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{label} is revoked. Machines using it fail their next request."
+msgstr ""
+
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} chunk"
@@ -44,9 +107,52 @@ msgstr[1] ""
 msgid "%{runs}: %{events} and %{bytes} of log output in %{chunks}."
 msgstr ""
 
+#: lib/apiary_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "(optional)"
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "A key lets the machines of this hive post their runs. Create one per machine or environment and paste its server block into the runner file."
+msgstr "A key lets the machines of this workplace post their runs. Create one per machine or environment and paste its server block into the runner file."
+
+#: lib/apiary_web/live/user_live/settings.ex
+#, elixir-autogen, elixir-format
+msgid "A link to confirm your email change is on its way to the new address."
+msgstr ""
+
+#: lib/apiary_web/controllers/docs_html/not_built.html.heex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "A release image builds it and serves it here. In a checkout, run `mix docs` and reload this page. The guides are also in the `guides` directory of the repository, as Markdown."
+msgstr ""
+
+#: lib/apiary_web/live/invitation_live/accept.ex
+#, elixir-autogen, elixir-format
+msgid "Accept invitation"
+msgstr ""
+
 #: lib/apiary_web/components/layouts.ex
+#: lib/apiary_web/live/access_key_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Access keys"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Account"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Account menu, %{email}"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#: lib/apiary_web/live/user_live/settings.ex
+#, elixir-autogen, elixir-format
+msgid "Account settings"
 msgstr ""
 
 #: lib/apiary_web/components/core_components.ex
@@ -54,9 +160,60 @@ msgstr ""
 msgid "Actions"
 msgstr ""
 
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Active"
+msgstr ""
+
+#: lib/apiary_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "Already have an account?"
+msgstr ""
+
+#: lib/apiary_web/live/user_live/settings.ex
+#, elixir-autogen, elixir-format
+msgid "At least 12 characters."
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Auto"
+msgstr ""
+
+#: lib/apiary_web/controllers/docs_html/not_built.html.heex
+#, elixir-autogen, elixir-format
+msgid "Back to Qory Apiary"
+msgstr ""
+
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "By hand"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Can you trust your agents? With Qory *you don't have to*."
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Cancel"
+msgstr ""
+
+#: lib/apiary_web/live/user_live/settings.ex
+#, elixir-autogen, elixir-format
+msgid "Change email"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Changelog"
+msgstr ""
+
+#: lib/apiary_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "Check your email"
 msgstr ""
 
 #: lib/apiary_web/components/core_components.ex
@@ -66,7 +223,135 @@ msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
+msgid "Close menu"
+msgstr ""
+
+#: lib/apiary_web/live/user_live/login.ex
+#, elixir-autogen, elixir-format
+msgid "Confirm it is you"
+msgstr ""
+
+#: lib/apiary_web/live/user_live/confirmation.ex
+#, elixir-autogen, elixir-format
+msgid "Confirm my account"
+msgstr ""
+
+#: lib/apiary_web/live/user_live/settings.ex
+#, elixir-autogen, elixir-format
+msgid "Confirm new password"
+msgstr ""
+
+#: lib/apiary/accounts/user_notifier.ex
+#, elixir-autogen, elixir-format
+msgid "Confirm your Qory Apiary account"
+msgstr ""
+
+#: lib/apiary/accounts/user_notifier.ex
+#, elixir-autogen, elixir-format
+msgid "Confirm your new email address for Qory Apiary"
+msgstr ""
+
+#: lib/apiary_web/live/user_live/confirmation.ex
+#, elixir-autogen, elixir-format
+msgid "Confirming"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Connection lost."
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
 msgid "Connections"
+msgstr ""
+
+#: lib/apiary_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "Copied"
+msgstr ""
+
+#: lib/apiary_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "Copy"
+msgstr ""
+
+#: lib/apiary_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "Copy block"
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Copy it now. Qory keeps only an encrypted copy and cannot show it again."
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Copy key id"
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Copy secret"
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Create a key and paste its server block into the runner file on a machine. It posts its runs to this hive from then on."
+msgstr "Create a key and paste its server block into the runner file on a machine. It posts its runs to this workplace from then on."
+
+#: lib/apiary_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "Create account"
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Create an access key"
+msgstr ""
+
+#: lib/apiary_web/controllers/page_html/home.html.heex
+#: lib/apiary_web/live/invitation_live/accept.ex
+#: lib/apiary_web/live/user_live/login.ex
+#, elixir-autogen, elixir-format
+msgid "Create an account"
+msgstr ""
+
+#: lib/apiary_web/live/invitation_live/accept.ex
+#, elixir-autogen, elixir-format
+msgid "Create an account with %{email} to join, or log in if you already have one."
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Create key"
+msgstr ""
+
+#: lib/apiary_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "Create your account"
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Created"
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#: lib/apiary_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "Creating"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Dark"
+msgstr ""
+
+#: lib/apiary_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "Dev: sent mail is in the *mailbox*."
 msgstr ""
 
 #: lib/apiary_web/components/core_components.ex
@@ -74,14 +359,72 @@ msgstr ""
 msgid "Dismiss"
 msgstr ""
 
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Docs"
+msgstr ""
+
+#: lib/apiary_web/controllers/docs_controller.ex
+#, elixir-autogen, elixir-format
+msgid "Documentation"
+msgstr ""
+
+#: lib/apiary_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "Done:"
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#: lib/apiary_web/live/user_live/login.ex
+#: lib/apiary_web/live/user_live/registration.ex
+#: lib/apiary_web/live/user_live/settings.ex
+#, elixir-autogen, elixir-format
+msgid "Email"
+msgstr ""
+
+#: lib/apiary_web/live/user_live/login.ex
+#, elixir-autogen, elixir-format
+msgid "Email me a link instead"
+msgstr ""
+
+#: lib/apiary_web/live/user_live/login.ex
+#, elixir-autogen, elixir-format
+msgid "Enter the password you set in account settings."
+msgstr ""
+
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Events and log output are pruned after %{days}."
 msgstr ""
 
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Every session runs behind a security wall, reaches only what you allow, never holds your keys, and leaves a full record. Open source, so you can check all of that."
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Expires"
+msgstr ""
+
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Forever"
+msgstr ""
+
+#: lib/apiary_web/controllers/page_html/home.html.heex
+#, elixir-autogen, elixir-format
+msgid "Give your hive an access key, paste it into the runner file on your machines, and every run they make lands here."
+msgstr "Give your workplace an access key, paste it into the runner file on your machines, and every run they make lands here."
+
+#: lib/apiary_web/live/invitation_live/accept.ex
+#, elixir-autogen, elixir-format
+msgid "Go to your hive"
+msgstr "Go to your workplace"
+
+#: lib/apiary/accounts/user_notifier.ex
+#, elixir-autogen, elixir-format
+msgid "Hi %{email},"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -99,9 +442,89 @@ msgstr "Workplace name"
 msgid "Hive renamed to %{name}."
 msgstr "Workplace renamed to %{name}."
 
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "I have copied the secret"
+msgstr ""
+
+#: lib/apiary_web/live/user_live/login.ex
+#, elixir-autogen, elixir-format
+msgid "If %{email} has an account, a log-in link is on its way. It works for 15 minutes."
+msgstr ""
+
+#: lib/apiary/accounts/user_notifier.ex
+#, elixir-autogen, elixir-format
+msgid "If you did not ask for this change, ignore this email."
+msgstr ""
+
+#: lib/apiary/accounts/user_notifier.ex
+#, elixir-autogen, elixir-format
+msgid "If you did not create a Qory Apiary account, ignore this email."
+msgstr ""
+
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "In days; empty keeps everything. A run that ended is pruned whole, counted from its last event: first its log output, then its timeline. The run stays in the list with its state, its counts and its connections, and its page says what was pruned and when. Pruned data comes back only from a backup."
+msgstr ""
+
+#: lib/apiary_web/controllers/error_html.ex
+#, elixir-autogen, elixir-format
+msgid "Internal Server Error"
+msgstr ""
+
+#: lib/apiary_web/live/invitation_live/accept.ex
+#, elixir-autogen, elixir-format
+msgid "Invitation"
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Invitation sent to %{email}."
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Invitation to %{email} revoked."
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Invitations expire after seven days."
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Invite a member"
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Invite member"
+msgstr ""
+
+#: lib/apiary_web/live/invitation_live/accept.ex
+#, elixir-autogen, elixir-format
+msgid "It may have been accepted already, revoked, or it expired after seven days. Ask the person who invited you to send a new one."
+msgstr ""
+
+#: lib/apiary_web/live/invitation_live/accept.ex
+#, elixir-autogen, elixir-format
+msgid "Join %{name}"
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Joined"
+msgstr ""
+
+#: lib/apiary_web/live/invitation_live/accept.ex
+#, elixir-autogen, elixir-format
+msgid "Joining"
+msgstr ""
+
+#: lib/apiary_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "Just now"
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -114,6 +537,71 @@ msgstr ""
 msgid "Keep a run's log output for"
 msgstr ""
 
+#: lib/apiary_web/live/user_live/confirmation.ex
+#: lib/apiary_web/live/user_live/login.ex
+#, elixir-autogen, elixir-format
+msgid "Keep me signed in"
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Key id"
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Label"
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Last heartbeat"
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Last used"
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Level"
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Level of %{email}"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Light"
+msgstr ""
+
+#: lib/apiary_web/controllers/page_html/home.html.heex
+#: lib/apiary_web/live/invitation_live/accept.ex
+#: lib/apiary_web/live/user_live/confirmation.ex
+#: lib/apiary_web/live/user_live/login.ex
+#: lib/apiary_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "Log in"
+msgstr ""
+
+#: lib/apiary_web/live/user_live/login.ex
+#, elixir-autogen, elixir-format
+msgid "Log in again to change sensitive account settings."
+msgstr ""
+
+#: lib/apiary_web/live/user_live/login.ex
+#, elixir-autogen, elixir-format
+msgid "Log in to Qory Apiary"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Log out"
+msgstr ""
+
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Log output is pruned after %{days}; events are kept."
@@ -122,6 +610,17 @@ msgstr ""
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Log output is pruned after %{log_days}, events after %{events_days}."
+msgstr ""
+
+#: lib/apiary_web/live/user_live/confirmation.ex
+#, elixir-autogen, elixir-format
+msgid "Log-in links work once and for a short time. Ask for a new one."
+msgstr ""
+
+#: lib/apiary_web/live/user_live/confirmation.ex
+#: lib/apiary_web/live/user_live/login.ex
+#, elixir-autogen, elixir-format
+msgid "Logging in"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -139,12 +638,18 @@ msgstr ""
 msgid "Manage members"
 msgstr ""
 
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Member"
+msgstr ""
+
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Member of %{name}"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
+#: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Members"
 msgstr ""
@@ -152,6 +657,51 @@ msgstr ""
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Name"
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Never"
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Never posted"
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "New access key"
+msgstr ""
+
+#: lib/apiary_web/live/user_live/settings.ex
+#, elixir-autogen, elixir-format
+msgid "New password"
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "New secret for %{label}"
+msgstr ""
+
+#: lib/apiary_web/live/user_live/login.ex
+#, elixir-autogen, elixir-format
+msgid "New to Qory Apiary?"
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No access keys yet"
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No pending invitations."
+msgstr ""
+
+#: lib/apiary_web/controllers/error_html.ex
+#, elixir-autogen, elixir-format
+msgid "Not Found"
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -162,6 +712,11 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Not part of an organisation yet"
+msgstr ""
+
+#: lib/apiary_web/live/invitation_live/accept.ex
+#, elixir-autogen, elixir-format
+msgid "Not you? Log out"
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -189,6 +744,26 @@ msgstr ""
 msgid "Only owners can change these settings. Ask an owner if a name needs to change."
 msgstr ""
 
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Only owners can manage members."
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Only the secret issued at the last rotation keeps working. A machine still on the previous secret fails its next request."
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Open menu"
+msgstr ""
+
+#: lib/apiary_web/live/user_live/settings.ex
+#, elixir-autogen, elixir-format
+msgid "Optional. Log-in links keep working either way."
+msgstr ""
+
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Organisation name"
@@ -204,6 +779,11 @@ msgstr ""
 msgid "Overview"
 msgstr ""
 
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Owner"
+msgstr ""
+
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Owner of %{name}"
@@ -214,9 +794,35 @@ msgstr ""
 msgid "Owners"
 msgstr ""
 
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Owners manage members and settings. Members manage keys and see every run."
+msgstr ""
+
+#: lib/apiary_web/live/user_live/login.ex
+#: lib/apiary_web/live/user_live/settings.ex
+#, elixir-autogen, elixir-format
+msgid "Password"
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Paste this `server` block into the runner file on the machine."
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Pending invitations"
+msgstr ""
+
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Policy"
+msgstr ""
+
+#: lib/apiary_web/live/user_live/confirmation.ex
+#, elixir-autogen, elixir-format
+msgid "Prefer a password? You can set one in account settings."
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -239,6 +845,46 @@ msgstr ""
 msgid "Pruned log output from before %{log_date}, events from before %{events_date}."
 msgstr ""
 
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary menu"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary menu, version %{version}"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Reconnecting."
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Reconnecting. Your changes are safe."
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Remove"
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Remove %{email}"
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Remove member"
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Removing"
+msgstr ""
+
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Retention"
@@ -247,6 +893,87 @@ msgstr ""
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Retention saved."
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Retire previous secret"
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Retire the previous secret of %{label}"
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Retiring"
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Revoke"
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Revoke %{label}"
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Revoke key"
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Revoke the invitation to %{email}"
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Revoked"
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Revoked %{date}"
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Revoking"
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Rotate"
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Rotate %{label}"
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Rotate key"
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Rotating"
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Rotating issues a new secret and shows it once. The previous secret keeps working until you retire it, so machines can move over one at a time without a gap."
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Runner"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -259,9 +986,47 @@ msgstr ""
 msgid "Save"
 msgstr ""
 
+#: lib/apiary_web/live/user_live/settings.ex
+#, elixir-autogen, elixir-format
+msgid "Save password"
+msgstr ""
+
 #: lib/apiary_web/live/settings_live.ex
+#: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
 msgid "Saving"
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Secret"
+msgstr ""
+
+#: lib/apiary_web/live/user_live/confirmation.ex
+#, elixir-autogen, elixir-format
+msgid "Send a new link"
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Send invitation"
+msgstr ""
+
+#: lib/apiary_web/live/user_live/login.ex
+#, elixir-autogen, elixir-format
+msgid "Send me a log-in link"
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#: lib/apiary_web/live/user_live/login.ex
+#: lib/apiary_web/live/user_live/settings.ex
+#, elixir-autogen, elixir-format
+msgid "Sending"
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Sent"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -282,6 +1047,41 @@ msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
+msgid "Sidebar"
+msgstr ""
+
+#: lib/apiary_web/live/invitation_live/accept.ex
+#, elixir-autogen, elixir-format
+msgid "Signed in as %{email}"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Skip to content"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Something went wrong on our side."
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Source on GitHub"
+msgstr ""
+
+#: lib/apiary_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "Start an organisation and its first hive. We will email you a link to confirm; no password needed."
+msgstr "Start an organisation and its first workplace. We will email you a link to confirm; no password needed."
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Status"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
 msgid "Switch organisation"
 msgstr ""
 
@@ -290,9 +1090,55 @@ msgstr ""
 msgid "Switch organisation, current: %{name}"
 msgstr ""
 
+#: lib/apiary_web/controllers/user_session_controller.ex
+#, elixir-autogen, elixir-format
+msgid "That email and password do not match."
+msgstr ""
+
+#: lib/apiary_web/live/user_live/confirmation.ex
+#, elixir-autogen, elixir-format
+msgid "That link has expired"
+msgstr ""
+
+#: lib/apiary_web/controllers/user_session_controller.ex
+#: lib/apiary_web/live/user_live/settings.ex
+#, elixir-autogen, elixir-format
+msgid "That link has expired. Ask for a new one below."
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "That member is no longer in the hive."
+msgstr "That member is no longer in the workplace."
+
+#: lib/apiary_web/controllers/docs_html/not_built.html.heex
+#, elixir-autogen, elixir-format
+msgid "The documentation is not built"
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "The invitation could not be sent, so it was not created. Try again."
+msgstr ""
+
+#: lib/apiary/accounts/user_notifier.ex
+#, elixir-autogen, elixir-format
+msgid "The invitation is valid for seven days. If you were not expecting it, ignore this email."
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "The key stops verifying at once. Machines still using it fail their next request and do not start new runs. This cannot be undone; create a new key to reconnect them."
+msgstr ""
+
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "The last owner cannot be removed or demoted."
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "The last owner cannot be removed or demoted. Make someone else an owner first."
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -302,19 +1148,261 @@ msgid_plural "The last %{count} runs of the nightly job. Each is also a line in 
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary/accounts/user_notifier.ex
+#, elixir-autogen, elixir-format
+msgid "The link works once, for 15 minutes. If you did not ask for it, ignore this email."
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "The machine or environment this key is for."
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "The member is now a member."
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "The member is now an owner."
+msgstr ""
+
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "The names of this organisation and its hive, who owns them, and how long runs are kept."
 msgstr "The names of this organisation and its workplace, who owns them, and how long runs are kept."
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "The people in this hive. Owners manage members, keys and settings; members manage keys and see every run."
+msgstr "The people in this workplace. Owners manage members, keys and settings; members manage keys and see every run."
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "The previous secret of %{label} is retired."
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Theme"
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "They lose access to this hive and its runs at once. Their account stays; you can invite them again."
+msgstr "They lose access to this workplace and its runs at once. Their account stays; you can invite them again."
 
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "This hive keeps everything."
 msgstr "This workplace keeps everything."
 
+#: lib/apiary_web/live/invitation_live/accept.ex
+#, elixir-autogen, elixir-format
+msgid "This invitation is no longer valid"
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "This secret is shown once."
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Top bar"
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Update the `server` block in the runner file of each machine that uses this key, then retire the previous secret."
+msgstr ""
+
+#: lib/apiary_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "Use a different email"
+msgstr ""
+
+#: lib/apiary_web/live/user_live/login.ex
+#, elixir-autogen, elixir-format
+msgid "Use a password instead"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Version %{version}"
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "We email an invitation link. It works for seven days and brings the person into this hive when they accept."
+msgstr "We email an invitation link. It works for seven days and brings the person into this workplace when they accept."
+
+#: lib/apiary_web/live/user_live/settings.ex
+#, elixir-autogen, elixir-format
+msgid "We send a confirmation link to the new address."
+msgstr ""
+
+#: lib/apiary_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "We sent a confirmation link to %{email}. It works for 15 minutes."
+msgstr ""
+
+#: lib/apiary_web/live/user_live/login.ex
+#, elixir-autogen, elixir-format
+msgid "We will email you a link. No password needed."
+msgstr ""
+
+#: lib/apiary_web/controllers/page_controller.ex
+#, elixir-autogen, elixir-format
+msgid "Welcome"
+msgstr ""
+
+#: lib/apiary_web/live/user_live/confirmation.ex
+#, elixir-autogen, elixir-format
+msgid "Welcome back"
+msgstr ""
+
+#: lib/apiary_web/controllers/page_html/home.html.heex
+#: lib/apiary_web/live/user_live/confirmation.ex
+#, elixir-autogen, elixir-format
+msgid "Welcome to Qory Apiary"
+msgstr ""
+
+#: lib/apiary_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "Yesterday, %{time}"
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "You"
+msgstr ""
+
+#: lib/apiary_web/live/invitation_live/accept.ex
+#, elixir-autogen, elixir-format
+msgid "You are already a member of %{name}."
+msgstr ""
+
+#: lib/apiary/accounts/user_notifier.ex
+#, elixir-autogen, elixir-format
+msgid "You are invited to %{organisation} on Qory Apiary"
+msgstr ""
+
+#: lib/apiary_web/live/user_live/registration.ex
+#, elixir-autogen, elixir-format
+msgid "You are invited to the %{hive} hive at %{organisation}. Your account joins it as soon as you confirm."
+msgstr "You are invited to the %{hive} workplace at %{organisation}. Your account joins it as soon as you confirm."
+
+#: lib/apiary_web/live/invitation_live/accept.ex
+#, elixir-autogen, elixir-format
+msgid "You are invited to the %{hive} hive of the %{organisation} organisation, as a member."
+msgstr "You are invited to the %{hive} workplace of the %{organisation} organisation, as a member."
+
+#: lib/apiary_web/live/invitation_live/accept.ex
+#, elixir-autogen, elixir-format
+msgid "You are invited to the %{hive} hive of the %{organisation} organisation, as an owner."
+msgstr "You are invited to the %{hive} workplace of the %{organisation} organisation, as an owner."
+
+#: lib/apiary_web/controllers/user_session_controller.ex
+#, elixir-autogen, elixir-format
+msgid "You are logged in."
+msgstr ""
+
+#: lib/apiary_web/controllers/user_session_controller.ex
+#, elixir-autogen, elixir-format
+msgid "You are logged out."
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "You are no longer a member of this hive."
+msgstr "You are no longer a member of this workplace."
+
+#: lib/apiary_web/controllers/organisation_session_controller.ex
+#, elixir-autogen, elixir-format
+msgid "You are not a member of that organisation."
+msgstr ""
+
+#: lib/apiary/accounts/user_notifier.ex
+#, elixir-autogen, elixir-format
+msgid "You can change the email address of your Qory Apiary account by visiting the URL below:"
+msgstr ""
+
+#: lib/apiary/accounts/user_notifier.ex
+#, elixir-autogen, elixir-format
+msgid "You can confirm your Qory Apiary account by visiting the URL below:"
+msgstr ""
+
+#: lib/apiary/accounts/user_notifier.ex
+#, elixir-autogen, elixir-format
+msgid "You can log in to Qory Apiary by visiting the URL below:"
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "You left the %{name} hive."
+msgstr "You left the %{name} workplace."
+
+#: lib/apiary_web/user_auth.ex
+#, elixir-autogen, elixir-format
+msgid "You must log in to access this page."
+msgstr ""
+
+#: lib/apiary_web/user_auth.ex
+#, elixir-autogen, elixir-format
+msgid "You must re-authenticate to access this page."
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "You will leave this hive and lose access to its runs at once. Your account stays; an owner can invite you again."
+msgstr "You will leave this workplace and lose access to its runs at once. Your account stays; an owner can invite you again."
+
+#: lib/apiary/accounts/user_notifier.ex
+#, elixir-autogen, elixir-format
+msgid "Your Qory Apiary log-in link"
+msgstr ""
+
+#: lib/apiary_web/controllers/user_session_controller.ex
+#, elixir-autogen, elixir-format
+msgid "Your account is confirmed."
+msgstr ""
+
+#: lib/apiary_web/live/user_live/settings.ex
+#, elixir-autogen, elixir-format
+msgid "Your email address and password."
+msgstr ""
+
+#: lib/apiary_web/live/user_live/settings.ex
+#, elixir-autogen, elixir-format
+msgid "Your email address is changed."
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Your new access key"
+msgstr ""
+
+#: lib/apiary_web/controllers/user_session_controller.ex
+#, elixir-autogen, elixir-format
+msgid "Your password is updated."
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "build-01"
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "dana@example.com"
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "n/a"
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex

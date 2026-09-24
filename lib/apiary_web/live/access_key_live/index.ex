@@ -19,88 +19,90 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
       nav={:keys}
     >
       <.header>
-        Access keys
+        {gettext("Access keys")}
         <:subtitle>
-          A key lets the machines of this <.term word="hive" /> post their runs. Create one per
-          machine or environment and paste its server block into the runner file.
+          {gettext(
+            "A key lets the machines of this hive post their runs. Create one per machine or environment and paste its server block into the runner file."
+          )}
         </:subtitle>
         <:actions>
           <.button variant="primary" patch={~p"/hive/keys/new"}>
-            <.icon name="hero-plus-micro" class="size-4" /> New access key
+            <.icon name="hero-plus-micro" class="size-4" /> {gettext("New access key")}
           </.button>
         </:actions>
       </.header>
 
-      <.empty_state :if={@keys == []} icon="hero-key" title="No access keys yet">
+      <.empty_state :if={@keys == []} icon="hero-key" title={gettext("No access keys yet")}>
         <p>
-          Create a key and paste its server block into the runner file on a machine. It posts its
-          runs to this hive from then on.
+          {gettext(
+            "Create a key and paste its server block into the runner file on a machine. It posts its runs to this hive from then on."
+          )}
         </p>
         <:actions>
-          <.button patch={~p"/hive/keys/new"}>Create an access key</.button>
+          <.button patch={~p"/hive/keys/new"}>{gettext("Create an access key")}</.button>
         </:actions>
       </.empty_state>
 
       <.table
         :if={@keys != []}
         id="access-keys"
-        label="Access keys"
+        label={gettext("Access keys")}
         rows={@keys}
         row_id={&"key-#{&1.id}"}
         row_class={&(&1.revoked_at && "row-off")}
       >
-        <:col :let={key} label="Label">
+        <:col :let={key} label={gettext("Label")}>
           <span class="font-medium">{key.label}</span>
         </:col>
-        <:col :let={key} label="Key id">
+        <:col :let={key} label={gettext("Key id")}>
           <div class="relative w-fit">
             <.mono bare>{key.key_id}</.mono>
             <.copy_button
               :if={is_nil(key.revoked_at)}
               id={"copy-key-id-#{key.id}"}
               text={key.key_id}
-              label="Copy key id"
+              label={gettext("Copy key id")}
               placement="right"
               class="row-reveal !absolute left-full top-1/2 -translate-y-1/2 [&>button]:[--size:1.25rem] [&_.hero-clipboard-document-micro]:size-3.5"
               icon_only
             />
           </div>
         </:col>
-        <:col :let={key} label="Status">
+        <:col :let={key} label={gettext("Status")}>
           <.status_badge status={AccessKey.status(key)} />
         </:col>
-        <:col :let={key} label="Created">
+        <:col :let={key} label={gettext("Created")}>
           <span class={["tabular-nums", is_nil(key.revoked_at) && "text-muted"]}>
             {short_date(key.inserted_at)}
           </span>
         </:col>
-        <:col :let={key} label="Last used">
-          <span :if={AccessKey.never_used?(key)} class="text-faint">Never posted</span>
+        <:col :let={key} label={gettext("Last used")}>
+          <span :if={AccessKey.never_used?(key)} class="text-faint">{gettext("Never posted")}</span>
           <.time_ago
             :if={!AccessKey.never_used?(key)}
             at={key.last_used_at}
             class={["tabular-nums", is_nil(key.revoked_at) && "text-muted"]}
           />
         </:col>
-        <:col :let={key} label="Last heartbeat">
-          <span :if={is_nil(key.last_heartbeat_at)} class="text-faint">Never</span>
+        <:col :let={key} label={gettext("Last heartbeat")}>
+          <span :if={is_nil(key.last_heartbeat_at)} class="text-faint">{gettext("Never")}</span>
           <.time_ago
             :if={key.last_heartbeat_at}
             at={key.last_heartbeat_at}
             class={["tabular-nums", is_nil(key.revoked_at) && "text-muted"]}
           />
         </:col>
-        <:col :let={key} label="Runner">
+        <:col :let={key} label={gettext("Runner")}>
           <span :if={key.last_runner_version} class="font-mono text-[12.5px]">
             {key.last_runner_version}
           </span>
-          <span :if={!key.last_runner_version} class="text-faint">n/a</span>
+          <span :if={!key.last_runner_version} class="text-faint">{gettext("n/a")}</span>
         </:col>
         <:action :let={key}>
           <%= case AccessKey.status(key) do %>
             <% :revoked -> %>
               <span class="whitespace-nowrap px-2 text-xs/6 text-faint">
-                Revoked {short_date(key.revoked_at)}
+                {gettext("Revoked %{date}", date: short_date(key.revoked_at))}
               </span>
             <% status -> %>
               <.button
@@ -109,25 +111,25 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
                 size="xs"
                 phx-click="retire"
                 phx-value-id={key.id}
-                aria-label={"Retire the previous secret of #{key.label}"}
+                aria-label={gettext("Retire the previous secret of %{label}", label: key.label)}
               >
-                Retire previous secret
+                {gettext("Retire previous secret")}
               </.button>
               <.button
                 variant="ghost"
                 size="xs"
                 patch={~p"/hive/keys/#{key.id}/rotate"}
-                aria-label={"Rotate #{key.label}"}
+                aria-label={gettext("Rotate %{label}", label: key.label)}
               >
-                Rotate
+                {gettext("Rotate")}
               </.button>
               <.button
                 variant="danger-ghost"
                 size="xs"
                 patch={~p"/hive/keys/#{key.id}/revoke"}
-                aria-label={"Revoke #{key.label}"}
+                aria-label={gettext("Revoke %{label}", label: key.label)}
               >
-                Revoke
+                {gettext("Revoke")}
               </.button>
           <% end %>
         </:action>
@@ -136,7 +138,7 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
       <.modal
         :if={@live_action == :new && is_nil(@reveal)}
         id="new-key"
-        title="New access key"
+        title={gettext("New access key")}
         on_cancel={JS.patch(~p"/hive/keys")}
       >
         <.form
@@ -149,17 +151,22 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
           <.input
             field={@form[:label]}
             type="text"
-            label="Label"
-            placeholder="build-01"
-            hint="The machine or environment this key is for."
+            label={gettext("Label")}
+            placeholder={gettext("build-01")}
+            hint={gettext("The machine or environment this key is for.")}
             autocomplete="off"
             spellcheck="false"
           />
         </.form>
         <:footer>
-          <.button patch={~p"/hive/keys"}>Cancel</.button>
-          <.button variant="primary" type="submit" form="access-key-form" loading_text="Creating">
-            Create key
+          <.button patch={~p"/hive/keys"}>{gettext("Cancel")}</.button>
+          <.button
+            variant="primary"
+            type="submit"
+            form="access-key-form"
+            loading_text={gettext("Creating")}
+          >
+            {gettext("Create key")}
           </.button>
         </:footer>
       </.modal>
@@ -169,20 +176,20 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
         id="reveal-key"
         title={
           if @live_action == :new,
-            do: "Your new access key",
-            else: "New secret for #{@reveal.key.label}"
+            do: gettext("Your new access key"),
+            else: gettext("New secret for %{label}", label: @reveal.key.label)
         }
         dismissable={false}
         size="lg"
       >
         <:aside>
           <.badge :if={@live_action == :new} color="success" dot>{@reveal.key.label}</.badge>
-          <.badge :if={@live_action == :rotate} color="warning" dot>Rotating</.badge>
+          <.badge :if={@live_action == :rotate} color="warning" dot>{gettext("Rotating")}</.badge>
         </:aside>
         <.reveal reveal={@reveal} rotated={@live_action == :rotate} />
         <:footer>
           <.button variant="primary" patch={~p"/hive/keys"} data-autofocus>
-            I have copied the secret
+            {gettext("I have copied the secret")}
           </.button>
         </:footer>
       </.modal>
@@ -190,17 +197,18 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
       <.modal
         :if={@live_action == :rotate && @key && is_nil(@reveal)}
         id="rotate-key"
-        title={"Rotate #{@key.label}"}
+        title={gettext("Rotate %{label}", label: @key.label)}
         on_cancel={JS.patch(~p"/hive/keys")}
       >
         <p class="text-muted">
-          Rotating issues a new secret and shows it once. The previous secret keeps working
-          until you retire it, so machines can move over one at a time without a gap.
+          {gettext(
+            "Rotating issues a new secret and shows it once. The previous secret keeps working until you retire it, so machines can move over one at a time without a gap."
+          )}
         </p>
         <:footer>
-          <.button patch={~p"/hive/keys"}>Cancel</.button>
-          <.button variant="primary" phx-click="rotate" loading_text="Rotating">
-            Rotate key
+          <.button patch={~p"/hive/keys"}>{gettext("Cancel")}</.button>
+          <.button variant="primary" phx-click="rotate" loading_text={gettext("Rotating")}>
+            {gettext("Rotate key")}
           </.button>
         </:footer>
       </.modal>
@@ -208,17 +216,18 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
       <.modal
         :if={@live_action == :revoke && @key}
         id="revoke-key"
-        title={"Revoke #{@key.label}"}
+        title={gettext("Revoke %{label}", label: @key.label)}
         on_cancel={JS.patch(~p"/hive/keys")}
       >
         <p class="text-muted">
-          The key stops verifying at once. Machines still using it fail their next request
-          and do not start new runs. This cannot be undone; create a new key to reconnect them.
+          {gettext(
+            "The key stops verifying at once. Machines still using it fail their next request and do not start new runs. This cannot be undone; create a new key to reconnect them."
+          )}
         </p>
         <:footer>
-          <.button patch={~p"/hive/keys"} data-autofocus>Cancel</.button>
-          <.button variant="danger" phx-click="revoke" loading_text="Revoking">
-            Revoke key
+          <.button patch={~p"/hive/keys"} data-autofocus>{gettext("Cancel")}</.button>
+          <.button variant="danger" phx-click="revoke" loading_text={gettext("Revoking")}>
+            {gettext("Revoke key")}
           </.button>
         </:footer>
       </.modal>
@@ -226,17 +235,18 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
       <.modal
         :if={@retire_key}
         id="retire-secret"
-        title={"Retire the previous secret of #{@retire_key.label}"}
+        title={gettext("Retire the previous secret of %{label}", label: @retire_key.label)}
         on_cancel={JS.push("retire_cancel")}
       >
         <p class="text-muted">
-          Only the secret issued at the last rotation keeps working. A machine still on the
-          previous secret fails its next request.
+          {gettext(
+            "Only the secret issued at the last rotation keeps working. A machine still on the previous secret fails its next request."
+          )}
         </p>
         <:footer>
-          <.button phx-click="retire_cancel">Cancel</.button>
-          <.button variant="primary" phx-click="retire_confirm" loading_text="Retiring">
-            Retire previous secret
+          <.button phx-click="retire_cancel">{gettext("Cancel")}</.button>
+          <.button variant="primary" phx-click="retire_confirm" loading_text={gettext("Retiring")}>
+            {gettext("Retire previous secret")}
           </.button>
         </:footer>
       </.modal>
@@ -248,19 +258,19 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
 
   defp status_badge(%{status: :active} = assigns) do
     ~H"""
-    <.badge color="success" dot>Active</.badge>
+    <.badge color="success" dot>{gettext("Active")}</.badge>
     """
   end
 
   defp status_badge(%{status: :rotating} = assigns) do
     ~H"""
-    <.badge color="warning" dot>Rotating</.badge>
+    <.badge color="warning" dot>{gettext("Rotating")}</.badge>
     """
   end
 
   defp status_badge(%{status: :revoked} = assigns) do
     ~H"""
-    <.badge color="neutral" dot>Revoked</.badge>
+    <.badge color="neutral" dot>{gettext("Revoked")}</.badge>
     """
   end
 
@@ -270,12 +280,12 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
   defp reveal(assigns) do
     ~H"""
     <.notice kind={:warning}>
-      <strong>This secret is shown once.</strong>
-      Copy it now. Qory keeps only an encrypted copy and cannot show it again.
+      <strong>{gettext("This secret is shown once.")}</strong>
+      {gettext("Copy it now. Qory keeps only an encrypted copy and cannot show it again.")}
     </.notice>
 
     <dl class="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-2 sm:grid-cols-[auto_1fr_auto]">
-      <dt class="text-[13px] text-muted max-sm:col-span-2 max-sm:-mb-1">Key id</dt>
+      <dt class="text-[13px] text-muted max-sm:col-span-2 max-sm:-mb-1">{gettext("Key id")}</dt>
       <dd class="min-w-0">
         <code class="block select-all break-all rounded-field border border-line bg-code px-2.5 py-1 font-mono text-[12.5px]/5">
           {@reveal.key.key_id}
@@ -285,12 +295,12 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
         <.copy_button
           id="copy-reveal-key-id"
           text={@reveal.key.key_id}
-          label="Copy key id"
+          label={gettext("Copy key id")}
           placement="left"
           icon_only
         />
       </dd>
-      <dt class="text-[13px] text-muted max-sm:col-span-2 max-sm:-mb-1">Secret</dt>
+      <dt class="text-[13px] text-muted max-sm:col-span-2 max-sm:-mb-1">{gettext("Secret")}</dt>
       <dd class="min-w-0">
         <code class="block select-all break-all rounded-field border border-line bg-code px-2.5 py-1 font-mono text-[12.5px]/5">
           {@reveal.secret}
@@ -300,7 +310,7 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
         <.copy_button
           id="copy-reveal-secret"
           text={@reveal.secret}
-          label="Copy secret"
+          label={gettext("Copy secret")}
           placement="left"
           icon_only
         />
@@ -310,14 +320,13 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
     <div class="grid gap-2">
       <p class="text-[13px]/[18px] text-muted">
         <%= if @rotated do %>
-          Update the
-          <.mono>server</.mono>
-          block in the runner file of each machine that uses this key, then retire the
-          previous secret.
+          {coded(
+            gettext(
+              "Update the `server` block in the runner file of each machine that uses this key, then retire the previous secret."
+            )
+          )}
         <% else %>
-          Paste this
-          <.mono>server</.mono>
-          block into the runner file on the machine.
+          {coded(gettext("Paste this `server` block into the runner file on the machine."))}
         <% end %>
       </p>
       <.code_block id="server-block" code={@reveal.block} label="~/.config/qory/runner.yaml" />
@@ -329,7 +338,7 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
   def mount(_params, _session, socket) do
     {:ok,
      socket
-     |> assign(page_title: "Access keys", key: nil, reveal: nil, retire_key: nil)
+     |> assign(page_title: gettext("Access keys"), key: nil, reveal: nil, retire_key: nil)
      |> load_keys()}
   end
 
@@ -353,7 +362,7 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
 
     if key.revoked_at do
       socket
-      |> put_flash(:error, "#{key.label} is already revoked.")
+      |> put_flash(:error, gettext("%{label} is already revoked.", label: key.label))
       |> push_patch(to: ~p"/hive/keys")
     else
       assign(socket, key: key, reveal: nil)
@@ -391,7 +400,10 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
       {:error, :revoked} ->
         {:noreply,
          socket
-         |> put_flash(:error, "#{key.label} is revoked and cannot be rotated.")
+         |> put_flash(
+           :error,
+           gettext("%{label} is revoked and cannot be rotated.", label: key.label)
+         )
          |> push_patch(to: ~p"/hive/keys")}
 
       {:error, :unauthorized} ->
@@ -406,7 +418,9 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
          socket
          |> put_flash(
            :info,
-           "#{key.label} is revoked. Machines using it fail their next request."
+           gettext("%{label} is revoked. Machines using it fail their next request.",
+             label: key.label
+           )
          )
          |> load_keys()
          |> push_patch(to: ~p"/hive/keys")}
@@ -434,7 +448,10 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
       {:ok, key} ->
         {:noreply,
          socket
-         |> put_flash(:info, "The previous secret of #{key.label} is retired.")
+         |> put_flash(
+           :info,
+           gettext("The previous secret of %{label} is retired.", label: key.label)
+         )
          |> assign(:retire_key, nil)
          |> load_keys()}
 
@@ -446,7 +463,7 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
   # The membership this page was opened with is gone.
   defp unauthorized(socket) do
     socket
-    |> put_flash(:error, "You are no longer a member of this hive.")
+    |> put_flash(:error, gettext("You are no longer a member of this hive."))
     |> push_navigate(to: ~p"/hive")
   end
 

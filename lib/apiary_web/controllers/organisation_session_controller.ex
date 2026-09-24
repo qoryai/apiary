@@ -30,7 +30,7 @@ defmodule ApiaryWeb.OrganisationSessionController do
 
   defp not_a_member(conn) do
     conn
-    |> put_flash(:error, "You are not a member of that apiary.")
+    |> put_flash(:error, gettext("You are not a member of that organisation."))
     |> redirect(to: ~p"/hive")
   end
 

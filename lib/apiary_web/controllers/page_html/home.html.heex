@@ -1,17 +1,18 @@
 <Layouts.auth flash={@flash}>
   <Layouts.auth_heading>
-    Welcome to Qory Apiary
+    {gettext("Welcome to Qory Apiary")}
     <:subtitle>
-      Give your <.term word="hive" /> an access key, paste it into the runner file on your
-      machines, and every run they make lands here.
+      {gettext(
+        "Give your hive an access key, paste it into the runner file on your machines, and every run they make lands here."
+      )}
     </:subtitle>
   </Layouts.auth_heading>
   <div class="grid gap-2">
     <.button variant="primary" size="md" class="btn-block" navigate={~p"/users/log-in"}>
-      Log in
+      {gettext("Log in")}
     </.button>
     <.button size="md" class="btn-block" navigate={~p"/users/register"}>
-      Create an account
+      {gettext("Create an account")}
     </.button>
   </div>
 </Layouts.auth>

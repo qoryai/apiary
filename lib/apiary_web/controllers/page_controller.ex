@@ -5,7 +5,7 @@ defmodule ApiaryWeb.PageController do
     if conn.assigns.current_scope && conn.assigns.current_scope.user do
       redirect(conn, to: ~p"/hive")
     else
-      render(conn, :home, page_title: "Welcome")
+      render(conn, :home, page_title: gettext("Welcome"))
     end
   end
 end
