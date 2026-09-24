@@ -603,7 +603,7 @@ defmodule ApiaryWeb.RunLive.Index do
   # What the reader types in a menu narrows that menu's options on the server: the menu
   # holds the fifty most frequent values, never all of them.
   def handle_event("narrow", %{"_filter" => name, "q" => q}, socket)
-      when name in ~w(repo task runtime host) and is_binary(q) do
+      when name in ~w(target task runtime host) and is_binary(q) do
     %{current_scope: scope, filters: filters} = socket.assigns
     narrow = Map.put(socket.assigns.narrow, name, String.slice(q, 0, 256))
 
