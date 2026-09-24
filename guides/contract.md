@@ -10,7 +10,10 @@ A receiver of your own that implements the same contract takes the same runners.
 The contract is not in this repository. It is the `contracts/runner/v1` directory of the
 runner's repository: a README that defines every document and header, one JSON schema per
 document, and fixtures, among them signed requests with the status a receiver has to answer.
-This server implements version 1, revision 1, as runner 0.5.1 amended it. A runner before
+This server implements version 1, revision 1, as runner 0.5.1 amended it, and reads the
+tool invocations of revision 2: the `tools` of `dev.qory.run.policy_applied`, and the
+`tool`, `request_id` and `status` of `dev.qory.run.egress` (see [Tool
+invocations](security-policy.md#tool-invocations)). A runner before
 0.5.1 names its events `ai.qory.*` where the contract now names them `dev.qory.*`: every
 batch it sends, the ping among them, is answered `400`, so its runs do not start until the
 runner is updated.

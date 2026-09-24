@@ -29,7 +29,7 @@ defmodule ApiaryWeb.RunComponents do
   alias Phoenix.LiveView.JS
 
   @outcome_tip gettext_noop(
-                 "What became of the connection. Connected: the dial succeeded. Dial failed: allowed, but the host did not answer. Refused: never dialled."
+                 "What became of the connection. Connected: the dial succeeded, with the status the host answered when the proxy read the request. Answered: the tool the request was handed to answered with that status. Dial failed: allowed, but the host or the tool did not answer. Refused: never dialled."
                )
   @at_least_tip gettext_noop(
                   "Elapsed at the last heartbeat. The clock stops counting when heartbeats stop."
@@ -1073,6 +1073,11 @@ defmodule ApiaryWeb.RunComponents do
 
   `connection` is a projection row (`last_decision`, `last_rule`, …) or a map read from one
   egress event (`decision`, `rule`, …); both spellings are read.
+
+  A tool invocation (a connection with `tool`, or `last_tool`) reads as a call to that tool:
+  the tool's name first, then the request line, the host after them; the reason says it was
+  handed to the tool, and the outcome what the tool answered. The rule actions still act on
+  the host and the path, which is what a rule decides.
   """
   attr :id, :string, required: true
   attr :connection, :map, required: true
@@ -1102,7 +1107,7 @@ defmodule ApiaryWeb.RunComponents do
       <.decision_mark decision={@c.decision} />
       <.destination c={@c} />
       <span class="q-why"><.reason c={@c} variant="inline" /><span :if={@caption} class="text-faint"> · {@caption}</span></span>
-      <.outcome value={@c.outcome} />
+      <.outcome value={@c.outcome} tool={@c.tool} status={@c.status} />
       <.offset
         :if={@started_at && @c.last_seen_at}
         at={@c.last_seen_at}
@@ -1132,7 +1137,7 @@ defmodule ApiaryWeb.RunComponents do
         <.reason c={@c} variant="table" />
         <.after_line :if={@act && @act[:after]} id={"#{@id}-after"} line={@act.after} />
       </td>
-      <td><.outcome value={@c.outcome} /></td>
+      <td><.outcome value={@c.outcome} tool={@c.tool} status={@c.status} /></td>
       <td class="q-meta">
         <.seen c={@c} started_at={@started_at} />
       </td>
@@ -1196,7 +1201,7 @@ defmodule ApiaryWeb.RunComponents do
         > · {gettext("last attempt")}</span>
         <.after_line :if={@act && @act[:after]} id={"#{@id}-after"} line={@act.after} />
       </td>
-      <td><.outcome value={@c.outcome} /></td>
+      <td><.outcome value={@c.outcome} tool={@c.tool} status={@c.status} /></td>
       <td class="q-meta"><.relative_time at={@c.last_seen_at} /></td>
       <td class="q-slot-cell w-px">
         <span class="q-slot">
@@ -1293,6 +1298,9 @@ defmodule ApiaryWeb.RunComponents do
       credential: blank(get.([:credential, :last_credential])),
       outcome: get.([:outcome, :last_outcome]),
       mode: get.([:mode, :last_mode]),
+      tool: blank(get.([:tool, :last_tool])),
+      status: get.([:status, :last_status]),
+      request_id: get.([:request_id]),
       attempts: get.([:attempts]) || 0,
       allowed: get.([:allowed]) || 0,
       denied: get.([:denied]) || 0,
@@ -1311,7 +1319,7 @@ defmodule ApiaryWeb.RunComponents do
   defp share(_allowed, _denied), do: 100
 
   defp destination_words(c) do
-    [c.host, request_line(c)]
+    [c.tool, request_line(c), c.host]
     |> Enum.reject(&(&1 in [nil, "", "CONNECT", "HTTP"]))
     |> Enum.join(" ")
   end
@@ -1325,15 +1333,49 @@ defmodule ApiaryWeb.RunComponents do
 
   attr :c, :map, required: true
 
+  # A tool invocation is named by its tool: the request line follows, and the host, which
+  # may be a name that exists only on the runner's machine, comes last and faint.
+  defp destination(%{c: %{tool: tool}} = assigns) when is_binary(tool) do
+    assigns = assign(assigns, :line, request_line(assigns.c))
+
+    ~H"""
+    <span
+      class="q-dest q-dest-tool"
+      title={destination_title(@c, @line)}
+      data-request-id={@c.request_id}
+    >
+      <.icon name="hero-wrench-screwdriver-micro" class="q-tool-icon size-3.5" /><span class="sr-only">{gettext(
+        "Tool"
+      )}</span>
+      <b class="q-tool-name">{@c.tool}</b>
+      <span :if={@line} class="q-rq text-muted">{middle(@line, 56)}</span>
+      <span class="q-on">{@c.host}:{@c.port}</span>
+    </span>
+    """
+  end
+
   defp destination(assigns) do
     assigns = assign(assigns, :line, request_line(assigns.c))
 
     ~H"""
-    <span class="q-dest" title={"#{@c.host}:#{@c.port} #{@line}"}>
+    <span class="q-dest" title={destination_title(@c, @line)} data-request-id={@c.request_id}>
       {@c.host}<span class="text-faint">:{@c.port}</span>
       <span :if={@line} class="q-rq text-muted">{middle(@line, 56)}</span>
     </span>
     """
+  end
+
+  # The whole destination, for the hover a cut cell needs; one request's id with it, where
+  # the row is one request (the timeline's).
+  defp destination_title(c, line) do
+    whole =
+      [c.tool, "#{c.host}:#{c.port}", line]
+      |> Enum.reject(&(&1 in [nil, ""]))
+      |> Enum.join(" ")
+
+    if c.request_id,
+      do: gettext("%{destination}, request %{id}", destination: whole, id: c.request_id),
+      else: whole
   end
 
   attr :c, :map, required: true
@@ -1361,6 +1403,16 @@ defmodule ApiaryWeb.RunComponents do
         {gettext("Rule")}
         <.rule value={@c.rule} /><span :if={@c.path_rule}>, {gettext("path")}
         <.rule value={@c.path_rule} /></span>
+      <% :tool_by_rule -> %>
+        <.rich text={handed_sentence(@c)}>
+          <:part name={:rule}><.rule value={@c.rule} /></:part>
+          <:part name={:path}><.rule value={@c.path_rule || ""} /></:part>
+        </.rich>
+      <% :tool_no_rule -> %>
+        <b>{gettext("No rule matches.")}</b> {mode_sentence(@c.mode, :lets_through)}
+        <.rich text={handed_sentence(@c)}>
+          <:part name={:path}><.rule value={@c.path_rule || ""} /></:part>
+        </.rich>
       <% :allowed_no_rule -> %>
         <b>{gettext("No rule matches.")}</b> {mode_sentence(@c.mode, :lets_through)}
       <% :allowed_by_rule -> %>
@@ -1391,9 +1443,35 @@ defmodule ApiaryWeb.RunComponents do
        do: :denied_no_path_rule
 
   defp reason_kind(%{decision: "denied"}), do: :denied_by_rule
+
+  # A tool invocation the policy let through went to the tool: that is what the reason
+  # says. A denied one never reached it, and reads as any denial.
+  defp reason_kind(%{decision: "allowed", tool: tool, rule: nil}) when is_binary(tool),
+    do: :tool_no_rule
+
+  defp reason_kind(%{decision: "allowed", tool: tool}) when is_binary(tool), do: :tool_by_rule
   defp reason_kind(%{decision: "allowed", rule: nil}), do: :allowed_no_rule
   defp reason_kind(%{decision: "allowed"}), do: :allowed_by_rule
   defp reason_kind(_c), do: :unknown
+
+  # Handed to the tool, by the host's rule and the path rule when either matched.
+  defp handed_sentence(%{rule: nil, path_rule: nil} = c),
+    do: rich_gettext("Handed to %{tool}.", tool: {:b, c.tool})
+
+  defp handed_sentence(%{rule: nil} = c),
+    do: rich_gettext("Handed to %{tool}, path %{path}.", tool: {:b, c.tool}, path: {:part, :path})
+
+  defp handed_sentence(%{path_rule: nil} = c),
+    do:
+      rich_gettext("Handed to %{tool} by rule %{rule}", tool: {:b, c.tool}, rule: {:part, :rule})
+
+  defp handed_sentence(c) do
+    rich_gettext("Handed to %{tool} by rule %{rule}, path %{path}",
+      tool: {:b, c.tool},
+      rule: {:part, :rule},
+      path: {:part, :path}
+    )
+  end
 
   # The mode is the event's; a row projected before the mode was kept says only what it knows.
   defp mode_sentence("enforce", :denies), do: gettext("Enforce mode denies it.")
@@ -1410,10 +1488,28 @@ defmodule ApiaryWeb.RunComponents do
   end
 
   attr :value, :string, default: nil
+  attr :tool, :string, default: nil, doc: "the tool a request was handed to"
+  attr :status, :integer, default: nil, doc: "what the host or the tool answered"
 
+  # One element whatever the value: the inline row places it in a grid cell of its own.
   defp outcome(assigns) do
     ~H"""
-    <span :if={@value == "connected"} class="q-outcome">{gettext("Connected")}</span>
+    <span
+      :if={@value == "connected" && @tool}
+      class={["q-outcome", answer_tone(@status)]}
+      title={@status && gettext("The tool answered %{status}.", status: @status)}
+    >
+      {if @status,
+        do: gettext("Answered %{status}", status: @status),
+        else: gettext("Handed over")}
+    </span>
+    <span :if={@value == "connected" && !@tool} class={["q-outcome", answer_tone(@status)]}>
+      {gettext("Connected")}<span
+        :if={@status}
+        class="q-status"
+        title={gettext("The host answered %{status}.", status: @status)}
+      >{@status}</span>
+    </span>
     <span :if={@value == "dial_failed"} class="q-outcome q-outcome-dial">
       {gettext("Dial failed")}
     </span>
@@ -1423,6 +1519,10 @@ defmodule ApiaryWeb.RunComponents do
     </span>
     """
   end
+
+  # An answer that is an error, the host's or the tool's, is told apart at a glance.
+  defp answer_tone(status) when is_integer(status) and status >= 400, do: "q-outcome-error"
+  defp answer_tone(_status), do: nil
 
   attr :c, :map, required: true
   attr :started_at, :any, default: nil

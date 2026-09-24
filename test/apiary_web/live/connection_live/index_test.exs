@@ -3,6 +3,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
 
   import Phoenix.LiveViewTest
   import Apiary.OrganisationsFixtures
+  import Apiary.RunEventsFixtures, only: [tool_invocation_data: 1]
   import Apiary.RunListFixtures
 
   alias ApiaryWeb.RunComponents
@@ -64,6 +65,66 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       view = open(conn, ~p"/hive/connections?decision=denied")
       assert has_element?(view, "h2", "No connections match these filters")
       view |> element("#connections-clear") |> render_click()
+      assert_patch(view, ~p"/hive/connections")
+    end
+  end
+
+  describe "tool invocations" do
+    setup %{scope: scope} do
+      call = tool_invocation_data(%{})
+
+      refused =
+        tool_invocation_data(%{
+          "path" => "/media/acme/other/checkout.png",
+          "path_rule" => "",
+          "decision" => "denied",
+          "outcome" => "refused"
+        })
+        |> Map.delete("status")
+
+      started_run(scope, shop(), egress: [@registry, call, call, refused])
+      :ok
+    end
+
+    test "are destinations that read as calls to their tool", %{conn: conn} do
+      view = open(conn)
+      id = dst("files.tools.internal", 443, "/media/acme/shop/checkout.png")
+
+      assert text(view, "##{id} .q-dest") ==
+               "Tool files PUT /media/acme/shop/checkout.png files.tools.internal:443"
+
+      assert has_element?(view, "##{id} .q-dest-tool .q-tool-name", "files")
+      assert text(view, "##{id} .q-why") =~ "Handed to files by rule files.tools.internal"
+      assert text(view, "##{id} .q-outcome") == "Answered 200"
+
+      refused = dst("files.tools.internal", 443, "/media/acme/other/checkout.png")
+      assert has_element?(view, "##{refused}.q-denied .q-dest-tool")
+      assert text(view, "##{refused} .q-why") =~ "Host allowed, no path rule matches."
+      assert text(view, "##{refused} .q-outcome") == "Refused"
+
+      # The plain host beside them reads as it did.
+      refute has_element?(view, "##{dst("registry.example")} .q-dest-tool")
+      assert text(view, "##{dst("registry.example")} .q-outcome") == "Connected"
+    end
+
+    test "tools=1 keeps the tool invocations, and the chip toggles it", %{conn: conn} do
+      view = open(conn)
+      assert has_element?(view, "#connections-tools[aria-pressed=false]")
+
+      view |> element("#connections-tools") |> render_click()
+      assert_patch(view, ~p"/hive/connections?tools=1")
+      render_async(view, 2_000)
+
+      assert has_element?(view, "#connections-tools[aria-pressed=true]")
+      assert text(view, "#connections-summary") =~ "2 destinations"
+      refute has_element?(view, "##{dst("registry.example")}")
+
+      assert has_element?(
+               view,
+               "##{dst("files.tools.internal", 443, "/media/acme/shop/checkout.png")}"
+             )
+
+      view |> element("#connections-tools") |> render_click()
       assert_patch(view, ~p"/hive/connections")
     end
   end

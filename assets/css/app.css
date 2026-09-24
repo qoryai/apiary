@@ -1880,6 +1880,20 @@
   .q-dest .q-rq {
     margin-left: 0.75ch;
   }
+  /* A tool invocation: the tool's name leads, the host follows faint. */
+  .q-dest .q-tool-icon {
+    margin-right: 0.5ch;
+    color: var(--q-muted);
+    vertical-align: -2px;
+  }
+  .q-dest .q-tool-name {
+    color: var(--color-base-content);
+    font-weight: 600;
+  }
+  .q-dest .q-on {
+    margin-left: 0.75ch;
+    color: var(--q-faint);
+  }
   td.q-why {
     min-width: 300px;
     max-width: 400px;
@@ -1909,6 +1923,19 @@
   .q-outcome-dial::before {
     border-radius: 1px;
     background-color: var(--q-primary-soft-content);
+  }
+  .q-outcome-error::before {
+    background-color: var(--color-warning);
+  }
+  .q-outcome .q-status {
+    color: var(--color-base-content);
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+  .q-outcome .q-status::before {
+    content: "·";
+    margin-right: 5px;
+    color: var(--q-faint);
   }
   .q-slot {
     display: block;

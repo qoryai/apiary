@@ -177,6 +177,41 @@ The record is not rewritten. A rule added from a connection's row, **Allow** or 
 a run's Connections tab or on `/hive/connections`, changes what happens next; what the
 record already says stays as it was.
 
+## Tool invocations
+
+A runner of contract revision 2 can give a run **tools**: programs on the runner's machine
+that serve hosts, which the policy on that machine selects. The runner's proxy hands every
+request to a host a tool serves to that tool; the host may be a name that exists only on
+the machine, such as `files.tools.internal`. Each such request is a **tool invocation**: it
+is recorded like any connection, decided by the same rules and counted on the same pages,
+and the record adds the tool's name, the proxy's id of the request and, when the tool
+answered, its status.
+
+Wherever a connection is shown, a tool invocation reads as a call to its tool:
+
+- The row leads with the tool's name, then the request line (method and path), then the
+  host, faint.
+- The reason says the request was **handed to** the tool, by the host's rule and the path
+  rule that let it through. A refused invocation never reached the tool, and its reason is
+  that of any denial.
+- The outcome is **Answered** with the status the tool gave. A tool that is not running is
+  a **Dial failed**, and a refusal is **Refused**, as for any host. A host whose requests
+  the proxy reads shows the status it answered beside **Connected**.
+- On the run's timeline, allowed calls to one tool in a row fold into one line that names
+  the tool, "2 allowed calls to files"; a refused call is never folded away, and the row of
+  one request carries the proxy's id of it on hover.
+- The run's policy applied item and the policy in force on its Details tab list the tools
+  and the hosts each serves.
+- On `/hive/connections`, **Tool invocations** keeps only those destinations.
+
+**Allow** and **Deny** on a tool invocation's row act on its host and path, like on any
+row: the rules decide what reaches a tool, and the tool decides what the request does.
+Which tools a run has is not chosen here; the workplace's policy does not select tools.
+
+A run received before the release that shows tool invocations keeps them as plain
+connections until `mix apiary.rebuild` projects it again (see the [upgrading
+guide](upgrading.md#projections-after-an-upgrade)).
+
 ## Export for a node without a server
 
 A machine that reports to no server can be given the same policy as files. **Export**, on the

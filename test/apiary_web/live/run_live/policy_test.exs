@@ -478,6 +478,30 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       refute has_element?(view, "#rule-popover")
     end
 
+    test "a tool invocation's row acts on its host and path, as any row does", %{
+      conn: conn,
+      scope: scope
+    } do
+      refused =
+        tool_invocation_data(%{
+          "path" => "/media/acme/other/checkout.png",
+          "path_rule" => "",
+          "decision" => "denied",
+          "outcome" => "refused",
+          "rule" => ""
+        })
+
+      run = policy_run(scope, egress: [refused])
+      view = connections(conn, run)
+      id = connection_id(run, "files.tools.internal")
+
+      assert has_element?(view, "#cx-#{id} .q-dest-tool .q-tool-name", "files")
+      assert text(view, "button#cx-#{id}-act") == "Allow"
+
+      view |> element("#cx-#{id}-act") |> render_click()
+      assert text(view, "#rule-popover-title") =~ "files.tools.internal"
+    end
+
     test "the popover asks for whom, the target first, and says what happens next", %{
       conn: conn,
       run: run
