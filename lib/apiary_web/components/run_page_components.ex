@@ -19,7 +19,7 @@ defmodule ApiaryWeb.RunPageComponents do
     only: [badge: 1, icon: 1, notice: 1, empty_state: 1, listening: 1, term: 1]
 
   import ApiaryWeb.RunComponents,
-    only: [connection_row: 1, duration: 1, offset: 1, delimited: 1, middle: 2]
+    only: [connection_row: 1, tool_mark: 1, duration: 1, offset: 1, delimited: 1, middle: 2]
 
   alias ApiaryWeb.RunComponents
 
@@ -849,10 +849,7 @@ defmodule ApiaryWeb.RunPageComponents do
       <summary class="q-cx-sum">
         <.icon name="hero-chevron-right-micro" class="q-chev size-3" />
         <span :if={@item.tool} class="q-dest q-dest-tool">
-          <.icon name="hero-wrench-screwdriver-micro" class="q-tool-icon size-3.5" /><span class="sr-only">{gettext(
-            "Tool"
-          )}</span>
-          <b class="q-tool-name">{@item.tool}</b>
+          <.tool_mark name={@item.tool} />
           <span class="q-on">{@item.host}:{@item.port}</span>
         </span>
         <span :if={!@item.tool} class="q-dest">
@@ -862,11 +859,10 @@ defmodule ApiaryWeb.RunPageComponents do
           · {if @item.tool,
             do:
               ngettext(
-                "%{number} allowed call to %{tool}",
-                "%{number} allowed calls to %{tool}",
+                "%{number} allowed request",
+                "%{number} allowed requests",
                 @item.connections_count,
-                number: delimited(@item.connections_count),
-                tool: @item.tool
+                number: delimited(@item.connections_count)
               ),
             else:
               ngettext(

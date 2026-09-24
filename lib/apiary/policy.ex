@@ -471,6 +471,7 @@ defmodule Apiary.Policy do
           host: String.t(),
           path: String.t() | nil,
           attempts: non_neg_integer,
+          tool: String.t() | nil,
           runs: non_neg_integer,
           last_seen_at: DateTime.t(),
           targets: [%{id: Ecto.UUID.t(), system: String.t(), path: String.t()}]
@@ -482,7 +483,8 @@ defmodule Apiary.Policy do
   where the host is held to paths. Each connection is held to the effective policy of
   its own run's target (the baseline for a run without one), matched as the runner
   matches. Each destination says its allowed `attempts`, how many `runs` made them, when
-  it was last seen and in which `targets`; the 50 with the most attempts, most first.
+  it was last seen and in which `targets`, and the `tool` it was handed to when it is a
+  tool invocation; the 50 with the most attempts, most first.
 
   Read from `connections` by the hive and when they were last seen, at most
   20,000 rows (`Apiary.Policy.Activity.cap/0`): beyond that the answer is `:unavailable`, never a
@@ -525,6 +527,7 @@ defmodule Apiary.Policy do
           held: boolean,
           locked: String.t() | nil,
           denied: pos_integer,
+          tool: String.t() | nil,
           runs: pos_integer,
           last_seen_at: DateTime.t(),
           targets: [%{id: Ecto.UUID.t(), system: String.t(), path: String.t()}]
@@ -537,7 +540,7 @@ defmodule Apiary.Policy do
   since is left out: the record says it was denied, the rules say it no longer would be.
   `held` is true when the host is allowed and the path is what no rule covers; `locked`
   names the locked hive deny that covers the host, when one does, so a page can say that
-  only an owner changes it. The 50 with the most denials, most first, with the
+  only an owner changes it; `tool` names the tool of a tool invocation. The 50 with the most denials, most first, with the
   targets whose runs were denied. Bounded as `uncovered/2` is, `:unavailable` beyond
   the cap.
   """

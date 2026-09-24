@@ -763,15 +763,15 @@ msgstr[1] ""
 
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
-msgid "%{number} allowed call to %{tool}"
-msgid_plural "%{number} allowed calls to %{tool}"
+msgid "%{number} allowed connection"
+msgid_plural "%{number} allowed connections"
 msgstr[0] ""
 msgstr[1] ""
 
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
-msgid "%{number} allowed connection"
-msgid_plural "%{number} allowed connections"
+msgid "%{number} allowed request"
+msgid_plural "%{number} allowed requests"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -3233,6 +3233,26 @@ msgstr ""
 msgid "For"
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "For %{tool}"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "For %{tool} by rule %{rule}"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "For %{tool} by rule %{rule}, path %{path}"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "For %{tool}, path %{path}"
+msgstr ""
+
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Forever"
@@ -3343,6 +3363,11 @@ msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
+msgid "Handed to %{tool}"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
 msgid "Handed to %{tool} by rule %{rule}"
 msgstr ""
 
@@ -3353,12 +3378,7 @@ msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
-msgid "Handed to %{tool}, path %{path}."
-msgstr ""
-
-#: lib/apiary_web/components/run_components.ex
-#, elixir-autogen, elixir-format
-msgid "Handed to %{tool}."
+msgid "Handed to %{tool}, path %{path}"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/index.ex
@@ -6948,7 +6968,6 @@ msgid "Today, %{time}"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
-#: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Tool"
 msgstr ""
@@ -7179,7 +7198,7 @@ msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
-msgid "What became of the connection. Connected: the dial succeeded, with the status the host answered when the proxy read the request. Answered: the tool the request was handed to answered with that status. Dial failed: allowed, but the host or the tool did not answer. Refused: never dialled."
+msgid "What became of the connection. Connected: the dial succeeded, with the status the host answered when the proxy read the request. Answered: the tool the request was handed to answered with that status. Handed over: the tool took the request, and no answer is recorded. Dial failed: allowed, but the host or the tool did not answer. Refused: never dialled."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex

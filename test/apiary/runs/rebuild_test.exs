@@ -126,7 +126,8 @@ defmodule Apiary.Runs.RebuildTest do
 
     test "selects a run whose tool invocations were folded before the tool and status were",
          %{scope: scope} do
-      tooled = run_fixture(scope)
+      # Runs of a runner of revision 2, the only one that sends either key.
+      tooled = run_fixture(scope, contract_version: 2)
       events_fixture(tooled, tool_record())
       {:ok, _} = Projector.project(tooled)
 
@@ -146,7 +147,7 @@ defmodule Apiary.Runs.RebuildTest do
       )
 
       # A plain host that answered, before the status was kept.
-      answered = run_fixture(scope)
+      answered = run_fixture(scope, contract_version: 2)
 
       event_fixture(
         answered,
@@ -163,10 +164,27 @@ defmodule Apiary.Runs.RebuildTest do
 
       # A connection whose events name neither gives the rebuild nothing to do, and neither
       # does one whose tool is not a name.
-      plain = run_fixture(scope)
+      plain = run_fixture(scope, contract_version: 2)
       event_fixture(plain, 1, "run.egress", egress_data())
       event_fixture(plain, 2, "run.egress", egress_data(%{"host" => "b.example", "tool" => ""}))
       {:ok, _} = Projector.project(plain)
+
+      # A runner that announced an earlier revision is not read for them, whatever its
+      # events say: the check stays off the runs that cannot need it.
+      earlier = run_fixture(scope, contract_version: 1)
+
+      event_fixture(
+        earlier,
+        1,
+        "run.egress",
+        egress_data(%{"method" => "HTTPS", "status" => 200})
+      )
+
+      {:ok, _} = Projector.project(earlier)
+
+      Repo.update_all(from(c in Connection, where: c.run_id == ^earlier.id),
+        set: [last_status: nil]
+      )
 
       assert Rebuild.run() == %{rebuilt: 2, failed: 0}
 
@@ -183,7 +201,15 @@ defmodule Apiary.Runs.RebuildTest do
       assert Rebuild.run() == %{rebuilt: 0, failed: 0}
     end
 
-    test "walks in batches", %{scope: scope} do
+    test "walks in windows, and finds the runs that need it past a window that has none", %{
+      scope: scope
+    } do
+      for _ <- 1..3 do
+        run = run_fixture(scope)
+        event_fixture(run, 1, "run.egress", egress_data())
+        {:ok, _} = Projector.project(run)
+      end
+
       runs =
         for _ <- 1..5 do
           run = run_fixture(scope)

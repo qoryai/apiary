@@ -29,7 +29,7 @@ defmodule ApiaryWeb.RunComponents do
   alias Phoenix.LiveView.JS
 
   @outcome_tip gettext_noop(
-                 "What became of the connection. Connected: the dial succeeded, with the status the host answered when the proxy read the request. Answered: the tool the request was handed to answered with that status. Dial failed: allowed, but the host or the tool did not answer. Refused: never dialled."
+                 "What became of the connection. Connected: the dial succeeded, with the status the host answered when the proxy read the request. Answered: the tool the request was handed to answered with that status. Handed over: the tool took the request, and no answer is recorded. Dial failed: allowed, but the host or the tool did not answer. Refused: never dialled."
                )
   @at_least_tip gettext_noop(
                   "Elapsed at the last heartbeat. The clock stops counting when heartbeats stop."
@@ -1067,6 +1067,21 @@ defmodule ApiaryWeb.RunComponents do
   defp decision_word(_other), do: gettext("Unknown decision")
 
   @doc """
+  The name of a tool as a connection leads with it: the wrench, "Tool" for a screen reader,
+  and the name. Every surface that shows a tool invocation names the tool with this.
+  """
+  attr :name, :string, required: true
+
+  def tool_mark(assigns) do
+    ~H"""
+    <.icon name="hero-wrench-screwdriver-micro" class="q-tool-icon size-3.5" /><span class="sr-only">{gettext(
+      "Tool"
+    )}</span>
+    <b class="q-tool-name">{@name}</b>
+    """
+  end
+
+  @doc """
   One connection, the same wherever it appears. `inline` is the 32 px row of the timeline,
   `table` a row of a run's connections, `hive` a row of the hive's, with the disclosure of
   the runs that reached the destination.
@@ -1077,7 +1092,8 @@ defmodule ApiaryWeb.RunComponents do
   A tool invocation (a connection with `tool`, or `last_tool`) reads as a call to that tool:
   the tool's name first, then the request line, the host after them; the reason says it was
   handed to the tool, and the outcome what the tool answered. The rule actions still act on
-  the host and the path, which is what a rule decides.
+  the host and the path, which is what a rule decides. `q-dest-tool` marks the destination
+  of a tool invocation, for the tests and the pages that look for one.
   """
   attr :id, :string, required: true
   attr :connection, :map, required: true
@@ -1344,10 +1360,7 @@ defmodule ApiaryWeb.RunComponents do
       title={destination_title(@c, @line)}
       data-request-id={@c.request_id}
     >
-      <.icon name="hero-wrench-screwdriver-micro" class="q-tool-icon size-3.5" /><span class="sr-only">{gettext(
-        "Tool"
-      )}</span>
-      <b class="q-tool-name">{@c.tool}</b>
+      <.tool_mark name={@c.tool} />
       <span :if={@line} class="q-rq text-muted">{middle(@line, 56)}</span>
       <span class="q-on">{@c.host}:{@c.port}</span>
     </span>
@@ -1444,8 +1457,9 @@ defmodule ApiaryWeb.RunComponents do
 
   defp reason_kind(%{decision: "denied"}), do: :denied_by_rule
 
-  # A tool invocation the policy let through went to the tool: that is what the reason
-  # says. A denied one never reached it, and reads as any denial.
+  # A tool invocation the policy let through was for the tool: that is what the reason
+  # says, and whether it reached the tool (`handed_sentence/1`). A denied one never did,
+  # and reads as any denial.
   defp reason_kind(%{decision: "allowed", tool: tool, rule: nil}) when is_binary(tool),
     do: :tool_no_rule
 
@@ -1454,19 +1468,41 @@ defmodule ApiaryWeb.RunComponents do
   defp reason_kind(%{decision: "allowed"}), do: :allowed_by_rule
   defp reason_kind(_c), do: :unknown
 
-  # Handed to the tool, by the host's rule and the path rule when either matched.
-  defp handed_sentence(%{rule: nil, path_rule: nil} = c),
-    do: rich_gettext("Handed to %{tool}.", tool: {:b, c.tool})
+  # Handed to the tool, by the host's rule and the path rule when either matched, when the
+  # request reached it. One that did not (the tool was not running, or a reload closed
+  # the connection) was only for the tool: the outcome says what became of it.
+  defp handed_sentence(%{outcome: "connected"} = c), do: handed(c)
+  defp handed_sentence(c), do: meant(c)
 
-  defp handed_sentence(%{rule: nil} = c),
-    do: rich_gettext("Handed to %{tool}, path %{path}.", tool: {:b, c.tool}, path: {:part, :path})
+  defp handed(%{rule: nil, path_rule: nil} = c),
+    do: rich_gettext("Handed to %{tool}", tool: {:b, c.tool})
 
-  defp handed_sentence(%{path_rule: nil} = c),
+  defp handed(%{rule: nil} = c),
+    do: rich_gettext("Handed to %{tool}, path %{path}", tool: {:b, c.tool}, path: {:part, :path})
+
+  defp handed(%{path_rule: nil} = c),
     do:
       rich_gettext("Handed to %{tool} by rule %{rule}", tool: {:b, c.tool}, rule: {:part, :rule})
 
-  defp handed_sentence(c) do
+  defp handed(c) do
     rich_gettext("Handed to %{tool} by rule %{rule}, path %{path}",
+      tool: {:b, c.tool},
+      rule: {:part, :rule},
+      path: {:part, :path}
+    )
+  end
+
+  defp meant(%{rule: nil, path_rule: nil} = c),
+    do: rich_gettext("For %{tool}", tool: {:b, c.tool})
+
+  defp meant(%{rule: nil} = c),
+    do: rich_gettext("For %{tool}, path %{path}", tool: {:b, c.tool}, path: {:part, :path})
+
+  defp meant(%{path_rule: nil} = c),
+    do: rich_gettext("For %{tool} by rule %{rule}", tool: {:b, c.tool}, rule: {:part, :rule})
+
+  defp meant(c) do
+    rich_gettext("For %{tool} by rule %{rule}, path %{path}",
       tool: {:b, c.tool},
       rule: {:part, :rule},
       path: {:part, :path}

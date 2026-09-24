@@ -683,6 +683,27 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
       assert text(view, "#attention-n") == "0"
     end
 
+    test "a denied tool invocation reads as a call to its tool", %{conn: conn, scope: scope} do
+      started_run(scope, shop(),
+        egress: [
+          tool_invocation_data(%{
+            "path" => "/media/acme/other/checkout.png",
+            "path_rule" => "",
+            "decision" => "denied",
+            "outcome" => "refused"
+          })
+        ]
+      )
+
+      view = open(conn)
+      selector = "#attention-list li[data-kind=denied]"
+
+      assert has_element?(view, "#{selector} .q-dest-tool .q-tool-name", "files")
+
+      assert text(view, "#{selector} .q-dest-tool") ==
+               "Tool files /media/acme/other/checkout.png files.tools.internal:443"
+    end
+
     test "allow for the hive from the caret menu", %{conn: conn, scope: scope} do
       started_run(scope, shop(),
         egress: [%{"host" => "flags.example", "decision" => "denied", "rule" => ""}]

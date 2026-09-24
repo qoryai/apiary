@@ -28,6 +28,7 @@ defmodule ApiaryWeb.OverviewComponents do
       duration: 1,
       elapsed: 1,
       format_seconds: 1,
+      tool_mark: 1,
       heard_at: 1,
       quiet_for: 2,
       relative_time: 1,
@@ -226,6 +227,22 @@ defmodule ApiaryWeb.OverviewComponents do
 
   attr :item, :map, required: true
   attr :now, :any, required: true
+
+  # A tool invocation leads with its tool, then the path, then the host, as a connection
+  # row does (`RunComponents.connection_row/1`).
+  defp attention_subject(%{item: %{kind: :denied, tool: tool}} = assigns) when is_binary(tool) do
+    ~H"""
+    <span
+      class="q-host q-dest-tool truncate font-mono text-[12.5px]"
+      title={destination_title(@item)}
+    >
+      <.tool_mark name={@item.tool} /><span
+        :if={@item.path != ""}
+        class="q-path"
+      >{@item.path}</span><span class="q-port">{@item.host}:{@item.port}</span>
+    </span>
+    """
+  end
 
   defp attention_subject(%{item: %{kind: :denied}} = assigns) do
     ~H"""
@@ -705,6 +722,10 @@ defmodule ApiaryWeb.OverviewComponents do
     >{format_seconds(max(DateTime.diff(@now, @at, :second), 0))}</time>
     """
   end
+
+  defp destination_title(%{tool: tool, host: host, port: port, path: path})
+       when is_binary(tool),
+       do: "#{tool} #{path} #{host}:#{port}"
 
   defp destination_title(%{host: host, port: port, path: path}), do: "#{host}:#{port}#{path}"
 

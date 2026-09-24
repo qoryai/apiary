@@ -518,8 +518,8 @@ defmodule Apiary.Runs do
   the rest of the most recent attempt across those runs, the tool it was handed to
   (`last_tool`) and what answered it (`last_status`) among them. Filters: `decision`
   (destinations with any attempt so decided), `target`, `host` (the destination's), `tools`
-  (tool invocations only: connections whose last attempt was handed to a tool) and the
-  range, which is over when a run last reached the destination and never wider than
+  (tool invocations only: destinations that a run's last attempt handed to a tool, kept
+  whole, so their counts are those without the filter) and the range, which is over when a run last reached the destination and never wider than
   `Apiary.Runs.Filters.max_window_days/0` days, so the aggregate is over a bounded set. Denied destinations come first, then the
   most recent.
   """
@@ -763,10 +763,27 @@ defmodule Apiary.Runs do
       where: r.organisation_id == ^organisation_id and r.hive_id == ^hive_id
     )
     |> where_if(f.host, dynamic([c], c.host == ^f.host))
-    |> where_if(f.tools, dynamic([c], not is_nil(c.last_tool)))
     |> where_if(from, dynamic([c], c.last_seen_at >= ^from))
     |> where_if(to, dynamic([c], c.last_seen_at < ^to))
     |> where_run_target(f.target)
+    |> where_tools(f.tools)
+  end
+
+  # Tool invocations only: every row of a destination that any row under the same filters
+  # handed to a tool, so a destination is kept whole and counts the same with the filter
+  # as without it, and so do the runs and the facets.
+  defp where_tools(query, false), do: query
+
+  defp where_tools(query, true) do
+    tooled =
+      from c in query,
+        where: not is_nil(c.last_tool),
+        distinct: true,
+        select: %{host: c.host, port: c.port, path: c.path}
+
+    from c in query,
+      join: t in subquery(tooled),
+      on: t.host == c.host and t.port == c.port and t.path == c.path
   end
 
   defp where_run_target(query, nil), do: query

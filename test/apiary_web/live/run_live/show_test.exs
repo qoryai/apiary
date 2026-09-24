@@ -1315,7 +1315,8 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert has_element?(lv, "#e-2-tools", "files.tools.internal")
 
       assert has_element?(lv, "#e-4-group .q-cx-sum .q-tool-name", "files")
-      assert has_element?(lv, "#e-4-group .q-cx-sum", "2 allowed calls to files")
+      assert has_element?(lv, "#e-4-group .q-cx-sum", "2 allowed requests")
+      refute render(element(lv, "#e-4-group .q-cx-sum")) =~ "calls"
       assert has_element?(lv, "#e-4-cx-4 .q-outcome", "Answered 200")
       assert has_element?(lv, "#e-4-cx-5 .q-outcome", "Answered 201")
 

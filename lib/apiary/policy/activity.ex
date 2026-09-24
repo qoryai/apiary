@@ -23,6 +23,9 @@ defmodule Apiary.Policy.Activity do
   would start denying, though it is still a denied destination the rules do not allow.
   Hosts and paths are a runner's words: compared, never made atoms of, and what is not a
   host is no rule's.
+
+  A destination that is a tool invocation carries `tool`, the tool its most recently seen
+  connection was handed to (nil otherwise), so a page names it as a call to the tool.
   """
 
   import Ecto.Query, warn: false
@@ -69,6 +72,7 @@ defmodule Apiary.Policy.Activity do
         host: host,
         path: path,
         attempts: rows |> Enum.map(& &1.allowed) |> Enum.sum(),
+        tool: last_tool(rows),
         runs: rows |> Enum.map(& &1.run_id) |> Enum.uniq() |> length(),
         last_seen_at: rows |> Enum.map(& &1.last_seen_at) |> Enum.max(DateTime),
         target_ids: rows |> Enum.map(& &1.target_id) |> Enum.reject(&is_nil/1) |> Enum.uniq()
@@ -142,6 +146,7 @@ defmodule Apiary.Policy.Activity do
         held: held?,
         locked: locked,
         denied: rows |> Enum.map(& &1.denied) |> Enum.sum(),
+        tool: last_tool(rows),
         runs: rows |> Enum.map(& &1.run_id) |> Enum.uniq() |> length(),
         last_seen_at: rows |> Enum.map(& &1.last_seen_at) |> Enum.max(DateTime),
         target_ids: rows |> Enum.map(& &1.target_id) |> Enum.reject(&is_nil/1) |> Enum.uniq()
@@ -151,6 +156,10 @@ defmodule Apiary.Policy.Activity do
     |> Enum.take(@top)
     |> then(&with_targets(hive_id, &1))
   end
+
+  # The tool the most recently seen of a destination's rows was handed to: nil for a
+  # destination that is no tool invocation.
+  defp last_tool(rows), do: rows |> Enum.max_by(& &1.last_seen_at, DateTime) |> Map.get(:tool)
 
   @doc false
   def denied_summary(%Scope{hive: %Hive{} = hive}, since, opts \\ []) do
@@ -212,6 +221,7 @@ defmodule Apiary.Policy.Activity do
           allowed: c.allowed,
           denied: c.denied,
           credential: c.last_credential,
+          tool: c.last_tool,
           last_seen_at: c.last_seen_at,
           run_id: c.run_id,
           target_id: r.target_id

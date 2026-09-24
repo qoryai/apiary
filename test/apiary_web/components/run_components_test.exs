@@ -468,17 +468,42 @@ defmodule ApiaryWeb.RunComponentsTest do
       # No answer recorded: handed over, not connected.
       assert text(row(%{invocation | last_status: nil})) =~ "Handed over"
 
-      # Under observe with no rule, the mode lets it through and the tool still has it.
+      # Under observe with no rule, the mode lets it through and the tool still has it,
+      # with the path rule when one matched, and without one when none did.
+      observe = Map.merge(invocation, %{last_rule: "", last_mode: "observe"})
+
+      assert text(row(observe)) =~
+               "No rule matches. Observe mode lets it through. Handed to files, path /media/acme/shop/*"
+
+      assert text(row(%{observe | last_path_rule: ""})) =~
+               ~r/No rule matches\. Observe mode lets it through\. Handed to files Answered 200/
+
+      # The tool that is gone is a failed dial: the request was for the tool, never handed.
+      html = row(%{invocation | last_outcome: "dial_failed", last_status: nil})
+
+      assert text(html) =~
+               "For files by rule files.tools.internal, path /media/acme/shop/* Dial failed"
+
+      refute text(html) =~ "Handed"
+
+      # Closed by a reload: for the tool, and closed.
+      html = row(%{invocation | last_outcome: "refused", last_status: nil, last_path_rule: ""})
+
+      assert text(html) =~
+               "For files by rule files.tools.internal Closed when a new policy denied the host."
+
+      # No rule at all, no path rule, no answer: still for the tool.
       assert text(
                row(
-                 Map.merge(invocation, %{last_rule: "", last_mode: "observe", last_path_rule: nil})
+                 Map.merge(invocation, %{
+                   last_rule: "",
+                   last_path_rule: "",
+                   last_mode: nil,
+                   last_outcome: "dial_failed",
+                   last_status: nil
+                 })
                )
-             ) =~
-               "No rule matches. Observe mode lets it through. Handed to files."
-
-      # The tool that is gone is a failed dial, as for any host.
-      assert text(row(%{invocation | last_outcome: "dial_failed", last_status: nil})) =~
-               "Dial failed"
+             ) =~ "No rule matches. It was let through. For files Dial failed"
     end
 
     test "a refused tool invocation reads as a denial of the call" do

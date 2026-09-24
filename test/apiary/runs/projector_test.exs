@@ -338,6 +338,42 @@ defmodule Apiary.Runs.ProjectorTest do
       assert projection(run) == before
     end
 
+    test "a later attempt without a tool clears the tool across passes; an earlier one does not",
+         %{run: run} do
+      event_fixture(run, 5, "run.egress", tool_invocation_data(%{}))
+      {:ok, _} = Projector.project(run)
+
+      # An earlier attempt without a tool, arriving later, is not the last.
+      event_fixture(
+        run,
+        3,
+        "run.egress",
+        tool_invocation_data(%{}) |> Map.drop(["tool", "status"])
+      )
+
+      {:ok, _} = Projector.project(run)
+
+      assert [%{last_tool: "files", last_status: 200, last_sequence: 5}] =
+               projection(run).connections
+
+      # A later one is.
+      event_fixture(
+        run,
+        8,
+        "run.egress",
+        tool_invocation_data(%{}) |> Map.drop(["tool", "status"])
+      )
+
+      {:ok, _} = Projector.project(run)
+
+      assert [%{attempts: 3, last_tool: nil, last_status: nil, last_sequence: 8}] =
+               projection(run).connections
+
+      before = projection(run)
+      {:ok, _} = Projector.rebuild(run)
+      assert projection(run) == before
+    end
+
     test "an earlier egress event arriving later does not take over the last columns", %{
       run: run
     } do

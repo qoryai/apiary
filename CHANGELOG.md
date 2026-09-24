@@ -10,23 +10,26 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
 
 ### Added
 
-- Tool invocations, as runner contract v1 revision 2 reports them. A runner can give a run
-  tools, programs on its machine that serve hosts, and its proxy hands every request to
-  such a host to the tool. Each request is a `dev.qory.run.egress` event that names the
-  `tool`, the proxy's `request_id` and, when the tool answered, the `status`: it is
-  recorded as a connection, decided by the same rules and counted on the same pages, and
-  it reads as a call to the tool wherever a connection is shown. The row leads with the
-  tool's name, then the request line and the host; the reason says the request was
-  handed to the tool, by which rule and path; the outcome is the status the tool answered
-  (**Answered 200**), a failed dial when the tool is not running, a refusal as before. A
-  plain host whose requests the proxy reads shows the status it answered beside
+- Tool invocations, as runner contract v1 revision 2 (runner 0.6.0) reports them. A
+  runner can give a run tools, programs on its machine that serve hosts, and its proxy
+  hands every request to such a host to the tool. Each request decided on its path is a
+  `dev.qory.run.egress` event that names the `tool`, the proxy's `request_id` and, when
+  the tool answered, the `status`: it is recorded as a connection, decided by the same
+  rules and counted on the same pages, and it reads as a call to the tool wherever a
+  connection is shown: the run's Connections tab, `/hive/connections`, the timeline, the
+  overview's denied destinations and the list of what enforce would start denying. The
+  row leads with the tool's name, then the request line and the host; the reason says the
+  request was handed to the tool, by which rule and path, or was for the tool when it did
+  not reach it; the outcome is the status the tool answered (**Answered 200**), **Handed
+  over** when none is recorded, a failed dial when the tool is not running, a refusal as
+  before. A plain host whose requests the proxy reads shows the status it answered beside
   **Connected**.
-- On the run's timeline, allowed calls to one tool in a row fold into one line that says
-  whose calls they are ("2 allowed calls to files"), a refused call is never folded, and a
-  single request keeps the proxy's id on hover. The policy applied item lists the run's
-  tools with the hosts they serve, and so does the Details tab under the policy in force.
+- On the run's timeline, allowed requests to one tool in a row fold into one line under
+  the tool's name ("2 allowed requests"), a refused one is never folded, and a single
+  request keeps the proxy's id on hover. The policy applied item lists the run's tools
+  with the hosts they serve, and so does the Details tab under the policy in force.
 - `/hive/connections` has a **Tool invocations** toggle, `tools=1`, that keeps only
-  those destinations.
+  those destinations, each whole, with the counts it has without the filter.
 
 ### Migrations
 
@@ -42,10 +45,13 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
   already stores what it sends. A run received before this release whose events name a
   tool or a status shows neither until it is projected again: run `mix apiary.rebuild` once
   after the upgrade (in a release `bin/apiary eval "Apiary.Release.rebuild()"`). It now
-  also selects a run with a connection whose last attempt names a tool or a status the row
-  lacks, and leaves every other run alone.
-- The workplace's policy does not select tools: the tools a run has come from the policy
-  on its machine.
+  also selects a run of a revision 2 runner with a connection whose last attempt names a
+  tool or a status the row lacks, and leaves every other run alone. It walks the runs in
+  windows of `batch` by id, so what each step reads is bounded by its window, where it
+  used to scan the tables it checks once a page.
+- Tools come from the run's policy, and this server never sends a run configuration that
+  selects any: tool invocations come only from runs under the machine's own policy, its
+  runner file.
 
 ## [0.2.0] - 2026-09-24
 

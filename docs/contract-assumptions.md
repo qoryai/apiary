@@ -357,7 +357,11 @@ The contract has not fixed these; Apiary chose, and the runner should match:
   tool is not part of the key, since the contract refuses a host two tools serve. The
   projection keeps the last attempt's `tool` (a non-empty string, cut at 255 bytes) and
   `status` (an integer from 100 to 599; anything else is absent) in `connections.last_tool`
-  and `last_status`, last by sequence like the other `last_*` columns. `request_id` is not
+  and `last_status`, last by sequence like the other `last_*` columns: an attempt without
+  `tool` clears it. Only a request decided on its path names its tool; a connection
+  refused on its host (deny list, the wall's guard, the allow list) carries none and is a
+  plain connection. The rebuild looks for events with a tool or a status only in the runs
+  whose `contract_version` is 2 or more, since no earlier runner sends either. `request_id` is not
   projected: the timeline reads it from the event, where one request is shown. The `tools`
   of `dev.qory.run.policy_applied` are read like its `credentials`: twenty at most, each
   with ten hosts at most. The vendored schemas and the contract the `:contract`

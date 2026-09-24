@@ -527,6 +527,22 @@ defmodule Apiary.Runs.FoldTest do
       end
     end
 
+    test "a later attempt that names no tool clears the tool, within one pass" do
+      base = %{"host" => "files.tools.internal", "method" => "HTTPS", "path" => "/a"}
+
+      events = [
+        egress(6, Map.merge(base, %{"tool" => "files", "status" => 200})),
+        egress(7, base)
+      ]
+
+      for order <- [events, Enum.reverse(events)] do
+        %{connections: %{{"files.tools.internal", 443, "/a"} => connection}} =
+          Fold.fold(@run, order)
+
+        assert %{last_sequence: 7, last_tool: nil, last_status: nil, attempts: 2} = connection
+      end
+    end
+
     test "a tool or a status of the wrong shape reads as absent" do
       for {tool, status} <- [{"", 99}, {7, 600}, {nil, "200"}, {["files"], 200.0}] do
         %{connections: connections} =

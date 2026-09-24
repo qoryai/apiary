@@ -1880,13 +1880,14 @@
   .q-dest .q-rq {
     margin-left: 0.75ch;
   }
-  /* A tool invocation: the tool's name leads, the host follows faint. */
-  .q-dest .q-tool-icon {
+  /* A tool invocation: the tool's name leads, the host follows faint. The mark is the
+     same wherever a tool is named (`RunComponents.tool_mark/1`). */
+  .q-tool-icon {
     margin-right: 0.5ch;
     color: var(--q-muted);
     vertical-align: -2px;
   }
-  .q-dest .q-tool-name {
+  .q-tool-name {
     color: var(--color-base-content);
     font-weight: 600;
   }
