@@ -488,6 +488,18 @@ defmodule Apiary.Runs.Projector do
                 "CASE WHEN EXCLUDED.last_sequence > ? THEN EXCLUDED.last_request_method ELSE ? END",
                 c.last_sequence,
                 c.last_request_method
+              ),
+            last_tool:
+              fragment(
+                "CASE WHEN EXCLUDED.last_sequence > ? THEN EXCLUDED.last_tool ELSE ? END",
+                c.last_sequence,
+                c.last_tool
+              ),
+            last_status:
+              fragment(
+                "CASE WHEN EXCLUDED.last_sequence > ? THEN EXCLUDED.last_status ELSE ? END",
+                c.last_sequence,
+                c.last_status
               )
           ]
         ]

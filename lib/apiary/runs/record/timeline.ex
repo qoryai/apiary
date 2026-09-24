@@ -99,8 +99,9 @@ defmodule Apiary.Runs.Record.Timeline do
   Lays the run out. `events` are light events in sequence order, maps with `:sequence`,
   `:type`, `:time` and, where the event has them, `:tool_use_id`, `:agent_id`,
   `:agent_type`, `:background_tasks` (a list, or nil when the event gives none), `:host`,
-  `:port` and `:decision`. `alive:` says whether the record is still being written: it
-  fades the rails of the last item, and a call without an end is open only while it is.
+  `:port`, `:decision` and, on a tool invocation, `:tool`. `alive:` says whether the record
+  is still being written: it fades the rails of the last item, and a call without an end is
+  open only while it is.
 
   Returns a map:
 
@@ -428,7 +429,8 @@ defmodule Apiary.Runs.Record.Timeline do
   end
 
   # Runs of allowed connections to one host with nothing between them read as one row.
-  # A denied connection is never folded away.
+  # A denied connection is never folded away. Tool invocations group only with calls to
+  # the same tool, so a group says whose calls it holds.
   defp standalone(state, event) do
     open_calls = map_size(state.open_tools)
     previous = state.order |> List.first() |> then(&(&1 && state.items[&1]))
@@ -454,6 +456,7 @@ defmodule Apiary.Runs.Record.Timeline do
         open_calls: open_calls,
         host: event[:host],
         port: event[:port],
+        tool: event[:tool],
         decision: event[:decision],
         inner: [event.sequence],
         inner_count: 1,
@@ -465,7 +468,8 @@ defmodule Apiary.Runs.Record.Timeline do
 
   defp groups_with?(%{kind: kind, decision: "allowed"} = item, event, open_calls)
        when kind in [:connection, :connection_group] do
-    item.host == event[:host] and item.port == event[:port] and item.open_calls == open_calls
+    item.host == event[:host] and item.port == event[:port] and item[:tool] == event[:tool] and
+      item.open_calls == open_calls
   end
 
   defp groups_with?(_item, _event, _open_calls), do: false
@@ -687,6 +691,7 @@ defmodule Apiary.Runs.Record.Timeline do
       denied_hosts: event.deny_count || 0,
       terminated: event.terminated || [],
       terminated_count: event.terminated_count || 0,
+      tools: for(tool <- event.tools || [], do: %{name: tool["name"], hosts: tool["hosts"]}),
       again: is_integer(item[:previous_seq]),
       previous_seq: item[:previous_seq],
       previous_digest: is_map(previous) && previous[:run_configuration],
@@ -783,6 +788,7 @@ defmodule Apiary.Runs.Record.Timeline do
   defp body(%{kind: :connection_group} = item, event, events, _limit) do
     %{
       host: event.host || gettext("n/a"),
+      tool: event.tool,
       port: event.port,
       connections:
         for(seq <- item.inner, egress = events[seq], is_map(egress), do: connection(egress)),
@@ -833,12 +839,19 @@ defmodule Apiary.Runs.Record.Timeline do
     end
   end
 
-  @doc "One slim egress event as the connection row reads it."
+  @doc """
+  One slim egress event as the connection row reads it. `tool` names the tool the request
+  was handed to, on a tool invocation, and is nil otherwise; `status` is what the host or
+  the tool answered and `request_id` the proxy's id of the request, when the event says.
+  """
   def connection(event) do
     %{
       sequence: event.sequence,
       at: event.time,
       host: event.host || gettext("n/a"),
+      tool: event.tool,
+      status: if(event.status in 100..599, do: event.status),
+      request_id: event.request_id,
       port: event.port,
       method: event.method,
       request_method: event.request_method,
@@ -952,10 +965,9 @@ defmodule Apiary.Runs.Record.Timeline do
 
   @slim_keys ~w(sequence type time tool agent_id agent_type runtime runtime_version host wall mode source
     model cwd kind outcome reason signal method request_method path decision rule path_rule credential
-    port exit_code duration_ms turns cost_usd interrupted in_background allow allow_count
-    deny deny_count run_configuration terminated
-    terminated_count summary text text_bytes error error_bytes error_lines details details_bytes
-    details_lines input input_bytes response response_bytes response_lines stdout stdout_bytes
+    request_id port exit_code duration_ms turns status cost_usd interrupted in_background allow
+    allow_count deny deny_count run_configuration terminated terminated_count tools summary text
+    text_bytes error error_bytes error_lines details details_bytes details_lines input input_bytes response response_bytes response_lines stdout stdout_bytes
     stdout_lines stderr stderr_bytes stderr_lines response_json response_json_bytes)a
 
   @doc "The keys of a slim event."
@@ -1005,13 +1017,14 @@ defmodule Apiary.Runs.Record.Timeline do
     |> Map.merge(
       for key <-
             ~w(tool agent_id agent_type runtime runtime_version host wall mode source model cwd kind
-            outcome reason signal method request_method path decision rule path_rule credential),
+            outcome reason signal method request_method path decision rule path_rule credential
+            request_id),
           into: %{} do
         {String.to_existing_atom(key), string(data, key)}
       end
     )
     |> Map.merge(
-      for key <- ~w(port exit_code duration_ms turns)a,
+      for key <- ~w(port exit_code duration_ms turns status)a,
           into: %{},
           do: {key, integer(data, Atom.to_string(key))}
     )
@@ -1027,6 +1040,11 @@ defmodule Apiary.Runs.Record.Timeline do
       terminated:
         terminated |> Enum.filter(&is_binary/1) |> Enum.take(5) |> Enum.map(&bound(&1, 120)),
       terminated_count: length(terminated),
+      tools:
+        if(event.type == @prefix <> "run.policy_applied",
+          do: named_hosts(data["tools"]),
+          else: []
+        ),
       summary: tool_summary(string(data, "tool"), input, first_string(input))
     })
     |> Map.merge(slim_text(:text, body, limit, false))
@@ -1105,6 +1123,27 @@ defmodule Apiary.Runs.Record.Timeline do
   end
 
   defp hosts(_other), do: []
+
+  # The tools of a policy applied event as the query reads them: the first twenty objects
+  # with a string name, each `%{"name", "hosts"}`, the name cut at 120 characters and the
+  # first ten string hosts at 255.
+  defp named_hosts(list) when is_list(list) do
+    for item <- list, is_map(item), is_binary(item["name"]) do
+      hosts = if is_list(item["hosts"]), do: item["hosts"], else: []
+
+      %{
+        "name" => String.slice(item["name"], 0, 120),
+        "hosts" =>
+          hosts
+          |> Enum.filter(&is_binary/1)
+          |> Enum.take(10)
+          |> Enum.map(&String.slice(&1, 0, 255))
+      }
+    end
+    |> Enum.take(20)
+  end
+
+  defp named_hosts(_other), do: []
 
   defp string(data, key) when is_map(data) do
     case data[key] do

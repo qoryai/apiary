@@ -124,6 +124,65 @@ defmodule Apiary.Runs.RebuildTest do
       assert Rebuild.run() == %{rebuilt: 0, failed: 0}
     end
 
+    test "selects a run whose tool invocations were folded before the tool and status were",
+         %{scope: scope} do
+      tooled = run_fixture(scope)
+      events_fixture(tooled, tool_record())
+      {:ok, _} = Projector.project(tooled)
+
+      expected =
+        Repo.all(
+          from c in Connection,
+            where: c.run_id == ^tooled.id,
+            order_by: [c.host, c.path],
+            select: {c.host, c.path, c.last_tool, c.last_status}
+        )
+
+      assert {"files.tools.internal", "/media/acme/shop/checkout.png", "files", 201} in expected
+
+      # As a release before the columns left them.
+      Repo.update_all(from(c in Connection, where: c.run_id == ^tooled.id),
+        set: [last_tool: nil, last_status: nil]
+      )
+
+      # A plain host that answered, before the status was kept.
+      answered = run_fixture(scope)
+
+      event_fixture(
+        answered,
+        1,
+        "run.egress",
+        egress_data(%{"method" => "HTTPS", "status" => 200})
+      )
+
+      {:ok, _} = Projector.project(answered)
+
+      Repo.update_all(from(c in Connection, where: c.run_id == ^answered.id),
+        set: [last_status: nil]
+      )
+
+      # A connection whose events name neither gives the rebuild nothing to do, and neither
+      # does one whose tool is not a name.
+      plain = run_fixture(scope)
+      event_fixture(plain, 1, "run.egress", egress_data())
+      event_fixture(plain, 2, "run.egress", egress_data(%{"host" => "b.example", "tool" => ""}))
+      {:ok, _} = Projector.project(plain)
+
+      assert Rebuild.run() == %{rebuilt: 2, failed: 0}
+
+      assert Repo.all(
+               from c in Connection,
+                 where: c.run_id == ^tooled.id,
+                 order_by: [c.host, c.path],
+                 select: {c.host, c.path, c.last_tool, c.last_status}
+             ) == expected
+
+      assert [%{last_status: 200}] =
+               Repo.all(from c in Connection, where: c.run_id == ^answered.id)
+
+      assert Rebuild.run() == %{rebuilt: 0, failed: 0}
+    end
+
     test "walks in batches", %{scope: scope} do
       runs =
         for _ <- 1..5 do

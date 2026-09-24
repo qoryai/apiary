@@ -515,9 +515,11 @@ defmodule Apiary.Runs do
   @doc """
   A page of the hive's destinations across the runs in range: one row per host, port and
   path, with how many runs reached it, the attempts, and the decision, rule, outcome and
-  the rest of the most recent attempt across those runs. Filters: `decision` (destinations
-  with any attempt so decided), `target`, `host` (the destination's) and the range, which is
-  over when a run last reached the destination and never wider than
+  the rest of the most recent attempt across those runs, the tool it was handed to
+  (`last_tool`) and what answered it (`last_status`) among them. Filters: `decision`
+  (destinations with any attempt so decided), `target`, `host` (the destination's), `tools`
+  (tool invocations only: connections whose last attempt was handed to a tool) and the
+  range, which is over when a run last reached the destination and never wider than
   `Apiary.Runs.Filters.max_window_days/0` days, so the aggregate is over a bounded set. Denied destinations come first, then the
   most recent.
   """
@@ -761,6 +763,7 @@ defmodule Apiary.Runs do
       where: r.organisation_id == ^organisation_id and r.hive_id == ^hive_id
     )
     |> where_if(f.host, dynamic([c], c.host == ^f.host))
+    |> where_if(f.tools, dynamic([c], not is_nil(c.last_tool)))
     |> where_if(from, dynamic([c], c.last_seen_at >= ^from))
     |> where_if(to, dynamic([c], c.last_seen_at < ^to))
     |> where_run_target(f.target)
@@ -836,6 +839,20 @@ defmodule Apiary.Runs do
             fragment(
               "(array_agg(? ORDER BY ? DESC, ? DESC))[1]",
               c.last_mode,
+              c.last_seen_at,
+              c.id
+            ),
+          last_tool:
+            fragment(
+              "(array_agg(? ORDER BY ? DESC, ? DESC))[1]",
+              c.last_tool,
+              c.last_seen_at,
+              c.id
+            ),
+          last_status:
+            fragment(
+              "(array_agg(? ORDER BY ? DESC, ? DESC))[1]",
+              c.last_status,
               c.last_seen_at,
               c.id
             )

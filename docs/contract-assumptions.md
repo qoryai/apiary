@@ -352,6 +352,16 @@ The contract has not fixed these; Apiary chose, and the runner should match:
   a run whose results carried none has no cost (null), which the console reads as
   unrecorded, not as free. A value that is not a JSON number, negative or absurd (a billion
   dollars or more) is read as absent.
+- Revision 2's tool invocations are read by revision 1's pipeline: a `dev.qory.run.egress`
+  with `tool` is a connection keyed like any request, by host, port and path, and the
+  tool is not part of the key, since the contract refuses a host two tools serve. The
+  projection keeps the last attempt's `tool` (a non-empty string, cut at 255 bytes) and
+  `status` (an integer from 100 to 599; anything else is absent) in `connections.last_tool`
+  and `last_status`, last by sequence like the other `last_*` columns. `request_id` is not
+  projected: the timeline reads it from the event, where one request is shown. The `tools`
+  of `dev.qory.run.policy_applied` are read like its `credentials`: twenty at most, each
+  with ten hosts at most. The vendored schemas and the contract the `:contract`
+  tests replay stay at revision 1.
 - What the runner's proxy does with the policy document, read from `internal/proxy`,
   `internal/policy` and `session` of the runner at the pinned ref, and what the apiary
   renders for it:

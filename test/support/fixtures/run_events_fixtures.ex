@@ -121,6 +121,75 @@ defmodule Apiary.RunEventsFixtures do
     )
   end
 
+  @doc """
+  A `run.policy_applied` of contract v1 revision 2 whose run has one tool, `files`, serving
+  `files.tools.internal` under a path rule. Not a line of `priv/demo`: the contract the
+  `:contract` tests replay is pinned at revision 1, which has no tools.
+  """
+  def tool_policy_data(extra \\ %{}) do
+    Map.merge(
+      %{
+        "mode" => "enforce",
+        "allow" => ["api.example.com", "files.tools.internal"],
+        "deny" => [],
+        "source" => "config",
+        "digest" => String.duplicate("4f", 32),
+        "paths" => %{"files.tools.internal" => ["/media/acme/shop/*"]},
+        "tools" => [%{"name" => "files", "hosts" => ["files.tools.internal"]}],
+        "terminated" => ["files.tools.internal"]
+      },
+      extra
+    )
+  end
+
+  @doc """
+  A tool invocation (contract v1 revision 2): a request to `files.tools.internal` handed to
+  the tool `files`, which answered 200.
+  """
+  def tool_invocation_data(extra \\ %{}) do
+    egress_data(%{
+      "host" => "files.tools.internal",
+      "method" => "HTTPS",
+      "request_method" => "PUT",
+      "path" => "/media/acme/shop/checkout.png",
+      "path_rule" => "/media/acme/shop/*",
+      "tool" => "files",
+      "request_id" => "8d0c3f6a1b2e4d5f9a7c6b5e4d3c2b1a",
+      "status" => 200,
+      "rule" => "files.tools.internal"
+    })
+    |> Map.merge(extra)
+  end
+
+  @doc """
+  A run with a tool: a tunnel to `api.example.com`, two calls to `files` on one path, both
+  answered, and one on a path no rule allows, refused before it reached the tool.
+  """
+  def tool_record do
+    [
+      {1, "run.started", started_data()},
+      {2, "run.policy_applied", tool_policy_data()},
+      {3, "run.egress", egress_data()},
+      {4, "run.egress", tool_invocation_data()},
+      {5, "run.egress",
+       tool_invocation_data(%{
+         "request_id" => "0a1b2c3d4e5f60718293a4b5c6d7e8f9",
+         "status" => 201
+       })},
+      {6, "run.egress",
+       tool_invocation_data(%{
+         "request_method" => "GET",
+         "path" => "/media/acme/other/checkout.png",
+         "path_rule" => "",
+         "request_id" => "1f2e3d4c5b6a79880a9b8c7d6e5f4a3b",
+         "decision" => "denied",
+         "outcome" => "refused"
+       })
+       |> Map.delete("status")},
+      {7, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 7_000}}
+    ]
+  end
+
   def egress_data(extra \\ %{}) do
     Map.merge(
       %{

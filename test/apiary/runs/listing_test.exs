@@ -612,6 +612,28 @@ defmodule Apiary.Runs.ListingTest do
       assert hosts.(%{"from" => "2026-01-01", "to" => "2026-01-02"}) == []
     end
 
+    test "a tool invocation is a destination with its tool and answer; tools=1 keeps those",
+         %{scope: scope} do
+      call = tool_invocation_data(%{})
+      started(scope, shop(), 300, egress: [call, Map.put(call, "status", 404)])
+
+      assert %{rows: rows} = Runs.page_destinations(scope, cx(%{}), @now)
+
+      assert %{runs: 1, attempts: 2, last_tool: "files", last_status: 404} =
+               Enum.find(rows, &(&1.host == "files.tools.internal"))
+
+      assert %{last_tool: nil, last_status: nil} =
+               Enum.find(rows, &(&1.host == "registry.example"))
+
+      assert %Filters{tools: true} = filters = cx(%{"tools" => "1"})
+      assert Filters.to_params(filters) == %{"tools" => "1"}
+      assert Filters.any?(filters)
+      assert %Filters{tools: false, dropped: ["tools"]} = cx(%{"tools" => "yes"})
+
+      assert %{rows: [%{host: "files.tools.internal"}], summary: %{destinations: 1, runs: 1}} =
+               Runs.page_destinations(scope, filters, @now)
+    end
+
     test "the runs that reached a destination, the most recent first, paged", %{
       scope: scope,
       other: other,
