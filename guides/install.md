@@ -57,7 +57,7 @@ do not work.
 
 | Status | Body | When |
 |---|---|---|
-| `200` | `{"status":"ok","database":"ok","version":"0.1.0"}` | the database answered; `version` is the release's |
+| `200` | `{"status":"ok","database":"ok","version":"0.2.0"}` | the database answered; `version` is the release's |
 | `503` | `{"status":"degraded","database":"error"}` | the database did not answer |
 
 ## Logs

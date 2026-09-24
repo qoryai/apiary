@@ -6,6 +6,58 @@ release may change what an existing installation does, and says so under Upgradi
 section names the database migrations the release runs on boot, so a self-hoster knows what
 a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
 
+## [0.2.0] - 2026-09-24
+
+### Added
+
+- A body: what makes the engine one kind of factory. The engine speaks of a **target** in a
+  **system**; a body names them for a domain and says which of a run's labels identify the
+  target. The one body is software: a target is a repository, its system a forge, named by
+  the `forge` and `repository` labels the `qory` command sets (`Apiary.Body`,
+  `Apiary.Body.Software`). Every hive is of the software body; choosing one is not built.
+- Every visible string goes through Gettext, written in the engine's words and shown in the
+  body's: a body is a Gettext locale in GNU's `@modifier` form, `en@software`, which says
+  repository, forge, pull request, merge, workplace and organisation. No page shows the
+  engine's English: a test fails when a string with an engine word has no translation in a
+  body's catalogue, or when a page would show an apiary word. The browser's scripts take
+  their words from the server. `docs/lingo.md` says how to write a string.
+
+### Changed
+
+- The pages say **workplace** for a hive and **organisation** for an apiary, and no longer
+  gloss either on hover; the product keeps its name, Qory Apiary.
+- Repositories are targets in the schema, the code and the URLs: the pages of a
+  repository's policy are under `/hive/policy/targets/…`, and the runs and connections lists
+  filter by `system=`, `target=` (`target=none` for a run without one) and `group=target`.
+  A saved link with `forge=`, `repo=` or `/hive/policy/repositories/…` no longer applies
+  its filter or opens its page.
+- The run configuration endpoint reads every parameter of its query as one of the run's
+  labels, and the body says which of them name the target. Runner 0.5 sends every label of
+  a run there, an earlier runner `forge` and `repository` alone; both are served alike. A
+  run with only one of the two labels has no target.
+- The runner's events are read under `dev.qory.*`, where they were `ai.qory.*`, as runner
+  0.5.1 names them. A runner before 0.5.1 is answered `400 invalid_batch` for every batch,
+  its ping included, so its runs do not start here.
+- The events endpoint accepts every revision of contract v1 from 1 up, where it refused all
+  but 1: a revision only adds, and the server serves what it knows. The refusal still names
+  the revisions it knows.
+- The release takes a request line of 16 KiB, room for a run configuration request carrying
+  sixteen labels at their longest, about 13 KB; a proxy in front has to take as much.
+- The guides and the README are in the software body's words, and describe the runner
+  contract as runner 0.5.1 speaks it.
+
+### Migrations
+
+- `20260927000100`: `repositories` becomes `targets` and its `forge` column `system`;
+  `repository_id` becomes `target_id` in `runs`, `policy_rules`, `policy_changes` and
+  `run_configurations`; `runs.forge` and `runs.repository` become `target_system` and
+  `target_path`; every index, key and check that named them is renamed. Renames are
+  instant and keep every row. The same migration rewrites `events.type` from `ai.qory.*`
+  to `dev.qory.*` in one statement: every stored event gets a new row version in the table
+  and its indexes, so on a large `events` table that statement is the slow part and the
+  table grows until vacuum. Reversible: rolling it back restores the names and the event
+  types of 0.1.0.
+
 ## [0.1.0] - 2026-09-21
 
 ### Added
@@ -425,4 +477,5 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
   list and is rewritten to `state=succeeded`. The previous release does not read
   `succeeded`, so going back to it means rolling that migration back first.
 
+[0.2.0]: https://github.com/qoryai/apiary/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/qoryai/apiary/releases/tag/v0.1.0
