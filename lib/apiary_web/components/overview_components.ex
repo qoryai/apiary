@@ -14,8 +14,10 @@ defmodule ApiaryWeb.OverviewComponents do
   use ApiaryWeb, :verified_routes
   use Gettext, backend: ApiaryWeb.Gettext
 
+  import ApiaryWeb.RichText
+
   import ApiaryWeb.CoreComponents,
-    only: [badge: 1, button: 1, code_block: 1, icon: 1, listening: 1, steps: 1, term: 1]
+    only: [badge: 1, button: 1, code_block: 1, icon: 1, listening: 1, steps: 1]
 
   import ApiaryWeb.RunComponents,
     only: [
@@ -49,57 +51,6 @@ defmodule ApiaryWeb.OverviewComponents do
       gettext(
         "Enforce: a connection no rule allows is denied. Observe: it is let through and recorded. A deny rule holds in either mode."
       )
-
-  @doc """
-  A translated sentence with markup in it (docs/lingo.md: whole sentences). `text` is the
-  result of a gettext call whose `%{name}` placeholders for markup were bound to themselves
-  (`gettext("Last heard %{when}.", when: "%{when}")`); `parts` fills each such placeholder
-  with its markup, so a link, a time or a bold count sits inside the sentence without
-  cutting it into pieces. The text around the parts is escaped, and so is a part that is a
-  plain string; a placeholder no part names stays as text.
-  """
-  def sentence(text, parts) do
-    parts = Map.new(parts, fn {name, part} -> {to_string(name), part} end)
-
-    iodata =
-      ~r/%\{\w+\}/
-      |> Regex.split(text, include_captures: true, trim: true)
-      |> Enum.map(fn piece ->
-        case Regex.run(~r/\A%\{(\w+)\}\z/, piece) do
-          [_, name] when is_map_key(parts, name) -> Phoenix.HTML.Safe.to_iodata(parts[name])
-          _ -> Phoenix.HTML.Safe.to_iodata(piece)
-        end
-      end)
-
-    {:safe, iodata}
-  end
-
-  @doc "A part of a `sentence/2` in bold: a count, a time."
-  def bold(content, class \\ nil) do
-    assigns = %{content: content, class: class}
-
-    ~H"""
-    <b class={@class}>{@content}</b>
-    """
-  end
-
-  # A part of a sentence in the monospace of a target.
-  defp mono(content) do
-    assigns = %{content: content}
-
-    ~H"""
-    <span class="font-mono text-[12.5px]">{@content}</span>
-    """
-  end
-
-  # A part of a sentence in the monospace of a rule or a path.
-  defp code(content, class) do
-    assigns = %{content: content, class: class}
-
-    ~H"""
-    <code class={@class}>{@content}</code>
-    """
-  end
 
   ## od1. Needs attention
 
@@ -320,15 +271,11 @@ defmodule ApiaryWeb.OverviewComponents do
   defp attention_subject(%{item: %{kind: :enforce}} = assigns) do
     ~H"""
     <b class="q-att-lead">
-      {sentence(gettext("%{observe} is the hive's default", observe: "%{observe}"),
-        observe:
-          term(%{
-            __changed__: nil,
-            word: gettext("Observe"),
-            standard: mode_tip(),
-            class: "q-tip-wide"
-          })
-      )}
+      <.rich text={
+        rich_gettext("%{observe} is the hive's default",
+          observe: {:term, gettext("Observe"), mode_tip()}
+        )
+      } />
     </b>
     """
   end
@@ -353,10 +300,11 @@ defmodule ApiaryWeb.OverviewComponents do
   defp attention_sentence(%{item: %{kind: :denied, locked: locked}} = assigns)
        when is_binary(locked) do
     ~H"""
-    {sentence(
-      gettext("A locked hive rule denies %{rule}. Only an owner can change it.", rule: "%{rule}"),
-      rule: code(@item.locked, "q-rule")
-    )}
+    <.rich text={
+      rich_gettext("A locked hive rule denies %{rule}. Only an owner can change it.",
+        rule: {:code, @item.locked, "q-rule"}
+      )
+    } />
     """
   end
 
@@ -365,7 +313,7 @@ defmodule ApiaryWeb.OverviewComponents do
     <span :if={@item.held && @item.path != ""}>
       <b>{gettext("Host allowed, no path rule matches")}</b> <code class="q-rule">{@item.path}</code>.
     </span>
-    {denied_sentence(@item)}
+    <.rich text={denied_sentence(@item)} />
     """
   end
 
@@ -373,58 +321,51 @@ defmodule ApiaryWeb.OverviewComponents do
     assigns = assign(assigns, :interval, beat(assigns.item.run))
 
     ~H"""
-    {sentence(
-      gettext(
+    <.rich text={
+      rich_gettext(
         "No heartbeat for %{since}. Heartbeats are due every %{interval}; after %{silence} of silence it is marked %{lost}.",
-        since: "%{since}",
+        since: {:b, since(%{__changed__: nil, at: heard_at(@item.run)}), "tabular-nums"},
         interval: format_seconds(@interval),
         silence: format_seconds(@interval * 3),
-        lost: "%{lost}"
-      ),
-      since: bold(since(%{__changed__: nil, at: heard_at(@item.run)}), "tabular-nums"),
-      lost:
-        term(%{__changed__: nil, word: gettext("lost"), standard: lost_tip(), class: "q-tip-wide"})
-    )}
+        lost: {:term, gettext("lost"), lost_tip()}
+      )
+    } />
     """
   end
 
   defp attention_sentence(%{item: %{kind: :lost, run: %{elapsed_seconds: elapsed}}} = assigns)
        when is_integer(elapsed) do
     ~H"""
-    {sentence(
-      gettext(
-        "Lost. Last heard %{when}, at least %{elapsed} in. The run never posted its exit.",
-        when: "%{when}",
+    <.rich text={
+      rich_gettext("Lost. Last heard %{when}, at least %{elapsed} in. The run never posted its exit.",
+        when: relative_time(%{__changed__: nil, at: heard_at(@item.run)}),
         elapsed: format_seconds(@item.run.elapsed_seconds)
-      ),
-      when: relative_time(%{__changed__: nil, at: heard_at(@item.run)})
-    )}
+      )
+    } />
     """
   end
 
   defp attention_sentence(%{item: %{kind: :lost}} = assigns) do
     ~H"""
-    {sentence(
-      gettext("Lost. Last heard %{when}. The run never posted its exit.", when: "%{when}"),
-      when: relative_time(%{__changed__: nil, at: heard_at(@item.run)})
-    )}
+    <.rich text={
+      rich_gettext("Lost. Last heard %{when}. The run never posted its exit.",
+        when: relative_time(%{__changed__: nil, at: heard_at(@item.run)})
+      )
+    } />
     """
   end
 
   defp attention_sentence(%{item: %{kind: :behind}} = assigns) do
     ~H"""
-    {sentence(
-      gettext(
+    <.rich text={
+      rich_gettext(
         "Still on %{reported} after %{beats}; %{in_force} has been in force for %{since}. A run reloads at its next heartbeat.",
-        reported: "%{reported}",
+        reported: version_word(%{__changed__: nil, version: @item.reported}),
         beats: ngettext("%{count} heartbeat", "%{count} heartbeats", @item.beats),
-        in_force: "%{in_force}",
-        since: "%{since}"
-      ),
-      reported: version_word(%{__changed__: nil, version: @item.reported}),
-      in_force: version_word(%{__changed__: nil, version: @item.in_force}),
-      since: bold(since(%{__changed__: nil, at: @item.in_force.rendered_at}), "tabular-nums")
-    )}
+        in_force: version_word(%{__changed__: nil, version: @item.in_force}),
+        since: {:b, since(%{__changed__: nil, at: @item.in_force.rendered_at}), "tabular-nums"}
+      )
+    } />
     """
   end
 
@@ -439,15 +380,14 @@ defmodule ApiaryWeb.OverviewComponents do
         )}
       <% is_integer(@item.uncovered) -> %>
         {ngettext("%{count} rule is in force.", "%{count} rules are in force.", @item.rules)}
-        {sentence(
-          ngettext(
+        <.rich text={
+          rich_ngettext(
             "Enforce would deny %{number} destination reached in the last 7 days.",
             "Enforce would deny %{number} destinations reached in the last 7 days.",
             @item.uncovered,
-            number: "%{number}"
-          ),
-          number: bold(@item.uncovered)
-        )}
+            number: {:b, @item.uncovered}
+          )
+        } />
       <% true -> %>
         {ngettext("%{count} rule is in force.", "%{count} rules are in force.", @item.rules)}
         {gettext(
@@ -461,13 +401,12 @@ defmodule ApiaryWeb.OverviewComponents do
 
   defp attention_sentence(%{item: %{kind: :unmanaged}} = assigns) do
     ~H"""
-    {sentence(
-      gettext(
+    <.rich text={
+      rich_gettext(
         "%{runs} landed under the machines' own policies. The first rule you add, or a mode you set, puts them under the hive's.",
-        runs: "%{runs}"
-      ),
-      runs: bold(runs_count(@item.runs))
-    )}
+        runs: {:b, runs_count(@item.runs)}
+      )
+    } />
     """
   end
 
@@ -475,69 +414,55 @@ defmodule ApiaryWeb.OverviewComponents do
     ~H"""
     <%= cond do %>
       <% @item.key.last_used_at && @item.key.last_runner_version -> %>
-        {sentence(
-          gettext(
+        <.rich text={
+          rich_gettext(
             "Not seen for %{days}; last runner %{version}. A key nobody uses is a key to revoke.",
-            days: "%{days}",
+            days: {:b, days(@item.days)},
             version: @item.key.last_runner_version
-          ),
-          days: bold(days(@item.days))
-        )}
+          )
+        } />
       <% @item.key.last_used_at -> %>
-        {sentence(
-          gettext("Not seen for %{days}. A key nobody uses is a key to revoke.", days: "%{days}"),
-          days: bold(days(@item.days))
-        )}
+        <.rich text={
+          rich_gettext("Not seen for %{days}. A key nobody uses is a key to revoke.",
+            days: {:b, days(@item.days)}
+          )
+        } />
       <% true -> %>
-        {sentence(
-          gettext(
+        <.rich text={
+          rich_gettext(
             "Never used since it was created %{days} ago. A key nobody uses is a key to revoke.",
-            days: "%{days}"
-          ),
-          days: bold(days(@item.days))
-        )}
+            days: {:b, days(@item.days)}
+          )
+        } />
     <% end %>
     """
   end
 
   # Where a denied destination was reached from, each shape its own sentence.
   defp denied_sentence(%{targets: []} = item) do
-    sentence(
-      gettext("Denied %{times} in %{runs} without a target, last %{when}.",
-        times: "%{times}",
-        runs: runs_count(item.runs),
-        when: "%{when}"
-      ),
-      times: bold(times(item.denied)),
+    rich_gettext("Denied %{times} in %{runs} without a target, last %{when}.",
+      times: {:b, times(item.denied)},
+      runs: runs_count(item.runs),
       when: relative_time(%{__changed__: nil, at: item.last_seen_at})
     )
   end
 
   defp denied_sentence(%{targets: [target]} = item) do
-    sentence(
-      gettext("Denied %{times} in %{runs} of %{target}, last %{when}.",
-        times: "%{times}",
-        runs: runs_count(item.runs),
-        target: "%{target}",
-        when: "%{when}"
-      ),
-      times: bold(times(item.denied)),
-      target: mono("#{target.system}/#{target.path}"),
+    rich_gettext("Denied %{times} in %{runs} of %{target}, last %{when}.",
+      times: {:b, times(item.denied)},
+      runs: runs_count(item.runs),
+      target: {:m, "#{target.system}/#{target.path}", "font-mono text-[12.5px]"},
       when: relative_time(%{__changed__: nil, at: item.last_seen_at})
     )
   end
 
   defp denied_sentence(%{targets: targets} = item) do
-    sentence(
-      ngettext(
-        "Denied %{times} in %{runs} of %{count} target, last %{when}.",
-        "Denied %{times} in %{runs} of %{count} targets, last %{when}.",
-        length(targets),
-        times: "%{times}",
-        runs: runs_count(item.runs),
-        when: "%{when}"
-      ),
-      times: bold(times(item.denied)),
+    rich_ngettext(
+      "Denied %{times} in %{runs} of %{count} target, last %{when}.",
+      "Denied %{times} in %{runs} of %{count} targets, last %{when}.",
+      length(targets),
+      times: {:b, times(item.denied)},
+      runs: runs_count(item.runs),
       when: relative_time(%{__changed__: nil, at: item.last_seen_at})
     )
   end
@@ -865,13 +790,15 @@ defmodule ApiaryWeb.OverviewComponents do
       <div class="q-kv">
         <dt>{ngettext("Cost reported, %{count} day", "Cost reported, %{count} days", @days)}</dt>
         <dd :if={@facts && @facts.costed > 0} id={"#{@id}-cost"}>
-          {cost_text(@facts.cost)}<small>{sentence(
-            ngettext("by %{costed} of %{number} run", "by %{costed} of %{number} runs", @facts.runs,
-              costed: "%{costed}",
+          {cost_text(@facts.cost)}<small><.rich text={
+            rich_ngettext(
+              "by %{costed} of %{number} run",
+              "by %{costed} of %{number} runs",
+              @facts.runs,
+              costed: {:b, delimited(@facts.costed)},
               number: delimited(@facts.runs)
-            ),
-            costed: bold(delimited(@facts.costed))
-          )}</small>
+            )
+          } /></small>
         </dd>
         <dd :if={@facts && @facts.costed == 0} id={"#{@id}-cost"} class="q-na">
           {gettext("n/a")}<small>{gettext("no run reported one")}</small>
@@ -1091,21 +1018,18 @@ defmodule ApiaryWeb.OverviewComponents do
     >
       <div class="q-chart-totals">
         <span :if={@total > 0} id={"#{@id}-totals"}>
-          {sentence(
-            gettext("%{runs} · %{denied}, 14 days", runs: "%{runs}", denied: "%{denied}"),
-            runs:
-              sentence(
-                ngettext("%{number} run", "%{number} runs", @total, number: "%{number}"),
-                number: bold(delimited(@total))
-              ),
-            denied:
-              sentence(
-                ngettext("%{number} denied attempt", "%{number} denied attempts", @denied,
-                  number: "%{number}"
+          <.rich text={
+            rich_gettext("%{runs} · %{denied}, 14 days",
+              runs:
+                rich_ngettext("%{number} run", "%{number} runs", @total,
+                  number: {:b, delimited(@total)}
                 ),
-                number: bold(delimited(@denied))
-              )
-          )}
+              denied:
+                rich_ngettext("%{number} denied attempt", "%{number} denied attempts", @denied,
+                  number: {:b, delimited(@denied)}
+                )
+            )
+          } />
         </span>
         <span :if={@total == 0} id={"#{@id}-totals"}>
           <b>{gettext("No run in the last 14 days")}</b>
@@ -1543,7 +1467,7 @@ defmodule ApiaryWeb.OverviewComponents do
                 )} ·
                 <%= case @policy.own do %>
                   <% [one] -> %>
-                    {own_mode_sentence(one)}
+                    <.rich text={own_mode_sentence(one)} />
                   <% many -> %>
                     <.link navigate={~p"/hive/policy/targets?mode=own"} class="q-link">
                       {ngettext("%{count} sets its own", "%{count} set their own", length(many))}
@@ -1571,18 +1495,20 @@ defmodule ApiaryWeb.OverviewComponents do
         <dt>{gettext("Targets")}</dt>
         <dd id={"#{@id}-targets"}>
           <.link navigate={~p"/hive/policy/targets"} class="q-link">
-            {sentence(
-              ngettext("%{number} has posted a run", "%{number} have posted runs", @policy.targets,
-                number: "%{number}"
-              ),
-              number: bold(@policy.targets)
-            )}
+            <.rich text={
+              rich_ngettext(
+                "%{number} has posted a run",
+                "%{number} have posted runs",
+                @policy.targets,
+                number: {:b, @policy.targets}
+              )
+            } />
           </.link>
           <span class="q-muted">·</span>
           <.link :if={@policy.with_rules > 0} navigate={~p"/hive/policy/targets"} class="q-link">
-            {with_rules_sentence(@policy.with_rules)}
+            <.rich text={with_rules_sentence(@policy.with_rules)} />
           </.link>
-          <span :if={@policy.with_rules == 0} class="q-muted">{with_rules_sentence(0)}</span>
+          <span :if={@policy.with_rules == 0} class="q-muted"><.rich text={with_rules_sentence(0)} /></span>
         </dd>
         <dt>{gettext("To review")}</dt>
         <dd id={"#{@id}-review"}>
@@ -1615,21 +1541,13 @@ defmodule ApiaryWeb.OverviewComponents do
 
   # The one target that sets its own mode, and the mode it sets.
   defp own_mode_sentence(%{target: target, own_mode: "enforce"}),
-    do:
-      sentence(gettext("1 sets its own: %{target} enforces", target: "%{target}"),
-        target: target_link(target)
-      )
+    do: rich_gettext("1 sets its own: %{target} enforces", target: target_link(target))
 
   defp own_mode_sentence(%{target: target, own_mode: "observe"}),
-    do:
-      sentence(gettext("1 sets its own: %{target} observes", target: "%{target}"),
-        target: target_link(target)
-      )
+    do: rich_gettext("1 sets its own: %{target} observes", target: target_link(target))
 
   defp own_mode_sentence(%{target: target, own_mode: mode}) do
-    sentence(gettext("1 sets its own: %{target} %{mode}", target: "%{target}", mode: mode),
-      target: target_link(target)
-    )
+    rich_gettext("1 sets its own: %{target} %{mode}", target: target_link(target), mode: mode)
   end
 
   defp target_link(target) do
@@ -1644,11 +1562,8 @@ defmodule ApiaryWeb.OverviewComponents do
   end
 
   defp with_rules_sentence(n) do
-    sentence(
-      ngettext("%{number} with rules of its own", "%{number} with rules of their own", n,
-        number: "%{number}"
-      ),
-      number: bold(n)
+    rich_ngettext("%{number} with rules of its own", "%{number} with rules of their own", n,
+      number: {:b, n}
     )
   end
 
@@ -1687,7 +1602,7 @@ defmodule ApiaryWeb.OverviewComponents do
             <% [%{runs_pruned: 0} = run | _] -> %>
               {nothing_pruned(run, @now)}
             <% [run | _] -> %>
-              {pruned(run, @now)}{cutoffs(run)}
+              <.rich text={pruned(run, @now)} />{cutoffs(run)}
           <% end %>
         </span>
       </div>
@@ -1731,48 +1646,61 @@ defmodule ApiaryWeb.OverviewComponents do
 
   # The last prune: when, how many runs, what went, and whether it finished.
   defp pruned(run, now) do
-    bindings = [
-      runs: "%{runs}",
-      events:
-        ngettext("%{number} event", "%{number} events", run.events_deleted,
-          number: delimited(run.events_deleted)
-        ),
-      bytes: format_bytes(run.log_bytes_deleted),
-      chunks:
-        ngettext("%{number} chunk", "%{number} chunks", run.log_chunks_deleted,
-          number: delimited(run.log_chunks_deleted)
-        ),
-      date: prune_day(run)
-    ]
+    runs = {:b, runs_count(run.runs_pruned)}
 
-    text =
-      case {last_night?(run, now), run.complete} do
-        {true, true} ->
-          gettext(
-            "Last night pruned %{runs}: %{events} and %{bytes} of log output in %{chunks}.",
-            bindings
-          )
+    events =
+      ngettext("%{number} event", "%{number} events", run.events_deleted,
+        number: delimited(run.events_deleted)
+      )
 
-        {true, _} ->
-          gettext(
-            "Last night pruned %{runs}: %{events} and %{bytes} of log output in %{chunks}; not finished, the next night goes on.",
-            bindings
-          )
+    bytes = format_bytes(run.log_bytes_deleted)
 
-        {false, true} ->
-          gettext(
-            "%{date} pruned %{runs}: %{events} and %{bytes} of log output in %{chunks}.",
-            bindings
-          )
+    chunks =
+      ngettext("%{number} chunk", "%{number} chunks", run.log_chunks_deleted,
+        number: delimited(run.log_chunks_deleted)
+      )
 
-        {false, _} ->
-          gettext(
-            "%{date} pruned %{runs}: %{events} and %{bytes} of log output in %{chunks}; not finished, the next night goes on.",
-            bindings
-          )
-      end
+    date = prune_day(run)
 
-    sentence(text, runs: bold(runs_count(run.runs_pruned)))
+    case {last_night?(run, now), run.complete} do
+      {true, true} ->
+        rich_gettext(
+          "Last night pruned %{runs}: %{events} and %{bytes} of log output in %{chunks}.",
+          runs: runs,
+          events: events,
+          bytes: bytes,
+          chunks: chunks
+        )
+
+      {true, _} ->
+        rich_gettext(
+          "Last night pruned %{runs}: %{events} and %{bytes} of log output in %{chunks}; not finished, the next night goes on.",
+          runs: runs,
+          events: events,
+          bytes: bytes,
+          chunks: chunks
+        )
+
+      {false, true} ->
+        rich_gettext(
+          "%{date} pruned %{runs}: %{events} and %{bytes} of log output in %{chunks}.",
+          date: date,
+          runs: runs,
+          events: events,
+          bytes: bytes,
+          chunks: chunks
+        )
+
+      {false, _} ->
+        rich_gettext(
+          "%{date} pruned %{runs}: %{events} and %{bytes} of log output in %{chunks}; not finished, the next night goes on.",
+          date: date,
+          runs: runs,
+          events: events,
+          bytes: bytes,
+          chunks: chunks
+        )
+    end
   end
 
   defp cutoffs(%{log_cutoff: nil, events_cutoff: nil}), do: ""
@@ -2041,14 +1969,12 @@ defmodule ApiaryWeb.OverviewComponents do
     <.listening class={@class}>
       <span :if={!@used}>{gettext("Listening for the first post from a machine.")}</span>
       <span :if={@used}>
-        {sentence(
-          gettext("Listening for the first run. %{key} verified %{when}.",
-            key: "%{key}",
-            when: "%{when}"
-          ),
-          key: mono(@used.label),
-          when: relative_time(%{__changed__: nil, at: @used.last_used_at})
-        )}
+        <.rich text={
+          rich_gettext("Listening for the first run. %{key} verified %{when}.",
+            key: {:m, @used.label, "font-mono text-[12.5px]"},
+            when: relative_time(%{__changed__: nil, at: @used.last_used_at})
+          )
+        } />
       </span>
     </.listening>
     """

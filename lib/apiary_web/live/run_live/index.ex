@@ -164,36 +164,34 @@ defmodule ApiaryWeb.RunLive.Index do
         </.filter_bar>
 
         <div id="runs-summary" class="q-summary">
-          <span :if={@summary}>{summary_runs(@summary, @filters.group)}</span>
+          <span :if={@summary}><.rich text={summary_runs(@summary, @filters.group)} /></span>
           <span :if={@summary && @summary.alive > 0}>
-            {bold(
-              ngettext("%{number} alive", "%{number} alive", @summary.alive, number: mark(1)),
-              [@summary.alive]
-            )}
+            <.rich text={
+              rich_ngettext("%{number} alive", "%{number} alive", @summary.alive,
+                number: {:b, delimited(@summary.alive)}
+              )
+            } />
           </span>
           <span :if={@summary && @summary.ended_well > 0}>
-            {bold(
-              ngettext("%{number} ended well", "%{number} ended well", @summary.ended_well,
-                number: mark(1)
-              ),
-              [@summary.ended_well]
-            )}
+            <.rich text={
+              rich_ngettext("%{number} ended well", "%{number} ended well", @summary.ended_well,
+                number: {:b, delimited(@summary.ended_well)}
+              )
+            } />
           </span>
           <span :if={@summary && @summary.ended_badly > 0}>
-            {bold(
-              ngettext("%{number} ended badly", "%{number} ended badly", @summary.ended_badly,
-                number: mark(1)
-              ),
-              [@summary.ended_badly]
-            )}
+            <.rich text={
+              rich_ngettext("%{number} ended badly", "%{number} ended badly", @summary.ended_badly,
+                number: {:b, delimited(@summary.ended_badly)}
+              )
+            } />
           </span>
           <span :if={@summary && @summary.with_denials > 0}>
-            {bold(
-              ngettext("%{number} with denials", "%{number} with denials", @summary.with_denials,
-                number: mark(1)
-              ),
-              [@summary.with_denials]
-            )}
+            <.rich text={
+              rich_ngettext("%{number} with denials", "%{number} with denials", @summary.with_denials,
+                number: {:b, delimited(@summary.with_denials)}
+              )
+            } />
           </span>
           <span :if={!@summary} class="skeleton q-skel w-56"></span>
           <%!-- Never followed for the reader: a screen reader's cursor leaves focus on the
@@ -258,14 +256,12 @@ defmodule ApiaryWeb.RunLive.Index do
               shown: delimited(length(@listing.runs)),
               total: delimited(@listing.total)
             )}
-            {bold(
-              gettext(
+            <.rich text={
+              rich_gettext(
                 "A run's state comes from its events alone: a run that stops posting is %{lost}, never assumed finished.",
-                lost: mark(1)
-              ),
-              [gettext("lost")],
-              "font-medium"
-            )}
+                lost: {:b, gettext("lost"), "font-medium"}
+              )
+            } />
           </p>
           <div :if={@listing.pages > 1} class="flex items-center gap-2">
             <.button
@@ -896,28 +892,34 @@ defmodule ApiaryWeb.RunLive.Index do
   # The summary's first item: the runs, and what they are in when the page is grouped by
   # it, the numbers in bold.
   defp summary_runs(summary, group) do
-    runs = run_words(summary.runs, mark(1))
+    runs = rich_run_words(summary.runs)
 
     cond do
       group != "task" && summary.targets > 0 ->
-        bold(
-          gettext("%{runs} in %{targets}",
-            runs: runs,
-            targets: target_words(summary.targets, mark(2))
-          ),
-          [summary.runs, summary.targets]
+        rich_gettext("%{runs} in %{targets}",
+          runs: runs,
+          targets:
+            rich_ngettext("%{number} target", "%{number} targets", summary.targets,
+              number: {:b, delimited(summary.targets)}
+            )
         )
 
       group == "task" && summary.tasks > 0 ->
-        bold(
-          gettext("%{runs} in %{tasks}", runs: runs, tasks: task_words(summary.tasks, mark(2))),
-          [summary.runs, summary.tasks]
+        rich_gettext("%{runs} in %{tasks}",
+          runs: runs,
+          tasks:
+            rich_ngettext("%{number} task", "%{number} tasks", summary.tasks,
+              number: {:b, delimited(summary.tasks)}
+            )
         )
 
       true ->
-        bold(runs, [summary.runs])
+        runs
     end
   end
+
+  defp rich_run_words(n),
+    do: rich_ngettext("%{number} run", "%{number} runs", n, number: {:b, delimited(n)})
 
   # A group's runs, and its targets when it has more than one.
   defp group_runs(%{targets: targets} = facts) when is_integer(targets) and targets > 1,
@@ -929,39 +931,17 @@ defmodule ApiaryWeb.RunLive.Index do
 
   defp group_runs(facts), do: run_words(facts.runs)
 
-  defp run_words(n, number \\ nil),
-    do: ngettext("%{number} run", "%{number} runs", n, number: number || delimited(n))
+  defp run_words(n),
+    do: ngettext("%{number} run", "%{number} runs", n, number: delimited(n))
 
-  defp target_words(n, number \\ nil),
-    do: ngettext("%{number} target", "%{number} targets", n, number: number || delimited(n))
-
-  defp task_words(n, number),
-    do: ngettext("%{number} task", "%{number} tasks", n, number: number)
+  defp target_words(n),
+    do: ngettext("%{number} target", "%{number} targets", n, number: delimited(n))
 
   defp alive_words(n),
     do: ngettext("%{number} alive", "%{number} alive", n, number: delimited(n))
 
   defp denial_words(n),
     do: ngettext("%{number} denial", "%{number} denials", n, number: delimited(n))
-
-  # A translated sentence with some of its words in bold. Each word stands in the sentence
-  # as a mark, a control character no text holds; the sentence is escaped whole, then each
-  # mark becomes its word, escaped too, so nothing of a catalogue or a binding is markup.
-  defp bold(text, words, class \\ nil) do
-    open = if class, do: ~s(<b class="#{class}">), else: "<b>"
-
-    words
-    |> Enum.with_index(1)
-    |> Enum.reduce(escape(text), fn {word, i}, html ->
-      word = if is_integer(word), do: delimited(word), else: word
-      String.replace(html, mark(i), open <> escape(word) <> "</b>")
-    end)
-    |> raw()
-  end
-
-  defp mark(i), do: <<i>>
-
-  defp escape(text), do: text |> html_escape() |> safe_to_string()
 
   defp group_aria(group, facts) do
     name =

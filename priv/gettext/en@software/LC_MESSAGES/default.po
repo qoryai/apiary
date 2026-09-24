@@ -1539,7 +1539,7 @@ msgstr ""
 #: lib/apiary_web/controllers/docs_html/not_built.html.heex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
-msgid "A release image builds it and serves it here. In a checkout, run `mix docs` and reload this page. The guides are also in the `guides` directory of the repository, as Markdown."
+msgid "A release image builds it and serves it here. In a checkout, run %{command} and reload this page. The guides are also in the %{directory} directory of the repository, as Markdown."
 msgstr ""
 
 #: lib/apiary/policy.ex
@@ -2769,7 +2769,7 @@ msgstr ""
 
 #: lib/apiary_web/components/core_components.ex
 #, elixir-autogen, elixir-format
-msgid "Dev: sent mail is in the *mailbox*."
+msgid "Dev: sent mail is in the %{mailbox}."
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -4933,7 +4933,7 @@ msgstr ""
 
 #: lib/apiary_web/live/access_key_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Paste this `server` block into the runner file on the machine."
+msgid "Paste this %{server} block into the runner file on the machine."
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -6894,7 +6894,7 @@ msgstr "Until the first change here, every machine of this workplace runs under 
 
 #: lib/apiary_web/live/access_key_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Update the `server` block in the runner file of each machine that uses this key, then retire the previous secret."
+msgid "Update the %{server} block in the runner file of each machine that uses this key, then retire the previous secret."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/index.ex
@@ -7711,6 +7711,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "lost"
+msgstr ""
+
+#: lib/apiary_web/components/core_components.ex
+#, elixir-autogen, elixir-format
+msgid "mailbox"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex

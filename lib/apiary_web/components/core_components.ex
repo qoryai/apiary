@@ -12,6 +12,8 @@ defmodule ApiaryWeb.CoreComponents do
   use Phoenix.Component
   use Gettext, backend: ApiaryWeb.Gettext
 
+  import ApiaryWeb.RichText
+
   alias Phoenix.LiveView.JS
 
   # Qory's words and the standard term they show on hover.
@@ -114,55 +116,6 @@ defmodule ApiaryWeb.CoreComponents do
       aria-label={"#{@word} (#{@standard})"}
     >{@word}</abbr>
     """
-  end
-
-  ## Sentences
-
-  @doc """
-  Marks a binding of a translated sentence to be shown in bold by `rich/2`:
-
-      rich(gettext("Invitation sent to %{email}.", email: bold(invitation.email)))
-
-  The sentence stays whole in the catalogue, and the value keeps its emphasis.
-  """
-  def bold(value), do: "\uE000" <> to_string(value) <> "\uE001"
-
-  @doc """
-  Renders a translated sentence as safe HTML: every part escaped, the bindings marked by
-  `bold/1` in `<strong>`, with `class` on each when given.
-  """
-  def rich(text, class \\ nil) do
-    open = if class, do: ~s(<strong class="#{class}">), else: "<strong>"
-
-    ~r/\x{E000}[^\x{E001}]*\x{E001}/u
-    |> Regex.split(text, include_captures: true, trim: true)
-    |> Enum.map(fn
-      "\uE000" <> _ = part ->
-        {:safe, [open, part |> String.slice(1..-2//1) |> escape(), "</strong>"]}
-
-      part ->
-        part
-    end)
-  end
-
-  @doc """
-  Renders a translated sentence with its code between backticks as `<code>`, so the
-  sentence stays whole in the catalogue: "Paste this `server` block into the runner file."
-  Every part is escaped. `class` defaults to the look of `mono/1`.
-  """
-  def coded(
-        text,
-        class \\ "rounded-selector border border-line bg-code px-1.5 py-0.5 font-mono text-[12.5px]"
-      ) do
-    ~r/`[^`]+`/
-    |> Regex.split(text, include_captures: true, trim: true)
-    |> Enum.map(fn
-      "`" <> _ = part ->
-        {:safe, [~s(<code class="#{class}">), part |> String.trim("`") |> escape(), "</code>"]}
-
-      part ->
-        part
-    end)
   end
 
   ## Feedback
@@ -347,30 +300,15 @@ defmodule ApiaryWeb.CoreComponents do
   def dev_mailbox_note(assigns) do
     ~H"""
     <p :if={local_mail_adapter?()} class="text-center text-[12.5px]/[18px] text-faint">
-      {linked(gettext("Dev: sent mail is in the *mailbox*."), "/dev/mailbox")}
+      <.rich text={
+        rich_gettext("Dev: sent mail is in the %{mailbox}.",
+          mailbox:
+            {:href, "/dev/mailbox", gettext("mailbox"),
+             "underline decoration-line-field underline-offset-[3px] hover:text-base-content"}
+        )
+      } />
     </p>
     """
-  end
-
-  # A translated sentence with its link words between asterisks, so the sentence stays
-  # whole in the catalogue. Every part is escaped.
-  defp linked(text, href) do
-    ~r/\*[^*]+\*/
-    |> Regex.split(text, include_captures: true, trim: true)
-    |> Enum.map(fn
-      "*" <> _ = part ->
-        {:safe,
-         [
-           ~s(<a href="),
-           escape(href),
-           ~s(" class="underline decoration-line-field underline-offset-[3px] hover:text-base-content">),
-           escape(String.trim(part, "*")),
-           "</a>"
-         ]}
-
-      part ->
-        part
-    end)
   end
 
   defp local_mail_adapter? do

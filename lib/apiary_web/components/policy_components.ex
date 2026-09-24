@@ -16,7 +16,7 @@ defmodule ApiaryWeb.PolicyComponents do
   use Gettext, backend: ApiaryWeb.Gettext
 
   import ApiaryWeb.CoreComponents,
-    only: [avatar: 1, badge: 1, button: 1, icon: 1, notice: 1, term: 1]
+    only: [avatar: 1, badge: 1, button: 1, icon: 1, notice: 1]
 
   import ApiaryWeb.RichText
 
@@ -180,53 +180,6 @@ defmodule ApiaryWeb.PolicyComponents do
   defp source_words(:hive), do: gettext("Hive")
   defp source_words(:target), do: gettext("This target")
   defp source_words(:hive_locked), do: gettext("Hive, locked")
-
-  ## Rich text
-
-  @doc """
-  The rich text of a reading or of a sentence built from data: binaries, `{:b, rich}`,
-  `{:m, mono}`, `{:code, chip}`, `{:bad, rich}` (the denied hue), `{:link, path, rich}`
-  and `{:term, word, standard}` (`CoreComponents.term/1`). A translated sentence becomes
-  rich text with `ApiaryWeb.RichText.rich_gettext/2`. Everything is interpolated, so
-  everything is escaped.
-  """
-  attr :text, :any, required: true
-
-  def rich(%{text: text} = assigns) when is_binary(text), do: ~H"{@text}"
-
-  def rich(%{text: {:b, inner}} = assigns) do
-    assigns = assign(assigns, :inner, inner)
-    ~H"<b><.rich text={@inner} /></b>"
-  end
-
-  def rich(%{text: {:m, mono}} = assigns) do
-    assigns = assign(assigns, :mono, mono)
-    ~H|<span class="font-mono text-[12px]">{@mono}</span>|
-  end
-
-  def rich(%{text: {:code, code}} = assigns) do
-    assigns = assign(assigns, :code, code)
-    ~H|<code class="q-rule">{@code}</code>|
-  end
-
-  def rich(%{text: {:bad, inner}} = assigns) do
-    assigns = assign(assigns, :inner, inner)
-    ~H|<span class="q-bad"><.rich text={@inner} /></span>|
-  end
-
-  def rich(%{text: {:link, navigate, inner}} = assigns) do
-    assigns = assign(assigns, navigate: navigate, inner: inner)
-    ~H|<.link navigate={@navigate} class="q-link"><.rich text={@inner} /></.link>|
-  end
-
-  def rich(%{text: {:term, word, standard}} = assigns) do
-    assigns = assign(assigns, word: word, standard: standard)
-    ~H|<.term word={@word} standard={@standard} class="q-tip-wide" />|
-  end
-
-  def rich(%{text: parts} = assigns) when is_list(parts) do
-    ~H"<.rich :for={part <- @text} text={part} />"
-  end
 
   ## Section card
 

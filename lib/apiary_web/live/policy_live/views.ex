@@ -7,9 +7,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
   """
   use ApiaryWeb, :html
 
-  import ApiaryWeb.CoreComponents, except: [relative_time: 1, relative_time: 2, rich: 1, rich: 2]
   import ApiaryWeb.PolicyComponents
-  import ApiaryWeb.RichText
 
   alias ApiaryWeb.PolicyLive.Common
 
@@ -52,22 +50,24 @@ defmodule ApiaryWeb.PolicyLive.Views do
         <span class="q-filters-grow"></span>
         <span id="history-summary" class="q-summary">
           <span>
-            <.sentence parts={
+            <.rich text={
               rich_ngettext("%{number} change", "%{number} changes", @history.total,
-                number: {:strong, to_string(@history.total)}
+                number: {:b, to_string(@history.total), "font-medium text-base-content"}
               )
             } />
           </span>
           <span>
-            <.sentence parts={
+            <.rich text={
               rich_ngettext("%{number} version", "%{number} versions", @summary.versions,
-                number: {:strong, to_string(@summary.versions)}
+                number: {:b, to_string(@summary.versions), "font-medium text-base-content"}
               )
             } />
           </span>
           <span :if={@summary.since}>
-            <.sentence parts={
-              rich_gettext("since %{date}", date: {:strong, short_date(@summary.since)})
+            <.rich text={
+              rich_gettext("since %{date}",
+                date: {:b, short_date(@summary.since), "font-medium text-base-content"}
+              )
             } />
           </span>
         </span>
@@ -366,7 +366,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
       on_cancel={JS.patch(@close)}
     >
       <p id="export-lead" class="text-muted">
-        <.sentence parts={export_lead(@export)} />
+        <.rich text={export_lead(@export)} />
         {gettext("It is a copy: it does not follow later changes.")}
       </p>
 
@@ -458,10 +458,12 @@ defmodule ApiaryWeb.PolicyLive.Views do
   defp export_lead(export) do
     subject =
       if export.hive,
-        do: {:strong, gettext("the hive %{name}", name: export.hive)},
-        else: {:strong_mono, export.subject}
+        do: {:b, gettext("the hive %{name}", name: export.hive), "font-medium text-base-content"},
+        else: {:b, export.subject, "font-mono text-[12.5px] font-medium text-base-content"}
 
-    version = {:strong, gettext("version %{version}", version: export.version)}
+    version =
+      {:b, gettext("version %{version}", version: export.version),
+       "font-medium text-base-content"}
 
     if export.policy_file,
       do:
@@ -469,7 +471,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
           "The effective policy of %{subject} as of %{version}, as the text a machine without a server takes: the file a runner takes with %{flag}, and the egress section of its runner file.",
           subject: subject,
           version: version,
-          flag: {:mono, "--policy"}
+          flag: {:m, "--policy", "font-mono text-[12.5px]"}
         ),
       else:
         rich_gettext(
@@ -478,43 +480,4 @@ defmodule ApiaryWeb.PolicyLive.Views do
           version: version
         )
   end
-
-  ## A sentence with emphasis
-
-  @doc """
-  A translated sentence (`ApiaryWeb.RichText`) in the page's own emphasis: binaries,
-  `{:strong, text}`, `{:strong_mono, text}`, `{:mono, text}` and `{:code, text}`. Everything
-  is interpolated, so everything is escaped.
-  """
-  attr :parts, :list, required: true
-
-  def sentence(assigns) do
-    ~H"<.sentence_part :for={part <- @parts} part={part} />"
-  end
-
-  defp sentence_part(%{part: {:strong, text}} = assigns) do
-    assigns = assign(assigns, :text, text)
-    ~H|<b class="font-medium text-base-content">{@text}</b>|
-  end
-
-  defp sentence_part(%{part: {:strong_mono, text}} = assigns) do
-    assigns = assign(assigns, :text, text)
-    ~H|<b class="font-mono text-[12.5px] font-medium text-base-content">{@text}</b>|
-  end
-
-  defp sentence_part(%{part: {:mono, text}} = assigns) do
-    assigns = assign(assigns, :text, text)
-    ~H|<span class="font-mono text-[12.5px]">{@text}</span>|
-  end
-
-  defp sentence_part(%{part: {:code, text}} = assigns) do
-    assigns = assign(assigns, :text, text)
-    ~H|<code class="q-rule">{@text}</code>|
-  end
-
-  defp sentence_part(%{part: parts} = assigns) when is_list(parts) do
-    ~H"<.sentence_part :for={part <- @part} part={part} />"
-  end
-
-  defp sentence_part(assigns), do: ~H"{@part}"
 end

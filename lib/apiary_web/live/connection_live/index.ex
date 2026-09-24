@@ -19,9 +19,6 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   """
   use ApiaryWeb, :live_view
 
-  import ApiaryWeb.CoreComponents, except: [relative_time: 1, relative_time: 2, bold: 1]
-  import ApiaryWeb.OverviewComponents, only: [sentence: 2, bold: 1]
-
   alias Apiary.Policy
   alias Apiary.Runs
   alias Apiary.Runs.Filters
@@ -50,9 +47,11 @@ defmodule ApiaryWeb.ConnectionLive.Index do
             "Where the runs of this hive reached out to, and what the policy made of it. One row per host, port and path, across runs."
           )}
           <span :if={@filters.target} id="connections-target-note">
-            {sentence(gettext("Showing %{target} only.", target: "%{target}"),
-              target: mono_part(target_label(@filters.target))
-            )}
+            <.rich text={
+              rich_gettext("Showing %{target} only.",
+                target: mono_part(target_label(@filters.target))
+              )
+            } />
             <.link
               :if={@target}
               id="connections-target-policy"
@@ -140,31 +139,28 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           <:trailing>
             <span id="connections-summary" class="q-summary">
               <span :if={@listing}>
-                {sentence(
-                  ngettext(
+                <.rich text={
+                  rich_ngettext(
                     "%{number} destination",
                     "%{number} destinations",
                     @listing.summary.destinations,
-                    number: "%{number}"
-                  ),
-                  number: bold(delimited(@listing.summary.destinations))
-                )}
+                    number: {:b, delimited(@listing.summary.destinations)}
+                  )
+                } />
               </span>
               <span :if={@listing && @listing.summary.denied > 0}>
-                {sentence(
-                  ngettext("%{number} denied", "%{number} denied", @listing.summary.denied,
-                    number: "%{number}"
-                  ),
-                  number: bold(delimited(@listing.summary.denied))
-                )}
+                <.rich text={
+                  rich_ngettext("%{number} denied", "%{number} denied", @listing.summary.denied,
+                    number: {:b, delimited(@listing.summary.denied)}
+                  )
+                } />
               </span>
               <span :if={@listing}>
-                {sentence(
-                  ngettext("%{number} run", "%{number} runs", @listing.summary.runs,
-                    number: "%{number}"
-                  ),
-                  number: bold(delimited(@listing.summary.runs))
-                )}
+                <.rich text={
+                  rich_ngettext("%{number} run", "%{number} runs", @listing.summary.runs,
+                    number: {:b, delimited(@listing.summary.runs)}
+                  )
+                } />
               </span>
               <span :if={!@listing} class="skeleton q-skel w-44"></span>
               <.link :if={@stale} id="connections-refresh" phx-click="refresh" href="#">

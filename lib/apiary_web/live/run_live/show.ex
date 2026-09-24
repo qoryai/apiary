@@ -92,7 +92,9 @@ defmodule ApiaryWeb.RunLive.Show do
         <div class="q-run-title">
           <h1 :if={@run.task} id="run-title" tabindex="-1" phx-hook="FocusOn">{@run.task}</h1>
           <h1 :if={!@run.task} id="run-title" tabindex="-1" phx-hook="FocusOn">
-            <.sentence phx-no-format text={gettext("Run %{id}", marks([:id]))}><:part name={:id}><span class="font-mono text-[17px]">{short_id(@run.run_id)}</span></:part></.sentence>
+            <.rich text={
+              rich_gettext("Run %{id}", id: {:m, short_id(@run.run_id), "font-mono text-[17px]"})
+            } />
           </h1>
           <.run_state
             state={@run.state}
@@ -165,19 +167,21 @@ defmodule ApiaryWeb.RunLive.Show do
         <.notice :if={@in_force} kind={:warning} class="max-w-[100ch]">
           <span id="run-behind">
             <b>{gettext("This run is behind the policy in force.")}</b>
-            <.sentence
+            <.rich
               phx-no-format
               text={
-                gettext(
+                rich_gettext(
                   "It last reported %{reported}; %{in_force} is in force (%{since}).",
-                  marks([:reported, :in_force, :since])
+                  reported: {:part, :reported},
+                  in_force: {:part, :in_force},
+                  since: {:part, :since}
                 )
               }
             >
               <:part name={:reported}>{version_words(@reported_version)}<span :if={@digests.reported}> <span class="font-mono text-xs">{short_digest(@digests.reported)}</span></span></:part>
               <:part name={:in_force}>{version_words(@in_force)} <span class="font-mono text-xs">{short_digest(@in_force.digest)}</span></:part>
               <:part name={:since}><.relative_time id="run-behind-since" at={@in_force.rendered_at} /></:part>
-            </.sentence>
+            </.rich>
             {if @reported_version,
               do:
                 gettext(
@@ -523,13 +527,18 @@ defmodule ApiaryWeb.RunLive.Show do
         <span class="flex-1"></span>
         <span class="q-summary">
           <span>
-            <.sentence
-              phx-no-format
-              text={gettext("%{attempts} to %{destinations}", marks([:attempts, :destinations]))}
-            >
-              <:part name={:attempts}><.sentence text={ngettext("%{number} attempt", "%{number} attempts", @counts.attempts, marks([:number]))}><:part name={:number}><b>{delimited(@counts.attempts)}</b></:part></.sentence></:part>
-              <:part name={:destinations}><.sentence text={ngettext("%{number} destination", "%{number} destinations", @counts.all, marks([:number]))}><:part name={:number}><b>{delimited(@counts.all)}</b></:part></.sentence></:part>
-            </.sentence>
+            <.rich text={
+              rich_gettext("%{attempts} to %{destinations}",
+                attempts:
+                  rich_ngettext("%{number} attempt", "%{number} attempts", @counts.attempts,
+                    number: {:b, delimited(@counts.attempts)}
+                  ),
+                destinations:
+                  rich_ngettext("%{number} destination", "%{number} destinations", @counts.all,
+                    number: {:b, delimited(@counts.all)}
+                  )
+              )
+            } />
           </span>
           <span :if={@policy}>
             {gettext("policy")} <b>{@policy.mode}</b>
@@ -741,10 +750,12 @@ defmodule ApiaryWeb.RunLive.Show do
           <dd>{state_label(@run.state)}<span :if={@run.reason}> · {@run.reason}</span></dd>
           <dt>{gettext("Events")}</dt>
           <dd>
-            <.sentence
-              phx-no-format
-              text={gettext("%{number}, projected through %{sequence}", marks([:number, :sequence]))}
-            ><:part name={:number}>{delimited(@run.event_count)}</:part><:part name={:sequence}><span class="font-mono">#{pad(@run.projected_sequence)}</span></:part></.sentence>
+            <.rich text={
+              rich_gettext("%{number}, projected through %{sequence}",
+                number: delimited(@run.event_count),
+                sequence: {:m, "#" <> pad(@run.projected_sequence), "font-mono"}
+              )
+            } />
           </dd>
           <dt>{gettext("Last event")}</dt>
           <dd><.clock at={@run.last_event_at} id="last-event" /></dd>
@@ -762,7 +773,7 @@ defmodule ApiaryWeb.RunLive.Show do
           <dd :if={@run.lost_at}><.clock at={@run.lost_at} id="lost-at" /></dd>
           <dt :if={@run.closed_at}>{gettext("Closed")}</dt>
           <dd :if={@run.closed_at}>
-            <.sentence phx-no-format text={gettext("%{time} by a member", marks([:time]))}><:part name={:time}><.clock at={@run.closed_at} id="closed-at" /></:part></.sentence>
+            <.rich phx-no-format text={rich_gettext("%{time} by a member", time: {:part, :time})}><:part name={:time}><.clock at={@run.closed_at} id="closed-at" /></:part></.rich>
           </dd>
           <dt>{gettext("Session")}</dt>
           <dd class="font-mono">{@session_id || gettext("n/a")}</dd>
@@ -881,44 +892,6 @@ defmodule ApiaryWeb.RunLive.Show do
   end
 
   defp na(assigns \\ %{}), do: ~H|<span class="text-faint">{gettext("n/a")}</span>|
-
-  # A translated sentence with markup in it. Each binding of the msgid is given as a marker
-  # (`marks/1`), and the part of that name fills its place: the sentence stays one msgid,
-  # whatever order a body puts its parts in, and the markup stays out of the catalogue.
-  attr :text, :string, required: true
-
-  slot :part do
-    attr :name, :atom, required: true
-  end
-
-  defp sentence(assigns) do
-    parts = Map.new(assigns.part, &{to_string(&1.name), &1})
-
-    pieces =
-      ~r/\x{1}(\w+)\x{1}/u
-      |> Regex.split(assigns.text, include_captures: true, trim: true)
-      |> Enum.map(fn piece ->
-        # A binding the runner sent could hold the mark too: only a part's name is a part.
-        with [_, name] <- Regex.run(~r/^\x{1}(\w+)\x{1}$/u, piece),
-             {:ok, part} <- Map.fetch(parts, name) do
-          part
-        else
-          _ -> piece
-        end
-      end)
-
-    assigns = assign(assigns, :pieces, pieces)
-
-    ~H|<.piece :for={piece <- @pieces} piece={piece} />|
-  end
-
-  attr :piece, :any, required: true
-
-  defp piece(%{piece: text} = assigns) when is_binary(text), do: ~H|{@piece}|
-  defp piece(assigns), do: ~H|{render_slot(@piece)}|
-
-  # The bindings of a sentence's parts, for `sentence/1`.
-  defp marks(names), do: for(name <- names, do: {name, "\u0001#{name}\u0001"})
 
   # The tips of the page's terms, in the body's words.
   defp tips do

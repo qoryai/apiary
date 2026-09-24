@@ -13,7 +13,7 @@ defmodule ApiaryWeb.PolicyLive.Reading do
     * `kind`: `:hint`, `:ok`, `:note`, `:error` or `:refusal`; the button is on for `:ok`
       and `:note`;
     * `text`: rich text, a list of binaries, `{:b, rich}`, `{:m, mono text}` and
-      `{:code, chip text}`, rendered by `PolicyComponents.rich/1` (always escaped);
+      `{:code, chip text}`, rendered by `ApiaryWeb.RichText.rich/1` (always escaped);
     * `fix`: `nil` or `{label, event, values}`, the repair offered as a link;
     * `acts`: more links of the same shape, under a refusal;
     * `invalid`: the fields that take `aria-invalid`;

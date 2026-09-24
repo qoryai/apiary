@@ -10,10 +10,8 @@ defmodule ApiaryWeb.PolicyLive.Target do
   """
   use ApiaryWeb, :live_view
 
-  import ApiaryWeb.CoreComponents, except: [relative_time: 1, relative_time: 2, rich: 1, rich: 2]
   import ApiaryWeb.PolicyComponents
   import ApiaryWeb.PolicyLive.Views
-  import ApiaryWeb.RichText
 
   alias Apiary.Policy
   alias Apiary.Runs.Filters
@@ -784,7 +782,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
       on_cancel={JS.push("dialog_cancel")}
     >
       <p class="text-muted">
-        <.sentence parts={mode_lead("enforce")} />
+        <.rich text={mode_lead("enforce")} />
         {whose_words(@setting, "enforce")} {gettext("Other targets do not change.")}
       </p>
       <div :if={@would && @would.destinations != []} id="mode-would" class="q-would">
@@ -890,7 +888,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
       on_cancel={JS.push("dialog_cancel")}
     >
       <p class="text-muted">
-        <.sentence parts={mode_lead("observe")} />
+        <.rich text={mode_lead("observe")} />
         {whose_words(@setting, "observe")}
         <span :if={@setting != "follow"}>
           {gettext("The hive's default stays %{mode} and other targets do not change.", mode: @hive)}
@@ -899,7 +897,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
       <p class="text-muted">
         {gettext("The rules stay as they are, locked ones too.")}
         <span :if={@locked_denies == []}>{gettext("A deny holds in either mode.")}</span>
-        <.sentence :if={@locked_denies != []} parts={locked_denies_words(@locked_denies)} />
+        <.rich :if={@locked_denies != []} text={locked_denies_words(@locked_denies)} />
       </p>
       <:footer>
         <.button phx-click="dialog_cancel" data-autofocus>{gettext("Cancel")}</.button>
@@ -1099,10 +1097,10 @@ defmodule ApiaryWeb.PolicyLive.Target do
       />
       <:footer>
         <span id="policy-effective-foot">
-          <.sentence parts={mode_words(@mode)} />
+          <.rich text={mode_words(@mode)} />
           <span :if={@in_force_credentials == []}>{gettext("No credentials.")}</span>
           <span :if={@in_force_credentials != []}>
-            <.sentence parts={credentials_words(@in_force_credentials)} />
+            <.rich text={credentials_words(@in_force_credentials)} />
           </span>
           <button
             id="policy-credentials-toggle"
@@ -1125,14 +1123,17 @@ defmodule ApiaryWeb.PolicyLive.Target do
   defp mode_lead("enforce"),
     do:
       rich_gettext("From the next heartbeat, about 30 s, %{denied} in this target's runs.",
-        denied: {:strong, gettext("a connection no rule allows is denied")}
+        denied:
+          {:b, gettext("a connection no rule allows is denied"), "font-medium text-base-content"}
       )
 
   defp mode_lead("observe"),
     do:
       rich_gettext(
         "From the next heartbeat, about 30 s, %{denied}: every other connection is let through and recorded.",
-        denied: {:strong, gettext("only what a deny rule names is denied in this target's runs")}
+        denied:
+          {:b, gettext("only what a deny rule names is denied in this target's runs"),
+           "font-medium text-base-content"}
       )
 
   defp locked_tip(host),
@@ -1158,10 +1159,16 @@ defmodule ApiaryWeb.PolicyLive.Target do
       )
 
   defp mode_words(%{own: nil, mode: mode}),
-    do: rich_gettext("Mode %{mode}, the hive's default.", mode: {:strong, mode})
+    do:
+      rich_gettext("Mode %{mode}, the hive's default.",
+        mode: {:b, mode, "font-medium text-base-content"}
+      )
 
   defp mode_words(%{mode: mode}),
-    do: rich_gettext("Mode %{mode}, this target's own.", mode: {:strong, mode})
+    do:
+      rich_gettext("Mode %{mode}, this target's own.",
+        mode: {:b, mode, "font-medium text-base-content"}
+      )
 
   defp credentials_words(credentials),
     do:

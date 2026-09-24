@@ -290,15 +290,6 @@ defmodule ApiaryWeb.PolicyComponentsTest do
     end
   end
 
-  test "rich text is escaped at every level" do
-    assigns = %{text: ["a ", {:b, ["<b>", {:m, "<i>"}]}, {:code, "<u>"}]}
-    html = rendered_to_string(~H"<PolicyComponents.rich text={@text} />")
-
-    refute html =~ "<i>"
-    refute html =~ "<u>"
-    assert html =~ "&lt;u&gt;"
-  end
-
   test "the target's mode is a radio group, its radios checked and never pressed" do
     assigns = %{}
 

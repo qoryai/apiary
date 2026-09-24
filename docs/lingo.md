@@ -60,6 +60,35 @@ and do not go through Gettext.
   `pgettext("plain", "Apply filters")` or `pgettext("plain", "Operating system")`. The test
   skips these strings, and no body renames them.
 
+## Sentences with markup
+
+A sentence with a bold count, a host in mono, a link or a clock in it is still one msgid.
+`ApiaryWeb.RichText` translates it and keeps the markup out of the catalogue: the marked-up
+parts are bindings, and `<.rich>` renders the result.
+
+```heex
+<.rich text={rich_gettext("Invitation sent to %{email}.", email: {:b, invitation.email})} />
+<.rich text={rich_ngettext("%{number} run", "%{number} runs", n, number: {:b, delimited(n)})} />
+```
+
+- `rich_gettext/2`, `rich_pgettext/3` and `rich_ngettext/4` take the same arguments as
+  their Gettext twins. The bindings are a keyword list literal, and each may be a string or
+  rich text. They return rich text, a list that `<.rich text={...} />` renders. Every view
+  imports them through `use ApiaryWeb`.
+- Rich text is a string, a list, or `{:b, rich}`, `{:m, text}`, `{:code, text}`,
+  `{:bad, rich}`, `{:link, path, rich}`, `{:href, url, rich}` or `{:term, word, standard}`.
+  Add a CSS class as the last element when the page needs its own look, for example
+  `{:b, name, "font-medium text-base-content"}`. A rendered component or `{:safe, iodata}`
+  is also rich text and goes in as it is.
+- When a template writes the markup, bind `{:part, name}` and give the `:part` slot of that
+  name: `<.rich text={rich_gettext("%{time} by a member", time: {:part, :time})}>` followed
+  by `<:part name={:time}><.clock at={@at} /></:part>`.
+- A phrase of its own can be a binding, as with plain Gettext:
+  `rich_gettext("%{runs} in %{targets}", runs: rich_ngettext(...), targets: rich_ngettext(...))`.
+- Everything is escaped. The bindings never go into the sentence as text, so a host or a
+  task that contains `%{...}` stays as it is. Never put markup in a msgid, such as
+  backticks, asterisks or HTML, and never use `raw/1` on a translation.
+
 ## Where strings live
 
 - **HEEx text:** `{gettext("Settings")}`. **Attributes:** `label={gettext("Name")}`,

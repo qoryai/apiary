@@ -8,13 +8,12 @@ defmodule ApiaryWeb.UserLive.Login do
     ~H"""
     <Layouts.auth flash={@flash} current_scope={@current_scope}>
       <.check_your_email :if={@sent_to} on_back="use_different_email">
-        {rich(
-          gettext(
+        <.rich text={
+          rich_gettext(
             "If %{email} has an account, a log-in link is on its way. It works for 15 minutes.",
-            email: bold(@sent_to)
-          ),
-          "font-medium text-base-content"
-        )}
+            email: {:b, @sent_to, "font-medium text-base-content"}
+          )
+        } />
       </.check_your_email>
 
       <div :if={!@sent_to} class="grid gap-4">

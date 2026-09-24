@@ -10,12 +10,11 @@ defmodule ApiaryWeb.UserLive.Registration do
     ~H"""
     <Layouts.auth flash={@flash} current_scope={@current_scope}>
       <.check_your_email :if={@sent_to}>
-        {rich(
-          gettext("We sent a confirmation link to %{email}. It works for 15 minutes.",
-            email: bold(@sent_to)
-          ),
-          "font-medium text-base-content"
-        )}
+        <.rich text={
+          rich_gettext("We sent a confirmation link to %{email}. It works for 15 minutes.",
+            email: {:b, @sent_to, "font-medium text-base-content"}
+          )
+        } />
       </.check_your_email>
 
       <div :if={!@sent_to} class="grid gap-4">
@@ -29,13 +28,13 @@ defmodule ApiaryWeb.UserLive.Registration do
         </Layouts.auth_heading>
 
         <.notice :if={@invitation} kind={:info}>
-          {rich(
-            gettext(
+          <.rich text={
+            rich_gettext(
               "You are invited to the %{hive} hive at %{organisation}. Your account joins it as soon as you confirm.",
-              hive: bold(@invitation.hive.name),
-              organisation: bold(@invitation.organisation.name)
+              hive: {:b, @invitation.hive.name},
+              organisation: {:b, @invitation.organisation.name}
             )
-          )}
+          } />
         </.notice>
 
         <.form

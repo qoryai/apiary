@@ -195,7 +195,10 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       cdn = dst("files.cdn.example")
 
       assert has_element?(view, ~s(tr##{cdn}[data-decision=allowed]))
-      assert text(view, "##{cdn}-after") =~ "Allowed for the workplace in v2 · of workplace baseline"
+
+      assert text(view, "##{cdn}-after") =~
+               "Allowed for the workplace in v2 · of workplace baseline"
+
       assert text(view, "a##{cdn}-act") == "Rule"
     end
 

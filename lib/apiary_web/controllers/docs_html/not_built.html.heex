@@ -6,13 +6,14 @@
       heading="h1"
       title={gettext("The documentation is not built")}
     >
-      {coded(
-        pgettext(
+      <.rich text={
+        rich_pgettext(
           "plain",
-          "A release image builds it and serves it here. In a checkout, run `mix docs` and reload this page. The guides are also in the `guides` directory of the repository, as Markdown."
-        ),
-        "q-rule"
-      )}
+          "A release image builds it and serves it here. In a checkout, run %{command} and reload this page. The guides are also in the %{directory} directory of the repository, as Markdown.",
+          command: {:code, "mix docs"},
+          directory: {:code, "guides"}
+        )
+      } />
       <:actions>
         <.button navigate={~p"/"}>{gettext("Back to Qory Apiary")}</.button>
       </:actions>

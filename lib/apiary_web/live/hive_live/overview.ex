@@ -25,7 +25,6 @@ defmodule ApiaryWeb.HiveLive.Overview do
   """
   use ApiaryWeb, :live_view
 
-  import ApiaryWeb.CoreComponents, except: [relative_time: 1, relative_time: 2, bold: 1]
   import ApiaryWeb.OverviewComponents
 
   import ApiaryWeb.RunComponents,
@@ -216,13 +215,12 @@ defmodule ApiaryWeb.HiveLive.Overview do
         size="sm"
       >
         <p>
-          {sentence(
-            gettext(
+          <.rich text={
+            rich_gettext(
               "The hive stops taking events for %{run}: the runner is told the run is gone at its next delivery. The record kept so far stays. A close is final: nothing reopens the run.",
-              run: "%{run}"
-            ),
-            run: close_title(@confirm_close)
-          )}
+              run: close_title(@confirm_close)
+            )
+          } />
         </p>
         <:footer>
           <.button phx-click="close_cancel" data-autofocus>{gettext("Cancel")}</.button>
@@ -1478,13 +1476,7 @@ defmodule ApiaryWeb.HiveLive.Overview do
       )
 
   # The run the close dialog names, in bold inside its sentence.
-  defp close_title(run) do
-    assigns = %{title: run_title(run)}
-
-    ~H"""
-    <b class="font-medium">{@title}</b>
-    """
-  end
+  defp close_title(run), do: {:b, run_title(run), "font-medium"}
 
   defp new_runs_text(n),
     do: ngettext("%{number} new run", "%{number} new runs", n, number: delimited(n))

@@ -15,10 +15,8 @@ defmodule ApiaryWeb.PolicyLive.Show do
   """
   use ApiaryWeb, :live_view
 
-  import ApiaryWeb.CoreComponents, except: [relative_time: 1, relative_time: 2, rich: 1, rich: 2]
   import ApiaryWeb.PolicyComponents
   import ApiaryWeb.PolicyLive.Views
-  import ApiaryWeb.RichText
 
   alias Apiary.Policy
   alias Apiary.Policy.Grammar

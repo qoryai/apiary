@@ -93,6 +93,8 @@ defmodule ApiaryWeb do
       import ApiaryWeb.CoreComponents, except: [relative_time: 1, relative_time: 2]
       # The components of the runs, run and connections pages
       import ApiaryWeb.RunComponents
+      # Whole translated sentences with marked-up parts
+      import ApiaryWeb.RichText
 
       # Common modules used in templates
       alias Phoenix.LiveView.JS

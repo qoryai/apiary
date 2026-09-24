@@ -45,10 +45,11 @@ defmodule ApiaryWeb.InvitationLive.Accept do
           <div class="flex items-center gap-2.5 rounded-field border border-line px-3 py-2.5">
             <.avatar name={@current_scope.user.email} kind="self" />
             <p class="min-w-0 truncate text-[13px]/[18px] text-muted">
-              {rich(
-                gettext("Signed in as %{email}", email: bold(@current_scope.user.email)),
-                "font-medium text-base-content"
-              )}
+              <.rich text={
+                rich_gettext("Signed in as %{email}",
+                  email: {:b, @current_scope.user.email, "font-medium text-base-content"}
+                )
+              } />
             </p>
           </div>
           <.button
@@ -78,13 +79,12 @@ defmodule ApiaryWeb.InvitationLive.Accept do
         <% true -> %>
           <.invitation_summary invitation={@invitation} />
           <p class="text-sm/5 text-muted">
-            {rich(
-              gettext(
+            <.rich text={
+              rich_gettext(
                 "Create an account with %{email} to join, or log in if you already have one.",
-                email: bold(@invitation.email)
-              ),
-              "font-medium text-base-content"
-            )}
+                email: {:b, @invitation.email, "font-medium text-base-content"}
+              )
+            } />
           </p>
           <div class="grid gap-2">
             <.button
@@ -110,7 +110,7 @@ defmodule ApiaryWeb.InvitationLive.Accept do
     ~H"""
     <Layouts.auth_heading>
       {gettext("Join %{name}", name: @invitation.hive.name)}
-      <:subtitle>{invitation_sentence(@invitation)}</:subtitle>
+      <:subtitle><.rich text={invitation_sentence(@invitation)} /></:subtitle>
     </Layouts.auth_heading>
     """
   end
@@ -152,24 +152,18 @@ defmodule ApiaryWeb.InvitationLive.Accept do
 
   # One sentence per level: the article and the word go together.
   defp invitation_sentence(%{level: :owner} = invitation) do
-    rich(
-      gettext(
-        "You are invited to the %{hive} hive of the %{organisation} organisation, as an owner.",
-        hive: bold(invitation.hive.name),
-        organisation: bold(invitation.organisation.name)
-      ),
-      "font-medium text-base-content"
+    rich_gettext(
+      "You are invited to the %{hive} hive of the %{organisation} organisation, as an owner.",
+      hive: {:b, invitation.hive.name, "font-medium text-base-content"},
+      organisation: {:b, invitation.organisation.name, "font-medium text-base-content"}
     )
   end
 
   defp invitation_sentence(invitation) do
-    rich(
-      gettext(
-        "You are invited to the %{hive} hive of the %{organisation} organisation, as a member.",
-        hive: bold(invitation.hive.name),
-        organisation: bold(invitation.organisation.name)
-      ),
-      "font-medium text-base-content"
+    rich_gettext(
+      "You are invited to the %{hive} hive of the %{organisation} organisation, as a member.",
+      hive: {:b, invitation.hive.name, "font-medium text-base-content"},
+      organisation: {:b, invitation.organisation.name, "font-medium text-base-content"}
     )
   end
 end

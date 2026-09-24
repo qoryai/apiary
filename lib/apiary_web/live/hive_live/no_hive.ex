@@ -4,8 +4,6 @@ defmodule ApiaryWeb.HiveLive.NoHive do
   """
   use ApiaryWeb, :live_view
 
-  import ApiaryWeb.OverviewComponents, only: [sentence: 2]
-
   @impl true
   def render(assigns) do
     ~H"""
@@ -17,13 +15,12 @@ defmodule ApiaryWeb.HiveLive.NoHive do
         class="mx-auto mt-6 w-full max-w-[480px] md:mt-16"
       >
         <p>
-          {sentence(
-            gettext(
+          <.rich text={
+            rich_gettext(
               "An organisation is created when you register, and you join someone else's through an invitation. Ask an owner to invite %{email}; the email they send brings you straight to their hive.",
-              email: "%{email}"
-            ),
-            email: email(@current_scope.user.email)
-          )}
+              email: email(@current_scope.user.email)
+            )
+          } />
         </p>
         <:actions>
           <.button href={~p"/users/settings"}>{gettext("Account settings")}</.button>

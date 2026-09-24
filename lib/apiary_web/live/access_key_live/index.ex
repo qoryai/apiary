@@ -320,13 +320,18 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
     <div class="grid gap-2">
       <p class="text-[13px]/[18px] text-muted">
         <%= if @rotated do %>
-          {coded(
-            gettext(
-              "Update the `server` block in the runner file of each machine that uses this key, then retire the previous secret."
+          <.rich text={
+            rich_gettext(
+              "Update the %{server} block in the runner file of each machine that uses this key, then retire the previous secret.",
+              server: {:code, "server", code_chip()}
             )
-          )}
+          } />
         <% else %>
-          {coded(gettext("Paste this `server` block into the runner file on the machine."))}
+          <.rich text={
+            rich_gettext("Paste this %{server} block into the runner file on the machine.",
+              server: {:code, "server", code_chip()}
+            )
+          } />
         <% end %>
       </p>
       <.code_block id="server-block" code={@reveal.block} label="~/.config/qory/runner.yaml" />
@@ -466,6 +471,10 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
     |> put_flash(:error, gettext("You are no longer a member of this hive."))
     |> push_navigate(to: ~p"/hive")
   end
+
+  # The look of `CoreComponents.mono/1`, for a word of code inside a sentence.
+  defp code_chip,
+    do: "rounded-selector border border-line bg-code px-1.5 py-0.5 font-mono text-[12.5px]"
 
   defp reveal_for(key, secret) do
     %{
