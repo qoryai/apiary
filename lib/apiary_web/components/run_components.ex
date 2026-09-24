@@ -1856,7 +1856,7 @@ defmodule ApiaryWeb.RunComponents do
   defp next_sentence(_popover), do: nil
 
   @doc """
-  A version named on a run's pages: the link of pd1 and, since versions count per target
+  A version named on a run's pages: the link of pd1 and, since versions count per holder
   (the baseline's apart from each repository's), the words that say whose it is.
   `version` is `%{n, path, label}`; a missing label says nothing.
   """

@@ -434,7 +434,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
          {:ok, connection} <- Runs.fetch_connection(scope, from.connection_id),
          {:ok, rule} <- Policy.rule_from_connection(scope, connection, popover.action, level) do
       where = if level == :repository, do: from.label, else: "the hive"
-      target = if level == :repository, do: from.repository
+      holder = if level == :repository, do: from.repository
 
       own =
         if level == :hive and popover.own_rule,
@@ -448,7 +448,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
        |> put_flash(
          :info,
          Rules.toast(rule, popover.action, popover.host, popover.path, where) <>
-           version_words(scope, target) <>
+           version_words(scope, holder) <>
            own <> " Running sessions have it within a heartbeat."
        )}
     else
@@ -618,13 +618,13 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   defp act(row, %{standing: {:rule_added, action}, entry: entry} = standing, changes, socket)
        when not is_nil(entry) do
     %{current_scope: scope, repository: repository} = socket.assigns
-    target_id = if entry.source == :repository and repository, do: repository.id
+    holder_id = if entry.source == :repository and repository, do: repository.id
     change = Rules.change_for(entry, changes)
 
     Map.merge(standing, %{
       values: row_values(row),
       entry_host: entry.host,
-      rule_path: Rules.rule_path(target_id, entry.host),
+      rule_path: Rules.rule_path(holder_id, entry.host),
       after: %{
         action: action,
         level: if(entry.source == :repository, do: :repository, else: :hive),
@@ -632,8 +632,8 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           change && is_integer(change.version) &&
             %{
               n: change.version,
-              path: Rules.version_path(target_id, change.version),
-              label: Rules.version_label(target_id, repository)
+              path: Rules.version_path(holder_id, change.version),
+              label: Rules.version_label(holder_id, repository)
             },
         by: change && who(change, scope),
         at: (change && change.at) || (entry.rule && entry.rule.updated_at),
@@ -758,9 +758,9 @@ defmodule ApiaryWeb.ConnectionLive.Index do
 
   defp rule_source(_popover), do: :error
 
-  defp version_words(scope, target) do
-    target =
-      case target do
+  defp version_words(scope, holder) do
+    holder =
+      case holder do
         %{id: id} ->
           case Policy.get_repository(scope, id) do
             {:ok, repository} -> repository
@@ -771,7 +771,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           nil
       end
 
-    case Policy.list_changes(scope, target, 1) do
+    case Policy.list_changes(scope, holder, 1) do
       %{items: [%{version_after: n} | _]} when is_integer(n) -> " Version #{n}."
       _ -> ""
     end

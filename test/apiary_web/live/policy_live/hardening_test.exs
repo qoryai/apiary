@@ -41,7 +41,7 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
     view
   end
 
-  defp rules(scope, target \\ nil), do: Policy.list_rules(scope, target)
+  defp rules(scope, holder \\ nil), do: Policy.list_rules(scope, holder)
   defp rule(scope, host), do: Enum.find(rules(scope), &(&1.host == host))
 
   describe "a member's crafted events on the hive's page" do

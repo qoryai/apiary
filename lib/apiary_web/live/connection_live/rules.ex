@@ -55,7 +55,7 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   end
 
   @doc """
-  A run configuration as the pages here name a version. Versions count per target, the
+  A run configuration as the pages here name a version. Versions count per holder, the
   baseline's apart from each repository's, so every version is named with its `label`:
   "hive baseline", or the repository's forge and path when `repository` is the one the
   configuration is of.
@@ -196,7 +196,7 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   end
 
   @doc """
-  What `Apiary.Policy.rule_from_connection/4` will make of a row in a target whose
+  What `Apiary.Policy.rule_from_connection/4` will make of a row in a holder whose
   effective policy is `effective`: `%{kind: :path, paths: held}` when the host is held to
   paths there and the row names a path (the path is added to them, or taken out), else
   `%{kind: :host, paths: held}`. The popover says this for the scope chosen, never for
@@ -404,9 +404,9 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
           do: source
 
     for source <- sources, into: %{} do
-      target = if source == :repository, do: repository, else: nil
+      holder = if source == :repository, do: repository, else: nil
       key = if source == :repository, do: :repository, else: :hive
-      {key, Policy.list_changes(scope, target, 1).items}
+      {key, Policy.list_changes(scope, holder, 1).items}
     end
   end
 end

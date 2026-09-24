@@ -4,7 +4,7 @@ defmodule Apiary.Policy.Change do
   repository's rules: what was done (`action`), to what (`subject`, a host or a
   credential's name; nil for the mode), the rule set `before` and `after` as JSON
   (`%{"mode" => …, "rules" => […]}`), who and when. `version_after` is the version of the
-  target's run configuration in force once the change was made; a change that rendered
+  holder's run configuration in force once the change was made; a change that rendered
   the same bytes names the version that stayed. A `rerendered` change is no change of the
   rules (`before` equals `after`): the documents were rendered again by
   `mix apiary.policy.rerender` after an upgrade that changed what a render says.

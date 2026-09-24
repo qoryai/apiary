@@ -2,9 +2,9 @@ defmodule ApiaryWeb.PolicyLive.Common do
   @moduledoc """
   What the hive's policy page and a repository's share: the rows of a rules table built
   from `Apiary.Policy`, the composer's state and its events, the history, the version and
-  the export of a target, and the words of a change.
+  the export of a holder, and the words of a change.
 
-  A target is `nil` for the hive's baseline or an `Apiary.Runs.Repository`. Everything is
+  A holder is `nil` for the hive's baseline or an `Apiary.Runs.Repository`. Everything is
   read through `Apiary.Policy`; nothing here touches a schema's table.
   """
   use ApiaryWeb, :verified_routes
@@ -24,15 +24,15 @@ defmodule ApiaryWeb.PolicyLive.Common do
   ## Mount
 
   @doc "The assigns every policy page starts from, and the one subscription."
-  def mount(socket, target) do
+  def mount(socket, holder) do
     scope = socket.assigns.current_scope
     if connected?(socket), do: Policy.subscribe(scope)
 
     socket
     |> assign(
-      target: target,
-      scope_kind: if(target, do: :repository, else: :hive),
-      base: base(target),
+      holder: holder,
+      scope_kind: if(holder, do: :repository, else: :hive),
+      base: base(holder),
       owner?: owner?(scope),
       people: people(scope),
       fresh: %{},
@@ -425,14 +425,14 @@ defmodule ApiaryWeb.PolicyLive.Common do
     if reading.kind in [:ok, :note] do
       attrs = %{kind: "credential", name: params["name"], argument: params["argument"]}
 
-      case Policy.allow(socket.assigns.current_scope, socket.assigns.target, attrs) do
+      case Policy.allow(socket.assigns.current_scope, socket.assigns.holder, attrs) do
         {:ok, rule} ->
           {:halt,
            socket
            |> reset_credential()
            |> wrote(
              rule,
-             "The credential #{rule.name} is named #{for_target(socket)}.",
+             "The credential #{rule.name} is named #{for_holder(socket)}.",
              "Credential added."
            )
            |> focus("policy-credential-name")}
@@ -454,7 +454,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
       socket.assigns.composer_params
 
     scope = socket.assigns.current_scope
-    target = socket.assigns.target
+    holder = socket.assigns.holder
     host = String.trim(host)
     paths = Reading.split(paths)
 
@@ -468,8 +468,8 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
     result =
       if action == "deny",
-        do: Policy.deny(scope, target, attrs),
-        else: Policy.allow(scope, target, attrs)
+        do: Policy.deny(scope, holder, attrs),
+        else: Policy.allow(scope, holder, attrs)
 
     case result do
       {:ok, rule} ->
@@ -484,7 +484,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
         |> reset_composer(Map.put(next, "action", action))
         |> wrote(
           rule,
-          "#{host} is #{past(action)} #{for_target(socket)}.",
+          "#{host} is #{past(action)} #{for_holder(socket)}.",
           "Rule added."
         )
         |> then(&if(next == %{}, do: &1, else: read(&1, %{})))
@@ -499,10 +499,10 @@ defmodule ApiaryWeb.PolicyLive.Common do
   def past("allow"), do: "allowed"
   def past("deny"), do: "denied"
 
-  def target_name(%{assigns: %{target: %{forge: forge, path: path}}}), do: "#{forge}/#{path}"
+  def holder_name(%{assigns: %{holder: %{forge: forge, path: path}}}), do: "#{forge}/#{path}"
 
-  def for_target(%{assigns: %{target: nil}}), do: "for the hive"
-  def for_target(%{assigns: %{target: %{forge: forge, path: path}}}), do: "for #{forge}/#{path}"
+  def for_holder(%{assigns: %{holder: nil}}), do: "for the hive"
+  def for_holder(%{assigns: %{holder: %{forge: forge, path: path}}}), do: "for #{forge}/#{path}"
 
   @doc """
   After a write: the page is read again, the new rule is marked fresh, the toast and the
@@ -570,8 +570,8 @@ defmodule ApiaryWeb.PolicyLive.Common do
   from the list, so "Allowed" and "none left" are what the policy says, not what was
   clicked. `nil` when it cannot be counted.
   """
-  def would(scope, target, previous \\ nil) do
-    case Policy.uncovered(scope, target, since()) do
+  def would(scope, holder, previous \\ nil) do
+    case Policy.uncovered(scope, holder, since()) do
       {:ok, fresh} ->
         shown = (previous && previous.destinations) || fresh
         known = MapSet.new(shown, &would_key/1)
@@ -855,18 +855,18 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
   ## History
 
-  @doc "A page of the target's history as the rows of the change list."
+  @doc "A page of the holder's history as the rows of the change list."
   def history(socket, page) do
     scope = socket.assigns.current_scope
-    target = socket.assigns.target
+    holder = socket.assigns.holder
     base = socket.assigns.base
-    changes = Policy.list_changes(scope, target, page)
+    changes = Policy.list_changes(scope, holder, page)
     # One read for the page: the versions its changes made, without their documents.
     versions = Policy.configurations_for_changes(scope, Enum.map(changes.items, & &1.id))
 
     rows =
       for change <- changes.items do
-        made = made_version(versions, target, change)
+        made = made_version(versions, holder, change)
         query = if changes.page > 1, do: %{"page" => changes.page}, else: %{}
 
         %{
@@ -887,10 +887,10 @@ defmodule ApiaryWeb.PolicyLive.Common do
     %{rows: rows, page: changes.page, pages: changes.pages, total: changes.total}
   end
 
-  # The configuration a change made for the target, or nil when the bytes stayed the same.
-  defp made_version(versions, target, change) do
-    target_id = target && target.id
-    Enum.find(versions[change.id] || [], &(&1.repository_id == target_id))
+  # The configuration a change made for the holder, or nil when the bytes stayed the same.
+  defp made_version(versions, holder, change) do
+    holder_id = holder && holder.id
+    Enum.find(versions[change.id] || [], &(&1.repository_id == holder_id))
   end
 
   defp origin(%{action: "mode_changed", repository_id: id} = change, made) when id != nil do
@@ -918,19 +918,19 @@ defmodule ApiaryWeb.PolicyLive.Common do
   defp origin(_change, nil), do: "The document did not list it, so its bytes did not change."
   defp origin(_change, _made), do: nil
 
-  @doc "The diff of one change of the target: its rules in words, its document in lines."
+  @doc "The diff of one change of the holder: its rules in words, its document in lines."
   def change_diff(socket, change_id) do
     scope = socket.assigns.current_scope
-    target = socket.assigns.target
-    target_id = target && target.id
+    holder = socket.assigns.holder
+    holder_id = holder && holder.id
 
     with {:ok, change} <- Policy.get_change(scope, change_id),
-         true <- change.repository_id == target_id do
+         true <- change.repository_id == holder_id do
       # The row names the version; the diff needs its document, and the one before.
       made =
         with %{version: version} <-
-               made_version(Policy.configurations_for_changes(scope, [change.id]), target, change),
-             {:ok, configuration} <- Policy.get_configuration(scope, target, version) do
+               made_version(Policy.configurations_for_changes(scope, [change.id]), holder, change),
+             {:ok, configuration} <- Policy.get_configuration(scope, holder, version) do
           configuration
         else
           _ -> nil
@@ -938,7 +938,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
       before =
         with %{version: version} when version > 1 <- made,
-             {:ok, previous} <- Policy.get_configuration(scope, target, version - 1) do
+             {:ok, previous} <- Policy.get_configuration(scope, holder, version - 1) do
           previous
         else
           _ -> nil
@@ -970,18 +970,18 @@ defmodule ApiaryWeb.PolicyLive.Common do
   @views ~w(changes document served)
 
   @doc """
-  One version of the target for the version page: the configuration, what it is compared
+  One version of the holder for the version page: the configuration, what it is compared
   with (`?compare=`, the one before by default), the view (`?view=`), the lines to show
-  and the few versions around it. `:error` when the target has no such version.
+  and the few versions around it. `:error` when the holder has no such version.
   """
   def version(socket, n, params) do
     scope = socket.assigns.current_scope
-    target = socket.assigns.target
+    holder = socket.assigns.holder
 
-    with {:ok, configuration} <- Policy.get_configuration(scope, target, n) do
+    with {:ok, configuration} <- Policy.get_configuration(scope, holder, n) do
       # One page of versions serves the newest, the few around this one and the ones to
       # compare with; a version further back than that page has its own page read too.
-      newest = Policy.list_configurations(scope, target, 1)
+      newest = Policy.list_configurations(scope, holder, 1)
       latest = List.first(newest.items) || configuration
       size = max(length(newest.items), 1)
       at = div(max(latest.version - configuration.version, 0), size) + 1
@@ -989,16 +989,16 @@ defmodule ApiaryWeb.PolicyLive.Common do
       near =
         if at == 1,
           do: newest.items,
-          else: Policy.list_configurations(scope, target, at).items
+          else: Policy.list_configurations(scope, holder, at).items
 
       changes =
-        Map.new(Policy.list_changes(scope, target, 1).items, &{&1.id, &1})
+        Map.new(Policy.list_changes(scope, holder, 1).items, &{&1.id, &1})
 
       view = if params["view"] in @views, do: params["view"], else: "changes"
 
       compare =
         with n when n != nil <- compare_param(params["compare"], configuration.version),
-             {:ok, compare} <- Policy.get_configuration(scope, target, n) do
+             {:ok, compare} <- Policy.get_configuration(scope, holder, n) do
           compare
         else
           _ -> nil
@@ -1016,7 +1016,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
       superseded_by =
         if latest.version > configuration.version do
           Enum.find(near ++ newest.items, &(&1.version == configuration.version + 1)) ||
-            case Policy.get_configuration(scope, target, configuration.version + 1) do
+            case Policy.get_configuration(scope, holder, configuration.version + 1) do
               {:ok, next} -> next
               _ -> nil
             end
@@ -1038,7 +1038,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
          mode: document_mode(configuration.document),
          mode_source:
            if(latest.version == configuration.version,
-             do: Policy.effective(scope, target).mode_source
+             do: Policy.effective(scope, holder).mode_source
            ),
          change_words: change && change_words(change),
          view: view,
@@ -1064,7 +1064,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
                words: (change && change_words(change)) || "First render",
                who: socket.assigns.people[item.changed_by_id],
                at: item.rendered_at,
-               hive: target != nil and change != nil and is_nil(change.repository_id)
+               hive: holder != nil and change != nil and is_nil(change.repository_id)
              }
            end,
          earlier: max(List.last(around).version - 1, 0),
@@ -1084,7 +1084,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
     end
   end
 
-  # The change that made a version: from the newest page of the target's changes when it
+  # The change that made a version: from the newest page of the holder's changes when it
   # is there, read by itself when it is older or the hive's.
   defp change_of(_scope, _changes, %{policy_change_id: nil}), do: nil
 
@@ -1121,37 +1121,37 @@ defmodule ApiaryWeb.PolicyLive.Common do
       "v#{configuration.version} · #{byte_size(configuration.document)} bytes · sha256 over exactly these"
 
   @doc """
-  The version a target is served, one read and no document: `{configuration, own?}`, `own?` false when
+  The version a holder is served, one read and no document: `{configuration, own?}`, `own?` false when
   a repository is served the hive's baseline. Only for a hive somebody has changed: before
   that nothing is served, and nothing is read (`nil`).
   """
   def served_version(_scope, _target, false), do: nil
 
-  def served_version(scope, target, true) do
-    versions = Policy.newest_versions(scope, [nil | List.wrap(target)])
-    own = target && versions[target.id]
+  def served_version(scope, holder, true) do
+    versions = Policy.newest_versions(scope, [nil | List.wrap(holder)])
+    own = holder && versions[holder.id]
 
     cond do
       own -> {own, true}
-      versions[nil] -> {versions[nil], is_nil(target)}
+      versions[nil] -> {versions[nil], is_nil(holder)}
       true -> nil
     end
   end
 
-  @doc "The export of the target's effective policy, with the scope, version and digest as comments."
+  @doc "The export of the holder's effective policy, with the scope, version and digest as comments."
   def export(socket, configuration) do
     scope = socket.assigns.current_scope
-    target = socket.assigns.target
-    {:ok, export} = Policy.export(scope, target)
+    holder = socket.assigns.holder
+    {:ok, export} = Policy.export(scope, holder)
 
     subject =
-      case target do
+      case holder do
         nil -> "the hive #{scope.hive.name}"
         %{forge: forge, path: path} -> "#{forge}/#{path}"
       end
 
     slug =
-      case target do
+      case holder do
         nil -> scope.hive.name
         %{path: path} -> path
       end
@@ -1167,7 +1167,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
     %{
       subject: subject,
-      hive: if(is_nil(target), do: scope.hive.name),
+      hive: if(is_nil(holder), do: scope.hive.name),
       version: configuration.version,
       file_name: file_name,
       policy_file: export.policy_file && head <> export.policy_file,

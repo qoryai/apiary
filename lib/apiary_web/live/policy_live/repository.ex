@@ -41,13 +41,13 @@ defmodule ApiaryWeb.PolicyLive.Repository do
         {:ok, socket}
 
       {:error, _not_found} ->
-        {:ok, assign(socket, target: :not_found, loaded: true, page_title: "Policy")}
+        {:ok, assign(socket, holder: :not_found, loaded: true, page_title: "Policy")}
     end
   end
 
   defp load(socket) do
     scope = socket.assigns.current_scope
-    repository = socket.assigns.target
+    repository = socket.assigns.holder
     managed? = Policy.managed?(scope)
     own = Policy.list_rules(scope, repository)
     effective = Policy.effective(scope, repository)
@@ -126,7 +126,7 @@ defmodule ApiaryWeb.PolicyLive.Repository do
   defp load_record(socket) do
     if connected?(socket) do
       scope = socket.assigns.current_scope
-      repository = socket.assigns.target
+      repository = socket.assigns.holder
 
       assign_async(socket, :activity, fn ->
         case Policy.rule_activity(scope, repository, Common.since()) do
@@ -140,7 +140,7 @@ defmodule ApiaryWeb.PolicyLive.Repository do
   end
 
   @impl true
-  def handle_params(_params, _uri, %{assigns: %{target: :not_found}} = socket),
+  def handle_params(_params, _uri, %{assigns: %{holder: :not_found}} = socket),
     do: {:noreply, socket}
 
   def handle_params(_params, _uri, %{assigns: %{loaded: false}} = socket), do: {:noreply, socket}
@@ -217,7 +217,7 @@ defmodule ApiaryWeb.PolicyLive.Repository do
     own = if socket.assigns.baseline?, do: nil, else: socket.assigns.version
 
     since =
-      case own && Policy.get_configuration(socket.assigns.current_scope, socket.assigns.target, 1) do
+      case own && Policy.get_configuration(socket.assigns.current_scope, socket.assigns.holder, 1) do
         {:ok, first} -> first.rendered_at
         _ -> nil
       end
@@ -225,12 +225,12 @@ defmodule ApiaryWeb.PolicyLive.Repository do
     %{versions: (own && own.version) || 0, since: since}
   end
 
-  defp title(%{assigns: %{target: %{forge: forge, path: path}}}), do: "#{forge}/#{path} · Policy"
+  defp title(%{assigns: %{holder: %{forge: forge, path: path}}}), do: "#{forge}/#{path} · Policy"
 
   ## Events
 
   @impl true
-  def handle_event(_event, _params, %{assigns: %{target: :not_found}} = socket),
+  def handle_event(_event, _params, %{assigns: %{holder: :not_found}} = socket),
     do: {:noreply, socket}
 
   def handle_event(event, params, socket) do
@@ -243,7 +243,7 @@ defmodule ApiaryWeb.PolicyLive.Repository do
   defp event("row_act", %{"id" => id, "act" => act}, socket)
        when act in ~w(disable allow_here remove restore) do
     scope = socket.assigns.current_scope
-    repository = socket.assigns.target
+    repository = socket.assigns.holder
 
     with {:ok, rule} <- Policy.get_rule(scope, id),
          true <- rule.kind == "host" do
@@ -262,19 +262,19 @@ defmodule ApiaryWeb.PolicyLive.Repository do
 
           {"disable", nil, "allow"} ->
             {Policy.deny(scope, repository, %{host: rule.host}),
-             "#{rule.host} is denied #{Common.for_target(socket)}.",
+             "#{rule.host} is denied #{Common.for_holder(socket)}.",
              "#{rule.host} is disabled for this repository."}
 
           {"allow_here", nil, "deny"} ->
             {Policy.allow(scope, repository, %{host: rule.host, paths: nil}),
-             "#{rule.host} is allowed #{Common.for_target(socket)}.",
+             "#{rule.host} is allowed #{Common.for_holder(socket)}.",
              "#{rule.host} is allowed for this repository."}
 
           {act, repository_id, _action}
           when act in ~w(remove restore) and repository_id == repository.id ->
             {Policy.remove_rule(scope, rule),
              if(act == "restore",
-               do: "The hive's rule for #{rule.host} is restored #{Common.for_target(socket)}.",
+               do: "The hive's rule for #{rule.host} is restored #{Common.for_holder(socket)}.",
                else: "The rule #{rule.host} is removed."
              ), "Rule removed."}
 
@@ -318,7 +318,7 @@ defmodule ApiaryWeb.PolicyLive.Repository do
         set_repository_mode(socket, setting)
 
       becomes == "enforce" ->
-        would = Common.would(socket.assigns.current_scope, socket.assigns.target)
+        would = Common.would(socket.assigns.current_scope, socket.assigns.holder)
 
         assign(socket, dialog: {:repository_mode, setting, "enforce"}, would: would)
 
@@ -337,7 +337,7 @@ defmodule ApiaryWeb.PolicyLive.Repository do
 
   defp event("would_allow", %{"key" => key}, %{assigns: %{would: %{} = would}} = socket) do
     scope = socket.assigns.current_scope
-    repository = socket.assigns.target
+    repository = socket.assigns.holder
 
     case Enum.find(would.destinations, &(Common.would_key(&1) == key)) do
       nil ->
@@ -396,7 +396,7 @@ defmodule ApiaryWeb.PolicyLive.Repository do
     scope = socket.assigns.current_scope
 
     with {:ok, rule} <- Policy.get_rule(scope, id),
-         true <- rule.repository_id == socket.assigns.target.id,
+         true <- rule.repository_id == socket.assigns.holder.id,
          {:ok, rule} <- Policy.remove_rule(scope, rule) do
       socket
       |> Common.wrote(nil, "The credential #{rule.name} is removed.", "Credential removed.")
@@ -418,11 +418,11 @@ defmodule ApiaryWeb.PolicyLive.Repository do
   defp set_repository_mode(socket, setting) do
     scope = socket.assigns.current_scope
     before = socket.assigns.mode
-    name = Common.target_name(socket)
+    name = Common.holder_name(socket)
 
     case Policy.set_mode(
            scope,
-           socket.assigns.target,
+           socket.assigns.holder,
            if(setting == "follow", do: :inherit, else: setting)
          ) do
       {:ok, mode} ->
@@ -451,12 +451,12 @@ defmodule ApiaryWeb.PolicyLive.Repository do
   # with what was done to them, though the policy now covers them.
   defp allow_suggestion(socket, host, level) do
     scope = socket.assigns.current_scope
-    target = if level == "hive", do: nil, else: socket.assigns.target
+    holder = if level == "hive", do: nil, else: socket.assigns.holder
     shown = socket.assigns.suggestions
 
-    case Policy.allow(scope, target, %{host: host}) do
+    case Policy.allow(scope, holder, %{host: host}) do
       {:ok, rule} ->
-        where = if level == "hive", do: "for the hive", else: Common.for_target(socket)
+        where = if level == "hive", do: "for the hive", else: Common.for_holder(socket)
 
         socket =
           socket
@@ -485,7 +485,7 @@ defmodule ApiaryWeb.PolicyLive.Repository do
   ## Messages
 
   @impl true
-  def handle_info({:policy_changed, _change}, %{assigns: %{target: :not_found}} = socket),
+  def handle_info({:policy_changed, _change}, %{assigns: %{holder: :not_found}} = socket),
     do: {:noreply, socket}
 
   def handle_info({:policy_changed, _change}, socket),
@@ -535,12 +535,12 @@ defmodule ApiaryWeb.PolicyLive.Repository do
       nav={:policy}
       width="full"
     >
-      <.page_skeleton title={"#{@target.forge}/#{@target.path}"} />
+      <.page_skeleton title={"#{@holder.forge}/#{@holder.path}"} />
     </Layouts.app>
     """
   end
 
-  def render(%{target: :not_found} = assigns) do
+  def render(%{holder: :not_found} = assigns) do
     ~H"""
     <Layouts.app
       flash={@flash}
@@ -583,7 +583,7 @@ defmodule ApiaryWeb.PolicyLive.Repository do
             <.icon name="hero-chevron-right-micro" class="size-3" />
             <%= if @live_action in [:version, :export] && @v do %>
               <.link navigate={@base} class="font-mono text-xs">
-                <span class="text-faint">{@target.forge}/</span>{@target.path}
+                <span class="text-faint">{@holder.forge}/</span>{@holder.path}
               </.link>
               <.icon name="hero-chevron-right-micro" class="size-3" />
               <span class="q-here" aria-current="page">Version {@v.configuration.version}</span>
@@ -591,7 +591,7 @@ defmodule ApiaryWeb.PolicyLive.Repository do
               <.link navigate={~p"/hive/policy/repositories"}>Repositories</.link>
               <.icon name="hero-chevron-right-micro" class="size-3" />
               <span class="q-here font-mono text-xs" aria-current="page">
-                <span class="text-faint">{@target.forge}/</span>{@target.path}
+                <span class="text-faint">{@holder.forge}/</span>{@holder.path}
               </span>
             <% end %>
           </nav>
@@ -604,7 +604,7 @@ defmodule ApiaryWeb.PolicyLive.Repository do
           >
             <div class="min-w-0 flex-1 basis-72">
               <h1 class="break-all font-mono text-[17px]/7 font-semibold">
-                <span class="font-normal text-faint">{@target.forge}/</span>{@target.path}
+                <span class="font-normal text-faint">{@holder.forge}/</span>{@holder.path}
               </h1>
               <p class="mt-0.5 max-w-[62ch] text-sm/5 text-muted">
                 What runs of this repository may reach: the hive's rules, then this repository's own. Where the two meet on a host, the repository wins, unless the hive's rule is locked.
@@ -648,7 +648,7 @@ defmodule ApiaryWeb.PolicyLive.Repository do
           changes={@change_total}
           runs={@run_total}
           document={@version != nil}
-          target={@target}
+          holder={@holder}
         />
 
         <div id="policy-announce" class="sr-only" role="status" aria-live="polite">{@announce}</div>
@@ -693,7 +693,7 @@ defmodule ApiaryWeb.PolicyLive.Repository do
         :if={match?({:repository_mode, _, _}, @dialog)}
         setting={elem(@dialog, 1)}
         becomes={elem(@dialog, 2)}
-        name={Common.target_name(%{assigns: %{target: @target}})}
+        name={Common.holder_name(%{assigns: %{holder: @holder}})}
         hive={@mode.hive}
         would={@would}
         locked_denies={@locked_denies}
@@ -860,11 +860,11 @@ defmodule ApiaryWeb.PolicyLive.Repository do
   attr :changes, :integer, required: true
   attr :runs, :integer, required: true
   attr :document, :boolean, required: true
-  attr :target, :map, required: true
+  attr :holder, :map, required: true
 
   defp repository_tabs(assigns) do
     assigns =
-      assign(assigns, :repo, Filters.repo_params(assigns.target.forge, assigns.target.path))
+      assign(assigns, :repo, Filters.repo_params(assigns.holder.forge, assigns.holder.path))
 
     ~H"""
     <nav id="policy-tabs" class="q-tabs" aria-label="Repository policy">
@@ -983,7 +983,7 @@ defmodule ApiaryWeb.PolicyLive.Repository do
       />
       <.rules_table
         id="policy-rules"
-        label={"Effective policy of #{@target.forge}/#{@target.path}"}
+        label={"Effective policy of #{@holder.forge}/#{@holder.path}"}
         rows={@shown}
         scope={:repository}
         activity={async_value(@activity)}

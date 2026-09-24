@@ -1562,7 +1562,7 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp rule_toast(socket, popover, rule, level) do
     %{current_scope: scope, repository: repository} = socket.assigns
-    target = if level == :repository, do: repository, else: nil
+    holder = if level == :repository, do: repository, else: nil
 
     where =
       if level == :repository and repository,
@@ -1570,7 +1570,7 @@ defmodule ApiaryWeb.RunLive.Show do
         else: "the hive"
 
     version =
-      case Policy.list_changes(scope, target, 1) do
+      case Policy.list_changes(scope, holder, 1) do
         %{items: [%{version_after: n} | _]} when is_integer(n) -> " Version #{n}."
         _ -> ""
       end
@@ -1672,14 +1672,14 @@ defmodule ApiaryWeb.RunLive.Show do
   defp act(socket, row, %{standing: {:rule_added, action}, entry: entry} = standing, changes)
        when not is_nil(entry) do
     %{repository: repository, current_scope: scope} = socket.assigns
-    target_id = if entry.source == :repository and repository, do: repository.id
+    holder_id = if entry.source == :repository and repository, do: repository.id
     change = Rules.change_for(entry, changes)
 
     standing
     |> Map.merge(%{
       values: %{"id" => row.id},
       entry_host: entry.host,
-      rule_path: Rules.rule_path(target_id, entry.host),
+      rule_path: Rules.rule_path(holder_id, entry.host),
       after: %{
         action: action,
         level: if(entry.source == :repository, do: :repository, else: :hive),
@@ -1687,8 +1687,8 @@ defmodule ApiaryWeb.RunLive.Show do
           change && is_integer(change.version) &&
             %{
               n: change.version,
-              path: Rules.version_path(target_id, change.version),
-              label: Rules.version_label(target_id, repository)
+              path: Rules.version_path(holder_id, change.version),
+              label: Rules.version_label(holder_id, repository)
             },
         by: change && who(change, scope),
         at: (change && change.at) || (entry.rule && entry.rule.updated_at),

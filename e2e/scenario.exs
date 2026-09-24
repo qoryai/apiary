@@ -104,7 +104,7 @@ defmodule E2E do
     before_digest = first.data["run_configuration"]
 
     {:ok, %{digest: ^before_digest}} =
-      Policy.current_configuration(scope, target(scope, run, level))
+      Policy.current_configuration(scope, holder(scope, run, level))
 
     step("allow, as the connection's row does")
     # The two calls of the row's popover: ApiaryWeb.RunLive.Show and
@@ -117,7 +117,7 @@ defmodule E2E do
     t_written = System.monotonic_time(:millisecond)
 
     {:ok, %{digest: new_digest, version: version}} =
-      Policy.current_configuration(scope, target(scope, Repo.get!(Run, run.id), level))
+      Policy.current_configuration(scope, holder(scope, Repo.get!(Run, run.id), level))
 
     true = new_digest != before_digest
 
@@ -167,7 +167,7 @@ defmodule E2E do
     {:ok, deny_rule} = Policy.rule_from_connection(scope, row, :deny, level)
 
     {:ok, %{digest: deny_digest, version: deny_version}} =
-      Policy.current_configuration(scope, target(scope, Repo.get!(Run, run.id), level))
+      Policy.current_configuration(scope, holder(scope, Repo.get!(Run, run.id), level))
 
     true = deny_digest != new_digest
 
@@ -301,9 +301,9 @@ defmodule E2E do
     scope
   end
 
-  defp target(_scope, _run, :hive), do: nil
+  defp holder(_scope, _run, :hive), do: nil
 
-  defp target(scope, %Run{repository_id: id}, :repository) when is_binary(id) do
+  defp holder(scope, %Run{repository_id: id}, :repository) when is_binary(id) do
     {:ok, repository} = Policy.get_repository(scope, id)
     repository
   end

@@ -114,8 +114,8 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
     repository
   end
 
-  defp in_force(scope, target) do
-    {:ok, configuration} = Policy.current_configuration(scope, target)
+  defp in_force(scope, holder) do
+    {:ok, configuration} = Policy.current_configuration(scope, holder)
     configuration
   end
 
@@ -269,7 +269,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       new = in_force(scope, repository)
       heard_policy_change(view, scope)
 
-      # versions count per target: every one named says whose it is
+      # versions count per holder: every one named says whose it is
       assert text(view, "#run-drift") == "Behind v#{new.version} · github.example/acme/shop"
       assert text(view, "#run-behind") =~ "This run is behind the policy in force."
 

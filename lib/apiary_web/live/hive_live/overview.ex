@@ -414,8 +414,8 @@ defmodule ApiaryWeb.HiveLive.Overview do
     if reported == [] do
       %{}
     else
-      targets = reported |> Enum.map(& &1.repository_id) |> Enum.reject(&is_nil/1) |> Enum.uniq()
-      versions = Policy.newest_versions(scope, [nil | targets])
+      holders = reported |> Enum.map(& &1.repository_id) |> Enum.reject(&is_nil/1) |> Enum.uniq()
+      versions = Policy.newest_versions(scope, [nil | holders])
 
       for run <- reported,
           in_force = versions[run.repository_id] || versions[nil],
@@ -424,7 +424,7 @@ defmodule ApiaryWeb.HiveLive.Overview do
         reported_version =
           case Policy.configuration_for_digest(
                  scope,
-                 target_of(scope, run.repository_id),
+                 holder_of(scope, run.repository_id),
                  run.reported_run_configuration_digest
                ) do
             {:ok, configuration} -> version_map(configuration)
@@ -436,9 +436,9 @@ defmodule ApiaryWeb.HiveLive.Overview do
     end
   end
 
-  defp target_of(_scope, nil), do: nil
+  defp holder_of(_scope, nil), do: nil
 
-  defp target_of(scope, repository_id) do
+  defp holder_of(scope, repository_id) do
     case Policy.get_repository(scope, repository_id) do
       {:ok, repository} -> repository
       _ -> nil

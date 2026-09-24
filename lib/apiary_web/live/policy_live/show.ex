@@ -582,7 +582,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
     Common.wrote(
       socket,
       rule,
-      "#{host} is #{Common.past(action)} #{Common.for_target(socket)}.",
+      "#{host} is #{Common.past(action)} #{Common.for_holder(socket)}.",
       "Rule changed."
     )
   end

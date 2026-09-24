@@ -24,8 +24,8 @@ defmodule Apiary.PolicyTest do
     })
   end
 
-  defp current!(scope, target) do
-    {:ok, configuration} = Policy.current_configuration(scope, target)
+  defp current!(scope, holder) do
+    {:ok, configuration} = Policy.current_configuration(scope, holder)
     configuration
   end
 
@@ -697,7 +697,7 @@ defmodule Apiary.PolicyTest do
       %{site: site, docs: docs}
     end
 
-    test "newest_versions/2: one per target with a configuration of its own, no documents", ctx do
+    test "newest_versions/2: one per holder with a configuration of its own, no documents", ctx do
       versions =
         Policy.newest_versions(ctx.scope, [
           nil,
@@ -734,7 +734,7 @@ defmodule Apiary.PolicyTest do
       assert Policy.configurations_for_changes(ctx.scope, [same.id]) == %{}
     end
 
-    test "last_changes/2: the newest change of each target, who made it, no rule sets", ctx do
+    test "last_changes/2: the newest change of each holder, who made it, no rule sets", ctx do
       changes = Policy.last_changes(ctx.scope, [nil, ctx.site, ctx.docs])
 
       assert Map.keys(changes) |> Enum.sort() == Enum.sort([nil, ctx.site.id])

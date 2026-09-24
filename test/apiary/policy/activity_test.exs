@@ -218,7 +218,7 @@ defmodule Apiary.Policy.ActivityTest do
     end
   end
 
-  test "tenancy: another hive reads nothing of this one, and its repository is not a target",
+  test "tenancy: another hive reads nothing of this one, and its repository is not a holder",
        ctx do
     %{scope: other} = sign_up_fixture()
 

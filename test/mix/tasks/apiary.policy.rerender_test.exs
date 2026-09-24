@@ -29,17 +29,17 @@ defmodule Mix.Tasks.Apiary.Policy.RerenderTest do
     })
   end
 
-  defp current!(scope, target) do
-    {:ok, configuration} = Policy.current_configuration(scope, target)
+  defp current!(scope, holder) do
+    {:ok, configuration} = Policy.current_configuration(scope, holder)
     configuration
   end
 
   # The version in force as a release before the deny list rendered it: the same policy
   # without `deny`, under its own digest.
-  defp age!(scope, target) do
-    effective = Policy.effective(scope, target)
+  defp age!(scope, holder) do
+    effective = Policy.effective(scope, holder)
     document = Render.document(%{effective | deny: []})
-    current = current!(scope, target)
+    current = current!(scope, holder)
 
     Repo.update_all(from(c in RunConfiguration, where: c.id == ^current.id),
       set: [document: document, digest: Render.digest(document)]
@@ -52,11 +52,11 @@ defmodule Mix.Tasks.Apiary.Policy.RerenderTest do
   defp egress(configuration),
     do: Jason.decode!(configuration.document)["security_policy"]["egress"]
 
-  defp changes(scope, target) do
-    Policy.list_changes(scope, target).items
+  defp changes(scope, holder) do
+    Policy.list_changes(scope, holder).items
   end
 
-  test "a managed hive with deny rules gets a new version per target whose bytes change, and no more",
+  test "a managed hive with deny rules gets a new version per holder whose bytes change, and no more",
        %{scope: scope} do
     repository = repository_fixture(scope)
     {:ok, _} = Policy.allow(scope, nil, %{host: "*.example"})
@@ -86,7 +86,7 @@ defmodule Mix.Tasks.Apiary.Policy.RerenderTest do
     assert version == own + 1
     assert egress(configuration)["deny"] == ["tracker.example", "*.ads.example"]
 
-    # One change per target, no change of the rules, and it names the version it made.
+    # One change per holder, no change of the rules, and it names the version it made.
     assert [%Change{action: "rerendered", subject: nil, changed_by_id: nil} = change | _] =
              changes(scope, nil)
 
