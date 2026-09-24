@@ -8,7 +8,9 @@ defmodule ApiaryWeb.PolicyLive.Common do
   read through `Apiary.Policy`; nothing here touches a schema's table.
   """
   use ApiaryWeb, :verified_routes
+  use Gettext, backend: ApiaryWeb.Gettext
 
+  import ApiaryWeb.RichText
   import Phoenix.Component, only: [assign: 2, assign: 3, to_form: 2]
   import Phoenix.LiveView
 
@@ -221,9 +223,10 @@ defmodule ApiaryWeb.PolicyLive.Common do
   end
 
   defp locked_tip(%{by: by, at: at}) when is_binary(by),
-    do: "Locked by #{by} on #{at}. Only an owner can change or unlock it."
+    do:
+      gettext("Locked by %{by} on %{at}. Only an owner can change or unlock it.", by: by, at: at)
 
-  defp locked_tip(_unknown), do: "Locked. Only an owner can change or unlock it."
+  defp locked_tip(_unknown), do: gettext("Locked. Only an owner can change or unlock it.")
 
   @doc """
   Who locked which host, from the newest page of the hive's changes (a page the caller
@@ -430,11 +433,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
           {:halt,
            socket
            |> reset_credential()
-           |> wrote(
-             rule,
-             "The credential #{rule.name} is named #{for_holder(socket)}.",
-             "Credential added."
-           )
+           |> wrote(rule, credential_named(socket, rule.name), gettext("Credential added."))
            |> focus("policy-credential-name")}
 
         {:error, error} ->
@@ -482,11 +481,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
         socket
         |> assign(:queue, queue)
         |> reset_composer(Map.put(next, "action", action))
-        |> wrote(
-          rule,
-          "#{host} is #{past(action)} #{for_holder(socket)}.",
-          "Rule added."
-        )
+        |> wrote(rule, rule_written(socket, action, host), gettext("Rule added."))
         |> then(&if(next == %{}, do: &1, else: read(&1, %{})))
         |> set_fields()
         |> focus("policy-composer-host")
@@ -496,15 +491,33 @@ defmodule ApiaryWeb.PolicyLive.Common do
     end
   end
 
-  def past("allow"), do: "allowed"
-  def past("deny"), do: "denied"
-
   def holder_name(%{assigns: %{holder: %{system: system, path: path}}}), do: "#{system}/#{path}"
 
-  def for_holder(%{assigns: %{holder: nil}}), do: "for the hive"
+  @doc """
+  The toast of a host rule written on the page: `123.example is allowed for the hive.`,
+  `… is denied for acme/shop.`
+  """
+  def rule_written(%{assigns: %{holder: nil}}, "allow", host),
+    do: gettext("%{host} is allowed for the hive.", host: host)
 
-  def for_holder(%{assigns: %{holder: %{system: system, path: path}}}),
-    do: "for #{system}/#{path}"
+  def rule_written(%{assigns: %{holder: nil}}, "deny", host),
+    do: gettext("%{host} is denied for the hive.", host: host)
+
+  def rule_written(socket, "allow", host),
+    do: gettext("%{host} is allowed for %{target}.", host: host, target: holder_name(socket))
+
+  def rule_written(socket, "deny", host),
+    do: gettext("%{host} is denied for %{target}.", host: host, target: holder_name(socket))
+
+  defp credential_named(%{assigns: %{holder: nil}}, name),
+    do: gettext("The credential %{name} is named for the hive.", name: name)
+
+  defp credential_named(socket, name),
+    do:
+      gettext("The credential %{name} is named for %{target}.",
+        name: name,
+        target: holder_name(socket)
+      )
 
   @doc """
   After a write: the page is read again, the new rule is marked fresh, the toast and the
@@ -518,8 +531,8 @@ defmodule ApiaryWeb.PolicyLive.Common do
     tail =
       cond do
         is_nil(version) -> ""
-        version == before -> " No new version: the document did not change."
-        true -> " Version #{version}."
+        version == before -> " " <> gettext("No new version: the document did not change.")
+        true -> " " <> gettext("Version %{version}.", version: version)
       end
 
     fresh =
@@ -531,7 +544,11 @@ defmodule ApiaryWeb.PolicyLive.Common do
     |> assign(fresh: fresh, write_error: nil)
     |> assign(
       :announce,
-      announce <> if(version && version != before, do: " Version #{version}.", else: "")
+      announce <>
+        if(version && version != before,
+          do: " " <> gettext("Version %{version}.", version: version),
+          else: ""
+        )
     )
     |> put_flash(:info, sentence <> tail)
   end
@@ -590,80 +607,152 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
   ## The words of a change (pf6)
 
-  @doc "The sentence of a change, after its author: rich text."
-  def change_sentence(change) do
+  @doc """
+  The sentence of a change, its author first: rich text. `who` is the author's email, or
+  nil when the author has left.
+  """
+  def change_sentence(change, who) do
+    who = {:b, who || gettext("Someone who has left")}
     diff = Policy.diff(change)
 
     case {change.action, diff} do
       {"mode_changed", %{mode: {from, to}}} when is_nil(change.target_id) ->
-        ["switched the hive's default mode from #{from} to ", {:b, [to]}]
+        rich_gettext("%{who} switched the hive's default mode from %{from} to %{to}",
+          who: who,
+          from: from,
+          to: {:b, to}
+        )
 
       {"mode_changed", %{mode: {_from, "inherit"}}} ->
-        ["set this repository to ", {:b, ["follow the hive"]}]
+        rich_gettext("%{who} set this target to %{mode}",
+          who: who,
+          mode: {:b, gettext("follow the hive")}
+        )
 
       {"mode_changed", %{mode: {_from, to}}} ->
-        ["set this repository's mode to ", {:b, [to]}]
+        rich_gettext("%{who} set this target's mode to %{mode}", who: who, mode: {:b, to})
 
       {"mode_changed", _} ->
-        ["set the mode"]
+        rich_gettext("%{who} set the mode", who: who)
 
       {"rule_added", %{added: [%{"kind" => "credential"} = rule | _]}} ->
-        ["added the credential " | credential_chips(rule)]
+        rich_gettext("%{who} added the credential %{credential}",
+          who: who,
+          credential: credential_chips(rule)
+        )
 
       {"rule_added", %{added: [rule | _]}} ->
-        ["#{past(rule["action"])} ", {:code, rule["host"]} | on_paths(rule)]
+        added_sentence(who, rule)
 
       {"rule_removed", %{removed: [%{"kind" => "credential"} = rule | _]}} ->
-        ["removed the credential " | credential_chips(rule)]
+        rich_gettext("%{who} removed the credential %{credential}",
+          who: who,
+          credential: credential_chips(rule)
+        )
+
+      {"rule_removed", %{removed: [%{"action" => "deny"} = rule | _]}} ->
+        rich_gettext("%{who} removed the deny rule %{host}",
+          who: who,
+          host: {:code, rule["host"]}
+        )
 
       {"rule_removed", %{removed: [rule | _]}} ->
-        ["removed the #{rule["action"]} rule ", {:code, rule["host"]}]
+        rich_gettext("%{who} removed the allow rule %{host}",
+          who: who,
+          host: {:code, rule["host"]}
+        )
 
       {"rule_changed", %{changed: [{old, new} | _]}} ->
-        changed_sentence(old, new)
+        changed_sentence(who, old, new)
 
       {"rule_locked", _} ->
-        ["locked ", {:code, change.subject}]
+        rich_gettext("%{who} locked %{host}", who: who, host: {:code, change.subject})
 
       {"rule_unlocked", _} ->
-        ["unlocked ", {:code, change.subject}]
+        rich_gettext("%{who} unlocked %{host}", who: who, host: {:code, change.subject})
+
+      _ when is_binary(change.subject) ->
+        rich_gettext("%{who} changed %{subject}", who: who, subject: {:code, change.subject})
 
       _ ->
-        ["changed ", {:code, change.subject || "the policy"}]
+        rich_gettext("%{who} changed the policy", who: who)
     end
   end
 
-  defp changed_sentence(%{"kind" => "credential"}, new),
-    do: ["changed the argument of the credential " | credential_chips(new)]
+  defp added_sentence(who, %{"action" => "deny"} = rule) do
+    case rule do
+      %{"paths" => [_ | _] = paths} ->
+        rich_gettext("%{who} denied %{host} on %{paths}",
+          who: who,
+          host: {:code, rule["host"]},
+          paths: paths_words(paths)
+        )
 
-  defp changed_sentence(%{"action" => action} = old, %{"action" => action} = new) do
-    if old["paths"] != new["paths"] do
-      [
-        "changed the paths of ",
-        {:code, new["host"]},
-        " from ",
-        paths_words(old["paths"]),
-        " to ",
-        paths_words(new["paths"])
-      ]
-    else
-      ["#{if new["locked"], do: "locked", else: "unlocked"} ", {:code, new["host"]}]
+      _ ->
+        rich_gettext("%{who} denied %{host}", who: who, host: {:code, rule["host"]})
     end
   end
 
-  defp changed_sentence(old, new),
-    do: ["replaced #{old["action"]} ", {:code, new["host"]}, " with #{new["action"]}"]
+  defp added_sentence(who, rule) do
+    case rule do
+      %{"paths" => [_ | _] = paths} ->
+        rich_gettext("%{who} allowed %{host} on %{paths}",
+          who: who,
+          host: {:code, rule["host"]},
+          paths: paths_words(paths)
+        )
+
+      _ ->
+        rich_gettext("%{who} allowed %{host}", who: who, host: {:code, rule["host"]})
+    end
+  end
+
+  defp changed_sentence(who, %{"kind" => "credential"}, new),
+    do:
+      rich_gettext("%{who} changed the argument of the credential %{credential}",
+        who: who,
+        credential: credential_chips(new)
+      )
+
+  defp changed_sentence(who, %{"action" => action} = old, %{"action" => action} = new) do
+    cond do
+      old["paths"] != new["paths"] ->
+        rich_gettext("%{who} changed the paths of %{host} from %{paths} to %{new_paths}",
+          who: who,
+          host: {:code, new["host"]},
+          paths: paths_words(old["paths"]),
+          new_paths: paths_words(new["paths"])
+        )
+
+      new["locked"] ->
+        rich_gettext("%{who} locked %{host}", who: who, host: {:code, new["host"]})
+
+      true ->
+        rich_gettext("%{who} unlocked %{host}", who: who, host: {:code, new["host"]})
+    end
+  end
+
+  defp changed_sentence(who, _old, %{"action" => "deny"} = new),
+    do:
+      rich_gettext("%{who} replaced allow %{host} with deny",
+        who: who,
+        host: {:code, new["host"]}
+      )
+
+  defp changed_sentence(who, _old, new),
+    do:
+      rich_gettext("%{who} replaced deny %{host} with allow",
+        who: who,
+        host: {:code, new["host"]}
+      )
 
   defp credential_chips(%{"name" => name, "argument" => argument}) when is_binary(argument),
     do: [{:code, name}, " ", {:code, argument}]
 
   defp credential_chips(%{"name" => name}), do: [{:code, name}]
 
-  defp on_paths(%{"paths" => [_ | _] = paths}), do: [" on " | paths_words(paths)]
-  defp on_paths(_rule), do: []
-
-  defp paths_words(nil), do: ["every path"]
-  defp paths_words([]), do: ["no path"]
+  defp paths_words(nil), do: [gettext("every path")]
+  defp paths_words([]), do: [gettext("no path")]
   defp paths_words(paths), do: paths |> Enum.map(&{:code, &1}) |> Enum.intersperse(" ")
 
   @doc "A change in a few plain words, for the versions list and the version's strip."
@@ -672,37 +761,40 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
     case {change.action, diff} do
       {"mode_changed", %{mode: {_from, to}}} when is_nil(change.target_id) ->
-        "Hive's default set to #{to}"
+        gettext("Hive's default set to %{mode}", mode: to)
 
       {"mode_changed", %{mode: {_from, "inherit"}}} ->
-        "Set to follow the hive"
+        gettext("Set to follow the hive")
 
       {"mode_changed", %{mode: {_from, to}}} ->
-        "Mode set to #{to}"
+        gettext("Mode set to %{mode}", mode: to)
 
       {"rule_added", %{added: [%{"kind" => "credential", "name" => name} | _]}} ->
-        "Credential #{name}"
+        gettext("Credential %{name}", name: name)
+
+      {"rule_added", %{added: [%{"action" => "deny"} = rule | _]}} ->
+        gettext("Denied %{host}", host: rule["host"])
 
       {"rule_added", %{added: [rule | _]}} ->
-        "#{String.capitalize(past(rule["action"]))} #{rule["host"]}"
+        gettext("Allowed %{host}", host: rule["host"])
 
       {"rule_removed", _} ->
-        "Removed #{change.subject}"
+        gettext("Removed %{subject}", subject: change.subject)
 
       {"rule_changed", %{changed: [{%{"action" => a}, %{"action" => a}} | _]}} ->
-        "Paths of #{change.subject}"
+        gettext("Paths of %{subject}", subject: change.subject)
 
       {"rule_changed", _} ->
-        "Replaced #{change.subject}"
+        gettext("Replaced %{subject}", subject: change.subject)
 
       {"rule_locked", _} ->
-        "Locked #{change.subject}"
+        gettext("Locked %{subject}", subject: change.subject)
 
       {"rule_unlocked", _} ->
-        "Unlocked #{change.subject}"
+        gettext("Unlocked %{subject}", subject: change.subject)
 
       _ ->
-        "Changed"
+        gettext("Changed")
     end
   end
 
@@ -713,11 +805,8 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
     mode =
       case diff.mode do
-        {from, to} ->
-          [{:del, ["Mode ", {:b, [mode_words(from)]}]}, {:add, ["Mode ", {:b, [mode_words(to)]}]}]
-
-        nil ->
-          []
+        {from, to} -> [{:del, mode_line(from)}, {:add, mode_line(to)}]
+        nil -> []
       end
 
     removed = for rule <- diff.removed, do: {:del, rule_words(rule)}
@@ -733,26 +822,52 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
     context =
       if rest > 0,
-        do: [{:ctx, ["#{rest} other #{if rest == 1, do: "rule", else: "rules"}: unchanged"]}],
+        do: [
+          {:ctx,
+           [ngettext("%{count} other rule: unchanged", "%{count} other rules: unchanged", rest)]}
+        ],
         else: []
 
     mode ++ removed ++ changed ++ added ++ context
   end
 
-  defp mode_words("inherit"), do: "follow the hive"
-  defp mode_words(mode), do: to_string(mode)
+  defp mode_line("inherit"),
+    do: rich_gettext("Mode %{mode}", mode: {:b, gettext("follow the hive")})
 
-  defp rule_words(%{"kind" => "credential"} = rule),
-    do: ["Credential " | credential_chips(rule)] ++ locked_words(rule)
+  defp mode_line(mode), do: rich_gettext("Mode %{mode}", mode: {:b, to_string(mode)})
 
-  defp rule_words(rule) do
-    [String.capitalize(rule["action"] || ""), " ", {:code, rule["host"]}] ++
-      if(rule["action"] == "allow", do: [", " | paths_words(rule["paths"])], else: []) ++
-      locked_words(rule)
+  defp rule_words(%{"kind" => "credential"} = rule) do
+    chips = credential_chips(rule)
+
+    if rule["locked"],
+      do: rich_gettext("Credential %{credential}, locked", credential: chips),
+      else: rich_gettext("Credential %{credential}", credential: chips)
   end
 
-  defp locked_words(%{"locked" => true}), do: [", locked"]
-  defp locked_words(_rule), do: []
+  defp rule_words(%{"action" => "allow"} = rule) do
+    host = {:code, rule["host"]}
+    paths = paths_words(rule["paths"])
+
+    if rule["locked"],
+      do: rich_gettext("Allow %{host}, %{paths}, locked", host: host, paths: paths),
+      else: rich_gettext("Allow %{host}, %{paths}", host: host, paths: paths)
+  end
+
+  defp rule_words(%{"action" => "deny"} = rule) do
+    host = {:code, rule["host"]}
+
+    if rule["locked"],
+      do: rich_gettext("Deny %{host}, locked", host: host),
+      else: rich_gettext("Deny %{host}", host: host)
+  end
+
+  defp rule_words(rule) do
+    host = {:code, rule["host"]}
+
+    if rule["locked"],
+      do: rich_gettext("%{host}, locked", host: host),
+      else: [host]
+  end
 
   ## Documents
 
@@ -829,7 +944,8 @@ defmodule ApiaryWeb.PolicyLive.Common do
     |> Enum.chunk_by(fn {kind, text} -> kind == :ctx and String.starts_with?(text, "      ") end)
     |> Enum.flat_map(fn
       [{:ctx, "      " <> _} | _] = run when length(run) > 4 ->
-        Enum.take(run, 2) ++ [{:ctx, "      … #{length(run) - 2} more"}]
+        Enum.take(run, 2) ++
+          [{:ctx, "      " <> gettext("… %{count} more", count: length(run) - 2)}]
 
       run ->
         run
@@ -842,18 +958,27 @@ defmodule ApiaryWeb.PolicyLive.Common do
     removed = Enum.count(lines, &(elem(&1, 0) == :del))
 
     cond do
-      added == 0 and removed == 0 -> "no line changed"
-      removed == 0 -> "#{plural(added, "line")} added"
-      added == 0 -> "#{plural(removed, "line")} removed"
-      added == removed -> "#{plural(added, "line")} changed"
-      true -> "#{plural(added, "line")} added, #{removed} removed"
+      added == 0 and removed == 0 ->
+        gettext("no line changed")
+
+      removed == 0 ->
+        ngettext("%{count} line added", "%{count} lines added", added)
+
+      added == 0 ->
+        ngettext("%{count} line removed", "%{count} lines removed", removed)
+
+      added == removed ->
+        ngettext("%{count} line changed", "%{count} lines changed", added)
+
+      true ->
+        ngettext(
+          "%{count} line added, %{removed} removed",
+          "%{count} lines added, %{removed} removed",
+          added,
+          removed: removed
+        )
     end
   end
-
-  def plural(count, noun, plural \\ nil)
-  def plural(1, noun, _plural), do: "1 #{noun}"
-  def plural(n, noun, nil), do: "#{n} #{noun}s"
-  def plural(n, _noun, plural), do: "#{n} #{plural}"
 
   ## History
 
@@ -873,7 +998,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
         %{
           id: change.id,
-          sentence: change_sentence(change),
+          sentence: change_sentence(change, change.changed_by && change.changed_by.email),
           origin: origin(change, made),
           who: change.changed_by && change.changed_by.email,
           at: change.inserted_at,
@@ -898,16 +1023,28 @@ defmodule ApiaryWeb.PolicyLive.Common do
   defp origin(%{action: "mode_changed", target_id: id} = change, made) when id != nil do
     case {change.before["mode"], change.after["mode"], made} do
       {"inherit", _to, nil} ->
-        "Its own from now on. The hive's default is the same, so the document did not change."
+        gettext(
+          "Its own from now on. The hive's default is the same, so the document did not change."
+        )
 
       {"inherit", _to, _made} ->
-        "Its own from now on. It followed the hive's default."
+        gettext("Its own from now on. It followed the hive's default.")
 
-      {from, "inherit", nil} ->
-        "It #{from}d on its own. The hive's default is the same, so the document did not change."
+      {"observe", "inherit", nil} ->
+        gettext(
+          "It observed on its own. The hive's default is the same, so the document did not change."
+        )
 
-      {from, "inherit", _made} ->
-        "It #{from}d on its own."
+      {"enforce", "inherit", nil} ->
+        gettext(
+          "It enforced on its own. The hive's default is the same, so the document did not change."
+        )
+
+      {"observe", "inherit", _made} ->
+        gettext("It observed on its own.")
+
+      {"enforce", "inherit", _made} ->
+        gettext("It enforced on its own.")
 
       _ ->
         nil
@@ -915,9 +1052,11 @@ defmodule ApiaryWeb.PolicyLive.Common do
   end
 
   defp origin(%{action: action}, nil) when action in ~w(rule_locked rule_unlocked),
-    do: "The lock holds against repositories. The document did not change."
+    do: gettext("The lock holds against targets. The document did not change.")
 
-  defp origin(_change, nil), do: "The document did not list it, so its bytes did not change."
+  defp origin(_change, nil),
+    do: gettext("The document did not list it, so its bytes did not change.")
+
   defp origin(_change, _made), do: nil
 
   @doc "The diff of one change of the holder: its rules in words, its document in lines."
@@ -958,7 +1097,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
          document: document && fold(document),
          from: before,
          to: made,
-         summary: if(document, do: diff_summary(document), else: "no new version"),
+         summary: if(document, do: diff_summary(document), else: gettext("no new version")),
          navigate: made && socket.assigns.base <> "/versions/#{made.version}",
          bytes: made && byte_size(made.document)
        }}
@@ -1063,7 +1202,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
              %{
                version: item.version,
                digest: item.digest,
-               words: (change && change_words(change)) || "First render",
+               words: (change && change_words(change)) || gettext("First render"),
                who: socket.assigns.people[item.changed_by_id],
                at: item.rendered_at,
                hive: holder != nil and change != nil and is_nil(change.target_id)
@@ -1110,17 +1249,28 @@ defmodule ApiaryWeb.PolicyLive.Common do
     end
   end
 
-  defp caption("changes", nil, configuration, _lines), do: "v#{configuration.version}"
+  defp caption("changes", nil, configuration, _lines),
+    do: gettext("v%{version}", version: configuration.version)
 
   defp caption("changes", compare, configuration, lines),
-    do: "v#{compare.version} → v#{configuration.version} · #{diff_summary(lines)}"
+    do:
+      gettext("v%{from} → v%{version} · %{summary}",
+        from: compare.version,
+        version: configuration.version,
+        summary: diff_summary(lines)
+      )
 
   defp caption("document", _compare, configuration, _lines),
-    do: "v#{configuration.version} · indented"
+    do: gettext("v%{version} · indented", version: configuration.version)
 
   defp caption("served", _compare, configuration, _lines),
     do:
-      "v#{configuration.version} · #{byte_size(configuration.document)} bytes · sha256 over exactly these"
+      ngettext(
+        "v%{version} · %{count} byte · sha256 over exactly these",
+        "v%{version} · %{count} bytes · sha256 over exactly these",
+        byte_size(configuration.document),
+        version: configuration.version
+      )
 
   @doc """
   The version a holder is served, one read and no document: `{configuration, own?}`, `own?` false when
@@ -1148,7 +1298,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
     subject =
       case holder do
-        nil -> "the hive #{scope.hive.name}"
+        nil -> gettext("the hive %{name}", name: scope.hive.name)
         %{system: system, path: path} -> "#{system}/#{path}"
       end
 
@@ -1185,7 +1335,11 @@ defmodule ApiaryWeb.PolicyLive.Common do
   nothing a runner or a person named can become a key of the text an operator pastes.
   """
   def export_head(subject, version, digest) do
-    "# Qory policy of #{one_line(subject)}, version #{version}\n# #{one_line(digest)}\n"
+    "# " <>
+      gettext("Qory policy of %{subject}, version %{version}",
+        subject: one_line(subject),
+        version: version
+      ) <> "\n# #{one_line(digest)}\n"
   end
 
   defp one_line(text),

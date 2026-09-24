@@ -274,9 +274,10 @@ defmodule ApiaryWeb.Layouts do
               class="ml-auto font-mono text-[11.5px]/4 text-faint"
               title={policy_mode_title(@counts)}
             >
-              {policy_mode(@counts)}<span :if={own_modes(@counts) != []} class="opacity-75"> · {length(
-                own_modes(@counts)
-              )} own</span>
+              {policy_mode(@counts)}<span :if={own_modes(@counts) != []} class="opacity-75"> · {gettext(
+                "%{count} own",
+                count: length(own_modes(@counts))
+              )}</span>
             </span>
             <span
               :if={count = nav_count(@counts, key)}
@@ -322,14 +323,18 @@ defmodule ApiaryWeb.Layouts do
 
   # The tag never claims what every run is under: it names the default and how many differ.
   defp policy_mode_title(counts) do
-    lead = "The hive's default mode is #{policy_mode(counts)}."
+    lead = gettext("The hive's default mode is %{mode}.", mode: policy_mode(counts))
 
-    case own_modes(counts) do
-      [] -> "#{lead} Every repository follows it."
-      [mode] -> "#{lead} 1 repository sets its own and #{mode}s."
-      modes -> "#{lead} #{length(modes)} repositories set their own."
-    end
+    lead <> " " <> own_modes_sentence(own_modes(counts))
   end
+
+  defp own_modes_sentence([]), do: gettext("Every target follows it.")
+  defp own_modes_sentence(["observe"]), do: gettext("1 target sets its own and observes.")
+  defp own_modes_sentence(["enforce"]), do: gettext("1 target sets its own and enforces.")
+
+  defp own_modes_sentence(modes),
+    do:
+      ngettext("%{count} target sets its own.", "%{count} targets set their own.", length(modes))
 
   defp alive_count(%{alive: n}) when is_integer(n), do: n
   defp alive_count(_counts), do: 0

@@ -42,6 +42,8 @@ defmodule Apiary.Policy do
   hive's target, rule or configuration is not found.
   """
 
+  use Gettext, backend: ApiaryWeb.Gettext
+
   import Ecto.Query, warn: false
 
   require Logger
@@ -56,7 +58,6 @@ defmodule Apiary.Policy do
 
   @modes ~w(observe enforce)
   @page_size 25
-  @mode_is_an_owners "Only an owner changes the mode: it decides what runs are denied."
   # The most rules one list holds (the baseline's, or a target's). With at most
   # `Grammar.paths_max/0` paths a rule, it bounds a change's `before` and `after`, which
   # repeat the list, and so the history's growth: quadratic in the rules, up to this.
@@ -176,7 +177,7 @@ defmodule Apiary.Policy do
          %Target{} = target <- Repo.one(from p in targets(scope), where: p.id == ^id) do
       {:ok, target}
     else
-      _ -> {:error, not_found("This hive has no such repository.")}
+      _ -> {:error, not_found(gettext("This hive has no such target."))}
     end
   end
 
@@ -244,7 +245,7 @@ defmodule Apiary.Policy do
           {:ok, String.t() | target_mode} | refusal
   def set_mode(%Scope{} = scope, holder, mode) when holder in [nil, :hive] and mode in @modes do
     with {:ok, membership} <- member(scope),
-         :ok <- owner(membership, @mode_is_an_owners) do
+         :ok <- owner(membership, mode_is_an_owners()) do
       write(scope, nil, fn hive ->
         if hive.egress_mode != mode do
           Repo.update_all(from(h in Hive, where: h.id == ^hive.id),
@@ -262,7 +263,7 @@ defmodule Apiary.Policy do
     own = if mode in @modes, do: mode
 
     with {:ok, membership} <- member(scope),
-         :ok <- owner(membership, @mode_is_an_owners),
+         :ok <- owner(membership, mode_is_an_owners()),
          {:ok, target_id} <- holder_id(scope, target) do
       write(scope, target_id, fn hive ->
         Repo.update_all(from(p in Target, where: p.id == ^target_id),
@@ -276,12 +277,12 @@ defmodule Apiary.Policy do
   end
 
   def set_mode(%Scope{}, holder, _mode) when holder in [nil, :hive] do
-    {:error, Error.new(:invalid, "The mode is observe or enforce.", :mode)}
+    {:error, Error.new(:invalid, gettext("The mode is observe or enforce."), :mode)}
   end
 
   def set_mode(%Scope{}, _holder, _mode) do
     {:error,
-     Error.new(:invalid, "A repository's mode is observe, enforce, or the hive's.", :mode)}
+     Error.new(:invalid, gettext("A target's mode is observe, enforce, or the hive's."), :mode)}
   end
 
   ## Rules
@@ -306,7 +307,7 @@ defmodule Apiary.Policy do
            ) do
       {:ok, rule}
     else
-      _ -> {:error, not_found("This hive has no such rule.")}
+      _ -> {:error, not_found(gettext("This hive has no such rule."))}
     end
   end
 
@@ -447,7 +448,10 @@ defmodule Apiary.Policy do
           {:error,
            Error.new(
              :invalid,
-             "#{key} is held to paths, and this connection names no path, so there is no path to add. Allowing the host from here would open every path of it: change the rule's paths on the policy page instead.",
+             gettext(
+               "%{host} is held to paths, and this connection names no path, so there is no path to add. Allowing the host from here would open every path of it: change the rule's paths on the policy page instead.",
+               host: key
+             ),
              :paths
            )}
 
@@ -687,7 +691,7 @@ defmodule Apiary.Policy do
            ) do
       {:ok, configuration}
     else
-      _ -> {:error, not_found("There is no such version of this run configuration.")}
+      _ -> {:error, not_found(gettext("There is no such version of this run configuration."))}
     end
   end
 
@@ -705,12 +709,12 @@ defmodule Apiary.Policy do
              (target_id && by_digest(scope.hive.id, nil, digest)) do
       {:ok, configuration}
     else
-      _ -> {:error, not_found("This hive served no run configuration with that digest.")}
+      _ -> {:error, not_found(gettext("This hive served no run configuration with that digest."))}
     end
   end
 
   def configuration_for_digest(%Scope{}, _holder, _digest),
-    do: {:error, not_found("This hive served no run configuration with that digest.")}
+    do: {:error, not_found(gettext("This hive served no run configuration with that digest."))}
 
   @doc "The versions of the baseline (`nil`) or of a target, newest first, a page of #{@page_size}."
   @spec list_configurations(Scope.t(), holder, pos_integer) :: page(RunConfiguration.t())
@@ -762,7 +766,7 @@ defmodule Apiary.Policy do
     }
   end
 
-  def digests(%Scope{}, %Run{}), do: {:error, not_found("This hive has no such run.")}
+  def digests(%Scope{}, %Run{}), do: {:error, not_found(gettext("This hive has no such run."))}
 
   ## Bulk reads, for a page that lists
 
@@ -928,7 +932,7 @@ defmodule Apiary.Policy do
            ) do
       {:ok, change}
     else
-      _ -> {:error, not_found("This hive has no such change.")}
+      _ -> {:error, not_found(gettext("This hive has no such change."))}
     end
   end
 
@@ -1009,7 +1013,10 @@ defmodule Apiary.Policy do
       {:error,
        Error.new(
          :invalid,
-         "There are #{@rules_max} rules here already, which is the most one list holds. Remove one, or say several hosts with a *. suffix."
+         gettext(
+           "There are %{max} rules here already, which is the most one list holds. Remove one, or say several hosts with a *. suffix.",
+           max: @rules_max
+         )
        )}
     end
   end
@@ -1078,7 +1085,9 @@ defmodule Apiary.Policy do
   defp a_path(path) do
     if Grammar.path?(path) and not String.contains?(path, "*"),
       do: :ok,
-      else: {:error, Error.new(:invalid, "This path cannot be written as a path rule.", :paths)}
+      else:
+        {:error,
+         Error.new(:invalid, gettext("This path cannot be written as a path rule."), :paths)}
   end
 
   defp not_locked_above(_effective, nil, _host), do: :ok
@@ -1091,7 +1100,10 @@ defmodule Apiary.Policy do
       {:error,
        Error.new(
          :locked,
-         "The hive's rule for #{host} is locked, so a repository cannot change its paths. An owner changes it in the hive.",
+         gettext(
+           "The hive's rule for %{host} is locked, so a target cannot change its paths. An owner changes it in the hive.",
+           host: host
+         ),
          :host
        )}
     else
@@ -1106,7 +1118,13 @@ defmodule Apiary.Policy do
 
       _ ->
         if host in effective.allow,
-          do: {:error, Error.new(:invalid, "#{host} is already reached on every path.", :paths)},
+          do:
+            {:error,
+             Error.new(
+               :invalid,
+               gettext("%{host} is already reached on every path.", host: host),
+               :paths
+             )},
           else: {:ok, [path]}
     end
   end
@@ -1122,7 +1140,11 @@ defmodule Apiary.Policy do
             {:error,
              Error.new(
                :invalid,
-               "#{path} is allowed by the pattern #{pattern}. The document cannot take one path out of a pattern: replace #{pattern} with the paths that are needed.",
+               gettext(
+                 "%{path} is allowed by the pattern %{pattern}. The document cannot take one path out of a pattern: replace %{pattern} with the paths that are needed.",
+                 path: path,
+                 pattern: pattern
+               ),
                :paths
              )}
 
@@ -1130,7 +1152,11 @@ defmodule Apiary.Policy do
             {:error,
              Error.new(
                :invalid,
-               "#{path} is not among the paths #{host} is held to, so it is denied already.",
+               gettext(
+                 "%{path} is not among the paths %{host} is held to, so it is denied already.",
+                 path: path,
+                 host: host
+               ),
                :paths
              )}
         end
@@ -1140,19 +1166,26 @@ defmodule Apiary.Policy do
           {:error,
            Error.new(
              :invalid,
-             "#{host} is reached on every path, and the document cannot allow every path but one. Hold #{host} to the paths it needs, and this one is denied by not being among them.",
+             gettext(
+               "%{host} is reached on every path, and the document cannot allow every path but one. Hold %{host} to the paths it needs, and this one is denied by not being among them.",
+               host: host
+             ),
              :paths
            )}
         else
           {:error,
-           Error.new(:invalid, "#{host} is not allowed, so none of its paths is.", :paths)}
+           Error.new(
+             :invalid,
+             gettext("%{host} is not allowed, so none of its paths is.", host: host),
+             :paths
+           )}
         end
     end
   end
 
   defp set_locked(scope, rule_or_id, locked) do
     with {:ok, membership} <- member(scope),
-         :ok <- owner(membership, "Only an owner locks or unlocks a rule."),
+         :ok <- owner(membership, gettext("Only an owner locks or unlocks a rule.")),
          {:ok, rule} <- get_rule(scope, rule_id(rule_or_id)),
          :ok <- lock_is_the_hives(rule.target_id, true) do
       write(scope, nil, fn hive ->
@@ -1168,7 +1201,7 @@ defmodule Apiary.Policy do
   defp reread(%Hive{id: hive_id}, %Rule{id: id}) do
     case Repo.one(from r in Rule, where: r.id == ^id and r.hive_id == ^hive_id) do
       %Rule{} = rule -> {:ok, rule}
-      nil -> {:error, not_found("This rule is gone: somebody removed it a moment ago.")}
+      nil -> {:error, not_found(gettext("This rule is gone: somebody removed it a moment ago."))}
     end
   end
 
@@ -1456,7 +1489,9 @@ defmodule Apiary.Policy do
     {:error,
      Error.new(
        :invalid_document,
-       "The change was not made: the run configuration it renders is over 1 MiB, more than a runner reads. Say the paths with fewer, shorter patterns (a final * matches everything below)."
+       gettext(
+         "The change was not made: the run configuration it renders is over 1 MiB, more than a runner reads. Say the paths with fewer, shorter patterns (a final * matches everything below)."
+       )
      )}
   end
 
@@ -1474,7 +1509,9 @@ defmodule Apiary.Policy do
         {:error,
          Error.new(
            :invalid_document,
-           "The change was not made: the run configuration it renders is not one the runner's contract accepts."
+           gettext(
+             "The change was not made: the run configuration it renders is not one the runner's contract accepts."
+           )
          )}
     end
   end
@@ -1484,7 +1521,10 @@ defmodule Apiary.Policy do
   defp elsewhere(%Error{} = error, _hive, nil, _target_id), do: error
 
   defp elsewhere(%Error{} = error, _hive, %Change{}, nil),
-    do: %{error | message: "In the hive's baseline: " <> error.message}
+    do: %{
+      error
+      | message: gettext("In the hive's baseline: %{refusal}", refusal: error.message)
+    }
 
   defp elsewhere(%Error{} = error, hive, %Change{}, target_id) do
     case Repo.one(from p in Target, where: p.id == ^target_id and p.hive_id == ^hive.id) do
@@ -1492,7 +1532,10 @@ defmodule Apiary.Policy do
         %{
           error
           | message:
-              "In the repository #{system}/#{path}, which has rules of its own: " <> error.message
+              gettext("In the target %{target}, which has rules of its own: %{refusal}",
+                target: "#{system}/#{path}",
+                refusal: error.message
+              )
         }
 
       nil ->
@@ -1519,7 +1562,9 @@ defmodule Apiary.Policy do
   defp unmanaged do
     Error.new(
       :unmanaged,
-      "Nobody has made this hive's policy yet: its machines run under their own, and there is no version until the first change here."
+      gettext(
+        "Nobody has made this hive's policy yet: its machines run under their own, and there is no version until the first change here."
+      )
     )
   end
 
@@ -1578,12 +1623,13 @@ defmodule Apiary.Policy do
 
   defp holder_id(%Scope{} = scope, %Target{id: id}) when is_binary(id) do
     case Repo.one(from p in targets(scope), where: p.id == ^id, select: p.id) do
-      nil -> {:error, not_found("This hive has no such repository.")}
+      nil -> {:error, not_found(gettext("This hive has no such target."))}
       id -> {:ok, id}
     end
   end
 
-  defp holder_id(%Scope{}, _holder), do: {:error, not_found("This hive has no such repository.")}
+  defp holder_id(%Scope{}, _holder),
+    do: {:error, not_found(gettext("This hive has no such target."))}
 
   defp existing(hive_id, target_id, %Rule{kind: kind} = candidate) do
     subject = Rule.subject(candidate)
@@ -1598,9 +1644,15 @@ defmodule Apiary.Policy do
 
       {:error, _unauthorized} ->
         {:error,
-         Error.new(:unauthorized, "Only a member of this hive changes its security policy.")}
+         Error.new(
+           :unauthorized,
+           gettext("Only a member of this hive changes its security policy.")
+         )}
     end
   end
+
+  defp mode_is_an_owners,
+    do: gettext("Only an owner changes the mode: it decides what runs are denied.")
 
   defp owner(%Membership{level: :owner}, _message), do: :ok
   defp owner(%Membership{}, message), do: {:error, Error.new(:unauthorized, message)}
@@ -1611,14 +1663,20 @@ defmodule Apiary.Policy do
   defp may_change(membership, %Rule{locked: true} = rule) do
     owner(
       membership,
-      "The rule for #{Rule.subject(rule)} is locked. Only an owner changes or removes a locked rule."
+      gettext(
+        "The rule for %{subject} is locked. Only an owner changes or removes a locked rule.",
+        subject: Rule.subject(rule)
+      )
     )
   end
 
   # `locked` is true or false by now (`attrs/1`): what is compared is what is stored.
   defp may_lock(membership, existing, %{"locked" => wanted}) do
     now = if existing, do: existing.locked, else: false
-    if wanted == now, do: :ok, else: owner(membership, "Only an owner locks or unlocks a rule.")
+
+    if wanted == now,
+      do: :ok,
+      else: owner(membership, gettext("Only an owner locks or unlocks a rule."))
   end
 
   defp may_lock(_membership, _existing, _attrs), do: :ok
@@ -1629,7 +1687,9 @@ defmodule Apiary.Policy do
     {:error,
      Error.new(
        :invalid,
-       "Only a rule of the hive can be locked: a lock is what holds it against the repositories."
+       gettext(
+         "Only a rule of the hive can be locked: a lock is what holds it against the targets."
+       )
      )}
   end
 
@@ -1639,8 +1699,9 @@ defmodule Apiary.Policy do
   defp applied(%Ecto.Changeset{valid?: true} = changeset),
     do: {:ok, Ecto.Changeset.apply_changes(changeset)}
 
-  defp applied(%Ecto.Changeset{errors: [{field, {message, _meta}} | _]}) do
-    {:error, Error.new(:invalid, message, field)}
+  defp applied(%Ecto.Changeset{errors: [{field, {message, meta}} | _]}) do
+    {:error,
+     Error.new(:invalid, Gettext.dgettext(ApiaryWeb.Gettext, "errors", message, meta), field)}
   end
 
   # What a form or a caller gives, reduced to the known keys as strings. No atom is made
@@ -1658,7 +1719,8 @@ defmodule Apiary.Policy do
     # so what is authorised is exactly what is stored.
     if Map.get(attrs, "locked", false) in [true, false],
       do: {:ok, attrs},
-      else: {:error, Error.new(:invalid, "A rule is locked or it is not: true or false.")}
+      else:
+        {:error, Error.new(:invalid, gettext("A rule is locked or it is not: true or false."))}
   end
 
   defp present(:absent), do: :absent
@@ -1710,13 +1772,15 @@ defmodule Apiary.Policy do
         {:error,
          Error.new(
            :invalid,
-           "This host cannot be named in a policy: a rule takes a host name, not an address of this form.",
+           gettext(
+             "This host cannot be named in a policy: a rule takes a host name, not an address of this form."
+           ),
            :host
          )}
   end
 
   defp connection_host(%Scope{}, _connection),
-    do: {:error, not_found("This hive has no such connection.")}
+    do: {:error, not_found(gettext("This hive has no such connection."))}
 
   defp connection_holder(_scope, _connection, :hive), do: {:ok, nil}
 
@@ -1737,7 +1801,7 @@ defmodule Apiary.Policy do
         {:error,
          Error.new(
            :not_found,
-           "This run names no repository, so the rule has nowhere to go but the hive."
+           gettext("This run names no target, so the rule has nowhere to go but the hive.")
          )}
     end
   end

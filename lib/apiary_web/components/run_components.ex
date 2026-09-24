@@ -1887,8 +1887,12 @@ defmodule ApiaryWeb.RunComponents do
   def version_words(%{n: n}), do: "v#{n}"
   def version_words(_version), do: "another configuration"
 
-  defp possessive("hive baseline"), do: "the hive baseline's"
-  defp possessive(label), do: middle(label, 40) <> "'s"
+  # The baseline's label is said in the body's words (`Rules.version_label/2`).
+  defp possessive(label) do
+    if label == ApiaryWeb.ConnectionLive.Rules.version_label(nil, nil),
+      do: "the #{label}'s",
+      else: middle(label, 40) <> "'s"
+  end
 
   ## pd9. The drift mark
 

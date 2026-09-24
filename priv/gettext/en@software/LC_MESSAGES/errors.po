@@ -11,6 +11,46 @@ msgstr ""
 "Language: en@software\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
+#: lib/apiary/policy/rule.ex
+#, elixir-autogen, elixir-format
+msgid "%{path} is not a path: it starts with /, holds no ?, # or space, and may end in one * to match everything below it."
+msgstr ""
+
+#: lib/apiary/policy/rule.ex
+#, elixir-autogen, elixir-format
+msgid "A credential's name is lower-case letters, digits, dots, dashes and underscores, at most 64, and starts with a letter or a digit."
+msgstr ""
+
+#: lib/apiary/policy/rule.ex
+#, elixir-autogen, elixir-format
+msgid "A host is a lower-case name such as api.example, or *.example for every host below example. No port, no path, no scheme."
+msgstr ""
+
+#: lib/apiary/policy/rule.ex
+#, elixir-autogen, elixir-format
+msgid "A host takes at most %{max} paths."
+msgstr ""
+
+#: lib/apiary/policy/rule.ex
+#, elixir-autogen, elixir-format
+msgid "An argument is 1 to %{max} characters on one line."
+msgstr ""
+
+#: lib/apiary/policy/rule.ex
+#, elixir-autogen, elixir-format
+msgid "Name the credential."
+msgstr ""
+
+#: lib/apiary/policy/rule.ex
+#, elixir-autogen, elixir-format
+msgid "Name the host."
+msgstr ""
+
+#: lib/apiary/policy/rule.ex
+#, elixir-autogen, elixir-format
+msgid "already has a rule here"
+msgstr ""
+
 msgid "are still associated with this entry"
 msgstr ""
 

@@ -12,6 +12,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
 
   import ApiaryWeb.PolicyComponents
   import ApiaryWeb.PolicyLive.Views
+  import ApiaryWeb.RichText
 
   alias Apiary.Policy
   alias Apiary.Runs.Filters
@@ -36,12 +37,12 @@ defmodule ApiaryWeb.PolicyLive.Target do
         socket =
           if connected?(socket),
             do: socket |> load() |> assign(:loaded, true),
-            else: assign(socket, loaded: false, page_title: "Policy")
+            else: assign(socket, loaded: false, page_title: gettext("Policy"))
 
         {:ok, socket}
 
       {:error, _not_found} ->
-        {:ok, assign(socket, holder: :not_found, loaded: true, page_title: "Policy")}
+        {:ok, assign(socket, holder: :not_found, loaded: true, page_title: gettext("Policy"))}
     end
   end
 
@@ -160,7 +161,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
   end
 
   defp apply_action(socket, :history, params) do
-    socket = assign(socket, :page_title, "History · " <> title(socket))
+    socket = assign(socket, :page_title, gettext("History · %{title}", title: title(socket)))
     history = Common.history(socket, Common.page_param(params["page"]))
 
     {open, diff} =
@@ -189,7 +190,11 @@ defmodule ApiaryWeb.PolicyLive.Target do
         socket =
           assign(socket,
             v: v,
-            page_title: "Version #{v.configuration.version} · " <> title(socket)
+            page_title:
+              gettext("Version %{version} · %{title}",
+                version: v.configuration.version,
+                title: title(socket)
+              )
           )
 
         cond do
@@ -226,7 +231,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
   end
 
   defp title(%{assigns: %{holder: %{system: system, path: path}}}),
-    do: "#{system}/#{path} · Policy"
+    do: gettext("%{target} · Policy", target: "#{system}/#{path}")
 
   ## Events
 
@@ -258,33 +263,43 @@ defmodule ApiaryWeb.PolicyLive.Target do
               %Policy.Error{
                 reason: :locked,
                 message:
-                  "The hive's rule for #{rule.host} is locked. An owner changes it on the hive's policy page."
+                  gettext(
+                    "The hive's rule for %{host} is locked. An owner changes it on the hive's policy page.",
+                    host: rule.host
+                  )
               }}, nil, nil}
 
           {"disable", nil, "allow"} ->
             {Policy.deny(scope, target, %{host: rule.host}),
-             "#{rule.host} is denied #{Common.for_holder(socket)}.",
-             "#{rule.host} is disabled for this repository."}
+             gettext("%{host} is denied for %{target}.", host: rule.host, target: name(target)),
+             gettext("%{host} is disabled for this target.", host: rule.host)}
 
           {"allow_here", nil, "deny"} ->
             {Policy.allow(scope, target, %{host: rule.host, paths: nil}),
-             "#{rule.host} is allowed #{Common.for_holder(socket)}.",
-             "#{rule.host} is allowed for this repository."}
+             gettext("%{host} is allowed for %{target}.", host: rule.host, target: name(target)),
+             gettext("%{host} is allowed for this target.", host: rule.host)}
 
           {act, target_id, _action}
           when act in ~w(remove restore) and target_id == target.id ->
             {Policy.remove_rule(scope, rule),
              if(act == "restore",
-               do: "The hive's rule for #{rule.host} is restored #{Common.for_holder(socket)}.",
-               else: "The rule #{rule.host} is removed."
-             ), "Rule removed."}
+               do:
+                 gettext("The hive's rule for %{host} is restored for %{target}.",
+                   host: rule.host,
+                   target: name(target)
+                 ),
+               else: gettext("The rule %{host} is removed.", host: rule.host)
+             ), gettext("Rule removed.")}
 
           _ ->
             {{:error,
               %Policy.Error{
                 reason: :conflict,
                 message:
-                  "The rule for #{rule.host} changed while you were deciding. The list below is current."
+                  gettext(
+                    "The rule for %{host} changed while you were deciding. The list below is current.",
+                    host: rule.host
+                  )
               }}, nil, nil}
         end
 
@@ -310,7 +325,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
 
     cond do
       not socket.assigns.owner? ->
-        assign(socket, :write_error, "Only an owner sets a mode.")
+        assign(socket, :write_error, gettext("Only an owner sets a mode."))
 
       setting == now ->
         socket
@@ -355,7 +370,10 @@ defmodule ApiaryWeb.PolicyLive.Target do
             socket
             |> load()
             |> assign(:would, Common.would(scope, target, would))
-            |> assign(:announce, "#{destination.host} is allowed for this repository.")
+            |> assign(
+              :announce,
+              gettext("%{host} is allowed for this target.", host: destination.host)
+            )
 
           {:error, error} ->
             assign(socket, :would, Map.put(would, :error, error.message))
@@ -400,7 +418,11 @@ defmodule ApiaryWeb.PolicyLive.Target do
          true <- rule.target_id == socket.assigns.holder.id,
          {:ok, rule} <- Policy.remove_rule(scope, rule) do
       socket
-      |> Common.wrote(nil, "The credential #{rule.name} is removed.", "Credential removed.")
+      |> Common.wrote(
+        nil,
+        gettext("The credential %{name} is removed.", name: rule.name),
+        gettext("Credential removed.")
+      )
       |> Common.focus("policy-credential-name")
     else
       {:error, error} -> Common.refused(socket, error)
@@ -430,17 +452,31 @@ defmodule ApiaryWeb.PolicyLive.Target do
         sentence =
           cond do
             setting == "follow" ->
-              "#{name} follows the hive: #{mode.hive}."
+              gettext("%{target} follows the hive: %{mode}.", target: name, mode: mode.hive)
+
+            mode.mode == before.mode and setting == "observe" ->
+              gettext(
+                "%{target} observes on its own. Nothing changes today: the hive's default is %{mode} too.",
+                target: name,
+                mode: mode.hive
+              )
 
             mode.mode == before.mode ->
-              "#{name} #{setting}s on its own. Nothing changes today: the hive's default is #{mode.hive} too."
+              gettext(
+                "%{target} enforces on its own. Nothing changes today: the hive's default is %{mode} too.",
+                target: name,
+                mode: mode.hive
+              )
+
+            setting == "observe" ->
+              gettext("%{target} observes on its own.", target: name)
 
             true ->
-              "#{name} #{setting}s on its own."
+              gettext("%{target} enforces on its own.", target: name)
           end
 
         socket
-        |> Common.wrote(nil, sentence, "This repository's mode is #{mode.mode}.")
+        |> Common.wrote(nil, sentence, gettext("This target's mode is %{mode}.", mode: mode.mode))
         |> Common.focus("policy-target-mode-#{setting}")
 
       {:error, error} ->
@@ -457,15 +493,20 @@ defmodule ApiaryWeb.PolicyLive.Target do
 
     case Policy.allow(scope, holder, %{host: host}) do
       {:ok, rule} ->
-        where = if level == "hive", do: "for the hive", else: Common.for_holder(socket)
+        {sentence, announce} =
+          if level == "hive",
+            do:
+              {gettext("%{host} is allowed for the hive.", host: host),
+               gettext("%{host} is allowed for the hive.", host: host)},
+            else:
+              {gettext("%{host} is allowed for %{target}.",
+                 host: host,
+                 target: name(socket.assigns.holder)
+               ), gettext("%{host} is allowed for this target.", host: host)}
 
         socket =
           socket
-          |> Common.wrote(
-            if(level == "hive", do: nil, else: rule),
-            "#{host} is allowed #{where}.",
-            "#{host} is allowed #{if level == "hive", do: "for the hive", else: "for this repository"}."
-          )
+          |> Common.wrote(if(level == "hive", do: nil, else: rule), sentence, announce)
           |> assign(:suggestions, shown)
           |> assign(:allowed, Map.put(socket.assigns.allowed, host, %{id: rule.id, level: level}))
 
@@ -475,6 +516,8 @@ defmodule ApiaryWeb.PolicyLive.Target do
         {:error, Common.refused(socket, error) |> assign(:suggestions, shown)}
     end
   end
+
+  defp name(%{system: system, path: path}), do: "#{system}/#{path}"
 
   defp focus_host(socket, host) do
     case Enum.find(socket.assigns.rows, &(&1.host == host)) do
@@ -555,12 +598,11 @@ defmodule ApiaryWeb.PolicyLive.Target do
         tone="neutral"
         icon="hero-magnifying-glass"
         heading="h1"
-        title="This repository is not in this hive"
+        title={gettext("This target is not in this hive")}
       >
-        The link may be for another
-        <.term word="hive" />, or the repository has not posted a run here.
+        {gettext("The link may be for another hive, or the target has not posted a run here.")}
         <:actions>
-          <.button navigate={~p"/hive/policy"}>Back to policy</.button>
+          <.button navigate={~p"/hive/policy"}>{gettext("Back to policy")}</.button>
         </:actions>
       </.empty_state>
     </Layouts.app>
@@ -579,17 +621,19 @@ defmodule ApiaryWeb.PolicyLive.Target do
     >
       <div id="policy-page" phx-hook="PolicyPage" class="grid grid-cols-[minmax(0,1fr)] gap-6">
         <div class="grid gap-3">
-          <nav class="q-crumbs" aria-label="Breadcrumb">
-            <.link navigate={~p"/hive/policy"}>Policy</.link>
+          <nav class="q-crumbs" aria-label={gettext("Breadcrumb")}>
+            <.link navigate={~p"/hive/policy"}>{gettext("Policy")}</.link>
             <.icon name="hero-chevron-right-micro" class="size-3" />
             <%= if @live_action in [:version, :export] && @v do %>
               <.link navigate={@base} class="font-mono text-xs">
                 <span class="text-faint">{@holder.system}/</span>{@holder.path}
               </.link>
               <.icon name="hero-chevron-right-micro" class="size-3" />
-              <span class="q-here" aria-current="page">Version {@v.configuration.version}</span>
+              <span class="q-here" aria-current="page">
+                {gettext("Version %{version}", version: @v.configuration.version)}
+              </span>
             <% else %>
-              <.link navigate={~p"/hive/policy/targets"}>Repositories</.link>
+              <.link navigate={~p"/hive/policy/targets"}>{gettext("Targets")}</.link>
               <.icon name="hero-chevron-right-micro" class="size-3" />
               <span class="q-here font-mono text-xs" aria-current="page">
                 <span class="text-faint">{@holder.system}/</span>{@holder.path}
@@ -608,7 +652,12 @@ defmodule ApiaryWeb.PolicyLive.Target do
                 <span class="font-normal text-faint">{@holder.system}/</span>{@holder.path}
               </h1>
               <p class="mt-0.5 max-w-[62ch] text-sm/5 text-muted">
-                What runs of this repository may reach: the hive's rules, then this repository's own. Where the two meet on a host, the repository wins, unless the hive's rule is locked.
+                {gettext(
+                  "What runs of this target may reach: the hive's rules, then this target's own."
+                )}
+                {gettext(
+                  "Where the two meet on a host, the target wins, unless the hive's rule is locked."
+                )}
               </p>
             </div>
             <div :if={@version} class="q-head-side">
@@ -622,8 +671,8 @@ defmodule ApiaryWeb.PolicyLive.Target do
                 />
                 <small :if={@baseline?} id="policy-baseline" class="text-xs text-faint">
                   <.term
-                    word="hive baseline"
-                    standard="The hive's rules with no repository's own: what a repository without rules, or a run that names none, is served."
+                    word={gettext("hive baseline")}
+                    standard={baseline_tip()}
                     class="q-tip-wide tooltip-left"
                   />
                 </small>
@@ -636,7 +685,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
                     else: "#{@base}/versions/#{@version.version}/export"
                 }
               >
-                <.icon name="hero-arrow-up-tray-micro" class="size-4" />Export
+                <.icon name="hero-arrow-up-tray-micro" class="size-4" />{gettext("Export")}
               </.button>
             </div>
           </header>
@@ -674,17 +723,21 @@ defmodule ApiaryWeb.PolicyLive.Target do
           :if={@missing}
           tone="neutral"
           icon="hero-magnifying-glass"
-          title={"There is no version #{String.slice(@missing.n, 0, 12)}"}
+          title={gettext("There is no version %{version}", version: String.slice(@missing.n, 0, 12))}
         >
-          <span :if={@missing.latest}>The latest is version {@missing.latest.version}.</span>
+          <span :if={@missing.latest}>
+            {gettext("The latest is version %{version}.", version: @missing.latest.version)}
+          </span>
           <span :if={!@missing.latest}>
-            This repository has no versions of its own: it is served the hive baseline.
+            {gettext("This target has no versions of its own: it is served the hive baseline.")}
           </span>
           <:actions>
             <.button :if={@missing.latest} navigate={"#{@base}/versions/#{@missing.latest.version}"}>
-              Open version {@missing.latest.version}
+              {gettext("Open version %{version}", version: @missing.latest.version)}
             </.button>
-            <.button :if={!@missing.latest} navigate={@base}>Back to the repository's policy</.button>
+            <.button :if={!@missing.latest} navigate={@base}>
+              {gettext("Back to the target's policy")}
+            </.button>
           </:actions>
         </.empty_state>
       </div>
@@ -725,20 +778,23 @@ defmodule ApiaryWeb.PolicyLive.Target do
     ~H"""
     <.modal
       id="target-mode-enforce"
-      title={"Enforce #{@name}"}
+      title={gettext("Enforce %{target}", target: @name)}
       size="lg"
       on_cancel={JS.push("dialog_cancel")}
     >
       <p class="text-muted">
-        From the next heartbeat, about 30 s,
-        <b class="font-medium text-base-content">a connection no rule allows is denied</b>
-        in this repository's runs. {whose_words(@setting, "enforce")} Other repositories do not change.
+        <.sentence parts={mode_lead("enforce")} />
+        {whose_words(@setting, "enforce")} {gettext("Other targets do not change.")}
       </p>
       <div :if={@would && @would.destinations != []} id="mode-would" class="q-would">
         <div>
-          <span>Let through in this repository's runs, last 7 days, with no rule matching</span>
+          <span>
+            {gettext("Let through in this target's runs, last 7 days, with no rule matching")}
+          </span>
           <span id="mode-would-n" class="tabular-nums">
-            {if @left == 0, do: "none left", else: Common.plural(@left, "destination")}
+            {if @left == 0,
+              do: gettext("none left"),
+              else: ngettext("%{count} destination", "%{count} destinations", @left)}
           </span>
         </div>
         <ul>
@@ -752,21 +808,26 @@ defmodule ApiaryWeb.PolicyLive.Target do
               {destination.host}<span :if={destination.path} class="text-muted">{destination.path}</span>
             </span>
             <small>
-              {Common.plural(destination.attempts, "attempt")} · {Common.plural(
-                destination.runs,
-                "run"
+              {ngettext("%{count} attempt", "%{count} attempts", destination.attempts)} · {ngettext(
+                "%{count} run",
+                "%{count} runs",
+                destination.runs
               )}
             </small>
             <%= cond do %>
               <% !MapSet.member?(@would.open, Common.would_key(destination)) -> %>
-                <span class="q-done"><.icon name="hero-check-micro" class="size-3" />Allowed</span>
+                <span class="q-done"><.icon name="hero-check-micro" class="size-3" />{gettext(
+                  "Allowed"
+                )}</span>
               <% lock = Enum.find(@locked_denies, &Grammar.covers?(&1, destination.host)) -> %>
                 <span
                   class="q-locked tooltip tooltip-left q-tip-wide"
                   tabindex="0"
-                  data-tip={"A locked hive rule denies #{lock}. Only an owner can change it, on the hive's policy page."}
+                  data-tip={locked_tip(lock)}
                 >
-                  <.icon name="hero-lock-closed-micro" class="size-3 text-muted" />Locked deny
+                  <.icon name="hero-lock-closed-micro" class="size-3 text-muted" />{gettext(
+                    "Locked deny"
+                  )}
                 </span>
               <% true -> %>
                 <button
@@ -774,33 +835,45 @@ defmodule ApiaryWeb.PolicyLive.Target do
                   class="btn btn-xs"
                   phx-click={JS.push("would_allow", value: %{key: Common.would_key(destination)})}
                 >
-                  Allow here
+                  {gettext("Allow here")}
                 </button>
             <% end %>
           </li>
         </ul>
         <p :if={length(@would.destinations) > 8} class="q-would-more">
-          and {length(@would.destinations) - 8} more on the connections page
+          {ngettext(
+            "and %{count} more on the connections page",
+            "and %{count} more on the connections page",
+            length(@would.destinations) - 8
+          )}
         </p>
       </div>
       <p :if={@would && @would[:error]} class="text-error-soft-content" role="alert">
         {@would[:error]}
       </p>
       <p :if={@would && @would.destinations == []} id="mode-would-none" class="text-muted">
-        Every destination this repository's runs reached in the last 7 days is covered by a rule.
+        {gettext(
+          "Every destination this target's runs reached in the last 7 days is covered by a rule."
+        )}
       </p>
       <p :if={@would && @would.destinations != []} class="text-[12.5px]/[18px] text-muted">
-        Counted from this repository's recorded connections that today's rules still do not cover. Enforce will deny these. A destination no run has reached yet is not in this list.
+        {gettext(
+          "Counted from this target's recorded connections that today's rules still do not cover."
+        )}
+        {gettext("Enforce will deny these.")}
+        {gettext("A destination no run has reached yet is not in this list.")}
       </p>
       <:footer>
-        <.button phx-click="dialog_cancel" data-autofocus>Cancel</.button>
+        <.button phx-click="dialog_cancel" data-autofocus>{gettext("Cancel")}</.button>
         <.button
           id="target-mode-confirm"
           variant="primary"
           phx-click="target_mode_confirm"
-          loading_text="Setting"
+          loading_text={gettext("Setting")}
         >
-          {if @setting == "follow", do: "Follow the hive", else: "Enforce this repository"}
+          {if @setting == "follow",
+            do: gettext("Follow the hive"),
+            else: gettext("Enforce this target")}
         </.button>
       </:footer>
     </.modal>
@@ -811,32 +884,33 @@ defmodule ApiaryWeb.PolicyLive.Target do
     ~H"""
     <.modal
       id="target-mode-observe"
-      title={"Observe #{@name}"}
+      title={gettext("Observe %{target}", target: @name)}
       size="sm"
       on_cancel={JS.push("dialog_cancel")}
     >
       <p class="text-muted">
-        From the next heartbeat, about 30 s, <b class="font-medium text-base-content">only what a deny rule names is denied in this repository's runs</b>: every other connection is let through and recorded. {whose_words(
-          @setting,
-          "observe"
-        )}
-        <span :if={@setting != "follow"}>The hive's default stays {@hive} and other repositories do not change.</span>
+        <.sentence parts={mode_lead("observe")} />
+        {whose_words(@setting, "observe")}
+        <span :if={@setting != "follow"}>
+          {gettext("The hive's default stays %{mode} and other targets do not change.", mode: @hive)}
+        </span>
       </p>
       <p class="text-muted">
-        The rules stay as they are, locked ones too. A deny holds in either mode<span :if={
-          @locked_denies != []
-        }>: <code :for={host <- @locked_denies} class="q-rule mr-1">{host}</code>
-          stays denied in this repository</span>.
+        {gettext("The rules stay as they are, locked ones too.")}
+        <span :if={@locked_denies == []}>{gettext("A deny holds in either mode.")}</span>
+        <.sentence :if={@locked_denies != []} parts={locked_denies_words(@locked_denies)} />
       </p>
       <:footer>
-        <.button phx-click="dialog_cancel" data-autofocus>Cancel</.button>
+        <.button phx-click="dialog_cancel" data-autofocus>{gettext("Cancel")}</.button>
         <.button
           id="target-mode-confirm"
           variant="danger"
           phx-click="target_mode_confirm"
-          loading_text="Setting"
+          loading_text={gettext("Setting")}
         >
-          {if @setting == "follow", do: "Follow the hive", else: "Observe this repository"}
+          {if @setting == "follow",
+            do: gettext("Follow the hive"),
+            else: gettext("Observe this target")}
         </.button>
       </:footer>
     </.modal>
@@ -844,16 +918,25 @@ defmodule ApiaryWeb.PolicyLive.Target do
   end
 
   defp effective_count(rows, effective) do
-    "#{Common.plural(length(rows), "rule")} · #{Common.plural(length(effective.allow), "host")} allowed" <>
-      if(effective.deny == [], do: "", else: " · #{length(effective.deny)} denied")
+    [
+      ngettext("%{count} rule", "%{count} rules", length(rows)),
+      ngettext("%{count} host allowed", "%{count} hosts allowed", length(effective.allow)),
+      effective.deny != [] &&
+        ngettext("%{count} denied", "%{count} denied", length(effective.deny))
+    ]
+    |> Enum.filter(& &1)
+    |> Enum.join(" · ")
   end
 
   defp whose_words("follow", _mode),
-    do: "The mode follows the hive's default from now on, and changes when it does."
+    do: gettext("The mode follows the hive's default from now on, and changes when it does.")
 
   defp whose_words(_setting, mode),
     do:
-      "The mode becomes this repository's own: it stays #{mode} whatever the hive's default becomes."
+      gettext(
+        "The mode becomes this target's own: it stays %{mode} whatever the hive's default becomes.",
+        mode: mode
+      )
 
   attr :live_action, :atom, required: true
   attr :base, :string, required: true
@@ -872,13 +955,13 @@ defmodule ApiaryWeb.PolicyLive.Target do
       )
 
     ~H"""
-    <nav id="policy-tabs" class="q-tabs" aria-label="Repository policy">
+    <nav id="policy-tabs" class="q-tabs" aria-label={gettext("Target policy")}>
       <.link patch={@base} aria-current={@live_action == :rules && "page"}>
-        <.icon name="hero-shield-check-micro" class="size-4" />Effective policy
+        <.icon name="hero-shield-check-micro" class="size-4" />{gettext("Effective policy")}
         <span :if={@rules > 0} class="q-tabs-n">{@rules}</span>
       </.link>
       <.link patch={"#{@base}/history"} aria-current={@live_action == :history && "page"}>
-        <.icon name="hero-clock-micro" class="size-4" />History
+        <.icon name="hero-clock-micro" class="size-4" />{gettext("History")}
         <span :if={@changes > 0} class="q-tabs-n">{@changes}</span>
       </.link>
       <.link
@@ -886,14 +969,14 @@ defmodule ApiaryWeb.PolicyLive.Target do
         patch={"#{@base}/document"}
         aria-current={@live_action in [:version, :export] && "page"}
       >
-        <.icon name="hero-document-text-micro" class="size-4" />Document
+        <.icon name="hero-document-text-micro" class="size-4" />{gettext("Document")}
       </.link>
       <.link id="policy-tab-runs" navigate={~p"/hive/runs?#{@target_query}"}>
-        <.icon name="hero-play-circle-micro" class="size-4" />Runs
-        <span :if={@runs > 0} class="q-tabs-n" title="In the last 7 days">{@runs}</span>
+        <.icon name="hero-play-circle-micro" class="size-4" />{gettext("Runs")}
+        <span :if={@runs > 0} class="q-tabs-n" title={gettext("In the last 7 days")}>{@runs}</span>
       </.link>
       <.link id="policy-tab-connections" navigate={~p"/hive/connections?#{@target_query}"}>
-        <.icon name="hero-arrows-right-left-micro" class="size-4" />Connections
+        <.icon name="hero-arrows-right-left-micro" class="size-4" />{gettext("Connections")}
       </.link>
     </nav>
     """
@@ -935,12 +1018,14 @@ defmodule ApiaryWeb.PolicyLive.Target do
 
     <.notice :if={@own == [] && is_nil(@mode.own)} kind={:info} class="max-w-[90ch]">
       <span id="policy-no-own">
-        This repository has no rules of its own.
-        <span :if={@version}>It is served the hive baseline, version {@version.version}.</span>
-        <span :if={!@managed?}>
-          Runs use each machine's own policy until the first change in this hive.
+        {gettext("This target has no rules of its own.")}
+        <span :if={@version}>
+          {gettext("It is served the hive baseline, version %{version}.", version: @version.version)}
         </span>
-        The first rule added here, or a mode of its own, gives it versions of its own.
+        <span :if={!@managed?}>
+          {gettext("Runs use each machine's own policy until the first change in this hive.")}
+        </span>
+        {gettext("The first rule added here, or a mode of its own, gives it versions of its own.")}
       </span>
     </.notice>
 
@@ -953,28 +1038,28 @@ defmodule ApiaryWeb.PolicyLive.Target do
 
     <.sect
       id="policy-effective"
-      title="Effective policy"
+      title={gettext("Effective policy")}
       count={effective_count(@rows, @effective)}
     >
       <:trailing>
-        <.segments id="policy-show" label="Show">
-          <:segment patch={@base} pressed={@show == nil}>All</:segment>
+        <.segments id="policy-show" label={gettext("Show")}>
+          <:segment patch={@base} pressed={@show == nil}>{gettext("All")}</:segment>
           <:segment patch={"#{@base}?show=hive"} pressed={@show == "hive"} count={@counts.hive}>
-            From the hive
+            {gettext("From the hive")}
           </:segment>
           <:segment
             patch={"#{@base}?show=target"}
             pressed={@show == "target"}
             count={@counts.target}
           >
-            This repository
+            {gettext("This target")}
           </:segment>
           <:segment
             patch={"#{@base}?show=overrides"}
             pressed={@show == "overrides"}
             count={@counts.overrides}
           >
-            Overrides
+            {gettext("Overrides")}
           </:segment>
         </.segments>
       </:trailing>
@@ -988,7 +1073,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
       />
       <.rules_table
         id="policy-rules"
-        label={"Effective policy of #{@holder.system}/#{@holder.path}"}
+        label={gettext("Effective policy of %{target}", target: "#{@holder.system}/#{@holder.path}")}
         rows={@shown}
         scope={:target}
         activity={async_value(@activity)}
@@ -1006,27 +1091,17 @@ defmodule ApiaryWeb.PolicyLive.Target do
       <.credentials_table
         :if={@credentials_open}
         id="policy-credential-rows"
-        label="Credentials of this repository and of the hive"
+        label={gettext("Credentials of this target and of the hive")}
         rows={@credentials}
         scope={:target}
         activity={async_value(@activity)}
       />
       <:footer>
         <span id="policy-effective-foot">
-          Mode <b class="font-medium text-base-content">{@mode.mode}</b>, {if @mode.own,
-            do: "this repository's own.",
-            else: "the hive's default."}
-          <span :if={@in_force_credentials == []}>No credentials.</span>
+          <.sentence parts={mode_words(@mode)} />
+          <span :if={@in_force_credentials == []}>{gettext("No credentials.")}</span>
           <span :if={@in_force_credentials != []}>
-            Credentials:
-            <span :for={{credential, index} <- Enum.with_index(@in_force_credentials, 1)}>
-              <code class="q-rule">{credential.name}</code>
-              <span :if={credential.argument}>
-                <span class="text-faint">argument</span>
-                <code class="q-rule">{credential.argument}</code>
-              </span>
-              <span>{credential_from(credential, index == length(@in_force_credentials))}</span>
-            </span>
+            <.sentence parts={credentials_words(@in_force_credentials)} />
           </span>
           <button
             id="policy-credentials-toggle"
@@ -1035,7 +1110,9 @@ defmodule ApiaryWeb.PolicyLive.Target do
             aria-expanded={to_string(@credentials_open)}
             phx-click="credentials_toggle"
           >
-            {if @credentials_open, do: "Done with credentials", else: "Edit credentials"}
+            {if @credentials_open,
+              do: gettext("Done with credentials"),
+              else: gettext("Edit credentials")}
           </button>
         </span>
       </:footer>
@@ -1043,15 +1120,79 @@ defmodule ApiaryWeb.PolicyLive.Target do
     """
   end
 
-  defp credential_from(%{source: :target}, last?),
-    do: "from this repository" <> if(last?, do: ".", else: ",")
+  # The lead of a mode's confirm: from when, and what is denied.
+  defp mode_lead("enforce"),
+    do:
+      rich_gettext("From the next heartbeat, about 30 s, %{denied} in this target's runs.",
+        denied: {:strong, gettext("a connection no rule allows is denied")}
+      )
 
-  defp credential_from(_credential, last?), do: "from the hive" <> if(last?, do: ".", else: ",")
+  defp mode_lead("observe"),
+    do:
+      rich_gettext(
+        "From the next heartbeat, about 30 s, %{denied}: every other connection is let through and recorded.",
+        denied: {:strong, gettext("only what a deny rule names is denied in this target's runs")}
+      )
 
-  defp empty_words(_show, []), do: "No rule is in force for this repository yet."
-  defp empty_words("hive", _rows), do: "No rules from the hive."
-  defp empty_words("target", _rows), do: "No rules of this repository's own."
-  defp empty_words("overrides", _rows), do: "No overrides."
+  defp locked_tip(host),
+    do:
+      gettext(
+        "A locked hive rule denies %{host}. Only an owner can change it, on the hive's policy page.",
+        host: host
+      )
+
+  defp baseline_tip,
+    do:
+      gettext(
+        "The hive's rules with no target's own: what a target without rules, or a run that names none, is served."
+      )
+
+  defp locked_denies_words(hosts),
+    do:
+      rich_ngettext(
+        "A deny holds in either mode: %{hosts} stays denied in this target.",
+        "A deny holds in either mode: %{hosts} stay denied in this target.",
+        length(hosts),
+        hosts: Enum.intersperse(Enum.map(hosts, &{:code, &1}), " ")
+      )
+
+  defp mode_words(%{own: nil, mode: mode}),
+    do: rich_gettext("Mode %{mode}, the hive's default.", mode: {:strong, mode})
+
+  defp mode_words(%{mode: mode}),
+    do: rich_gettext("Mode %{mode}, this target's own.", mode: {:strong, mode})
+
+  defp credentials_words(credentials),
+    do:
+      rich_gettext("Credentials: %{credentials}.",
+        credentials: Enum.intersperse(Enum.map(credentials, &credential_words/1), ", ")
+      )
+
+  # One credential in force, as a phrase of the footer's list.
+  defp credential_words(%{source: :target, argument: nil} = credential),
+    do: rich_gettext("%{name} from this target", name: {:code, credential.name})
+
+  defp credential_words(%{source: :target} = credential),
+    do:
+      rich_gettext("%{name} argument %{argument} from this target",
+        name: {:code, credential.name},
+        argument: {:code, credential.argument}
+      )
+
+  defp credential_words(%{argument: nil} = credential),
+    do: rich_gettext("%{name} from the hive", name: {:code, credential.name})
+
+  defp credential_words(credential),
+    do:
+      rich_gettext("%{name} argument %{argument} from the hive",
+        name: {:code, credential.name},
+        argument: {:code, credential.argument}
+      )
+
+  defp empty_words(_show, []), do: gettext("No rule is in force for this target yet.")
+  defp empty_words("hive", _rows), do: gettext("No rules from the hive.")
+  defp empty_words("target", _rows), do: gettext("No rules of this target's own.")
+  defp empty_words("overrides", _rows), do: gettext("No overrides.")
   defp empty_words(_show, _rows), do: nil
 
   defp async_value(%Phoenix.LiveView.AsyncResult{ok?: true, result: result}), do: result

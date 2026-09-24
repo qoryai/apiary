@@ -43,6 +43,8 @@ defmodule Apiary.Policy.Resolution do
   effective policy.
   """
 
+  use Gettext, backend: ApiaryWeb.Gettext
+
   alias Apiary.Policy.{Effective, Entry, Error, Grammar, Rule}
 
   @locked 3
@@ -190,18 +192,100 @@ defmodule Apiary.Policy.Resolution do
         {:error,
          Error.new(
            :conflict,
-           "#{above.host} #{where(above)} is held to paths, and #{below.host} below it has a rule " <>
-             "of its own #{where(below)}. A runner holds a host to one list of paths and cannot tell " <>
-             "which of the two applies. Put the paths on the hosts by name, or remove the rule " <>
-             "for #{below.host}.",
+           Enum.join(
+             [
+               held_and_below(where(above), where(below), above.host, below.host),
+               pgettext(
+                 "plain",
+                 "A runner holds a host to one list of paths and cannot tell which of the two applies."
+               ),
+               gettext("Put the paths on the hosts by name, or remove the rule for %{host}.",
+                 host: below.host
+               )
+             ],
+             " "
+           ),
            :host
          )}
     end
   end
 
-  defp where(%Entry{source: :hive, locked: true}), do: "in the hive (locked)"
-  defp where(%Entry{source: :hive}), do: "in the hive"
-  defp where(%Entry{source: :target}), do: "in the repository"
+  defp where(%Entry{source: :hive, locked: true}), do: :locked
+  defp where(%Entry{source: :hive}), do: :hive
+  defp where(%Entry{source: :target}), do: :target
+
+  # Where each of the two rules is, as whole sentences.
+  defp held_and_below(:locked, :locked, above, below),
+    do:
+      gettext(
+        "%{above} in the hive (locked) is held to paths, and %{below} below it has a rule of its own in the hive (locked).",
+        above: above,
+        below: below
+      )
+
+  defp held_and_below(:locked, :hive, above, below),
+    do:
+      gettext(
+        "%{above} in the hive (locked) is held to paths, and %{below} below it has a rule of its own in the hive.",
+        above: above,
+        below: below
+      )
+
+  defp held_and_below(:locked, :target, above, below),
+    do:
+      gettext(
+        "%{above} in the hive (locked) is held to paths, and %{below} below it has a rule of its own in the target.",
+        above: above,
+        below: below
+      )
+
+  defp held_and_below(:hive, :locked, above, below),
+    do:
+      gettext(
+        "%{above} in the hive is held to paths, and %{below} below it has a rule of its own in the hive (locked).",
+        above: above,
+        below: below
+      )
+
+  defp held_and_below(:hive, :hive, above, below),
+    do:
+      gettext(
+        "%{above} in the hive is held to paths, and %{below} below it has a rule of its own in the hive.",
+        above: above,
+        below: below
+      )
+
+  defp held_and_below(:hive, :target, above, below),
+    do:
+      gettext(
+        "%{above} in the hive is held to paths, and %{below} below it has a rule of its own in the target.",
+        above: above,
+        below: below
+      )
+
+  defp held_and_below(:target, :locked, above, below),
+    do:
+      gettext(
+        "%{above} in the target is held to paths, and %{below} below it has a rule of its own in the hive (locked).",
+        above: above,
+        below: below
+      )
+
+  defp held_and_below(:target, :hive, above, below),
+    do:
+      gettext(
+        "%{above} in the target is held to paths, and %{below} below it has a rule of its own in the hive.",
+        above: above,
+        below: below
+      )
+
+  defp held_and_below(:target, :target, above, below),
+    do:
+      gettext(
+        "%{above} in the target is held to paths, and %{below} below it has a rule of its own in the target.",
+        above: above,
+        below: below
+      )
 
   defp in_force(entries, kind) do
     entries

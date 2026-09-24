@@ -14,6 +14,7 @@ defmodule Apiary.Policy.Rule do
   of the hive can be `locked`, which holds it against every target.
   """
   use Ecto.Schema
+  use Gettext, backend: ApiaryWeb.Gettext
 
   import Ecto.Changeset
 
@@ -60,7 +61,7 @@ defmodule Apiary.Policy.Rule do
     |> validate_subject()
     |> unique_constraint(:host,
       name: :policy_rules_subject_index,
-      message: "already has a rule here"
+      message: dgettext_noop("errors", "already has a rule here")
     )
   end
 
@@ -70,13 +71,16 @@ defmodule Apiary.Policy.Rule do
         changeset
         |> put_change(:host, nil)
         |> put_change(:paths, nil)
-        |> validate_required([:name], message: "Name the credential.")
+        |> validate_required([:name], message: dgettext_noop("errors", "Name the credential."))
         |> validate_change(:name, fn :name, name ->
           if Grammar.credential_name?(name),
             do: [],
             else: [
               name:
-                "A credential's name is lower-case letters, digits, dots, dashes and underscores, at most 64, and starts with a letter or a digit."
+                dgettext_noop(
+                  "errors",
+                  "A credential's name is lower-case letters, digits, dots, dashes and underscores, at most 64, and starts with a letter or a digit."
+                )
             ]
         end)
         |> drop_on_deny(:argument)
@@ -84,7 +88,9 @@ defmodule Apiary.Policy.Rule do
           if Grammar.argument?(argument),
             do: [],
             else: [
-              argument: "An argument is 1 to #{Grammar.argument_max()} characters on one line."
+              argument:
+                {dgettext_noop("errors", "An argument is 1 to %{max} characters on one line."),
+                 max: Grammar.argument_max()}
             ]
         end)
 
@@ -92,13 +98,16 @@ defmodule Apiary.Policy.Rule do
         changeset
         |> put_change(:name, nil)
         |> put_change(:argument, nil)
-        |> validate_required([:host], message: "Name the host.")
+        |> validate_required([:host], message: dgettext_noop("errors", "Name the host."))
         |> validate_change(:host, fn :host, host ->
           if Grammar.host?(host),
             do: [],
             else: [
               host:
-                "A host is a lower-case name such as api.example, or *.example for every host below example. No port, no path, no scheme."
+                dgettext_noop(
+                  "errors",
+                  "A host is a lower-case name such as api.example, or *.example for every host below example. No port, no path, no scheme."
+                )
             ]
         end)
         |> drop_on_deny(:paths)
@@ -116,12 +125,19 @@ defmodule Apiary.Policy.Rule do
   defp validate_paths(:paths, paths) do
     cond do
       length(paths) > Grammar.paths_max() ->
-        [paths: "A host takes at most #{Grammar.paths_max()} paths."]
+        [
+          paths:
+            {dgettext_noop("errors", "A host takes at most %{max} paths."),
+             max: Grammar.paths_max()}
+        ]
 
       bad = Enum.find(paths, &(not Grammar.path?(&1))) ->
         [
           paths:
-            "#{inspect(String.slice(bad, 0, 80))} is not a path: it starts with /, holds no ?, # or space, and may end in one * to match everything below it."
+            {dgettext_noop(
+               "errors",
+               "%{path} is not a path: it starts with /, holds no ?, # or space, and may end in one * to match everything below it."
+             ), path: inspect(String.slice(bad, 0, 80))}
         ]
 
       true ->

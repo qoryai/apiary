@@ -125,7 +125,10 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       assert has_element?(view, ~s(tr##{cdn}.q-denied[data-decision=denied]))
       line = text(view, "##{cdn}-after")
       assert line =~ "Rule added"
-      assert line =~ "Allowed for the hive in v#{configuration.version} · of hive baseline by you"
+
+      assert line =~
+               "Allowed for the hive in v#{configuration.version} · of workplace baseline by you"
+
       refute line =~ "run"
       assert has_element?(view, ~s(a##{cdn}-act[href="/hive/policy?rule=files.cdn.example"]))
     end
@@ -192,7 +195,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       cdn = dst("files.cdn.example")
 
       assert has_element?(view, ~s(tr##{cdn}[data-decision=allowed]))
-      assert text(view, "##{cdn}-after") =~ "Allowed for the hive in v2 · of hive baseline"
+      assert text(view, "##{cdn}-after") =~ "Allowed for the hive in v2 · of workplace baseline"
       assert text(view, "a##{cdn}-act") == "Rule"
     end
 
@@ -391,7 +394,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       view |> form("#rule-popover-form", %{"for" => "hive"}) |> render_change()
       view |> form("#rule-popover-form") |> render_submit()
 
-      assert render(view) =~ "flags.example is denied for the hive."
+      assert render(view) =~ "flags.example is denied for the workplace."
       # the row is the record and stays let through; the line after says what holds now
       assert has_element?(view, ~s(tr##{id}[data-decision=allowed]))
       assert text(view, "##{id}-after") =~ "Denied for the hive in v"

@@ -58,7 +58,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert has_element?(view, "h2", "Qory serves no policy yet")
 
       assert text(view, "#policy-unmanaged") =~
-               "Until the first change here, every machine of this hive runs under its own policy"
+               "Until the first change here, every machine of this workplace runs under its own policy"
 
       refute has_element?(view, "#policy-version-pill-copy")
       assert text(view, "#policy-version-pill") == "No version yet"
@@ -70,7 +70,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert text(view, "#policy-mode-fact") ==
                "Not served yet: it applies from the first change here."
 
-      assert text(view, "#policy-mode-observe") =~ "Hive default"
+      assert text(view, "#policy-mode-observe") =~ "Workplace default"
     end
 
     test "the first rule starts the policy: a version, the pill, the mode word", %{conn: conn} do
@@ -87,7 +87,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       refute has_element?(view, "#policy-export-button[disabled]")
       refute has_element?(view, "#policy-first-version")
       assert has_element?(view, "#policy-tabs a", "Document")
-      assert text(view, "#flash-info") =~ "api.example is allowed for the hive. Version 1."
+      assert text(view, "#flash-info") =~ "api.example is allowed for the workplace. Version 1."
       assert text(view, "#policy-announce") == "Rule added. Version 1."
       assert text(view, "#nav-policy-mode") == "observe"
     end
@@ -182,7 +182,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       type(view, %{host: "registry.example", paths: ""})
 
       assert text(view, "#policy-composer-reads") =~
-               "registry.example is already allowed for the hive"
+               "registry.example is already allowed for the workplace"
 
       assert has_element?(view, "#policy-composer-add[disabled]")
 
@@ -199,7 +199,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       type(view, %{host: "gitlab.example"})
 
       assert text(view, "#policy-composer-reads") =~
-               "gitlab.example is allowed for the hive. Adding this deny replaces that rule."
+               "gitlab.example is allowed for the workplace. Adding this deny replaces that rule."
 
       assert text(view, "#policy-composer-add") == "Replace with deny"
     end
@@ -399,7 +399,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       view |> element("#rule-#{id}-menu button", "Change to deny") |> render_click()
 
       assert rule(scope, "api.example").action == "deny"
-      assert text(view, "#flash-info") =~ "api.example is denied for the hive. Version"
+      assert text(view, "#flash-info") =~ "api.example is denied for the workplace. Version"
 
       id = rule(scope, "api.example").id
       assert has_element?(view, "#rule-#{id}-menu button", "Change to allow")
@@ -407,7 +407,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       view |> element("#rule-#{id}-menu button", "Change to allow") |> render_click()
 
       assert rule(scope, "api.example").action == "allow"
-      assert text(view, "#flash-info") =~ "api.example is allowed for the hive. Version"
+      assert text(view, "#flash-info") =~ "api.example is allowed for the workplace. Version"
     end
 
     test "a credential is added by name and removed", %{conn: conn, scope: scope} do
@@ -516,13 +516,16 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
 
       view |> element("#policy-mode-enforce") |> render_click()
       assert Policy.get_mode(scope) == "observe"
-      assert text(view, "#mode-enforce") =~ "Set the hive's default to enforce"
+      assert text(view, "#mode-enforce") =~ "Set the workplace's default to enforce"
       assert text(view, "#mode-enforce") =~ "a connection no rule allows is denied"
-      assert text(view, "#mode-enforce") =~ "in the 1 repository that follows the hive's default"
+
+      assert text(view, "#mode-enforce") =~
+               "in the 1 repository that follows the workplace's default"
+
       assert text(view, "#mode-would") =~ "files.cdn.example"
       assert text(view, "#mode-would-n") == "1 destination"
 
-      view |> element("#mode-would button", "Allow for the hive") |> render_click()
+      view |> element("#mode-would button", "Allow for the workplace") |> render_click()
       assert rule(scope, "files.cdn.example")
       assert text(view, "#mode-would-n") == "none left"
 
@@ -531,7 +534,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert has_element?(view, "#policy-mode-enforce[aria-checked=true]")
 
       assert text(view, "#flash-info") =~
-               "The hive's default is enforce. 1 repository follows it. Version"
+               "The workplace's default is enforce. 1 repository follows it. Version"
 
       assert text(view, "#nav-policy-mode") == "enforce"
     end
@@ -591,7 +594,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
 
       assert has_element?(
                view,
-               "#nav-policy-mode[title=\"The hive's default mode is observe. 1 repository sets its own and enforces.\"]"
+               "#nav-policy-mode[title=\"The workplace's default mode is observe. 1 repository sets its own and enforces.\"]"
              )
     end
 
@@ -616,7 +619,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       view = open(conn, "/hive/policy/targets")
       assert text(view, "#targets-summary") =~ "1 sets its own mode"
       assert text(view, "#target-#{docs.id} .q-c-mode") == "enforce Its own"
-      assert text(view, "#policy-targets") =~ "observe Hive default"
+      assert text(view, "#policy-targets") =~ "observe Workplace default"
 
       view = open(conn, "/hive/policy/targets?mode=own")
       assert has_element?(view, "#target-#{docs.id}")
@@ -655,12 +658,12 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert text(view, "#target-#{target.id}") =~ "v1"
       # Whose version each row shows, and no bare 0 where nothing is to review.
       assert text(view, "#target-#{target.id} .q-vpill") =~ "of github.example/acme/shop"
-      assert text(view, "#policy-targets") =~ "of hive baseline"
+      assert text(view, "#policy-targets") =~ "of workplace baseline"
 
       refute view |> element("#target-#{target.id} td.q-num:nth-of-type(6)") |> render() =~
                ">0<"
 
-      assert text(view, "#policy-targets") =~ "Hive baseline"
+      assert text(view, "#policy-targets") =~ "Workplace baseline"
 
       assert has_element?(
                view,
@@ -687,7 +690,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert text(view, "#history-summary") =~ "3 versions"
 
       assert text(view, "#history-list") =~
-               "#{user.email} switched the hive's default mode from observe to enforce"
+               "#{user.email} switched the workplace's default mode from observe to enforce"
 
       assert text(view, "#history-list") =~ "allowed registry.example"
       assert text(view, "#history-list") =~ "denied telemetry.example"
@@ -874,7 +877,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       {:ok, _} = Policy.set_mode(scope, "enforce")
 
       assert render(view) =~
-               "The hive&#39;s default mode is enforce. Every repository follows it."
+               "The workplace&#39;s default mode is enforce. Every repository follows it."
 
       assert text(view, "#nav-policy-mode") == "enforce"
     end
