@@ -4,27 +4,43 @@ defmodule ApiaryWeb.HiveLive.NoHive do
   """
   use ApiaryWeb, :live_view
 
+  import ApiaryWeb.OverviewComponents, only: [sentence: 2]
+
   @impl true
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope} memberships={@memberships}>
       <.empty_state
         icon="hero-envelope-open"
-        title="You are not part of an apiary yet"
+        title={gettext("You are not part of an organisation yet")}
         heading="h1"
         class="mx-auto mt-6 w-full max-w-[480px] md:mt-16"
       >
         <p>
-          An <.term word="apiary" /> is created when you register, and you join someone else's
-          through an invitation. Ask an owner to invite <strong class="font-medium text-base-content">{@current_scope.user.email}</strong>;
-          the email they send brings you straight to their <.term word="hive" />.
+          {sentence(
+            gettext(
+              "An organisation is created when you register, and you join someone else's through an invitation. Ask an owner to invite %{email}; the email they send brings you straight to their hive.",
+              email: "%{email}"
+            ),
+            email: email(@current_scope.user.email)
+          )}
         </p>
         <:actions>
-          <.button href={~p"/users/settings"}>Account settings</.button>
-          <.button href={~p"/users/log-out"} method="delete" variant="ghost">Log out</.button>
+          <.button href={~p"/users/settings"}>{gettext("Account settings")}</.button>
+          <.button href={~p"/users/log-out"} method="delete" variant="ghost">
+            {gettext("Log out")}
+          </.button>
         </:actions>
       </.empty_state>
     </Layouts.app>
+    """
+  end
+
+  defp email(email) do
+    assigns = %{email: email}
+
+    ~H"""
+    <strong class="font-medium text-base-content">{@email}</strong>
     """
   end
 
@@ -33,7 +49,7 @@ defmodule ApiaryWeb.HiveLive.NoHive do
     if socket.assigns.current_scope.organisation do
       {:ok, push_navigate(socket, to: ~p"/hive")}
     else
-      {:ok, assign(socket, page_title: "No hive yet")}
+      {:ok, assign(socket, page_title: gettext("No hive yet"))}
     end
   end
 end

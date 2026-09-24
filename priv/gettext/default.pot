@@ -11,6 +11,14 @@
 msgid ""
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{count} allow rule is in force and every destination reached in the last 7 days is covered. Enforce would deny nothing today."
+msgid_plural "%{count} allow rules are in force and every destination reached in the last 7 days is covered. Enforce would deny nothing today."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "%{count} day"
@@ -18,6 +26,107 @@ msgid_plural "%{count} days"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{count} heartbeat"
+msgid_plural "%{count} heartbeats"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{count} item needs attention"
+msgid_plural "%{count} items need attention"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/hive_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "%{count} more item needs attention."
+msgid_plural "%{count} more items need attention."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/hive_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "%{count} more item, on the connections page"
+msgid_plural "%{count} more items, on the connections page"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/hive_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "%{count} more item, on the keys page"
+msgid_plural "%{count} more items, on the keys page"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/hive_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "%{count} more item, on the runs list"
+msgid_plural "%{count} more items, on the runs list"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{count} rule is in force."
+msgid_plural "%{count} rules are in force."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{count} sets its own"
+msgid_plural "%{count} set their own"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{count} target follows it"
+msgid_plural "%{count} targets follow it"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{count} to review"
+msgid_plural "%{count} to review"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{date} pruned %{runs}: %{events} and %{bytes} of log output in %{chunks}."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{date} pruned %{runs}: %{events} and %{bytes} of log output in %{chunks}; not finished, the next night goes on."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{day}: %{runs} (%{well} ended well, %{bad} ended badly), %{denied}, open that day's runs"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{day}: %{runs} (%{well} ended well, %{other} alive or ended badly), %{denied}, open that day's runs"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{day}: no runs, %{denied}, open that day's runs"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} alive"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} chunk"
@@ -25,6 +134,24 @@ msgid_plural "%{number} chunks"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} denied attempt"
+msgid_plural "%{number} denied attempts"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} ended badly"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} ended well"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} event"
@@ -32,6 +159,29 @@ msgid_plural "%{number} events"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} has posted a run"
+msgid_plural "%{number} have posted runs"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} host"
+msgid_plural "%{number} hosts"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/live/hive_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} new run"
+msgid_plural "%{number} new runs"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} run"
@@ -39,14 +189,89 @@ msgid_plural "%{number} runs"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} run alive now: open them"
+msgid_plural "%{number} runs alive now: open them"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} with rules of its own"
+msgid_plural "%{number} with rules of their own"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{observe} is the hive's default"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{runs} and %{denied} in 14 days; most runs on %{peak}, %{max}."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{runs} landed under the machines' own policies. The first rule you add, or a mode you set, puts them under the hive's."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{runs} · %{denied}, 14 days"
+msgstr ""
+
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "%{runs}: %{events} and %{bytes} of log output in %{chunks}."
 msgstr ""
 
+#: lib/apiary_web/live/hive_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "%{run} is closed."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "1 sets its own: %{target} %{mode}"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "1 sets its own: %{target} enforces"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "1 sets its own: %{target} observes"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "A locked hive rule denies %{rule}. Only an owner can change it."
+msgstr ""
+
+#: lib/apiary_web/live/hive_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "A target's own allow rule still holds there."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Access key"
+msgstr ""
+
 #: lib/apiary_web/components/layouts.ex
+#: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Access keys"
+msgstr ""
+
+#: lib/apiary_web/live/hive_live/no_hive.ex
+#, elixir-autogen, elixir-format
+msgid "Account settings"
 msgstr ""
 
 #: lib/apiary_web/components/core_components.ex
@@ -54,14 +279,141 @@ msgstr ""
 msgid "Actions"
 msgstr ""
 
+#: lib/apiary_web/live/hive_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "Activity"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/live/hive_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "Alive now"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "All runs"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Allow"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Allow %{host} for %{target}"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Allow %{host} for the hive"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Allow %{host}, choose a scope"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Allow for the hive"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Allow here"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Allow with paths…"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Allowed"
+msgstr ""
+
+#: lib/apiary_web/live/hive_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "Allowed for the hive"
+msgstr ""
+
+#: lib/apiary_web/live/hive_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "Allowed here"
+msgstr ""
+
+#: lib/apiary_web/live/hive_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "Allowed since."
+msgstr ""
+
+#: lib/apiary_web/live/hive_live/no_hive.ex
+#, elixir-autogen, elixir-format
+msgid "An organisation is created when you register, and you join someone else's through an invitation. Ask an owner to invite %{email}; the email they send brings you straight to their hive."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "As a chart"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "As a table"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Behind the policy in force"
+msgstr ""
+
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "By hand"
 msgstr ""
 
+#: lib/apiary_web/live/hive_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "Cancel"
+msgstr ""
+
 #: lib/apiary_web/components/core_components.ex
+#: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Close"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Close %{run}"
+msgstr ""
+
+#: lib/apiary_web/live/hive_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "Close run"
+msgstr ""
+
+#: lib/apiary_web/live/hive_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "Close this run"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Closed"
+msgstr ""
+
+#: lib/apiary_web/live/hive_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "Closed."
+msgstr ""
+
+#: lib/apiary_web/live/hive_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "Closing"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -69,14 +421,133 @@ msgstr ""
 msgid "Connections"
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Contract version %{version}"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Cost reported, %{count} day"
+msgid_plural "Cost reported, %{count} days"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/hive_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "Counted from the hive's runs by the day they started, UTC."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Create an access key"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Create another access key"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Day"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Denials"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Denied %{times} in %{runs} of %{count} target, last %{when}."
+msgid_plural "Denied %{times} in %{runs} of %{count} targets, last %{when}."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Denied %{times} in %{runs} of %{target}, last %{when}."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Denied %{times} in %{runs} without a target, last %{when}."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Denied attempts"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Denied attempts per day"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Denied attempts, %{count} day"
+msgid_plural "Denied attempts, %{count} days"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/hive_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "Denied destinations were not counted: this hive recorded more than %{cap} connections in 7 days. The connections page counts them by destination."
+msgstr ""
+
+#: lib/apiary_web/live/hive_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "Disables the hive's allow rule there. Other targets keep it."
+msgstr ""
+
 #: lib/apiary_web/components/core_components.ex
 #, elixir-autogen, elixir-format
 msgid "Dismiss"
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Duration"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Ended well"
+msgstr ""
+
+#: lib/apiary_web/live/hive_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "Enforce is the hive's default."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Enforce would deny %{number} destination reached in the last 7 days."
+msgid_plural "Enforce would deny %{number} destinations reached in the last 7 days."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Enforce: a connection no rule allows is denied. Observe: it is let through and recorded. A deny rule holds in either mode."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Events and log output are pruned after %{days}."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Every target follows it."
+msgstr ""
+
+#: lib/apiary_web/live/hive_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "Failed."
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -84,9 +555,24 @@ msgstr ""
 msgid "Forever"
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "From the first post on, every run of that machine lands in this hive."
+msgstr ""
+
+#: lib/apiary_web/live/hive_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "Heartbeats resumed."
+msgstr ""
+
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Hive"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Hive default"
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -99,9 +585,29 @@ msgstr ""
 msgid "Hive renamed to %{name}."
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Host"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Host allowed, no path rule matches"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Hosts, 7 days"
+msgstr ""
+
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "In days; empty keeps everything. A run that ended is pruned whole, counted from its last event: first its log output, then its timeline. The run stays in the list with its state, its counts and its connections, and its page says what was pruned and when. Pruned data comes back only from a backup."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "In force"
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -114,14 +620,91 @@ msgstr ""
 msgid "Keep a run's log output for"
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Key"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Label it after the machine or environment."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Last night pruned %{runs}: %{events} and %{bytes} of log output in %{chunks}."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Last night pruned %{runs}: %{events} and %{bytes} of log output in %{chunks}; not finished, the next night goes on."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Last run"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Last runs"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Last seen"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Listening for the first post from a machine."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Listening for the first run. %{key} verified %{when}."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Locked"
+msgstr ""
+
+#: lib/apiary_web/live/hive_live/no_hive.ex
+#, elixir-autogen, elixir-format
+msgid "Log out"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Log output is pruned after %{days}; events are kept."
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Log output is pruned after %{log_days}, events after %{events_days}."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Lost"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Lost. Last heard %{when}, at least %{elapsed} in. The run never posted its exit."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Lost. Last heard %{when}. The run never posted its exit."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Machines use their own policy until the first change here."
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -134,9 +717,19 @@ msgstr ""
 msgid "Manage"
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Manage access keys"
+msgstr ""
+
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Manage members"
+msgstr ""
+
+#: lib/apiary_web/live/hive_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "Marked lost."
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -149,9 +742,79 @@ msgstr ""
 msgid "Members"
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Mode"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "More ways to allow %{host}"
+msgstr ""
+
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Name"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Needs attention"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Never posted"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Never used since it was created %{days} ago. A key nobody uses is a key to revoke."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "No heartbeat for %{since}. Heartbeats are due every %{interval}; after %{silence} of silence it is marked %{lost}."
+msgstr ""
+
+#: lib/apiary_web/live/hive_live/no_hive.ex
+#, elixir-autogen, elixir-format
+msgid "No hive yet"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "No prune has run yet. The job runs nightly."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "No run alive now."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "No run has started yet."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "No run in the last 14 days"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "No run in the last 14 days."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "No run yet"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "No version yet"
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -164,9 +827,34 @@ msgstr ""
 msgid "Not part of an organisation yet"
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Not seen for %{days}. A key nobody uses is a key to revoke."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Not seen for %{days}; last runner %{version}. A key nobody uses is a key to revoke."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Not served"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Nothing declared and unallowed."
+msgstr ""
+
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Nothing has been pruned yet. The job runs every night."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Nothing has posted to this hive yet. An access key is all a machine needs to start."
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -174,9 +862,39 @@ msgstr ""
 msgid "Nothing is pruned: this hive keeps everything."
 msgstr ""
 
+#: lib/apiary_web/live/hive_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "Nothing to enforce yet."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Nothing was heard for three heartbeat intervals. The run may still be going; the record is not."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Nothing was old enough to prune last night."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Nothing was old enough to prune on %{date}."
+msgstr ""
+
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Nothing was old enough to prune."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Observe"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Only an owner sets a mode."
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -187,6 +905,31 @@ msgstr ""
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Only owners can change these settings. Ask an owner if a name needs to change."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Open"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Open %{run}"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Open it"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Open policy"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Open the rule"
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -214,7 +957,19 @@ msgstr ""
 msgid "Owners"
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Paste the server block into the runner file"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Ping only"
+msgstr ""
+
 #: lib/apiary_web/components/layouts.ex
+#: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/live/hive_live/overview.ex
 #, elixir-autogen, elixir-format
 msgid "Policy"
 msgstr ""
@@ -224,21 +979,65 @@ msgstr ""
 msgid "Pruned"
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Pruned events from before %{date}."
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Pruned log output from before %{date}."
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Pruned log output from before %{log_date}, events from before %{events_date}."
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Qory serves no policy yet"
+msgstr ""
+
+#: lib/apiary_web/live/hive_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "Qory serves the policy now."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Quiet"
+msgstr ""
+
+#: lib/apiary_web/live/hive_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "Reconnecting."
+msgstr ""
+
+#: lib/apiary_web/live/hive_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "Reloaded."
+msgstr ""
+
+#: lib/apiary_web/live/hive_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "Replaces the hive's allow rule."
+msgstr ""
+
+#: lib/apiary_web/live/hive_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "Replaces the target's own rule for the host."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Resolved"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Retention"
@@ -249,10 +1048,63 @@ msgstr ""
 msgid "Retention saved."
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Review on the policy page"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Revoke"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Revoke %{key}"
+msgstr ""
+
+#: lib/apiary_web/live/hive_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "Revoked."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Rotating"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Run"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Runner"
+msgstr ""
+
 #: lib/apiary_web/components/layouts.ex
+#: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Runs"
 msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Runs and denied attempts per day"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Runs per day"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Runs, %{count} day"
+msgid_plural "Runs, %{count} days"
+msgstr[0] ""
+msgstr[1] ""
 
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
@@ -264,10 +1116,31 @@ msgstr ""
 msgid "Saving"
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "See runs here"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Send your first run"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Set the default to enforce"
+msgstr ""
+
 #: lib/apiary_web/components/layouts.ex
+#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Settings"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Show the chart as a table"
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -280,6 +1153,26 @@ msgstr ""
 msgid "Shown in the sidebar and in invitations."
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Started"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "State"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Still on %{reported} after %{beats}; %{in_force} has been in force for %{since}. A run reloads at its next heartbeat."
+msgstr ""
+
+#: lib/apiary_web/live/hive_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "Succeeded."
+msgstr ""
+
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Switch organisation"
@@ -288,6 +1181,36 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Switch organisation, current: %{name}"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Target"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Targets"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "The first run has landed."
+msgstr ""
+
+#: lib/apiary_web/live/hive_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "The hive of the %{organisation} organisation."
+msgstr ""
+
+#: lib/apiary_web/live/hive_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "The hive stops taking events for %{run}: the runner is told the run is gone at its next delivery. The record kept so far stays. A close is final: nothing reopens the run."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "The key is made. Paste its server block into the runner file on the machine; the secret was shown once, when the key was created."
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -302,14 +1225,100 @@ msgid_plural "The last %{count} runs of the nightly job. Each is also a line in 
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "The machine has verified with its key. The first run it starts lands here."
+msgstr ""
+
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "The names of this organisation and its hive, who owns them, and how long runs are kept."
 msgstr ""
 
+#: lib/apiary_web/live/hive_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "The policy changed under you; the rows were read again. Nothing was written."
+msgstr ""
+
+#: lib/apiary_web/live/hive_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "The run could not be closed."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "The secret is shown once, in the dialog that creates it. One key can serve many hosts: a pool of ephemeral instances shares one."
+msgstr ""
+
+#: lib/apiary_web/live/hive_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "This could not be loaded. Reload the page; if it keeps happening, the server log has the reason."
+msgstr ""
+
+#: lib/apiary_web/live/hive_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "This destination is no longer among the connections shown."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "This hive keeps everything."
+msgstr ""
+
+#: lib/apiary_web/live/hive_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "This run has ended; there is nothing to close."
+msgstr ""
+
+#: lib/apiary_web/live/hive_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "Timed out."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "To review"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Today"
+msgstr ""
+
+#: lib/apiary_web/live/hive_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "Updated as batches land."
+msgstr ""
+
+#: lib/apiary_web/live/hive_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "Used again."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "What changed"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "What changed for %{run}"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "What enforce would deny could not be counted: this hive recorded more than %{cap} connections in 7 days."
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "What you pasted"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "What you will paste"
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -317,7 +1326,140 @@ msgstr ""
 msgid "You"
 msgstr ""
 
+#: lib/apiary_web/live/hive_live/no_hive.ex
+#, elixir-autogen, elixir-format
+msgid "You are not part of an organisation yet"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "alive"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "and %{count} more"
+msgid_plural "and %{count} more"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "another configuration"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "by %{costed} of %{number} run"
+msgid_plural "by %{costed} of %{number} runs"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "denied"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "enforce"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "in %{count} target"
+msgid_plural "in %{count} targets"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "in %{number} run"
+msgid_plural "in %{number} runs"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "in 1 target"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "lost"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "max %{max}"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "n/a"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "no day"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "no run reported one"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "no target"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "no task label"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "none"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "observe"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "once"
+msgid_plural "%{number} times"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "since %{date}"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "starting or running"
+msgstr ""
+
+#: lib/apiary_web/live/hive_live/overview.ex
+#, elixir-autogen, elixir-format
+msgid "the hive"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "to %{number} destination"
+msgid_plural "to %{number} destinations"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "today"
 msgstr ""

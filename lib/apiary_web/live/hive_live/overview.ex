@@ -28,7 +28,7 @@ defmodule ApiaryWeb.HiveLive.Overview do
   import ApiaryWeb.OverviewComponents
 
   import ApiaryWeb.RunComponents,
-    only: [rule_popover: 1, quiet_for: 2, beat: 1, count_noun: 2, delimited: 1]
+    only: [rule_popover: 1, quiet_for: 2, beat: 1, delimited: 1]
 
   alias Apiary.AccessKeys
   alias Apiary.AccessKeys.AccessKey
@@ -85,8 +85,9 @@ defmodule ApiaryWeb.HiveLive.Overview do
         <.header>
           {@current_scope.hive.name}
           <:subtitle>
-            The <.term word="hive" /> of the {@current_scope.organisation.name}
-            <.term word="apiary" />.
+            {gettext("The hive of the %{organisation} organisation.",
+              organisation: @current_scope.organisation.name
+            )}
           </:subtitle>
         </.header>
 
@@ -121,12 +122,12 @@ defmodule ApiaryWeb.HiveLive.Overview do
 
           <div class="q-grid2">
             <section class="q-sect" id="overview-activity" aria-labelledby="overview-activity-h">
-              <h2 class="sr-only" id="overview-activity-h">Activity</h2>
+              <h2 class="sr-only" id="overview-activity-h">{gettext("Activity")}</h2>
               <div class="q-part">
                 <%= cond do %>
                   <% @failed[:activity] -> %>
                     <.notice kind={:info}>
-                      <span id="activity-error">This could not be loaded. Reload the page; if it keeps happening, the server log has the reason.</span>
+                      <span id="activity-error">{not_loaded()}</span>
                     </.notice>
                   <% @alive_runs -> %>
                     <.alive_rows
@@ -137,7 +138,7 @@ defmodule ApiaryWeb.HiveLive.Overview do
                     />
                   <% true -> %>
                     <div class="q-part-h">
-                      <h3>Alive now</h3>
+                      <h3>{gettext("Alive now")}</h3>
                     </div>
                     <.skeleton_lines lines={3} />
                 <% end %>
@@ -153,23 +154,24 @@ defmodule ApiaryWeb.HiveLive.Overview do
               </div>
               <div class="q-part">
                 <p class="q-foot" id="activity-foot">
-                  Counted from the hive's runs by the day they started, UTC.
-                  <span class="q-live-on">Updated as batches land.</span>
-                  <span class="q-live-off">Reconnecting.</span>
+                  {gettext("Counted from the hive's runs by the day they started, UTC.")}
+                  <span class="q-live-on">{gettext("Updated as batches land.")}</span>
+                  <span class="q-live-off">{gettext("Reconnecting.")}</span>
                   <span :if={@connections == :unavailable} id="activity-uncounted" class="text-muted">
-                    Denied destinations were not counted: this hive recorded more than {delimited(
-                      Policy.Activity.cap()
-                    )} connections in 7 days. The connections page counts them by destination.
+                    {gettext(
+                      "Denied destinations were not counted: this hive recorded more than %{cap} connections in 7 days. The connections page counts them by destination.",
+                      cap: delimited(Policy.Activity.cap())
+                    )}
                   </span>
                 </p>
               </div>
             </section>
             <div class="q-stack">
               <%= if @failed[:policy] do %>
-                <.sect id="overview-policy" title="Policy">
+                <.sect id="overview-policy" title={gettext("Policy")}>
                   <div class="q-lines">
                     <.notice kind={:info}>
-                      <span id="policy-error">This could not be loaded. Reload the page; if it keeps happening, the server log has the reason.</span>
+                      <span id="policy-error">{not_loaded()}</span>
                     </.notice>
                   </div>
                 </.sect>
@@ -208,22 +210,28 @@ defmodule ApiaryWeb.HiveLive.Overview do
       <.modal
         :if={@confirm_close}
         id="close-run"
-        title="Close this run"
+        title={gettext("Close this run")}
         on_cancel={JS.push("close_cancel")}
         size="sm"
       >
         <p>
-          The hive stops taking events for <b class="font-medium">{run_title(@confirm_close)}</b>: the runner is told the run is gone at its next delivery. The record kept so far stays. A close is final: nothing reopens the run.
+          {sentence(
+            gettext(
+              "The hive stops taking events for %{run}: the runner is told the run is gone at its next delivery. The record kept so far stays. A close is final: nothing reopens the run.",
+              run: "%{run}"
+            ),
+            run: close_title(@confirm_close)
+          )}
         </p>
         <:footer>
-          <.button phx-click="close_cancel" data-autofocus>Cancel</.button>
+          <.button phx-click="close_cancel" data-autofocus>{gettext("Cancel")}</.button>
           <.button
             id="close-confirm"
             variant="danger"
             phx-click="close_confirm"
-            loading_text="Closing"
+            loading_text={gettext("Closing")}
           >
-            Close run
+            {gettext("Close run")}
           </.button>
         </:footer>
       </.modal>
@@ -527,7 +535,7 @@ defmodule ApiaryWeb.HiveLive.Overview do
 
     socket =
       if MapSet.size(new_ids) > MapSet.size(socket.assigns.new_ids),
-        do: announce(socket, count_noun(MapSet.size(new_ids), "new run")),
+        do: announce(socket, new_runs_text(MapSet.size(new_ids))),
         else: socket
 
     {:noreply, recompute(socket)}
@@ -759,17 +767,22 @@ defmodule ApiaryWeb.HiveLive.Overview do
         socket =
           socket
           |> remember([closed])
-          |> resolve_item("att-run-#{run.run_id}", %{mark: :closed, what: "Closed.", done: nil})
-          |> announce("#{run_title(run)} is closed.", :now)
+          |> resolve_item("att-run-#{run.run_id}", %{
+            mark: :closed,
+            what: gettext("Closed."),
+            done: nil
+          })
+          |> announce(gettext("%{run} is closed.", run: run_title(run)), :now)
           |> focus_after("att-run-#{run.run_id}")
 
         {:noreply, socket}
 
       {:error, :not_closable} ->
-        {:noreply, put_flash(socket, :error, "This run has ended; there is nothing to close.")}
+        {:noreply,
+         put_flash(socket, :error, gettext("This run has ended; there is nothing to close."))}
 
       {:error, _reason} ->
-        {:noreply, put_flash(socket, :error, "The run could not be closed.")}
+        {:noreply, put_flash(socket, :error, gettext("The run could not be closed."))}
     end
   end
 
@@ -830,8 +843,10 @@ defmodule ApiaryWeb.HiveLive.Overview do
          {:ok, from} <- rule_source(popover),
          {:ok, connection} <- Runs.fetch_connection(scope, from.connection_id),
          {:ok, rule} <- Policy.rule_from_connection(scope, connection, :allow, level) do
-      where = if level == :target, do: from.label, else: "the hive"
-      done = if level == :target, do: "Allowed here", else: "Allowed for the hive"
+      where = if level == :target, do: from.label, else: gettext("the hive")
+
+      done =
+        if level == :target, do: gettext("Allowed here"), else: gettext("Allowed for the hive")
 
       socket =
         socket
@@ -849,7 +864,7 @@ defmodule ApiaryWeb.HiveLive.Overview do
          |> read(:attention)
          |> put_flash(
            :info,
-           "The policy changed under you; the rows were read again. Nothing was written."
+           gettext("The policy changed under you; the rows were read again. Nothing was written.")
          )}
 
       {:error, %Policy.Error{message: message}} ->
@@ -859,7 +874,10 @@ defmodule ApiaryWeb.HiveLive.Overview do
         {:noreply,
          socket
          |> close_popover()
-         |> put_flash(:error, "This destination is no longer among the connections shown.")}
+         |> put_flash(
+           :error,
+           gettext("This destination is no longer among the connections shown.")
+         )}
     end
   end
 
@@ -943,7 +961,7 @@ defmodule ApiaryWeb.HiveLive.Overview do
   end
 
   defp rule_source(%{level: :hive, any_connection_id: id}) when is_binary(id),
-    do: {:ok, %{connection_id: id, label: "the hive", target: nil}}
+    do: {:ok, %{connection_id: id, label: gettext("the hive"), target: nil}}
 
   defp rule_source(_popover), do: :error
 
@@ -978,14 +996,14 @@ defmodule ApiaryWeb.HiveLive.Overview do
 
   defp target_consequence(effective, host) do
     if Rules.own_rule?(effective, host),
-      do: "Replaces the repository's own rule for the host.",
-      else: "Disables the hive's allow rule there. Other repositories keep it."
+      do: gettext("Replaces the target's own rule for the host."),
+      else: gettext("Disables the hive's allow rule there. Other targets keep it.")
   end
 
   defp hive_consequence(baseline, host, own?) do
     cond do
-      own? -> "A repository's own allow rule still holds there."
-      Rules.seen(baseline, host) != [] -> "Replaces the hive's allow rule."
+      own? -> gettext("A target's own allow rule still holds there.")
+      Rules.seen(baseline, host) != [] -> gettext("Replaces the hive's allow rule.")
       true -> nil
     end
   end
@@ -1209,7 +1227,11 @@ defmodule ApiaryWeb.HiveLive.Overview do
         do:
           announce(
             socket,
-            "#{count_noun(length(arrived), "more item")} #{if length(arrived) == 1, do: "needs", else: "need"} attention."
+            ngettext(
+              "%{count} more item needs attention.",
+              "%{count} more items need attention.",
+              length(arrived)
+            )
           ),
         else: socket
     else
@@ -1228,39 +1250,54 @@ defmodule ApiaryWeb.HiveLive.Overview do
         %{
           count: count,
           navigate: ~p"/hive/connections?#{%{"decision" => "denied"}}",
-          title: "#{count_noun(count, "more item")}, on the connections page"
+          title:
+            ngettext(
+              "%{count} more item, on the connections page",
+              "%{count} more items, on the connections page",
+              count
+            )
         }
 
       kind when kind in [:lost, :quiet, :behind] ->
         %{
           count: count,
           navigate: ~p"/hive/runs?#{%{"state" => "pending,running,lost"}}",
-          title: "#{count_noun(count, "more item")}, on the runs list"
+          title:
+            ngettext(
+              "%{count} more item, on the runs list",
+              "%{count} more items, on the runs list",
+              count
+            )
         }
 
       _ ->
         %{
           count: count,
           navigate: ~p"/hive/keys",
-          title: "#{count_noun(count, "more item")}, on the keys page"
+          title:
+            ngettext(
+              "%{count} more item, on the keys page",
+              "%{count} more items, on the keys page",
+              count
+            )
         }
     end
   end
 
   # What became of an item that is no longer on the record's list, in words (oe7).
   defp resolution(%{kind: :denied}, _assigns),
-    do: %{mark: :allowed, what: "Allowed since.", done: nil}
+    do: %{mark: :allowed, what: gettext("Allowed since."), done: nil}
 
   defp resolution(%{kind: kind, run: run}, assigns) when kind in [:lost, :quiet, :behind] do
     current = Map.get(assigns.seen, run.id, run)
 
     what =
       cond do
-        current.state == "closed" -> "Closed."
-        kind == :behind and current.state in Run.alive_states() -> "Reloaded."
-        current.state in Run.alive_states() -> "Heartbeats resumed."
-        current.state == "lost" -> "Marked lost."
-        true -> "#{ApiaryWeb.RunComponents.state_label(current.state)}."
+        current.state == "closed" -> gettext("Closed.")
+        kind == :behind and current.state in Run.alive_states() -> gettext("Reloaded.")
+        current.state in Run.alive_states() -> gettext("Heartbeats resumed.")
+        current.state == "lost" -> gettext("Marked lost.")
+        true -> ended(current.state)
       end
 
     %{mark: if(current.state == "closed", do: :closed, else: :resolved), what: what, done: nil}
@@ -1269,17 +1306,21 @@ defmodule ApiaryWeb.HiveLive.Overview do
   defp resolution(%{kind: :enforce}, %{policy: policy}) do
     what =
       if policy && policy.summary.mode == "enforce",
-        do: "Enforce is the hive's default.",
-        else: "Nothing to enforce yet."
+        do: gettext("Enforce is the hive's default."),
+        else: gettext("Nothing to enforce yet.")
 
     %{mark: :resolved, what: what, done: nil}
   end
 
   defp resolution(%{kind: :unmanaged}, _assigns),
-    do: %{mark: :resolved, what: "Qory serves the policy now.", done: nil}
+    do: %{mark: :resolved, what: gettext("Qory serves the policy now."), done: nil}
 
   defp resolution(%{kind: :idle_key, key: key}, %{keys: keys}) do
-    what = if Enum.any?(keys, &(&1.id == key.id)), do: "Used again.", else: "Revoked."
+    what =
+      if Enum.any?(keys, &(&1.id == key.id)),
+        do: gettext("Used again."),
+        else: gettext("Revoked.")
+
     %{mark: :resolved, what: what, done: nil}
   end
 
@@ -1428,6 +1469,30 @@ defmodule ApiaryWeb.HiveLive.Overview do
       ApiaryWeb.Endpoint.url()
     )
   end
+
+  defp not_loaded,
+    do:
+      gettext(
+        "This could not be loaded. Reload the page; if it keeps happening, the server log has the reason."
+      )
+
+  # The run the close dialog names, in bold inside its sentence.
+  defp close_title(run) do
+    assigns = %{title: run_title(run)}
+
+    ~H"""
+    <b class="font-medium">{@title}</b>
+    """
+  end
+
+  defp new_runs_text(n),
+    do: ngettext("%{number} new run", "%{number} new runs", n, number: delimited(n))
+
+  # What became of a run that ended while it was on the list.
+  defp ended("succeeded"), do: gettext("Succeeded.")
+  defp ended("failed"), do: gettext("Failed.")
+  defp ended("timed_out"), do: gettext("Timed out.")
+  defp ended(state), do: "#{ApiaryWeb.RunComponents.state_label(state)}."
 
   # `config :apiary, ApiaryWeb.HiveLive.Overview, coalesce: 0, quiet_tick: …` in a test.
   defp window(name, default) do
