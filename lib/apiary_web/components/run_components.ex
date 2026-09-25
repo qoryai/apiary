@@ -26,6 +26,7 @@ defmodule ApiaryWeb.RunComponents do
   # Called by its full name below: `PolicyComponents` imports this module.
   alias ApiaryWeb.PolicyComponents
 
+  alias Apiary.Runs
   alias Phoenix.LiveView.JS
 
   @outcome_tip gettext_noop(
@@ -1068,7 +1069,8 @@ defmodule ApiaryWeb.RunComponents do
 
   @doc """
   The name of a tool as a connection leads with it: the wrench, "Tool" for a screen reader,
-  and the name. Every surface that shows a tool invocation names the tool with this.
+  and the name. Every surface that shows a tool invocation (`Apiary.Runs.tool_invocation?/2`)
+  names the tool with this; a request refused before it reached the tool never does.
   """
   attr :name, :string, required: true
 
@@ -1089,11 +1091,14 @@ defmodule ApiaryWeb.RunComponents do
   `connection` is a projection row (`last_decision`, `last_rule`, …) or a map read from one
   egress event (`decision`, `rule`, …); both spellings are read.
 
-  A tool invocation (a connection with `tool`, or `last_tool`) reads as a call to that tool:
-  the tool's name first, then the request line, the host after them; the reason says it was
-  handed to the tool, and the outcome what the tool answered. The rule actions still act on
-  the host and the path, which is what a rule decides. `q-dest-tool` marks the destination
-  of a tool invocation, for the tests and the pages that look for one.
+  A tool invocation, a connection whose `tool` (or `last_tool`) is named and whose decision
+  is allowed (`Apiary.Runs.tool_invocation?/2`), reads as a call to that tool: the tool's
+  name first, then the request line, the host after them; the reason says it was handed to
+  the tool, and the outcome what the tool answered. A request to a tool's host that a path
+  rule refused never reached the tool and reads as any denial, host first, its reason
+  saying which tool's host it was for. The rule actions still act on the host and the
+  path, which is what a rule decides. `q-dest-tool` marks the destination of a tool
+  invocation, and only of one, for the tests and the pages that look for one.
   """
   attr :id, :string, required: true
   attr :connection, :map, required: true
@@ -1123,7 +1128,7 @@ defmodule ApiaryWeb.RunComponents do
       <.decision_mark decision={@c.decision} />
       <.destination c={@c} />
       <span class="q-why"><.reason c={@c} variant="inline" /><span :if={@caption} class="text-faint"> · {@caption}</span></span>
-      <.outcome value={@c.outcome} tool={@c.tool} status={@c.status} />
+      <.outcome value={@c.outcome} invocation={@c.invocation} status={@c.status} />
       <.offset
         :if={@started_at && @c.last_seen_at}
         at={@c.last_seen_at}
@@ -1153,7 +1158,7 @@ defmodule ApiaryWeb.RunComponents do
         <.reason c={@c} variant="table" />
         <.after_line :if={@act && @act[:after]} id={"#{@id}-after"} line={@act.after} />
       </td>
-      <td><.outcome value={@c.outcome} tool={@c.tool} status={@c.status} /></td>
+      <td><.outcome value={@c.outcome} invocation={@c.invocation} status={@c.status} /></td>
       <td class="q-meta">
         <.seen c={@c} started_at={@started_at} />
       </td>
@@ -1217,7 +1222,7 @@ defmodule ApiaryWeb.RunComponents do
         > · {gettext("last attempt")}</span>
         <.after_line :if={@act && @act[:after]} id={"#{@id}-after"} line={@act.after} />
       </td>
-      <td><.outcome value={@c.outcome} tool={@c.tool} status={@c.status} /></td>
+      <td><.outcome value={@c.outcome} invocation={@c.invocation} status={@c.status} /></td>
       <td class="q-meta"><.relative_time at={@c.last_seen_at} /></td>
       <td class="q-slot-cell w-px">
         <span class="q-slot">
@@ -1301,6 +1306,8 @@ defmodule ApiaryWeb.RunComponents do
   # Both spellings of a connection, as one map with every key present.
   defp normalise(connection) do
     get = fn keys -> Enum.find_value(keys, &Map.get(connection, &1)) end
+    tool = blank(get.([:tool, :last_tool]))
+    decision = get.([:decision, :last_decision])
 
     %{
       host: get.([:host]),
@@ -1308,13 +1315,14 @@ defmodule ApiaryWeb.RunComponents do
       path: get.([:path]) || "",
       method: get.([:method]),
       request_method: get.([:request_method, :last_request_method]),
-      decision: get.([:decision, :last_decision]),
+      decision: decision,
       rule: blank(get.([:rule, :last_rule])),
       path_rule: blank(get.([:path_rule, :last_path_rule])),
       credential: blank(get.([:credential, :last_credential])),
       outcome: get.([:outcome, :last_outcome]),
       mode: get.([:mode, :last_mode]),
-      tool: blank(get.([:tool, :last_tool])),
+      tool: tool,
+      invocation: Runs.tool_invocation?(tool, decision),
       status: get.([:status, :last_status]),
       request_id: get.([:request_id]),
       attempts: get.([:attempts]) || 0,
@@ -1335,8 +1343,8 @@ defmodule ApiaryWeb.RunComponents do
   defp share(_allowed, _denied), do: 100
 
   defp destination_words(c) do
-    [c.tool, request_line(c), c.host]
-    |> Enum.reject(&(&1 in [nil, "", "CONNECT", "HTTP"]))
+    [c.invocation && c.tool, request_line(c), c.host]
+    |> Enum.reject(&(&1 in [nil, false, "", "CONNECT", "HTTP"]))
     |> Enum.join(" ")
   end
 
@@ -1350,8 +1358,9 @@ defmodule ApiaryWeb.RunComponents do
   attr :c, :map, required: true
 
   # A tool invocation is named by its tool: the request line follows, and the host, which
-  # may be a name that exists only on the runner's machine, comes last and faint.
-  defp destination(%{c: %{tool: tool}} = assigns) when is_binary(tool) do
+  # may be a name that exists only on the runner's machine, comes last and faint. A
+  # request refused before it reached the tool is named by its host, as any denial.
+  defp destination(%{c: %{invocation: true}} = assigns) do
     assigns = assign(assigns, :line, request_line(assigns.c))
 
     ~H"""
@@ -1382,8 +1391,8 @@ defmodule ApiaryWeb.RunComponents do
   # the row is one request (the timeline's).
   defp destination_title(c, line) do
     whole =
-      [c.tool, "#{c.host}:#{c.port}", line]
-      |> Enum.reject(&(&1 in [nil, ""]))
+      [c.invocation && c.tool, "#{c.host}:#{c.port}", line]
+      |> Enum.reject(&(&1 in [nil, false, ""]))
       |> Enum.join(" ")
 
     if c.request_id,
@@ -1441,6 +1450,9 @@ defmodule ApiaryWeb.RunComponents do
     <span :if={@c.decision == "allowed" && @c.outcome == "refused"}>
       {gettext("Closed when a new policy denied the host.")}
     </span>
+    <span :if={@c.decision == "denied" && @c.tool} class="q-for-tool">
+      <.rich text={rich_gettext("Refused before reaching the tool %{tool}.", tool: {:b, @c.tool})} />
+    </span>
     """
   end
 
@@ -1457,13 +1469,11 @@ defmodule ApiaryWeb.RunComponents do
 
   defp reason_kind(%{decision: "denied"}), do: :denied_by_rule
 
-  # A tool invocation the policy let through was for the tool: that is what the reason
-  # says, and whether it reached the tool (`handed_sentence/1`). A denied one never did,
-  # and reads as any denial.
-  defp reason_kind(%{decision: "allowed", tool: tool, rule: nil}) when is_binary(tool),
-    do: :tool_no_rule
-
-  defp reason_kind(%{decision: "allowed", tool: tool}) when is_binary(tool), do: :tool_by_rule
+  # A tool invocation was for the tool: that is what the reason says, and whether it
+  # reached the tool (`handed_sentence/1`). A request a path rule refused is no tool
+  # invocation and took a denial's reason above; `reason/1` adds whose host it was for.
+  defp reason_kind(%{invocation: true, rule: nil}), do: :tool_no_rule
+  defp reason_kind(%{invocation: true}), do: :tool_by_rule
   defp reason_kind(%{decision: "allowed", rule: nil}), do: :allowed_no_rule
   defp reason_kind(%{decision: "allowed"}), do: :allowed_by_rule
   defp reason_kind(_c), do: :unknown
@@ -1524,14 +1534,14 @@ defmodule ApiaryWeb.RunComponents do
   end
 
   attr :value, :string, default: nil
-  attr :tool, :string, default: nil, doc: "the tool a request was handed to"
+  attr :invocation, :boolean, default: false, doc: "whether the request was a tool invocation"
   attr :status, :integer, default: nil, doc: "what the host or the tool answered"
 
   # One element whatever the value: the inline row places it in a grid cell of its own.
   defp outcome(assigns) do
     ~H"""
     <span
-      :if={@value == "connected" && @tool}
+      :if={@value == "connected" && @invocation}
       class={["q-outcome", answer_tone(@status)]}
       title={@status && gettext("The tool answered %{status}.", status: @status)}
     >
@@ -1539,7 +1549,7 @@ defmodule ApiaryWeb.RunComponents do
         do: gettext("Answered %{status}", status: @status),
         else: gettext("Handed over")}
     </span>
-    <span :if={@value == "connected" && !@tool} class={["q-outcome", answer_tone(@status)]}>
+    <span :if={@value == "connected" && !@invocation} class={["q-outcome", answer_tone(@status)]}>
       {gettext("Connected")}<span
         :if={@status}
         class="q-status"

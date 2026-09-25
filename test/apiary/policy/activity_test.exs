@@ -114,7 +114,7 @@ defmodule Apiary.Policy.ActivityTest do
   end
 
   describe "tool invocations" do
-    test "a destination names the tool its most recent connection was handed to" do
+    test "a destination let through names the tool of its tool invocation, a denied one the tool whose host it was for" do
       %{scope: scope} = sign_up_fixture()
 
       refused =

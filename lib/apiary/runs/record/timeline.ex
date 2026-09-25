@@ -31,6 +31,8 @@ defmodule Apiary.Runs.Record.Timeline do
 
   use Gettext, backend: ApiaryWeb.Gettext
 
+  alias Apiary.Runs
+
   @prefix "dev.qory."
 
   @kinds %{
@@ -99,7 +101,9 @@ defmodule Apiary.Runs.Record.Timeline do
   Lays the run out. `events` are light events in sequence order, maps with `:sequence`,
   `:type`, `:time` and, where the event has them, `:tool_use_id`, `:agent_id`,
   `:agent_type`, `:background_tasks` (a list, or nil when the event gives none), `:host`,
-  `:port`, `:decision` and, on a tool invocation, `:tool`. `alive:` says whether the record
+  `:port`, `:decision` and, on an egress event that names one, `:tool`, the tool whose host
+  it was for; with `:decision` allowed it is a tool invocation
+  (`Apiary.Runs.tool_invocation?/2`). `alive:` says whether the record
   is still being written: it fades the rails of the last item, and a call without an end is
   open only while it is.
 
@@ -429,8 +433,9 @@ defmodule Apiary.Runs.Record.Timeline do
   end
 
   # Runs of allowed connections to one host with nothing between them read as one row.
-  # A denied connection is never folded away. Tool invocations group only with calls to
-  # the same tool, so a group says whose calls it holds.
+  # A denied connection is never folded away, a request refused before it reached a tool
+  # included: it is no tool invocation, and its item holds no tool. Tool invocations group
+  # only with calls to the same tool, so a group says whose calls it holds.
   defp standalone(state, event) do
     open_calls = map_size(state.open_tools)
     previous = state.order |> List.first() |> then(&(&1 && state.items[&1]))
@@ -456,7 +461,7 @@ defmodule Apiary.Runs.Record.Timeline do
         open_calls: open_calls,
         host: event[:host],
         port: event[:port],
-        tool: event[:tool],
+        tool: if(Runs.tool_invocation?(event[:tool], event[:decision]), do: event[:tool]),
         decision: event[:decision],
         inner: [event.sequence],
         inner_count: 1,
@@ -840,9 +845,11 @@ defmodule Apiary.Runs.Record.Timeline do
   end
 
   @doc """
-  One slim egress event as the connection row reads it. `tool` names the tool the request
-  was handed to, on a tool invocation, and is nil otherwise; `status` is what the host or
-  the tool answered and `request_id` the proxy's id of the request, when the event says.
+  One slim egress event as the connection row reads it. `tool` names the tool whose host
+  the request was for, and is nil when the event names none; the request is a tool
+  invocation when it was also allowed (`Apiary.Runs.tool_invocation?/2`). `status` is what
+  the host or the tool answered and `request_id` the proxy's id of the request, when the
+  event says.
   """
   def connection(event) do
     %{

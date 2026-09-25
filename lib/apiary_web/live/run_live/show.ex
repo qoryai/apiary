@@ -921,7 +921,7 @@ defmodule ApiaryWeb.RunLive.Show do
         ),
       tools:
         gettext(
-          "Programs on the runner's machine that serve hosts. The proxy hands every request to such a host to its tool, and records each as a tool invocation."
+          "Programs on the runner's machine that serve hosts. The proxy hands a request to such a host to its tool when the rules let it through: a tool invocation. One a path rule refused never reaches the tool."
         ),
       lane:
         gettext(

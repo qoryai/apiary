@@ -221,8 +221,9 @@ defmodule Apiary.Runs.Record do
           host: fragment("left(? ->> 'host', 255)", e.data),
           port: fragment("left(? ->> 'port', 12)", e.data),
           decision: fragment("left(? ->> 'decision', 12)", e.data),
-          # The tool an egress event was handed to, which a group of connections is kept
-          # apart by; nil on every other type.
+          # The tool whose host an egress event was for; nil on every other type. With the
+          # decision it says whether the event was a tool invocation, and a group of them
+          # is kept apart by it.
           tool:
             fragment(
               "CASE WHEN ? = ? AND jsonb_typeof(? -> 'tool') = 'string' THEN nullif(left(? ->> 'tool', 255), '') END",
@@ -454,8 +455,9 @@ defmodule Apiary.Runs.Record do
   A page of the run's connections, one per host, port and path, denied destinations first
   and then the most recently seen, #{@connections_page} to a page. `decision:` keeps the
   destinations ever `"allowed"` or ever `"denied"`. The reason a row gives is the last
-  attempt's, as the projection keeps it: `tool` is the tool the last attempt was handed to
-  (nil for a connection that is no tool invocation) and `status` what answered it.
+  attempt's, as the projection keeps it: `tool` is the tool whose host the last attempt
+  was for (nil when it named none), a tool invocation only with `decision` allowed
+  (`Apiary.Runs.tool_invocation?/2`), and `status` what answered it.
   `%{rows, page, pages, total}`.
   """
   def connections(%Scope{} = scope, %Run{} = run, opts \\ []) do

@@ -23,10 +23,12 @@ defmodule Apiary.Runs.Fold do
   are the size the record last said, `terminal` of the start on a pseudo-terminal, then
   each resize. A start on pipes reports no size and leaves both null.
 
-  An egress event that names a `tool` is a tool invocation, a request to a host the tool
-  serves: it is folded into the destination's connection like any other, and the
-  connection's `last_tool` and `last_status` say the tool it was last handed to and what
-  answered.
+  An egress event names a `tool` when the proxy decided the request by its path for a host
+  the tool serves. It is folded into the destination's connection like any other, and the
+  connection's `last_tool` and `last_status` say the tool whose host the last attempt was
+  for and what answered it. The attempt is a tool invocation only when it was also
+  allowed (`Apiary.Runs.tool_invocation?/2`); one a path rule refused keeps its tool, and
+  never reached it.
 
   Times: `started_at`, `exited_at` and a connection's first and last seen are the runner's
   own, the record. `last_heartbeat_at` is the moment this server received the heartbeat
@@ -276,8 +278,8 @@ defmodule Apiary.Runs.Fold do
   # projected by the projector, nothing folded.
   defp event(acc, _event), do: acc
 
-  # The tool a request was handed to: a name, never empty. A tool invocation is an egress
-  # event like any other; only this key tells it apart.
+  # The tool whose host a request was for: a name, never empty. Kept whatever the
+  # decision; with the decision it says whether the request was a tool invocation.
   defp tool(data) do
     case string(data, "tool", 255) do
       "" -> nil

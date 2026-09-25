@@ -360,7 +360,11 @@ The contract has not fixed these; Apiary chose, and the runner should match:
   and `last_status`, last by sequence like the other `last_*` columns: an attempt without
   `tool` clears it. Only a request decided on its path names its tool; a connection
   refused on its host (deny list, the wall's guard, the allow list) carries none and is a
-  plain connection. A tool invocation is recognised by these fields: the fold and the
+  plain connection. A request a path rule refused names its tool as well, and never
+  reached it: a tool invocation is an egress event that names a `tool` and whose
+  `decision` is `allowed`, and nothing else (`Apiary.Runs.tool_invocation?/2`, and its
+  SQL twin on `last_tool` and `last_decision`). The fold keeps the tool of a refused
+  request as of any other, and the pages read the decision with it. The fold and the
   rebuild read `tool` and `status` from any egress event that carries them, and the
   rebuild selects a run whose connection's last event names either while the row lacks
   it. `request_id` is not projected: the timeline reads it from the event, where one

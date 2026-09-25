@@ -683,7 +683,10 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
       assert text(view, "#attention-n") == "0"
     end
 
-    test "a denied tool invocation reads as a call to its tool", %{conn: conn, scope: scope} do
+    test "a request refused before it reached the tool reads as a denial of its host", %{
+      conn: conn,
+      scope: scope
+    } do
       started_run(scope, shop(),
         egress: [
           tool_invocation_data(%{
@@ -698,10 +701,16 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
       view = open(conn)
       selector = "#attention-list li[data-kind=denied]"
 
-      assert has_element?(view, "#{selector} .q-dest-tool .q-tool-name", "files")
+      refute has_element?(view, "#{selector} .q-dest-tool")
+      refute has_element?(view, "#{selector} .q-tool-name")
 
-      assert text(view, "#{selector} .q-dest-tool") ==
-               "Tool files /media/acme/other/checkout.png files.tools.internal:443"
+      # No rule allows the host today, so the host is what the item offers to allow.
+      assert text(view, "#{selector} .q-host") == "files.tools.internal:443"
+
+      assert has_element?(
+               view,
+               ~s(#{selector} .q-host[title="files.tools.internal:443/media/acme/other/checkout.png, a host the tool files serves"])
+             )
     end
 
     test "allow for the hive from the caret menu", %{conn: conn, scope: scope} do

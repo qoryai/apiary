@@ -5,9 +5,10 @@ defmodule Apiary.Runs.Connection do
   events. A projection: rebuilt from `events`.
 
   The `last_*` columns are those of the attempt with the highest sequence. `last_tool` is
-  the name of the tool the last attempt was handed to, when the destination is a host a
-  tool serves (a tool invocation), and `last_status` the status the host or the tool
-  answered it with; both are nil when the event did not say.
+  the name of the tool whose host the last attempt was for, when the proxy decided it by
+  its path for a host a tool serves, and `last_status` the status the host or the tool
+  answered it with; both are nil when the event did not say. The last attempt was a tool
+  invocation when it names a tool and was allowed (`Apiary.Runs.tool_invocation?/2`).
   """
   use Ecto.Schema
 
