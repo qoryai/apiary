@@ -148,12 +148,12 @@ defmodule Apiary.Runs.FoldTest do
 
     test "the ping with the highest sequence decides" do
       first = event(1, "ping", %{"runner_version" => "v1", "contract_version" => 1})
-      second = event(9, "ping", %{"runner_version" => "v2", "contract_version" => 2})
+      second = event(9, "ping", %{"runner_version" => "v2", "contract_version" => 1})
 
       %{run: run, latest: latest} = Fold.fold(@run, [second])
       %{run: run} = Fold.fold(run, [first], latest)
 
-      assert {run.runner_version, run.contract_version} == {"v2", 2}
+      assert {run.runner_version, run.contract_version} == {"v2", 1}
     end
   end
 
@@ -679,7 +679,7 @@ defmodule Apiary.Runs.FoldTest do
       event(5, "run.policy_applied", %{"digest" => "second"}),
       heartbeat(6, 60, 15, 30),
       heartbeat(7, 90, 45, 30),
-      event(8, "ping", %{"runner_version" => "v0.4.2", "contract_version" => 2}),
+      event(8, "ping", %{"runner_version" => "v0.4.2", "contract_version" => 1}),
       exited(9, %{"state" => "failed", "reason" => "timeout"})
     ]
 

@@ -122,9 +122,9 @@ defmodule Apiary.RunEventsFixtures do
   end
 
   @doc """
-  A `run.policy_applied` of contract v1 revision 2 whose run has one tool, `files`, serving
-  `files.tools.internal` under a path rule. Not a line of `priv/demo`: the contract the
-  `:contract` tests replay is pinned at revision 1, which has no tools.
+  A `run.policy_applied` whose run has one tool, `files`, serving `files.tools.internal`
+  under a path rule. Not a line of `priv/demo`: the contract fixtures at the pinned ref
+  have no tools yet.
   """
   def tool_policy_data(extra \\ %{}) do
     Map.merge(
@@ -143,8 +143,8 @@ defmodule Apiary.RunEventsFixtures do
   end
 
   @doc """
-  A tool invocation (contract v1 revision 2): a request to `files.tools.internal` handed to
-  the tool `files`, which answered 200.
+  A tool invocation: a request to `files.tools.internal` handed to the tool `files`, which
+  answered 200.
   """
   def tool_invocation_data(extra \\ %{}) do
     egress_data(%{

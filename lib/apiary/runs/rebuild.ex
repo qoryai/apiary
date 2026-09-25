@@ -7,10 +7,9 @@ defmodule Apiary.Runs.Rebuild do
   columns of its last attempt existed (`last_mode` is null on a row that has folded an
   event), those with a session result and no `cost_usd`, projected before the cost was
   folded, those whose `run.started` reports a terminal size and no `terminal_cols`,
-  projected before the size was folded, and the runs of a runner of contract revision 2
-  or later with a connection whose last attempt names a tool or a status the row does not
-  hold (`last_tool`, `last_status`), projected before those were folded. `all: true`
-  rebuilds every run.
+  projected before the size was folded, and those with a connection whose last attempt
+  names a tool or a status the row does not hold (`last_tool`, `last_status`), projected
+  before those were folded. `all: true` rebuilds every run.
 
   Runs are walked by id in windows of `batch:` runs (default 100); what reading a window
   costs is bounded by its runs, however many the table holds. Of a window, the runs that
@@ -110,18 +109,16 @@ defmodule Apiary.Runs.Rebuild do
         |> in_window(:run_id, after_id, upper)
 
       # A connection whose last attempt says a tool or a status the row lacks: folded
-      # before `last_tool` and `last_status` existed. Only a runner of contract revision 2
-      # or later sends either, so only its runs are read: their connections, and for each
-      # the one event the row says was its last, on the unique index
-      # `events (run_id, sequence)`. The test is the fold's own reading of the two keys,
-      # so a run the rebuild has done is not selected again.
-      unrevised =
-        from(v in Run,
-          join: c in Connection,
-          on: c.run_id == v.id and c.last_sequence > 0,
+      # before `last_tool` and `last_status` existed. Of each connection that lacks either,
+      # the one event the row says was its last is read, on the unique index
+      # `events (run_id, sequence)`. The test is the fold's own reading of the two keys, so
+      # a run the rebuild has done is not selected again.
+      untooled =
+        from(c in Connection,
           join: e in Event,
           on: e.run_id == c.run_id and e.sequence == c.last_sequence,
-          where: v.id == parent_as(:run).id and coalesce(v.contract_version, 0) >= 2,
+          where: c.run_id == parent_as(:run).id and c.last_sequence > 0,
+          where: is_nil(c.last_tool) or is_nil(c.last_status),
           where: e.type == @egress,
           where:
             (is_nil(c.last_tool) and
@@ -137,13 +134,13 @@ defmodule Apiary.Runs.Rebuild do
                    e.data
                  ))
         )
-        |> in_window(:id, after_id, upper)
+        |> in_window(:run_id, after_id, upper)
 
       from r in query,
         as: :run,
         where:
           exists(stale) or (is_nil(r.cost_usd) and exists(uncosted)) or
-            (is_nil(r.terminal_cols) and exists(unsized)) or exists(unrevised)
+            (is_nil(r.terminal_cols) and exists(unsized)) or exists(untooled)
     end
   end
 
