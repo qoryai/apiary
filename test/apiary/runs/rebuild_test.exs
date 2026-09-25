@@ -126,8 +126,7 @@ defmodule Apiary.Runs.RebuildTest do
 
     test "selects a run whose tool invocations were folded before the tool and status were",
          %{scope: scope} do
-      # Runs of a runner of revision 2, the only one that sends either key.
-      tooled = run_fixture(scope, contract_version: 2)
+      tooled = run_fixture(scope)
       events_fixture(tooled, tool_record())
       {:ok, _} = Projector.project(tooled)
 
@@ -147,7 +146,7 @@ defmodule Apiary.Runs.RebuildTest do
       )
 
       # A plain host that answered, before the status was kept.
-      answered = run_fixture(scope, contract_version: 2)
+      answered = run_fixture(scope)
 
       event_fixture(
         answered,
@@ -164,27 +163,10 @@ defmodule Apiary.Runs.RebuildTest do
 
       # A connection whose events name neither gives the rebuild nothing to do, and neither
       # does one whose tool is not a name.
-      plain = run_fixture(scope, contract_version: 2)
+      plain = run_fixture(scope)
       event_fixture(plain, 1, "run.egress", egress_data())
       event_fixture(plain, 2, "run.egress", egress_data(%{"host" => "b.example", "tool" => ""}))
       {:ok, _} = Projector.project(plain)
-
-      # A runner that announced an earlier revision is not read for them, whatever its
-      # events say: the check stays off the runs that cannot need it.
-      earlier = run_fixture(scope, contract_version: 1)
-
-      event_fixture(
-        earlier,
-        1,
-        "run.egress",
-        egress_data(%{"method" => "HTTPS", "status" => 200})
-      )
-
-      {:ok, _} = Projector.project(earlier)
-
-      Repo.update_all(from(c in Connection, where: c.run_id == ^earlier.id),
-        set: [last_status: nil]
-      )
 
       assert Rebuild.run() == %{rebuilt: 2, failed: 0}
 
@@ -197,6 +179,9 @@ defmodule Apiary.Runs.RebuildTest do
 
       assert [%{last_status: 200}] =
                Repo.all(from c in Connection, where: c.run_id == ^answered.id)
+
+      assert [%{last_tool: nil, last_status: nil}, %{last_tool: nil, last_status: nil}] =
+               Repo.all(from c in Connection, where: c.run_id == ^plain.id)
 
       assert Rebuild.run() == %{rebuilt: 0, failed: 0}
     end

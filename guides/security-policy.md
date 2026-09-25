@@ -179,12 +179,12 @@ record already says stays as it was.
 
 ## Tool invocations
 
-A runner of contract revision 2 (runner 0.6.0 or later) can give a run **tools**: programs
-on the runner's machine that serve hosts. The machine defines them; the run's policy
-selects among them by name, as it selects credentials. A run configuration could carry
-that selection, but this server never sends one: the workplace's policy has no tools. So a
-run has tools only when it runs under its machine's own policy, the one in its [runner
-file](runner-file.md), and only such runs report tool invocations.
+A runner can give a run **tools**: programs on the runner's machine that serve hosts. The
+machine defines them; the run's policy selects among them by name, as it selects
+credentials. A run configuration could carry that selection, but this server never sends
+one: the workplace's policy has no tools. So a run has tools only when it runs under its
+machine's own policy, the one in its [runner file](runner-file.md), and only such runs
+report tool invocations.
 
 The runner's proxy hands every request to a host a tool serves to that tool; the host may
 be a name that exists only on the machine, such as `files.tools.internal`. Each request

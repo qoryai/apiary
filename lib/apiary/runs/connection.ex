@@ -6,9 +6,8 @@ defmodule Apiary.Runs.Connection do
 
   The `last_*` columns are those of the attempt with the highest sequence. `last_tool` is
   the name of the tool the last attempt was handed to, when the destination is a host a
-  tool serves (a tool invocation, contract v1 revision 2), and `last_status` the status
-  the host or the tool answered it with; both are nil when the event did not say, as an
-  event of a runner before revision 2 never does.
+  tool serves (a tool invocation), and `last_status` the status the host or the tool
+  answered it with; both are nil when the event did not say.
   """
   use Ecto.Schema
 

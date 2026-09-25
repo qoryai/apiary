@@ -10,8 +10,8 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
 
 ### Added
 
-- Tool invocations, as runner contract v1 revision 2 (runner 0.6.0) reports them. A
-  runner can give a run tools, programs on its machine that serve hosts, and its proxy
+- Tool invocations, as runner contract v1 reports them. A runner can give a run tools,
+  programs on its machine that serve hosts, and its proxy
   hands every request to such a host to the tool. Each request decided on its path is a
   `dev.qory.run.egress` event that names the `tool`, the proxy's `request_id` and, when
   the tool answered, the `status`: it is recorded as a connection, decided by the same
@@ -41,12 +41,12 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
 
 ### Upgrading
 
-- Only a runner of contract revision 2 sends tool invocations, and the events endpoint
-  already stores what it sends. A run received before this release whose events name a
-  tool or a status shows neither until it is projected again: run `mix apiary.rebuild` once
-  after the upgrade (in a release `bin/apiary eval "Apiary.Release.rebuild()"`). It now
-  also selects a run of a revision 2 runner with a connection whose last attempt names a
-  tool or a status the row lacks, and leaves every other run alone. It walks the runs in
+- The events endpoint already stores the tool invocations a runner sends. A run received
+  before this release whose events name a tool or a status shows neither until it is
+  projected again: run `mix apiary.rebuild` once after the upgrade (in a release
+  `bin/apiary eval "Apiary.Release.rebuild()"`). It now also selects a run with a
+  connection whose last attempt names a tool or a status the row lacks, and leaves every
+  other run alone. It walks the runs in
   windows of `batch` by id, so what each step reads is bounded by its window, where it
   used to scan the tables it checks once a page.
 - Tools come from the run's policy, and this server never sends a run configuration that

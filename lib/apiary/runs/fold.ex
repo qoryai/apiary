@@ -23,9 +23,10 @@ defmodule Apiary.Runs.Fold do
   are the size the record last said, `terminal` of the start on a pseudo-terminal, then
   each resize. A start on pipes reports no size and leaves both null.
 
-  An egress event to a host a tool serves is a tool invocation (contract v1 revision 2): it
-  is folded into the destination's connection like any other, and the connection's
-  `last_tool` and `last_status` say the tool it was last handed to and what answered.
+  An egress event that names a `tool` is a tool invocation, a request to a host the tool
+  serves: it is folded into the destination's connection like any other, and the
+  connection's `last_tool` and `last_status` say the tool it was last handed to and what
+  answered.
 
   Times: `started_at`, `exited_at` and a connection's first and last seen are the runner's
   own, the record. `last_heartbeat_at` is the moment this server received the heartbeat

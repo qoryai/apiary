@@ -10,13 +10,9 @@ A receiver of your own that implements the same contract takes the same runners.
 The contract is not in this repository. It is the `contracts/runner/v1` directory of the
 runner's repository: a README that defines every document and header, one JSON schema per
 document, and fixtures, among them signed requests with the status a receiver has to answer.
-This server implements version 1, revision 1, as runner 0.5.1 amended it, and reads the
-tool invocations of revision 2: the `tools` of `dev.qory.run.policy_applied`, and the
-`tool`, `request_id` and `status` of `dev.qory.run.egress` (see [Tool
-invocations](security-policy.md#tool-invocations)). A runner before
-0.5.1 names its events `ai.qory.*` where the contract now names them `dev.qory.*`: every
-batch it sends, the ping among them, is answered `400`, so its runs do not start until the
-runner is updated.
+This server implements version 1, revision 1, tool invocations included: the `tools` of
+`dev.qory.run.policy_applied`, and the `tool`, `request_id` and `status` of
+`dev.qory.run.egress` (see [Tool invocations](security-policy.md#tool-invocations)).
 
 Where this page and the contract disagree, the contract wins. Two files in the server's
 repository tie the two together:
@@ -43,7 +39,7 @@ On every request:
 | Header | Value |
 |---|---|
 | `X-Qory-Access-Key` | the key id, `ak_` and 16 lower-case Crockford base32 characters |
-| `X-Qory-Contract-Version` | the revision the runner implements: `2` from runner 0.5.0, `1` before it |
+| `X-Qory-Contract-Version` | the revision the runner implements, `1` |
 | `User-Agent` | `qory-runner/<version>` |
 
 The server records the runner's version and the contract version on the key, which is what
