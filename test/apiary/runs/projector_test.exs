@@ -59,6 +59,8 @@ defmodule Apiary.Runs.ProjectorTest do
                 :last_path_rule,
                 :last_credential,
                 :last_request_method,
+                :last_tool,
+                :last_status,
                 :last_sequence,
                 :first_seen_at,
                 :last_seen_at
@@ -298,6 +300,74 @@ defmodule Apiary.Runs.ProjectorTest do
 
       {:ok, _} = Projector.project(run)
       assert [%{last_credential: nil, last_sequence: 9}] = projection(run).connections
+
+      before = projection(run)
+      {:ok, _} = Projector.rebuild(run)
+      assert projection(run) == before
+    end
+
+    test "a tool invocation's tool and status are the last attempt's, by sequence", %{
+      run: run
+    } do
+      event_fixture(run, 5, "run.egress", tool_invocation_data(%{"status" => 201}))
+      {:ok, _} = Projector.project(run)
+
+      # An earlier attempt arriving later changes neither.
+      event_fixture(run, 2, "run.egress", tool_invocation_data(%{"status" => 500}))
+      {:ok, _} = Projector.project(run)
+
+      assert [%{attempts: 2, last_tool: "files", last_status: 201, last_sequence: 5}] =
+               projection(run).connections
+
+      # A later refusal was answered by no one: the status is cleared, the tool stays.
+      event_fixture(
+        run,
+        9,
+        "run.egress",
+        tool_invocation_data(%{"decision" => "denied", "outcome" => "refused"})
+        |> Map.delete("status")
+      )
+
+      {:ok, _} = Projector.project(run)
+
+      assert [%{attempts: 3, denied: 1, last_tool: "files", last_status: nil, last_sequence: 9}] =
+               projection(run).connections
+
+      before = projection(run)
+      {:ok, _} = Projector.rebuild(run)
+      assert projection(run) == before
+    end
+
+    test "a later attempt without a tool clears the tool across passes; an earlier one does not",
+         %{run: run} do
+      event_fixture(run, 5, "run.egress", tool_invocation_data(%{}))
+      {:ok, _} = Projector.project(run)
+
+      # An earlier attempt without a tool, arriving later, is not the last.
+      event_fixture(
+        run,
+        3,
+        "run.egress",
+        tool_invocation_data(%{}) |> Map.drop(["tool", "status"])
+      )
+
+      {:ok, _} = Projector.project(run)
+
+      assert [%{last_tool: "files", last_status: 200, last_sequence: 5}] =
+               projection(run).connections
+
+      # A later one is.
+      event_fixture(
+        run,
+        8,
+        "run.egress",
+        tool_invocation_data(%{}) |> Map.drop(["tool", "status"])
+      )
+
+      {:ok, _} = Projector.project(run)
+
+      assert [%{attempts: 3, last_tool: nil, last_status: nil, last_sequence: 8}] =
+               projection(run).connections
 
       before = projection(run)
       {:ok, _} = Projector.rebuild(run)

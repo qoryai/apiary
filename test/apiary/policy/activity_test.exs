@@ -3,6 +3,7 @@ defmodule Apiary.Policy.ActivityTest do
   use Apiary.DataCase, async: false
 
   import Apiary.OrganisationsFixtures
+  import Apiary.RunEventsFixtures, only: [tool_invocation_data: 1]
   import Apiary.RunListFixtures
 
   alias Apiary.Policy
@@ -109,6 +110,40 @@ defmodule Apiary.Policy.ActivityTest do
                )
 
       assert :unavailable = Activity.denied_destinations(ctx.scope, since(), cap: 3)
+    end
+  end
+
+  describe "tool invocations" do
+    test "a destination names the tool its most recent connection was handed to" do
+      %{scope: scope} = sign_up_fixture()
+
+      refused =
+        tool_invocation_data(%{
+          "path" => "/media/acme/other/checkout.png",
+          "path_rule" => "",
+          "decision" => "denied",
+          "outcome" => "refused"
+        })
+
+      started_run(scope, @site,
+        egress: [tool_invocation_data(%{}), refused, allowed("api.example")]
+      )
+
+      assert {:ok, uncovered} = Policy.uncovered(scope, since())
+
+      assert %{tool: "files", path: nil} =
+               Enum.find(uncovered, &(&1.host == "files.tools.internal"))
+
+      assert %{tool: nil} = Enum.find(uncovered, &(&1.host == "api.example"))
+
+      assert {:ok, [denied]} = Policy.denied_destinations(scope, since())
+
+      assert %{
+               host: "files.tools.internal",
+               path: "/media/acme/other/checkout.png",
+               tool: "files",
+               denied: 1
+             } = denied
     end
   end
 

@@ -3,6 +3,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
 
   import Phoenix.LiveViewTest
   import Apiary.OrganisationsFixtures
+  import Apiary.RunEventsFixtures, only: [tool_invocation_data: 1]
   import Apiary.RunListFixtures
 
   alias Apiary.Policy
@@ -503,6 +504,19 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
     setup %{scope: scope} do
       {:ok, _} = Policy.allow(scope, nil, %{host: "registry.example"})
       :ok
+    end
+
+    test "what enforce would deny names a tool invocation by its tool", %{
+      conn: conn,
+      scope: scope
+    } do
+      started_run(scope, shop(), egress: [tool_invocation_data(%{"rule" => ""})])
+
+      view = open(conn)
+      view |> element("#policy-mode-enforce") |> render_click()
+
+      assert has_element?(view, "#mode-would .q-dest-tool .q-tool-name", "files")
+      assert text(view, "#mode-would .q-dest-tool") =~ "files.tools.internal"
     end
 
     test "going to enforce asks, lists what would be denied, and allows from the list",

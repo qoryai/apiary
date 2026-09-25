@@ -178,6 +178,146 @@ defmodule Apiary.Runs.RecordTest do
     end
   end
 
+  describe "tool invocations" do
+    test "a connection names the tool its last attempt was handed to and what answered", %{
+      scope: scope
+    } do
+      run = projected(scope, tool_record())
+
+      assert %{rows: rows, total: 3} = Record.connections(scope, run)
+
+      # Denied first: the call the policy refused never reached the tool, and names it.
+      assert [
+               %{
+                 host: "files.tools.internal",
+                 path: "/media/acme/other/checkout.png",
+                 decision: "denied",
+                 tool: "files",
+                 status: nil
+               }
+               | _
+             ] = rows
+
+      assert %{tool: "files", status: 201, attempts: 2, request_method: "PUT"} =
+               Enum.find(rows, &(&1.path == "/media/acme/shop/checkout.png"))
+
+      assert %{tool: nil, status: nil} = Enum.find(rows, &(&1.host == "api.example.com"))
+    end
+
+    test "the policy in force lists the run's tools and the hosts they serve", %{scope: scope} do
+      run = projected(scope, tool_record())
+
+      assert %{
+               tools: [%{"name" => "files", "hosts" => ["files.tools.internal"]}],
+               terminated: ["files.tools.internal"],
+               credentials: []
+             } = Record.policy(scope, run)
+
+      # Bounded like the credentials: twenty tools of ten hosts, names and hosts cut.
+      many =
+        for n <- 1..30,
+            do: %{
+              "name" => "t#{n}" <> String.duplicate("x", 200),
+              "hosts" => for(m <- 1..20, do: "h#{m}.tools.internal")
+            }
+
+      run =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "run.policy_applied", tool_policy_data(%{"tools" => [7, %{"name" => 1} | many]})}
+        ])
+
+      assert %{tools: tools} = Record.policy(scope, run)
+      assert length(tools) == 20
+      assert %{"name" => name, "hosts" => hosts} = hd(tools)
+      assert String.starts_with?(name, "t1x") and String.length(name) == 120
+      assert length(hosts) == 10
+
+      run = projected(scope)
+      assert %{tools: []} = Record.policy(scope, run)
+    end
+
+    test "the timeline reads tool invocations as calls, and groups a tool's allowed calls", %{
+      scope: scope
+    } do
+      run = projected(scope, tool_record())
+      index = Record.timeline(scope, run)
+      items = Record.items(scope, run, index.items)
+
+      assert Enum.map(items, & &1.kind) ==
+               [:run_started, :policy_applied, :connection, :connection_group, :connection] ++
+                 [:run_exited]
+
+      assert %{tools: [%{name: "files", hosts: ["files.tools.internal"]}]} =
+               Enum.find(items, &(&1.kind == :policy_applied))
+
+      assert %{connection: %{tool: nil, host: "api.example.com"}} = Enum.at(items, 2)
+
+      assert %{
+               tool: "files",
+               host: "files.tools.internal",
+               connections_count: 2,
+               connections: [
+                 %{tool: "files", status: 200, request_id: "8d0c3f6a1b2e4d5f9a7c6b5e4d3c2b1a"},
+                 %{tool: "files", status: 201, request_id: "0a1b2c3d4e5f60718293a4b5c6d7e8f9"}
+               ]
+             } = Enum.at(items, 3)
+
+      assert %{
+               connection: %{
+                 tool: "files",
+                 decision: "denied",
+                 status: nil,
+                 request_id: "1f2e3d4c5b6a79880a9b8c7d6e5f4a3b"
+               }
+             } = Enum.at(items, 4)
+    end
+
+    test "allowed calls of one tool do not group with a plain connection to the host", %{
+      scope: scope
+    } do
+      # Not what a runner sends (a tool's host always goes to the tool), but a group must
+      # never hide whose calls it holds.
+      run =
+        projected(scope, [
+          {1, "run.egress", tool_invocation_data()},
+          {2, "run.egress", tool_invocation_data() |> Map.delete("tool")},
+          {3, "run.egress", tool_invocation_data(%{"tool" => "other"})}
+        ])
+
+      assert [%{kind: :connection}, %{kind: :connection}, %{kind: :connection}] =
+               Record.timeline(scope, run).items
+    end
+
+    test "the query cuts what Timeline.slim/2 cuts, on a run with tools", %{scope: scope} do
+      run =
+        projected(scope, [
+          {8, "run.policy_applied",
+           tool_policy_data(%{
+             "tools" => [
+               %{"name" => String.duplicate("n", 200), "hosts" => ["a", 7, "b"]},
+               %{"name" => "bare"},
+               "junk"
+             ]
+           })},
+          {9, "run.egress", tool_invocation_data(%{"status" => "200", "request_id" => 5})}
+          | tool_record()
+        ])
+
+      index = Record.timeline(scope, run)
+
+      whole =
+        Repo.all(
+          from e in Apiary.Runs.Event,
+            where: e.run_id == ^run.id,
+            select: %{sequence: e.sequence, type: e.type, time: e.time, data: e.data}
+        )
+        |> Map.new(&{&1.sequence, Timeline.slim(&1)})
+
+      assert Record.items(scope, run, index.items) == Timeline.build(index.items, whole)
+    end
+  end
+
   describe "the log" do
     test "summary, through and pages", %{scope: scope} do
       run = projected(scope)

@@ -29,6 +29,7 @@ defmodule Apiary.Runs.Record do
   @session_started "dev.qory.session.started"
   @started "dev.qory.run.started"
   @resized "dev.qory.run.resized"
+  @egress "dev.qory.run.egress"
   @list_types ["dev.qory.session.turn_finished", "dev.qory.session.subagent_finished"]
 
   @log_page 200
@@ -83,6 +84,29 @@ defmodule Apiary.Runs.Record do
     quote do: fragment(unquote(sql), unquote(data), unquote(data), unquote(data))
   end
 
+  # The first twenty objects of the array under `key` that have a string `name`, each as
+  # `{"name", "hosts"}`: the name cut at 120 characters, the first ten string hosts cut at
+  # 255. What a credential and a tool of `run.policy_applied` are read as, by `policy/2`
+  # and by the statement of the timeline's items alike. `%DATA%` is the event's data.
+  @named_hosts """
+  (SELECT coalesce(jsonb_agg(jsonb_build_object(
+      'name', left(c ->> 'name', 120),
+      'hosts', (SELECT coalesce(jsonb_agg(left(h #>> '{}', 255)), '[]'::jsonb)
+                FROM (SELECT h FROM jsonb_array_elements(
+                        CASE WHEN jsonb_typeof(c -> 'hosts') = 'array' THEN c -> 'hosts' ELSE '[]'::jsonb END
+                      ) WITH ORDINALITY hs(h, n)
+                      WHERE jsonb_typeof(h) = 'string' ORDER BY n LIMIT 10) hq)) ORDER BY n), '[]'::jsonb)
+   FROM (SELECT c, n FROM jsonb_array_elements(
+           CASE WHEN jsonb_typeof(%DATA% -> '%KEY%') = 'array' THEN %DATA% -> '%KEY%' ELSE '[]'::jsonb END
+         ) WITH ORDINALITY cs(c, n)
+         WHERE jsonb_typeof(c -> 'name') = 'string' ORDER BY n LIMIT 20) cq)
+  """
+
+  defmacrop named_hosts(data, key) do
+    sql = @named_hosts |> String.replace("%DATA%", "?") |> String.replace("%KEY%", key)
+    quote do: fragment(unquote(sql), unquote(data), unquote(data))
+  end
+
   ## The run
 
   @doc """
@@ -112,9 +136,9 @@ defmodule Apiary.Runs.Record do
   @doc """
   The policy in force, from the run's last `run.policy_applied`: `%{sequence, time, mode,
   source, allow, allow_count, deny, deny_count, terminated, terminated_count,
-  credentials}`; the lists hold
-  at most fifty strings, the credentials at most twenty `%{name, hosts}`. nil when the run
-  has none.
+  credentials, tools}`; the lists hold at most fifty strings, the credentials and the tools
+  at most twenty `%{"name", "hosts"}` each, with ten hosts at most. nil when the run has
+  none.
   """
   def policy(%Scope{} = scope, %Run{} = run) do
     Repo.one(
@@ -133,24 +157,8 @@ defmodule Apiary.Runs.Record do
           deny_count: array_length(e.data, "deny"),
           terminated: strings(e.data, "terminated", 50, 255),
           terminated_count: array_length(e.data, "terminated"),
-          credentials:
-            fragment(
-              """
-              (SELECT coalesce(jsonb_agg(jsonb_build_object(
-                  'name', left(c ->> 'name', 120),
-                  'hosts', (SELECT coalesce(jsonb_agg(left(h #>> '{}', 255)), '[]'::jsonb)
-                            FROM (SELECT h FROM jsonb_array_elements(
-                                    CASE WHEN jsonb_typeof(c -> 'hosts') = 'array' THEN c -> 'hosts' ELSE '[]'::jsonb END
-                                  ) WITH ORDINALITY hs(h, n)
-                                  WHERE jsonb_typeof(h) = 'string' ORDER BY n LIMIT 10) hq))), '[]'::jsonb)
-               FROM (SELECT c FROM jsonb_array_elements(
-                       CASE WHEN jsonb_typeof(? -> 'credentials') = 'array' THEN ? -> 'credentials' ELSE '[]'::jsonb END
-                     ) WITH ORDINALITY cs(c, n)
-                     WHERE jsonb_typeof(c -> 'name') = 'string' ORDER BY n LIMIT 20) cq)
-              """,
-              e.data,
-              e.data
-            )
+          credentials: named_hosts(e.data, "credentials"),
+          tools: named_hosts(e.data, "tools")
         }
     )
   end
@@ -212,7 +220,17 @@ defmodule Apiary.Runs.Record do
           agent_type: fragment("left(? ->> 'agent_type', 255)", e.data),
           host: fragment("left(? ->> 'host', 255)", e.data),
           port: fragment("left(? ->> 'port', 12)", e.data),
-          decision: fragment("left(? ->> 'decision', 12)", e.data)
+          decision: fragment("left(? ->> 'decision', 12)", e.data),
+          # The tool an egress event was handed to, which a group of connections is kept
+          # apart by; nil on every other type.
+          tool:
+            fragment(
+              "CASE WHEN ? = ? AND jsonb_typeof(? -> 'tool') = 'string' THEN nullif(left(? ->> 'tool', 255), '') END",
+              e.type,
+              ^@egress,
+              e.data,
+              e.data
+            )
         }
 
     query = if last, do: from(e in query, where: e.sequence <= ^last), else: query
@@ -319,8 +337,8 @@ defmodule Apiary.Runs.Record do
   @slim_sql """
   SELECT
     e.sequence, e.type, e.time,
-    #{Enum.map_join(~w(tool agent_id agent_type runtime runtime_version host wall mode source model cwd kind outcome reason signal method request_method path decision rule path_rule credential run_configuration), ",\n  ", &"CASE WHEN jsonb_typeof(e.data -> '#{&1}') = 'string' THEN left(e.data ->> '#{&1}', 400) END AS #{&1}")},
-    #{Enum.map_join(~w(port exit_code duration_ms turns), ",\n  ", &"CASE WHEN jsonb_typeof(e.data -> '#{&1}') = 'number' AND (e.data ->> '#{&1}') ~ '^-?[0-9]{1,15}$' THEN (e.data ->> '#{&1}')::bigint END AS #{&1}")},
+    #{Enum.map_join(~w(tool agent_id agent_type runtime runtime_version host wall mode source model cwd kind outcome reason signal method request_method path decision rule path_rule credential request_id run_configuration), ",\n  ", &"CASE WHEN jsonb_typeof(e.data -> '#{&1}') = 'string' THEN left(e.data ->> '#{&1}', 400) END AS #{&1}")},
+    #{Enum.map_join(~w(port exit_code duration_ms turns status), ",\n  ", &"CASE WHEN jsonb_typeof(e.data -> '#{&1}') = 'number' AND (e.data ->> '#{&1}') ~ '^-?[0-9]{1,15}$' THEN (e.data ->> '#{&1}')::bigint END AS #{&1}")},
     CASE WHEN jsonb_typeof(e.data -> 'cost_usd') = 'number' AND (e.data ->> 'cost_usd') ~ '^-?[0-9]{1,12}(\\.[0-9]{1,12})?([eE]-?[0-9]{1,2})?$' THEN (e.data ->> 'cost_usd')::float8 END AS cost_usd,
     (e.data -> 'interrupted' = 'true'::jsonb) IS TRUE AS interrupted,
     (x.i -> 'run_in_background' = 'true'::jsonb) IS TRUE AS in_background,
@@ -335,6 +353,7 @@ defmodule Apiary.Runs.Record do
        FROM (SELECT v FROM jsonb_array_elements(CASE WHEN jsonb_typeof(e.data -> 'terminated') = 'array' THEN e.data -> 'terminated' ELSE '[]'::jsonb END) WITH ORDINALITY a(v, n)
              WHERE jsonb_typeof(v) = 'string' ORDER BY n LIMIT 5) q) AS terminated,
     CASE WHEN jsonb_typeof(e.data -> 'terminated') = 'array' THEN jsonb_array_length(e.data -> 'terminated') ELSE 0 END AS terminated_count,
+    CASE WHEN e.type = 'dev.qory.run.policy_applied' THEN #{String.replace(@named_hosts, "%DATA%", "e.data") |> String.replace("%KEY%", "tools")} END AS tools,
     #{Enum.map_join(~w(command file_path pattern path url description), ",\n  ", &"CASE WHEN jsonb_typeof(x.i -> '#{&1}') = 'string' THEN left(x.i ->> '#{&1}', 400) END AS input_#{&1}")},
     (SELECT left(value #>> '{}', 400) FROM jsonb_each(CASE WHEN jsonb_typeof(x.i) = 'object' THEN x.i ELSE '{}'::jsonb END)
        WHERE jsonb_typeof(value) = 'string' AND value #>> '{}' <> '' ORDER BY key COLLATE "C" LIMIT 1) AS input_first,
@@ -395,6 +414,7 @@ defmodule Apiary.Runs.Record do
     |> Map.update!(:terminated, &(&1 || []))
     |> Map.update!(:allow, &(&1 || []))
     |> Map.update!(:deny, &(&1 || []))
+    |> Map.update!(:tools, &(&1 || []))
     |> Map.put(:summary, Timeline.tool_summary(row.tool, input, row.input_first))
     |> Map.take(Timeline.slim_keys())
     |> Map.new(fn
@@ -434,7 +454,9 @@ defmodule Apiary.Runs.Record do
   A page of the run's connections, one per host, port and path, denied destinations first
   and then the most recently seen, #{@connections_page} to a page. `decision:` keeps the
   destinations ever `"allowed"` or ever `"denied"`. The reason a row gives is the last
-  attempt's, as the projection keeps it. `%{rows, page, pages, total}`.
+  attempt's, as the projection keeps it: `tool` is the tool the last attempt was handed to
+  (nil for a connection that is no tool invocation) and `status` what answered it.
+  `%{rows, page, pages, total}`.
   """
   def connections(%Scope{} = scope, %Run{} = run, opts \\ []) do
     query =
@@ -479,6 +501,8 @@ defmodule Apiary.Runs.Record do
             credential: fragment("left(?, 400)", c.last_credential),
             mode: fragment("left(?, 40)", c.last_mode),
             outcome: fragment("left(?, 40)", c.last_outcome),
+            tool: fragment("left(?, 255)", c.last_tool),
+            status: c.last_status,
             first_seen_at: c.first_seen_at,
             last_seen_at: c.last_seen_at,
             last_sequence: c.last_sequence

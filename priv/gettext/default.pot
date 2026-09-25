@@ -406,6 +406,11 @@ msgstr ""
 msgid "%{day}: no runs, %{denied}, open that day's runs"
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{destination}, request %{id}"
+msgstr ""
+
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "%{email} is now a member."
@@ -760,6 +765,13 @@ msgstr[1] ""
 #, elixir-autogen, elixir-format
 msgid "%{number} allowed connection"
 msgid_plural "%{number} allowed connections"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} allowed request"
+msgid_plural "%{number} allowed requests"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -1469,7 +1481,7 @@ msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "A host whose requests the proxy reads, because the run holds a credential or path rules for it. Every other host is a blind tunnel."
+msgid "A host whose requests the proxy reads, because the run holds a credential, a tool or path rules for it. Every other host is a blind tunnel."
 msgstr ""
 
 #: lib/apiary_web/live/access_key_live/index.ex
@@ -1997,6 +2009,11 @@ msgstr ""
 #: lib/apiary_web/live/hive_live/no_hive.ex
 #, elixir-autogen, elixir-format
 msgid "An organisation is created when you register, and you join someone else's through an invitation. Ask an owner to invite %{email}; the email they send brings you straight to their hive."
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Answered %{status}"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -3216,6 +3233,26 @@ msgstr ""
 msgid "For"
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "For %{tool}"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "For %{tool} by rule %{rule}"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "For %{tool} by rule %{rule}, path %{path}"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "For %{tool}, path %{path}"
+msgstr ""
+
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Forever"
@@ -3317,6 +3354,31 @@ msgstr ""
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Group by"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Handed over"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Handed to %{tool}"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Handed to %{tool} by rule %{rule}"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Handed to %{tool} by rule %{rule}, path %{path}"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Handed to %{tool}, path %{path}"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/index.ex
@@ -5060,6 +5122,11 @@ msgstr ""
 msgid "Previous"
 msgstr ""
 
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Programs on the runner's machine that serve hosts. The proxy hands every request to such a host to its tool, and records each as a tool invocation."
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Prompt"
@@ -6240,6 +6307,11 @@ msgstr ""
 msgid "The hive's rules with no target's own: what a target without rules, or a run that names none, is served."
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "The host answered %{status}."
+msgstr ""
+
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "The host is listed with no path: every request to it is denied under enforce."
@@ -6575,6 +6647,11 @@ msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
+msgid "The tool answered %{status}."
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
 msgid "The wall denies it in either mode."
 msgstr ""
 
@@ -6890,6 +6967,21 @@ msgstr ""
 msgid "Today, %{time}"
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Tool"
+msgstr ""
+
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Tool invocations"
+msgstr ""
+
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Tools"
+msgstr ""
+
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Top bar"
@@ -7106,7 +7198,7 @@ msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
-msgid "What became of the connection. Connected: the dial succeeded. Dial failed: allowed, but the host did not answer. Refused: never dialled."
+msgid "What became of the connection. Connected: the dial succeeded, with the status the host answered when the proxy read the request. Answered: the tool the request was handed to answered with that status. Handed over: the tool took the request, and no answer is recorded. Dial failed: allowed, but the host or the tool did not answer. Refused: never dialled."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -8135,6 +8227,11 @@ msgstr ""
 #: lib/apiary/runs/record/timeline.ex
 #, elixir-autogen, elixir-format
 msgid "tool"
+msgstr ""
+
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
+msgid "tools %{tools}"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex

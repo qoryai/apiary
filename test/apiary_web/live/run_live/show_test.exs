@@ -768,6 +768,37 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert hosts.(html) =~ ~r/second\.example.*first\.example/s
     end
 
+    test "a tool invocation reads as a call to its tool, allowed or refused", %{
+      conn: conn,
+      scope: scope
+    } do
+      run = projected(scope, tool_record())
+      {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}/connections")
+
+      %{rows: rows} = Apiary.Runs.Record.connections(scope, run)
+      call = Enum.find(rows, &(&1.path == "/media/acme/shop/checkout.png"))
+      refused = Enum.find(rows, &(&1.path == "/media/acme/other/checkout.png"))
+      plain = Enum.find(rows, &(&1.host == "api.example.com"))
+
+      assert has_element?(lv, "#cx-#{call.id} .q-dest-tool .q-tool-name", "files")
+
+      assert has_element?(
+               lv,
+               "#cx-#{call.id} .q-dest-tool .q-rq",
+               "PUT /media/acme/shop/checkout.png"
+             )
+
+      assert has_element?(lv, "#cx-#{call.id} .q-dest-tool .q-on", "files.tools.internal:443")
+      assert has_element?(lv, "#cx-#{call.id} .q-why", "Handed to")
+      assert has_element?(lv, "#cx-#{call.id} .q-outcome", "Answered 201")
+
+      assert has_element?(lv, "#cx-#{refused.id}.q-denied .q-dest-tool .q-tool-name", "files")
+      assert has_element?(lv, "#cx-#{refused.id} .q-outcome", "Refused")
+
+      refute has_element?(lv, "#cx-#{plain.id} .q-dest-tool")
+      assert has_element?(lv, "#cx-#{plain.id} .q-outcome", "Connected")
+    end
+
     test "no egress: the sentence, never an empty table", %{conn: conn, scope: scope} do
       run = projected(scope, [{1, "run.started", started_data()}])
       {:ok, _lv, html} = live(conn, ~p"/hive/runs/#{run.run_id}/connections")
@@ -1269,6 +1300,54 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert hook =~ "screenReaderMode: false"
       refute hook =~ "screenReaderMode = "
       assert hook =~ "linkHandler"
+    end
+  end
+
+  describe "a run with tools" do
+    test "the timeline groups a tool's allowed calls under its name and lists the tools", %{
+      conn: conn,
+      scope: scope
+    } do
+      run = projected(scope, tool_record())
+      {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}")
+
+      assert has_element?(lv, "#e-2-tools", "files")
+      assert has_element?(lv, "#e-2-tools", "files.tools.internal")
+
+      assert has_element?(lv, "#e-4-group .q-cx-sum .q-tool-name", "files")
+      assert has_element?(lv, "#e-4-group .q-cx-sum", "2 allowed requests")
+      refute render(element(lv, "#e-4-group .q-cx-sum")) =~ "calls"
+      assert has_element?(lv, "#e-4-cx-4 .q-outcome", "Answered 200")
+      assert has_element?(lv, "#e-4-cx-5 .q-outcome", "Answered 201")
+
+      assert has_element?(
+               lv,
+               ~s(#e-4-cx-5 .q-dest[data-request-id="0a1b2c3d4e5f60718293a4b5c6d7e8f9"])
+             )
+
+      # The refused call is an item of its own, never folded into the group.
+      assert has_element?(lv, "#e-6-cx.q-cx-denied .q-tool-name", "files")
+      assert has_element?(lv, "#e-3-cx .q-dest", "api.example.com")
+      refute has_element?(lv, "#e-3-cx .q-dest-tool")
+    end
+
+    test "the policy in force names the tools and the hosts they serve", %{
+      conn: conn,
+      scope: scope
+    } do
+      run = projected(scope, tool_record())
+      {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}/details")
+
+      assert has_element?(lv, "#policy-tools", "files (files.tools.internal)")
+
+      run =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "run.policy_applied", tool_policy_data(%{"tools" => []})}
+        ])
+
+      {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}/details")
+      assert has_element?(lv, "#policy-tools", "none")
     end
   end
 end

@@ -89,3 +89,7 @@ release `bin/apiary eval "Apiary.Release.rebuild()"`, projects those runs again 
 events: only the runs that need it, a hundred at a time, safely beside the running server,
 and it can be stopped and run again. `Apiary.Release.rebuild/1` with `all: true` rebuilds
 every run.
+
+The changelog says which release needs it and what it fills, as for the tool and the
+answer of a tool invocation (`connections.last_tool` and `last_status`), which a run
+received before them lacks until it is projected again.

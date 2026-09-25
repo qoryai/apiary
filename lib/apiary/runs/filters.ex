@@ -9,6 +9,7 @@ defmodule Apiary.Runs.Filters do
   the values are compared as strings by `Apiary.Runs`.
 
   The defaults (group by target, the last seven days, page 1) are left out of the URL.
+  The hive's connections take `tools=1` for tool invocations only.
   On the runs list `since=all` is the way to say "no time range", which removing the range
   chip writes. The hive's connections are an aggregate over every connection in range, so
   their range is bounded: `since=90d` is the widest, and dates cover at most
@@ -64,6 +65,7 @@ defmodule Apiary.Runs.Filters do
             to: nil,
             denials: false,
             decision: nil,
+            tools: false,
             page: 1,
             dropped: []
 
@@ -80,6 +82,7 @@ defmodule Apiary.Runs.Filters do
           to: nil | Date.t(),
           denials: boolean(),
           decision: nil | String.t(),
+          tools: boolean(),
           page: pos_integer(),
           dropped: [String.t()]
         }
@@ -175,7 +178,14 @@ defmodule Apiary.Runs.Filters do
 
       :connections ->
         {decision, d7} = read(params, "decision", &one_of(&1, @decisions))
-        %{filters | decision: decision, dropped: filters.dropped ++ d7}
+        {tools, d8} = read(params, "tools", &if(&1 == "1", do: true))
+
+        %{
+          filters
+          | decision: decision,
+            tools: tools == true,
+            dropped: filters.dropped ++ d7 ++ d8
+        }
     end
   end
 
@@ -210,6 +220,7 @@ defmodule Apiary.Runs.Filters do
       {"to", f.to && Date.to_iso8601(f.to)},
       {"denials", f.denials && "1"},
       {"decision", f.decision},
+      {"tools", f.tools && "1"},
       {"page", f.page > 1 && Integer.to_string(f.page)}
     ]
     |> Enum.filter(fn {_key, value} -> is_binary(value) end)
@@ -219,7 +230,7 @@ defmodule Apiary.Runs.Filters do
   @doc "Whether anything narrows the list: the range counts when it is not the default."
   def any?(%__MODULE__{} = f) do
     f.states != [] or f.target != nil or f.task != nil or f.runtime != nil or f.host != nil or
-      f.since != @default_since or f.denials or f.decision != nil
+      f.since != @default_since or f.denials or f.decision != nil or f.tools
   end
 
   @doc "The filters with no filter set: the grouping stays, the page and the rest go."

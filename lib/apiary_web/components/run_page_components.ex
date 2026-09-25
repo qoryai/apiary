@@ -19,7 +19,7 @@ defmodule ApiaryWeb.RunPageComponents do
     only: [badge: 1, icon: 1, notice: 1, empty_state: 1, listening: 1, term: 1]
 
   import ApiaryWeb.RunComponents,
-    only: [connection_row: 1, duration: 1, offset: 1, delimited: 1, middle: 2]
+    only: [connection_row: 1, tool_mark: 1, duration: 1, offset: 1, delimited: 1, middle: 2]
 
   alias ApiaryWeb.RunComponents
 
@@ -643,6 +643,22 @@ defmodule ApiaryWeb.RunPageComponents do
         @item.denied_hosts > 0
       }> · {hosts_denied(@item.denied_hosts)}</span>
       · {policy_source(@item.source)}
+      <span :if={@item.tools != []} id={"#{@id}-tools"}>
+        ·
+        <.rich text={rich_gettext("tools %{tools}", tools: {:part, :tools})}>
+          <:part name={:tools}>
+            <span :for={{tool, i} <- Enum.with_index(@item.tools)}>
+              {if i > 0, do: ", "}<.icon
+                name="hero-wrench-screwdriver-micro"
+                class="q-tool-icon size-3.5"
+              /><span class="font-mono text-[12.5px]">{tool.name}</span><span
+                :if={tool.hosts != []}
+                class="text-faint"
+              > ({Enum.join(tool.hosts, ", ")})</span>
+            </span>
+          </:part>
+        </.rich>
+      </span>
       <span :if={@item.terminated != []}>
         ·
         <.rich text={rich_gettext("reads requests to %{hosts}", hosts: {:part, :hosts})}>
@@ -832,14 +848,29 @@ defmodule ApiaryWeb.RunPageComponents do
     >
       <summary class="q-cx-sum">
         <.icon name="hero-chevron-right-micro" class="q-chev size-3" />
-        <span class="q-dest">{@item.host}<span class="q-port">:{@item.port}</span></span>
+        <span :if={@item.tool} class="q-dest q-dest-tool">
+          <.tool_mark name={@item.tool} />
+          <span class="q-on">{@item.host}:{@item.port}</span>
+        </span>
+        <span :if={!@item.tool} class="q-dest">
+          {@item.host}<span class="q-port">:{@item.port}</span>
+        </span>
         <span class="text-muted">
-          · {ngettext(
-            "%{number} allowed connection",
-            "%{number} allowed connections",
-            @item.connections_count,
-            number: delimited(@item.connections_count)
-          )}
+          · {if @item.tool,
+            do:
+              ngettext(
+                "%{number} allowed request",
+                "%{number} allowed requests",
+                @item.connections_count,
+                number: delimited(@item.connections_count)
+              ),
+            else:
+              ngettext(
+                "%{number} allowed connection",
+                "%{number} allowed connections",
+                @item.connections_count,
+                number: delimited(@item.connections_count)
+              )}
           <span :if={@item.open_calls > 1} class="text-faint">· {calls_open(@item.open_calls)}</span>
         </span>
         <span class="q-cx-at ml-auto">

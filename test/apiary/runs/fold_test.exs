@@ -415,6 +415,8 @@ defmodule Apiary.Runs.FoldTest do
                last_path_rule: nil,
                last_credential: nil,
                last_request_method: nil,
+               last_tool: nil,
+               last_status: nil,
                last_sequence: 7,
                first_seen_at: at(6),
                last_seen_at: at(7)
@@ -464,6 +466,95 @@ defmodule Apiary.Runs.FoldTest do
       assert byte_size(host) == 255
       assert byte_size(cut) <= 1024
       assert String.valid?(cut)
+    end
+
+    test "a tool invocation is a connection that names its tool and what the tool answered" do
+      invocation = %{
+        "host" => "files.tools.internal",
+        "method" => "HTTPS",
+        "request_method" => "PUT",
+        "path" => "/media/acme/shop/checkout.png",
+        "path_rule" => "/media/acme/shop/*",
+        "tool" => "files",
+        "request_id" => "8d0c3f6a1b2e4d5f9a7c6b5e4d3c2b1a",
+        "status" => 200,
+        "rule" => "files.tools.internal"
+      }
+
+      %{connections: connections} =
+        Fold.fold(@run, [
+          egress(6, invocation),
+          egress(7, %{"host" => "api.example.com", "method" => "HTTPS", "status" => 503})
+        ])
+
+      assert %{
+               attempts: 1,
+               allowed: 1,
+               method: "HTTPS",
+               last_request_method: "PUT",
+               last_path_rule: "/media/acme/shop/*",
+               last_tool: "files",
+               last_status: 200,
+               last_outcome: "connected"
+             } = connections[{"files.tools.internal", 443, "/media/acme/shop/checkout.png"}]
+
+      # A plain host that answered: a status and no tool.
+      assert %{last_tool: nil, last_status: 503} = connections[{"api.example.com", 443, ""}]
+    end
+
+    test "the last attempt's tool and status win; a refused one clears the status" do
+      base = %{"host" => "files.tools.internal", "method" => "HTTPS", "path" => "/a"}
+
+      events = [
+        egress(6, Map.merge(base, %{"tool" => "files", "status" => 201})),
+        egress(
+          7,
+          Map.merge(base, %{
+            "tool" => "files",
+            "decision" => "denied",
+            "outcome" => "refused",
+            "path_rule" => ""
+          })
+        )
+      ]
+
+      for order <- [events, Enum.reverse(events)] do
+        %{connections: %{{"files.tools.internal", 443, "/a"} => connection}} =
+          Fold.fold(@run, order)
+
+        assert %{last_sequence: 7, last_tool: "files", last_status: nil, denied: 1, allowed: 1} =
+                 connection
+      end
+    end
+
+    test "a later attempt that names no tool clears the tool, within one pass" do
+      base = %{"host" => "files.tools.internal", "method" => "HTTPS", "path" => "/a"}
+
+      events = [
+        egress(6, Map.merge(base, %{"tool" => "files", "status" => 200})),
+        egress(7, base)
+      ]
+
+      for order <- [events, Enum.reverse(events)] do
+        %{connections: %{{"files.tools.internal", 443, "/a"} => connection}} =
+          Fold.fold(@run, order)
+
+        assert %{last_sequence: 7, last_tool: nil, last_status: nil, attempts: 2} = connection
+      end
+    end
+
+    test "a tool or a status of the wrong shape reads as absent" do
+      for {tool, status} <- [{"", 99}, {7, 600}, {nil, "200"}, {["files"], 200.0}] do
+        %{connections: connections} =
+          Fold.fold(@run, [egress(6, %{"tool" => tool, "status" => status})])
+
+        assert %{last_tool: nil, last_status: nil} = connections[{"api.example.com", 443, ""}]
+      end
+
+      %{connections: connections} =
+        Fold.fold(@run, [egress(6, %{"tool" => String.duplicate("t", 300)})])
+
+      assert byte_size(connections[{"api.example.com", 443, ""}].last_tool) == 255
     end
 
     test "an event without a host or a port is not a connection" do

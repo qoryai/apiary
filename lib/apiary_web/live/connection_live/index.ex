@@ -5,8 +5,10 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   the most recent attempt, and behind each row's chevron the runs that reached it. "Per
   target" is this page with `repo` set, which the runs list links to.
 
-  Every filter is a query parameter (`decision`, `repo`, `host`, `since`, `from`, `to`,
-  `page`), read through `Apiary.Runs.Filters`. A destination's runs are read only when its
+  Every filter is a query parameter (`decision`, `repo`, `host`, `tools`, `since`, `from`,
+  `to`, `page`), read through `Apiary.Runs.Filters`. A tool invocation is a destination like
+  any other and reads as a call to its tool (`ApiaryWeb.RunComponents.connection_row/1`);
+  `tools=1` keeps only those. A destination's runs are read only when its
   row opens, ten at a time. While batches land the table does not move under the reader:
   the summary gains "New activity", which asks again and keeps the open rows open.
 
@@ -119,6 +121,14 @@ defmodule ApiaryWeb.ConnectionLive.Index do
             value={@filters.host}
             options={with_chosen(facet_options(@facets, :host), @filters.host, @filters.host)}
             remove={path(Filters.put(@filters, host: nil))}
+          />
+          <.filter_toggle
+            id="connections-tools"
+            name="tools"
+            label={gettext("Tool invocations")}
+            icon="hero-wrench-screwdriver-micro"
+            pressed={@filters.tools}
+            patch={path(Filters.put(@filters, tools: !@filters.tools))}
           />
           <.filter
             name="since"
@@ -938,7 +948,8 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   defp path(%Filters{} = filters), do: ~p"/hive/connections?#{Filters.to_params(filters)}"
   defp run_path(run), do: ~p"/hive/runs/#{run.run_id}/connections"
 
-  defp narrowed?(%Filters{} = f), do: f.decision != nil or f.target != nil or f.host != nil
+  defp narrowed?(%Filters{} = f),
+    do: f.decision != nil or f.target != nil or f.host != nil or f.tools
 
   defp empty_title(%Filters{} = filters) do
     if narrowed?(filters),

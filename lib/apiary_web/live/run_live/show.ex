@@ -719,7 +719,13 @@ defmodule ApiaryWeb.RunLive.Show do
             {strings(@policy.terminated, @policy.terminated_count) || gettext("none")}
           </dd>
           <dt>{gettext("Credentials")}</dt>
-          <dd class="font-mono">{credential_names(@policy.credentials) || gettext("none")}</dd>
+          <dd class="font-mono">{named_hosts(@policy.credentials) || gettext("none")}</dd>
+          <dt>
+            <.term word={gettext("Tools")} standard={@tips.tools} class="q-tip-wide tooltip-right" />
+          </dt>
+          <dd id="policy-tools" class="font-mono">
+            {named_hosts(@policy.tools) || gettext("none")}
+          </dd>
           <dt>{pgettext("plain", "Applied at")}</dt>
           <dd class="font-mono">#{pad(@policy.sequence)}</dd>
         </dl>
@@ -911,7 +917,11 @@ defmodule ApiaryWeb.RunLive.Show do
         ),
       terminated:
         gettext(
-          "A host whose requests the proxy reads, because the run holds a credential or path rules for it. Every other host is a blind tunnel."
+          "A host whose requests the proxy reads, because the run holds a credential, a tool or path rules for it. Every other host is a blind tunnel."
+        ),
+      tools:
+        gettext(
+          "Programs on the runner's machine that serve hosts. The proxy hands every request to such a host to its tool, and records each as a tool invocation."
         ),
       lane:
         gettext(
@@ -2217,15 +2227,16 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp strings(_other, _count), do: nil
 
-  # Credentials by name, where each goes. Never a value: the event carries none.
-  defp credential_names([_ | _] = credentials) do
-    Enum.map_join(credentials, ", ", fn credential ->
-      case credential["hosts"] do
-        [_ | _] = hosts -> "#{credential["name"]} (#{Enum.join(hosts, ", ")})"
-        _ -> credential["name"]
+  # Credentials or tools by name, with the hosts each is for. Never a credential's value:
+  # the event carries none.
+  defp named_hosts([_ | _] = named) do
+    Enum.map_join(named, ", ", fn item ->
+      case item["hosts"] do
+        [_ | _] = hosts -> "#{item["name"]} (#{Enum.join(hosts, ", ")})"
+        _ -> item["name"]
       end
     end)
   end
 
-  defp credential_names(_other), do: nil
+  defp named_hosts(_other), do: nil
 end

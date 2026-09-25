@@ -426,12 +426,161 @@ defmodule ApiaryWeb.RunComponentsTest do
       assert html =~ "width:89%"
     end
 
+    test "a tool invocation reads as a call to the tool: its name, the request, then the host" do
+      invocation = %{
+        host: "files.tools.internal",
+        method: "HTTPS",
+        last_request_method: "PUT",
+        path: "/media/acme/shop/checkout.png",
+        last_decision: "allowed",
+        last_rule: "files.tools.internal",
+        last_path_rule: "/media/acme/shop/*",
+        last_tool: "files",
+        last_status: 200,
+        last_outcome: "connected",
+        allowed: 3,
+        denied: 0,
+        runs: 2
+      }
+
+      for variant <- ~w(table hive) do
+        html = row(invocation, variant)
+        [dest] = html |> LazyHTML.from_fragment() |> LazyHTML.query(".q-dest") |> Enum.to_list()
+
+        assert LazyHTML.query(dest, ".hero-wrench-screwdriver-micro") |> Enum.count() == 1
+
+        assert text(LazyHTML.to_html(dest)) =~
+                 ~r/^Tool files PUT \/media\/acme\/shop\/checkout.png files.tools.internal:443$/
+
+        assert text(html) =~
+                 "Handed to files by rule files.tools.internal, path /media/acme/shop/*"
+
+        assert text(html) =~ "Answered 200"
+        refute text(html) =~ "Connected"
+        assert html =~ "q-mark-ok"
+      end
+
+      # A tool that answered with an error is told apart; one with no path rule says none.
+      html = row(%{invocation | last_status: 502, last_path_rule: nil})
+      assert text(html) =~ "Handed to files by rule files.tools.internal Answered 502"
+      assert html =~ "q-outcome-error"
+
+      # No answer recorded: handed over, not connected.
+      assert text(row(%{invocation | last_status: nil})) =~ "Handed over"
+
+      # Under observe with no rule, the mode lets it through and the tool still has it,
+      # with the path rule when one matched, and without one when none did.
+      observe = Map.merge(invocation, %{last_rule: "", last_mode: "observe"})
+
+      assert text(row(observe)) =~
+               "No rule matches. Observe mode lets it through. Handed to files, path /media/acme/shop/*"
+
+      assert text(row(%{observe | last_path_rule: ""})) =~
+               ~r/No rule matches\. Observe mode lets it through\. Handed to files Answered 200/
+
+      # The tool that is gone is a failed dial: the request was for the tool, never handed.
+      html = row(%{invocation | last_outcome: "dial_failed", last_status: nil})
+
+      assert text(html) =~
+               "For files by rule files.tools.internal, path /media/acme/shop/* Dial failed"
+
+      refute text(html) =~ "Handed"
+
+      # Closed by a reload: for the tool, and closed.
+      html = row(%{invocation | last_outcome: "refused", last_status: nil, last_path_rule: ""})
+
+      assert text(html) =~
+               "For files by rule files.tools.internal Closed when a new policy denied the host."
+
+      # No rule at all, no path rule, no answer: still for the tool.
+      assert text(
+               row(
+                 Map.merge(invocation, %{
+                   last_rule: "",
+                   last_path_rule: "",
+                   last_mode: nil,
+                   last_outcome: "dial_failed",
+                   last_status: nil
+                 })
+               )
+             ) =~ "No rule matches. It was let through. For files Dial failed"
+    end
+
+    test "a refused tool invocation reads as a denial of the call" do
+      html =
+        row(%{
+          host: "files.tools.internal",
+          method: "HTTPS",
+          last_request_method: "GET",
+          path: "/media/acme/other/checkout.png",
+          last_decision: "denied",
+          last_rule: "files.tools.internal",
+          last_path_rule: "",
+          last_tool: "files",
+          last_outcome: "refused"
+        })
+
+      assert text(html) =~ "Tool files GET /media/acme/other/checkout.png"
+      assert text(html) =~ "Host allowed, no path rule matches. Enforce mode denies it."
+      refute text(html) =~ "Handed to"
+      assert text(html) =~ "Refused"
+    end
+
+    test "a plain host's answer shows beside Connected, and one request names its id inline" do
+      event = %{
+        sequence: 5,
+        host: "api.example.com",
+        port: 443,
+        method: "HTTPS",
+        request_method: "POST",
+        path: "/v1/messages",
+        decision: "allowed",
+        rule: "api.example.com",
+        path_rule: "/v1/*",
+        mode: "enforce",
+        outcome: "connected",
+        status: 429,
+        request_id: "1f2e3d4c5b6a79880a9b8c7d6e5f4a3b",
+        at: ~U[2026-09-20 14:02:20.300Z]
+      }
+
+      assigns = %{event: event}
+
+      html =
+        rendered_to_string(~H"""
+        <RunComponents.connection_row id="e-5" connection={@event} variant="inline" />
+        """)
+
+      assert [outcome] =
+               html |> LazyHTML.from_fragment() |> LazyHTML.query(".q-outcome") |> Enum.to_list()
+
+      assert outcome |> LazyHTML.query(".q-status") |> LazyHTML.text() == "429"
+      assert text(LazyHTML.to_html(outcome)) =~ ~r/^Connected\s?429$/
+
+      assert html =~ "q-outcome-error"
+      assert html =~ ~s(data-request-id="1f2e3d4c5b6a79880a9b8c7d6e5f4a3b")
+      assert html =~ "request 1f2e3d4c5b6a79880a9b8c7d6e5f4a3b"
+
+      assigns = %{event: Map.merge(event, %{tool: "files", host: "files.tools.internal"})}
+
+      html =
+        rendered_to_string(~H"""
+        <RunComponents.connection_row id="e-6" connection={@event} variant="inline" />
+        """)
+
+      assert text(html) =~ "Handed to files by rule api.example.com, path /v1/*"
+      assert text(html) =~ "Answered 429"
+    end
+
     test "event data is escaped" do
       html =
         row(%{last_decision: "allowed", last_rule: "<script>alert(1)</script>", host: "<b>x</b>"})
 
       refute html =~ "<script>"
       refute html =~ "<b>x</b>"
+
+      html = row(%{last_decision: "allowed", last_rule: "r", last_tool: "<i>files</i>"})
+      refute html =~ "<i>files</i>"
     end
   end
 

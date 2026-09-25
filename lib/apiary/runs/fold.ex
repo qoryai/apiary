@@ -23,6 +23,10 @@ defmodule Apiary.Runs.Fold do
   are the size the record last said, `terminal` of the start on a pseudo-terminal, then
   each resize. A start on pipes reports no size and leaves both null.
 
+  An egress event to a host a tool serves is a tool invocation (contract v1 revision 2): it
+  is folded into the destination's connection like any other, and the connection's
+  `last_tool` and `last_status` say the tool it was last handed to and what answered.
+
   Times: `started_at`, `exited_at` and a connection's first and last seen are the runner's
   own, the record. `last_heartbeat_at` is the moment this server received the heartbeat
   with the highest sequence, because the lost-run check compares it with the server's
@@ -69,6 +73,7 @@ defmodule Apiary.Runs.Fold do
   @max_args 1024
   @max_labels 64
   @max_cells 65_535
+  @statuses 100..599
 
   @terminal ~w(succeeded failed timed_out)
   @streams ~w(terminal stdout stderr)
@@ -199,6 +204,8 @@ defmodule Apiary.Runs.Fold do
         last_path_rule: string(data, "path_rule"),
         last_credential: string(data, "credential"),
         last_request_method: string(data, "request_method", 64),
+        last_tool: tool(data),
+        last_status: integer(data, "status", @statuses),
         last_sequence: sequence
       }
 
@@ -267,6 +274,15 @@ defmodule Apiary.Runs.Fold do
   # Session events and types this revision does not know: kept in `events`, marked
   # projected by the projector, nothing folded.
   defp event(acc, _event), do: acc
+
+  # The tool a request was handed to: a name, never empty. A tool invocation is an egress
+  # event like any other; only this key tells it apart.
+  defp tool(data) do
+    case string(data, "tool", 255) do
+      "" -> nil
+      tool -> tool
+    end
+  end
 
   defp add_cost(nil, cost), do: cost
   defp add_cost(%Decimal{} = sum, cost), do: Decimal.add(sum, cost)

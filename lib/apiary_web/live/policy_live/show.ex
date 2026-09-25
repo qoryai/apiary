@@ -1383,7 +1383,13 @@ defmodule ApiaryWeb.PolicyLive.Show do
             <.rule_mark action={
               if !MapSet.member?(@would.open, would_key(destination)), do: "allow", else: "pending"
             } />
-            <span class="q-dest">
+            <span :if={destination[:tool]} class="q-dest q-dest-tool">
+              <.tool_mark name={destination.tool} /><span
+                :if={destination.path}
+                class="text-muted"
+              >{destination.path}</span><span class="text-faint">{destination.host}</span>
+            </span>
+            <span :if={!destination[:tool]} class="q-dest">
               {destination.host}<span :if={destination.path} class="text-muted">{destination.path}</span>
             </span>
             <small>
