@@ -22,8 +22,8 @@ defmodule Apiary.Runs do
   import Ecto.Query, warn: false
 
   alias Apiary.AccessKeys.AccessKey
+  alias Apiary.Access
   alias Apiary.Accounts.Scope
-  alias Apiary.Organisations
   alias Apiary.Organisations.{Workspace, Organisation}
   alias Apiary.Repo
   alias Apiary.Runs.{Connection, Filters, Target, Run}
@@ -1113,17 +1113,17 @@ defmodule Apiary.Runs do
 
   @doc """
   Closes the run: the workspace takes no more events for it and the receiver answers
-  `410`. Any member of the workspace, read again from the database. Only a run that has
+  `410` (`run.close`, which every member may). Only a run that has
   not ended is closed: one that is `pending`, `running` or `lost`. A run that succeeded,
   failed or timed out keeps the end its events gave it. A close is final: no event reopens
   the run, and closing a closed run changes nothing.
 
-  `{:error, :unauthorized}` when the caller's membership is gone, `{:error, :not_found}`
+  `{:error, :forbidden}` when the caller's membership is gone, `{:error, :not_found}`
   when the run is not one of the scope's workspace, `{:error, :not_closable}` when it has
   ended.
   """
-  def close_run(%Scope{user: user} = scope, %Run{id: id}) do
-    with {:ok, _membership} <- Organisations.fetch_membership(scope) do
+  def close_run(%Scope{user: user, workspace: workspace} = scope, %Run{id: id}) do
+    with :ok <- Access.authorize(scope, :"run.close", workspace) do
       now = DateTime.utc_now()
 
       # One statement: the state is part of the WHERE, so an exit that lands between a

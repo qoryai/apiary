@@ -21,8 +21,9 @@ defmodule ApiaryWeb.RunLive.Index do
   """
   use ApiaryWeb, :live_view
   use ApiaryWeb.Features, :observability
+  on_mount {ApiaryWeb.Access, :"run.read"}
 
-  alias Apiary.Features
+  alias Apiary.Access
 
   alias Apiary.AccessKeys
   alias Apiary.Runs
@@ -659,7 +660,7 @@ defmodule ApiaryWeb.RunLive.Index do
        dropped: [],
        narrow: %{},
        has_keys: AccessKeys.list_access_keys(scope) != [],
-       security: Features.on?(scope, :security)
+       security: Access.can?(scope, :"security_policy.read", scope.workspace)
      )}
   end
 

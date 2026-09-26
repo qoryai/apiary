@@ -185,10 +185,10 @@ defmodule Apiary.OrganisationsTest do
       assert {:ok, %{name: "Platform"}} =
                Organisations.update_workspace(owner_scope, %{name: "Platform"})
 
-      assert {:error, :unauthorized} =
+      assert {:error, :forbidden} =
                Organisations.update_organisation(member_scope, %{name: "X"})
 
-      assert {:error, :unauthorized} = Organisations.update_workspace(member_scope, %{name: "X"})
+      assert {:error, :forbidden} = Organisations.update_workspace(member_scope, %{name: "X"})
 
       assert {:error, %Ecto.Changeset{}} =
                Organisations.update_organisation(owner_scope, %{name: ""})
@@ -221,7 +221,7 @@ defmodule Apiary.OrganisationsTest do
       %{scope: scope, membership: owner_membership} = sign_up_fixture()
       %{scope: member_scope, membership: membership} = member_fixture(scope, :member)
 
-      assert {:error, :unauthorized} =
+      assert {:error, :forbidden} =
                Organisations.set_member_level(member_scope, owner_membership.id, :member)
 
       assert {:error, :last_owner} =
@@ -245,24 +245,24 @@ defmodule Apiary.OrganisationsTest do
       %{membership: third} = member_fixture(scope, :member)
       %{invitation: invitation} = invitation_fixture(scope)
 
-      assert Organisations.owner?(stale)
+      assert Apiary.Access.can?(stale, :"member.change_level", stale.workspace)
       assert {:ok, _} = Organisations.set_member_level(scope, stale_membership.id, :member)
       # The struct still says owner; the database does not.
-      assert Organisations.owner?(stale)
+      assert Apiary.Access.can?(stale, :"member.change_level", stale.workspace)
 
-      assert {:error, :unauthorized} = Organisations.set_member_level(stale, third.id, :owner)
-      assert {:error, :unauthorized} = Organisations.remove_member(stale, third.id)
+      assert {:error, :forbidden} = Organisations.set_member_level(stale, third.id, :owner)
+      assert {:error, :forbidden} = Organisations.remove_member(stale, third.id)
 
-      assert {:error, :unauthorized} =
+      assert {:error, :forbidden} =
                Organisations.invite_member(
                  stale,
                  %{"email" => "late@example.com", "level" => "owner"},
                  &"http://localhost/invitations/#{&1}"
                )
 
-      assert {:error, :unauthorized} = Organisations.revoke_invitation(stale, invitation.id)
-      assert {:error, :unauthorized} = Organisations.update_organisation(stale, %{name: "Mine"})
-      assert {:error, :unauthorized} = Organisations.update_workspace(stale, %{name: "Mine"})
+      assert {:error, :forbidden} = Organisations.revoke_invitation(stale, invitation.id)
+      assert {:error, :forbidden} = Organisations.update_organisation(stale, %{name: "Mine"})
+      assert {:error, :forbidden} = Organisations.update_workspace(stale, %{name: "Mine"})
 
       assert Repo.get!(Membership, third.id).level == :member
       assert Repo.get!(Organisations.Organisation, scope.organisation.id).name != "Mine"
@@ -275,12 +275,12 @@ defmodule Apiary.OrganisationsTest do
 
       assert {:ok, _} = Organisations.remove_member(scope, stale_membership.id)
 
-      assert {:error, :unauthorized} = Organisations.set_member_level(stale, third.id, :owner)
-      assert {:error, :unauthorized} = Organisations.remove_member(stale, third.id)
-      assert {:error, :unauthorized} = Organisations.update_organisation(stale, %{name: "Mine"})
-      assert {:error, :unauthorized} = Organisations.update_workspace(stale, %{name: "Mine"})
+      assert {:error, :forbidden} = Organisations.set_member_level(stale, third.id, :owner)
+      assert {:error, :forbidden} = Organisations.remove_member(stale, third.id)
+      assert {:error, :forbidden} = Organisations.update_organisation(stale, %{name: "Mine"})
+      assert {:error, :forbidden} = Organisations.update_workspace(stale, %{name: "Mine"})
 
-      assert {:error, :unauthorized} =
+      assert {:error, :forbidden} =
                Organisations.invite_member(
                  stale,
                  %{"email" => "late@example.com", "level" => "owner"},
@@ -331,7 +331,7 @@ defmodule Apiary.OrganisationsTest do
       %{scope: member_scope, membership: membership} = member_fixture(scope, :member)
       %{scope: other_scope} = sign_up_fixture()
 
-      assert {:error, :unauthorized} = Organisations.remove_member(member_scope, membership.id)
+      assert {:error, :forbidden} = Organisations.remove_member(member_scope, membership.id)
       assert {:error, :last_owner} = Organisations.remove_member(scope, owner_membership.id)
       assert {:error, :not_found} = Organisations.remove_member(other_scope, membership.id)
       assert {:ok, %Membership{}} = Organisations.remove_member(scope, membership.id)
@@ -375,7 +375,7 @@ defmodule Apiary.OrganisationsTest do
 
       %{scope: member_scope} = member_fixture(scope, :member)
 
-      assert {:error, :unauthorized} =
+      assert {:error, :forbidden} =
                Organisations.invite_member(member_scope, %{"email" => "x@example.com"}, & &1)
 
       assert Organisations.list_invitations(member_scope) |> length() == 1
@@ -543,7 +543,7 @@ defmodule Apiary.OrganisationsTest do
       %{scope: member_scope} = member_fixture(scope, :member)
       %{invitation: invitation, token: token} = invitation_fixture(scope)
 
-      assert {:error, :unauthorized} =
+      assert {:error, :forbidden} =
                Organisations.revoke_invitation(member_scope, invitation.id)
 
       assert {:error, :not_found} = Organisations.revoke_invitation(scope, Ecto.UUID.generate())

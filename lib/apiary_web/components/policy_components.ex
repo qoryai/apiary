@@ -230,7 +230,11 @@ defmodule ApiaryWeb.PolicyComponents do
   """
   attr :id, :string, default: "policy-mode"
   attr :mode, :string, required: true, values: ~w(observe enforce), doc: "the workspace's default"
-  attr :can_edit, :boolean, default: false, doc: "owners only"
+
+  attr :can_edit, :boolean,
+    default: false,
+    doc: "whether the reader may set the mode (`security_policy.set_mode`)"
+
   attr :served, :boolean, default: true, doc: "false on a new workspace: nothing is served yet"
   attr :following, :integer, default: 0, doc: "targets that follow the default"
   attr :own, :list, default: [], doc: "the modes of the targets that set their own"
@@ -476,7 +480,11 @@ defmodule ApiaryWeb.PolicyComponents do
   attr :setting, :string, required: true, values: ~w(follow observe enforce)
   attr :effective, :string, required: true, values: ~w(observe enforce)
   attr :workspace_default, :string, required: true, values: ~w(observe enforce)
-  attr :can_edit, :boolean, default: false, doc: "owners only"
+
+  attr :can_edit, :boolean,
+    default: false,
+    doc: "whether the reader may set the mode (`security_policy.set_mode`)"
+
   attr :locked_denies, :list, default: [], doc: "the hosts of locked workspace denies in the list"
 
   def target_mode(assigns) do

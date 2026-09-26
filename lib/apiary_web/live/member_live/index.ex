@@ -7,7 +7,8 @@ defmodule ApiaryWeb.MemberLive.Index do
   """
   use ApiaryWeb, :live_view
 
-  alias Apiary.Organisations
+  alias Apiary.{Access, Organisations}
+  alias ApiaryWeb.UserAuth
 
   @impl true
   def render(assigns) do
@@ -26,7 +27,7 @@ defmodule ApiaryWeb.MemberLive.Index do
             "The people in this workspace. Owners manage members, keys and settings; members manage keys and see every run."
           )}
         </:subtitle>
-        <:actions :if={@owner?}>
+        <:actions :if={Access.can?(@current_scope, :"member.invite", @current_scope.workspace)}>
           <.button variant="primary" patch={~p"/#{@current_scope.organisation}/members/invite"}>
             <.icon name="hero-plus-micro" class="size-4" /> {gettext("Invite member")}
           </.button>
@@ -45,7 +46,7 @@ defmodule ApiaryWeb.MemberLive.Index do
           </div>
         </:col>
         <:col :let={m} label={gettext("Level")}>
-          <%= if @owner? do %>
+          <%= if Access.can?(@current_scope, :"member.change_level", m) do %>
             <form phx-change="set_level" id={"level-form-#{m.id}"}>
               <input type="hidden" name="membership_id" value={m.id} />
               <label for={"level-#{m.id}"} class="sr-only">
@@ -62,7 +63,10 @@ defmodule ApiaryWeb.MemberLive.Index do
         <:col :let={m} label={gettext("Joined")}>
           <span class="tabular-nums text-muted">{Format.date(m.inserted_at)}</span>
         </:col>
-        <:action :let={m} :if={@owner?}>
+        <:action
+          :let={m}
+          :if={Access.can?(@current_scope, :"member.remove", @current_scope.workspace)}
+        >
           <.button
             variant="danger-ghost"
             size="xs"
@@ -74,7 +78,13 @@ defmodule ApiaryWeb.MemberLive.Index do
         </:action>
       </.table>
 
-      <section :if={@owner? || @invitations != []} class="mt-2 grid gap-3">
+      <section
+        :if={
+          Access.can?(@current_scope, :"member.invite", @current_scope.workspace) ||
+            @invitations != []
+        }
+        class="mt-2 grid gap-3"
+      >
         <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
           <h2 class="text-[15px]/[22px] font-semibold tracking-[-0.006em]">
             {gettext("Pending invitations")}
@@ -104,7 +114,10 @@ defmodule ApiaryWeb.MemberLive.Index do
           <:col :let={i} label={gettext("Expires")}>
             <span class="tabular-nums text-muted">{Format.date(i.expires_at)}</span>
           </:col>
-          <:action :let={i} :if={@owner?}>
+          <:action
+            :let={i}
+            :if={Access.can?(@current_scope, :"invitation.revoke", @current_scope.organisation)}
+          >
             <.button
               variant="danger-ghost"
               size="xs"
@@ -219,7 +232,6 @@ defmodule ApiaryWeb.MemberLive.Index do
      |> assign(
        page_title: gettext("Members"),
        levels: [{gettext("Owner"), "owner"}, {gettext("Member"), "member"}],
-       owner?: Organisations.owner?(socket.assigns.current_scope),
        member: nil
      )
      |> load()}
@@ -232,16 +244,16 @@ defmodule ApiaryWeb.MemberLive.Index do
 
   defp apply_action(socket, :index, _params), do: assign(socket, :member, nil)
 
-  defp apply_action(%{assigns: %{owner?: false}} = socket, _action, _params) do
-    socket
-    |> put_flash(:error, gettext("Only owners can manage members."))
-    |> push_patch(to: members_path(socket))
-  end
-
   defp apply_action(socket, :invite, _params) do
-    socket
-    |> assign(:member, nil)
-    |> assign(:form, to_form(Organisations.change_invitation()))
+    scope = socket.assigns.current_scope
+
+    if Access.can?(scope, :"member.invite", scope.workspace) do
+      socket
+      |> assign(:member, nil)
+      |> assign(:form, to_form(Organisations.change_invitation()))
+    else
+      refused(socket)
+    end
   end
 
   defp apply_action(socket, :remove, %{"id" => id}) do
@@ -252,8 +264,16 @@ defmodule ApiaryWeb.MemberLive.Index do
         |> push_patch(to: members_path(socket))
 
       member ->
-        assign(socket, :member, member)
+        if Access.can?(socket.assigns.current_scope, :"member.remove", member),
+          do: assign(socket, :member, member),
+          else: refused(socket)
     end
+  end
+
+  defp refused(socket) do
+    socket
+    |> put_flash(:error, gettext("Only owners can manage members."))
+    |> push_patch(to: members_path(socket))
   end
 
   @impl true
@@ -284,7 +304,7 @@ defmodule ApiaryWeb.MemberLive.Index do
            gettext("The invitation could not be sent, so it was not created. Try again.")
          )}
 
-      {:error, :unauthorized} ->
+      {:error, :forbidden} ->
         {:noreply, unauthorized(socket)}
     end
   end
@@ -313,7 +333,7 @@ defmodule ApiaryWeb.MemberLive.Index do
          )
          |> load()}
 
-      {:error, :unauthorized} ->
+      {:error, :forbidden} ->
         {:noreply, unauthorized(socket)}
 
       {:error, :not_found} ->
@@ -356,7 +376,7 @@ defmodule ApiaryWeb.MemberLive.Index do
          )
          |> push_patch(to: members_path(socket))}
 
-      {:error, :unauthorized} ->
+      {:error, :forbidden} ->
         {:noreply, unauthorized(socket)}
 
       {:error, :not_found} ->
@@ -379,7 +399,7 @@ defmodule ApiaryWeb.MemberLive.Index do
          )
          |> load()}
 
-      {:error, :unauthorized} ->
+      {:error, :forbidden} ->
         {:noreply, unauthorized(socket)}
 
       {:error, :not_found} ->
@@ -393,7 +413,9 @@ defmodule ApiaryWeb.MemberLive.Index do
     members = Organisations.list_members(scope)
 
     invitations =
-      if socket.assigns.owner?, do: Organisations.list_invitations(scope), else: []
+      if Access.can?(scope, :"member.invite", scope.workspace),
+        do: Organisations.list_invitations(scope),
+        else: []
 
     socket
     |> assign(members: members, invitations: invitations)
@@ -403,32 +425,19 @@ defmodule ApiaryWeb.MemberLive.Index do
   # The current user's own level may have changed; reload the scope the path names, so
   # the page and the layout follow, and the members with it. A membership that is gone
   # sends the page to `/`, as `ApiaryWeb.UserAuth` does for every page.
-  defp reload_scope(socket) do
-    scope = socket.assigns.current_scope
-
-    case Organisations.resolve_scope(
-           %{scope | organisation: nil, workspace: nil, membership: nil},
-           scope.organisation.slug,
-           scope.workspace.slug
-         ) do
-      {:ok, scope} ->
-        socket
-        |> assign(current_scope: scope, owner?: Organisations.owner?(scope))
-        |> load()
-
-      :error ->
-        redirect(socket, to: ~p"/")
-    end
-  end
+  defp reload_scope(socket), do: socket |> UserAuth.reload_scope() |> load()
 
   defp members_path(socket), do: ~p"/#{socket.assigns.current_scope.organisation}/members"
 
+  # Refused on the membership as it is now: the page's scope is stale, and is loaded again.
+  # A membership that is gone has sent the page to `/` by then.
   defp unauthorized(socket) do
-    socket
-    |> put_flash(:error, gettext("Only owners can manage members."))
-    |> assign(:owner?, false)
-    |> load()
-    |> push_patch(to: members_path(socket))
+    socket =
+      socket
+      |> put_flash(:error, gettext("Only owners can manage members."))
+      |> reload_scope()
+
+    if socket.redirected, do: socket, else: push_patch(socket, to: members_path(socket))
   end
 
   # One sentence per level, and one for a member no longer listed.

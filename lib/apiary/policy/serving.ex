@@ -33,7 +33,9 @@ defmodule Apiary.Policy.Serving do
 
   import Ecto.Query, warn: false
 
+  alias Apiary.Access
   alias Apiary.AccessKeys.AccessKey
+  alias Apiary.Accounts.Scope
   alias Apiary.Lingo.Domain
   alias Apiary.Organisations.Workspace
   alias Apiary.Policy
@@ -60,12 +62,18 @@ defmodule Apiary.Policy.Serving do
   end
 
   @doc """
-  Whether the key's workspace serves a run configuration: `security` is on for the key
-  (`Apiary.Features.on?/2`) and `Apiary.Policy.managed?/1` holds for its workspace.
+  Whether the key's workspace serves a run configuration: the key may fetch one
+  (`run_configuration.fetch`, which is not found without the `security` feature) and
+  `Apiary.Policy.managed?/1` holds for its workspace.
   """
   @spec managed?(AccessKey.t()) :: boolean
-  def managed?(%AccessKey{workspace_id: workspace_id} = key),
-    do: Apiary.Features.on?(key, :security) and Policy.managed_workspace?(workspace_id)
+  def managed?(%AccessKey{workspace_id: workspace_id} = key) do
+    # A verified key carries its workspace; one that does not is given it here.
+    key = Repo.preload(key, :workspace)
+
+    Access.can?(Scope.for_access_key(key), :"run_configuration.fetch", key.workspace) and
+      Policy.managed_workspace?(workspace_id)
+  end
 
   @doc """
   The digest in force for a run of the key's managed workspace (the caller has asked

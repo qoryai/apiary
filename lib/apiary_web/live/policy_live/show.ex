@@ -15,6 +15,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
   """
   use ApiaryWeb, :live_view
   use ApiaryWeb.Features, :security
+  on_mount {ApiaryWeb.Access, :"security_policy.read"}
 
   import ApiaryWeb.PolicyComponents
   import ApiaryWeb.PolicyLive.Views
@@ -364,7 +365,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
     # `handle_params` would be part of the join.
     send(self(), :drop_confirm)
 
-    if socket.assigns.owner? and socket.assigns.mode != "enforce",
+    if Common.may?(socket, :"security_policy.set_mode") and socket.assigns.mode != "enforce",
       do: event("mode_ask", %{"mode" => "enforce"}, socket),
       else: socket
   end
@@ -383,7 +384,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
 
   defp event("mode_ask", %{"mode" => mode}, socket) when mode in ~w(observe enforce) do
     cond do
-      not socket.assigns.owner? ->
+      not Common.may?(socket, :"security_policy.set_mode") ->
         assign(socket, :write_error, gettext("Only an owner sets a mode."))
 
       mode == socket.assigns.mode ->
@@ -462,7 +463,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
   defp event("lock_toggle", %{"id" => id}, socket) do
     scope = socket.assigns.current_scope
 
-    with true <- socket.assigns.owner?,
+    with true <- Common.may?(scope, :"security_policy.lock"),
          {:ok, rule} <- Policy.get_rule(scope, id),
          true <- is_nil(rule.target_id) do
       held = if rule.locked, do: [], else: held_by_lock(scope, rule)
@@ -1032,7 +1033,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
     <.mode_switch
       scope={@current_scope}
       mode={@mode}
-      can_edit={@owner?}
+      can_edit={Common.may?(@current_scope, :"security_policy.set_mode")}
       served={@managed?}
       following={@following}
       own={@own_modes}
@@ -1132,7 +1133,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         rows={@shown}
         scope={:workspace}
         current_scope={@current_scope}
-        can_lock={@owner?}
+        can_lock={Common.may?(@current_scope, :"security_policy.lock")}
         activity={async_value(@activity, :loading)}
         fresh={@fresh}
         ruled_host={@ruled_host}

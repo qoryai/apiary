@@ -22,7 +22,8 @@ defmodule ApiaryWeb.RunLogController do
 
   Scoped like the page: the pipeline resolves the organisation and workspace of the path
   for a member and answers `404` for anybody else, the run is looked up in that
-  workspace, and a run of another workspace is `404`, like one that does not exist. The
+  workspace, and a run of another workspace is `404`, like one that does not exist. Reading
+  it is `run.read_log` (`Apiary.Access`); a reader it refuses is `404` too. The
   bytes are never rendered by the server; `nosniff` and the attachment type keep a
   browser from rendering them either.
 
@@ -31,6 +32,7 @@ defmodule ApiaryWeb.RunLogController do
   use ApiaryWeb, :controller
   use ApiaryWeb.Features, :observability
 
+  alias Apiary.Access
   alias Apiary.Runs.Record
 
   @streams ~w(terminal stdout stderr)
@@ -38,11 +40,17 @@ defmodule ApiaryWeb.RunLogController do
   def show(conn, %{"run_id" => run_id} = params) do
     with {:ok, scope} <- scope(conn),
          {:ok, run} <- Record.fetch_run(scope, run_id),
+         # The pipeline loaded the scope from the database for this request, as fresh as
+         # `authorize/3` would read it: `can?/3` asks it without a second read.
+         true <- Access.can?(scope, :"run.read_log", run) || :error,
          {:ok, opts} <- options(params) do
       send_log(conn, scope, run, opts)
     else
-      :error -> send_plain(conn, 404, gettext("not found"))
-      {:error, :bad_request} -> send_plain(conn, 400, gettext("bad request"))
+      :error ->
+        send_plain(conn, 404, gettext("not found"))
+
+      {:error, :bad_request} ->
+        send_plain(conn, 400, gettext("bad request"))
     end
   end
 

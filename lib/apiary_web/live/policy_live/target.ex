@@ -10,6 +10,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
   """
   use ApiaryWeb, :live_view
   use ApiaryWeb.Features, :security
+  on_mount {ApiaryWeb.Access, :"security_policy.read"}
 
   import ApiaryWeb.PolicyComponents
   import ApiaryWeb.PolicyLive.Views
@@ -343,7 +344,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
     now = if mode.own, do: mode.own, else: "follow"
 
     cond do
-      not socket.assigns.owner? ->
+      not Common.may?(socket, :"security_policy.set_mode") ->
         assign(socket, :write_error, gettext("Only an owner sets a mode."))
 
       setting == now ->
@@ -1072,7 +1073,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
       setting={@mode.own || "follow"}
       effective={@mode.mode}
       workspace_default={@mode.workspace}
-      can_edit={@owner?}
+      can_edit={Common.may?(@current_scope, :"security_policy.set_mode")}
       locked_denies={@locked_denies}
     />
 

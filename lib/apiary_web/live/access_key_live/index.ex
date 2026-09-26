@@ -5,7 +5,7 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
   """
   use ApiaryWeb, :live_view
 
-  alias Apiary.AccessKeys
+  alias Apiary.{Access, AccessKeys}
   alias Apiary.AccessKeys.AccessKey
 
   @impl true
@@ -25,7 +25,7 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
             "A key lets the machines of this workspace post their runs. Create one per machine or environment and paste its server block into the runner file."
           )}
         </:subtitle>
-        <:actions>
+        <:actions :if={Access.can?(@current_scope, :"access_key.create", @current_scope.workspace)}>
           <.button
             variant="primary"
             patch={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/keys/new"}
@@ -41,7 +41,7 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
             "Create a key and paste its server block into the runner file on a machine. It posts its runs to this workspace from then on."
           )}
         </p>
-        <:actions>
+        <:actions :if={Access.can?(@current_scope, :"access_key.create", @current_scope.workspace)}>
           <.button patch={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/keys/new"}>{gettext(
             "Create an access key"
           )}</.button>
@@ -111,7 +111,7 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
               </span>
             <% status -> %>
               <.button
-                :if={status == :rotating}
+                :if={status == :rotating && Access.can?(@current_scope, :"access_key.rotate", key)}
                 variant="ghost"
                 size="xs"
                 phx-click="retire"
@@ -121,6 +121,7 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
                 {gettext("Retire previous secret")}
               </.button>
               <.button
+                :if={Access.can?(@current_scope, :"access_key.rotate", key)}
                 variant="ghost"
                 size="xs"
                 patch={
@@ -131,6 +132,7 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
                 {gettext("Rotate")}
               </.button>
               <.button
+                :if={Access.can?(@current_scope, :"access_key.revoke", key)}
                 variant="danger-ghost"
                 size="xs"
                 patch={
@@ -377,21 +379,42 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
   end
 
   defp apply_action(socket, :new, _params) do
-    socket
-    |> assign(key: nil, reveal: nil)
-    |> assign_form(AccessKeys.change_access_key(%AccessKey{}))
+    scope = socket.assigns.current_scope
+
+    if Access.can?(scope, :"access_key.create", scope.workspace) do
+      socket
+      |> assign(key: nil, reveal: nil)
+      |> assign_form(AccessKeys.change_access_key(%AccessKey{}))
+    else
+      refused(socket)
+    end
   end
 
   defp apply_action(socket, action, %{"id" => id}) when action in [:rotate, :revoke] do
     key = AccessKeys.get_access_key!(socket.assigns.current_scope, id)
 
-    if key.revoked_at do
-      socket
-      |> put_flash(:error, gettext("%{label} is already revoked.", label: key.label))
-      |> push_patch(to: keys_path(socket))
-    else
-      assign(socket, key: key, reveal: nil)
+    cond do
+      not Access.can?(socket.assigns.current_scope, key_action(action), key) ->
+        refused(socket)
+
+      key.revoked_at ->
+        socket
+        |> put_flash(:error, gettext("%{label} is already revoked.", label: key.label))
+        |> push_patch(to: keys_path(socket))
+
+      true ->
+        assign(socket, key: key, reveal: nil)
     end
+  end
+
+  defp key_action(:rotate), do: :"access_key.rotate"
+  defp key_action(:revoke), do: :"access_key.revoke"
+
+  # A path for an action the reader may not take, which the page offers no button for.
+  defp refused(socket) do
+    socket
+    |> put_flash(:error, gettext("You may not change this workspace's access keys."))
+    |> push_patch(to: keys_path(socket))
   end
 
   @impl true
@@ -412,7 +435,7 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign_form(socket, changeset)}
 
-      {:error, :unauthorized} ->
+      {:error, :forbidden} ->
         {:noreply, unauthorized(socket)}
     end
   end
@@ -431,7 +454,7 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
          )
          |> push_patch(to: keys_path(socket))}
 
-      {:error, :unauthorized} ->
+      {:error, reason} when reason in [:forbidden, :not_found] ->
         {:noreply, unauthorized(socket)}
     end
   end
@@ -450,7 +473,7 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
          |> load_keys()
          |> push_patch(to: keys_path(socket))}
 
-      {:error, :unauthorized} ->
+      {:error, reason} when reason in [:forbidden, :not_found] ->
         {:noreply, unauthorized(socket)}
     end
   end
@@ -480,7 +503,7 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
          |> assign(:retire_key, nil)
          |> load_keys()}
 
-      {:error, :unauthorized} ->
+      {:error, reason} when reason in [:forbidden, :not_found] ->
         {:noreply, unauthorized(socket)}
     end
   end

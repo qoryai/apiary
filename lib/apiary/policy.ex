@@ -29,8 +29,11 @@ defmodule Apiary.Policy do
   the commit `{:policy_changed, %{workspace_id:, target_id:, action:}}` goes out on
   `topic/1`, `"policy:<workspace_id>"`.
 
-  Members edit rules. Only an owner changes the mode (in either direction), and only an
-  owner locks, unlocks, changes or removes a locked rule.
+  Who may write is `Apiary.Access`'s answer, asked in every write under the workspace's
+  lock, on the caller's membership as it is then: `security_policy.edit` for a rule,
+  `security_policy.lock` to lock or unlock one and to change or remove a locked one,
+  `security_policy.set_mode` for the mode. Where the `security` feature is off every
+  write is not found, as the policy's pages are.
 
   ## Returns
 
@@ -48,9 +51,9 @@ defmodule Apiary.Policy do
 
   require Logger
 
+  alias Apiary.Access
   alias Apiary.Accounts.{Scope, User}
-  alias Apiary.Organisations
-  alias Apiary.Organisations.{Workspace, Membership, Organisation}
+  alias Apiary.Organisations.{Workspace, Organisation}
   alias Apiary.Policy.{Activity, Change, Effective, Error, Export, Grammar, Render, Resolution}
   alias Apiary.Policy.{Rule, RunConfiguration, Schema, Suggestions}
   alias Apiary.Repo
@@ -255,28 +258,23 @@ defmodule Apiary.Policy do
           {:ok, String.t() | target_mode} | refusal
   def set_mode(%Scope{} = scope, holder, mode)
       when holder in [nil, :workspace] and mode in @modes do
-    with {:ok, membership} <- member(scope),
-         :ok <- owner(membership, mode_is_an_owners()) do
-      write(scope, nil, fn workspace ->
-        if workspace.egress_mode != mode do
-          Repo.update_all(from(h in Workspace, where: h.id == ^workspace.id),
-            set: [egress_mode: mode, updated_at: DateTime.utc_now()]
-          )
-        end
+    write(scope, nil, [:edit, :set_mode], fn workspace, _scope ->
+      if workspace.egress_mode != mode do
+        Repo.update_all(from(h in Workspace, where: h.id == ^workspace.id),
+          set: [egress_mode: mode, updated_at: DateTime.utc_now()]
+        )
+      end
 
-        {:ok, mode, "mode_changed", nil}
-      end)
-    end
+      {:ok, mode, "mode_changed", nil}
+    end)
   end
 
   def set_mode(%Scope{} = scope, %Target{} = target, mode)
       when mode in @modes or mode in [:inherit, "inherit"] do
     own = if mode in @modes, do: mode
 
-    with {:ok, membership} <- member(scope),
-         :ok <- owner(membership, mode_is_an_owners()),
-         {:ok, target_id} <- holder_id(scope, target) do
-      write(scope, target_id, fn workspace ->
+    with {:ok, target_id} <- holder_id(scope, target) do
+      write(scope, target_id, [:edit, :set_mode], fn workspace, _scope ->
         Repo.update_all(from(p in Target, where: p.id == ^target_id),
           set: [egress_mode: own, updated_at: DateTime.utc_now()]
         )
@@ -377,7 +375,7 @@ defmodule Apiary.Policy do
   for a host `host` and `paths` (a list, or a text of one path a line, for the paths the
   host is held to; `[]` for no path at all; `nil` for every path); for a credential
   `name` and `argument`; `locked`, `true` or `false` and nothing else (the workspace's
-  rules only, owners only).
+  rules only, and `security_policy.lock`).
 
   What `attrs` does not name stays as the rule there has it: the lock, the paths, the
   argument. So allowing a host that is held to paths does not open it: every path takes
@@ -386,7 +384,8 @@ defmodule Apiary.Policy do
   and #{Grammar.paths_max()} paths a rule.
   """
   @spec allow(Scope.t(), holder, map) :: {:ok, Rule.t()} | refusal
-  def allow(%Scope{} = scope, holder, attrs), do: put_rule(scope, holder, "allow", attrs)
+  def allow(%Scope{} = scope, holder, attrs),
+    do: put_rule(scope, holder, "allow", attrs)
 
   @doc """
   Denies a host or a credential in the holder, as `allow/3` allows one. A deny takes the
@@ -394,7 +393,8 @@ defmodule Apiary.Policy do
   an allowed `*.` suffix stands beside the allow: the runner decides `deny` first.
   """
   @spec deny(Scope.t(), holder, map) :: {:ok, Rule.t()} | refusal
-  def deny(%Scope{} = scope, holder, attrs), do: put_rule(scope, holder, "deny", attrs)
+  def deny(%Scope{} = scope, holder, attrs),
+    do: put_rule(scope, holder, "deny", attrs)
 
   @doc """
   Adds `path` to the paths `host` is held to in the holder. The paths in force for the
@@ -418,12 +418,11 @@ defmodule Apiary.Policy do
   @doc "Removes a rule, given itself or its id. A locked rule is an owner's to remove."
   @spec remove_rule(Scope.t(), Rule.t() | String.t()) :: {:ok, Rule.t()} | refusal
   def remove_rule(%Scope{} = scope, rule_or_id) do
-    with {:ok, membership} <- member(scope),
-         {:ok, rule} <- get_rule(scope, rule_id(rule_or_id)) do
+    with {:ok, rule} <- get_rule(scope, rule_id(rule_or_id)) do
       # Who may remove it is decided on the rule as it is under the workspace's lock.
-      write(scope, rule.target_id, fn workspace ->
+      write(scope, rule.target_id, [:edit], fn workspace, scope ->
         with {:ok, rule} <- reread(workspace, rule),
-             :ok <- may_change(membership, rule) do
+             :ok <- may_change(scope, rule) do
           Repo.delete_all(from r in Rule, where: r.id == ^rule.id)
           {:ok, rule, "rule_removed", Rule.subject(rule)}
         end
@@ -431,11 +430,11 @@ defmodule Apiary.Policy do
     end
   end
 
-  @doc "Locks a rule of the workspace, so no target overrides it. Owners only."
+  @doc "Locks a rule of the workspace, so no target overrides it (`security_policy.lock`)."
   @spec lock(Scope.t(), Rule.t() | String.t()) :: {:ok, Rule.t()} | refusal
   def lock(%Scope{} = scope, rule_or_id), do: set_locked(scope, rule_or_id, true)
 
-  @doc "Unlocks a rule of the workspace. Owners only."
+  @doc "Unlocks a rule of the workspace (`security_policy.lock`)."
   @spec unlock(Scope.t(), Rule.t() | String.t()) :: {:ok, Rule.t()} | refusal
   def unlock(%Scope{} = scope, rule_or_id), do: set_locked(scope, rule_or_id, false)
 
@@ -449,7 +448,10 @@ defmodule Apiary.Policy do
           {:ok, Rule.t()} | refusal
   def rule_from_connection(%Scope{} = scope, %Connection{} = connection, action, level)
       when action in [:allow, :deny] and level in [:target, :workspace] do
-    with {:ok, _membership} <- member(scope),
+    # The rules are read before the write asks who may write: a reader who may not read
+    # the policy, or an instance without it, learns nothing of them. Asked of the scope as
+    # loaded, without a read; the write asks again under the lock.
+    with :ok <- readable(scope),
          {:ok, host} <- connection_host(scope, connection),
          {:ok, holder} <- connection_holder(scope, connection, level) do
       held = effective(scope, holder).paths
@@ -475,10 +477,10 @@ defmodule Apiary.Policy do
            )}
 
         action == :allow ->
-          allow(scope, holder, %{host: host})
+          put_rule(scope, holder, "allow", %{host: host})
 
         true ->
-          deny(scope, holder, %{host: host})
+          put_rule(scope, holder, "deny", %{host: host})
       end
     end
   end
@@ -1018,12 +1020,11 @@ defmodule Apiary.Policy do
 
   defp put_rule(scope, holder, action, attrs) do
     with {:ok, attrs} <- attrs(attrs),
-         {:ok, membership} <- member(scope),
          {:ok, target_id} <- holder_id(scope, holder),
          {:ok, candidate} <- candidate(action, attrs),
          :ok <- lock_is_the_workspaces(target_id, candidate.locked) do
-      write(scope, target_id, fn workspace ->
-        put(workspace, scope.user, membership, target_id, candidate, attrs)
+      write(scope, target_id, [:edit], fn workspace, scope ->
+        put(workspace, scope, target_id, candidate, attrs)
       end)
     end
   end
@@ -1035,13 +1036,13 @@ defmodule Apiary.Policy do
   # Under the workspace's lock: the rule already there is read here, so two writers of one
   # host meet as an add and a change, never as two adds, and who may change it is
   # decided on the row as it is now.
-  defp put(workspace, user, membership, target_id, candidate, attrs) do
+  defp put(workspace, scope, target_id, candidate, attrs) do
     existing = existing(workspace.id, target_id, candidate)
 
-    with :ok <- may_change(membership, existing),
-         :ok <- may_lock(membership, existing, attrs),
+    with :ok <- may_change(scope, existing),
+         :ok <- may_lock(scope, existing, attrs),
          :ok <- room(workspace.id, target_id, existing) do
-      store(workspace, user, target_id, existing, candidate, attrs)
+      store(workspace, scope.user, target_id, existing, candidate, attrs)
     end
   end
 
@@ -1106,17 +1107,16 @@ defmodule Apiary.Policy do
   defp put_path(scope, holder, host, path, action) do
     host = host |> to_string() |> String.trim() |> String.downcase()
 
-    with {:ok, membership} <- member(scope),
-         {:ok, target_id} <- holder_id(scope, holder),
+    with {:ok, target_id} <- holder_id(scope, holder),
          :ok <- a_path(path) do
-      write(scope, target_id, fn workspace ->
+      write(scope, target_id, [:edit], fn workspace, scope ->
         effective = effective(scope, holder)
 
         with :ok <- not_locked_above(effective, target_id, host),
              {:ok, paths} <- paths_after(effective, host, path, action),
              attrs = %{"host" => host, "paths" => paths},
              {:ok, candidate} <- candidate("allow", attrs) do
-          put(workspace, scope.user, membership, target_id, candidate, attrs)
+          put(workspace, scope, target_id, candidate, attrs)
         end
       end)
     end
@@ -1225,11 +1225,9 @@ defmodule Apiary.Policy do
   end
 
   defp set_locked(scope, rule_or_id, locked) do
-    with {:ok, membership} <- member(scope),
-         :ok <- owner(membership, gettext("Only an owner locks or unlocks a rule.")),
-         {:ok, rule} <- get_rule(scope, rule_id(rule_or_id)),
+    with {:ok, rule} <- get_rule(scope, rule_id(rule_or_id)),
          :ok <- lock_is_the_workspaces(rule.target_id, true) do
-      write(scope, nil, fn workspace ->
+      write(scope, nil, [:edit, :lock], fn workspace, _scope ->
         with {:ok, rule} <- reread(workspace, rule) do
           rule = rule |> Ecto.Changeset.change(locked: locked) |> Repo.update!()
           {:ok, rule, if(locked, do: "rule_locked", else: "rule_unlocked"), Rule.subject(rule)}
@@ -1251,24 +1249,29 @@ defmodule Apiary.Policy do
   # after another and versions count without gaps. `FOR NO KEY UPDATE`, not `FOR UPDATE`:
   # every insert of an event or a run takes `FOR KEY SHARE` on its workspace through the
   # foreign key, and a policy write must never make the receiver wait; then the change,
-  # its row in the history and the renders. Whatever refuses rolls everything back. Where
-  # the `security` feature is off (`Apiary.Features`) there is no policy to write: every
-  # write is not found, as its pages are, whichever surface asked.
-  defp write(%Scope{} = scope, target_id, fun) do
-    if Apiary.Features.on?(scope, :security),
-      do: write_on(scope, target_id, fun),
-      else: {:error, not_found(gettext("Not found."))}
-  end
-
-  defp write_on(%Scope{workspace: %Workspace{} = workspace, user: user}, target_id, fun) do
+  # its row in the history and the renders. Whatever refuses rolls everything back.
+  #
+  # Who may write is asked here, under the lock: the caller's membership is read once,
+  # `FOR SHARE` (`Apiary.Access.reload/2`), so a change of its level waits for this write
+  # and none committed before it is missed. `questions` are asked of that scope first, in
+  # order, and `fun` gets it for what it asks of the rows it reads. Where the `security`
+  # feature is off every question is not found.
+  defp write(
+         %Scope{workspace: %Workspace{} = workspace, user: user} = scope,
+         target_id,
+         questions,
+         fun
+       ) do
     result =
       Repo.transact(fn ->
         workspace =
           Repo.one!(from h in Workspace, where: h.id == ^workspace.id, lock: "FOR NO KEY UPDATE")
 
-        before = snapshot(workspace, target_id)
+        scope = Access.reload(scope, lock: :share)
 
-        with {:ok, value, action, subject} <- fun.(workspace) do
+        with :ok <- ask(scope, questions),
+             before = snapshot(workspace, target_id),
+             {:ok, value, action, subject} <- fun.(workspace, scope) do
           workspace = Repo.one!(from h in Workspace, where: h.id == ^workspace.id)
           after_ = snapshot(workspace, target_id)
 
@@ -1711,32 +1714,59 @@ defmodule Apiary.Policy do
     Enum.find(rules(workspace_id, target_id), &(&1.kind == kind and Rule.subject(&1) == subject))
   end
 
-  defp member(%Scope{} = scope) do
-    case Organisations.fetch_membership(scope) do
-      {:ok, %Membership{} = membership} ->
-        {:ok, membership}
+  defp readable(scope) do
+    if Access.can?(scope, :"security_policy.read", scope.workspace),
+      do: :ok,
+      else: {:error, not_found(gettext("Not found."))}
+  end
 
-      {:error, _unauthorized} ->
-        {:error,
-         Error.new(
-           :unauthorized,
-           gettext("Only a member of this workspace changes its security policy.")
-         )}
+  # The questions a write asks before it changes anything, each with the sentence for a
+  # role that may not: whether the caller edits the policy at all, and then whether it
+  # sets the mode or locks, so a caller who is no longer a member hears that.
+  defp ask(_scope, []), do: :ok
+
+  defp ask(scope, [question | rest]) do
+    with :ok <- question(scope, question), do: ask(scope, rest)
+  end
+
+  defp question(scope, :edit), do: may_edit(scope)
+
+  defp question(scope, :set_mode),
+    do: may(scope, :"security_policy.set_mode", mode_is_an_owners())
+
+  defp question(scope, :lock), do: may(scope, :"security_policy.lock", only_an_owner_locks())
+
+  # `Apiary.Access`'s answer as the policy says it: a sentence for a role that may not,
+  # not found where the `security` feature is off. Asked of the scope `write/4` read under
+  # the workspace's lock, without another read.
+  defp may(%Scope{} = scope, action, message) do
+    case Access.check(scope, action, scope.workspace) do
+      :ok -> :ok
+      {:error, :forbidden} -> {:error, Error.new(:forbidden, message)}
+      {:error, :not_found} -> {:error, not_found(gettext("Not found."))}
     end
+  end
+
+  defp may_edit(scope) do
+    may(
+      scope,
+      :"security_policy.edit",
+      gettext("Only a member of this workspace changes its security policy.")
+    )
   end
 
   defp mode_is_an_owners,
     do: gettext("Only an owner changes the mode: it decides what runs are denied.")
 
-  defp owner(%Membership{level: :owner}, _message), do: :ok
-  defp owner(%Membership{}, message), do: {:error, Error.new(:unauthorized, message)}
+  defp only_an_owner_locks, do: gettext("Only an owner locks or unlocks a rule.")
 
-  defp may_change(_membership, nil), do: :ok
-  defp may_change(_membership, %Rule{locked: false}), do: :ok
+  defp may_change(_scope, nil), do: :ok
+  defp may_change(_scope, %Rule{locked: false}), do: :ok
 
-  defp may_change(membership, %Rule{locked: true} = rule) do
-    owner(
-      membership,
+  defp may_change(scope, %Rule{locked: true} = rule) do
+    may(
+      scope,
+      :"security_policy.lock",
       gettext(
         "The rule for %{subject} is locked. Only an owner changes or removes a locked rule.",
         subject: Rule.subject(rule)
@@ -1745,15 +1775,15 @@ defmodule Apiary.Policy do
   end
 
   # `locked` is true or false by now (`attrs/1`): what is compared is what is stored.
-  defp may_lock(membership, existing, %{"locked" => wanted}) do
+  defp may_lock(scope, existing, %{"locked" => wanted}) do
     now = if existing, do: existing.locked, else: false
 
     if wanted == now,
       do: :ok,
-      else: owner(membership, gettext("Only an owner locks or unlocks a rule."))
+      else: may(scope, :"security_policy.lock", only_an_owner_locks())
   end
 
-  defp may_lock(_membership, _existing, _attrs), do: :ok
+  defp may_lock(_scope, _existing, _attrs), do: :ok
 
   defp lock_is_the_workspaces(nil, _locked), do: :ok
 
