@@ -14,7 +14,7 @@ Every GET of a contract endpoint carries these headers:
 | `X-Qory-Access-Key` | the key id, `ak_` and 16 lowercase Crockford base32 characters |
 | `X-Qory-Timestamp` | the Unix time in seconds, UTC, as a decimal integer with no fraction |
 | `X-Qory-Signature-256` | `sha256=` and the lowercase hex HMAC SHA-256 of the canonical string, keyed with the secret |
-| `X-Qory-Contract-Version` | optional; the contract version the runner implements, a decimal integer |
+| `X-Qory-Contract-Version` | `1`, the revision the runner sends on every request |
 | `User-Agent` | `qory-runner/<version>`; the version is recorded on the key |
 
 The canonical string is three lines joined by `\n` with no trailing newline:
@@ -31,6 +31,12 @@ GET
    slash added or removed);
 3. the value of `X-Qory-Timestamp` as sent.
 
+A request that verifies but whose `X-Qory-Contract-Version` is not `1`, absent or sent twice
+included, is `400` with `{"error":"unsupported_contract_version","supported":[1]}` on every
+endpoint, discovery and the run configuration as the events endpoint; nothing is served.
+One check decides it for the three (`ApiaryWeb.Contract.ContractVersion`), after the
+signature: a request that does not verify is `401` whatever the header says.
+
 Known answer: the key `test-secret` over `GET\n/.well-known/qory-configuration?x=1\n1700000000`
 gives `sha256=e8cc6260e2740e9282f2b45fa8bc590e3afe0e59eb53882b19cdb0f87a613c02`.
 
@@ -42,7 +48,8 @@ or the key is revoked.
 
 `GET /.well-known/qory-configuration`, signed as above, answers `200` with
 `Content-Type: application/json` and the header `X-Qory-Configuration: sha256=<lowercase hex>`,
-the SHA-256 of the body as sent:
+the SHA-256 of the body as sent, or `400 unsupported_contract_version` to a contract version
+other than `1`:
 
 ```json
 {
@@ -190,7 +197,9 @@ what `enforce` would reach. A hive whose policy nobody has made serves none: `40
 `{"error":"not_found"}`, nothing rendered; discovery named it no `run` section, so a runner
 does not ask. The endpoint spends a token of the key's rate limit, the events endpoint's
 bucket: `429 {"error":"rate_limited"}` with `Retry-After` beyond it, which to a runner is no
-run or a reload that failed and is tried again on the next answer.
+run or a reload that failed and is tried again on the next answer. After the `429`, as on the
+events endpoint, a contract version other than `1` is `400 unsupported_contract_version`,
+and nothing is read.
 
 Rendering is canonical: members in a fixed order (`mode`, `allow`, `deny`, `paths`), no
 whitespace, `allow` and `deny` sorted with names before `*.` suffixes (so the rule a runner
@@ -247,13 +256,13 @@ such a value is refused before any lookup), a key id that does not exist, a revo
 a timestamp that is not an integer, a timestamp outside the window (both on a GET only), or
 a signature that does not match. The body never says which. Nothing about the request's headers is logged.
 
-On a successful GET the key records the time, the runner version from `User-Agent` (when it is of the
-form `qory-runner/<version>`) and the contract version from `X-Qory-Contract-Version` (when
-present and an integer). What is recorded never decides the answer:
+On a GET that verifies the key records the time, the runner version from `User-Agent` (when
+it is of the form `qory-runner/<version>`) and the contract version from
+`X-Qory-Contract-Version` when it is `1`; a request with any other is refused and leaves the
+recorded contract version as it is. The runner version never decides the answer:
 
 - the runner version is kept to its first 80 characters; a `User-Agent` that is not valid
   UTF-8, or a version with non-printable characters, records no version;
-- a contract version outside `0..32767` records no version;
 - if recording the use fails, the request still succeeds.
 
 No header value makes the endpoint answer `500`.
@@ -273,15 +282,14 @@ The contract has not fixed these; Apiary chose, and the runner should match:
 - `User-Agent` that is not `qory-runner/<version>` is accepted; only the recorded runner
   version is left empty. The same holds for a version that is not printable text, and a
   version longer than 80 characters is recorded truncated.
-- `X-Qory-Contract-Version` is a decimal integer in `0..32767`; any other value is accepted
-  and ignored, it does not fail the request.
 - The discovery path is `/.well-known/qory-configuration`, without a trailing slash, and
   answers JSON only (no content negotiation on `Accept`).
 - The public base URL of the document comes from the application's own URL configuration,
   not from the request's `Host` header.
-- On the events endpoint, a `X-Qory-Contract-Version` that is not the integer `1` (absent,
-  another number, not a number, sent twice) is `400` with the versions served. On a GET the
-  header is only recorded.
+- On every endpoint, a `X-Qory-Contract-Version` that is not the integer `1` (absent,
+  another number, not a number, sent twice) is `400` with the versions served, once the
+  request has verified. On the events endpoint it comes after the `415` and the `429`, on
+  the run configuration after the `429`.
 - The body limit is 2 MiB, twice the mebibyte a runner cuts a batch at, and it is checked
   before the signature.
 - The rate limit is per access key and per node: 50 batches a second, 100 at once
