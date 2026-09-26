@@ -1,5 +1,5 @@
-// The terminal of a run (docs/design/brief-runs.md). The bytes of the log never cross the
-// LiveView socket: this hook reads them from the run's log endpoint,
+// The terminal of a run (docs/ui.md). The bytes of the log never cross the LiveView
+// socket: this hook reads them from the run's log endpoint,
 //
 //   GET {data-src}?after=<sequence>&limit=<chunks>[&stream=stdout|stderr|terminal]
 //

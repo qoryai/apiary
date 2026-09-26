@@ -1202,8 +1202,8 @@
 }
 
 /* ==== Runs and connections: the shared components of run_components.ex ====
-   Class names follow docs/design/runs-mock.html with a `q-` prefix, which keeps them
-   clear of daisyUI's own `.tabs`, `.label`, `.filter` and `.mark`. */
+   Class names carry a `q-` prefix, which keeps them clear of daisyUI's own `.tabs`,
+   `.label`, `.filter` and `.mark` (docs/ui.md). */
 @layer qory {
   /* Long tooltips (sentences) wrap. */
   .q-tip-wide[data-tip]::before {
@@ -2293,9 +2293,9 @@
 [data-phx-session], [data-phx-teleported-src] { display: contents }
 
 /* ==== The run page: header, timeline, terminal, details ====================
-   The components of run_page_components.ex and run_live/show.ex, after
-   docs/design/runs-mock.html. Everything shared with the runs list and the connections
-   pages is in the section above; nothing here restyles it. */
+   The components of run_page_components.ex and run_live/show.ex. Everything shared with
+   the runs list and the connections pages is in the section above; nothing here restyles
+   it. */
 @layer qory {
   /* ---- Run header ---- */
   .q-run-head {
@@ -3191,8 +3191,7 @@
 
 /* ==== Rules from a row, the drift mark and the reload item ==================
    What run_components.ex and run_page_components.ex add to the run and connections
-   pages (docs/design/brief-policy.md). Class names follow docs/design/policy-mock.html
-   with `q-`. */
+   pages. Class names carry a `q-` prefix. */
 @layer qory {
   .q-link {
     border-radius: var(--radius-selector);
@@ -3559,9 +3558,8 @@
 }
 
 /* ==== The security policy: the components of policy_components.ex ==========
-   Class names follow docs/design/policy-mock.html with a `q-` prefix. The version pill,
-   the version link, the pending mark and the source chip are shared with the run page
-   and the connections pages. */
+   Class names carry a `q-` prefix. The version pill, the version link, the pending mark
+   and the source chip are shared with the run page and the connections pages. */
 @layer qory {
   /* ---- Version pill and version link ---- */
   .q-vpill {
@@ -3693,9 +3691,8 @@
 }
 
 /* ==== The security policy: the pages under /:org/:workspace/policy ==============
-   docs/design/brief-policy.md: the mode cards, the section card with a composer on top
-   of a table, rule rows and provenance, suggestions, history and diff, the document well,
-   the version page. */
+   The mode cards, the section card with a composer on top of a table, rule rows and
+   provenance, suggestions, history and diff, the document well, the version page. */
 @layer qory {
   .q-link {
     border: 0;
@@ -4859,9 +4856,9 @@
 }
 
 /* ==== The workspace overview: the components of overview_components.ex ==========
-   What the agents did and what needs you (docs/design/brief-overview.md). The rows are the
-   suggestion rows of the policy pages, the strip is the key and value strip of the run
-   page with stat-sized values, the last runs are the runs table without groups. */
+   What the agents did and what needs you. The rows are the suggestion rows of the policy
+   pages, the strip is the key and value strip of the run page with stat-sized values, the
+   last runs are the runs table without groups. */
 @layer qory {
   /* ---- Layout: two columns from 1280 px, one below ---- */
   .q-grid2 {
@@ -5389,7 +5386,7 @@
     text-underline-offset: 3px;
   }
 
-  /* ---- The empty workspace: the checklist card of docs/design/brief.md ---- */
+  /* ---- The empty workspace: its checklist card ---- */
   .q-landed {
     display: flex;
     align-items: center;

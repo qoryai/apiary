@@ -1,9 +1,9 @@
 defmodule ApiaryWeb.ConnectionLive.Index do
   @moduledoc """
-  Where the runs of the workspace reached out to (`docs/design/brief-runs.md`): one row
-  per host, port and path across the runs in range, with the reason and the outcome of the
-  most recent attempt, and behind each row's chevron the runs that reached it. "Per
-  target" is this page with `repo` set, which the runs list links to.
+  Where the runs of the workspace reached out to: one row per host, port and path across
+  the runs in range, with the reason and the outcome of the most recent attempt, and
+  behind each row's chevron the runs that reached it. "Per target" is this page with
+  `repo` set, which the runs list links to.
 
   Every filter is a query parameter (`decision`, `repo`, `host`, `tools`, `since`, `from`,
   `to`, `page`), read through `Apiary.Runs.Filters`. A tool invocation
@@ -14,12 +14,12 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   row opens, ten at a time. While batches land the table does not move under the reader:
   the summary gains "New activity", which asks again and keeps the open rows open.
 
-  Each row may ask the policy for a rule (`docs/design/brief-policy.md`). A row's standing
-  is derived from one effective policy the page holds: the workspace's baseline, or the
-  target's when `repo` names one. The scope of a new rule is never guessed: among several
-  targets none is chosen until the reader chooses. The rule itself is made by
-  `Apiary.Policy.rule_from_connection/4` from the most recent connection of the
-  destination in the chosen scope, and what the domain refuses is said in its sentence.
+  Each row may ask the policy for a rule. A row's standing is derived from one effective
+  policy the page holds: the workspace's baseline, or the target's when `repo` names one.
+  The scope of a new rule is never guessed: among several targets none is chosen until the
+  reader chooses. The rule itself is made by `Apiary.Policy.rule_from_connection/4` from
+  the most recent connection of the destination in the chosen scope, and what the domain
+  refuses is said in its sentence.
 
   The rows are the record (`observability`); the rules are `security`'s. On an instance
   without `security` the page is the record alone: no Reason column (which rule matched,

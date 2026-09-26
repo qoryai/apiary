@@ -1,4 +1,4 @@
-// The runs list (docs/design/brief-runs.md).
+// The runs list.
 
 // Which groups are collapsed is a reading preference, not a filter: it lives in
 // localStorage under `qory:runs:collapsed`, never in the URL. The hook sits on the table;

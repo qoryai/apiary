@@ -1,21 +1,21 @@
 defmodule ApiaryWeb.WorkspaceLive.Overview do
   @moduledoc """
-  The workspace overview, `/:org/:workspace`: the page a member lands on after sign-in
-  (`docs/design/brief-overview.md`). It answers two questions above the fold, in this
-  order: what needs you (the Needs attention list, a list of acts and nothing else) and
-  what your agents did (the activity strip, the alive rows, the fourteen-day chart, the
-  last runs). Policy, access keys and retention are a glance and a link.
+  The workspace overview, `/:org/:workspace`: the page a member lands on after sign-in. It
+  answers two questions above the fold, in this order: what needs you (the Needs attention
+  list, a list of acts and nothing else) and what your agents did (the activity strip, the
+  alive rows, the fourteen-day chart, the last runs). Policy, access keys and retention
+  are a glance and a link.
 
   Every number is a count the workspace already keeps; the page infers nothing. The first
-  paint is the shell: the count of alive runs, the keys, the policy's mode summary and
-  the skeletons; four asynchronous reads fill the regions (attention, activity, policy,
-  the keys and retention), none of them blocking, every one bounded. Two subscriptions
+  paint is the shell: the count of alive runs, the keys, the policy's mode summary and the
+  skeletons; four asynchronous reads fill the regions (attention, activity, policy, the
+  keys and retention), none of them blocking, every one bounded. Two subscriptions
   (`Apiary.Runs.subscribe/1`, `Apiary.Policy.subscribe/1`) keep it live: a run change
-  patches its row in place from the message and re-reads the alive rows, the last runs
-  and today's column at most once per 250 ms; a policy change re-reads the policy card
-  and the denied destinations; quiet and behind are recomputed on a 5 s timer without a
-  query. Nothing moves under the reader: new rows append, resolved items stay struck until
-  the next navigation, a run that is not on the page is "1 new run" in words.
+  patches its row in place from the message and re-reads the alive rows, the last runs and
+  today's column at most once per 250 ms; a policy change re-reads the policy card and the
+  denied destinations; quiet and behind are recomputed on a 5 s timer without a query.
+  Nothing moves under the reader (`docs/ui.md`): new rows append, resolved items stay
+  struck until the next navigation, a run that is not on the page is "1 new run" in words.
 
   While no run has landed the page is the checklist of the empty workspace, each step read
   from the record; when the first run lands the card stays with its third step ticked and

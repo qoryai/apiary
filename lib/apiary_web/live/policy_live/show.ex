@@ -1,9 +1,8 @@
 defmodule ApiaryWeb.PolicyLive.Show do
   @moduledoc """
-  The workspace's security policy (`docs/design/brief-policy.md`): the mode with its two
-  confirms, the host rules with the composer that reads a rule back before it is saved,
-  the credentials, the targets and their policy, the history with diffs, one version with
-  its document, and the export.
+  The workspace's security policy: the mode with its two confirms, the host rules with the
+  composer that reads a rule back before it is saved, the credentials, the targets and
+  their policy, the history with diffs, one version with its document, and the export.
 
   One LiveView, five live actions, so a tab is a patch. Filters, the opened change, the
   compared version and the export modal are in the URL. The page calls `Apiary.Policy`

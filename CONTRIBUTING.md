@@ -76,6 +76,7 @@ How the application is built and the rules its code follows are under [docs/](do
 [conventions.md](docs/conventions.md) for migrations, tests, doc comments and the vocabulary,
 [access.md](docs/access.md) for who may do what,
 [lingo.md](docs/lingo.md) for the words on the page,
+[ui.md](docs/ui.md) for the rules the pages follow,
 [contract-assumptions.md](docs/contract-assumptions.md) for the server contract, and
 [releases.md](docs/releases.md) for how a release is made. A change to what they describe
 changes them in the same pull request.

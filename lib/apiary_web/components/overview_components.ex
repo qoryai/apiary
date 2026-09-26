@@ -1,9 +1,8 @@
 defmodule ApiaryWeb.OverviewComponents do
   @moduledoc """
-  The components of the workspace overview (`docs/design/brief-overview.md`):
-  the Needs attention list, the activity strip, the alive rows, the fourteen-day chart,
-  the last runs, the policy, access keys and retention glances, and the empty workspace's
-  checklist.
+  The components of the workspace overview: the Needs attention list, the activity strip,
+  the alive rows, the fourteen-day chart, the last runs, the policy, access keys and
+  retention glances, and the empty workspace's checklist.
 
   Every number here is a count the workspace already keeps: `runs` columns the projector
   folded, `access_keys` timestamps, `retention_runs` rows, the policy's mode and version.
@@ -2051,7 +2050,7 @@ defmodule ApiaryWeb.OverviewComponents do
   ## The empty workspace
 
   @doc """
-  The checklist card of `docs/design/brief.md` with the state of each step read from the
+  The checklist card of the empty workspace, with the state of each step read from the
   record: step 1 ticks on an active key, step 2 on a key's `last_used_at`, step 3 on the
   first run. `landed` is the first run while the page is open; the card leaves at the next
   navigation.

@@ -1,9 +1,8 @@
 defmodule ApiaryWeb.PolicyLive.Target do
   @moduledoc """
-  A target's view of the workspace's policy (`docs/design/brief-policy.md`): the effective
-  list, one row per host in force with where it came from, the rules that lost hung under
-  the rule that beat them; the hosts the harness declared; the target's own history,
-  versions and export.
+  A target's view of the workspace's policy: the effective list, one row per host in force
+  with where it came from, the rules that lost hung under the rule that beat them; the
+  hosts the harness declared; the target's own history, versions and export.
 
   `:target_id` is the target row's id. A target of another workspace is not found:
   the page renders the not-found state and never another workspace's rules.

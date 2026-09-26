@@ -1,8 +1,8 @@
 defmodule ApiaryWeb.RunPageComponents do
   @moduledoc """
-  The components of the run page (`docs/design/brief-runs.md`): the session timeline with
-  its lanes and items, the who chip, the background-task strip, the live end, the limits
-  notice and the terminal box.
+  The components of the run page (`docs/ui.md`): the session timeline with its lanes and
+  items, the who chip, the background-task strip, the live end, the limits notice and the
+  terminal box.
 
   An item is what `Apiary.Runs.Record.Timeline.build/3` made of a run's events. Everything
   in it came from a runner and is untrusted: it is interpolated, so it is escaped, and it

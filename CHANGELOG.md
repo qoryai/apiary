@@ -296,18 +296,19 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
   id, the newest runs, and closing a run, after which the receiver answers `410` for it.
 - The hive overview shows "Runs alive now", live; the access keys page shows each key's last
   heartbeat beside its last use.
-- The hive overview, `/hive`, is the landing page of `docs/design/brief-overview.md`: what
-  needs you first (**Needs attention**: denied destinations today's rules still do not
-  allow, with a one-click allow; quiet and lost runs, with a close in place; a run behind
-  the policy in force; observe with rules ready to enforce, or no policy served yet; idle
-  keys), then what the agents did (the activity strip in the three families, the alive
-  rows, a fourteen-day chart of runs and denied attempts per UTC day with a table twin, the
-  last runs), then the policy, the access keys (each with the hosts its runs came from: a key is
-  not a machine, a pool of ephemeral instances shares one) and retention at a glance. Every number is a count
-  the hive keeps; every list is bounded and ends in a link. The page follows the hive live
-  (rows patched in place, new rows appended, "1 new run" in words) and the empty hive's
-  checklist reads its three steps from the record, ticking the third on the first run.
-  `/hive/policy?confirm=enforce` lands on the policy page with the enforce confirm open.
+- The hive overview, `/hive`, is the landing page: what needs you first (**Needs
+  attention**: denied destinations today's rules still do not allow, with a one-click
+  allow; quiet and lost runs, with a close in place; a run behind the policy in force;
+  observe with rules ready to enforce, or no policy served yet; idle keys), then what the
+  agents did (the activity strip in the three families, the alive rows, a fourteen-day
+  chart of runs and denied attempts per UTC day with a table twin, the last runs), then
+  the policy, the access keys (each with the hosts its runs came from: a key is not a
+  machine, a pool of ephemeral instances shares one) and retention at a glance. Every
+  number is a count the hive keeps; every list is bounded and ends in a link. The page
+  follows the hive live (rows patched in place, new rows appended, "1 new run" in words)
+  and the empty hive's checklist reads its three steps from the record, ticking the third
+  on the first run. `/hive/policy?confirm=enforce` lands on the policy page with the
+  enforce confirm open.
 - Runs are counted in three families on every surface: alive (pending, running), ended well
   (succeeded) and ended badly (failed, timed out, lost, closed). The runs list's State
   filter is grouped by them, one click per family, and its summary line counts them; the

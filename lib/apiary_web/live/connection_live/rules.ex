@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.ConnectionLive.Rules do
   @moduledoc """
-  What a connection's row may ask of the policy (`docs/design/brief-policy.md`), for the
-  run's connections tab and for the workspace's connections page.
+  What a connection's row may ask of the policy, for the run's connections tab and for the
+  workspace's connections page.
 
   A row's **standing** is derived from the effective policy the page holds, never by a
   query per row: whether the row can ask for an allow or a deny, whether a locked rule of

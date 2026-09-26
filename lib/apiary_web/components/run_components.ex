@@ -1,9 +1,9 @@
 defmodule ApiaryWeb.RunComponents do
   @moduledoc """
-  The components the runs list, the run page and the connections pages share
-  (`docs/design/brief-runs.md`): the run state badge, durations and times that tick in the
-  browser, the key and value strip, label chips, the alive indicator, the filter bar,
-  tabs, the connection row with its reason, the connections tables and the new-items pill.
+  The components the runs list, the run page and the connections pages share: the run
+  state badge, durations and times that tick in the browser, the key and value strip,
+  label chips, the alive indicator, the filter bar, tabs, the connection row with its
+  reason, the connections tables and the new-items pill.
 
   Everything rendered here is a field of an event or a count of events; what the record
   lacks reads "n/a". Event data is untrusted: it is only ever interpolated, never `raw/1`.
@@ -14,11 +14,12 @@ defmodule ApiaryWeb.RunComponents do
   mode and no rule action. The components do not ask `Apiary.Features` themselves: the
   page asks with its scope and says so.
 
-  Times tick in the browser: every `<time data-tick=…>` is re-rendered once a second by the
-  `Ticker` hook's one interval (`assets/js/hooks/ticker.js`), in the same words the server
-  rendered, so the server never re-renders for a clock. The browser's clock is never
-  trusted: every ticking element carries the server's now at render (`data-now`), the hook
-  learns its offset from the server from it, and counts on the server's time.
+  Times tick in the browser (`docs/ui.md`): every `<time data-tick=…>` is re-rendered once
+  a second by the `Ticker` hook's one interval (`assets/js/hooks/ticker.js`), in the same
+  words the server rendered, so the server never re-renders for a clock. The browser's
+  clock is never trusted: every ticking element carries the server's now at render
+  (`data-now`), the hook learns its offset from the server from it, and counts on the
+  server's time.
   """
   use Phoenix.Component
   use Gettext, backend: ApiaryWeb.Gettext

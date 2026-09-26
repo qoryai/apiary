@@ -1,9 +1,9 @@
 defmodule ApiaryWeb.PolicyComponents do
   @moduledoc """
-  The components of the security policy (`docs/design/brief-policy.md`): the version pill
-  and the version link, the mark of a rule, the source chip, the mode switch, the rule
-  composer with its reading line, the rules table with provenance, the suggestions of the
-  harness, the history of changes with its diff, and the document well.
+  The components of the security policy: the version pill and the version link, the mark
+  of a rule, the source chip, the mode switch, the rule composer with its reading line,
+  the rules table with provenance, the suggestions of the harness, the history of changes
+  with its diff, and the document well.
 
   The pages under `/:org/:workspace/policy` use all of them; the run page and the
   connections pages use the first four, so a version, a rule and where it came from look

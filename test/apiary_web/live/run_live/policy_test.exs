@@ -1,8 +1,7 @@
 defmodule ApiaryWeb.RunLive.PolicyTest do
   @moduledoc """
-  The run page and the security policy (`docs/design/brief-policy.md`): the header's
-  version and drift mark, the timeline's "Policy applied again", and Allow and Deny from a
-  row of the connections tab.
+  The run page and the security policy: the header's version and drift mark, the
+  timeline's "Policy applied again", and Allow and Deny from a row of the connections tab.
   """
   use ApiaryWeb.ConnCase, async: true
 

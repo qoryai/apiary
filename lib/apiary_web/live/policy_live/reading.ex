@@ -1,8 +1,8 @@
 defmodule ApiaryWeb.PolicyLive.Reading do
   @moduledoc """
-  The reading line of the rule composer (`docs/design/brief-policy.md`): a rule is read
-  back in plain words before it is saved, and what cannot be said is refused in a sentence
-  that names the reason and the ways out.
+  The reading line of the rule composer: a rule is read back in plain words before it is
+  saved, and what cannot be said is refused in a sentence that names the reason and the
+  ways out.
 
   Pure: the form and the rules already on the page in, a reading out. No query runs per
   keystroke. The domain checks everything again at the write; this is where a person finds

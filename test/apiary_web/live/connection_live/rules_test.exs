@@ -1,7 +1,6 @@
 defmodule ApiaryWeb.ConnectionLive.RulesTest do
   @moduledoc """
-  Allow and Deny from a row of the workspace's connections page
-  (`docs/design/brief-policy.md`), and what a row stands for
+  Allow and Deny from a row of the workspace's connections page, and what a row stands for
   (`ApiaryWeb.ConnectionLive.Rules`).
   """
   use ApiaryWeb.ConnCase, async: true

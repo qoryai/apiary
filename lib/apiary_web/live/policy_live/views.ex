@@ -1,9 +1,8 @@
 defmodule ApiaryWeb.PolicyLive.Views do
   @moduledoc """
-  The views the workspace's policy and a target's policy share
-  (`docs/design/brief-policy.md`): the history with its diffs, one version with its
-  document, and the export. Function components; the two LiveViews load what they show
-  through `ApiaryWeb.PolicyLive.Common`.
+  The views the workspace's policy and a target's policy share: the history with its
+  diffs, one version with its document, and the export. Function components; the two
+  LiveViews load what they show through `ApiaryWeb.PolicyLive.Common`.
   """
   use ApiaryWeb, :html
 

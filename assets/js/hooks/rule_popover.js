@@ -1,8 +1,8 @@
-// The popover of a connection row's Allow or Deny (docs/design/brief-policy.md). The
-// server renders it while it is open; this hook puts it in the top layer (so the table's
-// scroll container cannot clip it), places it under its button, right edges aligned, and
-// gives focus back to the button when it goes. Below 768 px the stylesheet makes it a
-// bottom sheet and the placement here is overridden.
+// The popover of a connection row's Allow or Deny. The server renders it while it is
+// open; this hook puts it in the top layer (so the table's scroll container cannot clip
+// it), places it under its button, right edges aligned, and gives focus back to the
+// button when it goes. Below 768 px the stylesheet makes it a bottom sheet and the
+// placement here is overridden.
 //
 // `popover="auto"` brings Escape and a click outside; either closes it in the browser, and
 // the server is told so with "rule_cancel".

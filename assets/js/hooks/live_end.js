@@ -1,6 +1,6 @@
-// The live end of a timeline (docs/design/brief-runs.md). Tells the LiveView whether the
-// reader is within 240 px of the end of the page, so that it inserts new items only there
-// and counts them elsewhere; and takes the reader to the end when the pill is pressed.
+// The live end of a timeline (docs/ui.md). Tells the LiveView whether the reader is
+// within 240 px of the end of the page, so that it inserts new items only there and
+// counts them elsewhere; and takes the reader to the end when the pill is pressed.
 //
 // The page scrolls, not an element: the measure is the document's.
 
