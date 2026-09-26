@@ -321,7 +321,7 @@ defmodule ApiaryWeb.UserAuth do
   defp policy_mode(%Scope{workspace: nil}), do: %{mode: nil, own_modes: []}
 
   defp policy_mode(%Scope{} = scope) do
-    if Apiary.Features.on?(scope, :security) do
+    if Apiary.Access.can?(scope, :"security_policy.read", scope.workspace) do
       case Apiary.Policy.mode_summary(scope) do
         %{managed?: true, mode: mode, own_modes: own_modes} ->
           %{mode: mode, own_modes: own_modes}
@@ -352,7 +352,7 @@ defmodule ApiaryWeb.UserAuth do
   defp follow_policy_mode(socket) do
     scope = socket.assigns.current_scope
 
-    if scope.workspace && Apiary.Features.on?(scope, :security) &&
+    if scope.workspace && Apiary.Access.can?(scope, :"security_policy.read", scope.workspace) &&
          Phoenix.LiveView.connected?(socket) do
       Apiary.Policy.subscribe(scope)
       topic = Apiary.Policy.topic(scope.workspace.id)
@@ -496,12 +496,20 @@ defmodule ApiaryWeb.UserAuth do
     end
 
     Phoenix.LiveView.attach_hook(socket, :membership_changed, :handle_info, fn
-      {:membership_changed, _change}, socket -> {:halt, reload_membership(socket)}
+      {:membership_changed, _change}, socket -> {:halt, reload_scope(socket)}
       _message, socket -> {:cont, socket}
     end)
   end
 
-  defp reload_membership(socket) do
+  @doc """
+  Loads the scope a page's path names again from the database, with the memberships and
+  the counts of the sidebar, when the page's may be stale: a membership that changed
+  elsewhere, or an action `Apiary.Access` refused on the membership as it is now. A page
+  that asks `Apiary.Access.can?/3` as it renders follows. A membership that is gone sends
+  the page to `/`.
+  """
+  @spec reload_scope(Phoenix.LiveView.Socket.t()) :: Phoenix.LiveView.Socket.t()
+  def reload_scope(socket) do
     scope = socket.assigns.current_scope
 
     reloaded =
@@ -517,12 +525,6 @@ defmodule ApiaryWeb.UserAuth do
       |> Phoenix.Component.assign(:current_scope, reloaded)
       |> Phoenix.Component.assign(:memberships, Organisations.list_memberships(scope.user))
       |> Phoenix.Component.assign(:nav_counts, nav_counts(reloaded))
-      |> then(fn socket ->
-        # The pages that show owner-only controls keep the answer in `owner?`.
-        if is_map_key(socket.assigns, :owner?),
-          do: Phoenix.Component.assign(socket, :owner?, Organisations.owner?(reloaded)),
-          else: socket
-      end)
     else
       :error -> Phoenix.LiveView.redirect(socket, to: ~p"/")
     end

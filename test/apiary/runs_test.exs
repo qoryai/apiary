@@ -106,7 +106,7 @@ defmodule Apiary.RunsTest do
       run = run_fixture(scope)
       {:ok, _} = Organisations.remove_member(scope, member.membership.id)
 
-      assert {:error, :unauthorized} = Runs.close_run(member.scope, run)
+      assert {:error, :forbidden} = Runs.close_run(member.scope, run)
       assert Repo.get!(Run, run.id).state == "pending"
     end
   end

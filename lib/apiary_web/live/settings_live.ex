@@ -12,8 +12,8 @@ defmodule ApiaryWeb.SettingsLive do
   """
   use ApiaryWeb, :live_view
 
-  alias Apiary.Organisations
-  alias Apiary.Retention
+  alias Apiary.{Access, Organisations, Retention}
+  alias ApiaryWeb.UserAuth
 
   @impl true
   def render(assigns) do
@@ -40,7 +40,7 @@ defmodule ApiaryWeb.SettingsLive do
         </:subtitle>
       </.header>
 
-      <.notice :if={!@owner?} kind={:info}>
+      <.notice :if={!may?(@current_scope, settings_action(@live_action))} kind={:info}>
         {gettext("Only owners can change these settings. Ask an owner if a name needs to change.")}
       </.notice>
 
@@ -59,7 +59,7 @@ defmodule ApiaryWeb.SettingsLive do
             label={gettext("Name")}
             debounce="200"
             autocomplete="off"
-            disabled={!@owner?}
+            disabled={!may?(@current_scope, :"organisation.rename")}
             required
           />
         </.form>
@@ -73,7 +73,7 @@ defmodule ApiaryWeb.SettingsLive do
         <:footer>
           <span>{gettext("Shown in the sidebar and in invitations.")}</span>
           <.button
-            :if={@owner?}
+            :if={may?(@current_scope, :"organisation.rename")}
             type="submit"
             form="organisation-form"
             disabled={!@organisation_form.source.valid?}
@@ -99,7 +99,7 @@ defmodule ApiaryWeb.SettingsLive do
             label={gettext("Name")}
             debounce="200"
             autocomplete="off"
-            disabled={!@owner?}
+            disabled={!may?(@current_scope, :"workspace.rename")}
             required
           />
         </.form>
@@ -113,7 +113,7 @@ defmodule ApiaryWeb.SettingsLive do
         <:footer>
           <span>{gettext("Shown in the sidebar and as the overview title.")}</span>
           <.button
-            :if={@owner?}
+            :if={may?(@current_scope, :"workspace.rename")}
             type="submit"
             form="workspace-form"
             disabled={!@workspace_form.source.valid?}
@@ -143,7 +143,7 @@ defmodule ApiaryWeb.SettingsLive do
             step="1"
             inputmode="numeric"
             debounce="200"
-            disabled={!@owner?}
+            disabled={!may?(@current_scope, :"retention.edit")}
           />
           <.input
             field={@retention_form[:log_retention_days]}
@@ -155,7 +155,7 @@ defmodule ApiaryWeb.SettingsLive do
             step="1"
             inputmode="numeric"
             debounce="200"
-            disabled={!@owner?}
+            disabled={!may?(@current_scope, :"retention.edit")}
           />
         </.form>
         <p class="max-w-[60ch] text-[13px]/[20px] text-muted">
@@ -166,7 +166,7 @@ defmodule ApiaryWeb.SettingsLive do
         <:footer>
           <span id="retention-summary">{retention_summary(@current_scope.workspace)}</span>
           <.button
-            :if={@owner?}
+            :if={may?(@current_scope, :"retention.edit")}
             type="submit"
             form="retention-form"
             disabled={!@retention_form.source.valid?}
@@ -242,14 +242,9 @@ defmodule ApiaryWeb.SettingsLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    scope = socket.assigns.current_scope
-
     {:ok,
      socket
-     |> assign(
-       page_title: page_title(socket.assigns.live_action),
-       owner?: Organisations.owner?(scope)
-     )
+     |> assign(page_title: page_title(socket.assigns.live_action))
      |> assign_forms()
      |> load_owners()
      |> load_retention_runs()}
@@ -279,7 +274,7 @@ defmodule ApiaryWeb.SettingsLive do
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign(socket, :organisation_form, to_form(changeset))}
 
-      {:error, :unauthorized} ->
+      {:error, :forbidden} ->
         {:noreply, unauthorized(socket)}
     end
   end
@@ -307,7 +302,7 @@ defmodule ApiaryWeb.SettingsLive do
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign(socket, :workspace_form, to_form(changeset))}
 
-      {:error, :unauthorized} ->
+      {:error, :forbidden} ->
         {:noreply, unauthorized(socket)}
     end
   end
@@ -335,10 +330,22 @@ defmodule ApiaryWeb.SettingsLive do
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign(socket, :retention_form, to_form(changeset, as: :retention))}
 
-      {:error, :unauthorized} ->
+      {:error, :forbidden} ->
         {:noreply, unauthorized(socket)}
     end
   end
+
+  # What the page's forms change: the organisation's name on the organisation's page, the
+  # workspace's name on the workspace's; retention is asked for on its own.
+  defp settings_action(:organisation), do: :"organisation.rename"
+  defp settings_action(:workspace), do: :"workspace.rename"
+
+  # The organisation's actions are asked of the organisation, the workspace's of the
+  # workspace.
+  defp may?(scope, :"organisation.rename" = action),
+    do: Access.can?(scope, action, scope.organisation)
+
+  defp may?(scope, action), do: Access.can?(scope, action, scope.workspace)
 
   defp page_title(:organisation), do: gettext("Organisation settings")
   defp page_title(:workspace), do: gettext("Workspace settings")
@@ -431,9 +438,10 @@ defmodule ApiaryWeb.SettingsLive do
     ]
   end
 
+  # Refused on the membership as it is now: the page's scope is stale, and is loaded again.
   defp unauthorized(socket) do
     socket
-    |> assign(:owner?, false)
+    |> UserAuth.reload_scope()
     |> assign_forms()
     |> put_flash(:error, gettext("Only owners can change these settings."))
   end

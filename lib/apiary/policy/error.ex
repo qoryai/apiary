@@ -6,7 +6,7 @@ defmodule Apiary.Policy.Error do
   """
 
   @type reason ::
-          :unauthorized
+          :forbidden
           | :invalid
           | :not_found
           | :locked

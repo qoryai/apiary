@@ -129,6 +129,16 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
   machine reads keeps ISO 8601 in UTC. The CLDR data for every language is compiled into
   the release from the repository (`priv/cldr`) and the time zone database from the `tz`
   package: an instance downloads neither, at build time or at runtime.
+- Whether someone may do something is answered in one place, `Apiary.Access` (decision
+  0076): every change a page or a runner asks for is authorised there first, and a page
+  shows a button, a tab or itself by the same answer; a page the reader may not open is
+  not found. Who may do what is unchanged: owners manage the organisation, its members,
+  the workspace's name and retention, locked rules and the mode; members manage access
+  keys, close runs and edit rules that are not locked. A context function that refuses a
+  role now returns `{:error, :forbidden}` where it returned `{:error, :unauthorized}`, and
+  `Apiary.Policy.Error`'s reason is `:forbidden` for it too; an action of a feature that
+  is off is `{:error, :not_found}`. The events endpoint answers `404` to a key that may not
+  post.
 
 ### Migrations
 

@@ -74,6 +74,7 @@ tracked, or in the shell. Emails in development go to `http://localhost:4100/dev
 How the application is built and the rules its code follows are under [docs/](docs/):
 [architecture.md](docs/architecture.md) for the layout and the tenancy,
 [conventions.md](docs/conventions.md) for migrations, tests, doc comments and the vocabulary,
+[access.md](docs/access.md) for who may do what,
 [lingo.md](docs/lingo.md) for the words on the page,
 [contract-assumptions.md](docs/contract-assumptions.md) for the server contract, and
 [releases.md](docs/releases.md) for how a release is made. A change to what they describe

@@ -33,6 +33,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   """
   use ApiaryWeb, :live_view
   use ApiaryWeb.Features, :observability
+  on_mount {ApiaryWeb.Access, :"run.read"}
 
   import ApiaryWeb.OverviewComponents
 
@@ -125,7 +126,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
             items={Enum.take(@attention_items, @shown)}
             count={@attention_count}
             more={@attention_more}
-            owner?={@owner?}
+            can_set_mode?={Common.may?(@current_scope, :"security_policy.set_mode")}
             now={@now}
           />
 
@@ -268,7 +269,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     keys = scope |> AccessKeys.list_access_keys() |> Enum.filter(&is_nil(&1.revoked_at))
     alive = Runs.count_alive(scope)
     posted? = alive > 0 or Runs.recent_runs(scope, 1) != []
-    security? = Apiary.Features.on?(scope, :security)
+    security? = Common.may?(scope, :"security_policy.read")
 
     if connected?(socket) do
       Runs.subscribe(scope)
@@ -291,7 +292,6 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
         landed: nil,
         now: now,
         today: DateTime.to_date(now),
-        owner?: Common.owner?(scope),
         preview: preview(keys),
         table?: false,
         narrow?: false,

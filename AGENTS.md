@@ -24,6 +24,13 @@ written out in [CONTRIBUTING.md](CONTRIBUTING.md) and the developer documentatio
   context function that touches an organisation's data takes an `Apiary.Accounts.Scope`
   first and filters by its organisation and workspace. A page never calls `Apiary.Repo`. A
   test for a new table asserts that a row of another organisation is not reachable.
+- **Access.** Whether someone may do something is asked of `Apiary.Access` and nowhere
+  else; no code compares a membership's level. A new action, or a new feature's actions,
+  go into its action list with their feature, into its role table, and into the rows of
+  `test/apiary/access_test.exs`, which fails for an action without rows. Every context
+  function that changes something calls `Access.authorize/3` before acting; a page asks
+  `Access.can?/3` with the same action for what it shows, and asks its read action with
+  `on_mount {ApiaryWeb.Access, action}`. The rules: [docs/access.md](docs/access.md).
 - **Migrations.** One per change, via `mix ecto.gen.migration`; expand in one release,
   contract in a later one; every migration reverses; tenant keys in the first migration of
   a table. The changelog section of a release lists them under Migrations. Rules and
@@ -39,7 +46,7 @@ written out in [CONTRIBUTING.md](CONTRIBUTING.md) and the developer documentatio
   warnings as errors (`mix docs --warnings-as-errors`) and runs the tests. CI runs the
   same checks plus `MIX_ENV=prod mix assets.deploy`.
 - **Developer documentation** lives under `docs/`: `architecture.md` (layout, tenancy),
-  `conventions.md` (migrations, tests, doc comments, vocabulary), `lingo.md`,
+  `conventions.md` (migrations, tests, doc comments, vocabulary), `access.md`, `lingo.md`,
   `contract-assumptions.md`, `releases.md`. `CONTRIBUTING.md` says only how to contribute
   (where contributions go, the CLA, the licence, running the checkout, pull requests); how
   the code is built or what rule it follows goes in `docs/`, changed in the same pull request

@@ -11,6 +11,8 @@ beside it:
 
 - `Apiary.Accounts`: users, their tokens, the notifier, and `Apiary.Accounts.Scope`, the
   caller: the user, the organisation, the workspace and the membership.
+- `Apiary.Access`: who may do what, the one question every context function and page
+  asks ([access.md](access.md)).
 - `Apiary.Organisations`: organisations, workspaces, memberships and invitations; sign-up,
   the members of a workspace, renaming.
 - `Apiary.AccessKeys`: a workspace's access keys, their secrets encrypted at rest through

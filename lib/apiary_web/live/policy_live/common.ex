@@ -14,7 +14,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
   import Phoenix.Component, only: [assign: 2, assign: 3, to_form: 2]
   import Phoenix.LiveView
 
-  alias Apiary.Organisations
+  alias Apiary.{Access, Organisations}
   alias Apiary.Policy
   alias Apiary.Policy.Grammar
   alias ApiaryWeb.Format
@@ -35,7 +35,6 @@ defmodule ApiaryWeb.PolicyLive.Common do
       holder: holder,
       scope_kind: if(holder, do: :target, else: :workspace),
       base: base(scope, holder),
-      owner?: owner?(scope),
       people: people(scope),
       fresh: %{},
       announce: nil,
@@ -56,8 +55,14 @@ defmodule ApiaryWeb.PolicyLive.Common do
   def base(scope, %{id: id}),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/policy/targets/#{id}"
 
-  def owner?(%{membership: %{level: :owner}}), do: true
-  def owner?(_scope), do: false
+  @doc """
+  Whether the reader of a policy page may take `action` on the workspace's security
+  policy: `Apiary.Access.can?/3`, given the socket or its scope.
+  """
+  def may?(%Phoenix.LiveView.Socket{assigns: %{current_scope: scope}}, action),
+    do: may?(scope, action)
+
+  def may?(scope, action), do: Access.can?(scope, action, scope.workspace)
 
   def since, do: DateTime.add(DateTime.utc_now(), -@week, :second)
 
@@ -121,7 +126,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
         by: local(socket.assigns.people[rule.created_by_id]),
         at: rule.inserted_at,
         locked_tip: locked_tip(locks[rule.host]),
-        can_change: socket.assigns.owner? or not rule.locked,
+        can_change: not rule.locked or may?(socket, :"security_policy.lock"),
         act: nil,
         beaten: []
       }
@@ -141,7 +146,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
         source: source,
         by: local(socket.assigns.people[rule.created_by_id]),
         at: rule.inserted_at,
-        can_change: socket.assigns.owner? or not rule.locked
+        can_change: not rule.locked or may?(socket, :"security_policy.lock")
       }
     end
   end
@@ -282,7 +287,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
         scope: socket.assigns.scope_kind,
         own: own_for_reading(socket),
         entries: socket.assigns.effective.entries,
-        owner: socket.assigns.owner?,
+        owner: may?(socket, :"security_policy.lock"),
         locked_by: socket.assigns[:locks] || %{}
       })
 

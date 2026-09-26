@@ -7,10 +7,10 @@ defmodule Apiary.Organisations do
   loads them for a member only.
 
   Every function that acts on behalf of a caller takes an `Apiary.Accounts.Scope`
-  loaded with `load_scope/2`. The scope says who is calling; authorization never
-  trusts the membership it carries, which may be as old as the LiveView that
-  holds it. Every mutation reads the caller's membership again and decides on
-  that row.
+  loaded with `load_scope/2`. The scope says who is calling; every mutation asks
+  `Apiary.Access.authorize/3` first, which reads the caller's membership again rather
+  than trust the one the scope carries, which may be as old as the LiveView that holds
+  it.
 
   A level change or a removal is announced on the `Apiary.PubSub` topic
   `membership_topic(user_id)` so the user's open pages reload their scope.
@@ -19,7 +19,7 @@ defmodule Apiary.Organisations do
   use Gettext, backend: ApiaryWeb.Gettext
   import Ecto.Query, warn: false
 
-  alias Apiary.Repo
+  alias Apiary.{Access, Repo}
   alias Apiary.Accounts.{Scope, User, UserNotifier}
   alias Apiary.Organisations.{Workspace, Invitation, Membership, Organisation, Slug}
 
@@ -307,9 +307,9 @@ defmodule Apiary.Organisations do
     Organisation.changeset(organisation, attrs)
   end
 
-  @doc "Renames the scope's organisation. Owners only."
+  @doc "Renames the scope's organisation (`organisation.rename`)."
   def update_organisation(%Scope{organisation: %Organisation{} = organisation} = scope, attrs) do
-    with :ok <- authorize_owner(scope) do
+    with :ok <- Access.authorize(scope, :"organisation.rename", organisation) do
       organisation |> Organisation.changeset(attrs) |> Repo.update()
     end
   end
@@ -318,9 +318,9 @@ defmodule Apiary.Organisations do
     Workspace.changeset(workspace, attrs)
   end
 
-  @doc "Renames the scope's workspace. Owners only."
+  @doc "Renames the scope's workspace (`workspace.rename`)."
   def update_workspace(%Scope{workspace: %Workspace{} = workspace} = scope, attrs) do
-    with :ok <- authorize_owner(scope) do
+    with :ok <- Access.authorize(scope, :"workspace.rename", workspace) do
       workspace |> Workspace.changeset(attrs) |> Repo.update()
     end
   end
@@ -345,7 +345,7 @@ defmodule Apiary.Organisations do
   end
 
   @doc """
-  Changes a member's level. Owners only; demoting the last owner is refused.
+  Changes a member's level (`member.change_level`); demoting the last owner is refused.
   """
   def set_member_level(%Scope{} = scope, membership_id, level) do
     level = normalise_level(level)
@@ -353,7 +353,7 @@ defmodule Apiary.Organisations do
     with true <- level in Membership.levels() || {:error, :not_found} do
       fn ->
         with :ok <- lock_owners(scope),
-             :ok <- authorize_owner(scope),
+             :ok <- Access.authorize(scope, :"member.change_level", scope.workspace),
              {:ok, membership} <- get_member(scope, membership_id),
              :ok <- ensure_not_last_owner(membership, level) do
           membership |> Membership.changeset(%{level: level}) |> Repo.update()
@@ -365,13 +365,13 @@ defmodule Apiary.Organisations do
   end
 
   @doc """
-  Removes a member. Owners only; the last owner cannot be removed. An owner may
+  Removes a member (`member.remove`); the last owner cannot be removed. An owner may
   remove themselves when another owner remains.
   """
   def remove_member(%Scope{} = scope, membership_id) do
     fn ->
       with :ok <- lock_owners(scope),
-           :ok <- authorize_owner(scope),
+           :ok <- Access.authorize(scope, :"member.remove", scope.workspace),
            {:ok, membership} <- get_member(scope, membership_id),
            :ok <- ensure_not_last_owner(membership, :removed) do
         Repo.delete(membership)
@@ -475,11 +475,11 @@ defmodule Apiary.Organisations do
 
   @doc """
   Invites an email address to the scope's workspace and emails the link built by
-  `url_fun.(token)`. Owners only. An address that already belongs to a member of
+  `url_fun.(token)` (`member.invite`). An address that already belongs to a member of
   the organisation is refused with an error on `:email`.
   """
   def invite_member(%Scope{} = scope, attrs, url_fun) when is_function(url_fun, 1) do
-    with :ok <- authorize_owner(scope) do
+    with :ok <- Access.authorize(scope, :"member.invite", scope.workspace) do
       %Scope{user: inviter, organisation: organisation, workspace: workspace} = scope
       {token, token_hash} = Invitation.build_token()
 
@@ -598,12 +598,12 @@ defmodule Apiary.Organisations do
     :ok
   end
 
-  @doc "Deletes a pending invitation. Owners only."
+  @doc "Deletes a pending invitation (`invitation.revoke`)."
   def revoke_invitation(
-        %Scope{organisation: %Organisation{id: organisation_id}} = scope,
+        %Scope{organisation: %Organisation{id: organisation_id} = organisation} = scope,
         invitation_id
       ) do
-    with :ok <- authorize_owner(scope) do
+    with :ok <- Access.authorize(scope, :"invitation.revoke", organisation) do
       pending =
         from i in Invitation,
           where:
@@ -684,45 +684,6 @@ defmodule Apiary.Organisations do
     case Repo.update_all(claim, set: [accepted_at: now, updated_at: now]) do
       {1, _} -> {:ok, %{invitation | accepted_at: now}}
       {0, _} -> {:error, :invalid}
-    end
-  end
-
-  ## Authorization
-
-  @doc """
-  Whether the scope's membership is an owner membership, as loaded. For what a
-  page shows; a mutation authorizes on `fetch_membership/1`.
-  """
-  def owner?(%Scope{membership: %Membership{level: :owner}}), do: true
-  def owner?(_scope), do: false
-
-  @doc """
-  The caller's membership as it is in the database now, or
-  `{:error, :unauthorized}` when it is gone or the scope carries none.
-  """
-  def fetch_membership(%Scope{
-        user: %User{id: user_id},
-        organisation: %Organisation{id: organisation_id},
-        workspace: %Workspace{id: workspace_id},
-        membership: %Membership{id: membership_id}
-      }) do
-    case Repo.get_by(Membership,
-           id: membership_id,
-           user_id: user_id,
-           organisation_id: organisation_id,
-           workspace_id: workspace_id
-         ) do
-      %Membership{} = membership -> {:ok, membership}
-      nil -> {:error, :unauthorized}
-    end
-  end
-
-  def fetch_membership(_scope), do: {:error, :unauthorized}
-
-  defp authorize_owner(scope) do
-    case fetch_membership(scope) do
-      {:ok, %Membership{level: :owner}} -> :ok
-      _ -> {:error, :unauthorized}
     end
   end
 end

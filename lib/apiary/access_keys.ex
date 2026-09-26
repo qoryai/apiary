@@ -11,10 +11,9 @@ defmodule Apiary.AccessKeys do
 
   require Logger
 
-  alias Apiary.Repo
+  alias Apiary.{Access, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.AccessKeys.AccessKey
-  alias Apiary.Organisations
   alias Apiary.Organisations.{Workspace, Organisation}
 
   defguardp key_in_scope(scope, access_key)
@@ -65,20 +64,19 @@ defmodule Apiary.AccessKeys do
   end
 
   @doc """
-  Creates a key for the scope's workspace. Any member, read again from the database:
-  a caller whose membership is gone gets `{:error, :unauthorized}`. Returns the
-  key (without secrets) and its secret, the only time the secret is available in
-  clear.
+  Creates a key for the scope's workspace (`access_key.create`, which every member may): a
+  caller whose membership is gone gets `{:error, :forbidden}`. Returns the key (without
+  secrets) and its secret, the only time the secret is available in clear.
   """
   def create_access_key(
         %Scope{
           user: user,
           organisation: %Organisation{id: organisation_id},
-          workspace: %Workspace{id: workspace_id}
+          workspace: %Workspace{id: workspace_id} = workspace
         } = scope,
         attrs
       ) do
-    with {:ok, _membership} <- Organisations.fetch_membership(scope) do
+    with :ok <- Access.authorize(scope, :"access_key.create", workspace) do
       secret = AccessKey.generate_secret()
 
       changeset =
@@ -100,15 +98,15 @@ defmodule Apiary.AccessKeys do
   end
 
   @doc """
-  Rotates the key: a new primary secret, the old primary kept as the secondary
-  so a node still on it keeps verifying; a previous secondary is dropped.
+  Rotates the key (`access_key.rotate`): a new primary secret, the old primary kept as
+  the secondary so a node still on it keeps verifying; a previous secondary is dropped.
 
   The row is read again and locked, so the secret kept as the secondary is the
   one in the database now, whatever the struct passed in remembers.
   """
   def rotate_access_key(%Scope{} = scope, %AccessKey{} = access_key)
       when key_in_scope(scope, access_key) do
-    mutate(scope, access_key, fn
+    mutate(scope, :"access_key.rotate", access_key, fn
       %AccessKey{revoked_at: revoked_at} when not is_nil(revoked_at) ->
         {:error, :revoked}
 
@@ -128,30 +126,30 @@ defmodule Apiary.AccessKeys do
     end)
   end
 
-  @doc "Drops the secondary secret: the rotation is complete."
+  @doc "Drops the secondary secret: the rotation is complete (`access_key.rotate`)."
   def retire_previous_secret(%Scope{} = scope, %AccessKey{} = access_key)
       when key_in_scope(scope, access_key) do
-    mutate(scope, access_key, fn current ->
+    mutate(scope, :"access_key.rotate", access_key, fn current ->
       current |> Ecto.Changeset.change(secret_secondary: nil) |> Repo.update()
     end)
   end
 
-  @doc "Revokes the key: verification fails from now on."
+  @doc "Revokes the key: verification fails from now on (`access_key.revoke`)."
   def revoke_access_key(%Scope{} = scope, %AccessKey{} = access_key)
       when key_in_scope(scope, access_key) do
-    mutate(scope, access_key, fn current ->
+    mutate(scope, :"access_key.revoke", access_key, fn current ->
       current
       |> Ecto.Changeset.change(revoked_at: current.revoked_at || DateTime.utc_now())
       |> Repo.update()
     end)
   end
 
-  # Authorizes on the caller's membership as it is now, then hands `fun` the
+  # Authorizes `action` on the caller's membership as it is now, then hands `fun` the
   # key as it is now, locked for the rest of the transaction. The result leaves
   # without secrets.
-  defp mutate(%Scope{} = scope, %AccessKey{id: id}, fun) do
+  defp mutate(%Scope{} = scope, action, %AccessKey{id: id} = access_key, fun) do
     fn ->
-      with {:ok, _membership} <- Organisations.fetch_membership(scope),
+      with :ok <- Access.authorize(scope, action, access_key),
            {:ok, current} <- lock_access_key(scope, id) do
         fun.(current)
       end
@@ -182,7 +180,7 @@ defmodule Apiary.AccessKeys do
     # in its place, and a revocation still revokes.
     case Repo.one(query) do
       %AccessKey{} = access_key -> {:ok, drop_unreadable(access_key)}
-      nil -> {:error, :unauthorized}
+      nil -> {:error, :not_found}
     end
   end
 

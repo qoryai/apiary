@@ -183,10 +183,10 @@ defmodule Apiary.PolicyTest do
       %{scope: scope, target: target} = ctx
       %{scope: member} = member_fixture(scope)
 
-      assert {:error, %Error{reason: :unauthorized}} =
+      assert {:error, %Error{reason: :forbidden}} =
                Policy.set_mode(member, target, "enforce")
 
-      assert {:error, %Error{reason: :unauthorized}} =
+      assert {:error, %Error{reason: :forbidden}} =
                Policy.set_mode(member, target, :inherit)
 
       assert {:error, %Error{reason: :invalid, field: :mode}} =
@@ -579,7 +579,7 @@ defmodule Apiary.PolicyTest do
       {:ok, stale} = Policy.allow(scope, nil, %{host: "api.example"})
       {:ok, _locked} = Policy.lock(scope, stale)
 
-      assert {:error, %Error{reason: :unauthorized}} = Policy.remove_rule(member, stale)
+      assert {:error, %Error{reason: :forbidden}} = Policy.remove_rule(member, stale)
       assert [%Rule{locked: true}] = Policy.list_rules(scope, nil)
     end
 
@@ -771,19 +771,19 @@ defmodule Apiary.PolicyTest do
 
       assert {:ok, rule} = Policy.allow(member, nil, %{host: "api.example"})
 
-      assert {:error, %Error{reason: :unauthorized}} = Policy.lock(member, rule)
+      assert {:error, %Error{reason: :forbidden}} = Policy.lock(member, rule)
 
-      assert {:error, %Error{reason: :unauthorized}} =
+      assert {:error, %Error{reason: :forbidden}} =
                Policy.allow(member, nil, %{host: "b.example", locked: true})
 
       assert {:ok, %Rule{locked: true} = rule} = Policy.lock(scope, rule)
 
-      assert {:error, %Error{reason: :unauthorized, message: message}} =
+      assert {:error, %Error{reason: :forbidden, message: message}} =
                Policy.deny(member, nil, %{host: "api.example"})
 
       assert message =~ "locked"
-      assert {:error, %Error{reason: :unauthorized}} = Policy.remove_rule(member, rule)
-      assert {:error, %Error{reason: :unauthorized}} = Policy.unlock(member, rule)
+      assert {:error, %Error{reason: :forbidden}} = Policy.remove_rule(member, rule)
+      assert {:error, %Error{reason: :forbidden}} = Policy.unlock(member, rule)
 
       # An owner's change of a locked rule keeps the lock.
       assert {:ok, %Rule{locked: true, paths: ["/a"]}} =
@@ -796,14 +796,14 @@ defmodule Apiary.PolicyTest do
     test "the mode is an owner's to change, in both directions", %{scope: scope} do
       %{scope: member} = member_fixture(scope)
 
-      assert {:error, %Error{reason: :unauthorized, message: message}} =
+      assert {:error, %Error{reason: :forbidden, message: message}} =
                Policy.set_mode(member, "enforce")
 
       assert message =~ "Only an owner changes the mode"
       assert Policy.get_mode(scope) == "observe"
 
       assert {:ok, "enforce"} = Policy.set_mode(scope, "enforce")
-      assert {:error, %Error{reason: :unauthorized}} = Policy.set_mode(member, "observe")
+      assert {:error, %Error{reason: :forbidden}} = Policy.set_mode(member, "observe")
       assert Policy.get_mode(scope) == "enforce"
     end
 
@@ -817,7 +817,7 @@ defmodule Apiary.PolicyTest do
         assert {:error, %Error{reason: reason}} =
                  Policy.allow(member, nil, %{"host" => "api.example", "locked" => locked})
 
-        assert reason in [:unauthorized, :invalid], inspect(locked)
+        assert reason in [:forbidden, :invalid], inspect(locked)
 
         # On a target it is a refusal with a sentence, never the database's constraint.
         for who <- [member, scope] do
@@ -862,10 +862,75 @@ defmodule Apiary.PolicyTest do
       %{scope: member, membership: membership} = member_fixture(scope)
       {:ok, _} = Apiary.Organisations.remove_member(scope, membership.id)
 
-      assert {:error, %Error{reason: :unauthorized}} =
+      assert {:error, %Error{reason: :forbidden}} =
                Policy.allow(member, nil, %{host: "api.example"})
 
-      assert {:error, %Error{reason: :unauthorized}} = Policy.set_mode(member, "enforce")
+      assert {:error, %Error{reason: :forbidden}} = Policy.set_mode(member, "enforce")
+    end
+
+    test "an owner who is no longer a member hears so, on the mode and on a lock", %{
+      scope: scope
+    } do
+      %{scope: gone, membership: membership} = member_fixture(scope, :owner)
+      {:ok, rule} = Policy.allow(scope, nil, %{host: "api.example"})
+      {:ok, _} = Apiary.Organisations.remove_member(scope, membership.id)
+
+      for refused <- [Policy.set_mode(gone, "enforce"), Policy.lock(gone, rule)] do
+        assert {:error, %Error{reason: :forbidden, message: message}} = refused
+        assert message =~ "Only a member of this workspace"
+      end
+    end
+
+    test "a write reads the caller's membership once, after the workspace's lock", %{
+      scope: scope
+    } do
+      handler = "membership-reads-#{System.unique_integer()}"
+      parent = self()
+
+      :telemetry.attach(
+        handler,
+        [:apiary, :repo, :query],
+        fn _event, _measurements, %{query: query}, _config ->
+          if self() == parent, do: send(parent, {:query, query})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler) end)
+
+      {:ok, rule} = Policy.allow(scope, nil, %{host: "rule.example"})
+      flush_queries()
+
+      writes = [
+        allow: fn -> Policy.allow(scope, nil, %{host: "api.example", locked: true}) end,
+        lock: fn -> Policy.lock(scope, rule) end,
+        set_mode: fn -> Policy.set_mode(scope, "enforce") end,
+        allow_path: fn -> Policy.allow_path(scope, nil, "paths.example", "/a") end,
+        remove_rule: fn -> Policy.remove_rule(scope, rule) end
+      ]
+
+      for {name, write} <- writes do
+        assert {:ok, _value} = write.(), "#{name} was refused"
+        queries = flush_queries()
+
+        locked =
+          Enum.find_index(queries, &(&1 =~ ~s("workspaces") and &1 =~ "FOR NO KEY UPDATE"))
+
+        reads = for {query, i} <- Enum.with_index(queries), query =~ "memberships", do: {query, i}
+
+        assert locked, "#{name} took no lock on the workspace"
+        assert [{read, at}] = reads, "#{name} read memberships #{length(reads)} times"
+        assert read =~ "FOR SHARE", "#{name} read the membership without FOR SHARE"
+        assert at > locked, "#{name} read the membership before the workspace's lock"
+      end
+    end
+  end
+
+  defp flush_queries(acc \\ []) do
+    receive do
+      {:query, query} -> flush_queries([query | acc])
+    after
+      0 -> Enum.reverse(acc)
     end
   end
 

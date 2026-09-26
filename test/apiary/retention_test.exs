@@ -81,7 +81,7 @@ defmodule Apiary.RetentionTest do
     test "a member does not", %{scope: scope} do
       %{scope: member} = member_fixture(scope)
 
-      assert {:error, :unauthorized} =
+      assert {:error, :forbidden} =
                Retention.update_retention(member, %{log_retention_days: 7})
 
       assert Repo.get!(Workspace, scope.workspace.id).log_retention_days == nil
