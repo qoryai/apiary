@@ -63,3 +63,7 @@ config :apiary, Apiary.Vault,
 config :apiary, Apiary.Runs.Projector, async: false
 config :apiary, Apiary.Runs.Liveness, enabled: false
 config :apiary, Apiary.Retention.Scheduler, enabled: false
+
+# Jobs are inserted and not run: a test performs one itself with `Oban.Testing`, and no
+# queue, peer or plugin starts.
+config :apiary, Oban, testing: :manual

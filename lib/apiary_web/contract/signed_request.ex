@@ -31,6 +31,9 @@ defmodule ApiaryWeb.Contract.SignedRequest do
   receiver records the use with the delivery. A failure to record the use does not fail
   the request.
 
+  A verified request's Logger metadata carries the organisation and workspace ids of its
+  key from here on (`Apiary.LogMetadata`); a refused one's carries neither.
+
   The clock is the system's; a test of the contract's fixtures, which are signed
   around a fixed second, sets `config :apiary, :contract_now` to a function of no
   arguments that returns Unix seconds.
@@ -41,6 +44,7 @@ defmodule ApiaryWeb.Contract.SignedRequest do
   alias Apiary.AccessKeys
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Contract.Signature
+  alias Apiary.LogMetadata
   alias ApiaryWeb.Contract.ContractVersion
 
   @window_seconds 300
@@ -61,6 +65,7 @@ defmodule ApiaryWeb.Contract.SignedRequest do
          %{raw_body: body} when is_binary(body) <- conn.assigns,
          {:ok, %AccessKey{} = access_key} <- AccessKeys.fetch_for_verification(key_id),
          true <- Signature.verify(AccessKey.secrets(access_key), body, signature) do
+      LogMetadata.put(access_key)
       assign(conn, :access_key, access_key)
     else
       {:error, :unreadable} -> unavailable(conn)
@@ -78,6 +83,7 @@ defmodule ApiaryWeb.Contract.SignedRequest do
          {:ok, %AccessKey{} = access_key} <- AccessKeys.fetch_for_verification(key_id),
          canonical = Signature.canonical_string(conn.method, path_with_query(conn), timestamp),
          true <- Signature.verify(AccessKey.secrets(access_key), canonical, signature) do
+      LogMetadata.put(access_key)
       assign(conn, :access_key, touch(access_key, conn))
     else
       {:error, :unreadable} -> unavailable(conn)

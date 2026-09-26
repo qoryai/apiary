@@ -8,6 +8,7 @@ defmodule ApiaryWeb.UserAuth do
   alias Apiary.AccessKeys
   alias Apiary.Accounts
   alias Apiary.Accounts.Scope
+  alias Apiary.LogMetadata
   alias Apiary.Organisations
 
   # Make the remember me cookie valid for 14 days. This should match
@@ -76,8 +77,12 @@ defmodule ApiaryWeb.UserAuth do
   def fetch_current_scope_for_user(conn, _opts) do
     with {token, conn} <- ensure_user_token(conn),
          {user, token_inserted_at} <- Accounts.get_user_by_session_token(token) do
+      scope = Scope.for_user(user)
+      # The person's id in the request's log lines, on every page.
+      LogMetadata.put_user(scope)
+
       conn
-      |> assign(:current_scope, Scope.for_user(user))
+      |> assign(:current_scope, scope)
       |> maybe_reissue_user_session_token(user, token_inserted_at)
     else
       nil -> assign(conn, :current_scope, Scope.for_user(nil))
@@ -250,6 +255,8 @@ defmodule ApiaryWeb.UserAuth do
     scope = socket.assigns.current_scope
 
     if scope && scope.user do
+      # A person's own pages are no organisation's: their lines carry no ids, though the
+      # sidebar shows the workspace last opened.
       scope = Organisations.load_home_scope(scope, session[Atom.to_string(@last_workspace)])
       {:cont, assign_organisation(socket, scope)}
     else
@@ -260,14 +267,19 @@ defmodule ApiaryWeb.UserAuth do
   # The organisation and the workspace come from the path (decision 0073): `/:org/…` and
   # `/:org/:workspace/…`. A slug the user holds no membership in answers as a path that
   # does not exist; the pipeline's `fetch_path_scope/2` has already answered so for the
-  # first render, and this answers for a live navigation.
+  # first render, and this answers for a live navigation. Their ids go into the Logger
+  # metadata of the LiveView's process (`Apiary.LogMetadata`).
   def on_mount(:load_path_scope, params, session, socket) do
     socket = mount_current_scope(socket, session)
     scope = %{socket.assigns.current_scope | organisation: nil, workspace: nil, membership: nil}
 
     case Organisations.resolve_scope(scope, params["org"], params["workspace"]) do
-      {:ok, scope} -> {:cont, assign_organisation(socket, scope)}
-      :error -> raise ApiaryWeb.NotFound
+      {:ok, scope} ->
+        LogMetadata.put(scope)
+        {:cont, assign_organisation(socket, scope)}
+
+      :error ->
+        raise ApiaryWeb.NotFound
     end
   end
 
@@ -530,15 +542,22 @@ defmodule ApiaryWeb.UserAuth do
     end
   end
 
+  # Every hook mounts the scope through here, so a LiveView's log lines carry the person's
+  # id from its mount on; the organisation and the workspace are added by
+  # `:load_path_scope` only.
   defp mount_current_scope(socket, session) do
-    Phoenix.Component.assign_new(socket, :current_scope, fn ->
-      {user, _} =
-        if user_token = session["user_token"] do
-          Accounts.get_user_by_session_token(user_token)
-        end || {nil, nil}
+    socket =
+      Phoenix.Component.assign_new(socket, :current_scope, fn ->
+        {user, _} =
+          if user_token = session["user_token"] do
+            Accounts.get_user_by_session_token(user_token)
+          end || {nil, nil}
 
-      Scope.for_user(user)
-    end)
+        Scope.for_user(user)
+      end)
+
+    LogMetadata.put_user(socket.assigns.current_scope)
+    socket
   end
 
   @doc """
@@ -565,7 +584,8 @@ defmodule ApiaryWeb.UserAuth do
   @doc """
   Plug for the pages under `/:org/…` and `/:org/:workspace/…`: loads the organisation
   and the workspace their path names into the scope
-  (`Apiary.Organisations.resolve_scope/3`) and remembers the workspace for
+  (`Apiary.Organisations.resolve_scope/3`), puts their ids into the request's Logger
+  metadata (`Apiary.LogMetadata`) and remembers the workspace for
   `signed_in_path/1`. A slug the user holds no
   membership in is answered as a path that does not exist, as the router answers one
   (decisions 0070 and 0073). Runs after `require_authenticated_user/2`.
@@ -576,6 +596,8 @@ defmodule ApiaryWeb.UserAuth do
 
     case Organisations.resolve_scope(scope, organisation_slug, params["workspace"]) do
       {:ok, scope} ->
+        LogMetadata.put(scope)
+
         conn
         |> assign(:current_scope, scope)
         |> remember_workspace(scope.workspace.id)
