@@ -17,14 +17,15 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
   the tool answered, the `status`, and is recorded as a connection, decided by the same
   rules and counted on the same pages. A tool invocation is such a request that was
   allowed: it reads as a call to the tool wherever a connection is shown: the run's
-  Connections tab, `/hive/connections`, the timeline and the list of what enforce would
-  start denying. The row leads with the tool's name, then the request line and the host;
+  Connections tab, `/hive/connections` and the timeline. The row leads with the tool's name, then the request line and the host;
   the reason says the request was handed to the tool, by which rule and path, or was for
   the tool when it did not reach it; the outcome is the status the tool answered
   (**Answered 200**), **Handed over** when none is recorded, a failed dial when the tool
   is not running. A request a path rule refused never reached the tool and reads as any
-  denial, host first, saying it was refused before reaching the tool; the overview's
-  denied destinations name the tool whose host it was on hover. A plain host whose
+  denial, host first, saying it was refused before reaching the tool. The overview's
+  denied destinations and the list of what enforce would start denying name a
+  destination's tool whenever a request to it named one, a refused request included, as
+  a denied request to that tool. A plain host whose
   requests the proxy reads shows the status it answered beside **Connected**.
 - On the run's timeline, allowed requests to one tool in a row fold into one line under
   the tool's name ("2 allowed requests"), a refused one is never folded, and a single

@@ -483,9 +483,9 @@ defmodule Apiary.Policy do
   where the host is held to paths. Each connection is held to the effective policy of
   its own run's target (the baseline for a run without one), matched as the runner
   matches. Each destination says its allowed `attempts`, how many `runs` made them, when
-  it was last seen and in which `targets`, and the `tool` its most recent tool invocation
-  was handed to (`Apiary.Runs.tool_invocation?/2`), nil when it had none; the 50 with the
-  most attempts, most first.
+  it was last seen and in which `targets`, and `tool`, the tool whose host it is, whenever
+  a request to it in the range named one, handed to the tool or refused by a path rule
+  before it reached the tool (nil otherwise); the 50 with the most attempts, most first.
 
   Read from `connections` by the hive and when they were last seen, at most
   20,000 rows (`Apiary.Policy.Activity.cap/0`): beyond that the answer is `:unavailable`, never a
@@ -541,9 +541,9 @@ defmodule Apiary.Policy do
   since is left out: the record says it was denied, the rules say it no longer would be.
   `held` is true when the host is allowed and the path is what no rule covers; `locked`
   names the locked hive deny that covers the host, when one does, so a page can say that
-  only an owner changes it; `tool` names the tool whose host the most recent connection
-  was for, nil when it named none: a request a path rule refused never reached the tool,
-  so it is no tool invocation. The 50 with the most denials, most first, with the
+  only an owner changes it; `tool` names the tool whose host it is, whenever a request to
+  it in the range named one: a request to a tool that a path rule refused is a denied
+  request to that tool. The 50 with the most denials, most first, with the
   targets whose runs were denied. Bounded as `uncovered/2` is, `:unavailable` beyond
   the cap.
   """

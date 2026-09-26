@@ -218,9 +218,11 @@ Wherever a connection is shown, a tool invocation reads as a call to its tool:
   and the hosts each serves.
 - On `/hive/connections`, **Tool invocations** keeps only the destinations where a run's
   last attempt was a tool invocation, each whole: its counts are the same as without the
-  filter. A destination where every run's last attempt was refused is not among them. The list of
-  what enforce would start denying names the tool the same way; the overview's denied
-  destinations read as denials, host first, and say on hover which tool serves the host.
+  filter. A destination where every run's last attempt was refused is not among them.
+- The list of what enforce would start denying and the overview's denied destinations
+  name a destination's tool, first, whenever a request to it named one, handed to the
+  tool or refused by a path rule: a refused request to a tool is a denied request to
+  that tool, and shows its refusal as any destination does.
 
 **Allow** and **Deny** on a tool invocation's row act on its host and path, like on any
 row: the rules decide what reaches a tool, and the tool decides what the request does.

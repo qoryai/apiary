@@ -28,6 +28,7 @@ defmodule ApiaryWeb.OverviewComponents do
       duration: 1,
       elapsed: 1,
       format_seconds: 1,
+      tool_mark: 1,
       heard_at: 1,
       quiet_for: 2,
       relative_time: 1,
@@ -227,9 +228,23 @@ defmodule ApiaryWeb.OverviewComponents do
   attr :item, :map, required: true
   attr :now, :any, required: true
 
-  # A denied destination reads as a denial, host first, whether or not a tool serves the
-  # host: a request a path rule refused never reached the tool, so it is no tool
-  # invocation (`Apiary.Runs.tool_invocation?/2`). The hover says whose host it was.
+  # A denied destination of a tool's host is a denied request to that tool: it leads with
+  # the tool, then the path, then the host, beside the denial's mark, as the list of what
+  # enforce would start denying names it (`Apiary.Policy.denied_destinations/2`).
+  defp attention_subject(%{item: %{kind: :denied, tool: tool}} = assigns) when is_binary(tool) do
+    ~H"""
+    <span
+      class="q-host q-dest-tool truncate font-mono text-[12.5px]"
+      title={destination_title(@item)}
+    >
+      <.tool_mark name={@item.tool} /><span
+        :if={@item.path != ""}
+        class="q-path"
+      >{@item.path}</span><span class="q-port">{@item.host}:{@item.port}</span>
+    </span>
+    """
+  end
+
   defp attention_subject(%{item: %{kind: :denied}} = assigns) do
     ~H"""
     <span class="q-host truncate font-mono text-[12.5px]" title={destination_title(@item)}>
