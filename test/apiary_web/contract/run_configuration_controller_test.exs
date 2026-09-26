@@ -234,6 +234,40 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
     assert json_response(fetch(ctx, ""), 401) == %{"error" => "unauthorized"}
   end
 
+  test "a contract version other than 1, absent or sent twice, is 400 and serves nothing",
+       ctx do
+    {:ok, _} = Policy.allow(ctx.scope, nil, %{host: "api.example"})
+    query = "forge=github.example&repository=acme%2Fsite"
+
+    for opts <- [
+          [contract_version: nil],
+          [headers: [{"x-qory-contract-version", "1"}]],
+          [contract_version: "2"],
+          [contract_version: "0"],
+          [contract_version: "one"],
+          [contract_version: "1.0"],
+          [contract_version: ""]
+        ] do
+      conn = fetch(ctx, query, opts)
+
+      assert json_response(conn, 400) == %{
+               "error" => "unsupported_contract_version",
+               "supported" => [1]
+             }
+
+      assert get_resp_header(conn, "x-qory-run-configuration") == []
+      assert get_resp_header(conn, "x-qory-configuration") == []
+    end
+
+    assert fetch(ctx, query, contract_version: "1").status == 200
+
+    # A request that does not verify is 401 first, whatever its contract version.
+    conn =
+      fetch(ctx, query, contract_version: "2", signature: "sha256=" <> String.duplicate("0", 64))
+
+    assert json_response(conn, 401) == %{"error" => "unauthorized"}
+  end
+
   describe "the contract's fixtures" do
     @describetag :contract
 

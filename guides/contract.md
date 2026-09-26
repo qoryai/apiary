@@ -54,8 +54,13 @@ On every request:
 | `X-Qory-Contract-Version` | the revision the runner implements, `1` |
 | `User-Agent` | `qory-runner/<version>` |
 
+The server serves revision 1 of contract v1 and nothing else. On every endpoint, a request
+that verifies but whose `X-Qory-Contract-Version` is not `1`, absent or sent twice included,
+is answered `400` with `{"error":"unsupported_contract_version","supported":[1]}`, and
+nothing is served. A request that does not verify is `401` whatever the header says.
+
 The server records the runner's version and the contract version on the key, which is what
-the **Runner** column of the access keys page shows. What is recorded never decides the
+the **Runner** column of the access keys page shows. The runner's version never decides the
 answer.
 
 ## Signed requests
@@ -124,7 +129,8 @@ after its shape is checked.
 ### Discovery: `GET /.well-known/qory-configuration`
 
 A signed GET. The answer is `200`, `application/json`, with the header
-`X-Qory-Configuration: sha256=<hex>`, the SHA-256 of the body as sent.
+`X-Qory-Configuration: sha256=<hex>`, the SHA-256 of the body as sent. A contract version
+other than `1` is `400 unsupported_contract_version`, as on every endpoint.
 
 ```json
 {
@@ -204,6 +210,7 @@ baseline.
 | Status | When | Body |
 |---|---|---|
 | `200` | the workspace has a policy | the run configuration |
+| `400` | `X-Qory-Contract-Version` is not `1`, absent or sent twice included | `{"error":"unsupported_contract_version","supported":[1]}` |
 | `401` | any failure of authentication | `{"error":"unauthorized"}` |
 | `404` | nobody has made the workspace's policy; discovery named no `run` section, so a runner does not ask | `{"error":"not_found"}` |
 | `429` | the key's rate, the events endpoint's bucket, is spent; with `Retry-After` | `{"error":"rate_limited"}` |

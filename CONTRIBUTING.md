@@ -88,7 +88,9 @@ The web side is under `lib/apiary_web/`:
 - `contract/`: the server contract. `ApiaryWeb.Contract.SignedRequest` is the plug that
   verifies a signed request and assigns the access key; the controllers behind it answer
   the contract's endpoints: `ConfigurationController` for the discovery document,
-  `EventsController` for the events, whose body `RawBody` keeps as it was sent.
+  `EventsController` for the events, whose body `RawBody` keeps as it was sent,
+  `RunConfigurationController` for the run configuration. Each of them refuses a
+  contract revision it does not serve through `ContractVersion`.
 - `live/`: the pages behind sign-in, one directory per area (`workspace_live`,
   `member_live`, `access_key_live`, `settings_live`, `invitation_live`, `user_live`).
 - `controllers/`: health, the home page, and the session controllers.

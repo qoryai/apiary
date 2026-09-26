@@ -16,7 +16,9 @@ defmodule ApiaryWeb.Contract.RunConfigurationController do
   A workspace nobody has given a policy (`Apiary.Policy.managed?/1`) serves none: `404`
   `{"error":"not_found"}`, and nothing is rendered. Discovery names no `run` section for
   such a workspace, so a runner does not ask. A key is limited here as on the events
-  endpoint, from the same bucket: `429` with `Retry-After`.
+  endpoint, from the same bucket: `429` with `Retry-After`. After that, as on the events
+  endpoint, a request whose `X-Qory-Contract-Version` names no revision served is `400`
+  (`ApiaryWeb.Contract.ContractVersion`), and nothing is read.
 
   Never a `304`: to a runner anything but `200` is no run, so `If-None-Match` is not
   read. A parameter sent as anything but a string, or longer than a label may be, names
@@ -29,18 +31,21 @@ defmodule ApiaryWeb.Contract.RunConfigurationController do
 
   alias Apiary.Policy.Serving
   alias Apiary.Runs.RateLimit
-  alias ApiaryWeb.Contract.Configuration
+  alias ApiaryWeb.Contract.{Configuration, ContractVersion}
 
   def show(conn, _params) do
-    case RateLimit.check(conn.assigns.access_key.id) do
-      :ok ->
-        serve(conn)
-
+    with :ok <- RateLimit.check(conn.assigns.access_key.id),
+         {:ok, _version} <- ContractVersion.fetch(conn) do
+      serve(conn)
+    else
       {:error, seconds} ->
         conn
         |> put_resp_header("retry-after", Integer.to_string(seconds))
         |> put_status(429)
         |> json(%{error: "rate_limited"})
+
+      :error ->
+        ContractVersion.refuse(conn)
     end
   end
 

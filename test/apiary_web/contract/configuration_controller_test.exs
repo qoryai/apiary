@@ -28,11 +28,13 @@ defmodule ApiaryWeb.Contract.ConfigurationControllerTest do
     |> put_req_header("x-qory-timestamp", to_string(timestamp))
     |> put_req_header("x-qory-signature-256", signature)
     |> put_req_header("user-agent", user_agent)
+    # As the runner sends it unless told otherwise: nil sends none, a list each of its values.
     |> then(fn conn ->
-      case Keyword.get(opts, :contract_version) do
-        nil -> conn
-        version -> put_req_header(conn, "x-qory-contract-version", to_string(version))
-      end
+      sent =
+        for version <- opts |> Keyword.get(:contract_version, 1) |> List.wrap(),
+            do: {"x-qory-contract-version", to_string(version)}
+
+      %{conn | req_headers: conn.req_headers ++ sent}
     end)
     |> get(path)
   end
@@ -116,7 +118,7 @@ defmodule ApiaryWeb.Contract.ConfigurationControllerTest do
     signed_get(build_conn(), key.key_id, secret, user_agent: "curl/8.0")
     touched = AccessKeys.get_access_key!(scope, key.id)
     assert touched.last_runner_version == nil
-    assert touched.last_contract_version == nil
+    assert touched.last_contract_version == 1
   end
 
   test "M2: a key id that is not valid UTF-8 is 401, not a crash", %{conn: conn, secret: secret} do
@@ -167,23 +169,42 @@ defmodule ApiaryWeb.Contract.ConfigurationControllerTest do
     end
   end
 
-  test "M2: an oversized contract version succeeds and is not recorded", %{
-    conn: conn,
-    key: key,
-    secret: secret,
-    scope: scope
-  } do
-    for version <- ["99999999999999999999", "2147483648", "32768", "-1"] do
-      conn = signed_get(conn, key.key_id, secret, contract_version: version)
-      assert %{"version" => 1} = json_response(conn, 200)
+  test "a contract version other than 1, absent or sent twice, is 400 and says what is served",
+       %{key: key, secret: secret, scope: scope} do
+    for version <- [nil, [1, 1], 2, 0, -1, "one", "1.0", "", "99999999999999999999"] do
+      conn = signed_get(build_conn(), key.key_id, secret, contract_version: version)
 
-      touched = AccessKeys.get_access_key!(scope, key.id)
-      assert touched.last_used_at
-      assert touched.last_contract_version == nil
+      assert json_response(conn, 400) == %{
+               "error" => "unsupported_contract_version",
+               "supported" => [1]
+             }
+
+      assert get_resp_header(conn, "x-qory-configuration") == []
+      assert AccessKeys.get_access_key!(scope, key.id).last_contract_version == nil
     end
 
-    signed_get(conn, key.key_id, secret, contract_version: 32_767)
-    assert AccessKeys.get_access_key!(scope, key.id).last_contract_version == 32_767
+    conn = signed_get(build_conn(), key.key_id, secret, contract_version: 1)
+    assert %{"version" => 1} = json_response(conn, 200)
+    assert AccessKeys.get_access_key!(scope, key.id).last_contract_version == 1
+
+    # A refused request leaves what was recorded.
+    assert signed_get(build_conn(), key.key_id, secret, contract_version: 2).status == 400
+    assert AccessKeys.get_access_key!(scope, key.id).last_contract_version == 1
+  end
+
+  test "a request that does not verify is 401 whatever its contract version", %{
+    key: key,
+    secret: secret
+  } do
+    for version <- [nil, 2, 1] do
+      conn =
+        signed_get(build_conn(), key.key_id, secret,
+          contract_version: version,
+          signature: Signature.sign("wrong", "x")
+        )
+
+      assert json_response(conn, 401) == @unauthorized
+    end
   end
 
   test "the secondary secret verifies during a rotation", %{

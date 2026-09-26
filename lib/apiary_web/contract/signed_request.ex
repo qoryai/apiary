@@ -24,10 +24,12 @@ defmodule ApiaryWeb.Contract.SignedRequest do
 
   No input makes this plug raise. The key id is checked for its exact shape
   before it reaches the database, and a header of the signature sent twice is
-  refused. On a GET the use of the key is recorded here (runner version,
-  contract version, reduced to what the columns hold and dropped when they do
-  not fit); on a POST the receiver records it with the delivery. A failure to
-  record the use does not fail the request.
+  refused. On a GET the use of the key is recorded here: the runner version, reduced to
+  what the column holds and dropped when it does not fit, and the contract version when
+  it is a revision served (`ApiaryWeb.Contract.ContractVersion`; a request with any other
+  is refused by the endpoint and leaves the recorded one as it is). On a POST the
+  receiver records the use with the delivery. A failure to record the use does not fail
+  the request.
 
   The clock is the system's; a test of the contract's fixtures, which are signed
   around a fixed second, sets `config :apiary, :contract_now` to a function of no
@@ -39,14 +41,13 @@ defmodule ApiaryWeb.Contract.SignedRequest do
   alias Apiary.AccessKeys
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Contract.Signature
+  alias ApiaryWeb.Contract.ContractVersion
 
   @window_seconds 300
   @key_id_format ~r/^ak_[0-9a-hjkmnp-tv-z]{16}$/
   @runner_version_max 80
   # String.printable?/1 lets escape sequences through; a version has no control characters.
   @printable ~r/\A[^[:cntrl:]]+\z/u
-  # The column is a Postgres integer; a contract version is a small number.
-  @contract_version_range 0..32_767
   @unauthorized %{error: "unauthorized"}
   @unavailable %{error: "unavailable"}
 
@@ -152,10 +153,12 @@ defmodule ApiaryWeb.Contract.SignedRequest do
     do: path <> "?" <> query
 
   defp touch_attrs(conn) do
-    %{
-      last_runner_version: runner_version(conn),
-      last_contract_version: contract_version(conn)
-    }
+    attrs = %{last_runner_version: runner_version(conn)}
+
+    case ContractVersion.fetch(conn) do
+      {:ok, version} -> Map.put(attrs, :last_contract_version, version)
+      :error -> attrs
+    end
   end
 
   @doc "The runner version of `User-Agent: qory-runner/<version>`, as the columns hold it, or nil."
@@ -165,17 +168,6 @@ defmodule ApiaryWeb.Contract.SignedRequest do
          [_, version] <- Regex.run(~r{^qory-runner/(\S+)}, user_agent),
          true <- Regex.match?(@printable, version) do
       String.slice(version, 0, @runner_version_max)
-    else
-      _ -> nil
-    end
-  end
-
-  @doc "The integer of `X-Qory-Contract-Version` when it is one the columns hold, or nil."
-  def contract_version(conn) do
-    with {:ok, value} <- header(conn, "x-qory-contract-version"),
-         {:ok, version} <- parse_integer(value),
-         true <- version in @contract_version_range do
-      version
     else
       _ -> nil
     end

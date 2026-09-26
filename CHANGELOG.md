@@ -66,10 +66,11 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
 
 ### Changed
 
-- The events endpoint serves revision 1 of runner contract v1 and nothing else: a request
-  whose `X-Qory-Contract-Version` is not `1`, absent or sent twice included, is answered
-  `400 unsupported_contract_version` with the revisions served, `[1]`. The runner sends
-  the header on every request.
+- Every endpoint of the server contract, discovery, the events endpoint and the run
+  configuration, serves revision 1 of runner contract v1 and nothing else: a request that
+  verifies but whose `X-Qory-Contract-Version` is not `1`, absent or sent twice included,
+  is answered `400 unsupported_contract_version` with the revisions served, `[1]`. The
+  runner sends the header on every request.
 - `mix apiary.rebuild` (`Apiary.Release.rebuild/1` in a release) projects every run whose
   events are held again, a batch at a time by id; `--all` and `all: true` are gone.
 - The pages, the guides and the README say **workspace** where they said workplace. A
