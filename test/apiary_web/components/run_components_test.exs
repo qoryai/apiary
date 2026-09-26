@@ -405,7 +405,7 @@ defmodule ApiaryWeb.RunComponentsTest do
       assert text(html) =~ "Allowed by rule registry.example"
     end
 
-    test "the hive variant marks a mixed destination's reason as the last attempt's" do
+    test "the workspace variant marks a mixed destination's reason as the last attempt's" do
       html =
         row(
           %{
@@ -417,7 +417,7 @@ defmodule ApiaryWeb.RunComponentsTest do
             attempts: 73,
             runs: 6
           },
-          "hive"
+          "workspace"
         )
 
       assert text(html) =~ "65 / 8"
@@ -443,7 +443,7 @@ defmodule ApiaryWeb.RunComponentsTest do
         runs: 2
       }
 
-      for variant <- ~w(table hive) do
+      for variant <- ~w(table workspace) do
         html = row(invocation, variant)
         [dest] = html |> LazyHTML.from_fragment() |> LazyHTML.query(".q-dest") |> Enum.to_list()
 
@@ -523,7 +523,7 @@ defmodule ApiaryWeb.RunComponentsTest do
         runs: 1
       }
 
-      for variant <- ~w(table hive) do
+      for variant <- ~w(table workspace) do
         html = row(refused, variant)
         [dest] = html |> LazyHTML.from_fragment() |> LazyHTML.query(".q-dest") |> Enum.to_list()
 
@@ -656,12 +656,12 @@ defmodule ApiaryWeb.RunComponentsTest do
           name: "denials",
           label: "Has denials",
           pressed: true,
-          patch: "/hive/runs"
+          patch: "/workspace/runs"
         )
 
       assert html =~ ~r/<button[^>]*type="button"[^>]*aria-pressed="true"/
       refute html =~ "role=\"button\""
-      assert html =~ "/hive/runs"
+      assert html =~ "/workspace/runs"
     end
 
     test "the closed badge's tip is focusable and is text" do
@@ -687,8 +687,13 @@ defmodule ApiaryWeb.RunComponentsTest do
       assert RunComponents.middle(value, 32) |> String.length() == 32
     end
 
-    test "labels come with forge, repository and task first" do
-      assert RunComponents.ordered_labels(%{"a" => "1", "task" => "t", "forge" => "f"}) ==
+    test "labels come with the target's, by the workspace's domain, and task first" do
+      labels = %{"a" => "1", "task" => "t", "forge" => "f", "repository" => "r"}
+
+      assert RunComponents.ordered_labels(labels, nil) ==
+               [{"forge", "f"}, {"repository", "r"}, {"task", "t"}, {"a", "1"}]
+
+      assert RunComponents.ordered_labels(%{"a" => "1", "task" => "t", "forge" => "f"}, nil) ==
                [{"forge", "f"}, {"task", "t"}, {"a", "1"}]
     end
 

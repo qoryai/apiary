@@ -1,4 +1,4 @@
-defmodule ApiaryWeb.HiveLive.OverviewWithoutSecurityTest do
+defmodule ApiaryWeb.WorkspaceLive.OverviewWithoutSecurityTest do
   # Not async: `@tag with_features:` switches the features of the whole node.
   use ApiaryWeb.ConnCase, async: false
 
@@ -12,7 +12,7 @@ defmodule ApiaryWeb.HiveLive.OverviewWithoutSecurityTest do
   setup :register_and_log_in_user
 
   setup do
-    Application.put_env(:apiary, ApiaryWeb.HiveLive.Overview,
+    Application.put_env(:apiary, ApiaryWeb.WorkspaceLive.Overview,
       coalesce: 0,
       announce: 0,
       quiet_tick: 3_600_000,
@@ -22,9 +22,9 @@ defmodule ApiaryWeb.HiveLive.OverviewWithoutSecurityTest do
     :ok
   end
 
-  # A hive with something of everything the policy has an opinion on: a denied destination
-  # (an allow to offer), runs under the machines' own policies (the unmanaged item), a lost
-  # run (an item that is the record's, not the policy's).
+  # A workspace with something of everything the policy has an opinion on: a denied
+  # destination (an allow to offer), runs under the machines' own policies (the unmanaged
+  # item), a lost run (an item that is the record's, not the policy's).
   defp record(scope) do
     started_run(scope, shop(),
       egress: [%{"host" => "files.cdn.example", "decision" => "denied", "rule" => ""}]
@@ -42,14 +42,14 @@ defmodule ApiaryWeb.HiveLive.OverviewWithoutSecurityTest do
     })
   end
 
-  defp open(conn, path \\ "/hive") do
+  defp open(conn, path \\ "/workspace") do
     {:ok, view, _html} = live(conn, path)
     render_async(view, 5_000)
     view
   end
 
   defp subscribed_to_policy?(view, scope) do
-    Policy.topic(scope.hive.id) in Registry.keys(Apiary.PubSub, view.pid)
+    Policy.topic(scope.workspace.id) in Registry.keys(Apiary.PubSub, view.pid)
   end
 
   # The tables only the policy keeps. Every query made by this test, the page it opens and
@@ -85,7 +85,7 @@ defmodule ApiaryWeb.HiveLive.OverviewWithoutSecurityTest do
     @describetag with_features: [:observability]
 
     test "the sidebar has no Policy entry and no mode word, on every page", %{conn: conn} do
-      for path <- ["/hive", "/hive/keys"] do
+      for path <- ["/workspace", "/workspace/keys"] do
         {:ok, view, _html} = live(conn, path)
 
         for key <- ~w(overview runs connections keys members settings),
@@ -93,7 +93,7 @@ defmodule ApiaryWeb.HiveLive.OverviewWithoutSecurityTest do
 
         refute has_element?(view, "#nav-policy")
         refute has_element?(view, "#nav-policy-mode")
-        refute has_element?(view, "#sidebar a[href^='/hive/policy']")
+        refute has_element?(view, "#sidebar a[href^='/workspace/policy']")
       end
     end
 
@@ -110,7 +110,7 @@ defmodule ApiaryWeb.HiveLive.OverviewWithoutSecurityTest do
       view = open(conn)
       refute subscribed_to_policy?(view, scope)
 
-      {:ok, keys, _html} = live(conn, ~p"/hive/keys")
+      {:ok, keys, _html} = live(conn, ~p"/workspace/keys")
       refute subscribed_to_policy?(keys, scope)
     end
 
@@ -130,7 +130,7 @@ defmodule ApiaryWeb.HiveLive.OverviewWithoutSecurityTest do
       # No card, no item, no act, no link, no word.
       refute has_element?(view, "#overview-policy")
       refute has_element?(view, "#policy-error")
-      refute has_element?(view, "a[href^='/hive/policy']")
+      refute has_element?(view, "a[href^='/workspace/policy']")
       refute has_element?(view, "#attention li[data-kind=denied]")
       refute has_element?(view, "#attention li[data-kind=enforce]")
       refute has_element?(view, "#attention li[data-kind=unmanaged]")
@@ -138,7 +138,7 @@ defmodule ApiaryWeb.HiveLive.OverviewWithoutSecurityTest do
       refute has_element?(view, "[phx-click*=rule_open]")
       refute html =~ ~r/polic/i
       refute html =~ ~r/\b(enforce|observe)\b/i
-      refute html =~ ~r/(Hive|Workplace) default|Not served/
+      refute html =~ ~r/Workspace default|Not served/
 
       # What the record says stays: the lost run is still an act, the denials are counted.
       assert has_element?(view, "#att-run-#{lost.run_id}")
@@ -153,7 +153,7 @@ defmodule ApiaryWeb.HiveLive.OverviewWithoutSecurityTest do
 
       id = "att-denied-#{:erlang.phash2({"files.cdn.example", 443, ""}, 4_294_967_296)}"
 
-      for level <- ~w(target hive choose),
+      for level <- ~w(target workspace choose),
           do: render_hook(view, "rule_open", %{"id" => id, "level" => level})
 
       render_hook(view, "rule_submit", %{})
@@ -166,7 +166,7 @@ defmodule ApiaryWeb.HiveLive.OverviewWithoutSecurityTest do
     @describetag with_features: [:observability, :security]
     @describetag needs: :security
 
-    test "the same hive has the Policy entry, the card, the items and the allow", %{
+    test "the same workspace has the Policy entry, the card, the items and the allow", %{
       conn: conn,
       scope: scope
     } do
@@ -176,9 +176,9 @@ defmodule ApiaryWeb.HiveLive.OverviewWithoutSecurityTest do
       # The probe the page without security passes hears the policy's reads here.
       assert reads != []
       assert render(view) =~ ~r/polic/i
-      assert has_element?(view, "#nav-policy[href='/hive/policy']")
-      assert has_element?(view, "#overview-policy-open[href='/hive/policy']")
-      assert has_element?(view, "#att-policy-unmanaged-act[href='/hive/policy']")
+      assert has_element?(view, "#nav-policy[href='/workspace/policy']")
+      assert has_element?(view, "#overview-policy-open[href='/workspace/policy']")
+      assert has_element?(view, "#att-policy-unmanaged-act[href='/workspace/policy']")
       assert has_element?(view, "#attention li[data-kind=denied] [phx-click*=rule_open]")
       assert subscribed_to_policy?(view, scope)
       assert Map.has_key?(UserAuth.nav_counts(scope), :mode)

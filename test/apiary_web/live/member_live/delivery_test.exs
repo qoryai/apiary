@@ -18,7 +18,7 @@ defmodule ApiaryWeb.MemberLive.DeliveryTest do
     conn: conn,
     scope: scope
   } do
-    {:ok, lv, _html} = live(conn, ~p"/hive/members/invite")
+    {:ok, lv, _html} = live(conn, ~p"/workspace/members/invite")
 
     html =
       lv

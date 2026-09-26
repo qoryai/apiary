@@ -22,12 +22,12 @@ defmodule ApiaryWeb.InvitationLive.AcceptTest do
   } do
     {:ok, _lv, html} = live(conn, ~p"/invitations/#{token}")
 
-    assert html =~ "Join #{owner.hive.name}"
+    assert html =~ "Join #{owner.workspace.name}"
     assert html =~ owner.organisation.name
     assert html =~ "bee@example.com"
     assert html =~ ~p"/users/register?invitation=#{token}"
     assert html =~ ~p"/invitations/#{token}/continue"
-    assert html =~ "workplace of the"
+    assert html =~ "workspace of the"
     assert html =~ "organisation, as a member."
     refute html =~ "<abbr"
 
@@ -37,7 +37,7 @@ defmodule ApiaryWeb.InvitationLive.AcceptTest do
     assert get_session(conn, :user_return_to) == ~p"/invitations/#{token}/continue"
   end
 
-  test "signed in: accepts and switches to the new apiary", %{
+  test "signed in: accepts and switches to the new organisation", %{
     conn: conn,
     token: token,
     owner: owner
@@ -53,7 +53,7 @@ defmodule ApiaryWeb.InvitationLive.AcceptTest do
     assert html =~ "phx-trigger-action"
 
     conn = lv |> form("#switch-form") |> follow_trigger_action(conn)
-    assert redirected_to(conn) == ~p"/hive"
+    assert redirected_to(conn) == ~p"/workspace"
     assert get_session(conn, :organisation_id) == owner.organisation.id
 
     assert Enum.any?(
@@ -69,8 +69,8 @@ defmodule ApiaryWeb.InvitationLive.AcceptTest do
       |> log_in_user(user)
       |> put_session(:organisation_id, owner.organisation.id)
 
-    {:ok, _lv, html} = live(conn, ~p"/hive")
-    assert html =~ owner.hive.name
+    {:ok, _lv, html} = live(conn, ~p"/workspace")
+    assert html =~ owner.workspace.name
     assert html =~ ~p"/organisations/switch"
   end
 
@@ -94,7 +94,7 @@ defmodule ApiaryWeb.InvitationLive.AcceptTest do
     assert html =~ ~p"/users/log-in"
   end
 
-  test "registering with the invitation joins the hive", %{
+  test "registering with the invitation joins the workspace", %{
     conn: conn,
     token: token,
     owner: owner
@@ -102,7 +102,7 @@ defmodule ApiaryWeb.InvitationLive.AcceptTest do
     {:ok, lv, html} = live(conn, ~p"/users/register?invitation=#{token}")
 
     assert html =~ "You are invited to the"
-    assert html =~ owner.hive.name
+    assert html =~ owner.workspace.name
     assert html =~ ~s(value="bee@example.com")
 
     form = form(lv, "#registration_form", user: %{email: "bee@example.com"})

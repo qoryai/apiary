@@ -1,6 +1,6 @@
 defmodule Apiary.Policy.Change do
   @moduledoc """
-  One change of the security policy, of the hive's baseline (`target_id` nil) or of a
+  One change of the security policy, of the workspace's baseline (`target_id` nil) or of a
   target's rules: what was done (`action`), to what (`subject`, a host or a
   credential's name; nil for the mode), the rule set `before` and `after` as JSON
   (`%{"mode" => …, "rules" => […]}`), who and when. `version_after` is the version of the
@@ -26,7 +26,7 @@ defmodule Apiary.Policy.Change do
     field :inserted_at, :utc_datetime_usec
 
     belongs_to :organisation, Apiary.Organisations.Organisation
-    belongs_to :hive, Apiary.Organisations.Hive
+    belongs_to :workspace, Apiary.Organisations.Workspace
     belongs_to :target, Apiary.Runs.Target
     belongs_to :changed_by, Apiary.Accounts.User
   end

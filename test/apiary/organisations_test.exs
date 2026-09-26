@@ -9,18 +9,19 @@ defmodule Apiary.OrganisationsTest do
   alias Apiary.Organisations.{Invitation, Membership, Organisation}
 
   describe "sign_up_user/2" do
-    test "creates the user, an organisation named from the email, a Main hive and an owner membership" do
-      {:ok, %{user: user, organisation: organisation, hive: hive, membership: membership}} =
+    test "creates the user, an organisation named from the email, a Main workspace and an owner membership" do
+      {:ok,
+       %{user: user, organisation: organisation, workspace: workspace, membership: membership}} =
         Organisations.sign_up_user(%{email: "alice@example.com"})
 
       assert user.email == "alice@example.com"
       assert organisation.name == "alice"
-      assert hive.name == "Main"
-      assert hive.organisation_id == organisation.id
+      assert workspace.name == "Main"
+      assert workspace.organisation_id == organisation.id
       assert membership.level == :owner
       assert membership.user_id == user.id
       assert membership.organisation_id == organisation.id
-      assert membership.hive_id == hive.id
+      assert membership.workspace_id == workspace.id
     end
 
     test "returns the user changeset when the email is invalid, creating nothing" do
@@ -32,14 +33,14 @@ defmodule Apiary.OrganisationsTest do
     end
 
     test "with a valid invitation token creates no organisation and accepts the invitation" do
-      %{scope: scope, organisation: organisation, hive: hive} = sign_up_fixture()
+      %{scope: scope, organisation: organisation, workspace: workspace} = sign_up_fixture()
       %{invitation: invitation, token: token} = invitation_fixture(scope, %{"level" => "member"})
       count = Repo.aggregate(Organisation, :count)
 
       {:ok, result} = Organisations.sign_up_user(%{email: invitation.email}, token)
 
       assert result.organisation.id == organisation.id
-      assert result.hive.id == hive.id
+      assert result.workspace.id == workspace.id
       assert result.membership.level == :member
       assert Repo.aggregate(Organisation, :count) == count
       assert Repo.get!(Invitation, invitation.id).accepted_at
@@ -64,7 +65,7 @@ defmodule Apiary.OrganisationsTest do
 
       scope = Organisations.load_scope(Scope.for_user(user))
       assert scope.organisation.id == first.id
-      assert scope.hive.organisation_id == first.id
+      assert scope.workspace.organisation_id == first.id
       assert scope.membership.level == :owner
 
       scope = Organisations.load_scope(Scope.for_user(user), second.id)
@@ -84,7 +85,7 @@ defmodule Apiary.OrganisationsTest do
   end
 
   describe "settings" do
-    test "owners rename the organisation and the hive; members cannot" do
+    test "owners rename the organisation and the workspace; members cannot" do
       %{scope: owner_scope} = sign_up_fixture()
       %{scope: member_scope} = member_fixture(owner_scope, :member)
 
@@ -92,12 +93,12 @@ defmodule Apiary.OrganisationsTest do
                Organisations.update_organisation(owner_scope, %{name: "Acme"})
 
       assert {:ok, %{name: "Platform"}} =
-               Organisations.update_hive(owner_scope, %{name: "Platform"})
+               Organisations.update_workspace(owner_scope, %{name: "Platform"})
 
       assert {:error, :unauthorized} =
                Organisations.update_organisation(member_scope, %{name: "X"})
 
-      assert {:error, :unauthorized} = Organisations.update_hive(member_scope, %{name: "X"})
+      assert {:error, :unauthorized} = Organisations.update_workspace(member_scope, %{name: "X"})
 
       assert {:error, %Ecto.Changeset{}} =
                Organisations.update_organisation(owner_scope, %{name: ""})
@@ -105,7 +106,7 @@ defmodule Apiary.OrganisationsTest do
       for name <- ["two\nlines", "bell\a", "esc\e[2J", "nul\0"] do
         assert {:error, changeset} = Organisations.update_organisation(owner_scope, %{name: name})
         assert %{name: ["must not contain control characters"]} = errors_on(changeset)
-        assert {:error, changeset} = Organisations.update_hive(owner_scope, %{name: name})
+        assert {:error, changeset} = Organisations.update_workspace(owner_scope, %{name: name})
         assert %{name: ["must not contain control characters"]} = errors_on(changeset)
       end
 
@@ -171,7 +172,7 @@ defmodule Apiary.OrganisationsTest do
 
       assert {:error, :unauthorized} = Organisations.revoke_invitation(stale, invitation.id)
       assert {:error, :unauthorized} = Organisations.update_organisation(stale, %{name: "Mine"})
-      assert {:error, :unauthorized} = Organisations.update_hive(stale, %{name: "Mine"})
+      assert {:error, :unauthorized} = Organisations.update_workspace(stale, %{name: "Mine"})
 
       assert Repo.get!(Membership, third.id).level == :member
       assert Repo.get!(Organisations.Organisation, scope.organisation.id).name != "Mine"
@@ -187,7 +188,7 @@ defmodule Apiary.OrganisationsTest do
       assert {:error, :unauthorized} = Organisations.set_member_level(stale, third.id, :owner)
       assert {:error, :unauthorized} = Organisations.remove_member(stale, third.id)
       assert {:error, :unauthorized} = Organisations.update_organisation(stale, %{name: "Mine"})
-      assert {:error, :unauthorized} = Organisations.update_hive(stale, %{name: "Mine"})
+      assert {:error, :unauthorized} = Organisations.update_workspace(stale, %{name: "Mine"})
 
       assert {:error, :unauthorized} =
                Organisations.invite_member(
@@ -211,17 +212,17 @@ defmodule Apiary.OrganisationsTest do
       assert_receive {:membership_changed, %{organisation_id: ^organisation_id}}
     end
 
-    test "H7: a membership of another hive of the organisation is not found" do
+    test "H7: a membership of another workspace of the organisation is not found" do
       %{scope: scope, organisation: organisation} = sign_up_fixture()
       %{user: outsider} = sign_up_fixture()
 
-      other_hive =
-        Repo.insert!(%Organisations.Hive{organisation_id: organisation.id, name: "Second"})
+      other_workspace =
+        Repo.insert!(%Organisations.Workspace{organisation_id: organisation.id, name: "Second"})
 
       elsewhere =
         Repo.insert!(%Membership{
           organisation_id: organisation.id,
-          hive_id: other_hive.id,
+          workspace_id: other_workspace.id,
           user_id: outsider.id,
           level: :member
         })
@@ -265,7 +266,7 @@ defmodule Apiary.OrganisationsTest do
       assert invitation.email == "bob@example.com"
       assert invitation.level == :member
       assert invitation.invited_by_id == inviter.id
-      assert invitation.hive_id == scope.hive.id
+      assert invitation.workspace_id == scope.workspace.id
       assert byte_size(invitation.token_hash) == 32
       assert DateTime.diff(invitation.expires_at, DateTime.utc_now(), :day) in 6..7
 
@@ -311,7 +312,7 @@ defmodule Apiary.OrganisationsTest do
       %{scope: scope} = sign_up_fixture()
       %{invitation: invitation, token: token} = invitation_fixture(scope)
 
-      assert %Invitation{id: id, organisation: %Organisation{}, hive: %{}} =
+      assert %Invitation{id: id, organisation: %Organisation{}, workspace: %{}} =
                Organisations.get_invitation_by_token(token)
 
       assert id == invitation.id
@@ -410,7 +411,7 @@ defmodule Apiary.OrganisationsTest do
     end
 
     test "H4: an organisation holds at most 50 pending invitations" do
-      %{scope: scope, organisation: organisation, hive: hive} = sign_up_fixture()
+      %{scope: scope, organisation: organisation, workspace: workspace} = sign_up_fixture()
       now = DateTime.utc_now()
 
       rows =
@@ -418,7 +419,7 @@ defmodule Apiary.OrganisationsTest do
           %{
             id: Ecto.UUID.generate(),
             organisation_id: organisation.id,
-            hive_id: hive.id,
+            workspace_id: workspace.id,
             email: "pending-#{n}@example.com",
             level: :member,
             token_hash: :crypto.strong_rand_bytes(32),

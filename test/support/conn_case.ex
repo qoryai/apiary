@@ -43,7 +43,7 @@ defmodule ApiaryWeb.ConnCase do
       setup :register_and_log_in_user
 
   The user is created through `Apiary.Organisations.sign_up_user/2`, so they
-  own an organisation and a hive; the scope in the context is loaded with them.
+  own an organisation and a workspace; the scope in the context is loaded with them.
   It stores an updated connection, the user and the scope in the test context.
   """
   def register_and_log_in_user(%{conn: conn} = context) do

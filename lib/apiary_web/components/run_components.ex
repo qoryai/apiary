@@ -193,11 +193,12 @@ defmodule ApiaryWeb.RunComponents do
   @max_beat 3600
 
   @doc """
-  The seconds a running run has been quiet for, or nil: set once the hive has heard no
-  heartbeat for more than one interval. The server decides this, never the browser, and by
-  the rule of `Apiary.Runs.Liveness`: silence is measured on the server's clock from when
-  the last heartbeat was received, or, for a run that has not beaten yet, from when the
-  hive first heard of it; a run that announced no valid interval is held to 30 seconds.
+  The seconds a running run has been quiet for, or nil: set once the workspace has heard
+  no heartbeat for more than one interval. The server decides this, never the browser, and
+  by the rule of `Apiary.Runs.Liveness`: silence is measured on the server's clock from
+  when the last heartbeat was received, or, for a run that has not beaten yet, from when
+  the workspace first heard of it; a run that announced no valid interval is held to 30
+  seconds.
   """
   def quiet_for(run, now \\ DateTime.utc_now())
 
@@ -228,8 +229,8 @@ defmodule ApiaryWeb.RunComponents do
   @doc """
   What a running run's clock counts from, `{elapsed_seconds, elapsed_at}`: the runner's own
   `elapsed_seconds` of its last heartbeat and the server time that heartbeat was received;
-  before the first heartbeat, zero at the moment the hive first heard of the run. Never the
-  runner's `started_at`: its clock may be anywhere.
+  before the first heartbeat, zero at the moment the workspace first heard of the run.
+  Never the runner's `started_at`: its clock may be anywhere.
   """
   def elapsed(%{last_heartbeat_at: %DateTime{} = at, elapsed_seconds: seconds})
       when is_integer(seconds),
@@ -402,7 +403,7 @@ defmodule ApiaryWeb.RunComponents do
   end
 
   @doc """
-  The words the browser's clocks tick in (`assets/js/hooks/ticker.js`), in the body's
+  The words the browser's clocks tick in (`assets/js/hooks/ticker.js`), in the domain's
   language, so the script holds none: every "N seconds ago" up to a minute, every "N
   minutes ago" up to an hour and every "N hours ago" up to a day, each chosen by the
   language's own plural rule; the templates of `format_seconds/1` and of the days; and the
@@ -531,13 +532,18 @@ defmodule ApiaryWeb.RunComponents do
     """
   end
 
-  @doc "A run's labels in the record's order, with forge, repository and task first."
-  def ordered_labels(%{} = labels) do
-    first = for key <- ~w(forge repository task), value = labels[key], do: {key, value}
-    first ++ (labels |> Map.drop(~w(forge repository task)) |> Enum.sort())
+  @doc """
+  A run's labels in the record's order: first the labels that name a target in the
+  workspace's domain (`Apiary.Lingo.Domain.target_labels/1`), then the task, then the rest
+  by name.
+  """
+  def ordered_labels(%{} = labels, workspace) do
+    keys = Apiary.Lingo.Domain.target_labels(workspace) ++ ["task"]
+    first = for key <- keys, value = labels[key], do: {key, value}
+    first ++ (labels |> Map.drop(keys) |> Enum.sort())
   end
 
-  def ordered_labels(_labels), do: []
+  def ordered_labels(_labels, _workspace), do: []
 
   @doc "Cuts a long value in the middle: both ends tell more than the start alone."
   def middle(value, max) when is_binary(value) do
@@ -1091,8 +1097,8 @@ defmodule ApiaryWeb.RunComponents do
 
   @doc """
   One connection, the same wherever it appears. `inline` is the 32 px row of the timeline,
-  `table` a row of a run's connections, `hive` a row of the hive's, with the disclosure of
-  the runs that reached the destination.
+  `table` a row of a run's connections, `workspace` a row of the workspace's, with the
+  disclosure of the runs that reached the destination.
 
   `connection` is a projection row (`last_decision`, `last_rule`, …) or a map read from one
   egress event (`decision`, `rule`, …); both spellings are read.
@@ -1108,17 +1114,20 @@ defmodule ApiaryWeb.RunComponents do
   """
   attr :id, :string, required: true
   attr :connection, :map, required: true
-  attr :variant, :string, default: "table", values: ~w(inline table hive)
+  attr :variant, :string, default: "table", values: ~w(inline table workspace)
   attr :started_at, :any, default: nil, doc: "offsets instead of relative time, inside a run"
   attr :caption, :string, default: nil, doc: "inline: \"while 2 calls were open\""
-  attr :open, :any, default: nil, doc: "hive: nil when closed, else %{runs: [...], total: n}"
+  attr :open, :any, default: nil, doc: "workspace: nil when closed, else %{runs: [...], total: n}"
   attr :toggle, :string, default: "toggle_destination"
   attr :more, :string, default: "more_destination_runs"
-  attr :run_path, :any, default: nil, doc: "hive: a function from a run to its connections page"
+
+  attr :run_path, :any,
+    default: nil,
+    doc: "workspace: a function from a run to its connections page"
 
   attr :act, :map,
     default: nil,
-    doc: "table and hive: what the row may ask of the policy, see `rule_action/1`"
+    doc: "table and workspace: what the row may ask of the policy, see `rule_action/1`"
 
   attr :security, :boolean,
     default: true,
@@ -1185,7 +1194,7 @@ defmodule ApiaryWeb.RunComponents do
     """
   end
 
-  def connection_row(%{variant: "hive"} = assigns) do
+  def connection_row(%{variant: "workspace"} = assigns) do
     c = normalise(assigns.connection)
 
     assigns =
@@ -1229,7 +1238,7 @@ defmodule ApiaryWeb.RunComponents do
         </span>
       </td>
       <td :if={@security} class="q-why">
-        <.reason c={@c} variant="hive" /><span
+        <.reason c={@c} variant="workspace" /><span
           :if={@c.allowed > 0 and @c.denied > 0}
           class="text-faint"
         > · {gettext("last attempt")}</span>
@@ -1630,20 +1639,21 @@ defmodule ApiaryWeb.RunComponents do
   ## rd13. Connections tables
 
   @doc """
-  The table of a run's connections (`variant="table"`, C1) or of the hive's across runs
-  (`variant="hive"`, C2). `rows` are connections as `<.connection_row>` reads them; `row_id`
-  gives each its DOM id (`"cx-<id>"` for a projection row, `"dst-<hash>"` for a destination).
+  The table of a run's connections (`variant="table"`, C1) or of the workspace's across
+  runs (`variant="workspace"`, C2). `rows` are connections as `<.connection_row>` reads
+  them; `row_id` gives each its DOM id (`"cx-<id>"` for a projection row, `"dst-<hash>"`
+  for a destination).
   """
   attr :id, :string, required: true
   attr :label, :string, required: true, doc: "the accessible name of the scroll region"
   attr :rows, :list, required: true
-  attr :variant, :string, default: "table", values: ~w(table hive)
+  attr :variant, :string, default: "table", values: ~w(table workspace)
   attr :started_at, :any, default: nil
   attr :row_id, :any, default: nil
 
   attr :open, :map,
     default: %{},
-    doc: "hive: `destination_key/1` of an open destination => %{runs, total}"
+    doc: "workspace: `destination_key/1` of an open destination => %{runs, total}"
 
   attr :run_path, :any, default: nil
 
@@ -1691,7 +1701,7 @@ defmodule ApiaryWeb.RunComponents do
               <span class="sr-only">{gettext("Rule actions")}</span>
             </th>
           </tr>
-          <tr :if={@variant == "hive"}>
+          <tr :if={@variant == "workspace"}>
             <th scope="col">{gettext("Destination")}</th>
             <th scope="col" class="q-num">{gettext("Runs")}</th>
             <th scope="col" class="q-num">{gettext("Attempts")}</th>
@@ -1849,8 +1859,8 @@ defmodule ApiaryWeb.RunComponents do
 
     tip =
       if standing == :locked_deny,
-        do: gettext("A locked hive rule denies %{host}", host: host),
-        else: gettext("A locked hive rule allows %{host}", host: host)
+        do: gettext("A locked workspace rule denies %{host}", host: host),
+        else: gettext("A locked workspace rule allows %{host}", host: host)
 
     assigns = assign(assigns, :tip, tip)
 
@@ -1901,8 +1911,8 @@ defmodule ApiaryWeb.RunComponents do
   record and stays as it was. `line` is `%{action, level, version, by, at, state,
   reloaded_at}`; `state` is `:pending` (the run is alive and has not reported the digest
   in force), `:in_force` (it has: claimed from the record, never after a timer),
-  `:ended`, `:machine` (the run takes no policy from this server) or `:hive` (the hive's
-  page, which says nothing of a run).
+  `:ended`, `:machine` (the run takes no policy from this server) or `:workspace` (the
+  workspace's page, which says nothing of a run).
   """
   attr :id, :string, required: true
   attr :line, :map, required: true
@@ -1929,7 +1939,7 @@ defmodule ApiaryWeb.RunComponents do
 
   defp after_color(:in_force), do: "success"
   defp after_color(:pending), do: "info"
-  defp after_color(:hive), do: "info"
+  defp after_color(:workspace), do: "info"
   defp after_color(_state), do: "neutral"
 
   # The head of the line, with the version the rule is in when it is known.
@@ -1939,18 +1949,18 @@ defmodule ApiaryWeb.RunComponents do
     do: rich_gettext("Denied for this target in %{version}", version: {:part, :version})
 
   defp after_head(%{action: :deny}),
-    do: rich_gettext("Denied for the hive in %{version}", version: {:part, :version})
+    do: rich_gettext("Denied for the workspace in %{version}", version: {:part, :version})
 
   defp after_head(%{level: :target}),
     do: rich_gettext("Allowed for this target in %{version}", version: {:part, :version})
 
   defp after_head(_line),
-    do: rich_gettext("Allowed for the hive in %{version}", version: {:part, :version})
+    do: rich_gettext("Allowed for the workspace in %{version}", version: {:part, :version})
 
   defp after_head_alone(%{action: :deny, level: :target}), do: gettext("Denied for this target")
-  defp after_head_alone(%{action: :deny}), do: gettext("Denied for the hive")
+  defp after_head_alone(%{action: :deny}), do: gettext("Denied for the workspace")
   defp after_head_alone(%{level: :target}), do: gettext("Allowed for this target")
-  defp after_head_alone(_line), do: gettext("Allowed for the hive")
+  defp after_head_alone(_line), do: gettext("Allowed for the workspace")
 
   defp after_sentence(%{state: :pending}), do: gettext("The run has not reloaded yet.")
 
@@ -1975,9 +1985,9 @@ defmodule ApiaryWeb.RunComponents do
   table's scroll container cannot clip it, placed under its button by the `RulePopover`
   hook and a bottom sheet below 768 px. `popover` is the page's state of it:
 
-      %{anchor:, action: :allow | :deny, host:, path:, page: :run | :hive, level:,
+      %{anchor:, action: :allow | :deny, host:, path:, page: :run | :workspace, level:,
         target: %{label:} | nil, targets: [%{id, label, runs}], choice:,
-        what: %{target:, hive:}, own_rule:, hive:, alive:, fetched:, interval:, consequence:, error:,
+        what: %{target:, workspace:}, own_rule:, workspace:, alive:, fetched:, interval:, consequence:, error:,
         refusal: nil | %{standing:, rule:, locked_by:, locked_at:, owner:, rule_path:}}
 
   The form changes with `rule_change` and is sent with `rule_submit`; `rule_cancel`
@@ -2014,8 +2024,8 @@ defmodule ApiaryWeb.RunComponents do
           <span id={"#{@id}-refusal"}>
             <.spliced text={
               if @popover.refusal.standing == :locked_deny,
-                do: gettext("A locked hive rule denies %{rule}.", rule: hole()),
-                else: gettext("A locked hive rule allows %{rule}.", rule: hole())
+                do: gettext("A locked workspace rule denies %{rule}.", rule: hole()),
+                else: gettext("A locked workspace rule allows %{rule}.", rule: hole())
             }>
               <.mono bare>{@popover.refusal.rule}</.mono>
             </.spliced>
@@ -2036,7 +2046,7 @@ defmodule ApiaryWeb.RunComponents do
                 else: gettext("Locked by %{name}.", name: @popover.refusal.locked_by)}
             </span>
             {if @popover.refusal.owner,
-              do: gettext("You can change or unlock it on the hive's policy page."),
+              do: gettext("You can change or unlock it on the workspace's policy page."),
               else: gettext("Only an owner can change or unlock it.")}
           </span>
         </.notice>
@@ -2124,7 +2134,7 @@ defmodule ApiaryWeb.RunComponents do
                 {@popover.consequence.target}
               </small>
             </label>
-            <label :if={@popover.page == :hive and @popover.targets != []} class="q-popt">
+            <label :if={@popover.page == :workspace and @popover.targets != []} class="q-popt">
               <input
                 type="radio"
                 name="for"
@@ -2138,7 +2148,7 @@ defmodule ApiaryWeb.RunComponents do
             </label>
             <%!-- Outside the label: inside it, every option would be part of the radio's name. --%>
             <div
-              :if={@popover.page == :hive and @popover.targets != []}
+              :if={@popover.page == :workspace and @popover.targets != []}
               class="q-popt-more"
             >
               <select
@@ -2165,11 +2175,11 @@ defmodule ApiaryWeb.RunComponents do
               </select>
             </div>
             <label class="q-popt">
-              <input type="radio" name="for" value="hive" checked={@popover.level == :hive} />
-              <span><b>{gettext("The whole hive")}</b></span>
+              <input type="radio" name="for" value="workspace" checked={@popover.level == :workspace} />
+              <span><b>{gettext("The whole workspace")}</b></span>
               <small>
-                {gettext("Every target of %{hive}.", hive: @popover.hive)} {if @deny,
-                  do: @popover.consequence[:hive]}
+                {gettext("Every target of %{workspace}.", workspace: @popover.workspace)} {if @deny,
+                  do: @popover.consequence[:workspace]}
               </small>
               <small :if={@popover[:own_rule]} id={"#{@id}-own-rule"}>
                 {if @popover.page == :run,
@@ -2210,7 +2220,7 @@ defmodule ApiaryWeb.RunComponents do
   defp popover_what(%{level: level, what: what}) when is_map(what), do: what[level]
   defp popover_what(_popover), do: nil
 
-  defp popover_ready?(%{level: :hive}), do: true
+  defp popover_ready?(%{level: :workspace}), do: true
   defp popover_ready?(%{level: :target, page: :run}), do: true
   defp popover_ready?(%{level: :target, choice: choice}) when is_binary(choice), do: true
   defp popover_ready?(_popover), do: false
@@ -2241,11 +2251,11 @@ defmodule ApiaryWeb.RunComponents do
   defp popover_title(_deny, true), do: gettext("Allow on %{host}", host: hole())
   defp popover_title(_deny, _path), do: gettext("Allow %{host}", host: hole())
 
-  defp submit_label(true = _deny, %{level: :hive}), do: gettext("Deny for the hive")
+  defp submit_label(true = _deny, %{level: :workspace}), do: gettext("Deny for the workspace")
   defp submit_label(true, %{level: :target, page: :run}), do: gettext("Deny for this target")
   defp submit_label(true, %{level: :target}), do: gettext("Deny for the target")
   defp submit_label(true, _popover), do: gettext("Deny for …")
-  defp submit_label(_deny, %{level: :hive}), do: gettext("Allow for the hive")
+  defp submit_label(_deny, %{level: :workspace}), do: gettext("Allow for the workspace")
   defp submit_label(_deny, %{level: :target, page: :run}), do: gettext("Allow for this target")
   defp submit_label(_deny, %{level: :target}), do: gettext("Allow for the target")
   defp submit_label(_deny, _popover), do: gettext("Allow for …")
@@ -2279,18 +2289,18 @@ defmodule ApiaryWeb.RunComponents do
 
   defp version_title(%{n: n}), do: gettext("Version %{n}. Open the exact document.", n: n)
 
-  @doc "A version in a sentence: \"the hive baseline's v3\", \"acme/shop's v1\"."
+  @doc "A version in a sentence: \"the workspace baseline's v3\", \"acme/shop's v1\"."
   def version_words(%{n: n, label: label}) when is_binary(label) do
     if baseline?(label),
-      do: gettext("the hive baseline's v%{n}", n: n),
+      do: gettext("the workspace baseline's v%{n}", n: n),
       else: gettext("%{holder}'s v%{n}", holder: middle(label, 40), n: n)
   end
 
   def version_words(%{n: n}), do: gettext("v%{n}", n: n)
   def version_words(_version), do: gettext("another configuration")
 
-  # The baseline's label is made elsewhere, in engine words or already in the body's.
-  defp baseline?(label), do: label in ["hive baseline", gettext("hive baseline")]
+  # The baseline's label is made elsewhere, in engine words or already in the domain's.
+  defp baseline?(label), do: label in ["workspace baseline", gettext("workspace baseline")]
 
   ## pd9. The drift mark
 

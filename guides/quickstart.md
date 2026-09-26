@@ -93,17 +93,17 @@ docker compose logs apiary | grep -o 'http://localhost:4100/users/log-in/[A-Za-z
 ```
 
 Open the link in the browser. The page reads **Welcome to Qory Apiary**; select **Confirm my
-account**. You land on the overview of your workplace.
+account**. You land on the overview of your workspace.
 
 Signing up created an organisation, named after the part of your email before the `@`, one
-workplace in it named *Main*, and your membership as its owner. Both can be renamed under
+workspace in it named *Main*, and your membership as its owner. Both can be renamed under
 **Settings**.
 
 ## 5. Create an access key
 
-An access key lets the machines of a workplace post their runs.
+An access key lets the machines of a workspace post their runs.
 
-1. Select **Access keys** in the sidebar, `/hive/keys`.
+1. Select **Access keys** in the sidebar, `/workspace/keys`.
 2. Select **New access key**.
 3. Give it a **Label**, the machine or environment it is for, `build-01` say, and select
    **Create key**.
@@ -173,11 +173,11 @@ also written to `.qory/runs/<id>/` in the directory, whatever the server does.
 
 ## 8. See it
 
-Open `http://localhost:4100/hive/runs`, **Runs** in the sidebar. The run is there with its
-state, runtime, host, start and duration; select it for its timeline, terminal, connections
-and details. The `hello` directory has no origin remote, so the run names no repository and
-is listed under **Unassigned**. A run started in a checkout with an origin remote is grouped
-under that repository.
+Open `http://localhost:4100/workspace/runs`, **Runs** in the sidebar. The run is there
+with its state, runtime, host, start and duration; select it for its timeline, terminal,
+connections and details. The `hello` directory has no origin remote, so the run names no
+repository and is listed under **Unassigned**. A run started in a checkout with an origin
+remote is grouped under that repository.
 
 On **Access keys**, the key's row now shows when it was last used, its last heartbeat and
 the runner's version.
@@ -185,9 +185,9 @@ the runner's version.
 ## Next
 
 <!-- feature: security -->
-- Until somebody changes the workplace's policy, runs use each machine's own policy. Read
+- Until somebody changes the workspace's policy, runs use each machine's own policy. Read
   [The security policy](security-policy.md) before the first rule: the first change takes
-  over for every machine of the workplace.
+  over for every machine of the workspace.
 <!-- /feature -->
 - `qory run --local` records to files only and does not contact the server.
 - To stop the trial: `docker compose down`. The database stays in the `postgres-data`

@@ -136,7 +136,7 @@ defmodule ApiaryWeb.DocsControllerTest do
 
   test "the user menu links to it", %{conn: conn} do
     %{conn: conn} = register_and_log_in_user(%{conn: conn})
-    {:ok, _lv, html} = live(conn, ~p"/hive/settings")
+    {:ok, _lv, html} = live(conn, ~p"/workspace/settings")
     assert html =~ ~s(href="/docs")
   end
 end

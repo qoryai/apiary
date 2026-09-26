@@ -27,7 +27,7 @@ defmodule ApiaryWeb.Contract.EventsDigestsTest do
     target =
       Repo.insert!(%Target{
         organisation_id: scope.organisation.id,
-        hive_id: scope.hive.id,
+        workspace_id: scope.workspace.id,
         system: "git.example.com",
         path: "acme/shop",
         first_seen_at: DateTime.utc_now()
@@ -55,7 +55,10 @@ defmodule ApiaryWeb.Contract.EventsDigestsTest do
   defp in_force(conn), do: get_resp_header(conn, "x-qory-run-configuration")
 
   defp run!(ctx, subject),
-    do: Repo.one!(from r in Run, where: r.hive_id == ^ctx.scope.hive.id and r.run_id == ^subject)
+    do:
+      Repo.one!(
+        from r in Run, where: r.workspace_id == ^ctx.scope.workspace.id and r.run_id == ^subject
+      )
 
   test "the ping of a run that reports nothing is answered the baseline's digest", ctx do
     {_subject, [ping, _started]} = first_events()
@@ -158,7 +161,8 @@ defmodule ApiaryWeb.Contract.EventsDigestsTest do
            ) == ctx.own
   end
 
-  test "a hive nobody has given a policy names no run configuration, and renders none", _ctx do
+  test "a workspace nobody has given a policy names no run configuration, and renders none",
+       _ctx do
     %{scope: scope} = sign_up_fixture()
     %{access_key: key, secret: secret} = access_key_fixture(scope)
     {subject, [ping, started]} = first_events()
@@ -172,12 +176,14 @@ defmodule ApiaryWeb.Contract.EventsDigestsTest do
     end
 
     assert Repo.aggregate(
-             from(c in Apiary.Policy.RunConfiguration, where: c.hive_id == ^scope.hive.id),
+             from(c in Apiary.Policy.RunConfiguration,
+               where: c.workspace_id == ^scope.workspace.id
+             ),
              :count
            ) == 0
 
-    # The first change: the discovery digest of the hive's answers changes, which is what
-    # sends a run in flight to fetch the document and find the run section.
+    # The first change: the discovery digest of the workspace's answers changes, which is
+    # what sends a run in flight to fetch the document and find the run section.
     {:ok, _} = Policy.set_mode(scope, "enforce")
 
     conn =

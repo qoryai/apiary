@@ -9,17 +9,17 @@ defmodule Apiary.Accounts.Scope do
   or to ensure specific code paths can only be accessed for a given scope.
 
   Beyond the user, the scope carries the organisation the caller is acting in,
-  the hive inside it and the caller's membership there, once
+  the workspace inside it and the caller's membership there, once
   `Apiary.Organisations.load_scope/2` has loaded them. Authorization in the
   contexts reads the membership's level.
   """
 
   alias Apiary.Accounts.User
 
-  @typedoc "Who is asking, and in which organisation and hive."
+  @typedoc "Who is asking, and in which organisation and workspace."
   @type t :: %__MODULE__{}
 
-  defstruct user: nil, organisation: nil, hive: nil, membership: nil
+  defstruct user: nil, organisation: nil, workspace: nil, membership: nil
 
   @doc """
   Creates a scope for the given user.

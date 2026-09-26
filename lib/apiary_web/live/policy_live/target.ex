@@ -1,12 +1,12 @@
 defmodule ApiaryWeb.PolicyLive.Target do
   @moduledoc """
-  A target's view of the hive's policy (`docs/design/brief-policy.md`, pe3 to pe5): the
-  effective list, one row per host in force with where it came from, the rules that lost
-  hung under the rule that beat them; the hosts the harness declared; the target's own
-  history, versions and export.
+  A target's view of the workspace's policy (`docs/design/brief-policy.md`, pe3 to pe5):
+  the effective list, one row per host in force with where it came from, the rules that
+  lost hung under the rule that beat them; the hosts the harness declared; the target's
+  own history, versions and export.
 
-  `:target_id` is the target row's id. A target of another hive is not found:
-  the page renders the not-found state and never another hive's rules.
+  `:target_id` is the target row's id. A target of another workspace is not found:
+  the page renders the not-found state and never another workspace's rules.
   """
   use ApiaryWeb, :live_view
   use ApiaryWeb.Features, :security
@@ -20,7 +20,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
   alias Apiary.Policy.Grammar
   alias ApiaryWeb.PolicyLive.Show
 
-  @shows ~w(hive target overrides)
+  @shows ~w(workspace target overrides)
 
   @impl true
   def mount(%{"target_id" => id}, _session, socket) do
@@ -69,7 +69,14 @@ defmodule ApiaryWeb.PolicyLive.Target do
       mode: Policy.get_mode(scope, target),
       locked_denies:
         for(
-          %{kind: :host, source: :hive, locked: true, action: :deny, in_force: true, host: host} <-
+          %{
+            kind: :host,
+            source: :workspace,
+            locked: true,
+            action: :deny,
+            in_force: true,
+            host: host
+          } <-
             effective.entries,
           do: host
         ),
@@ -115,7 +122,11 @@ defmodule ApiaryWeb.PolicyLive.Target do
         action: to_string(entry.action),
         name: entry.name,
         argument: entry.argument,
-        source: if(entry.source == :hive and entry.locked, do: :hive_locked, else: entry.source),
+        source:
+          if(entry.source == :workspace and entry.locked,
+            do: :workspace_locked,
+            else: entry.source
+          ),
         in_force: entry.in_force,
         by: Common.local(socket.assigns.people[entry.rule.created_by_id]),
         at: entry.rule.inserted_at,
@@ -177,7 +188,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
     to =
       case socket.assigns do
         %{version: %{version: n}, baseline?: false} -> "#{socket.assigns.base}/versions/#{n}"
-        %{version: %{version: n}} -> ~p"/hive/policy/versions/#{n}"
+        %{version: %{version: n}} -> ~p"/workspace/policy/versions/#{n}"
         _ -> socket.assigns.base
       end
 
@@ -254,8 +265,9 @@ defmodule ApiaryWeb.PolicyLive.Target do
     with {:ok, rule} <- Policy.get_rule(scope, id),
          true <- rule.kind == "host" do
       # The act is matched against the rule as it is now, not as the row showed it: a
-      # hive rule that became a deny is not disabled, one that became an allow is not
-      # allowed again over its paths, and a locked one is an owner's on the hive's page.
+      # workspace rule that became a deny is not disabled, one that became an allow is not
+      # allowed again over its paths, and a locked one is an owner's on the workspace's
+      # page.
       {result, sentence, announce} =
         case {act, rule.target_id, rule.action} do
           {_act, nil, _action} when rule.locked ->
@@ -264,7 +276,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
                 reason: :locked,
                 message:
                   gettext(
-                    "The hive's rule for %{host} is locked. An owner changes it on the hive's policy page.",
+                    "The workspace's rule for %{host} is locked. An owner changes it on the workspace's policy page.",
                     host: rule.host
                   )
               }}, nil, nil}
@@ -284,7 +296,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
             {Policy.remove_rule(scope, rule),
              if(act == "restore",
                do:
-                 gettext("The hive's rule for %{host} is restored for %{target}.",
+                 gettext("The workspace's rule for %{host} is restored for %{target}.",
                    host: rule.host,
                    target: name(target)
                  ),
@@ -320,7 +332,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
   defp event("target_mode_ask", %{"setting" => setting}, socket)
        when setting in ~w(follow observe enforce) do
     mode = socket.assigns.mode
-    becomes = if setting == "follow", do: mode.hive, else: setting
+    becomes = if setting == "follow", do: mode.workspace, else: setting
     now = if mode.own, do: mode.own, else: "follow"
 
     cond do
@@ -382,7 +394,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
   end
 
   defp event("suggest_allow", %{"host" => host, "level" => level}, socket)
-       when is_binary(host) and level in ~w(target hive) do
+       when is_binary(host) and level in ~w(target workspace) do
     case allow_suggestion(socket, host, level) do
       {:ok, socket} -> Common.focus(socket, suggestion_id(host) <> "-done")
       {:error, socket} -> socket
@@ -452,20 +464,23 @@ defmodule ApiaryWeb.PolicyLive.Target do
         sentence =
           cond do
             setting == "follow" ->
-              gettext("%{target} follows the hive: %{mode}.", target: name, mode: mode.hive)
+              gettext("%{target} follows the workspace: %{mode}.",
+                target: name,
+                mode: mode.workspace
+              )
 
             mode.mode == before.mode and setting == "observe" ->
               gettext(
-                "%{target} observes on its own. Nothing changes today: the hive's default is %{mode} too.",
+                "%{target} observes on its own. Nothing changes today: the workspace's default is %{mode} too.",
                 target: name,
-                mode: mode.hive
+                mode: mode.workspace
               )
 
             mode.mode == before.mode ->
               gettext(
-                "%{target} enforces on its own. Nothing changes today: the hive's default is %{mode} too.",
+                "%{target} enforces on its own. Nothing changes today: the workspace's default is %{mode} too.",
                 target: name,
-                mode: mode.hive
+                mode: mode.workspace
               )
 
             setting == "observe" ->
@@ -488,16 +503,16 @@ defmodule ApiaryWeb.PolicyLive.Target do
   # with what was done to them, though the policy now covers them.
   defp allow_suggestion(socket, host, level) do
     scope = socket.assigns.current_scope
-    holder = if level == "hive", do: nil, else: socket.assigns.holder
+    holder = if level == "workspace", do: nil, else: socket.assigns.holder
     shown = socket.assigns.suggestions
 
     case Policy.allow(scope, holder, %{host: host}) do
       {:ok, rule} ->
         {sentence, announce} =
-          if level == "hive",
+          if level == "workspace",
             do:
-              {gettext("%{host} is allowed for the hive.", host: host),
-               gettext("%{host} is allowed for the hive.", host: host)},
+              {gettext("%{host} is allowed for the workspace.", host: host),
+               gettext("%{host} is allowed for the workspace.", host: host)},
             else:
               {gettext("%{host} is allowed for %{target}.",
                  host: host,
@@ -506,7 +521,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
 
         socket =
           socket
-          |> Common.wrote(if(level == "hive", do: nil, else: rule), sentence, announce)
+          |> Common.wrote(if(level == "workspace", do: nil, else: rule), sentence, announce)
           |> assign(:suggestions, shown)
           |> assign(:allowed, Map.put(socket.assigns.allowed, host, %{id: rule.id, level: level}))
 
@@ -598,11 +613,11 @@ defmodule ApiaryWeb.PolicyLive.Target do
         tone="neutral"
         icon="hero-magnifying-glass"
         heading="h1"
-        title={gettext("This target is not in this hive")}
+        title={gettext("This target is not in this workspace")}
       >
-        {gettext("The link may be for another hive, or the target has not posted a run here.")}
+        {gettext("The link may be for another workspace, or the target has not posted a run here.")}
         <:actions>
-          <.button navigate={~p"/hive/policy"}>{gettext("Back to policy")}</.button>
+          <.button navigate={~p"/workspace/policy"}>{gettext("Back to policy")}</.button>
         </:actions>
       </.empty_state>
     </Layouts.app>
@@ -622,7 +637,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
       <div id="policy-page" phx-hook="PolicyPage" class="grid grid-cols-[minmax(0,1fr)] gap-6">
         <div class="grid gap-3">
           <nav class="q-crumbs" aria-label={gettext("Breadcrumb")}>
-            <.link navigate={~p"/hive/policy"}>{gettext("Policy")}</.link>
+            <.link navigate={~p"/workspace/policy"}>{gettext("Policy")}</.link>
             <.icon name="hero-chevron-right-micro" class="size-3" />
             <%= if @live_action in [:version, :export] && @v do %>
               <.link navigate={@base} class="font-mono text-xs">
@@ -633,7 +648,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
                 {gettext("Version %{version}", version: @v.configuration.version)}
               </span>
             <% else %>
-              <.link navigate={~p"/hive/policy/targets"}>{gettext("Targets")}</.link>
+              <.link navigate={~p"/workspace/policy/targets"}>{gettext("Targets")}</.link>
               <.icon name="hero-chevron-right-micro" class="size-3" />
               <span class="q-here font-mono text-xs" aria-current="page">
                 <span class="text-faint">{@holder.system}/</span>{@holder.path}
@@ -653,10 +668,10 @@ defmodule ApiaryWeb.PolicyLive.Target do
               </h1>
               <p class="mt-0.5 max-w-[62ch] text-sm/5 text-muted">
                 {gettext(
-                  "What runs of this target may reach: the hive's rules, then this target's own."
+                  "What runs of this target may reach: the workspace's rules, then this target's own."
                 )}
                 {gettext(
-                  "Where the two meet on a host, the target wins, unless the hive's rule is locked."
+                  "Where the two meet on a host, the target wins, unless the workspace's rule is locked."
                 )}
               </p>
             </div>
@@ -666,12 +681,14 @@ defmodule ApiaryWeb.PolicyLive.Target do
                   id="policy-version-pill"
                   version={@version.version}
                   digest={@version.digest}
-                  navigate={if @baseline?, do: ~p"/hive/policy/history", else: "#{@base}/history"}
+                  navigate={
+                    if @baseline?, do: ~p"/workspace/policy/history", else: "#{@base}/history"
+                  }
                   copy
                 />
                 <small :if={@baseline?} id="policy-baseline" class="text-xs text-faint">
                   <.term
-                    word={gettext("hive baseline")}
+                    word={gettext("workspace baseline")}
                     standard={baseline_tip()}
                     class="q-tip-wide tooltip-left"
                   />
@@ -681,7 +698,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
                 id="policy-export-button"
                 navigate={
                   if @baseline?,
-                    do: ~p"/hive/policy/versions/#{@version.version}/export",
+                    do: ~p"/workspace/policy/versions/#{@version.version}/export",
                     else: "#{@base}/versions/#{@version.version}/export"
                 }
               >
@@ -729,7 +746,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
             {gettext("The latest is version %{version}.", version: @missing.latest.version)}
           </span>
           <span :if={!@missing.latest}>
-            {gettext("This target has no versions of its own: it is served the hive baseline.")}
+            {gettext("This target has no versions of its own: it is served the workspace baseline.")}
           </span>
           <:actions>
             <.button :if={@missing.latest} navigate={"#{@base}/versions/#{@missing.latest.version}"}>
@@ -748,7 +765,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
         setting={elem(@dialog, 1)}
         becomes={elem(@dialog, 2)}
         name={Common.holder_name(%{assigns: %{holder: @holder}})}
-        hive={@mode.hive}
+        workspace={@mode.workspace}
         would={@would}
         locked_denies={@locked_denies}
       />
@@ -764,7 +781,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
   attr :setting, :string, required: true
   attr :becomes, :string, required: true
   attr :name, :string, required: true
-  attr :hive, :string, required: true
+  attr :workspace, :string, required: true
   attr :would, :any, required: true
   attr :locked_denies, :list, required: true
 
@@ -872,7 +889,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
           loading_text={gettext("Setting")}
         >
           {if @setting == "follow",
-            do: gettext("Follow the hive"),
+            do: gettext("Follow the workspace"),
             else: gettext("Enforce this target")}
         </.button>
       </:footer>
@@ -892,7 +909,9 @@ defmodule ApiaryWeb.PolicyLive.Target do
         <.rich text={mode_lead("observe")} />
         {whose_words(@setting, "observe")}
         <span :if={@setting != "follow"}>
-          {gettext("The hive's default stays %{mode} and other targets do not change.", mode: @hive)}
+          {gettext("The workspace's default stays %{mode} and other targets do not change.",
+            mode: @workspace
+          )}
         </span>
       </p>
       <p class="text-muted">
@@ -909,7 +928,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
           loading_text={gettext("Setting")}
         >
           {if @setting == "follow",
-            do: gettext("Follow the hive"),
+            do: gettext("Follow the workspace"),
             else: gettext("Observe this target")}
         </.button>
       </:footer>
@@ -929,12 +948,12 @@ defmodule ApiaryWeb.PolicyLive.Target do
   end
 
   defp whose_words("follow", _mode),
-    do: gettext("The mode follows the hive's default from now on, and changes when it does.")
+    do: gettext("The mode follows the workspace's default from now on, and changes when it does.")
 
   defp whose_words(_setting, mode),
     do:
       gettext(
-        "The mode becomes this target's own: it stays %{mode} whatever the hive's default becomes.",
+        "The mode becomes this target's own: it stays %{mode} whatever the workspace's default becomes.",
         mode: mode
       )
 
@@ -971,11 +990,11 @@ defmodule ApiaryWeb.PolicyLive.Target do
       >
         <.icon name="hero-document-text-micro" class="size-4" />{gettext("Document")}
       </.link>
-      <.link id="policy-tab-runs" navigate={~p"/hive/runs?#{@target_query}"}>
+      <.link id="policy-tab-runs" navigate={~p"/workspace/runs?#{@target_query}"}>
         <.icon name="hero-play-circle-micro" class="size-4" />{gettext("Runs")}
         <span :if={@runs > 0} class="q-tabs-n" title={gettext("In the last 7 days")}>{@runs}</span>
       </.link>
-      <.link id="policy-tab-connections" navigate={~p"/hive/connections?#{@target_query}"}>
+      <.link id="policy-tab-connections" navigate={~p"/workspace/connections?#{@target_query}"}>
         <.icon name="hero-arrows-right-left-micro" class="size-4" />{gettext("Connections")}
       </.link>
     </nav>
@@ -987,7 +1006,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
 
     shown =
       case assigns.show do
-        "hive" -> Enum.filter(rows, &(&1.source in [:hive, :hive_locked]))
+        "workspace" -> Enum.filter(rows, &(&1.source in [:workspace, :workspace_locked]))
         "target" -> Enum.filter(rows, &(&1.source == :target))
         "overrides" -> Enum.filter(rows, &(&1.beaten != []))
         nil -> rows
@@ -997,7 +1016,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
       assigns
       |> assign(:shown, shown)
       |> assign(:counts, %{
-        hive: Enum.count(rows, &(&1.source in [:hive, :hive_locked])),
+        workspace: Enum.count(rows, &(&1.source in [:workspace, :workspace_locked])),
         target: Enum.count(rows, &(&1.source == :target)),
         overrides: Enum.count(rows, &(&1.beaten != []))
       })
@@ -1011,7 +1030,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
       id="policy-target-mode"
       setting={@mode.own || "follow"}
       effective={@mode.mode}
-      hive_default={@mode.hive}
+      workspace_default={@mode.workspace}
       can_edit={@owner?}
       locked_denies={@locked_denies}
     />
@@ -1020,10 +1039,12 @@ defmodule ApiaryWeb.PolicyLive.Target do
       <span id="policy-no-own">
         {gettext("This target has no rules of its own.")}
         <span :if={@version}>
-          {gettext("It is served the hive baseline, version %{version}.", version: @version.version)}
+          {gettext("It is served the workspace baseline, version %{version}.",
+            version: @version.version
+          )}
         </span>
         <span :if={!@managed?}>
-          {gettext("Runs use each machine's own policy until the first change in this hive.")}
+          {gettext("Runs use each machine's own policy until the first change in this workspace.")}
         </span>
         {gettext("The first rule added here, or a mode of its own, gives it versions of its own.")}
       </span>
@@ -1044,8 +1065,12 @@ defmodule ApiaryWeb.PolicyLive.Target do
       <:trailing>
         <.segments id="policy-show" label={gettext("Show")}>
           <:segment patch={@base} pressed={@show == nil}>{gettext("All")}</:segment>
-          <:segment patch={"#{@base}?show=hive"} pressed={@show == "hive"} count={@counts.hive}>
-            {gettext("From the hive")}
+          <:segment
+            patch={"#{@base}?show=workspace"}
+            pressed={@show == "workspace"}
+            count={@counts.workspace}
+          >
+            {gettext("From the workspace")}
           </:segment>
           <:segment
             patch={"#{@base}?show=target"}
@@ -1091,7 +1116,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
       <.credentials_table
         :if={@credentials_open}
         id="policy-credential-rows"
-        label={gettext("Credentials of this target and of the hive")}
+        label={gettext("Credentials of this target and of the workspace")}
         rows={@credentials}
         scope={:target}
         activity={async_value(@activity)}
@@ -1140,14 +1165,14 @@ defmodule ApiaryWeb.PolicyLive.Target do
   defp locked_tip(host),
     do:
       gettext(
-        "A locked hive rule denies %{host}. Only an owner can change it, on the hive's policy page.",
+        "A locked workspace rule denies %{host}. Only an owner can change it, on the workspace's policy page.",
         host: host
       )
 
   defp baseline_tip,
     do:
       gettext(
-        "The hive's rules with no target's own: what a target without rules, or a run that names none, is served."
+        "The workspace's rules with no target's own: what a target without rules, or a run that names none, is served."
       )
 
   defp locked_denies_words(hosts),
@@ -1161,7 +1186,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
 
   defp mode_words(%{own: nil, mode: mode}),
     do:
-      rich_gettext("Mode %{mode}, the hive's default.",
+      rich_gettext("Mode %{mode}, the workspace's default.",
         mode: {:b, mode, "font-medium text-base-content"}
       )
 
@@ -1189,17 +1214,17 @@ defmodule ApiaryWeb.PolicyLive.Target do
       )
 
   defp credential_words(%{argument: nil} = credential),
-    do: rich_gettext("%{name} from the hive", name: {:code, credential.name})
+    do: rich_gettext("%{name} from the workspace", name: {:code, credential.name})
 
   defp credential_words(credential),
     do:
-      rich_gettext("%{name} argument %{argument} from the hive",
+      rich_gettext("%{name} argument %{argument} from the workspace",
         name: {:code, credential.name},
         argument: {:code, credential.argument}
       )
 
   defp empty_words(_show, []), do: gettext("No rule is in force for this target yet.")
-  defp empty_words("hive", _rows), do: gettext("No rules from the hive.")
+  defp empty_words("workspace", _rows), do: gettext("No rules from the workspace.")
   defp empty_words("target", _rows), do: gettext("No rules of this target's own.")
   defp empty_words("overrides", _rows), do: gettext("No overrides.")
   defp empty_words(_show, _rows), do: nil

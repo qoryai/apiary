@@ -39,9 +39,9 @@ and every run configuration is validated against them before it is stored.
 ## Who is asking: the access key
 
 Every request names an access key and is signed with that key's secret. The key decides
-the workplace: a run is stored in the workplace of the key that delivered it.
+the workspace: a run is stored in the workspace of the key that delivered it.
 <!-- feature: security -->
-A run configuration is the one of the key's workplace.
+A run configuration is the one of the key's workspace.
 <!-- /feature -->
 After a rotation either of a key's two secrets verifies, until the previous one is retired
 or the key is revoked.
@@ -138,11 +138,11 @@ The URLs are built from the server's `PUBLIC_URL`, never from the request's `Hos
 runner finds the other endpoints through this document alone.
 
 <!-- feature: security -->
-For a workplace whose policy somebody has made, the document has a `run` section too,
-`"run": {"url": "https://qory.example/v1/run-configuration"}`. A workplace nobody has given
-a policy is answered the document without `run`, and its machines run under the policy of
-their own runner file ([The security policy](security-policy.md)). The document is
-therefore one of two, by workplace, and so is its digest.
+For a workspace whose policy somebody has made, the document has a `run` section too,
+`"run": {"url": "https://qory.example/v1/run-configuration"}`. A workspace nobody has
+given a policy is answered the document without `run`, and its machines run under the
+policy of their own runner file ([The security policy](security-policy.md)). The document
+is therefore one of two, by workspace, and so is its digest.
 <!-- /feature -->
 
 ### Events: `POST /v1/events`
@@ -158,7 +158,7 @@ this order, and the first refusal that applies is the answer:
 | `429` | the key has delivered more than its rate; `Retry-After` says how many seconds to wait | `{"error":"rate_limited"}` |
 | `400` | `X-Qory-Contract-Version` is not `1`, absent or sent twice included | `{"error":"unsupported_contract_version","supported":[1]}` |
 | `400` | the body is not a batch, or is over a limit | `{"error":"invalid_batch"}` |
-| `410` | the workplace has closed the run: the delivery is recorded, no event is stored | empty |
+| `410` | the workspace has closed the run: the delivery is recorded, no event is stored | empty |
 | `503` | the batch could not be stored; nothing of it was | `{"error":"unavailable"}` |
 | `202` | stored | empty |
 
@@ -175,7 +175,7 @@ version does not.
 - **Delivery is at least once.** An event already held, by its `id`, is skipped. A delivery
   id the key has delivered before is answered `202` again and nothing is stored.
 - **Stored first, read later.** The batch is stored in one transaction before the answer.
-  The run is created on the first event of a subject the key's workplace has not seen. The
+  The run is created on the first event of a subject the key's workspace has not seen. The
   events are projected into the run, its connections and its log after the answer, in
   order of `sequence`, never of arrival.
 - **The rate** is per access key and per node: 50 batches a second, 100 at once. Every
@@ -184,7 +184,7 @@ version does not.
 - **The digests.** Every `202` and `410` carries `X-Qory-Configuration`. A runner that
   holds another digest fetches the document again; nothing in an answer's body is read.
   <!-- feature: security -->
-  For a workplace with a policy the answer carries `X-Qory-Run-Configuration` too, the
+  For a workspace with a policy the answer carries `X-Qory-Run-Configuration` too, the
   digest in force for the run's repository. That is how a change of the policy reaches a
   run in flight, and the whole of it.
   <!-- /feature -->
@@ -197,14 +197,15 @@ A signed GET, with the query signed as sent: one parameter per label of the run.
 runner sends every label of the run, such as
 `?forge=github.com&issue=77&repository=acme%2Fshop`. The
 server reads every parameter as a label and reads the repository from two of them, `forge`
-and `repository` (`Apiary.Body.Software`). Any other label names nothing. A repository the
-workplace does not know, or labels that name none, get the workplace's baseline.
+and `repository` (`Apiary.Lingo.Domain.Software`). Any other label names nothing. A
+repository the workspace does not know, or labels that name none, get the workspace's
+baseline.
 
 | Status | When | Body |
 |---|---|---|
-| `200` | the workplace has a policy | the run configuration |
+| `200` | the workspace has a policy | the run configuration |
 | `401` | any failure of authentication | `{"error":"unauthorized"}` |
-| `404` | nobody has made the workplace's policy; discovery named no `run` section, so a runner does not ask | `{"error":"not_found"}` |
+| `404` | nobody has made the workspace's policy; discovery named no `run` section, so a runner does not ask | `{"error":"not_found"}` |
 | `429` | the key's rate, the events endpoint's bucket, is spent; with `Retry-After` | `{"error":"rate_limited"}` |
 | `503` | the configuration could not be read | `{"error":"unavailable"}` |
 
@@ -220,9 +221,9 @@ quoted, `X-Qory-Configuration` and `Cache-Control: no-store`:
 
 The body is the bytes that were stored when the policy was last changed. Nothing is
 rendered for a request, so the digest is of exactly what is sent. It is the configuration
-of the key's workplace for the repository the two labels name; a repository the workplace
+of the key's workspace for the repository the two labels name; a repository the workspace
 has not seen, one with no rules of its own, and a request that names none, or one label of
-the two, get the workplace's baseline. The labels are compared to the stored ones byte for
+the two, get the workspace's baseline. The labels are compared to the stored ones byte for
 byte after the query's percent-decoding. The server does not answer `400` to a query the
 contract's rules for labels refuse, as the reference receiver does: a `forge` or
 `repository` that cannot be a label names no repository, and of a parameter sent twice the

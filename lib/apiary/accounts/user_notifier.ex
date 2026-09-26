@@ -1,8 +1,8 @@
 defmodule Apiary.Accounts.UserNotifier do
   @moduledoc """
   The mail sent to people. Each mail is written in the calling process's locale: a request
-  or a LiveView has already set the body's (`ApiaryWeb.Lingo`), and a mail sent from a job
-  about a hive wraps the call in `ApiaryWeb.Lingo.with_locale/2`.
+  or a LiveView has already set the domain's (`ApiaryWeb.Lingo`), and a mail sent from a
+  job about a workspace wraps the call in `ApiaryWeb.Lingo.with_locale/2`.
   """
   use Gettext, backend: ApiaryWeb.Gettext
   import Swoosh.Email

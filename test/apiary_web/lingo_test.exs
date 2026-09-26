@@ -8,36 +8,37 @@ defmodule ApiaryWeb.LingoTest do
 
   doctest ApiaryWeb.Lingo
 
-  # A locale no body has, so a test sees the plug or the hook replace it.
+  # A locale no domain has, so a test sees the plug or the hook replace it.
   @elsewhere "xx@nowhere"
 
   describe "the locale" do
-    test "the software body is the default, and the only catalogue" do
+    test "the software domain is the default, and the only catalogue" do
       assert ApiaryWeb.Gettext.__gettext__(:default_locale) == "en@software"
       assert Gettext.known_locales(ApiaryWeb.Gettext) == ["en@software"]
       assert Lingo.locale_for(nil) == Lingo.default_locale()
     end
 
-    test "the software body says workplace and keeps organisation" do
+    test "the software domain keeps workspace and organisation, and names the system" do
       Gettext.with_locale(ApiaryWeb.Gettext, "en@software", fn ->
-        assert gettext("Hive name") == "Workplace name"
+        assert gettext("Workspace name") == "Workspace name"
         assert gettext("Organisation name") == "Organisation name"
+        assert gettext("Name, such as system-token") == "Name, such as forge-token"
       end)
     end
 
     test "a changeset error in engine words is translated too" do
       assert ApiaryWeb.CoreComponents.translate_error(
-               {"is already the name of a hive in this organisation", []}
-             ) == "is already the name of a workplace in this organisation"
+               {"is already the name of a workspace in this organisation", []}
+             ) == "is already the name of a workspace in this organisation"
     end
 
-    test "plural forms work for a locale with a body" do
+    test "plural forms work for a locale with a domain" do
       Gettext.with_locale(ApiaryWeb.Gettext, "en@software", fn ->
         assert ngettext("%{count} day", "%{count} days", 1) == "1 day"
         assert ngettext("%{count} day", "%{count} days", 2) == "2 days"
       end)
 
-      # The rules are the language's, whatever the body.
+      # The rules are the language's, whatever the domain.
       assert ApiaryWeb.Gettext.Plural.init(%{locale: "de@software"}) == "de"
       assert ApiaryWeb.Gettext.Plural.nplurals("de") == 2
       assert ApiaryWeb.Gettext.Plural.plural_forms_header("pt_BR@marketing") =~ "nplurals=2"
@@ -74,18 +75,18 @@ defmodule ApiaryWeb.LingoTest do
       assert {ApiaryWeb.Gettext, "en@software"} in dictionary
     end
 
-    test "a hive's page reads the body's words", %{conn: conn} do
+    test "a workspace's page reads the domain's words", %{conn: conn} do
       %{conn: conn} = register_and_log_in_user(%{conn: conn})
-      {:ok, view, _html} = live(conn, ~p"/hive/settings")
+      {:ok, view, _html} = live(conn, ~p"/workspace/settings")
       {:dictionary, dictionary} = Process.info(view.pid, :dictionary)
       assert {ApiaryWeb.Gettext, "en@software"} in dictionary
-      assert has_element?(view, "h2", "Workplace name")
+      assert has_element?(view, "h2", "Workspace name")
     end
   end
 
   test "with_locale/2 renders in the scope's locale and restores the caller's" do
     Gettext.put_locale(ApiaryWeb.Gettext, @elsewhere)
-    assert Lingo.with_locale(nil, fn -> gettext("Hive") end) == "Workplace"
+    assert Lingo.with_locale(nil, fn -> gettext("Workspace") end) == "Workspace"
     assert Gettext.get_locale(ApiaryWeb.Gettext) == @elsewhere
   end
 end

@@ -1,7 +1,8 @@
 defmodule ApiaryWeb.ConnectionLive.RulesTest do
   @moduledoc """
-  Allow and Deny from a row of the hive's connections page (`docs/design/brief-policy.md`,
-  pd8), and what a row stands for (`ApiaryWeb.ConnectionLive.Rules`).
+  Allow and Deny from a row of the workspace's connections page
+  (`docs/design/brief-policy.md`, pd8), and what a row stands for
+  (`ApiaryWeb.ConnectionLive.Rules`).
   """
   use ApiaryWeb.ConnCase, async: true
 
@@ -33,7 +34,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
     "outcome" => "refused"
   }
 
-  defp open(conn, path \\ "/hive/connections") do
+  defp open(conn, path \\ "/workspace/connections") do
     {:ok, view, _html} = live(conn, path)
     render_async(view, 2_000)
     view
@@ -64,7 +65,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
 
     subscriptions =
       Apiary.PubSub
-      |> Registry.lookup(Policy.topic(scope.hive.id))
+      |> Registry.lookup(Policy.topic(scope.workspace.id))
       |> Enum.count(fn {pid, _} -> pid == view.pid end)
 
     assert subscriptions == 1
@@ -84,7 +85,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
     :ok
   end
 
-  describe "the hive's connections page" do
+  describe "the workspace's connections page" do
     test "every row has its slot, and the scope of a rule is not guessed", %{conn: conn} do
       view = open(conn)
       cdn = dst("files.cdn.example")
@@ -95,7 +96,8 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
 
       view |> element("##{cdn}-act") |> render_click()
 
-      # two targets reached it: neither is chosen, nor the hive, and nothing can be sent
+      # two targets reached it: neither is chosen,
+      # nor the workspace, and nothing can be sent
       refute has_element?(view, "#rule-popover input[name=for][checked]")
       assert has_element?(view, "#rule-popover-submit[disabled]")
       options = text(view, "#rule-popover-target")
@@ -110,15 +112,15 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       assert has_element?(view, "#rule-popover-submit[disabled]")
     end
 
-    test "allowing for the hive keeps the row as it was and adds the line after", %{
+    test "allowing for the workspace keeps the row as it was and adds the line after", %{
       conn: conn,
       scope: scope
     } do
       view = open(conn)
       cdn = dst("files.cdn.example")
       view |> element("##{cdn}-act") |> render_click()
-      view |> form("#rule-popover-form", %{"for" => "hive"}) |> render_change()
-      assert text(view, "#rule-popover-submit") == "Allow for the workplace"
+      view |> form("#rule-popover-form", %{"for" => "workspace"}) |> render_change()
+      assert text(view, "#rule-popover-submit") == "Allow for the workspace"
       view |> form("#rule-popover-form") |> render_submit()
 
       assert Enum.any?(Policy.list_rules(scope, nil), &(&1.host == "files.cdn.example"))
@@ -130,10 +132,10 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       assert line =~ "Rule added"
 
       assert line =~
-               "Allowed for the workplace in v#{configuration.version} · of workplace baseline by you"
+               "Allowed for the workspace in v#{configuration.version} · of workspace baseline by you"
 
       refute line =~ "run"
-      assert has_element?(view, ~s(a##{cdn}-act[href="/hive/policy?rule=files.cdn.example"]))
+      assert has_element?(view, ~s(a##{cdn}-act[href="/workspace/policy?rule=files.cdn.example"]))
     end
 
     test "allowing for one target is that target's rule", %{conn: conn, scope: scope} do
@@ -159,11 +161,11 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       scope: scope
     } do
       github = target(scope, "github.example")
-      view = open(conn, ~p"/hive/connections?system=github.example&target=acme/shop")
+      view = open(conn, ~p"/workspace/connections?system=github.example&target=acme/shop")
 
       assert has_element?(
                view,
-               ~s(#connections-target-policy[href="/hive/policy/targets/#{github.id}"]),
+               ~s(#connections-target-policy[href="/workspace/policy/targets/#{github.id}"]),
                "Its policy"
              )
 
@@ -200,7 +202,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       assert has_element?(view, ~s(tr##{cdn}[data-decision=allowed]))
 
       assert text(view, "##{cdn}-after") =~
-               "Allowed for the workplace in v2 · of workplace baseline"
+               "Allowed for the workspace in v2 · of workspace baseline"
 
       assert text(view, "a##{cdn}-act") == "Rule"
     end
@@ -217,14 +219,14 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       heard_policy_change(view, scope)
 
       assert text(view, "##{cdn}-act") == "Rule"
-      assert text(view, "##{cdn}-after") =~ "Allowed for the workplace"
+      assert text(view, "##{cdn}-after") =~ "Allowed for the workspace"
     end
   end
 
   describe "a target's own rule on the unfiltered page" do
     @extra %{"host" => "extra.example", "rule" => "extra.example"}
 
-    test "Deny for the hive warns that the target's rule still holds, and Deny stays reachable",
+    test "Deny for the workspace warns that the target's rule still holds, and Deny stays reachable",
          %{conn: conn, scope: scope} do
       github = target(scope, "github.example")
       {:ok, _} = Policy.allow(scope, github, %{host: "extra.example"})
@@ -234,7 +236,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       d = dst("extra.example")
       assert text(view, "##{d}-act") == "Deny"
       view |> element("##{d}-act") |> render_click()
-      view |> form("#rule-popover-form", %{"for" => "hive"}) |> render_change()
+      view |> form("#rule-popover-form", %{"for" => "workspace"}) |> render_change()
       assert text(view, "#rule-popover") =~ "A repository's own allow rule still holds there."
 
       assert text(view, "#rule-popover-own-rule") ==
@@ -267,7 +269,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       github = target(scope, "github.example")
       {:ok, _} = Policy.deny(scope, nil, %{host: "extra.example"})
       {:ok, _} = Policy.allow(scope, github, %{host: "extra.example"})
-      # and the other way round: the hive allows, the target denies
+      # and the other way round: the workspace allows, the target denies
       {:ok, _} = Policy.allow(scope, nil, %{host: "files.cdn.example"})
       {:ok, _} = Policy.deny(scope, github, %{host: "files.cdn.example"})
       started_run(scope, shop(), egress: [@extra])
@@ -279,7 +281,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       assert text(view, "button##{dst("files.cdn.example")}-act") == "Allow"
 
       # with repo set the rows stand against that target's policy, and it answers
-      view = open(conn, ~p"/hive/connections?system=github.example&target=acme/shop")
+      view = open(conn, ~p"/workspace/connections?system=github.example&target=acme/shop")
       assert text(view, "##{dst("files.cdn.example")}-act") == "Allow"
       refute has_element?(view, "##{dst("files.cdn.example")}-after")
     end
@@ -317,7 +319,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       assert text(view, "#rule-popover-title") == "Allow on api.pathed.example"
       assert text(view, "#rule-popover-what") =~ "This path /v2/x is added"
 
-      view |> form("#rule-popover-form", %{"for" => "hive"}) |> render_change()
+      view |> form("#rule-popover-form", %{"for" => "workspace"}) |> render_change()
       assert text(view, "#rule-popover-title") == "Allow api.pathed.example"
 
       view |> form("#rule-popover-form", %{"for" => "target"}) |> render_change()
@@ -332,7 +334,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
     test "a stale popover is not sent", %{conn: conn, scope: scope} do
       view = open(conn)
       view |> element("##{dst("files.cdn.example")}-act") |> render_click()
-      view |> form("#rule-popover-form", %{"for" => "hive"}) |> render_change()
+      view |> form("#rule-popover-form", %{"for" => "workspace"}) |> render_change()
 
       {:ok, rule} = Policy.deny(scope, nil, %{host: "files.cdn.example"})
       {:ok, _} = Policy.lock(scope, rule)
@@ -359,8 +361,8 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       assert has_element?(view, ~s(##{id}-act-deny[aria-expanded=true]))
       assert has_element?(view, ~s(##{id}-act[aria-expanded=false]))
 
-      view |> form("#rule-popover-form", %{"for" => "hive"}) |> render_change()
-      assert text(view, "#rule-popover-submit") == "Deny for the workplace"
+      view |> form("#rule-popover-form", %{"for" => "workspace"}) |> render_change()
+      assert text(view, "#rule-popover-submit") == "Deny for the workspace"
       view |> form("#rule-popover-form") |> render_submit()
 
       assert [%{action: "deny", locked: false}] =
@@ -397,14 +399,14 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       view = open(conn)
       id = dst("flags.example")
       view |> element("##{id}-act-deny") |> render_click()
-      view |> form("#rule-popover-form", %{"for" => "hive"}) |> render_change()
+      view |> form("#rule-popover-form", %{"for" => "workspace"}) |> render_change()
       view |> form("#rule-popover-form") |> render_submit()
 
-      assert render(view) =~ "flags.example is denied for the workplace."
+      assert render(view) =~ "flags.example is denied for the workspace."
       # the row is the record and stays let through; the line after says what holds now
       assert has_element?(view, ~s(tr##{id}[data-decision=allowed]))
-      assert text(view, "##{id}-after") =~ "Denied for the workplace in v"
-      assert has_element?(view, ~s(a##{id}-act[href="/hive/policy?rule=flags.example"]))
+      assert text(view, "##{id}-after") =~ "Denied for the workspace in v"
+      assert has_element?(view, ~s(a##{id}-act[href="/workspace/policy?rule=flags.example"]))
       refute has_element?(view, "##{id}-act-deny")
     end
 
@@ -417,7 +419,10 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
   end
 
   describe "tenancy of the row's events" do
-    test "a destination or a target of another hive is not found", %{conn: conn, scope: scope} do
+    test "a destination or a target of another workspace is not found", %{
+      conn: conn,
+      scope: scope
+    } do
       other = scope_fixture()
 
       started_run(other, shop("forge.other.example"),
@@ -427,11 +432,11 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       theirs = target(other, "forge.other.example")
       view = open(conn)
 
-      # a destination this hive never reached opens nothing
+      # a destination this workspace never reached opens nothing
       render_click(view, "rule_open", Map.put(values("only.theirs.example"), "action", "allow"))
       refute has_element?(view, "#rule-popover")
 
-      # and a target of another hive cannot be chosen
+      # and a target of another workspace cannot be chosen
       view |> element("##{dst("files.cdn.example")}-act") |> render_click()
       render_change(view, "rule_change", %{"for" => "target", "target" => theirs.id})
       assert has_element?(view, "#rule-popover-submit[disabled]")
@@ -444,8 +449,8 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
 
     test "crafted events with nothing open do nothing", %{conn: conn, scope: scope} do
       view = open(conn)
-      render_submit(view, "rule_submit", %{"for" => "hive"})
-      render_change(view, "rule_change", %{"for" => "hive"})
+      render_submit(view, "rule_submit", %{"for" => "workspace"})
+      render_change(view, "rule_change", %{"for" => "workspace"})
       render_click(view, "rule_open", %{"host" => %{"a" => 1}, "action" => "allow"})
       render_click(view, "rule_open", Map.put(values("files.cdn.example"), "action", "lock"))
       # Deny is not what the wall's row stands for
@@ -564,27 +569,27 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
           version_after: 4
       }
 
-      assert Rules.change_for(entry, %{hive: [credential]}) == nil
-      assert %{version: 4} = Rules.change_for(entry, %{hive: [credential, host]})
+      assert Rules.change_for(entry, %{workspace: [credential]}) == nil
+      assert %{version: 4} = Rules.change_for(entry, %{workspace: [credential, host]})
     end
 
     test "past what can be read of the targets' own rules, the baseline claims nothing", %{
       effective: effective
     } do
       row = row("registry.example", "denied", nil)
-      assert %{standing: {:rule_added, :allow}} = Rules.standing(row, effective, :hive, [])
-      assert %{standing: :can_allow} = Rules.standing(row, effective, :hive, :unknown)
-      assert %{standing: :can_allow} = Rules.standing(row, effective, :hive, ["*.example"])
+      assert %{standing: {:rule_added, :allow}} = Rules.standing(row, effective, :workspace, [])
+      assert %{standing: :can_allow} = Rules.standing(row, effective, :workspace, :unknown)
+      assert %{standing: :can_allow} = Rules.standing(row, effective, :workspace, ["*.example"])
 
       assert %{standing: {:rule_added, :allow}} =
-               Rules.standing(row, effective, :hive, ["x.example"])
+               Rules.standing(row, effective, :workspace, ["x.example"])
     end
 
-    test "a row allowed by a target's own rule can be denied from the hive's page", %{
+    test "a row allowed by a target's own rule can be denied from the workspace's page", %{
       effective: effective
     } do
       row = row("mcp.acme.example", "allowed", "mcp.acme.example")
-      assert Rules.standing(row, effective, :hive).standing == :can_deny
+      assert Rules.standing(row, effective, :workspace).standing == :can_deny
       assert Rules.standing(row, effective, :run).standing == :can_allow
     end
   end

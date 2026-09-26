@@ -20,7 +20,7 @@ server:
 ```
 
 The console writes this block for you, with the values filled in, when an access key is
-created or rotated under **Access keys**, `/hive/keys`. The block begins with an
+created or rotated under **Access keys**, `/workspace/keys`. The block begins with an
 `apiVersion` line; a runner file has one such line, so when the file exists already, add
 the `server` section alone. The file is read strictly: a key it does not know, or a key
 written twice, is refused with a message that names the file.
@@ -97,7 +97,7 @@ is configured with the same `server` section, and implements the same contract: 
 configuration document and the events endpoint are enough.
 
 <!-- feature: security -->
-## The `egress` section and the workplace's policy
+## The `egress` section and the workspace's policy
 
 The runner file's `egress` section is the machine's own policy: a mode, `observe` or
 `enforce`, the hosts allowed and the hosts denied. A host in `deny` is denied in either
@@ -114,19 +114,19 @@ It applies:
 
 - on a machine with no `server` section;
 - with `qory run --local`, which records to files only and does not contact the server;
-- while the workplace the access key belongs to has no policy yet. The server then names
+- while the workspace the access key belongs to has no policy yet. The server then names
   no run configuration, and the machine's own policy stands, enforcement included.
 
-From the first change of the workplace's policy in the console, the server's run
-configuration is the policy of every run under the workplace's keys, and the file's
+From the first change of the workspace's policy in the console, the server's run
+configuration is the policy of every run under the workspace's keys, and the file's
 `egress` section is not merged with it. [The security policy](security-policy.md) says
 what to do before that first change.
 
 With a server configured, `qory run --policy <file>` is refused unless `--local` is given
 too: the server's run configuration is the policy.
 
-Two sections of the runner file still matter under a workplace's policy. `credentials`
-defines what the machine has; the workplace's policy selects credentials by name and
+Two sections of the runner file still matter under a workspace's policy. `credentials`
+defines what the machine has; the workspace's policy selects credentials by name and
 defines none, and a name the machine does not define is no run. `wall` starts the runtime
 in a container; a policy with paths or credentials needs one.
 <!-- /feature -->
@@ -148,7 +148,7 @@ So the origin `git@git.example:acme/shop.git` gives `forge` `git.example` and `r
 whose remote is on this machine, carries neither label: its runs are listed under
 **Unassigned** on the runs page.
 <!-- feature: security -->
-They are served the workplace baseline.
+They are served the workspace baseline.
 <!-- /feature -->
 
 To override, name them, and the caller's labels win over the remote's:

@@ -20,7 +20,7 @@ defmodule Apiary.RunsTest do
   end
 
   describe "count_alive/1" do
-    test "counts the pending and the running runs of the scope's hive only", %{
+    test "counts the pending and the running runs of the scope's workspace only", %{
       scope: scope,
       other: other
     } do
@@ -36,7 +36,7 @@ defmodule Apiary.RunsTest do
   end
 
   describe "get_run!/2 and list_runs/2" do
-    test "a run of another hive is not reachable", %{scope: scope, other: other} do
+    test "a run of another workspace is not reachable", %{scope: scope, other: other} do
       run = run_fixture(scope)
 
       assert Runs.get_run!(scope, run.id).id == run.id
@@ -63,12 +63,12 @@ defmodule Apiary.RunsTest do
       run = run_fixture(scope, %{state: "running"})
       Runs.subscribe(scope)
 
-      refute Runs.closed?(scope.hive.id, run.run_id)
+      refute Runs.closed?(scope.workspace.id, run.run_id)
       assert {:ok, %Run{state: "closed"} = closed} = Runs.close_run(scope, run)
 
       assert closed.closed_by_id == scope.user.id
       assert closed.closed_at
-      assert Runs.closed?(scope.hive.id, run.run_id)
+      assert Runs.closed?(scope.workspace.id, run.run_id)
       assert_receive {:run_changed, %Run{state: "closed"}}
     end
 
@@ -93,12 +93,12 @@ defmodule Apiary.RunsTest do
       refute_receive {:run_changed, _}
     end
 
-    test "a member of another hive gets not found", %{scope: scope, other: other} do
+    test "a member of another workspace gets not found", %{scope: scope, other: other} do
       run = run_fixture(scope, %{state: "running"})
 
       assert {:error, :not_found} = Runs.close_run(other, run)
       assert Repo.get!(Run, run.id).state == "running"
-      refute Runs.closed?(scope.hive.id, run.run_id)
+      refute Runs.closed?(scope.workspace.id, run.run_id)
     end
 
     test "a caller whose membership is gone is refused", %{scope: scope} do
@@ -112,24 +112,24 @@ defmodule Apiary.RunsTest do
   end
 
   describe "closed?/2" do
-    test "the same subject in another hive is another run", %{scope: scope, other: other} do
+    test "the same subject in another workspace is another run", %{scope: scope, other: other} do
       run = run_fixture(scope)
       run_fixture(other, %{run_id: run.run_id})
       {:ok, _} = Runs.close_run(scope, run)
 
-      assert Runs.closed?(scope.hive.id, run.run_id)
-      refute Runs.closed?(other.hive.id, run.run_id)
+      assert Runs.closed?(scope.workspace.id, run.run_id)
+      refute Runs.closed?(other.workspace.id, run.run_id)
     end
 
     test "an unknown or malformed subject is not closed", %{scope: scope} do
-      refute Runs.closed?(scope.hive.id, Ecto.UUID.generate())
-      refute Runs.closed?(scope.hive.id, "not-a-uuid")
+      refute Runs.closed?(scope.workspace.id, Ecto.UUID.generate())
+      refute Runs.closed?(scope.workspace.id, "not-a-uuid")
       refute Runs.closed?(nil, nil)
     end
   end
 
   describe "last_heartbeats_by_key/1" do
-    test "the hive's keys that delivered a heartbeat, by id", %{scope: scope, other: other} do
+    test "the workspace's keys that delivered a heartbeat, by id", %{scope: scope, other: other} do
       %{access_key: beating} = access_key_fixture(scope)
       %{access_key: silent} = access_key_fixture(scope)
       %{access_key: elsewhere} = access_key_fixture(other)

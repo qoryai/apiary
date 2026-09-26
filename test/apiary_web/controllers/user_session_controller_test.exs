@@ -5,8 +5,8 @@ defmodule ApiaryWeb.UserSessionControllerTest do
   alias Apiary.Accounts
 
   setup do
-    # Users are created the way the product creates them, so they own a hive
-    # and the hive page can render after login.
+    # Users are created the way the product creates them, so they own a workspace
+    # and the workspace page can render after login.
     {:ok, %{user: unconfirmed_user}} = Apiary.Organisations.sign_up_user(valid_user_attributes())
     %{user: user} = Apiary.OrganisationsFixtures.sign_up_fixture()
     %{unconfirmed_user: unconfirmed_user, user: user}
@@ -22,12 +22,12 @@ defmodule ApiaryWeb.UserSessionControllerTest do
         })
 
       assert get_session(conn, :user_token)
-      assert redirected_to(conn) == ~p"/hive"
+      assert redirected_to(conn) == ~p"/workspace"
 
       # Now do a logged in request and assert on the menu
       conn = get(conn, ~p"/")
-      assert redirected_to(conn) == ~p"/hive"
-      conn = get(conn, ~p"/hive")
+      assert redirected_to(conn) == ~p"/workspace"
+      conn = get(conn, ~p"/workspace")
       response = html_response(conn, 200)
       assert response =~ user.email
       assert response =~ ~p"/users/settings"
@@ -47,7 +47,7 @@ defmodule ApiaryWeb.UserSessionControllerTest do
         })
 
       assert conn.resp_cookies["_apiary_web_user_remember_me"]
-      assert redirected_to(conn) == ~p"/hive"
+      assert redirected_to(conn) == ~p"/workspace"
     end
 
     test "logs the user in with return to", %{conn: conn, user: user} do
@@ -90,12 +90,12 @@ defmodule ApiaryWeb.UserSessionControllerTest do
         })
 
       assert get_session(conn, :user_token)
-      assert redirected_to(conn) == ~p"/hive"
+      assert redirected_to(conn) == ~p"/workspace"
 
       # Now do a logged in request and assert on the menu
       conn = get(conn, ~p"/")
-      assert redirected_to(conn) == ~p"/hive"
-      conn = get(conn, ~p"/hive")
+      assert redirected_to(conn) == ~p"/workspace"
+      conn = get(conn, ~p"/workspace")
       response = html_response(conn, 200)
       assert response =~ user.email
       assert response =~ ~p"/users/settings"
@@ -113,15 +113,15 @@ defmodule ApiaryWeb.UserSessionControllerTest do
         })
 
       assert get_session(conn, :user_token)
-      assert redirected_to(conn) == ~p"/hive"
+      assert redirected_to(conn) == ~p"/workspace"
       assert Phoenix.Flash.get(conn.assigns.flash, :info) =~ "Your account is confirmed."
 
       assert Accounts.get_user!(user.id).confirmed_at
 
       # Now do a logged in request and assert on the menu
       conn = get(conn, ~p"/")
-      assert redirected_to(conn) == ~p"/hive"
-      conn = get(conn, ~p"/hive")
+      assert redirected_to(conn) == ~p"/workspace"
+      conn = get(conn, ~p"/workspace")
       response = html_response(conn, 200)
       assert response =~ user.email
       assert response =~ ~p"/users/settings"

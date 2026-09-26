@@ -8,7 +8,7 @@
 (function(){try{var t=(location.search.match(/theme=(light|dark)/)||[])[1]||localStorage.getItem("qory:theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}})();
 </script>
 <style>
-/* Static mock of milestone M5 (the security policy: hive and repository rules, versions, history, export,
+/* Static mock of milestone M5 (the security policy: workspace and repository rules, versions, history, export,
    allow and deny from a connection row, the version and drift mark of the run header). Tokens and the M4
    components are copied from runs-mock.html; the block marked NEW in M5 is what brief-policy.md adds.
    Synthetic data only. */
@@ -525,9 +525,9 @@ dialog.modal::backdrop { background: var(--q-overlay); backdrop-filter: blur(2px
 <div class="mockbar" role="toolbar" aria-label="Mock controls">
   <span class="tag">M5 mock</span>
   <div class="seg" id="viewseg">
-    <a href="#policy">Hive policy</a><a href="#repositories">Repositories</a><a href="#repo">Repository</a><a href="#history">History</a><a href="#version">Version · export</a><a href="#connections">Row actions</a><a href="#run">Run header</a><a href="#states">States</a><a href="#empty">New hive</a>
+    <a href="#policy">Workspace policy</a><a href="#repositories">Repositories</a><a href="#repo">Repository</a><a href="#history">History</a><a href="#version">Version · export</a><a href="#connections">Row actions</a><a href="#run">Run header</a><a href="#states">States</a><a href="#empty">New workspace</a>
   </div>
-  <div class="url" aria-hidden="true"><span>qory.example</span><b id="url">/hive/policy</b></div>
+  <div class="url" aria-hidden="true"><span>qory.example</span><b id="url">/workspace/policy</b></div>
   <div class="seg" id="roleseg"><button type="button" data-r="owner" aria-pressed="true">Owner</button><button type="button" data-r="member" aria-pressed="false">Member</button></div>
   <div class="seg" id="widthseg"><button type="button" data-w="desktop" aria-pressed="true"><svg class="i"><use href="#i-desk"/></svg>Desktop</button><button type="button" data-w="phone" aria-pressed="false"><svg class="i"><use href="#i-phone"/></svg>Phone</button></div>
   <div class="seg" id="themeseg"><button type="button" data-t="auto" aria-pressed="true">Auto</button><button type="button" data-t="light" aria-pressed="false"><svg class="i"><use href="#i-sun"/></svg>Light</button><button type="button" data-t="dark" aria-pressed="false"><svg class="i"><use href="#i-moon"/></svg>Dark</button></div>
@@ -537,13 +537,13 @@ dialog.modal::backdrop { background: var(--q-overlay); backdrop-filter: blur(2px
 <div class="app" id="app">
   <aside class="side" aria-label="Sidebar">
     <div class="side-brand"><a class="brand" href="#policy"><svg aria-hidden="true"><use href="#mark"/></svg><span>Qory</span></a><button type="button" class="btn btn-ghost btn-square only-drawer" id="drawer-close" aria-label="Close menu"><svg class="i"><use href="#i-x"/></svg></button></div>
-    <button type="button" class="ws" aria-label="Switch apiary, current: Acme"><span class="avatar sq" aria-hidden="true">A</span><span style="min-width:0"><b class="trunc">Acme</b><small class="trunc">Platform</small></span><svg class="i"><use href="#i-ud"/></svg></button>
-    <div class="side-label">Hive</div>
+    <button type="button" class="ws" aria-label="Switch organisation, current: Acme"><span class="avatar sq" aria-hidden="true">A</span><span style="min-width:0"><b class="trunc">Acme</b><small class="trunc">Platform</small></span><svg class="i"><use href="#i-ud"/></svg></button>
+    <div class="side-label">Workspace</div>
     <nav class="side-nav" aria-label="Main">
       <a href="#policy"><svg class="i"><use href="#i-grid"/></svg>Overview</a>
       <a href="#run" data-nav="runs"><svg class="i"><use href="#i-runs"/></svg>Runs<span class="count alive" title="2 runs alive now"><span class="ripple" style="width:6px;height:6px"></span>2</span></a>
       <a href="#connections" data-nav="connections"><svg class="i"><use href="#i-conn"/></svg>Connections</a>
-      <a href="#policy" data-nav="policy"><svg class="i"><use href="#i-shieldok"/></svg>Policy<span class="count mode" title="The hive's default mode is enforce. 1 repository sets its own and observes."><span id="side-mode">enforce</span><span style="opacity:.75">· 1 own</span></span></a>
+      <a href="#policy" data-nav="policy"><svg class="i"><use href="#i-shieldok"/></svg>Policy<span class="count mode" title="The workspace's default mode is enforce. 1 repository sets its own and observes."><span id="side-mode">enforce</span><span style="opacity:.75">· 1 own</span></span></a>
     </nav>
     <div class="side-label">Manage</div>
     <nav class="side-nav" aria-label="Manage">
@@ -560,10 +560,10 @@ dialog.modal::backdrop { background: var(--q-overlay); backdrop-filter: blur(2px
 
     <main class="main" id="main">
 
-    <!-- ============ HIVE POLICY: RULES ============ -->
-    <div class="main-in" data-view="policy" data-nav="policy" data-url="/hive/policy">
-      <div data-phead="hive"></div>
-      <nav class="tabs" aria-label="Policy" data-ptabs="hive" data-cur="rules"></nav>
+    <!-- ============ WORKSPACE POLICY: RULES ============ -->
+    <div class="main-in" data-view="policy" data-nav="policy" data-url="/workspace/policy">
+      <div data-phead="workspace"></div>
+      <nav class="tabs" aria-label="Policy" data-ptabs="workspace" data-cur="rules"></nav>
 
       <section aria-labelledby="mode-h" style="display:grid;gap:10px">
         <h2 id="mode-h" class="sr-only">Default mode</h2>
@@ -573,12 +573,12 @@ dialog.modal::backdrop { background: var(--q-overlay); backdrop-filter: blur(2px
             <p>Records every connection and denies none. A host no rule names is let through, and the record says so.</p>
           </button>
           <button type="button" class="mode-card" role="radio" aria-checked="true" data-mode="enforce">
-            <span class="dot" aria-hidden="true"></span><h3><svg class="i"><use href="#i-shield"/></svg>Enforce <span class="badge">Hive default</span></h3>
+            <span class="dot" aria-hidden="true"></span><h3><svg class="i"><use href="#i-shield"/></svg>Enforce <span class="badge">Workspace default</span></h3>
             <p>Denies a connection no rule allows, and records the denial. With no allow rule, a run reaches nothing.</p>
             <div class="fact">In the last 7 days it denied <b>12</b> attempts to <b>3</b> destinations, in the 3 repositories that follow it. <a class="link" href="#connections">See them</a></div>
           </button>
         </div>
-        <p class="muted" style="font-size:12.5px;max-width:96ch">This is the hive's default. A repository follows it unless an owner sets a mode of its own: <a class="link" href="#repositories"><b style="font-weight:500">1</b> of 4 repositories does</a>, and observes. <span class="member-only">Only an owner sets a mode. </span><span class="faint">A wall's own refusals (the machine's address, a path that reads two ways) hold in either mode.</span></p>
+        <p class="muted" style="font-size:12.5px;max-width:96ch">This is the workspace's default. A repository follows it unless an owner sets a mode of its own: <a class="link" href="#repositories"><b style="font-weight:500">1</b> of 4 repositories does</a>, and observes. <span class="member-only">Only an owner sets a mode. </span><span class="faint">A wall's own refusals (the machine's address, a path that reads two ways) hold in either mode.</span></p>
       </section>
 
       <section class="sect" aria-labelledby="hosts-h">
@@ -592,7 +592,7 @@ dialog.modal::backdrop { background: var(--q-overlay); backdrop-filter: blur(2px
           <button type="submit" class="btn btn-primary" id="c-add" disabled>Add rule</button>
           <div class="reads" id="c-reads" role="status"><svg class="i"><use href="#i-info"/></svg><span>A host name in lower case, or <code class="rule">*.</code> and a suffix for every host below it. No scheme, no port. Paths go in their own field, separated by spaces.</span></div>
         </form>
-        <div class="table-wrap" tabindex="0" role="region" aria-label="Host rules of the hive">
+        <div class="table-wrap" tabindex="0" role="region" aria-label="Host rules of the workspace">
           <table class="table rules" role="table">
             <thead><tr><th>Rule</th><th>Paths</th><th class="num">Last 7 days</th><th>Added</th><th><span class="sr-only">Lock and actions</span></th></tr></thead>
             <tbody>
@@ -626,7 +626,7 @@ dialog.modal::backdrop { background: var(--q-overlay); backdrop-filter: blur(2px
           <label><span class="sr-only">Argument, optional</span><input class="input m" type="text" spellcheck="false" placeholder="Argument (optional), such as acme/shop"></label>
           <button type="submit" class="btn" disabled>Add credential</button>
         </form>
-        <div class="table-wrap" tabindex="0" role="region" aria-label="Credentials of the hive">
+        <div class="table-wrap" tabindex="0" role="region" aria-label="Credentials of the workspace">
           <table class="table rules" role="table"><thead><tr><th>Name</th><th>Argument</th><th class="num">Last 7 days</th><th>Added</th><th><span class="sr-only">Actions</span></th></tr></thead>
             <tbody><tr class="row"><td class="c-rule"><div class="rcell"><svg class="i faint"><use href="#i-key"/></svg><span class="host">model-key</span></div></td><td class="paths"><span class="every">no argument</span></td><td class="c-seen num meta">412 requests</td><td class="c-by who-when">beekeeper <small>· 2 Sep</small></td><td class="acts"><button type="button" class="btn btn-ghost btn-xs btn-square" aria-label="Actions for model-key" aria-haspopup="menu"><svg class="i"><use href="#i-dots"/></svg></button></td></tr></tbody></table>
         </div>
@@ -634,30 +634,30 @@ dialog.modal::backdrop { background: var(--q-overlay); backdrop-filter: blur(2px
     </div>
 
     <!-- ============ REPOSITORIES ============ -->
-    <div class="main-in" data-view="repositories" data-nav="policy" data-url="/hive/policy/targets" hidden>
-      <div data-phead="hive"></div>
-      <nav class="tabs" aria-label="Policy" data-ptabs="hive" data-cur="repositories"></nav>
+    <div class="main-in" data-view="repositories" data-nav="policy" data-url="/workspace/policy/targets" hidden>
+      <div data-phead="workspace"></div>
+      <nav class="tabs" aria-label="Policy" data-ptabs="workspace" data-cur="repositories"></nav>
       <div class="summary"><span><b>4</b> repositories have posted runs</span><span><b>2</b> with rules of their own</span><span><b>1</b> sets its own mode</span><span><b>1</b> with suggestions</span></div>
       <div class="table-wrap" tabindex="0" role="region" aria-label="Repositories and their policy">
         <table class="table repos" role="table">
           <thead><tr><th>Repository</th><th>Mode</th><th>Policy</th><th class="num">Own rules</th><th class="num">Overrides</th><th class="num">Suggestions</th><th>Version</th><th>Last change</th></tr></thead>
           <tbody>
-            <tr class="row" data-go="repo"><td class="c-repo"><a class="rowlink repo-name" href="#repo"><span class="f">github.example/</span><span class="p">acme/shop</span></a></td><td class="c-mode"><span class="modeval"><b>enforce</b> <span class="src">Hive default</span></span></td><td><span class="src repo"><svg class="i"><use href="#i-repo"/></svg>Own rules</span></td><td class="num wide">4</td><td class="num wide">1</td><td class="num"><span class="newdot">2 to review</span></td><td class="mono wide">v10 <span class="faint">c41d7e02b9a6</span></td><td class="meta wide">2 minutes ago</td></tr>
+            <tr class="row" data-go="repo"><td class="c-repo"><a class="rowlink repo-name" href="#repo"><span class="f">github.example/</span><span class="p">acme/shop</span></a></td><td class="c-mode"><span class="modeval"><b>enforce</b> <span class="src">Workspace default</span></span></td><td><span class="src repo"><svg class="i"><use href="#i-repo"/></svg>Own rules</span></td><td class="num wide">4</td><td class="num wide">1</td><td class="num"><span class="newdot">2 to review</span></td><td class="mono wide">v10 <span class="faint">c41d7e02b9a6</span></td><td class="meta wide">2 minutes ago</td></tr>
             <tr class="row" data-go="repo"><td class="c-repo"><a class="rowlink repo-name" href="#repo"><span class="f">github.example/</span><span class="p">acme/tax-service</span></a></td><td class="c-mode"><span class="modeval"><b>observe</b> <span class="src repo">Its own</span></span></td><td><span class="src repo"><svg class="i"><use href="#i-repo"/></svg>Own rules</span></td><td class="num wide">1</td><td class="num wide zero">0</td><td class="num zero">0</td><td class="mono wide">v3 <span class="faint">7be1a9d04f52</span></td><td class="meta wide">11 Sep, 10:20</td></tr>
-            <tr class="row" data-go="repo"><td class="c-repo"><a class="rowlink repo-name" href="#repo"><span class="f">gitlab.example/</span><span class="p">acme/shop</span></a></td><td class="c-mode"><span class="modeval"><b>enforce</b> <span class="src">Hive default</span></span></td><td><span class="src"><svg class="i"><use href="#i-hex"/></svg>Hive baseline</span></td><td class="num wide zero">0</td><td class="num wide zero">0</td><td class="num zero">0</td><td class="mono wide">v14 <span class="faint">e3b0c44298fc</span></td><td class="meta wide"><span class="faint">n/a</span></td></tr>
-            <tr class="row" data-go="repo"><td class="c-repo"><a class="rowlink repo-name" href="#repo"><span class="f">github.example/</span><span class="p">acme/docs</span></a></td><td class="c-mode"><span class="modeval"><b>enforce</b> <span class="src">Hive default</span></span></td><td><span class="src"><svg class="i"><use href="#i-hex"/></svg>Hive baseline</span></td><td class="num wide zero">0</td><td class="num wide zero">0</td><td class="num zero">0</td><td class="mono wide">v14 <span class="faint">e3b0c44298fc</span></td><td class="meta wide"><span class="faint">n/a</span></td></tr>
+            <tr class="row" data-go="repo"><td class="c-repo"><a class="rowlink repo-name" href="#repo"><span class="f">gitlab.example/</span><span class="p">acme/shop</span></a></td><td class="c-mode"><span class="modeval"><b>enforce</b> <span class="src">Workspace default</span></span></td><td><span class="src"><svg class="i"><use href="#i-hex"/></svg>Workspace baseline</span></td><td class="num wide zero">0</td><td class="num wide zero">0</td><td class="num zero">0</td><td class="mono wide">v14 <span class="faint">e3b0c44298fc</span></td><td class="meta wide"><span class="faint">n/a</span></td></tr>
+            <tr class="row" data-go="repo"><td class="c-repo"><a class="rowlink repo-name" href="#repo"><span class="f">github.example/</span><span class="p">acme/docs</span></a></td><td class="c-mode"><span class="modeval"><b>enforce</b> <span class="src">Workspace default</span></span></td><td><span class="src"><svg class="i"><use href="#i-hex"/></svg>Workspace baseline</span></td><td class="num wide zero">0</td><td class="num wide zero">0</td><td class="num zero">0</td><td class="mono wide">v14 <span class="faint">e3b0c44298fc</span></td><td class="meta wide"><span class="faint">n/a</span></td></tr>
           </tbody>
         </table>
       </div>
-      <p class="faint" style="font-size:12.5px;max-width:80ch">A repository appears here once a run names it. A repository with neither rules nor a mode of its own is served the hive baseline, and so is a run that names no repository.</p>
+      <p class="faint" style="font-size:12.5px;max-width:80ch">A repository appears here once a run names it. A repository with neither rules nor a mode of its own is served the workspace baseline, and so is a run that names no repository.</p>
     </div>
 
     <!-- ============ REPOSITORY POLICY ============ -->
-    <div class="main-in" data-view="repo" data-nav="policy" data-url="/hive/policy/targets/rp_5f2c81" hidden>
+    <div class="main-in" data-view="repo" data-nav="policy" data-url="/workspace/policy/targets/rp_5f2c81" hidden>
       <div style="display:grid;gap:12px">
         <nav class="crumbs" aria-label="Breadcrumb"><a href="#policy">Policy</a><svg class="i"><use href="#i-chev"/></svg><a href="#repositories">Repositories</a><svg class="i"><use href="#i-chev"/></svg><span class="mono" style="font-size:12px" aria-current="page"><span class="faint">github.example/</span>acme/shop</span></nav>
         <div class="page-head">
-          <div><h1><span class="mono" style="font-size:17px;font-weight:600"><span class="faint" style="font-weight:400">github.example/</span>acme/shop</span></h1><p>What runs of this repository may reach: the hive's rules, then this repository's own. Where the two meet on a host, the repository wins, unless the hive's rule is locked. The mode is the hive's default, or this repository's own.</p></div>
+          <div><h1><span class="mono" style="font-size:17px;font-weight:600"><span class="faint" style="font-weight:400">github.example/</span>acme/shop</span></h1><p>What runs of this repository may reach: the workspace's rules, then this repository's own. Where the two meet on a host, the repository wins, unless the workspace's rule is locked. The mode is the workspace's default, or this repository's own.</p></div>
           <div class="head-side"><span class="vpill" title="sha256=c41d7e02b9a61f0d83c5a97be6240d1e5f8b3a6c9d2e7f10a4b5c6d7e8f90a1b"><a class="v" href="#version">v10</a><span class="dg"><i>sha256</i> c41d7e02b9a6</span><button type="button" aria-label="Copy the digest" class="tip tip-end" data-tip="Copy the digest"><svg class="i sm"><use href="#i-copy"/></svg></button></span><a class="btn" href="#version/export"><svg class="i"><use href="#i-up"/></svg>Export</a></div>
         </div>
       </div>
@@ -665,8 +665,8 @@ dialog.modal::backdrop { background: var(--q-overlay); backdrop-filter: blur(2px
 
 <section class="sect modebar" aria-labelledby="rm-h">
         <h2 id="rm-h">Mode</h2>
-        <div class="seg in" role="radiogroup" aria-labelledby="rm-h" data-repomode><button type="button" role="radio" aria-checked="true" data-m="follow">Follow the hive</button><button type="button" role="radio" aria-checked="false" data-m="observe">Observe</button><button type="button" role="radio" aria-checked="false" data-m="enforce">Enforce</button></div>
-        <p class="eff">In effect: <b>enforce</b>, the hive's default. <span class="faint">It changes when the hive's does.</span><span class="member-only faint"> Only an owner sets a mode.</span></p>
+        <div class="seg in" role="radiogroup" aria-labelledby="rm-h" data-repomode><button type="button" role="radio" aria-checked="true" data-m="follow">Follow the workspace</button><button type="button" role="radio" aria-checked="false" data-m="observe">Observe</button><button type="button" role="radio" aria-checked="false" data-m="enforce">Enforce</button></div>
+        <p class="eff">In effect: <b>enforce</b>, the workspace's default. <span class="faint">It changes when the workspace's does.</span><span class="member-only faint"> Only an owner sets a mode.</span></p>
       </section>
 
       <section class="sect" aria-labelledby="sugg-h">
@@ -676,12 +676,12 @@ dialog.modal::backdrop { background: var(--q-overlay); backdrop-filter: blur(2px
           <span class="acts"><span class="btn-split"><button type="button" class="btn btn-xs" data-allow="sg-1">Allow here</button><button type="button" class="btn btn-xs" aria-label="More ways to allow flags.example" aria-haspopup="menu"><svg class="i sm"><use href="#i-chevd"/></svg></button></span></span></div>
         <div class="sugg-row" id="sg-2"><span class="rcell"><span class="mark pend" title="Not allowed"><svg class="i"><use href="#i-block"/></svg></span><span class="host trunc">downloads.runtime.example</span></span><span class="what">Declared by <b>claude</b> in 5 runs. No run has tried to reach it.</span>
           <span class="acts"><span class="btn-split"><button type="button" class="btn btn-xs" data-allow="sg-2">Allow here</button><button type="button" class="btn btn-xs" aria-label="More ways to allow downloads.runtime.example" aria-haspopup="menu"><svg class="i sm"><use href="#i-chevd"/></svg></button></span></span></div>
-        <footer>2 more declared hosts are already allowed: <code class="rule">api.example</code> by the hive, <code class="rule">mcp.acme.example</code> by this repository.</footer>
+        <footer>2 more declared hosts are already allowed: <code class="rule">api.example</code> by the workspace, <code class="rule">mcp.acme.example</code> by this repository.</footer>
       </section>
 
       <section class="sect" aria-labelledby="eff-h">
         <header><h2 id="eff-h">Effective policy</h2><span class="n">10 rules · 7 hosts allowed</span><span class="grow"></span>
-          <div class="seg in" role="group" aria-label="Show"><button type="button" aria-pressed="true">All</button><button type="button" aria-pressed="false">From the hive <span class="faint mono" style="font-size:11px">6</span></button><button type="button" aria-pressed="false">This repository <span class="faint mono" style="font-size:11px">4</span></button><button type="button" aria-pressed="false">Overrides <span class="faint mono" style="font-size:11px">2</span></button></div>
+          <div class="seg in" role="group" aria-label="Show"><button type="button" aria-pressed="true">All</button><button type="button" aria-pressed="false">From the workspace <span class="faint mono" style="font-size:11px">6</span></button><button type="button" aria-pressed="false">This repository <span class="faint mono" style="font-size:11px">4</span></button><button type="button" aria-pressed="false">Overrides <span class="faint mono" style="font-size:11px">2</span></button></div>
         </header>
         <form class="composer" aria-label="Add a rule for this repository" onsubmit="return false">
           <div class="seg" role="group" aria-label="Action"><button type="button" aria-pressed="true">Allow</button><button type="button" class="deny" aria-pressed="false">Deny</button></div>
@@ -693,29 +693,29 @@ dialog.modal::backdrop { background: var(--q-overlay); backdrop-filter: blur(2px
           <table class="table rules" role="table">
             <thead><tr><th>Rule</th><th>Paths</th><th>Comes from</th><th class="num">Last 7 days</th><th><span class="sr-only">Actions</span></th></tr></thead>
             <tbody>
-              <tr class="row has-over"><td class="c-rule"><div class="rcell"><span class="mark no" title="Deny"><svg class="i"><use href="#i-block"/></svg></span><span class="sr-only">Deny</span><span class="host"><span class="w">*.</span>paste.example</span></div></td><td class="paths"><span class="every">every path</span></td><td class="c-src"><span class="src lock"><svg class="i"><use href="#i-lock"/></svg>Hive, locked</span></td><td class="c-seen num"><span class="bad">3 denied</span></td><td class="acts"><span class="locked tip tip-end" tabindex="0" data-tip="A locked hive rule. It is changed on the hive's policy page, by an owner."><a class="link" href="#policy" style="font-size:12px;padding-right:8px">Open</a></span></td></tr>
+              <tr class="row has-over"><td class="c-rule"><div class="rcell"><span class="mark no" title="Deny"><svg class="i"><use href="#i-block"/></svg></span><span class="sr-only">Deny</span><span class="host"><span class="w">*.</span>paste.example</span></div></td><td class="paths"><span class="every">every path</span></td><td class="c-src"><span class="src lock"><svg class="i"><use href="#i-lock"/></svg>Workspace, locked</span></td><td class="c-seen num"><span class="bad">3 denied</span></td><td class="acts"><span class="locked tip tip-end" tabindex="0" data-tip="A locked workspace rule. It is changed on the workspace's policy page, by an owner."><a class="link" href="#policy" style="font-size:12px;padding-right:8px">Open</a></span></td></tr>
               <tr class="over"><td colspan="5"><div class="overline"><svg class="i sm"><use href="#i-lock"/></svg><span><b>Holds against this repository's rule</b></span><s>allow bin.paste.example</s><span>dana · 28 Aug. It is not in force.</span><button type="button" class="link" style="font-size:12.5px">Remove it</button></div></td></tr>
-              <tr class="row"><td class="c-rule"><div class="rcell"><span class="mark ok" title="Allow"><svg class="i"><use href="#i-check"/></svg></span><span class="sr-only">Allow</span><span class="host">github.example</span></div></td><td class="paths"><span class="every">every path</span></td><td class="c-src"><span class="src lock"><svg class="i"><use href="#i-lock"/></svg>Hive, locked</span></td><td class="c-seen num meta">41 allowed</td><td class="acts"><a class="link" href="#policy" style="font-size:12px;padding-right:8px">Open</a></td></tr>
+              <tr class="row"><td class="c-rule"><div class="rcell"><span class="mark ok" title="Allow"><svg class="i"><use href="#i-check"/></svg></span><span class="sr-only">Allow</span><span class="host">github.example</span></div></td><td class="paths"><span class="every">every path</span></td><td class="c-src"><span class="src lock"><svg class="i"><use href="#i-lock"/></svg>Workspace, locked</span></td><td class="c-seen num meta">41 allowed</td><td class="acts"><a class="link" href="#policy" style="font-size:12px;padding-right:8px">Open</a></td></tr>
               <tr class="row has-over"><td class="c-rule"><div class="rcell"><span class="mark no" title="Deny"><svg class="i"><use href="#i-block"/></svg></span><span class="sr-only">Deny</span><span class="host">gitlab.example</span></div></td><td class="paths"><span class="every">every path</span></td><td class="c-src"><span class="src repo"><svg class="i"><use href="#i-repo"/></svg>This repository</span></td><td class="c-seen num"><span class="zero">not seen</span></td><td class="acts"><button type="button" class="btn btn-ghost btn-xs">Restore</button></td></tr>
-              <tr class="over"><td colspan="5"><div class="overline"><span><b>Overrides the hive's rule</b></span><s>allow gitlab.example</s><span>Disabled here by dana · 9 Sep. Other repositories keep it.</span></div></td></tr>
-              <tr class="row"><td class="c-rule"><div class="rcell"><span class="mark no" title="Deny"><svg class="i"><use href="#i-block"/></svg></span><span class="sr-only">Deny</span><span class="host">telemetry.example</span></div></td><td class="paths"><span class="every">every path</span></td><td class="c-src"><span class="src"><svg class="i"><use href="#i-hex"/></svg>Hive</span></td><td class="c-seen num"><span class="zero">not seen</span></td><td class="acts"><button type="button" class="btn btn-ghost btn-xs">Allow here</button></td></tr>
+              <tr class="over"><td colspan="5"><div class="overline"><span><b>Overrides the workspace's rule</b></span><s>allow gitlab.example</s><span>Disabled here by dana · 9 Sep. Other repositories keep it.</span></div></td></tr>
+              <tr class="row"><td class="c-rule"><div class="rcell"><span class="mark no" title="Deny"><svg class="i"><use href="#i-block"/></svg></span><span class="sr-only">Deny</span><span class="host">telemetry.example</span></div></td><td class="paths"><span class="every">every path</span></td><td class="c-src"><span class="src"><svg class="i"><use href="#i-hex"/></svg>Workspace</span></td><td class="c-seen num"><span class="zero">not seen</span></td><td class="acts"><button type="button" class="btn btn-ghost btn-xs">Allow here</button></td></tr>
               <tr class="row"><td class="c-rule"><div class="rcell"><span class="mark ok" title="Allow"><svg class="i"><use href="#i-check"/></svg></span><span class="sr-only">Allow</span><span class="host">mcp.acme.example</span></div></td><td class="paths"><span class="chips"><code class="rule">/mcp/*</code><code class="rule">/health</code></span></td><td class="c-src"><span class="src repo"><svg class="i"><use href="#i-repo"/></svg>This repository</span></td><td class="c-seen num meta">46 allowed</td><td class="acts"><button type="button" class="btn btn-ghost btn-xs">Remove</button></td></tr>
-              <tr class="row"><td class="c-rule"><div class="rcell"><span class="mark ok" title="Allow"><svg class="i"><use href="#i-check"/></svg></span><span class="sr-only">Allow</span><span class="host">api.example</span></div></td><td class="paths"><span class="chips"><code class="rule">/v1/*</code></span></td><td class="c-src"><span class="src"><svg class="i"><use href="#i-hex"/></svg>Hive</span></td><td class="c-seen num meta">204 allowed · <span class="bad">1 denied</span></td><td class="acts"><button type="button" class="btn btn-ghost btn-xs">Disable here</button></td></tr>
+              <tr class="row"><td class="c-rule"><div class="rcell"><span class="mark ok" title="Allow"><svg class="i"><use href="#i-check"/></svg></span><span class="sr-only">Allow</span><span class="host">api.example</span></div></td><td class="paths"><span class="chips"><code class="rule">/v1/*</code></span></td><td class="c-src"><span class="src"><svg class="i"><use href="#i-hex"/></svg>Workspace</span></td><td class="c-seen num meta">204 allowed · <span class="bad">1 denied</span></td><td class="acts"><button type="button" class="btn btn-ghost btn-xs">Disable here</button></td></tr>
               <tr class="row fresh"><td class="c-rule"><div class="rcell"><span class="mark ok" title="Allow"><svg class="i"><use href="#i-check"/></svg></span><span class="sr-only">Allow</span><span class="host">files.cdn.example</span><span class="newdot">New in v10</span></div></td><td class="paths"><span class="every">every path</span></td><td class="c-src"><span class="src repo"><svg class="i"><use href="#i-repo"/></svg>This repository</span></td><td class="c-seen num"><span class="bad">3 denied</span> <span class="faint">before it</span></td><td class="acts"><button type="button" class="btn btn-ghost btn-xs">Remove</button></td></tr>
-              <tr class="row"><td class="c-rule"><div class="rcell"><span class="mark ok" title="Allow"><svg class="i"><use href="#i-check"/></svg></span><span class="sr-only">Allow</span><span class="host"><span class="w">*.</span>github.example</span></div></td><td class="paths"><span class="every">every path</span></td><td class="c-src"><span class="src"><svg class="i"><use href="#i-hex"/></svg>Hive</span></td><td class="c-seen num meta">22 allowed</td><td class="acts"><button type="button" class="btn btn-ghost btn-xs">Disable here</button></td></tr>
-              <tr class="row"><td class="c-rule"><div class="rcell"><span class="mark ok" title="Allow"><svg class="i"><use href="#i-check"/></svg></span><span class="sr-only">Allow</span><span class="host"><span class="w">*.</span>internal.example</span></div></td><td class="paths"><span class="every">every path</span></td><td class="c-src"><span class="src"><svg class="i"><use href="#i-hex"/></svg>Hive</span></td><td class="c-seen num meta">5 allowed</td><td class="acts"><button type="button" class="btn btn-ghost btn-xs">Disable here</button></td></tr>
-              <tr class="row"><td class="c-rule"><div class="rcell"><span class="mark ok" title="Allow"><svg class="i"><use href="#i-check"/></svg></span><span class="sr-only">Allow</span><span class="host">registry.example</span></div></td><td class="paths"><span class="every">every path</span></td><td class="c-src"><span class="src"><svg class="i"><use href="#i-hex"/></svg>Hive</span></td><td class="c-seen num meta">65 allowed</td><td class="acts"><button type="button" class="btn btn-ghost btn-xs">Disable here</button></td></tr>
+              <tr class="row"><td class="c-rule"><div class="rcell"><span class="mark ok" title="Allow"><svg class="i"><use href="#i-check"/></svg></span><span class="sr-only">Allow</span><span class="host"><span class="w">*.</span>github.example</span></div></td><td class="paths"><span class="every">every path</span></td><td class="c-src"><span class="src"><svg class="i"><use href="#i-hex"/></svg>Workspace</span></td><td class="c-seen num meta">22 allowed</td><td class="acts"><button type="button" class="btn btn-ghost btn-xs">Disable here</button></td></tr>
+              <tr class="row"><td class="c-rule"><div class="rcell"><span class="mark ok" title="Allow"><svg class="i"><use href="#i-check"/></svg></span><span class="sr-only">Allow</span><span class="host"><span class="w">*.</span>internal.example</span></div></td><td class="paths"><span class="every">every path</span></td><td class="c-src"><span class="src"><svg class="i"><use href="#i-hex"/></svg>Workspace</span></td><td class="c-seen num meta">5 allowed</td><td class="acts"><button type="button" class="btn btn-ghost btn-xs">Disable here</button></td></tr>
+              <tr class="row"><td class="c-rule"><div class="rcell"><span class="mark ok" title="Allow"><svg class="i"><use href="#i-check"/></svg></span><span class="sr-only">Allow</span><span class="host">registry.example</span></div></td><td class="paths"><span class="every">every path</span></td><td class="c-src"><span class="src"><svg class="i"><use href="#i-hex"/></svg>Workspace</span></td><td class="c-seen num meta">65 allowed</td><td class="acts"><button type="button" class="btn btn-ghost btn-xs">Disable here</button></td></tr>
             </tbody>
           </table>
         </div>
-        <footer>Mode <b style="font-weight:500;color:var(--color-base-content)">enforce</b>, the hive's default. Credentials: <code class="rule">model-key</code> from the hive, <code class="rule">forge-token</code> <span class="faint">argument</span> <code class="rule">acme/shop</code> from this repository. <a class="link" href="#repo">Edit credentials</a></footer>
+        <footer>Mode <b style="font-weight:500;color:var(--color-base-content)">enforce</b>, the workspace's default. Credentials: <code class="rule">model-key</code> from the workspace, <code class="rule">forge-token</code> <span class="faint">argument</span> <code class="rule">acme/shop</code> from this repository. <a class="link" href="#repo">Edit credentials</a></footer>
       </section>
     </div>
 
     <!-- ============ HISTORY ============ -->
-    <div class="main-in" data-view="history" data-nav="policy" data-url="/hive/policy/history?change=41" hidden>
-      <div data-phead="hive"></div>
-      <nav class="tabs" aria-label="Policy" data-ptabs="hive" data-cur="history"></nav>
+    <div class="main-in" data-view="history" data-nav="policy" data-url="/workspace/policy/history?change=41" hidden>
+      <div data-phead="workspace"></div>
+      <nav class="tabs" aria-label="Policy" data-ptabs="workspace" data-cur="history"></nav>
       <div class="filters" role="group" aria-label="Filters">
         <button type="button" class="chip"><svg class="i"><use href="#i-plus"/></svg>Who</button>
         <button type="button" class="chip"><svg class="i"><use href="#i-plus"/></svg>Kind</button>
@@ -723,11 +723,11 @@ dialog.modal::backdrop { background: var(--q-overlay); backdrop-filter: blur(2px
         <span class="grow"></span>
         <span class="summary"><span><b>16</b> changes</span><span><b>14</b> versions</span><span>since <b>2 Sep 2026</b></span></span>
       </div>
-      <section class="sect" aria-label="Changes to the hive baseline, newest first">
+      <section class="sect" aria-label="Changes to the workspace baseline, newest first">
         <div class="day">Today</div>
         <details class="chg"><summary><svg class="i sm chev"><use href="#i-chev"/></svg><span class="avatar" aria-hidden="true">D</span><span class="say2"><b>dana@example.com</b> removed the allow rule <code class="rule">errors.example</code></span><span class="when" title="20 Sep 2026, 13:51:07 UTC">13 minutes ago</span><span class="vcell"><span class="vpill sm"><span class="v">v14</span><span class="dg">e3b0c44298fc</span></span></span></summary></details>
         <div class="day">Yesterday</div>
-        <details class="chg" open id="chg-41"><summary><svg class="i sm chev"><use href="#i-chev"/></svg><span class="avatar" aria-hidden="true">B</span><span class="say2"><b>beekeeper@example.com</b> switched the hive's default mode from observe to <b>enforce</b></span><span class="when" title="19 Sep 2026, 10:04:30 UTC">Yesterday, 10:04</span><span class="vcell"><span class="vpill sm"><span class="v">v13</span><span class="dg">52fa90c1d7ab</span></span></span></summary>
+        <details class="chg" open id="chg-41"><summary><svg class="i sm chev"><use href="#i-chev"/></svg><span class="avatar" aria-hidden="true">B</span><span class="say2"><b>beekeeper@example.com</b> switched the workspace's default mode from observe to <b>enforce</b></span><span class="when" title="19 Sep 2026, 10:04:30 UTC">Yesterday, 10:04</span><span class="vcell"><span class="vpill sm"><span class="v">v13</span><span class="dg">52fa90c1d7ab</span></span></span></summary>
           <div class="diffbox">
             <div class="bar"><span class="vpill sm"><span class="v">v12</span><span class="dg">0a4f6e88b1c3</span></span><svg class="i sm faint"><use href="#i-arrow"/></svg><span class="vpill sm"><span class="v">v13</span><span class="dg">52fa90c1d7ab</span></span><span>1 line changed · re-rendered 1 repository that follows the default; 1 sets its own mode and did not change</span><span style="flex:1"></span><a class="link" href="#version">Open v13</a></div>
             <div class="dpanel"><div><span>rules</span><span>1 change</span></div><div class="dlines sem">
@@ -756,7 +756,7 @@ dialog.modal::backdrop { background: var(--q-overlay); backdrop-filter: blur(2px
     </div>
 
     <!-- ============ VERSION / DOCUMENT ============ -->
-    <div class="main-in" data-view="version" data-nav="policy" data-url="/hive/policy/targets/rp_5f2c81/versions/10?compare=9" hidden>
+    <div class="main-in" data-view="version" data-nav="policy" data-url="/workspace/policy/targets/rp_5f2c81/versions/10?compare=9" hidden>
       <div style="display:grid;gap:12px">
         <nav class="crumbs" aria-label="Breadcrumb"><a href="#policy">Policy</a><svg class="i"><use href="#i-chev"/></svg><a href="#repo"><span class="mono" style="font-size:12px"><span class="faint">github.example/</span>acme/shop</span></a><svg class="i"><use href="#i-chev"/></svg><span aria-current="page">Version 10</span></nav>
         <div class="page-head"><div class="run-title"><h1>Version 10</h1><span class="badge badge-success" style="padding-left:5px"><svg class="i sm" style="width:12px;height:12px"><use href="#i-check"/></svg>In force</span></div>
@@ -765,7 +765,7 @@ dialog.modal::backdrop { background: var(--q-overlay); backdrop-filter: blur(2px
           <div class="kv"><dt>Rendered</dt><dd><span title="20 Sep 2026, 14:02:54 UTC">Today, 14:02:54</span></dd></div>
           <div class="kv"><dt>Changed by</dt><dd>dana@example.com</dd></div>
           <div class="kv"><dt>Change</dt><dd>Allowed <span class="mono">files.cdn.example</span></dd></div>
-          <div class="kv"><dt>Mode</dt><dd>enforce <small>the hive's default</small></dd></div>
+          <div class="kv"><dt>Mode</dt><dd>enforce <small>the workspace's default</small></dd></div>
           <div class="kv"><dt><span class="term" tabindex="0" data-tip="The sha256 of the exact bytes a runner is served. Two runs with the same digest had the same policy.">Digest</span></dt><dd class="mono" title="sha256=c41d7e02b9a61f0d83c5a97be6240d1e5f8b3a6c9d2e7f10a4b5c6d7e8f90a1b">sha256=c41d7e02b9a6…</dd></div>
           <div class="kv"><dt>Runs under it</dt><dd><a class="link" href="#run" style="font-weight:400">1 run</a> <small>1 alive is behind, on v9</small></dd></div>
         </dl>
@@ -801,16 +801,16 @@ dialog.modal::backdrop { background: var(--q-overlay); backdrop-filter: blur(2px
         <section class="sect" aria-labelledby="vl-h"><header><h2 id="vl-h" style="font-size:13.5px">Versions</h2><span class="n">10</span></header>
           <nav class="vlist" aria-label="Versions of this repository's policy">
             <a href="#version" aria-current="page"><span class="v">v10</span><span class="trunc">Allowed files.cdn.example<small style="display:block">dana · 2 minutes ago</small></span><span class="mono faint" style="font-size:11.5px">c41d7e02</span></a>
-            <a href="#version"><span class="v">v9</span><span class="trunc">Hive default set to enforce<small style="display:block">beekeeper · Yesterday, 10:04 · <span class="src" style="height:16px;font-size:10.5px">hive</span></small></span><span class="mono faint" style="font-size:11.5px">9f86d081</span></a>
+            <a href="#version"><span class="v">v9</span><span class="trunc">Workspace default set to enforce<small style="display:block">beekeeper · Yesterday, 10:04 · <span class="src" style="height:16px;font-size:10.5px">workspace</span></small></span><span class="mono faint" style="font-size:11.5px">9f86d081</span></a>
             <a href="#version"><span class="v">v8</span><span class="trunc">Allowed mcp.acme.example<small style="display:block">dana · 16 Sep, 12:10</small></span><span class="mono faint" style="font-size:11.5px">17aa03fe</span></a>
-            <a href="#version"><span class="v">v7</span><span class="trunc">Paths of api.example<small style="display:block">dana · 16 Sep, 11:40 · <span class="src" style="height:16px;font-size:10.5px">hive</span></small></span><span class="mono faint" style="font-size:11.5px">d09b64c7</span></a>
+            <a href="#version"><span class="v">v7</span><span class="trunc">Paths of api.example<small style="display:block">dana · 16 Sep, 11:40 · <span class="src" style="height:16px;font-size:10.5px">workspace</span></small></span><span class="mono faint" style="font-size:11.5px">d09b64c7</span></a>
             <a href="#history" style="color:var(--q-muted)"><span></span><span>6 earlier versions</span><svg class="i sm"><use href="#i-chev"/></svg></a>
           </nav></section>
       </div>
     </div>
 
     <!-- ============ ROW ACTIONS: RUN CONNECTIONS ============ -->
-    <div class="main-in" data-view="connections" data-nav="runs" data-url="/hive/runs/0191f2a4-3c5e-7b8d-9e0f-1a2b3c4d5e6f/connections" hidden>
+    <div class="main-in" data-view="connections" data-nav="runs" data-url="/workspace/runs/0191f2a4-3c5e-7b8d-9e0f-1a2b3c4d5e6f/connections" hidden>
       <div class="run-head">
         <nav class="crumbs" aria-label="Breadcrumb"><a href="#run">Runs</a><svg class="i"><use href="#i-chev"/></svg><a href="#repo"><span class="mono" style="font-size:12px"><span class="faint">github.example/</span>acme/shop</span></a><svg class="i"><use href="#i-chev"/></svg><span class="mono" style="font-size:12px" aria-current="page">0191f2a4</span></nav>
         <div class="run-title"><h1>checkout-tax</h1><span class="badge badge-info state state-running"><i></i>Running</span><span class="alive" role="status" aria-live="off"><span class="ripple"></span><span>Alive, 4 s ago</span></span></div>
@@ -828,10 +828,10 @@ dialog.modal::backdrop { background: var(--q-overlay); backdrop-filter: blur(2px
             <tr class="row denied"><td><div class="dcell"><span class="mark no"><svg class="i"><use href="#i-block"/></svg></span><span class="dest">api.example<span class="p">:443</span> <span class="rq">GET /v2/models</span></span></div></td><td class="num">1</td><td class="num zero">0</td><td class="num bad">1</td><td class="why"><b>Host allowed, no path rule matches.</b> Enforce mode denies it.</td><td><span class="outcome refused">Refused</span></td><td class="meta">+0:48.2</td><td class="slot"><button type="button" class="btn btn-xs rowbtn" id="pop-anchor" aria-haspopup="dialog" aria-expanded="true" aria-controls="pop-live">Allow</button></td></tr>
             <tr class="row denied"><td><div class="dcell"><span class="mark no"><svg class="i"><use href="#i-block"/></svg></span><span class="dest">files.cdn.example<span class="p">:443</span> <span class="rq">CONNECT</span></span></div></td><td class="num">3</td><td class="num zero">0</td><td class="num bad">3</td><td class="why"><b>No rule matches.</b> Enforce mode denies it.
                 <div class="after"><span class="badge badge-info"><svg class="i sm" style="width:11px;height:11px"><use href="#i-shieldok"/></svg>Rule added</span><span>Allowed for this repository in <a class="link mono" href="#version" style="font-size:12px">v10</a> by you, 2 minutes ago. The run has not reloaded yet.</span></div></td><td><span class="outcome refused">Refused</span></td><td class="meta">+0:09.3 <span class="faint">to</span> +0:10.1</td><td class="slot"><a class="btn btn-ghost btn-xs rowbtn" href="#repo">Rule</a></td></tr>
-            <tr class="row denied"><td><div class="dcell"><span class="mark no"><svg class="i"><use href="#i-block"/></svg></span><span class="dest">bin.paste.example<span class="p">:443</span> <span class="rq">CONNECT</span></span></div></td><td class="num">1</td><td class="num zero">0</td><td class="num bad">1</td><td class="why"><b>No rule matches.</b> Enforce mode denies it.</td><td><span class="outcome refused">Refused</span></td><td class="meta">+0:33.0</td><td class="slot"><button type="button" class="btn btn-ghost btn-xs btn-square rowbtn tip tip-end" data-tip="A locked hive rule denies *.paste.example" aria-label="Why bin.paste.example cannot be allowed here" aria-haspopup="dialog"><svg class="i sm"><use href="#i-lock"/></svg></button></td></tr>
+            <tr class="row denied"><td><div class="dcell"><span class="mark no"><svg class="i"><use href="#i-block"/></svg></span><span class="dest">bin.paste.example<span class="p">:443</span> <span class="rq">CONNECT</span></span></div></td><td class="num">1</td><td class="num zero">0</td><td class="num bad">1</td><td class="why"><b>No rule matches.</b> Enforce mode denies it.</td><td><span class="outcome refused">Refused</span></td><td class="meta">+0:33.0</td><td class="slot"><button type="button" class="btn btn-ghost btn-xs btn-square rowbtn tip tip-end" data-tip="A locked workspace rule denies *.paste.example" aria-label="Why bin.paste.example cannot be allowed here" aria-haspopup="dialog"><svg class="i sm"><use href="#i-lock"/></svg></button></td></tr>
             <tr class="row denied"><td><div class="dcell"><span class="mark no"><svg class="i"><use href="#i-block"/></svg></span><span class="dest">169.254.169.254<span class="p">:80</span> <span class="rq">HTTP</span></span></div></td><td class="num">1</td><td class="num zero">0</td><td class="num bad">1</td><td class="why"><b>The wall refuses the machine's own address,</b> in either mode.</td><td><span class="outcome refused">Refused</span></td><td class="meta">+0:41.2</td><td class="slot"><span class="sr-only">No rule changes this</span></td></tr>
             <tr class="row"><td><div class="dcell"><span class="mark ok"><svg class="i"><use href="#i-check"/></svg></span><span class="dest">api.example<span class="p">:443</span> <span class="rq">POST /v1/messages</span></span></div></td><td class="num">21</td><td class="num">21</td><td class="num zero">0</td><td class="why">Rule <code>api.example</code>, path <code>/v1/*</code>, credential <code>model-key</code></td><td><span class="outcome">Connected</span></td><td class="meta">+0:02.1 <span class="faint">to</span> +0:52.0</td><td class="slot"><button type="button" class="btn btn-ghost btn-xs rowbtn" aria-haspopup="dialog">Deny</button></td></tr>
-            <tr class="row"><td><div class="dcell"><span class="mark ok"><svg class="i"><use href="#i-check"/></svg></span><span class="dest">github.example<span class="p">:443</span> <span class="rq">CONNECT</span></span></div></td><td class="num">9</td><td class="num">9</td><td class="num zero">0</td><td class="why">Rule <code>github.example</code></td><td><span class="outcome">Connected</span></td><td class="meta">+0:01.0 <span class="faint">to</span> +0:50.4</td><td class="slot"><button type="button" class="btn btn-ghost btn-xs btn-square rowbtn tip tip-end" data-tip="A locked hive rule allows github.example" aria-label="Why github.example cannot be denied here" aria-haspopup="dialog"><svg class="i sm"><use href="#i-lock"/></svg></button></td></tr>
+            <tr class="row"><td><div class="dcell"><span class="mark ok"><svg class="i"><use href="#i-check"/></svg></span><span class="dest">github.example<span class="p">:443</span> <span class="rq">CONNECT</span></span></div></td><td class="num">9</td><td class="num">9</td><td class="num zero">0</td><td class="why">Rule <code>github.example</code></td><td><span class="outcome">Connected</span></td><td class="meta">+0:01.0 <span class="faint">to</span> +0:50.4</td><td class="slot"><button type="button" class="btn btn-ghost btn-xs btn-square rowbtn tip tip-end" data-tip="A locked workspace rule allows github.example" aria-label="Why github.example cannot be denied here" aria-haspopup="dialog"><svg class="i sm"><use href="#i-lock"/></svg></button></td></tr>
             <tr class="row"><td><div class="dcell"><span class="mark ok"><svg class="i"><use href="#i-check"/></svg></span><span class="dest">tax.internal.example<span class="p">:8443</span> <span class="rq">CONNECT</span></span></div></td><td class="num">2</td><td class="num">2</td><td class="num zero">0</td><td class="why">Rule <code>*.internal.example</code></td><td><span class="outcome dial">Dial failed</span></td><td class="meta">+0:44.0 <span class="faint">to</span> +0:47.5</td><td class="slot"><button type="button" class="btn btn-ghost btn-xs rowbtn" aria-haspopup="dialog">Deny</button></td></tr>
           </tbody>
         </table>
@@ -847,7 +847,7 @@ dialog.modal::backdrop { background: var(--q-overlay); backdrop-filter: blur(2px
           </fieldset>
           <fieldset><legend>For</legend>
             <label class="opt"><input type="radio" name="for" checked><span><b>This repository</b> <span class="mono muted" style="font-size:12px">github.example/acme/shop</span></span></label>
-            <label class="opt"><input type="radio" name="for"><span><b>The whole hive</b></span><small>Every repository of Platform.</small></label>
+            <label class="opt"><input type="radio" name="for"><span><b>The whole workspace</b></span><small>Every repository of Platform.</small></label>
           </fieldset>
           <p class="next"><svg class="i"><use href="#i-reload"/></svg><span>Takes effect in running sessions within a heartbeat, about 30 s. This run is alive: its next attempt can succeed.</span></p>
         </div>
@@ -856,7 +856,7 @@ dialog.modal::backdrop { background: var(--q-overlay); backdrop-filter: blur(2px
     </div>
 
     <!-- ============ RUN HEADER AND TIMELINE ============ -->
-    <div class="main-in" data-view="run" data-nav="runs" data-url="/hive/runs/0191f2a4-3c5e-7b8d-9e0f-1a2b3c4d5e6f" hidden>
+    <div class="main-in" data-view="run" data-nav="runs" data-url="/workspace/runs/0191f2a4-3c5e-7b8d-9e0f-1a2b3c4d5e6f" hidden>
       <span class="cap">1 · the run is behind: it last reported v9, and v10 is in force</span>
       <div class="run-head">
         <nav class="crumbs" aria-label="Breadcrumb"><a href="#run">Runs</a><svg class="i"><use href="#i-chev"/></svg><a href="#repo"><span class="mono" style="font-size:12px"><span class="faint">github.example/</span>acme/shop</span></a><svg class="i"><use href="#i-chev"/></svg><span class="mono" style="font-size:12px" aria-current="page">0191f2a4</span></nav>
@@ -897,7 +897,7 @@ dialog.modal::backdrop { background: var(--q-overlay); backdrop-filter: blur(2px
       <span class="cap">3 · other values of the Policy cell</span>
       <dl class="kvs">
         <div class="kv"><dt>Policy · ended run</dt><dd>enforce <a class="ver" href="#version">v9</a> <small class="mono">9f86d081884c</small></dd></div>
-        <div class="kv"><dt>Policy · hive baseline</dt><dd>enforce <a class="ver" href="#version">v14</a> <small>hive baseline</small></dd></div>
+        <div class="kv"><dt>Policy · workspace baseline</dt><dd>enforce <a class="ver" href="#version">v14</a> <small>workspace baseline</small></dd></div>
         <div class="kv"><dt>Policy · not this server's</dt><dd><span tabindex="0" title="The run reported a digest that matches no version rendered here: a policy file on the machine, or a run started with --local.">observe <small class="mono">4b227777d4dd</small> <small>· not rendered here</small></span></dd></div>
         <div class="kv"><dt>Policy · none reported</dt><dd>observe <small>no policy</small></dd></div>
       </dl>
@@ -929,61 +929,61 @@ dialog.modal::backdrop { background: var(--q-overlay); backdrop-filter: blur(2px
 
       <div class="spec"><span class="tag">composer · already there, and already covered</span>
         <section class="sect"><form class="composer" onsubmit="return false"><div class="seg"><button type="button" aria-pressed="true">Allow</button><button type="button" class="deny" aria-pressed="false">Deny</button></div><input class="input m" value="registry.example" aria-invalid="true" aria-label="Host"><input class="input m" placeholder="Every path" aria-label="Paths"><button class="btn btn-primary" type="button" disabled>Add rule</button>
-          <div class="reads bad" role="alert"><svg class="i"><use href="#i-warn"/></svg><span><span class="mono" style="font-size:12px">registry.example</span> is already allowed for the hive, by beekeeper on 2 Sep. <button type="button" class="link fix">Show it</button></span></div></form>
+          <div class="reads bad" role="alert"><svg class="i"><use href="#i-warn"/></svg><span><span class="mono" style="font-size:12px">registry.example</span> is already allowed for the workspace, by beekeeper on 2 Sep. <button type="button" class="link fix">Show it</button></span></div></form>
           <form class="composer" onsubmit="return false"><div class="seg"><button type="button" aria-pressed="true">Allow</button><button type="button" class="deny" aria-pressed="false">Deny</button></div><input class="input m" value="tax.internal.example" aria-label="Host"><input class="input m" placeholder="Every path" aria-label="Paths"><button class="btn btn-primary" type="button">Add rule</button>
           <div class="reads"><svg class="i"><use href="#i-info"/></svg><span>Already allowed by <code class="rule">*.internal.example</code>. Adding it changes nothing today and keeps the host allowed if the suffix rule is removed.</span></div></form></section></div>
 
 
-      <div class="spec"><span class="tag">repository mode · its own, observe, with a locked hive deny in the list (github.example/acme/tax-service)</span>
+      <div class="spec"><span class="tag">repository mode · its own, observe, with a locked workspace deny in the list (github.example/acme/tax-service)</span>
         <section class="sect modebar" aria-labelledby="rm2-h">
         <h2 id="rm2-h">Mode</h2>
-        <div class="seg in" role="radiogroup" aria-labelledby="rm2-h" data-repomode><button type="button" role="radio" aria-checked="false" data-m="follow">Follow the hive</button><button type="button" role="radio" aria-checked="true" data-m="observe">Observe</button><button type="button" role="radio" aria-checked="false" data-m="enforce">Enforce</button></div>
-        <p class="eff">In effect: <b>observe</b>, this repository's own. <span class="faint">The hive's default is enforce.</span></p>
+        <div class="seg in" role="radiogroup" aria-labelledby="rm2-h" data-repomode><button type="button" role="radio" aria-checked="false" data-m="follow">Follow the workspace</button><button type="button" role="radio" aria-checked="true" data-m="observe">Observe</button><button type="button" role="radio" aria-checked="false" data-m="enforce">Enforce</button></div>
+        <p class="eff">In effect: <b>observe</b>, this repository's own. <span class="faint">The workspace's default is enforce.</span></p>
         <div class="notice modenote"><svg class="i"><use href="#i-info"/></svg><div><b>This repository observes: nothing is denied, locked rules included.</b> The locked deny <code class="rule">*.paste.example</code> still shapes the document, so the hosts it covers are not in the allow list. Under observe a run reaches them all the same, and the record says no rule matched. It denies again the moment this repository enforces.</div></div>
       </section></div>
 
       <div class="spec"><span class="tag">repository mode · what a member sees: the same words, no control</span>
         <section class="sect modebar ro" aria-labelledby="rm3-h">
         <h2 id="rm3-h">Mode</h2>
-        <div class="seg in" role="radiogroup" aria-labelledby="rm3-h" data-repomode><button type="button" role="radio" aria-checked="false" data-m="follow" disabled>Follow the hive</button><button type="button" role="radio" aria-checked="true" data-m="observe">Observe</button><button type="button" role="radio" aria-checked="false" data-m="enforce" disabled>Enforce</button></div>
-        <p class="eff">In effect: <b>observe</b>, this repository's own. <span class="faint">The hive's default is enforce. Only an owner sets a mode.</span></p>
+        <div class="seg in" role="radiogroup" aria-labelledby="rm3-h" data-repomode><button type="button" role="radio" aria-checked="false" data-m="follow" disabled>Follow the workspace</button><button type="button" role="radio" aria-checked="true" data-m="observe">Observe</button><button type="button" role="radio" aria-checked="false" data-m="enforce" disabled>Enforce</button></div>
+        <p class="eff">In effect: <b>observe</b>, this repository's own. <span class="faint">The workspace's default is enforce. Only an owner sets a mode.</span></p>
       </section></div>
 
       <div class="spec"><span class="tag">history · a repository's mode, as sentences (the repository's history)</span>
         <section class="sect">
-          <details class="chg"><summary><svg class="i sm chev"><use href="#i-chev"/></svg><span class="avatar" aria-hidden="true">B</span><span class="say2"><b>beekeeper@example.com</b> set this repository's mode to <b>observe</b><small>Its own from now on. It followed the hive's default, enforce.</small></span><span class="when">11 Sep, 10:20</span><span class="vcell"><span class="vpill sm"><span class="v">v3</span><span class="dg">7be1a9d04f52</span></span></span></summary></details>
-          <details class="chg"><summary><svg class="i sm chev"><use href="#i-chev"/></svg><span class="avatar" aria-hidden="true">B</span><span class="say2"><b>beekeeper@example.com</b> set this repository's mode to <b>enforce</b><small>Its own from now on. The hive's default is enforce too, so the document did not change.</small></span><span class="when">10 Sep, 16:02</span><span class="vcell nov">no new version</span></summary></details>
-          <details class="chg"><summary><svg class="i sm chev"><use href="#i-chev"/></svg><span class="avatar" aria-hidden="true">B</span><span class="say2"><b>beekeeper@example.com</b> set this repository to <b>follow the hive</b><small>It observed on its own. The hive's default is enforce.</small></span><span class="when">9 Sep, 09:41</span><span class="vcell"><span class="vpill sm"><span class="v">v2</span><span class="dg">5ad0c3e81b77</span></span></span></summary></details>
+          <details class="chg"><summary><svg class="i sm chev"><use href="#i-chev"/></svg><span class="avatar" aria-hidden="true">B</span><span class="say2"><b>beekeeper@example.com</b> set this repository's mode to <b>observe</b><small>Its own from now on. It followed the workspace's default, enforce.</small></span><span class="when">11 Sep, 10:20</span><span class="vcell"><span class="vpill sm"><span class="v">v3</span><span class="dg">7be1a9d04f52</span></span></span></summary></details>
+          <details class="chg"><summary><svg class="i sm chev"><use href="#i-chev"/></svg><span class="avatar" aria-hidden="true">B</span><span class="say2"><b>beekeeper@example.com</b> set this repository's mode to <b>enforce</b><small>Its own from now on. The workspace's default is enforce too, so the document did not change.</small></span><span class="when">10 Sep, 16:02</span><span class="vcell nov">no new version</span></summary></details>
+          <details class="chg"><summary><svg class="i sm chev"><use href="#i-chev"/></svg><span class="avatar" aria-hidden="true">B</span><span class="say2"><b>beekeeper@example.com</b> set this repository to <b>follow the workspace</b><small>It observed on its own. The workspace's default is enforce.</small></span><span class="when">9 Sep, 09:41</span><span class="vcell"><span class="vpill sm"><span class="v">v2</span><span class="dg">5ad0c3e81b77</span></span></span></summary></details>
         </section></div>
 
       <div class="spec"><span class="tag">row popover · allow, in a repository that observes</span>
         <div class="pop static" role="group" aria-label="Allow metrics.example" style="max-width:348px"><header><span class="mark ok"><svg class="i"><use href="#i-check"/></svg></span><h3>Allow <span class="host">metrics.example</span></h3></header><div class="body">
-          <fieldset><legend>For</legend><label class="opt"><input type="radio" name="s4" checked><span><b>This repository</b> <span class="mono muted" style="font-size:12px">github.example/acme/tax-service</span></span></label><label class="opt"><input type="radio" name="s4"><span><b>The whole hive</b></span><small>Every repository of Platform.</small></label></fieldset>
+          <fieldset><legend>For</legend><label class="opt"><input type="radio" name="s4" checked><span><b>This repository</b> <span class="mono muted" style="font-size:12px">github.example/acme/tax-service</span></span></label><label class="opt"><input type="radio" name="s4"><span><b>The whole workspace</b></span><small>Every repository of Platform.</small></label></fieldset>
           <p class="next"><svg class="i"><use href="#i-eye"/></svg><span>This run's policy observes, so the connection is already let through. The rule changes what the record says from the next heartbeat, about 30 s, and what happens once the repository enforces.</span></p></div>
           <footer><button type="button" class="btn">Cancel</button><button type="button" class="btn btn-primary">Allow for this repository</button></footer></div></div>
 
       <div class="spec-grid">
         <div class="spec"><span class="tag">row popover · deny, run page</span>
           <div class="pop static" role="group" aria-label="Deny registry.example"><header><span class="mark no"><svg class="i"><use href="#i-block"/></svg></span><h3>Deny <span class="host">registry.example</span></h3></header><div class="body">
-            <fieldset><legend>For</legend><label class="opt"><input type="radio" name="s1" checked><span><b>This repository</b> <span class="mono muted" style="font-size:12px">github.example/acme/shop</span></span><small>Disables the hive's allow rule here. Other repositories keep it.</small></label><label class="opt"><input type="radio" name="s1"><span><b>The whole hive</b></span><small>Replaces the hive's allow rule. 6 runs of 2 repositories reached this host in the last 7 days.</small></label></fieldset>
+            <fieldset><legend>For</legend><label class="opt"><input type="radio" name="s1" checked><span><b>This repository</b> <span class="mono muted" style="font-size:12px">github.example/acme/shop</span></span><small>Disables the workspace's allow rule here. Other repositories keep it.</small></label><label class="opt"><input type="radio" name="s1"><span><b>The whole workspace</b></span><small>Replaces the workspace's allow rule. 6 runs of 2 repositories reached this host in the last 7 days.</small></label></fieldset>
             <p class="next"><svg class="i"><use href="#i-reload"/></svg><span>Takes effect in running sessions within a heartbeat, about 30 s. Open connections to the host are closed at the reload.</span></p></div>
             <footer><button type="button" class="btn">Cancel</button><button type="button" class="btn btn-danger">Deny for this repository</button></footer></div></div>
 
-        <div class="spec"><span class="tag">row popover · hive connections page, several repositories</span>
+        <div class="spec"><span class="tag">row popover · workspace connections page, several repositories</span>
           <div class="pop static" role="group" aria-label="Allow files.cdn.example"><header><span class="mark ok"><svg class="i"><use href="#i-check"/></svg></span><h3>Allow <span class="host">files.cdn.example</span></h3></header><div class="body">
-            <fieldset><legend>For. Runs of 2 repositories reached this host</legend><label class="opt"><input type="radio" name="s2"><span><b>One repository</b></span><select class="input m" aria-label="Repository" style="height:28px"><option>github.example/acme/shop · 4 denied</option><option>github.example/acme/tax-service · 4 denied</option></select></label><label class="opt"><input type="radio" name="s2"><span><b>The whole hive</b></span><small>Every repository of Platform.</small></label></fieldset>
+            <fieldset><legend>For. Runs of 2 repositories reached this host</legend><label class="opt"><input type="radio" name="s2"><span><b>One repository</b></span><select class="input m" aria-label="Repository" style="height:28px"><option>github.example/acme/shop · 4 denied</option><option>github.example/acme/tax-service · 4 denied</option></select></label><label class="opt"><input type="radio" name="s2"><span><b>The whole workspace</b></span><small>Every repository of Platform.</small></label></fieldset>
             <p class="next"><svg class="i"><use href="#i-reload"/></svg><span>Takes effect in running sessions within a heartbeat, about 30 s.</span></p></div>
             <footer><button type="button" class="btn">Cancel</button><button type="button" class="btn btn-primary" disabled>Allow</button></footer></div></div>
 
         <div class="spec"><span class="tag">row popover · a locked rule forbids it (member)</span>
           <div class="pop static" role="group" aria-label="bin.paste.example cannot be allowed"><header><span class="mark no"><svg class="i"><use href="#i-lock"/></svg></span><h3><span class="host">bin.paste.example</span> stays denied</h3></header><div class="body">
-            <div class="notice warn"><svg class="i"><use href="#i-lock"/></svg><div>A locked hive rule denies <code class="rule">*.paste.example</code>. It holds against every repository, so no rule added here would change what happens. Locked by beekeeper@example.com on 2 Sep 2026. Only an owner can change or unlock it.</div></div></div>
+            <div class="notice warn"><svg class="i"><use href="#i-lock"/></svg><div>A locked workspace rule denies <code class="rule">*.paste.example</code>. It holds against every repository, so no rule added here would change what happens. Locked by beekeeper@example.com on 2 Sep 2026. Only an owner can change or unlock it.</div></div></div>
             <footer><button type="button" class="btn">Close</button><a class="btn" href="#policy">Show the locked rule</a></footer></div></div>
 
         <div class="spec"><span class="tag">toast · after allowing from a row</span>
           <div class="toast" role="status"><svg class="i"><use href="#i-check"/></svg><div><b>files.cdn.example is allowed for github.example/acme/shop.</b><span>Version 10. Running sessions have it within a heartbeat.</span></div><button type="button" class="btn btn-ghost btn-xs btn-square" aria-label="Dismiss"><svg class="i sm"><use href="#i-x"/></svg></button></div>
           <span class="tag" style="margin-top:12px">toast · a change that made no version</span>
-          <div class="toast" role="status"><svg class="i"><use href="#i-check"/></svg><div><b>telemetry.example is denied for the hive.</b><span>No new version: the document did not list it.</span></div><button type="button" class="btn btn-ghost btn-xs btn-square" aria-label="Dismiss"><svg class="i sm"><use href="#i-x"/></svg></button></div>
+          <div class="toast" role="status"><svg class="i"><use href="#i-check"/></svg><div><b>telemetry.example is denied for the workspace.</b><span>No new version: the document did not list it.</span></div><button type="button" class="btn btn-ghost btn-xs btn-square" aria-label="Dismiss"><svg class="i sm"><use href="#i-x"/></svg></button></div>
           <span class="tag" style="margin-top:12px">row after · the run reloaded</span>
           <div class="after" style="margin:0"><span class="badge badge-success"><svg class="i sm" style="width:11px;height:11px"><use href="#i-shieldok"/></svg>In force in this run</span><span>Allowed for this repository in <a class="link mono" style="font-size:12px" href="#version">v10</a>. The run reloaded at <a class="link mono" style="font-size:12px" href="#run">#0046</a>.</span></div>
           <span class="tag" style="margin-top:12px">row after · the run has ended</span>
@@ -998,16 +998,16 @@ dialog.modal::backdrop { background: var(--q-overlay); backdrop-filter: blur(2px
         </div></div>
     </div>
 
-    <!-- ============ NEW HIVE ============ -->
-    <div class="main-in" data-view="empty" data-nav="policy" data-url="/hive/policy" hidden>
-      <div class="page-head"><div><h1>Policy</h1><p>What the runs of this <span class="term" tabindex="0" data-tip="team">hive</span> may reach through the runner's proxy. The policy can only allow: what no rule names is denied under enforce, and let through and recorded under observe.</p></div>
+    <!-- ============ NEW WORKSPACE ============ -->
+    <div class="main-in" data-view="empty" data-nav="policy" data-url="/workspace/policy" hidden>
+      <div class="page-head"><div><h1>Policy</h1><p>What the runs of this workspace may reach through the runner's proxy. The policy can only allow: what no rule names is denied under enforce, and let through and recorded under observe.</p></div>
         <div class="head-side"><span class="vpill"><span class="dg">No version yet</span></span></div></div>
       <nav class="tabs" aria-label="Policy"><a href="#empty" aria-current="page"><svg class="i"><use href="#i-shieldok"/></svg>Rules</a><a href="#empty"><svg class="i"><use href="#i-repo"/></svg>Repositories</a><a href="#empty"><svg class="i"><use href="#i-clock"/></svg>History</a><a href="#empty"><svg class="i"><use href="#i-doc"/></svg>Document</a></nav>
       <div class="mode" role="radiogroup" aria-label="Mode">
-        <button type="button" class="mode-card" role="radio" aria-checked="true"><span class="dot" aria-hidden="true"></span><h3><svg class="i"><use href="#i-eye"/></svg>Observe <span class="badge">Hive default</span></h3><p>Records every connection and denies none. A host no rule names is let through, and the record says so.</p><div class="fact">Not served yet: it applies from the first change here.</div></button>
+        <button type="button" class="mode-card" role="radio" aria-checked="true"><span class="dot" aria-hidden="true"></span><h3><svg class="i"><use href="#i-eye"/></svg>Observe <span class="badge">Workspace default</span></h3><p>Records every connection and denies none. A host no rule names is let through, and the record says so.</p><div class="fact">Not served yet: it applies from the first change here.</div></button>
         <button type="button" class="mode-card" role="radio" aria-checked="false"><span class="dot" aria-hidden="true"></span><h3><svg class="i"><use href="#i-shield"/></svg>Enforce</h3><p>Denies a connection no rule allows, and records the denial. With no allow rule, a run reaches nothing.</p></button>
       </div>
-      <div class="empty"><span class="hex"><svg class="i"><use href="#i-shieldok"/></svg></span><h2>Qory serves no policy yet</h2><p>Until the first change here, every machine of this hive runs under its own policy, the one in its runner file. The first rule you add, or a mode you set, renders version 1, and machines take their policy from Qory from then on. You can also let a run reach out first and allow its hosts from the Connections page, one row at a time.</p>
+      <div class="empty"><span class="hex"><svg class="i"><use href="#i-shieldok"/></svg></span><h2>Qory serves no policy yet</h2><p>Until the first change here, every machine of this workspace runs under its own policy, the one in its runner file. The first rule you add, or a mode you set, renders version 1, and machines take their policy from Qory from then on. You can also let a run reach out first and allow its hosts from the Connections page, one row at a time.</p>
         <div class="acts"><button type="button" class="btn btn-primary"><svg class="i"><use href="#i-plus"/></svg>Add a host rule</button><a class="btn" href="#connections">Go to connections</a></div></div>
       <p class="faint" style="font-size:12.5px;max-width:80ch">Version 1 is rendered by the first change, never by a machine asking. Until it exists, a machine that asks is told there is no policy here and keeps its own.</p>
     </div>
@@ -1019,14 +1019,14 @@ dialog.modal::backdrop { background: var(--q-overlay); backdrop-filter: blur(2px
 
 <!-- ============ DIALOGS ============ -->
 <dialog class="modal" id="dlg-enforce" aria-labelledby="dlg-enforce-h">
-  <div class="modal-head"><h2 id="dlg-enforce-h">Set the hive's default to enforce</h2><button type="button" class="btn btn-ghost btn-xs btn-square" data-close aria-label="Close"><svg class="i"><use href="#i-x"/></svg></button></div>
+  <div class="modal-head"><h2 id="dlg-enforce-h">Set the workspace's default to enforce</h2><button type="button" class="btn btn-ghost btn-xs btn-square" data-close aria-label="Close"><svg class="i"><use href="#i-x"/></svg></button></div>
   <div class="modal-body">
-    <p>From the next heartbeat, about 30 s, <b>a connection no rule allows is denied</b> in the 3 repositories that follow the hive's default, and in their 2 runs alive now. <span class="mono" style="font-size:12.5px">github.example/acme/tax-service</span> sets its own mode and does not change. You can switch back at any time.</p>
+    <p>From the next heartbeat, about 30 s, <b>a connection no rule allows is denied</b> in the 3 repositories that follow the workspace's default, and in their 2 runs alive now. <span class="mono" style="font-size:12.5px">github.example/acme/tax-service</span> sets its own mode and does not change. You can switch back at any time.</p>
     <div class="would"><div><span>Let through in the last 7 days with no rule matching, in those repositories</span><span class="tnum" id="would-n">3 destinations</span></div>
       <ul>
-        <li><span class="mark pend"><svg class="i"><use href="#i-block"/></svg></span><span class="dest">files.cdn.example<span class="p">:443</span></span><small>8 attempts · 3 runs</small><button type="button" class="btn btn-xs" data-would>Allow for the hive</button></li>
-        <li><span class="mark pend"><svg class="i"><use href="#i-block"/></svg></span><span class="dest">flags.example<span class="p">:443</span></span><small>9 attempts · 5 runs</small><button type="button" class="btn btn-xs" data-would>Allow for the hive</button></li>
-        <li><span class="mark pend"><svg class="i"><use href="#i-block"/></svg></span><span class="dest">metrics.example<span class="p">:80</span></span><small>14 attempts · 2 runs</small><button type="button" class="btn btn-xs" data-would>Allow for the hive</button></li>
+        <li><span class="mark pend"><svg class="i"><use href="#i-block"/></svg></span><span class="dest">files.cdn.example<span class="p">:443</span></span><small>8 attempts · 3 runs</small><button type="button" class="btn btn-xs" data-would>Allow for the workspace</button></li>
+        <li><span class="mark pend"><svg class="i"><use href="#i-block"/></svg></span><span class="dest">flags.example<span class="p">:443</span></span><small>9 attempts · 5 runs</small><button type="button" class="btn btn-xs" data-would>Allow for the workspace</button></li>
+        <li><span class="mark pend"><svg class="i"><use href="#i-block"/></svg></span><span class="dest">metrics.example<span class="p">:80</span></span><small>14 attempts · 2 runs</small><button type="button" class="btn btn-xs" data-would>Allow for the workspace</button></li>
       </ul></div>
     <p style="font-size:12.5px">Counted from recorded connections that today's rules still do not cover. Enforce will deny these. A destination no run has reached yet is not in this list.</p>
   </div>
@@ -1034,8 +1034,8 @@ dialog.modal::backdrop { background: var(--q-overlay); backdrop-filter: blur(2px
 </dialog>
 
 <dialog class="modal sm" id="dlg-observe" aria-labelledby="dlg-observe-h">
-  <div class="modal-head"><h2 id="dlg-observe-h">Set the hive's default to observe</h2><button type="button" class="btn btn-ghost btn-xs btn-square" data-close aria-label="Close"><svg class="i"><use href="#i-x"/></svg></button></div>
-  <div class="modal-body"><p>From the next heartbeat, about 30 s, <b>nothing is denied</b> in the 3 repositories that follow the hive's default, and in their 2 runs alive now: every connection is let through and recorded. A repository that sets its own mode does not change. The rules stay as they are, locked ones too: under observe a deny shapes the document and denies nothing.</p></div>
+  <div class="modal-head"><h2 id="dlg-observe-h">Set the workspace's default to observe</h2><button type="button" class="btn btn-ghost btn-xs btn-square" data-close aria-label="Close"><svg class="i"><use href="#i-x"/></svg></button></div>
+  <div class="modal-body"><p>From the next heartbeat, about 30 s, <b>nothing is denied</b> in the 3 repositories that follow the workspace's default, and in their 2 runs alive now: every connection is let through and recorded. A repository that sets its own mode does not change. The rules stay as they are, locked ones too: under observe a deny shapes the document and denies nothing.</p></div>
   <div class="modal-foot"><button type="button" class="btn" data-close>Cancel</button><button type="button" class="btn btn-danger" data-confirm="observe">Set the default to observe</button></div>
 </dialog>
 
@@ -1080,11 +1080,11 @@ dialog.modal::backdrop { background: var(--q-overlay); backdrop-filter: blur(2px
 <dialog class="modal" id="dlg-repo-enforce" aria-labelledby="dlg-re-h">
   <div class="modal-head"><h2 id="dlg-re-h">Enforce <span class="mono" style="font-size:14px">github.example/acme/tax-service</span></h2><button type="button" class="btn btn-ghost btn-xs btn-square" data-close aria-label="Close"><svg class="i"><use href="#i-x"/></svg></button></div>
   <div class="modal-body">
-    <p>From the next heartbeat, about 30 s, <b>a connection no rule allows is denied</b> in this repository's runs, 1 of them alive now. The mode becomes this repository's own: it stays enforce whatever the hive's default becomes. Other repositories do not change.</p>
+    <p>From the next heartbeat, about 30 s, <b>a connection no rule allows is denied</b> in this repository's runs, 1 of them alive now. The mode becomes this repository's own: it stays enforce whatever the workspace's default becomes. Other repositories do not change.</p>
     <div class="would"><div><span>Let through in this repository's runs, last 7 days, with no rule matching</span><span class="tnum">2 destinations</span></div>
       <ul>
         <li><span class="mark pend"><svg class="i"><use href="#i-block"/></svg></span><span class="dest">metrics.example<span class="p">:80</span></span><small>14 attempts · 2 runs</small><button type="button" class="btn btn-xs" data-would>Allow here</button></li>
-        <li><span class="mark pend"><svg class="i"><use href="#i-block"/></svg></span><span class="dest">bin.paste.example<span class="p">:443</span></span><small>2 attempts · 1 run</small><span class="locked tip tip-end" tabindex="0" data-tip="A locked hive rule denies *.paste.example. It holds against every repository."><svg class="i sm"><use href="#i-lock"/></svg>Locked deny</span></li>
+        <li><span class="mark pend"><svg class="i"><use href="#i-block"/></svg></span><span class="dest">bin.paste.example<span class="p">:443</span></span><small>2 attempts · 1 run</small><span class="locked tip tip-end" tabindex="0" data-tip="A locked workspace rule denies *.paste.example. It holds against every repository."><svg class="i sm"><use href="#i-lock"/></svg>Locked deny</span></li>
       </ul></div>
     <p style="font-size:12.5px">Counted from this repository's recorded connections that today's rules still do not cover. Enforce will deny these. A destination no run has reached yet is not in this list.</p>
   </div>
@@ -1093,7 +1093,7 @@ dialog.modal::backdrop { background: var(--q-overlay); backdrop-filter: blur(2px
 
 <dialog class="modal sm" id="dlg-repo-observe" aria-labelledby="dlg-ro-h">
   <div class="modal-head"><h2 id="dlg-ro-h">Observe <span class="mono" style="font-size:14px">github.example/acme/shop</span></h2><button type="button" class="btn btn-ghost btn-xs btn-square" data-close aria-label="Close"><svg class="i"><use href="#i-x"/></svg></button></div>
-  <div class="modal-body"><p>From the next heartbeat, about 30 s, <b>nothing is denied in this repository's runs</b>, 1 of them alive now: every connection is let through and recorded. The mode becomes this repository's own; the hive's default stays enforce and other repositories do not change.</p>
+  <div class="modal-body"><p>From the next heartbeat, about 30 s, <b>nothing is denied in this repository's runs</b>, 1 of them alive now: every connection is let through and recorded. The mode becomes this repository's own; the workspace's default stays enforce and other repositories do not change.</p>
     <p>The rules stay as they are, locked ones too. Under observe a deny shapes the document and denies nothing: <span class="mono" style="font-size:12.5px">*.paste.example</span> will be reachable from this repository.</p></div>
   <div class="modal-foot"><button type="button" class="btn" data-close autofocus>Cancel</button><button type="button" class="btn btn-danger" data-repo-confirm="observe">Observe this repository</button></div>
 </dialog>
@@ -1102,8 +1102,8 @@ dialog.modal::backdrop { background: var(--q-overlay); backdrop-filter: blur(2px
   var $ = function (s, r) { return (r || document).querySelector(s); }, $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
   var main = $("#main"), app = $("#app");
 
-  // The hive policy's page head and tabs are the same on four views: written once here.
-  var head = '<div class="page-head"><div><h1>Policy</h1><p>What the runs of this <span class="term" tabindex="0" data-tip="team">hive</span> may reach through the runner\'s proxy. The policy can only allow: what no rule names is denied under enforce, and let through and recorded under observe.</p></div>' +
+  // The workspace policy's page head and tabs are the same on four views: written once here.
+  var head = '<div class="page-head"><div><h1>Policy</h1><p>What the runs of this workspace may reach through the runner\'s proxy. The policy can only allow: what no rule names is denied under enforce, and let through and recorded under observe.</p></div>' +
     '<div class="head-side"><span class="vpill" title="sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"><a class="v" href="#history">v14</a><span class="dg"><i>sha256</i> e3b0c44298fc</span><button type="button" aria-label="Copy the digest" class="tip tip-end" data-tip="Copy the digest"><svg class="i sm"><use href="#i-copy"/></svg></button></span><a class="btn" href="#version/export"><svg class="i"><use href="#i-up"/></svg>Export</a></div></div>';
   var tabs = [["rules", "#policy", "i-shieldok", "Rules", "9"], ["repositories", "#repositories", "i-repo", "Repositories", "4"], ["history", "#history", "i-clock", "History", "16"], ["document", "#version", "i-doc", "Document", ""]];
   $$("[data-phead]").forEach(function (el) { el.innerHTML = head; });
@@ -1120,7 +1120,7 @@ dialog.modal::backdrop { background: var(--q-overlay); backdrop-filter: blur(2px
     $$("a[data-nav]").forEach(function (a) { if (a.getAttribute("data-nav") === el.getAttribute("data-nav")) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
     $$("#viewseg a").forEach(function (a) { a.setAttribute("aria-current", String(a.getAttribute("href") === "#" + view)); });
     app.classList.remove("drawer"); main.scrollTop = 0;
-    if (state && $("#dlg-" + state)) { $("#dlg-" + state).showModal(); if (state === "export") $("#url").textContent = "/hive/policy/targets/rp_5f2c81/versions/10/export"; }
+    if (state && $("#dlg-" + state)) { $("#dlg-" + state).showModal(); if (state === "export") $("#url").textContent = "/workspace/policy/targets/rp_5f2c81/versions/10/export"; }
     var p = $("#pop-live"); p.hidden = state === "closed"; placePop();
   }
   window.addEventListener("hashchange", route); window.addEventListener("resize", placePop); main.addEventListener("scroll", placePop, { passive: true });
@@ -1135,7 +1135,7 @@ dialog.modal::backdrop { background: var(--q-overlay); backdrop-filter: blur(2px
   // Mode: choosing the other card asks first; the confirm makes the change.
   $$("#mode .mode-card").forEach(function (c) { c.addEventListener("click", function () { if (c.getAttribute("aria-checked") === "true" || app.classList.contains("member")) return; $("#dlg-" + c.getAttribute("data-mode")).showModal(); }); });
   $$("[data-confirm]").forEach(function (b) { b.addEventListener("click", function () { var m = b.getAttribute("data-confirm");
-    $$("#mode .mode-card").forEach(function (c) { var on = c.getAttribute("data-mode") === m; c.setAttribute("aria-checked", String(on)); var bd = $(".badge", c); if (on && !bd) $("h3", c).insertAdjacentHTML("beforeend", ' <span class="badge">Hive default</span>'); if (!on && bd) bd.remove(); });
+    $$("#mode .mode-card").forEach(function (c) { var on = c.getAttribute("data-mode") === m; c.setAttribute("aria-checked", String(on)); var bd = $(".badge", c); if (on && !bd) $("h3", c).insertAdjacentHTML("beforeend", ' <span class="badge">Workspace default</span>'); if (!on && bd) bd.remove(); });
     $("#side-mode").textContent = m; b.closest("dialog").close(); }); });
   $$("[data-would]").forEach(function (b) { b.addEventListener("click", function () { var li = b.closest("li"); $(".mark", li).className = "mark ok"; $(".mark use", li).setAttribute("href", "#i-check"); b.outerHTML = '<span class="done"><svg class="i sm"><use href="#i-check"/></svg>Allowed</span>';
     var n = $$("#dlg-enforce [data-would]").length; $("#would-n").textContent = n === 0 ? "none left" : n + (n === 1 ? " destination" : " destinations"); }); });
@@ -1145,8 +1145,8 @@ dialog.modal::backdrop { background: var(--q-overlay); backdrop-filter: blur(2px
   // A repository's mode: a change of what is in effect asks first; anything else is immediate.
   $$("[data-repomode]").forEach(function (g) { g.addEventListener("click", function (e) { var b = e.target.closest("button"); if (!b || b.disabled || app.classList.contains("member") || b.getAttribute("aria-checked") === "true") return;
     var m = b.getAttribute("data-m"), cur = $('[aria-checked="true"]', g).getAttribute("data-m"); if (g.closest('[data-view="repo"]') && m === "observe") { $("#dlg-repo-observe").showModal(); return; } if (cur === "observe" && m !== "observe") { $("#dlg-repo-enforce").showModal(); return; }
-    $$("button", g).forEach(function (x) { x.setAttribute("aria-checked", String(x === b)); }); var eff = $(".eff", g.parentNode); if (eff && g.closest('[data-view="repo"]')) eff.innerHTML = m === "follow" ? "In effect: <b>enforce</b>, the hive's default. <span class=\"faint\">It changes when the hive's does.</span>" : "In effect: <b>" + m + "</b>, this repository's own. <span class=\"faint\">The hive's default is enforce.</span>"; }); });
-  $$("[data-repo-confirm]").forEach(function (b) { b.addEventListener("click", function () { var g = $('[data-view="repo"] [data-repomode]'); $$("button", g).forEach(function (x) { x.setAttribute("aria-checked", String(x.getAttribute("data-m") === "observe")); }); $(".eff", g.parentNode).innerHTML = "In effect: <b>observe</b>, this repository's own. <span class=\"faint\">The hive's default is enforce.</span>"; b.closest("dialog").close(); }); });
+    $$("button", g).forEach(function (x) { x.setAttribute("aria-checked", String(x === b)); }); var eff = $(".eff", g.parentNode); if (eff && g.closest('[data-view="repo"]')) eff.innerHTML = m === "follow" ? "In effect: <b>enforce</b>, the workspace's default. <span class=\"faint\">It changes when the workspace's does.</span>" : "In effect: <b>" + m + "</b>, this repository's own. <span class=\"faint\">The workspace's default is enforce.</span>"; }); });
+  $$("[data-repo-confirm]").forEach(function (b) { b.addEventListener("click", function () { var g = $('[data-view="repo"] [data-repomode]'); $$("button", g).forEach(function (x) { x.setAttribute("aria-checked", String(x.getAttribute("data-m") === "observe")); }); $(".eff", g.parentNode).innerHTML = "In effect: <b>observe</b>, this repository's own. <span class=\"faint\">The workspace's default is enforce.</span>"; b.closest("dialog").close(); }); });
 
   // The composer reads a rule back in the contract's grammar before it can be added.
   var HOST = /^(\*\.)?([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/, PATH = /^\/[^*?#\s]*\*?$/;

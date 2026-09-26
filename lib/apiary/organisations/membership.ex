@@ -1,5 +1,5 @@
 defmodule Apiary.Organisations.Membership do
-  @moduledoc "A user's place in an organisation and its hive, at one of two levels."
+  @moduledoc "A user's place in an organisation and its workspace, at one of two levels."
   use Ecto.Schema
   use Gettext, backend: ApiaryWeb.Gettext
   import Ecto.Changeset
@@ -12,7 +12,7 @@ defmodule Apiary.Organisations.Membership do
     field :level, Ecto.Enum, values: @levels
 
     belongs_to :organisation, Apiary.Organisations.Organisation
-    belongs_to :hive, Apiary.Organisations.Hive
+    belongs_to :workspace, Apiary.Organisations.Workspace
     belongs_to :user, Apiary.Accounts.User
 
     timestamps(type: :utc_datetime_usec)

@@ -12,7 +12,7 @@
 // The hook itself only re-renders its element after a LiveView patch put the server's
 // text back; elements without the hook are picked up by the interval all the same.
 
-// The words are the server's, in the body's language (`RunComponents.clock_words/0`, on
+// The words are the server's, in the domain's language (`RunComponents.clock_words/0`, on
 // the body as `data-clock-words`); this script holds none. Without them an element keeps
 // the text the server rendered.
 let words

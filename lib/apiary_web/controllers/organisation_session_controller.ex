@@ -20,7 +20,7 @@ defmodule ApiaryWeb.OrganisationSessionController do
     if member? do
       conn
       |> put_session(:organisation_id, organisation_id)
-      |> redirect(to: ~p"/hive")
+      |> redirect(to: ~p"/workspace")
     else
       not_a_member(conn)
     end
@@ -31,7 +31,7 @@ defmodule ApiaryWeb.OrganisationSessionController do
   defp not_a_member(conn) do
     conn
     |> put_flash(:error, gettext("You are not a member of that organisation."))
-    |> redirect(to: ~p"/hive")
+    |> redirect(to: ~p"/workspace")
   end
 
   @doc """

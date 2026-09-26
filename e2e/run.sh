@@ -18,7 +18,7 @@
 #   E2E_PORT            the test instance's port                      (default 4180)
 #   E2E_WORK            (default tmp/e2e under the repository)
 #   E2E_RETRY_SECONDS   how often the session asks for the host       (default 3)
-#   E2E_LEVEL           target or hive: where the row's rule goes (default target)
+#   E2E_LEVEL           target or workspace: where the row's rule goes (default target)
 #   E2E_BUDGET_SECONDS  (default 35)
 set -euo pipefail
 

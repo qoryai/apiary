@@ -1,4 +1,4 @@
-defmodule ApiaryWeb.HiveLive.NoHive do
+defmodule ApiaryWeb.WorkspaceLive.NoWorkspace do
   @moduledoc """
   Shown to a signed-in user who is not a member of any organisation.
   """
@@ -17,7 +17,7 @@ defmodule ApiaryWeb.HiveLive.NoHive do
         <p>
           <.rich text={
             rich_gettext(
-              "An organisation is created when you register, and you join someone else's through an invitation. Ask an owner to invite %{email}; the email they send brings you straight to their hive.",
+              "An organisation is created when you register, and you join someone else's through an invitation. Ask an owner to invite %{email}; the email they send brings you straight to their workspace.",
               email: email(@current_scope.user.email)
             )
           } />
@@ -44,9 +44,9 @@ defmodule ApiaryWeb.HiveLive.NoHive do
   @impl true
   def mount(_params, _session, socket) do
     if socket.assigns.current_scope.organisation do
-      {:ok, push_navigate(socket, to: ~p"/hive")}
+      {:ok, push_navigate(socket, to: ~p"/workspace")}
     else
-      {:ok, assign(socket, page_title: gettext("No hive yet"))}
+      {:ok, assign(socket, page_title: gettext("No workspace yet"))}
     end
   end
 end

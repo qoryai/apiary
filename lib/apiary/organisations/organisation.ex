@@ -1,5 +1,5 @@
 defmodule Apiary.Organisations.Organisation do
-  @moduledoc "The tenant: an apiary in product words."
+  @moduledoc "The tenant: an organisation, which holds the workspaces."
   use Ecto.Schema
   use Gettext, backend: ApiaryWeb.Gettext
   import Ecto.Changeset
@@ -9,7 +9,7 @@ defmodule Apiary.Organisations.Organisation do
   schema "organisations" do
     field :name, :string
 
-    has_many :hives, Apiary.Organisations.Hive
+    has_many :workspaces, Apiary.Organisations.Workspace
     has_many :memberships, Apiary.Organisations.Membership
 
     timestamps(type: :utc_datetime_usec)

@@ -10,24 +10,24 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
     setup :register_and_log_in_user
 
     test "lists the members", %{conn: conn, user: user} do
-      {:ok, _lv, html} = live(conn, ~p"/hive/members")
+      {:ok, _lv, html} = live(conn, ~p"/workspace/members")
       assert html =~ user.email
       assert html =~ "You"
       assert html =~ "Invite member"
-      assert html =~ "The people in this workplace."
+      assert html =~ "The people in this workspace."
     end
 
     test "invites a member and can revoke the invitation", %{conn: conn, scope: scope} do
-      {:ok, lv, _html} = live(conn, ~p"/hive/members")
+      {:ok, lv, _html} = live(conn, ~p"/workspace/members")
 
       lv |> element("a", "Invite member") |> render_click()
-      assert_patch(lv, ~p"/hive/members/invite")
+      assert_patch(lv, ~p"/workspace/members/invite")
 
       lv
       |> form("#invitation-form", invitation: %{email: "bee@example.com", level: "member"})
       |> render_submit()
 
-      assert_patch(lv, ~p"/hive/members")
+      assert_patch(lv, ~p"/workspace/members")
 
       html = render(lv)
       assert html =~ "Invitation sent to bee@example.com"
@@ -41,7 +41,7 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
     end
 
     test "refuses to invite an existing member", %{conn: conn, user: user, scope: scope} do
-      {:ok, lv, _html} = live(conn, ~p"/hive/members/invite")
+      {:ok, lv, _html} = live(conn, ~p"/workspace/members/invite")
 
       html =
         lv
@@ -59,7 +59,7 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
     } do
       %{membership: membership} = member_fixture(scope, :member)
 
-      {:ok, lv, _html} = live(conn, ~p"/hive/members")
+      {:ok, lv, _html} = live(conn, ~p"/workspace/members")
 
       html = lv |> form("#level-form-#{membership.id}", %{level: "owner"}) |> render_change()
       assert html =~ "is now an owner"
@@ -77,14 +77,14 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
     test "removes a member and refuses to remove the last owner", %{conn: conn, scope: scope} do
       %{membership: membership, user: member} = member_fixture(scope, :member)
 
-      {:ok, lv, _html} = live(conn, ~p"/hive/members")
+      {:ok, lv, _html} = live(conn, ~p"/workspace/members")
 
       lv |> element("#member-#{membership.id} a", "Remove") |> render_click()
-      assert_patch(lv, ~p"/hive/members/#{membership.id}/remove")
+      assert_patch(lv, ~p"/workspace/members/#{membership.id}/remove")
       assert render(lv) =~ "They lose access"
 
       lv |> element("#remove-member button", "Remove member") |> render_click()
-      assert_patch(lv, ~p"/hive/members")
+      assert_patch(lv, ~p"/workspace/members")
 
       html = render(lv)
       assert html =~ "#{member.email} is removed"
@@ -121,7 +121,7 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       membership: membership,
       third: third
     } do
-      {:ok, lv, html} = live(conn, ~p"/hive/members")
+      {:ok, lv, html} = live(conn, ~p"/workspace/members")
       assert html =~ "level-form-#{third.id}"
 
       assert {:ok, _} = Organisations.set_member_level(founder.scope, membership.id, :member)
@@ -148,7 +148,7 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       membership: membership,
       third: third
     } do
-      {:ok, lv, _html} = live(conn, ~p"/hive/members")
+      {:ok, lv, _html} = live(conn, ~p"/workspace/members")
 
       # Demoted behind the page's back: no broadcast reaches it.
       membership |> Ecto.Changeset.change(level: :member) |> Apiary.Repo.update!()
@@ -158,14 +158,14 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       assert Apiary.Repo.get!(Organisations.Membership, third.id).level == :member
     end
 
-    test "a removed member's open page is sent to /hive", %{
+    test "a removed member's open page is sent to /workspace", %{
       conn: conn,
       founder: founder,
       membership: membership
     } do
-      {:ok, lv, _html} = live(conn, ~p"/hive/members")
+      {:ok, lv, _html} = live(conn, ~p"/workspace/members")
       assert {:ok, _} = Organisations.remove_member(founder.scope, membership.id)
-      assert_redirect(lv, ~p"/hive")
+      assert_redirect(lv, ~p"/workspace")
     end
   end
 
@@ -177,7 +177,7 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
     end
 
     test "sees the page read-only", %{conn: conn, owner: owner, user: user} do
-      {:ok, lv, html} = live(conn, ~p"/hive/members")
+      {:ok, lv, html} = live(conn, ~p"/workspace/members")
 
       assert html =~ owner.user.email
       assert html =~ user.email
@@ -190,10 +190,11 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
     end
 
     test "cannot open the invite or remove dialogs", %{conn: conn, owner: owner} do
-      assert {:error, {_, %{to: "/hive/members"}}} = live(conn, ~p"/hive/members/invite")
+      assert {:error, {_, %{to: "/workspace/members"}}} =
+               live(conn, ~p"/workspace/members/invite")
 
-      assert {:error, {_, %{to: "/hive/members"}}} =
-               live(conn, ~p"/hive/members/#{owner.membership.id}/remove")
+      assert {:error, {_, %{to: "/workspace/members"}}} =
+               live(conn, ~p"/workspace/members/#{owner.membership.id}/remove")
     end
   end
 end

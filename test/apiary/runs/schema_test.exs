@@ -10,7 +10,7 @@ defmodule Apiary.Runs.SchemaTest do
       struct(
         %Run{
           organisation_id: scope.organisation.id,
-          hive_id: scope.hive.id,
+          workspace_id: scope.workspace.id,
           run_id: Ecto.UUID.generate()
         },
         attrs
@@ -37,38 +37,38 @@ defmodule Apiary.Runs.SchemaTest do
     end
   end
 
-  test "the subject is unique within a hive, and free in another" do
+  test "the subject is unique within a workspace, and free in another" do
     %{scope: scope} = sign_up_fixture()
     %{scope: other} = sign_up_fixture()
     run = run_fixture(scope)
 
     assert %Run{} = run_fixture(other, %{run_id: run.run_id})
 
-    assert_raise Ecto.ConstraintError, ~r/runs_hive_id_run_id_index/, fn ->
+    assert_raise Ecto.ConstraintError, ~r/runs_workspace_id_run_id_index/, fn ->
       run_fixture(scope, %{run_id: run.run_id})
     end
   end
 
-  test "a row cannot name the hive of one organisation and the id of another" do
+  test "a row cannot name the workspace of one organisation and the id of another" do
     %{scope: scope} = sign_up_fixture()
     %{scope: other} = sign_up_fixture()
 
-    assert_raise Ecto.ConstraintError, ~r/runs_hive_id_fkey/, fn ->
+    assert_raise Ecto.ConstraintError, ~r/runs_workspace_id_fkey/, fn ->
       Repo.insert!(%Run{
         organisation_id: other.organisation.id,
-        hive_id: scope.hive.id,
+        workspace_id: scope.workspace.id,
         run_id: Ecto.UUID.generate()
       })
     end
   end
 
-  test "an event is unique by sequence in its run and by id in its hive; it goes with the run" do
+  test "an event is unique by sequence in its run and by id in its workspace; it goes with the run" do
     %{scope: scope} = sign_up_fixture()
     run = run_fixture(scope)
 
     event = %Event{
       organisation_id: scope.organisation.id,
-      hive_id: scope.hive.id,
+      workspace_id: scope.workspace.id,
       run_id: run.id,
       sequence: 1,
       event_id: Ecto.UUID.generate(),
@@ -84,7 +84,7 @@ defmodule Apiary.Runs.SchemaTest do
       Repo.insert!(%{event | event_id: Ecto.UUID.generate()})
     end
 
-    assert_raise Ecto.ConstraintError, ~r/events_hive_id_event_id_index/, fn ->
+    assert_raise Ecto.ConstraintError, ~r/events_workspace_id_event_id_index/, fn ->
       Repo.insert!(%{event | sequence: 2})
     end
 
@@ -92,7 +92,7 @@ defmodule Apiary.Runs.SchemaTest do
     assert Repo.aggregate(Event, :count) == 0
   end
 
-  test "a child of a run cannot name another hive than its run's" do
+  test "a child of a run cannot name another workspace than its run's" do
     %{scope: scope} = sign_up_fixture()
     %{scope: other} = sign_up_fixture()
     run = run_fixture(scope)
@@ -100,7 +100,7 @@ defmodule Apiary.Runs.SchemaTest do
     assert_raise Ecto.ConstraintError, ~r/events_run_id_fkey/, fn ->
       Repo.insert!(%Event{
         organisation_id: other.organisation.id,
-        hive_id: other.hive.id,
+        workspace_id: other.workspace.id,
         run_id: run.id,
         sequence: 1,
         event_id: Ecto.UUID.generate(),
@@ -117,11 +117,11 @@ defmodule Apiary.Runs.SchemaTest do
           [table <> "_run_id_fkey"]
         )
 
-      assert definition =~ "FOREIGN KEY (run_id, hive_id) REFERENCES runs(id, hive_id)"
+      assert definition =~ "FOREIGN KEY (run_id, workspace_id) REFERENCES runs(id, workspace_id)"
     end
   end
 
-  test "a run cannot name a target of another hive" do
+  test "a run cannot name a target of another workspace" do
     %{scope: scope} = sign_up_fixture()
     %{scope: other} = sign_up_fixture()
     now = DateTime.utc_now()
@@ -129,7 +129,7 @@ defmodule Apiary.Runs.SchemaTest do
     target =
       Repo.insert!(%Apiary.Runs.Target{
         organisation_id: other.organisation.id,
-        hive_id: other.hive.id,
+        workspace_id: other.workspace.id,
         system: "git.example.com",
         path: "acme/shop",
         first_seen_at: now
@@ -139,20 +139,20 @@ defmodule Apiary.Runs.SchemaTest do
       run_fixture(scope, %{target_id: target.id})
     end
 
-    # In its own hive it may, and the run outlives the target.
+    # In its own workspace it may, and the run outlives the target.
     run = run_fixture(other, %{target_id: target.id})
     Repo.delete!(target)
-    assert %Run{target_id: nil, hive_id: hive_id} = Repo.get!(Run, run.id)
-    assert hive_id == other.hive.id
+    assert %Run{target_id: nil, workspace_id: workspace_id} = Repo.get!(Run, run.id)
+    assert workspace_id == other.workspace.id
   end
 
-  test "a delivery keeps its key: the key cannot be deleted from under it, the hive can go" do
+  test "a delivery keeps its key: the key cannot be deleted from under it, the workspace can go" do
     %{scope: scope} = sign_up_fixture()
     %{access_key: key} = Apiary.AccessKeysFixtures.access_key_fixture(scope)
 
     Repo.insert!(%Apiary.Runs.Delivery{
       organisation_id: scope.organisation.id,
-      hive_id: scope.hive.id,
+      workspace_id: scope.workspace.id,
       access_key_id: key.id,
       delivery_id: Ecto.UUID.generate(),
       run_id: Ecto.UUID.generate(),

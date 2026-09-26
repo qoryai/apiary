@@ -419,11 +419,11 @@ defmodule Apiary.Runs.Fold do
     end
   end
 
-  # The target the labels as sent name, whole, by the hive's body (`Apiary.Body`), or nil.
-  # Labels that name no target stay in `labels` (cut like the others) and the run is
-  # unassigned.
+  # The target the labels as sent name, whole, by the workspace's domain
+  # (`Apiary.Lingo.Domain`), or nil. Labels that name no target stay in `labels` (cut like
+  # the others) and the run is unassigned.
   defp target(run, %{"labels" => labels}) do
-    case Apiary.Body.target(Map.get(run, :hive_id), labels) do
+    case Apiary.Lingo.Domain.target(Map.get(run, :workspace_id), labels) do
       {:ok, target} -> target
       :none -> nil
     end

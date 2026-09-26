@@ -1,10 +1,10 @@
 defmodule ApiaryWeb.SettingsLive do
   @moduledoc """
-  Organisation and hive settings: names, the owners, and retention: how long the hive
-  keeps a run's events and log output, and what the nightly job last pruned.
+  Organisation and workspace settings: names, the owners, and retention: how long the
+  workspace keeps a run's events and log output, and what the nightly job last pruned.
 
-  The proof of the body's words (`docs/lingo.md`): every sentence is a gettext call in
-  engine words, and the software body's catalogue says organisation and workplace.
+  The proof of the domain's words (`docs/lingo.md`): every sentence is a gettext call in
+  engine words, and the software domain's catalogue says organisation and workspace.
   """
   use ApiaryWeb, :live_view
 
@@ -28,7 +28,7 @@ defmodule ApiaryWeb.SettingsLive do
         {gettext("Settings")}
         <:subtitle>
           {gettext(
-            "The names of this organisation and its hive, who owns them, and how long runs are kept."
+            "The names of this organisation and its workspace, who owns them, and how long runs are kept."
           )}
         </:subtitle>
       </.header>
@@ -71,16 +71,16 @@ defmodule ApiaryWeb.SettingsLive do
       </.card>
 
       <.card>
-        <:title>{gettext("Hive name")}</:title>
+        <:title>{gettext("Workspace name")}</:title>
         <.form
-          for={@hive_form}
-          id="hive-form"
-          phx-change="validate_hive"
-          phx-submit="save_hive"
+          for={@workspace_form}
+          id="workspace-form"
+          phx-change="validate_workspace"
+          phx-submit="save_workspace"
           class="grid max-w-[420px] gap-4"
         >
           <.input
-            field={@hive_form[:name]}
+            field={@workspace_form[:name]}
             type="text"
             label={gettext("Name")}
             debounce="200"
@@ -94,8 +94,8 @@ defmodule ApiaryWeb.SettingsLive do
           <.button
             :if={@owner?}
             type="submit"
-            form="hive-form"
-            disabled={!@hive_form.source.valid?}
+            form="workspace-form"
+            disabled={!@workspace_form.source.valid?}
             loading_text={gettext("Saving")}
           >
             {gettext("Save")}
@@ -143,7 +143,7 @@ defmodule ApiaryWeb.SettingsLive do
           )}
         </p>
         <:footer>
-          <span id="retention-summary">{retention_summary(@current_scope.hive)}</span>
+          <span id="retention-summary">{retention_summary(@current_scope.workspace)}</span>
           <.button
             :if={@owner?}
             type="submit"
@@ -159,9 +159,9 @@ defmodule ApiaryWeb.SettingsLive do
       <.card padding={false}>
         <:title>{gettext("Pruned")}</:title>
         <p :if={@retention_runs == []} id="retention-runs-empty" class="px-5 py-4 text-muted">
-          {if retention_set?(@current_scope.hive),
+          {if retention_set?(@current_scope.workspace),
             do: gettext("Nothing has been pruned yet. The job runs every night."),
-            else: gettext("Nothing is pruned: this hive keeps everything.")}
+            else: gettext("Nothing is pruned: this workspace keeps everything.")}
         </p>
         <ul :if={@retention_runs != []} id="retention-runs" class="divide-y divide-line">
           <li
@@ -189,7 +189,7 @@ defmodule ApiaryWeb.SettingsLive do
       <.card padding={false}>
         <:title>{gettext("Owners")}</:title>
         <:actions>
-          <.button navigate={~p"/hive/members"}>{gettext("Manage members")}</.button>
+          <.button navigate={~p"/workspace/members"}>{gettext("Manage members")}</.button>
         </:actions>
         <ul id="owners" class="divide-y divide-line">
           <li
@@ -257,28 +257,28 @@ defmodule ApiaryWeb.SettingsLive do
     end
   end
 
-  def handle_event("validate_hive", %{"hive" => params}, socket) do
+  def handle_event("validate_workspace", %{"workspace" => params}, socket) do
     changeset =
-      socket.assigns.current_scope.hive
-      |> Organisations.change_hive(params)
+      socket.assigns.current_scope.workspace
+      |> Organisations.change_workspace(params)
       |> Map.put(:action, :validate)
 
-    {:noreply, assign(socket, :hive_form, to_form(changeset))}
+    {:noreply, assign(socket, :workspace_form, to_form(changeset))}
   end
 
-  def handle_event("save_hive", %{"hive" => params}, socket) do
+  def handle_event("save_workspace", %{"workspace" => params}, socket) do
     scope = socket.assigns.current_scope
 
-    case Organisations.update_hive(scope, params) do
-      {:ok, hive} ->
+    case Organisations.update_workspace(scope, params) do
+      {:ok, workspace} ->
         {:noreply,
          socket
-         |> assign(:current_scope, %{scope | hive: hive})
+         |> assign(:current_scope, %{scope | workspace: workspace})
          |> assign_forms()
-         |> put_flash(:info, gettext("Hive renamed to %{name}.", name: hive.name))}
+         |> put_flash(:info, gettext("Workspace renamed to %{name}.", name: workspace.name))}
 
       {:error, %Ecto.Changeset{} = changeset} ->
-        {:noreply, assign(socket, :hive_form, to_form(changeset))}
+        {:noreply, assign(socket, :workspace_form, to_form(changeset))}
 
       {:error, :unauthorized} ->
         {:noreply, unauthorized(socket)}
@@ -287,7 +287,7 @@ defmodule ApiaryWeb.SettingsLive do
 
   def handle_event("validate_retention", %{"retention" => params}, socket) do
     changeset =
-      socket.assigns.current_scope.hive
+      socket.assigns.current_scope.workspace
       |> Retention.change_retention(params)
       |> Map.put(:action, :validate)
 
@@ -298,12 +298,12 @@ defmodule ApiaryWeb.SettingsLive do
     scope = socket.assigns.current_scope
 
     case Retention.update_retention(scope, params) do
-      {:ok, hive} ->
+      {:ok, workspace} ->
         {:noreply,
          socket
-         |> assign(:current_scope, %{scope | hive: hive})
+         |> assign(:current_scope, %{scope | workspace: workspace})
          |> assign_forms()
-         |> put_flash(:info, gettext("Retention saved.") <> " " <> retention_summary(hive))}
+         |> put_flash(:info, gettext("Retention saved.") <> " " <> retention_summary(workspace))}
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign(socket, :retention_form, to_form(changeset, as: :retention))}
@@ -318,8 +318,8 @@ defmodule ApiaryWeb.SettingsLive do
 
     assign(socket,
       organisation_form: to_form(Organisations.change_organisation(scope.organisation)),
-      hive_form: to_form(Organisations.change_hive(scope.hive)),
-      retention_form: to_form(Retention.change_retention(scope.hive), as: :retention)
+      workspace_form: to_form(Organisations.change_workspace(scope.workspace)),
+      retention_form: to_form(Retention.change_retention(scope.workspace), as: :retention)
     )
   end
 
@@ -340,11 +340,11 @@ defmodule ApiaryWeb.SettingsLive do
     )
   end
 
-  defp retention_set?(hive),
-    do: is_integer(hive.events_retention_days) or is_integer(hive.log_retention_days)
+  defp retention_set?(workspace),
+    do: is_integer(workspace.events_retention_days) or is_integer(workspace.log_retention_days)
 
   defp retention_summary(%{events_retention_days: nil, log_retention_days: nil}),
-    do: gettext("This hive keeps everything.")
+    do: gettext("This workspace keeps everything.")
 
   defp retention_summary(%{events_retention_days: events, log_retention_days: nil}),
     do: gettext("Events and log output are pruned after %{days}.", days: days(events))

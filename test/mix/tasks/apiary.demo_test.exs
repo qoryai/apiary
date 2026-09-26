@@ -45,8 +45,8 @@ defmodule Mix.Tasks.Apiary.DemoTest do
 
       assert {:ok, %Run{} = run} = Demo.replay(access_key, file("session-with-subagents"), now)
 
-      # Through the receiver's own function: the run is the hive's, under the key, and
-      # the deliveries are recorded, 101 events in batches of 20.
+      # Through the receiver's own function: the run is the workspace's, under the key,
+      # and the deliveries are recorded, 101 events in batches of 20.
       assert run.id == Runs.get_run!(scope, run.id).id
       assert run.access_key_id == access_key.id
       assert run.event_count == 101
@@ -156,7 +156,7 @@ defmodule Mix.Tasks.Apiary.DemoTest do
       assert run.denied_count == 0
     end
 
-    test "ping-only is a run the hive knows by its subject and nothing else", %{
+    test "ping-only is a run the workspace knows by its subject and nothing else", %{
       access_key: access_key
     } do
       assert {:ok, run} = Demo.replay(access_key, file("ping-only"))
@@ -212,7 +212,7 @@ defmodule Mix.Tasks.Apiary.DemoTest do
   describe "policy/1" do
     @describetag needs: :security
 
-    test "gives a hive without rules a policy with overrides, a lock, versions and a history",
+    test "gives a workspace without rules a policy with overrides, a lock, versions and a history",
          %{scope: scope, access_key: access_key} do
       assert {:ok, _run} = Demo.replay(access_key, file("session-with-subagents"))
       refute Apiary.Policy.managed?(scope)
@@ -250,7 +250,7 @@ defmodule Mix.Tasks.Apiary.DemoTest do
       assert %{total: 10} = Apiary.Policy.list_changes(scope, nil)
       assert %{total: 5} = Apiary.Policy.list_changes(scope, shop)
 
-      assert %{mode: "observe", own: "observe", hive: "enforce"} =
+      assert %{mode: "observe", own: "observe", workspace: "enforce"} =
                Apiary.Policy.get_mode(scope, shop)
 
       assert {:ok, %{version: version}} = Apiary.Policy.current_configuration(scope, nil)

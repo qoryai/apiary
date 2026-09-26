@@ -1,6 +1,6 @@
 defmodule ApiaryWeb.PolicyLive.Views do
   @moduledoc """
-  The views the hive's policy and a target's policy share
+  The views the workspace's policy and a target's policy share
   (`docs/design/brief-policy.md`, pe4 and pe5): the history with its diffs, one version with
   its document, and the export. Function components; the two LiveViews load what they show
   through `ApiaryWeb.PolicyLive.Common`.
@@ -81,8 +81,8 @@ defmodule ApiaryWeb.PolicyLive.Views do
             )}
           <% else %>
             {gettext("No changes yet.")}
-            <span :if={@scope == :hive}>
-              {gettext("Qory serves no policy for this hive until the first one.")}
+            <span :if={@scope == :workspace}>
+              {gettext("Qory serves no policy for this workspace until the first one.")}
             </span>
             <span :if={@scope == :target}>
               {gettext("The first rule here, or a mode of its own, starts this target's history.")}
@@ -95,8 +95,8 @@ defmodule ApiaryWeb.PolicyLive.Views do
         :if={@history.rows != []}
         id="history-list"
         label={
-          if @scope == :hive,
-            do: gettext("Changes to the hive baseline, newest first"),
+          if @scope == :workspace,
+            do: gettext("Changes to the workspace baseline, newest first"),
             else: gettext("Changes to this target's rules, newest first")
         }
         changes={@history.rows}
@@ -111,18 +111,18 @@ defmodule ApiaryWeb.PolicyLive.Views do
             shown: length(@history.rows),
             total: @history.total
           )}
-          <span :if={@scope == :hive}>
+          <span :if={@scope == :workspace}>
             {gettext("A change to the default mode re-renders every target that follows it.")}
           </span>
           {gettext(
             "A change that leaves the document's bytes the same is kept here and makes no new version."
           )}
-          <span :if={@scope == :hive}>
+          <span :if={@scope == :workspace}>
             {gettext("Changes to a target's own rules are in that target's history.")}
           </span>
           <span :if={@scope == :target}>
             {gettext(
-              "Changes to the hive's rules, which re-render this target too, are in the hive's history."
+              "Changes to the workspace's rules, which re-render this target too, are in the workspace's history."
             )}
           </span>
         </p>
@@ -187,7 +187,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
             <span class="font-sans">
               {if @v.mode_source == :target,
                 do: gettext("this target's own"),
-                else: gettext("the hive's default")}
+                else: gettext("the workspace's default")}
             </span>
           </:sub>
         </.kv>
@@ -313,9 +313,9 @@ defmodule ApiaryWeb.PolicyLive.Views do
                     " · "
                   )}
                   <.source_chip
-                    :if={item.hive}
-                    source={:hive}
-                    label={gettext("hive")}
+                    :if={item.workspace}
+                    source={:workspace}
+                    label={gettext("workspace")}
                     class="q-src-xs"
                   />
                 </small>
@@ -457,8 +457,10 @@ defmodule ApiaryWeb.PolicyLive.Views do
   # The lead of the export: what is exported, as of which version, and in which files.
   defp export_lead(export) do
     subject =
-      if export.hive,
-        do: {:b, gettext("the hive %{name}", name: export.hive), "font-medium text-base-content"},
+      if export.workspace,
+        do:
+          {:b, gettext("the workspace %{name}", name: export.workspace),
+           "font-medium text-base-content"},
         else: {:b, export.subject, "font-mono text-[12.5px] font-medium text-base-content"}
 
     version =

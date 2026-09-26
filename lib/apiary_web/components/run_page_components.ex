@@ -217,7 +217,7 @@ defmodule ApiaryWeb.RunPageComponents do
   defp limit_sentence(%{reason: :pruned} = assigns) do
     ~H"""
     {gettext(
-      "This run's events were pruned on %{date}, under the hive's retention. The run keeps its header, its counts and its connections; the timeline and the log output are gone.",
+      "This run's events were pruned on %{date}, under the workspace's retention. The run keeps its header, its counts and its connections; the timeline and the log output are gone.",
       date: ApiaryWeb.CoreComponents.short_date(@at)
     )}
     """
@@ -226,7 +226,7 @@ defmodule ApiaryWeb.RunPageComponents do
   defp limit_sentence(%{reason: :log_pruned} = assigns) do
     ~H"""
     {gettext(
-      "This run's log output was pruned on %{date}, under the hive's retention. The timeline and the connections are whole.",
+      "This run's log output was pruned on %{date}, under the workspace's retention. The timeline and the connections are whole.",
       date: ApiaryWeb.CoreComponents.short_date(@at)
     )}
     """
@@ -978,7 +978,7 @@ defmodule ApiaryWeb.RunPageComponents do
 
   attr :version, :any, default: nil, doc: "%{n, path} when the digest names a version here"
 
-  # The version a policy applied names, when this hive rendered it: the link of pd1.
+  # The version a policy applied names, when this workspace rendered it: the link of pd1.
   defp item_version(%{version: %{n: _, path: _}} = assigns) do
     ~H"""
     <RunComponents.scoped_version version={@version} class="q-pv" />
@@ -1239,10 +1239,10 @@ defmodule ApiaryWeb.RunPageComponents do
   ## rd14. Terminal
 
   @doc """
-  The words the log's script says (`assets/js/hooks/terminal.js`), in the body's language,
-  so the script holds none. A count's words are `[one, other]` with `%{number}` to fill:
-  the script takes `one` for 1 and `other` for any other count, which is the plural rule
-  of English and of the languages like it.
+  The words the log's script says (`assets/js/hooks/terminal.js`), in the domain's
+  language, so the script holds none. A count's words are `[one, other]` with `%{number}`
+  to fill: the script takes `one` for 1 and `other` for any other count, which is the
+  plural rule of English and of the languages like it.
   """
   def terminal_words do
     %{

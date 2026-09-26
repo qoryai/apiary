@@ -41,7 +41,7 @@ defmodule ApiaryWeb.CoreComponents do
   @doc """
   The mark with the wordmark "Qory Apiary", as a link to `/`. `xs` is the
   sidebar foot (18 px mark, grey wordmark: a signature, not a heading), `sm`
-  the no-hive top bar and the auth header strip (22 px mark), `lg` the auth
+  the no-workspace top bar and the auth header strip (22 px mark), `lg` the auth
   panel (28 px mark).
   """
   attr :class, :any, default: nil
@@ -89,8 +89,8 @@ defmodule ApiaryWeb.CoreComponents do
 
       <.term word="wall" standard="The enclosure the agent runs in." />
 
-  Not a way to show the tenant or the hive: a page says organisation and hive through
-  Gettext, and the body's catalogue says workplace (`docs/lingo.md`).
+  Not a way to show the apiary skin's words, apiary or hive: a page says organisation and
+  workspace through Gettext (`docs/lingo.md`).
   """
   attr :word, :string, required: true
   attr :standard, :string, required: true, doc: "the standard term, or what the word means"
@@ -316,7 +316,7 @@ defmodule ApiaryWeb.CoreComponents do
   ## Examples
 
       <.button variant="primary" loading_text="Saving">Save</.button>
-      <.button navigate={~p"/hive"}>Back</.button>
+      <.button navigate={~p"/workspace"}>Back</.button>
       <.button variant="danger" phx-click="revoke" loading_text="Revoking">Revoke key</.button>
   """
   attr :rest, :global,
@@ -641,7 +641,7 @@ defmodule ApiaryWeb.CoreComponents do
 
       <.header>
         Access keys
-        <:subtitle>Keys let machines post runs to this hive.</:subtitle>
+        <:subtitle>Keys let machines post runs to this workspace.</:subtitle>
         <:actions><.button variant="primary">New access key</.button></:actions>
       </.header>
   """
@@ -712,7 +712,7 @@ defmodule ApiaryWeb.CoreComponents do
   Summary figures as one bordered object with internal dividers.
 
       <.stats>
-        <.stat label="Access keys" value={3} hint="active" navigate={~p"/hive/keys"} />
+        <.stat label="Access keys" value={3} hint="active" navigate={~p"/workspace/keys"} />
       </.stats>
   """
   attr :class, :any, default: nil
@@ -880,10 +880,10 @@ defmodule ApiaryWeb.CoreComponents do
 
   @doc """
   A placeholder avatar: the first letter of a name. People are round, an
-  apiary is square. Decorative: the name is always beside it.
+  organisation is square. Decorative: the name is always beside it.
   """
   attr :name, :string, default: nil
-  attr :kind, :string, default: "person", values: ~w(person self apiary pending)
+  attr :kind, :string, default: "person", values: ~w(person self organisation pending)
   attr :size, :string, default: "sm", values: ~w(sm md lg)
   attr :class, :any, default: nil
 
@@ -896,7 +896,7 @@ defmodule ApiaryWeb.CoreComponents do
         @size == "lg" && "size-8 text-[13px]",
         @kind == "person" && "rounded-full bg-base-300 text-muted ring-1 ring-inset ring-line",
         @kind == "self" && "rounded-full bg-primary-soft text-primary-soft-content",
-        @kind == "apiary" && "rounded-field bg-neutral text-neutral-content",
+        @kind == "organisation" && "rounded-field bg-neutral text-neutral-content",
         @kind == "pending" &&
           "rounded-full border border-dashed border-line-field bg-transparent text-faint"
       ]}>
@@ -1080,10 +1080,10 @@ defmodule ApiaryWeb.CoreComponents do
   live action) and pass an `on_cancel` JS command, usually a patch back to the
   index. `dismissable={false}` leaves the footer's button as the only exit.
 
-      <.modal :if={@live_action == :new} id="new-key" on_cancel={JS.patch(~p"/hive/keys")} title="New access key">
+      <.modal :if={@live_action == :new} id="new-key" on_cancel={JS.patch(~p"/workspace/keys")} title="New access key">
         ...
         <:footer>
-          <.button patch={~p"/hive/keys"}>Cancel</.button>
+          <.button patch={~p"/workspace/keys"}>Cancel</.button>
         </:footer>
       </.modal>
 

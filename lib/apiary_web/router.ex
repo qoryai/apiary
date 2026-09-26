@@ -76,56 +76,56 @@ defmodule ApiaryWeb.Router do
     end
   end
 
-  ## The hive: everything behind sign-in with an organisation loaded
+  ## The workspace: everything behind sign-in with an organisation loaded
 
   scope "/", ApiaryWeb do
     pipe_through [:browser, :require_authenticated_user]
 
-    live_session :hive,
+    live_session :workspace,
       on_mount: [
         {ApiaryWeb.UserAuth, :require_authenticated},
         {ApiaryWeb.UserAuth, :load_organisation},
         {ApiaryWeb.UserAuth, :require_organisation}
       ] do
-      live "/hive", HiveLive.Overview, :index
-      # The record: the runs of the hive, and where they reached out to. With the rest of
-      # the hive's pages, behind sign-in with an organisation loaded, so the scope they
-      # query through is there; every filter is a query parameter.
-      live "/hive/runs", RunLive.Index, :index
-      live "/hive/connections", ConnectionLive.Index, :index
+      live "/workspace", WorkspaceLive.Overview, :index
+      # The record: the runs of the workspace, and where they reached out to. With the
+      # rest of the workspace's pages, behind sign-in with an organisation loaded, so the
+      # scope they query through is there; every filter is a query parameter.
+      live "/workspace/runs", RunLive.Index, :index
+      live "/workspace/connections", ConnectionLive.Index, :index
       # One run: four tabs of one LiveView, so a tab is a patch. `:run_id` is the run's
       # subject, the id the runner prints, not the row's id.
-      live "/hive/runs/:run_id", RunLive.Show, :timeline
-      live "/hive/runs/:run_id/terminal", RunLive.Show, :terminal
-      live "/hive/runs/:run_id/connections", RunLive.Show, :connections
-      live "/hive/runs/:run_id/details", RunLive.Show, :details
-      # The security policy: the hive's baseline and a target's view of it, one object
-      # with two scopes. Tabs, filters, the opened change, the compared version and the
-      # export modal are in the URL. `:target_id` is the target row's id, because
+      live "/workspace/runs/:run_id", RunLive.Show, :timeline
+      live "/workspace/runs/:run_id/terminal", RunLive.Show, :terminal
+      live "/workspace/runs/:run_id/connections", RunLive.Show, :connections
+      live "/workspace/runs/:run_id/details", RunLive.Show, :details
+      # The security policy: the workspace's baseline and a target's view of it, one
+      # object with two scopes. Tabs, filters, the opened change, the compared version and
+      # the export modal are in the URL. `:target_id` is the target row's id, because
       # a system and a path hold slashes.
-      live "/hive/policy", PolicyLive.Show, :rules
-      live "/hive/policy/targets", PolicyLive.Show, :targets
-      live "/hive/policy/history", PolicyLive.Show, :history
-      live "/hive/policy/document", PolicyLive.Show, :document
-      live "/hive/policy/versions/:n", PolicyLive.Show, :version
-      live "/hive/policy/versions/:n/export", PolicyLive.Show, :export
-      live "/hive/policy/targets/:target_id", PolicyLive.Target, :rules
-      live "/hive/policy/targets/:target_id/history", PolicyLive.Target, :history
-      live "/hive/policy/targets/:target_id/document", PolicyLive.Target, :document
-      live "/hive/policy/targets/:target_id/versions/:n", PolicyLive.Target, :version
+      live "/workspace/policy", PolicyLive.Show, :rules
+      live "/workspace/policy/targets", PolicyLive.Show, :targets
+      live "/workspace/policy/history", PolicyLive.Show, :history
+      live "/workspace/policy/document", PolicyLive.Show, :document
+      live "/workspace/policy/versions/:n", PolicyLive.Show, :version
+      live "/workspace/policy/versions/:n/export", PolicyLive.Show, :export
+      live "/workspace/policy/targets/:target_id", PolicyLive.Target, :rules
+      live "/workspace/policy/targets/:target_id/history", PolicyLive.Target, :history
+      live "/workspace/policy/targets/:target_id/document", PolicyLive.Target, :document
+      live "/workspace/policy/targets/:target_id/versions/:n", PolicyLive.Target, :version
 
-      live "/hive/policy/targets/:target_id/versions/:n/export",
+      live "/workspace/policy/targets/:target_id/versions/:n/export",
            PolicyLive.Target,
            :export
 
-      live "/hive/keys", AccessKeyLive.Index, :index
-      live "/hive/keys/new", AccessKeyLive.Index, :new
-      live "/hive/keys/:id/rotate", AccessKeyLive.Index, :rotate
-      live "/hive/keys/:id/revoke", AccessKeyLive.Index, :revoke
-      live "/hive/members", MemberLive.Index, :index
-      live "/hive/members/invite", MemberLive.Index, :invite
-      live "/hive/members/:id/remove", MemberLive.Index, :remove
-      live "/hive/settings", SettingsLive, :edit
+      live "/workspace/keys", AccessKeyLive.Index, :index
+      live "/workspace/keys/new", AccessKeyLive.Index, :new
+      live "/workspace/keys/:id/rotate", AccessKeyLive.Index, :rotate
+      live "/workspace/keys/:id/revoke", AccessKeyLive.Index, :revoke
+      live "/workspace/members", MemberLive.Index, :index
+      live "/workspace/members/invite", MemberLive.Index, :invite
+      live "/workspace/members/:id/remove", MemberLive.Index, :remove
+      live "/workspace/settings", SettingsLive, :edit
     end
 
     live_session :no_organisation,
@@ -133,11 +133,11 @@ defmodule ApiaryWeb.Router do
         {ApiaryWeb.UserAuth, :require_authenticated},
         {ApiaryWeb.UserAuth, :load_organisation}
       ] do
-      live "/no-hive", HiveLive.NoHive, :index
+      live "/no-workspace", WorkspaceLive.NoWorkspace, :index
     end
 
     # The raw bytes of a run's log, for the terminal of the run page. Not a page.
-    get "/hive/runs/:run_id/log", RunLogController, :show
+    get "/workspace/runs/:run_id/log", RunLogController, :show
 
     post "/organisations/switch", OrganisationSessionController, :switch
     get "/invitations/:token/continue", OrganisationSessionController, :continue_invitation

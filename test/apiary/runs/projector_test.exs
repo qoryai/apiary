@@ -24,11 +24,11 @@ defmodule Apiary.Runs.ProjectorTest do
           :id,
           :run_id,
           :organisation_id,
-          :hive_id,
+          :workspace_id,
           :inserted_at,
           :updated_at,
           :organisation,
-          :hive,
+          :workspace,
           :access_key,
           :target,
           :closed_by,
@@ -44,7 +44,7 @@ defmodule Apiary.Runs.ProjectorTest do
             select:
               map(c, [
                 :organisation_id,
-                :hive_id,
+                :workspace_id,
                 :host,
                 :port,
                 :path,
@@ -130,11 +130,11 @@ defmodule Apiary.Runs.ProjectorTest do
       assert api.first_seen_at == at(6)
       assert api.last_seen_at == at(6)
       assert api.last_sequence == 8
-      assert api.hive_id == run.hive_id
+      assert api.workspace_id == run.workspace_id
       assert api.organisation_id == run.organisation_id
     end
 
-    test "creates the target once per hive, and only from both labels", %{
+    test "creates the target once per workspace, and only from both labels", %{
       scope: scope,
       run: run
     } do
@@ -150,7 +150,7 @@ defmodule Apiary.Runs.ProjectorTest do
       assert [%Target{system: "git.example.com", path: "acme/shop"} = target] =
                Repo.all(Target)
 
-      assert target.hive_id == run.hive_id
+      assert target.workspace_id == run.workspace_id
       assert target.organisation_id == run.organisation_id
 
       half = run_fixture(scope)
@@ -205,7 +205,7 @@ defmodule Apiary.Runs.ProjectorTest do
       assert Target.label("acme/\u0000shop") == nil
     end
 
-    test "the same system and path in another hive is another target", %{run: run} do
+    test "the same system and path in another workspace is another target", %{run: run} do
       other = run_fixture(scope_fixture())
 
       for run <- [run, other] do
@@ -572,7 +572,7 @@ defmodule Apiary.Runs.ProjectorTest do
           %{
             id: Ecto.UUID.generate(),
             organisation_id: run.organisation_id,
-            hive_id: run.hive_id,
+            workspace_id: run.workspace_id,
             run_id: run.id,
             sequence: sequence,
             event_id: Ecto.UUID.generate(),
@@ -595,7 +595,7 @@ defmodule Apiary.Runs.ProjectorTest do
       assert {:ok, %Run{state: "closed", exit_code: 0}} = Projector.project(run)
     end
 
-    test "broadcasts on the hive's topic and the run's", %{scope: scope, run: run} do
+    test "broadcasts on the workspace's topic and the run's", %{scope: scope, run: run} do
       Runs.subscribe(scope)
       Runs.subscribe(scope, run)
       events_fixture(run, Enum.take(record(), 5))

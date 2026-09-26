@@ -176,10 +176,10 @@ defmodule Apiary.Features do
   def on?(feature) when feature in @features, do: feature in enabled()
 
   @doc """
-  Whether `feature` is on where `scope` is: a caller's `Apiary.Accounts.Scope`, a hive, an
-  access key, or `nil` for the instance. The answer is the instance's until an organisation
-  can be granted less (0070, *Below the instance*); every surface asks with its scope so
-  that change reaches it without another edit.
+  Whether `feature` is on where `scope` is: a caller's `Apiary.Accounts.Scope`, a
+  workspace, an access key, or `nil` for the instance. The answer is the instance's until
+  an organisation can be granted less (0070, *Below the instance*); every surface asks
+  with its scope so that change reaches it without another edit.
   """
   @spec on?(term, feature) :: boolean
   def on?(_scope, feature) when feature in @features, do: on?(feature)

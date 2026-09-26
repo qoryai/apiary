@@ -58,7 +58,7 @@ msgstr ""
 msgid "can't be blank"
 msgstr ""
 
-#: lib/apiary/organisations/hive.ex
+#: lib/apiary/organisations/workspace.ex
 #, elixir-autogen, elixir-format
 msgid "cannot be longer than the events are kept: the log goes with a run's events"
 msgstr ""
@@ -103,13 +103,13 @@ msgstr ""
 
 #: lib/apiary/access_keys/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "is already the label of an active key in this hive"
-msgstr "is already the label of an active key in this workplace"
+msgid "is already the label of an active key in this workspace"
+msgstr ""
 
-#: lib/apiary/organisations/hive.ex
+#: lib/apiary/organisations/workspace.ex
 #, elixir-autogen, elixir-format
-msgid "is already the name of a hive in this organisation"
-msgstr "is already the name of a workplace in this organisation"
+msgid "is already the name of a workspace in this organisation"
+msgstr ""
 
 ## From Ecto.Changeset.put_change/3
 msgid "is invalid"
@@ -127,7 +127,7 @@ msgstr ""
 msgid "must be accepted"
 msgstr ""
 
-#: lib/apiary/organisations/hive.ex
+#: lib/apiary/organisations/workspace.ex
 #, elixir-autogen, elixir-format
 msgid "must be between 1 and 3650 days, or empty to keep everything"
 msgstr ""
@@ -155,8 +155,8 @@ msgid "must have the @ sign and no spaces"
 msgstr ""
 
 #: lib/apiary/access_keys/access_key.ex
-#: lib/apiary/organisations/hive.ex
 #: lib/apiary/organisations/organisation.ex
+#: lib/apiary/organisations/workspace.ex
 #, elixir-autogen, elixir-format
 msgid "must not contain control characters"
 msgstr ""

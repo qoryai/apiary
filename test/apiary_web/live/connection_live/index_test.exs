@@ -18,7 +18,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
   }
   @registry %{"host" => "registry.example", "rule" => "registry.example"}
 
-  defp open(conn, path \\ "/hive/connections") do
+  defp open(conn, path \\ "/workspace/connections") do
     {:ok, view, _html} = live(conn, path)
     render_async(view, 2_000)
     view
@@ -46,7 +46,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
 
   test "requires sign-in" do
     assert {:error, {:redirect, %{to: "/users/log-in"}}} =
-             live(build_conn(), ~p"/hive/connections")
+             live(build_conn(), ~p"/workspace/connections")
   end
 
   describe "empty and loading states" do
@@ -62,7 +62,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
     end
 
     test "the first render is the table's skeleton", %{conn: conn} do
-      {:ok, view, html} = live(conn, ~p"/hive/connections")
+      {:ok, view, html} = live(conn, ~p"/workspace/connections")
       assert html =~ "connections-loading"
       render_async(view, 2_000)
       refute has_element?(view, "#connections-loading")
@@ -70,10 +70,10 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
 
     test "filters that match nothing can be cleared", %{conn: conn, scope: scope} do
       started_run(scope, shop(), egress: [@registry])
-      view = open(conn, ~p"/hive/connections?decision=denied")
+      view = open(conn, ~p"/workspace/connections?decision=denied")
       assert has_element?(view, "h2", "No connections match these filters")
       view |> element("#connections-clear") |> render_click()
-      assert_patch(view, ~p"/hive/connections")
+      assert_patch(view, ~p"/workspace/connections")
     end
   end
 
@@ -136,7 +136,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       assert has_element?(view, "#connections-tools[aria-pressed=false]")
 
       view |> element("#connections-tools") |> render_click()
-      assert_patch(view, ~p"/hive/connections?tools=1")
+      assert_patch(view, ~p"/workspace/connections?tools=1")
       render_async(view, 2_000)
 
       assert has_element?(view, "#connections-tools[aria-pressed=true]")
@@ -154,7 +154,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
              )
 
       view |> element("#connections-tools") |> render_click()
-      assert_patch(view, ~p"/hive/connections")
+      assert_patch(view, ~p"/workspace/connections")
     end
   end
 
@@ -237,7 +237,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
 
       assert has_element?(
                view,
-               "##{id}-run-#{a.run_id}[href='/hive/runs/#{a.run_id}/connections']"
+               "##{id}-run-#{a.run_id}[href='/workspace/runs/#{a.run_id}/connections']"
              )
 
       view |> element("##{id}-toggle") |> render_click()
@@ -297,7 +297,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
     end
 
     test "every filter is the URL; per target is the page with repo set", %{conn: conn} do
-      view = open(conn, ~p"/hive/connections?system=gitlab.example&target=acme/shop")
+      view = open(conn, ~p"/workspace/connections?system=gitlab.example&target=acme/shop")
 
       assert text(view, "#connections-target-note") == target_note("gitlab.example/acme/shop")
 
@@ -309,22 +309,25 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
 
       assert_patch(
         view,
-        ~p"/hive/connections?#{%{"decision" => "allowed", "system" => "gitlab.example", "target" => "acme/shop"}}"
+        ~p"/workspace/connections?#{%{"decision" => "allowed", "system" => "gitlab.example", "target" => "acme/shop"}}"
       )
 
       view |> element("#filter-target-remove") |> render_click()
-      assert_patch(view, ~p"/hive/connections?decision=allowed")
+      assert_patch(view, ~p"/workspace/connections?decision=allowed")
       render_async(view, 2_000)
       refute has_element?(view, "##{dst("files.cdn.example")}")
 
       view |> form("#filter-host-form") |> render_change(%{"host" => "registry.example"})
-      assert_patch(view, ~p"/hive/connections?decision=allowed&host=registry.example")
+      assert_patch(view, ~p"/workspace/connections?decision=allowed&host=registry.example")
 
       view
       |> form("#filter-since-form")
       |> render_change(%{"since" => "1h", "_target" => ["since"]})
 
-      assert_patch(view, ~p"/hive/connections?decision=allowed&host=registry.example&since=1h")
+      assert_patch(
+        view,
+        ~p"/workspace/connections?decision=allowed&host=registry.example&since=1h"
+      )
     end
 
     test "a system with a colon filters and reads back", %{conn: conn, scope: scope} do
@@ -338,7 +341,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
 
       assert_patch(
         view,
-        ~p"/hive/connections?#{%{"system" => "git.example:8443", "target" => "acme/shop"}}"
+        ~p"/workspace/connections?#{%{"system" => "git.example:8443", "target" => "acme/shop"}}"
       )
 
       render_async(view, 2_000)
@@ -351,7 +354,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
     test "the range is bounded: the widest is 90 days, and it cannot be removed", %{conn: conn} do
       view = open(conn)
       view |> element("#filter-since-remove") |> render_click()
-      assert_patch(view, ~p"/hive/connections?since=90d")
+      assert_patch(view, ~p"/workspace/connections?since=90d")
       render_async(view, 2_000)
       assert has_element?(view, "#filter-since-button", "last 90 days")
       refute has_element?(view, "#filter-since-remove")
@@ -369,8 +372,8 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
     end
 
     test "unknown values are dropped and the URL is rewritten", %{conn: conn} do
-      assert {:error, {:live_redirect, %{to: "/hive/connections?decision=denied"}}} =
-               live(conn, ~p"/hive/connections?decision=denied&state=failed&group=task&x=1")
+      assert {:error, {:live_redirect, %{to: "/workspace/connections?decision=denied"}}} =
+               live(conn, ~p"/workspace/connections?decision=denied&state=failed&group=task&x=1")
     end
 
     test "while batches land nothing moves; the reader asks again, and what was open stays open",

@@ -11,12 +11,12 @@ defmodule ApiaryWeb.PageControllerTest do
     assert response =~ "Create an account"
     assert response =~ ~p"/users/log-in"
     assert response =~ ~p"/users/register"
-    assert response =~ "Give your workplace an access key"
+    assert response =~ "Give your workspace an access key"
     refute response =~ ~r/\b(hive|apiary)\b/
   end
 
-  test "GET / sends a signed-in user to the hive", %{conn: conn} do
+  test "GET / sends a signed-in user to the workspace", %{conn: conn} do
     conn = conn |> log_in_user(user_fixture()) |> get(~p"/")
-    assert redirected_to(conn) == ~p"/hive"
+    assert redirected_to(conn) == ~p"/workspace"
   end
 end

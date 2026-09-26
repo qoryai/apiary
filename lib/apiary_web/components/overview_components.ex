@@ -1,14 +1,15 @@
 defmodule ApiaryWeb.OverviewComponents do
   @moduledoc """
-  The components of the hive overview (`docs/design/brief-overview.md`, od1 to od9): the
-  Needs attention list, the activity strip, the alive rows, the fourteen-day chart, the
-  last runs, the policy, access keys and retention glances, and the empty hive's checklist.
+  The components of the workspace overview (`docs/design/brief-overview.md`, od1 to od9):
+  the Needs attention list, the activity strip, the alive rows, the fourteen-day chart,
+  the last runs, the policy, access keys and retention glances, and the empty workspace's
+  checklist.
 
-  Every number here is a count the hive already keeps (oa 2): `runs` columns the projector
-  folded, `access_keys` timestamps, `retention_runs` rows, the policy's mode and version.
-  Nothing is inferred. Every component that renders inside a list takes its `id` from the
-  caller (oj 8), so a live update patches a row in place and never by index. Times tick
-  in the browser under the `Ticker` hook, as everywhere (rd3).
+  Every number here is a count the workspace already keeps (oa 2): `runs` columns the
+  projector folded, `access_keys` timestamps, `retention_runs` rows, the policy's mode and
+  version. Nothing is inferred. Every component that renders inside a list takes its `id`
+  from the caller (oj 8), so a live update patches a row in place and never by index.
+  Times tick in the browser under the `Ticker` hook, as everywhere (rd3).
 
   The policy's parts are the `security` feature's (decision 0070): `policy_glance/1`, the
   attention items of kinds `:denied` (an allow is a rule), `:behind`, `:enforce` and
@@ -295,7 +296,7 @@ defmodule ApiaryWeb.OverviewComponents do
     ~H"""
     <b class="q-att-lead">
       <.rich text={
-        rich_gettext("%{observe} is the hive's default",
+        rich_gettext("%{observe} is the workspace's default",
           observe: {:term, gettext("Observe"), mode_tip()}
         )
       } />
@@ -324,7 +325,7 @@ defmodule ApiaryWeb.OverviewComponents do
        when is_binary(locked) do
     ~H"""
     <.rich text={
-      rich_gettext("A locked hive rule denies %{rule}. Only an owner can change it.",
+      rich_gettext("A locked workspace rule denies %{rule}. Only an owner can change it.",
         rule: {:code, @item.locked, "q-rule"}
       )
     } />
@@ -414,7 +415,7 @@ defmodule ApiaryWeb.OverviewComponents do
       <% true -> %>
         {ngettext("%{count} rule is in force.", "%{count} rules are in force.", @item.rules)}
         {gettext(
-          "What enforce would deny could not be counted: this hive recorded more than %{cap} connections in 7 days.",
+          "What enforce would deny could not be counted: this workspace recorded more than %{cap} connections in 7 days.",
           cap: delimited(Apiary.Policy.Activity.cap())
         )}
     <% end %>
@@ -426,7 +427,7 @@ defmodule ApiaryWeb.OverviewComponents do
     ~H"""
     <.rich text={
       rich_gettext(
-        "%{runs} landed under the machines' own policies. The first rule you add, or a mode you set, puts them under the hive's.",
+        "%{runs} landed under the machines' own policies. The first rule you add, or a mode you set, puts them under the workspace's.",
         runs: {:b, runs_count(@item.runs)}
       )
     } />
@@ -548,15 +549,15 @@ defmodule ApiaryWeb.OverviewComponents do
             type="button"
             role="menuitem"
             data-menu-close
-            phx-click={JS.push("rule_open", value: %{id: @item.id, level: "hive"})}
+            phx-click={JS.push("rule_open", value: %{id: @item.id, level: "workspace"})}
           >
-            {gettext("Allow for the hive")}
+            {gettext("Allow for the workspace")}
           </button>
         </li>
         <li role="none">
           <.link
             role="menuitem"
-            navigate={~p"/hive/policy/targets/#{@target.id}?#{%{"rule" => @item.host}}"}
+            navigate={~p"/workspace/policy/targets/#{@target.id}?#{%{"rule" => @item.host}}"}
           >
             {gettext("Allow with paths…")}
           </.link>
@@ -572,12 +573,12 @@ defmodule ApiaryWeb.OverviewComponents do
       id={"#{@item.id}-act"}
       type="button"
       class="btn btn-xs"
-      aria-label={gettext("Allow %{host} for the hive", host: @item.host)}
+      aria-label={gettext("Allow %{host} for the workspace", host: @item.host)}
       aria-haspopup="dialog"
       aria-expanded={to_string(@item[:expanded] == true)}
-      phx-click={JS.push("rule_open", value: %{id: @item.id, level: "hive"})}
+      phx-click={JS.push("rule_open", value: %{id: @item.id, level: "workspace"})}
     >
-      {gettext("Allow for the hive")}
+      {gettext("Allow for the workspace")}
     </button>
     """
   end
@@ -602,7 +603,7 @@ defmodule ApiaryWeb.OverviewComponents do
     ~H"""
     <.link
       id={"#{@item.id}-act"}
-      navigate={~p"/hive/runs/#{@item.run.run_id}"}
+      navigate={~p"/workspace/runs/#{@item.run.run_id}"}
       class="btn btn-xs"
       aria-label={gettext("Open %{run}", run: run_title(@item.run))}
     >
@@ -623,7 +624,7 @@ defmodule ApiaryWeb.OverviewComponents do
       {gettext("Close")}
     </button>
     <.link
-      navigate={~p"/hive/runs/#{@item.run.run_id}"}
+      navigate={~p"/workspace/runs/#{@item.run.run_id}"}
       class="btn btn-xs btn-ghost"
       aria-label={gettext("Open %{run}", run: run_title(@item.run))}
     >
@@ -644,7 +645,7 @@ defmodule ApiaryWeb.OverviewComponents do
       {gettext("What changed")}
     </.link>
     <.link
-      navigate={~p"/hive/runs/#{@item.run.run_id}"}
+      navigate={~p"/workspace/runs/#{@item.run.run_id}"}
       class="btn btn-xs"
       aria-label={gettext("Open %{run}", run: run_title(@item.run))}
     >
@@ -657,19 +658,19 @@ defmodule ApiaryWeb.OverviewComponents do
     ~H"""
     <%= cond do %>
       <% !@owner? -> %>
-        <.link id={"#{@item.id}-act"} navigate={~p"/hive/policy"} class="btn btn-xs">
+        <.link id={"#{@item.id}-act"} navigate={~p"/workspace/policy"} class="btn btn-xs">
           {gettext("Open policy")}
         </.link>
       <% @item.uncovered == 0 -> %>
         <.link
           id={"#{@item.id}-act"}
-          navigate={~p"/hive/policy?confirm=enforce"}
+          navigate={~p"/workspace/policy?confirm=enforce"}
           class="btn btn-xs btn-primary"
         >
           {gettext("Set the default to enforce")}
         </.link>
       <% true -> %>
-        <.link id={"#{@item.id}-act"} navigate={~p"/hive/policy"} class="btn btn-xs">
+        <.link id={"#{@item.id}-act"} navigate={~p"/workspace/policy"} class="btn btn-xs">
           {gettext("Review on the policy page")}
         </.link>
     <% end %>
@@ -678,7 +679,7 @@ defmodule ApiaryWeb.OverviewComponents do
 
   defp attention_actions(%{item: %{kind: :unmanaged}} = assigns) do
     ~H"""
-    <.link id={"#{@item.id}-act"} navigate={~p"/hive/policy"} class="btn btn-xs">
+    <.link id={"#{@item.id}-act"} navigate={~p"/workspace/policy"} class="btn btn-xs">
       {gettext("Open policy")}
     </.link>
     """
@@ -688,7 +689,7 @@ defmodule ApiaryWeb.OverviewComponents do
     ~H"""
     <.link
       id={"#{@item.id}-act"}
-      navigate={~p"/hive/keys/#{@item.key.id}/revoke"}
+      navigate={~p"/workspace/keys/#{@item.key.id}/revoke"}
       class="btn btn-xs q-btn-danger-ghost"
       aria-label={gettext("Revoke %{key}", key: @item.key.label)}
     >
@@ -776,7 +777,7 @@ defmodule ApiaryWeb.OverviewComponents do
         <dd>
           <.link
             id={"#{@id}-alive"}
-            navigate={~p"/hive/runs?#{%{"state" => "pending,running"}}"}
+            navigate={~p"/workspace/runs?#{%{"state" => "pending,running"}}"}
             class="q-rowlink"
             aria-label={
               ngettext(
@@ -793,7 +794,7 @@ defmodule ApiaryWeb.OverviewComponents do
       <div class="q-kv relative">
         <dt>{ngettext("Runs, %{count} day", "Runs, %{count} days", @days)}</dt>
         <dd :if={@facts}>
-          <.link id={"#{@id}-runs"} navigate={~p"/hive/runs?since=30d"} class="q-rowlink">{delimited(
+          <.link id={"#{@id}-runs"} navigate={~p"/workspace/runs?since=30d"} class="q-rowlink">{delimited(
             @facts.runs
           )}</.link>
           <small>{families_sub(@facts)}</small>
@@ -809,7 +810,7 @@ defmodule ApiaryWeb.OverviewComponents do
         <dd :if={@facts} class={@facts.denied > 0 && "q-bad"}>
           <.link
             id={"#{@id}-denied"}
-            navigate={~p"/hive/connections?#{%{"decision" => "denied", "since" => "30d"}}"}
+            navigate={~p"/workspace/connections?#{%{"decision" => "denied", "since" => "30d"}}"}
             class="q-rowlink"
           >{delimited(@facts.denied)}</.link>
           <small>{denied_sub(@facts, @destinations)}</small>
@@ -887,7 +888,7 @@ defmodule ApiaryWeb.OverviewComponents do
 
   @doc """
   The runs alive now, most recently started first, at most five; "and n more" when the
-  hive has more; "No run alive now." when none, never hidden.
+  workspace has more; "No run alive now." when none, never hidden.
   """
   attr :id, :string, required: true
   attr :runs, :list, required: true
@@ -903,7 +904,7 @@ defmodule ApiaryWeb.OverviewComponents do
       <.link
         :if={@count > length(@runs)}
         id={"#{@id}-more"}
-        navigate={~p"/hive/runs?#{%{"state" => "pending,running"}}"}
+        navigate={~p"/workspace/runs?#{%{"state" => "pending,running"}}"}
         class="q-link"
       >
         {ngettext("and %{count} more", "and %{count} more", @count - length(@runs))}
@@ -939,7 +940,7 @@ defmodule ApiaryWeb.OverviewComponents do
         class="q-state-wrap"
       />
       <div class="q-run-cell">
-        <.link navigate={~p"/hive/runs/#{@run.run_id}"} class="q-rowlink truncate">
+        <.link navigate={~p"/workspace/runs/#{@run.run_id}"} class="q-rowlink truncate">
           <b :if={@run.task}>{@run.task}</b>
           <b
             :if={!@run.task && @run.state == "pending" && !@run.started_at}
@@ -1242,7 +1243,7 @@ defmodule ApiaryWeb.OverviewComponents do
     iso = Date.to_iso8601(day)
     params = %{"from" => iso, "to" => iso}
     params = if Map.get(day, :denied, 0) > 0, do: Map.put(params, "denials", "1"), else: params
-    ~p"/hive/runs?#{params}"
+    ~p"/workspace/runs?#{params}"
   end
 
   @doc "\"7 Sep\", or \"Today\" for the day the reader is living in."
@@ -1304,9 +1305,10 @@ defmodule ApiaryWeb.OverviewComponents do
   ## od4. Last runs
 
   @doc """
-  The five most recently started runs of the hive, alive ones included: the runs table of
-  rd8 without groups, with the Target column, at full width. Rows carry the runs list's
-  own ids (`run-<run_id>`) and cell classes, so they reflow as rd8 does below 640 px.
+  The five most recently started runs of the workspace, alive ones included: the runs
+  table of rd8 without groups, with the Target column, at full width. Rows carry the runs
+  list's own ids (`run-<run_id>`) and cell classes, so they reflow as rd8 does below
+  640 px.
   """
   attr :id, :string, required: true
   attr :runs, :any, required: true, doc: "nil while loading"
@@ -1329,7 +1331,7 @@ defmodule ApiaryWeb.OverviewComponents do
             number: delimited(@new_runs)
           )}
         </button>
-        <.link id={"#{@id}-all"} navigate={~p"/hive/runs"} class="q-link">{gettext("All runs")}</.link>
+        <.link id={"#{@id}-all"} navigate={~p"/workspace/runs"} class="q-link">{gettext("All runs")}</.link>
       </:trailing>
       <div
         class="overflow-x-auto"
@@ -1403,7 +1405,7 @@ defmodule ApiaryWeb.OverviewComponents do
       </td>
       <td class="q-c-run">
         <div class="q-run-cell">
-          <.link navigate={~p"/hive/runs/#{@run.run_id}"} class="q-rowlink truncate">
+          <.link navigate={~p"/workspace/runs/#{@run.run_id}"} class="q-rowlink truncate">
             <b :if={@run.task}>{@run.task}</b>
             <b
               :if={!@run.task && @run.state == "pending" && !@run.started_at}
@@ -1470,7 +1472,7 @@ defmodule ApiaryWeb.OverviewComponents do
     ~H"""
     <.sect id={@id} title={gettext("Policy")}>
       <:trailing>
-        <.link id={"#{@id}-open"} navigate={~p"/hive/policy"} class="q-link">
+        <.link id={"#{@id}-open"} navigate={~p"/workspace/policy"} class="q-link">
           {gettext("Open policy")}
         </.link>
       </:trailing>
@@ -1482,7 +1484,7 @@ defmodule ApiaryWeb.OverviewComponents do
         <dt>{gettext("Mode")}</dt>
         <dd id={"#{@id}-mode"}>
           <b>{mode_word(@policy.summary.mode)}</b>
-          <.badge :if={@policy.summary.managed?}>{gettext("Hive default")}</.badge>
+          <.badge :if={@policy.summary.managed?}>{gettext("Workspace default")}</.badge>
           <.badge :if={!@policy.summary.managed?}>{gettext("Not served")}</.badge>
           <span class="q-muted">
             <%= cond do %>
@@ -1500,7 +1502,7 @@ defmodule ApiaryWeb.OverviewComponents do
                   <% [one] -> %>
                     <.rich text={own_mode_sentence(one)} />
                   <% many -> %>
-                    <.link navigate={~p"/hive/policy/targets?mode=own"} class="q-link">
+                    <.link navigate={~p"/workspace/policy/targets?mode=own"} class="q-link">
                       {ngettext("%{count} sets its own", "%{count} set their own", length(many))}
                     </.link>
                 <% end %>
@@ -1514,7 +1516,7 @@ defmodule ApiaryWeb.OverviewComponents do
               size="sm"
               version={@policy.version.version}
               digest={@policy.version.digest}
-              navigate={~p"/hive/policy/versions/#{@policy.version.version}"}
+              navigate={~p"/workspace/policy/versions/#{@policy.version.version}"}
             />
             <span class="q-muted">
               {gettext("since %{date}", date: short_day(@policy.version.rendered_at))}
@@ -1525,7 +1527,7 @@ defmodule ApiaryWeb.OverviewComponents do
         </dd>
         <dt>{gettext("Targets")}</dt>
         <dd id={"#{@id}-targets"}>
-          <.link navigate={~p"/hive/policy/targets"} class="q-link">
+          <.link navigate={~p"/workspace/policy/targets"} class="q-link">
             <.rich text={
               rich_ngettext(
                 "%{number} has posted a run",
@@ -1536,7 +1538,7 @@ defmodule ApiaryWeb.OverviewComponents do
             } />
           </.link>
           <span class="q-muted">·</span>
-          <.link :if={@policy.with_rules > 0} navigate={~p"/hive/policy/targets"} class="q-link">
+          <.link :if={@policy.with_rules > 0} navigate={~p"/workspace/policy/targets"} class="q-link">
             <.rich text={with_rules_sentence(@policy.with_rules)} />
           </.link>
           <span :if={@policy.with_rules == 0} class="q-muted"><.rich text={with_rules_sentence(0)} /></span>
@@ -1549,7 +1551,7 @@ defmodule ApiaryWeb.OverviewComponents do
             <% @policy.suggestions.hosts == 0 -> %>
               <span class="text-faint">{gettext("Nothing declared and unallowed.")}</span>
             <% true -> %>
-              <.link navigate={~p"/hive/policy/targets"} class="badge badge-info">
+              <.link navigate={~p"/workspace/policy/targets"} class="badge badge-info">
                 {ngettext("%{count} to review", "%{count} to review", @policy.suggestions.hosts)}
               </.link>
               <span class="q-muted">
@@ -1586,7 +1588,7 @@ defmodule ApiaryWeb.OverviewComponents do
 
     ~H"""
     <.link
-      navigate={~p"/hive/policy/targets/#{@target.id}"}
+      navigate={~p"/workspace/policy/targets/#{@target.id}"}
       class="q-link font-mono text-[12.5px]"
     >{@target.system}/{@target.path}</.link>
     """
@@ -1605,10 +1607,10 @@ defmodule ApiaryWeb.OverviewComponents do
 
   @doc """
   The retention card (od9): the setting in the settings page's own words, then the last
-  prune from `retention_runs`. A hive that keeps everything has one line.
+  prune from `retention_runs`. A workspace that keeps everything has one line.
   """
   attr :id, :string, default: "overview-retention"
-  attr :hive, :map, required: true
+  attr :workspace, :map, required: true
   attr :runs, :any, required: true, doc: "nil while loading, else the last retention run or none"
   attr :now, :any, required: true
 
@@ -1616,7 +1618,7 @@ defmodule ApiaryWeb.OverviewComponents do
     ~H"""
     <.sect id={@id} title={gettext("Retention")}>
       <:trailing>
-        <.link id={"#{@id}-settings"} navigate={~p"/hive/settings#retention"} class="q-link">
+        <.link id={"#{@id}-settings"} navigate={~p"/workspace/settings#retention"} class="q-link">
           {gettext("Settings")}
         </.link>
       </:trailing>
@@ -1625,8 +1627,8 @@ defmodule ApiaryWeb.OverviewComponents do
         <span class="skeleton q-skel-line w-1/2"></span>
       </div>
       <div :if={@runs} class="q-lines">
-        <span id={"#{@id}-setting"}>{retention_summary(@hive)}</span>
-        <span :if={retention_set?(@hive)} id={"#{@id}-last"}>
+        <span id={"#{@id}-setting"}>{retention_summary(@workspace)}</span>
+        <span :if={retention_set?(@workspace)} id={"#{@id}-last"}>
           <%= case @runs do %>
             <% [] -> %>
               {gettext("No prune has run yet. The job runs nightly.")}
@@ -1643,7 +1645,7 @@ defmodule ApiaryWeb.OverviewComponents do
 
   @doc "The setting in the settings page's own words."
   def retention_summary(%{events_retention_days: nil, log_retention_days: nil}),
-    do: gettext("This hive keeps everything.")
+    do: gettext("This workspace keeps everything.")
 
   def retention_summary(%{events_retention_days: events, log_retention_days: nil}),
     do: gettext("Events and log output are pruned after %{days}.", days: days(events))
@@ -1658,8 +1660,8 @@ defmodule ApiaryWeb.OverviewComponents do
     )
   end
 
-  defp retention_set?(hive),
-    do: is_integer(hive.events_retention_days) or is_integer(hive.log_retention_days)
+  defp retention_set?(workspace),
+    do: is_integer(workspace.events_retention_days) or is_integer(workspace.log_retention_days)
 
   # Last night when the job finished since yesterday's evening, else the date.
   defp last_night?(run, now) do
@@ -1778,7 +1780,7 @@ defmodule ApiaryWeb.OverviewComponents do
   """
   attr :id, :string, default: "overview-keys"
   attr :keys, :list, required: true, doc: "the active keys, in the order to show"
-  attr :total, :integer, required: true, doc: "how many active keys the hive has"
+  attr :total, :integer, required: true, doc: "how many active keys the workspace has"
   attr :last_runs, :any, required: true
   attr :hosts, :any, default: nil
   attr :create?, :boolean, default: true, doc: "the link to a new key, once a run has landed"
@@ -1787,7 +1789,7 @@ defmodule ApiaryWeb.OverviewComponents do
     ~H"""
     <.sect id={@id} title={gettext("Access keys")} count={"#{@total}"}>
       <:trailing>
-        <.link :if={@create?} id={"#{@id}-create"} navigate={~p"/hive/keys/new"} class="q-link">
+        <.link :if={@create?} id={"#{@id}-create"} navigate={~p"/workspace/keys/new"} class="q-link">
           {gettext("Create another access key")}
         </.link>
       </:trailing>
@@ -1861,7 +1863,7 @@ defmodule ApiaryWeb.OverviewComponents do
                   <% is_nil(@last_runs) -> %>
                     <span class="skeleton q-skel-line w-32"></span>
                   <% run = @last_runs[key.id] -> %>
-                    <.link navigate={~p"/hive/runs/#{run.run_id}"} class="q-lastrun">
+                    <.link navigate={~p"/workspace/runs/#{run.run_id}"} class="q-lastrun">
                       <.run_state
                         state={run.state}
                         exit_code={run.exit_code}
@@ -1884,7 +1886,7 @@ defmodule ApiaryWeb.OverviewComponents do
         </table>
       </div>
       <:footer :if={@total > length(@keys)}>
-        <.link id={"#{@id}-more"} navigate={~p"/hive/keys"} class="q-link">
+        <.link id={"#{@id}-more"} navigate={~p"/workspace/keys"} class="q-link">
           {ngettext("and %{count} more", "and %{count} more", @total - length(@keys))}
         </.link>
       </:footer>
@@ -1892,7 +1894,7 @@ defmodule ApiaryWeb.OverviewComponents do
     """
   end
 
-  ## oe6. The empty hive
+  ## oe6. The empty workspace
 
   @doc """
   The checklist card of `brief.md` h1 with the state of each step read from the record
@@ -1935,7 +1937,7 @@ defmodule ApiaryWeb.OverviewComponents do
           </h2>
           <p :if={@current == 1} class="mt-1 text-muted">
             {gettext(
-              "Nothing has posted to this hive yet. An access key is all a machine needs to start."
+              "Nothing has posted to this workspace yet. An access key is all a machine needs to start."
             )}
           </p>
           <p :if={@current > 1} class="mt-1 text-muted">
@@ -1957,27 +1959,28 @@ defmodule ApiaryWeb.OverviewComponents do
             {if @current == 3,
               do:
                 gettext("The machine has verified with its key. The first run it starts lands here."),
-              else: gettext("From the first post on, every run of that machine lands in this hive.")}
+              else:
+                gettext("From the first post on, every run of that machine lands in this workspace.")}
           </:step>
         </.steps>
         <div :if={@current == 1}>
           <.button
             id={"#{@id}-create"}
             variant="primary"
-            navigate={~p"/hive/keys/new"}
+            navigate={~p"/workspace/keys/new"}
             class="max-[479px]:w-full"
           >
             <.icon name="hero-plus-micro" class="size-4" /> {gettext("Create an access key")}
           </.button>
         </div>
         <div :if={@current in [2, 3]}>
-          <.button id={"#{@id}-keys"} navigate={~p"/hive/keys"} class="max-[479px]:w-full">
+          <.button id={"#{@id}-keys"} navigate={~p"/workspace/keys"} class="max-[479px]:w-full">
             {gettext("Manage access keys")}
           </.button>
         </div>
         <div :if={@landed} id={"#{@id}-landed"} class="q-landed">
           <.icon name="hero-check-micro" class="size-4" /> {gettext("The first run has landed.")}
-          <.link navigate={~p"/hive/runs/#{@landed.run_id}"} class="q-link">{gettext("Open it")}</.link>
+          <.link navigate={~p"/workspace/runs/#{@landed.run_id}"} class="q-link">{gettext("Open it")}</.link>
         </div>
       </div>
       <div class="hidden content-start gap-3 border-l border-line bg-base-200 p-7 md:grid">

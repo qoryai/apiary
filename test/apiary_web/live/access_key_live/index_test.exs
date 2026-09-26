@@ -10,11 +10,11 @@ defmodule ApiaryWeb.AccessKeyLive.IndexTest do
 
   @secret ~r/secret: ([A-Za-z0-9_-]{43})/
 
-  describe "/hive/keys" do
+  describe "/workspace/keys" do
     setup :register_and_log_in_user
 
     test "starts empty", %{conn: conn} do
-      {:ok, _lv, html} = live(conn, ~p"/hive/keys")
+      {:ok, _lv, html} = live(conn, ~p"/workspace/keys")
       assert html =~ "No access keys yet"
       assert html =~ "New access key"
     end
@@ -28,7 +28,7 @@ defmodule ApiaryWeb.AccessKeyLive.IndexTest do
         set: [last_heartbeat_at: DateTime.add(DateTime.utc_now(), -300, :second)]
       )
 
-      {:ok, lv, html} = live(conn, ~p"/hive/keys")
+      {:ok, lv, html} = live(conn, ~p"/workspace/keys")
 
       assert html =~ ~r/Last used.*Last heartbeat.*Runner/s
       assert lv |> element("#key-#{beating.id}") |> render() =~ "5 minutes ago"
@@ -39,10 +39,10 @@ defmodule ApiaryWeb.AccessKeyLive.IndexTest do
     end
 
     test "creates a key and reveals the secret once", %{conn: conn, scope: scope} do
-      {:ok, lv, _html} = live(conn, ~p"/hive/keys")
+      {:ok, lv, _html} = live(conn, ~p"/workspace/keys")
 
       lv |> element("a", "New access key") |> render_click()
-      assert_patch(lv, ~p"/hive/keys/new")
+      assert_patch(lv, ~p"/workspace/keys/new")
 
       assert lv
              |> form("#access-key-form", access_key: %{label: ""})
@@ -64,7 +64,7 @@ defmodule ApiaryWeb.AccessKeyLive.IndexTest do
       assert [_, secret] = Regex.run(@secret, html)
 
       lv |> element("#reveal-key a", "I have copied the secret") |> render_click()
-      assert_patch(lv, ~p"/hive/keys")
+      assert_patch(lv, ~p"/workspace/keys")
 
       html = render(lv)
       assert html =~ "build-server-1"
@@ -74,7 +74,7 @@ defmodule ApiaryWeb.AccessKeyLive.IndexTest do
       refute html =~ secret
 
       # the secret never appears again
-      {:ok, _lv, html} = live(conn, ~p"/hive/keys")
+      {:ok, _lv, html} = live(conn, ~p"/workspace/keys")
       refute html =~ secret
     end
 
@@ -84,10 +84,10 @@ defmodule ApiaryWeb.AccessKeyLive.IndexTest do
     } do
       %{access_key: key, secret: secret} = access_key_fixture(scope, label: "runner-a")
 
-      {:ok, lv, _html} = live(conn, ~p"/hive/keys")
+      {:ok, lv, _html} = live(conn, ~p"/workspace/keys")
 
       lv |> element("#key-#{key.id} a", "Rotate") |> render_click()
-      assert_patch(lv, ~p"/hive/keys/#{key.id}/rotate")
+      assert_patch(lv, ~p"/workspace/keys/#{key.id}/rotate")
       assert render(lv) =~ "keeps working"
 
       html = lv |> element("#rotate-key button", "Rotate key") |> render_click()
@@ -96,7 +96,7 @@ defmodule ApiaryWeb.AccessKeyLive.IndexTest do
       assert new_secret != secret
 
       lv |> element("#reveal-key a", "I have copied the secret") |> render_click()
-      assert_patch(lv, ~p"/hive/keys")
+      assert_patch(lv, ~p"/workspace/keys")
 
       html = render(lv)
       assert html =~ "Rotating"
@@ -116,14 +116,14 @@ defmodule ApiaryWeb.AccessKeyLive.IndexTest do
     test "revokes a key", %{conn: conn, scope: scope} do
       %{access_key: key} = access_key_fixture(scope, label: "runner-b")
 
-      {:ok, lv, _html} = live(conn, ~p"/hive/keys")
+      {:ok, lv, _html} = live(conn, ~p"/workspace/keys")
 
       lv |> element("#key-#{key.id} a", "Revoke") |> render_click()
-      assert_patch(lv, ~p"/hive/keys/#{key.id}/revoke")
+      assert_patch(lv, ~p"/workspace/keys/#{key.id}/revoke")
       assert render(lv) =~ "stops verifying at once"
 
       lv |> element("#revoke-key button", "Revoke key") |> render_click()
-      assert_patch(lv, ~p"/hive/keys")
+      assert_patch(lv, ~p"/workspace/keys")
 
       html = render(lv)
       assert html =~ "runner-b is revoked"
@@ -133,32 +133,33 @@ defmodule ApiaryWeb.AccessKeyLive.IndexTest do
       assert AccessKeys.get_access_key!(scope, key.id).revoked_at
 
       # a revoked key cannot be rotated
-      assert {:error, {_, %{to: "/hive/keys"}}} = live(conn, ~p"/hive/keys/#{key.id}/rotate")
+      assert {:error, {_, %{to: "/workspace/keys"}}} =
+               live(conn, ~p"/workspace/keys/#{key.id}/rotate")
     end
 
-    test "M1: a page whose membership is gone is refused and sent to /hive", %{
+    test "M1: a page whose membership is gone is refused and sent to /workspace", %{
       conn: conn,
       scope: scope
     } do
       %{access_key: key} = access_key_fixture(scope, label: "runner-c")
-      {:ok, lv, _html} = live(conn, ~p"/hive/keys/#{key.id}/revoke")
+      {:ok, lv, _html} = live(conn, ~p"/workspace/keys/#{key.id}/revoke")
 
       # Removed behind the page's back: no announcement reaches it.
       Apiary.Repo.delete!(scope.membership)
 
       lv |> element("#revoke-key button", "Revoke key") |> render_click()
       {path, flash} = assert_redirect(lv)
-      assert path == ~p"/hive"
+      assert path == ~p"/workspace"
       assert flash["error"] =~ "no longer a member"
       assert {:ok, _active} = AccessKeys.fetch_for_verification(key.key_id)
     end
 
     test "M1: a page whose membership is gone cannot create a key", %{conn: conn, scope: scope} do
-      {:ok, lv, _html} = live(conn, ~p"/hive/keys/new")
+      {:ok, lv, _html} = live(conn, ~p"/workspace/keys/new")
       Apiary.Repo.delete!(scope.membership)
 
       lv |> form("#access-key-form", access_key: %{label: "after"}) |> render_submit()
-      assert_redirect(lv, ~p"/hive")
+      assert_redirect(lv, ~p"/workspace")
       assert Apiary.Repo.all(AccessKey) == []
     end
 
@@ -166,7 +167,7 @@ defmodule ApiaryWeb.AccessKeyLive.IndexTest do
       %{access_key: key, secret: secret} = access_key_fixture(scope, label: "runner-d")
       {:ok, _, second_secret} = AccessKeys.rotate_access_key(scope, key)
 
-      {:ok, lv, html} = live(conn, ~p"/hive/keys")
+      {:ok, lv, html} = live(conn, ~p"/workspace/keys")
       assert html =~ "Rotating"
 
       state = :sys.get_state(lv.pid)
@@ -175,12 +176,12 @@ defmodule ApiaryWeb.AccessKeyLive.IndexTest do
       refute dump =~ second_secret
     end
 
-    test "cannot reach a key of another hive", %{conn: conn} do
+    test "cannot reach a key of another workspace", %{conn: conn} do
       other = Apiary.OrganisationsFixtures.scope_fixture()
       %{access_key: key} = access_key_fixture(other, label: "elsewhere")
 
       assert_raise Ecto.NoResultsError, fn ->
-        live(conn, ~p"/hive/keys/#{key.id}/revoke")
+        live(conn, ~p"/workspace/keys/#{key.id}/revoke")
       end
     end
   end

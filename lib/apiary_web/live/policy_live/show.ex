@@ -1,17 +1,17 @@
 defmodule ApiaryWeb.PolicyLive.Show do
   @moduledoc """
-  The hive's security policy (`docs/design/brief-policy.md`, pe1, pe2, pe4, pe5): the mode
-  with its two confirms, the host rules with the composer that reads a rule back before it
-  is saved, the credentials, the targets and their policy, the history with diffs,
-  one version with its document, and the export.
+  The workspace's security policy (`docs/design/brief-policy.md`, pe1, pe2, pe4, pe5): the
+  mode with its two confirms, the host rules with the composer that reads a rule back
+  before it is saved, the credentials, the targets and their policy, the history with
+  diffs, one version with its document, and the export.
 
   One LiveView, five live actions, so a tab is a patch. Filters, the opened change, the
   compared version and the export modal are in the URL. The page calls `Apiary.Policy`
   and nothing under it, except the contract's grammar for the reading line. It follows
-  `policy:<hive>` and reads again at most once per 250 ms.
+  `policy:<workspace>` and reads again at most once per 250 ms.
 
-  A hive nobody has changed yet is not served a policy by Qory: its machines use their
-  own until the first change here, and the page says so.
+  A workspace nobody has changed yet is not served a policy by Qory: its machines use
+  their own until the first change here, and the page says so.
   """
   use ApiaryWeb, :live_view
   use ApiaryWeb.Features, :security
@@ -80,7 +80,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
     )
     |> then(fn socket ->
       assign(socket,
-        rows: Common.hive_rows(own, socket, locks),
+        rows: Common.workspace_rows(own, socket, locks),
         credentials: Common.credential_rows(own, socket)
       )
     end)
@@ -177,8 +177,11 @@ defmodule ApiaryWeb.PolicyLive.Show do
 
   defp apply_action(socket, :document, _params) do
     case socket.assigns.version do
-      %{version: n} -> push_navigate(socket, to: ~p"/hive/policy/versions/#{n}", replace: true)
-      _ -> push_navigate(socket, to: ~p"/hive/policy", replace: true)
+      %{version: n} ->
+        push_navigate(socket, to: ~p"/workspace/policy/versions/#{n}", replace: true)
+
+      _ ->
+        push_navigate(socket, to: ~p"/workspace/policy", replace: true)
     end
   end
 
@@ -196,7 +199,10 @@ defmodule ApiaryWeb.PolicyLive.Show do
             assign(socket, :export, Common.export(socket, v.configuration))
 
           action == :export ->
-            push_patch(socket, to: ~p"/hive/policy/versions/#{v.latest}/export", replace: true)
+            push_patch(socket,
+              to: ~p"/workspace/policy/versions/#{v.latest}/export",
+              replace: true
+            )
 
           true ->
             socket
@@ -339,9 +345,9 @@ defmodule ApiaryWeb.PolicyLive.Show do
   ## Events
 
   # `?confirm=enforce` (the overview's one-click nudge, brief-overview ol 3) lands with the
-  # enforce confirm open, as if Enforce had been chosen, and only for an owner of a hive
-  # that observes; the parameter is dropped from the address at once, so a reload or a
-  # shared link does not ask again. Any other value of `confirm` is ignored.
+  # enforce confirm open, as if Enforce had been chosen, and only for an owner of a
+  # workspace that observes; the parameter is dropped from the address at once, so a
+  # reload or a shared link does not ask again. Any other value of `confirm` is ignored.
   defp confirm_enforce(socket) do
     # The address is cleaned once the page is up: a patch from the connected mount's own
     # `handle_params` would be part of the join.
@@ -432,7 +438,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
             |> assign(:would, Common.would(scope, nil, would))
             |> assign(
               :announce,
-              gettext("%{host} is allowed for the hive.", host: destination.host)
+              gettext("%{host} is allowed for the workspace.", host: destination.host)
             )
 
           {:error, error} ->
@@ -603,12 +609,12 @@ defmodule ApiaryWeb.PolicyLive.Show do
     end
   end
 
-  # The page is the hive's: the rule is the hive's, never a target's.
+  # The page is the workspace's: the rule is the workspace's, never a target's.
   defp changed(socket, {:ok, rule}, host, action) do
     sentence =
       if action == "deny",
-        do: gettext("%{host} is denied for the hive.", host: host),
-        else: gettext("%{host} is allowed for the hive.", host: host)
+        do: gettext("%{host} is denied for the workspace.", host: host),
+        else: gettext("%{host} is allowed for the workspace.", host: host)
 
     Common.wrote(socket, rule, sentence, gettext("Rule changed."))
   end
@@ -639,8 +645,8 @@ defmodule ApiaryWeb.PolicyLive.Show do
   defp subject(%{kind: "credential", name: name}), do: name
   defp subject(%{host: host}), do: host
 
-  defp default_sentence("enforce"), do: gettext("The hive's default is enforce.")
-  defp default_sentence(_observe), do: gettext("The hive's default is observe.")
+  defp default_sentence("enforce"), do: gettext("The workspace's default is enforce.")
+  defp default_sentence(_observe), do: gettext("The workspace's default is observe.")
 
   # The targets' own rules a lock of this rule would put out of force: a rule on the
   # same host, or an allow below a locked `*.` deny. Read for the targets that have
@@ -678,7 +684,8 @@ defmodule ApiaryWeb.PolicyLive.Show do
     do: {:noreply, Common.schedule_reload(socket, change)}
 
   # `?confirm=enforce` did its work in `handle_params`; the address says the page alone.
-  def handle_info(:drop_confirm, socket), do: {:noreply, push_patch(socket, to: ~p"/hive/policy")}
+  def handle_info(:drop_confirm, socket),
+    do: {:noreply, push_patch(socket, to: ~p"/workspace/policy")}
 
   def handle_info(:policy_reload, socket) do
     touched = socket.assigns.touched
@@ -743,7 +750,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
       <div id="policy-page" phx-hook="PolicyPage" class="grid grid-cols-[minmax(0,1fr)] gap-6">
         <div :if={@live_action in [:version, :export] && @v} class="grid gap-3">
           <nav class="q-crumbs" aria-label={gettext("Breadcrumb")}>
-            <.link navigate={~p"/hive/policy"}>{gettext("Policy")}</.link>
+            <.link navigate={~p"/workspace/policy"}>{gettext("Policy")}</.link>
             <.icon name="hero-chevron-right-micro" class="size-3" />
             <span class="q-here" aria-current="page">
               {gettext("Version %{version}", version: @v.configuration.version)}
@@ -755,7 +762,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         <.header :if={!(@live_action in [:version, :export] && @v)}>
           {gettext("Policy")}
           <:subtitle>
-            {gettext("What the runs of this hive may reach through the runner's proxy.")}
+            {gettext("What the runs of this workspace may reach through the runner's proxy.")}
             {gettext(
               "What no rule names is denied under enforce, and let through and recorded under observe; a deny rule holds in either mode."
             )}
@@ -766,12 +773,12 @@ defmodule ApiaryWeb.PolicyLive.Show do
                 id="policy-version-pill"
                 version={@version.version}
                 digest={@version.digest}
-                navigate={~p"/hive/policy/history"}
+                navigate={~p"/workspace/policy/history"}
                 copy
               />
               <.button
                 id="policy-export-button"
-                navigate={~p"/hive/policy/versions/#{@version.version}/export"}
+                navigate={~p"/workspace/policy/versions/#{@version.version}/export"}
               >
                 <.icon name="hero-arrow-up-tray-micro" class="size-4" />{gettext("Export")}
               </.button>
@@ -817,7 +824,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
           open={@open_change}
           diff={@diff}
           base={@base}
-          scope={:hive}
+          scope={:workspace}
           summary={@summary}
           now={@now}
         />
@@ -831,15 +838,15 @@ defmodule ApiaryWeb.PolicyLive.Show do
           <span :if={@missing.latest}>
             {gettext("The latest is version %{version}.", version: @missing.latest.version)}
           </span>
-          <span :if={!@missing.latest}>{gettext("This hive has no version yet.")}</span>
+          <span :if={!@missing.latest}>{gettext("This workspace has no version yet.")}</span>
           <:actions>
             <.button
               :if={@missing.latest}
-              navigate={~p"/hive/policy/versions/#{@missing.latest.version}"}
+              navigate={~p"/workspace/policy/versions/#{@missing.latest.version}"}
             >
               {gettext("Open version %{version}", version: @missing.latest.version)}
             </.button>
-            <.button :if={!@missing.latest} navigate={~p"/hive/policy"}>
+            <.button :if={!@missing.latest} navigate={~p"/workspace/policy"}>
               {gettext("Back to policy")}
             </.button>
           </:actions>
@@ -850,7 +857,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
       <.export_modal
         :if={@live_action == :export && @export}
         export={@export}
-        close={~p"/hive/policy/versions/#{@v.configuration.version}"}
+        close={~p"/workspace/policy/versions/#{@v.configuration.version}"}
       />
       <.mode_dialog
         :if={match?({:mode, _}, @dialog)}
@@ -931,7 +938,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
     ~H"""
     <.tabs id="policy-tabs" label={gettext("Policy")}>
       <:tab
-        patch={~p"/hive/policy"}
+        patch={~p"/workspace/policy"}
         icon="hero-shield-check-micro"
         current={@live_action == :rules}
         count={@rules > 0 && @rules}
@@ -939,7 +946,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         {gettext("Rules")}
       </:tab>
       <:tab
-        patch={~p"/hive/policy/targets"}
+        patch={~p"/workspace/policy/targets"}
         icon="hero-book-open-micro"
         current={@live_action == :targets}
         count={@targets > 0 && @targets}
@@ -947,7 +954,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         {gettext("Targets")}
       </:tab>
       <:tab
-        patch={~p"/hive/policy/history"}
+        patch={~p"/workspace/policy/history"}
         icon="hero-clock-micro"
         current={@live_action == :history}
         count={@changes > 0 && @changes}
@@ -956,7 +963,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
       </:tab>
       <:tab
         :if={@document}
-        patch={~p"/hive/policy/document"}
+        patch={~p"/workspace/policy/document"}
         icon="hero-document-text-micro"
         current={@live_action in [:version, :export, :document]}
       >
@@ -1004,7 +1011,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
       >
         <span :if={!@managed?} id="policy-unmanaged">
           {gettext(
-            "Until the first change here, every machine of this hive runs under its own policy, the one in its runner file. The first rule you add, or a mode you set, renders version 1, and machines take their policy from Qory from then on. You can also let a run reach out first and allow its hosts from the Connections page, one row at a time."
+            "Until the first change here, every machine of this workspace runs under its own policy, the one in its runner file. The first rule you add, or a mode you set, renders version 1, and machines take their policy from Qory from then on. You can also let a run reach out first and allow its hosts from the Connections page, one row at a time."
           )}
         </span>
         <span :if={@managed?}>
@@ -1019,7 +1026,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
           <.button id="policy-first-rule" variant="primary" phx-click="composer_open">
             <.icon name="hero-plus-micro" class="size-4" />{gettext("Add a host rule")}
           </.button>
-          <.button navigate={~p"/hive/connections"}>{gettext("Go to connections")}</.button>
+          <.button navigate={~p"/workspace/connections"}>{gettext("Go to connections")}</.button>
         </:actions>
       </.empty_state>
       <p
@@ -1046,19 +1053,23 @@ defmodule ApiaryWeb.PolicyLive.Show do
     <.sect :if={!@empty?} id="policy-hosts" title={gettext("Host rules")} count={length(@rows)}>
       <:trailing>
         <.segments id="policy-show" label={gettext("Show")}>
-          <:segment patch={~p"/hive/policy"} pressed={@show == nil}>{gettext("All")}</:segment>
+          <:segment patch={~p"/workspace/policy"} pressed={@show == nil}>{gettext("All")}</:segment>
           <:segment
-            patch={~p"/hive/policy?show=allow"}
+            patch={~p"/workspace/policy?show=allow"}
             pressed={@show == "allow"}
             count={@counts.allow}
           >
             {gettext("Allow")}
           </:segment>
-          <:segment patch={~p"/hive/policy?show=deny"} pressed={@show == "deny"} count={@counts.deny}>
+          <:segment
+            patch={~p"/workspace/policy?show=deny"}
+            pressed={@show == "deny"}
+            count={@counts.deny}
+          >
             {gettext("Deny")}
           </:segment>
           <:segment
-            patch={~p"/hive/policy?show=locked"}
+            patch={~p"/workspace/policy?show=locked"}
             pressed={@show == "locked"}
             count={@counts.locked}
           >
@@ -1069,15 +1080,15 @@ defmodule ApiaryWeb.PolicyLive.Show do
       <.rule_composer
         id="policy-composer"
         form={@composer}
-        scope={:hive}
+        scope={:workspace}
         reading={@reading}
         queued={length(@queue)}
       />
       <.rules_table
         id="policy-rules"
-        label={gettext("Host rules of the hive")}
+        label={gettext("Host rules of the workspace")}
         rows={@shown}
-        scope={:hive}
+        scope={:workspace}
         can_lock={@owner?}
         activity={async_value(@activity, :loading)}
         fresh={@fresh}
@@ -1105,9 +1116,9 @@ defmodule ApiaryWeb.PolicyLive.Show do
       <.credential_composer id="policy-credential" form={@credential} reading={@credential_reading} />
       <.credentials_table
         id="policy-credential-rows"
-        label={gettext("Credentials of the hive")}
+        label={gettext("Credentials of the workspace")}
         rows={@credentials}
-        scope={:hive}
+        scope={:workspace}
         activity={async_value(@activity, :loading)}
       />
     </.sect>
@@ -1188,7 +1199,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         </span>
         <span :if={@own_only} id="targets-own-only">
           {gettext("Showing those that set their own mode.")}
-          <.link patch={~p"/hive/policy/targets"} class="q-link">{gettext("Show all")}</.link>
+          <.link patch={~p"/workspace/policy/targets"} class="q-link">{gettext("Show all")}</.link>
         </span>
       </div>
       <div
@@ -1213,13 +1224,13 @@ defmodule ApiaryWeb.PolicyLive.Show do
           <tbody>
             <tr :if={@shown == []} role="row">
               <td role="cell" colspan="8" class="!whitespace-normal text-[13px] text-faint">
-                {gettext("No target sets its own mode. Every one follows the hive's default.")}
+                {gettext("No target sets its own mode. Every one follows the workspace's default.")}
               </td>
             </tr>
             <tr :for={row <- @shown} id={"target-#{row.id}"} role="row" class="q-target-row">
               <td role="cell" class="q-c-target">
                 <.link
-                  navigate={~p"/hive/policy/targets/#{row.id}"}
+                  navigate={~p"/workspace/policy/targets/#{row.id}"}
                   class="q-target-name q-rowlink"
                 >
                   <span class="q-target-system">{row.system}/</span><span class="q-target-path">{row.path}</span>
@@ -1235,8 +1246,8 @@ defmodule ApiaryWeb.PolicyLive.Show do
                 />
                 <.source_chip
                   :if={!row.own_mode}
-                  source={:hive}
-                  label={gettext("Hive default")}
+                  source={:workspace}
+                  label={gettext("Workspace default")}
                   class="q-src-bare"
                 />
               </td>
@@ -1249,8 +1260,8 @@ defmodule ApiaryWeb.PolicyLive.Show do
                 />
                 <.source_chip
                   :if={row.own == 0 && !row.own_mode}
-                  source={:hive}
-                  label={gettext("Hive baseline")}
+                  source={:workspace}
+                  label={gettext("Workspace baseline")}
                 />
               </td>
               <td role="cell" class={["q-num q-opt", row.own == 0 && "q-zero"]}>{row.own}</td>
@@ -1278,14 +1289,14 @@ defmodule ApiaryWeb.PolicyLive.Show do
                     digest={row.detail.version.digest}
                     scope={
                       if is_nil(row.detail.version.target_id),
-                        do: gettext("hive baseline"),
+                        do: gettext("workspace baseline"),
                         else: "#{row.system}/#{row.path}"
                     }
                     navigate={
                       if is_nil(row.detail.version.target_id),
-                        do: ~p"/hive/policy/versions/#{row.detail.version.version}",
+                        do: ~p"/workspace/policy/versions/#{row.detail.version.version}",
                         else:
-                          ~p"/hive/policy/targets/#{row.id}/versions/#{row.detail.version.version}"
+                          ~p"/workspace/policy/targets/#{row.id}/versions/#{row.detail.version.version}"
                     }
                   />
                   <span :if={!row.detail.version} class="text-faint font-sans text-[13px]">
@@ -1303,7 +1314,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
       </div>
       <p class="max-w-[80ch] text-[12.5px]/[18px] text-faint">
         {gettext(
-          "A target appears here once a run names it. A target with neither rules nor a mode of its own is served the hive baseline, and so is a run that names no target."
+          "A target appears here once a run names it. A target with neither rules nor a mode of its own is served the workspace baseline, and so is a run that names no target."
         )}
       </p>
     </div>
@@ -1347,7 +1358,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
     ~H"""
     <.modal
       id="mode-enforce"
-      title={gettext("Set the hive's default to enforce")}
+      title={gettext("Set the workspace's default to enforce")}
       size="lg"
       on_cancel={JS.push("dialog_cancel")}
     >
@@ -1364,7 +1375,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         {gettext("You can switch back at any time.")}
         <span :if={!@started}>
           {gettext(
-            "This is the hive's first change: it renders version 1, and machines take their policy from Qory from then on."
+            "This is the workspace's first change: it renders version 1, and machines take their policy from Qory from then on."
           )}
         </span>
       </p>
@@ -1406,7 +1417,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
               class="btn btn-xs"
               phx-click={JS.push("would_allow", value: %{key: would_key(destination)})}
             >
-              {gettext("Allow for the hive")}
+              {gettext("Allow for the workspace")}
             </button>
             <span :if={!MapSet.member?(@would.open, would_key(destination))} class="q-done">
               <.icon name="hero-check-micro" class="size-3" />{gettext("Allowed")}
@@ -1415,12 +1426,12 @@ defmodule ApiaryWeb.PolicyLive.Show do
         </ul>
         <p :if={length(@would.destinations) > 8} class="q-would-more">
           <%= for part <- more_words(length(@would.destinations) - 8) do %>
-            <.link :if={part == :link} navigate={~p"/hive/connections?since=7d"} class="q-link">
+            <.link :if={part == :link} navigate={~p"/workspace/connections?since=7d"} class="q-link">
               {gettext("connections page")}
             </.link>{if part !=
-                                                                                                                                                               :link,
-                                                                                                                                                             do:
-                                                                                                                                                               part}
+                                                                                                                                                                    :link,
+                                                                                                                                                                  do:
+                                                                                                                                                                    part}
           <% end %>
         </p>
       </div>
@@ -1454,7 +1465,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
     ~H"""
     <.modal
       id="mode-observe"
-      title={gettext("Set the hive's default to observe")}
+      title={gettext("Set the workspace's default to observe")}
       size="sm"
       on_cancel={JS.push("dialog_cancel")}
     >
@@ -1508,16 +1519,16 @@ defmodule ApiaryWeb.PolicyLive.Show do
 
       {"enforce", _following, 0} ->
         rich_ngettext(
-          "From the next heartbeat, about 30 s, %{effect} in the %{count} target that follows the hive's default.",
-          "From the next heartbeat, about 30 s, %{effect} in the %{count} targets that follow the hive's default.",
+          "From the next heartbeat, about 30 s, %{effect} in the %{count} target that follows the workspace's default.",
+          "From the next heartbeat, about 30 s, %{effect} in the %{count} targets that follow the workspace's default.",
           following,
           effect: effect
         )
 
       {"enforce", _following, _alive} ->
         rich_ngettext(
-          "From the next heartbeat, about 30 s, %{effect} in the %{count} target that follows the hive's default, and among the %{runs} alive now.",
-          "From the next heartbeat, about 30 s, %{effect} in the %{count} targets that follow the hive's default, and among the %{runs} alive now.",
+          "From the next heartbeat, about 30 s, %{effect} in the %{count} target that follows the workspace's default, and among the %{runs} alive now.",
+          "From the next heartbeat, about 30 s, %{effect} in the %{count} targets that follow the workspace's default, and among the %{runs} alive now.",
           following,
           effect: effect,
           runs: runs
@@ -1538,16 +1549,16 @@ defmodule ApiaryWeb.PolicyLive.Show do
 
       {_observe, _following, 0} ->
         rich_ngettext(
-          "From the next heartbeat, about 30 s, %{effect} in the %{count} target that follows the hive's default: every other connection is let through and recorded.",
-          "From the next heartbeat, about 30 s, %{effect} in the %{count} targets that follow the hive's default: every other connection is let through and recorded.",
+          "From the next heartbeat, about 30 s, %{effect} in the %{count} target that follows the workspace's default: every other connection is let through and recorded.",
+          "From the next heartbeat, about 30 s, %{effect} in the %{count} targets that follow the workspace's default: every other connection is let through and recorded.",
           following,
           effect: effect
         )
 
       {_observe, _following, _alive} ->
         rich_ngettext(
-          "From the next heartbeat, about 30 s, %{effect} in the %{count} target that follows the hive's default, and among the %{runs} alive now: every other connection is let through and recorded.",
-          "From the next heartbeat, about 30 s, %{effect} in the %{count} targets that follow the hive's default, and among the %{runs} alive now: every other connection is let through and recorded.",
+          "From the next heartbeat, about 30 s, %{effect} in the %{count} target that follows the workspace's default, and among the %{runs} alive now: every other connection is let through and recorded.",
+          "From the next heartbeat, about 30 s, %{effect} in the %{count} targets that follow the workspace's default, and among the %{runs} alive now: every other connection is let through and recorded.",
           following,
           effect: effect,
           runs: runs

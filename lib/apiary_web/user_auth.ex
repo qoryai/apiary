@@ -260,7 +260,7 @@ defmodule ApiaryWeb.UserAuth do
     if scope && scope.organisation do
       {:cont, socket}
     else
-      {:halt, Phoenix.LiveView.redirect(socket, to: ~p"/no-hive")}
+      {:halt, Phoenix.LiveView.redirect(socket, to: ~p"/no-workspace")}
     end
   end
 
@@ -297,11 +297,11 @@ defmodule ApiaryWeb.UserAuth do
     |> Map.merge(policy_mode(scope))
   end
 
-  # The word beside Policy: the hive's default mode, once the hive has a policy of Qory's,
-  # and the modes of the targets that set their own. One read. Where the `security`
-  # feature is off there is no Policy entry to put it beside: nothing is read, and the
-  # counts carry no mode at all.
-  defp policy_mode(%Scope{hive: nil}), do: %{mode: nil, own_modes: []}
+  # The word beside Policy: the workspace's default mode, once the workspace has a policy
+  # of Qory's, and the modes of the targets that set their own. One read. Where the
+  # `security` feature is off there is no Policy entry to put it beside: nothing is read,
+  # and the counts carry no mode at all.
+  defp policy_mode(%Scope{workspace: nil}), do: %{mode: nil, own_modes: []}
 
   defp policy_mode(%Scope{} = scope) do
     if Apiary.Features.on?(scope, :security) do
@@ -317,10 +317,10 @@ defmodule ApiaryWeb.UserAuth do
     end
   end
 
-  # The sidebar's mode word follows `policy:<hive>` on every page: the hook subscribes
-  # the page's process here, before the page mounts, and re-reads the word (one read) at
-  # once on the first change and then at most once a second while changes keep coming, as
-  # the count of alive runs does.
+  # The sidebar's mode word follows `policy:<workspace>` on every page: the hook
+  # subscribes the page's process here, before the page mounts, and re-reads the word (one
+  # read) at once on the first change and then at most once a second while changes keep
+  # coming, as the count of alive runs does.
   #
   # Whether the message goes on to the page is decided when it arrives, not by who
   # subscribed first: a page that follows the policy subscribes too, wherever it likes,
@@ -335,10 +335,10 @@ defmodule ApiaryWeb.UserAuth do
   defp follow_policy_mode(socket) do
     scope = socket.assigns.current_scope
 
-    if scope.hive && Apiary.Features.on?(scope, :security) &&
+    if scope.workspace && Apiary.Features.on?(scope, :security) &&
          Phoenix.LiveView.connected?(socket) do
       Apiary.Policy.subscribe(scope)
-      topic = Apiary.Policy.topic(scope.hive.id)
+      topic = Apiary.Policy.topic(scope.workspace.id)
 
       socket
       |> Phoenix.LiveView.put_private(:policy_window, :closed)
@@ -410,7 +410,7 @@ defmodule ApiaryWeb.UserAuth do
     Phoenix.Component.assign(socket, :nav_counts, counts)
   end
 
-  # The sidebar's count of alive runs follows the hive on every page. It listens on a
+  # The sidebar's count of alive runs follows the workspace on every page. It listens on a
   # topic of its own (`Apiary.Runs.touched_topic/1`), so no page has to handle a message
   # it did not ask for. The count is one indexed query, made at once on the first change
   # and then at most once a second while changes keep coming.
@@ -419,14 +419,14 @@ defmodule ApiaryWeb.UserAuth do
   defp follow_alive_runs(socket) do
     scope = socket.assigns.current_scope
 
-    if scope.hive && Phoenix.LiveView.connected?(socket) do
+    if scope.workspace && Phoenix.LiveView.connected?(socket) do
       Apiary.Runs.subscribe_touched(scope)
     end
 
     socket
     |> Phoenix.LiveView.put_private(:alive_window, :closed)
     |> Phoenix.LiveView.attach_hook(:alive_runs, :handle_info, fn
-      {:runs_touched, _hive_id}, socket ->
+      {:runs_touched, _workspace_id}, socket ->
         case socket.private[:alive_window] do
           :closed ->
             Process.send_after(self(), :alive_window_over, @alive_window)
@@ -458,7 +458,7 @@ defmodule ApiaryWeb.UserAuth do
   defp refresh_alive(socket) do
     scope = socket.assigns.current_scope
 
-    if scope && scope.hive do
+    if scope && scope.workspace do
       counts = Map.put(socket.assigns.nav_counts || %{}, :alive, Apiary.Runs.count_alive(scope))
       Phoenix.Component.assign(socket, :nav_counts, counts)
     else
@@ -467,7 +467,7 @@ defmodule ApiaryWeb.UserAuth do
   end
 
   # An open page follows a change of the user's own membership: a new level is
-  # loaded into the scope, a membership that is gone sends the page to /hive (and
+  # loaded into the scope, a membership that is gone sends the page to /workspace (and
   # from there to wherever the user still belongs). The contexts authorize on the
   # database whatever the page holds; this keeps what the page shows honest.
   defp follow_membership_changes(socket) do
@@ -490,7 +490,7 @@ defmodule ApiaryWeb.UserAuth do
 
     reloaded =
       Organisations.load_scope(
-        %{scope | organisation: nil, hive: nil, membership: nil},
+        %{scope | organisation: nil, workspace: nil, membership: nil},
         organisation_id
       )
 
@@ -506,7 +506,7 @@ defmodule ApiaryWeb.UserAuth do
           else: socket
       end)
     else
-      Phoenix.LiveView.redirect(socket, to: ~p"/hive")
+      Phoenix.LiveView.redirect(socket, to: ~p"/workspace")
     end
   end
 
@@ -521,8 +521,8 @@ defmodule ApiaryWeb.UserAuth do
     end)
   end
 
-  @doc "Returns the path to redirect to after log in: the hive."
-  def signed_in_path(_), do: ~p"/hive"
+  @doc "Returns the path to redirect to after log in: the workspace."
+  def signed_in_path(_), do: ~p"/workspace"
 
   @doc """
   Plug for routes that require the user to be authenticated.

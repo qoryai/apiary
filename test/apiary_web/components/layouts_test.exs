@@ -18,7 +18,7 @@ defmodule ApiaryWeb.LayoutsTest do
 
     test "the sidebar comes before the top bar and main in the DOM, and the bar is in the content column",
          %{conn: conn} do
-      {:ok, view, html} = live(conn, ~p"/hive")
+      {:ok, view, html} = live(conn, ~p"/workspace")
 
       assert before?(html, ~s(class="drawer-side), ~s(id="shell-content"))
       assert has_element?(view, "#shell-content > header#top-bar[aria-label='Top bar']")
@@ -31,7 +31,7 @@ defmodule ApiaryWeb.LayoutsTest do
       conn: conn,
       user: user
     } do
-      {:ok, view, html} = live(conn, ~p"/hive")
+      {:ok, view, html} = live(conn, ~p"/workspace")
 
       # Both triggers are buttons, never a div with a tabindex: daisyUI takes the
       # pointer away from a [tabindex] trigger while its dropdown has focus, so the
@@ -47,8 +47,8 @@ defmodule ApiaryWeb.LayoutsTest do
       assert before?(html, ~s(id="theme-menu-button"), ~s(id="user-menu-button"))
       # below 768 px the bar opens the drawer and says where you are; the label is text
       assert has_element?(view, "#top-bar #nav-drawer-open[aria-label='Open menu'].md\\:hidden")
-      assert has_element?(view, "#top-bar div#apiary-label.md\\:hidden")
-      refute has_element?(view, "#apiary-label a, #apiary-label button")
+      assert has_element?(view, "#top-bar div#organisation-label.md\\:hidden")
+      refute has_element?(view, "#organisation-label a, #organisation-label button")
     end
 
     test "the account menu: who you are, then Account settings and Log out", %{
@@ -56,7 +56,7 @@ defmodule ApiaryWeb.LayoutsTest do
       user: user,
       scope: scope
     } do
-      {:ok, view, _html} = live(conn, ~p"/hive")
+      {:ok, view, _html} = live(conn, ~p"/workspace")
 
       assert has_element?(view, "#user-menu[phx-hook='Menu']")
       menu = view |> element("#user-menu ul[role='menu'][aria-label='Account']") |> render()
@@ -84,24 +84,33 @@ defmodule ApiaryWeb.LayoutsTest do
     test "a member's account menu says so", %{conn: _conn, scope: scope} do
       %{user: member} = member_fixture(scope, :member)
       conn = log_in_user(build_conn(), member)
-      {:ok, view, _html} = live(conn, ~p"/hive")
+      {:ok, view, _html} = live(conn, ~p"/workspace")
       assert has_element?(view, "#user-menu-level", "Member of #{scope.organisation.name}")
     end
 
-    test "the sidebar: the apiary row at the top, the nav, then the brand foot; no user card",
+    test "the sidebar: the organisation row at the top, the nav, then the brand foot; no user card",
          %{conn: conn, user: user, scope: scope} do
-      {:ok, view, html} = live(conn, ~p"/hive")
+      {:ok, view, html} = live(conn, ~p"/workspace")
 
       sidebar = view |> element("#sidebar") |> render()
-      assert before?(sidebar, ~s(id="apiary-row"), ~s(aria-label="Main"))
+      assert before?(sidebar, ~s(id="organisation-row"), ~s(aria-label="Main"))
       assert before?(sidebar, ~s(aria-label="Manage"), ~s(id="brand-foot"))
 
       # one membership: the block is text, the chevron slot empty, nothing to focus
-      assert has_element?(view, "#apiary-row div#apiary-block", scope.organisation.name)
-      assert has_element?(view, "#apiary-block", scope.hive.name)
-      refute has_element?(view, "#apiary-block button, #apiary-block a")
+      assert has_element?(
+               view,
+               "#organisation-row div#organisation-block",
+               scope.organisation.name
+             )
+
+      assert has_element?(view, "#organisation-block", scope.workspace.name)
+      refute has_element?(view, "#organisation-block button, #organisation-block a")
       refute sidebar =~ "hero-chevron-up-down-micro"
-      assert has_element?(view, "#apiary-row button[data-drawer-close][aria-label='Close menu']")
+
+      assert has_element?(
+               view,
+               "#organisation-row button[data-drawer-close][aria-label='Close menu']"
+             )
 
       # the user card and the theme row are gone
       refute sidebar =~ user.email
@@ -109,29 +118,32 @@ defmodule ApiaryWeb.LayoutsTest do
       refute html =~ "theme-seg"
     end
 
-    test "with several memberships the apiary row is the switcher", %{conn: conn, user: user} do
+    test "with several memberships the organisation row is the switcher", %{
+      conn: conn,
+      user: user
+    } do
       other = sign_up_fixture()
       %{token: token} = invitation_fixture(other.scope, %{"email" => user.email})
       {:ok, _membership} = Organisations.accept_invitation(user, token)
 
-      {:ok, view, _html} = live(conn, ~p"/hive")
+      {:ok, view, _html} = live(conn, ~p"/workspace")
 
-      refute has_element?(view, "#apiary-block")
+      refute has_element?(view, "#organisation-block")
 
       assert has_element?(
                view,
-               "#apiary-row #workspace-menu[phx-hook='Menu'] button#workspace-menu-button[aria-haspopup='menu']"
+               "#organisation-row #organisation-menu[phx-hook='Menu'] button#organisation-menu-button[aria-haspopup='menu']"
              )
 
       assert has_element?(
                view,
-               "#workspace-menu form[action='#{~p"/organisations/switch"}'] button[name='organisation_id'][value='#{other.organisation.id}']"
+               "#organisation-menu form[action='#{~p"/organisations/switch"}'] button[name='organisation_id'][value='#{other.organisation.id}']"
              )
     end
 
     test "the brand foot is the Qory Apiary menu: the version on it, docs, changelog and source in it",
          %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/hive")
+      {:ok, view, _html} = live(conn, ~p"/workspace")
 
       version = :apiary |> Application.spec(:vsn) |> List.to_string()
       assert has_element?(view, "#brand-foot #brand-menu.dropdown-top[phx-hook='Menu']")
@@ -178,21 +190,21 @@ defmodule ApiaryWeb.LayoutsTest do
 
       # the brand is at the foot, not the top
       sidebar = view |> element("#sidebar") |> render()
-      assert before?(sidebar, ~s(id="apiary-row"), "Qory Apiary")
+      assert before?(sidebar, ~s(id="organisation-row"), "Qory Apiary")
     end
 
     test "the page title carries the product name as its suffix", %{conn: conn, scope: scope} do
-      {:ok, _view, html} = live(conn, ~p"/hive/members")
+      {:ok, _view, html} = live(conn, ~p"/workspace/members")
       assert html =~ ~r{<title[^>]*>\s*Members · Qory Apiary\s*</title>}
-      assert html =~ scope.hive.name
+      assert html =~ scope.workspace.name
     end
   end
 
-  describe "the no-hive shell" do
+  describe "the no-workspace shell" do
     test "no sidebar, no menu button, the brand at the left of the bar", %{conn: conn} do
       user = user_fixture()
       conn = log_in_user(conn, user)
-      {:ok, view, html} = live(conn, ~p"/no-hive")
+      {:ok, view, html} = live(conn, ~p"/no-workspace")
 
       refute has_element?(view, "#sidebar")
       refute has_element?(view, "#nav-drawer, #nav-drawer-open")
@@ -213,7 +225,7 @@ defmodule ApiaryWeb.LayoutsTest do
 
       assert has_element?(view, "#user-menu-level", "Not part of an organisation yet")
       assert before?(html, ~s(id="brand-menu-button"), ~s(id="theme-menu-button"))
-      assert html =~ ~r{<title[^>]*>\s*No workplace yet · Qory Apiary\s*</title>}
+      assert html =~ ~r{<title[^>]*>\s*No workspace yet · Qory Apiary\s*</title>}
     end
   end
 

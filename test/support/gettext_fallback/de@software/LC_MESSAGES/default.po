@@ -1,0 +1,14 @@
+# The software domain's catalogue of ApiaryWeb.Gettext.FallbackTest: only the sentences in
+# the domain's words.
+msgid ""
+msgstr ""
+"Language: de@software\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Every target follows it."
+msgstr "Jedes Repository folgt ihr."
+
+msgid "%{count} target"
+msgid_plural "%{count} targets"
+msgstr[0] "%{count} Repository"
+msgstr[1] "%{count} Repositorys"

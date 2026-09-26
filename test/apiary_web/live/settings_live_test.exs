@@ -10,51 +10,51 @@ defmodule ApiaryWeb.SettingsLiveTest do
   describe "as an owner" do
     setup :register_and_log_in_user
 
-    test "renames the organisation and the hive", %{conn: conn, user: user, scope: scope} do
-      {:ok, lv, html} = live(conn, ~p"/hive/settings")
+    test "renames the organisation and the workspace", %{conn: conn, user: user, scope: scope} do
+      {:ok, lv, html} = live(conn, ~p"/workspace/settings")
 
-      # The software body's words, and no apiary word: the hive reads workplace.
+      # The software domain's words, and no skin word: no apiary, no hive.
       assert has_element?(lv, "h2", "Organisation name")
-      assert has_element?(lv, "h2", "Workplace name")
-      assert html =~ "The names of this organisation and its workplace"
-      assert has_element?(lv, "#sidebar p", "Workplace")
+      assert has_element?(lv, "h2", "Workspace name")
+      assert html =~ "The names of this organisation and its workspace"
+      assert has_element?(lv, "#sidebar p", "Workspace")
 
       page = lv |> element("#main") |> render() |> LazyHTML.from_fragment() |> LazyHTML.text()
       refute page =~ ~r/\b(apiary|apiaries|hive|hives)\b/i
 
       assert html =~ scope.organisation.name
-      assert html =~ scope.hive.name
+      assert html =~ scope.workspace.name
 
       html = lv |> form("#organisation-form", organisation: %{name: "Acme"}) |> render_submit()
       assert html =~ "Organisation renamed to Acme"
 
-      html = lv |> form("#hive-form", hive: %{name: "Platform"}) |> render_submit()
-      assert html =~ "Workplace renamed to Platform"
+      html = lv |> form("#workspace-form", workspace: %{name: "Platform"}) |> render_submit()
+      assert html =~ "Workspace renamed to Platform"
 
       reloaded = Organisations.load_scope(Scope.for_user(user))
       assert reloaded.organisation.name == "Acme"
-      assert reloaded.hive.name == "Platform"
+      assert reloaded.workspace.name == "Platform"
     end
 
     test "refuses an empty name", %{conn: conn, user: user, scope: scope} do
-      {:ok, lv, _html} = live(conn, ~p"/hive/settings")
+      {:ok, lv, _html} = live(conn, ~p"/workspace/settings")
 
       html = lv |> form("#organisation-form", organisation: %{name: ""}) |> render_submit()
       assert html =~ "can&#39;t be blank"
 
-      html = lv |> form("#hive-form", hive: %{name: ""}) |> render_submit()
+      html = lv |> form("#workspace-form", workspace: %{name: ""}) |> render_submit()
       assert html =~ "can&#39;t be blank"
 
       reloaded = Organisations.load_scope(Scope.for_user(user))
       assert reloaded.organisation.name == scope.organisation.name
-      assert reloaded.hive.name == scope.hive.name
+      assert reloaded.workspace.name == scope.workspace.name
     end
 
     test "lists the owners", %{conn: conn, user: user, scope: scope} do
       %{user: member} = member_fixture(scope, :member)
       %{user: other_owner} = member_fixture(scope, :owner)
 
-      {:ok, lv, _html} = live(conn, ~p"/hive/settings")
+      {:ok, lv, _html} = live(conn, ~p"/workspace/settings")
 
       assert has_element?(lv, "#owners", user.email)
       assert has_element?(lv, "#owners", other_owner.email)
@@ -62,9 +62,9 @@ defmodule ApiaryWeb.SettingsLiveTest do
     end
 
     test "sets the retention, within the bounds, and clears it", %{conn: conn, scope: scope} do
-      {:ok, lv, html} = live(conn, ~p"/hive/settings")
-      assert html =~ "This workplace keeps everything."
-      assert html =~ "Nothing is pruned: this workplace keeps everything."
+      {:ok, lv, html} = live(conn, ~p"/workspace/settings")
+      assert html =~ "This workspace keeps everything."
+      assert html =~ "Nothing is pruned: this workspace keeps everything."
 
       html =
         lv
@@ -99,35 +99,37 @@ defmodule ApiaryWeb.SettingsLiveTest do
 
       assert has_element?(lv, "#retention-runs-empty", "Nothing has been pruned yet.")
 
-      hive = Apiary.Repo.get!(Apiary.Organisations.Hive, scope.hive.id)
-      assert {hive.events_retention_days, hive.log_retention_days} == {90, 14}
+      workspace = Apiary.Repo.get!(Apiary.Organisations.Workspace, scope.workspace.id)
+      assert {workspace.events_retention_days, workspace.log_retention_days} == {90, 14}
 
       lv
       |> form("#retention-form", retention: %{events_retention_days: "", log_retention_days: ""})
       |> render_submit()
 
-      hive = Apiary.Repo.get!(Apiary.Organisations.Hive, scope.hive.id)
-      assert {hive.events_retention_days, hive.log_retention_days} == {nil, nil}
+      workspace = Apiary.Repo.get!(Apiary.Organisations.Workspace, scope.workspace.id)
+      assert {workspace.events_retention_days, workspace.log_retention_days} == {nil, nil}
     end
 
-    test "says what the job pruned, for this hive only", %{conn: conn, scope: scope} do
+    test "says what the job pruned, for this workspace only", %{conn: conn, scope: scope} do
       import Apiary.RunEventsFixtures
 
-      {:ok, hive} = Apiary.Retention.update_retention(scope, %{events_retention_days: 10})
+      {:ok, workspace} = Apiary.Retention.update_retention(scope, %{events_retention_days: 10})
       run = run_fixture(scope)
       events_fixture(run, record())
       {:ok, _run} = Apiary.Runs.Projector.project(run)
 
       other = sign_up_fixture().scope
-      {:ok, other_hive} = Apiary.Retention.update_retention(other, %{events_retention_days: 3})
+
+      {:ok, other_workspace} =
+        Apiary.Retention.update_retention(other, %{events_retention_days: 3})
 
       now = DateTime.add(DateTime.utc_now(), 40 * 86_400, :second)
-      assert %{runs_pruned: 1} = Apiary.Retention.prune_hive(hive, now: now)
-      assert %{runs_pruned: 0} = Apiary.Retention.prune_hive(other_hive, now: now)
+      assert %{runs_pruned: 1} = Apiary.Retention.prune_workspace(workspace, now: now)
+      assert %{runs_pruned: 0} = Apiary.Retention.prune_workspace(other_workspace, now: now)
 
-      {:ok, lv, _html} = live(conn, ~p"/hive/settings")
+      {:ok, lv, _html} = live(conn, ~p"/workspace/settings")
 
-      assert [mine] = Apiary.Retention.list_retention_runs(%{scope | hive: hive})
+      assert [mine] = Apiary.Retention.list_retention_runs(%{scope | workspace: workspace})
 
       assert has_element?(
                lv,
@@ -149,11 +151,11 @@ defmodule ApiaryWeb.SettingsLiveTest do
     end
 
     test "sees the names read-only", %{conn: conn, owner: owner} do
-      {:ok, lv, html} = live(conn, ~p"/hive/settings")
+      {:ok, lv, html} = live(conn, ~p"/workspace/settings")
 
       assert html =~ "Only owners can change these settings"
       assert has_element?(lv, "input#organisation_name[disabled]")
-      assert has_element?(lv, "input#hive_name[disabled]")
+      assert has_element?(lv, "input#workspace_name[disabled]")
       assert has_element?(lv, "input#retention_events_retention_days[disabled]")
       assert has_element?(lv, "input#retention_log_retention_days[disabled]")
       refute has_element?(lv, "button", "Save")
@@ -162,7 +164,7 @@ defmodule ApiaryWeb.SettingsLiveTest do
       html = render_submit(lv, "save_retention", %{"retention" => %{"log_retention_days" => "1"}})
       assert html =~ "Only owners can change these settings."
 
-      assert Apiary.Repo.get!(Apiary.Organisations.Hive, owner.scope.hive.id).log_retention_days ==
+      assert Apiary.Repo.get!(Apiary.Organisations.Workspace, owner.scope.workspace.id).log_retention_days ==
                nil
 
       assert has_element?(lv, "#owners", owner.user.email)

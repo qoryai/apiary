@@ -1,12 +1,12 @@
-defmodule Apiary.BodyTest do
+defmodule Apiary.Lingo.DomainTest do
   use ExUnit.Case, async: true
 
-  alias Apiary.Body
-  alias Apiary.Body.Software
+  alias Apiary.Lingo.Domain
+  alias Apiary.Lingo.Domain.Software
 
   @labels %{"forge" => "git.example.com", "repository" => "acme/shop"}
 
-  describe "the software body" do
+  describe "the software domain" do
     test "the forge label is the system and the repository label the path" do
       assert Software.target(@labels) == {:ok, %{system: "git.example.com", path: "acme/shop"}}
     end
@@ -50,26 +50,37 @@ defmodule Apiary.BodyTest do
                {:ok, %{system: "git.example.com", path: path}}
     end
 
+    test "its target's labels are forge, then repository" do
+      assert Software.target_labels() == ["forge", "repository"]
+    end
+
     test "its words are the software locale" do
       assert Software.locale() == "en@software"
     end
   end
 
-  describe "Apiary.Body" do
-    test "every hive has the software body" do
-      assert Body.for_hive(nil) == Software
-      assert Body.for_hive(Ecto.UUID.generate()) == Software
-      assert Body.for_hive(%Apiary.Organisations.Hive{}) == Software
+  describe "Apiary.Lingo.Domain" do
+    test "every workspace has the software domain" do
+      assert Domain.for_workspace(nil) == Software
+      assert Domain.for_workspace(Ecto.UUID.generate()) == Software
+      assert Domain.for_workspace(%Apiary.Organisations.Workspace{}) == Software
     end
 
-    test "target/2 asks the hive's body, and labels that are not a map name none" do
-      hive = Ecto.UUID.generate()
-      assert Body.target(hive, @labels) == {:ok, %{system: "git.example.com", path: "acme/shop"}}
-      assert Body.target(hive, %{"task" => "fix"}) == :none
+    test "target/2 asks the workspace's domain, and labels that are not a map name none" do
+      workspace = Ecto.UUID.generate()
+
+      assert Domain.target(workspace, @labels) ==
+               {:ok, %{system: "git.example.com", path: "acme/shop"}}
+
+      assert Domain.target(workspace, %{"task" => "fix"}) == :none
 
       for labels <- [nil, "forge=git.example.com", [{"forge", "git.example.com"}], 7] do
-        assert Body.target(hive, labels) == :none, inspect(labels)
+        assert Domain.target(workspace, labels) == :none, inspect(labels)
       end
+    end
+
+    test "target_labels/1 asks the workspace's domain" do
+      assert Domain.target_labels(Ecto.UUID.generate()) == Software.target_labels()
     end
   end
 end

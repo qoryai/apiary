@@ -31,7 +31,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     {:ok, _} = Policy.allow(scope, nil, %{host: "registry.example"})
     {:ok, _} = Policy.allow(scope, nil, %{kind: "credential", name: "model-key"})
 
-    %{target: target, path: "/hive/policy/targets/#{target.id}"}
+    %{target: target, path: "/workspace/policy/targets/#{target.id}"}
   end
 
   defp open(conn, path) do
@@ -64,44 +64,44 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
   defp own(scope, target, host),
     do: Enum.find(Policy.list_rules(scope, target), &(&1.host == host))
 
-  test "another hive's target is not found, nor is an id that is none", %{conn: conn} do
+  test "another workspace's target is not found, nor is an id that is none", %{conn: conn} do
     other = scope_fixture()
     started_run(other, shop())
     [%{target: theirs}] = Policy.list_targets(other)
     {:ok, _} = Policy.allow(other, theirs, %{host: "secret.example"})
 
-    for path <- ["/hive/policy/targets/#{theirs.id}", "/hive/policy/targets/nope"] do
+    for path <- ["/workspace/policy/targets/#{theirs.id}", "/workspace/policy/targets/nope"] do
       {:ok, view, html} = live(conn, path)
-      assert html =~ "This repository is not in this workplace"
+      assert html =~ "This repository is not in this workspace"
       refute html =~ "secret.example"
       assert has_element?(view, "#nav-policy[aria-current=page]")
-      assert has_element?(view, "a[href='/hive/policy']", "Back to policy")
-      assert render_hook(view, "composer_save", %{}) =~ "This repository is not in this workplace"
+      assert has_element?(view, "a[href='/workspace/policy']", "Back to policy")
+      assert render_hook(view, "composer_save", %{}) =~ "This repository is not in this workspace"
     end
   end
 
-  test "a target without rules of its own is the hive's list, and says so",
+  test "a target without rules of its own is the workspace's list, and says so",
        %{conn: conn, path: path} do
     view = open(conn, path)
 
     assert has_element?(view, "h1", "acme/shop")
     assert text(view, "#policy-no-own") =~ "This repository has no rules of its own."
-    assert text(view, "#policy-no-own") =~ "It is served the workplace baseline, version"
-    assert text(view, "#policy-baseline") == "workplace baseline"
+    assert text(view, "#policy-no-own") =~ "It is served the workspace baseline, version"
+    assert text(view, "#policy-baseline") == "workspace baseline"
     assert text(view, "#policy-effective-n") == "4 rules · 2 hosts allowed · 2 denied"
-    assert text(view, "##{row(view, "registry.example")}") =~ "Workplace"
+    assert text(view, "##{row(view, "registry.example")}") =~ "Workspace"
     assert text(view, "##{row(view, "registry.example")}") =~ "Disable here"
     assert text(view, "##{row(view, "telemetry.example")}") =~ "Allow here"
-    assert text(view, "##{row(view, "*.paste.example")}") =~ "Workplace, locked"
+    assert text(view, "##{row(view, "*.paste.example")}") =~ "Workspace, locked"
 
     assert has_element?(
              view,
-             "##{row(view, "*.paste.example")} a[href^='/hive/policy?rule='][href$='.paste.example']",
+             "##{row(view, "*.paste.example")} a[href^='/workspace/policy?rule='][href$='.paste.example']",
              "Open"
            )
 
     assert text(view, "#policy-effective-foot") =~
-             "Mode observe , the workplace's default. Credentials: model-key from the workplace."
+             "Mode observe , the workspace's default. Credentials: model-key from the workspace."
 
     assert has_element?(view, "#policy-tab-runs[href*='target=acme%2Fshop']")
     assert text(view, "#policy-tab-runs") == "Runs 1"
@@ -125,7 +125,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     assert text(view, "#rule-#{rule.id}-act") == "Restore"
 
     over = text(view, "tr[id^='rule-#{rule.id}-over-']")
-    assert over =~ "Overrides the workplace's rule"
+    assert over =~ "Overrides the workspace's rule"
     assert over =~ "not in force: allow gitlab.example"
     assert over =~ "Disabled here by"
     assert over =~ "Other repositories keep it."
@@ -141,7 +141,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     assert text(view, "##{row(view, "gitlab.example")}") =~ "Disable here"
   end
 
-  test "allow here overrides the hive's deny", %{
+  test "allow here overrides the workspace's deny", %{
     conn: conn,
     scope: scope,
     target: target,
@@ -184,7 +184,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     refute own(scope, target, "*.paste.example")
   end
 
-  test "the composer adds for the target, and a locked hive rule refuses it",
+  test "the composer adds for the target, and a locked workspace rule refuses it",
        %{conn: conn, scope: scope, target: target, path: path} do
     view = open(conn, path)
     assert text(view, "#policy-composer-add") == "Add for this repository"
@@ -196,10 +196,10 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     assert has_element?(view, "#policy-composer-reads[role=alert]")
 
     assert text(view, "#policy-composer-reads") =~
-             "A locked workplace rule denies *.paste.example ."
+             "A locked workspace rule denies *.paste.example ."
 
     assert text(view, "#policy-composer-reads") =~
-             "You can change or unlock it on the workplace's policy page."
+             "You can change or unlock it on the workspace's policy page."
 
     assert has_element?(view, "#policy-composer-add[disabled]")
 
@@ -213,7 +213,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     assert Enum.all?(Policy.list_rules(scope, nil), &(&1.host != "mcp.acme.example"))
   end
 
-  test "a deny under the hive's suffix is accepted and said; under a locked suffix it is refused",
+  test "a deny under the workspace's suffix is accepted and said; under a locked suffix it is refused",
        %{conn: conn, scope: scope, target: target, path: path} do
     {:ok, _} = Policy.allow(scope, nil, %{host: "*.cdn.example"})
     {:ok, _} = Policy.allow(scope, nil, %{host: "*.internal.example", locked: true})
@@ -235,7 +235,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     view |> form("#policy-composer", rule: %{host: "tax.internal.example"}) |> render_change()
 
     assert text(view, "#policy-composer-reads") =~
-             "A locked workplace rule allows *.internal.example"
+             "A locked workspace rule allows *.internal.example"
 
     assert has_element?(view, "#policy-composer-add[disabled]")
   end
@@ -252,14 +252,14 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
   end
 
   describe "the target's mode" do
-    test "follows the hive until an owner says otherwise, and says where it comes from",
+    test "follows the workspace until an owner says otherwise, and says where it comes from",
          %{conn: conn, path: path} do
       view = open(conn, path)
 
       assert has_element?(view, "#policy-target-mode-follow[aria-checked=true]")
 
       assert text(view, "#policy-target-mode-effect") ==
-               "In effect: observe , the workplace's default. It changes when the workplace's does."
+               "In effect: observe , the workspace's default. It changes when the workspace's does."
     end
 
     test "to enforce asks with this target's own list, and Allow here adds a target rule",
@@ -291,14 +291,14 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
 
       view |> element("#target-mode-confirm", "Enforce this repository") |> render_click()
 
-      assert %{mode: "enforce", own: "enforce", hive: "observe"} =
+      assert %{mode: "enforce", own: "enforce", workspace: "observe"} =
                Policy.get_mode(scope, target)
 
       assert has_element?(view, "#policy-target-mode-enforce[aria-checked=true]")
       assert text(view, "#flash-info") =~ "github.example/acme/shop enforces on its own. Version"
 
       assert text(view, "#policy-target-mode-effect") =~
-               "In effect: enforce , this repository's own. The workplace's default is observe."
+               "In effect: enforce , this repository's own. The workspace's default is observe."
 
       assert text(view, "#policy-effective-foot") =~ "Mode enforce , this repository's own."
     end
@@ -329,13 +329,13 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
       view |> element("#policy-target-mode-follow") |> render_click()
 
       assert text(view, "#target-mode-enforce") =~
-               "The mode follows the workplace's default from now on"
+               "The mode follows the workspace's default from now on"
 
-      view |> element("#target-mode-confirm", "Follow the workplace") |> render_click()
+      view |> element("#target-mode-confirm", "Follow the workspace") |> render_click()
       assert Policy.get_mode(scope, target).own == nil
 
       assert text(view, "#flash-info") =~
-               "github.example/acme/shop follows the workplace: enforce."
+               "github.example/acme/shop follows the workspace: enforce."
     end
 
     test "a setting that changes nothing today is immediate, and says so",
@@ -347,7 +347,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
       assert Policy.get_mode(scope, target).own == "observe"
 
       assert text(view, "#flash-info") =~
-               "github.example/acme/shop observes on its own. Nothing changes today: the workplace's default is observe too."
+               "github.example/acme/shop observes on its own. Nothing changes today: the workspace's default is observe too."
     end
 
     test "its history words the change", %{
@@ -413,7 +413,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
                "No run has tried to reach it in the last 7 days."
 
       assert text(view, "#policy-suggestions-covered") ==
-               "1 more declared host is already allowed: registry.example by the workplace."
+               "1 more declared host is already allowed: registry.example by the workspace."
 
       id = PolicyComponents.suggestion_id("flags.example")
       view |> element("##{id}-allow") |> render_click()
@@ -425,15 +425,15 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
       refute has_element?(view, "#policy-suggestions-all")
     end
 
-    test "allow both here, and allow for the hive from the caret",
+    test "allow both here, and allow for the workspace from the caret",
          %{conn: conn, scope: scope, target: target, path: path} do
       view = open(conn, path)
       assert text(view, "#policy-suggestions-all") == "Allow both here"
 
       id = PolicyComponents.suggestion_id("flags.example")
-      view |> element("##{id}-menu button", "Allow for the workplace") |> render_click()
+      view |> element("##{id}-menu button", "Allow for the workspace") |> render_click()
       assert Enum.find(Policy.list_rules(scope, nil), &(&1.host == "flags.example"))
-      assert text(view, "##{id}") =~ "Allowed for the workplace"
+      assert text(view, "##{id}") =~ "Allowed for the workspace"
 
       view = open(conn, path)
       refute has_element?(view, "#policy-suggestions-all")
@@ -467,7 +467,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     assert Enum.find(Policy.list_rules(scope, target), &(&1.name == "forge-token"))
 
     assert text(view, "#policy-effective-foot") =~
-             "forge-token argument acme/shop from this repository, model-key from the workplace."
+             "forge-token argument acme/shop from this repository, model-key from the workspace."
   end
 
   test "history, versions and export are the target's own",
@@ -479,7 +479,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     assert text(view, "#history-summary") =~ "1 change"
     assert text(view, "#chg-#{change.id}") =~ "denied gitlab.example"
     assert text(view, "#chg-#{change.id}-diff") =~ "Added: Deny gitlab.example"
-    assert text(view, "#history-foot") =~ "are in the workplace's history"
+    assert text(view, "#history-foot") =~ "are in the workspace's history"
 
     assert {:error, {:live_redirect, %{to: to}}} = live(conn, path <> "/document")
     assert to == path <> "/versions/1"
@@ -492,18 +492,18 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     assert text(view, "#export-lead") =~ "github.example/acme/shop"
     assert has_element?(view, "#export-download[download='acme-shop-policy.yaml']")
 
-    # The hive's change is not this target's.
-    [hive_change | _] = Policy.list_changes(scope, nil, 1).items
-    view = open(conn, path <> "/history?change=#{hive_change.id}")
+    # The workspace's change is not this target's.
+    [workspace_change | _] = Policy.list_changes(scope, nil, 1).items
+    view = open(conn, path <> "/history?change=#{workspace_change.id}")
     refute has_element?(view, ".q-chg[open]")
 
     view = open(conn, path <> "/versions/9")
     assert has_element?(view, "h2", "There is no version 9")
   end
 
-  test "a target served the baseline has no versions of its own: Document is the hive's",
+  test "a target served the baseline has no versions of its own: Document is the workspace's",
        %{conn: conn, path: path} do
-    assert {:error, {:live_redirect, %{to: "/hive/policy/versions/" <> _}}} =
+    assert {:error, {:live_redirect, %{to: "/workspace/policy/versions/" <> _}}} =
              live(conn, path <> "/document")
 
     view = open(conn, path <> "/versions/1")

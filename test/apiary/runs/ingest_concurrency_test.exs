@@ -55,7 +55,7 @@ defmodule Apiary.Runs.IngestConcurrencyTest do
 
     assert Enum.all?(results, &match?({:ok, %{status: 202, inserted: 1}}, &1))
 
-    assert [run] = Repo.all(from r in Run, where: r.hive_id == ^scope.hive.id)
+    assert [run] = Repo.all(from r in Run, where: r.workspace_id == ^scope.workspace.id)
     assert run.run_id == subject
     assert run.event_count == 8
     assert Repo.aggregate(from(e in Event, where: e.run_id == ^run.id), :count) == 8

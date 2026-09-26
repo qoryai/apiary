@@ -22,13 +22,13 @@ defmodule Apiary.ContractFixtures do
   def published_secret, do: @published_secret
 
   @doc """
-  The key the contract's fixtures are signed under, in the scope's hive. Test
+  The key the contract's fixtures are signed under, in the scope's workspace. Test
   support only: no production code accepts a chosen key id or secret.
   """
-  def published_key_fixture(%Scope{organisation: organisation, hive: hive, user: user}) do
+  def published_key_fixture(%Scope{organisation: organisation, workspace: workspace, user: user}) do
     Repo.insert!(%AccessKey{
       organisation_id: organisation.id,
-      hive_id: hive.id,
+      workspace_id: workspace.id,
       created_by_id: user.id,
       key_id: @published_key_id,
       label: "the contract's fixtures",

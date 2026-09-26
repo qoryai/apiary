@@ -36,7 +36,7 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
     text = LazyHTML.text(main)
 
     refute text =~ @policy_words, "the page names the policy: " <> inspect(text)
-    refute main |> LazyHTML.query("a[href*='/hive/policy']") |> Enum.any?()
+    refute main |> LazyHTML.query("a[href*='/workspace/policy']") |> Enum.any?()
     refute main |> LazyHTML.query("[phx-click*='rule_open']") |> Enum.any?()
     refute main |> LazyHTML.query("#rule-popover") |> Enum.any?()
     refute main |> LazyHTML.query(".q-after, .q-kv-policy, #card-policy") |> Enum.any?()
@@ -49,7 +49,7 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
 
   # Nothing on the page's process follows the policy: not the page, not the sidebar.
   defp refute_follows_policy(view, scope) do
-    refute Policy.topic(scope.hive.id) in Registry.keys(Apiary.PubSub, view.pid)
+    refute Policy.topic(scope.workspace.id) in Registry.keys(Apiary.PubSub, view.pid)
   end
 
   defp open(conn, path) do
@@ -77,7 +77,7 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
       conn: conn,
       run: run
     } do
-      {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}")
+      {:ok, lv, _html} = live(conn, ~p"/workspace/runs/#{run.run_id}")
       refute_policy(render(lv))
 
       assert has_element?(lv, "#run-facts", "dev-laptop")
@@ -92,7 +92,7 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
       assert has_element?(lv, "#timeline .q-why", "Handed to files")
 
       # a link to the policy's item is no way to it: the sequence is dropped
-      {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}?seq=2")
+      {:ok, lv, _html} = live(conn, ~p"/workspace/runs/#{run.run_id}?seq=2")
       refute has_element?(lv, "ol#timeline[data-target]")
       refute_policy(render(lv))
     end
@@ -102,7 +102,7 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
       scope: scope,
       run: run
     } do
-      {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}/connections")
+      {:ok, lv, _html} = live(conn, ~p"/workspace/runs/#{run.run_id}/connections")
       html = render(lv)
       refute_policy(html)
 
@@ -132,14 +132,14 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
     end
 
     test "a crafted Allow or Deny writes nothing", %{conn: conn, scope: scope, run: run} do
-      {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}/connections")
+      {:ok, lv, _html} = live(conn, ~p"/workspace/runs/#{run.run_id}/connections")
       %{rows: rows} = Record.connections(scope, run)
       refused = Enum.find(rows, &(&1.path == "/media/acme/other/checkout.png"))
 
       for action <- ~w(allow deny) do
         render_click(lv, "rule_open", %{"id" => refused.id, "action" => action})
-        render_change(lv, "rule_change", %{"for" => "hive"})
-        render_submit(lv, "rule_submit", %{"for" => "hive"})
+        render_change(lv, "rule_change", %{"for" => "workspace"})
+        render_submit(lv, "rule_submit", %{"for" => "workspace"})
       end
 
       refute has_element?(lv, "#rule-popover")
@@ -148,10 +148,10 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
     end
 
     test "the terminal and the details are the record", %{conn: conn, run: run} do
-      {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}/terminal")
+      {:ok, lv, _html} = live(conn, ~p"/workspace/runs/#{run.run_id}/terminal")
       refute_policy(render(lv))
 
-      {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}/details")
+      {:ok, lv, _html} = live(conn, ~p"/workspace/runs/#{run.run_id}/details")
       html = render(lv)
       refute_policy(html)
 
@@ -171,7 +171,7 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
         egress: [%{"host" => "files.cdn.example", "decision" => "denied", "rule" => ""}]
       )
 
-      {:ok, lv, _html} = live(conn, ~p"/hive/runs")
+      {:ok, lv, _html} = live(conn, ~p"/workspace/runs")
       render_async(lv, 2_000)
       html = render(lv)
       refute_policy(html)
@@ -210,7 +210,7 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
       conn: conn,
       scope: scope
     } do
-      view = open(conn, ~p"/hive/connections")
+      view = open(conn, ~p"/workspace/connections")
       refute_policy(render(view))
 
       cdn = dst("files.cdn.example")
@@ -231,7 +231,10 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
 
     test "per target, the page says which, and links to no policy", %{conn: conn} do
       view =
-        open(conn, ~p"/hive/connections?#{Filters.target_params("github.example", "acme/shop")}")
+        open(
+          conn,
+          ~p"/workspace/connections?#{Filters.target_params("github.example", "acme/shop")}"
+        )
 
       refute_policy(render(view))
       assert has_element?(view, "#connections-target-note", "github.example/acme/shop")
@@ -239,13 +242,13 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
     end
 
     test "a crafted Allow or Deny writes nothing", %{conn: conn} do
-      view = open(conn, ~p"/hive/connections")
+      view = open(conn, ~p"/workspace/connections")
       values = %{"host" => "files.cdn.example", "port" => "443", "path" => ""}
 
       for action <- ~w(allow deny) do
         render_click(view, "rule_open", Map.put(values, "action", action))
-        render_change(view, "rule_change", %{"for" => "hive"})
-        render_submit(view, "rule_submit", %{"for" => "hive"})
+        render_change(view, "rule_change", %{"for" => "workspace"})
+        render_submit(view, "rule_submit", %{"for" => "workspace"})
       end
 
       refute has_element?(view, "#rule-popover")

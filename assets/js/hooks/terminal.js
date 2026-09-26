@@ -84,7 +84,7 @@ const cellRatio = family => {
   return ctx.measureText("W").width / 100
 }
 
-// The words are the server's, in the body's language (`RunPageComponents.terminal_words/0`,
+// The words are the server's, in the domain's language (`RunPageComponents.terminal_words/0`,
 // on the box as `data-words`); this script holds none. A count's words are [one, other].
 const fill = (template, bindings) =>
   template.replace(/%\{(\w+)\}/g, (all, key) => (key in bindings ? String(bindings[key]) : all))

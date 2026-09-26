@@ -131,7 +131,7 @@ defmodule Apiary.Runs.OverviewTest do
   end
 
   describe "last_runs_by_key/2" do
-    test "one run per key, the most recently started, and only the hive's", %{
+    test "one run per key, the most recently started, and only the workspace's", %{
       scope: scope,
       other: other
     } do

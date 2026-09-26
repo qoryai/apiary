@@ -8,7 +8,7 @@ defmodule ApiaryWeb.OrganisationSessionControllerTest do
   describe "POST /organisations/switch" do
     setup :register_and_log_in_user
 
-    test "switches to an apiary the user belongs to", %{conn: conn, user: user} do
+    test "switches to an organisation the user belongs to", %{conn: conn, user: user} do
       other = sign_up_fixture()
       %{token: token} = invitation_fixture(other.scope, %{"email" => user.email})
       {:ok, _membership} = Organisations.accept_invitation(user, token)
@@ -16,29 +16,29 @@ defmodule ApiaryWeb.OrganisationSessionControllerTest do
       conn =
         post(conn, ~p"/organisations/switch", %{"organisation_id" => other.organisation.id})
 
-      assert redirected_to(conn) == ~p"/hive"
+      assert redirected_to(conn) == ~p"/workspace"
       assert get_session(conn, :organisation_id) == other.organisation.id
 
-      # the hive page follows the session, and offers the switcher
+      # the workspace page follows the session, and offers the switcher
       conn =
         build_conn()
         |> log_in_user(user)
         |> put_session(:organisation_id, other.organisation.id)
-        |> get(~p"/hive")
+        |> get(~p"/workspace")
 
       response = html_response(conn, 200)
-      assert response =~ other.hive.name
+      assert response =~ other.workspace.name
       assert response =~ other.organisation.name
       assert response =~ ~p"/organisations/switch"
     end
 
-    test "refuses an apiary the user does not belong to", %{conn: conn} do
+    test "refuses an organisation the user does not belong to", %{conn: conn} do
       other = sign_up_fixture()
 
       conn =
         post(conn, ~p"/organisations/switch", %{"organisation_id" => other.organisation.id})
 
-      assert redirected_to(conn) == ~p"/hive"
+      assert redirected_to(conn) == ~p"/workspace"
       refute get_session(conn, :organisation_id)
       assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "not a member"
     end

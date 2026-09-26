@@ -13,7 +13,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
   setup :register_and_log_in_user
 
-  defp open(conn, path \\ "/hive/runs") do
+  defp open(conn, path \\ "/workspace/runs") do
     {:ok, view, _html} = live(conn, path)
     render_async(view)
     view
@@ -33,14 +33,14 @@ defmodule ApiaryWeb.RunLive.IndexTest do
   end
 
   test "requires sign-in" do
-    assert {:error, {:redirect, %{to: "/users/log-in"}}} = live(build_conn(), ~p"/hive/runs")
+    assert {:error, {:redirect, %{to: "/users/log-in"}}} = live(build_conn(), ~p"/workspace/runs")
   end
 
   describe "empty states" do
     test "no runs and no keys: create a key", %{conn: conn} do
       view = open(conn)
       assert has_element?(view, "h2", "No runs yet")
-      assert has_element?(view, "#runs-create-key[href='/hive/keys/new']")
+      assert has_element?(view, "#runs-create-key[href='/workspace/keys/new']")
       refute has_element?(view, "#runs")
       assert has_element?(view, "#nav-runs[aria-current=page]")
       refute has_element?(view, "#nav-runs-alive")
@@ -49,13 +49,13 @@ defmodule ApiaryWeb.RunLive.IndexTest do
     test "no runs, keys exist: go to the keys, and listen", %{conn: conn, scope: scope} do
       access_key_fixture(scope)
       view = open(conn)
-      assert has_element?(view, "#runs-go-to-keys[href='/hive/keys']")
+      assert has_element?(view, "#runs-go-to-keys[href='/workspace/keys']")
       assert render(view) =~ "Listening for the first run."
     end
 
     test "the first render is the table's skeleton, never a spinner", %{conn: conn, scope: scope} do
       started_run(scope, shop())
-      {:ok, view, html} = live(conn, ~p"/hive/runs")
+      {:ok, view, html} = live(conn, ~p"/workspace/runs")
       assert html =~ "runs-loading"
       assert html |> LazyHTML.from_document() |> LazyHTML.query("#runs .loading") |> Enum.empty?()
       render_async(view)
@@ -66,33 +66,33 @@ defmodule ApiaryWeb.RunLive.IndexTest do
          %{conn: conn, scope: scope} do
       started_run(scope, shop())
 
-      view = open(conn, ~p"/hive/runs?state=failed,timed_out,lost,closed")
+      view = open(conn, ~p"/workspace/runs?state=failed,timed_out,lost,closed")
       assert has_element?(view, "h2", "No runs ended badly in the last 7 days.")
       assert has_element?(view, "#runs-hidden", "1 run is hidden by them.")
 
-      view = open(conn, ~p"/hive/runs?state=succeeded&since=all")
+      view = open(conn, ~p"/workspace/runs?state=succeeded&since=all")
       assert has_element?(view, "h2", "No runs ended well.")
 
-      view = open(conn, ~p"/hive/runs?state=succeeded&from=2026-09-01&to=2026-09-02")
+      view = open(conn, ~p"/workspace/runs?state=succeeded&from=2026-09-01&to=2026-09-02")
       assert has_element?(view, "h2", "No runs ended well from 1 Sep 2026 to 2 Sep 2026.")
 
       # A part of a family, or two families, is not one family's sentence.
-      view = open(conn, ~p"/hive/runs?state=failed")
+      view = open(conn, ~p"/workspace/runs?state=failed")
       assert has_element?(view, "h2", "No runs match these filters")
-      view = open(conn, ~p"/hive/runs?state=succeeded,failed,timed_out,lost,closed")
+      view = open(conn, ~p"/workspace/runs?state=succeeded,failed,timed_out,lost,closed")
       assert has_element?(view, "h2", "No runs match these filters")
     end
 
     test "filters that match nothing say how many runs they hide", %{conn: conn, scope: scope} do
       started_run(scope, shop())
       started_run(scope, shop())
-      view = open(conn, ~p"/hive/runs?state=failed")
+      view = open(conn, ~p"/workspace/runs?state=failed")
 
       assert has_element?(view, "h2", "No runs match these filters")
       assert text(view, "#runs-hidden") == "2 runs are hidden by them."
 
       view |> element("#runs-clear") |> render_click()
-      assert_patch(view, ~p"/hive/runs")
+      assert_patch(view, ~p"/workspace/runs")
       render_async(view)
       assert has_element?(view, "#runs tr.q-row")
     end
@@ -102,7 +102,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       view = open(conn)
       assert text(view, "#runs-hidden") == "1 run is hidden by them."
       view |> element("#runs-all-time") |> render_click()
-      assert_patch(view, ~p"/hive/runs?since=all")
+      assert_patch(view, ~p"/workspace/runs?since=all")
     end
   end
 
@@ -128,7 +128,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert cells =~ "2 minutes ago"
       assert cells =~ "6 m 51 s"
       assert has_element?(view, "#{row(run)} .q-denials", "1")
-      assert has_element?(view, "#{row(run)} a.q-rowlink[href='/hive/runs/#{run.run_id}']")
+      assert has_element?(view, "#{row(run)} a.q-rowlink[href='/workspace/runs/#{run.run_id}']")
       assert text(view, "#runs-summary") =~ "1 run in 1 repository 1 ended badly 1 with denials"
       assert text(view, "#runs-footer") =~ "Showing 1 of 1."
     end
@@ -214,7 +214,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert text(view, row(lost)) =~ "at least 41 m 30 s"
     end
 
-    test "another hive's runs are not listed", %{conn: conn, scope: scope} do
+    test "another workspace's runs are not listed", %{conn: conn, scope: scope} do
       mine = started_run(scope, shop())
       theirs = started_run(scope_fixture(), shop())
       view = open(conn)
@@ -252,7 +252,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
       assert has_element?(
                view,
-               "tr.q-group a[href='/hive/connections?system=github.example&target=acme%2Fshop']"
+               "tr.q-group a[href='/workspace/connections?system=github.example&target=acme%2Fshop']"
              )
 
       assert has_element?(view, "#runs-group button[aria-pressed=true]", "Repository")
@@ -264,7 +264,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
     } do
       view = open(conn)
       view |> element("#runs-group button", "Task") |> render_click()
-      assert_patch(view, ~p"/hive/runs?group=task")
+      assert_patch(view, ~p"/workspace/runs?group=task")
       render_async(view)
 
       assert has_element?(view, "tr.q-group button[aria-label='checkout-tax, 2 runs, 2 alive']")
@@ -275,7 +275,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
     end
 
     test "not grouped: no headers, and a target column", %{conn: conn, github: github} do
-      view = open(conn, ~p"/hive/runs?group=none")
+      view = open(conn, ~p"/workspace/runs?group=none")
       refute has_element?(view, "tr.q-group")
       assert has_element?(view, "th", "Repository")
       assert text(view, "#{row(github)} .q-c-target") == "github.example/ acme/shop"
@@ -301,7 +301,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       view =
         open(
           conn,
-          ~p"/hive/runs?state=failed&system=github.example&target=acme/shop&task=fix-cart&runtime=claude&host=build-02&denials=1&since=24h"
+          ~p"/workspace/runs?state=failed&system=github.example&target=acme/shop&task=fix-cart&runtime=claude&host=build-02&denials=1&since=24h"
         )
 
       assert has_element?(view, row(failed))
@@ -319,9 +319,9 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
     test "unknown values are dropped and the URL is rewritten", %{conn: conn} do
       assert {:error, {:live_redirect, %{to: to}}} =
-               live(conn, ~p"/hive/runs?state=failed,bogus&group=colour&since=90d&zzz=1")
+               live(conn, ~p"/workspace/runs?state=failed,bogus&group=colour&since=90d&zzz=1")
 
-      assert to == "/hive/runs?state=failed"
+      assert to == "/workspace/runs?state=failed"
     end
 
     test "the menus are counted from the data and patch the URL", %{conn: conn, running: running} do
@@ -332,22 +332,22 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert text(view, "#filter-host-form") =~ "build-02 1"
 
       view |> form("#filter-state-form") |> render_change(%{"state" => ["running"]})
-      assert_patch(view, ~p"/hive/runs?state=running")
+      assert_patch(view, ~p"/workspace/runs?state=running")
       render_async(view)
       assert has_element?(view, row(running))
       assert text(view, "#runs-summary") =~ "1 run in"
 
       view |> form("#filter-task-form") |> render_change(%{"task" => "mirror-sync"})
-      assert_patch(view, ~p"/hive/runs?state=running&task=mirror-sync")
+      assert_patch(view, ~p"/workspace/runs?state=running&task=mirror-sync")
 
       view |> element("#filter-state-remove") |> render_click()
-      assert_patch(view, ~p"/hive/runs?task=mirror-sync")
+      assert_patch(view, ~p"/workspace/runs?task=mirror-sync")
 
       view |> element("#filter-denials") |> render_click()
-      assert_patch(view, ~p"/hive/runs?denials=1&task=mirror-sync")
+      assert_patch(view, ~p"/workspace/runs?denials=1&task=mirror-sync")
 
       view |> element("#runs-filters-clear") |> render_click()
-      assert_patch(view, ~p"/hive/runs")
+      assert_patch(view, ~p"/workspace/runs")
     end
 
     test "the State menu reads as three families, each heading a checkbox over its states",
@@ -376,7 +376,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
              )
 
       assert text(view, "#filter-state-tip-closed") =~
-               "Stopped by the workplace: a member closed it after it went quiet. Counted with the runs that ended badly."
+               "Stopped by the workspace: a member closed it after it went quiet. Counted with the runs that ended badly."
 
       refute has_element?(view, "#{form} input[name=family_alive][checked]")
       refute has_element?(view, "#{form} input[name=family_alive][aria-checked]")
@@ -391,7 +391,9 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       |> form("#filter-state-form")
       |> render_change(%{"_target" => ["family_ended_badly"], "family_ended_badly" => "1"})
 
-      assert URI.decode(assert_patch(view)) == "/hive/runs?state=failed,timed_out,lost,closed"
+      assert URI.decode(assert_patch(view)) ==
+               "/workspace/runs?state=failed,timed_out,lost,closed"
+
       render_async(view)
       assert has_element?(view, row(failed))
       refute has_element?(view, row(running))
@@ -415,7 +417,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       })
 
       assert URI.decode(assert_patch(view)) ==
-               "/hive/runs?state=pending,running,failed,timed_out,lost,closed"
+               "/workspace/runs?state=pending,running,failed,timed_out,lost,closed"
 
       render_async(view)
 
@@ -433,12 +435,12 @@ defmodule ApiaryWeb.RunLive.IndexTest do
         "state" => ~w(pending running failed timed_out lost closed)
       })
 
-      assert URI.decode(assert_patch(view)) == "/hive/runs?state=pending,running"
+      assert URI.decode(assert_patch(view)) == "/workspace/runs?state=pending,running"
     end
 
     test "a family with some of its states chosen is mixed, and the chip reads the states",
          %{conn: conn} do
-      view = open(conn, ~p"/hive/runs?state=failed")
+      view = open(conn, ~p"/workspace/runs?state=failed")
 
       assert has_element?(
                view,
@@ -459,7 +461,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert text(view, "#runs-summary") =~
                "3 runs in 2 repositories 1 alive 1 ended well 1 ended badly 1 with denials"
 
-      view = open(conn, ~p"/hive/runs?state=running")
+      view = open(conn, ~p"/workspace/runs?state=running")
       summary = text(view, "#runs-summary")
       assert summary =~ "1 run in 1 repository 1 alive"
       refute summary =~ "ended"
@@ -473,18 +475,18 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       |> form("#filter-since-form")
       |> render_change(%{"since" => "30d", "_target" => ["since"]})
 
-      assert_patch(view, ~p"/hive/runs?since=30d")
+      assert_patch(view, ~p"/workspace/runs?since=30d")
 
       view
       |> form("#filter-since-form")
       |> render_change(%{"from" => "2026-09-14", "to" => "2026-09-16", "_target" => ["to"]})
 
-      assert_patch(view, ~p"/hive/runs?from=2026-09-14&to=2026-09-16")
+      assert_patch(view, ~p"/workspace/runs?from=2026-09-14&to=2026-09-16")
       render_async(view)
       assert has_element?(view, "#filter-since-button", "14 Sep 2026 to 16 Sep 2026")
 
       view |> element("#filter-since-remove") |> render_click()
-      assert_patch(view, ~p"/hive/runs?since=all")
+      assert_patch(view, ~p"/workspace/runs?since=all")
       render_async(view)
       refute has_element?(view, "#filter-since-remove")
     end
@@ -525,39 +527,39 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       names = ~w(group state forge repo task runtime host since from to denials page)
 
       for name <- names, value <- bad do
-        {view, to} = follow(conn, ~p"/hive/runs?#{%{name => value}}")
+        {view, to} = follow(conn, ~p"/workspace/runs?#{%{name => value}}")
         render_async(view)
         assert has_element?(view, "#runs-filters"), "#{name}=#{inspect(value)} broke the page"
         refute has_element?(view, "#runs-error")
-        assert URI.parse(to).path == "/hive/runs"
+        assert URI.parse(to).path == "/workspace/runs"
       end
 
       # Lists and maps where a string is expected.
       for name <- names, shape <- ["#{name}[]=x", "#{name}[a]=x", "#{name}[a][]=x"] do
-        {view, to} = follow(conn, "/hive/runs?" <> shape)
+        {view, to} = follow(conn, "/workspace/runs?" <> shape)
         render_async(view)
         assert has_element?(view, "#runs-filters"), "#{shape} broke the page"
-        assert to == "/hive/runs"
+        assert to == "/workspace/runs"
       end
     end
 
     test "a refused value is said, never silently an unfiltered list", %{conn: conn, scope: scope} do
       started_run(scope, shop())
 
-      assert {:error, {:live_redirect, %{to: "/hive/runs"}}} =
-               live(conn, ~p"/hive/runs?#{%{"task" => <<0>>}}")
+      assert {:error, {:live_redirect, %{to: "/workspace/runs"}}} =
+               live(conn, ~p"/workspace/runs?#{%{"task" => <<0>>}}")
 
       # The rewrite is a patch of the same view in a browser: the notice rides along.
-      {:ok, view, _html} = live(conn, ~p"/hive/runs?state=running")
+      {:ok, view, _html} = live(conn, ~p"/workspace/runs?state=running")
       render_async(view)
       refute has_element?(view, "#runs-dropped")
 
       render_patch(
         view,
-        ~p"/hive/runs?#{%{"host" => String.duplicate("h", 1025), "since" => "90d"}}"
+        ~p"/workspace/runs?#{%{"host" => String.duplicate("h", 1025), "since" => "90d"}}"
       )
 
-      assert_patch(view, ~p"/hive/runs")
+      assert_patch(view, ~p"/workspace/runs")
       render_async(view)
 
       assert text(view, "#runs-dropped") ==
@@ -576,7 +578,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       run = started_run(scope, shop(), host: long)
       other = started_run(scope, shop())
 
-      view = open(conn, ~p"/hive/runs?#{%{"host" => long}}")
+      view = open(conn, ~p"/workspace/runs?#{%{"host" => long}}")
       assert has_element?(view, row(run))
       refute has_element?(view, row(other))
       refute has_element?(view, "#runs-dropped")
@@ -590,7 +592,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       view = open(conn)
 
       connections =
-        ~p"/hive/connections?#{Apiary.Runs.Filters.target_params("git.example:8443", "acme/shop")}"
+        ~p"/workspace/connections?#{Apiary.Runs.Filters.target_params("git.example:8443", "acme/shop")}"
 
       assert has_element?(view, "tr.q-group a[href='#{connections}']")
 
@@ -599,7 +601,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
       assert_patch(
         view,
-        ~p"/hive/runs?#{%{"system" => "git.example:8443", "target" => "acme/shop"}}"
+        ~p"/workspace/runs?#{%{"system" => "git.example:8443", "target" => "acme/shop"}}"
       )
 
       render_async(view)
@@ -617,7 +619,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
         run_fixture(scope, %{state: "running", task: "task-#{n}", started_at: DateTime.utc_now()})
       end
 
-      view = open(conn, ~p"/hive/runs?group=none")
+      view = open(conn, ~p"/workspace/runs?group=none")
       assert text(view, "#filter-task-more") == "Showing 50 of 60: type to narrow"
 
       view |> form("#filter-task-narrow") |> render_change(%{"q" => "task-6"})
@@ -696,13 +698,13 @@ defmodule ApiaryWeb.RunLive.IndexTest do
   describe "pagination keeps the URL" do
     test "fifty a page, previous and next", %{conn: conn, scope: scope} do
       for _ <- 1..51, do: run_fixture(scope)
-      view = open(conn, ~p"/hive/runs?group=none")
+      view = open(conn, ~p"/workspace/runs?group=none")
 
       assert text(view, "#runs-footer") =~ "Showing 50 of 51."
       assert has_element?(view, "#runs-previous[disabled]")
 
       view |> element("#runs-next") |> render_click()
-      assert_patch(view, ~p"/hive/runs?group=none&page=2")
+      assert_patch(view, ~p"/workspace/runs?group=none&page=2")
       render_async(view)
       assert text(view, "#runs-footer") =~ "Showing 1 of 51."
       assert has_element?(view, "#runs-next[disabled]")
@@ -783,12 +785,12 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
     test "a new run the filters do not return is not announced", %{conn: conn, scope: scope} do
       started_run(scope, Map.put(shop(), "task", "a"), ago: 30)
-      view = open(conn, ~p"/hive/runs?task=a")
+      view = open(conn, ~p"/workspace/runs?task=a")
       started_run(scope, Map.put(shop(), "task", "b"), ago: 1)
       refute has_element?(view, "#runs-new")
     end
 
-    test "another hive's run changes nothing", %{conn: conn, scope: scope} do
+    test "another workspace's run changes nothing", %{conn: conn, scope: scope} do
       started_run(scope, shop())
       view = open(conn)
       started_run(scope_fixture(), shop(), ago: 1)
@@ -814,11 +816,11 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert has_element?(view, "#{row(run)} .q-quiet")
     end
 
-    test "the sidebar counts the runs alive now, on every page of the hive", %{
+    test "the sidebar counts the runs alive now, on every page of the workspace", %{
       conn: conn,
       scope: scope
     } do
-      {:ok, view, _html} = live(conn, ~p"/hive/keys")
+      {:ok, view, _html} = live(conn, ~p"/workspace/keys")
       refute has_element?(view, "#nav-runs-alive")
 
       run = started_run(scope, shop(), ago: 5)

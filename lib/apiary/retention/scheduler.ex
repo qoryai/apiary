@@ -5,8 +5,8 @@ defmodule Apiary.Retention.Scheduler do
   A supervised process with one timer: it sleeps until the next `:hour` o'clock UTC
   (3 by default) plus a random part of an hour, prunes, and sleeps again. The jitter keeps
   several nodes from waking at once; the job's advisory lock lets one of them prune, and a
-  hive pruned in the last twelve hours is left alone by the others. A failure is logged by
-  its kind and the next night tries again. Nothing is pruned at boot.
+  workspace pruned in the last twelve hours is left alone by the others. A failure is
+  logged by its kind and the next night tries again. Nothing is pruned at boot.
 
   Not started when `config :apiary, Apiary.Retention.Scheduler, enabled: false`, which is
   how the tests run; they call `Apiary.Retention.prune_all/1` themselves.

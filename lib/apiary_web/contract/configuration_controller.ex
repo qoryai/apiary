@@ -5,7 +5,7 @@ defmodule ApiaryWeb.Contract.ConfigurationController do
   `ApiaryWeb.Contract.SignedRequest`. The events URL it names is served by
   `ApiaryWeb.Contract.EventsController`.
 
-  The document names the `run` section only for a hive whose policy somebody has made
+  The document names the `run` section only for a workspace whose policy somebody has made
   (`Apiary.Policy.managed?/1`); see `ApiaryWeb.Contract.Configuration`.
 
   The answer carries `X-Qory-Configuration`, the digest of the document as

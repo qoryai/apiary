@@ -18,25 +18,27 @@ defmodule ApiaryWeb.Layouts do
   # Each entry names the feature it belongs to (`Apiary.Features`), nil for the entries
   # every instance has; `nav_items/1` keeps the ones that are on.
   @nav [
-    {gettext_noop("Hive"), gettext_noop("Main"),
+    {gettext_noop("Workspace"), gettext_noop("Main"),
      [
-       {:overview, gettext_noop("Overview"), "hero-squares-2x2-micro", "/hive", :observability},
-       {:runs, gettext_noop("Runs"), "hero-play-circle-micro", "/hive/runs", :observability},
+       {:overview, gettext_noop("Overview"), "hero-squares-2x2-micro", "/workspace",
+        :observability},
+       {:runs, gettext_noop("Runs"), "hero-play-circle-micro", "/workspace/runs", :observability},
        {:connections, gettext_noop("Connections"), "hero-arrows-right-left-micro",
-        "/hive/connections", :observability},
+        "/workspace/connections", :observability},
        # After Connections, because the policy is what the connections are judged by.
-       {:policy, gettext_noop("Policy"), "hero-shield-check-micro", "/hive/policy", :security}
+       {:policy, gettext_noop("Policy"), "hero-shield-check-micro", "/workspace/policy",
+        :security}
      ]},
     {gettext_noop("Manage"), gettext_noop("Manage"),
      [
-       {:keys, gettext_noop("Access keys"), "hero-key-micro", "/hive/keys", nil},
-       {:members, gettext_noop("Members"), "hero-users-micro", "/hive/members", nil},
-       {:settings, gettext_noop("Settings"), "hero-cog-6-tooth-micro", "/hive/settings", nil}
+       {:keys, gettext_noop("Access keys"), "hero-key-micro", "/workspace/keys", nil},
+       {:members, gettext_noop("Members"), "hero-users-micro", "/workspace/members", nil},
+       {:settings, gettext_noop("Settings"), "hero-cog-6-tooth-micro", "/workspace/settings", nil}
      ]}
   ]
 
   @doc """
-  The application shell: a sidebar that is the apiary's (its name and hive at
+  The application shell: a sidebar that is the organisation's (its name and workspace at
   the top, the navigation, the brand at the foot), a 52 px top bar with the
   theme toggle and the account menu at its right end, and a main column for
   the page. Below 768 px the sidebar is a drawer behind the bar's menu button.
@@ -72,7 +74,7 @@ defmodule ApiaryWeb.Layouts do
       assigns
       |> assign(:nav_items, nav_items(assigns.current_scope))
       |> assign(:organisation, scope_field(assigns.current_scope, :organisation))
-      |> assign(:hive, scope_field(assigns.current_scope, :hive))
+      |> assign(:workspace, scope_field(assigns.current_scope, :workspace))
       |> assign(:membership, scope_field(assigns.current_scope, :membership))
       |> assign(:user, scope_field(assigns.current_scope, :user))
 
@@ -99,7 +101,7 @@ defmodule ApiaryWeb.Layouts do
           <label for="nav-drawer" class="drawer-overlay" aria-hidden="true"></label>
           <.sidebar
             organisation={@organisation}
-            hive={@hive}
+            workspace={@workspace}
             memberships={@memberships}
             nav={@nav}
             nav_items={@nav_items}
@@ -126,14 +128,14 @@ defmodule ApiaryWeb.Layouts do
               <.icon name="hero-bars-3" class="size-5" />
             </button>
             <div
-              id="apiary-label"
+              id="organisation-label"
               class="flex min-w-0 items-center gap-2.5 px-1 md:hidden"
-              title={apiary_title(@organisation, @hive)}
+              title={organisation_title(@organisation, @workspace)}
             >
-              <.avatar name={@organisation.name} kind="apiary" />
+              <.avatar name={@organisation.name} kind="organisation" />
               <span class="grid min-w-0">
                 <span class="truncate text-[13px]/4 font-semibold">{@organisation.name}</span>
-                <span class="truncate text-[11.5px]/[14px] text-muted">{@hive && @hive.name}</span>
+                <span class="truncate text-[11.5px]/[14px] text-muted">{@workspace && @workspace.name}</span>
               </span>
             </div>
             <:controls>
@@ -168,7 +170,7 @@ defmodule ApiaryWeb.Layouts do
     """
   end
 
-  # The bar: 52 px, level with the sidebar's apiary row so their lower edges read as
+  # The bar: 52 px, level with the sidebar's organisation row so their lower edges read as
   # one line. The left holds what the default slot gives it (nothing from 768 px, when
   # the sidebar is there); the controls sit at the right end at every width.
   slot :inner_block
@@ -210,7 +212,7 @@ defmodule ApiaryWeb.Layouts do
   end
 
   attr :organisation, :any
-  attr :hive, :any
+  attr :workspace, :any
   attr :memberships, :list
   attr :nav, :atom
   attr :nav_items, :list
@@ -225,8 +227,12 @@ defmodule ApiaryWeb.Layouts do
       aria-label={gettext("Sidebar")}
       class="flex h-dvh w-72 flex-col border-r border-line bg-base-200 max-md:shadow-modal md:w-60"
     >
-      <div id="apiary-row" class="flex h-13 flex-none items-center gap-1 px-2">
-        <.apiary_block organisation={@organisation} hive={@hive} memberships={@memberships} />
+      <div id="organisation-row" class="flex h-13 flex-none items-center gap-1 px-2">
+        <.organisation_block
+          organisation={@organisation}
+          workspace={@workspace}
+          memberships={@memberships}
+        />
         <button
           type="button"
           data-drawer-close
@@ -332,7 +338,7 @@ defmodule ApiaryWeb.Layouts do
   defp nav_count(_counts, _key), do: nil
 
   # The mode in force is a word, not a colour: observe is not a fault. Absent while the
-  # hive has no policy of Qory's yet.
+  # workspace has no policy of Qory's yet.
   defp policy_mode(%{mode: mode}) when mode in ["observe", "enforce"], do: mode
   defp policy_mode(_counts), do: nil
 
@@ -341,7 +347,7 @@ defmodule ApiaryWeb.Layouts do
 
   # The tag never claims what every run is under: it names the default and how many differ.
   defp policy_mode_title(counts) do
-    lead = gettext("The hive's default mode is %{mode}.", mode: policy_mode(counts))
+    lead = gettext("The workspace's default mode is %{mode}.", mode: policy_mode(counts))
 
     lead <> " " <> own_modes_sentence(own_modes(counts))
   end
@@ -359,28 +365,28 @@ defmodule ApiaryWeb.Layouts do
 
   defp alive_title(n), do: ngettext("%{count} run alive now", "%{count} runs alive now", n)
 
-  defp apiary_title(organisation, hive) do
-    Enum.map_join([organisation, hive], " / ", &(&1 && &1.name))
+  defp organisation_title(organisation, workspace) do
+    Enum.map_join([organisation, workspace], " / ", &(&1 && &1.name))
   end
 
   attr :organisation, :any, required: true
-  attr :hive, :any, required: true
+  attr :workspace, :any, required: true
   attr :memberships, :list, required: true
 
-  # The apiary block at the top of the sidebar. Its third column is the switcher's
+  # The organisation block at the top of the sidebar. Its third column is the switcher's
   # chevron slot in both variants, so nothing moves the day a second membership
   # arrives. One membership: text, the slot empty. Several: the switcher, a
   # dropdown of POST buttons.
-  defp apiary_block(%{memberships: memberships} = assigns) when length(memberships) > 1 do
+  defp organisation_block(%{memberships: memberships} = assigns) when length(memberships) > 1 do
     ~H"""
     <div
-      id="workspace-menu"
+      id="organisation-menu"
       class="dropdown block min-w-0 flex-1"
       phx-hook="Menu"
       phx-mounted={JS.ignore_attributes(["class"])}
     >
       <button
-        id="workspace-menu-button"
+        id="organisation-menu-button"
         type="button"
         class="grid w-full cursor-pointer grid-cols-[28px_1fr_auto] items-center gap-2.5 rounded-field border border-line bg-base-100 px-2 py-1.5 text-left shadow-xs transition-colors hover:border-line-strong"
         aria-haspopup="menu"
@@ -388,7 +394,7 @@ defmodule ApiaryWeb.Layouts do
         aria-label={gettext("Switch organisation, current: %{name}", name: @organisation.name)}
         phx-mounted={JS.ignore_attributes(["aria-expanded"])}
       >
-        <.apiary_names organisation={@organisation} hive={@hive} />
+        <.organisation_names organisation={@organisation} workspace={@workspace} />
         <.icon name="hero-chevron-up-down-micro" class="size-4 text-faint" />
       </button>
       <form
@@ -412,10 +418,10 @@ defmodule ApiaryWeb.Layouts do
               aria-current={m.organisation_id == @organisation.id && "true"}
               class="!h-auto min-h-[38px] py-1"
             >
-              <.avatar name={m.organisation.name} kind="apiary" />
+              <.avatar name={m.organisation.name} kind="organisation" />
               <span class="grid min-w-0 flex-1">
                 <span class="truncate font-medium">{m.organisation.name}</span>
-                <span class="truncate text-xs/4 text-faint">{m.hive.name}</span>
+                <span class="truncate text-xs/4 text-faint">{m.workspace.name}</span>
               </span>
               <.icon
                 :if={m.organisation_id == @organisation.id}
@@ -430,30 +436,30 @@ defmodule ApiaryWeb.Layouts do
     """
   end
 
-  defp apiary_block(assigns) do
+  defp organisation_block(assigns) do
     ~H"""
     <div
-      id="apiary-block"
+      id="organisation-block"
       class="grid min-w-0 flex-1 grid-cols-[28px_1fr_auto] items-center gap-2.5 rounded-field border border-transparent px-2 py-1.5"
-      title={apiary_title(@organisation, @hive)}
+      title={organisation_title(@organisation, @workspace)}
     >
-      <.apiary_names organisation={@organisation} hive={@hive} />
+      <.organisation_names organisation={@organisation} workspace={@workspace} />
     </div>
     """
   end
 
   attr :organisation, :any, required: true
-  attr :hive, :any, required: true
+  attr :workspace, :any, required: true
 
-  defp apiary_names(assigns) do
+  defp organisation_names(assigns) do
     ~H"""
-    <.avatar name={@organisation.name} kind="apiary" size="md" />
+    <.avatar name={@organisation.name} kind="organisation" size="md" />
     <span class="grid min-w-0">
       <span class="truncate text-[13px]/[18px] font-semibold" title={@organisation.name}>
         {@organisation.name}
       </span>
-      <span class="truncate text-xs/4 text-muted" title={@hive && @hive.name}>
-        {@hive && @hive.name}
+      <span class="truncate text-xs/4 text-muted" title={@workspace && @workspace.name}>
+        {@workspace && @workspace.name}
       </span>
     </span>
     """

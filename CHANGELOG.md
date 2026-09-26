@@ -17,22 +17,22 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
   the tool answered, the `status`, and is recorded as a connection, decided by the same
   rules and counted on the same pages. A tool invocation is such a request that was
   allowed: it reads as a call to the tool wherever a connection is shown: the run's
-  Connections tab, `/hive/connections` and the timeline. The row leads with the tool's name, then the request line and the host;
-  the reason says the request was handed to the tool, by which rule and path, or was for
-  the tool when it did not reach it; the outcome is the status the tool answered
-  (**Answered 200**), **Handed over** when none is recorded, a failed dial when the tool
-  is not running. A request a path rule refused never reached the tool and reads as any
-  denial, host first, saying it was refused before reaching the tool. The overview's
-  denied destinations and the list of what enforce would start denying name a
-  destination's tool whenever a request to it named one, a refused request included, as
-  a denied request to that tool. A plain host whose
-  requests the proxy reads shows the status it answered beside **Connected**.
+  Connections tab, `/workspace/connections` and the timeline. The row leads with the
+  tool's name, then the request line and the host; the reason says the request was handed
+  to the tool, by which rule and path, or was for the tool when it did not reach it; the
+  outcome is the status the tool answered (**Answered 200**), **Handed over** when none is
+  recorded, a failed dial when the tool is not running. A request a path rule refused
+  never reached the tool and reads as any denial, host first, saying it was refused before
+  reaching the tool. The overview's denied destinations and the list of what enforce would
+  start denying name a destination's tool whenever a request to it named one, a refused
+  request included, as a denied request to that tool. A plain host whose requests the
+  proxy reads shows the status it answered beside **Connected**.
 - On the run's timeline, allowed requests to one tool in a row fold into one line under
   the tool's name ("2 allowed requests"), a refused one is never folded, and a single
   request keeps the proxy's id on hover. The policy applied item lists the run's tools
   with the hosts they serve, and so does the Details tab under the policy in force.
-- `/hive/connections` has a **Tool invocations** toggle, `tools=1`, that keeps only the
-  destinations where a run's last attempt was a tool invocation, each whole, with the
+- `/workspace/connections` has a **Tool invocations** toggle, `tools=1`, that keeps only
+  the destinations where a run's last attempt was a tool invocation, each whole, with the
   counts it has without the filter.
 - `QORY_FEATURES`, the features an instance has, read once at boot: `observability`
   (the record) and `security` (the security policy), beside names kept for features not
@@ -45,6 +45,10 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
   section, so runners keep the policy of their own runner file. An unknown name, or a
   feature listed without `observability`, stops the boot. Switching a feature on later is
   a change of the value and a restart, with no migration. See the Install guide.
+- A domain's catalogue falls back to its language's: a sentence `de@software` does not
+  say in the software domain's words comes from `de`, and only then from the source text
+  (`ApiaryWeb.Gettext.Fallback`). A language other than English is one full catalogue that
+  every domain shares; the catalogue test fails a sentence neither of them translates.
 
 ### Changed
 
@@ -54,6 +58,19 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
   the header on every request.
 - `mix apiary.rebuild` (`Apiary.Release.rebuild/1` in a release) projects every run whose
   events are held again, a batch at a time by id; `--all` and `all: true` are gone.
+- The pages, the guides and the README say **workspace** where they said workplace, and so
+  do the URLs: the pages of a workspace are under `/workspace/…` (`/workspace/runs`,
+  `/workspace/connections`, `/workspace/policy`, `/workspace/settings` and the others),
+  and a user without a workspace lands on `/no-workspace`. A saved link to `/hive/…` or
+  `/no-hive` is not redirected and no longer opens its page.
+- Hives are workspaces in the schema, the code and the logs: workspace is the engine's
+  word and the same in the software domain, and hive is left to the apiary skin, which is
+  not built. The server's log names a workspace `workspace=` where it said `hive=`
+  (`retention pruned workspace=…`, `policy rerendered workspace=…`), and
+  `mix apiary.policy.rerender` counts workspaces. What named the engine for one kind of
+  work is a domain: `Apiary.Lingo.Domain`, `Apiary.Lingo.Domain.Software` and
+  `Apiary.Lingo.Domain.for_workspace/1`. A domain says which labels name the target, and
+  the run page asks it which labels come first and link to the target's runs.
 
 ### Migrations
 
@@ -61,6 +78,11 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
   columns without a default: the tool whose host the last attempt was for, whether it
   was handed to the tool or refused, and the status that answered it. Instant, no row is
   rewritten; reversible.
+- `20260929000100`: `hives` becomes `workspaces`, and `hive_id` becomes `workspace_id` in
+  the thirteen tables that carry it; every index, key and check whose name said hive is
+  renamed: 32 indexes (the primary key's among them), 4 checks, 14 foreign keys, and the
+  NOT NULL constraints where Postgres 18 names them. Renames only: instant, and every row
+  is kept as it is. Reversible: rolling it back restores the old names.
 
 ### Upgrading
 

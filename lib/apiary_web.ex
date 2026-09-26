@@ -55,7 +55,7 @@ defmodule ApiaryWeb do
     quote do
       use Phoenix.LiveView
 
-      # The body's words: the locale follows the scope the live_session loaded.
+      # The domain's words: the locale follows the scope the live_session loaded.
       on_mount ApiaryWeb.Lingo
 
       unquote(html_helpers())

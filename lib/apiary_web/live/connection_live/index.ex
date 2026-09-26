@@ -1,9 +1,9 @@
 defmodule ApiaryWeb.ConnectionLive.Index do
   @moduledoc """
-  Where the runs of the hive reached out to (`docs/design/brief-runs.md`, rd13 and re6): one
-  row per host, port and path across the runs in range, with the reason and the outcome of
-  the most recent attempt, and behind each row's chevron the runs that reached it. "Per
-  target" is this page with `repo` set, which the runs list links to.
+  Where the runs of the workspace reached out to (`docs/design/brief-runs.md`, rd13 and
+  re6): one row per host, port and path across the runs in range, with the reason and the
+  outcome of the most recent attempt, and behind each row's chevron the runs that reached
+  it. "Per target" is this page with `repo` set, which the runs list links to.
 
   Every filter is a query parameter (`decision`, `repo`, `host`, `tools`, `since`, `from`,
   `to`, `page`), read through `Apiary.Runs.Filters`. A tool invocation
@@ -15,8 +15,8 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   the summary gains "New activity", which asks again and keeps the open rows open.
 
   Each row may ask the policy for a rule (`docs/design/brief-policy.md`, pd8). A row's
-  standing is derived from one effective policy the page holds: the hive's baseline, or
-  the target's when `repo` names one. The scope of a new rule is never guessed: among
+  standing is derived from one effective policy the page holds: the workspace's baseline,
+  or the target's when `repo` names one. The scope of a new rule is never guessed: among
   several targets none is chosen until the reader chooses. The rule itself is made
   by `Apiary.Policy.rule_from_connection/4` from the most recent connection of the
   destination in the chosen scope, and what the domain refuses is said in its sentence.
@@ -58,11 +58,11 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           {if @security,
             do:
               gettext(
-                "Where the runs of this hive reached out to, and what the policy made of it. One row per host, port and path, across runs."
+                "Where the runs of this workspace reached out to, and what the policy made of it. One row per host, port and path, across runs."
               ),
             else:
               gettext(
-                "Where the runs of this hive reached out to. One row per host, port and path, across runs."
+                "Where the runs of this workspace reached out to. One row per host, port and path, across runs."
               )}
           <span :if={@filters.target} id="connections-target-note">
             <.rich text={
@@ -241,8 +241,8 @@ defmodule ApiaryWeb.ConnectionLive.Index do
         <.connections_table
           :if={@listing && @listing.rows != []}
           id="destinations"
-          label={gettext("Connections of this hive")}
-          variant="hive"
+          label={gettext("Connections of this workspace")}
+          variant="workspace"
           rows={@listing.rows}
           row_id={&destination_id/1}
           open={@open}
@@ -424,7 +424,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
 
   ## A row's Allow and Deny (pd8). What the browser names is matched whole against the rows
   ## the page holds, and the rule is made from a connection read through the scope: a
-  ## destination or a target of another hive finds nothing.
+  ## destination or a target of another workspace finds nothing.
 
   # Without security there is no rule to write: a crafted event is dropped here, before
   # a row, a policy or a connection is read.
@@ -464,7 +464,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
     level =
       case params["for"] do
         "target" when popover.targets != [] -> :target
-        "hive" -> :hive
+        "workspace" -> :workspace
         _ -> popover.level
       end
 
@@ -497,7 +497,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
         _params,
         %{assigns: %{popover: %{refusal: nil, level: level} = popover}} = socket
       )
-      when level in [:target, :hive] do
+      when level in [:target, :workspace] do
     scope = socket.assigns.current_scope
 
     # Sent only while the policy is still the one the popover opened on.
@@ -505,11 +505,11 @@ defmodule ApiaryWeb.ConnectionLive.Index do
          {:ok, from} <- rule_source(popover),
          {:ok, connection} <- Runs.fetch_connection(scope, from.connection_id),
          {:ok, rule} <- Policy.rule_from_connection(scope, connection, popover.action, level) do
-      where = if level == :target, do: {:target, from.label}, else: :hive
+      where = if level == :target, do: {:target, from.label}, else: :workspace
       holder = if level == :target, do: from.target
 
       own =
-        if level == :hive and popover.own_rule,
+        if level == :workspace and popover.own_rule,
           do: gettext("A target's own rule for this host still decides there.")
 
       sentences = [
@@ -648,7 +648,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
 
   ## The rows and the policy
 
-  # The target `repo` names, when the hive has it: its policy is what the rows stand
+  # The target `repo` names, when the workspace has it: its policy is what the rows stand
   # against, and where "Its policy" leads.
   defp target_of(scope, {system, path}), do: Runs.fetch_target(scope, system, path)
   defp target_of(_scope, _target), do: nil
@@ -671,7 +671,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
            socket
        ) do
     %{current_scope: scope, target: target} = socket.assigns
-    page = if target, do: :run, else: :hive
+    page = if target, do: :run, else: :workspace
     standings = Enum.map(rows, &{&1, Rules.standing(&1, effective, page, socket.assigns.own)})
     changes = Rules.changes(scope, target, Enum.map(standings, &elem(&1, 1)))
 
@@ -709,7 +709,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
       rule_path: Rules.rule_path(holder_id, entry.host),
       after: %{
         action: action,
-        level: if(entry.source == :target, do: :target, else: :hive),
+        level: if(entry.source == :target, do: :target, else: :workspace),
         version:
           change && is_integer(change.version) &&
             %{
@@ -719,8 +719,8 @@ defmodule ApiaryWeb.ConnectionLive.Index do
             },
         by: change && who(change, scope),
         at: (change && change.at) || (entry.rule && entry.rule.updated_at),
-        # The hive's page says nothing of a run.
-        state: :hive,
+        # The workspace's page says nothing of a run.
+        state: :workspace,
         reloaded_at: nil
       }
     })
@@ -769,7 +769,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
         host: act.host,
         path: row.path || "",
         mode: Rules.mode(row),
-        page: :hive,
+        page: :workspace,
         level: if(choice, do: :target),
         target: nil,
         targets: targets,
@@ -778,11 +778,11 @@ defmodule ApiaryWeb.ConnectionLive.Index do
         baseline: if(filtered, do: Policy.effective(scope, nil), else: effective),
         standing: act.standing,
         chosen: nil,
-        what: %{target: nil, hive: nil},
+        what: %{target: nil, workspace: nil},
         own_rule: false,
         seen: nil,
         consequence: %{},
-        hive: scope.hive.name,
+        workspace: scope.workspace.name,
         alive: false,
         fetched: false,
         interval: @default_beat,
@@ -825,7 +825,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
 
   defp close_popover(socket), do: socket |> assign(popover: nil) |> assign_acts()
 
-  # The connection the rule is made from: the chosen target's, or for the hive any of
+  # The connection the rule is made from: the chosen target's, or for the workspace any of
   # the destination's.
   defp rule_source(%{level: :target, choice: choice, targets: targets})
        when is_binary(choice) do
@@ -835,8 +835,8 @@ defmodule ApiaryWeb.ConnectionLive.Index do
     end
   end
 
-  defp rule_source(%{level: :hive, any_connection_id: id}) when is_binary(id),
-    do: {:ok, %{connection_id: id, label: gettext("the hive"), target: nil}}
+  defp rule_source(%{level: :workspace, any_connection_id: id}) when is_binary(id),
+    do: {:ok, %{connection_id: id, label: gettext("the workspace"), target: nil}}
 
   defp rule_source(_popover), do: :error
 
@@ -891,13 +891,13 @@ defmodule ApiaryWeb.ConnectionLive.Index do
       | chosen: popover.choice,
         what: %{
           target: Rules.what(chosen, host, path),
-          hive: Rules.what(baseline, host, path)
+          workspace: Rules.what(baseline, host, path)
         },
         own_rule: own?,
         seen: {Rules.seen(baseline, host), Rules.seen(chosen, host)},
         consequence: %{
           target: chosen && target_consequence(chosen, host),
-          hive: hive_consequence(baseline, host, own?)
+          workspace: workspace_consequence(baseline, host, own?)
         }
     }
   end
@@ -905,13 +905,13 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   defp target_consequence(effective, host) do
     if Rules.own_rule?(effective, host),
       do: gettext("Replaces the target's own rule for the host."),
-      else: gettext("Disables the hive's allow rule there. Other targets keep it.")
+      else: gettext("Disables the workspace's allow rule there. Other targets keep it.")
   end
 
-  defp hive_consequence(baseline, host, own?) do
+  defp workspace_consequence(baseline, host, own?) do
     cond do
       own? -> gettext("A target's own allow rule still holds there.")
-      Rules.seen(baseline, host) != [] -> gettext("Replaces the hive's allow rule.")
+      Rules.seen(baseline, host) != [] -> gettext("Replaces the workspace's allow rule.")
       true -> nil
     end
   end
@@ -921,7 +921,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
     effective = Policy.effective(scope, filtered)
     baseline = if filtered, do: Policy.effective(scope, nil), else: effective
     own = if filtered, do: [], else: Rules.own_hosts(scope)
-    page = if filtered, do: :run, else: :hive
+    page = if filtered, do: :run, else: :workspace
     chosen = chosen_effective(assign(socket, effective: effective), popover.chosen)
     row = Enum.find(rows, &("#{destination_id(&1)}-act" == popover.anchor))
 
@@ -985,8 +985,8 @@ defmodule ApiaryWeb.ConnectionLive.Index do
         names: Enum.join(names, ", ")
       )
 
-  defp path(%Filters{} = filters), do: ~p"/hive/connections?#{Filters.to_params(filters)}"
-  defp run_path(run), do: ~p"/hive/runs/#{run.run_id}/connections"
+  defp path(%Filters{} = filters), do: ~p"/workspace/connections?#{Filters.to_params(filters)}"
+  defp run_path(run), do: ~p"/workspace/runs/#{run.run_id}/connections"
 
   defp narrowed?(%Filters{} = f),
     do: f.decision != nil or f.target != nil or f.host != nil or f.tools

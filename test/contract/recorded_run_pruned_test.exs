@@ -70,12 +70,16 @@ defmodule Apiary.Contract.RecordedRunPrunedTest do
       lines = @file_path |> File.read!() |> String.split("\n", trim: true)
       assert Enum.all?(deliver(key, lines), &(&1.status == 202))
 
-      run = Repo.one!(from r in Run, where: r.hive_id == ^scope.hive.id and r.run_id == ^@subject)
+      run =
+        Repo.one!(
+          from r in Run, where: r.workspace_id == ^scope.workspace.id and r.run_id == ^@subject
+        )
+
       {:ok, run} = Projector.project(run)
       later = DateTime.add(DateTime.utc_now(), 400 * 86_400, :second)
 
-      {:ok, hive} = Retention.update_retention(scope, %{log_retention_days: 30})
-      assert %{runs_pruned: 1} = Retention.prune_hive(hive, now: later)
+      {:ok, workspace} = Retention.update_retention(scope, %{log_retention_days: 30})
+      assert %{runs_pruned: 1} = Retention.prune_workspace(workspace, now: later)
       before = state(run)
 
       results = deliver(key, lines)
@@ -83,10 +87,10 @@ defmodule Apiary.Contract.RecordedRunPrunedTest do
       {:ok, _run} = Projector.project(run)
       assert state(run) == before
 
-      {:ok, hive} =
+      {:ok, workspace} =
         Retention.update_retention(scope, %{events_retention_days: 30, log_retention_days: nil})
 
-      assert %{runs_pruned: 1} = Retention.prune_hive(hive, now: later)
+      assert %{runs_pruned: 1} = Retention.prune_workspace(workspace, now: later)
       before = state(run)
       assert before.events == 0
 

@@ -68,7 +68,7 @@ defmodule ApiaryWeb.UserLive.ConfirmationTest do
       assert Accounts.get_user!(user.id).confirmed_at
       # we are logged in now
       assert get_session(conn, :user_token)
-      assert redirected_to(conn) == ~p"/hive"
+      assert redirected_to(conn) == ~p"/workspace"
 
       # log out, new conn
       conn = build_conn()
@@ -144,7 +144,7 @@ defmodule ApiaryWeb.UserLive.ConfirmationTest do
         render_submit(form)
         conn = follow_trigger_action(form, conn)
 
-        assert redirected_to(conn) == ~p"/hive"
+        assert redirected_to(conn) == ~p"/workspace"
         assert is_map_key(conn.resp_cookies, "_apiary_web_user_remember_me") == cookie?
       end
     end

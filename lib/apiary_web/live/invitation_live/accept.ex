@@ -27,9 +27,9 @@ defmodule ApiaryWeb.InvitationLive.Accept do
             variant="primary"
             size="md"
             class="btn-block"
-            navigate={~p"/hive"}
+            navigate={~p"/workspace"}
           >
-            {gettext("Go to your hive")}
+            {gettext("Go to your workspace")}
           </.button>
           <.button
             :if={!@current_scope}
@@ -109,7 +109,7 @@ defmodule ApiaryWeb.InvitationLive.Accept do
   defp invitation_summary(assigns) do
     ~H"""
     <Layouts.auth_heading>
-      {gettext("Join %{name}", name: @invitation.hive.name)}
+      {gettext("Join %{name}", name: @invitation.workspace.name)}
       <:subtitle><.rich text={invitation_sentence(@invitation)} /></:subtitle>
     </Layouts.auth_heading>
     """
@@ -153,16 +153,16 @@ defmodule ApiaryWeb.InvitationLive.Accept do
   # One sentence per level: the article and the word go together.
   defp invitation_sentence(%{level: :owner} = invitation) do
     rich_gettext(
-      "You are invited to the %{hive} hive of the %{organisation} organisation, as an owner.",
-      hive: {:b, invitation.hive.name, "font-medium text-base-content"},
+      "You are invited to the %{workspace} workspace of the %{organisation} organisation, as an owner.",
+      workspace: {:b, invitation.workspace.name, "font-medium text-base-content"},
       organisation: {:b, invitation.organisation.name, "font-medium text-base-content"}
     )
   end
 
   defp invitation_sentence(invitation) do
     rich_gettext(
-      "You are invited to the %{hive} hive of the %{organisation} organisation, as a member.",
-      hive: {:b, invitation.hive.name, "font-medium text-base-content"},
+      "You are invited to the %{workspace} workspace of the %{organisation} organisation, as a member.",
+      workspace: {:b, invitation.workspace.name, "font-medium text-base-content"},
       organisation: {:b, invitation.organisation.name, "font-medium text-base-content"}
     )
   end

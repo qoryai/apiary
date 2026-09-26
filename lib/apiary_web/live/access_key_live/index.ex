@@ -1,6 +1,6 @@
 defmodule ApiaryWeb.AccessKeyLive.Index do
   @moduledoc """
-  The hive's access keys: list, create (reveal-once), rotate, retire the
+  The workspace's access keys: list, create (reveal-once), rotate, retire the
   previous secret, revoke.
   """
   use ApiaryWeb, :live_view
@@ -22,11 +22,11 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
         {gettext("Access keys")}
         <:subtitle>
           {gettext(
-            "A key lets the machines of this hive post their runs. Create one per machine or environment and paste its server block into the runner file."
+            "A key lets the machines of this workspace post their runs. Create one per machine or environment and paste its server block into the runner file."
           )}
         </:subtitle>
         <:actions>
-          <.button variant="primary" patch={~p"/hive/keys/new"}>
+          <.button variant="primary" patch={~p"/workspace/keys/new"}>
             <.icon name="hero-plus-micro" class="size-4" /> {gettext("New access key")}
           </.button>
         </:actions>
@@ -35,11 +35,11 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
       <.empty_state :if={@keys == []} icon="hero-key" title={gettext("No access keys yet")}>
         <p>
           {gettext(
-            "Create a key and paste its server block into the runner file on a machine. It posts its runs to this hive from then on."
+            "Create a key and paste its server block into the runner file on a machine. It posts its runs to this workspace from then on."
           )}
         </p>
         <:actions>
-          <.button patch={~p"/hive/keys/new"}>{gettext("Create an access key")}</.button>
+          <.button patch={~p"/workspace/keys/new"}>{gettext("Create an access key")}</.button>
         </:actions>
       </.empty_state>
 
@@ -118,7 +118,7 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
               <.button
                 variant="ghost"
                 size="xs"
-                patch={~p"/hive/keys/#{key.id}/rotate"}
+                patch={~p"/workspace/keys/#{key.id}/rotate"}
                 aria-label={gettext("Rotate %{label}", label: key.label)}
               >
                 {gettext("Rotate")}
@@ -126,7 +126,7 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
               <.button
                 variant="danger-ghost"
                 size="xs"
-                patch={~p"/hive/keys/#{key.id}/revoke"}
+                patch={~p"/workspace/keys/#{key.id}/revoke"}
                 aria-label={gettext("Revoke %{label}", label: key.label)}
               >
                 {gettext("Revoke")}
@@ -139,7 +139,7 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
         :if={@live_action == :new && is_nil(@reveal)}
         id="new-key"
         title={gettext("New access key")}
-        on_cancel={JS.patch(~p"/hive/keys")}
+        on_cancel={JS.patch(~p"/workspace/keys")}
       >
         <.form
           for={@form}
@@ -159,7 +159,7 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
           />
         </.form>
         <:footer>
-          <.button patch={~p"/hive/keys"}>{gettext("Cancel")}</.button>
+          <.button patch={~p"/workspace/keys"}>{gettext("Cancel")}</.button>
           <.button
             variant="primary"
             type="submit"
@@ -188,7 +188,7 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
         </:aside>
         <.reveal reveal={@reveal} rotated={@live_action == :rotate} />
         <:footer>
-          <.button variant="primary" patch={~p"/hive/keys"} data-autofocus>
+          <.button variant="primary" patch={~p"/workspace/keys"} data-autofocus>
             {gettext("I have copied the secret")}
           </.button>
         </:footer>
@@ -198,7 +198,7 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
         :if={@live_action == :rotate && @key && is_nil(@reveal)}
         id="rotate-key"
         title={gettext("Rotate %{label}", label: @key.label)}
-        on_cancel={JS.patch(~p"/hive/keys")}
+        on_cancel={JS.patch(~p"/workspace/keys")}
       >
         <p class="text-muted">
           {gettext(
@@ -206,7 +206,7 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
           )}
         </p>
         <:footer>
-          <.button patch={~p"/hive/keys"}>{gettext("Cancel")}</.button>
+          <.button patch={~p"/workspace/keys"}>{gettext("Cancel")}</.button>
           <.button variant="primary" phx-click="rotate" loading_text={gettext("Rotating")}>
             {gettext("Rotate key")}
           </.button>
@@ -217,7 +217,7 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
         :if={@live_action == :revoke && @key}
         id="revoke-key"
         title={gettext("Revoke %{label}", label: @key.label)}
-        on_cancel={JS.patch(~p"/hive/keys")}
+        on_cancel={JS.patch(~p"/workspace/keys")}
       >
         <p class="text-muted">
           {gettext(
@@ -225,7 +225,7 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
           )}
         </p>
         <:footer>
-          <.button patch={~p"/hive/keys"} data-autofocus>{gettext("Cancel")}</.button>
+          <.button patch={~p"/workspace/keys"} data-autofocus>{gettext("Cancel")}</.button>
           <.button variant="danger" phx-click="revoke" loading_text={gettext("Revoking")}>
             {gettext("Revoke key")}
           </.button>
@@ -368,7 +368,7 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
     if key.revoked_at do
       socket
       |> put_flash(:error, gettext("%{label} is already revoked.", label: key.label))
-      |> push_patch(to: ~p"/hive/keys")
+      |> push_patch(to: ~p"/workspace/keys")
     else
       assign(socket, key: key, reveal: nil)
     end
@@ -409,7 +409,7 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
            :error,
            gettext("%{label} is revoked and cannot be rotated.", label: key.label)
          )
-         |> push_patch(to: ~p"/hive/keys")}
+         |> push_patch(to: ~p"/workspace/keys")}
 
       {:error, :unauthorized} ->
         {:noreply, unauthorized(socket)}
@@ -428,7 +428,7 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
            )
          )
          |> load_keys()
-         |> push_patch(to: ~p"/hive/keys")}
+         |> push_patch(to: ~p"/workspace/keys")}
 
       {:error, :unauthorized} ->
         {:noreply, unauthorized(socket)}
@@ -468,8 +468,8 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
   # The membership this page was opened with is gone.
   defp unauthorized(socket) do
     socket
-    |> put_flash(:error, gettext("You are no longer a member of this hive."))
-    |> push_navigate(to: ~p"/hive")
+    |> put_flash(:error, gettext("You are no longer a member of this workspace."))
+    |> push_navigate(to: ~p"/workspace")
   end
 
   # The look of `CoreComponents.mono/1`, for a word of code inside a sentence.

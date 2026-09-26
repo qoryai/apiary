@@ -163,7 +163,7 @@ defmodule Apiary.MixProject do
         "Accounts and organisations": [~r/^Apiary\.Accounts/, ~r/^Apiary\.Organisations/],
         "Access keys": [~r/^Apiary\.AccessKeys/, ~r/^Apiary\.Encrypted/, Apiary.Vault],
         "Runs and the record": [~r/^Apiary\.Runs/],
-        Bodies: [~r/^Apiary\.Body/],
+        Domains: [~r/^Apiary\.Lingo\.Domain/],
         "Security policy": [~r/^Apiary\.Policy/],
         Retention: [~r/^Apiary\.Retention/],
         "Server contract": [~r/^Apiary\.Contract/, ~r/^ApiaryWeb\.Contract/],

@@ -3,8 +3,8 @@ defmodule Apiary.Policy.RepairTest do
   The one-off repair of `20260925000300`: the baselines a page's read once rendered and
   stored, with no change behind them, are deleted and the versions after them move down.
   """
-  # Not async: the repair's statements are the database's whole, not one hive's, and make a
-  # temporary table; they run as the migration runs, alone.
+  # Not async: the repair's statements are the database's whole, not one workspace's, and
+  # make a temporary table; they run as the migration runs, alone.
   use Apiary.DataCase, async: false
 
   # The security policy: left out of a run without the security feature.
@@ -27,7 +27,7 @@ defmodule Apiary.Policy.RepairTest do
 
     Repo.insert!(%RunConfiguration{
       organisation_id: scope.organisation.id,
-      hive_id: scope.hive.id,
+      workspace_id: scope.workspace.id,
       version: 1,
       document: document,
       digest: Apiary.Policy.Render.digest(document),
@@ -35,24 +35,29 @@ defmodule Apiary.Policy.RepairTest do
     })
   end
 
-  # The repair's SQL names `repository_id`, since renamed `target_id` by 20260927000100.
+  # The repair's SQL names `repository_id`, since renamed `target_id` by 20260927000100,
+  # and `hive_id`, since renamed `workspace_id` by 20260929000100.
   defp repair! do
     Repo.transaction(fn ->
-      for sql <- Migration.repair_sql(),
-          do: Repo.query!(String.replace(sql, "repository_id", "target_id"))
+      for sql <- Migration.repair_sql() do
+        sql
+        |> String.replace("repository_id", "target_id")
+        |> String.replace("hive_id", "workspace_id")
+        |> Repo.query!()
+      end
     end)
   end
 
   defp versions(scope) do
     Repo.all(
       from c in RunConfiguration,
-        where: c.hive_id == ^scope.hive.id and is_nil(c.target_id),
+        where: c.workspace_id == ^scope.workspace.id and is_nil(c.target_id),
         order_by: c.version,
         select: {c.version, not is_nil(c.policy_change_id)}
     )
   end
 
-  test "an unmanaged hive's stored baseline goes, and its first change is version 1" do
+  test "an unmanaged workspace's stored baseline goes, and its first change is version 1" do
     %{scope: scope} = sign_up_fixture()
     orphan!(scope)
 
@@ -63,7 +68,7 @@ defmodule Apiary.Policy.RepairTest do
     assert versions(scope) == [{1, true}]
   end
 
-  test "a managed hive whose first change became version 2 is renumbered from 1" do
+  test "a managed workspace whose first change became version 2 is renumbered from 1" do
     %{scope: scope} = sign_up_fixture()
     orphan!(scope)
     {:ok, _} = Policy.set_mode(scope, "enforce")
@@ -72,7 +77,7 @@ defmodule Apiary.Policy.RepairTest do
     target =
       Repo.insert!(%Apiary.Runs.Target{
         organisation_id: scope.organisation.id,
-        hive_id: scope.hive.id,
+        workspace_id: scope.workspace.id,
         system: "f",
         path: "p",
         first_seen_at: DateTime.utc_now()

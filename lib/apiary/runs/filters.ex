@@ -1,6 +1,6 @@
 defmodule Apiary.Runs.Filters do
   @moduledoc """
-  What the runs list and the hive's connections page are filtered by, read from query
+  What the runs list and the workspace's connections page are filtered by, read from query
   parameters and written back to them, so that every view is a URL.
 
   `parse/2` never fails: a value it does not know is dropped, and `to_params/1` of the
@@ -9,12 +9,12 @@ defmodule Apiary.Runs.Filters do
   the values are compared as strings by `Apiary.Runs`.
 
   The defaults (group by target, the last seven days, page 1) are left out of the URL.
-  The hive's connections take `tools=1` for tool invocations only: requests that name a
-  tool and were allowed (`Apiary.Runs.tool_invocation?/2`), never one a path rule refused.
-  On the runs list `since=all` is the way to say "no time range", which removing the range
-  chip writes. The hive's connections are an aggregate over every connection in range, so
-  their range is bounded: `since=90d` is the widest, and dates cover at most
-  90 days, counted back from `to` (or on from `from` when only it is given).
+  The workspace's connections take `tools=1` for tool invocations only: requests that name
+  a tool and were allowed (`Apiary.Runs.tool_invocation?/2`), never one a path rule
+  refused. On the runs list `since=all` is the way to say "no time range", which removing
+  the range chip writes. The workspace's connections are an aggregate over every
+  connection in range, so their range is bounded: `since=90d` is the widest, and dates
+  cover at most 90 days, counted back from `to` (or on from `from` when only it is given).
 
   A target is two parameters, `system` and `target` (the path), because either may
   hold any character, a colon included; `target=none` without a `system` is "no target".
@@ -32,9 +32,10 @@ defmodule Apiary.Runs.Filters do
 
   @groups ~w(target task none)
   # The three families every surface reads the states as, in the order they are shown.
-  # `closed` is stopped by the hive, not a failure of the run, and sits with the bad endings
-  # for scanning. Only their states go in a URL: `state=failed,timed_out,lost,closed`.
-  # The three families every surface counts runs in (`Apiary.Runs.Run`): one definition.
+  # `closed` is stopped by the workspace, not a failure of the run, and sits with the bad
+  # endings for scanning. Only their states go in a URL:
+  # `state=failed,timed_out,lost,closed`. The three families every surface counts runs in
+  # (`Apiary.Runs.Run`): one definition.
   @families [
     %{key: "alive", label: gettext_noop("Alive"), states: Run.alive_states()},
     %{key: "ended_well", label: gettext_noop("Ended well"), states: Run.ended_well_states()},
@@ -83,7 +84,7 @@ defmodule Apiary.Runs.Filters do
           dropped: [String.t()]
         }
 
-  @doc "The widest window the hive's connections are aggregated over, in days."
+  @doc "The widest window the workspace's connections are aggregated over, in days."
   def max_window_days, do: @max_window_days
 
   @typedoc "A family of states: its key, the heading it is shown under and its states."
@@ -92,8 +93,8 @@ defmodule Apiary.Runs.Filters do
   @doc """
   The three families the states read as, in the order they are shown: alive (`pending`,
   `running`), ended well (`succeeded`) and ended badly (`failed`, `timed_out`, `lost`,
-  `closed`). Every state is in exactly one. The labels are in the body's words: translated
-  here, at call time, because the list is made at compile time.
+  `closed`). Every state is in exactly one. The labels are in the domain's words:
+  translated here, at call time, because the list is made at compile time.
   """
   @spec families() :: [family()]
   def families,
@@ -130,7 +131,7 @@ defmodule Apiary.Runs.Filters do
 
   def ranges(:connections), do: ranges(:runs) ++ [{gettext("Last 90 days"), "90d"}]
 
-  @doc "Reads the parameters of the runs list (`:runs`) or the hive's connections (`:connections`)."
+  @doc "Reads the parameters of the runs list (`:runs`) or the workspace's connections (`:connections`)."
   @spec parse(map(), :runs | :connections) :: t()
   def parse(params, kind \\ :runs) when is_map(params) and kind in [:runs, :connections] do
     {from, d1} = read(params, "from", &date/1)

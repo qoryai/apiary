@@ -4,7 +4,7 @@ defmodule Apiary.Runs.Ingest do
 
   `ingest/3` takes the access key the request was verified under, the parsed
   batch and what the request's headers said, and in one transaction creates the
-  run in the key's hive when its subject is new, inserts the events that are
+  run in the key's workspace when its subject is new, inserts the events that are
   new, records the delivery and counts. It projects nothing: once the
   transaction has committed, the use of the key is recorded, the projector is
   asked to project the run on its own time, and the caller answers.
@@ -51,19 +51,20 @@ defmodule Apiary.Runs.Ingest do
         }
 
   @doc """
-  Stores the batch. `{:ok, result}` with `status` 202, or 410 when the hive has
+  Stores the batch. `{:ok, result}` with `status` 202, or 410 when the workspace has
   closed the run, or retention has pruned its events (`runs.events_pruned_at`), and
   nothing but the delivery was recorded; `inserted` events
   were new, `duplicates` were already held, `conflicts` were dropped,
   `heartbeat` says a heartbeat was among the new ones, and `repeated` says the
-  delivery id had been recorded before; `managed` says whether the hive serves a run
+  delivery id had been recorded before; `managed` says whether the workspace serves a run
   configuration (nil when that could not be read) and `run_configuration_digest` is
   the digest in force for the run's target, for the answer's headers (nil for a
-  hive that is not managed, and when it could not be read). `{:error, :unavailable}` when the batch could not be stored.
+  workspace that is not managed, and when it could not be read). `{:error, :unavailable}`
+  when the batch could not be stored.
 
   The digest the request reported (`meta.run_configuration`) is kept on the delivery
   and, as the last one reported, on the run. The digest in force is read after the
-  commit, outside the run's lock, and never rendered: a read that says the hive is
+  commit, outside the run's lock, and never rendered: a read that says the workspace is
   managed, then one read of an index for the digest, two when the run's target has
   no configuration of its own and the baseline's is read after it.
   """
@@ -82,8 +83,9 @@ defmodule Apiary.Runs.Ingest do
   end
 
   # What the answer's digests are decided by, read after the commit and never failing the
-  # delivery: whether the hive's policy is managed (nil when that could not be read), and,
-  # for a managed hive, the digest of the run configuration in force for the run.
+  # delivery: whether the workspace's policy is managed (nil when that could not be read),
+  # and, for a managed workspace, the digest of the run configuration in force for the
+  # run.
   defp in_force(access_key, run, batch, meta) do
     if Serving.managed?(access_key) do
       digest = Serving.digest_for(access_key, run, batch, run_configuration(meta))
@@ -100,7 +102,7 @@ defmodule Apiary.Runs.Ingest do
   # names the exception's module and nothing else: a Postgres message can
   # quote the row, which is an event.
   defp transact(access_key, batch, meta, delivery_id, now) do
-    if Runs.closed?(access_key.hive_id, batch.subject) do
+    if Runs.closed?(access_key.workspace_id, batch.subject) do
       Repo.transact(fn -> {:ok, gone(access_key, batch, meta, delivery_id, now)} end)
     else
       Repo.transact(fn -> {:ok, store(access_key, batch, meta, delivery_id, now)} end)
@@ -119,7 +121,7 @@ defmodule Apiary.Runs.Ingest do
         gone(access_key, batch, meta, delivery_id, now)
 
       # Retention deleted the run's events, and with them what a replay would be
-      # deduplicated against: the hive wants nothing more of this run.
+      # deduplicated against: the workspace wants nothing more of this run.
       not is_nil(run.events_pruned_at) ->
         gone(access_key, batch, meta, delivery_id, now)
 
@@ -144,8 +146,8 @@ defmodule Apiary.Runs.Ingest do
 
   # A run whose log retention has pruned takes no more log events: the ones it had are
   # gone, so a replay of them could not be told from new ones, and any that is new is
-  # older than the hive keeps log output. They are answered as duplicates; every other
-  # event is still deduplicated against the events the run keeps.
+  # older than the workspace keeps log output. They are answered as duplicates; every
+  # other event is still deduplicated against the events the run keeps.
   defp without_pruned_log(%Run{log_pruned_at: nil}, batch), do: {batch, 0}
 
   defp without_pruned_log(%Run{}, %Batch{events: events} = batch) do
@@ -153,8 +155,8 @@ defmodule Apiary.Runs.Ingest do
     {%{batch | events: kept}, length(events) - length(kept)}
   end
 
-  # The hive has closed the run, or pruned its events: the delivery is recorded, nothing
-  # else is kept.
+  # The workspace has closed the run, or pruned its events: the delivery is recorded,
+  # nothing else is kept.
   defp gone(access_key, batch, meta, delivery_id, now) do
     repeated = not new_delivery?(access_key, batch, meta, delivery_id, now, 410)
     %{result(410, nil) | repeated: repeated}
@@ -184,7 +186,7 @@ defmodule Apiary.Runs.Ingest do
         %{
           id: Ecto.UUID.generate(),
           organisation_id: access_key.organisation_id,
-          hive_id: access_key.hive_id,
+          workspace_id: access_key.workspace_id,
           run_id: batch.subject,
           access_key_id: access_key.id,
           state: "pending",
@@ -195,12 +197,12 @@ defmodule Apiary.Runs.Ingest do
         }
       ],
       on_conflict: :nothing,
-      conflict_target: [:hive_id, :run_id]
+      conflict_target: [:workspace_id, :run_id]
     )
 
     Repo.one!(
       from r in Run,
-        where: r.hive_id == ^access_key.hive_id and r.run_id == ^batch.subject,
+        where: r.workspace_id == ^access_key.workspace_id and r.run_id == ^batch.subject,
         lock: "FOR UPDATE"
     )
   end
@@ -215,7 +217,7 @@ defmodule Apiary.Runs.Ingest do
           %{
             id: Ecto.UUID.generate(),
             organisation_id: access_key.organisation_id,
-            hive_id: access_key.hive_id,
+            workspace_id: access_key.workspace_id,
             access_key_id: access_key.id,
             delivery_id: delivery_id,
             run_id: batch.subject,
@@ -250,7 +252,7 @@ defmodule Apiary.Runs.Ingest do
         %{
           id: Ecto.UUID.generate(),
           organisation_id: run.organisation_id,
-          hive_id: run.hive_id,
+          workspace_id: run.workspace_id,
           run_id: run.id,
           sequence: event.sequence,
           event_id: event.event_id,
@@ -283,7 +285,7 @@ defmodule Apiary.Runs.Ingest do
     {inserted, skipped - conflicts, conflicts, Enum.any?(stored, &(&1.type == @heartbeat))}
   end
 
-  # An event that was not inserted is a duplicate when the hive holds the same id
+  # An event that was not inserted is a duplicate when the workspace holds the same id
   # in the same run at the same sequence, and a conflict otherwise: its id is
   # another run's, or its sequence is another event's.
   defp conflicts(run, rows, stored) do
@@ -294,7 +296,7 @@ defmodule Apiary.Runs.Ingest do
     held =
       Repo.all(
         from(e in Event,
-          where: e.hive_id == ^run.hive_id and e.event_id in ^ids,
+          where: e.workspace_id == ^run.workspace_id and e.event_id in ^ids,
           select: {e.event_id, {e.run_id, e.sequence}}
         ),
         log: false

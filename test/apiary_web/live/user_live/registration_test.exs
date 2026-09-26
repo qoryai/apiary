@@ -18,7 +18,7 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
         |> log_in_user(user_fixture())
         |> live(~p"/users/register")
 
-      assert {:error, {:redirect, %{to: "/hive"}}} = result
+      assert {:error, {:redirect, %{to: "/workspace"}}} = result
     end
 
     test "renders errors for invalid data", %{conn: conn} do

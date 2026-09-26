@@ -1,7 +1,7 @@
 defmodule Apiary.Runs.Projector do
   @moduledoc """
   Folds a run's events into what the console reads: the `runs` row, its `connections`,
-  its `log_chunks` and the hive's `targets`.
+  its `log_chunks` and the workspace's `targets`.
 
   The receiver stores events and answers; it calls `project_async/1` after its
   transaction has committed. `project/1` is the same work done synchronously: the tests
@@ -366,7 +366,7 @@ defmodule Apiary.Runs.Projector do
         %{
           id: Ecto.UUID.generate(),
           organisation_id: run.organisation_id,
-          hive_id: run.hive_id,
+          workspace_id: run.workspace_id,
           system: system,
           path: path,
           first_seen_at: now,
@@ -375,14 +375,14 @@ defmodule Apiary.Runs.Projector do
         }
       ],
       on_conflict: :nothing,
-      conflict_target: [:hive_id, :system, :path],
+      conflict_target: [:workspace_id, :system, :path],
       log: false
     )
 
     target_id =
       Repo.one!(
         from(t in Target,
-          where: t.hive_id == ^run.hive_id and t.system == ^system and t.path == ^path,
+          where: t.workspace_id == ^run.workspace_id and t.system == ^system and t.path == ^path,
           select: t.id
         ),
         log: false
@@ -401,7 +401,7 @@ defmodule Apiary.Runs.Projector do
         Map.merge(chunk, %{
           id: Ecto.UUID.generate(),
           organisation_id: run.organisation_id,
-          hive_id: run.hive_id,
+          workspace_id: run.workspace_id,
           run_id: run.id
         })
       end
@@ -421,7 +421,7 @@ defmodule Apiary.Runs.Projector do
         Map.merge(delta, %{
           id: Ecto.UUID.generate(),
           organisation_id: run.organisation_id,
-          hive_id: run.hive_id,
+          workspace_id: run.workspace_id,
           run_id: run.id,
           host: host,
           port: port,

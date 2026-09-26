@@ -5,7 +5,7 @@ defmodule Apiary.AccessKeysFixtures do
 
   def unique_label, do: "runner #{System.unique_integer([:positive])}"
 
-  @doc "A key in the scope's hive, and the secret it was created with."
+  @doc "A key in the scope's workspace, and the secret it was created with."
   def access_key_fixture(scope, attrs \\ %{}) do
     attrs = Enum.into(attrs, %{label: unique_label()})
     {:ok, access_key, secret} = AccessKeys.create_access_key(scope, attrs)

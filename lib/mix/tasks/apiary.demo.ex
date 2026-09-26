@@ -1,8 +1,8 @@
 defmodule Mix.Tasks.Apiary.Demo do
-  @shortdoc "Replays the synthetic runs under priv/demo into a hive (dev and test only)"
+  @shortdoc "Replays the synthetic runs under priv/demo into a workspace (dev and test only)"
 
   @moduledoc """
-  Replays recorded runs into a hive, so that there is something to look at while the
+  Replays recorded runs into a workspace, so that there is something to look at while the
   console is being built. A development tool: it refuses to run in production.
 
       mix apiary.demo
@@ -10,9 +10,9 @@ defmodule Mix.Tasks.Apiary.Demo do
       mix apiary.demo --file priv/demo/failed-run/events.jsonl
 
   Every `priv/demo/*/events.jsonl` is one run, one CloudEvent of the server contract per
-  line, all of it synthetic. `--file` replays one file instead. The run lands in the hive
-  of the access key named by `--key`, a key id; without it, in the first hive, under its
-  newest key that is not revoked.
+  line, all of it synthetic. `--file` replays one file instead. The run lands in the
+  workspace of the access key named by `--key`, a key id; without it, in the first
+  workspace, under its newest key that is not revoked.
 
   Nothing is inserted from here. A file goes the way a delivery goes: cut into batches of
   20 events, each parsed by `Apiary.Runs.Batch` and stored by `Apiary.Runs.Ingest`, the
@@ -22,13 +22,14 @@ defmodule Mix.Tasks.Apiary.Demo do
   exited; one that does not has just beaten, and is found lost once its heartbeats have
   been missing for three of its intervals, like any run that stops talking.
 
-  Once the runs are in, a hive that has no security policy yet is given one, through
-  `Apiary.Policy` as a page would and in the name of the hive's first owner: enforce, a
-  baseline of hosts, one held to paths, a locked deny, a credential, and in the target
+  Once the runs are in, a workspace that has no security policy yet is given one, through
+  `Apiary.Policy` as a page would and in the name of the workspace's first owner: enforce,
+  a baseline of hosts, one held to paths, a locked deny, a credential, and in the target
   `git.example.com/acme/shop` an added host, a disabled one, an allow the lock
-  overrides and a mode of its own (observe, under a hive that enforces); written rule by rule, so there are versions and a history to look at, and the
-  hive is a managed one, serving its run configuration. A hive whose policy anybody has
-  changed, even back to nothing, is left as it is.
+  overrides and a mode of its own (observe, under a workspace that enforces); written rule
+  by rule, so there are versions and a history to look at, and the workspace is a managed
+  one, serving its run configuration. A workspace whose policy anybody has changed, even
+  back to nothing, is left as it is.
   """
 
   use Mix.Task
@@ -38,7 +39,7 @@ defmodule Mix.Tasks.Apiary.Demo do
   alias Apiary.AccessKeys
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
-  alias Apiary.Organisations.{Hive, Membership}
+  alias Apiary.Organisations.{Workspace, Membership}
   alias Apiary.Policy
   alias Apiary.Repo
   alias Apiary.Runs.{Batch, Ingest, Projector, Target, Run}
@@ -62,7 +63,7 @@ defmodule Mix.Tasks.Apiary.Demo do
     files = if opts[:file], do: [opts[:file]], else: files()
     if files == [], do: Mix.raise("no events.jsonl under #{demo_dir()}")
 
-    Mix.shell().info("Replaying into the hive of #{access_key.key_id}")
+    Mix.shell().info("Replaying into the workspace of #{access_key.key_id}")
 
     for file <- files do
       case replay(access_key, file) do
@@ -72,7 +73,7 @@ defmodule Mix.Tasks.Apiary.Demo do
           #{file |> Path.relative_to(Application.app_dir(:apiary)) |> Path.relative_to_cwd()}
             run id  #{run.run_id}
             state   #{run.state}, #{run.event_count} events
-            url     #{ApiaryWeb.Endpoint.url()}/hive/runs/#{run.run_id}\
+            url     #{ApiaryWeb.Endpoint.url()}/workspace/runs/#{run.run_id}\
           """)
 
         {:error, reason} ->
@@ -80,17 +81,17 @@ defmodule Mix.Tasks.Apiary.Demo do
       end
     end
 
-    # An instance without the security feature has no policy to give the hive.
+    # An instance without the security feature has no policy to give the workspace.
     if Apiary.Features.on?(access_key, :security), do: demo_policy(access_key)
   end
 
   defp demo_policy(access_key) do
     case policy(access_key) do
       {:ok, changes} ->
-        Mix.shell().info("\nThe hive has a security policy now: #{changes} changes.")
+        Mix.shell().info("\nThe workspace has a security policy now: #{changes} changes.")
 
       :kept ->
-        Mix.shell().info("\nThe hive's security policy is left as it is.")
+        Mix.shell().info("\nThe workspace's security policy is left as it is.")
 
       {:error, reason} ->
         Mix.raise("the security policy was not written: #{reason}")
@@ -98,16 +99,21 @@ defmodule Mix.Tasks.Apiary.Demo do
   end
 
   @doc """
-  Gives the key's hive the demo's security policy, when nobody has made its policy yet
-  (`Apiary.Policy.managed?/1`; a hive whose rules were all removed again has been):
-  `{:ok, changes}` with how many changes were made, `:kept` for a hive with any change, or
-  `{:error, sentence}`. Synthetic hosts only, the ones the recorded runs reach.
+  Gives the key's workspace the demo's security policy, when nobody has made its policy
+  yet (`Apiary.Policy.managed?/1`; a workspace whose rules were all removed again has
+  been): `{:ok, changes}` with how many changes were made, `:kept` for a workspace with
+  any change, or `{:error, sentence}`. Synthetic hosts only, the ones the recorded runs
+  reach.
   """
-  def policy(%AccessKey{hive_id: hive_id}) do
-    with %Scope{} = scope <- owner_scope(hive_id),
+  def policy(%AccessKey{workspace_id: workspace_id}) do
+    with %Scope{} = scope <- owner_scope(workspace_id),
          false <- Policy.managed?(scope) do
       shop =
-        Repo.get_by(Target, hive_id: hive_id, system: "git.example.com", path: "acme/shop")
+        Repo.get_by(Target,
+          workspace_id: workspace_id,
+          system: "git.example.com",
+          path: "acme/shop"
+        )
 
       steps =
         [
@@ -135,7 +141,7 @@ defmodule Mix.Tasks.Apiary.Demo do
                 name: "product",
                 argument: "acme/shop"
               }),
-              # The hive enforces; this target is still being watched.
+              # The workspace enforces; this target is still being watched.
               &Policy.set_mode(&1, shop, "observe")
             ]
           else
@@ -149,7 +155,7 @@ defmodule Mix.Tasks.Apiary.Demo do
         end
       end)
     else
-      nil -> {:error, "the hive has no owner"}
+      nil -> {:error, "the workspace has no owner"}
       true -> :kept
     end
   end
@@ -159,22 +165,22 @@ defmodule Mix.Tasks.Apiary.Demo do
     Policy.remove_rule(scope, rule)
   end
 
-  # The scope of the hive's first owner: the policy is written in somebody's name.
-  defp owner_scope(hive_id) do
+  # The scope of the workspace's first owner: the policy is written in somebody's name.
+  defp owner_scope(workspace_id) do
     membership =
       Repo.one(
         from m in Membership,
-          where: m.hive_id == ^hive_id and m.level == :owner,
+          where: m.workspace_id == ^workspace_id and m.level == :owner,
           order_by: [asc: m.inserted_at, asc: m.id],
           limit: 1,
-          preload: [:user, :organisation, :hive]
+          preload: [:user, :organisation, :workspace]
       )
 
     if membership do
       %Scope{
         user: membership.user,
         organisation: membership.organisation,
-        hive: membership.hive,
+        workspace: membership.workspace,
         membership: membership
       }
     end
@@ -188,10 +194,10 @@ defmodule Mix.Tasks.Apiary.Demo do
   defp demo_dir, do: Application.app_dir(:apiary, "priv/demo")
 
   @doc """
-  Replays one `events.jsonl` as a new run in the hive of `access_key`, its last event
+  Replays one `events.jsonl` as a new run in the workspace of `access_key`, its last event
   happening at `now`, and projects it. `{:ok, run}` with the run as projected;
-  `{:error, reason}` when the file holds no events, a batch does not parse or the hive
-  does not take it.
+  `{:error, reason}` when the file holds no events, a batch does not parse or the
+  workspace does not take it.
   """
   def replay(%AccessKey{} = access_key, file, now \\ DateTime.utc_now()) do
     with {:ok, events} <- read(file) do
@@ -294,18 +300,18 @@ defmodule Mix.Tasks.Apiary.Demo do
   end
 
   defp access_key!(nil) do
-    hive = Repo.one(from h in Hive, order_by: [asc: h.inserted_at, asc: h.id], limit: 1)
-    if is_nil(hive), do: Mix.raise("there is no hive yet: sign up first")
+    workspace = Repo.one(from h in Workspace, order_by: [asc: h.inserted_at, asc: h.id], limit: 1)
+    if is_nil(workspace), do: Mix.raise("there is no workspace yet: sign up first")
 
     key =
       Repo.one(
         from k in AccessKey,
-          where: k.hive_id == ^hive.id and is_nil(k.revoked_at),
+          where: k.workspace_id == ^workspace.id and is_nil(k.revoked_at),
           order_by: [desc: k.inserted_at, desc: k.id],
           limit: 1
       )
 
-    key || Mix.raise("the first hive has no access key that is not revoked: create one")
+    key || Mix.raise("the first workspace has no access key that is not revoked: create one")
   end
 
   defp access_key!(key_id) do

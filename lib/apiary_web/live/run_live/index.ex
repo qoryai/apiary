@@ -1,14 +1,14 @@
 defmodule ApiaryWeb.RunLive.Index do
   @moduledoc """
-  The runs of the hive (`docs/design/brief-runs.md`, re1): one row per run with its state,
-  what it worked on, where and for how long, and its denials; grouped by target, by
+  The runs of the workspace (`docs/design/brief-runs.md`, re1): one row per run with its
+  state, what it worked on, where and for how long, and its denials; grouped by target, by
   task or not at all; filtered by state, target, task, runtime, host, time range and
   denials. Every filter, the grouping and the page are query parameters, read through
   `Apiary.Runs.Filters`: a value it does not know is dropped and the URL rewritten.
 
-  Live through the hive's topic. A run on the page changes in place, by its DOM id; changes
-  are collected and applied at most every 250 ms, and the rows are a keyed comprehension,
-  so only the rows that changed are sent. A new
+  Live through the workspace's topic. A run on the page changes in place, by its DOM id;
+  changes are collected and applied at most every 250 ms, and the rows are a keyed
+  comprehension, so only the rows that changed are sent. A new
   run that the filters return is never inserted under the reader: the summary line gains
   "1 new run", said politely to a screen reader, which asks again when the reader follows it. Whether a running run has gone quiet is
   decided here, on a 5 s timer and on every change, never in the browser.
@@ -32,7 +32,7 @@ defmodule ApiaryWeb.RunLive.Index do
   @summary_window 1_000
   # Closed's tooltip in the State menu: what the state means and where it is counted.
   @closed_menu_tip [
-    gettext_noop("Stopped by the hive: a member closed it after it went quiet."),
+    gettext_noop("Stopped by the workspace: a member closed it after it went quiet."),
     gettext_noop("Counted with the runs that ended badly.")
   ]
   @flush_window 250
@@ -51,7 +51,7 @@ defmodule ApiaryWeb.RunLive.Index do
       <.header>
         {gettext("Runs")}
         <:subtitle>
-          {gettext("Every run the machines of this hive have posted, as their events tell it.")}
+          {gettext("Every run the machines of this workspace have posted, as their events tell it.")}
         </:subtitle>
       </.header>
 
@@ -231,7 +231,7 @@ defmodule ApiaryWeb.RunLive.Index do
           title={empty_title(@filters)}
         >
           <span id="runs-hidden">
-            {hidden_sentence(@summary.hive_runs)}
+            {hidden_sentence(@summary.workspace_runs)}
           </span>
           <:actions>
             <.button
@@ -295,21 +295,23 @@ defmodule ApiaryWeb.RunLive.Index do
 
       <div :if={!@load_error && first_run?(@summary, @filters)} class="grid gap-4">
         <.empty_state :if={!@has_keys} icon="hero-play-circle" title={gettext("No runs yet")}>
-          {gettext("A run appears here when a machine with an access key of this hive starts one.")}
+          {gettext(
+            "A run appears here when a machine with an access key of this workspace starts one."
+          )}
           {gettext(
             "Create a key, paste its server block into the runner file on the machine, and start a run."
           )}
           <:actions>
-            <.button id="runs-create-key" variant="primary" navigate={~p"/hive/keys/new"}>
+            <.button id="runs-create-key" variant="primary" navigate={~p"/workspace/keys/new"}>
               {gettext("Create an access key")}
             </.button>
           </:actions>
         </.empty_state>
         <.empty_state :if={@has_keys} icon="hero-play-circle" title={gettext("No runs yet")}>
-          {gettext("No machine has posted a run to this hive yet.")}
+          {gettext("No machine has posted a run to this workspace yet.")}
           {gettext("The server block to paste into the runner file is on the access keys page.")}
           <:actions>
-            <.button id="runs-go-to-keys" navigate={~p"/hive/keys"}>
+            <.button id="runs-go-to-keys" navigate={~p"/workspace/keys"}>
               {gettext("Go to access keys")}
             </.button>
           </:actions>
@@ -489,7 +491,7 @@ defmodule ApiaryWeb.RunLive.Index do
       </td>
       <td class="q-c-run" role="cell">
         <div class="q-run-cell">
-          <.link navigate={~p"/hive/runs/#{@run.run_id}"} class="q-rowlink truncate">
+          <.link navigate={~p"/workspace/runs/#{@run.run_id}"} class="q-rowlink truncate">
             <.run_lead run={@run} group_by={@group_by} />
           </.link>
           <span>
@@ -722,8 +724,8 @@ defmodule ApiaryWeb.RunLive.Index do
   def handle_async(:summary, {:exit, _reason}, socket), do: {:noreply, socket}
 
   # Changes are collected and applied at most once every @flush_window: at once for the
-  # first, then together when the window ends. A busy hive costs this page one render and
-  # at most one query a window, however many batches land; nothing is read again for a
+  # first, then together when the window ends. A busy workspace costs this page one render
+  # and at most one query a window, however many batches land; nothing is read again for a
   # row, the message carries the run.
   @impl true
   def handle_info({:run_changed, run}, socket) do
@@ -827,7 +829,8 @@ defmodule ApiaryWeb.RunLive.Index do
       narrow = socket.assigns.narrow
 
       # The task does not inherit the process's locale: what `Apiary.Runs` names in it
-      # (a group without a task, a facet's option) is named in the hive's body all the same.
+      # (a group without a task, a facet's option) is named in the workspace's domain all
+      # the same.
       start_async(socket, :load, fn ->
         ApiaryWeb.Lingo.with_locale(scope, fn ->
           now = DateTime.utc_now()
@@ -881,13 +884,13 @@ defmodule ApiaryWeb.RunLive.Index do
     )
   end
 
-  defp path(%Filters{} = filters), do: ~p"/hive/runs?#{Filters.to_params(filters)}"
+  defp path(%Filters{} = filters), do: ~p"/workspace/runs?#{Filters.to_params(filters)}"
 
   defp connections_path({system, path}),
-    do: ~p"/hive/connections?#{Filters.target_params(system, path)}"
+    do: ~p"/workspace/connections?#{Filters.target_params(system, path)}"
 
-  # No run in the hive at all, and nothing narrowing the view: the first-run states.
-  defp first_run?(%{hive_runs: 0}, filters), do: not Filters.any?(filters)
+  # No run in the workspace at all, and nothing narrowing the view: the first-run states.
+  defp first_run?(%{workspace_runs: 0}, filters), do: not Filters.any?(filters)
   defp first_run?(_summary, _filters), do: false
 
   defp hidden_sentence(n) do

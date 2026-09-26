@@ -33,8 +33,9 @@ defmodule Apiary.Contract.SignedFixturesTest do
 
     %{scope: scope} = sign_up_fixture()
     published_key_fixture(scope)
-    # A hive serves a run configuration once somebody has made its policy; an instance
-    # without the security feature serves none, and its fixtures are left out below.
+    # A workspace serves a run configuration once somebody has made its policy; an
+    # instance without the security feature serves none, and its fixtures are left out
+    # below.
     if Apiary.Features.on?(:security),
       do: {:ok, _rule} = Apiary.Policy.allow(scope, nil, %{host: "api.example"})
 

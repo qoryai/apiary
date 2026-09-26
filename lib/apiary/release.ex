@@ -45,8 +45,9 @@ defmodule Apiary.Release do
   end
 
   @doc """
-  Renders every managed hive's run configurations again, as `mix apiary.policy.rerender`
-  does where there is Mix: `bin/apiary eval "Apiary.Release.policy_rerender()"`. See
+  Renders every managed workspace's run configurations again, as
+  `mix apiary.policy.rerender` does where there is Mix:
+  `bin/apiary eval "Apiary.Release.policy_rerender()"`. See
   `Apiary.Policy.rerender_all/0`.
   """
   def policy_rerender do
@@ -84,7 +85,7 @@ defmodule Apiary.Release do
         end)
 
       case result do
-        {:ok, []} -> IO.puts("No hive has a retention setting: nothing to prune.")
+        {:ok, []} -> IO.puts("No workspace has a retention setting: nothing to prune.")
         {:ok, results} -> Enum.each(results, &IO.puts(Apiary.Retention.sentence(&1)))
         {:error, :locked} -> IO.puts("The retention job is already running on this database.")
       end

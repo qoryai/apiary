@@ -1,0 +1,21 @@
+# The source strings of the catalogues in this directory, which
+# ApiaryWeb.LingoCatalogueTest checks. ApiaryWeb.Gettext.FallbackTest also asks for
+# sentences that are not here, to reach the source text.
+msgid ""
+msgstr ""
+
+msgid "Settings"
+msgstr ""
+
+msgid "Every target follows it."
+msgstr ""
+
+msgid "%{count} member"
+msgid_plural "%{count} members"
+msgstr[0] ""
+msgstr[1] ""
+
+msgid "%{count} target"
+msgid_plural "%{count} targets"
+msgstr[0] ""
+msgstr[1] ""

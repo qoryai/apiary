@@ -49,14 +49,14 @@ defmodule Apiary.AccessKeysTest do
                AccessKeys.fetch_for_verification(key.key_id)
 
       assert key.created_by_id == user.id
-      assert key.hive_id == scope.hive.id
+      assert key.workspace_id == scope.workspace.id
       assert AccessKey.status(key) == :active
       assert AccessKey.never_used?(key)
 
       assert {:ok, _key, _secret} = AccessKeys.create_access_key(member_scope, %{label: "ci"})
     end
 
-    test "validates the label and its uniqueness among active keys of the hive" do
+    test "validates the label and its uniqueness among active keys of the workspace" do
       %{scope: scope} = sign_up_fixture()
       assert {:error, changeset} = AccessKeys.create_access_key(scope, %{label: ""})
       assert %{label: ["can't be blank"]} = errors_on(changeset)
@@ -122,7 +122,7 @@ defmodule Apiary.AccessKeysTest do
       assert {:ok, _key, _secret} = AccessKeys.rotate_access_key(scope, plain_listed)
     end
 
-    test "get_access_key!/2 is scoped to the hive" do
+    test "get_access_key!/2 is scoped to the workspace" do
       %{scope: scope} = sign_up_fixture()
       %{scope: other_scope} = sign_up_fixture()
       %{access_key: first} = access_key_fixture(scope)
@@ -250,7 +250,7 @@ defmodule Apiary.AccessKeysTest do
       assert :error = AccessKeys.fetch_for_verification(nil)
     end
 
-    test "a key of another hive cannot be rotated through a foreign scope" do
+    test "a key of another workspace cannot be rotated through a foreign scope" do
       %{scope: scope} = sign_up_fixture()
       %{scope: other_scope} = sign_up_fixture()
       %{access_key: key} = access_key_fixture(scope)

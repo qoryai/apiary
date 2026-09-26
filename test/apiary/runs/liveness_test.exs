@@ -178,7 +178,7 @@ defmodule Apiary.Runs.LivenessTest do
           %{
             id: Ecto.UUID.generate(),
             organisation_id: run.organisation_id,
-            hive_id: run.hive_id,
+            workspace_id: run.workspace_id,
             run_id: run.id,
             sequence: 1,
             event_id: Ecto.UUID.generate(),
@@ -198,7 +198,7 @@ defmodule Apiary.Runs.LivenessTest do
   end
 
   describe "a pending run" do
-    test "is lost on the same rule, counted from when the hive first heard of it", %{
+    test "is lost on the same rule, counted from when the workspace first heard of it", %{
       scope: scope
     } do
       silent = run_fixture(scope, %{inserted_at: ago(91)})

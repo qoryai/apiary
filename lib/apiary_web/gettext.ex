@@ -22,4 +22,5 @@ defmodule ApiaryWeb.Gettext do
   See the [Gettext Docs](https://gettext.hexdocs.pm) for detailed usage.
   """
   use Gettext.Backend, otp_app: :apiary
+  use ApiaryWeb.Gettext.Fallback
 end

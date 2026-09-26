@@ -2,8 +2,8 @@
 
 One job that shows two things the console promises. A session behind a wall is refused a
 host, a person allows the host from the connection's row, and the same session reaches it
-without being restarted, within thirty-five seconds. Then the hive goes to observe, the
-person denies the host from the same row, and the same session is refused it by name,
+without being restarted, within thirty-five seconds. Then the workspace goes to observe,
+the person denies the host from the same row, and the same session is refused it by name,
 under observe, within the same budget: a deny holds in either mode.
 
     e2e/run.sh        # one run
@@ -37,20 +37,21 @@ answers.
 
 `scenario.exs`, in order:
 
-1. Signs an owner up (`Apiary.Organisations.sign_up_user/2`), sets the hive to `enforce`
-   with nothing allowed (`Apiary.Policy.set_mode/2`, which is also what makes the hive a
-   managed one that serves a run configuration), and creates an access key. The key's
-   `server` block and the wall section become the node's `runner.yaml`, mode 0600. The
-   secret goes there and nowhere else; nothing prints it.
+1. Signs an owner up (`Apiary.Organisations.sign_up_user/2`), sets the workspace to
+   `enforce` with nothing allowed (`Apiary.Policy.set_mode/2`, which is also what makes
+   the workspace a managed one that serves a run configuration), and creates an access
+   key. The key's `server` block and the wall section become the node's `runner.yaml`,
+   mode 0600. The secret goes there and nowhere else; nothing prints it.
 2. Makes the node ready (`node/prepare.sh`: the checkout with an origin remote, which is
    where the run's `forge` and `repository` come from, and its harness composed) and starts
    the session (`node/session.sh`: `qory run --headless`).
-3. Waits for a connection row of the hive for `files.e2e.test` with a denial, and checks
-   that the run has one policy applied event, in `enforce`, under the digest in force.
+3. Waits for a connection row of the workspace for `files.e2e.test` with a denial, and
+   checks that the run has one policy applied event, in `enforce`, under the digest in
+   force.
 4. Allows the host with the two calls the row's popover makes
    (`ApiaryWeb.RunLive.Show`, `ApiaryWeb.ConnectionLive.Index`):
    `Apiary.Runs.fetch_connection/2`, then `Apiary.Policy.rule_from_connection/4` with
-   `:allow` and the level, `:target` unless `E2E_LEVEL=hive`. The clock starts before
+   `:allow` and the level, `:target` unless `E2E_LEVEL=workspace`. The clock starts before
    the first of them.
 5. Polls the run's stored events, every 50 ms, for a second `dev.qory.run.policy_applied`
    whose `run_configuration` is the new digest, then for an `dev.qory.run.egress` to the

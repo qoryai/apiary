@@ -1,6 +1,6 @@
 defmodule ApiaryWeb.MemberLive.Index do
   @moduledoc """
-  The hive's members and pending invitations. Owners invite, change levels
+  The workspace's members and pending invitations. Owners invite, change levels
   and remove; members see the page read-only.
   """
   use ApiaryWeb, :live_view
@@ -21,11 +21,11 @@ defmodule ApiaryWeb.MemberLive.Index do
         {gettext("Members")}
         <:subtitle>
           {gettext(
-            "The people in this hive. Owners manage members, keys and settings; members manage keys and see every run."
+            "The people in this workspace. Owners manage members, keys and settings; members manage keys and see every run."
           )}
         </:subtitle>
         <:actions :if={@owner?}>
-          <.button variant="primary" patch={~p"/hive/members/invite"}>
+          <.button variant="primary" patch={~p"/workspace/members/invite"}>
             <.icon name="hero-plus-micro" class="size-4" /> {gettext("Invite member")}
           </.button>
         </:actions>
@@ -64,7 +64,7 @@ defmodule ApiaryWeb.MemberLive.Index do
           <.button
             variant="danger-ghost"
             size="xs"
-            patch={~p"/hive/members/#{m.id}/remove"}
+            patch={~p"/workspace/members/#{m.id}/remove"}
             aria-label={gettext("Remove %{email}", email: m.user.email)}
           >
             {gettext("Remove")}
@@ -120,11 +120,11 @@ defmodule ApiaryWeb.MemberLive.Index do
         :if={@live_action == :invite}
         id="invite-member"
         title={gettext("Invite a member")}
-        on_cancel={JS.patch(~p"/hive/members")}
+        on_cancel={JS.patch(~p"/workspace/members")}
       >
         <p class="text-muted">
           {gettext(
-            "We email an invitation link. It works for seven days and brings the person into this hive when they accept."
+            "We email an invitation link. It works for seven days and brings the person into this workspace when they accept."
           )}
         </p>
         <.form
@@ -154,7 +154,7 @@ defmodule ApiaryWeb.MemberLive.Index do
           />
         </.form>
         <:footer>
-          <.button patch={~p"/hive/members"}>{gettext("Cancel")}</.button>
+          <.button patch={~p"/workspace/members"}>{gettext("Cancel")}</.button>
           <.button
             variant="primary"
             type="submit"
@@ -170,21 +170,21 @@ defmodule ApiaryWeb.MemberLive.Index do
         :if={@live_action == :remove && @member}
         id="remove-member"
         title={gettext("Remove %{email}", email: @member.user.email)}
-        on_cancel={JS.patch(~p"/hive/members")}
+        on_cancel={JS.patch(~p"/workspace/members")}
       >
         <p class="text-muted">
           <%= if @member.user_id == @current_scope.user.id do %>
             {gettext(
-              "You will leave this hive and lose access to its runs at once. Your account stays; an owner can invite you again."
+              "You will leave this workspace and lose access to its runs at once. Your account stays; an owner can invite you again."
             )}
           <% else %>
             {gettext(
-              "They lose access to this hive and its runs at once. Their account stays; you can invite them again."
+              "They lose access to this workspace and its runs at once. Their account stays; you can invite them again."
             )}
           <% end %>
         </p>
         <:footer>
-          <.button patch={~p"/hive/members"} data-autofocus>{gettext("Cancel")}</.button>
+          <.button patch={~p"/workspace/members"} data-autofocus>{gettext("Cancel")}</.button>
           <.button variant="danger" phx-click="remove" loading_text={gettext("Removing")}>
             {gettext("Remove member")}
           </.button>
@@ -231,7 +231,7 @@ defmodule ApiaryWeb.MemberLive.Index do
   defp apply_action(%{assigns: %{owner?: false}} = socket, _action, _params) do
     socket
     |> put_flash(:error, gettext("Only owners can manage members."))
-    |> push_patch(to: ~p"/hive/members")
+    |> push_patch(to: ~p"/workspace/members")
   end
 
   defp apply_action(socket, :invite, _params) do
@@ -244,8 +244,8 @@ defmodule ApiaryWeb.MemberLive.Index do
     case Enum.find(socket.assigns.members, &(&1.id == id)) do
       nil ->
         socket
-        |> put_flash(:error, gettext("That member is no longer in the hive."))
-        |> push_patch(to: ~p"/hive/members")
+        |> put_flash(:error, gettext("That member is no longer in the workspace."))
+        |> push_patch(to: ~p"/workspace/members")
 
       member ->
         assign(socket, :member, member)
@@ -267,7 +267,7 @@ defmodule ApiaryWeb.MemberLive.Index do
          socket
          |> put_flash(:info, gettext("Invitation sent to %{email}.", email: invitation.email))
          |> load()
-         |> push_patch(to: ~p"/hive/members")}
+         |> push_patch(to: ~p"/workspace/members")}
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign(socket, :form, to_form(changeset, action: :insert))}
@@ -315,7 +315,9 @@ defmodule ApiaryWeb.MemberLive.Index do
 
       {:error, :not_found} ->
         {:noreply,
-         socket |> put_flash(:error, gettext("That member is no longer in the hive.")) |> load()}
+         socket
+         |> put_flash(:error, gettext("That member is no longer in the workspace."))
+         |> load()}
     end
   end
 
@@ -327,7 +329,10 @@ defmodule ApiaryWeb.MemberLive.Index do
       {:ok, _membership} when member.user_id == scope.user.id ->
         {:noreply,
          socket
-         |> put_flash(:info, gettext("You left the %{name} hive.", name: scope.hive.name))
+         |> put_flash(
+           :info,
+           gettext("You left the %{name} workspace.", name: scope.workspace.name)
+         )
          |> redirect(to: ~p"/")}
 
       {:ok, _membership} ->
@@ -335,7 +340,7 @@ defmodule ApiaryWeb.MemberLive.Index do
          socket
          |> put_flash(:info, gettext("%{email} is removed.", email: member.user.email))
          |> load()
-         |> push_patch(to: ~p"/hive/members")}
+         |> push_patch(to: ~p"/workspace/members")}
 
       {:error, :last_owner} ->
         {:noreply,
@@ -346,7 +351,7 @@ defmodule ApiaryWeb.MemberLive.Index do
              "The last owner cannot be removed or demoted. Make someone else an owner first."
            )
          )
-         |> push_patch(to: ~p"/hive/members")}
+         |> push_patch(to: ~p"/workspace/members")}
 
       {:error, :unauthorized} ->
         {:noreply, unauthorized(socket)}
@@ -354,9 +359,9 @@ defmodule ApiaryWeb.MemberLive.Index do
       {:error, :not_found} ->
         {:noreply,
          socket
-         |> put_flash(:error, gettext("That member is no longer in the hive."))
+         |> put_flash(:error, gettext("That member is no longer in the workspace."))
          |> load()
-         |> push_patch(to: ~p"/hive/members")}
+         |> push_patch(to: ~p"/workspace/members")}
     end
   end
 
@@ -399,7 +404,7 @@ defmodule ApiaryWeb.MemberLive.Index do
 
     scope =
       Organisations.load_scope(
-        %{scope | organisation: nil, hive: nil, membership: nil},
+        %{scope | organisation: nil, workspace: nil, membership: nil},
         scope.organisation.id
       )
 
@@ -411,7 +416,7 @@ defmodule ApiaryWeb.MemberLive.Index do
     |> put_flash(:error, gettext("Only owners can manage members."))
     |> assign(:owner?, false)
     |> load()
-    |> push_patch(to: ~p"/hive/members")
+    |> push_patch(to: ~p"/workspace/members")
   end
 
   # One sentence per level, and one for a member no longer listed.

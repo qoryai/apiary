@@ -1,4 +1,4 @@
-// The fourteen-day chart of the hive overview (brief-overview.md od5). The server renders
+// The fourteen-day chart of the workspace overview (brief-overview.md od5). The server renders
 // the SVG; this hook owns what only the browser knows: the one tooltip for both plots,
 // placed under the hovered or focused slot; the reading preference of the table twin,
 // kept in localStorage; Home and End between the slots; and, on a coarse pointer, the

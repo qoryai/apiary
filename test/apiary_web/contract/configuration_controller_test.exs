@@ -38,7 +38,7 @@ defmodule ApiaryWeb.Contract.ConfigurationControllerTest do
   end
 
   @tag needs: :security
-  test "a hive whose policy somebody made is named the run section; the digest differs",
+  test "a workspace whose policy somebody made is named the run section; the digest differs",
        %{scope: scope, key: key, secret: secret} do
     unmanaged = signed_get(build_conn(), key.key_id, secret)
     {:ok, _rule} = Apiary.Policy.allow(scope, nil, %{host: "api.example"})
@@ -55,7 +55,7 @@ defmodule ApiaryWeb.Contract.ConfigurationControllerTest do
     assert digest == ApiaryWeb.Contract.ConfigurationController.digest(managed.resp_body)
     assert [digest] != get_resp_header(unmanaged, "x-qory-configuration")
 
-    # Another hive's policy changes nothing here.
+    # Another workspace's policy changes nothing here.
     %{scope: other} = sign_up_fixture()
     %{access_key: other_key, secret: other_secret} = access_key_fixture(other)
 
@@ -75,8 +75,8 @@ defmodule ApiaryWeb.Contract.ConfigurationControllerTest do
              "events" => %{"url" => base <> "/v1/events", "types" => ["*"]}
            }
 
-    # No run section until somebody has made the hive's policy: until then its machines
-    # keep the policy of their own runner file.
+    # No run section until somebody has made the workspace's policy: until then its
+    # machines keep the policy of their own runner file.
     refute Map.has_key?(json_response(conn, 200), "run")
 
     [digest] = get_resp_header(conn, "x-qory-configuration")

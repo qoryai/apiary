@@ -6,29 +6,31 @@ components, tone, accessibility) still holds and is not repeated. The rendered r
 `runs-mock.html` beside this file; where the two disagree, this brief wins. Section letters
 continue the pattern of `brief.md` with an `r` prefix so the two can be cited side by side.
 
-Naming. The brand is **Qory**. Inside the product an organisation is an **apiary** and a team a
-**hive**. Sample data is synthetic only: Acme, Platform, `acme/shop`, `acme/tax-service`,
-`github.example`, `gitlab.example`, `api.example`, `registry.example`, `files.cdn.example`,
-`build-01`. No people appear in a run.
+Naming. The brand is **Qory**. The pages say **organisation** and **workspace**, plain
+words with no term hover (`docs/lingo.md`); "apiary" and "hive" are words of the per-user
+apiary skin, which is not built. Sample data is synthetic only: Acme, Platform,
+`acme/shop`, `acme/tax-service`, `github.example`, `gitlab.example`, `api.example`,
+`registry.example`, `files.cdn.example`, `build-01`. No people appear in a run.
 
 ## Amendment 2: rows hold still
 
 21 Sep 2026. On a live run, the connections tables were ordered by last seen, so two denied
 hosts retried every few seconds swapped places between an owner's look and their click, and
-the Allow went to the other host. Both tables (rd13, the run's tab and the hive's page) now
-order by first seen after the denied group: a row moves only when a new destination arrives.
-Marked **[A2]** where it stands.
+the Allow went to the other host. Both tables (rd13, the run's tab and the workspace's
+page) now order by first seen after the denied group: a row moves only when a new
+destination arrives. Marked **[A2]** where it stands.
 
 ## Amendment 1: state families
 
 An owner's ruling after the first issue of this brief. **Run states read as three families on
 every surface**: **alive** (`pending`, `running`, the amber quiet state included), **ended well**
 (`succeeded`) and **ended badly** (`failed`, `timed_out`, `lost`, `closed`). `closed` reads as
-"stopped by the hive", not as a failure of the run, and sits in the last family for scanning. The
-overview (`brief-overview.md`) counts and lists runs by these families. On the runs list the
-amendment touches the State filter and the summary line, and nothing else: the list, its rows and
-its badges are not redesigned, and the badges keep their colours (green Succeeded, red and amber
-for the bad endings, blue Running, neutral Pending and Closed).
+"stopped by the workspace", not as a failure of the run, and sits in the last family for
+scanning. The overview (`brief-overview.md`) counts and lists runs by these families. On
+the runs list the amendment touches the State filter and the summary line, and nothing
+else: the list, its rows and its badges are not redesigned, and the badges keep their
+colours (green Succeeded, red and amber for the bad endings, blue Running, neutral Pending
+and Closed).
 
 **The State filter (rd7).** The `<.filter name="state" multiple>` menu is grouped under three
 headings, in this order: **Alive**, **Ended well**, **Ended badly**. Each heading is itself a
@@ -58,7 +60,7 @@ a family at zero left out. The legend of the runs table is this line; there is n
 | Menu headings | Alive · Ended well · Ended badly |
 | Heading checkboxes (accessible names) | Every alive state · Every state that ended well · Every state that ended badly |
 | States under them | Pending, Running · Succeeded · Failed, Timed out, Lost, Closed |
-| Closed's tooltip in the menu | Stopped by the hive: a member closed it after it went quiet. Counted with the runs that ended badly. |
+| Closed's tooltip in the menu | Stopped by the workspace: a member closed it after it went quiet. Counted with the runs that ended badly. |
 | Set chip | State **alive** / State **ended well** / State **ended badly** / State **alive, ended badly** / State **failed, lost** / State **3 selected** |
 | Remove button | Remove filter: state ended badly |
 | Summary line | 11 runs in 4 repositories · 2 alive · 6 ended well · 3 ended badly · 3 with denials |
@@ -110,7 +112,7 @@ it. The eight principles of `brief.md` apply; these six are added.
 The nav splits in two sections. The record comes first because it is why people open the console.
 
 ```
-Hive
+Workspace
 [#] Overview
 [>] Runs            (o) 2      <- alive runs, info colour, 6 px ripple dot; absent at 0
 [⇄] Connections
@@ -121,25 +123,26 @@ Manage
 ```
 
 Icons (16 px `-micro`): Runs `hero-play-circle-micro`, Connections `hero-arrows-right-left-micro`.
-The section label "Manage" uses the same style as "Hive" and carries no term hover. The Runs count
+The labels "Workspace" and "Manage" share a style and carry no term hover. The Runs count
 is `Runs.alive_count/1` (states `pending` and `running`), updated over PubSub; its `title` is
 "2 runs alive now". `Layouts.app` gains `nav` values `:runs` and `:connections`; every run page
 sets `nav={:runs}`. `counts` gains `:alive`.
 
 ### Routes
 
-All inside `live_session :hive`. Every filter is a query parameter, written with `push_patch`, so
-the address bar is always a shareable link and the back button undoes a filter.
+All inside `live_session :workspace`. Every filter is a query parameter, written with
+`push_patch`, so the address bar is always a shareable link and the back button undoes a
+filter.
 
 | Page | Path | LiveView |
 |---|---|---|
-| Runs list | `/hive/runs` | `RunLive.Index` |
-| Run, timeline (default tab) | `/hive/runs/:run_id` | `RunLive.Show, :timeline` |
-| Run, terminal | `/hive/runs/:run_id/terminal` | `RunLive.Show, :terminal` |
-| Run, connections | `/hive/runs/:run_id/connections` | `RunLive.Show, :connections` |
-| Run, details | `/hive/runs/:run_id/details` | `RunLive.Show, :details` |
-| Hive connections | `/hive/connections` | `ConnectionLive.Index` |
-| Raw log stream (not a page) | `/hive/runs/:run_id/log` | `RunLogController` |
+| Runs list | `/workspace/runs` | `RunLive.Index` |
+| Run, timeline (default tab) | `/workspace/runs/:run_id` | `RunLive.Show, :timeline` |
+| Run, terminal | `/workspace/runs/:run_id/terminal` | `RunLive.Show, :terminal` |
+| Run, connections | `/workspace/runs/:run_id/connections` | `RunLive.Show, :connections` |
+| Run, details | `/workspace/runs/:run_id/details` | `RunLive.Show, :details` |
+| Workspace connections | `/workspace/connections` | `ConnectionLive.Index` |
+| Raw log stream (not a page) | `/workspace/runs/:run_id/log` | `RunLogController` |
 
 `:run_id` is the run's subject UUID (the id the runner prints), not the row id. The four tabs are
 one LiveView with four live actions, so switching tabs is a `patch` and the header does not
@@ -162,20 +165,22 @@ Query parameters, runs list:
 
 Run page: `?seq=18` scrolls to and highlights event 18 (the permalink behind every `#0018`);
 `?lane=main` or `?lane=agent-7c1e` isolates a lane; `?cx=0` hides inline connections. Run
-connections: `?decision=allowed|denied`. Hive connections: `decision`, `system`, `target`, `host`, `since`,
-`from`, `to`, `page`. "Per repository" (C2) is the hive page with `target` set; the group header of
-the runs list links there.
+connections: `?decision=allowed|denied`. Workspace connections: `decision`, `system`,
+`target`, `host`, `since`, `from`, `to`, `page`. "Per repository" (C2) is the workspace
+page with `target` set; the group header of the runs list links there.
 
 Unknown parameter values are dropped silently and the URL is rewritten without them. A run id that
-does not exist in this hive renders the not-found state (rh7), never another hive's run.
+does not exist in this workspace renders the not-found state (rh7), never another
+workspace's run.
 
 ### Breadcrumb
 
 `brief.md` rules out breadcrumbs on the top-level pages; that stays. The run page is the console's
 first second-level page and gets one line above its title: `Runs › github.example/acme/shop ›
-0191f2a4`. "Runs" links to `/hive/runs` with the filters the reader came from (kept in the
-LiveView's `return_to`, default none); the repository links to `/hive/runs?target=…`; the last item is
-the short id with `aria-current="page"`. An unassigned run drops the middle item.
+0191f2a4`. "Runs" links to `/workspace/runs` with the filters the reader came from (kept
+in the LiveView's `return_to`, default none); the repository links to
+`/workspace/runs?target=…`; the last item is the short id with `aria-current="page"`. An
+unassigned run drops the middle item.
 
 ### Content width
 
@@ -598,7 +603,7 @@ One component, three variants, so a connection looks the same wherever it appear
 attr :id, :string, required: true
 attr :connection, :map, required: true   # host, port, method, request_method, path, decision, rule, path_rule,
                                          # credential, outcome, mode, attempts, allowed, denied, first/last seen
-attr :variant, :string, default: "table", values: ~w(inline table hive)
+attr :variant, :string, default: "table", values: ~w(inline table workspace)
 attr :started_at, :any, default: nil     # offsets instead of relative time, inside a run
 slot :trailing                           # reserved: the later milestone's allow and deny buttons
 ```
@@ -623,8 +628,8 @@ slot :trailing                           # reserved: the later milestone's allow
 Variants: **inline** is a 32 px grid row `[18px | 1.1fr | 1.4fr | auto | auto | 28px]`: mark,
 destination, reason, outcome, offset, slot; on phones it becomes two lines (destination and
 outcome, then the reason) and the offset hides. **table** adds the Attempts, Allowed, Denied and
-"First and last seen" cells. **hive** adds the disclosure chevron, the Runs count and the
-allowed/denied bar.
+"First and last seen" cells. **workspace** adds the disclosure chevron, the Runs count and
+the allowed/denied bar.
 
 ### rd13. Connections tables
 
@@ -642,22 +647,23 @@ order by last seen swapped two denied rows under the pointer between the look an
 the buttons in the slot are the reason the rows must hold still). Above the table: a segmented filter All 6 · Allowed 4 · Denied 2 (`?decision=`)
 and the summary "37 attempts to 6 destinations · policy enforce `9f86d081884c`".
 
-**Per hive and per repository (C2)**, one row per (host, port, path) across the runs in range:
-Destination · Runs · Attempts · Allowed / denied · Reason · Outcome · Last seen · (slot). "Allowed /
-denied" is a 64 × 6 px split bar (`success` then `error`, `aria-hidden`) followed by "65 / 8" with
-the denied part in error tone when not zero. The chevron in the first cell (`button[aria-expanded]
-[aria-controls]`, label "Runs that reached files.cdn.example") opens a sub-row on `bg-base-200`:
-"3 runs reached this destination", then one link row per run: `<.run_state>`, task and short id,
-repository in mono, "3 denied" or "9 allowed", last seen. Ten runs, then "Show 10 more" pages in place (the runs list has no
-filter by destination in M4, so there is nowhere to link to). Reason and outcome are those of the most recent
-attempt across the runs shown; when a destination has both allowed and denied attempts, the reason
-ends with "· last attempt" in faint.
+**Per workspace and per repository (C2)**, one row per (host, port, path) across the runs
+in range: Destination · Runs · Attempts · Allowed / denied · Reason · Outcome · Last seen
+· (slot). "Allowed / denied" is a 64 × 6 px split bar (`success` then `error`,
+`aria-hidden`) followed by "65 / 8" with the denied part in error tone when not zero. The
+chevron in the first cell (`button[aria-expanded] [aria-controls]`, label "Runs that
+reached files.cdn.example") opens a sub-row on `bg-base-200`: "3 runs reached this
+destination", then one link row per run: `<.run_state>`, task and short id, repository in
+mono, "3 denied" or "9 allowed", last seen. Ten runs, then "Show 10 more" pages in place
+(the runs list has no filter by destination in M4, so there is nowhere to link to). Reason
+and outcome are those of the most recent attempt across the runs shown; when a destination
+has both allowed and denied attempts, the reason ends with "· last attempt" in faint.
 
 ### rd14. Terminal (`<.terminal>` in `run_live/components.ex`, hook `Terminal`)
 
 ```elixir
 attr :id, :string, required: true
-attr :src, :string, required: true        # /hive/runs/:run_id/log
+attr :src, :string, required: true        # /workspace/runs/:run_id/log
 attr :streams, :list, required: true      # ["terminal"] or ["stdout", "stderr"]
 attr :live, :boolean, required: true
 attr :bytes, :integer, required: true
@@ -721,14 +727,15 @@ never dismissible: it is a fact about the record.
 
 ## re. Page compositions
 
-Copy is final. `{…}` is data. ~word~ carries the term hover.
+Copy is final. `{…}` is data. ~word~ carries the term hover; organisation and
+workspace never do.
 
-### re1. Runs list (`/hive/runs`)
+### re1. Runs list (`/workspace/runs`)
 
 ```
 >= 768                                                           < 768
 Runs                                                             Runs
-Every run the machines of this ~hive~ have posted, as their      Every run the machines …
+Every run the machines of this workspace have posted, as their   Every run the machines …
 events tell it.
                                                                  [+State][+Repository][+Task][Runt… >   (scrolls)
 [+ State] [+ Repository] [+ Task] [Runtime claude x] [+ Host]    11 runs in 4 repositories · 2 alive
@@ -821,33 +828,34 @@ The terminal box and its one-line caption, nothing else. Wireframe:
 +--------------------------------------------------------------------------+
 ```
 
-### re5. Run connections tab and re6. Hive connections (`/hive/connections`)
+### re5. Run connections tab and re6. Workspace connections (`/workspace/connections`)
 
-Both are rd13. The hive page's header: **Connections** / "Where the runs of this ~hive~ reached out
-to, and what the policy made of it. One row per host, port and path, across runs." Filters: the
-decision segmented control, Repository, Host, Seen (time range, default last 7 days); summary on
-the right "8 destinations · 3 denied · 11 runs". With `repo` set the description gains a second
-sentence: "Showing `github.example/acme/shop` only." On phones both tables scroll sideways inside
-their wrapper; the sub-row's content is pinned to the visible width (`sticky left-0`) so the list
-of runs reads without scrolling.
+Both are rd13. The workspace page's header: **Connections** / "Where the runs of this
+workspace reached out to, and what the policy made of it. One row per host, port and path,
+across runs." Filters: the decision segmented control, Repository, Host, Seen (time range,
+default last 7 days); summary on the right "8 destinations · 3 denied · 11 runs". With
+`repo` set the description gains a second sentence: "Showing `github.example/acme/shop`
+only." On phones both tables scroll sideways inside their wrapper; the sub-row's content
+is pinned to the visible width (`sticky left-0`) so the list of runs reads without
+scrolling.
 
 ### re7. Empty, loading and error states
 
 | Where | State | What renders |
 |---|---|---|
-| Runs list | no runs in the hive, no keys | `<.empty_state icon="hero-play-circle">` **No runs yet** "A run appears here when a machine with an access key of this ~hive~ starts one. Create a key, paste its server block into the runner file on the machine, and start a run." `[Create an access key]` primary → `/hive/keys/new` |
-| Runs list | no runs, keys exist | same title; "No machine has posted a run to this ~hive~ yet. The server block to paste into the runner file is on the access keys page." `[Go to access keys]` default → `/hive/keys`; under it the listening line "Listening for the first run." |
+| Runs list | no runs in the workspace, no keys | `<.empty_state icon="hero-play-circle">` **No runs yet** "A run appears here when a machine with an access key of this workspace starts one. Create a key, paste its server block into the runner file on the machine, and start a run." `[Create an access key]` primary → `/workspace/keys/new` |
+| Runs list | no runs, keys exist | same title; "No machine has posted a run to this workspace yet. The server block to paste into the runner file is on the access keys page." `[Go to access keys]` default → `/workspace/keys`; under it the listening line "Listening for the first run." |
 | Runs list | filters match nothing | neutral hex tile `hero-funnel`: **No runs match these filters** "11 runs are hidden by them." `[Clear filters]` default |
 | Runs list | loading (first mount, async) | the table header and eight skeleton rows shaped like the columns; never a spinner |
 | Runs list | query failed | error `<.notice>`: "The runs could not be loaded. Reload the page; if it keeps happening, the server log has the reason." |
-| Run page | run not found | `<.empty_state tone="neutral" icon="hero-magnifying-glass" heading="h1">` **This run is not in this hive** "The link may be for another ~hive~, or the run id is mistyped." `[Back to runs]` |
+| Run page | run not found | `<.empty_state tone="neutral" icon="hero-magnifying-glass" heading="h1">` **This run is not in this workspace** "The link may be for another workspace, or the run id is mistyped." `[Back to runs]` |
 | Run page | `pending` | header with "Ping only"; every tab body: neutral empty state **Waiting for the run to start** "The runner has pinged. The run's first event has not arrived." with the listening dot |
 | Timeline | no session events | the limits empty state (rf), never a bare "No events" |
 | Timeline | events not yet projected | info notice "12 events have arrived and are being read." (from `event_count - projected_sequence`) |
 | Terminal | no log chunks | neutral empty state **No output yet** (live) / **This run wrote no output** (ended) |
 | Terminal | stream fails | inside the box, centred, dim: "The log stream dropped. Reconnecting." then on the third failure "The log could not be loaded." `[Try again]` ghost |
 | Connections | none | neutral empty state **No connections recorded** + the `:no_egress` sentence |
-| Hive connections | none in range | **No connections in the last 7 days** "Widen the range, or wait for a run to reach out." |
+| Workspace connections | none in range | **No connections in the last 7 days** "Widen the range, or wait for a run to reach out." |
 | Any | LiveView disconnected | the reconnect toast of `brief.md`; live dots lose their ripple and the alive line reads "Reconnecting" until the socket is back |
 
 ---
@@ -858,8 +866,8 @@ of runs reads without scrolling.
 
 | Page | Title | Description |
 |---|---|---|
-| Runs | Runs | Every run the machines of this ~hive~ have posted, as their events tell it. |
-| Connections | Connections | Where the runs of this ~hive~ reached out to, and what the policy made of it. One row per host, port and path, across runs. |
+| Runs | Runs | Every run the machines of this workspace have posted, as their events tell it. |
+| Connections | Connections | Where the runs of this workspace reached out to, and what the policy made of it. One row per host, port and path, across runs. |
 | Run | the task, or "Run {short id}" | none; the strip is the description |
 
 **Term hovers** (the `<.term>` treatment, first occurrence per page; `standard` attr carries the text)
@@ -915,9 +923,9 @@ runtime's output, is shown."
 Footnotes under tables (12.5 px faint): run connections: "Counted per host, port and path from the
 run's egress events. The reason and outcome are those of the last attempt. Only programs that
 honour the proxy are seen; behind a wall, anything else fails unseen." Without a wall the last
-clause reads "without a wall, anything else connects unseen." Hive connections: "Denied
-destinations come first, then the most recent. The reason and outcome are those of the last
-attempt across the runs shown."
+clause reads "without a wall, anything else connects unseen." Workspace connections:
+"Denied destinations come first, then the most recent. The reason and outcome are those of
+the last attempt across the runs shown."
 
 Announcements (the polite region, ri): "Run succeeded after 18 m 02 s." "Run failed with exit 1."
 "Run timed out." "Run lost. No heartbeat for 90 s." "Heartbeats resumed." "3 new events." (at most
@@ -1041,8 +1049,9 @@ to the visible width. Tooltips open on tap and close on the next tap anywhere.
 1. **Streams with stable ids.** Timeline items: `stream(:items, …)` with `dom_id` `"e-#{sequence}"`
    (a merged tool item uses the sequence of its `tool_started`; the later `tool_finished` re-inserts
    the same id, which updates it in place). Connection rows: `"cx-#{id}"` of the projection row;
-   inline egress items: `"e-#{sequence}"`. Runs: `"run-#{run_id}"`. Hive destination rows:
-   `"dst-#{:erlang.phash2({host, port, path})}"`. Never an index. Never reset a stream on a batch.
+   inline egress items: `"e-#{sequence}"`. Runs: `"run-#{run_id}"`. Workspace destination
+   rows: `"dst-#{:erlang.phash2({host, port, path})}"`. Never an index. Never reset a
+   stream on a batch.
 2. **Window the timeline.** Mount renders at most **300 items**: the first 300 for an ended run, and
    for `?seq=` the 300 around it. A sentinel at each end (`phx-viewport-top` / `phx-viewport-bottom`)
    pages 200 more with `stream(..., at:, limit: ±600)`, so the DOM never holds more than 600 items.
@@ -1052,20 +1061,22 @@ to the visible width. Tooltips open on tap and close on the next tap anywhere.
 3. **Payloads stay out of the socket.** An item carries the head row and at most 8 KB per well.
    "Show all 41 KB" fetches the event's `data` with a `phx-click` that streams the one item again.
    Closed `<details>` still render their wells (so find-in-page works) up to that cap.
-4. **The log has its own endpoint.** `GET /hive/runs/:run_id/log?stream=terminal&from={sequence}`
-   answers `application/octet-stream`, chunked, the concatenated bytes of `log_chunks` in sequence
-   order, authorised like the page. The last sequence sent is the `X-Qory-Log-Through` header on a
-   finished response. For a live run the hook reads what exists, then opens
-   `GET …/log/tail?from={sequence}` as `text/event-stream` (one event per chunk: `id` the sequence,
-   `data` base64), reconnecting with `Last-Event-ID`. Bytes never cross the LiveView socket; the
-   LiveView only pushes the foot's numbers. Write into xterm.js in slices of at most 256 KB per
-   animation frame so a 20 MB log does not block input. Chunks may split a multibyte character:
-   feed xterm.js `Uint8Array`s, never decoded strings. Download streams the same endpoint with
+4. **The log has its own endpoint.**
+   `GET /workspace/runs/:run_id/log?stream=terminal&from={sequence}` answers
+   `application/octet-stream`, chunked, the concatenated bytes of `log_chunks` in sequence
+   order, authorised like the page. The last sequence sent is the `X-Qory-Log-Through`
+   header on a finished response. For a live run the hook reads what exists, then opens
+   `GET …/log/tail?from={sequence}` as `text/event-stream` (one event per chunk: `id` the
+   sequence, `data` base64), reconnecting with `Last-Event-ID`. Bytes never cross the
+   LiveView socket; the LiveView only pushes the foot's numbers. Write into xterm.js in
+   slices of at most 256 KB per animation frame so a 20 MB log does not block input.
+   Chunks may split a multibyte character: feed xterm.js `Uint8Array`s, never decoded
+   strings. Download streams the same endpoint with
    `Content-Disposition: attachment; filename="{short id}.log"`.
 5. **One subscription per page.** The projector broadcasts `{:run_projected, run_id, from_seq,
-   to_seq}` on `"hive:#{hive_id}:runs"` and `"run:#{run_id}"`. The run page loads the items of that
-   range and inserts them; the list updates the one row. Coalesce: handle at most one broadcast per
-   run per 250 ms.
+   to_seq}` on `"workspace:#{workspace_id}:runs"` and `"run:#{run_id}"`. The run page
+   loads the items of that range and inserts them; the list updates the one row.
+   Coalesce: handle at most one broadcast per run per 250 ms.
 6. **Away from the end, count instead of insert.** The `LiveEnd` hook reports whether the reader is
    within 240 px of the end. When not, the LiveView keeps new items in the stream's pending range
    and only bumps `<.new_items count>`; the pill's click loads them. This is what keeps the layout
@@ -1075,10 +1086,11 @@ to the visible width. Tooltips open on tap and close on the next tap anywhere.
    instants, never rendered relative strings, and never re-renders for a clock.
 8. **Queries.** The runs list reads `runs` only: state, labels, times and a denials count. Add
    `runs.denied_count` to the projection (sum of `connections.denied`), or the list needs a join per
-   page. Index `(hive_id, started_at desc)` and `(hive_id, repository_id, started_at desc)`. The hive
-   connections page groups `connections` by `(host, port, path)` within the range; page at 50
-   destinations; load a destination's runs only when its row opens. Filter option counts come from
-   one grouped query per facet, run in `assign_async`.
+   page. Index `(workspace_id, started_at desc)` and
+   `(workspace_id, repository_id, started_at desc)`. The workspace connections page groups
+   `connections` by `(host, port, path)` within the range; page at 50 destinations; load a
+   destination's runs only when its row opens. Filter option counts come from one grouped
+   query per facet, run in `assign_async`.
 9. **xterm.js loads on demand.** The Terminal hook `import()`s xterm.js and its add-ons on first
    mount; no other tab pays for them. Self-host the files with the other assets; no CDN.
 
@@ -1101,7 +1113,8 @@ Run page
 - [ ] Header strip from `run.started`, `run.exited`, `policy_applied`; labels; alive indicator; Details holds the rest
 - [ ] Timeline: all item kinds, three lanes for two subagents with start and finish brackets, lane key toggles, background strip, live end line, pill
 - [ ] Terminal: dark in both themes, tailing, Following and jump to end, search with count, download, stream switch on pipes
-- [ ] Connections: per-run table with reasons and outcomes, trailing slot empty; hive table with the runs per destination; repository filter
+- [ ] Connections: per-run table with reasons and outcomes, trailing slot empty; workspace
+  table with the runs per destination; repository filter
 
 Quality
 - [ ] Both themes, at 1440, 1024, 768, 375; no page-level horizontal scroll at 320

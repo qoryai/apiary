@@ -54,7 +54,7 @@ defmodule ApiaryWeb.Contract.UnreadableSecretTest do
     assert json_response(conn, 503) == %{"error" => "unavailable"}
   end
 
-  test "a key id the hive does not hold stays 401", %{conn: conn} do
+  test "a key id the workspace does not hold stays 401", %{conn: conn} do
     conn =
       signed_get(
         conn,

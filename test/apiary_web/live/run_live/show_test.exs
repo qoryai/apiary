@@ -50,15 +50,15 @@ defmodule ApiaryWeb.RunLive.ShowTest do
   setup :register_and_log_in_user
 
   describe "not found" do
-    test "a run of another hive, an unknown id and a malformed id render the same state", %{
+    test "a run of another workspace, an unknown id and a malformed id render the same state", %{
       conn: conn
     } do
       theirs = projected(scope_fixture(), record())
 
       for id <- [theirs.run_id, theirs.id, Ecto.UUID.generate(), "0191f2a4"],
           path <- ["", "/terminal", "/connections", "/details"] do
-        {:ok, _lv, html} = live(conn, "/hive/runs/#{id}#{path}")
-        assert html =~ "This run is not in this workplace"
+        {:ok, _lv, html} = live(conn, "/workspace/runs/#{id}#{path}")
+        assert html =~ "This run is not in this workspace"
         assert html =~ "Back to runs"
         refute html =~ "dev-laptop"
       end
@@ -68,7 +68,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       conn = build_conn()
 
       assert {:error, {:redirect, %{to: "/users/log-in"}}} =
-               live(conn, "/hive/runs/#{Ecto.UUID.generate()}")
+               live(conn, "/workspace/runs/#{Ecto.UUID.generate()}")
     end
   end
 
@@ -78,7 +78,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       scope: scope
     } do
       run = demo(scope, "session-with-subagents")
-      {:ok, lv, html} = live(conn, ~p"/hive/runs/#{run.run_id}")
+      {:ok, lv, html} = live(conn, ~p"/workspace/runs/#{run.run_id}")
 
       # breadcrumb, title, state, alive sentence
       assert html =~ ~s(aria-label="Breadcrumb")
@@ -98,7 +98,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       if security?() do
         assert has_element?(lv, "#run-facts", "Policy")
         assert html =~ "enforce"
-        # the run configuration it applied was not rendered by this hive (pd9)
+        # the run configuration it applied was not rendered by this workspace (pd9)
         assert has_element?(lv, "#policy-unrendered", "a4e1d0c97b3f")
         assert has_element?(lv, "#policy-unrendered", "not rendered here")
       else
@@ -133,7 +133,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       scope: scope
     } do
       run = projected(scope, [{1, "run.started", started_data(%{"labels" => %{}})}])
-      {:ok, lv, html} = live(conn, ~p"/hive/runs/#{run.run_id}")
+      {:ok, lv, html} = live(conn, ~p"/workspace/runs/#{run.run_id}")
 
       assert has_element?(lv, "h1#run-title", "Run #{String.slice(run.run_id, 0, 8)}")
       assert html =~ "This run had no wall"
@@ -150,7 +150,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         projected(scope, [{1, "ping", %{"runner_version" => "0.10.0", "contract_version" => 1}}])
 
       for path <- ["", "/terminal", "/connections"] do
-        {:ok, _lv, html} = live(conn, "/hive/runs/#{run.run_id}#{path}")
+        {:ok, _lv, html} = live(conn, "/workspace/runs/#{run.run_id}#{path}")
         assert html =~ "Ping only"
         assert html =~ "Waiting for the run to start"
         assert html =~ "The run&#39;s first event has not arrived."
@@ -170,7 +170,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
            time: long_ago, received_at: long_ago}
         ])
 
-      {:ok, _lv, html} = live(conn, ~p"/hive/runs/#{run.run_id}")
+      {:ok, _lv, html} = live(conn, ~p"/workspace/runs/#{run.run_id}")
 
       assert html =~ "No heartbeat for"
       assert html =~ "q-alive-amber"
@@ -185,7 +185,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
     end
 
     test "every kind of item, in sequence order", %{conn: conn, run: run} do
-      {:ok, lv, html} = live(conn, ~p"/hive/runs/#{run.run_id}")
+      {:ok, lv, html} = live(conn, ~p"/workspace/runs/#{run.run_id}")
 
       ids = item_ids(html)
       assert hd(ids) == "e-2"
@@ -231,7 +231,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       conn: conn,
       run: run
     } do
-      {:ok, lv, html} = live(conn, ~p"/hive/runs/#{run.run_id}")
+      {:ok, lv, html} = live(conn, ~p"/workspace/runs/#{run.run_id}")
 
       assert has_element?(lv, "button.q-lanekey.q-lane-main", "Main session")
       assert has_element?(lv, "button.q-lanekey.q-lane-a", "Explore")
@@ -255,7 +255,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
     test "a tool pairs its events: summary, duration, input and response; a failed one starts open",
          %{conn: conn, run: run} do
-      {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}")
+      {:ok, lv, _html} = live(conn, ~p"/workspace/runs/#{run.run_id}")
 
       assert has_element?(lv, "#e-11 summary .q-k", "Read")
       assert has_element?(lv, "#e-11 summary .q-s", "/work/shop/package.json")
@@ -278,7 +278,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       conn: conn,
       run: run
     } do
-      {:ok, lv, html} = live(conn, ~p"/hive/runs/#{run.run_id}")
+      {:ok, lv, html} = live(conn, ~p"/workspace/runs/#{run.run_id}")
 
       assert has_element?(lv, "#e-58 .q-during", "1 connection while this call was open")
       assert has_element?(lv, "#e-58 .q-during .q-cx-denied", "registry.example")
@@ -303,11 +303,13 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       conn: conn,
       run: run
     } do
-      {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}?seq=59")
+      {:ok, lv, _html} = live(conn, ~p"/workspace/runs/#{run.run_id}?seq=59")
       assert has_element?(lv, "ol#timeline[data-target='e-58']")
 
       # what is not valid is dropped: the page is the plain one, and its links carry none of it
-      {:ok, lv, html} = live(conn, ~p"/hive/runs/#{run.run_id}?seq=99999&lane=nobody&cx=7&x=1")
+      {:ok, lv, html} =
+        live(conn, ~p"/workspace/runs/#{run.run_id}?seq=99999&lane=nobody&cx=7&x=1")
+
       refute has_element?(lv, "ol#timeline[data-target]")
       refute has_element?(lv, "ol#timeline[data-isolate]")
       assert has_element?(lv, "ol#timeline[data-cx='1']")
@@ -315,7 +317,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       refute html =~ "99999"
 
       # a valid one among them is kept
-      {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}?seq=58&x=1")
+      {:ok, lv, _html} = live(conn, ~p"/workspace/runs/#{run.run_id}?seq=58&x=1")
       assert has_element?(lv, "ol#timeline[data-target='e-58']")
     end
 
@@ -323,20 +325,20 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       conn: conn,
       run: run
     } do
-      {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}")
+      {:ok, lv, _html} = live(conn, ~p"/workspace/runs/#{run.run_id}")
 
       lv |> element("button.q-lanekey.q-lane-a") |> render_click()
-      assert_patch(lv, ~p"/hive/runs/#{run.run_id}?lane=agent-demo-a1")
+      assert_patch(lv, ~p"/workspace/runs/#{run.run_id}?lane=agent-demo-a1")
       assert has_element?(lv, "ol#timeline[data-isolate='agent-demo-a1']")
       assert has_element?(lv, "button.q-lanekey.q-lane-a[aria-pressed='true']")
       assert has_element?(lv, "button.q-lanekey.q-lane-b[aria-pressed='false']")
 
       lv |> element("#toggle-connections") |> render_click()
-      assert_patch(lv, ~p"/hive/runs/#{run.run_id}?cx=0&lane=agent-demo-a1")
+      assert_patch(lv, ~p"/workspace/runs/#{run.run_id}?cx=0&lane=agent-demo-a1")
       assert has_element?(lv, "ol#timeline[data-cx='0']")
 
       lv |> element("button.q-lanekey.q-lane-a") |> render_click()
-      assert_patch(lv, ~p"/hive/runs/#{run.run_id}?cx=0")
+      assert_patch(lv, ~p"/workspace/runs/#{run.run_id}?cx=0")
       refute has_element?(lv, "ol#timeline[data-isolate]")
     end
 
@@ -353,7 +355,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
            }}
         ])
 
-      {:ok, _lv, html} = live(conn, ~p"/hive/runs/#{run.run_id}")
+      {:ok, _lv, html} = live(conn, ~p"/workspace/runs/#{run.run_id}")
 
       refute html =~ "<script>alert(1)</script>"
       refute html =~ "<img src=x"
@@ -376,7 +378,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
            %{"tool" => "Bash", "tool_use_id" => "t", "response" => big}}
         ])
 
-      {:ok, lv, html} = live(conn, ~p"/hive/runs/#{run.run_id}")
+      {:ok, lv, html} = live(conn, ~p"/workspace/runs/#{run.run_id}")
       refute html =~ "THE-END"
       assert html =~ "Show all 16.0 KB"
 
@@ -392,7 +394,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       scope: scope
     } do
       run = demo(scope, "failed-run")
-      {:ok, lv, html} = live(conn, ~p"/hive/runs/#{run.run_id}")
+      {:ok, lv, html} = live(conn, ~p"/workspace/runs/#{run.run_id}")
 
       assert html =~ "Session events exist only for Claude Code."
       assert has_element?(lv, ".q-limits code.q-rule", "make")
@@ -413,7 +415,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
           {3, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1000}}
         ])
 
-      {:ok, _lv, html} = live(conn, ~p"/hive/runs/#{run.run_id}")
+      {:ok, _lv, html} = live(conn, ~p"/workspace/runs/#{run.run_id}")
       assert html =~ "on an engine inside a virtual machine"
       assert html =~ "Only the result, read from the runtime&#39;s output, is shown."
     end
@@ -428,7 +430,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
           {2, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1000}}
         ])
 
-      {:ok, _lv, html} = live(conn, ~p"/hive/runs/#{run.run_id}")
+      {:ok, _lv, html} = live(conn, ~p"/workspace/runs/#{run.run_id}")
       assert html =~ "No session events arrived."
     end
 
@@ -437,7 +439,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       scope: scope
     } do
       run = projected(scope, [{1, "run.started", started_data(), time: DateTime.utc_now()}])
-      {:ok, _lv, html} = live(conn, ~p"/hive/runs/#{run.run_id}")
+      {:ok, _lv, html} = live(conn, ~p"/workspace/runs/#{run.run_id}")
 
       refute html =~ "No session events arrived."
       assert html =~ "Listening for the next batch."
@@ -466,7 +468,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       run: run,
       now: now
     } do
-      {:ok, lv, html} = live(conn, ~p"/hive/runs/#{run.run_id}")
+      {:ok, lv, html} = live(conn, ~p"/workspace/runs/#{run.run_id}")
       assert has_element?(lv, "#e-3 .q-running", "Running")
       assert has_element?(lv, "#e-3 .q-n .q-spin")
       assert has_element?(lv, "#e-3 .q-r-live")
@@ -490,7 +492,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       run: run,
       now: now
     } do
-      {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}")
+      {:ok, lv, _html} = live(conn, ~p"/workspace/runs/#{run.run_id}")
 
       project_more(run, [
         {4, "session.notification", %{"kind" => "idle_prompt", "message" => "waiting"},
@@ -510,7 +512,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
     end
 
     test "at the live end new items append", %{conn: conn, run: run, now: now} do
-      {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}")
+      {:ok, lv, _html} = live(conn, ~p"/workspace/runs/#{run.run_id}")
       render_hook(element(lv, "#run-timeline"), "live_end", %{"at_end" => true})
 
       project_more(run, [{4, "session.turn_finished", %{"message" => "done"}, time: now}])
@@ -534,7 +536,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         "command" => "pytest tests/checkout -q"
       }
 
-      {:ok, lv, html} = live(conn, ~p"/hive/runs/#{run.run_id}")
+      {:ok, lv, html} = live(conn, ~p"/workspace/runs/#{run.run_id}")
       refute html =~ "in the background"
 
       run =
@@ -564,7 +566,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       run: run,
       now: now
     } do
-      {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}")
+      {:ok, lv, _html} = live(conn, ~p"/workspace/runs/#{run.run_id}")
 
       project_more(run, [
         {4, "run.exited", %{"state" => "failed", "exit_code" => 1, "duration_ms" => 30_000},
@@ -594,7 +596,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
       run = projected(scope, events)
 
-      {:ok, lv, html} = live(conn, ~p"/hive/runs/#{run.run_id}")
+      {:ok, lv, html} = live(conn, ~p"/workspace/runs/#{run.run_id}")
       ids = item_ids(html)
       assert length(ids) == 300
       assert hd(ids) == "e-1" and List.last(ids) == "e-300"
@@ -605,7 +607,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert html |> item_ids() |> List.last() == "e-500"
 
       # around a target
-      {:ok, lv, html} = live(conn, ~p"/hive/runs/#{run.run_id}?seq=700")
+      {:ok, lv, html} = live(conn, ~p"/workspace/runs/#{run.run_id}?seq=700")
       ids = item_ids(html)
       assert length(ids) == 300
       assert hd(ids) == "e-550" and List.last(ids) == "e-849"
@@ -626,18 +628,18 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       scope: scope
     } do
       run = demo(scope, "session-with-subagents")
-      {:ok, lv, html} = live(conn, ~p"/hive/runs/#{run.run_id}/terminal")
+      {:ok, lv, html} = live(conn, ~p"/workspace/runs/#{run.run_id}/terminal")
 
       assert has_element?(
                lv,
-               "#terminal[phx-hook='Terminal'][data-src='/hive/runs/#{run.run_id}/log']"
+               "#terminal[phx-hook='Terminal'][data-src='/workspace/runs/#{run.run_id}/log']"
              )
 
       assert has_element?(lv, "#terminal[data-live='false']")
       assert has_element?(lv, "#terminal [data-stream='stdout']")
       assert has_element?(lv, "#terminal [data-stream='stderr']")
       assert has_element?(lv, "#terminal [role='log'][aria-live='off']")
-      assert has_element?(lv, "#terminal a[href='/hive/runs/#{run.run_id}/log?download=1']")
+      assert has_element?(lv, "#terminal a[href='/workspace/runs/#{run.run_id}/log?download=1']")
       assert html =~ "Ended"
       assert html =~ "chunks"
       assert html =~ "through #0100"
@@ -660,14 +662,14 @@ defmodule ApiaryWeb.RunLive.ShowTest do
           {4, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1}}
         ])
 
-      {:ok, lv, html} = live(conn, ~p"/hive/runs/#{run.run_id}/terminal")
+      {:ok, lv, html} = live(conn, ~p"/workspace/runs/#{run.run_id}/terminal")
 
       assert has_element?(lv, "#terminal[data-sized='true'][data-cols='100'][data-rows='30']")
       assert has_element?(lv, "#terminal [data-size]", "100×30")
       refute has_element?(lv, "#terminal [data-wrap]")
       assert html =~ "replayed at the size the runtime ran at"
 
-      {:ok, _lv, html} = live(conn, ~p"/hive/runs/#{run.run_id}/details")
+      {:ok, _lv, html} = live(conn, ~p"/workspace/runs/#{run.run_id}/details")
       assert html =~ "Yes, on a pseudo-terminal"
       assert html =~ "100×30"
     end
@@ -681,7 +683,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
           {2, "run.log", %{"stream" => "terminal", "bytes" => Base.encode64("one\n")}, time: now}
         ])
 
-      {:ok, lv, html} = live(conn, ~p"/hive/runs/#{run.run_id}/terminal")
+      {:ok, lv, html} = live(conn, ~p"/workspace/runs/#{run.run_id}/terminal")
       assert html =~ "Live"
       assert has_element?(lv, "#terminal .q-tseg-one", "terminal")
       assert has_element?(lv, "#terminal [data-follow][aria-pressed='true']")
@@ -699,7 +701,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
     test "no output: yet, for a live run; none, for an ended one", %{conn: conn, scope: scope} do
       live_run = projected(scope, [{1, "run.started", started_data(), time: DateTime.utc_now()}])
-      {:ok, _lv, html} = live(conn, ~p"/hive/runs/#{live_run.run_id}/terminal")
+      {:ok, _lv, html} = live(conn, ~p"/workspace/runs/#{live_run.run_id}/terminal")
       assert html =~ "No output yet"
 
       ended =
@@ -708,7 +710,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
           {2, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1}}
         ])
 
-      {:ok, _lv, html} = live(conn, ~p"/hive/runs/#{ended.run_id}/terminal")
+      {:ok, _lv, html} = live(conn, ~p"/workspace/runs/#{ended.run_id}/terminal")
       assert html =~ "This run wrote no output"
     end
   end
@@ -719,7 +721,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       scope: scope
     } do
       run = demo(scope, "session-with-subagents")
-      {:ok, lv, html} = live(conn, ~p"/hive/runs/#{run.run_id}/connections")
+      {:ok, lv, html} = live(conn, ~p"/workspace/runs/#{run.run_id}/connections")
 
       assert html =~ "attempts to"
       assert html =~ "destinations"
@@ -759,12 +761,12 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       end
 
       lv |> element("#decision button", "Denied") |> render_click()
-      assert_patch(lv, ~p"/hive/runs/#{run.run_id}/connections?decision=denied")
+      assert_patch(lv, ~p"/workspace/runs/#{run.run_id}/connections?decision=denied")
       html = render(lv)
       refute html =~ "git-upload-pack"
       assert html =~ "registry.example"
 
-      {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}/connections?decision=maybe")
+      {:ok, lv, _html} = live(conn, ~p"/workspace/runs/#{run.run_id}/connections?decision=maybe")
       assert has_element?(lv, "#decision button[aria-pressed='true']", "All")
     end
 
@@ -798,12 +800,12 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         |> LazyHTML.text()
       end
 
-      {:ok, _lv, html} = live(conn, ~p"/hive/runs/#{run.run_id}/connections")
+      {:ok, _lv, html} = live(conn, ~p"/workspace/runs/#{run.run_id}/connections")
       assert hosts.(html) =~ ~r/second\.example.*first\.example/s
 
       # the first host is refused again, later than the second: it stays below it
       project_more(run, [{4, "run.egress", denied.("first.example"), time: at.(30)}])
-      {:ok, _lv, html} = live(conn, ~p"/hive/runs/#{run.run_id}/connections")
+      {:ok, _lv, html} = live(conn, ~p"/workspace/runs/#{run.run_id}/connections")
       assert hosts.(html) =~ ~r/second\.example.*first\.example/s
     end
 
@@ -812,7 +814,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       scope: scope
     } do
       run = projected(scope, tool_record())
-      {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}/connections")
+      {:ok, lv, _html} = live(conn, ~p"/workspace/runs/#{run.run_id}/connections")
 
       %{rows: rows} = Apiary.Runs.Record.connections(scope, run)
       call = Enum.find(rows, &(&1.path == "/media/acme/shop/checkout.png"))
@@ -851,7 +853,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
     test "no egress: the sentence, never an empty table", %{conn: conn, scope: scope} do
       run = projected(scope, [{1, "run.started", started_data()}])
-      {:ok, _lv, html} = live(conn, ~p"/hive/runs/#{run.run_id}/connections")
+      {:ok, _lv, html} = live(conn, ~p"/workspace/runs/#{run.run_id}/connections")
 
       assert html =~ "No connections recorded"
       assert html =~ "No connection went through the runner&#39;s proxy."
@@ -862,7 +864,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
   describe "the details tab" do
     test "the command, the policy in force and the record", %{conn: conn, scope: scope} do
       run = demo(scope, "session-with-subagents")
-      {:ok, _lv, html} = live(conn, ~p"/hive/runs/#{run.run_id}/details")
+      {:ok, _lv, html} = live(conn, ~p"/workspace/runs/#{run.run_id}/details")
 
       for heading <- ["Command", "Record"], do: assert(html =~ heading)
       assert html =~ "--verbose"
@@ -896,7 +898,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
           {2, "run.heartbeat", %{"elapsed_seconds" => 30, "interval_seconds" => 30}}
         ])
 
-      {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}/details")
+      {:ok, lv, _html} = live(conn, ~p"/workspace/runs/#{run.run_id}/details")
 
       refute has_element?(lv, "#close-run")
       lv |> element("#close-run-button") |> render_click()
@@ -942,7 +944,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
     defp twenty_projections(conn, scope, items, path) do
       {run, last, now} = live_run(scope, items)
-      {:ok, lv, _html} = live(conn, "/hive/runs/#{run.run_id}" <> path)
+      {:ok, lv, _html} = live(conn, "/workspace/runs/#{run.run_id}" <> path)
 
       handler = {__MODULE__, make_ref()}
       counter = :counters.new(2, [])
@@ -1024,7 +1026,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
          %{conn: conn, scope: scope} do
       run = demo(scope, "session-with-subagents")
 
-      html = conn |> get(~p"/hive/runs/#{run.run_id}") |> html_response(200)
+      html = conn |> get(~p"/workspace/runs/#{run.run_id}") |> html_response(200)
 
       assert html =~ run.task
       assert html =~ "Succeeded"
@@ -1046,7 +1048,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
           {5, "session.turn_finished", %{"message" => "done"}, time: now}
         ])
 
-      {:ok, lv, html} = live(conn, ~p"/hive/runs/#{run.run_id}")
+      {:ok, lv, html} = live(conn, ~p"/workspace/runs/#{run.run_id}")
       assert item_ids(html) == ["e-1", "e-2", "e-5"]
 
       project_more(run, [
@@ -1082,7 +1084,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       conn: conn,
       run: run
     } do
-      {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}?seq=5")
+      {:ok, lv, _html} = live(conn, ~p"/workspace/runs/#{run.run_id}?seq=5")
 
       assert has_element?(lv, "ol#timeline[data-target='e-5']")
       assert has_element?(lv, "#e-5.q-ti-cx .q-cx-denied", "late.example")
@@ -1090,7 +1092,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
     end
 
     test "the call reads No end recorded, never Running", %{conn: conn, run: run} do
-      {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}")
+      {:ok, lv, _html} = live(conn, ~p"/workspace/runs/#{run.run_id}")
 
       assert has_element?(lv, "#e-1 .q-no-end", "No end recorded")
       refute has_element?(lv, "#e-1 .q-running")
@@ -1107,7 +1109,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
            %{"tool" => "Bash", "tool_use_id" => "t", "input" => %{"command" => "x"}}, time: now}
         ])
 
-      {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}")
+      {:ok, lv, _html} = live(conn, ~p"/workspace/runs/#{run.run_id}")
       assert has_element?(lv, "#e-2 .q-running", "Running")
 
       # the run is found lost: no projection, only the change of state
@@ -1138,7 +1140,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
            time: DateTime.add(received, -85_800, :second), received_at: received}
         ])
 
-      {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}")
+      {:ok, lv, _html} = live(conn, ~p"/workspace/runs/#{run.run_id}")
 
       assert has_element?(lv, "#run-duration[data-base='600']")
       assert lv |> element("#run-duration") |> render() =~ ~r/10 m 0\d s/
@@ -1163,7 +1165,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
           )
 
       run = projected(scope, events)
-      {:ok, lv, html} = live(conn, ~p"/hive/runs/#{run.run_id}")
+      {:ok, lv, html} = live(conn, ~p"/workspace/runs/#{run.run_id}")
 
       assert html
              |> LazyHTML.from_document()
@@ -1175,7 +1177,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert has_element?(lv, "button#lane-0", "Main session")
       assert has_element?(lv, "button#lane-12", "agent-12")
 
-      {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}?lane=agent-27")
+      {:ok, lv, _html} = live(conn, ~p"/workspace/runs/#{run.run_id}?lane=agent-27")
       assert has_element?(lv, "ol#timeline[data-isolate='agent-27']")
       assert has_element?(lv, "button#lane-27[aria-pressed='true']", "agent-27")
     end
@@ -1199,7 +1201,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
       run = projected(scope, events)
 
-      {:ok, lv, html} = live(conn, ~p"/hive/runs/#{run.run_id}/connections")
+      {:ok, lv, html} = live(conn, ~p"/workspace/runs/#{run.run_id}/connections")
       assert html =~ "Showing 50 of 121."
 
       assert html
@@ -1211,16 +1213,16 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert html =~ "121"
 
       lv |> element("#connections-pages a", "Next") |> render_click()
-      assert_patch(lv, ~p"/hive/runs/#{run.run_id}/connections?page=2")
+      assert_patch(lv, ~p"/workspace/runs/#{run.run_id}/connections?page=2")
       refute has_element?(lv, "#run-connections", "denied.example")
 
-      {:ok, lv, html} = live(conn, ~p"/hive/runs/#{run.run_id}/connections?page=3")
+      {:ok, lv, html} = live(conn, ~p"/workspace/runs/#{run.run_id}/connections?page=3")
       assert html =~ "Showing 21 of 121."
       refute has_element?(lv, "#connections-pages a", "Next")
 
       # a page past the last is the last
       {:ok, lv, _html} =
-        live(conn, ~p"/hive/runs/#{run.run_id}/connections?page=99&decision=denied")
+        live(conn, ~p"/workspace/runs/#{run.run_id}/connections?page=99&decision=denied")
 
       assert has_element?(lv, "#decision button[aria-pressed='true']", "Denied")
       assert render(lv) =~ "Showing 1 of 1."
@@ -1241,7 +1243,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         run = projected(scope, [{1, "run.started", started_data()}, {2, "run.exited", exit}])
         assert run.state == state
 
-        {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}/details")
+        {:ok, lv, _html} = live(conn, ~p"/workspace/runs/#{run.run_id}/details")
         refute has_element?(lv, "#close-run-button")
 
         render_hook(lv, "close", %{})
@@ -1274,22 +1276,22 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         assert at == closed.closed_at
       end
 
-      # a run of another hive is not found, whatever its state
+      # a run of another workspace is not found, whatever its state
       assert Runs.close_run(scope, run_fixture(scope_fixture())) == {:error, :not_found}
     end
 
     test "close and close_confirm on a page without a run do nothing", %{conn: conn} do
-      {:ok, lv, _html} = live(conn, "/hive/runs/#{Ecto.UUID.generate()}")
+      {:ok, lv, _html} = live(conn, "/workspace/runs/#{Ecto.UUID.generate()}")
 
-      assert render_hook(lv, "close", %{}) =~ "This run is not in this workplace"
-      assert render_hook(lv, "close_confirm", %{}) =~ "This run is not in this workplace"
-      assert render_hook(lv, "show_all", %{"seq" => "1"}) =~ "This run is not in this workplace"
-      assert render_hook(lv, "load_earlier", %{}) =~ "This run is not in this workplace"
+      assert render_hook(lv, "close", %{}) =~ "This run is not in this workspace"
+      assert render_hook(lv, "close_confirm", %{}) =~ "This run is not in this workspace"
+      assert render_hook(lv, "show_all", %{"seq" => "1"}) =~ "This run is not in this workspace"
+      assert render_hook(lv, "load_earlier", %{}) =~ "This run is not in this workspace"
     end
 
     test "after a close, focus is sent to the page's heading", %{conn: conn, scope: scope} do
       run = projected(scope, [{1, "run.started", started_data()}])
-      {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}/details")
+      {:ok, lv, _html} = live(conn, ~p"/workspace/runs/#{run.run_id}/details")
 
       lv |> element("#close-run-button") |> render_click()
       lv |> element("#close-run button", "Close run") |> render_click()
@@ -1302,7 +1304,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
   describe "read aloud (A3, A6, A9)" do
     test "an item in a subagent's lane says whose it is in words", %{conn: conn, scope: scope} do
       run = demo(scope, "session-with-subagents")
-      {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}")
+      {:ok, lv, _html} = live(conn, ~p"/workspace/runs/#{run.run_id}")
 
       assert has_element?(lv, "#e-25 .sr-only", "in Explore -demo-a1")
       assert has_element?(lv, "#e-27 .sr-only", "in general-purpose -demo-a2")
@@ -1320,14 +1322,14 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
       run = projected(scope, events)
 
-      {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}")
+      {:ok, lv, _html} = live(conn, ~p"/workspace/runs/#{run.run_id}")
 
       assert has_element?(
                lv,
                "ol#timeline[aria-label='Session timeline, in sequence order; 100 later events not loaded']"
              )
 
-      {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}?seq=400")
+      {:ok, lv, _html} = live(conn, ~p"/workspace/runs/#{run.run_id}?seq=400")
 
       assert has_element?(
                lv,
@@ -1342,7 +1344,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
     test "the terminal offers the log as text and a polite place for a summary; xterm's reader mode is never on",
          %{conn: conn, scope: scope} do
       run = demo(scope, "session-with-subagents")
-      {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}/terminal")
+      {:ok, lv, _html} = live(conn, ~p"/workspace/runs/#{run.run_id}/terminal")
 
       assert has_element?(
                lv,
@@ -1367,7 +1369,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       scope: scope
     } do
       run = projected(scope, tool_record())
-      {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}")
+      {:ok, lv, _html} = live(conn, ~p"/workspace/runs/#{run.run_id}")
 
       # the tools are listed on the policy applied, an item only where there is security
       if security?() do
@@ -1403,7 +1405,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       scope: scope
     } do
       run = projected(scope, tool_record())
-      {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}/details")
+      {:ok, lv, _html} = live(conn, ~p"/workspace/runs/#{run.run_id}/details")
 
       assert has_element?(lv, "#policy-tools", "files (files.tools.internal)")
 
@@ -1413,7 +1415,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
           {2, "run.policy_applied", tool_policy_data(%{"tools" => []})}
         ])
 
-      {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}/details")
+      {:ok, lv, _html} = live(conn, ~p"/workspace/runs/#{run.run_id}/details")
       assert has_element?(lv, "#policy-tools", "none")
     end
   end

@@ -1,14 +1,15 @@
-defmodule Apiary.Organisations.Hive do
-  @moduledoc "The workplace inside an organisation: the unit of use."
+defmodule Apiary.Organisations.Workspace do
+  @moduledoc "The workspace inside an organisation: the unit of use."
   use Ecto.Schema
   use Gettext, backend: ApiaryWeb.Gettext
   import Ecto.Changeset
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
-  schema "hives" do
+  schema "workspaces" do
     field :name, :string
-    # The mode of the hive's security policy; changed through `Apiary.Policy.set_mode/2`.
+    # The mode of the workspace's security policy; changed through
+    # `Apiary.Policy.set_mode/2`.
     field :egress_mode, :string, default: "observe"
     # How long a run's events and log bytes are kept, in days; nil is unlimited. Changed
     # through `Apiary.Retention.update_retention/2`.
@@ -20,8 +21,8 @@ defmodule Apiary.Organisations.Hive do
     timestamps(type: :utc_datetime_usec)
   end
 
-  def changeset(hive, attrs) do
-    hive
+  def changeset(workspace, attrs) do
+    workspace
     |> cast(attrs, [:name])
     |> validate_required([:name])
     |> validate_length(:name, min: 1, max: 120)
@@ -30,7 +31,7 @@ defmodule Apiary.Organisations.Hive do
     )
     |> unique_constraint([:organisation_id, :name],
       error_key: :name,
-      message: dgettext_noop("errors", "is already the name of a hive in this organisation")
+      message: dgettext_noop("errors", "is already the name of a workspace in this organisation")
     )
   end
 
@@ -50,10 +51,10 @@ defmodule Apiary.Organisations.Hive do
   The retention settings: each a whole number of days within `retention_days/0`, or nil for
   unlimited. The log is part of a run's events, so it is not kept longer than they are.
   """
-  def retention_changeset(hive, attrs) do
+  def retention_changeset(workspace, attrs) do
     first..last//_ = @retention_days
 
-    hive
+    workspace
     |> cast(attrs, [:events_retention_days, :log_retention_days])
     |> validate_number(:events_retention_days,
       greater_than_or_equal_to: first,
@@ -66,8 +67,8 @@ defmodule Apiary.Organisations.Hive do
       message: @retention_message
     )
     |> validate_log_within_events()
-    |> check_constraint(:events_retention_days, name: :hives_events_retention_days_check)
-    |> check_constraint(:log_retention_days, name: :hives_log_retention_days_check)
+    |> check_constraint(:events_retention_days, name: :workspaces_events_retention_days_check)
+    |> check_constraint(:log_retention_days, name: :workspaces_log_retention_days_check)
   end
 
   defp validate_log_within_events(changeset) do

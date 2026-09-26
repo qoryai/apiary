@@ -1,6 +1,6 @@
 defmodule Apiary.Organisations.Invitation do
   @moduledoc """
-  An invitation to join an organisation's hive, sent to an email address.
+  An invitation to join an organisation's workspace, sent to an email address.
 
   The URL token is never stored; only its SHA-256 hash is. An invitation is
   pending while `accepted_at` is nil and `expires_at` is in the future.
@@ -21,7 +21,7 @@ defmodule Apiary.Organisations.Invitation do
     field :expires_at, :utc_datetime_usec
 
     belongs_to :organisation, Apiary.Organisations.Organisation
-    belongs_to :hive, Apiary.Organisations.Hive
+    belongs_to :workspace, Apiary.Organisations.Workspace
     belongs_to :invited_by, Apiary.Accounts.User
 
     timestamps(type: :utc_datetime_usec)

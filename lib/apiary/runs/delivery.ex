@@ -21,7 +21,7 @@ defmodule Apiary.Runs.Delivery do
     field :run_configuration_digest, :string
 
     belongs_to :organisation, Apiary.Organisations.Organisation
-    belongs_to :hive, Apiary.Organisations.Hive
+    belongs_to :workspace, Apiary.Organisations.Workspace
     belongs_to :access_key, Apiary.AccessKeys.AccessKey
   end
 end

@@ -1,10 +1,10 @@
 defmodule ApiaryWeb.PolicyLive.Common do
   @moduledoc """
-  What the hive's policy page and a target's share: the rows of a rules table built
+  What the workspace's policy page and a target's share: the rows of a rules table built
   from `Apiary.Policy`, the composer's state and its events, the history, the version and
   the export of a holder, and the words of a change.
 
-  A holder is `nil` for the hive's baseline or an `Apiary.Runs.Target`. Everything is
+  A holder is `nil` for the workspace's baseline or an `Apiary.Runs.Target`. Everything is
   read through `Apiary.Policy`; nothing here touches a schema's table.
   """
   use ApiaryWeb, :verified_routes
@@ -33,7 +33,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
     socket
     |> assign(
       holder: holder,
-      scope_kind: if(holder, do: :target, else: :hive),
+      scope_kind: if(holder, do: :target, else: :workspace),
       base: base(holder),
       owner?: owner?(scope),
       people: people(scope),
@@ -50,15 +50,15 @@ defmodule ApiaryWeb.PolicyLive.Common do
     |> reset_credential()
   end
 
-  def base(nil), do: ~p"/hive/policy"
-  def base(%{id: id}), do: ~p"/hive/policy/targets/#{id}"
+  def base(nil), do: ~p"/workspace/policy"
+  def base(%{id: id}), do: ~p"/workspace/policy/targets/#{id}"
 
   def owner?(%{membership: %{level: :owner}}), do: true
   def owner?(_scope), do: false
 
   def since, do: DateTime.add(DateTime.utc_now(), -@week, :second)
 
-  # user id => email, of the people of the hive: who added a rule.
+  # user id => email, of the people of the workspace: who added a rule.
   defp people(scope) do
     for %{user: %{id: id, email: email}} <- Organisations.list_members(scope),
         into: %{},
@@ -73,7 +73,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
   @doc "Asks for a reload of the page's policy, at most once per window. The page handles `:policy_reload`."
   def schedule_reload(socket, change \\ %{}) do
-    # Which targets the changes of this window name; `:all` once one names the hive.
+    # Which targets the changes of this window name; `:all` once one names the workspace.
     touched =
       case {socket.assigns.touched, change} do
         {:all, _} -> :all
@@ -105,8 +105,8 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
   ## Rows
 
-  @doc "The host rules of the hive's page, in the order the card's footer says."
-  def hive_rows(rules, socket, locks) do
+  @doc "The host rules of the workspace's page, in the order the card's footer says."
+  def workspace_rows(rules, socket, locks) do
     for rule <- rules, rule.kind == "host" do
       %{
         id: rule.id,
@@ -114,7 +114,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
         host: rule.host,
         paths: rule.paths,
         locked: rule.locked,
-        source: if(rule.locked, do: :hive_locked, else: :hive),
+        source: if(rule.locked, do: :workspace_locked, else: :workspace),
         by: local(socket.assigns.people[rule.created_by_id]),
         at: rule.inserted_at,
         locked_tip: locked_tip(locks[rule.host]),
@@ -127,7 +127,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
   end
 
   @doc "The credentials of a rules list, as the credentials table takes them."
-  def credential_rows(rules, socket, source \\ :hive) do
+  def credential_rows(rules, socket, source \\ :workspace) do
     for rule <- rules, rule.kind == "credential" do
       %{
         id: rule.id,
@@ -169,15 +169,15 @@ defmodule ApiaryWeb.PolicyLive.Common do
     |> sort_rows()
   end
 
-  defp source(%{source: :hive, locked: true}), do: :hive_locked
+  defp source(%{source: :workspace, locked: true}), do: :workspace_locked
   defp source(%{source: source}), do: source
 
-  defp act(%{source: :hive, locked: true}), do: :open
-  defp act(%{source: :hive, action: :allow}), do: :disable
-  defp act(%{source: :hive, action: :deny}), do: :allow_here
+  defp act(%{source: :workspace, locked: true}), do: :open
+  defp act(%{source: :workspace, action: :allow}), do: :disable
+  defp act(%{source: :workspace, action: :deny}), do: :allow_here
 
   defp act(%{source: :target, action: :deny, overrides: overrides}) do
-    if Enum.any?(overrides, &(&1.source == :hive)), do: :restore, else: :remove
+    if Enum.any?(overrides, &(&1.source == :workspace)), do: :restore, else: :remove
   end
 
   defp act(%{source: :target}), do: :remove
@@ -188,7 +188,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
         winner.locked and loser.source == :target ->
           :lock
 
-        winner.source == :target and loser.source == :hive and loser.host == winner.host ->
+        winner.source == :target and loser.source == :workspace and loser.host == winner.host ->
           :override
 
         true ->
@@ -229,9 +229,9 @@ defmodule ApiaryWeb.PolicyLive.Common do
   defp locked_tip(_unknown), do: gettext("Locked. Only an owner can change or unlock it.")
 
   @doc """
-  Who locked which host, from the newest page of the hive's changes (a page the caller
-  has read already): `%{host =>
-  %{by:, at:}}`. A lock older than that page is shown without its author.
+  Who locked which host, from the newest page of the workspace's changes (a page the
+  caller has read already): `%{host => %{by:, at:}}`. A lock older than that page is
+  shown without its author.
   """
   def locks(%{items: changes}) do
     changes
@@ -400,8 +400,8 @@ defmodule ApiaryWeb.PolicyLive.Common do
      push_patch(socket, to: socket.assigns.base <> "?" <> URI.encode_query(%{"rule" => host}))}
   end
 
-  def handle_event("open_hive_rule", %{"host" => host}, socket) when is_binary(host) do
-    {:halt, push_navigate(socket, to: ~p"/hive/policy?#{%{"rule" => host}}")}
+  def handle_event("open_workspace_rule", %{"host" => host}, socket) when is_binary(host) do
+    {:halt, push_navigate(socket, to: ~p"/workspace/policy?#{%{"rule" => host}}")}
   end
 
   def handle_event("credential_change", params, socket) when is_map(params) do
@@ -494,14 +494,14 @@ defmodule ApiaryWeb.PolicyLive.Common do
   def holder_name(%{assigns: %{holder: %{system: system, path: path}}}), do: "#{system}/#{path}"
 
   @doc """
-  The toast of a host rule written on the page: `123.example is allowed for the hive.`,
-  `… is denied for acme/shop.`
+  The toast of a host rule written on the page:
+  `123.example is allowed for the workspace.`, `… is denied for acme/shop.`
   """
   def rule_written(%{assigns: %{holder: nil}}, "allow", host),
-    do: gettext("%{host} is allowed for the hive.", host: host)
+    do: gettext("%{host} is allowed for the workspace.", host: host)
 
   def rule_written(%{assigns: %{holder: nil}}, "deny", host),
-    do: gettext("%{host} is denied for the hive.", host: host)
+    do: gettext("%{host} is denied for the workspace.", host: host)
 
   def rule_written(socket, "allow", host),
     do: gettext("%{host} is allowed for %{target}.", host: host, target: holder_name(socket))
@@ -510,7 +510,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
     do: gettext("%{host} is denied for %{target}.", host: host, target: holder_name(socket))
 
   defp credential_named(%{assigns: %{holder: nil}}, name),
-    do: gettext("The credential %{name} is named for the hive.", name: name)
+    do: gettext("The credential %{name} is named for the workspace.", name: name)
 
   defp credential_named(socket, name),
     do:
@@ -617,7 +617,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
     case {change.action, diff} do
       {"mode_changed", %{mode: {from, to}}} when is_nil(change.target_id) ->
-        rich_gettext("%{who} switched the hive's default mode from %{from} to %{to}",
+        rich_gettext("%{who} switched the workspace's default mode from %{from} to %{to}",
           who: who,
           from: from,
           to: {:b, to}
@@ -626,7 +626,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
       {"mode_changed", %{mode: {_from, "inherit"}}} ->
         rich_gettext("%{who} set this target to %{mode}",
           who: who,
-          mode: {:b, gettext("follow the hive")}
+          mode: {:b, gettext("follow the workspace")}
         )
 
       {"mode_changed", %{mode: {_from, to}}} ->
@@ -761,10 +761,10 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
     case {change.action, diff} do
       {"mode_changed", %{mode: {_from, to}}} when is_nil(change.target_id) ->
-        gettext("Hive's default set to %{mode}", mode: to)
+        gettext("Workspace's default set to %{mode}", mode: to)
 
       {"mode_changed", %{mode: {_from, "inherit"}}} ->
-        gettext("Set to follow the hive")
+        gettext("Set to follow the workspace")
 
       {"mode_changed", %{mode: {_from, to}}} ->
         gettext("Mode set to %{mode}", mode: to)
@@ -832,7 +832,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
   end
 
   defp mode_line("inherit"),
-    do: rich_gettext("Mode %{mode}", mode: {:b, gettext("follow the hive")})
+    do: rich_gettext("Mode %{mode}", mode: {:b, gettext("follow the workspace")})
 
   defp mode_line(mode), do: rich_gettext("Mode %{mode}", mode: {:b, to_string(mode)})
 
@@ -1004,7 +1004,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
           at: change.inserted_at,
           version: made && made.version,
           digest: made && made.digest,
-          hive: false,
+          workspace: false,
           patch: base <> "/history?" <> URI.encode_query(Map.put(query, "change", change.id)),
           close:
             base <> "/history" <> if(query == %{}, do: "", else: "?" <> URI.encode_query(query))
@@ -1024,20 +1024,20 @@ defmodule ApiaryWeb.PolicyLive.Common do
     case {change.before["mode"], change.after["mode"], made} do
       {"inherit", _to, nil} ->
         gettext(
-          "Its own from now on. The hive's default is the same, so the document did not change."
+          "Its own from now on. The workspace's default is the same, so the document did not change."
         )
 
       {"inherit", _to, _made} ->
-        gettext("Its own from now on. It followed the hive's default.")
+        gettext("Its own from now on. It followed the workspace's default.")
 
       {"observe", "inherit", nil} ->
         gettext(
-          "It observed on its own. The hive's default is the same, so the document did not change."
+          "It observed on its own. The workspace's default is the same, so the document did not change."
         )
 
       {"enforce", "inherit", nil} ->
         gettext(
-          "It enforced on its own. The hive's default is the same, so the document did not change."
+          "It enforced on its own. The workspace's default is the same, so the document did not change."
         )
 
       {"observe", "inherit", _made} ->
@@ -1205,7 +1205,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
                words: (change && change_words(change)) || gettext("First render"),
                who: socket.assigns.people[item.changed_by_id],
                at: item.rendered_at,
-               hive: holder != nil and change != nil and is_nil(change.target_id)
+               workspace: holder != nil and change != nil and is_nil(change.target_id)
              }
            end,
          earlier: max(List.last(around).version - 1, 0),
@@ -1226,7 +1226,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
   end
 
   # The change that made a version: from the newest page of the holder's changes when it
-  # is there, read by itself when it is older or the hive's.
+  # is there, read by itself when it is older or the workspace's.
   defp change_of(_scope, _changes, %{policy_change_id: nil}), do: nil
 
   defp change_of(scope, changes, %{policy_change_id: id}) do
@@ -1274,8 +1274,8 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
   @doc """
   The version a holder is served, one read and no document: `{configuration, own?}`, `own?` false when
-  a target is served the hive's baseline. Only for a hive somebody has changed: before
-  that nothing is served, and nothing is read (`nil`).
+  a target is served the workspace's baseline. Only for a workspace somebody has changed:
+  before that nothing is served, and nothing is read (`nil`).
   """
   def served_version(_scope, _holder, false), do: nil
 
@@ -1298,13 +1298,13 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
     subject =
       case holder do
-        nil -> gettext("the hive %{name}", name: scope.hive.name)
+        nil -> gettext("the workspace %{name}", name: scope.workspace.name)
         %{system: system, path: path} -> "#{system}/#{path}"
       end
 
     slug =
       case holder do
-        nil -> scope.hive.name
+        nil -> scope.workspace.name
         %{path: path} -> path
       end
       |> String.downcase()
@@ -1319,7 +1319,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
     %{
       subject: subject,
-      hive: if(is_nil(holder), do: scope.hive.name),
+      workspace: if(is_nil(holder), do: scope.workspace.name),
       version: configuration.version,
       file_name: file_name,
       policy_file: export.policy_file && head <> export.policy_file,
@@ -1331,8 +1331,8 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
   @doc """
   The two comment lines over an exported text. The subject is a system and a path from a
-  run's labels, or a hive's name: whatever breaks a line in YAML is taken out of it, so
-  nothing a runner or a person named can become a key of the text an operator pastes.
+  run's labels, or a workspace's name: whatever breaks a line in YAML is taken out of it,
+  so nothing a runner or a person named can become a key of the text an operator pastes.
   """
   def export_head(subject, version, digest) do
     "# " <>

@@ -87,8 +87,8 @@ defmodule Apiary.Policy.ActivityTest do
 
   describe "denied_destinations/2" do
     test "the denied destinations today's rules still do not allow, most denied first", ctx do
-      # ads.example is denied by a hive rule; mcp.example is allowed in acme/site by its
-      # own rule, so its denial is a fact of the past; other.example has no rule.
+      # ads.example is denied by a workspace rule; mcp.example is allowed in acme/site by
+      # its own rule, so its denial is a fact of the past; other.example has no rule.
       assert {:ok, [ads, other]} = Policy.denied_destinations(ctx.scope, since())
 
       assert %{host: "ads.example", port: 443, path: "", denied: 2, runs: 1, held: false} = ads
@@ -198,11 +198,12 @@ defmodule Apiary.Policy.ActivityTest do
   end
 
   describe "uncovered and a target's own mode" do
-    test "the hive's form leaves out a target that does not follow the hive", ctx do
+    test "the workspace's form leaves out a target that does not follow the workspace", ctx do
       {:ok, _} = Policy.set_mode(ctx.scope, ctx.docs, "observe")
 
       assert {:ok, [new, push]} = Policy.uncovered(ctx.scope, since())
-      # acme/docs reached new.example and mcp.example; enforcing the hive changes neither.
+      # acme/docs reached new.example and mcp.example;
+      # enforcing the workspace changes neither.
       assert %{host: "new.example", attempts: 2, runs: 2} = new
       assert Enum.map(new.targets, & &1.path) == ["acme/site"]
       assert push.host == "git.example"
@@ -231,13 +232,13 @@ defmodule Apiary.Policy.ActivityTest do
                Policy.uncovered(ctx.scope, ctx.target, since())
     end
 
-    test "another hive's target has nothing", ctx do
+    test "another workspace's target has nothing", ctx do
       %{scope: other} = sign_up_fixture()
       assert {:ok, []} = Policy.uncovered(other, ctx.target, since())
     end
   end
 
-  test "the cap is the configuration's at each call, so a page can be shown a hive over it",
+  test "the cap is the configuration's at each call, so a page can be shown a workspace over it",
        ctx do
     assert Activity.cap() == 20_000
     previous = Application.get_env(:apiary, Activity)
@@ -272,7 +273,8 @@ defmodule Apiary.Policy.ActivityTest do
       assert map_size(counts) == 5
     end
 
-    test "a target's page reads its own runs, and names the hive's rules that decided", ctx do
+    test "a target's page reads its own runs, and names the workspace's rules that decided",
+         ctx do
       assert {:ok, counts} = Policy.rule_activity(ctx.scope, ctx.docs, since())
       assert counts == %{}
 
@@ -303,7 +305,7 @@ defmodule Apiary.Policy.ActivityTest do
     end
   end
 
-  test "tenancy: another hive reads nothing of this one, and its target is not a holder",
+  test "tenancy: another workspace reads nothing of this one, and its target is not a holder",
        ctx do
     %{scope: other} = sign_up_fixture()
 
@@ -313,7 +315,8 @@ defmodule Apiary.Policy.ActivityTest do
     assert {:ok, counts} = Policy.rule_activity(other, ctx.target, since())
     assert counts == %{}
 
-    # A rule of the same host in the other hive is not counted from this hive's record.
+    # A rule of the same host in the other workspace
+    # is not counted from this workspace's record.
     {:ok, _rule} = Policy.allow(other, nil, %{host: "api.example"})
     assert {:ok, counts} = Policy.rule_activity(other, nil, since())
     assert counts == %{}

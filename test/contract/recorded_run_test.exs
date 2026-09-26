@@ -38,7 +38,9 @@ defmodule Apiary.Contract.RecordedRunTest do
   def subject(file), do: file |> Path.dirname() |> Path.basename()
 
   def run!(scope, subject) do
-    Repo.one!(from r in Run, where: r.hive_id == ^scope.hive.id and r.run_id == ^subject)
+    Repo.one!(
+      from r in Run, where: r.workspace_id == ^scope.workspace.id and r.run_id == ^subject
+    )
   end
 
   # What is stored of a run, without what differs between two receptions of it:
@@ -75,7 +77,7 @@ defmodule Apiary.Contract.RecordedRunTest do
         |> Enum.map(
           &(&1
             |> Map.from_struct()
-            |> Map.drop([:__meta__, :id, :run_id, :run, :hive, :organisation]))
+            |> Map.drop([:__meta__, :id, :run_id, :run, :workspace, :organisation]))
         ),
       log:
         Repo.all(from l in LogChunk, where: l.run_id == ^run.id, order_by: l.sequence)
@@ -84,7 +86,7 @@ defmodule Apiary.Contract.RecordedRunTest do
   end
 
   def forget(scope) do
-    Repo.delete_all(from r in Run, where: r.hive_id == ^scope.hive.id)
+    Repo.delete_all(from r in Run, where: r.workspace_id == ^scope.workspace.id)
   end
 
   def ingest!(key, lines) do

@@ -4,9 +4,9 @@ defmodule Apiary.Runs.Record do
   timeline laid out from them, its log chunks and its connections.
 
   Every function takes the caller's scope first and the run second, and reads only rows
-  that carry the scope's organisation, the scope's hive and the run's row id. A run of
-  another hive is never reached: `fetch_run/2` does not find it, and a `%Run{}` of another
-  hive handed in reads nothing.
+  that carry the scope's organisation, the scope's workspace and the run's row id. A run
+  of another workspace is never reached: `fetch_run/2` does not find it, and a `%Run{}` of
+  another workspace handed in reads nothing.
 
   What an event carries is the runner's input, and an event may be megabytes. No function
   here selects an event's `data` whole: every field is cut by the database before it
@@ -19,7 +19,7 @@ defmodule Apiary.Runs.Record do
   import Ecto.Query, warn: false
 
   alias Apiary.Accounts.Scope
-  alias Apiary.Organisations.{Hive, Organisation}
+  alias Apiary.Organisations.{Workspace, Organisation}
   alias Apiary.Repo
   alias Apiary.Runs
   alias Apiary.Runs.{Connection, Event, LogChunk, Run}
@@ -110,8 +110,8 @@ defmodule Apiary.Runs.Record do
   ## The run
 
   @doc """
-  The run of the scope's hive whose subject is `run_id`, the id the runner prints.
-  `:error` for a subject the hive has not seen and for anything that is not a UUID.
+  The run of the scope's workspace whose subject is `run_id`, the id the runner prints.
+  `:error` for a subject the workspace has not seen and for anything that is not a UUID.
   """
   def fetch_run(%Scope{} = scope, run_id) do
     with {:ok, run_id} <- cast_uuid(run_id) do
@@ -379,7 +379,7 @@ defmodule Apiary.Runs.Record do
       CASE WHEN x.r IS NOT NULL AND jsonb_typeof(x.r) NOT IN ('string', 'null') AND x.r <> '{}'::jsonb
                 AND coalesce(w.plain, '') = '' AND coalesce(w.out, '') = '' AND coalesce(w.err, '') = ''
            THEN jsonb_pretty(x.r) END AS response_json) y
-  WHERE e.organisation_id = $1 AND e.hive_id = $2 AND e.run_id = $3 AND e.sequence = ANY($4)
+  WHERE e.organisation_id = $1 AND e.workspace_id = $2 AND e.run_id = $3 AND e.sequence = ANY($4)
   """
 
   # The slim events of `sequences`, by sequence: one statement, scoped like every other
@@ -389,7 +389,7 @@ defmodule Apiary.Runs.Record do
   defp slim(scope, run, sequences, limit) do
     params = [
       Ecto.UUID.dump!(organisation_id(scope)),
-      Ecto.UUID.dump!(hive_id(scope)),
+      Ecto.UUID.dump!(workspace_id(scope)),
       Ecto.UUID.dump!(run.id),
       sequences,
       limit
@@ -516,7 +516,7 @@ defmodule Apiary.Runs.Record do
 
   @doc """
   One connection of the run by its row id, whole, for `Apiary.Policy.rule_from_connection/4`.
-  `:error` for an id that is not a UUID and for a row of another run or another hive.
+  `:error` for an id that is not a UUID and for a row of another run or another workspace.
   """
   def connection(%Scope{} = scope, %Run{} = run, id) do
     with {:ok, id} <- cast_uuid(id),
@@ -530,7 +530,8 @@ defmodule Apiary.Runs.Record do
 
   defp connections_of(scope, run) do
     from c in Connection,
-      where: c.organisation_id == ^organisation_id(scope) and c.hive_id == ^hive_id(scope),
+      where:
+        c.organisation_id == ^organisation_id(scope) and c.workspace_id == ^workspace_id(scope),
       where: c.run_id == ^run.id
   end
 
@@ -714,21 +715,24 @@ defmodule Apiary.Runs.Record do
 
   defp runs(%Scope{} = scope) do
     from r in Run,
-      where: r.organisation_id == ^organisation_id(scope) and r.hive_id == ^hive_id(scope)
+      where:
+        r.organisation_id == ^organisation_id(scope) and r.workspace_id == ^workspace_id(scope)
   end
 
   defp events(%Scope{} = scope, %Run{id: id}) do
     from e in Event,
-      where: e.organisation_id == ^organisation_id(scope) and e.hive_id == ^hive_id(scope),
+      where:
+        e.organisation_id == ^organisation_id(scope) and e.workspace_id == ^workspace_id(scope),
       where: e.run_id == ^id
   end
 
   defp log_chunks(%Scope{} = scope, %Run{id: id}) do
     from l in LogChunk,
-      where: l.organisation_id == ^organisation_id(scope) and l.hive_id == ^hive_id(scope),
+      where:
+        l.organisation_id == ^organisation_id(scope) and l.workspace_id == ^workspace_id(scope),
       where: l.run_id == ^id
   end
 
   defp organisation_id(%Scope{organisation: %Organisation{id: id}}), do: id
-  defp hive_id(%Scope{hive: %Hive{id: id}}), do: id
+  defp workspace_id(%Scope{workspace: %Workspace{id: id}}), do: id
 end
