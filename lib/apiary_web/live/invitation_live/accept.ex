@@ -119,7 +119,7 @@ defmodule ApiaryWeb.InvitationLive.Accept do
   def handle_event("accept", _params, socket) do
     %{current_scope: scope, token: token, invitation: invitation} = socket.assigns
 
-    case Organisations.accept_invitation(scope.user, token) do
+    case Organisations.accept_invitation(scope, token) do
       {:ok, _membership} ->
         {:noreply, redirect(socket, to: workspace_path(invitation))}
 

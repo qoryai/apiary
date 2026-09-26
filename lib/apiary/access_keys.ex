@@ -5,13 +5,17 @@ defmodule Apiary.AccessKeys do
   A key has a public id and one or two secrets, encrypted at rest. The secret is
   returned exactly once, from `create_access_key/2` and `rotate_access_key/2`,
   and is never read back through this module except for verification.
+
+  Every change of a key leaves an audit entry (`Apiary.Audit`) in its transaction: its
+  label and key id when it is created, the rotation or the retirement of the previous
+  secret as `access_key.rotate`, the revocation. Never a secret.
   """
 
   import Ecto.Query, warn: false
 
   require Logger
 
-  alias Apiary.{Access, Repo}
+  alias Apiary.{Access, Audit, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.LogMetadata
@@ -92,8 +96,21 @@ defmodule Apiary.AccessKeys do
         }
         |> AccessKey.changeset(attrs)
 
-      with {:ok, access_key} <- Repo.insert(changeset) do
-        {:ok, AccessKey.without_secrets(%{access_key | secret_primary: nil}), secret}
+      Repo.transact(fn ->
+        with {:ok, access_key} <- Repo.insert(changeset),
+             {:ok, _entry} <-
+               Audit.record(Repo, scope, :"access_key.create", access_key, %{
+                 after: %{label: access_key.label, key_id: access_key.key_id}
+               }) do
+          {:ok, access_key}
+        end
+      end)
+      |> case do
+        {:ok, access_key} ->
+          {:ok, AccessKey.without_secrets(%{access_key | secret_primary: nil}), secret}
+
+        {:error, reason} ->
+          {:error, reason}
       end
     end
   end
@@ -121,7 +138,13 @@ defmodule Apiary.AccessKeys do
                  secret_secondary: previous && fn -> previous end,
                  rotated_at: DateTime.utc_now()
                )
-               |> Repo.update() do
+               |> Repo.update(),
+             {:ok, _entry} <-
+               Audit.record(Repo, scope, :"access_key.rotate", updated, %{
+                 before: %{rotated_at: current.rotated_at},
+                 after: %{rotated_at: updated.rotated_at},
+                 details: %{change: "rotated"}
+               }) do
           {:ok, {updated, secret}}
         end
     end)
@@ -130,18 +153,41 @@ defmodule Apiary.AccessKeys do
   @doc "Drops the secondary secret: the rotation is complete (`access_key.rotate`)."
   def retire_previous_secret(%Scope{} = scope, %AccessKey{} = access_key)
       when key_in_scope(scope, access_key) do
-    mutate(scope, :"access_key.rotate", access_key, fn current ->
-      current |> Ecto.Changeset.change(secret_secondary: nil) |> Repo.update()
+    mutate(scope, :"access_key.rotate", access_key, fn
+      %AccessKey{secret_secondary: nil} = current ->
+        {:ok, current}
+
+      current ->
+        with {:ok, updated} <-
+               current |> Ecto.Changeset.change(secret_secondary: nil) |> Repo.update(),
+             {:ok, _entry} <-
+               Audit.record(Repo, scope, :"access_key.rotate", updated, %{
+                 before: %{previous_secret: true},
+                 after: %{previous_secret: false},
+                 details: %{change: "previous_retired"}
+               }) do
+          {:ok, updated}
+        end
     end)
   end
 
   @doc "Revokes the key: verification fails from now on (`access_key.revoke`)."
   def revoke_access_key(%Scope{} = scope, %AccessKey{} = access_key)
       when key_in_scope(scope, access_key) do
-    mutate(scope, :"access_key.revoke", access_key, fn current ->
-      current
-      |> Ecto.Changeset.change(revoked_at: current.revoked_at || DateTime.utc_now())
-      |> Repo.update()
+    mutate(scope, :"access_key.revoke", access_key, fn
+      %AccessKey{revoked_at: %DateTime{}} = current ->
+        {:ok, current}
+
+      current ->
+        with {:ok, updated} <-
+               current |> Ecto.Changeset.change(revoked_at: DateTime.utc_now()) |> Repo.update(),
+             {:ok, _entry} <-
+               Audit.record(Repo, scope, :"access_key.revoke", updated, %{
+                 before: %{revoked_at: nil},
+                 after: %{revoked_at: updated.revoked_at}
+               }) do
+          {:ok, updated}
+        end
     end)
   end
 

@@ -2,7 +2,8 @@ defmodule ApiaryWeb.FeaturesRoutesTest do
   use ExUnit.Case, async: true
 
   # The routes every instance has, whatever its features: signing in and out, the
-  # organisation's own management, the documentation, health and discovery. Every other
+  # organisation's own management and its audit trail, the documentation, health and
+  # discovery. Every other
   # route declares its feature with `use ApiaryWeb.Features`; a new route that does
   # neither fails here, so nothing reaches an instance without a feature deciding it.
   @core [
@@ -13,6 +14,7 @@ defmodule ApiaryWeb.FeaturesRoutesTest do
     ApiaryWeb.AccessKeyLive.Index,
     ApiaryWeb.MemberLive.Index,
     ApiaryWeb.SettingsLive,
+    ApiaryWeb.ActivityLive,
     ApiaryWeb.WorkspaceLive.NoWorkspace,
     ApiaryWeb.InvitationController,
     ApiaryWeb.UserSessionController,

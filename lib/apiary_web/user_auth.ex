@@ -76,7 +76,7 @@ defmodule ApiaryWeb.UserAuth do
   def fetch_current_scope_for_user(conn, _opts) do
     with {token, conn} <- ensure_user_token(conn),
          {user, token_inserted_at} <- Accounts.get_user_by_session_token(token) do
-      scope = Scope.for_user(user)
+      scope = user |> Scope.for_user() |> Scope.put_origin(ApiaryWeb.Origin.from_conn(conn))
       # The person's id in the request's log lines, on every page.
       LogMetadata.put_user(scope)
 
@@ -543,7 +543,8 @@ defmodule ApiaryWeb.UserAuth do
 
   # Every hook mounts the scope through here, so a LiveView's log lines carry the person's
   # id from its mount on; the organisation and the workspace are added by
-  # `:load_path_scope` only.
+  # `:load_path_scope` only. The scope carries where the LiveView's connection came from,
+  # which the audit trail records of every change made through it.
   defp mount_current_scope(socket, session) do
     socket =
       Phoenix.Component.assign_new(socket, :current_scope, fn ->
@@ -552,7 +553,7 @@ defmodule ApiaryWeb.UserAuth do
             Accounts.get_user_by_session_token(user_token)
           end || {nil, nil}
 
-        Scope.for_user(user)
+        user |> Scope.for_user() |> Scope.put_origin(ApiaryWeb.Origin.from_socket(socket))
       end)
 
     LogMetadata.put_user(socket.assigns.current_scope)

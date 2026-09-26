@@ -62,11 +62,34 @@ defmodule ApiaryWeb.UserLive.RegistrationTest do
       result =
         lv
         |> form("#registration_form",
-          user: %{"email" => user.email}
+          user: %{"email" => user.email, "organisation_name" => "Acme"}
         )
         |> render_submit()
 
       assert result =~ "has already been taken"
+    end
+
+    test "asks for the organisation's name, and names the organisation by it", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/users/register")
+      assert has_element?(lv, "#registration_form input[name='user[organisation_name]']")
+
+      email = unique_user_email()
+
+      lv
+      |> form("#registration_form", user: %{"email" => email, "organisation_name" => ""})
+      |> render_submit()
+
+      assert has_element?(lv, "#registration_form [name='user[organisation_name]'][aria-invalid]")
+      refute Apiary.Accounts.get_user_by_email(email)
+
+      lv
+      |> form("#registration_form", user: %{"email" => email, "organisation_name" => "Acme Ltd"})
+      |> render_submit()
+
+      user = Apiary.Accounts.get_user_by_email(email)
+      [membership] = Apiary.Organisations.list_memberships(user)
+      assert membership.organisation.name == "Acme Ltd"
+      assert membership.organisation.slug == "acme-ltd"
     end
   end
 

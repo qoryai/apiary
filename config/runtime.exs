@@ -63,6 +63,22 @@ end
 # `Apiary.Features` checks it at boot and says what each feature covers and needs.
 config :apiary, :features_setting, System.get_env("QORY_FEATURES")
 
+# AUDIT_RETENTION_DAYS is how long the audit trail keeps an entry: a number of days from
+# 90 to 2555, 365 when unset. Read in every environment, as QORY_FEATURES is;
+# `Apiary.Audit.boot!/0` checks it at boot and stops a boot it refuses.
+config :apiary, :audit_retention_setting, System.get_env("AUDIT_RETENTION_DAYS")
+
+# AUDIT_ADDRESS_RETENTION_DAYS is how long an audit entry keeps the address and the client
+# it came from: 1 day up to AUDIT_RETENTION_DAYS, 90 when unset. Checked with it.
+config :apiary,
+       :audit_address_retention_setting,
+       System.get_env("AUDIT_ADDRESS_RETENTION_DAYS")
+
+# TRUSTED_PROXIES names the reverse proxies whose X-Forwarded-For the audit trail believes
+# for a request's address: addresses or CIDR ranges separated by commas, none when unset.
+# `ApiaryWeb.Origin.boot!/0` checks it at boot and stops a boot it refuses.
+config :apiary, :trusted_proxies_setting, System.get_env("TRUSTED_PROXIES")
+
 if config_env() == :dev do
   # Reload browser tabs when matching files change.
   config :apiary, ApiaryWeb.Endpoint,

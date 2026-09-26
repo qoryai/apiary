@@ -141,6 +141,8 @@ defmodule ApiaryWeb.Router do
         live "/members/invite", MemberLive.Index, :invite
         live "/members/:id/remove", MemberLive.Index, :remove
         live "/settings", SettingsLive, :organisation
+        # The organisation's audit trail, for the readers `audit.read` allows.
+        live "/activity", ActivityLive, :index
       end
 
       scope "/:org/:workspace" do

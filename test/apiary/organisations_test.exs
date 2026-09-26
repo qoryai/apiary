@@ -9,13 +9,15 @@ defmodule Apiary.OrganisationsTest do
   alias Apiary.Organisations.{Invitation, Membership, Organisation}
 
   describe "sign_up_user/2" do
-    test "creates the user, an organisation named from the email, a Main workspace and an owner membership" do
+    test "creates the user, the organisation it names, a Main workspace and an owner membership" do
       {:ok,
        %{user: user, organisation: organisation, workspace: workspace, membership: membership}} =
-        Organisations.sign_up_user(%{email: "alice@example.com"})
+        Organisations.sign_up_user(%{email: "alice@example.com", organisation_name: " Acme Ltd "})
 
       assert user.email == "alice@example.com"
-      assert organisation.name == "alice"
+      # Its name and its slug are the name's; nothing is made from the address.
+      assert organisation.name == "Acme Ltd"
+      assert organisation.slug == "acme-ltd"
       assert workspace.name == "Main"
       assert workspace.organisation_id == organisation.id
       assert membership.level == :owner
@@ -24,12 +26,36 @@ defmodule Apiary.OrganisationsTest do
       assert membership.workspace_id == workspace.id
     end
 
-    test "returns the user changeset when the email is invalid, creating nothing" do
+    test "returns the form's changeset when the email is invalid, creating nothing" do
       assert {:error, %Ecto.Changeset{} = changeset} =
-               Organisations.sign_up_user(%{email: "nope"})
+               Organisations.sign_up_user(%{email: "nope", organisation_name: "Acme"})
 
       assert %{email: ["must have the @ sign and no spaces"]} = errors_on(changeset)
       assert Repo.aggregate(Organisation, :count) == 0
+    end
+
+    test "asks for the organisation's name, checked as an organisation's name is" do
+      email = unique_user_email()
+
+      for name <- [nil, "   ", String.duplicate("a", 121), "Acme\nLtd"] do
+        assert {:error, changeset} =
+                 Organisations.sign_up_user(%{email: email, organisation_name: name})
+
+        assert %{organisation_name: [_]} = errors_on(changeset)
+        refute Map.has_key?(errors_on(changeset), :email)
+      end
+
+      assert Apiary.Accounts.get_user_by_email(email) == nil
+      assert Repo.aggregate(Organisation, :count) == 0
+    end
+
+    test "an address already signed up is refused on the email" do
+      %{user: user} = sign_up_fixture()
+
+      assert {:error, changeset} =
+               Organisations.sign_up_user(%{email: user.email, organisation_name: "Acme"})
+
+      assert "has already been taken" in errors_on(changeset).email
     end
 
     test "with a valid invitation token creates no organisation and accepts the invitation" do
@@ -37,6 +63,7 @@ defmodule Apiary.OrganisationsTest do
       %{invitation: invitation, token: token} = invitation_fixture(scope, %{"level" => "member"})
       count = Repo.aggregate(Organisation, :count)
 
+      # An invited sign-up creates no organisation, and so names none.
       {:ok, result} = Organisations.sign_up_user(%{email: invitation.email}, token)
 
       assert result.organisation.id == organisation.id
@@ -49,7 +76,10 @@ defmodule Apiary.OrganisationsTest do
 
     test "with an invalid token behaves as without a token" do
       {:ok, %{organisation: organisation, membership: membership}} =
-        Organisations.sign_up_user(%{email: unique_user_email()}, "not-a-token")
+        Organisations.sign_up_user(
+          %{email: unique_user_email(), organisation_name: "Acme"},
+          "not-a-token"
+        )
 
       assert organisation.name
       assert membership.level == :owner

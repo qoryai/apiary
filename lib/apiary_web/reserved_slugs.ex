@@ -40,7 +40,7 @@ defmodule ApiaryWeb.ReservedSlugs do
   )
 
   # The organisation's own pages, the second segment of `/:org/…`.
-  @organisation_pages ~w(members settings)
+  @organisation_pages ~w(activity members settings)
 
   # Names a later release may want among an organisation's pages. Not `workspace`: it is
   # the slug a name with no letter or digit gets.

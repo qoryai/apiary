@@ -22,7 +22,7 @@ defmodule Apiary.Runs do
   import Ecto.Query, warn: false
 
   alias Apiary.AccessKeys.AccessKey
-  alias Apiary.Access
+  alias Apiary.{Access, Audit}
   alias Apiary.Accounts.Scope
   alias Apiary.Organisations.{Workspace, Organisation}
   alias Apiary.Repo
@@ -1123,30 +1123,43 @@ defmodule Apiary.Runs do
   ended.
   """
   def close_run(%Scope{user: user, workspace: workspace} = scope, %Run{id: id}) do
-    with :ok <- Access.authorize(scope, :"run.close", workspace) do
-      now = DateTime.utc_now()
+    Repo.transact(fn ->
+      with :ok <- Access.authorize(scope, :"run.close", workspace) do
+        now = DateTime.utc_now()
 
-      # One statement: the state is part of the WHERE, so an exit that lands between a
-      # read and this write is not overwritten.
-      query =
-        from r in in_scope(scope),
-          where: r.id == ^id and r.state in ^@closable_states,
-          select: r
+        # The state it had, for the audit entry, read under the row's lock; the update
+        # keeps the state in its WHERE all the same, so an exit that lands between a read
+        # and this write is not overwritten.
+        closable = from r in in_scope(scope), where: r.id == ^id and r.state in ^@closable_states
+        before = Repo.one(from r in closable, select: r.state, lock: "FOR UPDATE")
 
-      case Repo.update_all(query,
-             set: [state: "closed", closed_at: now, closed_by_id: user.id, updated_at: now]
-           ) do
-        {1, [run]} ->
-          broadcast_changed(run)
-          {:ok, run}
+        case Repo.update_all(from(r in closable, select: r),
+               set: [state: "closed", closed_at: now, closed_by_id: user.id, updated_at: now]
+             ) do
+          {1, [run]} ->
+            with {:ok, _entry} <-
+                   Audit.record(Repo, scope, :"run.close", run, %{
+                     before: %{state: before},
+                     after: %{state: run.state}
+                   }),
+                 do: {:ok, {:closed, run}}
 
-        {0, _} ->
-          case Repo.one(from r in in_scope(scope), where: r.id == ^id) do
-            %Run{state: "closed"} = run -> {:ok, run}
-            %Run{} -> {:error, :not_closable}
-            nil -> {:error, :not_found}
-          end
+          {0, _} ->
+            case Repo.one(from r in in_scope(scope), where: r.id == ^id) do
+              %Run{state: "closed"} = run -> {:ok, run}
+              %Run{} -> {:error, :not_closable}
+              nil -> {:error, :not_found}
+            end
+        end
       end
+    end)
+    |> case do
+      {:ok, {:closed, run}} ->
+        broadcast_changed(run)
+        {:ok, run}
+
+      result ->
+        result
     end
   end
 

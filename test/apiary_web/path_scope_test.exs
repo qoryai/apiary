@@ -18,7 +18,7 @@ defmodule ApiaryWeb.PathScopeTest do
   # A page of each kind: the workspace's, the organisation's, and the run log, which is
   # not a page.
   @pages ["", "/runs", "/connections", "/policy", "/keys", "/settings", "/runs/r-1/log"]
-  @organisation_pages ["/members", "/settings"]
+  @organisation_pages ["/members", "/settings", "/activity"]
 
   # A response, whether the pipeline sent it or the endpoint rendered an error, without
   # the request id.

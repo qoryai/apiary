@@ -21,6 +21,11 @@ defmodule Apiary.Policy.RunConfiguration do
     belongs_to :workspace, Apiary.Organisations.Workspace
     belongs_to :target, Apiary.Runs.Target
     belongs_to :changed_by, Apiary.Accounts.User
-    belongs_to :policy_change, Apiary.Policy.Change
+    # The audit entry of the policy change that rendered it (`Apiary.Policy.Change`), nil
+    # for a version older than the history. No foreign key: the entry is pruned by age.
+    field :audit_entry_id, Ecto.UUID
+    # The same change's row in `policy_changes`, written for the release before this one,
+    # which reads it after a rollback; nothing here reads it (`Apiary.Policy.ChangeRow`).
+    field :policy_change_id, Ecto.UUID
   end
 end

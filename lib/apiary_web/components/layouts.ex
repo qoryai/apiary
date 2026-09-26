@@ -32,7 +32,8 @@ defmodule ApiaryWeb.Layouts do
        {:keys, gettext_noop("Access keys"), "hero-key-micro", nil},
        {:members, gettext_noop("Members"), "hero-users-micro", nil},
        {:settings, gettext_noop("Settings"), "hero-cog-6-tooth-micro", nil},
-       {:organisation, gettext_noop("Organisation"), "hero-building-office-2-micro", nil}
+       {:organisation, gettext_noop("Organisation"), "hero-building-office-2-micro", nil},
+       {:activity, gettext_noop("Activity"), "hero-clipboard-document-list-micro", :"audit.read"}
      ]}
   ]
 
@@ -57,6 +58,7 @@ defmodule ApiaryWeb.Layouts do
     do: ~p"/#{organisation}/#{workspace}/settings"
 
   def nav_path(:organisation, organisation, _workspace), do: ~p"/#{organisation}/settings"
+  def nav_path(:activity, organisation, _workspace), do: ~p"/#{organisation}/activity"
   def nav_path(_overview, organisation, workspace), do: ~p"/#{organisation}/#{workspace}"
 
   @doc """

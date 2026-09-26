@@ -114,13 +114,16 @@ config :apiary, Apiary.Runs.RateLimit, rate: 50, burst: 100
 # `timeout:` its module gives `use Apiary.Job`. A job whose timeout is not shorter than
 # `rescue_after` does not compile. Work that needs longer is split.
 # Every job is written to be run twice safely all the same. Scheduling among several nodes
-# is by the peer in `oban_peers`, one leader.
+# is by the peer in `oban_peers`, one leader, which alone enqueues the jobs of the
+# crontab, in UTC: the audit trail's retention sweep once a day
+# (`Apiary.Audit.PruneSweep`).
 config :apiary, Oban,
   engine: Oban.Engines.Basic,
   repo: Apiary.Repo,
   queues: [default: 5],
   pruner: [max_age: {7, :days}],
-  lifeline: [rescue_after: {30, :minutes}]
+  lifeline: [rescue_after: {30, :minutes}],
+  crontab: [{"40 2 * * *", Apiary.Audit.PruneSweep}]
 
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.

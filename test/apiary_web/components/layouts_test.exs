@@ -173,7 +173,8 @@ defmodule ApiaryWeb.LayoutsTest do
                 keys: workspace_path(scope, "/keys"),
                 members: org <> "/members",
                 settings: workspace_path(scope, "/settings"),
-                organisation: org <> "/settings"
+                organisation: org <> "/settings",
+                activity: org <> "/activity"
               ] do
         assert has_element?(view, "#sidebar a#nav-#{key}[href='#{href}']"), "#{key}"
       end

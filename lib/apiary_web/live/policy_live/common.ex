@@ -1255,9 +1255,9 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
   # The change that made a version: from the newest page of the holder's changes when it
   # is there, read by itself when it is older or the workspace's.
-  defp change_of(_scope, _changes, %{policy_change_id: nil}), do: nil
+  defp change_of(_scope, _changes, %{audit_entry_id: nil}), do: nil
 
-  defp change_of(scope, changes, %{policy_change_id: id}) do
+  defp change_of(scope, changes, %{audit_entry_id: id}) do
     with nil <- changes[id],
          {:ok, change} <- Policy.get_change(scope, id) do
       change

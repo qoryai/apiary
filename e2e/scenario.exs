@@ -303,7 +303,7 @@ defmodule E2E do
 
   # The workspace's first owner, made the way sign-up makes one.
   defp owner_scope do
-    {:ok, %{user: user}} = Organisations.sign_up_user(%{email: "owner@e2e.test"})
+    {:ok, %{user: user}} = Organisations.sign_up_user(%{email: "owner@e2e.test", organisation_name: "E2E"})
     %Scope{workspace: %{}} = scope = Organisations.load_scope(Scope.for_user(user))
     scope
   end

@@ -9,6 +9,9 @@ defmodule Apiary.Application do
   def start(_type, _args) do
     # First, so a wrong QORY_FEATURES stops the boot before anything is started.
     Apiary.Features.boot!()
+    # As early, so a wrong AUDIT_RETENTION_DAYS or TRUSTED_PROXIES stops the boot too.
+    Apiary.Audit.boot!()
+    ApiaryWeb.Origin.boot!()
     attach_request_log()
     # A job's failure, cancellation or discard is one line, with its organisation and
     # workspace ids and without its arguments.

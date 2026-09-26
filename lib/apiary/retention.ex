@@ -48,7 +48,7 @@ defmodule Apiary.Retention do
 
   require Logger
 
-  alias Apiary.Access
+  alias Apiary.{Access, Audit}
   alias Apiary.Accounts.Scope
   alias Apiary.Organisations.Workspace
   alias Apiary.Repo
@@ -78,12 +78,30 @@ defmodule Apiary.Retention do
   def change_retention(%Workspace{} = workspace, attrs \\ %{}),
     do: Workspace.retention_changeset(workspace, attrs)
 
-  @doc "Sets the retention of the scope's workspace (`retention.edit`)."
+  @doc """
+  Sets the retention of the scope's workspace (`retention.edit`), with its audit entry: the
+  settings it changed, as they were and are.
+  """
   @spec update_retention(struct(), map()) ::
           {:ok, struct()} | {:error, Ecto.Changeset.t() | Apiary.Access.reason()}
   def update_retention(%Scope{workspace: %Workspace{} = workspace} = scope, attrs) do
-    with :ok <- Access.authorize(scope, :"retention.edit", workspace) do
-      workspace |> Workspace.retention_changeset(attrs) |> Repo.update()
+    Repo.transact(fn ->
+      with :ok <- Access.authorize(scope, :"retention.edit", workspace),
+           {:ok, updated} <- workspace |> Workspace.retention_changeset(attrs) |> Repo.update(),
+           :ok <- record_edit(scope, workspace, updated) do
+        {:ok, updated}
+      end
+    end)
+  end
+
+  defp record_edit(scope, workspace, updated) do
+    case Audit.changed(workspace, updated, [:events_retention_days, :log_retention_days]) do
+      nil ->
+        :ok
+
+      changes ->
+        with {:ok, _entry} <- Audit.record(Repo, scope, :"retention.edit", updated, changes),
+             do: :ok
     end
   end
 

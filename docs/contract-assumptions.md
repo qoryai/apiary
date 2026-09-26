@@ -63,9 +63,10 @@ other than `1`:
 the events endpoint below, and the `run` URL the run configuration endpoint after it.
 
 The `run` section is there only for a workspace whose policy somebody has made: a
-workspace with at least one change in its policy's history, the first rule or the first
-change of mode, in the workspace or in any one repository: the first change anywhere
-starts serving every repository of the workspace, the others the workspace's baseline. A
+workspace with a run configuration, which only a change of its policy writes, the first
+rule or the first change of mode, in the workspace or in any one repository: the first
+change anywhere starts serving every repository of the workspace, the others the
+workspace's baseline. A
 workspace nobody has given a policy is answered the document without `run`, and its
 machines run under the policy of their own `runner.yaml`, as the contract has it for a
 server that names no section. So an upgrade, or a workspace nobody has looked at, never
@@ -342,7 +343,7 @@ The contract has not fixed these; Apiary chose, and the runner should match:
   {"error":"unavailable"}`, which is no run: the run fails closed, as it does on any answer
   but `200`.
 - The digests in an answer to a batch are read after the commit, never rendered: one read
-  that says whether the workspace's policy is managed (an index on `policy_changes`),
+  that says whether the workspace's policy is managed (an index on `run_configurations`),
   then, for a managed workspace, the newest configuration of the run's repository (one
   read of an index), and the baseline's after it when the repository has none of its own;
   while the run's repository is not known yet, a lookup of the repository by its labels or

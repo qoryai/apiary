@@ -145,6 +145,9 @@ defmodule Apiary.JobTest do
       assert scope.workspace.id == signed_up.workspace.id
       assert scope.user == nil
       assert scope.membership == nil
+      assert scope.instance
+      # Where its changes came from, for the audit trail: the job's worker.
+      assert scope.origin == %{worker: inspect(WorkspaceJob)}
     end
 
     test "acts as the person who enqueued it, with their membership", %{signed_up: signed_up} do
@@ -377,7 +380,7 @@ defmodule Apiary.JobTest do
   describe "an instance's job" do
     test "acts as the instance, with no organisation in its scope or its log metadata" do
       assert {:ok, %{scope: scope, metadata: metadata}} = perform_job(InstanceJob, %{})
-      assert scope == %Scope{}
+      assert scope == %Scope{instance: true, origin: %{worker: inspect(InstanceJob)}}
       assert metadata == @none
     end
 

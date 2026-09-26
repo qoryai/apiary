@@ -8,6 +8,7 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
   """
   use ApiaryWeb.ConnCase, async: false
 
+  import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
   import Apiary.RunEventsFixtures
   import Apiary.RunListFixtures, only: [started_run: 3, shop: 1]
@@ -43,7 +44,11 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
 
   defp nothing_written do
     assert Repo.aggregate(Policy.Rule, :count) == 0
-    assert Repo.aggregate(Policy.Change, :count) == 0
+    # The policy's history is the audit trail's entries of its actions.
+    assert Repo.aggregate(
+             from(e in Apiary.Audit.Entry, where: like(e.action, "security_policy.%")),
+             :count
+           ) == 0
   end
 
   # Nothing on the page's process follows the policy: not the page, not the sidebar.

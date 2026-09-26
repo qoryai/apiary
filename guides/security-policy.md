@@ -155,7 +155,10 @@ it is stored.
   `/:org/:workspace/policy/targets/:target_id/history`, has every change with who made it,
   when, the rules before and after, the version it made or that it made none, and its diff
   in rules and in document lines. Changes to a repository's own rules are in that
-  repository's history.
+  repository's history. The history is the policy's part of the organisation's audit
+  trail, and is kept as long as the trail: a year unless the instance says otherwise
+  (`AUDIT_RETENTION_DAYS`, [Install and configure](install.md)). The versions are kept
+  whatever their age.
 - **A version's page**, `/:org/:workspace/policy/versions/:n` and
   `/:org/:workspace/policy/targets/:target_id/versions/:n`, has the changes from any
   earlier version, the document indented for reading, and the bytes as served.
