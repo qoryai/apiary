@@ -2,10 +2,9 @@ defmodule Apiary.Repo.Migrations.AddSlugsToOrganisationsAndWorkspaces do
   use Ecto.Migration
 
   # The organisation and the workspace are in the URL, `/:org/:workspace/…`, by their
-  # slugs (decision 0073). `organisations.slug` is unique on the instance,
-  # `workspaces.slug` unique within the organisation, and a check holds both to the
-  # rules of `Apiary.Organisations.Slug`: 1 to 40 of `a`–`z`, `0`–`9` and hyphens,
-  # starting and ending with a letter or a digit.
+  # slugs. `organisations.slug` is unique on the instance, `workspaces.slug` unique within
+  # the organisation, and a check holds both to the rules of `Apiary.Organisations.Slug`:
+  # 1 to 40 of `a`–`z`, `0`–`9` and hyphens, starting and ending with a letter or a digit.
   #
   # Every existing row gets its slug from its name, oldest first, as a new one gets it at
   # creation: accents dropped, lowercased, other characters a hyphen; a name with nothing

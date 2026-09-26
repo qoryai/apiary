@@ -1,6 +1,7 @@
-// Clocks tick in the browser (brief-runs rj7). Every `<time data-tick>` on the page is
-// re-rendered from one interval, once a second, paused while the tab is hidden, in the
-// same words the server rendered (ApiaryWeb.RunComponents), which it also hands over.
+// Clocks tick in the browser (docs/design/brief-runs.md). Every `<time data-tick>` on the
+// page is re-rendered from one interval, once a second, paused while the tab is hidden,
+// in the same words the server rendered (ApiaryWeb.RunComponents), which it also hands
+// over.
 //
 //   data-tick="relative"  datetime=…    "2 minutes ago", "Yesterday, 16:40",
 //                                       "17 Sept, 09:30"

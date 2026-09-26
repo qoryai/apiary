@@ -100,7 +100,7 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
     end
   end
 
-  describe "M1: a page opened before the owner lost their rights" do
+  describe "a page opened before the owner lost their rights" do
     setup %{conn: conn} do
       founder = sign_up_fixture()
       %{user: user, scope: scope, membership: membership} = member_fixture(founder.scope, :owner)

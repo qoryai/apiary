@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.ReservedSlugs do
   @moduledoc """
-  ReservedSlugs holds the names a slug can never be, beside the router whose paths they
-  are (decision 0073).
+  ReservedSlugs holds the names a slug can never be, beside the router whose paths
+  they are.
 
   Every page of a workspace is under `/:org/:workspace/…` and every page of an
   organisation under `/:org/…`, so an organisation slug shares the first segment of the

@@ -16,8 +16,7 @@ defmodule ApiaryWeb.PolicyLive.ConfirmTest do
     :ok
   end
 
-  # `/:org/:workspace/policy?confirm=enforce` is the
-  # overview's one-click nudge (brief-overview ol 3).
+  # `/:org/:workspace/policy?confirm=enforce` is the overview's one-click nudge.
   describe "?confirm=enforce" do
     test "lands with the enforce confirm open for an owner, and drops the parameter", %{
       conn: conn,

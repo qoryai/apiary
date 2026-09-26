@@ -21,8 +21,7 @@ defmodule ApiaryWeb.UserAuth do
   ]
 
   # The workspace a signed-in user last opened, remembered for `/` and the log-in to send
-  # them back to. No page reads it to decide what it shows: the path says that
-  # (decision 0073).
+  # them back to. No page reads it to decide what it shows: the path says that.
   @last_workspace :last_workspace_id
 
   # How old the session token should be before a new one is issued. When a request is made
@@ -257,7 +256,7 @@ defmodule ApiaryWeb.UserAuth do
     end
   end
 
-  # The organisation and the workspace come from the path (decision 0073): `/:org/…` and
+  # The organisation and the workspace come from the path: `/:org/…` and
   # `/:org/:workspace/…`. A slug the user holds no membership in answers as a path that
   # does not exist; the pipeline's `fetch_path_scope/2` has already answered so for the
   # first render, and this answers for a live navigation.
@@ -567,8 +566,8 @@ defmodule ApiaryWeb.UserAuth do
   and the workspace their path names into the scope
   (`Apiary.Organisations.resolve_scope/3`) and remembers the workspace for
   `signed_in_path/1`. A slug the user holds no
-  membership in is answered as a path that does not exist, as the router answers one
-  (decisions 0070 and 0073). Runs after `require_authenticated_user/2`.
+  membership in is answered as a path that does not exist, as the router answers one.
+  Runs after `require_authenticated_user/2`.
   """
   def fetch_path_scope(conn, _opts) do
     scope = conn.assigns.current_scope

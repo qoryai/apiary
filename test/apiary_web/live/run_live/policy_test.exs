@@ -1,8 +1,8 @@
 defmodule ApiaryWeb.RunLive.PolicyTest do
   @moduledoc """
-  The run page and the security policy (`docs/design/brief-policy.md`, pd8, pd9, pe6): the
-  header's version and drift mark, the timeline's "Policy applied again", and Allow and
-  Deny from a row of the connections tab.
+  The run page and the security policy (`docs/design/brief-policy.md`): the header's
+  version and drift mark, the timeline's "Policy applied again", and Allow and Deny from a
+  row of the connections tab.
   """
   use ApiaryWeb.ConnCase, async: true
 
@@ -165,7 +165,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
     :ok
   end
 
-  describe "the header's policy cell (pd9)" do
+  describe "the header's policy cell" do
     test "the version the run reported links to that exact version", %{conn: conn, scope: scope} do
       run = policy_run(scope, applied: @other)
       target = target(scope, run)
@@ -345,7 +345,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
     end
   end
 
-  describe "the timeline (pe6)" do
+  describe "the timeline" do
     test "a second policy applied is a reload, with the delta of the two events", %{
       conn: conn,
       scope: scope
@@ -486,7 +486,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
     end
   end
 
-  describe "the slot of a row (pd8)" do
+  describe "the slot of a row" do
     setup %{scope: scope} do
       enforce(scope)
       {:ok, rule} = Policy.deny(scope, nil, %{host: "*.paste.example"})

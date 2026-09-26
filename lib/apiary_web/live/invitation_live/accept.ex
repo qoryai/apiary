@@ -137,8 +137,8 @@ defmodule ApiaryWeb.InvitationLive.Accept do
     end
   end
 
-  # The workspace the invitation brings the user into: its own page, which the path names
-  # (decision 0073), loaded afresh so the session remembers it for `/`.
+  # The workspace the invitation brings the user into: its own page, which the path names,
+  # loaded afresh so the session remembers it for `/`.
   defp workspace_path(%{organisation: organisation, workspace: workspace}),
     do: ~p"/#{organisation}/#{workspace}"
 

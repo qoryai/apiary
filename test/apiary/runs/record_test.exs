@@ -504,7 +504,7 @@ defmodule Apiary.Runs.RecordTest do
     # What a read costs this server is set by the number of rows, never by what a runner
     # put in them. The window of 300 calls with 512 KiB payloads, which writes some
     # 460 MiB, is in `Apiary.Runs.RecordBudgetTest`, a module that runs alone.
-    test "H1: Show all reads one item, cut at 512 KB by the database", %{scope: scope} do
+    test "Show all reads one item, cut at 512 KB by the database", %{scope: scope} do
       huge = String.duplicate("a", 1024 * 1024) <> "THE-END"
 
       run =
@@ -531,7 +531,7 @@ defmodule Apiary.Runs.RecordTest do
       assert byte_size(text) == Timeline.full_limit()
     end
 
-    test "H2: one call with 50,000 connections inside it reads at most 102 rows", %{scope: scope} do
+    test "one call with 50,000 connections inside it reads at most 102 rows", %{scope: scope} do
       run = run_fixture(scope)
       now = DateTime.utc_now()
 
@@ -570,7 +570,7 @@ defmodule Apiary.Runs.RecordTest do
       {items, reads} = count_reads(fn -> Record.items(scope, run, [item]) end)
 
       IO.puts(
-        "\n[budget H2] 1 call + 50,000 connections: #{reads.queries} queries, #{reads.rows} rows"
+        "\n[budget] 1 call + 50,000 connections: #{reads.queries} queries, #{reads.rows} rows"
       )
 
       assert [%{connections: connections, connections_count: 50_000}] = items

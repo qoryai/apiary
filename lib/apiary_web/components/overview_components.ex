@@ -1,20 +1,20 @@
 defmodule ApiaryWeb.OverviewComponents do
   @moduledoc """
-  The components of the workspace overview (`docs/design/brief-overview.md`, od1 to od9):
+  The components of the workspace overview (`docs/design/brief-overview.md`):
   the Needs attention list, the activity strip, the alive rows, the fourteen-day chart,
   the last runs, the policy, access keys and retention glances, and the empty workspace's
   checklist.
 
-  Every number here is a count the workspace already keeps (oa 2): `runs` columns the
-  projector folded, `access_keys` timestamps, `retention_runs` rows, the policy's mode and
-  version. Nothing is inferred. Every component that renders inside a list takes its `id`
-  from the caller (oj 8), so a live update patches a row in place and never by index.
-  Times tick in the browser under the `Ticker` hook, as everywhere (rd3).
+  Every number here is a count the workspace already keeps: `runs` columns the projector
+  folded, `access_keys` timestamps, `retention_runs` rows, the policy's mode and version.
+  Nothing is inferred. Every component that renders inside a list takes its `id` from the
+  caller, so a live update patches a row in place and never by index. Times tick in the
+  browser under the `Ticker` hook, as everywhere.
 
-  The policy's parts are the `security` feature's (decision 0070): `policy_glance/1`, the
-  attention items of kinds `:denied` (an allow is a rule), `:behind`, `:enforce` and
-  `:unmanaged`. None of them asks for itself; the caller leaves them out where the feature
-  is off, and what remains names, links to and offers nothing of the policy.
+  The policy's parts are the `security` feature's: `policy_glance/1`, the attention items
+  of kinds `:denied` (an allow is a rule), `:behind`, `:enforce` and `:unmanaged`. None of
+  them asks for itself; the caller leaves them out where the feature is off, and what
+  remains names, links to and offers nothing of the policy.
   """
   use Phoenix.Component
   use ApiaryWeb, :verified_routes
@@ -58,11 +58,11 @@ defmodule ApiaryWeb.OverviewComponents do
         "Enforce: a connection no rule allows is denied. Observe: it is let through and recorded. A deny rule holds in either mode."
       )
 
-  ## od1. Needs attention
+  ## Needs attention
 
   @doc """
-  The list of acts. `items` is ordered and bounded by the caller (od1); an empty list
-  renders nothing at all: when there is nothing to do the section is absent (oa 3).
+  The list of acts. `items` is ordered and bounded by the caller; an empty list renders
+  nothing at all: when there is nothing to do the section is absent.
   """
   attr :id, :string, required: true
   attr :items, :list, required: true
@@ -761,7 +761,7 @@ defmodule ApiaryWeb.OverviewComponents do
 
   attr :at, :any, required: true
 
-  # Seconds since a moment, ticking in the browser on the server's clock (rd3).
+  # Seconds since a moment, ticking in the browser on the server's clock.
   defp since(assigns) do
     assigns = assign(assigns, :now, DateTime.utc_now())
 
@@ -802,11 +802,11 @@ defmodule ApiaryWeb.OverviewComponents do
 
   def run_title(%{run_id: run_id}), do: short_id(run_id)
 
-  ## od6. The activity strip
+  ## The activity strip
 
   @doc """
-  The four cells over the record (od6): alive now, runs in 14 days with the families,
-  denied attempts, cost reported. `facts` is nil while the activity read is in flight;
+  The four cells over the record: alive now, runs in 14 days with the families, denied
+  attempts, cost reported. `facts` is nil while the activity read is in flight;
   `destinations` is the count of denied destinations when it could be made, else nil.
   """
   attr :id, :string, default: "overview-strip"
@@ -951,7 +951,7 @@ defmodule ApiaryWeb.OverviewComponents do
 
   def cost_text(_cost), do: gettext("n/a")
 
-  ## od3. Alive rows
+  ## Alive rows
 
   @doc """
   The runs alive now, most recently started first, at most five; "and n more" when the
@@ -1066,7 +1066,7 @@ defmodule ApiaryWeb.OverviewComponents do
     """
   end
 
-  ## od5. The fourteen-day chart
+  ## The fourteen-day chart
 
   @w 640
   @w_narrow 320
@@ -1080,10 +1080,10 @@ defmodule ApiaryWeb.OverviewComponents do
   @axis 18
 
   @doc """
-  Two small multiples sharing one x axis (od5): runs per day above, denied attempts per
-  day below, fourteen columns each, today last and in ink. `days` holds fourteen maps
-  `%{day:, runs:, alive:, ended_well:, ended_badly:, denied:}`, oldest first, zeros
-  filled in by the caller. `table?` shows the table twin instead of the SVG.
+  Two small multiples sharing one x axis: runs per day above, denied attempts per day
+  below, fourteen columns each, today last and in ink. `days` holds fourteen maps
+  `%{day:, runs:, alive:, ended_well:, ended_badly:, denied:}`, oldest first, zeros filled
+  in by the caller. `table?` shows the table twin instead of the SVG.
   """
   attr :id, :string, required: true
   attr :days, :list, required: true
@@ -1392,13 +1392,13 @@ defmodule ApiaryWeb.OverviewComponents do
   defp peak_word(day, today),
     do: if(Date.compare(day, today) == :eq, do: gettext("today"), else: day_label(day, today))
 
-  ## od4. Last runs
+  ## Last runs
 
   @doc """
   The five most recently started runs of the workspace, alive ones included: the runs
-  table of rd8 without groups, with the Target column, at full width. Rows carry the runs
-  list's own ids (`run-<run_id>`) and cell classes, so they reflow as rd8 does below
-  640 px.
+  list's table without groups, with the Target column, at full width. Rows carry the runs
+  list's own ids (`run-<run_id>`) and cell classes, so they reflow as the runs list does
+  below 640 px.
   """
   attr :id, :string, required: true
   attr :runs, :any, required: true, doc: "nil while loading"
@@ -1565,12 +1565,12 @@ defmodule ApiaryWeb.OverviewComponents do
     """
   end
 
-  ## od7. Policy at a glance
+  ## Policy at a glance
 
   @doc """
-  The policy card (od7): the mode with its source and the targets that differ, the
-  version in force, the target counts and what there is to review. `policy` is nil
-  while the read is in flight; nothing on the card is a control.
+  The policy card: the mode with its source and the targets that differ, the version in
+  force, the target counts and what there is to review. `policy` is nil while the read is
+  in flight; nothing on the card is a control.
   """
   attr :id, :string, default: "overview-policy"
 
@@ -1745,11 +1745,11 @@ defmodule ApiaryWeb.OverviewComponents do
   defp short_day(%DateTime{} = at), do: Format.short_date(at)
   defp short_day(_at), do: gettext("n/a")
 
-  ## od9. Retention
+  ## Retention
 
   @doc """
-  The retention card (od9): the setting in the settings page's own words, then the last
-  prune from `retention_runs`. A workspace that keeps everything has one line.
+  The retention card: the setting in the settings page's own words, then the last prune
+  from `retention_runs`. A workspace that keeps everything has one line.
   """
   attr :id, :string, default: "overview-retention"
 
@@ -1903,15 +1903,15 @@ defmodule ApiaryWeb.OverviewComponents do
       )
   end
 
-  ## od8. Access keys
+  ## Access keys
 
   @doc """
-  The access keys card (od8): at most five active keys, most recently seen first, each with
-  the runner and contract version it last posted with, the hosts its runs came from in the
-  last seven days and the last run it started. A key is not a machine: one key often serves
-  many hosts (a pool of ephemeral instances shares one), so the row counts the hosts and
-  names the one host when there is only one. `last_runs` maps a key's row id to its last
-  run and `hosts` to `%{count:, host:}`; both nil while the read is in flight.
+  The access keys card: at most five active keys, most recently seen first, each with the
+  runner and contract version it last posted with, the hosts its runs came from in the
+  last seven days and the last run it started. A key is not a machine: one key often
+  serves many hosts (a pool of ephemeral instances shares one), so the row counts the
+  hosts and names the one host when there is only one. `last_runs` maps a key's row id to
+  its last run and `hosts` to `%{count:, host:}`; both nil while the read is in flight.
   """
   attr :id, :string, default: "overview-keys"
 
@@ -2048,11 +2048,11 @@ defmodule ApiaryWeb.OverviewComponents do
     """
   end
 
-  ## oe6. The empty workspace
+  ## The empty workspace
 
   @doc """
-  The checklist card of `brief.md` h1 with the state of each step read from the record
-  (oe6): step 1 ticks on an active key, step 2 on a key's `last_used_at`, step 3 on the
+  The checklist card of `docs/design/brief.md` with the state of each step read from the
+  record: step 1 ticks on an active key, step 2 on a key's `last_used_at`, step 3 on the
   first run. `landed` is the first run while the page is open; the card leaves at the next
   navigation.
   """
@@ -2180,7 +2180,7 @@ defmodule ApiaryWeb.OverviewComponents do
     """
   end
 
-  ## Skeletons (oe5)
+  ## Skeletons
 
   @doc "Faint lines in the shape of the rows that will come; never a spinner."
   attr :lines, :integer, default: 3

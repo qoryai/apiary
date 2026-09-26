@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.Contract.EventsDigestsTest do
   @moduledoc """
-  F1 and F2: every answer to a batch names the run configuration in force for the run's
-  target, and what the run reported is kept per batch and on the run.
+  Every answer to a batch names the run configuration in force for the run's target, and
+  what the run reported is kept per batch and on the run.
   """
   use ApiaryWeb.ConnCase, async: true
 
@@ -126,7 +126,7 @@ defmodule ApiaryWeb.Contract.EventsDigestsTest do
     conn = deliver(ctx, [heartbeat], run_configuration: ctx.own)
     assert in_force(conn) == [next]
 
-    # F2: the run is behind, and the header can say so.
+    # The run is behind, and the header can say so.
     run = run!(ctx, subject)
     assert run.reported_run_configuration_digest == ctx.own
     assert %{in_force: ^next, reported: reported, drift: true} = Policy.digests(ctx.scope, run)
@@ -146,7 +146,7 @@ defmodule ApiaryWeb.Contract.EventsDigestsTest do
     assert in_force(deliver(ctx, [started], delivery: delivery)) == [ctx.own]
   end
 
-  test "F2: what the batch reported is kept on the delivery, and only a digest is", ctx do
+  test "what the batch reported is kept on the delivery, and only a digest is", ctx do
     {subject, [ping, started]} = first_events()
     deliver(ctx, [ping], run_configuration: ctx.own)
     deliver(ctx, [started], run_configuration: "not a digest")

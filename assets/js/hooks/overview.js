@@ -1,8 +1,8 @@
-// The fourteen-day chart of the workspace overview (brief-overview.md od5). The server renders
-// the SVG; this hook owns what only the browser knows: the one tooltip for both plots,
-// placed under the hovered or focused slot; the reading preference of the table twin,
-// kept in localStorage; Home and End between the slots; and, on a coarse pointer, the
-// first tap that opens the tooltip before the second follows the link.
+// The fourteen-day chart of the workspace overview (docs/design/brief-overview.md). The
+// server renders the SVG; this hook owns what only the browser knows: the one tooltip for
+// both plots, placed under the hovered or focused slot; the reading preference of the
+// table twin, kept in localStorage; Home and End between the slots; and, on a coarse
+// pointer, the first tap that opens the tooltip before the second follows the link.
 //
 // The tooltip element is the hook's (`phx-update="ignore"`); everything else is patched
 // by LiveView and read here from data attributes.

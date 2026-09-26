@@ -1,8 +1,8 @@
 defmodule ApiaryWeb.PathScopeTest do
   @moduledoc """
-  The organisation and the workspace come from the path (decision 0073): a page shows the
-  workspace its URL names, and a slug the user holds no membership in answers as a path
-  that does not exist, not as forbidden.
+  The organisation and the workspace come from the path: a page shows the workspace its
+  URL names, and a slug the user holds no membership in answers as a path that does not
+  exist, not as forbidden.
   """
   use ApiaryWeb.ConnCase, async: true
 

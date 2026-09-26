@@ -239,7 +239,7 @@ defmodule Apiary.OrganisationsTest do
                Organisations.set_member_level(scope, owner_membership.id, :member)
     end
 
-    test "M1: a scope loaded before a demotion has no owner rights left" do
+    test "a scope loaded before a demotion has no owner rights left" do
       %{scope: scope} = sign_up_fixture()
       %{scope: stale, membership: stale_membership} = member_fixture(scope, :owner)
       %{membership: third} = member_fixture(scope, :member)
@@ -268,7 +268,7 @@ defmodule Apiary.OrganisationsTest do
       assert Repo.get!(Organisations.Organisation, scope.organisation.id).name != "Mine"
     end
 
-    test "M1: a scope loaded before a removal has no rights left" do
+    test "a scope loaded before a removal has no rights left" do
       %{scope: scope} = sign_up_fixture()
       %{scope: stale, membership: stale_membership} = member_fixture(scope, :owner)
       %{membership: third} = member_fixture(scope, :member)
@@ -288,7 +288,7 @@ defmodule Apiary.OrganisationsTest do
                )
     end
 
-    test "M1: a level change and a removal are announced to the member's open pages" do
+    test "a level change and a removal are announced to the member's open pages" do
       %{scope: scope} = sign_up_fixture()
       %{user: member, membership: membership} = member_fixture(scope, :member)
       organisation_id = scope.organisation.id
@@ -302,7 +302,7 @@ defmodule Apiary.OrganisationsTest do
       assert_receive {:membership_changed, %{organisation_id: ^organisation_id}}
     end
 
-    test "H7: a membership of another workspace of the organisation is not found" do
+    test "a membership of another workspace of the organisation is not found" do
       %{scope: scope, organisation: organisation} = sign_up_fixture()
       %{user: outsider} = sign_up_fixture()
 
@@ -437,7 +437,7 @@ defmodule Apiary.OrganisationsTest do
       assert {:error, :invalid} = Organisations.accept_invitation(user, "garbage")
     end
 
-    test "M3: one invitation makes one membership, whoever holds it" do
+    test "one invitation makes one membership, whoever holds it" do
       %{scope: scope, organisation: organisation} = sign_up_fixture()
       %{token: token} = invitation_fixture(scope, %{"level" => "owner"})
       first = user_fixture()
@@ -456,7 +456,7 @@ defmodule Apiary.OrganisationsTest do
                Repo.all(from m in Membership, where: m.organisation_id == ^organisation.id)
     end
 
-    test "M3: an invited sign-up that lost the invitation creates nothing" do
+    test "an invited sign-up that lost the invitation creates nothing" do
       %{scope: scope, organisation: organisation} = sign_up_fixture()
       %{token: token} = invitation_fixture(scope, %{"level" => "owner"})
       held = Organisations.get_invitation_by_token(token)
@@ -478,7 +478,7 @@ defmodule Apiary.OrganisationsTest do
                )
     end
 
-    test "M3: concurrent accepts of one invitation make one membership" do
+    test "concurrent accepts of one invitation make one membership" do
       %{scope: scope, organisation: organisation} = sign_up_fixture()
       %{token: token} = invitation_fixture(scope)
       users = for _ <- 1..4, do: user_fixture()
@@ -504,7 +504,7 @@ defmodule Apiary.OrganisationsTest do
                )
     end
 
-    test "H4: an organisation holds at most 50 pending invitations" do
+    test "an organisation holds at most 50 pending invitations" do
       %{scope: scope, organisation: organisation, workspace: workspace} = sign_up_fixture()
       now = DateTime.utc_now()
 

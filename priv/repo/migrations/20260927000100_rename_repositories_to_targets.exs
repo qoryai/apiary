@@ -1,11 +1,11 @@
 defmodule Apiary.Repo.Migrations.RenameRepositoriesToTargets do
   use Ecto.Migration
 
-  # The engine's words (decision 0065): what a run changes is a target, in a system; a
-  # body names them for a domain, and the software body calls them a repository on a
-  # forge. `repositories` becomes `targets` (`forge` becomes `system`), every
-  # `repository_id` becomes `target_id`, and a run's copies of its target's labels,
-  # `forge` and `repository`, become `target_system` and `target_path`.
+  # The engine's words: what a run changes is a target, in a system; a body names them for
+  # a domain, and the software body calls them a repository on a forge. `repositories`
+  # becomes `targets` (`forge` becomes `system`), every `repository_id` becomes
+  # `target_id`, and a run's copies of its target's labels, `forge` and `repository`,
+  # become `target_system` and `target_path`.
   #
   # Renames only: every row, key, foreign key and check stays as it is, and so does every
   # index, rebuilt nowhere. A renamed column is renamed inside the definitions that name
@@ -16,7 +16,7 @@ defmodule Apiary.Repo.Migrations.RenameRepositoriesToTargets do
   # instant; the whole runs in the migration's one transaction.
   #
   # One migration, not expand and contract: 0.1.0 has almost no installations, and the
-  # release that carries this one says so (decision 0065, amended 2026-09-24).
+  # release that carries this one says so.
   #
   # The same release reads the runner's events under their new names: the type of every
   # event is `dev.qory.*` from runner 0.5.1 on, where it was `ai.qory.*`, and the stored

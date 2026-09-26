@@ -1,8 +1,7 @@
 defmodule ApiaryWeb.Features.Routes do
   @moduledoc """
   The instance's features at the door: a request for a route whose feature the instance
-  does not have is answered as a path the router does not know, before any pipeline runs
-  (decision 0070).
+  does not have is answered as a path the router does not know, before any pipeline runs.
 
   It sits in the endpoint just before the router. Behind it the pipelines would answer
   first, and differently from an unknown path: an anonymous visitor redirected to sign in,

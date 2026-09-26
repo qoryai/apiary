@@ -27,8 +27,8 @@ defmodule ApiaryWeb.Endpoint do
     only: ApiaryWeb.static_paths(),
     raise_on_missing_only: code_reloading?
 
-  # The documentation, from the tree built for the instance's features (decision 0070):
-  # `priv/static/docs` holds one per set of features, and `dir/0` names the one to read.
+  # The documentation, from the tree built for the instance's features: `priv/static/docs`
+  # holds one per set of features, and `dir/0` names the one to read.
   plug Plug.Static,
     at: "/docs",
     from: {ApiaryWeb.DocsController, :dir, []},

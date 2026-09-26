@@ -456,7 +456,7 @@ bar's bottom border and the row's lower edge read as one line across the screen.
      `dropdown` (`menu menu-sm`, `top-full mt-1.5`, width of the sidebar minus 16 px). Title row
      "Switch organisation"; one item per membership: square avatar, organisation name,
      workspace name in `text-faint`, `hero-check-micro` on the current one. Each item is a link to that
-     membership's workspace at the section the user is on (decision 0073).
+     membership's workspace at the section the user is on.
      `aria-label="Switch organisation, current: Acme"`.
    - In the drawer the row also holds, after the block, the **Close menu** button: `btn btn-ghost
      btn-square md:hidden`, `hero-x-mark size-5`, `aria-label="Close menu"`.

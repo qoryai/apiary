@@ -20,16 +20,15 @@ defmodule ApiaryWeb.LingoCatalogueTest do
   @priv Path.expand("../../priv/gettext", __DIR__)
   @fixture Path.expand("../support/gettext_fallback", __DIR__)
 
-  # The engine's surface words (decision 0065): the ones every domain renames. Whole words
-  # only, so "targeted" or "systemd" do not count. `organisation` is not here: it is the
-  # same word in the engine and the software domain. Nor is `workspace`: organisation and
-  # workspace are the same words in every domain.
+  # The engine's surface words: the ones every domain renames. Whole words only, so
+  # "targeted" or "systemd" do not count. `organisation` is not here: it is the same word
+  # in the engine and the software domain. Nor is `workspace`: organisation and workspace
+  # are the same words in every domain.
   @engine_words ~r/\b(targets?|systems?|change[ -]requests?|appl(?:y|ies|ied|ying))\b/i
 
-  # The apiary skin's words (decision 0057), shown by no domain. The skin is per user and
-  # not built; when it is, it gets its own catalogue. A hive is the skin's word for a
-  # workspace, and an apiary its word for an organisation. `Qory Apiary` is the product's
-  # name.
+  # The apiary skin's words, shown by no domain. The skin is per user and not built; when
+  # it is, it gets its own catalogue. A hive is the skin's word for a workspace, and an
+  # apiary its word for an organisation. `Qory Apiary` is the product's name.
   @apiary_words ~r/\b(apiary|apiaries|hives?|bees?|swarms?|flowers?|nectar|honey|jars?|beekeepers?|hivekeeping)\b/i
 
   # A source string whose engine word is the ordinary English word ("the operating system",

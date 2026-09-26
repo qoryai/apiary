@@ -30,7 +30,7 @@ defmodule Apiary.RuntimeConfigTest do
     |> get_in([:apiary, Apiary.Mailer])
   end
 
-  test "M4: production without a relay refuses to boot, naming both variables" do
+  test "production without a relay refuses to boot, naming both variables" do
     error = assert_raise RuntimeError, fn -> prod_mailer() end
     assert error.message =~ "SMTP_RELAY"
     assert error.message =~ "MAIL_TO_LOG"
@@ -44,12 +44,12 @@ defmodule Apiary.RuntimeConfigTest do
     assert_raise RuntimeError, ~r/MAIL_TO_LOG/, fn -> prod_mailer() end
   end
 
-  test "M4: MAIL_TO_LOG=true is the explicit opt-in to the log adapter" do
+  test "MAIL_TO_LOG=true is the explicit opt-in to the log adapter" do
     System.put_env("MAIL_TO_LOG", "true")
     assert prod_mailer()[:adapter] == Swoosh.Adapters.Logger
   end
 
-  test "M4: a relay is used when set, whatever MAIL_TO_LOG says" do
+  test "a relay is used when set, whatever MAIL_TO_LOG says" do
     System.put_env("SMTP_RELAY", "smtp.example.com")
     System.put_env("MAIL_TO_LOG", "true")
     mailer = prod_mailer()

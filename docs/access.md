@@ -1,10 +1,10 @@
 # Who may do what
 
-Whether someone may do something is answered by `Apiary.Access` and nowhere else (decision
-0076). No code outside it compares a membership's level. Roles will grow, and operators
-will reach the organisations they manage; a rule written in one place grows there, where a
-comparison repeated across the contexts and pages would be changed in some places and
-missed in others.
+Whether someone may do something is answered by `Apiary.Access` and nowhere else. No code
+outside it compares a membership's level. Roles will grow, and operators will reach the
+organisations they manage; a rule written in one place grows there, where a comparison
+repeated across the contexts and pages would be changed in some places and missed in
+others.
 
 ## A new action goes into the module
 

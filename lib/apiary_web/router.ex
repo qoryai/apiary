@@ -23,8 +23,8 @@ defmodule ApiaryWeb.Router do
 
     get "/", PageController, :home
 
-    # The documentation (decision 0043). The endpoint serves the built files under /docs;
-    # these answer /docs itself and what was not found. Public: no authentication.
+    # The documentation. The endpoint serves the built files under /docs; these answer
+    # /docs itself and what was not found. Public: no authentication.
     get "/docs", DocsController, :index
     get "/docs/*path", DocsController, :missing
   end
@@ -94,7 +94,7 @@ defmodule ApiaryWeb.Router do
       ] do
       live "/users/settings", UserLive.Settings, :edit
       live "/users/settings/confirm-email/:token", UserLive.Settings, :confirm_email
-      # A user's organisations: for now the page of a user who has none (decision 0073).
+      # A user's organisations: for now the page of a user who has none.
       live "/users/organisations", WorkspaceLive.NoWorkspace, :index
     end
 
@@ -116,11 +116,11 @@ defmodule ApiaryWeb.Router do
     delete "/users/log-out", UserSessionController, :delete
   end
 
-  ## The organisations and their workspaces (decision 0073), last: `/:org` and
-  ## `/:org/:workspace` would match every path of one or two segments above. The first
-  ## segment is never one of `ApiaryWeb.ReservedSlugs.organisation/0`, the second of an
-  ## organisation's never one of `ApiaryWeb.ReservedSlugs.workspace/0`; the router's test
-  ## holds both lists to these routes.
+  ## The organisations and their workspaces, last: `/:org` and `/:org/:workspace` would
+  ## match every path of one or two segments above. The first segment is never one of
+  ## `ApiaryWeb.ReservedSlugs.organisation/0`, the second of an organisation's never one
+  ## of `ApiaryWeb.ReservedSlugs.workspace/0`; the router's test holds both lists to these
+  ## routes.
 
   pipeline :path_scope do
     plug ApiaryWeb.ReservedSlugs

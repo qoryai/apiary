@@ -139,7 +139,7 @@ defmodule ApiaryWeb.AccessKeyLive.IndexTest do
                live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/keys/#{key.id}/rotate")
     end
 
-    test "M1: a page whose membership is gone is refused and sent to /", %{
+    test "a page whose membership is gone is refused and sent to /", %{
       conn: conn,
       scope: scope
     } do
@@ -158,7 +158,7 @@ defmodule ApiaryWeb.AccessKeyLive.IndexTest do
       assert {:ok, _active} = AccessKeys.fetch_for_verification(key.key_id)
     end
 
-    test "M1: a page whose membership is gone cannot create a key", %{conn: conn, scope: scope} do
+    test "a page whose membership is gone cannot create a key", %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/keys/new")
       Apiary.Repo.delete!(scope.membership)
 
@@ -167,7 +167,7 @@ defmodule ApiaryWeb.AccessKeyLive.IndexTest do
       assert Apiary.Repo.all(AccessKey) == []
     end
 
-    test "H2: the page holds no secret of a listed key", %{conn: conn, scope: scope} do
+    test "the page holds no secret of a listed key", %{conn: conn, scope: scope} do
       %{access_key: key, secret: secret} = access_key_fixture(scope, label: "runner-d")
       {:ok, _, second_secret} = AccessKeys.rotate_access_key(scope, key)
 

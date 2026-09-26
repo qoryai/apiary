@@ -3,7 +3,7 @@ defmodule Mix.Tasks.Docs.All do
 
   @moduledoc """
   Builds the documentation an instance serves at `/docs` as one tree per set of features
-  the documentation differs by, all into the one image (decisions 0043 and 0070).
+  the documentation differs by, all into the one image.
 
   A feature that is off is absent, and that includes the documentation: its guides, its
   modules and the passages about it are not in the pages, the sidebar or the search index

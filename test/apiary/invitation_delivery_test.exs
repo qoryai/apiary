@@ -16,7 +16,7 @@ defmodule Apiary.InvitationDeliveryTest do
     %{previous: previous, scope: scope}
   end
 
-  test "H3: an invitation that could not be delivered is not kept", %{
+  test "an invitation that could not be delivered is not kept", %{
     previous: previous,
     scope: scope
   } do

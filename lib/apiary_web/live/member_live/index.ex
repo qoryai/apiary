@@ -1,9 +1,8 @@
 defmodule ApiaryWeb.MemberLive.Index do
   @moduledoc """
-  The members and pending invitations, an organisation's page: `/:org/members`
-  (decision 0073). The workspace they are listed for is the one of the user's membership
-  in the organisation. Owners invite, change levels and remove; members see the page
-  read-only.
+  The members and pending invitations, an organisation's page: `/:org/members`.
+  The workspace they are listed for is the one of the user's membership in the
+  organisation. Owners invite, change levels and remove; members see the page read-only.
   """
   use ApiaryWeb, :live_view
 

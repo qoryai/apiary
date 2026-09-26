@@ -75,28 +75,28 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
   events are held again, a batch at a time by id; `--all` and `all: true` are gone.
 - The pages, the guides and the README say **workspace** where they said workplace. A
   saved link to `/hive/…` or `/no-hive` is not redirected and no longer opens its page.
-- The organisation and the workspace are in the URL, by their slugs (decision 0073): the
-  pages of a workspace are under `/:org/:workspace/…` (`/acme/main/runs`,
-  `/acme/main/runs/:run_id`, `/acme/main/connections`, `/acme/main/policy/targets`,
-  `/acme/main/keys`, `/acme/main/settings`), the organisation's under `/:org/…`
-  (`/acme/members`, and `/acme/settings`, its name and owners, now apart from the
-  workspace's settings, which keep its name and retention), and `/acme` sends a member
-  on to their workspace in it. A page shows the workspace its URL names, so a link opens
-  the same page for every member, and two tabs can show two workspaces; a slug the
-  reader is not a member of, or that does not exist, answers **Not Found**. The session
-  only remembers the workspace last opened, for `/` and the log-in to send you back to
-  it, also after a log-out. The organisation switcher is a list of links to each
-  workspace, at the section you are on; `POST /organisations/switch` is gone. A user
-  without an organisation lands on `/users/organisations`. A slug is made from the name
-  when the organisation or the workspace is created, lowercase `a`–`z`, `0`–`9` and
-  hyphens, at most 40, numbered when taken (`acme-2`); renaming keeps it, and the
-  settings pages show it. An organisation slug is unique on the instance and never a
-  path the instance serves or may serve (`users`, `docs`, `v1`, `api`, `admin`, … in
-  `ApiaryWeb.ReservedSlugs`), and a workspace slug is unique within its organisation and
-  never one of its pages (`members`, `settings`, …). A path under such a reserved name,
-  or one no slug can be (`/.env`, `/favicon.png`), answers as one that does not exist,
-  and a signed-out visitor is not sent to log in for it. A saved link to `/workspace/…`
-  or `/no-workspace` is not redirected and no longer opens its page.
+- The organisation and the workspace are in the URL, by their slugs: the pages of a
+  workspace are under `/:org/:workspace/…` (`/acme/main/runs`, `/acme/main/runs/:run_id`,
+  `/acme/main/connections`, `/acme/main/policy/targets`, `/acme/main/keys`,
+  `/acme/main/settings`), the organisation's under `/:org/…` (`/acme/members`, and
+  `/acme/settings`, its name and owners, now apart from the workspace's settings, which
+  keep its name and retention), and `/acme` sends a member on to their workspace in it. A
+  page shows the workspace its URL names, so a link opens the same page for every member,
+  and two tabs can show two workspaces; a slug the reader is not a member of, or that does
+  not exist, answers **Not Found**. The session only remembers the workspace last opened,
+  for `/` and the log-in to send you back to it, also after a log-out. The organisation
+  switcher is a list of links to each workspace, at the section you are on;
+  `POST /organisations/switch` is gone. A user without an organisation lands on
+  `/users/organisations`. A slug is made from the name when the organisation or the
+  workspace is created, lowercase `a`–`z`, `0`–`9` and hyphens, at most 40, numbered when
+  taken (`acme-2`); renaming keeps it, and the settings pages show it. An organisation
+  slug is unique on the instance and never a path the instance serves or may serve
+  (`users`, `docs`, `v1`, `api`, `admin`, … in `ApiaryWeb.ReservedSlugs`), and a workspace
+  slug is unique within its organisation and never one of its pages (`members`,
+  `settings`, …). A path under such a reserved name, or one no slug can be (`/.env`,
+  `/favicon.png`), answers as one that does not exist, and a signed-out visitor is not
+  sent to log in for it. A saved link to `/workspace/…` or `/no-workspace` is not
+  redirected and no longer opens its page.
 - Hives are workspaces in the schema, the code and the logs: workspace is the engine's
   word and the same in the software domain, and hive is left to the apiary skin, which is
   not built. The server's log names a workspace `workspace=` where it said `hive=`
@@ -129,16 +129,16 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
   machine reads keeps ISO 8601 in UTC. The CLDR data for every language is compiled into
   the release from the repository (`priv/cldr`) and the time zone database from the `tz`
   package: an instance downloads neither, at build time or at runtime.
-- Whether someone may do something is answered in one place, `Apiary.Access` (decision
-  0076): every change a page or a runner asks for is authorised there first, and a page
-  shows a button, a tab or itself by the same answer; a page the reader may not open is
-  not found. Who may do what is unchanged: owners manage the organisation, its members,
-  the workspace's name and retention, locked rules and the mode; members manage access
-  keys, close runs and edit rules that are not locked. A context function that refuses a
-  role now returns `{:error, :forbidden}` where it returned `{:error, :unauthorized}`, and
+- Whether someone may do something is answered in one place, `Apiary.Access`: every change
+  a page or a runner asks for is authorised there first, and a page shows a button, a tab
+  or itself by the same answer; a page the reader may not open is not found. Who may do
+  what is unchanged: owners manage the organisation, its members, the workspace's name and
+  retention, locked rules and the mode; members manage access keys, close runs and edit
+  rules that are not locked. A context function that refuses a role now returns
+  `{:error, :forbidden}` where it returned `{:error, :unauthorized}`, and
   `Apiary.Policy.Error`'s reason is `:forbidden` for it too; an action of a feature that
-  is off is `{:error, :not_found}`. The events endpoint answers `404` to a key that may not
-  post.
+  is off is `{:error, :not_found}`. The events endpoint answers `404` to a key that may
+  not post.
 
 ### Migrations
 

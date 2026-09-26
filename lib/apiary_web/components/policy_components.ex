@@ -1,9 +1,9 @@
 defmodule ApiaryWeb.PolicyComponents do
   @moduledoc """
-  The components of the security policy (`docs/design/brief-policy.md`, pd1 to pd7): the
-  version pill and the version link, the mark of a rule, the source chip, the mode switch,
-  the rule composer with its reading line, the rules table with provenance, the
-  suggestions of the harness, the history of changes with its diff, and the document well.
+  The components of the security policy (`docs/design/brief-policy.md`): the version pill
+  and the version link, the mark of a rule, the source chip, the mode switch, the rule
+  composer with its reading line, the rules table with provenance, the suggestions of the
+  harness, the history of changes with its diff, and the document well.
 
   The pages under `/:org/:workspace/policy` use all of them; the run page and the
   connections pages use the first four, so a version, a rule and where it came from look
@@ -28,7 +28,7 @@ defmodule ApiaryWeb.PolicyComponents do
 
   alias Phoenix.LiveView.JS
 
-  ## pd1. Version pill and version link
+  ## Version pill and version link
 
   @doc """
   The version and digest, wherever a policy is named: page heads, history rows, the diff
@@ -113,7 +113,7 @@ defmodule ApiaryWeb.PolicyComponents do
   def short_digest(digest) when is_binary(digest), do: String.slice(digest, 0, 12)
   def short_digest(_digest), do: nil
 
-  ## pd4. The mark of a rule
+  ## The mark of a rule
 
   @doc """
   The 18 px mark of a rule, in the vocabulary of a connection's decision mark: allow is
@@ -143,7 +143,7 @@ defmodule ApiaryWeb.PolicyComponents do
   defp rule_mark_word("deny"), do: gettext("Deny")
   defp rule_mark_word("pending"), do: gettext("Not allowed")
 
-  ## pd5. Source chip
+  ## Source chip
 
   @doc """
   Where a rule comes from: three shapes, three wordings, no status hue. `label` replaces
@@ -220,7 +220,7 @@ defmodule ApiaryWeb.PolicyComponents do
     """
   end
 
-  ## pd2. Mode switch
+  ## Mode switch
 
   @doc """
   The workspace's default mode as two radio cards. Choosing the other card never switches
@@ -467,7 +467,7 @@ defmodule ApiaryWeb.PolicyComponents do
         number: {:b, Format.number(n)}
       )
 
-  ## pd2a. Target mode
+  ## Target mode
 
   @doc """
   A target's mode: follow the workspace, observe or enforce, with what is in effect and
@@ -562,7 +562,7 @@ defmodule ApiaryWeb.PolicyComponents do
     )
   end
 
-  ## pd3. Rule composer
+  ## Rule composer
 
   @doc """
   The composer of a host rule: a row between the card's header and its table, never a
@@ -808,7 +808,7 @@ defmodule ApiaryWeb.PolicyComponents do
   defp reading_icon(:error), do: "hero-exclamation-triangle-micro"
   defp reading_icon(_hint_or_note), do: "hero-information-circle-micro"
 
-  ## pd4. Rules table and rule row
+  ## Rules table and rule row
 
   @doc """
   The rules of the workspace, or the effective policy of a target: one list, every entry
@@ -1363,7 +1363,7 @@ defmodule ApiaryWeb.PolicyComponents do
     """
   end
 
-  ## pd6. Suggestions
+  ## Suggestions
 
   @doc """
   The hosts the harness declared and the policy does not cover: shown only when there is
@@ -1569,7 +1569,7 @@ defmodule ApiaryWeb.PolicyComponents do
 
   defp middle(host), do: host
 
-  ## pd7. History
+  ## History
 
   @doc """
   The changes of a page of history, grouped by day, newest first. A change row is a

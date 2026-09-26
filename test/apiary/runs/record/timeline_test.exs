@@ -361,7 +361,7 @@ defmodule Apiary.Runs.Record.TimelineTest do
     end
   end
 
-  describe "a call the record never ends (M1)" do
+  describe "a call the record never ends" do
     test "stops being open where the record says it cannot be: later connections are their own items" do
       events = [
         tool(1, "started", "t"),
@@ -421,7 +421,7 @@ defmodule Apiary.Runs.Record.TimelineTest do
     end
   end
 
-  describe "what one item holds is bounded (H2)" do
+  describe "what one item holds is bounded" do
     test "a call keeps the first hundred connections inside it and counts the rest" do
       events = [
         tool(1, "started", "t")
@@ -485,7 +485,7 @@ defmodule Apiary.Runs.Record.TimelineTest do
     end
   end
 
-  describe "linear in what a runner sends (M4)" do
+  describe "linear in what a runner sends" do
     # The work is counted in reductions, which the machine's load does not change, where
     # a wall-clock budget failed whenever the suite was busy. Four times the events is
     # four times the work for an index that is linear and sixteen times for one that is
@@ -751,7 +751,7 @@ defmodule Apiary.Runs.Record.TimelineTest do
     end
   end
 
-  describe "a policy applied again (pe6)" do
+  describe "a policy applied again" do
     defp applied(sequence, allow, extra \\ %{}) do
       event(
         sequence,

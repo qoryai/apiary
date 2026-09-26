@@ -101,10 +101,10 @@ The web side is under `lib/apiary_web/`:
   [docs/lingo.md](docs/lingo.md).
 - `router.ex` and `user_auth.ex`: the pipelines, the `live_session` blocks, and what a
   mount loads into the scope. A workspace's pages are under `/:org/:workspace/…` and an
-  organisation's under `/:org/…`, by their slugs (decision 0073); the organisation and
-  the workspace come from the path, never from the session, and a slug the user is not a
-  member of answers not found. The names a slug can never be are in `reserved_slugs.ex`,
-  and a new top-level path or organisation page is added there in the same change.
+  organisation's under `/:org/…`, by their slugs; the organisation and the workspace come
+  from the path, never from the session, and a slug the user is not a member of answers
+  not found. The names a slug can never be are in `reserved_slugs.ex`, and a new top-level
+  path or organisation page is added there in the same change.
 
 Migrations are under `priv/repo/migrations/`, one per change. Tests mirror the tree:
 `test/apiary/` for the contexts, `test/apiary_web/` for the plugs, controllers and pages.

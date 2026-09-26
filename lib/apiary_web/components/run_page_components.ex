@@ -1,8 +1,8 @@
 defmodule ApiaryWeb.RunPageComponents do
   @moduledoc """
-  The components of the run page (`docs/design/brief-runs.md`, rd10, rd11, rd14, rd16): the
-  session timeline with its lanes and items, the who chip, the background-task strip, the
-  live end, the limits notice and the terminal box.
+  The components of the run page (`docs/design/brief-runs.md`): the session timeline with
+  its lanes and items, the who chip, the background-task strip, the live end, the limits
+  notice and the terminal box.
 
   An item is what `Apiary.Runs.Record.Timeline.build/3` made of a run's events. Everything
   in it came from a runner and is untrusted: it is interpolated, so it is escaped, and it
@@ -10,9 +10,9 @@ defmodule ApiaryWeb.RunPageComponents do
   number, never from a string of the record. The terminal's bytes are not rendered here
   at all: the `Terminal` hook feeds them to xterm.js.
 
-  `security={false}` is an instance without `security` (decision 0070): the timeline's
-  connections say what the runner reported and nothing of a rule. The run page leaves
-  the policy's items out of the index it hands over, so none reaches a component here.
+  `security={false}` is an instance without `security`: the timeline's connections say
+  what the runner reported and nothing of a rule. The run page leaves the policy's items
+  out of the index it hands over, so none reaches a component here.
   """
   use Phoenix.Component
   use Gettext, backend: ApiaryWeb.Gettext
@@ -34,7 +34,7 @@ defmodule ApiaryWeb.RunPageComponents do
                     "The runtime lists what is still running at the end of each turn. A task counts as running until a list leaves it out."
                   )
 
-  ## rd10. The lane key
+  ## The lane key
 
   @doc """
   One toggle of the lane key: a ring in the lane's colour, the agent's type and its id.
@@ -65,7 +65,7 @@ defmodule ApiaryWeb.RunPageComponents do
     """
   end
 
-  ## rd11. Who
+  ## Who
 
   @doc "The agent an item belongs to, in words, where a lane opens or closes."
   attr :lane, :map, required: true
@@ -152,7 +152,7 @@ defmodule ApiaryWeb.RunPageComponents do
   defp and_more(n),
     do: ngettext("and %{number} more", "and %{number} more", n, number: Format.number(n))
 
-  ## rd16. Limits
+  ## Limits
 
   @doc """
   A fact about the record: why a timeline, a log or a connection list is not there. An
@@ -308,7 +308,7 @@ defmodule ApiaryWeb.RunPageComponents do
   defp limit_icon(:no_log), do: "hero-command-line"
   defp limit_icon(_reason), do: "hero-list-bullet"
 
-  ## rd10. The timeline
+  ## The timeline
 
   @doc """
   The session timeline: one column in sequence order, a rail per agent in the gutter. The
@@ -557,10 +557,10 @@ defmodule ApiaryWeb.RunPageComponents do
     """
   end
 
-  # pe6: a reload. What it changed is taken from the allow and deny lists of the two
-  # events, which are the record's; the policy tables are not asked. Every host is a
-  # runner's string. A deny chip carries the deny mark: a host that came into `deny` is
-  # denied from this item on, in either mode.
+  # A reload. What it changed is taken from the allow and deny lists of the two events,
+  # which are the record's; the policy tables are not asked. Every host is a runner's
+  # string. A deny chip carries the deny mark: a host that came into `deny` is denied from
+  # this item on, in either mode.
   defp item_body(%{item: %{kind: :policy_applied, again: true}} = assigns) do
     ~H"""
     <.head
@@ -983,7 +983,7 @@ defmodule ApiaryWeb.RunPageComponents do
 
   attr :version, :any, default: nil, doc: "%{n, path} when the digest names a version here"
 
-  # The version a policy applied names, when this workspace rendered it: the link of pd1.
+  # The version a policy applied names, when this workspace rendered it: the version link.
   defp item_version(%{version: %{n: _, path: _}} = assigns) do
     ~H"""
     <RunComponents.scoped_version version={@version} class="q-pv" />
@@ -1236,7 +1236,7 @@ defmodule ApiaryWeb.RunPageComponents do
     """
   end
 
-  ## rd14. Terminal
+  ## Terminal
 
   @doc """
   The words the log's script says (`assets/js/hooks/terminal.js`), in the domain's
