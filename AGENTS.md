@@ -7,18 +7,22 @@ written out in [CONTRIBUTING.md](CONTRIBUTING.md).
 - **Confidentiality.** Nothing about any customer, counterparty or consulting engagement
   goes anywhere in this repository: not in code, tests, fixtures, docs, commit messages or
   pull requests. Fixtures hold synthetic data only.
-- **Vocabulary.** Code, schemas, migrations and docs say *organisation*, *hive*,
+- **Vocabulary.** Code, schemas, migrations and docs say *organisation*, *workspace*,
   *membership*, *access key*, *key id*, *secret*, *run*, *event*, *receiver*, *run
-  configuration*, *security policy*, and use no synonyms (no team, tenant, workspace,
-  account, API key, token, password for these). The product surface, pages, emails and
-  flashes, is the one place with other words: an organisation is an *apiary* and a hive is
-  a *hive*. British spelling throughout (organisation, licence, behaviour).
+  configuration*, *security policy*, and use no synonyms (no team, tenant, account, API
+  key, token, password for these). The engine's words for the work are *target*, *system*,
+  *change request*, *apply*, *work item* and *task*. The product surface, pages, emails
+  and flashes, is the one place with other words: it says a domain's words through Gettext
+  ([docs/lingo.md](docs/lingo.md)), and only the apiary skin, a per-user setting not built
+  yet, says *apiary* for an organisation and *hive* for a workspace: skin words, never
+  used for these anywhere else. British spelling throughout (organisation, licence,
+  behaviour).
 - **Tenancy.** Every table except `users` and `users_tokens` carries `organisation_id`;
-  every hive-owned table carries `hive_id` beside it with the composite foreign key
-  against `hives`; unique constraints are scoped by `organisation_id`. Every context
-  function that touches an organisation's data takes an `Apiary.Accounts.Scope` first and
-  filters by its organisation and hive. A page never calls `Apiary.Repo`. A test for a new
-  table asserts that a row of another organisation is not reachable.
+  every workspace-owned table carries `workspace_id` beside it with the composite foreign
+  key against `workspaces`; unique constraints are scoped by `organisation_id`. Every
+  context function that touches an organisation's data takes an `Apiary.Accounts.Scope`
+  first and filters by its organisation and workspace. A page never calls `Apiary.Repo`. A
+  test for a new table asserts that a row of another organisation is not reachable.
 - **Migrations.** One per change, via `mix ecto.gen.migration`; expand in one release,
   contract in a later one; every migration reverses; tenant keys in the first migration of
   a table. The changelog section of a release lists them under Migrations. Rules and

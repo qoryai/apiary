@@ -179,6 +179,16 @@ defmodule Apiary.Runs.FoldTest do
       assert run.labels["task"] == "issue-12"
     end
 
+    test "the workspace's domain names the target, by its own labels" do
+      workspace = %Apiary.Organisations.Workspace{domain: "example"}
+      labels = %{"platform" => "ads.example", "account" => "42", "forge" => "git.example.com"}
+
+      %{run: run} =
+        Fold.fold(Map.put(@run, :workspace, workspace), [started(2, %{"labels" => labels})])
+
+      assert {run.target_system, run.target_path} == {"ads.example", "42"}
+    end
+
     test "a run without labels has none" do
       %{run: run} = Fold.fold(@run, [started(2, %{"labels" => nil})])
       assert run.labels == %{}

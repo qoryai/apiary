@@ -40,11 +40,18 @@ config :phoenix_live_view,
   # the attribute set on all root tags. Used for Phoenix.LiveView.ColocatedCSS.
   root_tag_attribute: "phx-r"
 
-# The surface speaks a body's words, never the engine's (docs/lingo.md). Each Gettext
-# locale is a body's catalogue in GNU's `language@body` form. The default is the software
-# body's, so a render outside a request, a mail or an error page, reads it too.
+# The surface speaks a domain's words, never the engine's (docs/lingo.md). Each Gettext
+# locale is a domain's catalogue in GNU's `language@domain` form. The default is the
+# software domain's, so a render outside a request, a mail or an error page, reads it too.
 config :gettext, default_locale: "en@software", plural_forms: ApiaryWeb.Gettext.Plural
 config :apiary, ApiaryWeb.Gettext, default_locale: "en@software"
+
+# Dates, times and numbers are formatted from the Unicode CLDR (ApiaryWeb.Cldr,
+# ApiaryWeb.Format). Times are stored in UTC and shifted into the reader's zone with the
+# tz database compiled into the `tz` package, which also checks a person's time zone:
+# nothing is downloaded at runtime.
+config :ex_cldr, default_backend: ApiaryWeb.Cldr, json_library: Jason
+config :elixir, :time_zone_database, Tz.TimeZoneDatabase
 
 # Configure the mailer
 #

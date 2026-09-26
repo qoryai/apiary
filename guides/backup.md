@@ -93,7 +93,7 @@ curl http://localhost:4100/health
 ```
 
 answers `200` with `"database":"ok"`. Sign in, open **Runs**, and start a run on a machine
-that has one of the workplace's access keys: if it appears, the access key secrets were
+that has one of the workspace's access keys: if it appears, the access key secrets were
 restored readable, which means `CLOAK_KEY` is the right one.
 
 ## What each key is for
@@ -123,7 +123,7 @@ The way out is therefore a new secret for every machine: rotate each key under t
 file ([The runner file's `server` section](runner-file.md)). When the right `CLOAK_KEY`
 turns up, put it back before rotating and every existing secret reads again.
 
-Everything else survives: accounts, organisations, workplaces and memberships, runs,
+Everything else survives: accounts, organisations, workspaces and memberships, runs,
 events, logs, connections, and the access keys' own rows with their labels and key ids.
 <!-- feature: security -->
 So does the security policy, with its versions and history.

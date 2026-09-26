@@ -27,7 +27,9 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
   defp nested(depth), do: %{"in" => nested(depth - 1)}
 
   defp run!(scope, subject) do
-    Repo.one!(from r in Run, where: r.hive_id == ^scope.hive.id and r.run_id == ^subject)
+    Repo.one!(
+      from r in Run, where: r.workspace_id == ^scope.workspace.id and r.run_id == ^subject
+    )
   end
 
   defp events(run),
@@ -48,7 +50,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
   end
 
   describe "a valid delivery" do
-    test "is answered 202 with the digest of discovery, and creates the run in the key's hive",
+    test "is answered 202 with the digest of discovery, and creates the run in the key's workspace",
          %{conn: conn, scope: scope, key: key, secret: secret} do
       {subject, batch} = first_events()
       conn = signed_post(conn, key.key_id, secret, batch)
@@ -260,12 +262,12 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
   end
 
   describe "tenancy" do
-    test "a subject that exists under another hive is simply another run there",
+    test "a subject that exists under another workspace is simply another run there",
          %{scope: scope, key: key, secret: secret} do
       %{scope: other} = sign_up_fixture()
       %{access_key: other_key, secret: other_secret} = access_key_fixture(other)
       {subject, [ping, _]} = first_events()
-      # The same subject, other events: ids are unique within a hive.
+      # The same subject, other events: ids are unique within a workspace.
       other_ping = wire_event(subject, 1, "ping", ping["data"])
 
       assert build_conn() |> signed_post(key.key_id, secret, [ping]) |> response(202)
@@ -279,11 +281,11 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
       assert length(events(run!(scope, subject))) == 1
       assert length(events(run!(other, subject))) == 1
 
-      # And the run of one hive is not reachable from the other's scope.
+      # And the run of one workspace is not reachable from the other's scope.
       assert_raise Ecto.NoResultsError, fn -> Runs.get_run!(other, run!(scope, subject).id) end
     end
 
-    test "even the same event ids are another hive's own", %{
+    test "even the same event ids are another workspace's own", %{
       scope: scope,
       key: key,
       secret: secret
@@ -419,7 +421,8 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
       end
 
       refute Repo.exists?(
-               from r in Run, where: r.hive_id == ^scope.hive.id and r.run_id == ^subject
+               from r in Run,
+                 where: r.workspace_id == ^scope.workspace.id and r.run_id == ^subject
              )
     end
 
@@ -552,7 +555,8 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
       assert json_response(conn, 401) == @unauthorized
 
       refute Repo.exists?(
-               from r in Run, where: r.hive_id == ^scope.hive.id and r.run_id == ^subject
+               from r in Run,
+                 where: r.workspace_id == ^scope.workspace.id and r.run_id == ^subject
              )
     end
 

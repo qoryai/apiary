@@ -8,7 +8,10 @@ defmodule ApiaryWeb.PolicyLive.ReadingTest do
   alias ApiaryWeb.PolicyLive.Reading
 
   defp context(attrs \\ %{}) do
-    Map.merge(%{scope: :hive, own: [], entries: [], owner: true, locked_by: %{}}, Map.new(attrs))
+    Map.merge(
+      %{scope: :workspace, own: [], entries: [], owner: true, locked_by: %{}},
+      Map.new(attrs)
+    )
   end
 
   defp read(form, context \\ context()) do
@@ -40,7 +43,11 @@ defmodule ApiaryWeb.PolicyLive.ReadingTest do
   end
 
   defp entry(attrs),
-    do: struct!(Entry, Map.merge(%{kind: :host, action: :allow, source: :hive}, Map.new(attrs)))
+    do:
+      struct!(
+        Entry,
+        Map.merge(%{kind: :host, action: :allow, source: :workspace}, Map.new(attrs))
+      )
 
   test "empty is the hint" do
     assert %{kind: :hint} = read(%{"host" => "  "})
@@ -95,7 +102,7 @@ defmodule ApiaryWeb.PolicyLive.ReadingTest do
              reading = read(%{"host" => "registry.example"}, context)
 
     assert flat(reading.text) ==
-             "registry.example is already allowed for the workplace, by beekeeper on 2 Sep."
+             "registry.example is already allowed for the workspace, by beekeeper on 2 Sep."
 
     assert %{kind: :note, button: "Replace with deny"} =
              read(%{"host" => "registry.example", "action" => "deny"}, context)
@@ -123,7 +130,7 @@ defmodule ApiaryWeb.PolicyLive.ReadingTest do
              reading = read(%{"host" => "files.cdn.example", "action" => "deny"}, context)
 
     assert flat(reading.text) ==
-             "Reads as: deny files.cdn.example. It takes the host out of what the workplace allows; a repository can still allow it unless you lock this rule. It is denied in either mode, observe too. *.cdn.example still allows the other hosts below it."
+             "Reads as: deny files.cdn.example. It takes the host out of what the workspace allows; a repository can still allow it unless you lock this rule. It is denied in either mode, observe too. *.cdn.example still allows the other hosts below it."
 
     # A narrower suffix under a broader one is said the same way.
     assert %{kind: :ok} =
@@ -141,7 +148,7 @@ defmodule ApiaryWeb.PolicyLive.ReadingTest do
     refute flat(reading.text) =~ "still allows"
   end
 
-  test "on a target page the hive's suffix is said, a locked one refuses, and a lock refuses" do
+  test "on a target page the workspace's suffix is said, a locked one refuses, and a lock refuses" do
     entries = [
       entry(host: "*.cdn.example"),
       entry(host: "*.paste.example", action: :deny, locked: true),
@@ -167,19 +174,19 @@ defmodule ApiaryWeb.PolicyLive.ReadingTest do
              refusal = read(%{"host" => "tax.internal.example", "action" => "deny"}, context)
 
     assert flat(refusal.text) =~
-             "A locked workplace rule allows *.internal.example. It holds against every repository, so a deny added here would change nothing."
+             "A locked workspace rule allows *.internal.example. It holds against every repository, so a deny added here would change nothing."
 
     refusal = read(%{"host" => "bin.paste.example"}, context)
     assert refusal.kind == :refusal
 
     assert flat(refusal.text) ==
-             "A locked workplace rule denies *.paste.example. It holds against every repository, so no rule added here would change what happens. Locked by beekeeper@example.com on 2 Sep 2026. Only an owner can change or unlock it."
+             "A locked workspace rule denies *.paste.example. It holds against every repository, so no rule added here would change what happens. Locked by beekeeper@example.com on 2 Sep 2026. Only an owner can change or unlock it."
 
     assert flat(read(%{"host" => "github.example", "action" => "deny"}, context).text) =~
-             "A locked workplace rule allows github.example. It holds against every repository, so a deny added here would change nothing."
+             "A locked workspace rule allows github.example. It holds against every repository, so a deny added here would change nothing."
 
     assert flat(read(%{"host" => "bin.paste.example"}, %{context | owner: true}).text) =~
-             "You can change or unlock it on the workplace's policy page."
+             "You can change or unlock it on the workspace's policy page."
   end
 
   test "a member cannot change a locked rule of the scope" do

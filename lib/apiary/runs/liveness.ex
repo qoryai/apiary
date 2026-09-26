@@ -10,7 +10,7 @@ defmodule Apiary.Runs.Liveness do
     * a `running` run is measured from its last heartbeat, or, when it has not beaten yet,
       from the arrival of its `run.started`;
     * a `pending` run, one whose events have begun and whose `run.started` has not come,
-      is measured from the moment the hive first heard of it (`inserted_at`).
+      is measured from the moment the workspace first heard of it (`inserted_at`).
 
   Only this server's clock is compared with `now`: `last_heartbeat_at` is when the
   heartbeat was received, not when the runner says it was sent, and the arrival of the

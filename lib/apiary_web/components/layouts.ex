@@ -16,27 +16,52 @@ defmodule ApiaryWeb.Layouts do
   # Two sections: the record first, because it is why people open the console. The words
   # are marked for extraction here and translated when the sidebar renders (`nav_text/1`).
   # Each entry names the feature it belongs to (`Apiary.Features`), nil for the entries
-  # every instance has; `nav_items/1` keeps the ones that are on.
+  # every instance has; `nav_items/1` keeps the ones that are on. Where an entry leads is
+  # `nav_path/3`'s.
   @nav [
-    {gettext_noop("Hive"), gettext_noop("Main"),
+    {gettext_noop("Workspace"), gettext_noop("Main"),
      [
-       {:overview, gettext_noop("Overview"), "hero-squares-2x2-micro", "/hive", :observability},
-       {:runs, gettext_noop("Runs"), "hero-play-circle-micro", "/hive/runs", :observability},
+       {:overview, gettext_noop("Overview"), "hero-squares-2x2-micro", :observability},
+       {:runs, gettext_noop("Runs"), "hero-play-circle-micro", :observability},
        {:connections, gettext_noop("Connections"), "hero-arrows-right-left-micro",
-        "/hive/connections", :observability},
+        :observability},
        # After Connections, because the policy is what the connections are judged by.
-       {:policy, gettext_noop("Policy"), "hero-shield-check-micro", "/hive/policy", :security}
+       {:policy, gettext_noop("Policy"), "hero-shield-check-micro", :security}
      ]},
     {gettext_noop("Manage"), gettext_noop("Manage"),
      [
-       {:keys, gettext_noop("Access keys"), "hero-key-micro", "/hive/keys", nil},
-       {:members, gettext_noop("Members"), "hero-users-micro", "/hive/members", nil},
-       {:settings, gettext_noop("Settings"), "hero-cog-6-tooth-micro", "/hive/settings", nil}
+       {:keys, gettext_noop("Access keys"), "hero-key-micro", nil},
+       {:members, gettext_noop("Members"), "hero-users-micro", nil},
+       {:settings, gettext_noop("Settings"), "hero-cog-6-tooth-micro", nil},
+       {:organisation, gettext_noop("Organisation"), "hero-building-office-2-micro", nil}
      ]}
   ]
 
   @doc """
-  The application shell: a sidebar that is the apiary's (its name and hive at
+  nav_path/3 is where the navigation entry `key` leads in `workspace` of `organisation`:
+  a workspace's page under `/:org/:workspace/…`, an organisation's under `/:org/…`
+  (decision 0073). The switcher asks it for the entry the user is on, so switching keeps
+  the section; any other key leads to the workspace's overview.
+  """
+  @spec nav_path(atom, %Apiary.Organisations.Organisation{}, %Apiary.Organisations.Workspace{}) ::
+          String.t()
+  def nav_path(:runs, organisation, workspace), do: ~p"/#{organisation}/#{workspace}/runs"
+
+  def nav_path(:connections, organisation, workspace),
+    do: ~p"/#{organisation}/#{workspace}/connections"
+
+  def nav_path(:policy, organisation, workspace), do: ~p"/#{organisation}/#{workspace}/policy"
+  def nav_path(:keys, organisation, workspace), do: ~p"/#{organisation}/#{workspace}/keys"
+  def nav_path(:members, organisation, _workspace), do: ~p"/#{organisation}/members"
+
+  def nav_path(:settings, organisation, workspace),
+    do: ~p"/#{organisation}/#{workspace}/settings"
+
+  def nav_path(:organisation, organisation, _workspace), do: ~p"/#{organisation}/settings"
+  def nav_path(_overview, organisation, workspace), do: ~p"/#{organisation}/#{workspace}"
+
+  @doc """
+  The application shell: a sidebar that is the organisation's (its name and workspace at
   the top, the navigation, the brand at the foot), a 52 px top bar with the
   theme toggle and the account menu at its right end, and a main column for
   the page. Below 768 px the sidebar is a drawer behind the bar's menu button.
@@ -72,7 +97,7 @@ defmodule ApiaryWeb.Layouts do
       assigns
       |> assign(:nav_items, nav_items(assigns.current_scope))
       |> assign(:organisation, scope_field(assigns.current_scope, :organisation))
-      |> assign(:hive, scope_field(assigns.current_scope, :hive))
+      |> assign(:workspace, scope_field(assigns.current_scope, :workspace))
       |> assign(:membership, scope_field(assigns.current_scope, :membership))
       |> assign(:user, scope_field(assigns.current_scope, :user))
 
@@ -99,7 +124,7 @@ defmodule ApiaryWeb.Layouts do
           <label for="nav-drawer" class="drawer-overlay" aria-hidden="true"></label>
           <.sidebar
             organisation={@organisation}
-            hive={@hive}
+            workspace={@workspace}
             memberships={@memberships}
             nav={@nav}
             nav_items={@nav_items}
@@ -126,14 +151,14 @@ defmodule ApiaryWeb.Layouts do
               <.icon name="hero-bars-3" class="size-5" />
             </button>
             <div
-              id="apiary-label"
+              id="organisation-label"
               class="flex min-w-0 items-center gap-2.5 px-1 md:hidden"
-              title={apiary_title(@organisation, @hive)}
+              title={organisation_title(@organisation, @workspace)}
             >
-              <.avatar name={@organisation.name} kind="apiary" />
+              <.avatar name={@organisation.name} kind="organisation" />
               <span class="grid min-w-0">
                 <span class="truncate text-[13px]/4 font-semibold">{@organisation.name}</span>
-                <span class="truncate text-[11.5px]/[14px] text-muted">{@hive && @hive.name}</span>
+                <span class="truncate text-[11.5px]/[14px] text-muted">{@workspace && @workspace.name}</span>
               </span>
             </div>
             <:controls>
@@ -168,7 +193,7 @@ defmodule ApiaryWeb.Layouts do
     """
   end
 
-  # The bar: 52 px, level with the sidebar's apiary row so their lower edges read as
+  # The bar: 52 px, level with the sidebar's organisation row so their lower edges read as
   # one line. The left holds what the default slot gives it (nothing from 768 px, when
   # the sidebar is there); the controls sit at the right end at every width.
   slot :inner_block
@@ -210,7 +235,7 @@ defmodule ApiaryWeb.Layouts do
   end
 
   attr :organisation, :any
-  attr :hive, :any
+  attr :workspace, :any
   attr :memberships, :list
   attr :nav, :atom
   attr :nav_items, :list
@@ -225,8 +250,13 @@ defmodule ApiaryWeb.Layouts do
       aria-label={gettext("Sidebar")}
       class="flex h-dvh w-72 flex-col border-r border-line bg-base-200 max-md:shadow-modal md:w-60"
     >
-      <div id="apiary-row" class="flex h-13 flex-none items-center gap-1 px-2">
-        <.apiary_block organisation={@organisation} hive={@hive} memberships={@memberships} />
+      <div id="organisation-row" class="flex h-13 flex-none items-center gap-1 px-2">
+        <.organisation_block
+          organisation={@organisation}
+          workspace={@workspace}
+          memberships={@memberships}
+          nav={@nav}
+        />
         <button
           type="button"
           data-drawer-close
@@ -277,15 +307,15 @@ defmodule ApiaryWeb.Layouts do
               title={policy_mode_title(@counts)}
             >
               {policy_mode(@counts)}<span :if={own_modes(@counts) != []} class="opacity-75"> · {gettext(
-                "%{count} own",
-                count: length(own_modes(@counts))
+                "%{number} own",
+                number: Format.number(length(own_modes(@counts)))
               )}</span>
             </span>
             <span
               :if={count = nav_count(@counts, key)}
               class="ml-auto font-mono text-[11.5px]/4 text-faint tabular-nums"
             >
-              {count}
+              {Format.number(count)}
             </span>
           </.link>
         </nav>
@@ -314,17 +344,38 @@ defmodule ApiaryWeb.Layouts do
   # The entries whose feature is on for the scope. A feature that is off is absent, not
   # disabled (decision 0070): no entry, greyed or otherwise, and so nothing beside it
   # either (Policy's mode word goes with Policy). A section left empty goes too.
-  defp nav_items(scope) do
+  defp nav_items(%{organisation: %{} = organisation, workspace: %{} = workspace} = scope) do
     for {section, label, items} <- @nav,
-        shown = Enum.flat_map(items, &nav_item(scope, &1)),
+        shown = Enum.flat_map(items, &nav_item(scope, organisation, workspace, &1)),
         shown != [],
         do: {section, label, shown}
   end
 
-  defp nav_item(_scope, {key, text, icon, path, nil}), do: [{key, text, icon, path}]
+  defp nav_items(_scope), do: []
 
-  defp nav_item(scope, {key, text, icon, path, feature}) do
-    if Apiary.Features.on?(scope, feature), do: [{key, text, icon, path}], else: []
+  defp nav_item(scope, organisation, workspace, {key, text, icon, feature}) do
+    if is_nil(feature) or Apiary.Features.on?(scope, feature),
+      do: [{key, text, icon, nav_path(key, organisation, workspace)}],
+      else: []
+  end
+
+  # Where the switcher sends the user in another membership's workspace: the section
+  # they are on, when it is there too, else the overview.
+  defp switch_path(nav, %{organisation: organisation, workspace: workspace}) do
+    entry = @nav |> Enum.flat_map(&elem(&1, 2)) |> Enum.find(&(elem(&1, 0) == nav))
+
+    case entry do
+      {key, _text, _icon, nil} ->
+        nav_path(key, organisation, workspace)
+
+      {key, _text, _icon, feature} ->
+        if Apiary.Features.on?(workspace, feature),
+          do: nav_path(key, organisation, workspace),
+          else: nav_path(:overview, organisation, workspace)
+
+      nil ->
+        nav_path(:overview, organisation, workspace)
+    end
   end
 
   defp nav_count(%{keys: n}, :keys), do: n
@@ -332,7 +383,7 @@ defmodule ApiaryWeb.Layouts do
   defp nav_count(_counts, _key), do: nil
 
   # The mode in force is a word, not a colour: observe is not a fault. Absent while the
-  # hive has no policy of Qory's yet.
+  # workspace has no policy of Qory's yet.
   defp policy_mode(%{mode: mode}) when mode in ["observe", "enforce"], do: mode
   defp policy_mode(_counts), do: nil
 
@@ -341,7 +392,7 @@ defmodule ApiaryWeb.Layouts do
 
   # The tag never claims what every run is under: it names the default and how many differ.
   defp policy_mode_title(counts) do
-    lead = gettext("The hive's default mode is %{mode}.", mode: policy_mode(counts))
+    lead = gettext("The workspace's default mode is %{mode}.", mode: policy_mode(counts))
 
     lead <> " " <> own_modes_sentence(own_modes(counts))
   end
@@ -352,35 +403,45 @@ defmodule ApiaryWeb.Layouts do
 
   defp own_modes_sentence(modes),
     do:
-      ngettext("%{count} target sets its own.", "%{count} targets set their own.", length(modes))
+      ngettext(
+        "%{number} target sets its own.",
+        "%{number} targets set their own.",
+        length(modes),
+        number: Format.number(length(modes))
+      )
 
   defp alive_count(%{alive: n}) when is_integer(n), do: n
   defp alive_count(_counts), do: 0
 
-  defp alive_title(n), do: ngettext("%{count} run alive now", "%{count} runs alive now", n)
+  defp alive_title(n),
+    do:
+      ngettext("%{number} run alive now", "%{number} runs alive now", n, number: Format.number(n))
 
-  defp apiary_title(organisation, hive) do
-    Enum.map_join([organisation, hive], " / ", &(&1 && &1.name))
+  defp organisation_title(organisation, workspace) do
+    Enum.map_join([organisation, workspace], " / ", &(&1 && &1.name))
   end
 
   attr :organisation, :any, required: true
-  attr :hive, :any, required: true
+  attr :workspace, :any, required: true
   attr :memberships, :list, required: true
+  attr :nav, :atom, default: nil
 
-  # The apiary block at the top of the sidebar. Its third column is the switcher's
+  # The organisation block at the top of the sidebar. Its third column is the switcher's
   # chevron slot in both variants, so nothing moves the day a second membership
-  # arrives. One membership: text, the slot empty. Several: the switcher, a
-  # dropdown of POST buttons.
-  defp apiary_block(%{memberships: memberships} = assigns) when length(memberships) > 1 do
+  # arrives. One membership: text, the slot empty. Several: the switcher, a dropdown of
+  # links to each membership's workspace, at the section the user is on (decision 0073:
+  # the path says which workspace a page shows). A link loads the page afresh, so the
+  # session remembers the workspace for `/`.
+  defp organisation_block(%{memberships: memberships} = assigns) when length(memberships) > 1 do
     ~H"""
     <div
-      id="workspace-menu"
+      id="organisation-menu"
       class="dropdown block min-w-0 flex-1"
       phx-hook="Menu"
       phx-mounted={JS.ignore_attributes(["class"])}
     >
       <button
-        id="workspace-menu-button"
+        id="organisation-menu-button"
         type="button"
         class="grid w-full cursor-pointer grid-cols-[28px_1fr_auto] items-center gap-2.5 rounded-field border border-line bg-base-100 px-2 py-1.5 text-left shadow-xs transition-colors hover:border-line-strong"
         aria-haspopup="menu"
@@ -388,72 +449,64 @@ defmodule ApiaryWeb.Layouts do
         aria-label={gettext("Switch organisation, current: %{name}", name: @organisation.name)}
         phx-mounted={JS.ignore_attributes(["aria-expanded"])}
       >
-        <.apiary_names organisation={@organisation} hive={@hive} />
+        <.organisation_names organisation={@organisation} workspace={@workspace} />
         <.icon name="hero-chevron-up-down-micro" class="size-4 text-faint" />
       </button>
-      <form
-        method="post"
-        action={~p"/organisations/switch"}
-        class="dropdown-content left-0 top-full mt-1.5 w-full"
+      <ul
+        class="menu menu-sm dropdown-content left-0 top-full mt-1.5 w-full min-w-0"
+        role="menu"
+        aria-label={gettext("Switch organisation")}
       >
-        <input type="hidden" name="_csrf_token" value={get_csrf_token()} />
-        <ul
-          class="menu menu-sm w-full min-w-0"
-          role="menu"
-          aria-label={gettext("Switch organisation")}
-        >
-          <li class="menu-title" role="presentation">{gettext("Switch organisation")}</li>
-          <li :for={m <- @memberships} role="none">
-            <button
-              type="submit"
-              name="organisation_id"
-              value={m.organisation_id}
-              role="menuitem"
-              aria-current={m.organisation_id == @organisation.id && "true"}
-              class="!h-auto min-h-[38px] py-1"
-            >
-              <.avatar name={m.organisation.name} kind="apiary" />
-              <span class="grid min-w-0 flex-1">
-                <span class="truncate font-medium">{m.organisation.name}</span>
-                <span class="truncate text-xs/4 text-faint">{m.hive.name}</span>
-              </span>
-              <.icon
-                :if={m.organisation_id == @organisation.id}
-                name="hero-check-micro"
-                class="size-4 !text-base-content"
-              />
-            </button>
-          </li>
-        </ul>
-      </form>
+        <li class="menu-title" role="presentation">{gettext("Switch organisation")}</li>
+        <li :for={m <- @memberships} role="none">
+          <.link
+            id={"switch-#{m.organisation.slug}-#{m.workspace.slug}"}
+            href={switch_path(@nav, m)}
+            role="menuitem"
+            aria-current={m.workspace_id == @workspace.id && "true"}
+            class="!h-auto min-h-[38px] py-1"
+          >
+            <.avatar name={m.organisation.name} kind="organisation" />
+            <span class="grid min-w-0 flex-1">
+              <span class="truncate font-medium">{m.organisation.name}</span>
+              <span class="truncate text-xs/4 text-faint">{m.workspace.name}</span>
+            </span>
+            <.icon
+              :if={m.workspace_id == @workspace.id}
+              name="hero-check-micro"
+              class="size-4 !text-base-content"
+            />
+          </.link>
+        </li>
+      </ul>
     </div>
     """
   end
 
-  defp apiary_block(assigns) do
+  defp organisation_block(assigns) do
     ~H"""
     <div
-      id="apiary-block"
+      id="organisation-block"
       class="grid min-w-0 flex-1 grid-cols-[28px_1fr_auto] items-center gap-2.5 rounded-field border border-transparent px-2 py-1.5"
-      title={apiary_title(@organisation, @hive)}
+      title={organisation_title(@organisation, @workspace)}
     >
-      <.apiary_names organisation={@organisation} hive={@hive} />
+      <.organisation_names organisation={@organisation} workspace={@workspace} />
     </div>
     """
   end
 
   attr :organisation, :any, required: true
-  attr :hive, :any, required: true
+  attr :workspace, :any, required: true
 
-  defp apiary_names(assigns) do
+  defp organisation_names(assigns) do
     ~H"""
-    <.avatar name={@organisation.name} kind="apiary" size="md" />
+    <.avatar name={@organisation.name} kind="organisation" size="md" />
     <span class="grid min-w-0">
       <span class="truncate text-[13px]/[18px] font-semibold" title={@organisation.name}>
         {@organisation.name}
       </span>
-      <span class="truncate text-xs/4 text-muted" title={@hive && @hive.name}>
-        {@hive && @hive.name}
+      <span class="truncate text-xs/4 text-muted" title={@workspace && @workspace.name}>
+        {@workspace && @workspace.name}
       </span>
     </span>
     """

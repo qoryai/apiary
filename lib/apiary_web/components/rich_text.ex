@@ -7,7 +7,7 @@ defmodule ApiaryWeb.RichText do
       <.rich text={rich_gettext("Invitation sent to %{email}.", email: {:b, invitation.email})} />
 
   `rich_gettext/2`, `rich_pgettext/3` and `rich_ngettext/4` translate a sentence and split
-  it at its bindings into rich text; `rich/1` renders rich text. A body's catalogue may
+  it at its bindings into rich text; `rich/1` renders rich text. A domain's catalogue may
   move the bindings wherever its sentence needs them. The bindings never pass through the
   sentence as text, so a binding that holds `%{...}` or any other mark stays what it is.
 
@@ -79,7 +79,7 @@ defmodule ApiaryWeb.RichText do
   `ngettext/4` whose bindings are rich text, as `rich_gettext/2`. `%{count}` is the raw
   number; to show it formatted or marked up, give it its own binding:
 
-      rich_ngettext("%{number} run", "%{number} runs", n, number: {:b, delimited(n)})
+      rich_ngettext("%{number} run", "%{number} runs", n, number: {:b, Format.number(n)})
   """
   defmacro rich_ngettext(msgid, msgid_plural, count, bindings \\ []) do
     quote do

@@ -1,6 +1,9 @@
-defmodule ApiaryWeb.HiveLive.NoHive do
+defmodule ApiaryWeb.WorkspaceLive.NoWorkspace do
   @moduledoc """
-  Shown to a signed-in user who is not a member of any organisation.
+  A user's organisations, `/users/organisations`: for now the page of a signed-in user who
+  is not a member of any organisation, where `/` and the log-in send them. A user who is
+  a member is sent on to their workspace; a list of the user's organisations is not
+  built yet, and the sidebar's switcher links to each of them.
   """
   use ApiaryWeb, :live_view
 
@@ -17,7 +20,7 @@ defmodule ApiaryWeb.HiveLive.NoHive do
         <p>
           <.rich text={
             rich_gettext(
-              "An organisation is created when you register, and you join someone else's through an invitation. Ask an owner to invite %{email}; the email they send brings you straight to their hive.",
+              "An organisation is created when you register, and you join someone else's through an invitation. Ask an owner to invite %{email}; the email they send brings you straight to their workspace.",
               email: email(@current_scope.user.email)
             )
           } />
@@ -43,10 +46,12 @@ defmodule ApiaryWeb.HiveLive.NoHive do
 
   @impl true
   def mount(_params, _session, socket) do
-    if socket.assigns.current_scope.organisation do
-      {:ok, push_navigate(socket, to: ~p"/hive")}
-    else
-      {:ok, assign(socket, page_title: gettext("No hive yet"))}
+    case socket.assigns.current_scope do
+      %{organisation: %{} = organisation, workspace: %{} = workspace} ->
+        {:ok, push_navigate(socket, to: ~p"/#{organisation}/#{workspace}")}
+
+      _no_membership ->
+        {:ok, assign(socket, page_title: gettext("No workspace yet"))}
     end
   end
 end

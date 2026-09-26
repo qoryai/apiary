@@ -25,16 +25,16 @@ defmodule Apiary.Policy.ResolutionTest do
     }
   end
 
-  # {name, hive rules, target rules, allow, deny, paths, credentials}
+  # {name, workspace rules, target rules, allow, deny, paths, credentials}
   @resolved [
     {"nothing", [], [], [], [], %{}, []},
-    {"add: the hive allows", [{:allow, "api.example"}], [], ["api.example"], [], %{}, []},
+    {"add: the workspace allows", [{:allow, "api.example"}], [], ["api.example"], [], %{}, []},
     {"add: the target allows on top", [{:allow, "api.example"}], [{:allow, "mcp.example"}],
      ["api.example", "mcp.example"], [], %{}, []},
-    {"disable: the target denies a host of the hive, and the document says so",
+    {"disable: the target denies a host of the workspace, and the document says so",
      [{:allow, "api.example"}, {:allow, "cdn.example"}], [{:deny, "cdn.example"}],
      ["api.example"], ["cdn.example"], %{}, []},
-    {"conflict: the target's allow wins over the hive's deny", [{:deny, "mcp.example"}],
+    {"conflict: the target's allow wins over the workspace's deny", [{:deny, "mcp.example"}],
      [{:allow, "mcp.example"}], ["mcp.example"], [], %{}, []},
     {"lock: a locked deny holds against a target allow, in deny",
      [{:deny, "mcp.example", locked: true}], [{:allow, "mcp.example"}], [], ["mcp.example"], %{},
@@ -46,11 +46,12 @@ defmodule Apiary.Policy.ResolutionTest do
     {"deny: an exact deny under an allowed *. suffix stands beside it",
      [{:allow, "*.example"}, {:deny, "tracker.example"}], [], ["*.example"], ["tracker.example"],
      %{}, []},
-    {"deny: a target's deny under the hive's unlocked suffix stands", [{:allow, "*.s.example"}],
-     [{:deny, "a.s.example"}], ["*.s.example"], ["a.s.example"], %{}, []},
+    {"deny: a target's deny under the workspace's unlocked suffix stands",
+     [{:allow, "*.s.example"}], [{:deny, "a.s.example"}], ["*.s.example"], ["a.s.example"], %{},
+     []},
     {"deny: a narrower suffix denied under a wider one", [{:allow, "*.example"}],
      [{:deny, "*.s.example"}], ["*.example"], ["*.s.example"], %{}, []},
-    {"deny: a locked suffix allow of the hive beats the target's deny below it",
+    {"deny: a locked suffix allow of the workspace beats the target's deny below it",
      [{:allow, "*.s.example", locked: true}], [{:deny, "a.s.example"}], ["*.s.example"], [], %{},
      []},
     {"deny: names before *. suffixes", [{:deny, "*.ads.example"}, {:deny, "tracker.example"}], [],
@@ -63,13 +64,13 @@ defmodule Apiary.Policy.ResolutionTest do
     {"wildcards: a locked *. deny takes out the target's allows below it",
      [{:deny, "*.s.example", locked: true}], [{:allow, "a.s.example"}, {:allow, "t.example"}],
      ["t.example"], ["*.s.example"], %{}, []},
-    {"wildcards: an unlocked *. deny of the hive loses to a target allow below it, and is not written",
+    {"wildcards: an unlocked *. deny of the workspace loses to a target allow below it, and is not written",
      [{:deny, "*.s.example"}, {:allow, "b.s.example"}], [{:allow, "a.s.example"}],
      ["a.s.example"], [], %{}, []},
-    {"wildcards: a locked allow stands under the hive's own unlocked *. deny, which is not written",
+    {"wildcards: a locked allow stands under the workspace's own unlocked *. deny, which is not written",
      [{:deny, "*.s.example"}, {:allow, "a.s.example", locked: true}], [], ["a.s.example"], [],
      %{}, []},
-    {"wildcards: a target's *. allow overrides the hive's deny below it",
+    {"wildcards: a target's *. allow overrides the workspace's deny below it",
      [{:deny, "a.s.example"}], [{:allow, "*.s.example"}], ["*.s.example"], [], %{}, []},
     {"paths: a host held to paths is in allow and in paths",
      [{:allow, "git.example", paths: ["/acme/shop.git/info/refs", "/acme/shop.git/*"]}], [],
@@ -102,7 +103,7 @@ defmodule Apiary.Policy.ResolutionTest do
      [{:credential, "allow", "model"}], [], [], %{}, []}
   ]
 
-  # {name, hive rules, target rules, what the sentence says}
+  # {name, workspace rules, target rules, what the sentence says}
   @refused [
     {"a suffix held to paths above another entry",
      [{:allow, "*.example", paths: ["/a"]}, {:allow, "git.example"}], [], ~r/one list of paths/},
@@ -121,13 +122,13 @@ defmodule Apiary.Policy.ResolutionTest do
     end)
   end
 
-  for {name, hive, target, allow, deny, paths, credentials} <- @resolved,
+  for {name, workspace, target, allow, deny, paths, credentials} <- @resolved,
       mode <- ~w(observe enforce) do
     test "#{name} (#{mode})" do
       assert {:ok, effective} =
                Resolution.resolve(
                  unquote(mode),
-                 rules(unquote(Macro.escape(hive))),
+                 rules(unquote(Macro.escape(workspace))),
                  rules(unquote(Macro.escape(target)))
                )
 
@@ -154,12 +155,12 @@ defmodule Apiary.Policy.ResolutionTest do
     end
   end
 
-  for {name, hive, target, sentence} <- @refused do
+  for {name, workspace, target, sentence} <- @refused do
     test "refused: #{name}" do
       assert {:error, %Apiary.Policy.Error{reason: :conflict, message: message}} =
                Resolution.resolve(
                  "enforce",
-                 rules(unquote(Macro.escape(hive))),
+                 rules(unquote(Macro.escape(workspace))),
                  rules(unquote(Macro.escape(target)))
                )
 
@@ -168,26 +169,26 @@ defmodule Apiary.Policy.ResolutionTest do
   end
 
   describe "the mode" do
-    # {name, hive mode, the target's own, target?, mode in force, where from}
+    # {name, workspace mode, the target's own, target?, mode in force, where from}
     @modes [
-      {"the baseline has the hive's", "observe", nil, false, "observe", :hive},
-      {"a target follows the hive by default", "enforce", nil, true, "enforce", :hive},
-      {"hive observe, target enforce", "observe", "enforce", true, "enforce", :target},
-      {"hive enforce, target observe", "enforce", "observe", true, "observe", :target},
+      {"the baseline has the workspace's", "observe", nil, false, "observe", :workspace},
+      {"a target follows the workspace by default", "enforce", nil, true, "enforce", :workspace},
+      {"workspace observe, target enforce", "observe", "enforce", true, "enforce", :target},
+      {"workspace enforce, target observe", "enforce", "observe", true, "observe", :target},
       {"the same mode said by the target is still its own", "enforce", "enforce", true, "enforce",
        :target},
       {"a mode without a target is not the baseline's", "observe", "enforce", false, "observe",
-       :hive},
-      {"what is no mode follows the hive", "enforce", "log", true, "enforce", :hive}
+       :workspace},
+      {"what is no mode follows the workspace", "enforce", "log", true, "enforce", :workspace}
     ]
 
-    for {name, hive, own, target?, mode, source} <- @modes do
+    for {name, workspace, own, target?, mode, source} <- @modes do
       test name do
         id = if unquote(target?), do: Ecto.UUID.generate()
 
         assert {:ok, effective} =
                  Resolution.resolve_for(
-                   unquote(hive),
+                   unquote(workspace),
                    unquote(own),
                    [allow("api.example"), deny("mcp.example", locked: true)],
                    if(id, do: [allow("mcp.example")], else: []),
@@ -224,18 +225,18 @@ defmodule Apiary.Policy.ResolutionTest do
       end
 
       assert %{in_force: false, overridden_by: %{source: :target, action: :deny}} =
-               by.("api.example", :hive)
+               by.("api.example", :workspace)
 
-      assert %{in_force: true, overrides: [%{source: :hive, action: :allow}]} =
+      assert %{in_force: true, overrides: [%{source: :workspace, action: :allow}]} =
                by.("api.example", :target)
 
       assert %{in_force: true, locked: true, overrides: [%{source: :target}]} =
-               by.("mcp.example", :hive)
+               by.("mcp.example", :workspace)
 
-      assert %{in_force: false, overridden_by: %{source: :hive, locked: true, action: :deny}} =
+      assert %{in_force: false, overridden_by: %{source: :workspace, locked: true, action: :deny}} =
                by.("mcp.example", :target)
 
-      assert %{in_force: true, overridden_by: nil, overrides: []} = by.("cdn.example", :hive)
+      assert %{in_force: true, overridden_by: nil, overrides: []} = by.("cdn.example", :workspace)
       assert effective.deny == ["api.example", "mcp.example"]
     end
 
@@ -310,7 +311,7 @@ defmodule Apiary.Policy.ResolutionTest do
       assert Render.digest(document) =~ ~r/\Asha256=[0-9a-f]{64}\z/
     end
 
-    test "a hive with no rules renders observe and an empty allow, and no deny" do
+    test "a workspace with no rules renders observe and an empty allow, and no deny" do
       {:ok, effective} = Resolution.resolve("observe", [], [])
 
       assert Render.document(effective) ==

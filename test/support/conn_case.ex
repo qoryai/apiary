@@ -43,7 +43,7 @@ defmodule ApiaryWeb.ConnCase do
       setup :register_and_log_in_user
 
   The user is created through `Apiary.Organisations.sign_up_user/2`, so they
-  own an organisation and a hive; the scope in the context is loaded with them.
+  own an organisation and a workspace; the scope in the context is loaded with them.
   It stores an updated connection, the user and the scope in the test context.
   """
   def register_and_log_in_user(%{conn: conn} = context) do
@@ -56,6 +56,15 @@ defmodule ApiaryWeb.ConnCase do
       |> Enum.into([])
 
     %{conn: log_in_user(conn, user, opts), user: user, scope: scope}
+  end
+
+  @doc """
+  The path of the scope's workspace, `/<organisation slug>/<workspace slug>`, followed by
+  `rest`: for a path a test cannot write with `~p`, such as one inside a selector. A
+  path a test visits is written `~p"/\#{scope.organisation}/\#{scope.workspace}/runs"`.
+  """
+  def workspace_path(%{organisation: organisation, workspace: workspace}, rest \\ "") do
+    "/#{organisation.slug}/#{workspace.slug}#{rest}"
   end
 
   @doc """

@@ -1,14 +1,15 @@
 defmodule ApiaryWeb.OverviewComponents do
   @moduledoc """
-  The components of the hive overview (`docs/design/brief-overview.md`, od1 to od9): the
-  Needs attention list, the activity strip, the alive rows, the fourteen-day chart, the
-  last runs, the policy, access keys and retention glances, and the empty hive's checklist.
+  The components of the workspace overview (`docs/design/brief-overview.md`, od1 to od9):
+  the Needs attention list, the activity strip, the alive rows, the fourteen-day chart,
+  the last runs, the policy, access keys and retention glances, and the empty workspace's
+  checklist.
 
-  Every number here is a count the hive already keeps (oa 2): `runs` columns the projector
-  folded, `access_keys` timestamps, `retention_runs` rows, the policy's mode and version.
-  Nothing is inferred. Every component that renders inside a list takes its `id` from the
-  caller (oj 8), so a live update patches a row in place and never by index. Times tick
-  in the browser under the `Ticker` hook, as everywhere (rd3).
+  Every number here is a count the workspace already keeps (oa 2): `runs` columns the
+  projector folded, `access_keys` timestamps, `retention_runs` rows, the policy's mode and
+  version. Nothing is inferred. Every component that renders inside a list takes its `id`
+  from the caller (oj 8), so a live update patches a row in place and never by index.
+  Times tick in the browser under the `Ticker` hook, as everywhere (rd3).
 
   The policy's parts are the `security` feature's (decision 0070): `policy_glance/1`, the
   attention items of kinds `:denied` (an allow is a rule), `:behind`, `:enforce` and
@@ -28,7 +29,6 @@ defmodule ApiaryWeb.OverviewComponents do
     only: [
       alive: 1,
       beat: 1,
-      delimited: 1,
       drift: 1,
       duration: 1,
       elapsed: 1,
@@ -43,7 +43,7 @@ defmodule ApiaryWeb.OverviewComponents do
 
   import ApiaryWeb.PolicyComponents, only: [rule_mark: 1, sect: 1, version_pill: 1]
 
-  alias ApiaryWeb.RunComponents
+  alias ApiaryWeb.Format
   alias Phoenix.LiveView.JS
 
   defp lost_tip,
@@ -68,6 +68,11 @@ defmodule ApiaryWeb.OverviewComponents do
   attr :items, :list, required: true
   attr :count, :integer, required: true, doc: "the items not yet resolved, shown and beyond"
   attr :more, :map, default: nil, doc: "%{count:, navigate:, title:}"
+
+  attr :scope, :map,
+    required: true,
+    doc: "the caller's scope: its organisation and workspace name the links"
+
   attr :owner?, :boolean, default: false
   attr :now, :any, required: true
 
@@ -77,7 +82,7 @@ defmodule ApiaryWeb.OverviewComponents do
       :if={@items != []}
       id={@id}
       title={gettext("Needs attention")}
-      count={"#{@count}"}
+      count={Format.number(@count)}
       class="q-att"
     >
       <:trailing>
@@ -88,20 +93,34 @@ defmodule ApiaryWeb.OverviewComponents do
           class="q-link"
           title={@more.title}
         >
-          {ngettext("and %{count} more", "and %{count} more", @more.count)}
+          {ngettext("and %{number} more", "and %{number} more", @more.count,
+            number: Format.number(@more.count)
+          )}
         </.link>
       </:trailing>
       <ul
         id={"#{@id}-list"}
         aria-label={
-          ngettext("%{count} item needs attention", "%{count} items need attention", @count)
+          ngettext("%{number} item needs attention", "%{number} items need attention", @count,
+            number: Format.number(@count)
+          )
         }
       >
-        <.attention_item :for={item <- @items} item={item} owner?={@owner?} now={@now} />
+        <.attention_item
+          :for={item <- @items}
+          scope={@scope}
+          item={item}
+          owner?={@owner?}
+          now={@now}
+        />
       </ul>
     </.sect>
     """
   end
+
+  attr :scope, :map,
+    required: true,
+    doc: "the caller's scope: its organisation and workspace name the links"
 
   attr :item, :map, required: true
   attr :owner?, :boolean, required: true
@@ -131,7 +150,7 @@ defmodule ApiaryWeb.OverviewComponents do
             <.icon name="hero-check-micro" class="size-3" />{@item.resolved.done}
           </span>
         <% else %>
-          <.attention_actions item={@item} owner?={@owner?} />
+          <.attention_actions scope={@scope} item={@item} owner?={@owner?} />
         <% end %>
       </span>
     </li>
@@ -295,7 +314,7 @@ defmodule ApiaryWeb.OverviewComponents do
     ~H"""
     <b class="q-att-lead">
       <.rich text={
-        rich_gettext("%{observe} is the hive's default",
+        rich_gettext("%{observe} is the workspace's default",
           observe: {:term, gettext("Observe"), mode_tip()}
         )
       } />
@@ -324,7 +343,7 @@ defmodule ApiaryWeb.OverviewComponents do
        when is_binary(locked) do
     ~H"""
     <.rich text={
-      rich_gettext("A locked hive rule denies %{rule}. Only an owner can change it.",
+      rich_gettext("A locked workspace rule denies %{rule}. Only an owner can change it.",
         rule: {:code, @item.locked, "q-rule"}
       )
     } />
@@ -384,7 +403,10 @@ defmodule ApiaryWeb.OverviewComponents do
       rich_gettext(
         "Still on %{reported} after %{beats}; %{in_force} has been in force for %{since}. A run reloads at its next heartbeat.",
         reported: version_word(%{__changed__: nil, version: @item.reported}),
-        beats: ngettext("%{count} heartbeat", "%{count} heartbeats", @item.beats),
+        beats:
+          ngettext("%{number} heartbeat", "%{number} heartbeats", @item.beats,
+            number: Format.number(@item.beats)
+          ),
         in_force: version_word(%{__changed__: nil, version: @item.in_force}),
         since: {:b, since(%{__changed__: nil, at: @item.in_force.rendered_at}), "tabular-nums"}
       )
@@ -397,25 +419,30 @@ defmodule ApiaryWeb.OverviewComponents do
     <%= cond do %>
       <% @item.uncovered == 0 -> %>
         {ngettext(
-          "%{count} allow rule is in force and every destination reached in the last 7 days is covered. Enforce would deny nothing today.",
-          "%{count} allow rules are in force and every destination reached in the last 7 days is covered. Enforce would deny nothing today.",
-          @item.rules
+          "%{number} allow rule is in force and every destination reached in the last 7 days is covered. Enforce would deny nothing today.",
+          "%{number} allow rules are in force and every destination reached in the last 7 days is covered. Enforce would deny nothing today.",
+          @item.rules,
+          number: Format.number(@item.rules)
         )}
       <% is_integer(@item.uncovered) -> %>
-        {ngettext("%{count} rule is in force.", "%{count} rules are in force.", @item.rules)}
+        {ngettext("%{number} rule is in force.", "%{number} rules are in force.", @item.rules,
+          number: Format.number(@item.rules)
+        )}
         <.rich text={
           rich_ngettext(
             "Enforce would deny %{number} destination reached in the last 7 days.",
             "Enforce would deny %{number} destinations reached in the last 7 days.",
             @item.uncovered,
-            number: {:b, @item.uncovered}
+            number: {:b, Format.number(@item.uncovered)}
           )
         } />
       <% true -> %>
-        {ngettext("%{count} rule is in force.", "%{count} rules are in force.", @item.rules)}
+        {ngettext("%{number} rule is in force.", "%{number} rules are in force.", @item.rules,
+          number: Format.number(@item.rules)
+        )}
         {gettext(
-          "What enforce would deny could not be counted: this hive recorded more than %{cap} connections in 7 days.",
-          cap: delimited(Apiary.Policy.Activity.cap())
+          "What enforce would deny could not be counted: this workspace recorded more than %{cap} connections in 7 days.",
+          cap: Format.number(Apiary.Policy.Activity.cap())
         )}
     <% end %>
     <span :if={!@owner?}>{gettext("Only an owner sets a mode.")}</span>
@@ -426,7 +453,7 @@ defmodule ApiaryWeb.OverviewComponents do
     ~H"""
     <.rich text={
       rich_gettext(
-        "%{runs} landed under the machines' own policies. The first rule you add, or a mode you set, puts them under the hive's.",
+        "%{runs} landed under the machines' own policies. The first rule you add, or a mode you set, puts them under the workspace's.",
         runs: {:b, runs_count(@item.runs)}
       )
     } />
@@ -481,14 +508,19 @@ defmodule ApiaryWeb.OverviewComponents do
 
   defp denied_sentence(%{targets: targets} = item) do
     rich_ngettext(
-      "Denied %{times} in %{runs} of %{count} target, last %{when}.",
-      "Denied %{times} in %{runs} of %{count} targets, last %{when}.",
+      "Denied %{times} in %{runs} of %{number} target, last %{when}.",
+      "Denied %{times} in %{runs} of %{number} targets, last %{when}.",
       length(targets),
       times: {:b, times(item.denied)},
       runs: runs_count(item.runs),
-      when: relative_time(%{__changed__: nil, at: item.last_seen_at})
+      when: relative_time(%{__changed__: nil, at: item.last_seen_at}),
+      number: Format.number(length(targets))
     )
   end
+
+  attr :scope, :map,
+    required: true,
+    doc: "the caller's scope: its organisation and workspace name the links"
 
   attr :item, :map, required: true
   attr :owner?, :boolean, required: true
@@ -498,7 +530,7 @@ defmodule ApiaryWeb.OverviewComponents do
     ~H"""
     <.link
       id={"#{@item.id}-rule"}
-      navigate={ApiaryWeb.ConnectionLive.Rules.rule_path(nil, @item.locked)}
+      navigate={ApiaryWeb.ConnectionLive.Rules.rule_path(@scope, nil, @item.locked)}
       class="btn btn-xs btn-ghost"
     >
       {gettext("Open the rule")}
@@ -548,15 +580,17 @@ defmodule ApiaryWeb.OverviewComponents do
             type="button"
             role="menuitem"
             data-menu-close
-            phx-click={JS.push("rule_open", value: %{id: @item.id, level: "hive"})}
+            phx-click={JS.push("rule_open", value: %{id: @item.id, level: "workspace"})}
           >
-            {gettext("Allow for the hive")}
+            {gettext("Allow for the workspace")}
           </button>
         </li>
         <li role="none">
           <.link
             role="menuitem"
-            navigate={~p"/hive/policy/targets/#{@target.id}?#{%{"rule" => @item.host}}"}
+            navigate={
+              ~p"/#{@scope.organisation}/#{@scope.workspace}/policy/targets/#{@target.id}?#{%{"rule" => @item.host}}"
+            }
           >
             {gettext("Allow with paths…")}
           </.link>
@@ -572,12 +606,12 @@ defmodule ApiaryWeb.OverviewComponents do
       id={"#{@item.id}-act"}
       type="button"
       class="btn btn-xs"
-      aria-label={gettext("Allow %{host} for the hive", host: @item.host)}
+      aria-label={gettext("Allow %{host} for the workspace", host: @item.host)}
       aria-haspopup="dialog"
       aria-expanded={to_string(@item[:expanded] == true)}
-      phx-click={JS.push("rule_open", value: %{id: @item.id, level: "hive"})}
+      phx-click={JS.push("rule_open", value: %{id: @item.id, level: "workspace"})}
     >
-      {gettext("Allow for the hive")}
+      {gettext("Allow for the workspace")}
     </button>
     """
   end
@@ -602,7 +636,7 @@ defmodule ApiaryWeb.OverviewComponents do
     ~H"""
     <.link
       id={"#{@item.id}-act"}
-      navigate={~p"/hive/runs/#{@item.run.run_id}"}
+      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@item.run.run_id}"}
       class="btn btn-xs"
       aria-label={gettext("Open %{run}", run: run_title(@item.run))}
     >
@@ -623,7 +657,7 @@ defmodule ApiaryWeb.OverviewComponents do
       {gettext("Close")}
     </button>
     <.link
-      navigate={~p"/hive/runs/#{@item.run.run_id}"}
+      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@item.run.run_id}"}
       class="btn btn-xs btn-ghost"
       aria-label={gettext("Open %{run}", run: run_title(@item.run))}
     >
@@ -644,7 +678,7 @@ defmodule ApiaryWeb.OverviewComponents do
       {gettext("What changed")}
     </.link>
     <.link
-      navigate={~p"/hive/runs/#{@item.run.run_id}"}
+      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@item.run.run_id}"}
       class="btn btn-xs"
       aria-label={gettext("Open %{run}", run: run_title(@item.run))}
     >
@@ -657,19 +691,27 @@ defmodule ApiaryWeb.OverviewComponents do
     ~H"""
     <%= cond do %>
       <% !@owner? -> %>
-        <.link id={"#{@item.id}-act"} navigate={~p"/hive/policy"} class="btn btn-xs">
+        <.link
+          id={"#{@item.id}-act"}
+          navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/policy"}
+          class="btn btn-xs"
+        >
           {gettext("Open policy")}
         </.link>
       <% @item.uncovered == 0 -> %>
         <.link
           id={"#{@item.id}-act"}
-          navigate={~p"/hive/policy?confirm=enforce"}
+          navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/policy?confirm=enforce"}
           class="btn btn-xs btn-primary"
         >
           {gettext("Set the default to enforce")}
         </.link>
       <% true -> %>
-        <.link id={"#{@item.id}-act"} navigate={~p"/hive/policy"} class="btn btn-xs">
+        <.link
+          id={"#{@item.id}-act"}
+          navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/policy"}
+          class="btn btn-xs"
+        >
           {gettext("Review on the policy page")}
         </.link>
     <% end %>
@@ -678,7 +720,11 @@ defmodule ApiaryWeb.OverviewComponents do
 
   defp attention_actions(%{item: %{kind: :unmanaged}} = assigns) do
     ~H"""
-    <.link id={"#{@item.id}-act"} navigate={~p"/hive/policy"} class="btn btn-xs">
+    <.link
+      id={"#{@item.id}-act"}
+      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/policy"}
+      class="btn btn-xs"
+    >
       {gettext("Open policy")}
     </.link>
     """
@@ -688,7 +734,7 @@ defmodule ApiaryWeb.OverviewComponents do
     ~H"""
     <.link
       id={"#{@item.id}-act"}
-      navigate={~p"/hive/keys/#{@item.key.id}/revoke"}
+      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/keys/#{@item.key.id}/revoke"}
       class="btn btn-xs q-btn-danger-ghost"
       aria-label={gettext("Revoke %{key}", key: @item.key.label)}
     >
@@ -739,11 +785,11 @@ defmodule ApiaryWeb.OverviewComponents do
 
   defp destination_title(%{host: host, port: port, path: path}), do: "#{host}:#{port}#{path}"
 
-  defp times(n), do: ngettext("once", "%{number} times", n, number: delimited(n))
+  defp times(n), do: ngettext("once", "%{number} times", n, number: Format.number(n))
 
-  defp runs_count(n), do: ngettext("%{number} run", "%{number} runs", n, number: delimited(n))
+  defp runs_count(n), do: ngettext("%{number} run", "%{number} runs", n, number: Format.number(n))
 
-  defp days(n), do: ngettext("%{count} day", "%{count} days", n)
+  defp days(n), do: ngettext("%{number} day", "%{number} days", n, number: Format.number(n))
 
   @doc "The task of a run, else its command line, else its short id: what a row calls it."
   def run_title(%{task: task}) when is_binary(task) and task != "", do: task
@@ -765,6 +811,11 @@ defmodule ApiaryWeb.OverviewComponents do
   attr :id, :string, default: "overview-strip"
   attr :alive, :integer, required: true
   attr :facts, :any, required: true, doc: "nil while loading, else the 14-day totals"
+
+  attr :scope, :map,
+    required: true,
+    doc: "the caller's scope: its organisation and workspace name the links"
+
   attr :destinations, :any, default: nil
   attr :days, :integer, default: 14
 
@@ -776,14 +827,16 @@ defmodule ApiaryWeb.OverviewComponents do
         <dd>
           <.link
             id={"#{@id}-alive"}
-            navigate={~p"/hive/runs?#{%{"state" => "pending,running"}}"}
+            navigate={
+              ~p"/#{@scope.organisation}/#{@scope.workspace}/runs?#{%{"state" => "pending,running"}}"
+            }
             class="q-rowlink"
             aria-label={
               ngettext(
                 "%{number} run alive now: open them",
                 "%{number} runs alive now: open them",
                 @alive,
-                number: delimited(@alive)
+                number: Format.number(@alive)
               )
             }
           >{@alive}</.link>
@@ -791,11 +844,17 @@ defmodule ApiaryWeb.OverviewComponents do
         </dd>
       </div>
       <div class="q-kv relative">
-        <dt>{ngettext("Runs, %{count} day", "Runs, %{count} days", @days)}</dt>
+        <dt>
+          {ngettext("Runs, %{number} day", "Runs, %{number} days", @days,
+            number: Format.number(@days)
+          )}
+        </dt>
         <dd :if={@facts}>
-          <.link id={"#{@id}-runs"} navigate={~p"/hive/runs?since=30d"} class="q-rowlink">{delimited(
-            @facts.runs
-          )}</.link>
+          <.link
+            id={"#{@id}-runs"}
+            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs?since=30d"}
+            class="q-rowlink"
+          >{Format.number(@facts.runs)}</.link>
           <small>{families_sub(@facts)}</small>
         </dd>
         <dd :if={!@facts}>
@@ -804,14 +863,18 @@ defmodule ApiaryWeb.OverviewComponents do
       </div>
       <div class="q-kv relative">
         <dt>
-          {ngettext("Denied attempts, %{count} day", "Denied attempts, %{count} days", @days)}
+          {ngettext("Denied attempts, %{number} day", "Denied attempts, %{number} days", @days,
+            number: Format.number(@days)
+          )}
         </dt>
         <dd :if={@facts} class={@facts.denied > 0 && "q-bad"}>
           <.link
             id={"#{@id}-denied"}
-            navigate={~p"/hive/connections?#{%{"decision" => "denied", "since" => "30d"}}"}
+            navigate={
+              ~p"/#{@scope.organisation}/#{@scope.workspace}/connections?#{%{"decision" => "denied", "since" => "30d"}}"
+            }
             class="q-rowlink"
-          >{delimited(@facts.denied)}</.link>
+          >{Format.number(@facts.denied)}</.link>
           <small>{denied_sub(@facts, @destinations)}</small>
         </dd>
         <dd :if={!@facts}>
@@ -819,15 +882,19 @@ defmodule ApiaryWeb.OverviewComponents do
         </dd>
       </div>
       <div class="q-kv">
-        <dt>{ngettext("Cost reported, %{count} day", "Cost reported, %{count} days", @days)}</dt>
+        <dt>
+          {ngettext("Cost reported, %{number} day", "Cost reported, %{number} days", @days,
+            number: Format.number(@days)
+          )}
+        </dt>
         <dd :if={@facts && @facts.costed > 0} id={"#{@id}-cost"}>
           {cost_text(@facts.cost)}<small><.rich text={
             rich_ngettext(
               "by %{costed} of %{number} run",
               "by %{costed} of %{number} runs",
               @facts.runs,
-              costed: {:b, delimited(@facts.costed)},
-              number: delimited(@facts.runs)
+              costed: {:b, Format.number(@facts.costed)},
+              number: Format.number(@facts.runs)
             )
           } /></small>
         </dd>
@@ -852,10 +919,10 @@ defmodule ApiaryWeb.OverviewComponents do
   defp families_sub(facts) do
     [
       facts.ended_well > 0 &&
-        gettext("%{number} ended well", number: delimited(facts.ended_well)),
+        gettext("%{number} ended well", number: Format.number(facts.ended_well)),
       facts.ended_badly > 0 &&
-        gettext("%{number} ended badly", number: delimited(facts.ended_badly)),
-      facts.alive > 0 && gettext("%{number} alive", number: delimited(facts.alive))
+        gettext("%{number} ended badly", number: Format.number(facts.ended_badly)),
+      facts.alive > 0 && gettext("%{number} alive", number: Format.number(facts.alive))
     ]
     |> Enum.filter(& &1)
     |> Enum.join(" · ")
@@ -865,20 +932,20 @@ defmodule ApiaryWeb.OverviewComponents do
 
   defp denied_sub(_facts, destinations) when is_integer(destinations) and destinations > 0 do
     ngettext("to %{number} destination", "to %{number} destinations", destinations,
-      number: delimited(destinations)
+      number: Format.number(destinations)
     )
   end
 
   defp denied_sub(%{with_denials: runs}, _destinations) when is_integer(runs),
-    do: ngettext("in %{number} run", "in %{number} runs", runs, number: delimited(runs))
+    do: ngettext("in %{number} run", "in %{number} runs", runs, number: Format.number(runs))
 
   defp denied_sub(_facts, _destinations), do: ""
 
   @doc "A sum of dollars: two decimals, four when the sum is under a cent."
   def cost_text(%Decimal{} = cost) do
     if Decimal.compare(cost, Decimal.new("0.01")) == :lt and Decimal.compare(cost, 0) == :gt,
-      do: "$" <> Decimal.to_string(Decimal.round(cost, 4), :normal),
-      else: "$" <> Decimal.to_string(Decimal.round(cost, 2), :normal)
+      do: "$" <> Format.number(cost, digits: 4),
+      else: "$" <> Format.number(cost, digits: 2)
   end
 
   def cost_text(_cost), do: gettext("n/a")
@@ -887,10 +954,15 @@ defmodule ApiaryWeb.OverviewComponents do
 
   @doc """
   The runs alive now, most recently started first, at most five; "and n more" when the
-  hive has more; "No run alive now." when none, never hidden.
+  workspace has more; "No run alive now." when none, never hidden.
   """
   attr :id, :string, required: true
   attr :runs, :list, required: true
+
+  attr :scope, :map,
+    required: true,
+    doc: "the caller's scope: its organisation and workspace name the links"
+
   attr :count, :integer, required: true
   attr :now, :any, required: true
 
@@ -898,21 +970,26 @@ defmodule ApiaryWeb.OverviewComponents do
     ~H"""
     <div class="q-part-h">
       <h3 id={"#{@id}-h"}>{gettext("Alive now")}</h3>
-      <span class="q-sect-n" id={"#{@id}-n"}>{@count}</span>
+      <span class="q-sect-n" id={"#{@id}-n"}>{Format.number(@count)}</span>
       <span class="grow"></span>
       <.link
         :if={@count > length(@runs)}
         id={"#{@id}-more"}
-        navigate={~p"/hive/runs?#{%{"state" => "pending,running"}}"}
+        navigate={
+          ~p"/#{@scope.organisation}/#{@scope.workspace}/runs?#{%{"state" => "pending,running"}}"
+        }
         class="q-link"
       >
-        {ngettext("and %{count} more", "and %{count} more", @count - length(@runs))}
+        {ngettext("and %{number} more", "and %{number} more", @count - length(@runs),
+          number: Format.number(@count - length(@runs))
+        )}
       </.link>
     </div>
     <span :if={@runs == []} id={"#{@id}-none"} class="q-none">{gettext("No run alive now.")}</span>
     <div :if={@runs != []} id={"#{@id}-list"} role="list" aria-labelledby={"#{@id}-h"}>
       <.alive_row
         :for={run <- @runs}
+        scope={@scope}
         id={"alive-#{run.run_id}"}
         run={run}
         quiet_for={quiet_for(run, @now)}
@@ -925,6 +1002,11 @@ defmodule ApiaryWeb.OverviewComponents do
   attr :id, :string, required: true
   attr :run, :map, required: true
   attr :quiet_for, :integer, default: nil
+
+  attr :scope, :map,
+    required: true,
+    doc: "the caller's scope: its organisation and workspace name the links"
+
   attr :arrived, :boolean, default: false
 
   def alive_row(assigns) do
@@ -939,7 +1021,10 @@ defmodule ApiaryWeb.OverviewComponents do
         class="q-state-wrap"
       />
       <div class="q-run-cell">
-        <.link navigate={~p"/hive/runs/#{@run.run_id}"} class="q-rowlink truncate">
+        <.link
+          navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@run.run_id}"}
+          class="q-rowlink truncate"
+        >
           <b :if={@run.task}>{@run.task}</b>
           <b
             :if={!@run.task && @run.state == "pending" && !@run.started_at}
@@ -1002,6 +1087,11 @@ defmodule ApiaryWeb.OverviewComponents do
   attr :id, :string, required: true
   attr :days, :list, required: true
   attr :today, :any, required: true
+
+  attr :scope, :map,
+    required: true,
+    doc: "the caller's scope: its organisation and workspace name the links"
+
   attr :table?, :boolean, default: false
 
   attr :narrow?, :boolean,
@@ -1053,11 +1143,11 @@ defmodule ApiaryWeb.OverviewComponents do
             rich_gettext("%{runs} · %{denied}, 14 days",
               runs:
                 rich_ngettext("%{number} run", "%{number} runs", @total,
-                  number: {:b, delimited(@total)}
+                  number: {:b, Format.number(@total)}
                 ),
               denied:
                 rich_ngettext("%{number} denied attempt", "%{number} denied attempts", @denied,
-                  number: {:b, delimited(@denied)}
+                  number: {:b, Format.number(@denied)}
                 )
             )
           } />
@@ -1121,7 +1211,7 @@ defmodule ApiaryWeb.OverviewComponents do
         >
           <text class="q-ttl" x="0" y="12">{gettext("Runs per day")}</text>
           <text :if={@max_runs > 0} class="q-max" x={@w} y="12" text-anchor="end">
-            {gettext("max %{max}", max: @max_runs)}
+            {gettext("max %{max}", max: Format.number(@max_runs))}
           </text>
           <text class="q-ttl" x="0" y={@top + @h_runs + @gap - 10}>
             {gettext("Denied attempts per day")}
@@ -1133,11 +1223,11 @@ defmodule ApiaryWeb.OverviewComponents do
             y={@top + @h_runs + @gap - 10}
             text-anchor="end"
           >
-            {gettext("max %{max}", max: @max_den)}
+            {gettext("max %{max}", max: Format.number(@max_den))}
           </text>
           <%= for {day, i} <- @indexed do %>
             <.link
-              navigate={day_path(day)}
+              navigate={day_path(@scope, day)}
               data-day={Date.to_iso8601(day.day)}
               data-label={day_label(day.day, @today)}
               data-runs={runs_count(day.runs)}
@@ -1238,24 +1328,24 @@ defmodule ApiaryWeb.OverviewComponents do
   defp fmt(x) when is_float(x), do: :erlang.float_to_binary(x, decimals: 2)
   defp fmt(x), do: Integer.to_string(x)
 
-  defp day_path(%{day: day}) do
+  defp day_path(scope, %{day: day}) do
     iso = Date.to_iso8601(day)
     params = %{"from" => iso, "to" => iso}
     params = if Map.get(day, :denied, 0) > 0, do: Map.put(params, "denials", "1"), else: params
-    ~p"/hive/runs?#{params}"
+    ~p"/#{scope.organisation}/#{scope.workspace}/runs?#{params}"
   end
 
-  @doc "\"7 Sep\", or \"Today\" for the day the reader is living in."
+  @doc "\"7 Sept\", or \"Today\" for the day the reader is living in."
   def day_label(day, today) do
     if Date.compare(day, today) == :eq,
       do: gettext("Today"),
-      else: Calendar.strftime(day, "%-d %b")
+      else: Format.short_date(day)
   end
 
   defp axis_label(day, today), do: day_label(day, today)
 
   defp denied_count(n) do
-    ngettext("%{number} denied attempt", "%{number} denied attempts", n, number: delimited(n))
+    ngettext("%{number} denied attempt", "%{number} denied attempts", n, number: Format.number(n))
   end
 
   defp slot_label(%{runs: 0} = day, today) do
@@ -1271,8 +1361,8 @@ defmodule ApiaryWeb.OverviewComponents do
         "%{day}: %{runs} (%{well} ended well, %{other} alive or ended badly), %{denied}, open that day's runs",
         day: day_label(day.day, today),
         runs: runs_count(day.runs),
-        well: day.ended_well,
-        other: day.alive + day.ended_badly,
+        well: Format.number(day.ended_well),
+        other: Format.number(day.alive + day.ended_badly),
         denied: denied_count(day.denied)
       )
     else
@@ -1280,8 +1370,8 @@ defmodule ApiaryWeb.OverviewComponents do
         "%{day}: %{runs} (%{well} ended well, %{bad} ended badly), %{denied}, open that day's runs",
         day: day_label(day.day, today),
         runs: runs_count(day.runs),
-        well: day.ended_well,
-        bad: day.ended_badly,
+        well: Format.number(day.ended_well),
+        bad: Format.number(day.ended_badly),
         denied: denied_count(day.denied)
       )
     end
@@ -1294,7 +1384,7 @@ defmodule ApiaryWeb.OverviewComponents do
       runs: runs_count(total),
       denied: denied_count(denied),
       peak: if(peak, do: peak_word(peak.day, today), else: gettext("no day")),
-      max: max_runs
+      max: Format.number(max_runs)
     )
   end
 
@@ -1304,13 +1394,19 @@ defmodule ApiaryWeb.OverviewComponents do
   ## od4. Last runs
 
   @doc """
-  The five most recently started runs of the hive, alive ones included: the runs table of
-  rd8 without groups, with the Target column, at full width. Rows carry the runs list's
-  own ids (`run-<run_id>`) and cell classes, so they reflow as rd8 does below 640 px.
+  The five most recently started runs of the workspace, alive ones included: the runs
+  table of rd8 without groups, with the Target column, at full width. Rows carry the runs
+  list's own ids (`run-<run_id>`) and cell classes, so they reflow as rd8 does below
+  640 px.
   """
   attr :id, :string, required: true
   attr :runs, :any, required: true, doc: "nil while loading"
   attr :quiet_ids, :any, default: MapSet.new()
+
+  attr :scope, :map,
+    required: true,
+    doc: "the caller's scope: its organisation and workspace name the links"
+
   attr :new_runs, :integer, default: 0
   attr :now, :any, required: true
 
@@ -1326,10 +1422,14 @@ defmodule ApiaryWeb.OverviewComponents do
           phx-click="show_new"
         >
           {ngettext("%{number} new run", "%{number} new runs", @new_runs,
-            number: delimited(@new_runs)
+            number: Format.number(@new_runs)
           )}
         </button>
-        <.link id={"#{@id}-all"} navigate={~p"/hive/runs"} class="q-link">{gettext("All runs")}</.link>
+        <.link
+          id={"#{@id}-all"}
+          navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs"}
+          class="q-link"
+        >{gettext("All runs")}</.link>
       </:trailing>
       <div
         class="overflow-x-auto"
@@ -1369,6 +1469,7 @@ defmodule ApiaryWeb.OverviewComponents do
             </tr>
             <.recent_row
               :for={run <- @runs}
+              scope={@scope}
               run={run}
               quiet={MapSet.member?(@quiet_ids, run.id)}
               now={@now}
@@ -1379,6 +1480,10 @@ defmodule ApiaryWeb.OverviewComponents do
     </.sect>
     """
   end
+
+  attr :scope, :map,
+    required: true,
+    doc: "the caller's scope: its organisation and workspace name the links"
 
   attr :run, :map, required: true
   attr :quiet, :boolean, required: true
@@ -1403,7 +1508,10 @@ defmodule ApiaryWeb.OverviewComponents do
       </td>
       <td class="q-c-run">
         <div class="q-run-cell">
-          <.link navigate={~p"/hive/runs/#{@run.run_id}"} class="q-rowlink truncate">
+          <.link
+            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@run.run_id}"}
+            class="q-rowlink truncate"
+          >
             <b :if={@run.task}>{@run.task}</b>
             <b
               :if={!@run.task && @run.state == "pending" && !@run.started_at}
@@ -1448,7 +1556,7 @@ defmodule ApiaryWeb.OverviewComponents do
       <td class="q-c-den q-num">
         <span :if={@run.denied_count == 0} class="q-zero">0</span>
         <span :if={@run.denied_count > 0} class="q-denials">
-          <.icon name="hero-no-symbol-micro" class="size-3" />{delimited(@run.denied_count)}
+          <.icon name="hero-no-symbol-micro" class="size-3" />{Format.number(@run.denied_count)}
           <span class="sr-only">{gettext("denied")}</span>
         </span>
       </td>
@@ -1464,13 +1572,22 @@ defmodule ApiaryWeb.OverviewComponents do
   while the read is in flight; nothing on the card is a control.
   """
   attr :id, :string, default: "overview-policy"
+
+  attr :scope, :map,
+    required: true,
+    doc: "the caller's scope: its organisation and workspace name the links"
+
   attr :policy, :any, required: true
 
   def policy_glance(assigns) do
     ~H"""
     <.sect id={@id} title={gettext("Policy")}>
       <:trailing>
-        <.link id={"#{@id}-open"} navigate={~p"/hive/policy"} class="q-link">
+        <.link
+          id={"#{@id}-open"}
+          navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/policy"}
+          class="q-link"
+        >
           {gettext("Open policy")}
         </.link>
       </:trailing>
@@ -1482,7 +1599,7 @@ defmodule ApiaryWeb.OverviewComponents do
         <dt>{gettext("Mode")}</dt>
         <dd id={"#{@id}-mode"}>
           <b>{mode_word(@policy.summary.mode)}</b>
-          <.badge :if={@policy.summary.managed?}>{gettext("Hive default")}</.badge>
+          <.badge :if={@policy.summary.managed?}>{gettext("Workspace default")}</.badge>
           <.badge :if={!@policy.summary.managed?}>{gettext("Not served")}</.badge>
           <span class="q-muted">
             <%= cond do %>
@@ -1492,16 +1609,24 @@ defmodule ApiaryWeb.OverviewComponents do
                 {gettext("Every target follows it.")}
               <% true -> %>
                 {ngettext(
-                  "%{count} target follows it",
-                  "%{count} targets follow it",
-                  @policy.following
+                  "%{number} target follows it",
+                  "%{number} targets follow it",
+                  @policy.following,
+                  number: Format.number(@policy.following)
                 )} ·
                 <%= case @policy.own do %>
                   <% [one] -> %>
-                    <.rich text={own_mode_sentence(one)} />
+                    <.rich text={own_mode_sentence(@scope, one)} />
                   <% many -> %>
-                    <.link navigate={~p"/hive/policy/targets?mode=own"} class="q-link">
-                      {ngettext("%{count} sets its own", "%{count} set their own", length(many))}
+                    <.link
+                      navigate={
+                        ~p"/#{@scope.organisation}/#{@scope.workspace}/policy/targets?mode=own"
+                      }
+                      class="q-link"
+                    >
+                      {ngettext("%{number} sets its own", "%{number} set their own", length(many),
+                        number: Format.number(length(many))
+                      )}
                     </.link>
                 <% end %>
             <% end %>
@@ -1514,7 +1639,9 @@ defmodule ApiaryWeb.OverviewComponents do
               size="sm"
               version={@policy.version.version}
               digest={@policy.version.digest}
-              navigate={~p"/hive/policy/versions/#{@policy.version.version}"}
+              navigate={
+                ~p"/#{@scope.organisation}/#{@scope.workspace}/policy/versions/#{@policy.version.version}"
+              }
             />
             <span class="q-muted">
               {gettext("since %{date}", date: short_day(@policy.version.rendered_at))}
@@ -1525,18 +1652,25 @@ defmodule ApiaryWeb.OverviewComponents do
         </dd>
         <dt>{gettext("Targets")}</dt>
         <dd id={"#{@id}-targets"}>
-          <.link navigate={~p"/hive/policy/targets"} class="q-link">
+          <.link
+            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/policy/targets"}
+            class="q-link"
+          >
             <.rich text={
               rich_ngettext(
                 "%{number} has posted a run",
                 "%{number} have posted runs",
                 @policy.targets,
-                number: {:b, @policy.targets}
+                number: {:b, Format.number(@policy.targets)}
               )
             } />
           </.link>
           <span class="q-muted">·</span>
-          <.link :if={@policy.with_rules > 0} navigate={~p"/hive/policy/targets"} class="q-link">
+          <.link
+            :if={@policy.with_rules > 0}
+            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/policy/targets"}
+            class="q-link"
+          >
             <.rich text={with_rules_sentence(@policy.with_rules)} />
           </.link>
           <span :if={@policy.with_rules == 0} class="q-muted"><.rich text={with_rules_sentence(0)} /></span>
@@ -1549,14 +1683,20 @@ defmodule ApiaryWeb.OverviewComponents do
             <% @policy.suggestions.hosts == 0 -> %>
               <span class="text-faint">{gettext("Nothing declared and unallowed.")}</span>
             <% true -> %>
-              <.link navigate={~p"/hive/policy/targets"} class="badge badge-info">
-                {ngettext("%{count} to review", "%{count} to review", @policy.suggestions.hosts)}
+              <.link
+                navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/policy/targets"}
+                class="badge badge-info"
+              >
+                {ngettext("%{number} to review", "%{number} to review", @policy.suggestions.hosts,
+                  number: Format.number(@policy.suggestions.hosts)
+                )}
               </.link>
               <span class="q-muted">
                 {ngettext(
-                  "in %{count} target",
-                  "in %{count} targets",
-                  @policy.suggestions.targets
+                  "in %{number} target",
+                  "in %{number} targets",
+                  @policy.suggestions.targets,
+                  number: Format.number(@policy.suggestions.targets)
                 )}
               </span>
           <% end %>
@@ -1571,22 +1711,25 @@ defmodule ApiaryWeb.OverviewComponents do
   defp mode_word(mode), do: mode
 
   # The one target that sets its own mode, and the mode it sets.
-  defp own_mode_sentence(%{target: target, own_mode: "enforce"}),
-    do: rich_gettext("1 sets its own: %{target} enforces", target: target_link(target))
+  defp own_mode_sentence(scope, %{target: target, own_mode: "enforce"}),
+    do: rich_gettext("1 sets its own: %{target} enforces", target: target_link(scope, target))
 
-  defp own_mode_sentence(%{target: target, own_mode: "observe"}),
-    do: rich_gettext("1 sets its own: %{target} observes", target: target_link(target))
+  defp own_mode_sentence(scope, %{target: target, own_mode: "observe"}),
+    do: rich_gettext("1 sets its own: %{target} observes", target: target_link(scope, target))
 
-  defp own_mode_sentence(%{target: target, own_mode: mode}) do
-    rich_gettext("1 sets its own: %{target} %{mode}", target: target_link(target), mode: mode)
+  defp own_mode_sentence(scope, %{target: target, own_mode: mode}) do
+    rich_gettext("1 sets its own: %{target} %{mode}",
+      target: target_link(scope, target),
+      mode: mode
+    )
   end
 
-  defp target_link(target) do
-    assigns = %{target: target}
+  defp target_link(scope, target) do
+    assigns = %{scope: scope, target: target}
 
     ~H"""
     <.link
-      navigate={~p"/hive/policy/targets/#{@target.id}"}
+      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/policy/targets/#{@target.id}"}
       class="q-link font-mono text-[12.5px]"
     >{@target.system}/{@target.path}</.link>
     """
@@ -1594,21 +1737,26 @@ defmodule ApiaryWeb.OverviewComponents do
 
   defp with_rules_sentence(n) do
     rich_ngettext("%{number} with rules of its own", "%{number} with rules of their own", n,
-      number: {:b, n}
+      number: {:b, Format.number(n)}
     )
   end
 
-  defp short_day(%DateTime{} = at), do: Calendar.strftime(at, "%-d %b")
+  defp short_day(%DateTime{} = at), do: Format.short_date(at)
   defp short_day(_at), do: gettext("n/a")
 
   ## od9. Retention
 
   @doc """
   The retention card (od9): the setting in the settings page's own words, then the last
-  prune from `retention_runs`. A hive that keeps everything has one line.
+  prune from `retention_runs`. A workspace that keeps everything has one line.
   """
   attr :id, :string, default: "overview-retention"
-  attr :hive, :map, required: true
+
+  attr :scope, :map,
+    required: true,
+    doc: "the caller's scope: its organisation and workspace name the links"
+
+  attr :workspace, :map, required: true
   attr :runs, :any, required: true, doc: "nil while loading, else the last retention run or none"
   attr :now, :any, required: true
 
@@ -1616,7 +1764,11 @@ defmodule ApiaryWeb.OverviewComponents do
     ~H"""
     <.sect id={@id} title={gettext("Retention")}>
       <:trailing>
-        <.link id={"#{@id}-settings"} navigate={~p"/hive/settings#retention"} class="q-link">
+        <.link
+          id={"#{@id}-settings"}
+          navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/settings#retention"}
+          class="q-link"
+        >
           {gettext("Settings")}
         </.link>
       </:trailing>
@@ -1625,8 +1777,8 @@ defmodule ApiaryWeb.OverviewComponents do
         <span class="skeleton q-skel-line w-1/2"></span>
       </div>
       <div :if={@runs} class="q-lines">
-        <span id={"#{@id}-setting"}>{retention_summary(@hive)}</span>
-        <span :if={retention_set?(@hive)} id={"#{@id}-last"}>
+        <span id={"#{@id}-setting"}>{retention_summary(@workspace)}</span>
+        <span :if={retention_set?(@workspace)} id={"#{@id}-last"}>
           <%= case @runs do %>
             <% [] -> %>
               {gettext("No prune has run yet. The job runs nightly.")}
@@ -1643,7 +1795,7 @@ defmodule ApiaryWeb.OverviewComponents do
 
   @doc "The setting in the settings page's own words."
   def retention_summary(%{events_retention_days: nil, log_retention_days: nil}),
-    do: gettext("This hive keeps everything.")
+    do: gettext("This workspace keeps everything.")
 
   def retention_summary(%{events_retention_days: events, log_retention_days: nil}),
     do: gettext("Events and log output are pruned after %{days}.", days: days(events))
@@ -1658,16 +1810,16 @@ defmodule ApiaryWeb.OverviewComponents do
     )
   end
 
-  defp retention_set?(hive),
-    do: is_integer(hive.events_retention_days) or is_integer(hive.log_retention_days)
+  defp retention_set?(workspace),
+    do: is_integer(workspace.events_retention_days) or is_integer(workspace.log_retention_days)
 
   # Last night when the job finished since yesterday's evening, else the date.
   defp last_night?(run, now) do
     at = run.finished_at || run.started_at
-    Date.diff(DateTime.to_date(now), DateTime.to_date(at)) <= 1
+    Format.days_back(at, now) <= 1
   end
 
-  defp prune_day(run), do: Calendar.strftime(run.finished_at || run.started_at, "%-d %b")
+  defp prune_day(run), do: Format.short_date(run.finished_at || run.started_at)
 
   defp nothing_pruned(run, now) do
     if last_night?(run, now),
@@ -1681,14 +1833,14 @@ defmodule ApiaryWeb.OverviewComponents do
 
     events =
       ngettext("%{number} event", "%{number} events", run.events_deleted,
-        number: delimited(run.events_deleted)
+        number: Format.number(run.events_deleted)
       )
 
-    bytes = format_bytes(run.log_bytes_deleted)
+    bytes = Format.bytes(run.log_bytes_deleted || 0)
 
     chunks =
       ngettext("%{number} chunk", "%{number} chunks", run.log_chunks_deleted,
-        number: delimited(run.log_chunks_deleted)
+        number: Format.number(run.log_chunks_deleted)
       )
 
     date = prune_day(run)
@@ -1750,22 +1902,6 @@ defmodule ApiaryWeb.OverviewComponents do
       )
   end
 
-  @doc "1024 bytes as \"1.0 kB\", and so on."
-  def format_bytes(bytes) when is_integer(bytes) and bytes < 1000, do: "#{bytes} B"
-
-  def format_bytes(bytes) when is_integer(bytes) do
-    {value, unit} =
-      cond do
-        bytes >= 1_000_000_000 -> {bytes / 1_000_000_000, "GB"}
-        bytes >= 1_000_000 -> {bytes / 1_000_000, "MB"}
-        true -> {bytes / 1000, "kB"}
-      end
-
-    "#{:erlang.float_to_binary(value, decimals: 1)} #{unit}"
-  end
-
-  def format_bytes(_bytes), do: "0 B"
-
   ## od8. Access keys
 
   @doc """
@@ -1777,17 +1913,27 @@ defmodule ApiaryWeb.OverviewComponents do
   run and `hosts` to `%{count:, host:}`; both nil while the read is in flight.
   """
   attr :id, :string, default: "overview-keys"
+
+  attr :scope, :map,
+    required: true,
+    doc: "the caller's scope: its organisation and workspace name the links"
+
   attr :keys, :list, required: true, doc: "the active keys, in the order to show"
-  attr :total, :integer, required: true, doc: "how many active keys the hive has"
+  attr :total, :integer, required: true, doc: "how many active keys the workspace has"
   attr :last_runs, :any, required: true
   attr :hosts, :any, default: nil
   attr :create?, :boolean, default: true, doc: "the link to a new key, once a run has landed"
 
   def access_keys(assigns) do
     ~H"""
-    <.sect id={@id} title={gettext("Access keys")} count={"#{@total}"}>
+    <.sect id={@id} title={gettext("Access keys")} count={Format.number(@total)}>
       <:trailing>
-        <.link :if={@create?} id={"#{@id}-create"} navigate={~p"/hive/keys/new"} class="q-link">
+        <.link
+          :if={@create?}
+          id={"#{@id}-create"}
+          navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/keys/new"}
+          class="q-link"
+        >
           {gettext("Create another access key")}
         </.link>
       </:trailing>
@@ -1851,7 +1997,7 @@ defmodule ApiaryWeb.OverviewComponents do
                   <% true -> %>
                     <span class="tabular-nums">
                       {ngettext("%{number} host", "%{number} hosts", @hosts[key.id].count,
-                        number: delimited(@hosts[key.id].count)
+                        number: Format.number(@hosts[key.id].count)
                       )}
                     </span>
                 <% end %>
@@ -1861,7 +2007,10 @@ defmodule ApiaryWeb.OverviewComponents do
                   <% is_nil(@last_runs) -> %>
                     <span class="skeleton q-skel-line w-32"></span>
                   <% run = @last_runs[key.id] -> %>
-                    <.link navigate={~p"/hive/runs/#{run.run_id}"} class="q-lastrun">
+                    <.link
+                      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{run.run_id}"}
+                      class="q-lastrun"
+                    >
                       <.run_state
                         state={run.state}
                         exit_code={run.exit_code}
@@ -1884,15 +2033,21 @@ defmodule ApiaryWeb.OverviewComponents do
         </table>
       </div>
       <:footer :if={@total > length(@keys)}>
-        <.link id={"#{@id}-more"} navigate={~p"/hive/keys"} class="q-link">
-          {ngettext("and %{count} more", "and %{count} more", @total - length(@keys))}
+        <.link
+          id={"#{@id}-more"}
+          navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/keys"}
+          class="q-link"
+        >
+          {ngettext("and %{number} more", "and %{number} more", @total - length(@keys),
+            number: Format.number(@total - length(@keys))
+          )}
         </.link>
       </:footer>
     </.sect>
     """
   end
 
-  ## oe6. The empty hive
+  ## oe6. The empty workspace
 
   @doc """
   The checklist card of `brief.md` h1 with the state of each step read from the record
@@ -1901,6 +2056,11 @@ defmodule ApiaryWeb.OverviewComponents do
   navigation.
   """
   attr :id, :string, default: "onboarding"
+
+  attr :scope, :map,
+    required: true,
+    doc: "the caller's scope: its organisation and workspace name the links"
+
   attr :keys, :list, required: true, doc: "the active keys"
   attr :preview, :string, required: true
   attr :landed, :any, default: nil, doc: "the first run, once it has landed under the reader"
@@ -1935,7 +2095,7 @@ defmodule ApiaryWeb.OverviewComponents do
           </h2>
           <p :if={@current == 1} class="mt-1 text-muted">
             {gettext(
-              "Nothing has posted to this hive yet. An access key is all a machine needs to start."
+              "Nothing has posted to this workspace yet. An access key is all a machine needs to start."
             )}
           </p>
           <p :if={@current > 1} class="mt-1 text-muted">
@@ -1957,27 +2117,35 @@ defmodule ApiaryWeb.OverviewComponents do
             {if @current == 3,
               do:
                 gettext("The machine has verified with its key. The first run it starts lands here."),
-              else: gettext("From the first post on, every run of that machine lands in this hive.")}
+              else:
+                gettext("From the first post on, every run of that machine lands in this workspace.")}
           </:step>
         </.steps>
         <div :if={@current == 1}>
           <.button
             id={"#{@id}-create"}
             variant="primary"
-            navigate={~p"/hive/keys/new"}
+            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/keys/new"}
             class="max-[479px]:w-full"
           >
             <.icon name="hero-plus-micro" class="size-4" /> {gettext("Create an access key")}
           </.button>
         </div>
         <div :if={@current in [2, 3]}>
-          <.button id={"#{@id}-keys"} navigate={~p"/hive/keys"} class="max-[479px]:w-full">
+          <.button
+            id={"#{@id}-keys"}
+            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/keys"}
+            class="max-[479px]:w-full"
+          >
             {gettext("Manage access keys")}
           </.button>
         </div>
         <div :if={@landed} id={"#{@id}-landed"} class="q-landed">
           <.icon name="hero-check-micro" class="size-4" /> {gettext("The first run has landed.")}
-          <.link navigate={~p"/hive/runs/#{@landed.run_id}"} class="q-link">{gettext("Open it")}</.link>
+          <.link
+            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@landed.run_id}"}
+            class="q-link"
+          >{gettext("Open it")}</.link>
         </div>
       </div>
       <div class="hidden content-start gap-3 border-l border-line bg-base-200 p-7 md:grid">
@@ -2030,7 +2198,4 @@ defmodule ApiaryWeb.OverviewComponents do
 
   defp iso(%DateTime{} = at), do: DateTime.to_iso8601(at)
   defp iso(_at), do: nil
-
-  @doc false
-  def delimited_count(n), do: RunComponents.delimited(n)
 end

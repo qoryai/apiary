@@ -22,12 +22,12 @@ defmodule ApiaryWeb.InvitationLive.AcceptTest do
   } do
     {:ok, _lv, html} = live(conn, ~p"/invitations/#{token}")
 
-    assert html =~ "Join #{owner.hive.name}"
+    assert html =~ "Join #{owner.workspace.name}"
     assert html =~ owner.organisation.name
     assert html =~ "bee@example.com"
     assert html =~ ~p"/users/register?invitation=#{token}"
     assert html =~ ~p"/invitations/#{token}/continue"
-    assert html =~ "workplace of the"
+    assert html =~ "workspace of the"
     assert html =~ "organisation, as a member."
     refute html =~ "<abbr"
 
@@ -37,7 +37,7 @@ defmodule ApiaryWeb.InvitationLive.AcceptTest do
     assert get_session(conn, :user_return_to) == ~p"/invitations/#{token}/continue"
   end
 
-  test "signed in: accepts and switches to the new apiary", %{
+  test "signed in: accepts and opens the invited workspace", %{
     conn: conn,
     token: token,
     owner: owner
@@ -49,12 +49,10 @@ defmodule ApiaryWeb.InvitationLive.AcceptTest do
     assert html =~ "Accept invitation"
     assert html =~ user.email
 
-    html = lv |> element("button", "Accept invitation") |> render_click()
-    assert html =~ "phx-trigger-action"
+    workspace = ~p"/#{owner.organisation}/#{owner.workspace}"
 
-    conn = lv |> form("#switch-form") |> follow_trigger_action(conn)
-    assert redirected_to(conn) == ~p"/hive"
-    assert get_session(conn, :organisation_id) == owner.organisation.id
+    assert {:error, {:redirect, %{to: ^workspace}}} =
+             lv |> element("button", "Accept invitation") |> render_click()
 
     assert Enum.any?(
              Organisations.list_memberships(user),
@@ -63,18 +61,12 @@ defmodule ApiaryWeb.InvitationLive.AcceptTest do
 
     assert Organisations.list_invitations(owner.scope) == []
 
-    # the session's organisation is the one shown
-    conn =
-      build_conn()
-      |> log_in_user(user)
-      |> put_session(:organisation_id, owner.organisation.id)
-
-    {:ok, _lv, html} = live(conn, ~p"/hive")
-    assert html =~ owner.hive.name
-    assert html =~ ~p"/organisations/switch"
+    # the path names the workspace, and the new member can open it
+    html = conn |> get(workspace) |> html_response(200)
+    assert html =~ owner.workspace.name
   end
 
-  test "signed in as an existing member: says so and switches", %{
+  test "signed in as an existing member: says so and opens the organisation", %{
     conn: conn,
     token: token,
     owner: owner
@@ -82,10 +74,21 @@ defmodule ApiaryWeb.InvitationLive.AcceptTest do
     conn = log_in_user(conn, owner.user)
 
     {:ok, lv, _html} = live(conn, ~p"/invitations/#{token}")
-    html = lv |> element("button", "Accept invitation") |> render_click()
 
-    assert html =~ "already a member"
-    assert html =~ "phx-trigger-action"
+    assert {:error, {:redirect, _}} =
+             lv |> element("button", "Accept invitation") |> render_click()
+
+    flash = assert_redirect(lv, ~p"/#{owner.organisation}")
+    assert flash["info"] =~ "already a member"
+  end
+
+  test "an invalid token links a signed-in user to their workspace", %{conn: conn} do
+    %{user: user} = sign_up_fixture()
+    {:ok, _lv, html} = live(log_in_user(conn, user), ~p"/invitations/not-a-token")
+
+    assert html =~ "no longer valid"
+    assert html =~ "Go to your workspace"
+    assert html =~ ~s(href="/")
   end
 
   test "an invalid token shows a friendly page", %{conn: conn} do
@@ -94,7 +97,7 @@ defmodule ApiaryWeb.InvitationLive.AcceptTest do
     assert html =~ ~p"/users/log-in"
   end
 
-  test "registering with the invitation joins the hive", %{
+  test "registering with the invitation joins the workspace", %{
     conn: conn,
     token: token,
     owner: owner
@@ -102,7 +105,7 @@ defmodule ApiaryWeb.InvitationLive.AcceptTest do
     {:ok, lv, html} = live(conn, ~p"/users/register?invitation=#{token}")
 
     assert html =~ "You are invited to the"
-    assert html =~ owner.hive.name
+    assert html =~ owner.workspace.name
     assert html =~ ~s(value="bee@example.com")
 
     form = form(lv, "#registration_form", user: %{email: "bee@example.com"})

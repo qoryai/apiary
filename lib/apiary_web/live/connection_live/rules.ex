@@ -1,11 +1,11 @@
 defmodule ApiaryWeb.ConnectionLive.Rules do
   @moduledoc """
   What a connection's row may ask of the policy (`docs/design/brief-policy.md`, pd8), for
-  the run's connections tab and for the hive's connections page.
+  the run's connections tab and for the workspace's connections page.
 
   A row's **standing** is derived from the effective policy the page holds, never by a
   query per row: whether the row can ask for an allow or a deny, whether a locked rule of
-  the hive decides its host, whether the wall refused it (no rule changes that), or
+  the workspace decides its host, whether the wall refused it (no rule changes that), or
   whether a rule now in force already answers what the row recorded. The record is never
   rewritten: a row that was denied stays denied, and a rule that answers it is said on a
   line of its own (`after_line/3`).
@@ -26,34 +26,39 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   ## Paths of the policy pages
 
   @doc "The page of one version of the baseline (`nil`) or of a target."
-  def version_path(target_id, n, query \\ %{})
+  def version_path(scope, target_id, n, query \\ %{})
 
-  def version_path(nil, n, query), do: ~p"/hive/policy/versions/#{n}?#{query}"
+  def version_path(scope, nil, n, query),
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/policy/versions/#{n}?#{query}"
 
-  def version_path(target_id, n, query),
-    do: ~p"/hive/policy/targets/#{target_id}/versions/#{n}?#{query}"
+  def version_path(scope, target_id, n, query),
+    do:
+      ~p"/#{scope.organisation}/#{scope.workspace}/policy/targets/#{target_id}/versions/#{n}?#{query}"
 
-  @doc "The rule of `host` on the hive's policy page (`nil`) or on a target's."
-  def rule_path(nil, host), do: ~p"/hive/policy?#{%{"rule" => host}}"
+  @doc "The rule of `host` on the workspace's policy page (`nil`) or on a target's."
+  def rule_path(scope, nil, host),
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/policy?#{%{"rule" => host}}"
 
-  def rule_path(target_id, host),
-    do: ~p"/hive/policy/targets/#{target_id}?#{%{"rule" => host}}"
+  def rule_path(scope, target_id, host),
+    do:
+      ~p"/#{scope.organisation}/#{scope.workspace}/policy/targets/#{target_id}?#{%{"rule" => host}}"
 
   @doc "A target's policy page."
-  def target_policy_path(target_id), do: ~p"/hive/policy/targets/#{target_id}"
+  def target_policy_path(scope, target_id),
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/policy/targets/#{target_id}"
 
   ## Versions
 
   @doc """
   The version a digest names for the target (or the baseline, `nil`): `%{n, digest,
-  scope, target_id, label, path, rendered_at}`, or nil when this hive rendered nothing
-  with that digest. One indexed read.
+  scope, target_id, label, path, rendered_at}`, or nil when this workspace rendered
+  nothing with that digest. One indexed read.
   """
   def version(_scope, _target, digest) when not is_binary(digest), do: nil
 
   def version(scope, target, digest) do
     case Policy.configuration_for_digest(scope, target, digest) do
-      {:ok, configuration} -> version_of(configuration, target)
+      {:ok, configuration} -> version_of(scope, configuration, target)
       _ -> nil
     end
   end
@@ -61,23 +66,23 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   @doc """
   A run configuration as the pages here name a version. Versions count per holder, the
   baseline's apart from each target's, so every version is named with its `label`:
-  "hive baseline", or the target's system and path when `target` is the one the
-  configuration is of.
+  "workspace baseline", or the target's system and path when `target` is the one the
+  configuration is of. Its `path` is in `scope`'s workspace.
   """
-  def version_of(configuration, target \\ nil) do
+  def version_of(scope, configuration, target \\ nil) do
     %{
       n: configuration.version,
       digest: configuration.digest,
-      scope: if(configuration.target_id, do: :target, else: :hive),
+      scope: if(configuration.target_id, do: :target, else: :workspace),
       target_id: configuration.target_id,
       label: version_label(configuration.target_id, target),
       rendered_at: configuration.rendered_at,
-      path: version_path(configuration.target_id, configuration.version)
+      path: version_path(scope, configuration.target_id, configuration.version)
     }
   end
 
   @doc "The words that say whose numbering a version is in."
-  def version_label(nil, _target), do: gettext("hive baseline")
+  def version_label(nil, _target), do: gettext("workspace baseline")
   def version_label(id, %{id: id, system: system, path: path}), do: "#{system}/#{path}"
   def version_label(_id, _target), do: gettext("target")
 
@@ -100,11 +105,12 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   `{:rule_added, :allow | :deny}`. `entry` is the rule in force that decides the host,
   when one does. A `:can_allow` row carries `deny: true` when no rule decides its host:
   a host let through under observe, or denied by default under enforce, can be denied
-  outright as well, so the policy is written while the record is read. `page` is `:run` or `:hive`: on the hive's page a row allowed by a rule
-  the baseline does not hold (a target's own) can still be denied.
+  outright as well, so the policy is written while the record is read. `page` is `:run` or
+  `:workspace`: on the workspace's page a row allowed by a rule the baseline does not hold
+  (a target's own) can still be denied.
 
-  `own` matters on the hive's page, where the rows stand against the baseline alone: the
-  hosts targets have rules of their own for (`own_hosts/1`), or `:unknown`. There a
+  `own` matters on the workspace's page, where the rows stand against the baseline alone:
+  the hosts targets have rules of their own for (`own_hosts/1`), or `:unknown`. There a
   baseline rule is said to answer a row only when no target's own rule could be what
   decides it; otherwise the row keeps its button, since the baseline is not the whole
   answer.
@@ -160,7 +166,7 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
       entry = locked(effective, host, :allow) ->
         %{standing: :locked_allow, host: host, entry: entry}
 
-      allowed_now?(effective, host, path) or page == :hive ->
+      allowed_now?(effective, host, path) or page == :workspace ->
         %{standing: :can_deny, host: host, entry: allow_entry(effective, host)}
 
       true ->
@@ -169,18 +175,18 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   end
 
   @doc "Whether a target's own rule could be what decides `host`, from `own_hosts/1`."
-  def own_touches?(own, host, page \\ :hive)
+  def own_touches?(own, host, page \\ :workspace)
   def own_touches?(_own, _host, :run), do: false
   def own_touches?(_own, nil, _page), do: false
-  def own_touches?(:unknown, _host, :hive), do: true
+  def own_touches?(:unknown, _host, :workspace), do: true
 
-  def own_touches?(own, host, :hive) when is_list(own),
+  def own_touches?(own, host, :workspace) when is_list(own),
     do: Enum.any?(own, &(Grammar.covers?(&1, host) or Grammar.covers?(host, &1)))
 
   def own_touches?(_own, _host, _page), do: false
 
   @doc """
-  The hosts the hive's targets have rules of their own for, from the rules of every
+  The hosts the workspace's targets have rules of their own for, from the rules of every
   target that has any: one read for the list and one a target with rules, fifty
   of them at most. `:unknown` past that, and past the five hundred targets the list
   holds: then nothing is claimed of a row from the baseline alone.
@@ -272,8 +278,8 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
 
   @doc """
   The words of the toast, from the rule the domain made. `where` is the holder the rule
-  went to: `:hive`, `:this_target`, or `{:target, label}` for a target named by its label
-  (`version_label/2`).
+  went to: `:workspace`, `:this_target`, or `{:target, label}` for a target named by its
+  label (`version_label/2`).
   """
   def toast(rule, action, host, path, where) do
     pathed? = is_list(rule.paths) and path not in [nil, ""] and rule.action == "allow"
@@ -286,8 +292,8 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
     end
   end
 
-  defp path_allowed(:hive, path, host),
-    do: gettext("%{path} on %{host} is allowed for the hive.", path: path, host: host)
+  defp path_allowed(:workspace, path, host),
+    do: gettext("%{path} on %{host} is allowed for the workspace.", path: path, host: host)
 
   defp path_allowed(:this_target, path, host),
     do: gettext("%{path} on %{host} is allowed for this target.", path: path, host: host)
@@ -296,8 +302,12 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
     do:
       gettext("%{path} on %{host} is allowed for %{label}.", path: path, host: host, label: label)
 
-  defp path_no_longer_allowed(:hive, path, host),
-    do: gettext("%{path} on %{host} is no longer allowed for the hive.", path: path, host: host)
+  defp path_no_longer_allowed(:workspace, path, host),
+    do:
+      gettext("%{path} on %{host} is no longer allowed for the workspace.",
+        path: path,
+        host: host
+      )
 
   defp path_no_longer_allowed(:this_target, path, host),
     do:
@@ -311,7 +321,8 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
         label: label
       )
 
-  defp host_denied(:hive, host), do: gettext("%{host} is denied for the hive.", host: host)
+  defp host_denied(:workspace, host),
+    do: gettext("%{host} is denied for the workspace.", host: host)
 
   defp host_denied(:this_target, host),
     do: gettext("%{host} is denied for this target.", host: host)
@@ -319,7 +330,8 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   defp host_denied({:target, label}, host),
     do: gettext("%{host} is denied for %{label}.", host: host, label: label)
 
-  defp host_allowed(:hive, host), do: gettext("%{host} is allowed for the hive.", host: host)
+  defp host_allowed(:workspace, host),
+    do: gettext("%{host} is allowed for the workspace.", host: host)
 
   defp host_allowed(:this_target, host),
     do: gettext("%{host} is allowed for this target.", host: host)
@@ -386,7 +398,7 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   defp locked(effective, host, action) do
     Enum.find(
       hosts(effective),
-      &(&1.locked and &1.source == :hive and &1.action == action and
+      &(&1.locked and &1.source == :workspace and &1.action == action and
           Grammar.covers?(&1.host, host))
     )
   end
@@ -410,7 +422,7 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   the pages already read, so a page of rows costs one read a scope.
   """
   def change_for(%Entry{} = entry, changes) when is_map(changes) do
-    key = if entry.source == :target, do: :target, else: :hive
+    key = if entry.source == :target, do: :target, else: :workspace
 
     changes
     |> Map.get(key, [])
@@ -442,7 +454,7 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
 
   @doc """
   The newest page of changes of each scope the entries of these standings were written
-  in: `%{hive: [...], target: [...]}`. At most two reads, and none when no row has a
+  in: `%{workspace: [...], target: [...]}`. At most two reads, and none when no row has a
   rule to speak of.
   """
   def changes(scope, target, standings) do
@@ -454,7 +466,7 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
 
     for source <- sources, into: %{} do
       holder = if source == :target, do: target, else: nil
-      key = if source == :target, do: :target, else: :hive
+      key = if source == :target, do: :target, else: :workspace
 
       {key, Policy.list_changes(scope, holder, 1).items}
     end

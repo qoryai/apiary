@@ -8,7 +8,7 @@ Everywhere. Four kinds are the most useful:
 
 - **A page or a context feature of the console.** A LiveView under `lib/apiary_web/live/`
   or a function in one of the contexts under `lib/apiary/`, with its test. The console is
-  what an organisation sees: its workplace, the members, the access keys, the settings.
+  what an organisation sees: its workspace, the members, the access keys, the settings.
 - **The receiver of the server contract.** Discovery and the events endpoint exist; the run
   configuration, which the discovery document does not name yet, is the next endpoint to
   build, behind the same signed request. What the endpoints assume beyond the contract is
@@ -75,10 +75,10 @@ The application is under `lib/apiary/`, one context per concern, each with its s
 beside it:
 
 - `Apiary.Accounts`: users, their tokens, the notifier, and `Apiary.Accounts.Scope`, the
-  caller: the user, the organisation, the hive and the membership.
-- `Apiary.Organisations`: organisations, hives, memberships and invitations; sign-up, the
-  members of a hive, renaming.
-- `Apiary.AccessKeys`: a hive's access keys, their secrets encrypted at rest through
+  caller: the user, the organisation, the workspace and the membership.
+- `Apiary.Organisations`: organisations, workspaces, memberships and invitations; sign-up,
+  the members of a workspace, renaming.
+- `Apiary.AccessKeys`: a workspace's access keys, their secrets encrypted at rest through
   `Apiary.Vault`, rotation and revocation, and the lookup a signed request verifies against.
 - `Apiary.Contract`: the signature of a signed GET, pure functions with no database.
 - `Apiary.Release` and `Apiary.Release.Migrator`: what the release runs at boot.
@@ -91,16 +91,20 @@ The web side is under `lib/apiary_web/`:
   `EventsController` for the events, whose body `RawBody` keeps as it was sent,
   `RunConfigurationController` for the run configuration. Each of them refuses a
   contract revision it does not serve through `ContractVersion`.
-- `live/`: the pages behind sign-in, one directory per area (`hive_live`, `member_live`,
-  `access_key_live`, `settings_live`, `invitation_live`, `user_live`).
+- `live/`: the pages behind sign-in, one directory per area (`workspace_live`,
+  `member_live`, `access_key_live`, `settings_live`, `invitation_live`, `user_live`).
 - `controllers/`: health, the home page, and the session controllers.
 - `components/`: `core_components.ex` and the layouts. A page composes these; it does not
   write its own button.
-- `lingo.ex`: the body's words. Every visible string goes through Gettext in engine words,
-  and `priv/gettext/en@software/` says them in the software body's; see
+- `lingo.ex`: the domain's words. Every visible string goes through Gettext in engine
+  words, and `priv/gettext/en@software/` says them in the software domain's; see
   [docs/lingo.md](docs/lingo.md).
 - `router.ex` and `user_auth.ex`: the pipelines, the `live_session` blocks, and what a
-  mount loads into the scope.
+  mount loads into the scope. A workspace's pages are under `/:org/:workspace/…` and an
+  organisation's under `/:org/…`, by their slugs (decision 0073); the organisation and
+  the workspace come from the path, never from the session, and a slug the user is not a
+  member of answers not found. The names a slug can never be are in `reserved_slugs.ex`,
+  and a new top-level path or organisation page is added there in the same change.
 
 Migrations are under `priv/repo/migrations/`, one per change. Tests mirror the tree:
 `test/apiary/` for the contexts, `test/apiary_web/` for the plugs, controllers and pages.
@@ -120,18 +124,19 @@ their absence a failure.
 The organisation is the tenant, and the schema enforces it, not the pages:
 
 - Every table except the account tables (`users`, `users_tokens`) carries
-  `organisation_id`, and every table that belongs to a hive carries `hive_id` beside it
-  with the composite foreign key `(organisation_id, hive_id)` against `hives`, so no row
-  can name a hive of another organisation. Both come in the table's first migration; no
-  migration retrofits them.
-- A unique constraint is scoped by the organisation: `(organisation_id, name)` on hives,
-  `(organisation_id, user_id)` on memberships, `(organisation_id, email)` on pending
-  invitations, `(organisation_id, hive_id, label)` on active access keys. A name is
-  unique inside an organisation, never across them.
+  `organisation_id`, and every table that belongs to a workspace carries `workspace_id`
+  beside it with the composite foreign key `(organisation_id, workspace_id)` against
+  `workspaces`, so no row can name a workspace of another organisation. Both come in the
+  table's first migration; no migration retrofits them.
+- A unique constraint is scoped by the organisation: `(organisation_id, name)` on
+  workspaces, `(organisation_id, user_id)` on memberships, `(organisation_id, email)` on
+  pending invitations, `(organisation_id, workspace_id, label)` on active access keys. A
+  name is unique inside an organisation, never across them.
 - Every context function that reads or writes an organisation's data takes an
-  `Apiary.Accounts.Scope` as its first argument and filters by its organisation and hive,
-  and by nothing else the caller passes. The exceptions are the entry points that have no
-  caller yet: sign-up, an invitation token, and the key id of a signed request.
+  `Apiary.Accounts.Scope` as its first argument and filters by its organisation and
+  workspace, and by nothing else the caller passes. The exceptions are the entry points
+  that have no caller yet: sign-up, an invitation token, and the key id of a signed
+  request.
 - A test for a new table asserts that a row of another organisation is not reachable
   through a scope of this one: two `sign_up_fixture()` calls, a row in the first, a read
   through the second that returns nothing or raises. `test/apiary/access_keys_test.exs`
@@ -183,19 +188,21 @@ Every context, schema and plug carries a `@moduledoc`, and every public context 
 - Wrap at 90 columns.
 
 One vocabulary, no synonyms: **organisation** is the tenant, the thing that signs up;
-**hive** is the team inside it, the unit of use; **membership** is a user's place in an
-organisation and its hive, at the level owner or member; **access key** is a hive's
-credential for the server contract; **key id** is its public part, `ak_` and sixteen
-characters; **secret** is the part that signs, shown once; **run** is one execution of one
-session on a machine of the hive; **event** is one thing a run reports, delivered to the events URL; **receiver** is
-what answers the events URL; **run configuration** is what the runner fetches before a run;
-**security policy** is `SECURITY.md`. An organisation is never a team, a tenant in prose, a
-workspace or an account; a hive is never a team or a project; an access key is never an
-API key or a token; a secret is never a password. The product surface is the one place
-with other words: a page, an email or a flash says a body's words through Gettext, and the
-software body calls a hive a **workplace** ([docs/lingo.md](docs/lingo.md)). So do the
-guides, which are written in the software body's words. Code, schemas, migrations and this
-file say organisation and hive.
+**workspace** is the unit of use inside it; **membership** is a user's place in an
+organisation and its workspace, at the level owner or member; **access key** is a
+workspace's credential for the server contract; **key id** is its public part, `ak_` and
+sixteen characters; **secret** is the part that signs, shown once; **run** is one
+execution of one session on a machine of the workspace; **event** is one thing a run
+reports, delivered to the events URL; **receiver** is what answers the events URL; **run
+configuration** is what the runner fetches before a run; **security policy** is
+`SECURITY.md`. An organisation is never a team, a tenant in prose or an account; a
+workspace is never a team, a project or a hive; an access key is never an API key or a
+token; a secret is never a password. The product surface is the one place with other
+words: a page, an email or a flash says a domain's words through Gettext, and the software
+domain calls a target a **repository** ([docs/lingo.md](docs/lingo.md)). So do the guides,
+which are written in the software domain's words. Organisation and workspace are the same
+words in every domain; apiary and hive are words of the apiary skin, which is not built
+yet. Code, schemas, migrations and this file say organisation and workspace.
 
 ## Releases
 

@@ -5,14 +5,15 @@ defmodule ApiaryWeb.PolicyComponents do
   the rule composer with its reading line, the rules table with provenance, the
   suggestions of the harness, the history of changes with its diff, and the document well.
 
-  The pages under `/hive/policy` use all of them; the run page and the connections pages
-  use the first four, so a version, a rule and where it came from look the same wherever
-  a policy is named.
+  The pages under `/:org/:workspace/policy` use all of them; the run page and the
+  connections pages use the first four, so a version, a rule and where it came from look
+  the same wherever a policy is named.
 
   Everything rendered here comes from `Apiary.Policy` or from a form: hosts, paths and
   names are only ever interpolated, never `raw/1`.
   """
   use Phoenix.Component
+  use ApiaryWeb, :verified_routes
   use Gettext, backend: ApiaryWeb.Gettext
 
   import ApiaryWeb.CoreComponents,
@@ -22,6 +23,7 @@ defmodule ApiaryWeb.PolicyComponents do
 
   # `RunComponents` uses the shared components of this module, so nothing of it is imported
   # here: its functions are called by their full name, which is no compile-time dependency.
+  alias ApiaryWeb.Format
   alias ApiaryWeb.RunComponents
 
   alias Phoenix.LiveView.JS
@@ -43,7 +45,7 @@ defmodule ApiaryWeb.PolicyComponents do
   attr :scope, :string,
     default: nil,
     doc:
-      "whose version, when shown away from its own page: \"hive baseline\" or a system/path; a quiet suffix"
+      "whose version, when shown away from its own page: \"workspace baseline\" or a system/path; a quiet suffix"
 
   attr :class, :any, default: nil
 
@@ -145,10 +147,10 @@ defmodule ApiaryWeb.PolicyComponents do
 
   @doc """
   Where a rule comes from: three shapes, three wordings, no status hue. `label` replaces
-  the words where the same chip names a target's policy ("Own rules", "Hive baseline")
-  or marks a change the hive made ("hive").
+  the words where the same chip names a target's policy ("Own rules", "Workspace
+  baseline") or marks a change the workspace made ("workspace").
   """
-  attr :source, :atom, required: true, values: [:hive, :target, :hive_locked]
+  attr :source, :atom, required: true, values: [:workspace, :target, :workspace_locked]
   attr :label, :string, default: nil
   attr :class, :any, default: nil
 
@@ -156,9 +158,9 @@ defmodule ApiaryWeb.PolicyComponents do
     ~H"""
     <span class={["q-src", source_class(@source), @class]}>
       <.icon :if={@source == :target} name="hero-book-open-micro" class="size-3" />
-      <.icon :if={@source == :hive_locked} name="hero-lock-closed-micro" class="size-3" />
+      <.icon :if={@source == :workspace_locked} name="hero-lock-closed-micro" class="size-3" />
       <svg
-        :if={@source == :hive}
+        :if={@source == :workspace}
         viewBox="0 0 16 16"
         class="size-3"
         fill="none"
@@ -174,13 +176,17 @@ defmodule ApiaryWeb.PolicyComponents do
     """
   end
 
-  defp source_class(:hive), do: nil
+  defp source_class(:workspace), do: nil
   defp source_class(:target), do: "q-src-target"
-  defp source_class(:hive_locked), do: "q-src-lock"
+  defp source_class(:workspace_locked), do: "q-src-lock"
 
-  defp source_words(:hive), do: gettext("Hive")
+  defp source_words(:workspace), do: gettext("Workspace")
   defp source_words(:target), do: gettext("This target")
-  defp source_words(:hive_locked), do: gettext("Hive, locked")
+  defp source_words(:workspace_locked), do: gettext("Workspace, locked")
+
+  # A count beside a title, grouped as the reader's language groups it.
+  defp count_label(n) when is_number(n), do: Format.number(n)
+  defp count_label(other), do: other
 
   ## Section card
 
@@ -203,7 +209,7 @@ defmodule ApiaryWeb.PolicyComponents do
     <section id={@id} class={["q-sect", @class]} aria-labelledby={"#{@id}-h"} {@rest}>
       <header>
         <h2 id={"#{@id}-h"}>{@title}</h2>
-        <span :if={@count} id={"#{@id}-n"} class="q-sect-n">{@count}</span>
+        <span :if={@count} id={"#{@id}-n"} class="q-sect-n">{count_label(@count)}</span>
         <span class="grow"></span>
         {render_slot(@trailing)}
         <p :if={@description != []}>{render_slot(@description)}</p>
@@ -217,17 +223,21 @@ defmodule ApiaryWeb.PolicyComponents do
   ## pd2. Mode switch
 
   @doc """
-  The hive's default mode as two radio cards. Choosing the other card never switches at
-  once: it sends `mode_ask`, and the page opens the confirm. Arrow keys move between the
-  cards (the `PolicyPage` hook); Space or Enter asks. A mode is an owner's to set: for a
-  member the group is `aria-disabled`, keeps its look and its words, and does nothing.
+  The workspace's default mode as two radio cards. Choosing the other card never switches
+  at once: it sends `mode_ask`, and the page opens the confirm. Arrow keys move between
+  the cards (the `PolicyPage` hook); Space or Enter asks. A mode is an owner's to set: for
+  a member the group is `aria-disabled`, keeps its look and its words, and does nothing.
   """
   attr :id, :string, default: "policy-mode"
-  attr :mode, :string, required: true, values: ~w(observe enforce), doc: "the hive's default"
+  attr :mode, :string, required: true, values: ~w(observe enforce), doc: "the workspace's default"
   attr :can_edit, :boolean, default: false, doc: "owners only"
-  attr :served, :boolean, default: true, doc: "false on a new hive: nothing is served yet"
+  attr :served, :boolean, default: true, doc: "false on a new workspace: nothing is served yet"
   attr :following, :integer, default: 0, doc: "targets that follow the default"
   attr :own, :list, default: [], doc: "the modes of the targets that set their own"
+
+  attr :scope, :map,
+    required: true,
+    doc: "the caller's scope: its organisation and workspace name the links"
 
   attr :fact, :any,
     default: nil,
@@ -281,11 +291,12 @@ defmodule ApiaryWeb.PolicyComponents do
           <span class="q-mode-dot" aria-hidden="true"></span>
           <span class="q-mode-h">
             <.icon name={icon} class="size-4 text-faint" />{name}
-            <.badge :if={@mode == mode}>{gettext("Hive default")}</.badge>
+            <.badge :if={@mode == mode}>{gettext("Workspace default")}</.badge>
           </span>
           <span id={"#{@id}-#{mode}-p"} class="q-mode-p">{sentence}</span>
           <span :if={@mode == mode && (@fact || !@served)} id={"#{@id}-fact"} class="q-mode-fact">
             <.mode_fact
+              scope={@scope}
               fact={if @served, do: @fact, else: :unserved}
               following={if @own != [], do: @following}
             />
@@ -293,8 +304,8 @@ defmodule ApiaryWeb.PolicyComponents do
         </button>
       </div>
       <p id={"#{@id}-under"} class="text-[12.5px]/[18px] text-faint">
-        {gettext("This is the hive's default.")}
-        <.rich text={own_sentence(@own, @following)} />
+        {gettext("This is the workspace's default.")}
+        <.rich text={own_sentence(@scope, @own, @following)} />
         {gettext(
           "A wall's own refusals (the machine's address, a path that reads two ways) hold in either mode."
         )}
@@ -306,13 +317,15 @@ defmodule ApiaryWeb.PolicyComponents do
 
   # Whether the targets follow the default: a whole sentence per case, the count a link to
   # the targets that set their own.
-  defp own_sentence([], _following),
+  defp own_sentence(_scope, [], _following),
     do: [gettext("A target follows it unless an owner sets a mode of its own: none does.")]
 
-  defp own_sentence([mode], following) do
+  defp own_sentence(scope, [mode], following) do
     own =
-      {:link, "/hive/policy/targets?mode=own",
-       ngettext("1 of %{count} target does", "1 of %{count} targets does", following + 1)}
+      {:link, ~p"/#{scope.organisation}/#{scope.workspace}/policy/targets?mode=own",
+       ngettext("1 of %{number} target does", "1 of %{number} targets does", following + 1,
+         number: Format.number(following + 1)
+       )}
 
     if mode == "observe",
       do:
@@ -327,17 +340,18 @@ defmodule ApiaryWeb.PolicyComponents do
         )
   end
 
-  defp own_sentence(modes, following) do
+  defp own_sentence(scope, modes, following) do
     observe = Enum.count(modes, &(&1 == "observe"))
     enforce = length(modes) - observe
 
     own =
-      {:link, "/hive/policy/targets?mode=own",
+      {:link, ~p"/#{scope.organisation}/#{scope.workspace}/policy/targets?mode=own",
        ngettext(
-         "%{number} of %{count} target do",
-         "%{number} of %{count} targets do",
+         "%{number} of %{total} target do",
+         "%{number} of %{total} targets do",
          following + length(modes),
-         number: length(modes)
+         number: Format.number(length(modes)),
+         total: Format.number(following + length(modes))
        )}
 
     cond do
@@ -357,14 +371,21 @@ defmodule ApiaryWeb.PolicyComponents do
         rich_gettext(
           "A target follows it unless an owner sets a mode of its own: %{own}: %{observe}, %{enforce}.",
           own: own,
-          observe: ngettext("%{count} observes", "%{count} observe", observe),
-          enforce: ngettext("%{count} enforces", "%{count} enforce", enforce)
+          observe:
+            ngettext("%{number} observes", "%{number} observe", observe,
+              number: Format.number(observe)
+            ),
+          enforce:
+            ngettext("%{number} enforces", "%{number} enforce", enforce,
+              number: Format.number(enforce)
+            )
         )
     end
   end
 
   attr :fact, :any, required: true
   attr :following, :integer, default: nil, doc: "the targets that follow, when some do not"
+  attr :scope, :map, required: true
 
   defp mode_fact(%{fact: :loading} = assigns) do
     ~H|<span class="skeleton q-skel inline-block w-64 align-middle"></span>|
@@ -385,7 +406,10 @@ defmodule ApiaryWeb.PolicyComponents do
   defp mode_fact(%{fact: %{denied: _}} = assigns) do
     ~H"""
     <.rich text={denied_sentence(@fact)} />
-    <.link navigate="/hive/connections?decision=denied&since=7d" class="q-link">
+    <.link
+      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/connections?decision=denied&since=7d"}
+      class="q-link"
+    >
       {gettext("See them")}
     </.link>
     """
@@ -395,7 +419,12 @@ defmodule ApiaryWeb.PolicyComponents do
     ~H"""
     <.rich text={uncovered_sentence(@fact, @following)} />
     {gettext("Enforce would deny them.")}
-    <.link navigate="/hive/connections?since=7d" class="q-link">{gettext("See them")}</.link>
+    <.link
+      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/connections?since=7d"}
+      class="q-link"
+    >
+      {gettext("See them")}
+    </.link>
     """
   end
 
@@ -415,41 +444,40 @@ defmodule ApiaryWeb.PolicyComponents do
 
   defp uncovered_sentence(fact, following) do
     rich_ngettext(
-      "In the last 7 days %{attempts} to %{destinations} had no rule, in the %{count} target that follows it.",
-      "In the last 7 days %{attempts} to %{destinations} had no rule, in the %{count} targets that follow it.",
+      "In the last 7 days %{attempts} to %{destinations} had no rule, in the %{number} target that follows it.",
+      "In the last 7 days %{attempts} to %{destinations} had no rule, in the %{number} targets that follow it.",
       following,
       attempts: attempts(fact.uncovered),
-      destinations: destinations(fact.destinations)
+      destinations: destinations(fact.destinations),
+      number: Format.number(following)
     )
   end
 
   defp attempts(n),
     do:
-      rich_ngettext("%{number} attempt", "%{number} attempts", n,
-        number: {:b, RunComponents.delimited(n)}
-      )
+      rich_ngettext("%{number} attempt", "%{number} attempts", n, number: {:b, Format.number(n)})
 
   defp destinations(n),
     do:
       rich_ngettext("%{number} destination", "%{number} destinations", n,
-        number: {:b, RunComponents.delimited(n)}
+        number: {:b, Format.number(n)}
       )
 
   ## pd2a. Target mode
 
   @doc """
-  A target's mode: follow the hive, observe or enforce, with what is in effect and
-  where it comes from. Compact on purpose: the hive's page explains the two modes once;
-  here the choice is whose mode. A radio sends `target_mode_ask`. While the target
-  observes and its list holds locked denies of the hive, a notice says that they hold
+  A target's mode: follow the workspace, observe or enforce, with what is in effect and
+  where it comes from. Compact on purpose: the workspace's page explains the two modes
+  once; here the choice is whose mode. A radio sends `target_mode_ask`. While the target
+  observes and its list holds locked denies of the workspace, a notice says that they hold
   here all the same: a deny is denied in either mode.
   """
   attr :id, :string, required: true
   attr :setting, :string, required: true, values: ~w(follow observe enforce)
   attr :effective, :string, required: true, values: ~w(observe enforce)
-  attr :hive_default, :string, required: true, values: ~w(observe enforce)
+  attr :workspace_default, :string, required: true, values: ~w(observe enforce)
   attr :can_edit, :boolean, default: false, doc: "owners only"
-  attr :locked_denies, :list, default: [], doc: "the hosts of locked hive denies in the list"
+  attr :locked_denies, :list, default: [], doc: "the hosts of locked workspace denies in the list"
 
   def target_mode(assigns) do
     ~H"""
@@ -467,7 +495,7 @@ defmodule ApiaryWeb.PolicyComponents do
           <button
             :for={
               {setting, label} <- [
-                {"follow", gettext("Follow the hive")},
+                {"follow", gettext("Follow the workspace")},
                 {"observe", gettext("Observe")},
                 {"enforce", gettext("Enforce")}
               ]
@@ -487,7 +515,7 @@ defmodule ApiaryWeb.PolicyComponents do
           </button>
         </div>
         <p id={"#{@id}-effect"} class="q-rmode-effect">
-          <.rich text={in_effect_sentence(@setting, @effective, @hive_default)} />
+          <.rich text={in_effect_sentence(@setting, @effective, @workspace_default)} />
           <span :if={!@can_edit} id={"#{@id}-owners"}>{gettext("Only an owner sets a mode.")}</span>
         </p>
       </div>
@@ -504,17 +532,19 @@ defmodule ApiaryWeb.PolicyComponents do
     """
   end
 
-  defp in_effect_sentence("follow", effective, _hive_default),
+  defp in_effect_sentence("follow", effective, _workspace_default),
     do:
-      rich_gettext("In effect: %{mode}, the hive's default. It changes when the hive's does.",
+      rich_gettext(
+        "In effect: %{mode}, the workspace's default. It changes when the workspace's does.",
         mode: {:b, effective}
       )
 
-  defp in_effect_sentence(_setting, effective, hive_default),
+  defp in_effect_sentence(_setting, effective, workspace_default),
     do:
-      rich_gettext("In effect: %{mode}, this target's own. The hive's default is %{default}.",
+      rich_gettext(
+        "In effect: %{mode}, this target's own. The workspace's default is %{default}.",
         mode: {:b, effective},
-        default: hive_default
+        default: workspace_default
       )
 
   defp locked_deny_sentence(hosts) do
@@ -533,7 +563,7 @@ defmodule ApiaryWeb.PolicyComponents do
   """
   attr :id, :string, required: true
   attr :form, :any, required: true, doc: "action, host, paths, every"
-  attr :scope, :atom, required: true, values: [:hive, :target]
+  attr :scope, :atom, required: true, values: [:workspace, :target]
   attr :reading, :map, default: nil
   attr :queued, :integer, default: 0, doc: "pasted hosts still to add"
 
@@ -560,7 +590,7 @@ defmodule ApiaryWeb.PolicyComponents do
       id={@id}
       class="q-composer"
       aria-label={
-        if @scope == :hive,
+        if @scope == :workspace,
           do: gettext("Add a host rule"),
           else: gettext("Add a rule for this target")
       }
@@ -635,7 +665,7 @@ defmodule ApiaryWeb.PolicyComponents do
       </label>
       <.button type="submit" variant="primary" id={"#{@id}-add"} disabled={!@ready?}>
         {@reading.button ||
-          if(@scope == :hive, do: gettext("Add rule"), else: gettext("Add for this target"))}
+          if(@scope == :workspace, do: gettext("Add rule"), else: gettext("Add for this target"))}
       </.button>
       <.reading_line id={"#{@id}-reads"} reading={@reading} queued={@queued} />
     </.form>
@@ -672,7 +702,7 @@ defmodule ApiaryWeb.PolicyComponents do
           name={@form[:name].name}
           value={@form[:name].value}
           class="q-input q-input-m"
-          placeholder={gettext("Name, such as forge-token")}
+          placeholder={gettext("Name, such as system-token")}
           spellcheck="false"
           autocomplete="off"
           autocapitalize="off"
@@ -745,7 +775,9 @@ defmodule ApiaryWeb.PolicyComponents do
         <.rich text={@reading.text} />
         <.reading_act :if={@reading.fix} act={@reading.fix} />
         <span :if={@queued > 0} id={"#{@id}-queued"} class="q-reads-queued">
-          {ngettext("%{count} more to add", "%{count} more to add", @queued)}
+          {ngettext("%{number} more to add", "%{number} more to add", @queued,
+            number: Format.number(@queued)
+          )}
         </span>
       </span>
     </div>
@@ -771,7 +803,7 @@ defmodule ApiaryWeb.PolicyComponents do
   ## pd4. Rules table and rule row
 
   @doc """
-  The rules of the hive, or the effective policy of a target: one list, every entry
+  The rules of the workspace, or the effective policy of a target: one list, every entry
   saying where it came from. A row is a map the page builds (see `rule_row/1`).
   `activity` is `:loading`, `:unavailable` (the column is dropped, never faked) or the
   map of `Apiary.Policy.rule_activity/3`.
@@ -779,7 +811,12 @@ defmodule ApiaryWeb.PolicyComponents do
   attr :id, :string, required: true
   attr :label, :string, required: true
   attr :rows, :list, required: true
-  attr :scope, :atom, required: true, values: [:hive, :target]
+  attr :scope, :atom, required: true, values: [:workspace, :target]
+
+  attr :current_scope, :map,
+    required: true,
+    doc: "the caller's scope: its organisation and workspace name the links"
+
   attr :can_lock, :boolean, default: false
   attr :activity, :any, default: :unavailable
   attr :fresh, :any, default: %{}, doc: "%{rule id => version}: new in the version in force"
@@ -798,10 +835,10 @@ defmodule ApiaryWeb.PolicyComponents do
             <th role="columnheader">{gettext("Paths")}</th>
             <th :if={@scope == :target} role="columnheader">{gettext("Comes from")}</th>
             <th :if={@seen?} role="columnheader" class="q-num">{gettext("Last 7 days")}</th>
-            <th :if={@scope == :hive} role="columnheader">{gettext("Added")}</th>
+            <th :if={@scope == :workspace} role="columnheader">{gettext("Added")}</th>
             <th role="columnheader">
               <span class="sr-only">
-                {if @scope == :hive, do: gettext("Lock and actions"), else: gettext("Actions")}
+                {if @scope == :workspace, do: gettext("Lock and actions"), else: gettext("Actions")}
               </span>
             </th>
           </tr>
@@ -817,6 +854,7 @@ defmodule ApiaryWeb.PolicyComponents do
             id={"rule-#{row.id}"}
             rule={row}
             scope={@scope}
+            current_scope={@current_scope}
             can_lock={@can_lock}
             seen={@seen? && seen(@activity, row)}
             seen?={@seen?}
@@ -834,16 +872,21 @@ defmodule ApiaryWeb.PolicyComponents do
 
   @doc """
   One rule. `rule` is a map: `id`, `action` (`"allow"`, `"deny"`), `host`, `paths`,
-  `locked`, `source` (`:hive`, `:target`, `:hive_locked`), `by` (the local part of the
-  author's email), `at`, `locked_tip` (what a member reads on the padlock), `act` (the one
-  act of a target row: `:disable`, `:allow_here`, `:remove`, `:restore`, `:open`),
-  `beaten` (the rules it holds against: maps with `id`, `action`, `host`, `kind`
+  `locked`, `source` (`:workspace`, `:target`, `:workspace_locked`), `by` (the local part
+  of the author's email), `at`, `locked_tip` (what a member reads on the padlock), `act`
+  (the one act of a target row: `:disable`, `:allow_here`, `:remove`, `:restore`,
+  `:open`), `beaten` (the rules it holds against: maps with `id`, `action`, `host`, `kind`
   (`:override`, `:lock`, `:cover`), `by`, `at`), `can_change` (false for a member on a
   locked rule).
   """
   attr :id, :string, required: true
   attr :rule, :map, required: true
   attr :scope, :atom, required: true
+
+  attr :current_scope, :map,
+    required: true,
+    doc: "the caller's scope: its organisation and workspace name the links"
+
   attr :can_lock, :boolean, default: false
   attr :seen, :any, default: nil
   attr :seen?, :boolean, default: false
@@ -876,15 +919,20 @@ defmodule ApiaryWeb.PolicyComponents do
       <td :if={@seen?} role="cell" class="q-c-seen q-num">
         <.seen seen={@seen} />
       </td>
-      <td :if={@scope == :hive} role="cell" class="q-c-by">
+      <td :if={@scope == :workspace} role="cell" class="q-c-by">
         <.who_when by={@rule.by} at={@rule.at} />
       </td>
       <td role="cell" class="q-c-acts">
-        <span :if={@scope == :hive} class="q-rowacts">
+        <span :if={@scope == :workspace} class="q-rowacts">
           <.lock rule={@rule} can_lock={@can_lock} id={@id} />
           <.rule_menu :if={@rule.can_change} id={"#{@id}-menu"} rule={@rule} can_lock={@can_lock} />
         </span>
-        <.target_act :if={@scope == :target} rule={@rule} id={@id} />
+        <.target_act
+          :if={@scope == :target}
+          rule={@rule}
+          id={@id}
+          current_scope={@current_scope}
+        />
       </td>
     </tr>
     <tr
@@ -917,25 +965,31 @@ defmodule ApiaryWeb.PolicyComponents do
   end
 
   defp beaten_lead(%{kind: :lock}), do: gettext("Holds against this target's rule")
-  defp beaten_lead(%{kind: :override}), do: gettext("Overrides the hive's rule")
-  defp beaten_lead(%{kind: :cover, source: :hive}), do: gettext("Covers the hive's rule")
+  defp beaten_lead(%{kind: :override}), do: gettext("Overrides the workspace's rule")
+
+  defp beaten_lead(%{kind: :cover, source: :workspace}),
+    do: gettext("Covers the workspace's rule")
+
   defp beaten_lead(%{kind: :cover}), do: gettext("Covers this target's rule")
 
   defp beaten_tail(%{kind: :lock, by: by, at: %DateTime{} = at}) when is_binary(by),
-    do: gettext("%{by} · %{date}. It is not in force.", by: by, date: day(at))
+    do: gettext("%{by} · %{date}. It is not in force.", by: by, date: Format.day(at))
 
   defp beaten_tail(%{kind: :lock, at: %DateTime{} = at}),
-    do: gettext("%{date}. It is not in force.", date: day(at))
+    do: gettext("%{date}. It is not in force.", date: Format.day(at))
 
   defp beaten_tail(%{kind: :lock}), do: gettext("It is not in force.")
 
   defp beaten_tail(%{kind: :override, action: "allow"} = beaten) do
     case beaten do
       %{winner_by: by, winner_at: %DateTime{} = at} when is_binary(by) ->
-        gettext("Disabled here by %{by} · %{date}. Other targets keep it.", by: by, date: day(at))
+        gettext("Disabled here by %{by} · %{date}. Other targets keep it.",
+          by: by,
+          date: Format.day(at)
+        )
 
       %{winner_at: %DateTime{} = at} ->
-        gettext("Disabled here · %{date}. Other targets keep it.", date: day(at))
+        gettext("Disabled here · %{date}. Other targets keep it.", date: Format.day(at))
 
       _beaten ->
         gettext("Disabled here. Other targets keep it.")
@@ -945,10 +999,10 @@ defmodule ApiaryWeb.PolicyComponents do
   defp beaten_tail(%{kind: :override} = beaten) do
     case beaten do
       %{winner_by: by, winner_at: %DateTime{} = at} when is_binary(by) ->
-        gettext("Allowed here by %{by} · %{date}.", by: by, date: day(at))
+        gettext("Allowed here by %{by} · %{date}.", by: by, date: Format.day(at))
 
       %{winner_at: %DateTime{} = at} ->
-        gettext("Allowed here · %{date}.", date: day(at))
+        gettext("Allowed here · %{date}.", date: Format.day(at))
 
       _beaten ->
         gettext("Allowed here.")
@@ -1032,18 +1086,18 @@ defmodule ApiaryWeb.PolicyComponents do
   defp seen(assigns) do
     ~H"""
     <span :if={@seen.allowed > 0} class="text-muted">
-      {gettext("%{number} allowed", number: RunComponents.delimited(@seen.allowed))}
+      {gettext("%{number} allowed", number: Format.number(@seen.allowed))}
     </span>
     <span :if={@seen.allowed > 0 && @seen.denied > 0} class="text-muted"> · </span>
     <span :if={@seen.denied > 0} class="q-bad">
-      {gettext("%{number} denied", number: RunComponents.delimited(@seen.denied))}
+      {gettext("%{number} denied", number: Format.number(@seen.denied))}
     </span>
     <span class="sr-only">{gettext("in the last 7 days")}</span>
     """
   end
 
   defp requests(n),
-    do: ngettext("%{number} request", "%{number} requests", n, number: RunComponents.delimited(n))
+    do: ngettext("%{number} request", "%{number} requests", n, number: Format.number(n))
 
   attr :by, :string, default: nil
   attr :at, :any, default: nil
@@ -1052,7 +1106,7 @@ defmodule ApiaryWeb.PolicyComponents do
     ~H"""
     <span class="q-who-when">
       {@by}
-      <small :if={@at}>{if @by, do: "· "}{day(@at)}</small>
+      <small :if={@at}>{if @by, do: "· "}{Format.day(@at)}</small>
     </span>
     """
   end
@@ -1184,18 +1238,23 @@ defmodule ApiaryWeb.PolicyComponents do
 
   attr :id, :string, required: true
   attr :rule, :map, required: true
+  attr :current_scope, :map, required: true
 
   defp target_act(%{rule: %{act: :open}} = assigns) do
     ~H"""
     <span
       class="tooltip tooltip-left q-tip-wide"
-      data-tip={gettext("A locked hive rule. It is changed on the hive's policy page, by an owner.")}
+      data-tip={
+        gettext("A locked workspace rule. It is changed on the workspace's policy page, by an owner.")
+      }
     >
       <.link
         id={"#{@id}-act"}
-        navigate={"/hive/policy?rule=#{URI.encode_www_form(@rule.host)}"}
+        navigate={
+          ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy?#{%{"rule" => @rule.host}}"
+        }
         class="q-link q-link-xs pr-2"
-        aria-label={gettext("Open the hive's locked rule for %{host}", host: @rule.host)}
+        aria-label={gettext("Open the workspace's locked rule for %{host}", host: @rule.host)}
       >
         {gettext("Open")}
       </.link>
@@ -1227,7 +1286,7 @@ defmodule ApiaryWeb.PolicyComponents do
   defp act_label(:remove, host), do: gettext("Remove this target's rule for %{host}", host: host)
 
   defp act_label(:restore, host),
-    do: gettext("Restore the hive's rule for %{host} in this target", host: host)
+    do: gettext("Restore the workspace's rule for %{host} in this target", host: host)
 
   @doc "The credentials of a scope as a table. Rows: `id`, `name`, `argument`, `source`, `by`, `at`, `can_change`."
   attr :id, :string, required: true
@@ -1300,7 +1359,7 @@ defmodule ApiaryWeb.PolicyComponents do
 
   @doc """
   The hosts the harness declared and the policy does not cover: shown only when there is
-  something to review. One click allows for the target; the caret offers the hive and
+  something to review. One click allows for the target; the caret offers the workspace and
   the composer with paths. A suggestion: `%{host:, runs:, last_seen_at:}`; `allowed` holds
   the hosts allowed from this card since the page opened, which stay until navigation.
   """
@@ -1325,7 +1384,10 @@ defmodule ApiaryWeb.PolicyComponents do
       count={
         if @open == [],
           do: gettext("all allowed"),
-          else: ngettext("%{count} to review", "%{count} to review", length(@open))
+          else:
+            ngettext("%{number} to review", "%{number} to review", length(@open),
+              number: Format.number(length(@open))
+            )
       }
     >
       <:trailing>
@@ -1338,7 +1400,10 @@ defmodule ApiaryWeb.PolicyComponents do
         >
           {if length(@open) == 2,
             do: gettext("Allow both here"),
-            else: ngettext("Allow all %{count} here", "Allow all %{count} here", length(@open))}
+            else:
+              ngettext("Allow all %{number} here", "Allow all %{number} here", length(@open),
+                number: Format.number(length(@open))
+              )}
         </button>
       </:trailing>
       <:description>
@@ -1389,9 +1454,11 @@ defmodule ApiaryWeb.PolicyComponents do
                   type="button"
                   role="menuitem"
                   data-menu-close
-                  phx-click={JS.push("suggest_allow", value: %{host: suggestion.host, level: "hive"})}
+                  phx-click={
+                    JS.push("suggest_allow", value: %{host: suggestion.host, level: "workspace"})
+                  }
                 >
-                  {gettext("Allow for the hive")}
+                  {gettext("Allow for the workspace")}
                 </button>
               </li>
               <li role="none">
@@ -1444,40 +1511,39 @@ defmodule ApiaryWeb.PolicyComponents do
   defp declared_sentence(runs) do
     rich_gettext("Declared by the %{harness} in %{runs}.",
       harness: {:term, gettext("harness"), harness_tip()},
-      runs:
-        {:b,
-         ngettext("%{number} run", "%{number} runs", runs, number: RunComponents.delimited(runs))}
+      runs: {:b, ngettext("%{number} run", "%{number} runs", runs, number: Format.number(runs))}
     )
   end
 
   defp times(1), do: gettext("once")
 
   defp times(n),
-    do: ngettext("%{number} time", "%{number} times", n, number: RunComponents.delimited(n))
+    do: ngettext("%{number} time", "%{number} times", n, number: Format.number(n))
 
   # The declared hosts already allowed, each with what allows it, in one sentence.
   defp covered_sentence(covered) do
     rich_ngettext(
-      "%{count} more declared host is already allowed: %{hosts}.",
-      "%{count} more declared hosts are already allowed: %{hosts}.",
+      "%{number} more declared host is already allowed: %{hosts}.",
+      "%{number} more declared hosts are already allowed: %{hosts}.",
       length(covered),
-      hosts: covered |> Enum.map(&covered_by/1) |> Enum.intersperse(", ")
+      hosts: covered |> Enum.map(&covered_by/1) |> Enum.intersperse(", "),
+      number: Format.number(length(covered))
     )
   end
 
-  defp covered_by(%{host: host, by: host, source: :hive}),
-    do: rich_gettext("%{host} by the hive", host: {:code, host})
+  defp covered_by(%{host: host, by: host, source: :workspace}),
+    do: rich_gettext("%{host} by the workspace", host: {:code, host})
 
   defp covered_by(%{host: host, by: host}),
     do: rich_gettext("%{host} by this target", host: {:code, host})
 
-  defp covered_by(%{host: host, by: by, source: :hive}),
-    do: rich_gettext("%{host} by the hive's %{rule}", host: {:code, host}, rule: by)
+  defp covered_by(%{host: host, by: by, source: :workspace}),
+    do: rich_gettext("%{host} by the workspace's %{rule}", host: {:code, host}, rule: by)
 
   defp covered_by(%{host: host, by: by}),
     do: rich_gettext("%{host} by this target's %{rule}", host: {:code, host}, rule: by)
 
-  defp allowed_where(%{level: "hive"}), do: gettext("Allowed for the hive")
+  defp allowed_where(%{level: "workspace"}), do: gettext("Allowed for the workspace")
   defp allowed_where(_allowed), do: gettext("Allowed here")
 
   @doc "The DOM id of a suggestion's row."
@@ -1501,8 +1567,8 @@ defmodule ApiaryWeb.PolicyComponents do
   The changes of a page of history, grouped by day, newest first. A change row is a
   native `<details>`; opening one patches `?change=`, and the page computes its diff.
   `changes` are maps: `id`, `sentence` (rich), `origin` (a faint second line or nil),
-  `who`, `at`, `version`, `digest`, `navigate` (the version page), `hive` (a change of the
-  hive shown in a target's history), `patch`, `close`.
+  `who`, `at`, `version`, `digest`, `navigate` (the version page), `workspace` (a change
+  of the workspace shown in a target's history), `patch`, `close`.
   """
   attr :id, :string, required: true
   attr :label, :string, required: true
@@ -1513,12 +1579,16 @@ defmodule ApiaryWeb.PolicyComponents do
 
   def change_list(assigns) do
     assigns =
-      assign(assigns, :days, Enum.chunk_by(assigns.changes, &DateTime.to_date(&1.at)))
+      assign(
+        assigns,
+        :days,
+        Enum.chunk_by(assigns.changes, &DateTime.to_date(Format.local(&1.at)))
+      )
 
     ~H"""
     <section id={@id} class="q-sect" aria-label={@label}>
       <div :for={day <- @days} class="contents">
-        <div class="q-day">{day_bar(hd(day).at, @now)}</div>
+        <div class="q-day">{Format.day_heading(hd(day).at, @now)}</div>
         <.change_row
           :for={change <- day}
           id={"chg-#{change.id}"}
@@ -1552,9 +1622,9 @@ defmodule ApiaryWeb.PolicyComponents do
         <span class="q-chg-when">
           <RunComponents.relative_time at={@change.at} />
           <.source_chip
-            :if={@change.hive}
-            source={:hive}
-            label={gettext("hive")}
+            :if={@change.workspace}
+            source={:workspace}
+            label={gettext("workspace")}
             class="q-src-xs"
           />
         </span>
@@ -1614,9 +1684,10 @@ defmodule ApiaryWeb.PolicyComponents do
       <div :if={@diff.document} class="q-dpanel">
         <div>
           <span>{gettext("document")}</span><span>{ngettext(
-            "application/json · %{count} byte",
-            "application/json · %{count} bytes",
-            @diff.bytes
+            "application/json · %{number} byte",
+            "application/json · %{number} bytes",
+            @diff.bytes,
+            number: Format.number(@diff.bytes)
           )}</span>
         </div>
         <.diff_lines lines={@diff.document} label={gettext("Difference of the rendered document")} />
@@ -1662,7 +1733,7 @@ defmodule ApiaryWeb.PolicyComponents do
   end
 
   defp changes(n),
-    do: ngettext("%{number} change", "%{number} changes", n, number: RunComponents.delimited(n))
+    do: ngettext("%{number} change", "%{number} changes", n, number: Format.number(n))
 
   defp gutter(:add), do: "+"
   defp gutter(:del), do: "−"
@@ -1716,24 +1787,5 @@ defmodule ApiaryWeb.PolicyComponents do
       {render_slot(@inner_block)}
     </div>
     """
-  end
-
-  ## Words
-
-  @doc "A day as a rule's author line says it: 16 Sep, with the year when it is not this one."
-  def day(%DateTime{} = at) do
-    if at.year == DateTime.utc_now().year,
-      do: Calendar.strftime(at, "%-d %b"),
-      else: Calendar.strftime(at, "%-d %b %Y")
-  end
-
-  def day(_at), do: nil
-
-  defp day_bar(%DateTime{} = at, %DateTime{} = now) do
-    case Date.diff(DateTime.to_date(now), DateTime.to_date(at)) do
-      0 -> gettext("Today")
-      1 -> gettext("Yesterday")
-      _ -> Calendar.strftime(at, "%-d %b %Y")
-    end
   end
 end

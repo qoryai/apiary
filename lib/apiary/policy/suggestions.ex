@@ -11,12 +11,12 @@ defmodule Apiary.Policy.Suggestions do
   target's runs were allowed and denied since a moment, from `connections`, capped
   like `Apiary.Policy.Activity`'s read (nil, not a part's count, beyond the cap). The
   declared hosts that a rule already covers come beside them, with the entry that covers
-  each and whether it is the hive's or the target's, at most 20.
+  each and whether it is the workspace's or the target's, at most 20.
   """
 
   import Ecto.Query, warn: false
 
-  alias Apiary.Organisations.Hive
+  alias Apiary.Organisations.Workspace
   alias Apiary.Policy.{Effective, Grammar, Resolution, Rule}
   alias Apiary.Repo
   alias Apiary.Runs.{Connection, Event, Target, Run}
@@ -32,11 +32,11 @@ defmodule Apiary.Policy.Suggestions do
   @count_events 300
 
   @doc false
-  def list(hive_id, target_id, %Effective{} = effective, since),
-    do: report(hive_id, target_id, effective, since).suggested
+  def list(workspace_id, target_id, %Effective{} = effective, since),
+    do: report(workspace_id, target_id, effective, since).suggested
 
   @doc false
-  def report(hive_id, target_id, %Effective{allow: allow, entries: entries}, since) do
+  def report(workspace_id, target_id, %Effective{allow: allow, entries: entries}, since) do
     # A host somebody denied is not covered on purpose: suggesting it would be noise.
     denied = for %{kind: :host, action: :deny, in_force: true, host: host} <- entries, do: host
 
@@ -45,14 +45,14 @@ defmodule Apiary.Policy.Suggestions do
           into: %{},
           do: {entry.host, entry}
 
-    declared = declared(hive_id, target_id)
+    declared = declared(workspace_id, target_id)
 
     {covered, open} =
       declared
       |> Enum.reject(fn {host, _seen} -> Grammar.covers_any?(denied, host) end)
       |> Enum.split_with(fn {host, _seen} -> Grammar.covers_any?(allow, host) end)
 
-    attempts = attempts(hive_id, target_id, since)
+    attempts = attempts(workspace_id, target_id, since)
 
     suggested =
       open
@@ -87,11 +87,12 @@ defmodule Apiary.Policy.Suggestions do
   @doc false
   # See `Apiary.Policy.suggestion_counts/2`. One read of the events joined to their runs
   # and targets (the hosts declared, and each target's own mode), one read of the
-  # hive's rules, and the hive's mode; each target's effective policy is resolved once.
-  def counts(%Hive{id: hive_id}, since) do
+  # workspace's rules, and the workspace's mode; each target's effective policy is
+  # resolved once.
+  def counts(%Workspace{id: workspace_id}, since) do
     runs =
       from r in Run,
-        where: r.hive_id == ^hive_id and not is_nil(r.target_id),
+        where: r.workspace_id == ^workspace_id and not is_nil(r.target_id),
         where: coalesce(r.started_at, r.inserted_at) >= ^since,
         order_by: [desc: coalesce(r.started_at, r.inserted_at), desc: r.id],
         limit: @count_runs,
@@ -105,7 +106,8 @@ defmodule Apiary.Policy.Suggestions do
           join: p in Target,
           on: p.id == r.target_id,
           where:
-            e.hive_id == ^hive_id and e.run_id in subquery(runs) and e.type == @policy_applied,
+            e.workspace_id == ^workspace_id and e.run_id in subquery(runs) and
+              e.type == @policy_applied,
           order_by: [desc: e.received_at],
           limit: @count_events,
           select: {r.target_id, p.egress_mode, e.data}
@@ -116,9 +118,9 @@ defmodule Apiary.Policy.Suggestions do
     if declared == [] do
       %{hosts: 0, targets: 0}
     else
-      mode = Repo.one!(from h in Hive, where: h.id == ^hive_id, select: h.egress_mode)
-      rules = Repo.all(from r in Rule, where: r.hive_id == ^hive_id)
-      {hive_rules, own} = Enum.split_with(rules, &is_nil(&1.target_id))
+      mode = Repo.one!(from h in Workspace, where: h.id == ^workspace_id, select: h.egress_mode)
+      rules = Repo.all(from r in Rule, where: r.workspace_id == ^workspace_id)
+      {workspace_rules, own} = Enum.split_with(rules, &is_nil(&1.target_id))
       own = Enum.group_by(own, & &1.target_id)
 
       per_target =
@@ -131,7 +133,7 @@ defmodule Apiary.Policy.Suggestions do
             case Resolution.resolve_for(
                    mode,
                    own_mode,
-                   hive_rules,
+                   workspace_rules,
                    Map.get(own, target_id, []),
                    target_id
                  ) do
@@ -157,17 +159,19 @@ defmodule Apiary.Policy.Suggestions do
   end
 
   # host => [{run id, received at}], from the newest runs' policy applied events.
-  defp declared(hive_id, target_id) do
+  defp declared(workspace_id, target_id) do
     runs =
       from r in Run,
-        where: r.hive_id == ^hive_id and r.target_id == ^target_id,
+        where: r.workspace_id == ^workspace_id and r.target_id == ^target_id,
         order_by: [desc: r.inserted_at],
         limit: @runs,
         select: r.id
 
     Repo.all(
       from(e in Event,
-        where: e.hive_id == ^hive_id and e.run_id in subquery(runs) and e.type == @policy_applied,
+        where:
+          e.workspace_id == ^workspace_id and e.run_id in subquery(runs) and
+            e.type == @policy_applied,
         order_by: [desc: e.received_at],
         limit: @events,
         select: {e.run_id, e.data, e.received_at}
@@ -181,16 +185,16 @@ defmodule Apiary.Policy.Suggestions do
   end
 
   # The attempts of the target's runs since `since`, as `{host, allowed, denied}`, read
-  # through `connections (hive_id, last_seen_at)`; nil beyond the cap, and the counts with
-  # it: a count of a part would read as the whole.
-  defp attempts(hive_id, target_id, since) do
+  # through `connections (workspace_id, last_seen_at)`; nil beyond the cap, and the counts
+  # with it: a count of a part would read as the whole.
+  defp attempts(workspace_id, target_id, since) do
     rows =
       Repo.all(
         from c in Connection,
           join: r in Run,
           on: r.id == c.run_id,
           where:
-            c.hive_id == ^hive_id and c.last_seen_at >= ^since and
+            c.workspace_id == ^workspace_id and c.last_seen_at >= ^since and
               r.target_id == ^target_id,
           order_by: [desc: c.last_seen_at],
           limit: ^(@attempts_cap + 1),

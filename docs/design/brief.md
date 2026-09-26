@@ -13,16 +13,17 @@ An owner's decision after the first issue of this brief, 20 Sep 2026. Four chang
 application shell, and nothing else moves: **the product name on surfaces is "Qory Apiary"**; **the
 account menu leaves the foot of the sidebar for the right end of a top bar**, on desktop and phone;
 **the brand moves to the foot of the sidebar**, quiet, with the version; **the top of the sidebar is
-the apiary's**, its name and hive, shaped so an apiary switcher takes that slot. The Hive and
-Manage nav groups stay as built. Every change is marked **[A2]** where it stands.
+the organisation's**, its name and workspace, shaped so a switcher takes that slot. The
+Workspace and Manage nav groups stay as built. Every change is marked **[A2]** where it
+stands.
 
 | Section | What changed |
 |---|---|
 | Naming (the paragraph under this one) | "Qory Apiary" on every surface that names the product; where "Qory" alone stays |
-| b. The mark | the size list: 18 px in the sidebar foot, 22 px in the no-hive top bar and the auth strip |
+| b. The mark | the size list: 18 px in the sidebar foot, 22 px in the no-workspace top bar and the auth strip |
 | b. The wordmark | the wordmark is "Qory Apiary"; `<.brand>` sizes; `<.live_title>` default and suffix |
 | b. Microcopy tone | two rows in the table: the product name, naming the whole of Qory |
-| f. App shell | rewritten: the diagram, the top bar, the sidebar's order, the drawer, the no-hive variant, keyboard order, focus after opening the account menu, reduced motion, the shell's copy |
+| f. App shell | rewritten: the diagram, the top bar, the sidebar's order, the drawer, the no-workspace variant, keyboard order, focus after opening the account menu, reduced motion, the shell's copy |
 | h9. Auth pages | the brand panel, the strip, the headings and the foot line say "Qory Apiary" |
 | i. Accessibility | the top bar landmark, the order of landmarks, the names of the new controls |
 | j. Done checklist | the Identity and Shell groups |
@@ -33,20 +34,22 @@ sentences stay as written until the owner rules on them; this amendment renames 
 sentences. Module names do not change. Emails have no footer today; if one is added it says
 "Qory Apiary".
 
-Implementation spec for the Qory control plane console (the application whose Elixir modules are
-named `Apiary`). Milestone: accounts, the apiary and its hive, members, access keys. The rendered
-reference is `qory-style-guide.html` beside this file; where the two disagree, this brief wins.
+Implementation spec for the Qory control plane console (the application whose Elixir
+modules are named `Apiary`). Milestone: accounts, the organisation and its workspace,
+members, access keys. The rendered reference is `qory-style-guide.html` beside this file;
+where the two disagree, this brief wins.
 
-Naming. The brand is **Qory**; this console, the control plane, is **Qory Apiary** [A2]. Every
-surface that names the product says "Qory Apiary": the wordmark, `<title>` (default and suffix),
-the sign-in panel and its headings, the subjects and sign-offs of emails. "Qory" alone appears only
-where it names the whole of Qory, the runner included: the trust sentence of the sign-in panel
-("With Qory you don't have to"). In "Qory Apiary" the second word is part of a name: capitalised,
-no dotted underline, no hover. Inside the product an organisation is an **apiary** and a workplace
-a **hive**; each shows its standard term on hover. Module names (`Apiary`, `ApiaryWeb`) do not
-change. British spelling
-everywhere. Sample data is synthetic only: Acme, Platform, build-01, `build-01.example.com`,
-`beekeeper@example.com`, `dana@example.com`.
+Naming. The brand is **Qory**; this console, the control plane, is **Qory Apiary** [A2].
+Every surface that names the product says "Qory Apiary": the wordmark, `<title>` (default
+and suffix), the sign-in panel and its headings, the subjects and sign-offs of emails.
+"Qory" alone appears only where it names the whole of Qory, the runner included: the trust
+sentence of the sign-in panel ("With Qory you don't have to"). In "Qory Apiary" the second
+word is part of a name: capitalised, no dotted underline, no hover. Every page says
+**organisation** and **workspace**, plain words with no term hover; "apiary" and "hive"
+are words of the per-user apiary skin, which is not built (`docs/lingo.md`). Module names
+(`Apiary`, `ApiaryWeb`) do not change. British spelling everywhere. Sample data is
+synthetic only: Acme, Platform, build-01, `build-01.example.com`, `beekeeper@example.com`,
+`dana@example.com`.
 
 Stack. Phoenix LiveView 1.2, Tailwind CSS v4, daisyUI 5 as a Tailwind plugin with two custom
 themes, heroicons, small LiveView hooks only. No external font, script or style loads.
@@ -72,8 +75,9 @@ themes, heroicons, small LiveView hooks only. No external font, script or style 
    undone.
 6. **Dark is a first-class theme,** designed on its own: the sidebar is darker than the content,
    borders replace shadows, the soft fills are re-tuned rather than inverted.
-7. **Vocabulary without theatre.** "apiary" and "hive" appear as ordinary nouns with a dotted
-   underline and the standard term on hover. No bee puns, no mascots, no points, badges or streaks.
+7. **Vocabulary without theatre.** "organisation" and "workspace" are ordinary nouns, with
+   no dotted underline and no hover. No bee puns, no mascots, no points, badges or
+   streaks.
 8. **Quiet motion.** Motion confirms cause and effect for floating things and nothing else. Layout
    never animates.
 
@@ -98,8 +102,8 @@ the counter and ending just outside the wall.
 
 - Body takes `primary`, tail takes `base-content`, so the mark is correct in both themes with no
   variant. Mono variant (emails in plain clients, print): both paths `currentColor`.
-- Sizes [A2]: 16 favicon, 18 sidebar foot, 22 no-hive top bar and auth header strip, 28 auth
-  panel, 48 email header. Never below 16.
+- Sizes [A2]: 16 favicon, 18 sidebar foot, 22 no-workspace top bar and auth header strip,
+  28 auth panel, 48 email header. Never below 16.
 - Clear space: half the mark's width on every side. Never rotate, outline, add a gradient or a
   drop shadow.
 - Favicon: the same SVG as `priv/static/favicon.svg` with literal fills `#eea82f` and `#1c1713`,
@@ -111,8 +115,8 @@ the counter and ending just outside the wall.
 coloured honey, one space between the words and never a break between them (`whitespace-nowrap`).
 Beside the mark: gap 8 px, wordmark cap-height optically centred on the mark. In the sidebar foot
 13 px / 18 px, weight 500, `text-muted`, with an 18 px mark (the one place the wordmark is grey: it
-is a signature there, not a heading); in the no-hive top bar and the auth header strip 16 px /
-20 px with the 22 px mark; on the auth panel 19 px with the 28 px mark.
+is a signature there, not a heading); in the no-workspace top bar and the auth header
+strip 16 px / 20 px with the 22 px mark; on the auth panel 19 px with the 28 px mark.
 
 `<.brand />` renders mark + wordmark as a link to `/`; `size` is `xs` (the sidebar foot), `sm`
 (the default) or `lg` (the auth panel). `<.live_title default="Qory Apiary" suffix=" · Qory Apiary">`
@@ -143,14 +147,14 @@ seven days ("2 minutes ago", "Yesterday, 17:20") with the absolute timestamp in 
 
 | Situation | Write | Not |
 |---|---|---|
-| Empty state | Nothing has posted to this hive yet. | Bzz! Your hive is looking a bit empty! |
+| Empty state | Nothing has posted to this workspace yet. | Bzz! Your workspace is looking a bit empty! |
 | Destructive confirm | The key stops verifying at once. This cannot be undone. | Are you sure? This action is irreversible! |
 | Success toast | build-01 is revoked. | Success! Your key was successfully revoked. |
 | Error | That link has expired. Ask for a new one below. | Oops! Something went wrong. |
 | Validation | Enter a full email address, such as dana@example.com. | Invalid email |
 | Button | Send me a log-in link | Submit |
 | In-flight button | Creating | Creating... (the spinner is the ellipsis) |
-| Vocabulary | The hive of the Acme apiary. | Your buzzing hive! |
+| Vocabulary | The workspace of the Acme organisation. | Your buzzing workspace! |
 | Product name [A2] | Log in to Qory Apiary · Your Qory Apiary log-in link | Log in to Qory · Log in to the Apiary |
 | The whole of Qory [A2] | With Qory you don't have to. | With Qory Apiary you don't have to. |
 
@@ -359,7 +363,8 @@ without its ripple.
 ## f. App shell
 
 **[A2]** Rewritten by Amendment 2. The diagram, the top bar, the order of the sidebar, the drawer's
-top row and the no-hive variant are new; the page header and the content widths are unchanged.
+top row and the no-workspace variant are new; the page header and the content widths are
+unchanged.
 
 ```
 >= 768 px                                                   < 768 px
@@ -367,13 +372,13 @@ top row and the no-hive variant are new; the page header and the content widths 
 | [A] Acme      <> |                       (◐)  (B ˅) |     | [=] [A] Acme       (◐) (B)  |  52 px
 |     Platform     |                                  |     |         Platform            |
 |                  |----------------------------------|     +-----------------------------+
-| Hive             |  Page header                     |     |  Page header                |
+| Workspace             |  Page header                     |     |  Page header                |
 | [#] Overview     |  title · description       [CTA] |     |  content, 16 px gutter      |
 | [>] Runs       2 |                                  |     |                             |
 | [«] Connections  |  content                         |     +-----------------------------+
 | [s] Policy   obs |  max 960 (tables)                |     drawer: the same sidebar, 288 px,
 |                  |  max 640 (forms, settings)       |     slides in from the left over a scrim;
-| Manage           |                                  |     its top row is the apiary block
+| Manage           |                                  |     its top row is the organisation block
 | [k] Access keys 3|                                  |     and, at the right, [x] Close menu.
 | [u] Members    4 |                                  |
 | [c] Settings     |                                  |
@@ -391,18 +396,19 @@ top row and the no-hive variant are new; the page header and the content widths 
 column, not by source order, and a closed drawer is `visibility: hidden`, so the tab order reads
 sidebar → top bar → main at every width without a single `tabindex`.
 
-**Top bar** [A2]. One `<header aria-label="Top bar">` at every width, `sticky top-0 z-30 h-13
-flex items-center gap-1 border-b border-line bg-base-100/85 backdrop-blur pl-2 pr-4 md:px-4`.
-52 px everywhere, the same height as the sidebar's apiary row, so the bar's bottom border and the
-row's lower edge read as one line across the screen.
+**Top bar** [A2]. One `<header aria-label="Top bar">` at every width, `sticky top-0 z-30
+h-13 flex items-center gap-1 border-b border-line bg-base-100/85 backdrop-blur pl-2 pr-4
+md:px-4`. 52 px everywhere, the same height as the sidebar's organisation row, so the
+bar's bottom border and the row's lower edge read as one line across the screen.
 
-- **Left, below 768 px only.** The menu button: 40 px `btn btn-ghost btn-square`, `hero-bars-3` at
-  `size-5`, `aria-label="Open menu"`, `aria-controls="sidebar"`, `aria-expanded`. Then the
-  **apiary label**: 24 px square avatar (`rounded-field bg-neutral text-neutral-content text-[11px]
-  font-semibold`, the first letter), the apiary name (`text-[13px]/4 font-semibold truncate`,
-  `title`) over the hive name (`text-[11.5px]/[14px] text-muted truncate`); `min-w-0`. It is text,
-  not a control: it says where you are; the switcher lives in the drawer. From 768 px the left is
-  empty (`ml-auto` on the controls). No breadcrumb, no page title, no search: the bar is not for
+- **Left, below 768 px only.** The menu button: 40 px `btn btn-ghost btn-square`,
+  `hero-bars-3` at `size-5`, `aria-label="Open menu"`, `aria-controls="sidebar"`,
+  `aria-expanded`. Then the **organisation label**: 24 px square avatar (`rounded-field
+  bg-neutral text-neutral-content text-[11px] font-semibold`, the first letter), the
+  organisation name (`text-[13px]/4 font-semibold truncate`, `title`) over the workspace
+  name (`text-[11.5px]/[14px] text-muted truncate`); `min-w-0`. It is text, not a control:
+  it says where you are; the switcher lives in the drawer. From 768 px the left is empty
+  (`ml-auto` on the controls). No breadcrumb, no page title, no search: the bar is not for
   content, and an empty left half is honest.
 - **Right, every width.** The theme toggle, then the account menu, `gap-1`. Both `btn btn-ghost`,
   32 px from 768 px, 40 px below it.
@@ -421,48 +427,50 @@ row's lower edge read as one line across the screen.
     beekeeper@example.com"`, tooltip "Account" below. Open: `bg-base-300`. The menu is `dropdown
     dropdown-end` > `ul.menu.menu-sm.dropdown-content` `right-0 top-full mt-1.5 w-56`,
     `role="menu" aria-label="Account"`:
-    - header, not focusable: the email (500, truncate, `title`) over the level line "Owner of Acme"
-      / "Member of Acme" / "Not part of an apiary yet" (`text-xs text-faint`); divider
+    - header, not focusable: the email (500, truncate, `title`) over the level line "Owner
+      of Acme" / "Member of Acme" / "Not part of an organisation yet" (`text-xs
+      text-faint`); divider
     - "Account settings" `hero-user-circle-micro` → `/users/settings`
     - "Docs" `hero-book-open-micro` → `/docs`; divider
     - "Log out" `hero-arrow-right-start-on-rectangle-micro` → `DELETE /users/log-out`
 
-    No Theme row (it is the toggle's), no apiary switching (it is the sidebar's), no version (it
-    is the foot's).
+    No Theme row (it is the toggle's), no organisation switching (it is the sidebar's), no
+    version (it is the foot's).
 
 **Sidebar.** `w-60` (240 px; `w-72`, 288 px, inside the drawer), `h-dvh sticky top-0`,
 `bg-base-200 border-r border-line flex flex-col`. Top to bottom [A2]:
 
-1. **Apiary row.** `h-13 flex items-center gap-1 px-2` (52 px, level with the top bar). It holds
-   the **apiary block**, `flex-1 min-w-0`: `grid grid-cols-[28px_1fr_auto] gap-2.5 items-center
-   px-2 py-1.5 rounded-field`, a 28 px square avatar (`rounded-field bg-neutral
-   text-neutral-content text-xs font-semibold`, the first letter), the apiary name
-   (`text-[13px]/[18px] font-semibold truncate`, `title`) over the hive name (`text-xs/4 text-muted
-   truncate`, `title`). The third column is the switcher's chevron slot and exists in both
-   variants, so nothing moves the day a second membership arrives:
+1. **Organisation row.** `h-13 flex items-center gap-1 px-2` (52 px, level with the top
+   bar). It holds the **organisation block**, `flex-1 min-w-0`: `grid
+   grid-cols-[28px_1fr_auto] gap-2.5 items-center px-2 py-1.5 rounded-field`, a 28 px
+   square avatar (`rounded-field bg-neutral text-neutral-content text-xs font-semibold`,
+   the first letter), the organisation name (`text-[13px]/[18px] font-semibold truncate`,
+   `title`) over the workspace name (`text-xs/4 text-muted truncate`, `title`). The third
+   column is the switcher's chevron slot and exists in both variants, so nothing moves the
+   day a second membership arrives:
    - **One membership:** a plain `div`, `border border-transparent`, no chevron. The slot is
      empty, not a disabled control: a greyed chevron would promise a switch that does not exist
      for this user (principle 4). Not focusable.
    - **Several memberships:** the switcher `button`, `border border-line bg-base-100 shadow-xs
      hover:border-line-strong`, `hero-chevron-up-down-micro` in `text-faint`, opening a daisyUI
      `dropdown` (`menu menu-sm`, `top-full mt-1.5`, width of the sidebar minus 16 px). Title row
-     "Switch apiary" (with the term hover); one item per membership: square avatar, apiary name,
-     hive name in `text-faint`, `hero-check-micro` on the current one. Each item is a `<button>` in
-     a POST form to `/organisations/switch` with `organisation_id`.
-     `aria-label="Switch apiary, current: Acme"`.
+     "Switch organisation"; one item per membership: square avatar, organisation name,
+     workspace name in `text-faint`, `hero-check-micro` on the current one. Each item is a link to that
+     membership's workspace at the section the user is on (decision 0073).
+     `aria-label="Switch organisation, current: Acme"`.
    - In the drawer the row also holds, after the block, the **Close menu** button: `btn btn-ghost
      btn-square md:hidden`, `hero-x-mark size-5`, `aria-label="Close menu"`.
-2. **Nav.** Two groups, as built. "Hive": Overview `hero-squares-2x2-micro`, Runs
+2. **Nav.** Two groups, as built. "Workspace": Overview `hero-squares-2x2-micro`, Runs
    `hero-play-circle-micro`, Connections `hero-arrows-right-left-micro`, Policy
    `hero-shield-check-micro`. "Manage": Access keys `hero-key-micro`, Members `hero-users-micro`,
    Settings `hero-cog-6-tooth-micro`. Group label `px-4 pt-3 pb-1 text-[11.5px]/4 font-medium
-   text-faint` (the word "Hive" carries the term hover). Item: `flex items-center gap-2.5 h-8 px-2
+   text-faint`, plain words with no term hover. Item: `flex items-center gap-2.5 h-8 px-2
    rounded-field text-[13px] font-medium text-muted hover:bg-base-300 hover:text-base-content
    transition-colors`, icon `size-4 text-faint`. **Active** (`aria-current="page"`): `bg-base-300
    text-base-content`, icon `text-accent`. No left bar, no honey fill. Right-aligned tags in
    `ml-auto font-mono text-[11.5px] text-faint tabular-nums`: Runs the alive count with the
    listening dot, Policy the default mode, Access keys the active keys, Members the members. In
-   the drawer items are `h-10 text-sm`. `<nav aria-label="Main">` for Hive, `<nav
+   the drawer items are `h-10 text-sm`. `<nav aria-label="Main">` for Workspace, `<nav
    aria-label="Manage">` for Manage, `gap-px px-2`. Do not use daisyUI `menu` here.
 3. **Spacer** `flex-1`.
 4. **Brand foot** [A2, A3]. `m-2`, and in it the **Qory Apiary menu**: one button, `h-9 w-full
@@ -482,23 +490,25 @@ row's lower edge read as one line across the screen.
 The user card at the foot of the sidebar is gone [A2]; its contents are the account menu in the
 top bar. The standalone "Theme" row is gone too.
 
-**No-hive variant** [A2]. When the user has no membership: no sidebar, no drawer, no menu button.
-The top bar shows `<.brand />` (22 px mark, "Qory Apiary" 16 px) at its left, the theme toggle and
-the account menu at its right; the account menu's level line reads "Not part of an apiary yet".
-The content column shows the no-hive page.
+**No-workspace variant** [A2]. When the user has no membership: no sidebar, no drawer, no
+menu button. The top bar shows `<.brand />` (22 px mark, "Qory Apiary" 16 px) at its left,
+the theme toggle and the account menu at its right; the account menu's level line reads
+"Not part of an organisation yet". The content column shows the no-workspace page.
 
-**Drawer behaviour.** Slides in 240 ms over a `--q-overlay` scrim. Closes on scrim tap, Escape, the
-Close menu button in its apiary row [A2], and on any navigation (LiveView `phx:page-loading-stop`
-unchecks the toggle; the `NavDrawer` hook). While open: focus moves to the Close menu button, the
-whole content column (`#shell-content`: the top bar and `<main>`) gets `inert` [A2], body scroll is
-locked. On close, focus returns to the menu button.
+**Drawer behaviour.** Slides in 240 ms over a `--q-overlay` scrim. Closes on scrim tap,
+Escape, the Close menu button in its organisation row [A2], and on any navigation
+(LiveView `phx:page-loading-stop` unchecks the toggle; the `NavDrawer` hook). While open:
+focus moves to the Close menu button, the whole content column (`#shell-content`: the top
+bar and `<main>`) gets `inert` [A2], body scroll is locked. On close, focus returns to the
+menu button.
 
-**Keyboard order** [A2]. The visual order is the tab order. From 768 px: skip link → sidebar
-(the switcher, when there is one → Overview … Policy → Access keys … Settings → the brand foot) →
-top bar (theme toggle → account menu) → main. Below 768 px, drawer closed: skip link → menu button →
-theme toggle → account menu → main; drawer open: Close menu → the switcher → the nav items → the
-brand foot, and Tab cycles inside the drawer because everything else is inert. The apiary label in
-the bar and the apiary block with one membership are never in the order.
+**Keyboard order** [A2]. The visual order is the tab order. From 768 px: skip link →
+sidebar (the switcher, when there is one → Overview … Policy → Access keys … Settings →
+the brand foot) → top bar (theme toggle → account menu) → main. Below 768 px, drawer
+closed: skip link → menu button → theme toggle → account menu → main; drawer open: Close
+menu → the switcher → the nav items → the brand foot, and Tab cycles inside the drawer
+because everything else is inert. The organisation label in the bar and the organisation
+block with one membership are never in the order.
 
 **Focus after opening the account menu** [A2]. Opened with the pointer, the menu opens and focus
 stays on the button: nothing jumps under the cursor. Opened with Enter, Space or ArrowDown, the
@@ -523,14 +533,14 @@ was (no transition on colour or `color-scheme`).
 | Skip link | Skip to content | first focusable |
 | Menu button | Open menu | `aria-label`; icon only |
 | Close button | Close menu | `aria-label`; icon only |
-| Apiary label (bar, phone) | Acme / Platform | text, not a control; `title` = full names |
-| Apiary block (sidebar) | Acme / Platform | one membership: text; `title` = full names |
-| Switcher button | Switch apiary, current: Acme | `aria-label`; visible: avatar, names, chevron |
-| Switcher menu | Switch apiary | title row; "apiary" carries the term hover |
-| Group labels | Hive · Manage | "Hive" carries the term hover |
+| Organisation label (bar, phone) | Acme / Platform | text, not a control; `title` = full names |
+| Organisation block (sidebar) | Acme / Platform | one membership: text; `title` = full names |
+| Switcher button | Switch organisation, current: Acme | `aria-label`; visible: avatar, names, chevron |
+| Switcher menu | Switch organisation | title row; plain text, no term hover |
+| Group labels | Workspace · Manage | plain text, no term hover |
 | Theme toggle | Theme | `aria-label` and tooltip; items Auto · Light · Dark |
 | Account button | Account menu, beekeeper@example.com | `aria-label`; tooltip "Account" |
-| Account menu header | beekeeper@example.com / Owner of Acme | or Member of Acme · Not part of an apiary yet |
+| Account menu header | beekeeper@example.com / Owner of Acme | or Member of Acme · Not part of an organisation yet |
 | Account menu items | Account settings · Log out | in this order |
 | Brand menu | Qory Apiary · 0.1.0 | `aria-label` "Qory Apiary menu, version 0.1.0"; version `title` "Version 0.1.0" |
 | Brand menu items | Docs · Changelog · Source on GitHub | in this order; the last opens a new tab |
@@ -728,13 +738,16 @@ font-medium px-2 py-1 rounded-field shadow-pop`, no arrow (`.tooltip::after { di
 6 px offset, 300 ms show delay, 0 ms hide, also shown on `:focus-visible`. Required on every
 icon-only button (whose `aria-label` carries the same words). Never holds essential information.
 
-**Term** (`<.term word="hive" />`): `<abbr class="term tooltip" tabindex="0" data-tip="workplace"
-aria-label="hive (workplace)">hive</abbr>` with `underline decoration-dotted decoration-line-field
-underline-offset-[3px] cursor-help no-underline-on-print`. Drop the native `title` (double tooltip,
-no keyboard support). Mapping: apiary → organisation, hive → workplace. Apply the term treatment to the
-**first** occurrence in a page header, description, empty state or modal body; never inside
-buttons, nav items, table cells, toasts or form labels (plain word there). Capitalised forms keep
-the hover ("Apiary name").
+**Term** (`<.term word="wall" standard="The enclosure the agent runs in." />`): `<abbr
+class="term tooltip" tabindex="0" data-tip="{standard}" aria-label="wall
+({standard})">wall</abbr>` with `underline decoration-dotted decoration-line-field
+underline-offset-[3px] cursor-help no-underline-on-print`. Drop the native `title` (double
+tooltip, no keyboard support). It is for a word that needs a standard term on hover, such
+as a domain word. Organisation and workspace never take it, and it is not a way to show
+hive or apiary, the words of the apiary skin (not built). Apply the term treatment to the
+**first** occurrence in a page header, description, empty state or modal body; never
+inside buttons, nav items, table cells, toasts or form labels (plain word there).
+Capitalised forms keep the hover ("Wall").
 
 ### Code block with copy (`<.code_block>`, `<.mono>`, `<.copy_button>`)
 
@@ -766,11 +779,12 @@ trigger with scale 0.98.
 
 ### Avatar
 
-`avatar avatar-placeholder` > `div`. Person: round, 24 px (32 px `lg`), `bg-base-300 text-muted
-ring-1 ring-inset ring-line text-[11px] font-semibold uppercase`, first letter of the email. The
-current user: `bg-primary-soft text-primary-soft-content`. Apiary: **square** `rounded-field
-bg-neutral text-neutral-content`, 28 px. Pending invitation: dashed ring with
-`hero-envelope-micro`. Decorative: `aria-hidden="true"`; the name is always beside it.
+`avatar avatar-placeholder` > `div`. Person: round, 24 px (32 px `lg`), `bg-base-300
+text-muted ring-1 ring-inset ring-line text-[11px] font-semibold uppercase`, first letter
+of the email. The current user: `bg-primary-soft text-primary-soft-content`. Organisation:
+**square** `rounded-field bg-neutral text-neutral-content`, 28 px. Pending invitation:
+dashed ring with `hero-envelope-micro`. Decorative: `aria-hidden="true"`; the name is
+always beside it.
 
 ### Loading
 
@@ -787,17 +801,18 @@ bg-neutral text-neutral-content`, 28 px. Pending invitation: dashed ring with
 
 ## h. Page compositions
 
-Copy below is final. `{hive}` etc. are data. Words marked ~like this~ carry the term hover.
+Copy below is final. `{workspace}` etc. are data. Words marked ~like this~ carry the term
+hover; organisation and workspace never do.
 
-### h1. Overview, empty (`/hive`, no keys)
+### h1. Overview, empty (`/:org/:workspace`, no keys)
 
 ```
 Platform
-The ~hive~ of the Acme ~apiary~.
+The workspace of the Acme organisation.
 
 +------------------------------------------+--------------------------------+
 | Connect your first machine               | What you will paste            |
-| Nothing has posted to this hive yet.     | +----------------------------+ |
+| Nothing has posted to this workspace yet.     | +----------------------------+ |
 | An access key is all a machine needs     | | qory.yaml                  | |
 | to start.                                | | server:                    | |
 |                                          | |   url: https://…           | |
@@ -810,22 +825,23 @@ The ~hive~ of the Acme ~apiary~.
 |  |  dialog that creates it.              |                                |
 | (3) See runs here                        |                                |
 |     From the first post on, every run    |                                |
-|     of that machine lands in this hive.  |                                |
+|     of that machine lands in this workspace.  |                                |
 |                                          |                                |
 | [+ Create an access key]                 |            (bg base-200)       |
 +------------------------------------------+--------------------------------+
 ```
 
-One bordered object, two columns (`grid md:grid-cols-2`), right column `bg-base-200 border-l`.
-The preview block uses the real endpoint URL and faint dots for the id and secret; no copy button.
-Step 1 is current. Below 768 px the right column is dropped and the listening line sits under the
-card. The button navigates to `/hive/keys/new`. Page title is the hive name.
+One bordered object, two columns (`grid md:grid-cols-2`), right column `bg-base-200
+border-l`. The preview block uses the real endpoint URL and faint dots for the id and
+secret; no copy button. Step 1 is current. Below 768 px the right column is dropped and
+the listening line sits under the card. The button navigates to
+`/:org/:workspace/keys/new`. Page title is the workspace name.
 
 ### h2. Overview, with keys
 
 ```
 Platform
-The ~hive~ of the Acme ~apiary~.
+The workspace of the Acme organisation.
 
 +---------------------+---------------------+
 | Access keys         | Members             |
@@ -847,11 +863,11 @@ Stats are one joined object, each half links to its page. Step 1 done, step 2 cu
 unchanged from today ("active", "active, 1 revoked", "1 owner", "2 owners"). Replace "Runs will
 appear here once a machine posts." with the listening line.
 
-### h3. Access keys (`/hive/keys`)
+### h3. Access keys (`/:org/:workspace/keys`)
 
-Header: **Access keys** / "A key lets the machines of this ~hive~ post their runs. Create one per
-machine or environment and paste its server block into the runner file." / primary
-`[+ New access key]`.
+Header: **Access keys** / "A key lets the machines of this workspace post their runs.
+Create one per machine or environment and paste its server block into the runner file." /
+primary `[+ New access key]`.
 
 List: columns Label · Key id · Status · Created · Last used · Runner · actions.
 
@@ -868,7 +884,7 @@ touch), tooltip "Copy key id". "Never posted" (capitalised, replaces "never post
 rows fully faint.
 
 Empty: hex icon `hero-key`, **No access keys yet**, "Create a key and paste its server block into
-the runner file on a machine. It posts its runs to this ~hive~ from then on.",
+the runner file on a machine. It posts its runs to this workspace from then on.",
 `[Create an access key]`.
 
 **Create modal** (md). Title **New access key**. Field "Label", placeholder `build-01`, hint "The
@@ -895,8 +911,8 @@ at the right of the header.
 +--------------------------------------------------------------+
 ```
 
-The only exit is the primary button (replaces "Done"); it patches to `/hive/keys`. Note the alert
-says "Qory", not "Apiary".
+The only exit is the primary button (replaces "Done"); it patches to
+`/:org/:workspace/keys`. Note the alert says "Qory", not "Apiary".
 
 **Rotate confirm** (md). **Rotate {label}** / "Rotating issues a new secret and shows it once. The
 previous secret keeps working until you retire it, so machines can move over one at a time without
@@ -915,10 +931,11 @@ reconnect them." / `[Cancel]` (initial focus) `[Revoke key]` (danger) → "Revok
 is revoked." with second line "Machines using it fail their next request." Error toasts unchanged:
 "{label} is already revoked.", "{label} is revoked and cannot be rotated."
 
-### h4. Members (`/hive/members`)
+### h4. Members (`/:org/:workspace/members`)
 
-Header: **Members** / "The people in this ~hive~. Owners manage members, keys and settings; members
-manage keys and see every run." / owners see primary `[+ Invite member]`.
+Header: **Members** / "The people in this workspace. Owners manage members, keys and
+settings; members manage keys and see every run." / owners see primary
+`[+ Invite member]`.
 
 ```
 | Member                                   Level        Joined                |
@@ -937,31 +954,33 @@ Column header "Member" (was "Email"); avatar + email; "You" neutral label badge.
 right-aligned. No invitations: a single line in `text-muted`: "No pending invitations."
 
 **Invite modal** (md). **Invite a member** / "We email an invitation link. It works for seven days
-and brings the person into this ~hive~ when they accept." / fields "Email", "Level" (Member
-default) with hint "Owners manage members and settings. Members manage keys and see every run." /
-`[Cancel]` `[Send invitation]` → "Sending". Toast: "Invitation sent to {email}."
+and brings the person into this workspace when they accept." / fields "Email", "Level"
+(Member default) with hint "Owners manage members and settings. Members manage keys and
+see every run." / `[Cancel]` `[Send invitation]` → "Sending". Toast: "Invitation sent to
+{email}."
 
-**Remove confirm** (md). **Remove {email}** / "They lose access to this ~hive~ and its runs at once.
-Their account stays; you can invite them again." / `[Cancel]` (focus) `[Remove member]` (danger) →
-"Removing". When the target is the last owner, keep the existing server refusal, shown as an error
-toast: "The last owner cannot be removed or demoted." Revoking an invitation needs no confirm;
-toast "Invitation to {email} revoked." (Keep whatever strings the LiveView already flashes if they
-differ only in wording; align them to these.)
+**Remove confirm** (md). **Remove {email}** / "They lose access to this workspace and its
+runs at once. Their account stays; you can invite them again." / `[Cancel]` (focus)
+`[Remove member]` (danger) → "Removing". When the target is the last owner, keep the
+existing server refusal, shown as an error toast: "The last owner cannot be removed or
+demoted." Revoking an invitation needs no confirm; toast "Invitation to {email} revoked."
+(Keep whatever strings the LiveView already flashes if they differ only in wording; align
+them to these.)
 
-### h5. Settings (`/hive/settings`), 640 px column, stacked cards
+### h5. Settings (`/:org/:workspace/settings`), 640 px column, stacked cards
 
 ```
 Settings
-The names of this ~apiary~ and its ~hive~, and who owns them.
+The names of this organisation and its workspace, and who owns them.
 
 [i] Only owners can change these settings. Ask an owner if a name needs to change.   (members only)
 
-+ ~Apiary~ name --------------------------------------------+
++ Organisation name ----------------------------------------+
 | Name  [ Acme                         ]                   |
 |----------------------------------------------------------|
 | Shown in the sidebar and in invitations.          [Save] |
 +----------------------------------------------------------+
-+ ~Hive~ name ----------------------------------------------+
++ Workspace name -------------------------------------------+
 | Name  [ Platform                     ]                   |
 |----------------------------------------------------------|
 | Shown in the sidebar and as the overview title.   [Save] |
@@ -974,10 +993,11 @@ The names of this ~apiary~ and its ~hive~, and who owns them.
 +----------------------------------------------------------+
 ```
 
-Cards stack in one column (today's two-column grid leaves uneven cards). Save buttons say "Save"
-(the card title already names the object; "Save apiary name" with a dotted term inside a button
-goes). Save is disabled while the form is invalid (the changeset already knows). Members see disabled fields and no
-footer button. Toasts: "Apiary renamed to {name}." / "Hive renamed to {name}."
+Cards stack in one column (today's two-column grid leaves uneven cards). Save buttons say
+"Save" (the card title already names the object; "Save organisation name" goes). Save is
+disabled while the form is invalid (the changeset already knows). Members see disabled
+fields and no footer button. Toasts: "Organisation renamed to {name}." / "Workspace
+renamed to {name}."
 
 ### h6. Account settings (`/users/settings`), inside the app shell, 640 px column
 
@@ -987,28 +1007,29 @@ Header: **Account settings** / "Your email address and password." Two cards, sam
 characters.", footer "Optional. Log-in links keep working either way." `[Save password]`). This
 page uses `Layouts.app` with `nav={nil}`. Keep the existing sudo-mode redirect.
 
-### h7. No-hive page
+### h7. No-workspace page
 
-App shell in its no-hive variant. Centred in the content column, `max-w-[480px]`, an empty state
-with `hero-envelope-open`: **You are not part of an apiary yet** / "An ~apiary~ is created when you
-register, and you join someone else's through an invitation. Ask an owner to invite
-**{email}**; the email they send brings you straight to their ~hive~." / `[Account settings]`
-(default) `[Log out]` (ghost).
+App shell in its no-workspace variant. Centred in the content column, `max-w-[480px]`, an
+empty state with `hero-envelope-open`: **You are not part of an organisation yet** / "An
+organisation is created when you register, and you join someone else's through an
+invitation. Ask an owner to invite **{email}**; the email they send brings you straight to
+their workspace." / `[Account settings]` (default) `[Log out]` (ghost).
 
 ### h8. Invitation accept (`/invitations/:token`), auth split layout
 
 Form side, left-aligned like the other auth pages (not centred text):
 
-- **Signed in.** Display heading "Join {hive}" / "You are invited to the **{hive}** ~hive~ of the
-  **{organisation}** ~apiary~, as {a member | an owner}." / a quiet identity row: avatar, "Signed in
-  as {email}" / `[Accept invitation]` primary md block → "Joining" / link-style `Not you? Log out`.
+- **Signed in.** Display heading "Join {workspace}" / "You are invited to the
+  **{workspace}** workspace of the **{organisation}** organisation, as {a member | an
+  owner}." / a quiet identity row: avatar, "Signed in as {email}" / `[Accept invitation]`
+  primary md block → "Joining" / link-style `Not you? Log out`.
 - **Signed out.** Same heading and sentence / "Create an account with **{invitation email}** to
   join, or log in if you already have one." / `[Create an account]` primary md block /
   `[Log in]` default md block.
 - **Invalid.** Hex icon `hero-envelope-open` in neutral (`bg-base-300 text-muted`) / heading "This
   invitation is no longer valid" / "It may have been accepted already, revoked, or it expired after
-  seven days. Ask the person who invited you to send a new one." / `[Go to your hive]` (signed in)
-  or `[Log in]`.
+  seven days. Ask the person who invited you to send a new one." /
+  `[Go to your workspace]` (signed in) or `[Log in]`.
 
 ### h9. Auth pages: split view (`Layouts.auth`)
 
@@ -1081,11 +1102,12 @@ account, a log-in link is on its way."): hex icon `hero-envelope`, heading
 "Check your email", "If **{email}** has an account, a log-in link is on its way. It works for 15
 minutes." (use the app's real token lifetime), ghost `[Use a different email]`.
 
-**Register** (`/users/register`). Heading "Create your account"; sub "Start an ~apiary~ for your
-workplace. We will email you a link to confirm; no password needed." With an invitation, an info alert
-above the field: "You are invited to the **{hive}** ~hive~ at **{organisation}**. Your account joins
-it as soon as you confirm." and the email prefilled. Field "Email". Primary block "Create account"
-→ "Creating". Foot: "Already have an account? [Log in]". After submit, the same "Check your email"
+**Register** (`/users/register`). Heading "Create your account"; sub "Start an
+organisation for your workspace. We will email you a link to confirm; no password needed."
+With an invitation, an info alert above the field: "You are invited to the **{workspace}**
+workspace at **{organisation}**. Your account joins it as soon as you confirm." and the
+email prefilled. Field "Email". Primary block "Create account" → "Creating". Foot:
+"Already have an account? [Log in]". After submit, the same "Check your email"
 confirmation: "We sent a confirmation link to **{email}**."
 
 **Confirmation** (`/users/log-in/:token`). Heading "Welcome to Qory Apiary" [A2] (unconfirmed) or "Welcome
@@ -1115,10 +1137,11 @@ link has expired", "Log-in links work once and for a short time. Ask for a new o
   native `<dialog>` traps focus; the drawer sets `inert` on main; tables' scroll regions are
   focusable; tooltips and term hovers appear on focus.
 - **Names**: icon-only buttons have `aria-label`; row actions include the object ("Revoke
-  build-01") via `aria-label` while the visible text stays short; selects in rows are labelled
-  "Level of {email}"; the apiary switcher announces the current apiary; [A2] the account button
-  announces the email ("Account menu, beekeeper@example.com"), the theme toggle is "Theme", the
-  menu button "Open menu" and "Close menu"; the apiary label in the phone bar is plain text.
+  build-01") via `aria-label` while the visible text stays short; selects in rows are
+  labelled "Level of {email}"; the organisation switcher announces the current
+  organisation; [A2] the account button announces the email ("Account menu,
+  beekeeper@example.com"), the theme toggle is "Theme", the menu button "Open menu" and
+  "Close menu"; the organisation label in the phone bar is plain text.
 - **State**: never colour alone (badges carry words, errors carry an icon and text, the active nav
   item has `aria-current`). Loading buttons set `aria-busy`. Copy success is announced politely.
   Toasts: `role="status"` / `role="alert"`; auto-dismiss pauses on hover and focus and is never less
@@ -1154,13 +1177,18 @@ Tokens
 
 Shell
 - [ ] Sidebar 240 px visible from 768 px; one sidebar in the DOM; active item per spec; tags and counts shown
-- [ ] [A2] Sidebar order: apiary row, Hive, Manage, spacer, brand foot with "Qory Apiary" and the version; no user card, no theme row
+- [ ] [A2] Sidebar order: organisation row, Workspace, Manage, spacer, brand foot with
+  "Qory Apiary" and the version; no user card, no theme row
 - [ ] [A3] The brand foot is the Qory Apiary menu: Docs, Changelog, Source on GitHub, opening upward; the same menu at the left of the bar without a sidebar
-- [ ] [A2] Apiary block: text with one membership (chevron slot empty, not disabled), the switcher with several; switching posts to the same endpoint; the Close menu button in the same row in the drawer
-- [ ] [A2] Top bar at every width, 52 px: theme toggle and account menu at the right; below 768 px the menu button and the apiary label at the left, from 768 px nothing at the left
+- [ ] [A2] Organisation block: text with one membership (chevron slot empty, not
+  disabled), the switcher with several; switching posts to the same endpoint; the Close
+  menu button in the same row in the drawer
+- [ ] [A2] Top bar at every width, 52 px: theme toggle and account menu at the right;
+  below 768 px the menu button and the organisation label at the left, from 768 px nothing
+  at the left
 - [ ] [A2, A3] Account menu: header, Account settings, Log out; pointer open keeps focus on the button, keyboard open moves it to the first item; Escape returns it
 - [ ] [A2] Tab order sidebar → top bar → main (`drawer-side` first in the DOM); drawer: scrim, Escape, closes on navigation, focus managed, the whole content column inert
-- [ ] [A2] No-hive: no sidebar, no menu button, the brand at the left of the bar
+- [ ] [A2] No-workspace: no sidebar, no menu button, the brand at the left of the bar
 - [ ] Page header anatomy and content widths (960 / 640) on every page
 
 Components
@@ -1177,7 +1205,7 @@ Pages
 - [ ] Access keys: list with row-hover copy, "Never posted", "n/a", revoked row; create, reveal-once ("I have copied the secret"), rotate confirm and reveal, retire confirm, revoke confirm; all copy as written
 - [ ] Members: list, level select, pending invitations with caption, invite modal, remove confirm
 - [ ] Settings and account settings as stacked cards with footer actions; Save disabled while invalid
-- [ ] No-hive page; invitation accept in its three states
+- [ ] No-workspace page; invitation accept in its three states
 - [ ] Auth split view from 1024 px, header strip below; log in with ONE email field, the password toggle, "Keep me signed in", "Send me a log-in link"; register; "Check your email"; confirmation with one button and the checkbox
 
 Quality

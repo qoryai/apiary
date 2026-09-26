@@ -1,21 +1,23 @@
-# Qory console: design brief for the hive overview (M8)
+# Qory console: design brief for the workspace overview (M8)
 
-Implementation spec for the hive overview, `/hive`: the page a member lands on after sign-in. It
-extends `brief.md`, `brief-runs.md` and `brief-policy.md`; everything there (tokens, shell,
-components, tone, accessibility) still holds and is not repeated. The rendered reference is
-`overview-mock.html` beside this file; where the two disagree, this brief wins. Section letters
-continue the pattern with an `o` prefix.
+Implementation spec for the workspace overview, `/:org/:workspace`: the page a member
+lands on after sign-in. It extends `brief.md`, `brief-runs.md` and `brief-policy.md`;
+everything there (tokens, shell, components, tone, accessibility) still holds and is not
+repeated. The rendered reference is `overview-mock.html` beside this file; where the two
+disagree, this brief wins. Section letters continue the pattern with an `o` prefix.
 
-Naming. The brand is **Qory**. Inside the product an organisation is an **apiary** and a team a
-**hive** (the vocabulary of `AGENTS.md`; the page never says "organisation"). Sample data is
-synthetic only: Acme, Platform, `acme/shop`, `acme/tax-service`, `acme/docs`, `github.example`,
-`gitlab.example`, `files.cdn.example`, `flags.example`, `telemetry.example`, `*.paste.example`,
-`build-01`, `build-02`, `dev-laptop`, `beekeeper@example.com`, `dana@example.com`.
+Naming. The brand is **Qory**. The page says **organisation** and **workspace**, plain
+words with no term hover (`docs/lingo.md`); "apiary" and "hive" are words of the per-user
+apiary skin, which is not built. Sample data is synthetic only: Acme, Platform,
+`acme/shop`, `acme/tax-service`, `acme/docs`, `github.example`, `gitlab.example`,
+`files.cdn.example`, `flags.example`, `telemetry.example`, `*.paste.example`, `build-01`,
+`build-02`, `dev-laptop`, `beekeeper@example.com`, `dana@example.com`.
 
-What the page replaces. Today's overview (`lib/apiary_web/live/hive_live/overview.ex`) shows three
-stat tiles and a "Connect a machine" checklist that never leaves and whose third step never ticks.
-Both go. The stat tiles become the Activity strip; the checklist becomes the empty-hive state (oe6)
-and collapses to one link once the first run has landed.
+What the page replaces. Today's overview
+(`lib/apiary_web/live/workspace_live/overview.ex`) shows three stat tiles and a "Connect a
+machine" checklist that never leaves and whose third step never ticks. Both go. The stat
+tiles become the Activity strip; the checklist becomes the empty-workspace state (oe6) and
+collapses to one link once the first run has landed.
 
 Out of scope, not designed here: editing rules beyond the one-click allow of a suggestion row,
 closing a run from anywhere but the Needs attention item, members and settings (they keep their
@@ -32,11 +34,12 @@ The principles of the three earlier briefs apply. These five are added.
    above the fold, in that order of urgency: what needs you comes first, because it is why you
    would open the console twice a day; what they did comes second, because it is why you opened it
    the first time. Everything else (policy, machines, retention) is a glance and a link.
-2. **Only from the record.** Every number is a count the hive already keeps: `runs` columns the
-   projector folded, `connections` counters, `access_keys` timestamps, `retention_runs` rows,
-   the policy's mode and version. The page infers nothing: no "healthy", no "trend", no
-   estimate. When a count cannot be made (the activity read is over its cap) the page says so
-   in a sentence and drops the number; it never shows a part as a whole.
+2. **Only from the record.** Every number is a count the workspace already keeps: `runs`
+   columns the projector folded, `connections` counters, `access_keys` timestamps,
+   `retention_runs` rows, the policy's mode and version. The page infers nothing: no
+   "healthy", no "trend", no estimate. When a count cannot be made (the activity read is
+   over its cap) the page says so in a sentence and drops the number; it never shows a
+   part as a whole.
 3. **Attention is a list of acts.** An item is on the Needs attention list only when there is a
    button beside it that resolves it, or a link to the one place where it is resolved. A fact
    without an act is activity, not attention. When there is nothing to do the section is absent:
@@ -50,12 +53,13 @@ The principles of the three earlier briefs apply. These five are added.
    ("1 new run"), never as a layout jump.
 6. **Runs are counted in three families.** An owner's ruling, for every surface: **alive**
    (`pending`, `running`, the amber quiet state included), **ended well** (`succeeded`) and
-   **ended badly** (`failed`, `timed_out`, `lost`, `closed`; closed reads as "stopped by the hive",
-   not as a failure of the run, and sits in this family for scanning). On the overview every count
-   and list that groups runs uses the families: the strip's sub-line, the chart's tooltip and table,
-   the Alive now block. A badge keeps its own state word and colour (`brief-runs.md` rd1); a family
-   is how runs are counted, never how one run is named. The runs list's State filter is grouped by
-   the same families (`brief-runs.md`, Amendment 1).
+   **ended badly** (`failed`, `timed_out`, `lost`, `closed`; closed reads as "stopped by
+   the workspace", not as a failure of the run, and sits in this family for scanning). On
+   the overview every count and list that groups runs uses the families: the strip's
+   sub-line, the chart's tooltip and table, the Alive now block. A badge keeps its own
+   state word and colour (`brief-runs.md` rd1); a family is how runs are counted, never
+   how one run is named. The runs list's State filter is grouped by the same families
+   (`brief-runs.md`, Amendment 1).
 
 ---
 
@@ -63,11 +67,13 @@ The principles of the three earlier briefs apply. These five are added.
 
 ### Route and width
 
-`/hive`, `HiveLive.Overview`, `nav={:overview}`, `width="full"` (1200, as the runs and policy
-pages): the Activity card and the two glance cards sit side by side from a 1280 px viewport (the
-content column is then 1000 px wide; below that the page is one column), and the two tables under
-them take the full width, which 960 cannot hold without scrolling them sideways. `<title>`: "Platform · Qory" (the hive name; today's "Overview"
-goes: the sidebar already says Overview, and the tab should say which hive).
+`/:org/:workspace`, `WorkspaceLive.Overview`, `nav={:overview}`, `width="full"` (1200, as
+the runs and policy pages): the Activity card and the two glance cards sit side by side
+from a 1280 px viewport (the content column is then 1000 px wide; below that the page is
+one column), and the two tables under them take the full width, which 960 cannot hold
+without scrolling them sideways. `<title>`: "Platform · Qory" (the workspace name; today's
+"Overview" goes: the sidebar already says Overview, and the tab should say which
+workspace).
 
 No query parameters. The overview has one view; every filtered view lives on the page the link
 opens. The only state kept is the reading preference of the chart's table toggle
@@ -77,27 +83,27 @@ opens. The only state kept is the reading preference of the chart's table toggle
 
 | From | To |
 |---|---|
-| Needs attention, a denied destination | the suggestion row's own **Allow** (in place, od2); "See them" → `/hive/connections?decision=denied` |
-| Needs attention, a quiet run | `/hive/runs/:run_id` |
+| Needs attention, a denied destination | the suggestion row's own **Allow** (in place, od2); "See them" → `/:org/:workspace/connections?decision=denied` |
+| Needs attention, a quiet run | `/:org/:workspace/runs/:run_id` |
 | Needs attention, a lost run | **Close** (in place, the existing `Runs.close_run/2` and its confirm); "Open" → the run |
-| Needs attention, a run behind the policy | `/hive/runs/:run_id` and "What changed" → `/hive/policy/targets/:id/versions/:n?compare=:m` |
-| Needs attention, observing with rules ready | `/hive/policy?confirm=enforce` (opens the pe1 confirm on arrival; ol 3) |
-| Needs attention, no policy yet | `/hive/policy` |
-| Needs attention, an idle key | `/hive/keys/:id/revoke` (the keys page with its revoke confirm open; the existing patch route) |
-| Activity, a run row | `/hive/runs/:run_id` |
-| Activity, "n alive" / "and n more" | `/hive/runs?state=pending,running` |
-| Activity, "All runs" | `/hive/runs` |
-| Activity, a chart column | `/hive/runs?from=2026-09-14&to=2026-09-14` (that day); a denial column adds `&denials=1` |
-| Policy at a glance | `/hive/policy`, `/hive/policy/targets`, `/hive/policy/targets?mode=own`, `/hive/policy/targets/:id`, `/hive/policy/versions/:n` |
-| Access keys, a key row | `/hive/keys` (the key row is not its own page; the row's last run links to the run) |
-| Access keys, "Create another access key" | `/hive/keys/new` |
-| Retention | `/hive/settings#retention` |
+| Needs attention, a run behind the policy | `/:org/:workspace/runs/:run_id` and "What changed" → `/:org/:workspace/policy/targets/:id/versions/:n?compare=:m` |
+| Needs attention, observing with rules ready | `/:org/:workspace/policy?confirm=enforce` (opens the pe1 confirm on arrival; ol 3) |
+| Needs attention, no policy yet | `/:org/:workspace/policy` |
+| Needs attention, an idle key | `/:org/:workspace/keys/:id/revoke` (the keys page with its revoke confirm open; the existing patch route) |
+| Activity, a run row | `/:org/:workspace/runs/:run_id` |
+| Activity, "n alive" / "and n more" | `/:org/:workspace/runs?state=pending,running` |
+| Activity, "All runs" | `/:org/:workspace/runs` |
+| Activity, a chart column | `/:org/:workspace/runs?from=2026-09-14&to=2026-09-14` (that day); a denial column adds `&denials=1` |
+| Policy at a glance | `/:org/:workspace/policy`, `/:org/:workspace/policy/targets`, `/:org/:workspace/policy/targets?mode=own`, `/:org/:workspace/policy/targets/:id`, `/:org/:workspace/policy/versions/:n` |
+| Access keys, a key row | `/:org/:workspace/keys` (the key row is not its own page; the row's last run links to the run) |
+| Access keys, "Create another access key" | `/:org/:workspace/keys/new` |
+| Retention | `/:org/:workspace/settings#retention` |
 
 ### Sidebar
 
-Unchanged. The overview is the first item of the Hive section. The alive count on Runs and the
-mode word on Policy already ride their PubSub topics; the overview subscribes to the same two
-(`Runs.topic/1` and `Policy.topic/1`) and to nothing else (oj 2).
+Unchanged. The overview is the first item of the Workspace section. The alive count on
+Runs and the mode word on Policy already ride their PubSub topics; the overview subscribes
+to the same two (`Runs.topic/1` and `Policy.topic/1`) and to nothing else (oj 2).
 
 ---
 
@@ -134,7 +140,7 @@ that renders inside a stream takes its `id` from the caller.
 # <.attention>
 attr :id, :string, required: true
 attr :items, :list, required: true     # ordered; empty renders nothing at all
-attr :more, :map, default: nil         # %{count: 3, navigate: "/hive/connections?decision=denied"}
+attr :more, :map, default: nil         # %{count: 3, navigate: "/:org/:workspace/connections?decision=denied"}
 # <.attention_item>
 attr :id, :string, required: true      # stable: "att-denied-#{phash2({host, port, path})}", "att-run-#{run_id}", "att-key-#{id}", "att-policy-enforce"
 attr :kind, :atom, required: true      # :denied | :quiet | :lost | :behind | :enforce | :unmanaged | :idle_key
@@ -151,15 +157,15 @@ minimum, the `.sugg-row` grid of `brief-policy.md` pd6: a mark, a subject, a sen
 
 | Kind | Mark | Subject | Sentence (of) | Actions |
 |---|---|---|---|---|
-| `:denied` | dashed red barred circle (pd6: nothing is decided) | host, `:port` faint, path if held to paths; all mono | Denied 9 times in 3 runs of `acme/shop`, last 2 minutes ago. | split `btn-xs` **Allow here** with a caret menu (Allow for the hive, Allow with paths…): the pd8 popover with the repository preset; with runs of several repositories, **Allow** opens the popover with nothing chosen (pd8: the page does not guess a scope) |
-| `:denied`, a locked deny covers it | closed padlock | as above | A locked hive rule denies `*.paste.example`. Only an owner can change it. | link **Open the rule** |
+| `:denied` | dashed red barred circle (pd6: nothing is decided) | host, `:port` faint, path if held to paths; all mono | Denied 9 times in 3 runs of `acme/shop`, last 2 minutes ago. | split `btn-xs` **Allow here** with a caret menu (Allow for the workspace, Allow with paths…): the pd8 popover with the repository preset; with runs of several repositories, **Allow** opens the popover with nothing chosen (pd8: the page does not guess a scope) |
+| `:denied`, a locked deny covers it | closed padlock | as above | A locked workspace rule denies `*.paste.example`. Only an owner can change it. | link **Open the rule** |
 | `:quiet` | amber solid dot (rd1 quiet) | `<.run_state>` running-quiet, the task, the short id | No heartbeat for 47 s. Heartbeats are due every 30 s; after 90 s of silence it is marked lost. | default `btn-xs` **Open** |
 | `:lost` | amber `hero-signal-slash-micro` | `<.run_state state="lost">`, the task, the short id | Lost. Last heard Yesterday, 22:55, at least 8 m 30 s in. The run never posted its exit. | default `btn-xs` **Close** (the existing confirm; the row then reads "Closed") and ghost **Open** |
 | `:behind` | the drift badge (pd9) | the task, the short id | Still on `v9` after 2 heartbeats; `v10` has been in force for 1 m 40 s. A run reloads at its next heartbeat. | ghost `btn-xs` **What changed**, default **Open** |
-| `:enforce` | `hero-shield-exclamation-micro` in muted | **Observe is the hive's default** | 6 allow rules are in force and every destination reached in the last 7 days is covered. Enforce would deny nothing today. | primary `btn-xs` **Set the default to enforce** (to `/hive/policy?confirm=enforce`) |
+| `:enforce` | `hero-shield-exclamation-micro` in muted | **Observe is the workspace's default** | 6 allow rules are in force and every destination reached in the last 7 days is covered. Enforce would deny nothing today. | primary `btn-xs` **Set the default to enforce** (to `/:org/:workspace/policy?confirm=enforce`) |
 | `:enforce`, something uncovered | the same | the same | 6 rules are in force. Enforce would deny 2 destinations reached in the last 7 days. | default `btn-xs` **Review on the policy page** |
-| `:unmanaged` | `hero-shield-micro` in muted | **Qory serves no policy yet** | 11 runs landed under the machines' own policies. The first rule you add, or a mode you set, puts them under the hive's. | default `btn-xs` **Open policy** |
-| `:idle_key` | `hero-key-micro` in faint | the label, the key id mono | Not seen for 34 days; last runner 0.4.1. A key nobody uses is a key to revoke. | danger-ghost `btn-xs` **Revoke** (to `/hive/keys/:id/revoke`) |
+| `:unmanaged` | `hero-shield-micro` in muted | **Qory serves no policy yet** | 11 runs landed under the machines' own policies. The first rule you add, or a mode you set, puts them under the workspace's. | default `btn-xs` **Open policy** |
+| `:idle_key` | `hero-key-micro` in faint | the label, the key id mono | Not seen for 34 days; last runner 0.4.1. A key nobody uses is a key to revoke. | danger-ghost `btn-xs` **Revoke** (to `/:org/:workspace/keys/:id/revoke`) |
 
 Order: denied destinations first (most denials first), then lost, quiet, behind (most recent
 first), then the one policy item, then idle keys (longest idle first). At most five rows; the
@@ -177,7 +183,7 @@ kind that overflowed first in this order).
 | `:lost` | `state == "lost"` and `lost_at` within the last 7 days. Older lost runs are not on this list: they are on the runs list under their state, and a week-old loss is a fact, not a task |
 | `:behind` | `state in ["pending", "running"]` and `Policy.digests/2` says `drift: true` for more than two heartbeat intervals (a run that reloads within one is on time and is not listed; the second interval is grace). Never for an ended run (pd9) |
 | `:enforce` | `Policy.mode_summary/1` says `managed?: true, mode: "observe"`, at least one allow rule is in force in the baseline, and at least one run landed in the last 7 days. The sentence reads `Policy.uncovered/2` over 7 days: the count of destinations enforce would deny, or "nothing" |
-| `:unmanaged` | `managed?: false` and at least one run has landed (a hive with no run is the empty state, oe6) |
+| `:unmanaged` | `managed?: false` and at least one run has landed (a workspace with no run is the empty state, oe6) |
 | `:idle_key` | an active key (not revoked) with `last_used_at` older than 30 days, or `last_used_at` nil and `inserted_at` older than 30 days (of: "Never used in 34 days") |
 
 **After an act.** The row stays where it is with its mark swapped (the soft green check for
@@ -226,9 +232,9 @@ group header, no footer pagination, and the Repository column in (it is what tel
 here). The columns: State · Run · Repository · Host · Started · Duration · Denials. It takes the
 full width because seven columns do not fit beside a second column, and a table that scrolls
 sideways on a 1440 px screen is a table nobody reads. The rows are the five most recently started runs
-of the hive, alive ones included (an alive run is in both blocks; the alive block is for "now",
-the table for "last"; a reader who finds this odd finds the same run twice, not a lie). Below 640
-px the rows reflow as rd8 does.
+of the workspace, alive ones included (an alive run is in both blocks; the alive block is
+for "now", the table for "last"; a reader who finds this odd finds the same run twice, not
+a lie). Below 640 px the rows reflow as rd8 does.
 
 ### od5. Fourteen-day chart (`<.days_chart>`)
 
@@ -302,8 +308,8 @@ each a fact on the left (Caption) and its value on the right:
 
 | Row | Value |
 |---|---|
-| Mode | the word in 500 ("enforce"), then the neutral badge **Hive default**, then in muted: "3 repositories follow it · 1 sets its own: `acme/tax-service` observes" (the `mode_summary` of the sidebar and `list_repositories/1`; the repository is a link; several are "2 set their own" as a link to `?mode=own`) |
-| In force | `<.version_pill size="sm" navigate>` (v14, the short digest) and "since 16 Sep" in muted; a new hive reads "No version yet" faint and the sub "machines use their own policy until the first change" |
+| Mode | the word in 500 ("enforce"), then the neutral badge **Workspace default**, then in muted: "3 repositories follow it · 1 sets its own: `acme/tax-service` observes" (the `mode_summary` of the sidebar and `list_repositories/1`; the repository is a link; several are "2 set their own" as a link to `?mode=own`) |
+| In force | `<.version_pill size="sm" navigate>` (v14, the short digest) and "since 16 Sep" in muted; a new workspace reads "No version yet" faint and the sub "machines use their own policy until the first change" |
 | Repositories | "4 have posted runs · 2 with rules of their own" as links |
 | To review | "3 declared hosts in 2 repositories" as an info chip **3 to review** linking to Repositories, or "Nothing declared and unallowed" in faint. From `Policy.suggestions/3` of the repositories that posted a run in the last 14 days, at most 5 repositories read (oj 6) |
 
@@ -315,48 +321,50 @@ nudges.
 
 An access key is not a machine: one key often serves many hosts (a pool of ephemeral CI
 instances shares one), so the card is about keys and counts their hosts. A full-width card
-under Last runs, headed **Access keys** with the count of active keys in mono faint and, once
-the first run has landed, the link **Create another access key** on the right (to
-`/hive/keys/new`). A `<.table>` of at most five active keys, most recently seen first, then the
-never-seen: **Key** (the label in 500, the key id in mono faint under it) · **Last seen**
-(`<.relative_time at={last_used_at}>`; "Never posted" faint) · **Runner** (`last_runner_version`
-mono, then `last_contract_version` as `v1` in mono faint 11.5 beside it with the title "Contract
-version 1"; "n/a" faint when the key never posted) · **Hosts, 7 days** (the distinct `runs.host`
-of the key's runs in the last seven days: the one host's name in mono when there is one, "3
-hosts" when more, "none" faint when the key posted no run with a host in the window) · **Last
-run** (`<.run_state>` and the task or short id, the start relative; a link to the run; "No run
-yet" faint). "and 2 more" under the table when the hive has more active keys, to `/hive/keys`.
-Revoked keys are not here (they are on the keys page). A key rotating shows the warning badge
+under Last runs, headed **Access keys** with the count of active keys in mono faint and,
+once the first run has landed, the link **Create another access key** on the right (to
+`/:org/:workspace/keys/new`). A `<.table>` of at most five active keys, most recently seen
+first, then the never-seen: **Key** (the label in 500, the key id in mono faint under it)
+· **Last seen** (`<.relative_time at={last_used_at}>`; "Never posted" faint) · **Runner**
+(`last_runner_version` mono, then `last_contract_version` as `v1` in mono faint 11.5
+beside it with the title "Contract version 1"; "n/a" faint when the key never posted) ·
+**Hosts, 7 days** (the distinct `runs.host` of the key's runs in the last seven days: the
+one host's name in mono when there is one, "3 hosts" when more, "none" faint when the key
+posted no run with a host in the window) · **Last run** (`<.run_state>` and the task or
+short id, the start relative; a link to the run; "No run yet" faint). "and 2 more" under
+the table when the workspace has more active keys, to `/:org/:workspace/keys`. Revoked
+keys are not here (they are on the keys page). A key rotating shows the warning badge
 **Rotating** after its label, as the keys page does. The last run per key is one query
-(`DISTINCT ON (access_key_id)` ordered by `started_at desc`, oj 5) and the hosts another, grouped
-by key over the same index and the window. Below 640 px the rows reflow: label and last seen on
-the first line, the last run on the second; the runner and hosts cells are dropped (one tap
-away).
+(`DISTINCT ON (access_key_id)` ordered by `started_at desc`, oj 5) and the hosts another,
+grouped by key over the same index and the window. Below 640 px the rows reflow: label and
+last seen on the first line, the last run on the second; the runner and hosts cells are
+dropped (one tap away).
 
 ### od9. Retention (`<.retention_glance>`)
 
 A card headed **Retention** with the link **Settings** on the right. Two lines: the setting in
 the settings page's own words (`retention_summary/1`: "Log output is pruned after 30 days,
-events after 90 days." / "This hive keeps everything."), then the last prune from
+events after 90 days." / "This workspace keeps everything."), then the last prune from
 `Retention.list_retention_runs(scope, 1)`: "Last night pruned 12 runs: 4,120 events and 38.2 MB
 of log output." (the settings page's `pruned_sentence/1`, prefixed by when: "Last night", "On 14
 Sep", from `finished_at`), or "Nothing was old enough to prune last night.", or "No prune has run
-yet." A job that did not finish adds "; not finished, the next night goes on." A hive that keeps
-everything has one line. Members read the same card with the same link (the settings page tells
-them who can change it).
+yet." A job that did not finish adds "; not finished, the next night goes on." A workspace
+that keeps everything has one line. Members read the same card with the same link (the
+settings page tells them who can change it).
 
 ---
 
 ## oe. Page compositions
 
-Copy is final. `{…}` is data. ~word~ carries the term hover.
+Copy is final. `{…}` is data. ~word~ carries the term hover; organisation and
+workspace never do.
 
-### oe1. Overview, a busy hive (`/hive`)
+### oe1. Overview, a busy workspace (`/:org/:workspace`)
 
 ```
 >= 1280
 Platform
-The ~hive~ of the Acme ~apiary~.
+The workspace of the Acme organisation.
 
 + Needs attention  5 ----------------------------------------------------- and 2 more +
 | [⦸] files.cdn.example :443   Denied 9 times in 3 runs of acme/shop, …   [Allow here|v] |
@@ -373,7 +381,7 @@ The ~hive~ of the Acme ~apiary~.
 +-------------+-----------------------------------+--------------------+------------------+
 
 + Activity ---------------------------------------+ + Policy ------------ Open policy +
-| Alive now 2                                     | | Mode      enforce [Hive default] |
+| Alive now 2                                     | | Mode      enforce [Workspace default] |
 | (•) Running checkout-tax  github.example/acme/… | |           3 follow · 1 own       |
 |             0191f2a4      build-01  (o) Alive…  | | In force  [v14 · e3b0c44298fc]   |
 | (•) Running mirror-sync   gitlab.example/acme/… | | Repos     4 posted · 2 own rules |
@@ -386,7 +394,7 @@ The ~hive~ of the Acme ~apiary~.
 | ▁ ▁   ▂ ▅   ▁                                   |
 | 7 Sep  9  11  13  15  17  19  Today             |
 |-------------------------------------------------|
-| Counted from the hive's runs by the day …       |
+| Counted from the workspace's runs by the day …       |
 +-------------------------------------------------+
 
 + Last runs ------------------------------------------------------------------- All runs +
@@ -405,9 +413,9 @@ The ~hive~ of the Acme ~apiary~.
 +----------------------------------------------------------------------------------------+
 ```
 
-Header: the hive name as `<h1>`, the description "The ~hive~ of the Acme ~apiary~." (the
-vocabulary's surface words, with the term hovers on the first occurrence), no action button: the
-page's acts are in its rows. Order top to bottom: Needs attention (od1), the Activity strip
+Header: the workspace name as `<h1>`, the description "The workspace of the Acme
+organisation." (plain words, no term hover), no action button: the page's acts are in its
+rows. Order top to bottom: Needs attention (od1), the Activity strip
 (od6), then a two-column grid `minmax(0, 1.55fr) minmax(0, 1fr)` with the **Activity** card (alive
 rows and the chart, divided by a hairline inside one card) on the left and the two glance cards
 (Policy, Retention) stacked on the right, then **Last runs** (od4) and **Access keys** (od8) at full
@@ -415,9 +423,9 @@ width. The right column is `align-start`; the Activity card sets the height and 
 never stretches to match it. Below a 1280 px viewport the grid is one column in the order
 Activity, Policy, Retention, and the two tables follow as before.
 
-The Activity card's foot, `text-[12.5px] text-faint`: "Counted from the hive's runs by the day they
-started, UTC. Updated as batches land." When the denied destinations could not be counted the foot
-gains the sentence of of.
+The Activity card's foot, `text-[12.5px] text-faint`: "Counted from the workspace's runs
+by the day they started, UTC. Updated as batches land." When the denied destinations could
+not be counted the foot gains the sentence of of.
 
 ### oe2. Overview, nothing needs attention
 
@@ -431,11 +439,11 @@ Identical. Every act on this page is a member's (allow a host, close a run, revo
 the `:enforce` item, which a member sees with the sentence and the link **Open policy** in place
 of the primary button (pe1: a mode is an owner's, and the policy page says so).
 
-### oe4. Overview, a hive that serves no policy yet
+### oe4. Overview, a workspace that serves no policy yet
 
 The `:unmanaged` attention item, the Policy card with "No version yet" and the sub sentence, and
-the Mode row reading "observe" with the badge **Not served** in place of Hive default. Everything
-else as oe1.
+the Mode row reading "observe" with the badge **Not served** in place of Workspace
+default. Everything else as oe1.
 
 ### oe5. Overview, loading and unavailable
 
@@ -447,28 +455,29 @@ that appears after mount, and it is at the top, so it pushes the page down once,
 reader has read anything). Every region is `assign_async`; none blocks the first paint (oj 1).
 
 When `Runs.page_destinations/3` or `Policy.uncovered/2` answer `:unavailable`: no `:denied` rows and
-no `:enforce` count; the Activity foot says "Denied destinations were not counted: this hive
-recorded more than 20,000 connections in 7 days. The connections page counts them by
-destination." The number in the strip's Denied cell is `sum(runs.denied_count)`, which is not
-subject to the cap, so it stays.
+no `:enforce` count; the Activity foot says "Denied destinations were not counted: this
+workspace recorded more than 20,000 connections in 7 days. The connections page counts
+them by destination." The number in the strip's Denied cell is `sum(runs.denied_count)`,
+which is not subject to the cap, so it stays.
 
-### oe6. The empty hive, in three steps
+### oe6. The empty workspace, in three steps
 
 The checklist is the page while no run has landed. It is one bordered card, two columns from 768
 px (`brief.md` h1), with the steps of `<.steps>` and the state of each step read from the record:
 
 | Step | Done when | Current when |
 |---|---|---|
-| 1 Create an access key | the hive has an active key | no key |
+| 1 Create an access key | the workspace has an active key | no key |
 | 2 Paste the server block into the runner file | any key has `last_used_at` (a machine verified with it: a ping, a heartbeat, a batch) | keys exist, none used |
 | 3 See runs here | any run has landed (`Runs.list_runs(scope, limit: 1) != []`) | a key was used, no run yet |
 
-- **No key** (`/hive`, nothing posted, no keys): `brief.md` h1 as it is: title **Send your
-  first run**, "Nothing has posted to this ~hive~ yet. An access key is all a machine needs to
-  start.", step 1 current, the primary button **Create an access key**, the right column with the
-  server block preview and the listening line "Listening for the first post from a machine."
-  Step 2's sub-line reads "The secret is shown once, in the dialog that creates it. One key can
-  serve many hosts: a pool of ephemeral instances shares one."
+- **No key** (`/:org/:workspace`, nothing posted, no keys): `brief.md` h1 as it is: title
+  **Send your first run**, "Nothing has posted to this workspace yet. An access key is all
+  a machine needs to start.", step 1 current, the primary button **Create an access key**,
+  the right column with the server block preview and the listening line "Listening for the
+  first post from a machine." Step 2's sub-line reads "The secret is shown once, in the
+  dialog that creates it. One key can serve many hosts: a pool of ephemeral instances
+  shares one."
 - **Keys, nothing posted**: the same card, the same title, step 1 done, step 2
   current, the sentence "The key is made. Paste its server block into the runner file on the
   machine; the secret was shown once, when the key was created." Actions: default **Manage access
@@ -486,8 +495,8 @@ px (`brief.md` h1), with the steps of `<.steps>` and the state of each step read
 
 Under the checklist, while it shows, nothing else renders except the Access keys card once a key
 exists (so the key just created is visible with "Never posted"); no chart, no policy card, no
-retention card: an empty hive has nothing to glance at, and the three cards would say "nothing"
-three times.
+retention card: an empty workspace has nothing to glance at, and the three cards would say
+"nothing" three times.
 
 ### oe7. States, all of them
 
@@ -497,7 +506,7 @@ three times.
 | Needs attention | more than five | five rows and "and n more" in the header |
 | Needs attention | an item resolved in place | the row stays, mark swapped, "✓ Allowed here" / "Closed"; leaves on the next navigation |
 | Needs attention | a new item arrives | appended at the end (the list is not re-sorted under the reader); the header count updates; the polite region says "1 more item needs attention." at most once per 10 s |
-| Needs attention | an item resolves elsewhere (the run reloaded, a heartbeat resumed, someone else allowed the host) | the row stays with the resolution in words ("Heartbeats resumed", "Reloaded to v10", "Allowed for the hive by dana@example.com") and no actions; leaves on the next navigation |
+| Needs attention | an item resolves elsewhere (the run reloaded, a heartbeat resumed, someone else allowed the host) | the row stays with the resolution in words ("Heartbeats resumed", "Reloaded to v10", "Allowed for the workspace by dana@example.com") and no actions; leaves on the next navigation |
 | Alive now | none | "No run alive now." faint, one line |
 | Alive now | more than five | five rows and "and n more" |
 | Chart | no run in 14 days | fourteen stubs and "No run in the last 14 days" |
@@ -505,13 +514,13 @@ three times.
 | Strip, Cost | no run reported one | "n/a" faint, "no run reported one" |
 | Strip, Cost | the fold does not exist yet (ol 1) | the cell is absent; the strip has three cells |
 | Last runs | fewer than five | the rows there are; no filler |
-| Policy | new hive | "No version yet", **Not served**, the sub sentence |
+| Policy | new workspace | "No version yet", **Not served**, the sub sentence |
 | Policy | nothing to review | "Nothing declared and unallowed." faint |
 | Policy | suggestions unavailable (a repository's read over its cap) | that repository is left out of the count, and the row ends "· 1 repository not counted" faint with the title "More connections than one read counts; open the repository to see its suggestions." |
 | Access keys | no active key | the card is absent (the checklist is the page) |
 | Access keys | a key never used | "Never posted" faint, "n/a", "none", "No run yet" |
 | Access keys | more than five | five rows and "and n more" |
-| Retention | keeps everything | "This hive keeps everything." one line, the link |
+| Retention | keeps everything | "This workspace keeps everything." one line, the link |
 | Retention | set, no prune yet | the setting, then "No prune has run yet. The job runs nightly." |
 | Retention | last prune found nothing | "Nothing was old enough to prune last night." |
 | Retention | last prune did not finish | "… ; not finished, the next night goes on." |
@@ -527,9 +536,9 @@ three times.
 
 | Where | Text |
 |---|---|
-| Title | {hive name} |
-| Description | The ~hive~ of the {apiary name} ~apiary~. |
-| `<title>` | {hive name} · Qory |
+| Title | {workspace name} |
+| Description | The workspace of the {organisation name} organisation. |
+| `<title>` | {workspace name} · Qory |
 
 **Needs attention**
 
@@ -539,16 +548,16 @@ three times.
 | Denied | Denied **9 times** in 3 runs of `acme/shop`, last 2 minutes ago. |
 | Denied, several repositories | Denied **9 times** in 3 runs of 2 repositories, last 2 minutes ago. |
 | Denied, path held | Host allowed, no path rule matches `/v2/upload`. Denied **3 times** in 1 run of `acme/shop`, last Yesterday, 16:40. |
-| Denied, locked | A locked hive rule denies `*.paste.example`. Only an owner can change it. |
+| Denied, locked | A locked workspace rule denies `*.paste.example`. Only an owner can change it. |
 | Quiet | No heartbeat for **47 s**. Heartbeats are due every 30 s; after 90 s of silence it is marked lost. |
 | Lost | Lost. Last heard Yesterday, 22:55, at least 8 m 30 s in. The run never posted its exit. |
 | Lost, closed here | Closed. |
 | Behind | Still on `v9` after 2 heartbeats; `v10` has been in force for 1 m 40 s. A run reloads at its next heartbeat. |
 | Behind, resolved | Reloaded to `v10` at `#0046`. |
-| Enforce, all covered | **Observe is the hive's default.** 6 allow rules are in force and every destination reached in the last 7 days is covered. Enforce would deny nothing today. |
-| Enforce, uncovered | **Observe is the hive's default.** 6 rules are in force. Enforce would deny **2** destinations reached in the last 7 days. |
+| Enforce, all covered | **Observe is the workspace's default.** 6 allow rules are in force and every destination reached in the last 7 days is covered. Enforce would deny nothing today. |
+| Enforce, uncovered | **Observe is the workspace's default.** 6 rules are in force. Enforce would deny **2** destinations reached in the last 7 days. |
 | Enforce, member | … Only an owner sets a mode. |
-| Unmanaged | **Qory serves no policy yet.** 11 runs landed under the machines' own policies. The first rule you add, or a mode you set, puts them under the hive's. |
+| Unmanaged | **Qory serves no policy yet.** 11 runs landed under the machines' own policies. The first rule you add, or a mode you set, puts them under the workspace's. |
 | Idle key | Not seen for **34 days**; last runner 0.4.1. A key nobody uses is a key to revoke. |
 | Idle key, never used | Never used since it was created 34 days ago. A key nobody uses is a key to revoke. |
 | Buttons | Allow here · Allow · Open · Close · What changed · Set the default to enforce · Review on the policy page · Open policy · Open the rule · Revoke |
@@ -572,36 +581,36 @@ three times.
 | Chart toggle | As a table / As a chart |
 | Chart `aria-label` | 41 runs and 7 denied attempts in 14 days; most runs on 18 Sep, 12. |
 | Last runs head | Last runs · All runs |
-| Card foot | Counted from the hive's runs by the day they started, UTC. Updated as batches land. |
-| Foot, unavailable | Denied destinations were not counted: this hive recorded more than 20,000 connections in 7 days. The connections page counts them by destination. |
+| Card foot | Counted from the workspace's runs by the day they started, UTC. Updated as batches land. |
+| Foot, unavailable | Denied destinations were not counted: this workspace recorded more than 20,000 connections in 7 days. The connections page counts them by destination. |
 
 **Policy, Access keys, Retention**
 
 | Where | Text |
 |---|---|
 | Policy rows | Mode · In force · Repositories · To review |
-| Mode value | **enforce** [Hive default] 3 repositories follow it · 1 sets its own: `acme/tax-service` observes |
-| Mode value, all follow | **enforce** [Hive default] Every repository follows it. |
-| Mode value, new hive | **observe** [Not served] Machines use their own policy until the first change here. |
+| Mode value | **enforce** [Workspace default] 3 repositories follow it · 1 sets its own: `acme/tax-service` observes |
+| Mode value, all follow | **enforce** [Workspace default] Every repository follows it. |
+| Mode value, new workspace | **observe** [Not served] Machines use their own policy until the first change here. |
 | In force | [v14 · e3b0c44298fc] since 16 Sep / No version yet |
 | Repositories | **4** have posted runs · **2** with rules of their own |
 | To review | [3 to review] in 2 repositories / Nothing declared and unallowed. |
 | Access keys head | Access keys `3` · Create another access key |
 | Access keys columns | Key · Last seen · Runner (0.4.2 v1) · Hosts, 7 days (build-01 / 12 hosts / none) · Last run |
 | Access keys cells | Never posted · n/a · none · No run yet · and 2 more |
-| Retention lines | Log output is pruned after 30 days, events after 90 days. / This hive keeps everything. |
+| Retention lines | Log output is pruned after 30 days, events after 90 days. / This workspace keeps everything. |
 | Last prune | Last night pruned **12 runs**: 4,120 events and 38.2 MB of log output in 610 chunks. Pruned log output from before 21 Aug, events from before 22 Jun. |
 | Last prune, on a date | On 14 Sep pruned … |
 | Last prune, nothing | Nothing was old enough to prune last night. |
 | No prune | No prune has run yet. The job runs nightly. |
 | Not finished | …; not finished, the next night goes on. |
 
-**The empty hive**
+**The empty workspace**
 
 | Where | Text |
 |---|---|
 | No key, title | Send your first run |
-| No key, lead | Nothing has posted to this ~hive~ yet. An access key is all a machine needs to start. |
+| No key, lead | Nothing has posted to this workspace yet. An access key is all a machine needs to start. |
 | Keys, title | Send your first run |
 | Keys, lead | The key is made. Paste its server block into the runner file on the machine; the secret was shown once, when the key was created. |
 | Step 3 current | The machine has verified with its key. The first run it starts lands here. |
@@ -610,8 +619,8 @@ three times.
 | Steps | Create an access key · Paste the server block into the runner file · See runs here |
 | Buttons | Create an access key · Manage access keys · Create another access key |
 
-**Term hovers** (the first occurrence per page): hive → team, apiary → organisation, and on the
-attention rows `lost`, `enforce`, `observe` with the sentences of `brief-runs.md` rf.
+**Term hovers** (the first occurrence per page): on the attention rows `lost`, `enforce`,
+`observe` with the sentences of `brief-runs.md` rf. Organisation and workspace take none.
 
 ---
 
@@ -636,12 +645,13 @@ chart card has a fixed height, the attention list only appends, the strip's cell
 
 ## oh. Accessibility
 
-**Landmarks and order.** One `<h1>` (the hive name). Sections: `<section aria-labelledby>` for
-Needs attention, Activity, Policy, Access keys, Retention; the strip is a `<dl>`. Keyboard path: skip
-link → sidebar → Needs attention rows (each row's actions, in order) → the strip's links → alive
-rows → the chart's slots (fourteen tab stops; `Home` and `End` jump; the table toggle) → All runs
-→ the last-runs rows → the policy card's links → the access key rows → the retention link. A row's
-link covers the row (rd8), so a row is one tab stop plus its buttons.
+**Landmarks and order.** One `<h1>` (the workspace name). Sections:
+`<section aria-labelledby>` for Needs attention, Activity, Policy, Access keys, Retention;
+the strip is a `<dl>`. Keyboard path: skip link → sidebar → Needs attention rows (each
+row's actions, in order) → the strip's links → alive rows → the chart's slots (fourteen
+tab stops; `Home` and `End` jump; the table toggle) → All runs → the last-runs rows → the
+policy card's links → the access key rows → the retention link. A row's link covers the
+row (rd8), so a row is one tab stop plus its buttons.
 
 **Names.** Attention actions name their object: "Allow files.cdn.example for acme/shop", "Close
 mirror-sync", "Revoke dev-laptop", "Open upgrade-framework". The header count is text ("4 items").
@@ -696,9 +706,10 @@ numbers without leaving.
 
 ## oj. Performance guidance for the builders
 
-Budget: the first paint of `/hive` is one query (`count_alive/1`) plus what the shell already
-reads; every region is `assign_async` and lands within 200 ms on a hive of 100,000 runs; at most
-**nine** queries in total, every one bounded by a `LIMIT` or an index range, none over `events`.
+Budget: the first paint of `/:org/:workspace` is one query (`count_alive/1`) plus what the
+shell already reads; every region is `assign_async` and lands within 200 ms on a workspace
+of 100,000 runs; at most **nine** queries in total, every one bounded by a `LIMIT` or an
+index range, none over `events`.
 
 1. **First paint is the shell.** Mount reads `Runs.count_alive/1`, `AccessKeys.list_access_keys/1`
    (already needed for the checklist and the sidebar count) and `Policy.mode_summary/1` (one
@@ -712,10 +723,10 @@ reads; every region is `assign_async` and lands within 200 ms on a hive of 100,0
    Policy card and the `:enforce` / `:unmanaged` item. `:quiet` and `:behind` are recomputed on a
    5 s timer from the alive runs already in assigns, as the run page does; no query.
 3. **The chart is one query.** `SELECT date_trunc('day', started_at), count(*), sum(denied_count)
-   FROM runs WHERE hive_id = $1 AND started_at >= $2 GROUP BY 1`, on the index
-   `(hive_id, started_at desc)` that `brief-runs.md` rj 8 asked for. Days are filled in Elixir.
-   The strip's Runs and Denied cells are the same query's sums; Cost is `sum(cost_usd)` and
-   `count(cost_usd)` on the same rows once ol 1 lands.
+   FROM runs WHERE workspace_id = $1 AND started_at >= $2 GROUP BY 1`, on the index
+   `(workspace_id, started_at desc)` that `brief-runs.md` rj 8 asked for. Days are filled
+   in Elixir. The strip's Runs and Denied cells are the same query's sums; Cost is
+   `sum(cost_usd)` and `count(cost_usd)` on the same rows once ol 1 lands.
 4. **Attention is bounded reads.** Denied destinations: `Runs.page_destinations/3` with
    `decision=denied`, `since=7d`, page 1 (50 rows, already capped), held to the effective policy
    in Elixir with `Policy.Effective` for the destinations' repositories (at most 5 destinations
@@ -725,10 +736,10 @@ reads; every region is `assign_async` and lands within 200 ms on a hive of 100,0
    read. `:enforce`'s count is `Policy.uncovered/2`, which shares the activity read's cap and
    answers `:unavailable` honestly.
 5. **Access keys is three queries.** The keys (already read), the last run per key:
-   `SELECT DISTINCT ON (access_key_id) … FROM runs WHERE hive_id = $1 AND access_key_id = ANY($2)
+   `SELECT DISTINCT ON (access_key_id) … FROM runs WHERE workspace_id = $1 AND access_key_id = ANY($2)
    ORDER BY access_key_id, started_at DESC` for the at most six keys shown, and the hosts per
    key (`count(distinct host)` grouped by `access_key_id` over the last seven days); add the
-   index `(hive_id, access_key_id, started_at desc)`.
+   index `(workspace_id, access_key_id, started_at desc)`.
 6. **Suggestions are counted, not listed.** The Policy card's "To review" reads
    `Policy.suggestions/3` for at most five repositories, those with a run in the last 14 days by
    most recent run; a count function that reads them in one query (`Policy.suggestion_counts/1`,
@@ -748,7 +759,8 @@ reads; every region is `assign_async` and lands within 200 ms on a hive of 100,0
 ## ok. Done checklist
 
 The page
-- [ ] `/hive` at `width="full"`; `<title>` is the hive name; the description says ~hive~ and ~apiary~ with the term hovers and never "organisation"
+- [ ] `/:org/:workspace` at `width="full"`; `<title>` is the workspace name; the
+  description says "The workspace of the Acme organisation." with no term hover
 - [ ] Needs attention renders only actionable items, in the order of od1, at most five, "and n more" linking to the right page; absent when empty
 - [ ] Denied rows are the suggestion rows of pd6 with pd8's popover; the locked case reads the padlock sentence; one-click allow leaves the row struck until the next navigation
 - [ ] Quiet and lost from the record's timestamps; Close uses the existing confirm; behind only while alive and after two intervals; enforce and unmanaged from `mode_summary/1`; idle keys at 30 days
@@ -757,11 +769,12 @@ The page
 - [ ] The chart: two small multiples, fourteen columns each, today in ink, denials in error, stubs for zero, one tooltip for both plots, slots as links, the table twin, the `aria-label` with totals and peak
 - [ ] Last runs: five rows of `<.runs_table>` with the Repository column, at full width; "All runs"
 - [ ] Runs are counted in the three families (alive, ended well, ended badly) in the strip, the chart's tooltip and table; the state is "succeeded", never "exited"
-- [ ] Policy card: mode with its source and the repositories that differ, the version pill, the repository counts, "to review"; the new-hive wording
+- [ ] Policy card: mode with its source and the repositories that differ, the version
+  pill, the repository counts, "to review"; the new-workspace wording
 - [ ] Access keys: five active keys at full width, last seen, runner with the contract version, the hosts of the last 7 days, last run; "Create another access key" once a run has landed
 - [ ] Retention: the setting and the last prune in the settings page's words
 
-The empty hive
+The empty workspace
 - [ ] Step 1 ticks on a key, step 2 on `last_used_at`, step 3 on the first run; the card leaves on the next navigation after the first run, and the Access keys card takes the link
 - [ ] No chart, policy or retention card while the checklist shows
 
@@ -785,12 +798,12 @@ Quality
    Until the fold exists the cell is absent. Whether to sum only `success` results or every
    `session.result` that carries a cost is BACKEND's; the design says "reported", so every one.
 2. **A count of suggestions across repositories.** `Policy.suggestions/3` is per repository. The
-   card wants `%{repositories: n, hosts: n}` over the hive in one bounded read
+   card wants `%{repositories: n, hosts: n}` over the workspace in one bounded read
    (`Policy.suggestion_counts/1`); the loop over five repositories is the fallback.
-3. **`/hive/policy?confirm=enforce`.** The `:enforce` item's button should land on the policy page
-   with the enforce confirm open (one click, as asked). That is a new query parameter on M5's page,
-   owned by another builder; without it the button goes to `/hive/policy` and the reader clicks
-   Enforce there (two clicks).
+3. **`/:org/:workspace/policy?confirm=enforce`.** The `:enforce` item's button should land
+   on the policy page with the enforce confirm open (one click, as asked). That is a new
+   query parameter on M5's page, owned by another builder; without it the button goes to
+   `/:org/:workspace/policy` and the reader clicks Enforce there (two clicks).
 4. **Thresholds.** Idle key at 30 days, lost within 7 days, behind after two heartbeat intervals,
    denied over 7 days, the chart over 14. All four are the design's choices, not the record's;
    confirm or change them in one place (`Overview.thresholds/0`).
@@ -803,7 +816,7 @@ Quality
    request. Confirm that a heartbeat touches it as well as a batch; if only batches do, step 2 of
    the checklist must read `last_heartbeat_at` too (`Runs.last_heartbeats_by_key/1` exists for
    that).
-7. **A day boundary.** The chart counts UTC days and says so in its foot. If the hive's people
-   would rather read local days, the boundary is the browser's and the count must be made in
-   the browser from per-hour buckets (24 × 14 rows), which is still one query; the design does
-   not do this in M8.
+7. **A day boundary.** The chart counts UTC days and says so in its foot. If the
+   workspace's people would rather read local days, the boundary is the browser's and the
+   count must be made in the browser from per-hour buckets (24 × 14 rows), which is still
+   one query; the design does not do this in M8.

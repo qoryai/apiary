@@ -1,12 +1,12 @@
-defmodule Apiary.Body.Software do
+defmodule Apiary.Lingo.Domain.Software do
   @moduledoc """
-  The software body: a target is a repository, its system a forge. Its labelling rule is
+  The software domain: a target is a repository, its system a forge. Its labelling rule is
   the one `qory run` follows when it takes the labels from the origin remote: the
   `forge` label is the system and the `repository` label the path. Both must be labels
   that can name a target (`Apiary.Runs.Target.label/1`), or the run names none. Any
   other label, sent by a runner beside them, names nothing here.
   """
-  @behaviour Apiary.Body
+  @behaviour Apiary.Lingo.Domain
 
   alias Apiary.Runs.Target
 
@@ -24,5 +24,8 @@ defmodule Apiary.Body.Software do
   end
 
   @impl true
-  def locale, do: "en@software"
+  def target_labels, do: [@system_label, @path_label]
+
+  @impl true
+  def name, do: "software"
 end

@@ -76,71 +76,10 @@ defmodule ApiaryWeb.Router do
     end
   end
 
-  ## The hive: everything behind sign-in with an organisation loaded
-
   scope "/", ApiaryWeb do
     pipe_through [:browser, :require_authenticated_user]
 
-    live_session :hive,
-      on_mount: [
-        {ApiaryWeb.UserAuth, :require_authenticated},
-        {ApiaryWeb.UserAuth, :load_organisation},
-        {ApiaryWeb.UserAuth, :require_organisation}
-      ] do
-      live "/hive", HiveLive.Overview, :index
-      # The record: the runs of the hive, and where they reached out to. With the rest of
-      # the hive's pages, behind sign-in with an organisation loaded, so the scope they
-      # query through is there; every filter is a query parameter.
-      live "/hive/runs", RunLive.Index, :index
-      live "/hive/connections", ConnectionLive.Index, :index
-      # One run: four tabs of one LiveView, so a tab is a patch. `:run_id` is the run's
-      # subject, the id the runner prints, not the row's id.
-      live "/hive/runs/:run_id", RunLive.Show, :timeline
-      live "/hive/runs/:run_id/terminal", RunLive.Show, :terminal
-      live "/hive/runs/:run_id/connections", RunLive.Show, :connections
-      live "/hive/runs/:run_id/details", RunLive.Show, :details
-      # The security policy: the hive's baseline and a target's view of it, one object
-      # with two scopes. Tabs, filters, the opened change, the compared version and the
-      # export modal are in the URL. `:target_id` is the target row's id, because
-      # a system and a path hold slashes.
-      live "/hive/policy", PolicyLive.Show, :rules
-      live "/hive/policy/targets", PolicyLive.Show, :targets
-      live "/hive/policy/history", PolicyLive.Show, :history
-      live "/hive/policy/document", PolicyLive.Show, :document
-      live "/hive/policy/versions/:n", PolicyLive.Show, :version
-      live "/hive/policy/versions/:n/export", PolicyLive.Show, :export
-      live "/hive/policy/targets/:target_id", PolicyLive.Target, :rules
-      live "/hive/policy/targets/:target_id/history", PolicyLive.Target, :history
-      live "/hive/policy/targets/:target_id/document", PolicyLive.Target, :document
-      live "/hive/policy/targets/:target_id/versions/:n", PolicyLive.Target, :version
-
-      live "/hive/policy/targets/:target_id/versions/:n/export",
-           PolicyLive.Target,
-           :export
-
-      live "/hive/keys", AccessKeyLive.Index, :index
-      live "/hive/keys/new", AccessKeyLive.Index, :new
-      live "/hive/keys/:id/rotate", AccessKeyLive.Index, :rotate
-      live "/hive/keys/:id/revoke", AccessKeyLive.Index, :revoke
-      live "/hive/members", MemberLive.Index, :index
-      live "/hive/members/invite", MemberLive.Index, :invite
-      live "/hive/members/:id/remove", MemberLive.Index, :remove
-      live "/hive/settings", SettingsLive, :edit
-    end
-
-    live_session :no_organisation,
-      on_mount: [
-        {ApiaryWeb.UserAuth, :require_authenticated},
-        {ApiaryWeb.UserAuth, :load_organisation}
-      ] do
-      live "/no-hive", HiveLive.NoHive, :index
-    end
-
-    # The raw bytes of a run's log, for the terminal of the run page. Not a page.
-    get "/hive/runs/:run_id/log", RunLogController, :show
-
-    post "/organisations/switch", OrganisationSessionController, :switch
-    get "/invitations/:token/continue", OrganisationSessionController, :continue_invitation
+    get "/invitations/:token/continue", InvitationController, :continue
   end
 
   ## Authentication routes
@@ -155,6 +94,8 @@ defmodule ApiaryWeb.Router do
       ] do
       live "/users/settings", UserLive.Settings, :edit
       live "/users/settings/confirm-email/:token", UserLive.Settings, :confirm_email
+      # A user's organisations: for now the page of a user who has none (decision 0073).
+      live "/users/organisations", WorkspaceLive.NoWorkspace, :index
     end
 
     post "/users/update-password", UserSessionController, :update_password
@@ -173,5 +114,73 @@ defmodule ApiaryWeb.Router do
 
     post "/users/log-in", UserSessionController, :create
     delete "/users/log-out", UserSessionController, :delete
+  end
+
+  ## The organisations and their workspaces (decision 0073), last: `/:org` and
+  ## `/:org/:workspace` would match every path of one or two segments above. The first
+  ## segment is never one of `ApiaryWeb.ReservedSlugs.organisation/0`, the second of an
+  ## organisation's never one of `ApiaryWeb.ReservedSlugs.workspace/0`; the router's test
+  ## holds both lists to these routes.
+
+  pipeline :path_scope do
+    plug ApiaryWeb.ReservedSlugs
+  end
+
+  scope "/", ApiaryWeb do
+    pipe_through [:path_scope, :browser, :require_authenticated_user, :fetch_path_scope]
+
+    live_session :workspace,
+      on_mount: [
+        {ApiaryWeb.UserAuth, :require_authenticated},
+        {ApiaryWeb.UserAuth, :load_path_scope}
+      ] do
+      # The organisation's own pages. The workspace in the scope is the one of the user's
+      # membership in it.
+      scope "/:org" do
+        live "/members", MemberLive.Index, :index
+        live "/members/invite", MemberLive.Index, :invite
+        live "/members/:id/remove", MemberLive.Index, :remove
+        live "/settings", SettingsLive, :organisation
+      end
+
+      scope "/:org/:workspace" do
+        live "/", WorkspaceLive.Overview, :index
+        # The record: the runs of the workspace, and where they reached out to. Every
+        # filter is a query parameter.
+        live "/runs", RunLive.Index, :index
+        live "/connections", ConnectionLive.Index, :index
+        # One run: four tabs of one LiveView, so a tab is a patch. `:run_id` is the run's
+        # subject, the id the runner prints, not the row's id.
+        live "/runs/:run_id", RunLive.Show, :timeline
+        live "/runs/:run_id/terminal", RunLive.Show, :terminal
+        live "/runs/:run_id/connections", RunLive.Show, :connections
+        live "/runs/:run_id/details", RunLive.Show, :details
+        # The security policy: the workspace's baseline and a target's view of it, one
+        # object with two scopes. Tabs, filters, the opened change, the compared version
+        # and the export modal are in the URL. `:target_id` is the target row's id,
+        # because a system and a path hold slashes.
+        live "/policy", PolicyLive.Show, :rules
+        live "/policy/targets", PolicyLive.Show, :targets
+        live "/policy/history", PolicyLive.Show, :history
+        live "/policy/document", PolicyLive.Show, :document
+        live "/policy/versions/:n", PolicyLive.Show, :version
+        live "/policy/versions/:n/export", PolicyLive.Show, :export
+        live "/policy/targets/:target_id", PolicyLive.Target, :rules
+        live "/policy/targets/:target_id/history", PolicyLive.Target, :history
+        live "/policy/targets/:target_id/document", PolicyLive.Target, :document
+        live "/policy/targets/:target_id/versions/:n", PolicyLive.Target, :version
+        live "/policy/targets/:target_id/versions/:n/export", PolicyLive.Target, :export
+        live "/keys", AccessKeyLive.Index, :index
+        live "/keys/new", AccessKeyLive.Index, :new
+        live "/keys/:id/rotate", AccessKeyLive.Index, :rotate
+        live "/keys/:id/revoke", AccessKeyLive.Index, :revoke
+        live "/settings", SettingsLive, :workspace
+      end
+    end
+
+    # The organisation alone names no page: it sends on to the user's workspace in it.
+    get "/:org", PageController, :organisation
+    # The raw bytes of a run's log, for the terminal of the run page. Not a page.
+    get "/:org/:workspace/runs/:run_id/log", RunLogController, :show
   end
 end

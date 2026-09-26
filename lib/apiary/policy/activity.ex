@@ -3,15 +3,15 @@ defmodule Apiary.Policy.Activity do
   What the recorded connections say about the rules: see `Apiary.Policy.uncovered/2`,
   `denied_summary/2`, `denied_destinations/2` and `rule_activity/3`.
 
-  One read serves all four: the hive's connections last seen since a moment, through the
-  index `connections (hive_id, last_seen_at)`, a few small columns a row and at most
-  `cap/0` rows. A hive with more than that in the range gets `:unavailable`: a count of a
-  part would read as a count of the whole. A connection's counters are those of its run,
-  so a connection counts whole when it was last seen in the range.
+  One read serves all four: the workspace's connections last seen since a moment, through
+  the index `connections (workspace_id, last_seen_at)`, a few small columns a row and at
+  most `cap/0` rows. A workspace with more than that in the range gets `:unavailable`: a
+  count of a part would read as a count of the whole. A connection's counters are those of
+  its run, so a connection counts whole when it was last seen in the range.
 
-  `uncovered` for the hive counts only the runs of targets that follow the hive's
-  mode, and the runs that name no target: a target with a mode of its own is not
-  changed by the hive's. For a target it counts that target's runs, whatever its
+  `uncovered` for the workspace counts only the runs of targets that follow the
+  workspace's mode, and the runs that name no target: a target with a mode of its own is
+  not changed by the workspace's. For a target it counts that target's runs, whatever its
   mode is now: what enforcing it would start denying.
 
   A connection is held to the effective policy of its own run's target, its mode
@@ -36,7 +36,7 @@ defmodule Apiary.Policy.Activity do
   import Ecto.Query, warn: false
 
   alias Apiary.Accounts.Scope
-  alias Apiary.Organisations.Hive
+  alias Apiary.Organisations.Workspace
   alias Apiary.Policy.{Effective, Grammar, Resolution, Rule}
   alias Apiary.Repo
   alias Apiary.Runs.{Connection, Target, Run}
@@ -48,22 +48,22 @@ defmodule Apiary.Policy.Activity do
   The most connections one answer reads; beyond it the answer is `:unavailable`.
   #{@default_cap} unless `config :apiary, Apiary.Policy.Activity, cap: n` says otherwise, read
   at each call, so a test can set it (`Application.put_env/3`, in a module that is not
-  async) and see the answer a large hive gets.
+  async) and see the answer a large workspace gets.
   """
   def cap, do: Keyword.get(Application.get_env(:apiary, __MODULE__, []), :cap, @default_cap)
 
   @doc false
-  def uncovered(%Scope{hive: %Hive{} = hive}, target_id, since, opts \\ []) do
-    with {:ok, rows} <- rows(hive.id, target_id, since, opts) do
-      {:ok, uncovered_from(hive, rows, policies(hive, rows), target_id)}
+  def uncovered(%Scope{workspace: %Workspace{} = workspace}, target_id, since, opts \\ []) do
+    with {:ok, rows} <- rows(workspace.id, target_id, since, opts) do
+      {:ok, uncovered_from(workspace, rows, policies(workspace, rows), target_id)}
     end
   end
 
-  defp uncovered_from(%Hive{id: hive_id}, rows, policies, target_id) do
+  defp uncovered_from(%Workspace{id: workspace_id}, rows, policies, target_id) do
     rows
     |> Enum.filter(&(&1.allowed > 0))
-    # Enforcing the hive changes nothing for a target with a mode of its own.
-    |> Enum.filter(&(target_id != nil or policies[&1.target_id].follows_hive))
+    # Enforcing the workspace changes nothing for a target with a mode of its own.
+    |> Enum.filter(&(target_id != nil or policies[&1.target_id].follows_workspace))
     |> Enum.flat_map(fn row ->
       case cover(policies[row.target_id], row) do
         {:uncovered, path} -> [{{row.host, path}, row}]
@@ -85,13 +85,13 @@ defmodule Apiary.Policy.Activity do
     end)
     |> Enum.sort_by(&{-&1.attempts, &1.host, &1.path})
     |> Enum.take(@top)
-    |> then(&with_targets(hive_id, &1))
+    |> then(&with_targets(workspace_id, &1))
   end
 
   @doc false
-  def denied_destinations(%Scope{hive: %Hive{} = hive}, since, opts \\ []) do
-    with {:ok, rows} <- rows(hive.id, nil, since, opts) do
-      {:ok, denied_from(hive, rows, policies(hive, rows))}
+  def denied_destinations(%Scope{workspace: %Workspace{} = workspace}, since, opts \\ []) do
+    with {:ok, rows} <- rows(workspace.id, nil, since, opts) do
+      {:ok, denied_from(workspace, rows, policies(workspace, rows))}
     end
   end
 
@@ -100,15 +100,15 @@ defmodule Apiary.Policy.Activity do
   # over the wider window: the denied destinations held to today's rules and what enforce
   # would deny, both since `since`, and how many destinations were denied since `window`
   # (the earlier moment). See `Apiary.Policy.overview_activity/3`.
-  def overview(%Scope{hive: %Hive{} = hive}, since, window, opts \\ []) do
-    with {:ok, rows} <- rows(hive.id, nil, window, opts) do
+  def overview(%Scope{workspace: %Workspace{} = workspace}, since, window, opts \\ []) do
+    with {:ok, rows} <- rows(workspace.id, nil, window, opts) do
       recent = Enum.filter(rows, &(DateTime.compare(&1.last_seen_at, since) != :lt))
-      policies = policies(hive, recent)
+      policies = policies(workspace, recent)
 
       {:ok,
        %{
-         denied: denied_from(hive, recent, policies),
-         uncovered: uncovered_from(hive, recent, policies, nil),
+         denied: denied_from(workspace, recent, policies),
+         uncovered: uncovered_from(workspace, recent, policies, nil),
          denied_destinations:
            rows
            |> Enum.filter(&(&1.denied > 0))
@@ -119,7 +119,7 @@ defmodule Apiary.Policy.Activity do
     end
   end
 
-  defp denied_from(%Hive{id: hive_id}, rows, policies) do
+  defp denied_from(%Workspace{id: workspace_id}, rows, policies) do
     rows
     |> Enum.filter(&(&1.denied > 0))
     |> Enum.flat_map(fn row ->
@@ -159,7 +159,7 @@ defmodule Apiary.Policy.Activity do
     end)
     |> Enum.sort_by(&{-&1.denied, &1.host, &1.port, &1.path})
     |> Enum.take(@top)
-    |> then(&with_targets(hive_id, &1))
+    |> then(&with_targets(workspace_id, &1))
   end
 
   # The tool whose host a destination is: that of the most recently seen of its rows that
@@ -173,8 +173,8 @@ defmodule Apiary.Policy.Activity do
   end
 
   @doc false
-  def denied_summary(%Scope{hive: %Hive{} = hive}, since, opts \\ []) do
-    with {:ok, rows} <- rows(hive.id, nil, since, opts) do
+  def denied_summary(%Scope{workspace: %Workspace{} = workspace}, since, opts \\ []) do
+    with {:ok, rows} <- rows(workspace.id, nil, since, opts) do
       denied = Enum.filter(rows, &(&1.denied > 0))
 
       {:ok,
@@ -186,9 +186,9 @@ defmodule Apiary.Policy.Activity do
   end
 
   @doc false
-  def rule_activity(%Scope{hive: %Hive{} = hive}, target_id, since, opts \\ []) do
-    with {:ok, rows} <- rows(hive.id, target_id, since, opts) do
-      policies = policies(hive, rows)
+  def rule_activity(%Scope{workspace: %Workspace{} = workspace}, target_id, since, opts \\ []) do
+    with {:ok, rows} <- rows(workspace.id, target_id, since, opts) do
+      policies = policies(workspace, rows)
 
       counts =
         Enum.reduce(rows, %{}, fn row, counts ->
@@ -212,17 +212,17 @@ defmodule Apiary.Policy.Activity do
 
   ## The read
 
-  # Newest first through `connections (hive_id, last_seen_at)`; one row over the cap says
-  # there is more than is read.
+  # Newest first through `connections (workspace_id, last_seen_at)`; one row over the cap
+  # says there is more than is read.
   # `cap:` is for the tests, which cannot afford the real one.
-  defp rows(hive_id, target_id, since, opts) do
+  defp rows(workspace_id, target_id, since, opts) do
     cap = Keyword.get(opts, :cap, cap())
 
     query =
       from c in Connection,
         join: r in Run,
         on: r.id == c.run_id,
-        where: c.hive_id == ^hive_id and c.last_seen_at >= ^since,
+        where: c.workspace_id == ^workspace_id and c.last_seen_at >= ^since,
         order_by: [desc: c.last_seen_at],
         limit: ^(cap + 1),
         select: %{
@@ -250,19 +250,19 @@ defmodule Apiary.Policy.Activity do
   ## The policies the rows are held to
 
   # target id (nil for the baseline) => what matching needs of its effective policy.
-  defp policies(%Hive{id: hive_id}, rows) do
-    mode = Repo.one!(from h in Hive, where: h.id == ^hive_id, select: h.egress_mode)
+  defp policies(%Workspace{id: workspace_id}, rows) do
+    mode = Repo.one!(from h in Workspace, where: h.id == ^workspace_id, select: h.egress_mode)
 
     modes =
       Repo.all(
         from p in Target,
-          where: p.hive_id == ^hive_id and not is_nil(p.egress_mode),
+          where: p.workspace_id == ^workspace_id and not is_nil(p.egress_mode),
           select: {p.id, p.egress_mode}
       )
       |> Map.new()
 
-    rules = Repo.all(from r in Rule, where: r.hive_id == ^hive_id)
-    {hive_rules, own} = Enum.split_with(rules, &is_nil(&1.target_id))
+    rules = Repo.all(from r in Rule, where: r.workspace_id == ^workspace_id)
+    {workspace_rules, own} = Enum.split_with(rules, &is_nil(&1.target_id))
     own = Enum.group_by(own, & &1.target_id)
 
     [nil | Enum.map(rows, & &1.target_id)]
@@ -270,7 +270,7 @@ defmodule Apiary.Policy.Activity do
     |> Map.new(fn target_id ->
       rules = Map.get(own, target_id, [])
 
-      case Resolution.resolve_for(mode, modes[target_id], hive_rules, rules, target_id) do
+      case Resolution.resolve_for(mode, modes[target_id], workspace_rules, rules, target_id) do
         {:ok, effective} -> {target_id, policy(effective)}
         {:error, _error} -> {target_id, policy(%Effective{})}
       end
@@ -290,7 +290,7 @@ defmodule Apiary.Policy.Activity do
     %{
       mode: effective.mode,
       locked_denies: Enum.sort_by(locked, &{Grammar.wildcard?(&1), &1}),
-      follows_hive: effective.mode_source == :hive,
+      follows_workspace: effective.mode_source == :workspace,
       allow: effective.allow,
       paths: effective.paths,
       # The document's own list, names before suffixes as `allow` is: what the runner
@@ -361,13 +361,13 @@ defmodule Apiary.Policy.Activity do
 
   defp first_match(_entries, _host), do: nil
 
-  defp with_targets(hive_id, destinations) do
+  defp with_targets(workspace_id, destinations) do
     ids = destinations |> Enum.flat_map(& &1.target_ids) |> Enum.uniq()
 
     targets =
       Repo.all(
         from p in Target,
-          where: p.hive_id == ^hive_id and p.id in ^ids,
+          where: p.workspace_id == ^workspace_id and p.id in ^ids,
           select: {p.id, %{id: p.id, system: p.system, path: p.path}}
       )
       |> Map.new()

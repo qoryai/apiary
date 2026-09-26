@@ -1,6 +1,6 @@
 defmodule Apiary.AccessKeys do
   @moduledoc """
-  Access keys: a hive's credentials for the server contract.
+  Access keys: a workspace's credentials for the server contract.
 
   A key has a public id and one or two secrets, encrypted at rest. The secret is
   returned exactly once, from `create_access_key/2` and `rotate_access_key/2`,
@@ -15,35 +15,40 @@ defmodule Apiary.AccessKeys do
   alias Apiary.Accounts.Scope
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Organisations
-  alias Apiary.Organisations.{Hive, Organisation}
+  alias Apiary.Organisations.{Workspace, Organisation}
 
   defguardp key_in_scope(scope, access_key)
             when access_key.organisation_id == scope.organisation.id and
-                   access_key.hive_id == scope.hive.id
+                   access_key.workspace_id == scope.workspace.id
 
   @doc """
-  The hive's keys: active first, then revoked; newest first within each. The
+  The workspace's keys: active first, then revoked; newest first within each. The
   secret columns are not loaded; `rotating` says whether a previous secret exists.
   """
   def list_access_keys(%Scope{
         organisation: %Organisation{id: organisation_id},
-        hive: %Hive{id: hive_id}
+        workspace: %Workspace{id: workspace_id}
       }) do
     Repo.all(
       from k in without_secrets_query(),
-        where: k.organisation_id == ^organisation_id and k.hive_id == ^hive_id,
+        where: k.organisation_id == ^organisation_id and k.workspace_id == ^workspace_id,
         order_by: [asc: not is_nil(k.revoked_at), desc: k.inserted_at, desc: k.id]
     )
   end
 
-  @doc "One key of the scope's hive, without its secrets (see `list_access_keys/1`)."
+  @doc "One key of the scope's workspace, without its secrets (see `list_access_keys/1`)."
   def get_access_key!(
-        %Scope{organisation: %Organisation{id: organisation_id}, hive: %Hive{id: hive_id}},
+        %Scope{
+          organisation: %Organisation{id: organisation_id},
+          workspace: %Workspace{id: workspace_id}
+        },
         id
       ) do
     Repo.one!(
       from k in without_secrets_query(),
-        where: k.id == ^id and k.organisation_id == ^organisation_id and k.hive_id == ^hive_id
+        where:
+          k.id == ^id and k.organisation_id == ^organisation_id and
+            k.workspace_id == ^workspace_id
     )
   end
 
@@ -60,7 +65,7 @@ defmodule Apiary.AccessKeys do
   end
 
   @doc """
-  Creates a key for the scope's hive. Any member, read again from the database:
+  Creates a key for the scope's workspace. Any member, read again from the database:
   a caller whose membership is gone gets `{:error, :unauthorized}`. Returns the
   key (without secrets) and its secret, the only time the secret is available in
   clear.
@@ -69,7 +74,7 @@ defmodule Apiary.AccessKeys do
         %Scope{
           user: user,
           organisation: %Organisation{id: organisation_id},
-          hive: %Hive{id: hive_id}
+          workspace: %Workspace{id: workspace_id}
         } = scope,
         attrs
       ) do
@@ -79,7 +84,7 @@ defmodule Apiary.AccessKeys do
       changeset =
         %AccessKey{
           organisation_id: organisation_id,
-          hive_id: hive_id,
+          workspace_id: workspace_id,
           created_by_id: user.id,
           key_id: AccessKey.generate_key_id(),
           # A closure, so the query log sees a function and never the secret
@@ -164,10 +169,12 @@ defmodule Apiary.AccessKeys do
     end
   end
 
-  defp lock_access_key(%Scope{organisation: organisation, hive: hive}, id) do
+  defp lock_access_key(%Scope{organisation: organisation, workspace: workspace}, id) do
     query =
       from k in AccessKey,
-        where: k.id == ^id and k.organisation_id == ^organisation.id and k.hive_id == ^hive.id,
+        where:
+          k.id == ^id and k.organisation_id == ^organisation.id and
+            k.workspace_id == ^workspace.id,
         lock: "FOR UPDATE"
 
     # A secret that cannot be decrypted with the key the instance holds (see
@@ -190,12 +197,20 @@ defmodule Apiary.AccessKeys do
 
   @doc """
   The active key behind a key id, secrets decrypted, for request verification: `:error`
-  for a key id the hive does not hold or has revoked, and `{:error, :unreadable}`, with a
-  line in the log, when the secrets cannot be decrypted with the key the instance holds
-  (`CLOAK_KEY` is not the one they were encrypted with).
+  for a key id the workspace does not hold or has revoked, and `{:error, :unreadable}`,
+  with a line in the log, when the secrets cannot be decrypted with the key the instance
+  holds (`CLOAK_KEY` is not the one they were encrypted with). The key comes with its
+  workspace, read in the same query: its domain names a run's target
+  (`Apiary.Policy.Serving`).
   """
   def fetch_for_verification(key_id) when is_binary(key_id) do
-    case Repo.one(from k in AccessKey, where: k.key_id == ^key_id and is_nil(k.revoked_at)) do
+    query =
+      from k in AccessKey,
+        join: w in assoc(k, :workspace),
+        where: k.key_id == ^key_id and is_nil(k.revoked_at),
+        preload: [workspace: w]
+
+    case Repo.one(query) do
       %AccessKey{} = access_key ->
         if readable?(access_key), do: {:ok, access_key}, else: unreadable(key_id)
 

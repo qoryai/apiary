@@ -1,10 +1,10 @@
 defmodule Mix.Tasks.Apiary.Prune do
-  @shortdoc "Deletes the events and log bytes older than each hive's retention"
+  @shortdoc "Deletes the events and log bytes older than each workspace's retention"
 
   @moduledoc """
   Runs the retention job now, as the nightly `Apiary.Retention.Scheduler` does: for every
-  hive with a retention setting, the runs last heard from before the cut-off lose their
-  log bytes, or all their events, in bounded batches (`Apiary.Retention`).
+  workspace with a retention setting, the runs last heard from before the cut-off lose
+  their log bytes, or all their events, in bounded batches (`Apiary.Retention`).
 
       mix apiary.prune              # prune, record it, print what was pruned
       mix apiary.prune --dry-run    # delete nothing, record nothing, print the same counts
@@ -24,7 +24,7 @@ defmodule Mix.Tasks.Apiary.Prune do
 
     case Apiary.Retention.prune_all(Keyword.put(opts, :trigger, "manual")) do
       {:ok, []} ->
-        Mix.shell().info("No hive has a retention setting: nothing to prune.")
+        Mix.shell().info("No workspace has a retention setting: nothing to prune.")
 
       {:ok, results} ->
         Enum.each(results, &Mix.shell().info(Apiary.Retention.sentence(&1)))

@@ -33,7 +33,7 @@ being one. Every variable named here is described in [Install and configure](ins
 
 - **Health.** Point the load balancer or the monitor at `GET /health`: `200` with
   `"status":"ok"` when the database answers, `503` when it does not. It needs no
-  credentials and says nothing about any workplace.
+  credentials and says nothing about any workspace.
 - **Logs.** The release writes one JSON object per line on stdout. Ship them as they are.
   A line never holds a request's headers or body, and the paths that carry a credential
   are rewritten before they are logged.
@@ -41,7 +41,7 @@ being one. Every variable named here is described in [Install and configure](ins
   organisation of their own; they see nothing of any other. Until sign-up can be closed by
   configuration, restrict who reaches `/users/register` at the reverse proxy if the
   instance is for one company.
-- **Retention.** Decide it per workplace before the database decides it for you:
+- **Retention.** Decide it per workspace before the database decides it for you:
   [Retention](retention.md). Log output is most of what a run stores.
 - **The size of a request.** The receiver takes batches of up to 2 MiB; a proxy with a
   smaller limit on request bodies turns them into errors the runner retries for ever.
@@ -64,7 +64,7 @@ its changelog says a migration builds an index `CONCURRENTLY`: start one, wait f
 
 ## Several nodes
 
-One node is enough for a workplace of any size this release was tested with. With more
+One node is enough for a workspace of any size this release was tested with. With more
 than one, set `DNS_CLUSTER_QUERY` so the nodes find each other and a page on one node
 hears of a run received on another. The lost-run check and the retention job are safe on
 several nodes: each change is one statement or under a lock, and one node does the work.

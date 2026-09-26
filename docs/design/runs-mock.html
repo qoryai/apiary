@@ -393,9 +393,9 @@ tr.denied td { background: var(--q-denied-tint); } tr.denied.row:hover td { back
 <div class="mockbar" role="toolbar" aria-label="Mock controls">
   <span class="tag">M4 mock</span>
   <div class="seg" id="viewseg">
-    <a href="#runs">Runs</a><a href="#run/timeline">Run · Timeline</a><a href="#run/terminal">Run · Terminal</a><a href="#run/connections">Run · Connections</a><a href="#connections">Hive connections</a>
+    <a href="#runs">Runs</a><a href="#run/timeline">Run · Timeline</a><a href="#run/terminal">Run · Terminal</a><a href="#run/connections">Run · Connections</a><a href="#connections">Workspace connections</a>
   </div>
-  <div class="url" aria-hidden="true"><span>qory.example</span><b id="url">/hive/runs</b></div>
+  <div class="url" aria-hidden="true"><span>qory.example</span><b id="url">/acme/main/runs</b></div>
   <div class="seg" id="widthseg"><button type="button" data-w="desktop" aria-pressed="true"><svg class="i"><use href="#i-desk"/></svg>Desktop</button><button type="button" data-w="phone" aria-pressed="false"><svg class="i"><use href="#i-phone"/></svg>Phone</button></div>
   <div class="seg" id="themeseg"><button type="button" data-t="auto" aria-pressed="true">Auto</button><button type="button" data-t="light" aria-pressed="false"><svg class="i"><use href="#i-sun"/></svg>Light</button><button type="button" data-t="dark" aria-pressed="false"><svg class="i"><use href="#i-moon"/></svg>Dark</button></div>
 </div>
@@ -404,8 +404,8 @@ tr.denied td { background: var(--q-denied-tint); } tr.denied.row:hover td { back
 <div class="app" id="app">
   <aside class="side" aria-label="Sidebar">
     <div class="side-brand"><a class="brand" href="#runs"><svg aria-hidden="true"><use href="#mark"/></svg><span>Qory</span></a><button type="button" class="btn btn-ghost btn-square only-drawer" id="drawer-close" aria-label="Close menu"><svg class="i"><use href="#i-x"/></svg></button></div>
-    <button type="button" class="ws" aria-label="Switch apiary, current: Acme"><span class="avatar sq" aria-hidden="true">A</span><span style="min-width:0"><b class="trunc">Acme</b><small class="trunc">Platform</small></span><svg class="i"><use href="#i-ud"/></svg></button>
-    <div class="side-label">Hive</div>
+    <button type="button" class="ws" aria-label="Switch organisation, current: Acme"><span class="avatar sq" aria-hidden="true">A</span><span style="min-width:0"><b class="trunc">Acme</b><small class="trunc">Platform</small></span><svg class="i"><use href="#i-ud"/></svg></button>
+    <div class="side-label">Workspace</div>
     <nav class="side-nav" aria-label="Main">
       <a href="#overview" data-nav="overview"><svg class="i"><use href="#i-grid"/></svg>Overview</a>
       <a href="#runs" data-nav="runs"><svg class="i"><use href="#i-runs"/></svg>Runs<span class="count alive" title="2 runs alive now"><span class="ripple" style="width:6px;height:6px"></span>2</span></a>
@@ -427,9 +427,9 @@ tr.denied td { background: var(--q-denied-tint); } tr.denied.row:hover td { back
     <main class="main" id="main">
 
     <!-- ============ RUNS LIST ============ -->
-    <div class="main-in" data-view="runs" data-url="/hive/runs?group=target&amp;runtime=claude&amp;since=7d">
+    <div class="main-in" data-view="runs" data-url="/acme/main/runs?group=target&amp;runtime=claude&amp;since=7d">
       <div class="page-head">
-        <div><h1>Runs</h1><p>Every run the machines of this <span class="term" tabindex="0" data-tip="team">hive</span> have posted, as their events tell it.</p></div>
+        <div><h1>Runs</h1><p>Every run the machines of this workspace have posted, as their events tell it.</p></div>
       </div>
 
       <div class="filters" role="group" aria-label="Filters">
@@ -576,7 +576,7 @@ tr.denied td { background: var(--q-denied-tint); } tr.denied.row:hover td { back
       </nav>
 
       <!-- ---- Timeline ---- -->
-      <div data-pane="timeline" data-url="/hive/runs/0191f2a4-3c5e-7b8d-9e0f-1a2b3c4d5e6f" style="display:grid;gap:16px;grid-template-columns:minmax(0,1fr)">
+      <div data-pane="timeline" data-url="/acme/main/runs/0191f2a4-3c5e-7b8d-9e0f-1a2b3c4d5e6f" style="display:grid;gap:16px;grid-template-columns:minmax(0,1fr)">
         <div class="tl-bar" role="group" aria-label="Lanes">
           <button type="button" class="lanekey l0" aria-pressed="true"><i></i>Main session</button>
           <button type="button" class="lanekey l1" aria-pressed="true"><i></i>Explore <small>agent-7c1e</small></button>
@@ -673,7 +673,7 @@ ERROR: Could not install packages due to an OSError: Tunnel connection failed: 4
       </div>
 
       <!-- ---- Terminal ---- -->
-      <div data-pane="terminal" data-url="/hive/runs/0191f2a4-3c5e-7b8d-9e0f-1a2b3c4d5e6f/terminal" hidden>
+      <div data-pane="terminal" data-url="/acme/main/runs/0191f2a4-3c5e-7b8d-9e0f-1a2b3c4d5e6f/terminal" hidden>
         <div class="termbox" role="region" aria-label="Terminal output">
           <div class="term-bar">
             <div class="tseg" role="group" aria-label="Stream"><button type="button" aria-pressed="true">terminal</button></div>
@@ -726,7 +726,7 @@ ERROR: Could not install packages due to an OSError: Tunnel connection failed: 4
       </div>
 
       <!-- ---- Connections (run) ---- -->
-      <div data-pane="connections" data-url="/hive/runs/0191f2a4-3c5e-7b8d-9e0f-1a2b3c4d5e6f/connections" hidden style="display:grid;gap:16px;grid-template-columns:minmax(0,1fr)">
+      <div data-pane="connections" data-url="/acme/main/runs/0191f2a4-3c5e-7b8d-9e0f-1a2b3c4d5e6f/connections" hidden style="display:grid;gap:16px;grid-template-columns:minmax(0,1fr)">
         <div class="filters" role="group" aria-label="Filters">
           <div class="seg in" role="group" aria-label="Decision"><button type="button" aria-pressed="true">All <span class="faint mono" style="font-size:11px">6</span></button><button type="button" aria-pressed="false">Allowed <span class="faint mono" style="font-size:11px">4</span></button><button type="button" aria-pressed="false">Denied <span class="faint mono" style="font-size:11px">2</span></button></div>
           <span class="grow"></span>
@@ -749,7 +749,7 @@ ERROR: Could not install packages due to an OSError: Tunnel connection failed: 4
       </div>
 
       <!-- ---- Details ---- -->
-      <div data-pane="details" data-url="/hive/runs/0191f2a4-3c5e-7b8d-9e0f-1a2b3c4d5e6f/details" hidden>
+      <div data-pane="details" data-url="/acme/main/runs/0191f2a4-3c5e-7b8d-9e0f-1a2b3c4d5e6f/details" hidden>
         <div class="cards">
           <section class="card"><h2>Command</h2><dl class="dl"><dt>Command</dt><dd class="mono">claude</dd><dt>Arguments</dt><dd class="mono">--settings /home/agent/.cache/qory/homes/shop/claude/settings.json --setting-sources user</dd><dt>Directory</dt><dd class="mono">/work/shop</dd><dt>Interactive</dt><dd>Yes, on a pseudo-terminal</dd><dt>Runner</dt><dd class="mono">0.4.2 · contract 1</dd><dt>Access key</dt><dd>build-01 <span class="mono faint">ak_f1xt0re000000000</span></dd></dl></section>
           <section class="card"><h2>Policy in force</h2><dl class="dl"><dt>Mode</dt><dd>enforce</dd><dt>Source</dt><dd>fetched from the run configuration</dd><dt>Digest</dt><dd class="mono">9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08</dd><dt>Run configuration</dt><dd class="mono">rc_41c7e0aa92d1</dd><dt>Allowed hosts</dt><dd class="mono">api.example, github.example, *.github.example, registry.example, *.internal.example, gitlab.example</dd><dt>Reads requests to</dt><dd class="mono">api.example</dd><dt>Applied at</dt><dd class="mono">#0003</dd></dl></section>
@@ -758,9 +758,9 @@ ERROR: Could not install packages due to an OSError: Tunnel connection failed: 4
       </div>
     </div>
 
-    <!-- ============ HIVE CONNECTIONS ============ -->
-    <div class="main-in" data-view="connections" data-url="/hive/connections?since=7d" hidden>
-      <div class="page-head"><div><h1>Connections</h1><p>Where the runs of this <span class="term" tabindex="0" data-tip="team">hive</span> reached out to, and what the policy made of it. One row per host, port and path, across runs.</p></div></div>
+    <!-- ============ WORKSPACE CONNECTIONS ============ -->
+    <div class="main-in" data-view="connections" data-url="/acme/main/connections?since=7d" hidden>
+      <div class="page-head"><div><h1>Connections</h1><p>Where the runs of this workspace reached out to, and what the policy made of it. One row per host, port and path, across runs.</p></div></div>
       <div class="filters" role="group" aria-label="Filters">
         <div class="seg in" role="group" aria-label="Decision"><button type="button" aria-pressed="true">All</button><button type="button" aria-pressed="false">Allowed</button><button type="button" aria-pressed="false">Denied</button></div>
         <button type="button" class="chip"><svg class="i"><use href="#i-plus"/></svg>Repository</button>
@@ -769,7 +769,7 @@ ERROR: Could not install packages due to an OSError: Tunnel connection failed: 4
         <span class="grow"></span>
         <span class="summary"><span><b>8</b> destinations</span><span><b>3</b> denied</span><span><b>11</b> runs</span></span>
       </div>
-      <div class="table-wrap" tabindex="0" role="region" aria-label="Connections of this hive">
+      <div class="table-wrap" tabindex="0" role="region" aria-label="Connections of this workspace">
         <table class="table cxt">
           <thead><tr><th>Destination</th><th class="num">Runs</th><th class="num">Attempts</th><th>Allowed / denied</th><th>Reason</th><th>Outcome</th><th>Last seen</th><th><span class="sr-only">Actions</span></th></tr></thead>
           <tbody>

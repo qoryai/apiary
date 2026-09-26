@@ -1,18 +1,18 @@
 defmodule Apiary.Policy.Resolution do
   @moduledoc """
-  What the rules of a hive and of one target come to. Pure: rules in, an
+  What the rules of a workspace and of one target come to. Pure: rules in, an
   `Apiary.Policy.Effective` out, or the sentence that says why the rules cannot be
   rendered.
 
   The contract's document says what is denied and what is allowed: `egress.deny` is
   decided by the runner first and holds in either mode, `egress.allow` decides after it and
   only under `enforce`. So a deny rule is written to the document, which is how a
-  target disables a host of the hive, how a locked deny of the hive holds against a
-  target, and how a host is denied while the mode is still `observe`.
+  target disables a host of the workspace, how a locked deny of the workspace holds
+  against a target, and how a host is denied while the mode is still `observe`.
 
-  1. **Precedence.** A locked rule of the hive, then the target's rule, then an unlocked
-     rule of the hive. Rules meet on the same host string (or the same credential name),
-     and the one that wins decides the host whole: action and paths.
+  1. **Precedence.** A locked rule of the workspace, then the target's rule, then an
+     unlocked rule of the workspace. Rules meet on the same host string (or the same
+     credential name), and the one that wins decides the host whole: action and paths.
   2. **A `*.` deny** also takes out every allow entry it covers (`*.example` covers
      `api.example` and `*.eu.example`), unless the allow has the higher precedence. The
      runner would deny those hosts by the deny anyway, deny being decided first; they are
@@ -21,9 +21,9 @@ defmodule Apiary.Policy.Resolution do
   3. **A deny below a `*.` allow** stands beside it when it does not lose to that allow by
      precedence: `allow: ["*.example"], deny: ["tracker.example"]` denies `tracker.example`
      and reaches `api.example`, in either mode. When the allow outranks it (a locked
-     `*.example` of the hive over a target's deny) the deny is overridden. The one
+     `*.example` of the workspace over a target's deny) the deny is overridden. The one
      shape the document cannot say is the mirror: a `*.` deny with an allow below it that
-     outranks the deny (the hive's unlocked `*.example` deny, a target's own
+     outranks the deny (the workspace's unlocked `*.example` deny, a target's own
      `api.example` allow). The allow wins by precedence and is rendered; the deny still
      takes out the allow entries it does outrank, but is **not written to `deny`**, since
      an entry there would deny the winning host too. Under `enforce` the hosts it covers
@@ -49,25 +49,25 @@ defmodule Apiary.Policy.Resolution do
 
   @locked 3
   @target 2
-  @hive 1
+  @workspace 1
 
   @doc """
-  Resolves a target's policy from the hive's mode and the target's own, nil
-  when it follows the hive: the target's own mode wins, and the effective policy says
+  Resolves a target's policy from the workspace's mode and the target's own, nil
+  when it follows the workspace: the target's own mode wins, and the effective policy says
   which it was in `mode_source`. The rules resolve as in `resolve/4`, whatever the mode:
-  a locked rule of the hive holds in a target's document under either mode: its
+  a locked rule of the workspace holds in a target's document under either mode: its
   `deny` is denied under `observe` as under `enforce`, and its `allow` says what `enforce`
   would reach.
   """
   @spec resolve_for(String.t(), String.t() | nil, [Rule.t()], [Rule.t()], Ecto.UUID.t() | nil) ::
           {:ok, Effective.t()} | {:error, Error.t()}
-  def resolve_for(hive_mode, own_mode, hive_rules, target_rules, target_id) do
+  def resolve_for(workspace_mode, own_mode, workspace_rules, target_rules, target_id) do
     {mode, source} =
       if own_mode in ["observe", "enforce"] and not is_nil(target_id),
         do: {own_mode, :target},
-        else: {hive_mode, :hive}
+        else: {workspace_mode, :workspace}
 
-    with {:ok, effective} <- resolve(mode, hive_rules, target_rules, target_id) do
+    with {:ok, effective} <- resolve(mode, workspace_rules, target_rules, target_id) do
       {:ok, %{effective | mode_source: source}}
     end
   end
@@ -78,10 +78,10 @@ defmodule Apiary.Policy.Resolution do
   """
   @spec resolve(String.t(), [Rule.t()], [Rule.t()], Ecto.UUID.t() | nil) ::
           {:ok, Effective.t()} | {:error, Error.t()}
-  def resolve(mode, hive_rules, target_rules \\ [], target_id \\ nil)
+  def resolve(mode, workspace_rules, target_rules \\ [], target_id \\ nil)
       when mode in ["observe", "enforce"] do
     entries =
-      (Enum.map(hive_rules, &entry(&1, :hive)) ++
+      (Enum.map(workspace_rules, &entry(&1, :workspace)) ++
          Enum.map(target_rules, &entry(&1, :target)))
       |> Enum.with_index()
       |> Map.new(fn {entry, index} -> {index, entry} end)
@@ -103,13 +103,13 @@ defmodule Apiary.Policy.Resolution do
       name: rule.name,
       argument: rule.argument,
       source: source,
-      locked: source == :hive and rule.locked
+      locked: source == :workspace and rule.locked
     }
   end
 
-  defp rank(%Entry{source: :hive, locked: true}), do: @locked
+  defp rank(%Entry{source: :workspace, locked: true}), do: @locked
   defp rank(%Entry{source: :target}), do: @target
-  defp rank(%Entry{}), do: @hive
+  defp rank(%Entry{}), do: @workspace
 
   # Rules that meet on the same host or name: the highest precedence decides it whole.
   defp same_subject(entries) do
@@ -148,7 +148,7 @@ defmodule Apiary.Policy.Resolution do
   end
 
   # A deny below an allowed `*.` suffix is lost to the allow when the allow outranks it (a
-  # locked allow of the hive over a target's deny); otherwise the two stand, the deny
+  # locked allow of the workspace over a target's deny); otherwise the two stand, the deny
   # decided first by the runner.
   defp under_allow(entries) do
     allows =
@@ -210,23 +210,23 @@ defmodule Apiary.Policy.Resolution do
     end
   end
 
-  defp where(%Entry{source: :hive, locked: true}), do: :locked
-  defp where(%Entry{source: :hive}), do: :hive
+  defp where(%Entry{source: :workspace, locked: true}), do: :locked
+  defp where(%Entry{source: :workspace}), do: :workspace
   defp where(%Entry{source: :target}), do: :target
 
   # Where each of the two rules is, as whole sentences.
   defp held_and_below(:locked, :locked, above, below),
     do:
       gettext(
-        "%{above} in the hive (locked) is held to paths, and %{below} below it has a rule of its own in the hive (locked).",
+        "%{above} in the workspace (locked) is held to paths, and %{below} below it has a rule of its own in the workspace (locked).",
         above: above,
         below: below
       )
 
-  defp held_and_below(:locked, :hive, above, below),
+  defp held_and_below(:locked, :workspace, above, below),
     do:
       gettext(
-        "%{above} in the hive (locked) is held to paths, and %{below} below it has a rule of its own in the hive.",
+        "%{above} in the workspace (locked) is held to paths, and %{below} below it has a rule of its own in the workspace.",
         above: above,
         below: below
       )
@@ -234,31 +234,31 @@ defmodule Apiary.Policy.Resolution do
   defp held_and_below(:locked, :target, above, below),
     do:
       gettext(
-        "%{above} in the hive (locked) is held to paths, and %{below} below it has a rule of its own in the target.",
+        "%{above} in the workspace (locked) is held to paths, and %{below} below it has a rule of its own in the target.",
         above: above,
         below: below
       )
 
-  defp held_and_below(:hive, :locked, above, below),
+  defp held_and_below(:workspace, :locked, above, below),
     do:
       gettext(
-        "%{above} in the hive is held to paths, and %{below} below it has a rule of its own in the hive (locked).",
+        "%{above} in the workspace is held to paths, and %{below} below it has a rule of its own in the workspace (locked).",
         above: above,
         below: below
       )
 
-  defp held_and_below(:hive, :hive, above, below),
+  defp held_and_below(:workspace, :workspace, above, below),
     do:
       gettext(
-        "%{above} in the hive is held to paths, and %{below} below it has a rule of its own in the hive.",
+        "%{above} in the workspace is held to paths, and %{below} below it has a rule of its own in the workspace.",
         above: above,
         below: below
       )
 
-  defp held_and_below(:hive, :target, above, below),
+  defp held_and_below(:workspace, :target, above, below),
     do:
       gettext(
-        "%{above} in the hive is held to paths, and %{below} below it has a rule of its own in the target.",
+        "%{above} in the workspace is held to paths, and %{below} below it has a rule of its own in the target.",
         above: above,
         below: below
       )
@@ -266,15 +266,15 @@ defmodule Apiary.Policy.Resolution do
   defp held_and_below(:target, :locked, above, below),
     do:
       gettext(
-        "%{above} in the target is held to paths, and %{below} below it has a rule of its own in the hive (locked).",
+        "%{above} in the target is held to paths, and %{below} below it has a rule of its own in the workspace (locked).",
         above: above,
         below: below
       )
 
-  defp held_and_below(:target, :hive, above, below),
+  defp held_and_below(:target, :workspace, above, below),
     do:
       gettext(
-        "%{above} in the target is held to paths, and %{below} below it has a rule of its own in the hive.",
+        "%{above} in the target is held to paths, and %{below} below it has a rule of its own in the workspace.",
         above: above,
         below: below
       )
@@ -325,7 +325,9 @@ defmodule Apiary.Policy.Resolution do
       entries:
         entries
         |> Map.values()
-        |> Enum.sort_by(&{&1.kind != :host, sort_key(&1.host || &1.name), &1.source != :hive}),
+        |> Enum.sort_by(
+          &{&1.kind != :host, sort_key(&1.host || &1.name), &1.source != :workspace}
+        ),
       allow: hosts |> Enum.map(& &1.host) |> Enum.sort_by(&sort_key/1),
       deny: said |> Enum.map(& &1.host) |> Enum.sort_by(&sort_key/1),
       paths:

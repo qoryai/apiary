@@ -48,7 +48,11 @@
       })();
     </script>
   </head>
-  <body data-clock-words={Jason.encode!(ApiaryWeb.RunComponents.clock_words())}>
+  <body
+    data-clock-words={Jason.encode!(ApiaryWeb.RunComponents.clock_words())}
+    data-locale={ApiaryWeb.Format.locale()}
+    data-time-zone={ApiaryWeb.Format.time_zone()}
+  >
     {@inner_content}
   </body>
 </html>

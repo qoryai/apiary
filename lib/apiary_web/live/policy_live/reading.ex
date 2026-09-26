@@ -25,6 +25,7 @@ defmodule ApiaryWeb.PolicyLive.Reading do
   import ApiaryWeb.RichText
 
   alias Apiary.Policy.Grammar
+  alias ApiaryWeb.Format
 
   @doc "The reading of an empty composer: what a rule is, before anything is typed."
   def hint, do: reading(:hint, hint_text())
@@ -42,7 +43,7 @@ defmodule ApiaryWeb.PolicyLive.Reading do
   `form` has string keys `"action"`, `"host"`, `"paths"` and `"every"` (`"true"` when every
   path was asked for in so many words). `context`:
 
-    * `scope`: `:hive` or `:target`;
+    * `scope`: `:workspace` or `:target`;
     * `own`: the rules of the scope being edited, maps or structs with `kind`, `action`,
       `host`, `paths`, `locked`, and `by`, `at` when the page knows them;
     * `entries`: the entries of the effective policy (`Apiary.Policy.Entry`);
@@ -285,18 +286,21 @@ defmodule ApiaryWeb.PolicyLive.Reading do
   # The same rule again: each action, scope and author is its own sentence.
   defp already(action, scope, host, existing) do
     case {action, scope, by(existing)} do
-      {"allow", :hive, {:by, by, at}} ->
-        rich_gettext("%{host} is already allowed for the hive, by %{by} on %{at}.",
+      {"allow", :workspace, {:by, by, at}} ->
+        rich_gettext("%{host} is already allowed for the workspace, by %{by} on %{at}.",
           host: host,
           by: by,
           at: at
         )
 
-      {"allow", :hive, {:since, at}} ->
-        rich_gettext("%{host} is already allowed for the hive, since %{at}.", host: host, at: at)
+      {"allow", :workspace, {:since, at}} ->
+        rich_gettext("%{host} is already allowed for the workspace, since %{at}.",
+          host: host,
+          at: at
+        )
 
-      {"allow", :hive, nil} ->
-        rich_gettext("%{host} is already allowed for the hive.", host: host)
+      {"allow", :workspace, nil} ->
+        rich_gettext("%{host} is already allowed for the workspace.", host: host)
 
       {"allow", :target, {:by, by, at}} ->
         rich_gettext("%{host} is already allowed for this target, by %{by} on %{at}.",
@@ -314,18 +318,21 @@ defmodule ApiaryWeb.PolicyLive.Reading do
       {"allow", :target, nil} ->
         rich_gettext("%{host} is already allowed for this target.", host: host)
 
-      {"deny", :hive, {:by, by, at}} ->
-        rich_gettext("%{host} is already denied for the hive, by %{by} on %{at}.",
+      {"deny", :workspace, {:by, by, at}} ->
+        rich_gettext("%{host} is already denied for the workspace, by %{by} on %{at}.",
           host: host,
           by: by,
           at: at
         )
 
-      {"deny", :hive, {:since, at}} ->
-        rich_gettext("%{host} is already denied for the hive, since %{at}.", host: host, at: at)
+      {"deny", :workspace, {:since, at}} ->
+        rich_gettext("%{host} is already denied for the workspace, since %{at}.",
+          host: host,
+          at: at
+        )
 
-      {"deny", :hive, nil} ->
-        rich_gettext("%{host} is already denied for the hive.", host: host)
+      {"deny", :workspace, nil} ->
+        rich_gettext("%{host} is already denied for the workspace.", host: host)
 
       {"deny", :target, {:by, by, at}} ->
         rich_gettext("%{host} is already denied for this target, by %{by} on %{at}.",
@@ -346,9 +353,9 @@ defmodule ApiaryWeb.PolicyLive.Reading do
   end
 
   # The opposite rule: the one there and the one that replaces it.
-  defp replaces("allow", :hive, host),
+  defp replaces("allow", :workspace, host),
     do:
-      rich_gettext("%{host} is allowed for the hive. Adding this deny replaces that rule.",
+      rich_gettext("%{host} is allowed for the workspace. Adding this deny replaces that rule.",
         host: host
       )
 
@@ -358,9 +365,9 @@ defmodule ApiaryWeb.PolicyLive.Reading do
         host: host
       )
 
-  defp replaces("deny", :hive, host),
+  defp replaces("deny", :workspace, host),
     do:
-      rich_gettext("%{host} is denied for the hive. Adding this allow replaces that rule.",
+      rich_gettext("%{host} is denied for the workspace. Adding this allow replaces that rule.",
         host: host
       )
 
@@ -370,10 +377,10 @@ defmodule ApiaryWeb.PolicyLive.Reading do
         host: host
       )
 
-  defp held(:hive, host, paths),
+  defp held(:workspace, host, paths),
     do:
       rich_gettext(
-        "%{host} is held to %{paths} for the hive. Name the paths it should have, or choose Every path to open them all.",
+        "%{host} is held to %{paths} for the workspace. Name the paths it should have, or choose Every path to open them all.",
         host: host,
         paths: paths
       )
@@ -386,10 +393,10 @@ defmodule ApiaryWeb.PolicyLive.Reading do
         paths: paths
       )
 
-  defp change_paths(:hive, host, from, to),
+  defp change_paths(:workspace, host, from, to),
     do:
       rich_gettext(
-        "%{host} is allowed for the hive on %{paths}. Saving changes its paths to %{new_paths}.",
+        "%{host} is allowed for the workspace on %{paths}. Saving changes its paths to %{new_paths}.",
         host: host,
         paths: from,
         new_paths: to
@@ -427,9 +434,9 @@ defmodule ApiaryWeb.PolicyLive.Reading do
         {true, _scope} ->
           rich_gettext("Reads as: %{rule}, and every allow rule it covers.", rule: rule)
 
-        {false, :hive} ->
+        {false, :workspace} ->
           rich_gettext(
-            "Reads as: %{rule}. It takes the host out of what the hive allows; a target can still allow it unless you lock this rule.",
+            "Reads as: %{rule}. It takes the host out of what the workspace allows; a target can still allow it unless you lock this rule.",
             rule: rule
           )
 
@@ -473,16 +480,18 @@ defmodule ApiaryWeb.PolicyLive.Reading do
   defp allow_on_paths("*." <> suffix, n),
     do:
       rich_ngettext(
-        "allow every host below %{suffix} on %{count} path",
-        "allow every host below %{suffix} on %{count} paths",
+        "allow every host below %{suffix} on %{number} path",
+        "allow every host below %{suffix} on %{number} paths",
         n,
-        suffix: {:m, suffix}
+        suffix: {:m, suffix},
+        number: Format.number(n)
       )
 
   defp allow_on_paths(host, n),
     do:
-      rich_ngettext("allow %{host} on %{count} path", "allow %{host} on %{count} paths", n,
-        host: {:m, host}
+      rich_ngettext("allow %{host} on %{number} path", "allow %{host} on %{number} paths", n,
+        host: {:m, host},
+        number: Format.number(n)
       )
 
   defp not_itself("*." <> suffix),
@@ -525,14 +534,14 @@ defmodule ApiaryWeb.PolicyLive.Reading do
     end)
   end
 
-  # On a target page: the locked rule of the hive that decides the host whatever is
+  # On a target page: the locked rule of the workspace that decides the host whatever is
   # added here. A locked deny holds against an allow below it, a locked allow against a
   # deny below it.
-  defp locked_above(_action, _host, %{scope: :hive}), do: nil
+  defp locked_above(_action, _host, %{scope: :workspace}), do: nil
 
   defp locked_above(action, host, context) do
     Enum.find(context.entries, fn entry ->
-      entry.kind == :host and entry.source == :hive and entry.locked and
+      entry.kind == :host and entry.source == :workspace and entry.locked and
         (entry.host == host or
            (action == "allow" and entry.action == :deny and Grammar.covers?(entry.host, host)) or
            (action == "deny" and entry.action == :allow and Grammar.covers?(entry.host, host)))
@@ -542,8 +551,8 @@ defmodule ApiaryWeb.PolicyLive.Reading do
   defp locked_refusal(entry, action, context) do
     lead =
       if entry.action == :deny,
-        do: rich_gettext("A locked hive rule denies %{host}.", host: {:code, entry.host}),
-        else: rich_gettext("A locked hive rule allows %{host}.", host: {:code, entry.host})
+        do: rich_gettext("A locked workspace rule denies %{host}.", host: {:code, entry.host}),
+        else: rich_gettext("A locked workspace rule allows %{host}.", host: {:code, entry.host})
 
     holds =
       case {entry.action, action} do
@@ -570,12 +579,12 @@ defmodule ApiaryWeb.PolicyLive.Reading do
 
     last =
       if context.owner,
-        do: gettext("You can change or unlock it on the hive's policy page."),
+        do: gettext("You can change or unlock it on the workspace's policy page."),
         else: gettext("Only an owner can change or unlock it.")
 
     refusal(
       lead ++ [" ", holds] ++ who ++ [" ", last],
-      [{gettext("Show the locked rule"), "open_hive_rule", %{"host" => entry.host}}]
+      [{gettext("Show the locked rule"), "open_workspace_rule", %{"host" => entry.host}}]
     )
   end
 

@@ -26,7 +26,7 @@ defmodule ApiaryWeb.RichTextTest do
                "Run %{id} \u0001id\u0001"
     end
 
-    test "the body's words come from its catalogue, the bindings stay in place" do
+    test "the domain's words come from its catalogue, the bindings stay in place" do
       Gettext.with_locale(ApiaryWeb.Gettext, "en@software", fn ->
         html =
           render_rich(
@@ -46,7 +46,7 @@ defmodule ApiaryWeb.RichTextTest do
           {:b, ["<b>", {:m, "<i>"}], "font-medium"},
           {:code, "<u>"},
           {:bad, "<s>"},
-          {:link, "/hive/runs", "<em>"},
+          {:link, "/acme/main/runs", "<em>"},
           {:href, "/dev/mailbox", "<q>"},
           nil,
           3
@@ -60,7 +60,7 @@ defmodule ApiaryWeb.RichTextTest do
 
       assert html =~ ~s(<code class="q-rule">&lt;u&gt;</code>)
       assert html =~ ~s(<span class="q-bad">&lt;s&gt;</span>)
-      assert html =~ ~s(href="/hive/runs")
+      assert html =~ ~s(href="/acme/main/runs")
       assert html =~ ~s(href="/dev/mailbox")
       assert html =~ "3"
     end

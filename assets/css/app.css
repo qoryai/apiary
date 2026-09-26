@@ -1047,7 +1047,7 @@
 
 /* Qory's own classes. Unlayered, so they hold against the overrides above. */
 @layer qory {
-  /* Vocabulary: apiary and hive carry their standard term on hover and focus. */
+  /* Vocabulary: a word of Qory's carries its standard term on hover and focus. */
   .term {
     text-decoration: underline dotted;
     text-decoration-color: var(--q-border-field);
@@ -3691,7 +3691,7 @@
   }
 }
 
-/* ==== The security policy (M5): the pages under /hive/policy ====================
+/* ==== The security policy (M5): the pages under /:org/:workspace/policy ==============
    brief-policy.md pd2 to pd7, pe1 to pe5 and pi: the mode cards, the section card with a
    composer on top of a table, rule rows and provenance, suggestions, history and diff,
    the document well, the version page. */
@@ -4857,7 +4857,7 @@
   }
 }
 
-/* ==== The hive overview (M8): the components of overview_components.ex ==========
+/* ==== The workspace overview (M8): the components of overview_components.ex ==========
    What the agents did and what needs you (docs/design/brief-overview.md). The rows are the
    suggestion rows of M5 (pd6), the strip is the key and value strip of M4 (rd4) with
    stat-sized values, the last runs are the runs table of M4 (rd8) without groups. */
@@ -5388,7 +5388,7 @@
     text-underline-offset: 3px;
   }
 
-  /* ---- The empty hive (oe6): the checklist card of brief.md h1 ---- */
+  /* ---- The empty workspace (oe6): the checklist card of brief.md h1 ---- */
   .q-landed {
     display: flex;
     align-items: center;

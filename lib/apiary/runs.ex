@@ -1,19 +1,20 @@
 defmodule Apiary.Runs do
   @moduledoc """
-  The runs of a hive, as the console reads them.
+  The runs of a workspace, as the console reads them.
 
   Events come in through `Apiary.Runs.Ingest`, are folded by `Apiary.Runs.Projector` and
   watched by `Apiary.Runs.Liveness`; this module is what pages call. Every function takes
-  the caller's scope first and reads only the scope's hive; `closed?/2` is the one
-  exception, for the receiver, which has an access key's hive and no user.
+  the caller's scope first and reads only the scope's workspace; `closed?/2` is the one
+  exception, for the receiver, which has an access key's workspace and no user.
 
   Changes are announced on two topics of `Apiary.PubSub`:
 
-    * `topic(hive_id)`, `"runs:<hive_id>"`: `{:run_changed, %Run{}}` whenever a run of the
-      hive was projected, found lost or closed;
-    * `topic(hive_id, run_id)`, `"run:<hive_id>:<run_id>"` (`run_id` is the row's id):
-      `{:run_projected, %Run{}, first_sequence, last_sequence}` after a projection, with
-      the lowest and highest sequence it folded, and `{:run_changed, %Run{}}` as above.
+    * `topic(workspace_id)`, `"runs:<workspace_id>"`: `{:run_changed, %Run{}}` whenever a
+      run of the workspace was projected, found lost or closed;
+    * `topic(workspace_id, run_id)`, `"run:<workspace_id>:<run_id>"` (`run_id` is the
+      row's id): `{:run_projected, %Run{}, first_sequence, last_sequence}` after a
+      projection, with the lowest and highest sequence it folded, and
+      `{:run_changed, %Run{}}` as above.
   """
 
   use Gettext, backend: ApiaryWeb.Gettext
@@ -23,7 +24,7 @@ defmodule Apiary.Runs do
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
   alias Apiary.Organisations
-  alias Apiary.Organisations.{Hive, Organisation}
+  alias Apiary.Organisations.{Workspace, Organisation}
   alias Apiary.Repo
   alias Apiary.Runs.{Connection, Filters, Target, Run}
 
@@ -34,57 +35,64 @@ defmodule Apiary.Runs do
 
   ## Topics
 
-  def topic(hive_id), do: "runs:#{hive_id}"
-  def topic(hive_id, run_id), do: "run:#{hive_id}:#{run_id}"
+  def topic(workspace_id), do: "runs:#{workspace_id}"
+  def topic(workspace_id, run_id), do: "run:#{workspace_id}:#{run_id}"
 
   @doc """
-  The topic of the sidebar's alive count: `{:runs_touched, hive_id}` whenever a run of the
-  hive changed, and nothing else, so every page of the hive can follow it without taking
-  the messages of `topic/1`.
+  The topic of the sidebar's alive count: `{:runs_touched, workspace_id}` whenever a run
+  of the workspace changed, and nothing else, so every page of the workspace can follow it
+  without taking the messages of `topic/1`.
   """
-  def touched_topic(hive_id), do: "runs:#{hive_id}:touched"
+  def touched_topic(workspace_id), do: "runs:#{workspace_id}:touched"
 
-  @doc "Subscribes the caller to `touched_topic/1` of the scope's hive."
-  def subscribe_touched(%Scope{hive: %Hive{id: hive_id}}) do
-    Phoenix.PubSub.subscribe(Apiary.PubSub, touched_topic(hive_id))
+  @doc "Subscribes the caller to `touched_topic/1` of the scope's workspace."
+  def subscribe_touched(%Scope{workspace: %Workspace{id: workspace_id}}) do
+    Phoenix.PubSub.subscribe(Apiary.PubSub, touched_topic(workspace_id))
   end
 
-  @doc "Subscribes the caller to the scope's hive."
-  def subscribe(%Scope{hive: %Hive{id: hive_id}}) do
-    Phoenix.PubSub.subscribe(Apiary.PubSub, topic(hive_id))
+  @doc "Subscribes the caller to the scope's workspace."
+  def subscribe(%Scope{workspace: %Workspace{id: workspace_id}}) do
+    Phoenix.PubSub.subscribe(Apiary.PubSub, topic(workspace_id))
   end
 
-  @doc "Subscribes the caller to one run of the scope's hive."
-  def subscribe(%Scope{hive: %Hive{id: hive_id}}, %Run{id: id, hive_id: hive_id}) do
-    Phoenix.PubSub.subscribe(Apiary.PubSub, topic(hive_id, id))
+  @doc "Subscribes the caller to one run of the scope's workspace."
+  def subscribe(%Scope{workspace: %Workspace{id: workspace_id}}, %Run{
+        id: id,
+        workspace_id: workspace_id
+      }) do
+    Phoenix.PubSub.subscribe(Apiary.PubSub, topic(workspace_id, id))
   end
 
   @doc false
   def broadcast_changed(%Run{} = run) do
     broadcast_touched(run)
-    Phoenix.PubSub.broadcast(Apiary.PubSub, topic(run.hive_id), {:run_changed, run})
-    Phoenix.PubSub.broadcast(Apiary.PubSub, topic(run.hive_id, run.id), {:run_changed, run})
+    Phoenix.PubSub.broadcast(Apiary.PubSub, topic(run.workspace_id), {:run_changed, run})
+    Phoenix.PubSub.broadcast(Apiary.PubSub, topic(run.workspace_id, run.id), {:run_changed, run})
   end
 
   @doc false
   def broadcast_projected(%Run{} = run, first_sequence, last_sequence) do
     broadcast_touched(run)
-    Phoenix.PubSub.broadcast(Apiary.PubSub, topic(run.hive_id), {:run_changed, run})
+    Phoenix.PubSub.broadcast(Apiary.PubSub, topic(run.workspace_id), {:run_changed, run})
 
     Phoenix.PubSub.broadcast(
       Apiary.PubSub,
-      topic(run.hive_id, run.id),
+      topic(run.workspace_id, run.id),
       {:run_projected, run, first_sequence, last_sequence}
     )
   end
 
-  defp broadcast_touched(%Run{hive_id: hive_id}) do
-    Phoenix.PubSub.broadcast(Apiary.PubSub, touched_topic(hive_id), {:runs_touched, hive_id})
+  defp broadcast_touched(%Run{workspace_id: workspace_id}) do
+    Phoenix.PubSub.broadcast(
+      Apiary.PubSub,
+      touched_topic(workspace_id),
+      {:runs_touched, workspace_id}
+    )
   end
 
   ## Reads
 
-  @doc "How many runs of the hive are alive now: pending or running."
+  @doc "How many runs of the workspace are alive now: pending or running."
   def count_alive(%Scope{} = scope) do
     # Tagged, so that what measures a page's own reads can tell the sidebar's timed count
     # from them (`metadata.options[:sidebar]` of the repo's telemetry event).
@@ -93,7 +101,7 @@ defmodule Apiary.Runs do
     )
   end
 
-  @doc "One run of the scope's hive by its row id; raises when the hive has none such."
+  @doc "One run of the scope's workspace by its row id; raises when the workspace has none such."
   def get_run!(%Scope{} = scope, id) do
     case Ecto.UUID.cast(id) do
       {:ok, id} -> Repo.one!(from r in in_scope(scope), where: r.id == ^id)
@@ -102,9 +110,9 @@ defmodule Apiary.Runs do
   end
 
   @doc """
-  One run of the scope's hive by its subject, the id the runner prints and the run's URL
-  carries; raises `Ecto.NoResultsError` when the hive has none such, which a run of another
-  hive and a malformed id both are.
+  One run of the scope's workspace by its subject, the id the runner prints and the run's
+  URL carries; raises `Ecto.NoResultsError` when the workspace has none such, which a run
+  of another workspace and a malformed id both are.
   """
   def get_run_by_run_id!(%Scope{} = scope, run_id) do
     case Ecto.UUID.cast(run_id) do
@@ -113,7 +121,7 @@ defmodule Apiary.Runs do
     end
   end
 
-  @doc "The hive's runs, newest first. `limit:` defaults to #{@default_limit}, at most #{@max_limit}."
+  @doc "The workspace's runs, newest first. `limit:` defaults to #{@default_limit}, at most #{@max_limit}."
   def list_runs(%Scope{} = scope, opts \\ []) do
     limit = opts |> Keyword.get(:limit, @default_limit) |> max(1) |> min(@max_limit)
 
@@ -128,9 +136,9 @@ defmodule Apiary.Runs do
   def page_size, do: @page_size
 
   @doc """
-  A page of the hive's runs under the filters, newest first by when they started (a run
-  that has only pinged is placed by when its ping arrived). Returns the page's runs, the
-  page it is (the last one, when the filters asked for one beyond it) and the total.
+  A page of the workspace's runs under the filters, newest first by when they started (a
+  run that has only pinged is placed by when its ping arrived). Returns the page's runs,
+  the page it is (the last one, when the filters asked for one beyond it) and the total.
   """
   def page_runs(%Scope{} = scope, %Filters{} = filters, now \\ DateTime.utc_now()) do
     query = filtered(scope, filters, now)
@@ -142,7 +150,7 @@ defmodule Apiary.Runs do
     %{runs: runs, page: page, total: total, pages: max(ceil(total / @page_size), 1)}
   end
 
-  # In the order of the index `runs_hive_id_started_or_first_heard_index`, expression
+  # In the order of the index `runs_workspace_id_started_or_first_heard_index`, expression
   # included, so a page is read from the index and never sorted.
   defp page_query(query, page) do
     from r in query,
@@ -159,8 +167,8 @@ defmodule Apiary.Runs do
   What the summary line says of everything the filters return: `runs`, `targets`,
   `tasks`, the three families `alive`, `ended_well` and `ended_badly`
   (`Apiary.Runs.Filters.families/0`), and `with_denials`, all counted in one query.
-  `hive_runs` is every run of the hive, filtered or not, for the empty state that says how
-  many the filters hide.
+  `workspace_runs` is every run of the workspace, filtered or not, for the empty state
+  that says how many the filters hide.
   """
   def summarise_runs(%Scope{} = scope, %Filters{} = filters, now \\ DateTime.utc_now()) do
     ended_well = Filters.family_states("ended_well")
@@ -180,7 +188,7 @@ defmodule Apiary.Runs do
           }
       )
 
-    Map.put(summary, :hive_runs, Repo.aggregate(in_scope(scope), :count))
+    Map.put(summary, :workspace_runs, Repo.aggregate(in_scope(scope), :count))
   end
 
   @doc """
@@ -534,13 +542,13 @@ defmodule Apiary.Runs do
     dynamic([c], not is_nil(c.last_tool) and c.last_decision == "allowed")
   end
 
-  ## The hive's connections
+  ## The workspace's connections
 
   @doc """
-  A page of the hive's destinations across the runs in range: one row per host, port and
-  path, with how many runs reached it, the attempts, and the decision, rule, outcome and
-  the rest of the most recent attempt across those runs, the tool whose host it was for
-  (`last_tool`) and what answered it (`last_status`) among them; the attempt is a tool
+  A page of the workspace's destinations across the runs in range: one row per host, port
+  and path, with how many runs reached it, the attempts, and the decision, rule, outcome
+  and the rest of the most recent attempt across those runs, the tool whose host it was
+  for (`last_tool`) and what answered it (`last_status`) among them; the attempt is a tool
   invocation when `tool_invocation?/2` says so of `last_tool` and `last_decision`.
   Filters: `decision` (destinations with any attempt so decided), `target`, `host` (the
   destination's), `tools` (tool invocations only: the destinations where the last attempt
@@ -677,18 +685,21 @@ defmodule Apiary.Runs do
   end
 
   @doc """
-  The target of the scope's hive that runs name with this system and path, or nil: one
-  indexed read, however many targets the hive has.
+  The target of the scope's workspace that runs name with this system and path, or nil:
+  one indexed read, however many targets the workspace has.
   """
   def fetch_target(
-        %Scope{organisation: %Organisation{id: organisation_id}, hive: %Hive{id: hive_id}},
+        %Scope{
+          organisation: %Organisation{id: organisation_id},
+          workspace: %Workspace{id: workspace_id}
+        },
         system,
         path
       )
       when is_binary(system) and is_binary(path) do
     Repo.one(
       from p in Target,
-        where: p.organisation_id == ^organisation_id and p.hive_id == ^hive_id,
+        where: p.organisation_id == ^organisation_id and p.workspace_id == ^workspace_id,
         where: p.system == ^system and p.path == ^path,
         limit: 1
     )
@@ -697,11 +708,14 @@ defmodule Apiary.Runs do
   def fetch_target(%Scope{}, _system, _path), do: nil
 
   @doc """
-  One connection of the scope's hive by its row id, whole. `:error` for an id that is not
-  a UUID and for a connection of another hive.
+  One connection of the scope's workspace by its row id, whole. `:error` for an id that is
+  not a UUID and for a connection of another workspace.
   """
   def fetch_connection(
-        %Scope{organisation: %Organisation{id: organisation_id}, hive: %Hive{id: hive_id}},
+        %Scope{
+          organisation: %Organisation{id: organisation_id},
+          workspace: %Workspace{id: workspace_id}
+        },
         id
       ) do
     with <<_::binary-size(36)>> <- id,
@@ -710,7 +724,8 @@ defmodule Apiary.Runs do
            Repo.one(
              from c in Connection,
                where:
-                 c.id == ^id and c.organisation_id == ^organisation_id and c.hive_id == ^hive_id
+                 c.id == ^id and c.organisation_id == ^organisation_id and
+                   c.workspace_id == ^workspace_id
            ) do
       {:ok, connection}
     else
@@ -774,9 +789,13 @@ defmodule Apiary.Runs do
     %{options: options, total: total}
   end
 
-  # The hive's connection rows under the filters, joined to their run (for the target).
+  # The workspace's connection rows under the
+  # filters, joined to their run (for the target).
   defp connections_in(
-         %Scope{organisation: %Organisation{id: organisation_id}, hive: %Hive{id: hive_id}},
+         %Scope{
+           organisation: %Organisation{id: organisation_id},
+           workspace: %Workspace{id: workspace_id}
+         },
          %Filters{} = f,
          now
        ) do
@@ -785,9 +804,9 @@ defmodule Apiary.Runs do
     from(c in Connection,
       join: r in Run,
       as: :run,
-      on: r.id == c.run_id and r.hive_id == c.hive_id,
-      where: c.organisation_id == ^organisation_id and c.hive_id == ^hive_id,
-      where: r.organisation_id == ^organisation_id and r.hive_id == ^hive_id
+      on: r.id == c.run_id and r.workspace_id == c.workspace_id,
+      where: c.organisation_id == ^organisation_id and c.workspace_id == ^workspace_id,
+      where: r.organisation_id == ^organisation_id and r.workspace_id == ^workspace_id
     )
     |> where_if(f.host, dynamic([c], c.host == ^f.host))
     |> where_if(from, dynamic([c], c.last_seen_at >= ^from))
@@ -910,14 +929,14 @@ defmodule Apiary.Runs do
     end
   end
 
-  @doc "The last heartbeat each access key of the hive delivered, by the key's row id; keys that never did are absent."
+  @doc "The last heartbeat each access key of the workspace delivered, by the key's row id; keys that never did are absent."
   def last_heartbeats_by_key(%Scope{
         organisation: %Organisation{id: organisation_id},
-        hive: %Hive{id: hive_id}
+        workspace: %Workspace{id: workspace_id}
       }) do
     Repo.all(
       from k in AccessKey,
-        where: k.organisation_id == ^organisation_id and k.hive_id == ^hive_id,
+        where: k.organisation_id == ^organisation_id and k.workspace_id == ^workspace_id,
         where: not is_nil(k.last_heartbeat_at),
         select: {k.id, k.last_heartbeat_at}
     )
@@ -925,32 +944,33 @@ defmodule Apiary.Runs do
   end
 
   @doc """
-  Whether the hive has closed the run with this subject. For the receiver, which answers
-  `410` to a closed run; a subject the hive has never seen is not closed.
+  Whether the workspace has closed the run with this subject. For the receiver, which
+  answers `410` to a closed run; a subject the workspace has never seen is not closed.
   """
-  def closed?(hive_id, run_id) do
-    with {:ok, hive_id} <- Ecto.UUID.cast(hive_id),
+  def closed?(workspace_id, run_id) do
+    with {:ok, workspace_id} <- Ecto.UUID.cast(workspace_id),
          {:ok, run_id} <- Ecto.UUID.cast(run_id) do
       Repo.exists?(
         from r in Run,
-          where: r.hive_id == ^hive_id and r.run_id == ^run_id and r.state == "closed"
+          where: r.workspace_id == ^workspace_id and r.run_id == ^run_id and r.state == "closed"
       )
     else
       :error -> false
     end
   end
 
-  ## The hive overview
+  ## The workspace overview
 
   # The runs are placed by when they started, or, for a run that has only pinged, by when
-  # the hive first heard of it: the expression of `runs_hive_id_started_or_first_heard_index`.
+  # the workspace first heard of it: the expression of
+  # `runs_workspace_id_started_or_first_heard_index`.
   defp by_start, do: dynamic([r], coalesce(r.started_at, r.inserted_at))
 
   @typedoc """
-  One UTC day of the hive's runs, counted in the three families (`alive`, `ended_well`,
-  `ended_badly`; `runs` is their sum), with the denials of those runs and the cost they
-  reported: `cost` is the sum of `cost_usd` over the day's runs, nil when none reported
-  one, and `costed` how many did.
+  One UTC day of the workspace's runs, counted in the three families (`alive`,
+  `ended_well`, `ended_badly`; `runs` is their sum), with the denials of those runs and
+  the cost they reported: `cost` is the sum of `cost_usd` over the day's runs, nil when
+  none reported one, and `costed` how many did.
   """
   @type day_facts :: %{
           day: Date.t(),
@@ -964,10 +984,10 @@ defmodule Apiary.Runs do
         }
 
   @doc """
-  The hive's runs from `from` on, one row per UTC day they started (a pending run by when
-  its ping arrived), oldest first; a day with no run has no row. One grouped query over
-  the index the runs list reads by; the caller fills the days in. `to`, when given, bounds
-  the read above (exclusive), so one call can read today alone.
+  The workspace's runs from `from` on, one row per UTC day they started (a pending run by
+  when its ping arrived), oldest first; a day with no run has no row. One grouped query
+  over the index the runs list reads by; the caller fills the days in. `to`, when given,
+  bounds the read above (exclusive), so one call can read today alone.
   """
   @spec day_facts(Scope.t(), DateTime.t(), DateTime.t() | nil) :: [day_facts]
   def day_facts(%Scope{} = scope, %DateTime{} = from, to \\ nil) do
@@ -999,7 +1019,7 @@ defmodule Apiary.Runs do
     )
   end
 
-  @doc "The alive runs of the hive, the most recently started first; at most `limit` (default 6)."
+  @doc "The alive runs of the workspace, the most recently started first; at most `limit` (default 6)."
   @spec list_alive(Scope.t(), pos_integer) :: [Run.t()]
   def list_alive(%Scope{} = scope, limit \\ 6) do
     Repo.all(
@@ -1010,7 +1030,7 @@ defmodule Apiary.Runs do
     )
   end
 
-  @doc "The hive's most recently started runs, alive or ended; at most `limit` (default 5)."
+  @doc "The workspace's most recently started runs, alive or ended; at most `limit` (default 5)."
   @spec recent_runs(Scope.t(), pos_integer) :: [Run.t()]
   def recent_runs(%Scope{} = scope, limit \\ 5) do
     Repo.all(
@@ -1021,9 +1041,9 @@ defmodule Apiary.Runs do
   end
 
   @doc """
-  The runs the hive found lost since `since`, the most recently lost first, at most `limit`
-  (default 6): the ones a member may still want to close. Older losses are facts on the
-  runs list, not tasks.
+  The runs the workspace found lost since `since`, the most recently lost first, at most
+  `limit` (default 6): the ones a member may still want to close. Older losses are facts
+  on the runs list, not tasks.
   """
   @spec lost_since(Scope.t(), DateTime.t(), pos_integer) :: [Run.t()]
   def lost_since(%Scope{} = scope, %DateTime{} = since, limit \\ 6) do
@@ -1037,8 +1057,8 @@ defmodule Apiary.Runs do
 
   @doc """
   The last run each of these access keys started, by the key's row id, in one read of the
-  index `runs (hive_id, access_key_id, started)` (`DISTINCT ON`); a key with no run is
-  absent. At most #{@max_limit} keys are read.
+  index `runs (workspace_id, access_key_id, started)` (`DISTINCT ON`); a key with no run
+  is absent. At most #{@max_limit} keys are read.
   """
   @spec last_runs_by_key(Scope.t(), [Ecto.UUID.t()]) :: %{optional(Ecto.UUID.t()) => Run.t()}
   def last_runs_by_key(%Scope{}, []), do: %{}
@@ -1060,7 +1080,7 @@ defmodule Apiary.Runs do
   `%{key_id => %{count: n, host: name}}`, `host` being the one host when there is only one
   and nil otherwise; a key with no run in the window is absent. A key is not a machine (a
   pool of ephemeral instances shares one), so a page counts the hosts. One grouped read of
-  the index `runs (hive_id, access_key_id, started)`; at most #{@max_limit} keys.
+  the index `runs (workspace_id, access_key_id, started)`; at most #{@max_limit} keys.
   """
   @spec hosts_by_key(Scope.t(), [Ecto.UUID.t()], DateTime.t()) :: %{
           optional(Ecto.UUID.t()) => %{count: pos_integer, host: String.t() | nil}
@@ -1092,14 +1112,15 @@ defmodule Apiary.Runs do
   def closable_states, do: @closable_states
 
   @doc """
-  Closes the run: the hive takes no more events for it and the receiver answers `410`.
-  Any member of the hive, read again from the database. Only a run that has not ended is
-  closed: one that is `pending`, `running` or `lost`. A run that succeeded, failed or timed out
-  keeps the end its events gave it. A close is final: no event reopens the run, and
-  closing a closed run changes nothing.
+  Closes the run: the workspace takes no more events for it and the receiver answers
+  `410`. Any member of the workspace, read again from the database. Only a run that has
+  not ended is closed: one that is `pending`, `running` or `lost`. A run that succeeded,
+  failed or timed out keeps the end its events gave it. A close is final: no event reopens
+  the run, and closing a closed run changes nothing.
 
   `{:error, :unauthorized}` when the caller's membership is gone, `{:error, :not_found}`
-  when the run is not one of the scope's hive, `{:error, :not_closable}` when it has ended.
+  when the run is not one of the scope's workspace, `{:error, :not_closable}` when it has
+  ended.
   """
   def close_run(%Scope{user: user} = scope, %Run{id: id}) do
     with {:ok, _membership} <- Organisations.fetch_membership(scope) do
@@ -1131,10 +1152,10 @@ defmodule Apiary.Runs do
 
   defp in_scope(%Scope{
          organisation: %Organisation{id: organisation_id},
-         hive: %Hive{id: hive_id}
+         workspace: %Workspace{id: workspace_id}
        }) do
     from r in Run,
       as: :run,
-      where: r.organisation_id == ^organisation_id and r.hive_id == ^hive_id
+      where: r.organisation_id == ^organisation_id and r.workspace_id == ^workspace_id
   end
 end

@@ -1,4 +1,4 @@
-defmodule ApiaryWeb.HiveLive.OverviewTest do
+defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
   use ApiaryWeb.ConnCase, async: true
 
   import Ecto.Query, only: [from: 2]
@@ -21,7 +21,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
   # No coalescing and no throttling here, so a broadcast is followed by its read as the
   # next message and no test waits on a clock.
   setup do
-    Application.put_env(:apiary, ApiaryWeb.HiveLive.Overview,
+    Application.put_env(:apiary, ApiaryWeb.WorkspaceLive.Overview,
       coalesce: 0,
       announce: 0,
       quiet_tick: 3_600_000,
@@ -31,8 +31,8 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
     :ok
   end
 
-  defp open(conn, path \\ "/hive") do
-    {:ok, view, _html} = live(conn, path)
+  defp open(conn, scope) do
+    {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}")
     render_async(view, 5_000)
     view
   end
@@ -80,16 +80,19 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
     )
   end
 
-  describe "the empty hive (oe6)" do
+  describe "the empty workspace (oe6)" do
     test "no key: the checklist is the page, step 1 current, nothing else renders", %{
       conn: conn,
       scope: scope
     } do
-      {:ok, view, html} = live(conn, ~p"/hive")
+      {:ok, view, html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}")
 
-      assert html =~ scope.hive.name
-      assert html =~ ~r{<title[^>]*>\s*#{Regex.escape(scope.hive.name)} · Qory Apiary\s*</title>}
-      assert html =~ "The workplace of the #{scope.organisation.name} organisation."
+      assert html =~ scope.workspace.name
+
+      assert html =~
+               ~r{<title[^>]*>\s*#{Regex.escape(scope.workspace.name)} · Qory Apiary\s*</title>}
+
+      assert html =~ "The workspace of the #{scope.organisation.name} organisation."
       refute html =~ ~r/<abbr[^>]*>(hive|apiary)<\/abbr>/
 
       assert has_element?(view, "#onboarding[data-step='1'] h2", "Send your first run")
@@ -105,7 +108,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
         view
         |> element("#onboarding-create")
         |> render_click()
-        |> follow_redirect(conn, ~p"/hive/keys/new")
+        |> follow_redirect(conn, ~p"/#{scope.organisation}/#{scope.workspace}/keys/new")
 
       assert html =~ "New access key"
     end
@@ -115,7 +118,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
       scope: scope
     } do
       %{access_key: key} = access_key_fixture(scope, label: "build-01")
-      view = open(conn)
+      view = open(conn, scope)
 
       assert has_element?(view, "#onboarding[data-step='2'] h2", "Send your first run")
       assert text(view, "#onboarding") =~ "One key can serve many hosts"
@@ -135,7 +138,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
     } do
       %{access_key: key} = access_key_fixture(scope, label: "build-01")
       {:ok, _} = AccessKeys.touch(key, %{last_runner_version: "v0.4.2", last_contract_version: 1})
-      view = open(conn)
+      view = open(conn, scope)
 
       assert has_element?(view, "#onboarding[data-step='3']")
       assert has_element?(view, "#onboarding .q-step-current", "See runs here")
@@ -147,7 +150,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
     test "the first run lands: step 3 ticks, the card stays with a link, and leaves on the next mount",
          %{conn: conn, scope: scope} do
       access_key_fixture(scope, label: "build-01")
-      view = open(conn)
+      view = open(conn, scope)
       assert has_element?(view, "#onboarding[data-step='2']")
 
       run = run_fixture(scope)
@@ -160,7 +163,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
 
       assert has_element?(
                view,
-               "#onboarding-landed a[href='/hive/runs/#{run.run_id}']",
+               "#onboarding-landed a[href='#{workspace_path(scope, "/runs/#{run.run_id}")}']",
                "Open it"
              )
 
@@ -168,7 +171,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
       assert has_element?(view, "#overview-strip")
       assert has_element?(view, "#overview-keys-create", "Create another access key")
 
-      view = open(conn)
+      view = open(conn, scope)
       refute has_element?(view, "#onboarding")
       assert has_element?(view, "#overview-keys-create")
     end
@@ -189,10 +192,10 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
         egress: [%{"host" => "ads.example", "decision" => "denied", "rule" => ""}]
       )
 
-      # Another hive counts for nothing here.
+      # Another workspace counts for nothing here.
       started_run(scope_fixture(), shop())
 
-      view = open(conn)
+      view = open(conn, scope)
 
       assert text(view, "#overview-strip-alive") == "1"
       assert text(view, "#overview-strip-runs") == "3"
@@ -224,7 +227,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
           exit: %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 48_000}
         )
 
-      view = open(conn)
+      view = open(conn, scope)
 
       assert text(view, "#alive-n") == "2"
       assert has_element?(view, "#alive-#{running.run_id} .q-state-running")
@@ -237,7 +240,12 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
       assert has_element?(view, "#last-runs tr#run-#{running.run_id} .q-c-target", "acme/shop")
       assert has_element?(view, "#last-runs tr#run-#{ended.run_id} .q-c-target", "no repository")
       assert has_element?(view, "#last-runs tr#run-#{ended.run_id} .q-c-dur", "48 s")
-      assert has_element?(view, "#last-runs-all[href='/hive/runs']", "All runs")
+
+      assert has_element?(
+               view,
+               "#last-runs-all[href='#{workspace_path(scope, "/runs")}']",
+               "All runs"
+             )
 
       assert text(view, "#days-totals") =~ "3 runs · 0 denied attempts, 14 days"
       html = render(view)
@@ -250,7 +258,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
 
       assert has_element?(
                view,
-               "#days a[data-day='#{today}'][href='/hive/runs?from=#{today}&to=#{today}']"
+               "#days a[data-day='#{today}'][href='#{workspace_path(scope, "/runs?from=#{today}&to=#{today}")}']"
              )
 
       assert has_element?(
@@ -282,7 +290,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
         started_at: DateTime.add(DateTime.utc_now(), -20, :day)
       })
 
-      view = open(conn)
+      view = open(conn, scope)
 
       assert has_element?(view, "#alive-none", "No run alive now.")
       assert text(view, "#days-totals") == "No run in the last 14 days"
@@ -310,7 +318,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
         ]
       )
 
-      view = open(conn)
+      view = open(conn, scope)
       assert has_element?(view, "#activity-uncounted", "Denied destinations were not counted")
       refute has_element?(view, "#attention li[data-kind=denied]")
       # The strip's denials come from the runs, not from the capped read: they stay.
@@ -320,10 +328,10 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
 
   describe "the glances (od7 to od9)" do
     @tag needs: :security
-    test "policy: a new hive, then a managed one with a version, targets and things to review",
+    test "policy: a new workspace, then a managed one with a version, targets and things to review",
          %{conn: conn, scope: scope} do
       run = started_run(scope, shop())
-      view = open(conn)
+      view = open(conn, scope)
 
       assert text(view, "#overview-policy-mode") =~
                "observe Not served Machines use their own policy until the first change here."
@@ -331,7 +339,11 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
       assert has_element?(view, "#overview-policy-version", "No version yet")
       assert text(view, "#overview-policy-targets") =~ "1 has posted a run"
       assert has_element?(view, "#overview-policy-review", "Nothing declared and unallowed.")
-      assert has_element?(view, "#overview-policy-open[href='/hive/policy']")
+
+      assert has_element?(
+               view,
+               "#overview-policy-open[href='#{workspace_path(scope, "/policy")}']"
+             )
 
       event_fixture(run, 20, "run.policy_applied", %{
         "harness_hosts" => ["registry.example", "cdn.example"]
@@ -342,7 +354,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
       render_async(view, 5_000)
 
       assert text(view, "#overview-policy-mode") =~
-               "enforce Workplace default Every repository follows it."
+               "enforce Workspace default Every repository follows it."
 
       assert has_element?(view, "#overview-policy-version .q-vpill", "v2")
       assert text(view, "#overview-policy-version") =~ "since"
@@ -359,10 +371,14 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
 
     test "retention: every sentence", %{conn: conn, scope: scope} do
       started_run(scope, shop())
-      view = open(conn)
-      assert text(view, "#overview-retention") =~ "This workplace keeps everything."
+      view = open(conn, scope)
+      assert text(view, "#overview-retention") =~ "This workspace keeps everything."
       refute has_element?(view, "#overview-retention-last")
-      assert has_element?(view, "#overview-retention-settings[href='/hive/settings#retention']")
+
+      assert has_element?(
+               view,
+               "#overview-retention-settings[href='#{workspace_path(scope, "/settings#retention")}']"
+             )
 
       {:ok, _} =
         Retention.update_retention(scope, %{
@@ -370,7 +386,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
           "log_retention_days" => "30"
         })
 
-      view = open(conn)
+      view = open(conn, scope)
 
       assert text(view, "#overview-retention-setting") ==
                "Log output is pruned after 30 days, events after 90 days."
@@ -378,9 +394,9 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
       assert text(view, "#overview-retention-last") ==
                "No prune has run yet. The job runs nightly."
 
-      hive = Apiary.Repo.get!(Apiary.Organisations.Hive, scope.hive.id)
-      %{runs_pruned: 0} = Retention.prune_hive(hive)
-      view = open(conn)
+      workspace = Apiary.Repo.get!(Apiary.Organisations.Workspace, scope.workspace.id)
+      %{runs_pruned: 0} = Retention.prune_workspace(workspace)
+      view = open(conn, scope)
 
       assert text(view, "#overview-retention-last") =~
                "Nothing was old enough to prune last night."
@@ -404,7 +420,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
       Repo.update_all(from(r in Run, where: r.id in ^ids), set: [access_key_id: first.id])
       {:ok, _} = AccessKeys.touch(first, %{})
 
-      view = open(conn)
+      view = open(conn, scope)
 
       assert text(view, "#overview-keys-n") == "7"
 
@@ -423,7 +439,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
 
       assert has_element?(
                view,
-               "#key-#{second.id} .q-c-last a[href='/hive/runs/#{run.run_id}']",
+               "#key-#{second.id} .q-c-last a[href='#{workspace_path(scope, "/runs/#{run.run_id}")}']",
                "checkout-tax"
              )
 
@@ -431,7 +447,12 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
       assert has_element?(view, "#key-#{second.id} .q-c-hosts", "ci-runner-07")
       assert has_element?(view, "#key-#{first.id} .q-c-hosts", "3 hosts")
       assert has_element?(view, "#key-#{newest.id} .q-c-hosts", "none")
-      assert has_element?(view, "#overview-keys-more[href='/hive/keys']", "and 2 more")
+
+      assert has_element?(
+               view,
+               "#overview-keys-more[href='#{workspace_path(scope, "/keys")}']",
+               "and 2 more"
+             )
     end
   end
 
@@ -440,7 +461,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
     test "is absent when there is nothing to do", %{conn: conn, scope: scope} do
       started_run(scope, shop())
       {:ok, _} = Policy.set_mode(scope, "enforce")
-      view = open(conn)
+      view = open(conn, scope)
       refute has_element?(view, "#attention")
       assert has_element?(view, "#overview-strip")
     end
@@ -470,11 +491,11 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
       lost = lost_run(scope)
       quiet = started_run(scope, shop(), heartbeat: {45, 100, 30})
 
-      view = open(conn)
+      view = open(conn, scope)
 
       assert text(view, "#attention-n") == "5"
       assert has_element?(view, "#attention-more", "and 1 more")
-      assert has_element?(view, "#attention-more[href='/hive/keys']")
+      assert has_element?(view, "#attention-more[href='#{workspace_path(scope, "/keys")}']")
 
       kinds =
         render(view)
@@ -497,14 +518,14 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
       assert has_element?(
                view,
                "#attention-list li[data-kind=denied]:first-child [role=menuitem]",
-               "Allow for the workplace"
+               "Allow for the workspace"
              )
 
       locked = text(view, "#attention-list li[data-kind=denied]:nth-child(2)")
       assert locked =~ "bin.paste.example:443"
 
       assert locked =~
-               ~r"A locked workplace rule denies \*\.paste\.example\s*\. Only an owner can change it\."
+               ~r"A locked workspace rule denies \*\.paste\.example\s*\. Only an owner can change it\."
 
       assert has_element?(
                view,
@@ -525,7 +546,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
 
       assert has_element?(
                view,
-               "#att-run-#{lost.run_id} a[href='/hive/runs/#{lost.run_id}']",
+               "#att-run-#{lost.run_id} a[href='#{workspace_path(scope, "/runs/#{lost.run_id}")}']",
                "Open"
              )
 
@@ -536,7 +557,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
 
       assert has_element?(
                view,
-               "#att-run-#{quiet.run_id}-act[href='/hive/runs/#{quiet.run_id}']",
+               "#att-run-#{quiet.run_id}-act[href='#{workspace_path(scope, "/runs/#{quiet.run_id}")}']",
                "Open"
              )
 
@@ -548,35 +569,45 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
     test "the policy items: unmanaged with runs, enforce for an owner, open policy for a member",
          %{conn: conn, scope: scope} = ctx do
       started_run(scope, shop())
-      view = open(conn)
+      view = open(conn, scope)
 
       assert text(view, "#att-policy-unmanaged") =~ "Qory serves no policy yet"
 
       assert text(view, "#att-policy-unmanaged") =~
                "1 run landed under the machines' own policies."
 
-      assert has_element?(view, "#att-policy-unmanaged-act[href='/hive/policy']", "Open policy")
+      assert has_element?(
+               view,
+               "#att-policy-unmanaged-act[href='#{workspace_path(scope, "/policy")}']",
+               "Open policy"
+             )
 
       {:ok, _} = Policy.allow(scope, nil, %{host: "api.example.com"})
       render_async(view, 5_000)
       assert text(view, "#att-policy-unmanaged") =~ "Qory serves the policy now."
       assert has_element?(view, "#att-policy-unmanaged.q-resolved")
 
-      assert text(view, "#att-policy-enforce") =~ "Observe is the workplace's default"
+      assert text(view, "#att-policy-enforce") =~ "Observe is the workspace's default"
 
       assert text(view, "#att-policy-enforce") =~
                "1 allow rule is in force and every destination reached in the last 7 days is covered. Enforce would deny nothing today."
 
       assert has_element?(
                view,
-               "#att-policy-enforce-act.btn-primary[href='/hive/policy?confirm=enforce']",
+               "#att-policy-enforce-act.btn-primary[href='#{workspace_path(scope, "/policy?confirm=enforce")}']",
                "Set the default to enforce"
              )
 
       member = as_member(ctx)
-      view = open(member)
+      view = open(member, scope)
       assert text(view, "#att-policy-enforce") =~ "Only an owner sets a mode."
-      assert has_element?(view, "#att-policy-enforce-act[href='/hive/policy']", "Open policy")
+
+      assert has_element?(
+               view,
+               "#att-policy-enforce-act[href='#{workspace_path(scope, "/policy")}']",
+               "Open policy"
+             )
+
       refute has_element?(view, "#att-policy-enforce", "Set the default")
 
       # Something uncovered: review, not a one-click switch.
@@ -584,14 +615,14 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
         egress: [%{"host" => "new.example", "decision" => "allowed", "rule" => ""}]
       )
 
-      view = open(conn)
+      view = open(conn, scope)
 
       assert text(view, "#att-policy-enforce") =~
                "Enforce would deny 1 destination reached in the last 7 days."
 
       assert has_element?(
                view,
-               "#att-policy-enforce-act[href='/hive/policy']",
+               "#att-policy-enforce-act[href='#{workspace_path(scope, "/policy")}']",
                "Review on the policy page"
              )
     end
@@ -606,7 +637,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
       %{access_key: fresh} = access_key_fixture(scope, label: "build-02")
       {:ok, _} = AccessKeys.touch(fresh, %{last_runner_version: "v0.4.1"})
 
-      view = open(conn)
+      view = open(conn, scope)
       assert text(view, "#att-key-#{idle.id}") =~ "old-runner #{idle.key_id}"
 
       assert text(view, "#att-key-#{idle.id}") =~
@@ -614,7 +645,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
 
       assert has_element?(
                view,
-               "#att-key-#{idle.id}-act[href='/hive/keys/#{idle.id}/revoke'][aria-label='Revoke old-runner']",
+               "#att-key-#{idle.id}-act[href='#{workspace_path(scope, "/keys/#{idle.id}/revoke")}'][aria-label='Revoke old-runner']",
                "Revoke"
              )
 
@@ -625,7 +656,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
          %{conn: conn, scope: scope} do
       lost = lost_run(scope)
       started_run(scope, shop())
-      view = open(conn)
+      view = open(conn, scope)
       # With `security` the unmanaged policy is the second item, and focus goes to it;
       # without it the lost run is the only one, and focus goes to All runs.
       security? = Apiary.Features.on?(:security)
@@ -656,7 +687,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
           egress: [%{"host" => "files.cdn.example", "decision" => "denied", "rule" => ""}]
         )
 
-      view = open(conn)
+      view = open(conn, scope)
 
       [item] =
         render(view)
@@ -683,9 +714,9 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
       assert text(view, "#overview-announcer") =~
                "files.cdn.example is allowed for github.example/acme/shop."
 
-      # The policy topic re-reads the list: the struck row stays where it is, and the hive
-      # is managed now, so the unmanaged item resolves in words too. A target's rule
-      # is no allow rule of the hive: no enforce nudge.
+      # The policy topic re-reads the list: the struck row stays where it is, and the
+      # workspace is managed now, so the unmanaged item resolves in words too. A target's
+      # rule is no allow rule of the workspace: no enforce nudge.
       render_async(view, 5_000)
       assert has_element?(view, "##{item}.q-resolved")
       assert has_element?(view, "#att-policy-unmanaged.q-resolved")
@@ -709,7 +740,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
         ]
       )
 
-      view = open(conn)
+      view = open(conn, scope)
       selector = "#attention-list li[data-kind=denied]"
 
       assert has_element?(view, "#{selector} .q-dest-tool .q-tool-name", "files")
@@ -724,7 +755,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
     end
 
     @tag needs: :security
-    test "allow for the hive from the caret menu", %{conn: conn, scope: scope} do
+    test "allow for the workspace from the caret menu", %{conn: conn, scope: scope} do
       started_run(scope, shop(),
         egress: [%{"host" => "flags.example", "decision" => "denied", "rule" => ""}]
       )
@@ -733,7 +764,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
         egress: [%{"host" => "flags.example", "decision" => "denied", "rule" => ""}]
       )
 
-      view = open(conn)
+      view = open(conn, scope)
 
       [item] =
         render(view)
@@ -751,11 +782,11 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
 
       view |> element("##{item}-act") |> render_click()
       assert has_element?(view, "#rule-popover-submit[disabled]")
-      render_hook(view, "rule_change", %{"for" => "hive"})
+      render_hook(view, "rule_change", %{"for" => "workspace"})
       view |> element("#rule-popover form") |> render_submit()
 
       assert Enum.any?(Policy.list_rules(scope, nil), &(&1.host == "flags.example"))
-      assert has_element?(view, "##{item}-done", "Allowed for the workplace")
+      assert has_element?(view, "##{item}-done", "Allowed for the workspace")
     end
   end
 
@@ -763,7 +794,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
     test "a run that starts appends an alive row; one that ends leaves; the strip and chart follow",
          %{conn: conn, scope: scope} do
       first = started_run(scope, shop())
-      view = open(conn)
+      view = open(conn, scope)
       assert text(view, "#alive-n") == "1"
 
       second = run_fixture(scope)
@@ -812,7 +843,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
       scope: scope
     } do
       quiet = started_run(scope, shop(), heartbeat: {45, 100, 30})
-      view = open(conn)
+      view = open(conn, scope)
       assert has_element?(view, "#att-run-#{quiet.run_id}[data-kind=quiet]")
 
       event_fixture(
@@ -842,9 +873,9 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
       assert text(view, "#overview-announcer") == "1 more item needs attention."
     end
 
-    test "another hive's runs change nothing here", %{conn: conn, scope: scope} do
+    test "another workspace's runs change nothing here", %{conn: conn, scope: scope} do
       started_run(scope, shop())
-      view = open(conn)
+      view = open(conn, scope)
       other = scope_fixture()
       started_run(other, shop())
       render_async(view, 5_000)
@@ -853,12 +884,13 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
     end
   end
 
-  test "redirects to log in when signed out" do
-    assert {:error, {:redirect, %{to: "/users/log-in"}}} = live(build_conn(), ~p"/hive")
+  test "redirects to log in when signed out", %{scope: scope} do
+    assert {:error, {:redirect, %{to: "/users/log-in"}}} =
+             live(build_conn(), ~p"/#{scope.organisation}/#{scope.workspace}")
   end
 
-  test "sends a user without a hive to a friendly page", %{conn: _conn} do
+  test "answers not found to a user who is not a member", %{scope: scope} do
     conn = log_in_user(build_conn(), Apiary.AccountsFixtures.user_fixture())
-    assert {:error, {:redirect, %{to: "/no-hive"}}} = live(conn, ~p"/hive")
+    assert conn |> get(~p"/#{scope.organisation}/#{scope.workspace}") |> html_response(404)
   end
 end

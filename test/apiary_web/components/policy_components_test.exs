@@ -4,7 +4,15 @@ defmodule ApiaryWeb.PolicyComponentsTest do
   import Phoenix.Component
   import Phoenix.LiveViewTest
 
+  alias Apiary.Accounts.Scope
+  alias Apiary.Organisations.{Organisation, Workspace}
   alias ApiaryWeb.PolicyComponents
+
+  # The caller's scope: its organisation and workspace name the links.
+  @scope %Scope{
+    organisation: %Organisation{slug: "acme"},
+    workspace: %Workspace{slug: "main"}
+  }
 
   @digest "sha256=c41d7e02b9a61f0d83c5a97be6240d1e5f8b3a6c9d2e7f10a4b5c6d7e8f90a1b"
 
@@ -14,6 +22,41 @@ defmodule ApiaryWeb.PolicyComponentsTest do
     |> String.replace("&#39;", "'")
     |> String.replace(~r/\s+/, " ")
     |> String.trim()
+  end
+
+  describe "change_list" do
+    defp change(id, at) do
+      %{
+        id: id,
+        sentence: "Changed",
+        origin: nil,
+        who: "dana",
+        at: at,
+        version: nil,
+        digest: nil,
+        navigate: nil,
+        workspace: false,
+        patch: "/p",
+        close: "/c"
+      }
+    end
+
+    test "groups the changes by the reader's day, not by UTC's" do
+      ApiaryWeb.Format.put_time_zone("Europe/Berlin")
+
+      html =
+        render_component(&PolicyComponents.change_list/1,
+          id: "history",
+          label: "History",
+          # 23:30 UTC on the 19th is 01:30 on the 20th in Berlin: the day of 10:00 UTC.
+          changes: [change(1, ~U[2026-09-20 10:00:00Z]), change(2, ~U[2026-09-19 23:30:00Z])],
+          now: ~U[2026-09-20 12:00:00Z]
+        )
+
+      assert length(Regex.scan(~r/class="q-day"/, html)) == 1
+      assert text(html) =~ "Today"
+      refute text(html) =~ "Yesterday"
+    end
   end
 
   describe "version_pill" do
@@ -32,11 +75,11 @@ defmodule ApiaryWeb.PolicyComponentsTest do
           id: "pill",
           version: 10,
           digest: @digest,
-          navigate: "/hive/policy/versions/10",
+          navigate: "/acme/main/policy/versions/10",
           copy: true
         )
 
-      assert html =~ ~s(href="/hive/policy/versions/10")
+      assert html =~ ~s(href="/acme/main/policy/versions/10")
       assert html =~ ~s(id="pill-copy")
       assert html =~ ~s(data-copy="#{@digest}")
       assert html =~ ~s(aria-label="Copy the digest")
@@ -93,21 +136,21 @@ defmodule ApiaryWeb.PolicyComponentsTest do
   end
 
   test "source_chip: three wordings, a label in their place" do
-    assert render_component(&PolicyComponents.source_chip/1, source: :hive) |> text() ==
-             "Workplace"
+    assert render_component(&PolicyComponents.source_chip/1, source: :workspace) |> text() ==
+             "Workspace"
 
     assert render_component(&PolicyComponents.source_chip/1, source: :target) |> text() ==
              "This repository"
 
-    locked = render_component(&PolicyComponents.source_chip/1, source: :hive_locked)
-    assert text(locked) == "Workplace, locked"
+    locked = render_component(&PolicyComponents.source_chip/1, source: :workspace_locked)
+    assert text(locked) == "Workspace, locked"
     assert locked =~ "hero-lock-closed-micro"
 
     assert render_component(&PolicyComponents.source_chip/1,
-             source: :hive,
-             label: "Hive baseline"
+             source: :workspace,
+             label: "Workspace baseline"
            )
-           |> text() == "Hive baseline"
+           |> text() == "Workspace baseline"
   end
 
   test "rule_mark says its word to a screen reader, and pending is not decided" do
@@ -130,7 +173,7 @@ defmodule ApiaryWeb.PolicyComponentsTest do
           host: "registry.example",
           paths: nil,
           locked: false,
-          source: :hive,
+          source: :workspace,
           by: "dana",
           at: @at,
           locked_tip: nil,
@@ -149,6 +192,7 @@ defmodule ApiaryWeb.PolicyComponentsTest do
         label="Effective policy"
         rows={@rows}
         scope={@scope}
+        current_scope={@current_scope}
         can_lock={@can_lock}
         activity={@activity}
       />
@@ -160,6 +204,7 @@ defmodule ApiaryWeb.PolicyComponentsTest do
         table(%{
           rows: rows,
           scope: Keyword.get(opts, :scope, :target),
+          current_scope: @scope,
           can_lock: Keyword.get(opts, :can_lock, false),
           activity: Keyword.get(opts, :activity, :unavailable)
         })
@@ -170,7 +215,7 @@ defmodule ApiaryWeb.PolicyComponentsTest do
       html = render_table([row(%{})])
 
       assert text(html) =~ "Comes from"
-      assert text(html) =~ "Allow registry.example every path Workplace Disable here"
+      assert text(html) =~ "Allow registry.example every path Workspace Disable here"
       assert html =~ ~s(aria-label="Disable registry.example for this repository")
       refute text(html) =~ "Last 7 days"
     end
@@ -180,7 +225,7 @@ defmodule ApiaryWeb.PolicyComponentsTest do
         id: "h1",
         action: "allow",
         host: "gitlab.example",
-        source: :hive,
+        source: :workspace,
         kind: :override,
         by: "beekeeper",
         at: @at,
@@ -206,12 +251,12 @@ defmodule ApiaryWeb.PolicyComponentsTest do
       assert html =~
                ~r{<s>\s*<span class="sr-only">not in force: </span>allow gitlab.example\s*</s>}
 
-      assert text(html) =~ "Overrides the workplace's rule"
-      assert text(html) =~ "Disabled here by dana · 9 Sep"
+      assert text(html) =~ "Overrides the workspace's rule"
+      assert text(html) =~ "Disabled here by dana · 9 Sept"
       assert text(html) =~ "Restore"
     end
 
-    test "a locked hive rule holds against the target's, which can be removed" do
+    test "a locked workspace rule holds against the target's, which can be removed" do
       beaten = %{
         id: "p1",
         action: "allow",
@@ -231,13 +276,13 @@ defmodule ApiaryWeb.PolicyComponentsTest do
             action: "deny",
             host: "*.paste.example",
             locked: true,
-            source: :hive_locked,
+            source: :workspace_locked,
             act: :open,
             beaten: [beaten]
           })
         ])
 
-      assert text(html) =~ "Workplace, locked"
+      assert text(html) =~ "Workspace, locked"
       assert text(html) =~ "Holds against this repository's rule"
       assert text(html) =~ "It is not in force."
       assert html =~ "Remove it"
@@ -245,7 +290,7 @@ defmodule ApiaryWeb.PolicyComponentsTest do
       assert html =~
                ~s(aria-description="Every host below paste.example, and not paste.example itself.")
 
-      assert html =~ ~s(href="/hive/policy?rule=%2A.paste.example")
+      assert html =~ ~s(href="/acme/main/policy?rule=%2A.paste.example")
     end
 
     test "last 7 days: counts, not seen, a skeleton while loading, no column when unavailable" do
@@ -259,29 +304,29 @@ defmodule ApiaryWeb.PolicyComponentsTest do
       refute text(render_table(rows, activity: :unavailable)) =~ "Last 7 days"
     end
 
-    test "on the hive's page an owner toggles a lock and a member reads it" do
+    test "on the workspace's page an owner toggles a lock and a member reads it" do
       locked =
         row(%{
           locked: true,
-          source: :hive_locked,
+          source: :workspace_locked,
           locked_tip:
-            "Locked by beekeeper@example.com on 2 Sep 2026. Only an owner can change or unlock it.",
+            "Locked by beekeeper@example.com on 2 Sept 2026. Only an owner can change or unlock it.",
           can_change: false
         })
 
-      owner = render_table([%{locked | can_change: true}], scope: :hive, can_lock: true)
+      owner = render_table([%{locked | can_change: true}], scope: :workspace, can_lock: true)
       assert owner =~ ~s(aria-pressed="true")
       # One carrier of the state: the name stays, aria-pressed says whether it is locked.
       assert owner =~ ~s(aria-label="Lock registry.example")
       refute owner =~ ~s(aria-label="Unlock)
       assert owner =~ ~s(aria-label="Actions for registry.example")
 
-      member = render_table([locked], scope: :hive, can_lock: false)
+      member = render_table([locked], scope: :workspace, can_lock: false)
       refute member =~ "aria-pressed"
       refute member =~ "Actions for"
-      assert member =~ "Locked by beekeeper@example.com on 2 Sep 2026."
-      assert member =~ ~s(aria-description="Locked by beekeeper@example.com on 2 Sep 2026.)
-      assert text(member) =~ "dana · 9 Sep"
+      assert member =~ "Locked by beekeeper@example.com on 2 Sept 2026."
+      assert member =~ ~s(aria-description="Locked by beekeeper@example.com on 2 Sept 2026.)
+      assert text(member) =~ "dana · 9 Sept"
     end
 
     test "a host from anywhere is escaped" do
@@ -299,7 +344,7 @@ defmodule ApiaryWeb.PolicyComponentsTest do
         id="rm"
         setting="follow"
         effective="enforce"
-        hive_default="enforce"
+        workspace_default="enforce"
         can_edit={false}
         locked_denies={["*.paste.example"]}
       />
@@ -317,11 +362,11 @@ defmodule ApiaryWeb.PolicyComponentsTest do
   end
 
   test "a mode card is described by its sentence, its fact and the owners' line" do
-    assigns = %{}
+    assigns = %{scope: @scope}
 
     html =
       rendered_to_string(~H"""
-      <PolicyComponents.mode_switch mode="observe" can_edit={false} served={false} />
+      <PolicyComponents.mode_switch scope={@scope} mode="observe" can_edit={false} served={false} />
       """)
 
     assert html =~

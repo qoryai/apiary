@@ -25,7 +25,7 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
   defp target_fixture(scope, system, path) do
     Repo.insert!(%Target{
       organisation_id: scope.organisation.id,
-      hive_id: scope.hive.id,
+      workspace_id: scope.workspace.id,
       system: system,
       path: path,
       first_seen_at: DateTime.utc_now()
@@ -39,7 +39,7 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
 
   defp allow(conn), do: Jason.decode!(conn.resp_body)["security_policy"]["egress"]["allow"]
 
-  test "a hive nobody has given a policy serves none: 404, and nothing is rendered", ctx do
+  test "a workspace nobody has given a policy serves none: 404, and nothing is rendered", ctx do
     refute Policy.managed?(ctx.scope)
 
     for query <- ["", "forge=github.example&repository=acme%2Fsite"] do
@@ -143,7 +143,7 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
     end
   end
 
-  test "a target with a mode of its own is served it; an unknown one gets the hive's", ctx do
+  test "a target with a mode of its own is served it; an unknown one gets the workspace's", ctx do
     site = target_fixture(ctx.scope, "github.example", "acme/site")
     {:ok, _} = Policy.set_mode(ctx.scope, site, "enforce")
     mode = fn conn -> Jason.decode!(conn.resp_body)["security_policy"]["egress"]["mode"] end
@@ -158,13 +158,13 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
     assert mode.(fetch(ctx, "forge=github.example&repository=acme%2Funknown")) == "enforce"
   end
 
-  test "every label is a parameter, and the body says which name the target",
+  test "every label is a parameter, and the domain says which name the target",
        ctx do
     shop = target_fixture(ctx.scope, "git.example.com", "acme/shop")
     {:ok, _} = Policy.allow(ctx.scope, nil, %{host: "api.example"})
     {:ok, _} = Policy.allow(ctx.scope, shop, %{host: "mcp.example"})
 
-    # The labels in any order, the software body's two among them: the target's own.
+    # The labels in any order, the software domain's two among them: the target's own.
     for query <- [
           "forge=git.example.com&issue=77&repository=acme%2Fshop&task=fix",
           "task=fix&repository=acme%2Fshop&issue=77&forge=git.example.com"
@@ -195,7 +195,7 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
     assert conn.resp_body == first.resp_body
   end
 
-  test "another hive's key gets its own hive's configuration", ctx do
+  test "another workspace's key gets its own workspace's configuration", ctx do
     shop = target_fixture(ctx.scope, "github.example", "acme/site")
     {:ok, _} = Policy.allow(ctx.scope, shop, %{host: "mcp.example"})
 
@@ -203,7 +203,8 @@ defmodule ApiaryWeb.Contract.RunConfigurationControllerTest do
     %{access_key: key, secret: secret} = access_key_fixture(other)
     query = "forge=github.example&repository=acme%2Fsite"
 
-    # Managed is the hive's own, too: this hive's policy does not make the other's served.
+    # Managed is the workspace's own, too: this
+    # workspace's policy does not make the other's served.
     assert fetch(%{key: key, secret: secret}, query).status == 404
 
     {:ok, _} = Policy.deny(other, nil, %{host: "ads.example"})

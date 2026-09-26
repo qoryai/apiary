@@ -20,7 +20,7 @@ defmodule Apiary.PolicyTest do
   defp target_fixture(scope, path \\ "acme/site") do
     Repo.insert!(%Target{
       organisation_id: scope.organisation.id,
-      hive_id: scope.hive.id,
+      workspace_id: scope.workspace.id,
       system: "github.example",
       path: path,
       first_seen_at: DateTime.utc_now()
@@ -40,7 +40,7 @@ defmodule Apiary.PolicyTest do
          %{scope: scope} do
       assert Policy.get_mode(scope) == "observe"
 
-      # A read of a hive nobody has changed renders and stores nothing.
+      # A read of a workspace nobody has changed renders and stores nothing.
       assert {:error, %Error{reason: :unmanaged}} = Policy.current_configuration(scope, nil)
 
       assert {:error, %Error{reason: :unmanaged}} =
@@ -72,27 +72,27 @@ defmodule Apiary.PolicyTest do
       %{target: target_fixture(scope), other: target_fixture(scope, "acme/docs")}
     end
 
-    test "follows the hive until it sets its own, and goes back by :inherit", ctx do
+    test "follows the workspace until it sets its own, and goes back by :inherit", ctx do
       %{scope: scope, target: target} = ctx
 
       assert Policy.get_mode(scope, nil) == "observe"
-      assert Policy.get_mode(scope, :hive) == "observe"
-      assert Policy.get_mode(scope, target) == %{mode: "observe", own: nil, hive: "observe"}
-      assert %{mode: "observe", mode_source: :hive} = Policy.effective(scope, target)
+      assert Policy.get_mode(scope, :workspace) == "observe"
+      assert Policy.get_mode(scope, target) == %{mode: "observe", own: nil, workspace: "observe"}
+      assert %{mode: "observe", mode_source: :workspace} = Policy.effective(scope, target)
 
-      assert {:ok, %{mode: "enforce", own: "enforce", hive: "observe"}} =
+      assert {:ok, %{mode: "enforce", own: "enforce", workspace: "observe"}} =
                Policy.set_mode(scope, target, "enforce")
 
       assert Policy.get_mode(scope, target) == %{
                mode: "enforce",
                own: "enforce",
-               hive: "observe"
+               workspace: "observe"
              }
 
       assert Policy.get_mode(scope) == "observe"
       assert %{mode: "enforce", mode_source: :target} = Policy.effective(scope, target)
-      assert %{mode: "observe", mode_source: :hive} = Policy.effective(scope, nil)
-      assert %{mode: "observe", mode_source: :hive} = Policy.effective(scope, ctx.other)
+      assert %{mode: "observe", mode_source: :workspace} = Policy.effective(scope, nil)
+      assert %{mode: "observe", mode_source: :workspace} = Policy.effective(scope, ctx.other)
 
       # A target with only a mode of its own has a configuration of its own.
       own = current!(scope, target)
@@ -116,7 +116,7 @@ defmodule Apiary.PolicyTest do
              ] = Policy.list_targets(scope)
     end
 
-    test "a hive's change moves the targets that follow it and leaves the others", ctx do
+    test "a workspace's change moves the targets that follow it and leaves the others", ctx do
       %{scope: scope, target: target, other: other} = ctx
       {:ok, _} = Policy.set_mode(scope, target, "observe")
       {:ok, _} = Policy.allow(scope, other, %{host: "mcp.example"})
@@ -133,7 +133,7 @@ defmodule Apiary.PolicyTest do
       assert policy(moved)["egress"]["mode"] == "enforce"
       assert policy(current!(scope, nil))["egress"]["mode"] == "enforce"
 
-      # Inherit follows a later change of the hive, too.
+      # Inherit follows a later change of the workspace, too.
       {:ok, _} = Policy.set_mode(scope, target, :inherit)
       assert policy(current!(scope, target))["egress"]["mode"] == "enforce"
       {:ok, _} = Policy.set_mode(scope, "observe")
@@ -163,14 +163,14 @@ defmodule Apiary.PolicyTest do
                Policy.diff(first)
 
       assert %{mode: {"enforce", "inherit"}} = Policy.diff(back)
-      # The target's bytes did not change when it went back to a hive that enforces.
+      # The target's bytes did not change when it went back to a workspace that enforces.
       assert back.version_after == 1
 
-      # The hive's change is the hive's, not the target's.
-      assert %{items: [%{action: "mode_changed"} = hive], total: 1} =
+      # The workspace's change is the workspace's, not the target's.
+      assert %{items: [%{action: "mode_changed"} = workspace], total: 1} =
                Policy.list_changes(scope, nil)
 
-      assert %{mode: {"observe", "enforce"}} = Policy.diff(hive)
+      assert %{mode: {"observe", "enforce"}} = Policy.diff(workspace)
 
       # A rule's change in the target does not read as a change of mode.
       {:ok, _} = Policy.allow(scope, target, %{host: "mcp.example"})
@@ -178,7 +178,8 @@ defmodule Apiary.PolicyTest do
       assert %{mode: nil, added: [%{"host" => "mcp.example"}]} = Policy.diff(rule)
     end
 
-    test "is an owner's to set; what is no mode is refused; it makes the hive managed", ctx do
+    test "is an owner's to set; what is no mode is refused; it makes the workspace managed",
+         ctx do
       %{scope: scope, target: target} = ctx
       %{scope: member} = member_fixture(scope)
 
@@ -200,7 +201,7 @@ defmodule Apiary.PolicyTest do
       assert Policy.managed?(scope)
     end
 
-    test "a locked rule of the hive holds under the target's own mode", ctx do
+    test "a locked rule of the workspace holds under the target's own mode", ctx do
       %{scope: scope, target: target} = ctx
       {:ok, _} = Policy.deny(scope, nil, %{host: "mcp.example", locked: true})
       {:ok, _} = Policy.allow(scope, target, %{host: "mcp.example"})
@@ -219,7 +220,8 @@ defmodule Apiary.PolicyTest do
       end
     end
 
-    test "another hive's target is not found, and an unknown one follows the hive", ctx do
+    test "another workspace's target is not found, and an unknown one follows the workspace",
+         ctx do
       %{scope: other} = sign_up_fixture()
 
       assert {:error, %Error{reason: :not_found}} =
@@ -228,7 +230,7 @@ defmodule Apiary.PolicyTest do
       assert Policy.get_mode(other, ctx.target) == %{
                mode: "observe",
                own: nil,
-               hive: "observe"
+               workspace: "observe"
              }
 
       assert Repo.get!(Target, ctx.target.id).egress_mode == nil
@@ -246,13 +248,13 @@ defmodule Apiary.PolicyTest do
       {:ok, _} = Policy.set_mode(ctx.scope, ctx.target, "enforce")
       assert {:ok, %{runner_file: runner_file}} = Policy.export(ctx.scope, ctx.target)
       assert runner_file =~ "mode: enforce"
-      assert {:ok, %{runner_file: hive_file}} = Policy.export(ctx.scope, nil)
-      assert hive_file =~ "mode: observe"
+      assert {:ok, %{runner_file: workspace_file}} = Policy.export(ctx.scope, nil)
+      assert workspace_file =~ "mode: observe"
     end
   end
 
   describe "mode_summary/1" do
-    test "is managed, the hive's mode and the targets' own modes, in one query", %{
+    test "is managed, the workspace's mode and the targets' own modes, in one query", %{
       scope: scope
     } do
       assert Policy.mode_summary(scope) == %{managed?: false, mode: "observe", own_modes: []}
@@ -297,12 +299,13 @@ defmodule Apiary.PolicyTest do
       assert {:ok, %Rule{host: "api.example", action: "allow", paths: nil}} =
                Policy.allow(scope, nil, %{"host" => " API.example "})
 
-      hive_id = scope.hive.id
+      workspace_id = scope.workspace.id
 
-      assert_receive {:policy_changed, %{hive_id: ^hive_id, target_id: nil, action: "rule_added"}}
+      assert_receive {:policy_changed,
+                      %{workspace_id: ^workspace_id, target_id: nil, action: "rule_added"}}
 
       assert {:ok, %Rule{paths: ["/a", "/b/*"]} = rule} =
-               Policy.allow(scope, :hive, %{host: "api.example", paths: "/a\n/b/*\n"})
+               Policy.allow(scope, :workspace, %{host: "api.example", paths: "/a\n/b/*\n"})
 
       assert [%Rule{host: "api.example"}] = Policy.list_rules(scope, nil)
 
@@ -441,7 +444,9 @@ defmodule Apiary.PolicyTest do
              }
     end
 
-    test "a hive change a target's rules cannot take is refused and names it", %{scope: scope} do
+    test "a workspace change a target's rules cannot take is refused and names it", %{
+      scope: scope
+    } do
       target = target_fixture(scope)
       {:ok, _rule} = Policy.allow(scope, target, %{host: "git.example", paths: ["/a"]})
 
@@ -504,7 +509,7 @@ defmodule Apiary.PolicyTest do
           %{
             id: Ecto.UUID.generate(),
             organisation_id: scope.organisation.id,
-            hive_id: scope.hive.id,
+            workspace_id: scope.workspace.id,
             kind: "host",
             action: "allow",
             host: "h#{n}.example",
@@ -556,7 +561,7 @@ defmodule Apiary.PolicyTest do
     end
   end
 
-  describe "under the hive's lock" do
+  describe "under the workspace's lock" do
     test "a rule removed in the meantime is not found, by remove, lock and unlock", %{
       scope: scope
     } do
@@ -578,7 +583,7 @@ defmodule Apiary.PolicyTest do
       assert [%Rule{locked: true}] = Policy.list_rules(scope, nil)
     end
 
-    test "the hive's row is locked without blocking the receiver's inserts", %{scope: scope} do
+    test "the workspace's row is locked without blocking the receiver's inserts", %{scope: scope} do
       # FOR NO KEY UPDATE does not conflict with the FOR KEY SHARE a foreign key takes;
       # FOR UPDATE would. Said by the query, since two transactions do not meet in a sandbox.
       handler = "policy-lock-#{System.unique_integer()}"
@@ -621,7 +626,7 @@ defmodule Apiary.PolicyTest do
       assert policy(own)["egress"]["allow"] == ["api.example", "mcp.example"]
       assert current!(scope, nil).id == baseline.id
 
-      # A change of the hive renders the target again.
+      # A change of the workspace renders the target again.
       {:ok, _rule} = Policy.allow(scope, nil, %{host: "cdn.example"})
       assert %{version: 2} = own = current!(scope, target)
       assert policy(own)["egress"]["allow"] == ["api.example", "cdn.example", "mcp.example"]
@@ -651,9 +656,9 @@ defmodule Apiary.PolicyTest do
       assert effective.allow == []
 
       assert [
-               %{host: "api.example", source: :hive, in_force: false},
+               %{host: "api.example", source: :workspace, in_force: false},
                %{host: "api.example", source: :target, in_force: true},
-               %{host: "mcp.example", source: :hive, locked: true, in_force: true},
+               %{host: "mcp.example", source: :workspace, locked: true, in_force: true},
                %{
                  host: "mcp.example",
                  source: :target,
@@ -714,7 +719,7 @@ defmodule Apiary.PolicyTest do
       assert %RunConfiguration{version: 2, document: nil} = versions[ctx.site.id]
       assert versions[nil].digest == current!(ctx.scope, nil).digest
 
-      assert Map.keys(Policy.newest_versions(ctx.scope, [:hive])) == [nil]
+      assert Map.keys(Policy.newest_versions(ctx.scope, [:workspace])) == [nil]
       assert Policy.newest_versions(ctx.scope, [ctx.site]) |> Map.keys() == [ctx.site.id]
       assert Policy.newest_versions(ctx.scope, []) == %{}
     end
@@ -726,7 +731,7 @@ defmodule Apiary.PolicyTest do
       assert [%{target_id: nil, version: 1, document: nil}] = by_change[api.id]
       assert [%{target_id: site_id, version: 1}] = by_change[mcp.id]
       assert site_id == ctx.site.id
-      # The hive's second rule rendered the baseline and the target that has rules.
+      # The workspace's second rule rendered the baseline and the target that has rules.
       assert [%{target_id: nil, version: 2}, %{target_id: ^site_id, version: 2}] =
                by_change[cdn.id]
 
@@ -748,7 +753,7 @@ defmodule Apiary.PolicyTest do
       assert %Change{subject: "mcp.example"} = changes[ctx.site.id]
     end
 
-    test "another hive reads none of it", ctx do
+    test "another workspace reads none of it", ctx do
       %{scope: other} = sign_up_fixture()
       %{items: changes} = Policy.list_changes(ctx.scope, :all)
 
@@ -843,7 +848,7 @@ defmodule Apiary.PolicyTest do
       assert [%Rule{locked: true}] = Policy.list_rules(scope, nil)
     end
 
-    test "only a rule of the hive locks", %{scope: scope} do
+    test "only a rule of the workspace locks", %{scope: scope} do
       target = target_fixture(scope)
 
       assert {:error, %Error{reason: :invalid}} =
@@ -865,7 +870,7 @@ defmodule Apiary.PolicyTest do
   end
 
   describe "tenancy" do
-    test "another hive's target, rule, configuration and change are not found", %{
+    test "another workspace's target, rule, configuration and change are not found", %{
       scope: scope
     } do
       %{scope: other} = sign_up_fixture()
@@ -897,12 +902,12 @@ defmodule Apiary.PolicyTest do
       assert [] = Policy.suggestions(scope, target)
       assert Policy.effective(scope, target).allow == []
 
-      # And the other hive's policy is untouched by this one's.
+      # And the other workspace's policy is untouched by this one's.
       {:ok, _rule} = Policy.allow(scope, nil, %{host: "mine.example"})
       assert Policy.effective(other, target).allow == ["api.example"]
     end
 
-    test "the digests of another hive's run are a refusal, not a raise", %{scope: scope} do
+    test "the digests of another workspace's run are a refusal, not a raise", %{scope: scope} do
       %{scope: other} = sign_up_fixture()
       run = run_fixture(other)
 
@@ -910,14 +915,14 @@ defmodule Apiary.PolicyTest do
       assert %{drift: false} = Policy.digests(other, run)
     end
 
-    test "the database refuses a rule that names another hive's target", %{scope: scope} do
+    test "the database refuses a rule that names another workspace's target", %{scope: scope} do
       %{scope: other} = sign_up_fixture()
       target = target_fixture(other)
 
       assert_raise Ecto.ConstraintError, ~r/policy_rules_target_id_fkey/, fn ->
         Repo.insert!(%Rule{
           organisation_id: scope.organisation.id,
-          hive_id: scope.hive.id,
+          workspace_id: scope.workspace.id,
           target_id: target.id,
           kind: "host",
           action: "allow",
@@ -973,14 +978,14 @@ defmodule Apiary.PolicyTest do
       }
     end
 
-    test "a host is allowed or denied in the target or in the hive", ctx do
+    test "a host is allowed or denied in the target or in the workspace", ctx do
       assert {:ok, %Rule{host: "new.example", action: "allow", target_id: target_id}} =
                Policy.rule_from_connection(ctx.scope, ctx.new, :allow, :target)
 
       assert target_id == ctx.target.id
 
       assert {:ok, %Rule{host: "new.example", action: "deny", target_id: nil}} =
-               Policy.rule_from_connection(ctx.scope, ctx.new, :deny, :hive)
+               Policy.rule_from_connection(ctx.scope, ctx.new, :deny, :workspace)
     end
 
     test "on a host held to paths the path is added or taken out", ctx do
@@ -1005,7 +1010,7 @@ defmodule Apiary.PolicyTest do
     test "allowing a connection that names no path, on a host held to paths, is refused", ctx do
       {:ok, _} = Policy.allow(ctx.scope, nil, %{host: "new.example", paths: ["/v1/*"]})
 
-      for level <- [:target, :hive] do
+      for level <- [:target, :workspace] do
         assert {:error, %Error{reason: :invalid, field: :paths, message: message}} =
                  Policy.rule_from_connection(ctx.scope, ctx.new, :allow, level)
 
@@ -1042,12 +1047,12 @@ defmodule Apiary.PolicyTest do
                Policy.rule_from_connection(ctx.scope, ctx.git, :allow, :target)
     end
 
-    test "another hive's connection is not found; a run without a target goes to the hive",
+    test "another workspace's connection is not found; a run without a target goes to the workspace",
          ctx do
       %{scope: other} = sign_up_fixture()
 
       assert {:error, %Error{reason: :not_found}} =
-               Policy.rule_from_connection(other, ctx.new, :allow, :hive)
+               Policy.rule_from_connection(other, ctx.new, :allow, :workspace)
 
       run = started_run(ctx.scope, %{}, egress: [%{"host" => "new.example"}])
       connection = Repo.one!(from c in Connection, where: c.run_id == ^run.id)
@@ -1056,7 +1061,9 @@ defmodule Apiary.PolicyTest do
                Policy.rule_from_connection(ctx.scope, connection, :allow, :target)
 
       assert message =~ "names no repository"
-      assert {:ok, %Rule{}} = Policy.rule_from_connection(ctx.scope, connection, :allow, :hive)
+
+      assert {:ok, %Rule{}} =
+               Policy.rule_from_connection(ctx.scope, connection, :allow, :workspace)
     end
   end
 
@@ -1103,17 +1110,17 @@ defmodule Apiary.PolicyTest do
       future = DateTime.add(DateTime.utc_now(), 60, :second)
       assert [%{allowed: 0, denied: 0}] = Policy.suggestions(scope, target, future)
 
-      hive_rule = Enum.find(Policy.list_rules(scope, nil), &(&1.host == "api.example"))
+      workspace_rule = Enum.find(Policy.list_rules(scope, nil), &(&1.host == "api.example"))
 
       assert %{
                suggested: [%{host: "registry.example", denied: 2}],
                covered: [
-                 %{host: "api.example", by: "api.example", source: :hive, rule_id: rule_id},
+                 %{host: "api.example", by: "api.example", source: :workspace, rule_id: rule_id},
                  %{host: "docs.s.example", by: "*.s.example", source: :target}
                ]
              } = Policy.declared_hosts(scope, target)
 
-      assert rule_id == hive_rule.id
+      assert rule_id == workspace_rule.id
 
       %{scope: other} = sign_up_fixture()
       assert %{suggested: [], covered: []} = Policy.declared_hosts(other, target)

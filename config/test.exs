@@ -26,6 +26,10 @@ config :apiary, ApiaryWeb.Endpoint,
   secret_key_base: "giGpqWKm7Gc+jLkx/fMtGY31GLJixgd7irXSVlxl2zqhd7NGxckjtkYdU3pBR8I/",
   server: false
 
+# A second domain beside the software one, so the tests see a workspace's domain read
+# from its row (`Apiary.Lingo.Domain`). Defined in test/support; no instance has it.
+config :apiary, Apiary.Lingo.Domain, test_domains: %{"example" => Apiary.Lingo.Domain.Example}
+
 # In test we don't send emails
 config :apiary, Apiary.Mailer, adapter: Swoosh.Adapters.Test
 

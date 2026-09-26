@@ -1,15 +1,15 @@
 defmodule Apiary.Runs.Run do
   @moduledoc """
-  A run as the hive knows it: the projection of the run's events.
+  A run as the workspace knows it: the projection of the run's events.
 
-  `run_id` is the subject of the run's events, unique within the hive. The row
+  `run_id` is the subject of the run's events, unique within the workspace. The row
   is created by the receiver on the first event of an unknown subject, in state
   `pending`; every other field is folded from the events by the projector, so
   the row can be rebuilt from `events` alone.
   """
   use Ecto.Schema
 
-  @typedoc "A run of a hive."
+  @typedoc "A run of a workspace."
   @type t :: %__MODULE__{}
 
   @states ~w(pending running succeeded failed timed_out lost closed)
@@ -19,8 +19,8 @@ defmodule Apiary.Runs.Run do
   schema "runs" do
     field :run_id, Ecto.UUID
 
-    # The run's target as its labels named it (`Apiary.Body`): the system and the path,
-    # kept on the run beside `target_id`, both nil when the labels name none.
+    # The run's target as its labels named it (`Apiary.Lingo.Domain`): the system and the
+    # path, kept on the run beside `target_id`, both nil when the labels name none.
     field :target_system, :string
     field :target_path, :string
     field :task, :string
@@ -74,7 +74,7 @@ defmodule Apiary.Runs.Run do
     field :cost_usd, :decimal
 
     belongs_to :organisation, Apiary.Organisations.Organisation
-    belongs_to :hive, Apiary.Organisations.Hive
+    belongs_to :workspace, Apiary.Organisations.Workspace
     belongs_to :access_key, Apiary.AccessKeys.AccessKey
     belongs_to :target, Apiary.Runs.Target
     belongs_to :closed_by, Apiary.Accounts.User
@@ -89,7 +89,7 @@ defmodule Apiary.Runs.Run do
   @doc "Every state a run can be in, as the `CHECK` on the column lists them."
   def states, do: @states
 
-  @doc "The states of a run that has not ended: the hive counts these as alive."
+  @doc "The states of a run that has not ended: the workspace counts these as alive."
   def alive_states, do: ~w(pending running)
 
   @doc "The one state of a run that ended well."
@@ -97,8 +97,9 @@ defmodule Apiary.Runs.Run do
 
   @doc """
   The states of a run that ended badly: failed, timed out, lost and closed. A closed run
-  was stopped by the hive, not by a failure of its own; it sits in this family so that
-  every surface counts runs in the same three families (alive, ended well, ended badly).
+  was stopped by the workspace, not by a failure of its own; it sits in this family so
+  that every surface counts runs in the same three families (alive, ended well, ended
+  badly).
   """
   def ended_badly_states, do: ~w(failed timed_out lost closed)
 end

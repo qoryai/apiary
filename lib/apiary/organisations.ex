@@ -1,6 +1,10 @@
 defmodule Apiary.Organisations do
   @moduledoc """
-  Organisations, their hives, memberships and invitations.
+  Organisations, their workspaces, memberships and invitations.
+
+  An organisation and a workspace each get a slug from their name when they are created
+  (`Apiary.Organisations.Slug`); a page's path names them by it, and `resolve_scope/3`
+  loads them for a member only.
 
   Every function that acts on behalf of a caller takes an `Apiary.Accounts.Scope`
   loaded with `load_scope/2`. The scope says who is calling; authorization never
@@ -17,15 +21,15 @@ defmodule Apiary.Organisations do
 
   alias Apiary.Repo
   alias Apiary.Accounts.{Scope, User, UserNotifier}
-  alias Apiary.Organisations.{Hive, Invitation, Membership, Organisation}
+  alias Apiary.Organisations.{Workspace, Invitation, Membership, Organisation, Slug}
 
-  @default_hive_name "Main"
+  @default_workspace_name "Main"
   @max_pending_invitations 50
 
   ## Scope
 
   @doc """
-  Loads the organisation, hive and membership into the scope: the user's
+  Loads the organisation, workspace and membership into the scope: the user's
   membership in `organisation_id` when given and held, otherwise the user's
   earliest membership. A user without a membership gets the scope unchanged.
   """
@@ -42,7 +46,7 @@ defmodule Apiary.Organisations do
         %{
           scope
           | organisation: membership.organisation,
-            hive: membership.hive,
+            workspace: membership.workspace,
             membership: membership
         }
 
@@ -53,7 +57,77 @@ defmodule Apiary.Organisations do
 
   def load_scope(scope, _organisation_id), do: scope
 
-  @doc "The user's memberships, preloaded with organisation and hive, oldest first."
+  @doc """
+  resolve_scope/3 loads the organisation whose slug is `organisation_slug`, and the
+  workspace whose slug is `workspace_slug` in it, into the scope: `{:ok, scope}` when the
+  user holds a membership there. Without a workspace slug, the workspace is the one of
+  the user's membership in the organisation.
+
+  `:error` when a slug names nothing and when it names an organisation or a workspace
+  the user is not a member of: one answer for both, so a slug does not tell whether it
+  exists (decision 0073).
+  """
+  @spec resolve_scope(Scope.t(), String.t(), String.t() | nil) :: {:ok, Scope.t()} | :error
+  def resolve_scope(scope, organisation_slug, workspace_slug \\ nil)
+
+  def resolve_scope(%Scope{user: %User{} = user} = scope, organisation_slug, workspace_slug)
+      when is_binary(organisation_slug) do
+    query =
+      from m in Membership,
+        join: o in assoc(m, :organisation),
+        join: w in assoc(m, :workspace),
+        where: m.user_id == ^user.id and o.slug == ^organisation_slug,
+        preload: [organisation: o, workspace: w]
+
+    query =
+      if is_binary(workspace_slug),
+        do: where(query, [_m, _o, w], w.slug == ^workspace_slug),
+        else: query
+
+    case Repo.one(query) do
+      %Membership{} = membership -> {:ok, put_membership(scope, membership)}
+      nil -> :error
+    end
+  end
+
+  def resolve_scope(_scope, _organisation_slug, _workspace_slug), do: :error
+
+  @doc """
+  home_membership/2 is the membership whose workspace a signed-in user is sent to: the
+  one of `workspace_id`, the workspace the session remembers as last opened, while the
+  user still holds it; otherwise the user's earliest. Nil without a membership.
+  """
+  @spec home_membership(%User{}, String.t() | nil) :: %Membership{} | nil
+  def home_membership(%User{} = user, workspace_id \\ nil) do
+    memberships = list_memberships(user)
+    Enum.find(memberships, &(&1.workspace_id == workspace_id)) || List.first(memberships)
+  end
+
+  @doc """
+  load_home_scope/2 loads the organisation, workspace and membership of
+  `home_membership/2` into the scope, for a page of the user's own that shows the
+  workspace beside it. A user without a membership gets the scope unchanged.
+  """
+  @spec load_home_scope(Scope.t() | nil, String.t() | nil) :: Scope.t() | nil
+  def load_home_scope(%Scope{user: %User{} = user} = scope, workspace_id) do
+    case home_membership(user, workspace_id) do
+      %Membership{} = membership -> put_membership(scope, membership)
+      nil -> scope
+    end
+  end
+
+  def load_home_scope(scope, _workspace_id), do: scope
+
+  defp put_membership(scope, %Membership{} = membership) do
+    %{
+      scope
+      | organisation: membership.organisation,
+        workspace: membership.workspace,
+        membership: membership
+    }
+  end
+
+  @doc "The user's memberships, preloaded with organisation and workspace, oldest first."
   def list_memberships(%User{} = user) do
     user |> membership_query() |> Repo.all()
   end
@@ -62,7 +136,7 @@ defmodule Apiary.Organisations do
     from m in Membership,
       where: m.user_id == ^user_id,
       order_by: [asc: m.inserted_at, asc: m.id],
-      preload: [:organisation, :hive]
+      preload: [:organisation, :workspace]
   end
 
   ## Sign-up
@@ -71,46 +145,76 @@ defmodule Apiary.Organisations do
   Registers a user and places them in an organisation, in one transaction.
 
   Without an invitation token the user gets a new organisation named from the
-  email's local part, a hive named "#{@default_hive_name}" and an owner membership.
-  With a valid pending token the invitation is accepted instead: no organisation
-  is created and the membership is at the invitation's level. An invalid or
+  email's local part, a workspace named "#{@default_workspace_name}" and an owner
+  membership. With a valid pending token the invitation is accepted instead: no
+  organisation is created and the membership is at the invitation's level. An invalid or
   expired token behaves as no token.
 
   The invitation may also be given as the struct `get_invitation_by_token/1`
   returned earlier. Either way it is claimed inside the transaction: when someone
   else accepted it in the meantime, nothing is created and the changeset carries
-  an error on `:email`.
+  an error on `:email`. So it does when every slug picked for the new organisation was
+  taken by a concurrent sign-up before the insert, a few times over.
+
+  `opts` is for tests: `pick_slug: fun`, given the organisation's name, stands in for the
+  pick of a free slug.
   """
-  def sign_up_user(attrs, invitation_or_token \\ nil) do
+  def sign_up_user(attrs, invitation_or_token \\ nil, opts \\ []) do
     user_changeset = User.email_changeset(%User{}, attrs)
+    pick = Keyword.get(opts, :pick_slug, &organisation_slug/1)
 
     multi =
       case pending_invitation(invitation_or_token) do
         %Invitation{} = invitation -> invited_sign_up_multi(user_changeset, invitation)
-        _ -> fresh_sign_up_multi(user_changeset)
+        _ -> fresh_sign_up_multi(user_changeset, pick)
       end
 
     case Repo.transaction(multi) do
-      {:ok, %{user: user, organisation: organisation, hive: hive, membership: membership}} ->
-        {:ok, %{user: user, organisation: organisation, hive: hive, membership: membership}}
+      {:ok,
+       %{user: user, organisation: organisation, workspace: workspace, membership: membership}} ->
+        {:ok,
+         %{user: user, organisation: organisation, workspace: workspace, membership: membership}}
 
       {:error, _step, %Ecto.Changeset{} = changeset, _changes} ->
         {:error, changeset}
     end
   end
 
-  defp fresh_sign_up_multi(user_changeset) do
+  defp fresh_sign_up_multi(user_changeset, pick) do
     Ecto.Multi.new()
     |> Ecto.Multi.insert(:user, user_changeset)
-    |> Ecto.Multi.insert(:organisation, fn %{user: user} ->
-      Organisation.changeset(%Organisation{}, %{name: organisation_name_from_email(user.email)})
+    |> Ecto.Multi.run(:organisation, fn _repo, %{user: user} ->
+      case insert_organisation(organisation_name_from_email(user.email), pick) do
+        {:ok, organisation} ->
+          {:ok, organisation}
+
+        {:error, :slug_taken} ->
+          {:error,
+           user_changeset
+           |> Ecto.Changeset.add_error(
+             :email,
+             dgettext_noop("errors", "could not be signed up just now; please try again")
+           )
+           |> Map.put(:action, :insert)}
+
+        {:error, changeset} ->
+          {:error, changeset}
+      end
     end)
-    |> Ecto.Multi.insert(:hive, fn %{organisation: organisation} ->
-      %Hive{organisation_id: organisation.id}
-      |> Hive.changeset(%{name: @default_hive_name})
+    |> Ecto.Multi.insert(:workspace, fn %{organisation: organisation} ->
+      %Workspace{organisation_id: organisation.id}
+      |> Workspace.create_changeset(%{
+        name: @default_workspace_name,
+        domain: Apiary.Lingo.Domain.default().name()
+      })
+      |> Workspace.put_slug(workspace_slug(organisation, @default_workspace_name))
     end)
-    |> Ecto.Multi.insert(:membership, fn %{user: user, organisation: organisation, hive: hive} ->
-      membership_changeset(organisation, hive, user, :owner)
+    |> Ecto.Multi.insert(:membership, fn %{
+                                           user: user,
+                                           organisation: organisation,
+                                           workspace: workspace
+                                         } ->
+      membership_changeset(organisation, workspace, user, :owner)
     end)
   end
 
@@ -118,7 +222,7 @@ defmodule Apiary.Organisations do
     Ecto.Multi.new()
     |> Ecto.Multi.insert(:user, user_changeset)
     |> Ecto.Multi.put(:organisation, invitation.organisation)
-    |> Ecto.Multi.put(:hive, invitation.hive)
+    |> Ecto.Multi.put(:workspace, invitation.workspace)
     |> Ecto.Multi.run(:invitation, fn _repo, _changes ->
       # Lost to a concurrent accept: an error on the form rather than a second
       # membership from one invitation.
@@ -133,13 +237,61 @@ defmodule Apiary.Organisations do
       end
     end)
     |> Ecto.Multi.insert(:membership, fn %{user: user} ->
-      membership_changeset(invitation.organisation, invitation.hive, user, invitation.level)
+      membership_changeset(invitation.organisation, invitation.workspace, user, invitation.level)
     end)
   end
 
-  defp membership_changeset(%Organisation{} = organisation, %Hive{} = hive, %User{} = user, level) do
-    %Membership{organisation_id: organisation.id, hive_id: hive.id, user_id: user.id}
+  defp membership_changeset(
+         %Organisation{} = organisation,
+         %Workspace{} = workspace,
+         %User{} = user,
+         level
+       ) do
+    %Membership{organisation_id: organisation.id, workspace_id: workspace.id, user_id: user.id}
     |> Membership.changeset(%{level: level})
+  end
+
+  @slug_attempts 5
+
+  # Inserts a new organisation with a slug `pick` makes from its name. The slug is picked
+  # by asking which are taken, so two sign-ups may pick the same one at once. The insert
+  # does nothing on the unique index instead of failing, which would abort the
+  # transaction; the organisation is then not there, and a new slug is picked, as often
+  # as `@slug_attempts`. `{:error, :slug_taken}` when every attempt lost.
+  defp insert_organisation(name, pick, attempts \\ @slug_attempts)
+
+  defp insert_organisation(_name, _pick, 0), do: {:error, :slug_taken}
+
+  defp insert_organisation(name, pick, attempts) do
+    changeset =
+      %Organisation{}
+      |> Organisation.changeset(%{name: name})
+      |> Organisation.put_slug(pick.(name))
+
+    with {:ok, %Organisation{id: id} = organisation} <-
+           Repo.insert(changeset, on_conflict: :nothing, conflict_target: :slug) do
+      if Repo.exists?(from o in Organisation, where: o.id == ^id),
+        do: {:ok, organisation},
+        else: insert_organisation(name, pick, attempts - 1)
+    end
+  end
+
+  defp organisation_slug(name) do
+    name
+    |> Slug.from_name("organisation")
+    |> Slug.pick(ApiaryWeb.ReservedSlugs.organisation(), fn slug ->
+      Repo.exists?(from o in Organisation, where: o.slug == ^slug)
+    end)
+  end
+
+  defp workspace_slug(%Organisation{id: organisation_id}, name) do
+    name
+    |> Slug.from_name("workspace")
+    |> Slug.pick(ApiaryWeb.ReservedSlugs.workspace(), fn slug ->
+      Repo.exists?(
+        from w in Workspace, where: w.organisation_id == ^organisation_id and w.slug == ^slug
+      )
+    end)
   end
 
   defp organisation_name_from_email(email) do
@@ -162,27 +314,27 @@ defmodule Apiary.Organisations do
     end
   end
 
-  def change_hive(%Hive{} = hive, attrs \\ %{}) do
-    Hive.changeset(hive, attrs)
+  def change_workspace(%Workspace{} = workspace, attrs \\ %{}) do
+    Workspace.changeset(workspace, attrs)
   end
 
-  @doc "Renames the scope's hive. Owners only."
-  def update_hive(%Scope{hive: %Hive{} = hive} = scope, attrs) do
+  @doc "Renames the scope's workspace. Owners only."
+  def update_workspace(%Scope{workspace: %Workspace{} = workspace} = scope, attrs) do
     with :ok <- authorize_owner(scope) do
-      hive |> Hive.changeset(attrs) |> Repo.update()
+      workspace |> Workspace.changeset(attrs) |> Repo.update()
     end
   end
 
   ## Members
 
-  @doc "The memberships of the scope's hive, preloaded with user: owners first, then by insertion."
+  @doc "The memberships of the scope's workspace, preloaded with user: owners first, then by insertion."
   def list_members(%Scope{
         organisation: %Organisation{id: organisation_id},
-        hive: %Hive{id: hive_id}
+        workspace: %Workspace{id: workspace_id}
       }) do
     Repo.all(
       from m in Membership,
-        where: m.organisation_id == ^organisation_id and m.hive_id == ^hive_id,
+        where: m.organisation_id == ^organisation_id and m.workspace_id == ^workspace_id,
         order_by: [
           asc: fragment("CASE WHEN ? = 'owner' THEN 0 ELSE 1 END", m.level),
           asc: m.inserted_at,
@@ -246,7 +398,10 @@ defmodule Apiary.Organisations do
   defp lock_owners(_scope), do: :ok
 
   defp get_member(
-         %Scope{organisation: %Organisation{id: organisation_id}, hive: %Hive{id: hive_id}},
+         %Scope{
+           organisation: %Organisation{id: organisation_id},
+           workspace: %Workspace{id: workspace_id}
+         },
          membership_id
        ) do
     with {:ok, membership_id} <- Ecto.UUID.cast(membership_id),
@@ -254,7 +409,7 @@ defmodule Apiary.Organisations do
            Repo.get_by(Membership,
              id: membership_id,
              organisation_id: organisation_id,
-             hive_id: hive_id
+             workspace_id: workspace_id
            ) do
       {:ok, membership}
     else
@@ -319,19 +474,19 @@ defmodule Apiary.Organisations do
   end
 
   @doc """
-  Invites an email address to the scope's hive and emails the link built by
+  Invites an email address to the scope's workspace and emails the link built by
   `url_fun.(token)`. Owners only. An address that already belongs to a member of
   the organisation is refused with an error on `:email`.
   """
   def invite_member(%Scope{} = scope, attrs, url_fun) when is_function(url_fun, 1) do
     with :ok <- authorize_owner(scope) do
-      %Scope{user: inviter, organisation: organisation, hive: hive} = scope
+      %Scope{user: inviter, organisation: organisation, workspace: workspace} = scope
       {token, token_hash} = Invitation.build_token()
 
       changeset =
         %Invitation{
           organisation_id: organisation.id,
-          hive_id: hive.id,
+          workspace_id: workspace.id,
           invited_by_id: inviter.id,
           token_hash: token_hash,
           expires_at: DateTime.add(DateTime.utc_now(), Invitation.validity_days(), :day)
@@ -462,7 +617,7 @@ defmodule Apiary.Organisations do
     end
   end
 
-  @doc "The pending invitation behind a URL token, preloaded with organisation and hive, or nil."
+  @doc "The pending invitation behind a URL token, preloaded with organisation and workspace, or nil."
   def get_invitation_by_token(token) when is_binary(token) do
     token_hash = Invitation.hash_token(token)
     now = DateTime.utc_now()
@@ -470,14 +625,14 @@ defmodule Apiary.Organisations do
     Repo.one(
       from i in Invitation,
         where: i.token_hash == ^token_hash and is_nil(i.accepted_at) and i.expires_at > ^now,
-        preload: [:organisation, :hive]
+        preload: [:organisation, :workspace]
     )
   end
 
   def get_invitation_by_token(_token), do: nil
 
   defp pending_invitation(%Invitation{} = invitation),
-    do: Repo.preload(invitation, [:organisation, :hive])
+    do: Repo.preload(invitation, [:organisation, :workspace])
 
   defp pending_invitation(token), do: get_invitation_by_token(token)
 
@@ -505,7 +660,7 @@ defmodule Apiary.Organisations do
               Repo.insert(
                 membership_changeset(
                   invitation.organisation,
-                  invitation.hive,
+                  invitation.workspace,
                   user,
                   invitation.level
                 )
@@ -548,14 +703,14 @@ defmodule Apiary.Organisations do
   def fetch_membership(%Scope{
         user: %User{id: user_id},
         organisation: %Organisation{id: organisation_id},
-        hive: %Hive{id: hive_id},
+        workspace: %Workspace{id: workspace_id},
         membership: %Membership{id: membership_id}
       }) do
     case Repo.get_by(Membership,
            id: membership_id,
            user_id: user_id,
            organisation_id: organisation_id,
-           hive_id: hive_id
+           workspace_id: workspace_id
          ) do
       %Membership{} = membership -> {:ok, membership}
       nil -> {:error, :unauthorized}

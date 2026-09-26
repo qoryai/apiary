@@ -7,6 +7,9 @@ defmodule ApiaryWeb.UserAuthTest do
   alias ApiaryWeb.UserAuth
 
   import Apiary.AccountsFixtures
+  import Apiary.OrganisationsFixtures
+
+  alias Apiary.Organisations
 
   @remember_me_cookie "_apiary_web_user_remember_me"
   @remember_me_cookie_max_age 60 * 60 * 24 * 14
@@ -25,7 +28,8 @@ defmodule ApiaryWeb.UserAuthTest do
       conn = UserAuth.log_in_user(conn, user)
       assert token = get_session(conn, :user_token)
       assert get_session(conn, :live_socket_id) == "users_sessions:#{Base.url_encode64(token)}"
-      assert redirected_to(conn) == ~p"/hive"
+      # without a membership: the user's organisations, where they read they have none
+      assert redirected_to(conn) == ~p"/users/organisations"
       assert Accounts.get_user_by_session_token(token)
     end
 
@@ -85,13 +89,37 @@ defmodule ApiaryWeb.UserAuthTest do
       assert max_age == @remember_me_cookie_max_age
     end
 
-    test "redirects to the hive when user is already logged in", %{conn: conn, user: user} do
+    test "redirects to the organisations page when user is already logged in", %{
+      conn: conn,
+      user: user
+    } do
       conn =
         conn
         |> assign(:current_scope, Scope.for_user(user))
         |> UserAuth.log_in_user(user)
 
-      assert redirected_to(conn) == ~p"/hive"
+      assert redirected_to(conn) == ~p"/users/organisations"
+    end
+
+    test "redirects a member to their earliest workspace, or the one last opened", %{
+      conn: conn
+    } do
+      %{user: user, organisation: organisation, workspace: workspace} = sign_up_fixture()
+      other = sign_up_fixture()
+      %{token: token} = invitation_fixture(other.scope, %{"email" => user.email})
+      {:ok, _membership} = Organisations.accept_invitation(user, token)
+
+      assert redirected_to(UserAuth.log_in_user(conn, user)) ==
+               ~p"/#{organisation}/#{workspace}"
+
+      conn = put_session(conn, :last_workspace_id, other.workspace.id)
+
+      assert redirected_to(UserAuth.log_in_user(conn, user)) ==
+               ~p"/#{other.organisation}/#{other.workspace}"
+
+      # a workspace the user is no longer a member of is not where they are sent
+      conn = put_session(conn, :last_workspace_id, sign_up_fixture().workspace.id)
+      assert redirected_to(UserAuth.log_in_user(conn, user)) == ~p"/#{organisation}/#{workspace}"
     end
 
     test "writes a cookie if remember_me was set in previous session", %{conn: conn, user: user} do
@@ -322,6 +350,129 @@ defmodule ApiaryWeb.UserAuthTest do
 
       assert {:halt, _updated_socket} =
                UserAuth.on_mount(:require_sudo_mode, %{}, session, socket)
+    end
+  end
+
+  describe "the workspace last opened" do
+    test "is remembered across a log-out and a log-in", %{conn: conn} do
+      %{user: user} = sign_up_fixture()
+      other = sign_up_fixture()
+      %{token: token} = invitation_fixture(other.scope, %{"email" => user.email})
+      {:ok, _membership} = Organisations.accept_invitation(user, token)
+
+      conn =
+        conn
+        |> put_session(:last_workspace_id, other.workspace.id)
+        |> put_session(:to_be_removed, "value")
+        |> UserAuth.log_out_user()
+
+      assert get_session(conn, :last_workspace_id) == other.workspace.id
+      refute get_session(conn, :to_be_removed)
+
+      # The next request carries what the log-out left in the session.
+      conn =
+        build_conn()
+        |> Map.replace!(:secret_key_base, ApiaryWeb.Endpoint.config(:secret_key_base))
+        |> init_test_session(%{last_workspace_id: other.workspace.id, to_be_removed: "value"})
+        |> UserAuth.log_in_user(user)
+
+      assert get_session(conn, :last_workspace_id) == other.workspace.id
+      refute get_session(conn, :to_be_removed)
+      assert redirected_to(conn) == ~p"/#{other.organisation}/#{other.workspace}"
+    end
+  end
+
+  describe "fetch_path_scope/2" do
+    setup %{conn: conn} do
+      %{user: user} = signed_up = sign_up_fixture()
+      %{conn: assign(conn, :current_scope, Scope.for_user(user)), signed_up: signed_up}
+    end
+
+    defp with_path(conn, params), do: %{conn | path_params: params}
+
+    test "loads the organisation and the workspace the path names, and remembers the workspace",
+         %{conn: conn, signed_up: signed_up} do
+      %{organisation: organisation, workspace: workspace} = signed_up
+
+      conn =
+        conn
+        |> with_path(%{"org" => organisation.slug, "workspace" => workspace.slug})
+        |> UserAuth.fetch_path_scope([])
+
+      refute conn.halted
+      assert conn.assigns.current_scope.organisation.id == organisation.id
+      assert conn.assigns.current_scope.workspace.id == workspace.id
+      assert conn.assigns.current_scope.membership.id == signed_up.membership.id
+      assert get_session(conn, :last_workspace_id) == workspace.id
+    end
+
+    test "with the organisation alone, loads the user's workspace in it", %{
+      conn: conn,
+      signed_up: signed_up
+    } do
+      conn =
+        conn
+        |> with_path(%{"org" => signed_up.organisation.slug})
+        |> UserAuth.fetch_path_scope([])
+
+      assert conn.assigns.current_scope.workspace.id == signed_up.workspace.id
+    end
+
+    test "answers not found for a slug the user is no member of, or that does not exist", %{
+      conn: conn,
+      signed_up: signed_up
+    } do
+      other = sign_up_fixture()
+
+      for params <- [
+            %{"org" => other.organisation.slug, "workspace" => other.workspace.slug},
+            %{"org" => other.organisation.slug},
+            # the user's organisation, another organisation's workspace slug
+            %{"org" => signed_up.organisation.slug, "workspace" => "no-such-workspace"},
+            %{"org" => "no-such-organisation", "workspace" => signed_up.workspace.slug}
+          ] do
+        conn = conn |> with_path(params) |> UserAuth.fetch_path_scope([])
+        assert conn.halted
+        assert conn.status == 404
+        assert conn.resp_body == "Not Found"
+        refute get_session(conn, :last_workspace_id)
+      end
+    end
+  end
+
+  describe "on_mount :load_path_scope" do
+    setup %{conn: conn} do
+      %{user: user} = signed_up = sign_up_fixture()
+      token = Accounts.generate_user_session_token(user)
+      %{session: conn |> put_session(:user_token, token) |> get_session(), signed_up: signed_up}
+    end
+
+    test "loads the organisation and the workspace the path names", %{
+      session: session,
+      signed_up: signed_up
+    } do
+      params = %{"org" => signed_up.organisation.slug, "workspace" => signed_up.workspace.slug}
+
+      socket = %LiveView.Socket{
+        assigns: %{__changed__: %{}, flash: %{}},
+        private: %{lifecycle: %Phoenix.LiveView.Lifecycle{}}
+      }
+
+      {:cont, socket} = UserAuth.on_mount(:load_path_scope, params, session, socket)
+
+      assert socket.assigns.current_scope.organisation.id == signed_up.organisation.id
+      assert socket.assigns.current_scope.workspace.id == signed_up.workspace.id
+      assert [_membership] = socket.assigns.memberships
+    end
+
+    test "raises not found for another organisation's workspace", %{session: session} do
+      other = sign_up_fixture()
+      params = %{"org" => other.organisation.slug, "workspace" => other.workspace.slug}
+      socket = %LiveView.Socket{assigns: %{__changed__: %{}, flash: %{}}}
+
+      assert_raise ApiaryWeb.NotFound, fn ->
+        UserAuth.on_mount(:load_path_scope, params, session, socket)
+      end
     end
   end
 

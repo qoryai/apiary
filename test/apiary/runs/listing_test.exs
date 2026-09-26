@@ -88,7 +88,7 @@ defmodule Apiary.Runs.ListingTest do
       assert Filters.bounds(filters, @now) ==
                {~U[2026-09-14 00:00:00.000000Z], ~U[2026-09-17 00:00:00.000000Z]}
 
-      assert Filters.range_label(filters) == "14 Sep 2026 to 16 Sep 2026"
+      assert Filters.range_label(filters) == "14 Sept 2026 to 16 Sept 2026"
       assert parse(%{"from" => "yesterday"}).since == "7d"
     end
 
@@ -201,7 +201,7 @@ defmodule Apiary.Runs.ListingTest do
                :none
     end
 
-    test "the hive's connections are read over at most 90 days" do
+    test "the workspace's connections are read over at most 90 days" do
       cx = &Filters.parse(&1, :connections)
       assert %{since: "7d", dropped: ["since"]} = cx.(%{"since" => "all"})
       assert cx.(%{"since" => "90d"}).since == "90d"
@@ -217,7 +217,7 @@ defmodule Apiary.Runs.ListingTest do
   end
 
   describe "page_runs/3 and its filters" do
-    test "reads the scope's hive only, newest first, within the range", %{
+    test "reads the scope's workspace only, newest first, within the range", %{
       scope: scope,
       other: other
     } do
@@ -289,7 +289,7 @@ defmodule Apiary.Runs.ListingTest do
 
   describe "the page is read from its index" do
     test "page_runs orders and ranges by the expression index, without a sort", %{scope: scope} do
-      %{organisation: organisation, hive: hive} = scope
+      %{organisation: organisation, workspace: workspace} = scope
 
       rows =
         for n <- 1..4000 do
@@ -299,7 +299,7 @@ defmodule Apiary.Runs.ListingTest do
             id: Ecto.UUID.generate(),
             run_id: Ecto.UUID.generate(),
             organisation_id: organisation.id,
-            hive_id: hive.id,
+            workspace_id: workspace.id,
             state: "succeeded",
             # Every third run has only pinged: it is placed by inserted_at.
             started_at: if(rem(n, 3) == 0, do: nil, else: at),
@@ -314,7 +314,7 @@ defmodule Apiary.Runs.ListingTest do
       plan =
         Ecto.Adapters.SQL.explain(Repo, :all, Runs.page_runs_query(scope, parse(%{}), @now))
 
-      assert plan =~ "runs_hive_id_started_or_first_heard_index"
+      assert plan =~ "runs_workspace_id_started_or_first_heard_index"
       refute plan =~ "Sort"
 
       # And it is the same page a sort would give.
@@ -405,10 +405,10 @@ defmodule Apiary.Runs.ListingTest do
                  ended_well: 1,
                  ended_badly: 0,
                  with_denials: 1,
-                 hive_runs: 4
+                 workspace_runs: 4
                }
 
-      assert %{runs: 1, hive_runs: 4} =
+      assert %{runs: 1, workspace_runs: 4} =
                Runs.summarise_runs(scope, parse(%{"state" => "succeeded"}), @now)
     end
 
@@ -476,7 +476,7 @@ defmodule Apiary.Runs.ListingTest do
   end
 
   describe "get_run_by_run_id!/2" do
-    test "by the subject, in the scope's hive only; a malformed id is not found", %{
+    test "by the subject, in the scope's workspace only; a malformed id is not found", %{
       scope: scope,
       other: other
     } do
@@ -488,7 +488,7 @@ defmodule Apiary.Runs.ListingTest do
     end
   end
 
-  describe "the hive's destinations" do
+  describe "the workspace's destinations" do
     setup %{scope: scope, other: other} do
       denied = %{
         "host" => "files.cdn.example",
@@ -742,8 +742,8 @@ defmodule Apiary.Runs.ListingTest do
   test "a change of a run is announced on the touched topic", %{scope: scope} do
     Runs.subscribe_touched(scope)
     run = run_fixture(scope)
-    hive_id = run.hive_id
+    workspace_id = run.workspace_id
     Runs.broadcast_changed(run)
-    assert_receive {:runs_touched, ^hive_id}
+    assert_receive {:runs_touched, ^workspace_id}
   end
 end

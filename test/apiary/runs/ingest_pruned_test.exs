@@ -46,15 +46,20 @@ defmodule Apiary.Runs.IngestPrunedTest do
     subject = Ecto.UUID.generate()
     events = wire(subject)
     assert %{status: 202, inserted: 14} = deliver(key, events)
-    run = Repo.one!(from r in Run, where: r.hive_id == ^scope.hive.id and r.run_id == ^subject)
+
+    run =
+      Repo.one!(
+        from r in Run, where: r.workspace_id == ^scope.workspace.id and r.run_id == ^subject
+      )
+
     {:ok, run} = Projector.project(run)
     {run, events}
   end
 
   defp prune(scope, setting) do
-    {:ok, hive} = Retention.update_retention(scope, setting)
+    {:ok, workspace} = Retention.update_retention(scope, setting)
     now = DateTime.add(DateTime.utc_now(), 400 * 86_400, :second)
-    assert %{runs_pruned: 1} = Retention.prune_hive(hive, now: now)
+    assert %{runs_pruned: 1} = Retention.prune_workspace(workspace, now: now)
   end
 
   defp state(run) do

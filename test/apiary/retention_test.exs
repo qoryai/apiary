@@ -5,7 +5,7 @@ defmodule Apiary.RetentionTest do
   import Apiary.OrganisationsFixtures
   import Apiary.RunEventsFixtures
 
-  alias Apiary.Organisations.Hive
+  alias Apiary.Organisations.Workspace
   alias Apiary.Retention
   alias Apiary.Runs.{Connection, Delivery, Event, LogChunk, Projector, Rebuild, Run}
 
@@ -25,7 +25,7 @@ defmodule Apiary.RetentionTest do
 
     Repo.insert!(%Delivery{
       organisation_id: run.organisation_id,
-      hive_id: run.hive_id,
+      workspace_id: run.workspace_id,
       access_key_id: key_id(scope),
       delivery_id: Ecto.UUID.generate(),
       run_id: run.run_id,
@@ -48,8 +48,8 @@ defmodule Apiary.RetentionTest do
   end
 
   defp retain(scope, attrs) do
-    {:ok, hive} = Retention.update_retention(scope, Map.new(attrs))
-    %{scope | hive: hive}
+    {:ok, workspace} = Retention.update_retention(scope, Map.new(attrs))
+    %{scope | workspace: workspace}
   end
 
   defp count(schema, run),
@@ -64,17 +64,17 @@ defmodule Apiary.RetentionTest do
 
   describe "the setting" do
     test "is unlimited by default", %{scope: scope} do
-      assert %Hive{events_retention_days: nil, log_retention_days: nil} = scope.hive
+      assert %Workspace{events_retention_days: nil, log_retention_days: nil} = scope.workspace
     end
 
     test "an owner sets it, each on its own, and clears it", %{scope: scope} do
-      assert {:ok, %Hive{events_retention_days: 90, log_retention_days: nil}} =
+      assert {:ok, %Workspace{events_retention_days: 90, log_retention_days: nil}} =
                Retention.update_retention(scope, %{"events_retention_days" => "90"})
 
       scope = retain(scope, log_retention_days: 30)
-      assert scope.hive.log_retention_days == 30
+      assert scope.workspace.log_retention_days == 30
 
-      assert {:ok, %Hive{events_retention_days: nil, log_retention_days: 30}} =
+      assert {:ok, %Workspace{events_retention_days: nil, log_retention_days: 30}} =
                Retention.update_retention(scope, %{"events_retention_days" => ""})
     end
 
@@ -84,7 +84,7 @@ defmodule Apiary.RetentionTest do
       assert {:error, :unauthorized} =
                Retention.update_retention(member, %{log_retention_days: 7})
 
-      assert Repo.get!(Hive, scope.hive.id).log_retention_days == nil
+      assert Repo.get!(Workspace, scope.workspace.id).log_retention_days == nil
     end
 
     test "the bounds", %{scope: scope} do
@@ -105,7 +105,7 @@ defmodule Apiary.RetentionTest do
       assert %{log_retention_days: [_]} = errors_on(changeset)
 
       for days <- [1, 3650] do
-        assert {:ok, _hive} =
+        assert {:ok, _workspace} =
                  Retention.update_retention(scope, %{
                    events_retention_days: days,
                    log_retention_days: days
@@ -114,8 +114,8 @@ defmodule Apiary.RetentionTest do
     end
 
     test "the database holds the bounds too", %{scope: scope} do
-      assert_raise Postgrex.Error, ~r/hives_events_retention_days_check/, fn ->
-        Repo.update_all(from(h in Hive, where: h.id == ^scope.hive.id),
+      assert_raise Postgrex.Error, ~r/workspaces_events_retention_days_check/, fn ->
+        Repo.update_all(from(h in Workspace, where: h.id == ^scope.workspace.id),
           set: [events_retention_days: 0]
         )
       end
@@ -133,13 +133,13 @@ defmodule Apiary.RetentionTest do
     end
   end
 
-  describe "prune_hive/2" do
+  describe "prune_workspace/2" do
     test "past the log cut-off a run loses its log bytes and keeps its timeline", %{scope: scope} do
       scope = retain(scope, log_retention_days: 30)
       old = old_run(scope, 31)
       young = old_run(scope, 29)
 
-      result = Retention.prune_hive(scope.hive, now: @now)
+      result = Retention.prune_workspace(scope.workspace, now: @now)
 
       assert %{
                runs_pruned: 1,
@@ -176,7 +176,7 @@ defmodule Apiary.RetentionTest do
                log_chunks_deleted: 2,
                log_bytes_deleted: 12,
                deliveries_deleted: 1
-             } = Retention.prune_hive(scope.hive, now: @now)
+             } = Retention.prune_workspace(scope.workspace, now: @now)
 
       assert count(Event, old) == 0
       assert count(LogChunk, old) == 0
@@ -209,8 +209,8 @@ defmodule Apiary.RetentionTest do
       _ancient = old_run(scope, 100)
       _middle = old_run(scope, 60)
 
-      dry = Retention.prune_hive(scope.hive, now: @now, dry_run: true)
-      wet = Retention.prune_hive(scope.hive, now: @now)
+      dry = Retention.prune_workspace(scope.workspace, now: @now, dry_run: true)
+      wet = Retention.prune_workspace(scope.workspace, now: @now)
 
       counts = [:runs_pruned, :events_deleted, :log_chunks_deleted, :log_bytes_deleted]
       assert Map.take(dry, counts) == Map.take(wet, counts)
@@ -219,7 +219,8 @@ defmodule Apiary.RetentionTest do
                wet
 
       # Again: nothing is left to do.
-      assert %{runs_pruned: 0, events_deleted: 0} = Retention.prune_hive(scope.hive, now: @now)
+      assert %{runs_pruned: 0, events_deleted: 0} =
+               Retention.prune_workspace(scope.workspace, now: @now)
     end
 
     test "a run that is alive is never pruned, however old", %{scope: scope} do
@@ -229,7 +230,7 @@ defmodule Apiary.RetentionTest do
       {:ok, %Run{state: "running"}} = Projector.project(run)
       Repo.update_all(from(r in Run, where: r.id == ^run.id), set: [last_event_at: days_ago(50)])
 
-      assert %{runs_pruned: 0} = Retention.prune_hive(scope.hive, now: @now)
+      assert %{runs_pruned: 0} = Retention.prune_workspace(scope.workspace, now: @now)
       assert count(Event, run) == 9
     end
 
@@ -240,13 +241,13 @@ defmodule Apiary.RetentionTest do
       runs = for days <- [40, 30, 20], do: old_run(scope, days)
 
       assert %{runs_pruned: 2, events_deleted: 28, complete: false} =
-               Retention.prune_hive(scope.hive, now: @now, batch: 3, max_runs: 2)
+               Retention.prune_workspace(scope.workspace, now: @now, batch: 3, max_runs: 2)
 
       # Oldest first.
       assert [0, 0, 14] = Enum.map(runs, &count(Event, &1))
 
       assert %{runs_pruned: 1, complete: true} =
-               Retention.prune_hive(scope.hive, now: @now, batch: 3, max_runs: 2)
+               Retention.prune_workspace(scope.workspace, now: @now, batch: 3, max_runs: 2)
     end
 
     test "a dry run deletes nothing and records nothing", %{scope: scope} do
@@ -254,7 +255,7 @@ defmodule Apiary.RetentionTest do
       run = old_run(scope, 11)
 
       assert %{runs_pruned: 1, events_deleted: 14, dry_run: true} =
-               Retention.prune_hive(scope.hive, now: @now, dry_run: true)
+               Retention.prune_workspace(scope.workspace, now: @now, dry_run: true)
 
       assert count(Event, run) == 14
       assert Repo.get!(Run, run.id).events_pruned_at == nil
@@ -266,7 +267,7 @@ defmodule Apiary.RetentionTest do
     test "keeps the projection of a run whose events are gone", %{scope: scope} do
       scope = retain(scope, events_retention_days: 10)
       run = old_run(scope, 50)
-      Retention.prune_hive(scope.hive, now: @now)
+      Retention.prune_workspace(scope.workspace, now: @now)
       pruned = Repo.get!(Run, run.id)
 
       assert {:ok, kept} = Projector.rebuild(pruned)
@@ -287,7 +288,7 @@ defmodule Apiary.RetentionTest do
       # Half pruned, as a job that died would leave it, under a setting made since.
       Repo.delete_all(from e in Event, where: e.run_id == ^run.id and e.sequence < 8)
 
-      Repo.update_all(from(h in Hive, where: h.id == ^scope.hive.id),
+      Repo.update_all(from(h in Workspace, where: h.id == ^scope.workspace.id),
         set: [events_retention_days: 10]
       )
 
@@ -301,7 +302,7 @@ defmodule Apiary.RetentionTest do
     } do
       scope = retain(scope, log_retention_days: 10)
       run = old_run(scope, 50)
-      Retention.prune_hive(scope.hive, now: @now)
+      Retention.prune_workspace(scope.workspace, now: @now)
 
       assert {:ok, rebuilt} = Projector.rebuild(Repo.get!(Run, run.id))
       assert rebuilt.state == "succeeded"

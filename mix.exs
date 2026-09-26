@@ -78,6 +78,14 @@ defmodule Apiary.MixProject do
       {:telemetry_metrics, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},
       {:gettext, "~> 1.0"},
+      # Dates, times and numbers as each language writes them, from the Unicode CLDR
+      # (ApiaryWeb.Cldr, ApiaryWeb.Format); tz is the IANA time zone database compiled in:
+      # a person's time zone is validated and times shifted out of UTC with no download
+      # at runtime.
+      {:ex_cldr, "~> 2.47"},
+      {:ex_cldr_numbers, "~> 2.38"},
+      {:ex_cldr_dates_times, "~> 2.25"},
+      {:tz, "~> 0.28.4"},
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.3.0"},
       {:bandit, "~> 1.5"},
@@ -163,7 +171,7 @@ defmodule Apiary.MixProject do
         "Accounts and organisations": [~r/^Apiary\.Accounts/, ~r/^Apiary\.Organisations/],
         "Access keys": [~r/^Apiary\.AccessKeys/, ~r/^Apiary\.Encrypted/, Apiary.Vault],
         "Runs and the record": [~r/^Apiary\.Runs/],
-        Bodies: [~r/^Apiary\.Body/],
+        Domains: [~r/^Apiary\.Lingo\.Domain/],
         "Security policy": [~r/^Apiary\.Policy/],
         Retention: [~r/^Apiary\.Retention/],
         "Server contract": [~r/^Apiary\.Contract/, ~r/^ApiaryWeb\.Contract/],

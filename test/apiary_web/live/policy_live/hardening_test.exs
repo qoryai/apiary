@@ -1,8 +1,8 @@
 defmodule ApiaryWeb.PolicyLive.HardeningTest do
   @moduledoc """
   What a client can send that the page never offered: events without their dialog, ids of
-  another hive, payloads that are not what a form sends, parameters that are not what a
-  link writes. Nothing changes that the sender may not change, and no page goes down.
+  another workspace, payloads that are not what a form sends, parameters that are not what
+  a link writes. Nothing changes that the sender may not change, and no page goes down.
   """
   use ApiaryWeb.ConnCase, async: true
 
@@ -30,7 +30,7 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
 
     %{
       target: target,
-      path: "/hive/policy/targets/#{target.id}",
+      path: workspace_path(scope, "/policy/targets/#{target.id}"),
       locked: locked,
       plain: plain,
       denied: denied,
@@ -47,9 +47,9 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
   defp rules(scope, holder \\ nil), do: Policy.list_rules(scope, holder)
   defp rule(scope, host), do: Enum.find(rules(scope), &(&1.host == host))
 
-  describe "a member's crafted events on the hive's page" do
+  describe "a member's crafted events on the workspace's page" do
     test "confirms with no dialog open do nothing", %{member_conn: conn, scope: scope} do
-      view = open(conn, "/hive/policy")
+      view = open(conn, workspace_path(scope, "/policy"))
       before = rules(scope)
 
       for event <- ~w(mode_confirm lock_confirm remove_confirm target_mode_confirm) do
@@ -63,7 +63,7 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
 
     test "unlock, remove of a locked rule and saving over a locked host are refused",
          %{member_conn: conn, scope: scope, locked: locked} do
-      view = open(conn, "/hive/policy")
+      view = open(conn, workspace_path(scope, "/policy"))
 
       render_hook(view, "lock_toggle", %{"id" => locked.id})
       assert rule(scope, "*.paste.example").locked
@@ -82,7 +82,7 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
   end
 
   describe "a member's crafted events on a target's page" do
-    test "a locked hive rule is not disabled, and allowing for the hive stays a member's right",
+    test "a locked workspace rule is not disabled, and allowing for the workspace stays a member's right",
          %{member_conn: conn, scope: scope, target: target, path: path, locked: locked} do
       view = open(conn, path)
 
@@ -94,15 +94,15 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
       render_hook(view, "target_mode_confirm", %{})
       assert Policy.get_mode(scope, target).own == nil
 
-      # Rules are a member's to edit, the hive's too: these are allowed, not refused.
-      render_hook(view, "suggest_allow", %{"host" => "flags.example", "level" => "hive"})
+      # Rules are a member's to edit, the workspace's too: these are allowed, not refused.
+      render_hook(view, "suggest_allow", %{"host" => "flags.example", "level" => "workspace"})
       assert rule(scope, "flags.example")
       render_hook(view, "suggest_allow_all", %{})
       assert Process.alive?(view.pid)
     end
   end
 
-  describe "another hive's ids" do
+  describe "another workspace's ids" do
     setup do
       other = scope_fixture()
       started_run(other, shop())
@@ -113,15 +113,15 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
     end
 
     test "change nothing there, from either page",
-         %{conn: conn, path: path, other: other, their_rule: rule, their_own: own} do
-      hive = open(conn, "/hive/policy")
+         %{conn: conn, path: path, other: other, their_rule: rule, their_own: own, scope: scope} do
+      workspace = open(conn, workspace_path(scope, "/policy"))
 
       for event <- ~w(lock_toggle remove edit_paths), id <- [rule.id, own.id, "nope", nil, %{}] do
-        render_hook(hive, event, %{"id" => id})
+        render_hook(workspace, event, %{"id" => id})
       end
 
-      render_hook(hive, "remove_confirm", %{})
-      refute render(hive) =~ "secret.example"
+      render_hook(workspace, "remove_confirm", %{})
+      refute render(workspace) =~ "secret.example"
 
       target = open(conn, path)
 
@@ -134,7 +134,7 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
 
       assert [%{host: "secret.example", locked: false}] = Policy.list_rules(other, nil)
       assert length(Policy.list_changes(other, :all, 1).items) == 2
-      assert Process.alive?(hive.pid) and Process.alive?(target.pid)
+      assert Process.alive?(workspace.pid) and Process.alive?(target.pid)
     end
   end
 
@@ -142,7 +142,7 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
     test "a removed rule is not removed twice, and a lock is not put on what is gone",
          %{conn: conn, scope: scope, locked: locked, plain: plain, target: target} do
       {:ok, _} = Policy.deny(scope, target, %{host: "github.example"})
-      view = open(conn, "/hive/policy")
+      view = open(conn, workspace_path(scope, "/policy"))
 
       view |> element("#rule-#{plain.id}-lock") |> render_click()
       assert has_element?(view, "#lock-confirm")
@@ -161,7 +161,8 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
          %{conn: conn, scope: scope, target: target, path: path, denied: denied} do
       view = open(conn, path)
 
-      # The hive's deny became an allow held to paths: "Allow here" must not open them.
+      # The workspace's deny became an allow held
+      # to paths: "Allow here" must not open them.
       {:ok, _} = Policy.allow(scope, nil, %{host: "telemetry.example", paths: ["/v1/*"]})
       render_hook(view, "row_act", %{"id" => denied.id, "act" => "allow_here"})
 
@@ -172,7 +173,7 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
 
   describe "payloads no form sends" do
     test "leave the composer as it was and the page up", %{conn: conn, scope: scope} do
-      view = open(conn, "/hive/policy")
+      view = open(conn, workspace_path(scope, "/policy"))
 
       for payload <- [
             %{"rule" => "text"},
@@ -214,19 +215,19 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
   end
 
   describe "parameters no link writes" do
-    test "are read as their defaults", %{conn: conn, path: path} do
+    test "are read as their defaults", %{conn: conn, path: path, scope: scope} do
       for query <- [
-            "/hive/policy?show=%00&rule=%00",
-            "/hive/policy?show[]=allow&rule[a]=b",
-            "/hive/policy/targets?mode=",
-            "/hive/policy/targets?mode=own%00",
-            "/hive/policy/targets?mode[]=own",
-            "/hive/policy/history?page=-1",
-            "/hive/policy/history?page=99999999999999999999",
-            "/hive/policy/history?page[]=2&change[]=x",
-            "/hive/policy/history?change=%00",
-            "/hive/policy/versions/1?compare=-3&view=%00",
-            "/hive/policy/versions/1?compare[]=1&view[]=served",
+            workspace_path(scope, "/policy?show=%00&rule=%00"),
+            workspace_path(scope, "/policy?show[]=allow&rule[a]=b"),
+            workspace_path(scope, "/policy/targets?mode="),
+            workspace_path(scope, "/policy/targets?mode=own%00"),
+            workspace_path(scope, "/policy/targets?mode[]=own"),
+            workspace_path(scope, "/policy/history?page=-1"),
+            workspace_path(scope, "/policy/history?page=99999999999999999999"),
+            workspace_path(scope, "/policy/history?page[]=2&change[]=x"),
+            workspace_path(scope, "/policy/history?change=%00"),
+            workspace_path(scope, "/policy/versions/1?compare=-3&view=%00"),
+            workspace_path(scope, "/policy/versions/1?compare[]=1&view[]=served"),
             path <> "?show=%00&rule[]=x",
             path <> "/history?page=0&change=1"
           ] do
@@ -235,9 +236,9 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
       end
 
       for missing <- [
-            "/hive/policy/versions/%00",
-            "/hive/policy/versions/0",
-            "/hive/policy/versions/99999999999"
+            workspace_path(scope, "/policy/versions/%00"),
+            workspace_path(scope, "/policy/versions/0"),
+            workspace_path(scope, "/policy/versions/99999999999")
           ] do
         view = open(conn, missing)
         assert has_element?(view, "h2", "There is no version"), missing

@@ -27,7 +27,10 @@ defmodule Mix.Tasks.Apiary.PruneTest do
 
   test "without a setting there is nothing to prune", %{run: run} do
     Prune.run([])
-    assert_received {:mix_shell, :info, ["No hive has a retention setting: nothing to prune."]}
+
+    assert_received {:mix_shell, :info,
+                     ["No workspace has a retention setting: nothing to prune."]}
+
     assert events(run) == 14
   end
 
@@ -35,17 +38,20 @@ defmodule Mix.Tasks.Apiary.PruneTest do
     scope: scope,
     run: run
   } do
-    {:ok, hive} = Retention.update_retention(scope, %{events_retention_days: 10})
+    {:ok, workspace} = Retention.update_retention(scope, %{events_retention_days: 10})
 
     Prune.run(["--dry-run"])
     assert_received {:mix_shell, :info, [line]}
-    assert line =~ "hive #{hive.id}: would prune 1 runs: 14 events, 2 log chunks (12 bytes)"
+
+    assert line =~
+             "workspace #{workspace.id}: would prune 1 runs: 14 events, 2 log chunks (12 bytes)"
+
     assert events(run) == 14
     assert Retention.list_retention_runs(scope) == []
 
     Prune.run(["--batch", "5"])
     assert_received {:mix_shell, :info, [line]}
-    assert line =~ "hive #{hive.id}: pruned 1 runs: 14 events"
+    assert line =~ "workspace #{workspace.id}: pruned 1 runs: 14 events"
     assert events(run) == 0
     assert [%{trigger: "manual", events_deleted: 14}] = Retention.list_retention_runs(scope)
   end

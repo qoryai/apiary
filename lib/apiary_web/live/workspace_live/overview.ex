@@ -1,12 +1,12 @@
-defmodule ApiaryWeb.HiveLive.Overview do
+defmodule ApiaryWeb.WorkspaceLive.Overview do
   @moduledoc """
-  The hive overview, `/hive`: the page a member lands on after sign-in
+  The workspace overview, `/:org/:workspace`: the page a member lands on after sign-in
   (`docs/design/brief-overview.md`). It answers two questions above the fold, in this
   order: what needs you (the Needs attention list, a list of acts and nothing else) and
   what your agents did (the activity strip, the alive rows, the fourteen-day chart, the
   last runs). Policy, access keys and retention are a glance and a link.
 
-  Every number is a count the hive already keeps; the page infers nothing. The first
+  Every number is a count the workspace already keeps; the page infers nothing. The first
   paint is the shell: the count of alive runs, the keys, the policy's mode summary and
   the skeletons; four asynchronous reads fill the regions (attention, activity, policy,
   the keys and retention), none of them blocking, every one bounded. Two subscriptions
@@ -17,8 +17,8 @@ defmodule ApiaryWeb.HiveLive.Overview do
   query. Nothing moves under the reader: new rows append, resolved items stay struck until
   the next navigation, a run that is not on the page is "1 new run" in words.
 
-  While no run has landed the page is the checklist of the empty hive (oe6), each step
-  read from the record; when the first run lands the card stays with its third step
+  While no run has landed the page is the checklist of the empty workspace (oe6), each
+  step read from the record; when the first run lands the card stays with its third step
   ticked and leaves at the next navigation.
 
   The page is the record's, so it belongs to `observability`. Everything of the policy on
@@ -37,7 +37,7 @@ defmodule ApiaryWeb.HiveLive.Overview do
   import ApiaryWeb.OverviewComponents
 
   import ApiaryWeb.RunComponents,
-    only: [rule_popover: 1, quiet_for: 2, beat: 1, delimited: 1]
+    only: [rule_popover: 1, quiet_for: 2, beat: 1]
 
   alias Apiary.AccessKeys
   alias Apiary.AccessKeys.AccessKey
@@ -92,9 +92,9 @@ defmodule ApiaryWeb.HiveLive.Overview do
     >
       <div id="overview" phx-hook="OverviewPage" class="grid grid-cols-[minmax(0,1fr)] gap-6">
         <.header>
-          {@current_scope.hive.name}
+          {@current_scope.workspace.name}
           <:subtitle>
-            {gettext("The hive of the %{organisation} organisation.",
+            {gettext("The workspace of the %{organisation} organisation.",
               organisation: @current_scope.organisation.name
             )}
           </:subtitle>
@@ -105,9 +105,10 @@ defmodule ApiaryWeb.HiveLive.Overview do
         </div>
 
         <%= if @checklist? do %>
-          <.onboarding keys={@keys} preview={@preview} landed={@landed} />
+          <.onboarding scope={@current_scope} keys={@keys} preview={@preview} landed={@landed} />
           <.access_keys
             :if={@keys != [] && !@live?}
+            scope={@current_scope}
             keys={Enum.take(@keys, @shown)}
             total={length(@keys)}
             last_runs={%{}}
@@ -119,6 +120,7 @@ defmodule ApiaryWeb.HiveLive.Overview do
         <%= if @live? do %>
           <.attention
             :if={@attention_items}
+            scope={@current_scope}
             id="attention"
             items={Enum.take(@attention_items, @shown)}
             count={@attention_count}
@@ -127,7 +129,7 @@ defmodule ApiaryWeb.HiveLive.Overview do
             now={@now}
           />
 
-          <.strip alive={@alive} facts={@facts} destinations={@destinations} />
+          <.strip scope={@current_scope} alive={@alive} facts={@facts} destinations={@destinations} />
 
           <div class="q-grid2">
             <section class="q-sect" id="overview-activity" aria-labelledby="overview-activity-h">
@@ -140,6 +142,7 @@ defmodule ApiaryWeb.HiveLive.Overview do
                     </.notice>
                   <% @alive_runs -> %>
                     <.alive_rows
+                      scope={@current_scope}
                       id="alive"
                       runs={Enum.take(@alive_runs, @shown)}
                       count={@alive}
@@ -154,6 +157,7 @@ defmodule ApiaryWeb.HiveLive.Overview do
               </div>
               <div class="q-part">
                 <.days_chart
+                  scope={@current_scope}
                   id="days"
                   days={@days}
                   today={@today}
@@ -163,13 +167,13 @@ defmodule ApiaryWeb.HiveLive.Overview do
               </div>
               <div class="q-part">
                 <p class="q-foot" id="activity-foot">
-                  {gettext("Counted from the hive's runs by the day they started, UTC.")}
+                  {gettext("Counted from the workspace's runs by the day they started, UTC.")}
                   <span class="q-live-on">{gettext("Updated as batches land.")}</span>
                   <span class="q-live-off">{gettext("Reconnecting.")}</span>
                   <span :if={@connections == :unavailable} id="activity-uncounted" class="text-muted">
                     {gettext(
-                      "Denied destinations were not counted: this hive recorded more than %{cap} connections in 7 days. The connections page counts them by destination.",
-                      cap: delimited(Policy.Activity.cap())
+                      "Denied destinations were not counted: this workspace recorded more than %{cap} connections in 7 days. The connections page counts them by destination.",
+                      cap: Format.number(Policy.Activity.cap())
                     )}
                   </span>
                 </p>
@@ -187,9 +191,14 @@ defmodule ApiaryWeb.HiveLive.Overview do
                   </.notice>
                 </div>
               </.sect>
-              <.policy_glance :if={@security? && !@failed[:policy]} policy={@policy} />
+              <.policy_glance
+                :if={@security? && !@failed[:policy]}
+                scope={@current_scope}
+                policy={@policy}
+              />
               <.retention_glance
-                hive={@current_scope.hive}
+                scope={@current_scope}
+                workspace={@current_scope.workspace}
                 runs={@key_facts && @key_facts.retention}
                 now={@now}
               />
@@ -197,6 +206,7 @@ defmodule ApiaryWeb.HiveLive.Overview do
           </div>
 
           <.recent_runs
+            scope={@current_scope}
             id="last-runs"
             runs={@recent}
             quiet_ids={@quiet_ids}
@@ -206,6 +216,7 @@ defmodule ApiaryWeb.HiveLive.Overview do
 
           <.access_keys
             :if={@keys != []}
+            scope={@current_scope}
             keys={Enum.take(@keys, @shown)}
             total={length(@keys)}
             last_runs={@key_facts && @key_facts.last_runs}
@@ -227,7 +238,7 @@ defmodule ApiaryWeb.HiveLive.Overview do
         <p>
           <.rich text={
             rich_gettext(
-              "The hive stops taking events for %{run}: the runner is told the run is gone at its next delivery. The record kept so far stays. A close is final: nothing reopens the run.",
+              "The workspace stops taking events for %{run}: the runner is told the run is gone at its next delivery. The record kept so far stays. A close is final: nothing reopens the run.",
               run: close_title(@confirm_close)
             )
           } />
@@ -269,7 +280,7 @@ defmodule ApiaryWeb.HiveLive.Overview do
     socket =
       socket
       |> assign(
-        page_title: scope.hive.name,
+        page_title: scope.workspace.name,
         shown: @shown,
         keys: sort_keys(keys),
         alive: alive,
@@ -474,11 +485,11 @@ defmodule ApiaryWeb.HiveLive.Overview do
                  holder_of(scope, run.target_id),
                  run.reported_run_configuration_digest
                ) do
-            {:ok, configuration} -> version_map(configuration)
+            {:ok, configuration} -> version_map(scope, configuration)
             _ -> nil
           end
 
-        {run.id, %{in_force: version_map(in_force), reported: reported_version}}
+        {run.id, %{in_force: version_map(scope, in_force), reported: reported_version}}
       end
     end
   end
@@ -492,13 +503,13 @@ defmodule ApiaryWeb.HiveLive.Overview do
     end
   end
 
-  defp version_map(configuration) do
+  defp version_map(scope, configuration) do
     %{
       n: configuration.version,
       digest: configuration.digest,
       rendered_at: configuration.rendered_at,
       target_id: configuration.target_id,
-      path: Rules.version_path(configuration.target_id, configuration.version)
+      path: Rules.version_path(scope, configuration.target_id, configuration.version)
     }
   end
 
@@ -855,7 +866,7 @@ defmodule ApiaryWeb.HiveLive.Overview do
     level =
       case params["for"] do
         "target" when popover.targets != [] -> :target
-        "hive" -> :hive
+        "workspace" -> :workspace
         _ -> popover.level
       end
 
@@ -882,17 +893,19 @@ defmodule ApiaryWeb.HiveLive.Overview do
         _params,
         %{assigns: %{popover: %{refusal: nil, level: level} = popover}} = socket
       )
-      when level in [:target, :hive] do
+      when level in [:target, :workspace] do
     scope = socket.assigns.current_scope
 
     with :ok <- still(socket, popover),
          {:ok, from} <- rule_source(popover),
          {:ok, connection} <- Runs.fetch_connection(scope, from.connection_id),
          {:ok, rule} <- Policy.rule_from_connection(scope, connection, :allow, level) do
-      where = if level == :target, do: {:target, from.label}, else: :hive
+      where = if level == :target, do: {:target, from.label}, else: :workspace
 
       done =
-        if level == :target, do: gettext("Allowed here"), else: gettext("Allowed for the hive")
+        if level == :target,
+          do: gettext("Allowed here"),
+          else: gettext("Allowed for the workspace")
 
       socket =
         socket
@@ -948,7 +961,7 @@ defmodule ApiaryWeb.HiveLive.Overview do
 
     {level, choice} =
       case {level, targets} do
-        {"hive", _} -> {:hive, nil}
+        {"workspace", _} -> {:workspace, nil}
         {"target", [one]} -> {:target, one.id}
         {"target", _} -> {nil, nil}
         _ -> {nil, nil}
@@ -964,7 +977,7 @@ defmodule ApiaryWeb.HiveLive.Overview do
       action: :allow,
       host: item.host,
       path: item.path,
-      page: :hive,
+      page: :workspace,
       level: level,
       target: nil,
       targets: targets,
@@ -972,11 +985,11 @@ defmodule ApiaryWeb.HiveLive.Overview do
       baseline: baseline,
       standing: :can_allow,
       chosen: nil,
-      what: %{target: nil, hive: nil},
+      what: %{target: nil, workspace: nil},
       own_rule: false,
       seen: nil,
       consequence: %{},
-      hive: scope.hive.name,
+      workspace: scope.workspace.name,
       alive: false,
       fetched: false,
       interval: 30,
@@ -1006,8 +1019,8 @@ defmodule ApiaryWeb.HiveLive.Overview do
     end
   end
 
-  defp rule_source(%{level: :hive, any_connection_id: id}) when is_binary(id),
-    do: {:ok, %{connection_id: id, label: gettext("the hive"), target: nil}}
+  defp rule_source(%{level: :workspace, any_connection_id: id}) when is_binary(id),
+    do: {:ok, %{connection_id: id, label: gettext("the workspace"), target: nil}}
 
   defp rule_source(_popover), do: :error
 
@@ -1029,13 +1042,13 @@ defmodule ApiaryWeb.HiveLive.Overview do
       | chosen: popover.choice,
         what: %{
           target: Rules.what(chosen, host, path),
-          hive: Rules.what(baseline, host, path)
+          workspace: Rules.what(baseline, host, path)
         },
         own_rule: own?,
         seen: {Rules.seen(baseline, host), Rules.seen(chosen, host)},
         consequence: %{
           target: chosen && target_consequence(chosen, host),
-          hive: hive_consequence(baseline, host, own?)
+          workspace: workspace_consequence(baseline, host, own?)
         }
     }
   end
@@ -1043,13 +1056,13 @@ defmodule ApiaryWeb.HiveLive.Overview do
   defp target_consequence(effective, host) do
     if Rules.own_rule?(effective, host),
       do: gettext("Replaces the target's own rule for the host."),
-      else: gettext("Disables the hive's allow rule there. Other targets keep it.")
+      else: gettext("Disables the workspace's allow rule there. Other targets keep it.")
   end
 
-  defp hive_consequence(baseline, host, own?) do
+  defp workspace_consequence(baseline, host, own?) do
     cond do
       own? -> gettext("A target's own allow rule still holds there.")
-      Rules.seen(baseline, host) != [] -> gettext("Replaces the hive's allow rule.")
+      Rules.seen(baseline, host) != [] -> gettext("Replaces the workspace's allow rule.")
       true -> nil
     end
   end
@@ -1126,7 +1139,7 @@ defmodule ApiaryWeb.HiveLive.Overview do
           in_force: in_force,
           reported: facts.reported,
           beats: div(max(DateTime.diff(now, in_force.rendered_at, :second), 0), beat(run)),
-          compare: compare_path(in_force, facts.reported)
+          compare: compare_path(assigns.current_scope, in_force, facts.reported)
         }
       end
 
@@ -1193,10 +1206,11 @@ defmodule ApiaryWeb.HiveLive.Overview do
     end
   end
 
-  defp compare_path(in_force, %{n: m, target_id: same}) when same == in_force.target_id,
-    do: Rules.version_path(in_force.target_id, in_force.n, %{"compare" => m})
+  defp compare_path(scope, in_force, %{n: m, target_id: same})
+       when same == in_force.target_id,
+       do: Rules.version_path(scope, in_force.target_id, in_force.n, %{"compare" => m})
 
-  defp compare_path(in_force, _reported), do: in_force.path
+  defp compare_path(_scope, in_force, _reported), do: in_force.path
 
   defp idle_days(%AccessKey{last_used_at: %DateTime{} = at}, now),
     do: DateTime.diff(now, at, :day)
@@ -1268,7 +1282,7 @@ defmodule ApiaryWeb.HiveLive.Overview do
           settled: all_landed?,
           attention_items: items,
           attention_count: length(unresolved) - length(hidden),
-          attention_more: more_link(hidden),
+          attention_more: more_link(socket.assigns.current_scope, hidden),
           quiet_ids: MapSet.new(for %{kind: :quiet, run: run} <- unresolved, do: run.id)
         )
 
@@ -1277,9 +1291,10 @@ defmodule ApiaryWeb.HiveLive.Overview do
           announce(
             socket,
             ngettext(
-              "%{count} more item needs attention.",
-              "%{count} more items need attention.",
-              length(arrived)
+              "%{number} more item needs attention.",
+              "%{number} more items need attention.",
+              length(arrived),
+              number: Format.number(length(arrived))
             )
           ),
         else: socket
@@ -1289,45 +1304,50 @@ defmodule ApiaryWeb.HiveLive.Overview do
   end
 
   # The overflow is counted per kind; the link goes to the kind that overflowed first.
-  defp more_link([]), do: nil
+  defp more_link(_scope, []), do: nil
 
-  defp more_link([first | _] = hidden) do
+  defp more_link(scope, [first | _] = hidden) do
     count = length(hidden)
 
     case first.kind do
       :denied ->
         %{
           count: count,
-          navigate: ~p"/hive/connections?#{%{"decision" => "denied"}}",
+          navigate:
+            ~p"/#{scope.organisation}/#{scope.workspace}/connections?#{%{"decision" => "denied"}}",
           title:
             ngettext(
-              "%{count} more item, on the connections page",
-              "%{count} more items, on the connections page",
-              count
+              "%{number} more item, on the connections page",
+              "%{number} more items, on the connections page",
+              count,
+              number: Format.number(count)
             )
         }
 
       kind when kind in [:lost, :quiet, :behind] ->
         %{
           count: count,
-          navigate: ~p"/hive/runs?#{%{"state" => "pending,running,lost"}}",
+          navigate:
+            ~p"/#{scope.organisation}/#{scope.workspace}/runs?#{%{"state" => "pending,running,lost"}}",
           title:
             ngettext(
-              "%{count} more item, on the runs list",
-              "%{count} more items, on the runs list",
-              count
+              "%{number} more item, on the runs list",
+              "%{number} more items, on the runs list",
+              count,
+              number: Format.number(count)
             )
         }
 
       _ ->
         %{
           count: count,
-          navigate: ~p"/hive/keys",
+          navigate: ~p"/#{scope.organisation}/#{scope.workspace}/keys",
           title:
             ngettext(
-              "%{count} more item, on the keys page",
-              "%{count} more items, on the keys page",
-              count
+              "%{number} more item, on the keys page",
+              "%{number} more items, on the keys page",
+              count,
+              number: Format.number(count)
             )
         }
     end
@@ -1355,7 +1375,7 @@ defmodule ApiaryWeb.HiveLive.Overview do
   defp resolution(%{kind: :enforce}, %{policy: policy}) do
     what =
       if policy && policy.summary.mode == "enforce",
-        do: gettext("Enforce is the hive's default."),
+        do: gettext("Enforce is the workspace's default."),
         else: gettext("Nothing to enforce yet.")
 
     %{mark: :resolved, what: what, done: nil}
@@ -1388,7 +1408,7 @@ defmodule ApiaryWeb.HiveLive.Overview do
     assign(socket,
       attention_items: items,
       attention_count: length(unresolved) - length(hidden),
-      attention_more: more_link(hidden)
+      attention_more: more_link(socket.assigns.current_scope, hidden)
     )
   end
 
@@ -1529,7 +1549,7 @@ defmodule ApiaryWeb.HiveLive.Overview do
   defp close_title(run), do: {:b, run_title(run), "font-medium"}
 
   defp new_runs_text(n),
-    do: ngettext("%{number} new run", "%{number} new runs", n, number: delimited(n))
+    do: ngettext("%{number} new run", "%{number} new runs", n, number: Format.number(n))
 
   # What became of a run that ended while it was on the list.
   defp ended("succeeded"), do: gettext("Succeeded.")
@@ -1537,7 +1557,8 @@ defmodule ApiaryWeb.HiveLive.Overview do
   defp ended("timed_out"), do: gettext("Timed out.")
   defp ended(state), do: "#{ApiaryWeb.RunComponents.state_label(state)}."
 
-  # `config :apiary, ApiaryWeb.HiveLive.Overview, coalesce: 0, quiet_tick: …` in a test.
+  # In a test:
+  # `config :apiary, ApiaryWeb.WorkspaceLive.Overview, coalesce: 0, quiet_tick: …`.
   defp window(name, default) do
     :apiary |> Application.get_env(__MODULE__, []) |> Keyword.get(name, default)
   end

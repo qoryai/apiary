@@ -16,9 +16,13 @@ defmodule Apiary.RunEventsFixtures do
   @doc "`seconds` after `t0/0`."
   def at(seconds), do: DateTime.add(@t0, round(seconds * 1000), :millisecond)
 
-  @doc "A pending run in the scope's hive, as the receiver creates it on a first event."
-  def run_fixture(%Scope{organisation: organisation, hive: hive}, attrs \\ %{}) do
-    %Run{organisation_id: organisation.id, hive_id: hive.id, run_id: Ecto.UUID.generate()}
+  @doc "A pending run in the scope's workspace, as the receiver creates it on a first event."
+  def run_fixture(%Scope{organisation: organisation, workspace: workspace}, attrs \\ %{}) do
+    %Run{
+      organisation_id: organisation.id,
+      workspace_id: workspace.id,
+      run_id: Ecto.UUID.generate()
+    }
     |> Ecto.Changeset.change(Map.new(attrs))
     |> Repo.insert!()
   end
@@ -34,7 +38,7 @@ defmodule Apiary.RunEventsFixtures do
 
     Repo.insert!(%Event{
       organisation_id: run.organisation_id,
-      hive_id: run.hive_id,
+      workspace_id: run.workspace_id,
       run_id: run.id,
       sequence: sequence,
       event_id: Ecto.UUID.generate(),

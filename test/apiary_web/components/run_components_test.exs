@@ -203,24 +203,35 @@ defmodule ApiaryWeb.RunComponentsTest do
       end
     end
 
-    test "relative and clock labels" do
-      now = ~U[2026-09-20 14:04:00Z]
-      assert RunComponents.relative_label(~U[2026-09-20 14:03:20Z], now) == "40 seconds ago"
-      assert RunComponents.relative_label(~U[2026-09-20 14:02:00Z], now) == "2 minutes ago"
-      assert RunComponents.relative_label(~U[2026-09-19 16:40:03Z], now) == "Yesterday, 16:40"
-      assert RunComponents.relative_label(~U[2026-09-17 09:30:00Z], now) == "17 Sep, 09:30"
-      assert RunComponents.relative_label(~U[2025-09-17 09:30:00Z], now) == "17 Sep 2025, 09:30"
-      assert RunComponents.clock_label(~U[2026-09-20 14:02:11Z], now) == "Today, 14:02:11"
+    test "a time names its zone in its title" do
+      html =
+        render_component(&RunComponents.relative_time/1,
+          id: "t",
+          at: ~U[2026-09-20 14:02:11Z],
+          format: "clock"
+        )
+
+      assert html =~ ~s(title="20 Sept 2026, 14:02:11 UTC")
+      assert html =~ ~s(datetime="2026-09-20T14:02:11Z")
     end
 
     test "the browser's clocks are handed the server's words, one per count" do
       words = RunComponents.clock_words()
       assert Enum.at(words.secondsAgo, 1) == "1 second ago"
       assert Enum.at(words.secondsAgo, 40) == "40 seconds ago"
-      assert length(words.minutesAgo) == 60 and length(words.hoursAgo) == 24
+      assert length(words.minutesAgo) == 60 and length(words.hoursAgo) == 25
       assert words.yesterday == "Yesterday, %{time}"
       assert words.minutesSeconds == "%{minutes} m %{seconds} s"
-      assert Enum.at(words.months, 8) == "Sep"
+    end
+
+    test "the clocks' hours cover the day summer time ends, which has 25 hours" do
+      ApiaryWeb.Format.put_time_zone("Europe/Berlin")
+      # 00:30 CEST to 23:45 CET on 25 October 2026: the same day, 24 hours and a quarter.
+      at = ~U[2026-10-24 22:30:00Z]
+      now = ~U[2026-10-25 22:45:00Z]
+
+      assert ApiaryWeb.Format.relative(at, now) == "24 hours ago"
+      assert Enum.at(RunComponents.clock_words().hoursAgo, 24) == "24 hours ago"
     end
 
     test "the log's script is handed its words, a count's as one and other" do
@@ -405,7 +416,7 @@ defmodule ApiaryWeb.RunComponentsTest do
       assert text(html) =~ "Allowed by rule registry.example"
     end
 
-    test "the hive variant marks a mixed destination's reason as the last attempt's" do
+    test "the workspace variant marks a mixed destination's reason as the last attempt's" do
       html =
         row(
           %{
@@ -417,7 +428,7 @@ defmodule ApiaryWeb.RunComponentsTest do
             attempts: 73,
             runs: 6
           },
-          "hive"
+          "workspace"
         )
 
       assert text(html) =~ "65 / 8"
@@ -443,7 +454,7 @@ defmodule ApiaryWeb.RunComponentsTest do
         runs: 2
       }
 
-      for variant <- ~w(table hive) do
+      for variant <- ~w(table workspace) do
         html = row(invocation, variant)
         [dest] = html |> LazyHTML.from_fragment() |> LazyHTML.query(".q-dest") |> Enum.to_list()
 
@@ -523,7 +534,7 @@ defmodule ApiaryWeb.RunComponentsTest do
         runs: 1
       }
 
-      for variant <- ~w(table hive) do
+      for variant <- ~w(table workspace) do
         html = row(refused, variant)
         [dest] = html |> LazyHTML.from_fragment() |> LazyHTML.query(".q-dest") |> Enum.to_list()
 
@@ -656,12 +667,12 @@ defmodule ApiaryWeb.RunComponentsTest do
           name: "denials",
           label: "Has denials",
           pressed: true,
-          patch: "/hive/runs"
+          patch: "/acme/main/runs"
         )
 
       assert html =~ ~r/<button[^>]*type="button"[^>]*aria-pressed="true"/
       refute html =~ "role=\"button\""
-      assert html =~ "/hive/runs"
+      assert html =~ "/acme/main/runs"
     end
 
     test "the closed badge's tip is focusable and is text" do
@@ -674,7 +685,7 @@ defmodule ApiaryWeb.RunComponentsTest do
       assert html =~ ~s(tabindex="0")
 
       assert text(html) =~
-               "Closed. Closed by a member on 14 Sep 2026. The run never posted its exit."
+               "Closed. Closed by a member on 14 Sept 2026. The run never posted its exit."
     end
   end
 
@@ -687,8 +698,13 @@ defmodule ApiaryWeb.RunComponentsTest do
       assert RunComponents.middle(value, 32) |> String.length() == 32
     end
 
-    test "labels come with forge, repository and task first" do
-      assert RunComponents.ordered_labels(%{"a" => "1", "task" => "t", "forge" => "f"}) ==
+    test "labels come with the target's, by the workspace's domain, and task first" do
+      labels = %{"a" => "1", "task" => "t", "forge" => "f", "repository" => "r"}
+
+      assert RunComponents.ordered_labels(labels, nil) ==
+               [{"forge", "f"}, {"repository", "r"}, {"task", "t"}, {"a", "1"}]
+
+      assert RunComponents.ordered_labels(%{"a" => "1", "task" => "t", "forge" => "f"}, nil) ==
                [{"forge", "f"}, {"task", "t"}, {"a", "1"}]
     end
 

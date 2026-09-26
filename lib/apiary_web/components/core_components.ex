@@ -14,6 +14,7 @@ defmodule ApiaryWeb.CoreComponents do
 
   import ApiaryWeb.RichText
 
+  alias ApiaryWeb.Format
   alias Phoenix.LiveView.JS
 
   # Qory's words and the standard term they show on hover.
@@ -41,8 +42,8 @@ defmodule ApiaryWeb.CoreComponents do
   @doc """
   The mark with the wordmark "Qory Apiary", as a link to `/`. `xs` is the
   sidebar foot (18 px mark, grey wordmark: a signature, not a heading), `sm`
-  the no-hive top bar and the auth header strip (22 px mark), `lg` the auth
-  panel (28 px mark).
+  the `/users/organisations` top bar and the auth header strip (22 px mark),
+  `lg` the auth panel (28 px mark).
   """
   attr :class, :any, default: nil
   attr :href, :string, default: "/"
@@ -89,8 +90,8 @@ defmodule ApiaryWeb.CoreComponents do
 
       <.term word="wall" standard="The enclosure the agent runs in." />
 
-  Not a way to show the tenant or the hive: a page says organisation and hive through
-  Gettext, and the body's catalogue says workplace (`docs/lingo.md`).
+  Not a way to show the apiary skin's words, apiary or hive: a page says organisation and
+  workspace through Gettext (`docs/lingo.md`).
   """
   attr :word, :string, required: true
   attr :standard, :string, required: true, doc: "the standard term, or what the word means"
@@ -316,7 +317,7 @@ defmodule ApiaryWeb.CoreComponents do
   ## Examples
 
       <.button variant="primary" loading_text="Saving">Save</.button>
-      <.button navigate={~p"/hive"}>Back</.button>
+      <.button navigate={~p"/\#{@current_scope.organisation}/\#{@current_scope.workspace}"}>Back</.button>
       <.button variant="danger" phx-click="revoke" loading_text="Revoking">Revoke key</.button>
   """
   attr :rest, :global,
@@ -641,7 +642,7 @@ defmodule ApiaryWeb.CoreComponents do
 
       <.header>
         Access keys
-        <:subtitle>Keys let machines post runs to this hive.</:subtitle>
+        <:subtitle>Keys let machines post runs to this workspace.</:subtitle>
         <:actions><.button variant="primary">New access key</.button></:actions>
       </.header>
   """
@@ -712,7 +713,7 @@ defmodule ApiaryWeb.CoreComponents do
   Summary figures as one bordered object with internal dividers.
 
       <.stats>
-        <.stat label="Access keys" value={3} hint="active" navigate={~p"/hive/keys"} />
+        <.stat label="Access keys" value={3} hint="active" navigate={~p"/\#{@current_scope.organisation}/\#{@current_scope.workspace}/keys"} />
       </.stats>
   """
   attr :class, :any, default: nil
@@ -880,10 +881,10 @@ defmodule ApiaryWeb.CoreComponents do
 
   @doc """
   A placeholder avatar: the first letter of a name. People are round, an
-  apiary is square. Decorative: the name is always beside it.
+  organisation is square. Decorative: the name is always beside it.
   """
   attr :name, :string, default: nil
-  attr :kind, :string, default: "person", values: ~w(person self apiary pending)
+  attr :kind, :string, default: "person", values: ~w(person self organisation pending)
   attr :size, :string, default: "sm", values: ~w(sm md lg)
   attr :class, :any, default: nil
 
@@ -896,7 +897,7 @@ defmodule ApiaryWeb.CoreComponents do
         @size == "lg" && "size-8 text-[13px]",
         @kind == "person" && "rounded-full bg-base-300 text-muted ring-1 ring-inset ring-line",
         @kind == "self" && "rounded-full bg-primary-soft text-primary-soft-content",
-        @kind == "apiary" && "rounded-field bg-neutral text-neutral-content",
+        @kind == "organisation" && "rounded-field bg-neutral text-neutral-content",
         @kind == "pending" &&
           "rounded-full border border-dashed border-line-field bg-transparent text-faint"
       ]}>
@@ -1080,10 +1081,10 @@ defmodule ApiaryWeb.CoreComponents do
   live action) and pass an `on_cancel` JS command, usually a patch back to the
   index. `dismissable={false}` leaves the footer's button as the only exit.
 
-      <.modal :if={@live_action == :new} id="new-key" on_cancel={JS.patch(~p"/hive/keys")} title="New access key">
+      <.modal :if={@live_action == :new} id="new-key" on_cancel={JS.patch(~p"/\#{@current_scope.organisation}/\#{@current_scope.workspace}/keys")} title="New access key">
         ...
         <:footer>
-          <.button patch={~p"/hive/keys"}>Cancel</.button>
+          <.button patch={~p"/\#{@current_scope.organisation}/\#{@current_scope.workspace}/keys"}>Cancel</.button>
         </:footer>
       </.modal>
 
@@ -1170,57 +1171,26 @@ defmodule ApiaryWeb.CoreComponents do
     """
   end
 
-  ## Formatting
-
-  @doc "A short date: 12 Sep 2026."
-  def short_date(nil), do: nil
-  def short_date(%DateTime{} = dt), do: Calendar.strftime(dt, "%-d %b %Y")
-  def short_date(%NaiveDateTime{} = dt), do: Calendar.strftime(dt, "%-d %b %Y")
-
-  @doc "A short date and time in UTC: 12 Sep 2026, 14:03 UTC."
-  def short_datetime(nil), do: nil
-  def short_datetime(%DateTime{} = dt), do: Calendar.strftime(dt, "%-d %b %Y, %H:%M UTC")
-  def short_datetime(%NaiveDateTime{} = dt), do: Calendar.strftime(dt, "%-d %b %Y, %H:%M UTC")
+  ## Time
 
   @doc """
   A timestamp as people say it, up to seven days back ("2 minutes ago",
-  "Yesterday, 17:20"), then the short date. The absolute time is in the `title`.
+  "Yesterday, 17:20"), then the date (`ApiaryWeb.Format.time_ago/2`). The full time with
+  its zone is in the `title`.
   """
   attr :at, :any, required: true
   attr :class, :any, default: nil
 
   def time_ago(assigns) do
     ~H"""
-    <time datetime={DateTime.to_iso8601(@at)} title={short_datetime(@at)} class={@class}>
-      {relative_time(@at)}
+    <time
+      datetime={DateTime.to_iso8601(@at)}
+      title={Format.datetime(@at, zone: true)}
+      class={@class}
+    >
+      {Format.time_ago(@at)}
     </time>
     """
-  end
-
-  @doc false
-  def relative_time(%DateTime{} = at, now \\ DateTime.utc_now()) do
-    seconds = max(DateTime.diff(now, at, :second), 0)
-    days = Date.diff(DateTime.to_date(now), DateTime.to_date(at))
-
-    cond do
-      seconds < 60 ->
-        gettext("Just now")
-
-      seconds < 3600 ->
-        ngettext("%{count} minute ago", "%{count} minutes ago", div(seconds, 60))
-
-      days == 0 ->
-        ngettext("%{count} hour ago", "%{count} hours ago", div(seconds, 3600))
-
-      days == 1 ->
-        gettext("Yesterday, %{time}", time: Calendar.strftime(at, "%H:%M"))
-
-      days <= 7 ->
-        ngettext("%{count} day ago", "%{count} days ago", days)
-
-      true ->
-        short_date(at)
-    end
   end
 
   ## JS Commands

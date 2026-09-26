@@ -8,7 +8,7 @@
 (function(){try{var t=(location.search.match(/theme=(light|dark)/)||[])[1]||localStorage.getItem("qory:theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}})();
 </script>
 <style>
-/* Static mock of milestone M8 (the hive overview: what the agents did and what needs you). Tokens and
+/* Static mock of milestone M8 (the workspace overview: what the agents did and what needs you). Tokens and
    the M4/M5 components are copied from policy-mock.html and runs-mock.html; the block marked NEW in M8
    is what brief-overview.md adds. Keys, not machines: one key often serves many hosts. Synthetic data only. */
 @font-face { font-family: "Geist"; src: url("../../priv/static/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
@@ -270,7 +270,7 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
 .kv dt { font-size: 12px; line-height: 16px; font-weight: 500; color: var(--q-muted); } .kv dd { font-size: 13.5px; line-height: 20px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .kv dd small { font-size: 12px; color: var(--q-faint); }
 .member .owner-only { display: none !important; } .app:not(.member) .member-only { display: none !important; }
 
-/* ================= NEW in M8: the hive overview ================= */
+/* ================= NEW in M8: the workspace overview ================= */
 :root { --q-series-runs: oklch(62% 0.014 75); --q-series-runs-today: var(--color-base-content); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --q-series-runs: oklch(58% 0.014 75); } }
 :root[data-theme="dark"] { --q-series-runs: oklch(58% 0.014 75); }
@@ -352,7 +352,7 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
 .keys td { height: 40px; padding-block: 6px; } .keys .kcell { display: grid; } .keys .kcell b { font-weight: 500; } .keys .kcell span { font: 12px/16px var(--font-mono); color: var(--q-faint); }
 .keys .lastrun { display: inline-flex; align-items: center; gap: 8px; } .keys .lastrun .badge { height: 18px; font-size: 11px; }
 
-/* The empty hive: the checklist card of brief.md h1 */
+/* The empty workspace: the checklist card of brief.md h1 */
 .onboard { display: grid; grid-template-columns: 1fr 1fr; overflow: hidden; }
 .onboard > div:first-child { padding: 24px 28px; display: grid; gap: 20px; align-content: start; }
 .onboard > div:last-child { padding: 28px; background: var(--color-base-200); border-left: 1px solid var(--q-border-subtle); display: grid; gap: 12px; align-content: start; }
@@ -444,9 +444,9 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
 <div class="mockbar" role="toolbar" aria-label="Mock controls">
   <span class="tag">M8 mock</span>
   <div class="seg" id="viewseg">
-    <a href="#overview">Overview</a><a href="#quiet">Nothing to do</a><a href="#empty">Empty hive</a><a href="#keys">Keys, no post</a><a href="#pinged">Key used</a><a href="#landed">First run</a><a href="#states">States</a>
+    <a href="#overview">Overview</a><a href="#quiet">Nothing to do</a><a href="#empty">Empty workspace</a><a href="#keys">Keys, no post</a><a href="#pinged">Key used</a><a href="#landed">First run</a><a href="#states">States</a>
   </div>
-  <div class="url" aria-hidden="true"><span>qory.example</span><b id="url">/hive</b></div>
+  <div class="url" aria-hidden="true"><span>qory.example</span><b id="url">/acme/main</b></div>
   <div class="seg" id="roleseg"><button type="button" data-r="owner" aria-pressed="true">Owner</button><button type="button" data-r="member" aria-pressed="false">Member</button></div>
   <div class="seg" id="widthseg"><button type="button" data-w="desktop" aria-pressed="true"><svg class="i"><use href="#i-desk"/></svg>Desktop</button><button type="button" data-w="phone" aria-pressed="false"><svg class="i"><use href="#i-phone"/></svg>Phone</button></div>
   <div class="seg" id="themeseg"><button type="button" data-t="auto" aria-pressed="true">Auto</button><button type="button" data-t="light" aria-pressed="false"><svg class="i"><use href="#i-sun"/></svg>Light</button><button type="button" data-t="dark" aria-pressed="false"><svg class="i"><use href="#i-moon"/></svg>Dark</button></div>
@@ -456,13 +456,13 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
 <div class="app" id="app">
   <aside class="side" aria-label="Sidebar">
     <div class="side-brand"><a class="brand" href="#overview"><svg aria-hidden="true"><use href="#mark"/></svg><span>Qory</span></a><button type="button" class="btn btn-ghost btn-square only-drawer" id="drawer-close" aria-label="Close menu"><svg class="i"><use href="#i-x"/></svg></button></div>
-    <button type="button" class="ws" aria-label="Switch apiary, current: Acme"><span class="avatar sq" aria-hidden="true">A</span><span style="min-width:0"><b class="trunc">Acme</b><small class="trunc">Platform</small></span><svg class="i"><use href="#i-ud"/></svg></button>
-    <div class="side-label">Hive</div>
+    <button type="button" class="ws" aria-label="Switch organisation, current: Acme"><span class="avatar sq" aria-hidden="true">A</span><span style="min-width:0"><b class="trunc">Acme</b><small class="trunc">Platform</small></span><svg class="i"><use href="#i-ud"/></svg></button>
+    <div class="side-label">Workspace</div>
     <nav class="side-nav" aria-label="Main">
       <a href="#overview" aria-current="page"><svg class="i"><use href="#i-grid"/></svg>Overview</a>
       <a href="#overview"><svg class="i"><use href="#i-runs"/></svg>Runs<span class="count alive" id="side-alive" title="2 runs alive now"><span class="ripple" style="width:6px;height:6px"></span>2</span></a>
       <a href="#overview"><svg class="i"><use href="#i-conn"/></svg>Connections</a>
-      <a href="#overview"><svg class="i"><use href="#i-shieldok"/></svg>Policy<span class="count mode" id="side-mode" title="The hive's default mode is enforce. 1 repository sets its own and observes."><span>enforce</span><span style="opacity:.75">· 1 own</span></span></a>
+      <a href="#overview"><svg class="i"><use href="#i-shieldok"/></svg>Policy<span class="count mode" id="side-mode" title="The workspace's default mode is enforce. 1 repository sets its own and observes."><span>enforce</span><span style="opacity:.75">· 1 own</span></span></a>
     </nav>
     <div class="side-label">Manage</div>
     <nav class="side-nav" aria-label="Manage">
@@ -480,8 +480,8 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
     <main class="main" id="main">
     <div class="sr-only" aria-live="polite" aria-atomic="true" id="overview-announcer"></div>
 
-    <!-- ============ OVERVIEW: a busy hive ============ -->
-    <div class="main-in" data-view="overview" data-url="/hive" data-side="busy">
+    <!-- ============ OVERVIEW: a busy workspace ============ -->
+    <div class="main-in" data-view="overview" data-url="/acme/main" data-side="busy">
       <div data-phead></div>
 
       <section class="sect att" aria-labelledby="att-h">
@@ -516,7 +516,7 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
     </div>
 
     <!-- ============ OVERVIEW: nothing needs attention ============ -->
-    <div class="main-in" data-view="quiet" data-url="/hive" data-side="busy" hidden>
+    <div class="main-in" data-view="quiet" data-url="/acme/main" data-side="busy" hidden>
       <div data-phead></div>
       <div data-strip></div>
       <div class="grid2">
@@ -527,16 +527,16 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
       <div data-machines></div>
     </div>
 
-    <!-- ============ EMPTY HIVE: no keys ============ -->
-    <div class="main-in" data-view="empty" data-url="/hive" data-side="empty" hidden>
+    <!-- ============ EMPTY WORKSPACE: no keys ============ -->
+    <div class="main-in" data-view="empty" data-url="/acme/main" data-side="empty" hidden>
       <div data-phead></div>
       <section class="sect onboard" aria-labelledby="ob-h1">
         <div>
-          <div><h2 id="ob-h1">Send your first run</h2><p class="lead">Nothing has posted to this <span class="term" tabindex="0" data-tip="team">hive</span> yet. An access key is all a machine needs to start.</p></div>
+          <div><h2 id="ob-h1">Send your first run</h2><p class="lead">Nothing has posted to this workspace yet. An access key is all a machine needs to start.</p></div>
           <ol class="steps">
             <li class="step cur" aria-current="step"><span class="disc">1</span><div><b>Create an access key</b><p>Label it after the machine or environment.</p></div></li>
             <li class="step"><span class="disc">2</span><div><b>Paste the server block into the runner file</b><p>The secret is shown once, in the dialog that creates it. One key can serve many hosts: a pool of ephemeral instances shares one.</p></div></li>
-            <li class="step"><span class="disc">3</span><div><b>See runs here</b><p>From the first post on, every run of that machine lands in this hive.</p></div></li>
+            <li class="step"><span class="disc">3</span><div><b>See runs here</b><p>From the first post on, every run of that machine lands in this workspace.</p></div></li>
           </ol>
           <div><a class="btn btn-primary" href="#keys"><svg class="i"><use href="#i-plus"/></svg>Create an access key</a></div>
         </div>
@@ -552,8 +552,8 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
       <span class="listen only-phone"><span class="ripple"></span><span>Listening for the first post from a machine.</span></span>
     </div>
 
-    <!-- ============ EMPTY HIVE: keys, nothing posted ============ -->
-    <div class="main-in" data-view="keys" data-url="/hive" data-side="keys" hidden>
+    <!-- ============ EMPTY WORKSPACE: keys, nothing posted ============ -->
+    <div class="main-in" data-view="keys" data-url="/acme/main" data-side="keys" hidden>
       <div data-phead></div>
       <section class="sect onboard" aria-labelledby="ob-h2">
         <div>
@@ -561,7 +561,7 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
           <ol class="steps">
             <li class="step done"><span class="disc"><svg class="i"><use href="#i-check"/></svg><span class="sr-only">Done:</span></span><div><b>Create an access key</b><p>Label it after the machine or environment.</p></div></li>
             <li class="step cur" aria-current="step"><span class="disc">2</span><div><b>Paste the server block into the runner file</b><p>The secret is shown once, in the dialog that creates it. One key can serve many hosts: a pool of ephemeral instances shares one.</p></div></li>
-            <li class="step"><span class="disc">3</span><div><b>See runs here</b><p>From the first post on, every run of that machine lands in this hive.</p></div></li>
+            <li class="step"><span class="disc">3</span><div><b>See runs here</b><p>From the first post on, every run of that machine lands in this workspace.</p></div></li>
           </ol>
           <div><a class="btn" href="#keys">Manage access keys</a></div>
         </div>
@@ -584,8 +584,8 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
       </section>
     </div>
 
-    <!-- ============ EMPTY HIVE: a key was used, no run yet ============ -->
-    <div class="main-in" data-view="pinged" data-url="/hive" data-side="keys" hidden>
+    <!-- ============ EMPTY WORKSPACE: a key was used, no run yet ============ -->
+    <div class="main-in" data-view="pinged" data-url="/acme/main" data-side="keys" hidden>
       <div data-phead></div>
       <section class="sect onboard" aria-labelledby="ob-h3">
         <div>
@@ -616,8 +616,8 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
       </section>
     </div>
 
-    <!-- ============ EMPTY HIVE: the first run has landed (before the next navigation) ============ -->
-    <div class="main-in" data-view="landed" data-url="/hive" data-side="first" hidden>
+    <!-- ============ EMPTY WORKSPACE: the first run has landed (before the next navigation) ============ -->
+    <div class="main-in" data-view="landed" data-url="/acme/main" data-side="first" hidden>
       <div data-phead></div>
       <section class="sect onboard" aria-labelledby="ob-h4">
         <div>
@@ -625,7 +625,7 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
           <ol class="steps">
             <li class="step done"><span class="disc"><svg class="i"><use href="#i-check"/></svg><span class="sr-only">Done:</span></span><div><b>Create an access key</b><p>Label it after the machine or environment.</p></div></li>
             <li class="step done"><span class="disc"><svg class="i"><use href="#i-check"/></svg><span class="sr-only">Done:</span></span><div><b>Paste the server block into the runner file</b><p>The secret is shown once, in the dialog that creates it. One key can serve many hosts: a pool of ephemeral instances shares one.</p></div></li>
-            <li class="step done"><span class="disc"><svg class="i"><use href="#i-check"/></svg><span class="sr-only">Done:</span></span><div><b>See runs here</b><p>From the first post on, every run of that machine lands in this hive.</p></div></li>
+            <li class="step done"><span class="disc"><svg class="i"><use href="#i-check"/></svg><span class="sr-only">Done:</span></span><div><b>See runs here</b><p>From the first post on, every run of that machine lands in this workspace.</p></div></li>
           </ol>
           <div class="landed"><svg class="i"><use href="#i-check"/></svg>The first run has landed. <a class="link" href="#overview">Open it</a></div>
         </div>
@@ -651,7 +651,7 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
             <div class="alive-row" id="alive-first"><span class="badge badge-info state state-running"><i></i>Running</span><div class="run-cell"><a class="rowlink" href="#overview"><b>checkout-tax</b></a><span>0191f2a4</span></div><span class="where"><span class="repo"><span class="f">github.example/</span>acme/shop</span><span class="host">build-01</span></span><span class="alive"><span class="ripple"></span>Alive, <span class="tnum">4 s</span> ago</span></div>
           </div>
           <div class="part"><div class="chart" data-chart="first"></div></div>
-          <div class="part"><p class="foot">Counted from the hive's runs by the day they started, UTC. Updated as batches land.</p></div>
+          <div class="part"><p class="foot">Counted from the workspace's runs by the day they started, UTC. Updated as batches land.</p></div>
         </section>
         <div class="stack">
           <section class="sect" aria-labelledby="pol-h4"><header><h2 id="pol-h4">Policy</h2><span class="grow"></span><a class="link" href="#overview">Open policy</a></header>
@@ -662,7 +662,7 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
               <dt>To review</dt><dd><span class="faint">Nothing declared and unallowed.</span></dd>
             </dl></section>
           <section class="sect" aria-labelledby="ret-h4"><header><h2 id="ret-h4">Retention</h2><span class="grow"></span><a class="link" href="#overview">Settings</a></header>
-            <div class="lines"><span>This hive keeps everything.</span></div></section>
+            <div class="lines"><span>This workspace keeps everything.</span></div></section>
         </div>
       </div>
       <section class="sect" aria-labelledby="lr-h4"><header><h2 id="lr-h4">Last runs</h2><span class="grow"></span><a class="link" href="#overview">All runs</a></header>
@@ -675,26 +675,26 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
     </div>
 
     <!-- ============ STATES: a specimen sheet ============ -->
-    <div class="main-in" data-view="states" data-url="/hive (specimens)" data-side="busy" hidden>
+    <div class="main-in" data-view="states" data-url="/acme/main (specimens)" data-side="busy" hidden>
       <div class="page-head"><div><h1>States</h1><p>The overview's rows, cells and regions in every state the brief names. Not a page: a sheet.</p></div></div>
 
       <div class="spec"><span class="tag">Needs attention: the other kinds, and after an act</span>
       <section class="sect att" aria-label="Attention specimens">
         <ul>
-          <li class="sugg-row" id="sp-en1"><span class="subj"><span class="mark plain" title="Policy"><svg class="i"><use href="#i-shieldx"/></svg><span class="sr-only">Policy</span></span><b class="lead"><span class="term" tabindex="0" data-tip="Enforce: a connection no rule allows is denied. Observe: it is let through and recorded.">Observe</span> is the hive's default</b></span>
+          <li class="sugg-row" id="sp-en1"><span class="subj"><span class="mark plain" title="Policy"><svg class="i"><use href="#i-shieldx"/></svg><span class="sr-only">Policy</span></span><b class="lead"><span class="term" tabindex="0" data-tip="Enforce: a connection no rule allows is denied. Observe: it is let through and recorded.">Observe</span> is the workspace's default</b></span>
             <span class="what">6 allow rules are in force and every destination reached in the last 7 days is covered. Enforce would deny nothing today.<span class="member-only"> Only an owner sets a mode.</span></span>
             <span class="acts"><a class="btn btn-xs btn-primary owner-only" href="#states">Set the default to enforce</a><a class="btn btn-xs member-only" href="#states">Open policy</a></span></li>
-          <li class="sugg-row" id="sp-en2"><span class="subj"><span class="mark plain" title="Policy"><svg class="i"><use href="#i-shieldx"/></svg><span class="sr-only">Policy</span></span><b class="lead">Observe is the hive's default</b></span>
+          <li class="sugg-row" id="sp-en2"><span class="subj"><span class="mark plain" title="Policy"><svg class="i"><use href="#i-shieldx"/></svg><span class="sr-only">Policy</span></span><b class="lead">Observe is the workspace's default</b></span>
             <span class="what">6 rules are in force. Enforce would deny <b>2</b> destinations reached in the last 7 days.<span class="member-only"> Only an owner sets a mode.</span></span>
             <span class="acts"><a class="btn btn-xs owner-only" href="#states">Review on the policy page</a><a class="btn btn-xs member-only" href="#states">Open policy</a></span></li>
           <li class="sugg-row" id="sp-un"><span class="subj"><span class="mark plain" title="Policy"><svg class="i"><use href="#i-shield"/></svg><span class="sr-only">Policy</span></span><b class="lead">Qory serves no policy yet</b></span>
-            <span class="what">11 runs landed under the machines' own policies. The first rule you add, or a mode you set, puts them under the hive's.</span>
+            <span class="what">11 runs landed under the machines' own policies. The first rule you add, or a mode you set, puts them under the workspace's.</span>
             <span class="acts"><a class="btn btn-xs" href="#states">Open policy</a></span></li>
           <li class="sugg-row" id="sp-be"><span class="subj"><span class="mark amber" title="Behind"><svg class="i"><use href="#i-warn"/></svg><span class="sr-only">Behind the policy in force</span></span><span class="badge badge-info state state-running"><i></i>Running</span><span class="task trunc">checkout-tax</span><span class="rid">0191f2a4</span><span class="drift"><svg class="i"><use href="#i-warn"/></svg>Behind v10</span></span>
             <span class="what">Still on <a class="pv" href="#states">v9</a> after 2 heartbeats; <a class="pv" href="#states">v10</a> has been in force for <b class="tnum">1 m 40 s</b>. A run reloads at its next heartbeat.</span>
             <span class="acts"><a class="btn btn-xs btn-ghost" href="#states">What changed</a><a class="btn btn-xs" href="#states" aria-label="Open checkout-tax">Open</a></span></li>
           <li class="sugg-row" id="sp-lk"><span class="subj"><span class="mark lock" title="Locked"><svg class="i"><use href="#i-lock"/></svg><span class="sr-only">Locked</span></span><span class="host trunc">bin.paste.example<span class="p">:443</span></span></span>
-            <span class="what">A locked hive rule denies <code class="rule">*.paste.example</code>. Only an owner can change it.</span>
+            <span class="what">A locked workspace rule denies <code class="rule">*.paste.example</code>. Only an owner can change it.</span>
             <span class="acts"><a class="btn btn-xs btn-ghost" href="#states">Open the rule</a></span></li>
           <li class="sugg-row" id="sp-path"><span class="subj"><span class="mark pend" title="Not allowed"><svg class="i"><use href="#i-block"/></svg><span class="sr-only">Denied, not allowed</span></span><span class="host trunc">api.example<span class="p">:443</span> <span class="p">/v2/upload</span></span></span>
             <span class="what"><b>Host allowed, no path rule matches</b> <code class="rule">/v2/upload</code>. Denied <b>3 times</b> in 1 run of <span class="mono">acme/shop</span>, last <time title="19 Sep 2026, 16:40:03 UTC">Yesterday, 16:40</time>.</span>
@@ -708,7 +708,7 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
           <li class="sugg-row resolved" id="sp-r2"><span class="subj"><span class="mark closed" title="Closed"><svg class="i"><use href="#i-lock"/></svg><span class="sr-only">Closed</span></span><span class="badge state"><svg class="i"><use href="#i-lock"/></svg>Closed</span><span class="task trunc">nightly-mirror</span><span class="rid">0191c001</span></span>
             <span class="what">Closed.</span><span class="acts"></span></li>
           <li class="sugg-row resolved" id="sp-r3"><span class="subj"><span class="mark ok" title="Allowed"><svg class="i"><use href="#i-check"/></svg><span class="sr-only">Allowed</span></span><span class="host trunc">flags.example<span class="p">:443</span></span></span>
-            <span class="what">Allowed for the hive by <b>dana@example.com</b>, <time>just now</time>.</span><span class="acts"></span></li>
+            <span class="what">Allowed for the workspace by <b>dana@example.com</b>, <time>just now</time>.</span><span class="acts"></span></li>
           <li class="sugg-row resolved" id="sp-r4"><span class="subj"><span class="mark plain faint" title="Resumed"><svg class="i"><use href="#i-check"/></svg><span class="sr-only">Resolved</span></span><span class="badge badge-info state state-running"><i></i>Running</span><span class="task trunc">mirror-sync</span><span class="rid">0191f29d</span></span>
             <span class="what">Heartbeats resumed.</span><span class="acts"></span></li>
           <li class="sugg-row" id="sp-k2"><span class="subj"><span class="mark plain faint" title="Access key"><svg class="i"><use href="#i-key"/></svg><span class="sr-only">Access key</span></span><span class="task trunc">dana-laptop</span><span class="rid">ak_29e6c7710b3f</span></span>
@@ -736,8 +736,8 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
 
       <div class="spec"><span class="tag">The chart: empty, and the table twin</span>
         <div class="spec-grid">
-          <section class="sect"><div class="part"><div class="chart empty" data-chart="empty"></div></div><div class="part"><p class="foot">Counted from the hive's runs by the day they started, UTC. Updated as batches land.</p></div></section>
-          <section class="sect"><div class="part"><div class="chart" data-chart="busy" data-table="1"></div></div><div class="part"><p class="foot">Counted from the hive's runs by the day they started, UTC. Updated as batches land. <span class="muted">Denied destinations were not counted: this hive recorded more than 20,000 connections in 7 days. The connections page counts them by destination.</span></p></div></section>
+          <section class="sect"><div class="part"><div class="chart empty" data-chart="empty"></div></div><div class="part"><p class="foot">Counted from the workspace's runs by the day they started, UTC. Updated as batches land.</p></div></section>
+          <section class="sect"><div class="part"><div class="chart" data-chart="busy" data-table="1"></div></div><div class="part"><p class="foot">Counted from the workspace's runs by the day they started, UTC. Updated as batches land. <span class="muted">Denied destinations were not counted: this workspace recorded more than 20,000 connections in 7 days. The connections page counts them by destination.</span></p></div></section>
         </div>
       </div>
 
@@ -753,16 +753,16 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
           <div class="kv"><dt>Denied attempts, 14 days</dt><dd>0<small>none</small></dd></div>
           <div class="kv"><dt>Cost reported, 14 days</dt><dd class="na">n/a<small>no run reported one</small></dd></div>
         </dl>
-        <p class="foot">Counted from the hive's runs by the day they started, UTC. <span class="muted">Reconnecting.</span></p>
+        <p class="foot">Counted from the workspace's runs by the day they started, UTC. <span class="muted">Reconnecting.</span></p>
         <div class="toast" role="alert"><svg class="i" style="color:var(--color-error)"><use href="#i-warn"/></svg><div><b>Connection lost.</b><span>Reconnecting. Your changes are safe.</span></div><span class="ripple" style="color:var(--q-faint);margin:5px"></span></div>
       </div>
 
-      <div class="spec"><span class="tag">Alive now: none · Policy: new hive, all follow, suggestions partly counted · Retention: every sentence</span>
+      <div class="spec"><span class="tag">Alive now: none · Policy: new workspace, all follow, suggestions partly counted · Retention: every sentence</span>
         <div class="spec-grid">
           <section class="sect"><div class="part"><div class="part-h"><h3>Alive now</h3></div><span class="none">No run alive now.</span></div></section>
           <section class="sect"><header><h2>Policy</h2><span class="grow"></span><a class="link" href="#states">Open policy</a></header>
             <dl class="glance">
-              <dt>Mode</dt><dd><b>enforce</b><span class="badge">Hive default</span><span class="muted">Every repository follows it.</span></dd>
+              <dt>Mode</dt><dd><b>enforce</b><span class="badge">Workspace default</span><span class="muted">Every repository follows it.</span></dd>
               <dt>In force</dt><dd><span class="vpill sm" title="sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"><a class="v" href="#states">v14</a><span class="dg"><i>sha256</i> e3b0c44298fc</span></span><span class="muted">since 16 Sep</span></dd>
               <dt>Repositories</dt><dd><a class="link" href="#states"><b>4</b> have posted runs</a><span class="muted">·</span><a class="link" href="#states"><b>2</b> with rules of their own</a></dd>
               <dt>To review</dt><dd><a class="badge badge-info" href="#states">2 to review</a><span class="muted">in 1 repository</span><span class="faint" title="More connections than one read counts; open the repository to see its suggestions.">· 1 repository not counted</span></dd>
@@ -774,7 +774,7 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
               <hr class="hr"><span>Log output is pruned after 30 days; events are kept.</span><span>Nothing was old enough to prune last night.</span>
               <hr class="hr"><span>Events and log output are pruned after 90 days.</span><span>No prune has run yet. The job runs nightly.</span>
               <hr class="hr"><span>Events and log output are pruned after 90 days.</span><span>On 14 Sep pruned <b>10,000 runs</b>: 1,204,311 events and 2.1 GB of log output in 40,882 chunks; not finished, the next night goes on.</span>
-              <hr class="hr"><span>This hive keeps everything.</span>
+              <hr class="hr"><span>This workspace keeps everything.</span>
             </div></section>
         </div>
       </div>
@@ -801,11 +801,11 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
   var $ = function (s, r) { return (r || document).querySelector(s); }, $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
   var main = $("#main"), app = $("#app");
 
-  // The page head is the same on every view of /hive: written once here.
-  var head = '<div class="page-head"><div><h1>Platform</h1><p>The <span class="term" tabindex="0" data-tip="team">hive</span> of the Acme <span class="term" tabindex="0" data-tip="organisation">apiary</span>.</p></div></div>';
+  // The page head is the same on every view of /acme/main: written once here.
+  var head = '<div class="page-head"><div><h1>Platform</h1><p>The workspace of the Acme organisation.</p></div></div>';
   $$("[data-phead]").forEach(function (el) { el.innerHTML = head; });
 
-  // The Activity strip, the Activity card and the three glance cards of a busy hive, shared by
+  // The Activity strip, the Activity card and the three glance cards of a busy workspace, shared by
   // the "Overview" and "Nothing to do" views.
   var strip = '<dl class="kvs strip">' +
     '<a class="kv" href="#overview"><dt>Alive now</dt><dd>2<small>starting or running</small></dd></a>' +
@@ -825,7 +825,7 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
     '<div class="alive-row" id="alive-2"><span class="badge badge-warning state state-running"><i></i>Running</span><div class="run-cell"><a class="rowlink" href="#overview"><b>mirror-sync</b></a><span>0191f29d</span></div><span class="where"><span class="repo"><span class="f">gitlab.example/</span>acme/shop</span><span class="host">build-03</span></span><span class="alive amber"><span class="ripple"></span>No heartbeat for <span class="tnum" data-tick="47">47 s</span></span></div>' +
     '</div>' +
     '<div class="part"><div class="chart" data-chart="busy"></div></div>' +
-    '<div class="part"><p class="foot">Counted from the hive\'s runs by the day they started, UTC. <span id="live-cue">Updated as batches land.</span></p></div></section>';
+    '<div class="part"><p class="foot">Counted from the workspace\'s runs by the day they started, UTC. <span id="live-cue">Updated as batches land.</span></p></div></section>';
   $$("[data-activity]").forEach(function (el) { el.innerHTML = activity; });
   var lastruns = '<section class="sect" aria-labelledby="lr-h"><header><h2 id="lr-h">Last runs</h2><span class="grow"></span><a class="link" href="#overview">All runs</a></header>' +
     '<div class="table-wrap" tabindex="0" role="region" aria-label="Last runs"><table class="table runs"><thead><tr><th>State</th><th>Run</th><th>Repository</th><th>Host</th><th>Started</th><th class="num">Duration</th><th class="num">Denials</th></tr></thead><tbody>' +
@@ -839,7 +839,7 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
 
   var glance = '<section class="sect" aria-labelledby="pol-h"><header><h2 id="pol-h">Policy</h2><span class="grow"></span><a class="link" href="#overview">Open policy</a></header>' +
     '<dl class="glance">' +
-    '<dt>Mode</dt><dd><b>enforce</b><span class="badge">Hive default</span><span class="muted">3 repositories follow it · 1 sets its own: <a class="link mono" href="#overview">acme/tax-service</a> observes</span></dd>' +
+    '<dt>Mode</dt><dd><b>enforce</b><span class="badge">Workspace default</span><span class="muted">3 repositories follow it · 1 sets its own: <a class="link mono" href="#overview">acme/tax-service</a> observes</span></dd>' +
     '<dt>In force</dt><dd><span class="vpill sm" title="sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"><a class="v" href="#overview">v14</a><span class="dg"><i>sha256</i> e3b0c44298fc</span></span><span class="muted">since 16 Sep</span></dd>' +
     '<dt>Repositories</dt><dd><a class="link" href="#overview"><b>4</b> have posted runs</a><span class="muted">·</span><a class="link" href="#overview"><b>2</b> with rules of their own</a></dd>' +
     '<dt>To review</dt><dd><a class="badge badge-info" href="#overview">3 to review</a><span class="muted">in 2 repositories</span></dd>' +

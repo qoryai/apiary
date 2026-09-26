@@ -27,8 +27,9 @@ defmodule ApiaryWeb.RunComponents do
   import ApiaryWeb.RichText
 
   import ApiaryWeb.CoreComponents,
-    only: [badge: 1, button: 1, icon: 1, mono: 1, notice: 1, term: 1, short_date: 1]
+    only: [badge: 1, button: 1, icon: 1, mono: 1, notice: 1, term: 1]
 
+  alias ApiaryWeb.Format
   # Called by its full name below: `PolicyComponents` imports this module.
   alias ApiaryWeb.PolicyComponents
 
@@ -183,7 +184,7 @@ defmodule ApiaryWeb.RunComponents do
   defp closed_tip(%DateTime{} = at),
     do:
       gettext("Closed by a member on %{date}. The run never posted its exit.",
-        date: short_date(at)
+        date: Format.date(at)
       )
 
   defp closed_tip(_at), do: gettext("Closed by a member. The run never posted its exit.")
@@ -193,11 +194,12 @@ defmodule ApiaryWeb.RunComponents do
   @max_beat 3600
 
   @doc """
-  The seconds a running run has been quiet for, or nil: set once the hive has heard no
-  heartbeat for more than one interval. The server decides this, never the browser, and by
-  the rule of `Apiary.Runs.Liveness`: silence is measured on the server's clock from when
-  the last heartbeat was received, or, for a run that has not beaten yet, from when the
-  hive first heard of it; a run that announced no valid interval is held to 30 seconds.
+  The seconds a running run has been quiet for, or nil: set once the workspace has heard
+  no heartbeat for more than one interval. The server decides this, never the browser, and
+  by the rule of `Apiary.Runs.Liveness`: silence is measured on the server's clock from
+  when the last heartbeat was received, or, for a run that has not beaten yet, from when
+  the workspace first heard of it; a run that announced no valid interval is held to 30
+  seconds.
   """
   def quiet_for(run, now \\ DateTime.utc_now())
 
@@ -228,8 +230,8 @@ defmodule ApiaryWeb.RunComponents do
   @doc """
   What a running run's clock counts from, `{elapsed_seconds, elapsed_at}`: the runner's own
   `elapsed_seconds` of its last heartbeat and the server time that heartbeat was received;
-  before the first heartbeat, zero at the moment the hive first heard of the run. Never the
-  runner's `started_at`: its clock may be anywhere.
+  before the first heartbeat, zero at the moment the workspace first heard of the run.
+  Never the runner's `started_at`: its clock may be anywhere.
   """
   def elapsed(%{last_heartbeat_at: %DateTime{} = at, elapsed_seconds: seconds})
       when is_integer(seconds),
@@ -307,7 +309,7 @@ defmodule ApiaryWeb.RunComponents do
   def format_duration_ms(ms, _precise) when ms < 1000, do: gettext("%{ms} ms", ms: ms)
 
   def format_duration_ms(ms, true) when ms < 60_000,
-    do: gettext("%{seconds} s", seconds: :erlang.float_to_binary(ms / 1000, decimals: 1))
+    do: gettext("%{seconds} s", seconds: Format.number(ms / 1000, digits: 1))
 
   def format_duration_ms(ms, _precise), do: format_seconds(div(ms, 1000))
 
@@ -335,7 +337,8 @@ defmodule ApiaryWeb.RunComponents do
 
   @doc """
   A time across runs: relative up to yesterday ("2 minutes ago", "Yesterday, 16:40"), then
-  "17 Sep, 09:30". `clock` gives "Today, 14:02:11". The absolute UTC time is the `title`.
+  "17 Sept, 09:30" (`ApiaryWeb.Format.relative/2`). `clock` gives "Today, 14:02:11"
+  (`ApiaryWeb.Format.clock/2`). The full time with its zone is the `title`.
   """
   attr :id, :string, default: nil
   attr :at, :any, required: true
@@ -350,10 +353,10 @@ defmodule ApiaryWeb.RunComponents do
       datetime={iso(@at)}
       data-tick={@format}
       data-now={iso(DateTime.utc_now())}
-      title={absolute(@at)}
+      title={Format.datetime(@at, seconds: true, zone: true)}
       aria-live="off"
       class={["tabular-nums", @class]}
-    >{if @format == "clock", do: clock_label(@at), else: relative_label(@at)}</time>
+    >{if @format == "clock", do: Format.clock(@at), else: Format.relative(@at)}</time>
     """
   end
 
@@ -363,70 +366,30 @@ defmodule ApiaryWeb.RunComponents do
     """
   end
 
-  @doc false
-  def relative_label(%DateTime{} = at, now \\ DateTime.utc_now()) do
-    seconds = max(DateTime.diff(now, at, :second), 0)
-    days = Date.diff(DateTime.to_date(now), DateTime.to_date(at))
-
-    cond do
-      seconds < 5 ->
-        gettext("Just now")
-
-      seconds < 60 ->
-        ngettext("%{count} second ago", "%{count} seconds ago", seconds)
-
-      seconds < 3600 ->
-        ngettext("%{count} minute ago", "%{count} minutes ago", div(seconds, 60))
-
-      days <= 0 ->
-        ngettext("%{count} hour ago", "%{count} hours ago", div(seconds, 3600))
-
-      days == 1 ->
-        gettext("Yesterday, %{time}", time: Calendar.strftime(at, "%H:%M"))
-
-      at.year == now.year ->
-        Calendar.strftime(at, "%-d %b, %H:%M")
-
-      true ->
-        Calendar.strftime(at, "%-d %b %Y, %H:%M")
-    end
-  end
-
-  @doc false
-  def clock_label(%DateTime{} = at, now \\ DateTime.utc_now()) do
-    case Date.diff(DateTime.to_date(now), DateTime.to_date(at)) do
-      0 -> gettext("Today, %{time}", time: Calendar.strftime(at, "%H:%M:%S"))
-      1 -> gettext("Yesterday, %{time}", time: Calendar.strftime(at, "%H:%M:%S"))
-      _ -> Calendar.strftime(at, "%-d %b %Y, %H:%M:%S")
-    end
-  end
-
   @doc """
-  The words the browser's clocks tick in (`assets/js/hooks/ticker.js`), in the body's
+  The words the browser's clocks tick in (`assets/js/hooks/ticker.js`), in the reader's
   language, so the script holds none: every "N seconds ago" up to a minute, every "N
-  minutes ago" up to an hour and every "N hours ago" up to a day, each chosen by the
-  language's own plural rule; the templates of `format_seconds/1` and of the days; and the
-  months as `Calendar.strftime/2` writes them. The root layout puts them on the body.
+  minutes ago" up to an hour and every "N hours ago" up to a day of 25 hours, as
+  `ApiaryWeb.Format.ago/2` writes them; the templates of `format_seconds/1` and of the
+  days. The dates and times themselves the script formats with `Intl.DateTimeFormat`, in
+  the locale and the time zone of `ApiaryWeb.Format`, which the root layout puts on the
+  body beside these.
   """
   def clock_words do
     %{
       justNow: gettext("Just now"),
-      secondsAgo: for(n <- 0..59, do: ngettext("%{count} second ago", "%{count} seconds ago", n)),
-      minutesAgo: for(n <- 0..59, do: ngettext("%{count} minute ago", "%{count} minutes ago", n)),
-      hoursAgo: for(n <- 0..23, do: ngettext("%{count} hour ago", "%{count} hours ago", n)),
+      secondsAgo: for(n <- 0..59, do: Format.ago(n, :second)),
+      minutesAgo: for(n <- 0..59, do: Format.ago(n, :minute)),
+      # Up to 24: the day summer time ends has 25 hours.
+      hoursAgo: for(n <- 0..24, do: Format.ago(n, :hour)),
       today: gettext("Today, %{time}", time: "%{time}"),
       yesterday: gettext("Yesterday, %{time}", time: "%{time}"),
       seconds: gettext("%{seconds} s", seconds: "%{seconds}"),
       minutesSeconds:
         gettext("%{minutes} m %{seconds} s", minutes: "%{minutes}", seconds: "%{seconds}"),
-      hoursMinutes: gettext("%{hours} h %{minutes} m", hours: "%{hours}", minutes: "%{minutes}"),
-      months: for(m <- 1..12, do: Calendar.strftime(Date.new!(2000, m, 1), "%b"))
+      hoursMinutes: gettext("%{hours} h %{minutes} m", hours: "%{hours}", minutes: "%{minutes}")
     }
   end
-
-  @doc "\"20 Sep 2026, 14:02:11 UTC\"."
-  def absolute(%DateTime{} = at), do: Calendar.strftime(at, "%-d %b %Y, %H:%M:%S UTC")
-  def absolute(_at), do: nil
 
   @doc """
   An event's time inside a run, as an offset from `run.started`: "+0:08.1", "+1:02:08"
@@ -440,7 +403,7 @@ defmodule ApiaryWeb.RunComponents do
     ~H"""
     <span
       class={["font-mono text-[11.5px] text-faint tabular-nums whitespace-nowrap", @class]}
-      title={absolute_ms(@at)}
+      title={Format.datetime(@at, milliseconds: true, zone: true)}
     >{format_offset(@at, @from)}</span>
     """
   end
@@ -464,15 +427,6 @@ defmodule ApiaryWeb.RunComponents do
   end
 
   def format_offset(_at, _from), do: gettext("n/a")
-
-  defp absolute_ms(%DateTime{} = at) do
-    ms =
-      at.microsecond |> elem(0) |> div(1000) |> Integer.to_string() |> String.pad_leading(3, "0")
-
-    Calendar.strftime(at, "%-d %b %Y, %H:%M:%S") <> "." <> ms <> " UTC"
-  end
-
-  defp absolute_ms(_at), do: nil
 
   defp iso(%DateTime{} = at), do: DateTime.to_iso8601(at)
   defp iso(_at), do: nil
@@ -531,13 +485,18 @@ defmodule ApiaryWeb.RunComponents do
     """
   end
 
-  @doc "A run's labels in the record's order, with forge, repository and task first."
-  def ordered_labels(%{} = labels) do
-    first = for key <- ~w(forge repository task), value = labels[key], do: {key, value}
-    first ++ (labels |> Map.drop(~w(forge repository task)) |> Enum.sort())
+  @doc """
+  A run's labels in the record's order: first the labels that name a target in the
+  workspace's domain (`Apiary.Lingo.Domain.target_labels/1`), then the task, then the rest
+  by name.
+  """
+  def ordered_labels(%{} = labels, workspace) do
+    keys = Apiary.Lingo.Domain.target_labels(workspace) ++ ["task"]
+    first = for key <- keys, value = labels[key], do: {key, value}
+    first ++ (labels |> Map.drop(keys) |> Enum.sort())
   end
 
-  def ordered_labels(_labels), do: []
+  def ordered_labels(_labels, _workspace), do: []
 
   @doc "Cuts a long value in the middle: both ends tell more than the start alone."
   def middle(value, max) when is_binary(value) do
@@ -555,13 +514,6 @@ defmodule ApiaryWeb.RunComponents do
   @doc "The first eight characters of a run id, as the runner prints it."
   def short_id(run_id) when is_binary(run_id), do: String.slice(run_id, 0, 8)
   def short_id(_run_id), do: gettext("n/a")
-
-  @doc "1240 as \"1,240\"."
-  def delimited(n) when is_integer(n) do
-    n
-    |> Integer.to_string()
-    |> String.replace(~r/\B(?=(\d{3})+$)/, ",")
-  end
 
   ## rd6. Alive indicator
 
@@ -656,7 +608,7 @@ defmodule ApiaryWeb.RunComponents do
   defp ended_sentence("lost", %{} = run) do
     case Map.get(run, :last_heartbeat_at) || Map.get(run, :last_event_at) do
       %DateTime{} = at ->
-        gettext("Lost. Last heard %{time}", time: Calendar.strftime(at, "%-d %b %Y, %H:%M"))
+        gettext("Lost. Last heard %{time}", time: Format.datetime(at))
 
       _ ->
         gettext("Lost")
@@ -666,7 +618,7 @@ defmodule ApiaryWeb.RunComponents do
   defp ended_sentence("lost", _run), do: gettext("Lost")
 
   defp ended_sentence("closed", %{closed_at: %DateTime{} = at}),
-    do: gettext("Closed %{date}", date: short_date(at))
+    do: gettext("Closed %{date}", date: Format.date(at))
 
   defp ended_sentence("closed", _run), do: gettext("Closed")
 
@@ -816,8 +768,8 @@ defmodule ApiaryWeb.RunComponents do
           class="px-2 pb-1 text-xs text-faint"
         >
           {gettext("Showing %{shown} of %{total}: type to narrow",
-            shown: length(@options),
-            total: delimited(@total)
+            shown: Format.number(length(@options)),
+            total: Format.number(@total)
           )}
         </p>
         <form
@@ -953,7 +905,10 @@ defmodule ApiaryWeb.RunComponents do
     do: "#{option_label(a, options)}, #{option_label(b, options)}"
 
   defp shown_value(values, _options),
-    do: ngettext("%{count} selected", "%{count} selected", length(values))
+    do:
+      ngettext("%{number} selected", "%{number} selected", length(values),
+        number: Format.number(length(values))
+      )
 
   defp option_label(value, options) do
     Enum.find_value(options, value, fn {label, v, _count} ->
@@ -1009,12 +964,16 @@ defmodule ApiaryWeb.RunComponents do
       >
         {render_slot(segment)}
         <span :if={segment[:count]} class="font-mono text-[11px] text-faint tabular-nums">
-          {segment[:count]}
+          {count_label(segment[:count])}
         </span>
       </button>
     </div>
     """
   end
+
+  # A count beside a label, grouped as the reader's language groups it.
+  defp count_label(n) when is_number(n), do: Format.number(n)
+  defp count_label(other), do: other
 
   ## rd9. Tabs
 
@@ -1041,7 +1000,7 @@ defmodule ApiaryWeb.RunComponents do
         <.icon :if={tab[:icon]} name={tab[:icon]} class="size-4" />
         {render_slot(tab)}
         <span :if={tab[:count]} class={["q-tabs-n", tab[:tone] == "error" && "q-tabs-bad"]}>
-          {tab[:count]}
+          {count_label(tab[:count])}
         </span>
       </.link>
     </nav>
@@ -1091,8 +1050,8 @@ defmodule ApiaryWeb.RunComponents do
 
   @doc """
   One connection, the same wherever it appears. `inline` is the 32 px row of the timeline,
-  `table` a row of a run's connections, `hive` a row of the hive's, with the disclosure of
-  the runs that reached the destination.
+  `table` a row of a run's connections, `workspace` a row of the workspace's, with the
+  disclosure of the runs that reached the destination.
 
   `connection` is a projection row (`last_decision`, `last_rule`, …) or a map read from one
   egress event (`decision`, `rule`, …); both spellings are read.
@@ -1108,17 +1067,20 @@ defmodule ApiaryWeb.RunComponents do
   """
   attr :id, :string, required: true
   attr :connection, :map, required: true
-  attr :variant, :string, default: "table", values: ~w(inline table hive)
+  attr :variant, :string, default: "table", values: ~w(inline table workspace)
   attr :started_at, :any, default: nil, doc: "offsets instead of relative time, inside a run"
   attr :caption, :string, default: nil, doc: "inline: \"while 2 calls were open\""
-  attr :open, :any, default: nil, doc: "hive: nil when closed, else %{runs: [...], total: n}"
+  attr :open, :any, default: nil, doc: "workspace: nil when closed, else %{runs: [...], total: n}"
   attr :toggle, :string, default: "toggle_destination"
   attr :more, :string, default: "more_destination_runs"
-  attr :run_path, :any, default: nil, doc: "hive: a function from a run to its connections page"
+
+  attr :run_path, :any,
+    default: nil,
+    doc: "workspace: a function from a run to its connections page"
 
   attr :act, :map,
     default: nil,
-    doc: "table and hive: what the row may ask of the policy, see `rule_action/1`"
+    doc: "table and workspace: what the row may ask of the policy, see `rule_action/1`"
 
   attr :security, :boolean,
     default: true,
@@ -1162,10 +1124,10 @@ defmodule ApiaryWeb.RunComponents do
       <td>
         <div class="q-dcell"><.decision_mark decision={@c.decision} /><.destination c={@c} /></div>
       </td>
-      <td class="q-num">{delimited(@c.attempts)}</td>
-      <td class={["q-num", @c.allowed == 0 && "q-zero"]}>{delimited(@c.allowed)}</td>
+      <td class="q-num">{Format.number(@c.attempts)}</td>
+      <td class={["q-num", @c.allowed == 0 && "q-zero"]}>{Format.number(@c.allowed)}</td>
       <td class={["q-num", if(@c.denied == 0, do: "q-zero", else: "q-bad")]}>
-        {delimited(@c.denied)}
+        {Format.number(@c.denied)}
       </td>
       <td :if={@security} class="q-why">
         <.reason c={@c} variant="table" />
@@ -1185,7 +1147,7 @@ defmodule ApiaryWeb.RunComponents do
     """
   end
 
-  def connection_row(%{variant: "hive"} = assigns) do
+  def connection_row(%{variant: "workspace"} = assigns) do
     c = normalise(assigns.connection)
 
     assigns =
@@ -1216,20 +1178,20 @@ defmodule ApiaryWeb.RunComponents do
           <.decision_mark decision={@c.decision} /><.destination c={@c} />
         </div>
       </td>
-      <td class="q-num">{delimited(@c.runs)}</td>
-      <td class="q-num">{delimited(@c.attempts)}</td>
+      <td class="q-num">{Format.number(@c.runs)}</td>
+      <td class="q-num">{Format.number(@c.attempts)}</td>
       <td>
         <span class="q-split" aria-hidden="true"><i style={"width:#{@share}%"}></i><u style={"width:#{100 - @share}%"}></u></span>
         <span class={[
           "ml-1.5 tabular-nums",
           if(@c.allowed == 0 and @c.denied > 0, do: "q-bad", else: "text-muted")
         ]}>
-          {delimited(@c.allowed)} /
-          <span class={@c.denied > 0 && "q-bad"}>{delimited(@c.denied)}</span>
+          {Format.number(@c.allowed)} /
+          <span class={@c.denied > 0 && "q-bad"}>{Format.number(@c.denied)}</span>
         </span>
       </td>
       <td :if={@security} class="q-why">
-        <.reason c={@c} variant="hive" /><span
+        <.reason c={@c} variant="workspace" /><span
           :if={@c.allowed > 0 and @c.denied > 0}
           class="text-faint"
         > · {gettext("last attempt")}</span>
@@ -1252,7 +1214,7 @@ defmodule ApiaryWeb.RunComponents do
               "%{number} run reached this destination",
               "%{number} runs reached this destination",
               @open.total,
-              number: delimited(@open.total)
+              number: Format.number(@open.total)
             )}
           </h3>
           <div class="q-hits">
@@ -1284,11 +1246,11 @@ defmodule ApiaryWeb.RunComponents do
                 {if hit.denied > 0,
                   do:
                     ngettext("%{number} denied", "%{number} denied", hit.denied,
-                      number: delimited(hit.denied)
+                      number: Format.number(hit.denied)
                     ),
                   else:
                     ngettext("%{number} allowed", "%{number} allowed", hit.allowed,
-                      number: delimited(hit.allowed)
+                      number: Format.number(hit.allowed)
                     )}
               </span>
               <.relative_time at={hit.last_seen_at} class="text-[12.5px] text-muted" />
@@ -1305,9 +1267,10 @@ defmodule ApiaryWeb.RunComponents do
             phx-value-path={@c.path}
           >
             {ngettext(
-              "Show %{count} more",
-              "Show %{count} more",
-              min(10, @open.total - length(@open.runs))
+              "Show %{number} more",
+              "Show %{number} more",
+              min(10, @open.total - length(@open.runs)),
+              number: Format.number(min(10, @open.total - length(@open.runs)))
             )}
           </button>
         </div>
@@ -1630,20 +1593,21 @@ defmodule ApiaryWeb.RunComponents do
   ## rd13. Connections tables
 
   @doc """
-  The table of a run's connections (`variant="table"`, C1) or of the hive's across runs
-  (`variant="hive"`, C2). `rows` are connections as `<.connection_row>` reads them; `row_id`
-  gives each its DOM id (`"cx-<id>"` for a projection row, `"dst-<hash>"` for a destination).
+  The table of a run's connections (`variant="table"`, C1) or of the workspace's across
+  runs (`variant="workspace"`, C2). `rows` are connections as `<.connection_row>` reads
+  them; `row_id` gives each its DOM id (`"cx-<id>"` for a projection row, `"dst-<hash>"`
+  for a destination).
   """
   attr :id, :string, required: true
   attr :label, :string, required: true, doc: "the accessible name of the scroll region"
   attr :rows, :list, required: true
-  attr :variant, :string, default: "table", values: ~w(table hive)
+  attr :variant, :string, default: "table", values: ~w(table workspace)
   attr :started_at, :any, default: nil
   attr :row_id, :any, default: nil
 
   attr :open, :map,
     default: %{},
-    doc: "hive: `destination_key/1` of an open destination => %{runs, total}"
+    doc: "workspace: `destination_key/1` of an open destination => %{runs, total}"
 
   attr :run_path, :any, default: nil
 
@@ -1691,7 +1655,7 @@ defmodule ApiaryWeb.RunComponents do
               <span class="sr-only">{gettext("Rule actions")}</span>
             </th>
           </tr>
-          <tr :if={@variant == "hive"}>
+          <tr :if={@variant == "workspace"}>
             <th scope="col">{gettext("Destination")}</th>
             <th scope="col" class="q-num">{gettext("Runs")}</th>
             <th scope="col" class="q-num">{gettext("Attempts")}</th>
@@ -1849,8 +1813,8 @@ defmodule ApiaryWeb.RunComponents do
 
     tip =
       if standing == :locked_deny,
-        do: gettext("A locked hive rule denies %{host}", host: host),
-        else: gettext("A locked hive rule allows %{host}", host: host)
+        do: gettext("A locked workspace rule denies %{host}", host: host),
+        else: gettext("A locked workspace rule allows %{host}", host: host)
 
     assigns = assign(assigns, :tip, tip)
 
@@ -1901,8 +1865,8 @@ defmodule ApiaryWeb.RunComponents do
   record and stays as it was. `line` is `%{action, level, version, by, at, state,
   reloaded_at}`; `state` is `:pending` (the run is alive and has not reported the digest
   in force), `:in_force` (it has: claimed from the record, never after a timer),
-  `:ended`, `:machine` (the run takes no policy from this server) or `:hive` (the hive's
-  page, which says nothing of a run).
+  `:ended`, `:machine` (the run takes no policy from this server) or `:workspace` (the
+  workspace's page, which says nothing of a run).
   """
   attr :id, :string, required: true
   attr :line, :map, required: true
@@ -1929,7 +1893,7 @@ defmodule ApiaryWeb.RunComponents do
 
   defp after_color(:in_force), do: "success"
   defp after_color(:pending), do: "info"
-  defp after_color(:hive), do: "info"
+  defp after_color(:workspace), do: "info"
   defp after_color(_state), do: "neutral"
 
   # The head of the line, with the version the rule is in when it is known.
@@ -1939,18 +1903,18 @@ defmodule ApiaryWeb.RunComponents do
     do: rich_gettext("Denied for this target in %{version}", version: {:part, :version})
 
   defp after_head(%{action: :deny}),
-    do: rich_gettext("Denied for the hive in %{version}", version: {:part, :version})
+    do: rich_gettext("Denied for the workspace in %{version}", version: {:part, :version})
 
   defp after_head(%{level: :target}),
     do: rich_gettext("Allowed for this target in %{version}", version: {:part, :version})
 
   defp after_head(_line),
-    do: rich_gettext("Allowed for the hive in %{version}", version: {:part, :version})
+    do: rich_gettext("Allowed for the workspace in %{version}", version: {:part, :version})
 
   defp after_head_alone(%{action: :deny, level: :target}), do: gettext("Denied for this target")
-  defp after_head_alone(%{action: :deny}), do: gettext("Denied for the hive")
+  defp after_head_alone(%{action: :deny}), do: gettext("Denied for the workspace")
   defp after_head_alone(%{level: :target}), do: gettext("Allowed for this target")
-  defp after_head_alone(_line), do: gettext("Allowed for the hive")
+  defp after_head_alone(_line), do: gettext("Allowed for the workspace")
 
   defp after_sentence(%{state: :pending}), do: gettext("The run has not reloaded yet.")
 
@@ -1975,9 +1939,9 @@ defmodule ApiaryWeb.RunComponents do
   table's scroll container cannot clip it, placed under its button by the `RulePopover`
   hook and a bottom sheet below 768 px. `popover` is the page's state of it:
 
-      %{anchor:, action: :allow | :deny, host:, path:, page: :run | :hive, level:,
+      %{anchor:, action: :allow | :deny, host:, path:, page: :run | :workspace, level:,
         target: %{label:} | nil, targets: [%{id, label, runs}], choice:,
-        what: %{target:, hive:}, own_rule:, hive:, alive:, fetched:, interval:, consequence:, error:,
+        what: %{target:, workspace:}, own_rule:, workspace:, alive:, fetched:, interval:, consequence:, error:,
         refusal: nil | %{standing:, rule:, locked_by:, locked_at:, owner:, rule_path:}}
 
   The form changes with `rule_change` and is sent with `rule_submit`; `rule_cancel`
@@ -2014,8 +1978,8 @@ defmodule ApiaryWeb.RunComponents do
           <span id={"#{@id}-refusal"}>
             <.spliced text={
               if @popover.refusal.standing == :locked_deny,
-                do: gettext("A locked hive rule denies %{rule}.", rule: hole()),
-                else: gettext("A locked hive rule allows %{rule}.", rule: hole())
+                do: gettext("A locked workspace rule denies %{rule}.", rule: hole()),
+                else: gettext("A locked workspace rule allows %{rule}.", rule: hole())
             }>
               <.mono bare>{@popover.refusal.rule}</.mono>
             </.spliced>
@@ -2031,12 +1995,12 @@ defmodule ApiaryWeb.RunComponents do
                 do:
                   gettext("Locked by %{name} on %{date}.",
                     name: @popover.refusal.locked_by,
-                    date: short_date(@popover.refusal.locked_at)
+                    date: Format.date(@popover.refusal.locked_at)
                   ),
                 else: gettext("Locked by %{name}.", name: @popover.refusal.locked_by)}
             </span>
             {if @popover.refusal.owner,
-              do: gettext("You can change or unlock it on the hive's policy page."),
+              do: gettext("You can change or unlock it on the workspace's policy page."),
               else: gettext("Only an owner can change or unlock it.")}
           </span>
         </.notice>
@@ -2094,7 +2058,9 @@ defmodule ApiaryWeb.RunComponents do
                 {middle(path, 40)}
               </.mono>
               <span :if={length(@what.paths) > 6}>
-                {ngettext("and %{count} more", "and %{count} more", length(@what.paths) - 6)}
+                {ngettext("and %{number} more", "and %{number} more", length(@what.paths) - 6,
+                  number: Format.number(length(@what.paths) - 6)
+                )}
               </span>
               <span :if={@what.paths == []}>{gettext("none, so no path is allowed")}</span>
             </legend>
@@ -2124,7 +2090,7 @@ defmodule ApiaryWeb.RunComponents do
                 {@popover.consequence.target}
               </small>
             </label>
-            <label :if={@popover.page == :hive and @popover.targets != []} class="q-popt">
+            <label :if={@popover.page == :workspace and @popover.targets != []} class="q-popt">
               <input
                 type="radio"
                 name="for"
@@ -2138,7 +2104,7 @@ defmodule ApiaryWeb.RunComponents do
             </label>
             <%!-- Outside the label: inside it, every option would be part of the radio's name. --%>
             <div
-              :if={@popover.page == :hive and @popover.targets != []}
+              :if={@popover.page == :workspace and @popover.targets != []}
               class="q-popt-more"
             >
               <select
@@ -2159,17 +2125,17 @@ defmodule ApiaryWeb.RunComponents do
                     "%{number} run",
                     "%{number} runs",
                     target.runs,
-                    number: delimited(target.runs)
+                    number: Format.number(target.runs)
                   )}
                 </option>
               </select>
             </div>
             <label class="q-popt">
-              <input type="radio" name="for" value="hive" checked={@popover.level == :hive} />
-              <span><b>{gettext("The whole hive")}</b></span>
+              <input type="radio" name="for" value="workspace" checked={@popover.level == :workspace} />
+              <span><b>{gettext("The whole workspace")}</b></span>
               <small>
-                {gettext("Every target of %{hive}.", hive: @popover.hive)} {if @deny,
-                  do: @popover.consequence[:hive]}
+                {gettext("Every target of %{workspace}.", workspace: @popover.workspace)} {if @deny,
+                  do: @popover.consequence[:workspace]}
               </small>
               <small :if={@popover[:own_rule]} id={"#{@id}-own-rule"}>
                 {if @popover.page == :run,
@@ -2183,7 +2149,7 @@ defmodule ApiaryWeb.RunComponents do
             <.icon name="hero-arrow-path-micro" class="size-3.5" />
             <span id={"#{@id}-next"}>
               {gettext("Takes effect in running sessions within a heartbeat, about %{seconds} s.",
-                seconds: @popover.interval
+                seconds: Format.number(@popover.interval)
               )} {next_sentence(@popover)}
             </span>
           </p>
@@ -2210,7 +2176,7 @@ defmodule ApiaryWeb.RunComponents do
   defp popover_what(%{level: level, what: what}) when is_map(what), do: what[level]
   defp popover_what(_popover), do: nil
 
-  defp popover_ready?(%{level: :hive}), do: true
+  defp popover_ready?(%{level: :workspace}), do: true
   defp popover_ready?(%{level: :target, page: :run}), do: true
   defp popover_ready?(%{level: :target, choice: choice}) when is_binary(choice), do: true
   defp popover_ready?(_popover), do: false
@@ -2241,11 +2207,11 @@ defmodule ApiaryWeb.RunComponents do
   defp popover_title(_deny, true), do: gettext("Allow on %{host}", host: hole())
   defp popover_title(_deny, _path), do: gettext("Allow %{host}", host: hole())
 
-  defp submit_label(true = _deny, %{level: :hive}), do: gettext("Deny for the hive")
+  defp submit_label(true = _deny, %{level: :workspace}), do: gettext("Deny for the workspace")
   defp submit_label(true, %{level: :target, page: :run}), do: gettext("Deny for this target")
   defp submit_label(true, %{level: :target}), do: gettext("Deny for the target")
   defp submit_label(true, _popover), do: gettext("Deny for …")
-  defp submit_label(_deny, %{level: :hive}), do: gettext("Allow for the hive")
+  defp submit_label(_deny, %{level: :workspace}), do: gettext("Allow for the workspace")
   defp submit_label(_deny, %{level: :target, page: :run}), do: gettext("Allow for this target")
   defp submit_label(_deny, %{level: :target}), do: gettext("Allow for the target")
   defp submit_label(_deny, _popover), do: gettext("Allow for …")
@@ -2279,18 +2245,18 @@ defmodule ApiaryWeb.RunComponents do
 
   defp version_title(%{n: n}), do: gettext("Version %{n}. Open the exact document.", n: n)
 
-  @doc "A version in a sentence: \"the hive baseline's v3\", \"acme/shop's v1\"."
+  @doc "A version in a sentence: \"the workspace baseline's v3\", \"acme/shop's v1\"."
   def version_words(%{n: n, label: label}) when is_binary(label) do
     if baseline?(label),
-      do: gettext("the hive baseline's v%{n}", n: n),
+      do: gettext("the workspace baseline's v%{n}", n: n),
       else: gettext("%{holder}'s v%{n}", holder: middle(label, 40), n: n)
   end
 
   def version_words(%{n: n}), do: gettext("v%{n}", n: n)
   def version_words(_version), do: gettext("another configuration")
 
-  # The baseline's label is made elsewhere, in engine words or already in the body's.
-  defp baseline?(label), do: label in ["hive baseline", gettext("hive baseline")]
+  # The baseline's label is made elsewhere, in engine words or already in the domain's.
+  defp baseline?(label), do: label in ["workspace baseline", gettext("workspace baseline")]
 
   ## pd9. The drift mark
 
@@ -2339,7 +2305,7 @@ defmodule ApiaryWeb.RunComponents do
       ),
       gettext("%{version} has been in force since %{time}.",
         version: String.capitalize(version_words(in_force)),
-        time: clock_label(in_force.rendered_at)
+        time: Format.clock(in_force.rendered_at)
       ),
       gettext("A run reloads at its next heartbeat.")
     ]
@@ -2380,11 +2346,12 @@ defmodule ApiaryWeb.RunComponents do
   end
 
   defp new_words(count, "run"),
-    do: ngettext("%{number} new run", "%{number} new runs", count, number: delimited(count))
+    do: ngettext("%{number} new run", "%{number} new runs", count, number: Format.number(count))
 
   defp new_words(count, "line"),
-    do: ngettext("%{number} new line", "%{number} new lines", count, number: delimited(count))
+    do: ngettext("%{number} new line", "%{number} new lines", count, number: Format.number(count))
 
   defp new_words(count, _event),
-    do: ngettext("%{number} new event", "%{number} new events", count, number: delimited(count))
+    do:
+      ngettext("%{number} new event", "%{number} new events", count, number: Format.number(count))
 end

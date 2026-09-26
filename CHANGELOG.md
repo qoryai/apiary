@@ -17,23 +17,23 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
   the tool answered, the `status`, and is recorded as a connection, decided by the same
   rules and counted on the same pages. A tool invocation is such a request that was
   allowed: it reads as a call to the tool wherever a connection is shown: the run's
-  Connections tab, `/hive/connections` and the timeline. The row leads with the tool's name, then the request line and the host;
-  the reason says the request was handed to the tool, by which rule and path, or was for
-  the tool when it did not reach it; the outcome is the status the tool answered
-  (**Answered 200**), **Handed over** when none is recorded, a failed dial when the tool
-  is not running. A request a path rule refused never reached the tool and reads as any
-  denial, host first, saying it was refused before reaching the tool. The overview's
-  denied destinations and the list of what enforce would start denying name a
-  destination's tool whenever a request to it named one, a refused request included, as
-  a denied request to that tool. A plain host whose
-  requests the proxy reads shows the status it answered beside **Connected**.
+  Connections tab, `/:org/:workspace/connections` and the timeline. The row leads with the
+  tool's name, then the request line and the host; the reason says the request was handed
+  to the tool, by which rule and path, or was for the tool when it did not reach it; the
+  outcome is the status the tool answered (**Answered 200**), **Handed over** when none is
+  recorded, a failed dial when the tool is not running. A request a path rule refused
+  never reached the tool and reads as any denial, host first, saying it was refused before
+  reaching the tool. The overview's denied destinations and the list of what enforce would
+  start denying name a destination's tool whenever a request to it named one, a refused
+  request included, as a denied request to that tool. A plain host whose requests the
+  proxy reads shows the status it answered beside **Connected**.
 - On the run's timeline, allowed requests to one tool in a row fold into one line under
   the tool's name ("2 allowed requests"), a refused one is never folded, and a single
   request keeps the proxy's id on hover. The policy applied item lists the run's tools
   with the hosts they serve, and so does the Details tab under the policy in force.
-- `/hive/connections` has a **Tool invocations** toggle, `tools=1`, that keeps only the
-  destinations where a run's last attempt was a tool invocation, each whole, with the
-  counts it has without the filter.
+- `/:org/:workspace/connections` has a **Tool invocations** toggle, `tools=1`, that keeps
+  only the destinations where a run's last attempt was a tool invocation, each whole, with
+  the counts it has without the filter.
 - `QORY_FEATURES`, the features an instance has, read once at boot: `observability`
   (the record) and `security` (the security policy), beside names kept for features not
   built yet. `all`, the default when unset, is every feature; `all-security` is every feature but the security policy; a
@@ -45,6 +45,24 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
   section, so runners keep the policy of their own runner file. An unknown name, or a
   feature listed without `observability`, stops the boot. Switching a feature on later is
   a change of the value and a restart, with no migration. See the Install guide.
+- A domain's catalogue falls back to its language's: a sentence `de@software` does not
+  say in the software domain's words comes from `de`, and only then from the source text
+  (`ApiaryWeb.Gettext.Fallback`). A language other than English is one full catalogue that
+  every domain shares; the catalogue test fails a sentence neither of them translates.
+- A person's preferences: a language, a time zone and a skin, stored on the user and the
+  same in every organisation the person belongs to. **Account settings** has a
+  **Preferences** section: the time zone, chosen from the IANA zones by region (UTC until
+  changed; every time is still stored in UTC), and the language, offered once the
+  instance has a catalogue for more than English and shown as English until then. A time
+  zone the zone database does not know, or a language without a catalogue, is refused.
+  The skin is stored with its one value, the domain's own words, and not offered: the
+  apiary skin is not built. The zone database is the `tz` package's, compiled into the
+  release; nothing is downloaded at runtime.
+- A workspace's domain, stored with the workspace and chosen when it is created: software,
+  the one domain there is, which is also every existing workspace's. Nothing changes a
+  workspace's domain afterwards. `Apiary.Lingo.Domain.for_workspace/1` reads it through
+  the registry of domains, `Apiary.Lingo.Domain.domains/0`, and the projector names a
+  run's target by the labelling rule of its workspace's domain.
 
 ### Changed
 
@@ -55,6 +73,62 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
   runner sends the header on every request.
 - `mix apiary.rebuild` (`Apiary.Release.rebuild/1` in a release) projects every run whose
   events are held again, a batch at a time by id; `--all` and `all: true` are gone.
+- The pages, the guides and the README say **workspace** where they said workplace. A
+  saved link to `/hive/…` or `/no-hive` is not redirected and no longer opens its page.
+- The organisation and the workspace are in the URL, by their slugs (decision 0073): the
+  pages of a workspace are under `/:org/:workspace/…` (`/acme/main/runs`,
+  `/acme/main/runs/:run_id`, `/acme/main/connections`, `/acme/main/policy/targets`,
+  `/acme/main/keys`, `/acme/main/settings`), the organisation's under `/:org/…`
+  (`/acme/members`, and `/acme/settings`, its name and owners, now apart from the
+  workspace's settings, which keep its name and retention), and `/acme` sends a member
+  on to their workspace in it. A page shows the workspace its URL names, so a link opens
+  the same page for every member, and two tabs can show two workspaces; a slug the
+  reader is not a member of, or that does not exist, answers **Not Found**. The session
+  only remembers the workspace last opened, for `/` and the log-in to send you back to
+  it, also after a log-out. The organisation switcher is a list of links to each
+  workspace, at the section you are on; `POST /organisations/switch` is gone. A user
+  without an organisation lands on `/users/organisations`. A slug is made from the name
+  when the organisation or the workspace is created, lowercase `a`–`z`, `0`–`9` and
+  hyphens, at most 40, numbered when taken (`acme-2`); renaming keeps it, and the
+  settings pages show it. An organisation slug is unique on the instance and never a
+  path the instance serves or may serve (`users`, `docs`, `v1`, `api`, `admin`, … in
+  `ApiaryWeb.ReservedSlugs`), and a workspace slug is unique within its organisation and
+  never one of its pages (`members`, `settings`, …). A path under such a reserved name,
+  or one no slug can be (`/.env`, `/favicon.png`), answers as one that does not exist,
+  and a signed-out visitor is not sent to log in for it. A saved link to `/workspace/…`
+  or `/no-workspace` is not redirected and no longer opens its page.
+- Hives are workspaces in the schema, the code and the logs: workspace is the engine's
+  word and the same in the software domain, and hive is left to the apiary skin, which is
+  not built. The server's log names a workspace `workspace=` where it said `hive=`
+  (`retention pruned workspace=…`, `policy rerendered workspace=…`), and
+  `mix apiary.policy.rerender` counts workspaces. What named the engine for one kind of
+  work is a domain: `Apiary.Lingo.Domain`, `Apiary.Lingo.Domain.Software` and
+  `Apiary.Lingo.Domain.for_workspace/1`. A domain says which labels name the target, and
+  the run page asks it which labels come first and link to the target's runs.
+- The locale of a page is built from the person and the workspace, `language@domain`
+  (`ApiaryWeb.Lingo.locale_for/1`): the person's language in the words of the workspace's
+  domain; outside a workspace, the default domain's; before sign-in, `en@software` as
+  before. A language that has lost its catalogue reads English. The log-in and
+  email-change mails are written in the recipient's language, whoever sends them
+  (`ApiaryWeb.Lingo.with_locale/3`); an invitation stays in the inviter's. A domain names
+  itself with `name/0`, the stored name and the modifier of its locales, in place of
+  `locale/0`.
+- Dates, times and numbers are written as the reader's language writes them, from the
+  Unicode CLDR (`ex_cldr`), through one module, `ApiaryWeb.Format`. English is British
+  English (CLDR's `en-GB`): "26 Sept 2026" where a page said "26 Sep 2026", a 24-hour
+  clock as before, and every count grouped, "1,240", where some were shown ungrouped. A
+  time is shown in the reader's time zone, the one chosen in Preferences, and names
+  its zone by its abbreviation ("14:03 UTC", "16:03 CEST"), or by its offset
+  ("GMT-05:00") for a zone without one. The "Today" and "Yesterday" of a time, and the
+  days of the policy history, turn at the reader's midnight. The browser's ticking clocks
+  format in the same locale and time zone as the server. "N minutes ago" and the other
+  counts back are CLDR's words. Sizes are in decimal units on every page, 1 kB being
+  1,000 bytes, where the run page counted 1,024 bytes to a KB. Counted days are still UTC
+  days: the overview's chart and its fourteen days, which say so, and the From and To
+  dates of the runs and connections filters. Times are stored in UTC, and everything a
+  machine reads keeps ISO 8601 in UTC. The CLDR data for every language is compiled into
+  the release from the repository (`priv/cldr`) and the time zone database from the `tz`
+  package: an instance downloads neither, at build time or at runtime.
 
 ### Migrations
 
@@ -62,6 +136,21 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
   columns without a default: the tool whose host the last attempt was for, whether it
   was handed to the tool or refused, and the status that answered it. Instant, no row is
   rewritten; reversible.
+- `20260929000100`: `hives` becomes `workspaces`, and `hive_id` becomes `workspace_id` in
+  the thirteen tables that carry it; every index, key and check whose name said hive is
+  renamed: 32 indexes (the primary key's among them), 4 checks, 14 foreign keys, and the
+  NOT NULL constraints where Postgres 18 names them. Renames only: instant, and every row
+  is kept as it is. Reversible: rolling it back restores the old names.
+- `20260930000200`: `users.language`, `users.time_zone` and `users.skin`, and
+  `workspaces.domain`, each NOT NULL with a constant default (`en`, `Etc/UTC`,
+  `standard`, `software`), which every existing row reads. Instant, no row is rewritten;
+  reversible: rolling it back drops the four columns.
+- `20260930001000`: `organisations.slug` and `workspaces.slug`, filled from each row's
+  name, oldest first, numbered where two would be the same or the name is reserved, then
+  NOT NULL, with a unique index on `organisations (slug)`, one on
+  `workspaces (organisation_id, slug)`, and a check of the characters and the length on
+  each. It writes every organisation and workspace once, one row at a time: short on an
+  installation, which holds a handful. Reversible: rolling it back drops both columns.
 
 ### Upgrading
 

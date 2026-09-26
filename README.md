@@ -20,7 +20,7 @@ autonomy was meant to end. Autonomy should not mean blindness.
 
 ## What Qory Apiary gives you
 
-- **The record.** Every run of every machine of a workplace, in one place: the session as
+- **The record.** Every run of every machine of a workspace, in one place: the session as
   a timeline, the terminal as it was written, every connection with the decision and the
   rule behind it, and how the run ended. It is written by the runner as the run happens
   and kept here after the machine is gone.
@@ -28,8 +28,8 @@ autonomy was meant to end. Autonomy should not mean blindness.
   behind a container wall that proxy is the only way out. A credential stays outside the
   container; the proxy sets it on the requests it is for, and the record names the
   credential and never holds it.
-- **The policy.** What the runs of a workplace may reach, edited in one place, versioned,
-  and served to every machine of the workplace. A change reaches the runs in flight within
+- **The policy.** What the runs of a workspace may reach, edited in one place, versioned,
+  and served to every machine of the workspace. A change reaches the runs in flight within
   a heartbeat.
 - **Open source.** Apache 2.0, the contract between runner and server published, the
   fixtures replayed in the tests. You can read what the record is made of.
@@ -53,7 +53,7 @@ curl http://localhost:4100/health
 For the trial, `.env` sets `PUBLIC_URL=http://localhost:4100` and `MAIL_TO_LOG=true`,
 which writes the log-in link to the log instead of sending it. Open
 `http://localhost:4100/users/register`, enter an email address, and take the link from
-`docker compose logs apiary`. You land on the overview of your workplace. Every value, and
+`docker compose logs apiary`. You land on the overview of your workspace. Every value, and
 what each one is for: [guides/quickstart.md](guides/quickstart.md).
 
 ### 2. Connect a machine
@@ -95,13 +95,13 @@ it ends, with its timeline, terminal and connections.
 
 Under **Policy**, add the hosts your agents may reach: a name, `api.example`, or a suffix,
 `*.internal.example`; a host held to paths, `/acme/*`; a credential of the machine, by
-name. A workplace starts in observe, which records every connection and denies only what a
+name. A workspace starts in observe, which records every connection and denies only what a
 deny rule names. When the rules are complete, an owner switches to enforce; the
 confirmation lists what enforce would start denying, from the record. A repository can
 have rules and a mode of its own, so one repository is enforced first and the rest when
 the record says they are ready.
 
-The first change is the moment the workplace takes over from each machine's own list, so
+The first change is the moment the workspace takes over from each machine's own list, so
 read [guides/security-policy.md](guides/security-policy.md) before you make it.
 
 ## Without it
@@ -118,25 +118,25 @@ You see and bound what your agents do. A run is a page: what it worked on, what 
 what was refused and why, what it wrote, what it cost. A policy is a document with a
 version, a history and a digest every run reports back, so two runs with the same digest ran
 under the same rules, and a run behind the version in force says so. The overview opens on
-what needs you: a destination the rules do not cover, a run that went quiet, a workplace
+what needs you: a destination the rules do not cover, a run that went quiet, a workspace
 still in observe with rules ready to enforce.
 
 ## What it holds
 
-- **Runs**, `/hive/runs`: every run of the workplace with its state, what it worked on,
-  runtime, host, start, duration and denials; grouped by repository or by task, filtered,
-  and live.
+- **Runs**, `/:org/:workspace/runs`: every run of the workspace with its state, what it
+  worked on, runtime, host, start, duration and denials; grouped by repository or by task,
+  filtered, and live.
 - **Timeline**: the session in sequence, a tool call and its response as one item, one lane
   per agent, a connection inside the call it was made during.
 - **Terminal**: the bytes the run wrote, tailing while it runs, with search and download.
-- **Connections**: one row per destination, on the run and across the workplace, with
+- **Connections**: one row per destination, on the run and across the workspace, with
   attempts, the decision, the rule and the outcome of the last attempt, and **Allow** or
   **Deny** in the row.
-- **The security policy**: a baseline for the workplace and rules per repository, observe
+- **The security policy**: a baseline for the workspace and rules per repository, observe
   or enforce per repository, locked rules that hold everywhere, a history with a diff, an
   export for a machine without a server. A change reaches the runs in flight within a
   heartbeat, about 30 seconds.
-- **Retention**: how long a workplace keeps a run's events and its log output, set by an
+- **Retention**: how long a workspace keeps a run's events and its log output, set by an
   owner, pruned nightly, and unlimited until somebody says otherwise
   ([guides/retention.md](guides/retention.md)).
 - **Docs**: the guides and the module reference, built into the image and served by every

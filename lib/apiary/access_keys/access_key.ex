@@ -1,13 +1,13 @@
 defmodule Apiary.AccessKeys.AccessKey do
   @moduledoc """
-  A hive's credential for the server contract: a public key id and up to two
+  A workspace's credential for the server contract: a public key id and up to two
   signing secrets, encrypted at rest and never shown after creation.
   """
   use Ecto.Schema
   use Gettext, backend: ApiaryWeb.Gettext
   import Ecto.Changeset
 
-  @typedoc "An access key of a hive."
+  @typedoc "An access key of a workspace."
   @type t :: %__MODULE__{}
 
   @primary_key {:id, :binary_id, autogenerate: true}
@@ -28,7 +28,7 @@ defmodule Apiary.AccessKeys.AccessKey do
     field :rotating, :boolean, virtual: true, default: false
 
     belongs_to :organisation, Apiary.Organisations.Organisation
-    belongs_to :hive, Apiary.Organisations.Hive
+    belongs_to :workspace, Apiary.Organisations.Workspace
     belongs_to :created_by, Apiary.Accounts.User
 
     timestamps(type: :utc_datetime_usec)
@@ -42,10 +42,10 @@ defmodule Apiary.AccessKeys.AccessKey do
     |> validate_format(:label, ~r/\A[^[:cntrl:]]+\z/u,
       message: dgettext_noop("errors", "must not contain control characters")
     )
-    |> unique_constraint([:organisation_id, :hive_id, :label],
+    |> unique_constraint([:organisation_id, :workspace_id, :label],
       name: :access_keys_active_label_index,
       error_key: :label,
-      message: dgettext_noop("errors", "is already the label of an active key in this hive")
+      message: dgettext_noop("errors", "is already the label of an active key in this workspace")
     )
   end
 

@@ -22,7 +22,7 @@ defmodule ApiaryWeb.UserLive.Registration do
           {gettext("Create your account")}
           <:subtitle>
             {gettext(
-              "Start an organisation and its first hive. We will email you a link to confirm; no password needed."
+              "Start an organisation and its first workspace. We will email you a link to confirm; no password needed."
             )}
           </:subtitle>
         </Layouts.auth_heading>
@@ -30,8 +30,8 @@ defmodule ApiaryWeb.UserLive.Registration do
         <.notice :if={@invitation} kind={:info}>
           <.rich text={
             rich_gettext(
-              "You are invited to the %{hive} hive at %{organisation}. Your account joins it as soon as you confirm.",
-              hive: {:b, @invitation.hive.name},
+              "You are invited to the %{workspace} workspace at %{organisation}. Your account joins it as soon as you confirm.",
+              workspace: {:b, @invitation.workspace.name},
               organisation: {:b, @invitation.organisation.name}
             )
           } />

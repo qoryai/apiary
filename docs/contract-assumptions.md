@@ -62,18 +62,20 @@ other than `1`:
 `<public host>` is the application's public base URL (`PUBLIC_URL`). The `events` URL is
 the events endpoint below, and the `run` URL the run configuration endpoint after it.
 
-The `run` section is there only for a hive whose policy somebody has made: a hive with at
-least one change in its policy's history, the first rule or the first change of mode, in the
-hive or in any one repository: the first change anywhere starts serving every repository of
-the hive, the others the hive's baseline. A hive nobody has given a policy is answered the document without `run`, and its machines run under
-the policy of their own `runner.yaml`, as the contract has it for a server that names no
-section. So an upgrade, or a hive nobody has looked at, never replaces a machine's own
-enforcement with an empty policy. The document is therefore one of two, by hive, and so is
-its digest, here and in every answer to a batch. The first change of a hive's policy changes
-that digest: a run in flight fetches the document again, finds the section, fetches its run
-configuration and applies it, which is the moment the hive takes over. It does not go back:
-a hive whose rules were all removed again still serves its (empty) policy. Sections a runner
-does not know are to be ignored.
+The `run` section is there only for a workspace whose policy somebody has made: a
+workspace with at least one change in its policy's history, the first rule or the first
+change of mode, in the workspace or in any one repository: the first change anywhere
+starts serving every repository of the workspace, the others the workspace's baseline. A
+workspace nobody has given a policy is answered the document without `run`, and its
+machines run under the policy of their own `runner.yaml`, as the contract has it for a
+server that names no section. So an upgrade, or a workspace nobody has looked at, never
+replaces a machine's own enforcement with an empty policy. The document is therefore one
+of two, by workspace, and so is its digest, here and in every answer to a batch. The first
+change of a workspace's policy changes that digest: a run in flight fetches the document
+again, finds the section, fetches its run configuration and applies it, which is the
+moment the workspace takes over. It does not go back: a workspace whose rules were all
+removed again still serves its (empty) policy. Sections a runner does not know are to be
+ignored.
 
 ## Signed POST: the events endpoint
 
@@ -104,16 +106,18 @@ first refusal that applies is the answer:
 | `429` | the key has delivered more than its rate; `Retry-After` says how many seconds to wait | `{"error":"rate_limited"}` |
 | `400` | `X-Qory-Contract-Version` is not `1`, absent or sent twice included | `{"error":"unsupported_contract_version","supported":[1]}` |
 | `400` | the body is not a batch, or is over a limit below | `{"error":"invalid_batch"}` |
-| `410` | the hive has closed the run, or retention has pruned the run's events: the delivery is recorded, no event is stored | empty |
+| `410` | the workspace has closed the run, or retention has pruned the run's events: the delivery is recorded, no event is stored | empty |
 | `503` | the batch could not be stored; nothing of it was | `{"error":"unavailable"}` |
 | `202` | stored | empty |
 
 Every `202` and `410` carries the digests in force: `X-Qory-Configuration`, the digest the
-hive's discovery answer carries, and, for a hive whose policy somebody has made,
+workspace's discovery answer carries, and, for a workspace whose policy somebody has made,
 `X-Qory-Run-Configuration`, the digest of the run configuration for the run's repository (see
 "The run configuration" below for which that is while the repository is not known yet). A
-hive without a policy of its own is never answered the second. No other status carries it. No error body repeats anything that was sent. The ping is a batch like any other: a `2xx` lets the
-run start, and a revoked key, a bad signature or an unsupported version does not.
+workspace without a policy of its own is never answered the second. No other status
+carries it. No error body repeats anything that was sent. The ping is a batch like any
+other: a `2xx` lets the run start, and a revoked key, a bad signature or an unsupported
+version does not.
 
 A batch is a non-empty JSON array of at most 1000 objects (a runner cuts a batch at a
 hundred), each with `id` and `subject` (lowercase UUIDs), `type` (beginning `dev.qory.`),
@@ -128,26 +132,29 @@ them. A type outside `dev.qory.` fails the envelope, and the batch is answered
 
 What is stored, in one transaction, before the answer:
 
-- the run, created on the first event of a subject the key's hive has not seen, in that hive,
-  in state `pending`, with the key that delivered it and the versions the request named. The
-  same subject under another hive is another run. Two first batches at once make one run.
-  The run's row is locked while its batch is stored, so a close and a batch never cross: a
-  close that commits first is answered `410`, and a closed run never gains an event;
-- nothing, for a run retention has pruned. Deduplication is against the events the hive
-  holds, and a pruned run holds none, so a batch delivered again after the prune could not
-  be told from a new one and would be folded a second time. The hive therefore wants nothing
-  more of a run whose events it pruned, and says so the way it does for a closed run: `410`,
-  the delivery recorded, no event stored. A run that lost only its log output (the log's
-  days are shorter than the events') still takes events, deduplicated against the ones it
-  keeps, but no `dev.qory.run.log` event: its log events are gone, so a replayed one could
-  not be recognised, and one that is new would be older than the hive keeps log output.
-  Such events are answered like duplicates, within a `202`. Neither case arises for a run
-  that is alive: retention only prunes a run that has ended or gone silent for days;
+- the run, created on the first event of a subject the key's workspace has not seen, in
+  that workspace, in state `pending`, with the key that delivered it and the versions the
+  request named. The same subject under another workspace is another run. Two first
+  batches at once make one run. The run's row is locked while its batch is stored, so a
+  close and a batch never cross: a close that commits first is answered `410`, and a
+  closed run never gains an event;
+- nothing, for a run retention has pruned. Deduplication is against the events the
+  workspace holds, and a pruned run holds none, so a batch delivered again after the prune
+  could not be told from a new one and would be folded a second time. The workspace
+  therefore wants nothing more of a run whose events it pruned, and says so the way it
+  does for a closed run: `410`, the delivery recorded, no event stored. A run that lost
+  only its log output (the log's days are shorter than the events') still takes events,
+  deduplicated against the ones it keeps, but no `dev.qory.run.log` event: its log events
+  are gone, so a replayed one could not be recognised, and one that is new would be older
+  than the workspace keeps log output. Such events are answered like duplicates, within a
+  `202`. Neither case arises for a run that is alive: retention only prunes a run that has
+  ended or gone silent for days;
 - each event, as received: `id`, `sequence` as an integer, `type`, `time`, `data`, and when it
   was received. An event already held (the same `id`) is skipped: delivery is at least once.
-  An event whose `id` is held by another run of the hive, or whose `sequence` in its run is
-  held under another `id`, is dropped and counted in a log line; it is never an error, since
-  sending it again could not help. Events are read back by `sequence`, never by arrival;
+  An event whose `id` is held by another run of the workspace, or whose `sequence` in its
+  run is held under another `id`, is dropped and counted in a log line; it is never an
+  error, since sending it again could not help. Events are read back by `sequence`, never
+  by arrival;
 - the delivery: the key, `X-Qory-Delivery`, the subject, how many events it held, how many were
   new, the status answered, and the batch's `X-Qory-Run-Configuration` when it had the shape
   of a digest. A delivery id the key has delivered before is answered `202` again and nothing
@@ -167,10 +174,11 @@ the body is logged.
 
 `GET /v1/run-configuration?<label>=<value>&…`, signed like discovery, the query signed as
 sent. Every query parameter is read as one of the run's labels, and the runner sends every
-label of the run. The hive's body (`Apiary.Body`) says which labels name the target; the
-software body's are `forge` and `repository`. It answers `200`, `Content-Type: application/json`, with
-`X-Qory-Run-Configuration: sha256=<lowercase hex>`, `ETag: "sha256=<hex>"` (the same string,
-quoted), `X-Qory-Configuration` and `Cache-Control: no-store`:
+label of the run. The workspace's domain (`Apiary.Lingo.Domain`) says which labels name
+the target; the software domain's are `forge` and `repository`. It answers `200`,
+`Content-Type: application/json`, with `X-Qory-Run-Configuration: sha256=<lowercase hex>`,
+`ETag: "sha256=<hex>"` (the same string, quoted), `X-Qory-Configuration` and
+`Cache-Control: no-store`:
 
 ```json
 {"version":1,"security_policy":{"version":1,"egress":{"mode":"enforce","allow":["api.example"]}}}
@@ -185,19 +193,20 @@ before it consults `allow` or the mode:
 
 The body is the bytes that were stored when the policy was last changed; nothing is rendered
 for a request, so the digest is of exactly what is sent. It is the configuration of the
-key's hive for the repository the two labels name. A repository the hive has not seen, one
-with neither rules nor a mode of its own, and a request that names none (or one label of the
-two) get the hive's baseline. `egress.mode` is the hive's, unless the repository has set its
-own, `observe` or `enforce`; a repository that has not follows the hive, later changes of the
-hive's mode included, and a repository the hive has not seen gets the hive's. The rules
-resolve the same under either mode: a locked rule of the hive holds in a repository's
-document whatever its mode, and a deny holds in either mode, since `egress.deny` is decided
-first: under `observe` a runner denies what `deny` names and nothing else, and `allow` says
-what `enforce` would reach. A hive whose policy nobody has made serves none: `404`
-`{"error":"not_found"}`, nothing rendered; discovery named it no `run` section, so a runner
-does not ask. The endpoint spends a token of the key's rate limit, the events endpoint's
-bucket: `429 {"error":"rate_limited"}` with `Retry-After` beyond it, which to a runner is no
-run or a reload that failed and is tried again on the next answer. After the `429`, as on the
+key's workspace for the repository the two labels name. A repository the workspace has not
+seen, one with neither rules nor a mode of its own, and a request that names none (or one
+label of the two) get the workspace's baseline. `egress.mode` is the workspace's, unless
+the repository has set its own, `observe` or `enforce`; a repository that has not follows
+the workspace, later changes of the workspace's mode included, and a repository the
+workspace has not seen gets the workspace's. The rules resolve the same under either mode:
+a locked rule of the workspace holds in a repository's document whatever its mode, and a
+deny holds in either mode, since `egress.deny` is decided first: under `observe` a runner
+denies what `deny` names and nothing else, and `allow` says what `enforce` would reach. A
+workspace whose policy nobody has made serves none: `404` `{"error":"not_found"}`, nothing
+rendered; discovery named it no `run` section, so a runner does not ask. The endpoint
+spends a token of the key's rate limit, the events endpoint's bucket:
+`429 {"error":"rate_limited"}` with `Retry-After` beyond it, which to a runner is no run
+or a reload that failed and is tried again on the next answer. After the `429`, as on the
 events endpoint, a contract version other than `1` is `400 unsupported_contract_version`,
 and nothing is read.
 
@@ -322,7 +331,7 @@ The contract has not fixed these; Apiary chose, and the runner should match:
   U+2028 and U+2029, anything that ends a line somewhere. A label that fails this is neither
   cleaned nor cut, since either would file the run under a repository it did not name. The
   run is kept with its labels as sent, belongs to no repository (the console lists it as
-  unassigned), and is served the hive's baseline. One function decides this for the
+  unassigned), and is served the workspace's baseline. One function decides this for the
   projector, which makes repositories from the labels of `run.started`, and for the wire, so
   the run configuration endpoint and the digest in an answer always pick the same repository
   as the projector, or none. On the endpoint the labels are compared to the stored ones byte
@@ -333,20 +342,21 @@ The contract has not fixed these; Apiary chose, and the runner should match:
   {"error":"unavailable"}`, which is no run: the run fails closed, as it does on any answer
   but `200`.
 - The digests in an answer to a batch are read after the commit, never rendered: one read
-  that says whether the hive's policy is managed (an index on `policy_changes`), then, for a
-  managed hive, the newest configuration of the run's repository (one read of an index), and
-  the baseline's after it when the repository has none of its own; while the run's
-  repository is not known yet, a lookup of the repository by its labels or of the reported
-  digest comes before. Three to four small reads, not one. If a read fails the header it
-  decides is absent, which means nothing to a runner, and the delivery is still `202`.
+  that says whether the workspace's policy is managed (an index on `policy_changes`),
+  then, for a managed workspace, the newest configuration of the run's repository (one
+  read of an index), and the baseline's after it when the repository has none of its own;
+  while the run's repository is not known yet, a lookup of the repository by its labels or
+  of the reported digest comes before. Three to four small reads, not one. If a read fails
+  the header it decides is absent, which means nothing to a runner, and the delivery is
+  still `202`.
 - A run's repository is known to the server once its `run.started` is projected, which is
   after the receiver answers. Until then the answer's digest is, in this order: that of the
   repository the batch's own `run.started` labels name; else, when the request's
-  `X-Qory-Run-Configuration` is a digest in force in the hive (the baseline's newest, or any
-  repository's newest), that digest; else the baseline's. So the ping of a run that fetched
-  its repository's configuration a moment ago is not answered the baseline's digest and sent
-  to fetch again. A runner told a digest it does not hold fetches once and remembers the
-  answer it tried, so the worst case is one fetch that changes nothing.
+  `X-Qory-Run-Configuration` is a digest in force in the workspace (the baseline's newest,
+  or any repository's newest), that digest; else the baseline's. So the ping of a run that
+  fetched its repository's configuration a moment ago is not answered the baseline's
+  digest and sent to fetch again. A runner told a digest it does not hold fetches once and
+  remembers the answer it tried, so the worst case is one fetch that changes nothing.
 - The `cost_usd` of `dev.qory.session.result` is the runtime's own total for the session:
   what Claude Code prints as `total_cost_usd` in its result line, which counts the tokens of
   the subagents the session ran as well as its own. `dev.qory.session.subagent_finished`
@@ -396,7 +406,7 @@ The contract has not fixed these; Apiary chose, and the runner should match:
     deny still takes the allow entries it covers out of `allow` (the runner would deny
     those hosts by the deny anyway), so the document lists what is reachable and nothing
     else, and a policy's count of hosts allowed is the truth. The one shape the document
-    cannot say is a `*.` deny with an allow below it that outranks the deny (the hive's
+    cannot say is a `*.` deny with an allow below it that outranks the deny (the workspace's
     unlocked `*.example`, a repository's own `api.example`): the allow wins by precedence
     and is rendered, and the deny is not written to `deny`, since an entry there would
     deny the winning host too; it still takes out the allow entries it outranks, so under

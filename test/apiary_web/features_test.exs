@@ -13,8 +13,8 @@ defmodule ApiaryWeb.FeaturesRoutesTest do
     ApiaryWeb.AccessKeyLive.Index,
     ApiaryWeb.MemberLive.Index,
     ApiaryWeb.SettingsLive,
-    ApiaryWeb.HiveLive.NoHive,
-    ApiaryWeb.OrganisationSessionController,
+    ApiaryWeb.WorkspaceLive.NoWorkspace,
+    ApiaryWeb.InvitationController,
     ApiaryWeb.UserSessionController,
     ApiaryWeb.UserLive.Settings,
     ApiaryWeb.UserLive.Registration,
@@ -59,7 +59,7 @@ defmodule ApiaryWeb.FeaturesRoutesTest do
   end
 
   test "the security policy's pages and endpoint belong to security" do
-    for {_verb, "/hive/policy" <> _, module} <- routes() do
+    for {_verb, "/:org/:workspace/policy" <> _, module} <- routes() do
       assert module.__feature__() == :security
     end
 
@@ -78,15 +78,16 @@ defmodule ApiaryWeb.FeaturesTest do
   alias Apiary.Policy
   alias ApiaryWeb.Contract.Configuration
 
+  # Under the workspace's path, `/:org/:workspace`.
   @policy_paths [
-    "/hive/policy",
-    "/hive/policy/targets",
-    "/hive/policy/history",
-    "/hive/policy/document",
-    "/hive/policy/versions/1",
-    "/hive/policy/versions/1/export",
-    "/hive/policy/targets/00000000-0000-0000-0000-000000000000",
-    "/hive/policy/targets/00000000-0000-0000-0000-000000000000/history"
+    "/policy",
+    "/policy/targets",
+    "/policy/history",
+    "/policy/document",
+    "/policy/versions/1",
+    "/policy/versions/1/export",
+    "/policy/targets/00000000-0000-0000-0000-000000000000",
+    "/policy/targets/00000000-0000-0000-0000-000000000000/history"
   ]
 
   setup :register_and_log_in_user
@@ -105,7 +106,7 @@ defmodule ApiaryWeb.FeaturesTest do
   defp headers(headers),
     do: headers |> Enum.reject(fn {name, _} -> name == "x-request-id" end) |> Enum.sort()
 
-  # The hive's policy made while the instance still had `security`, as on an instance
+  # The workspace's policy made while the instance still had `security`, as on an instance
   # launched with it and restarted without: its rows stay, and nothing of it may show.
   defp managed_before_security_went(scope) do
     features = Application.get_env(:apiary, :features)
@@ -118,16 +119,19 @@ defmodule ApiaryWeb.FeaturesTest do
   describe "without security" do
     @describetag with_features: [:observability]
 
-    test "the policy's pages answer as a path that does not exist, to anyone", %{conn: conn} do
+    test "the policy's pages answer as a path that does not exist, to anyone",
+         %{conn: conn, scope: scope} do
       askers = [
         {"signed in", conn},
         {"anonymous", build_conn()},
         {"anonymous, asking for JSON", put_req_header(build_conn(), "accept", "application/json")}
       ]
 
-      for {who, asker} <- askers, path <- @policy_paths do
+      for {who, asker} <- askers, rest <- @policy_paths do
+        path = workspace_path(scope, rest)
+
         assert answer(fn -> get(asker, path) end) ==
-                 answer(fn -> get(asker, "/hive/no-such-page") end),
+                 answer(fn -> get(asker, workspace_path(scope, "/no-such-page")) end),
                "#{path}, #{who}"
       end
     end
@@ -144,20 +148,23 @@ defmodule ApiaryWeb.FeaturesTest do
         {"unsigned", &get(build_conn(), &1)}
       ]
 
+      # Three segments: a path of two is a workspace's (`/:org/:workspace`).
       for {who, ask} <- askers do
         assert answer(fn -> ask.("/v1/run-configuration") end) ==
-                 answer(fn -> ask.("/v1/no-such-endpoint") end),
+                 answer(fn -> ask.("/v1/no-such/endpoint") end),
                who
       end
     end
 
-    test "a live navigation to the policy is refused the same way", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/hive/runs")
+    test "a live navigation to the policy is refused the same way", %{conn: conn, scope: scope} do
+      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs")
 
       # The page is not mounted: the browser is told to load it, and gets the 404 above.
 
       assert {%{status: 404, reason: "reload"}, _call} =
-               catch_exit(live_redirect(view, to: ~p"/hive/policy"))
+               catch_exit(
+                 live_redirect(view, to: ~p"/#{scope.organisation}/#{scope.workspace}/policy")
+               )
     end
 
     test "the contract names no run section and serves no run configuration", ctx do
@@ -191,11 +198,12 @@ defmodule ApiaryWeb.FeaturesTest do
   describe "with every feature" do
     @describetag with_features: Apiary.Features.all()
 
-    test "the policy's pages are there", %{conn: conn} do
-      assert {:ok, _view, _html} = live(conn, ~p"/hive/policy")
+    test "the policy's pages are there", %{conn: conn, scope: scope} do
+      assert {:ok, _view, _html} =
+               live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/policy")
     end
 
-    test "the contract names the run section of a managed hive", ctx do
+    test "the contract names the run section of a managed workspace", ctx do
       {:ok, _rule} = Policy.deny(ctx.scope, nil, %{host: "ads.example"})
       %{access_key: key, secret: secret} = access_key_fixture(ctx.scope)
 

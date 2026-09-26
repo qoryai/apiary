@@ -28,13 +28,13 @@ defmodule Apiary.Runs.RecordTest do
   end
 
   describe "fetch_run/2" do
-    test "finds a run of the hive by its subject", %{scope: scope} do
+    test "finds a run of the workspace by its subject", %{scope: scope} do
       run = run_fixture(scope)
       assert {:ok, %Run{id: id}} = Record.fetch_run(scope, run.run_id)
       assert id == run.id
     end
 
-    test "a run of another hive, an unknown subject and a malformed id are not found", %{
+    test "a run of another workspace, an unknown subject and a malformed id are not found", %{
       scope: scope
     } do
       other = run_fixture(scope_fixture())
@@ -47,7 +47,7 @@ defmodule Apiary.Runs.RecordTest do
     end
   end
 
-  describe "with a run of another hive handed in" do
+  describe "with a run of another workspace handed in" do
     test "every read is empty", %{scope: scope} do
       theirs = scope_fixture()
       run = projected(theirs)
@@ -550,7 +550,7 @@ defmodule Apiary.Runs.RecordTest do
         %{
           id: Ecto.UUID.bingenerate(),
           organisation_id: Ecto.UUID.dump!(run.organisation_id),
-          hive_id: Ecto.UUID.dump!(run.hive_id),
+          workspace_id: Ecto.UUID.dump!(run.workspace_id),
           run_id: Ecto.UUID.dump!(run.id),
           sequence: sequence,
           event_id: Ecto.UUID.bingenerate(),

@@ -1,7 +1,7 @@
 defmodule Apiary.Runs.Projector do
   @moduledoc """
   Folds a run's events into what the console reads: the `runs` row, its `connections`,
-  its `log_chunks` and the hive's `targets`.
+  its `log_chunks` and the workspace's `targets`.
 
   The receiver stores events and answers; it calls `project_async/1` after its
   transaction has committed. `project/1` is the same work done synchronously: the tests
@@ -33,6 +33,7 @@ defmodule Apiary.Runs.Projector do
 
   require Logger
 
+  alias Apiary.Organisations.Workspace
   alias Apiary.Repo
   alias Apiary.Runs
   alias Apiary.Runs.{Connection, Event, Fold, LogChunk, Run, Target}
@@ -265,9 +266,12 @@ defmodule Apiary.Runs.Projector do
   defp pass(id, read) do
     lock(id)
 
-    with %Run{} = run <- locked_run(id),
+    with {%Run{} = run, domain} <- locked_run_and_domain(id),
          {:events, _run, [_ | _] = events} <- {:events, run, read.(id)} do
-      fold = fold_module().fold(run, events, latest(id, events))
+      # The fold reads no database: the workspace it names the target by comes with the
+      # run, carrying the domain whose labelling rule names it.
+      workspace = %Workspace{id: run.workspace_id, domain: domain}
+      fold = fold_module().fold(%{run | workspace: workspace}, events, latest(id, events))
 
       run =
         run
@@ -313,6 +317,17 @@ defmodule Apiary.Runs.Projector do
   end
 
   defp locked_run(id), do: Repo.one(from r in Run, where: r.id == ^id, lock: "FOR UPDATE")
+
+  # The run, locked, and its workspace's domain in the same statement. A scalar subquery,
+  # not a join: `FOR UPDATE` locks the run's row only, never the workspace's.
+  defp locked_run_and_domain(id) do
+    Repo.one(
+      from r in Run,
+        where: r.id == ^id,
+        lock: "FOR UPDATE",
+        select: {r, fragment("(SELECT domain FROM workspaces WHERE id = ?)", r.workspace_id)}
+    )
+  end
 
   defp unprojected(id), do: Repo.all(unprojected_query(id))
 
@@ -366,7 +381,7 @@ defmodule Apiary.Runs.Projector do
         %{
           id: Ecto.UUID.generate(),
           organisation_id: run.organisation_id,
-          hive_id: run.hive_id,
+          workspace_id: run.workspace_id,
           system: system,
           path: path,
           first_seen_at: now,
@@ -375,14 +390,14 @@ defmodule Apiary.Runs.Projector do
         }
       ],
       on_conflict: :nothing,
-      conflict_target: [:hive_id, :system, :path],
+      conflict_target: [:workspace_id, :system, :path],
       log: false
     )
 
     target_id =
       Repo.one!(
         from(t in Target,
-          where: t.hive_id == ^run.hive_id and t.system == ^system and t.path == ^path,
+          where: t.workspace_id == ^run.workspace_id and t.system == ^system and t.path == ^path,
           select: t.id
         ),
         log: false
@@ -401,7 +416,7 @@ defmodule Apiary.Runs.Projector do
         Map.merge(chunk, %{
           id: Ecto.UUID.generate(),
           organisation_id: run.organisation_id,
-          hive_id: run.hive_id,
+          workspace_id: run.workspace_id,
           run_id: run.id
         })
       end
@@ -421,7 +436,7 @@ defmodule Apiary.Runs.Projector do
         Map.merge(delta, %{
           id: Ecto.UUID.generate(),
           organisation_id: run.organisation_id,
-          hive_id: run.hive_id,
+          workspace_id: run.workspace_id,
           run_id: run.id,
           host: host,
           port: port,

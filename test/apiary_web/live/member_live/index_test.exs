@@ -9,25 +9,25 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
   describe "as an owner" do
     setup :register_and_log_in_user
 
-    test "lists the members", %{conn: conn, user: user} do
-      {:ok, _lv, html} = live(conn, ~p"/hive/members")
+    test "lists the members", %{conn: conn, user: user, scope: scope} do
+      {:ok, _lv, html} = live(conn, ~p"/#{scope.organisation}/members")
       assert html =~ user.email
       assert html =~ "You"
       assert html =~ "Invite member"
-      assert html =~ "The people in this workplace."
+      assert html =~ "The people in this workspace."
     end
 
     test "invites a member and can revoke the invitation", %{conn: conn, scope: scope} do
-      {:ok, lv, _html} = live(conn, ~p"/hive/members")
+      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/members")
 
       lv |> element("a", "Invite member") |> render_click()
-      assert_patch(lv, ~p"/hive/members/invite")
+      assert_patch(lv, ~p"/#{scope.organisation}/members/invite")
 
       lv
       |> form("#invitation-form", invitation: %{email: "bee@example.com", level: "member"})
       |> render_submit()
 
-      assert_patch(lv, ~p"/hive/members")
+      assert_patch(lv, ~p"/#{scope.organisation}/members")
 
       html = render(lv)
       assert html =~ "Invitation sent to bee@example.com"
@@ -41,7 +41,7 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
     end
 
     test "refuses to invite an existing member", %{conn: conn, user: user, scope: scope} do
-      {:ok, lv, _html} = live(conn, ~p"/hive/members/invite")
+      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/members/invite")
 
       html =
         lv
@@ -59,7 +59,7 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
     } do
       %{membership: membership} = member_fixture(scope, :member)
 
-      {:ok, lv, _html} = live(conn, ~p"/hive/members")
+      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/members")
 
       html = lv |> form("#level-form-#{membership.id}", %{level: "owner"}) |> render_change()
       assert html =~ "is now an owner"
@@ -77,14 +77,14 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
     test "removes a member and refuses to remove the last owner", %{conn: conn, scope: scope} do
       %{membership: membership, user: member} = member_fixture(scope, :member)
 
-      {:ok, lv, _html} = live(conn, ~p"/hive/members")
+      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/members")
 
       lv |> element("#member-#{membership.id} a", "Remove") |> render_click()
-      assert_patch(lv, ~p"/hive/members/#{membership.id}/remove")
+      assert_patch(lv, ~p"/#{scope.organisation}/members/#{membership.id}/remove")
       assert render(lv) =~ "They lose access"
 
       lv |> element("#remove-member button", "Remove member") |> render_click()
-      assert_patch(lv, ~p"/hive/members")
+      assert_patch(lv, ~p"/#{scope.organisation}/members")
 
       html = render(lv)
       assert html =~ "#{member.email} is removed"
@@ -117,11 +117,12 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
 
     test "a demoted owner's open page can no longer set levels, remove or invite", %{
       conn: conn,
+      scope: scope,
       founder: founder,
       membership: membership,
       third: third
     } do
-      {:ok, lv, html} = live(conn, ~p"/hive/members")
+      {:ok, lv, html} = live(conn, ~p"/#{scope.organisation}/members")
       assert html =~ "level-form-#{third.id}"
 
       assert {:ok, _} = Organisations.set_member_level(founder.scope, membership.id, :member)
@@ -145,10 +146,11 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
 
     test "without the announcement the stale page is still refused", %{
       conn: conn,
+      scope: scope,
       membership: membership,
       third: third
     } do
-      {:ok, lv, _html} = live(conn, ~p"/hive/members")
+      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/members")
 
       # Demoted behind the page's back: no broadcast reaches it.
       membership |> Ecto.Changeset.change(level: :member) |> Apiary.Repo.update!()
@@ -158,14 +160,15 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       assert Apiary.Repo.get!(Organisations.Membership, third.id).level == :member
     end
 
-    test "a removed member's open page is sent to /hive", %{
+    test "a removed member's open page is sent to /", %{
       conn: conn,
+      scope: scope,
       founder: founder,
       membership: membership
     } do
-      {:ok, lv, _html} = live(conn, ~p"/hive/members")
+      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/members")
       assert {:ok, _} = Organisations.remove_member(founder.scope, membership.id)
-      assert_redirect(lv, ~p"/hive")
+      assert_redirect(lv, ~p"/")
     end
   end
 
@@ -176,8 +179,8 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       %{conn: log_in_user(conn, user), user: user, scope: scope, owner: owner}
     end
 
-    test "sees the page read-only", %{conn: conn, owner: owner, user: user} do
-      {:ok, lv, html} = live(conn, ~p"/hive/members")
+    test "sees the page read-only", %{conn: conn, owner: owner, user: user, scope: scope} do
+      {:ok, lv, html} = live(conn, ~p"/#{scope.organisation}/members")
 
       assert html =~ owner.user.email
       assert html =~ user.email
@@ -189,11 +192,14 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       refute has_element?(lv, "form[phx-change=set_level]")
     end
 
-    test "cannot open the invite or remove dialogs", %{conn: conn, owner: owner} do
-      assert {:error, {_, %{to: "/hive/members"}}} = live(conn, ~p"/hive/members/invite")
+    test "cannot open the invite or remove dialogs", %{conn: conn, owner: owner, scope: scope} do
+      members = ~p"/#{scope.organisation}/members"
 
-      assert {:error, {_, %{to: "/hive/members"}}} =
-               live(conn, ~p"/hive/members/#{owner.membership.id}/remove")
+      assert {:error, {_, %{to: ^members}}} =
+               live(conn, ~p"/#{scope.organisation}/members/invite")
+
+      assert {:error, {_, %{to: ^members}}} =
+               live(conn, ~p"/#{scope.organisation}/members/#{owner.membership.id}/remove")
     end
   end
 end

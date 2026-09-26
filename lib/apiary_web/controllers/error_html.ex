@@ -14,7 +14,7 @@ defmodule ApiaryWeb.ErrorHTML do
   }
 
   # The default is to render a plain text page based on the template name. For example,
-  # "404.html" becomes "Not Found", in the body's words.
+  # "404.html" becomes "Not Found", in the domain's words.
   def render(template, _assigns) do
     case Map.fetch(@messages, template |> String.split(".") |> hd()) do
       {:ok, msgid} -> Gettext.gettext(ApiaryWeb.Gettext, msgid)

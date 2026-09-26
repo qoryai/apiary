@@ -21,9 +21,9 @@ earlier one.
 
 - A request without a valid signature, or with a revoked access key, is answered as if it
   were signed: the discovery document, and later the receiver and the run configuration,
-  are served only to a request the hive's secret signed.
+  are served only to a request the workspace's secret signed.
 - A row of one organisation is readable or writable from another: a page, a query or an
-  endpoint that does not scope by the organisation and the hive of the caller.
+  endpoint that does not scope by the organisation and the workspace of the caller.
 - An access key's secret leaves the application other than in the one reveal after it is
   created or rotated: in a log line, an event, an email, a page, or in clear in the
   database.

@@ -17,7 +17,7 @@ defmodule Apiary.Policy.SuggestionCountsTest do
   end
 
   describe "suggestion_counts/2" do
-    test "counts the open declared hosts across the hive's targets, bounded", %{scope: scope} do
+    test "counts the open declared hosts across the workspace's targets, bounded", %{scope: scope} do
       assert %{hosts: 0, targets: 0} = Policy.suggestion_counts(scope)
 
       shop = started_run(scope, shop())
@@ -45,7 +45,7 @@ defmodule Apiary.Policy.SuggestionCountsTest do
       {:ok, _} = Policy.deny(scope, nil, %{host: "registry.example"})
       assert %{hosts: 0, targets: 0} = Policy.suggestion_counts(scope)
 
-      # Nothing older than since, and another hive counts nothing of this one.
+      # Nothing older than since, and another workspace counts nothing of this one.
       {:ok, _} =
         Policy.remove_rule(
           scope,

@@ -2,14 +2,14 @@
 # endpoint serving, so what it calls is what a page calls, in the same virtual machine
 # that answers the runner. run.sh starts it; see e2e/README.md.
 #
-# It makes a hive with an owner and an access key, puts the hive in enforce with nothing
-# allowed, writes the node's runner file, starts the session on the node, waits for the
-# denied connection to arrive, allows its host the way the connection's row does, and
-# then watches the run's record for the second policy applied event and the allowed
-# connection. Then it puts the hive in observe, denies the host from the same row, and
-# watches for the third policy applied event and the denied connection, refused by name
-# under observe. It prints the timings and leaves with status 0 only when every assertion
-# held. It never prints the secret: the runner file is the one place it goes.
+# It makes a workspace with an owner and an access key, puts the workspace in enforce with
+# nothing allowed, writes the node's runner file, starts the session on the node, waits
+# for the denied connection to arrive, allows its host the way the connection's row does,
+# and then watches the run's record for the second policy applied event and the allowed
+# connection. Then it puts the workspace in observe, denies the host from the same row,
+# and watches for the third policy applied event and the denied connection, refused by
+# name under observe. It prints the timings and leaves with status 0 only when every
+# assertion held. It never prints the secret: the runner file is the one place it goes.
 
 defmodule E2E do
   import Ecto.Query
@@ -34,17 +34,17 @@ defmodule E2E do
     session = env!("E2E_SESSION_COMMAND")
     session_log = env!("E2E_SESSION_LOG")
     budget_ms = String.to_integer(System.get_env("E2E_BUDGET_SECONDS", "35")) * 1000
-    # `E2E_LEVEL` says `target` or `hive`, as the popover's level does.
+    # `E2E_LEVEL` says `target` or `workspace`, as the popover's level does.
     level =
       case System.get_env("E2E_LEVEL", "target") do
         "target" -> :target
-        "hive" -> :hive
+        "workspace" -> :workspace
       end
 
     # A line per request is the instance's log, not this job's.
     Logger.configure(level: :warning)
 
-    step("a hive, its owner and an access key")
+    step("a workspace, its owner and an access key")
     scope = owner_scope()
     {:ok, "enforce"} = Policy.set_mode(scope, "enforce")
     true = Policy.managed?(scope)
@@ -59,7 +59,7 @@ defmodule E2E do
     )
 
     say(
-      "hive in enforce, nothing allowed; key #{access_key.key_id}; server #{ApiaryWeb.Endpoint.url()}"
+      "workspace in enforce, nothing allowed; key #{access_key.key_id}; server #{ApiaryWeb.Endpoint.url()}"
     )
 
     step("the node")
@@ -87,7 +87,7 @@ defmodule E2E do
       await("a denied connection to #{host} in the record", 180_000, session_task, fn ->
         Repo.one(
           from c in Connection,
-            where: c.hive_id == ^scope.hive.id and c.host == ^host and c.denied > 0,
+            where: c.workspace_id == ^scope.workspace.id and c.host == ^host and c.denied > 0,
             limit: 1
         )
       end)
@@ -163,9 +163,9 @@ defmodule E2E do
 
     t_allowed = System.monotonic_time(:millisecond)
 
-    # The second thing the console promises: a deny holds in either mode. The hive goes
-    # to observe, the host is denied from the same row, and the same session, which kept
-    # asking, is refused by name.
+    # The second thing the console promises: a deny holds in either mode. The workspace
+    # goes to observe, the host is denied from the same row, and the same session, which
+    # kept asking, is refused by name.
     step("observe, then deny as the connection's row does")
     {:ok, "observe"} = Policy.set_mode(scope, "observe")
     deny_wall = DateTime.utc_now()
@@ -179,7 +179,7 @@ defmodule E2E do
     true = deny_digest != new_digest
 
     say(
-      "hive in observe; rule #{deny_rule.action} #{deny_rule.host} at the #{level}'s level; version #{deny_version}, digest #{short(deny_digest)}"
+      "workspace in observe; rule #{deny_rule.action} #{deny_rule.host} at the #{level}'s level; version #{deny_version}, digest #{short(deny_digest)}"
     )
 
     third =
@@ -301,14 +301,14 @@ defmodule E2E do
     end
   end
 
-  # The hive's first owner, made the way sign-up makes one.
+  # The workspace's first owner, made the way sign-up makes one.
   defp owner_scope do
     {:ok, %{user: user}} = Organisations.sign_up_user(%{email: "owner@e2e.test"})
-    %Scope{hive: %{}} = scope = Organisations.load_scope(Scope.for_user(user))
+    %Scope{workspace: %{}} = scope = Organisations.load_scope(Scope.for_user(user))
     scope
   end
 
-  defp holder(_scope, _run, :hive), do: nil
+  defp holder(_scope, _run, :workspace), do: nil
 
   defp holder(scope, %Run{target_id: id}, :target) when is_binary(id) do
     {:ok, target} = Policy.get_target(scope, id)

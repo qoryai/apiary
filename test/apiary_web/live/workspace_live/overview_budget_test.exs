@@ -1,4 +1,4 @@
-defmodule ApiaryWeb.HiveLive.OverviewBudgetTest do
+defmodule ApiaryWeb.WorkspaceLive.OverviewBudgetTest do
   # Not async: the query counter hears every query of the node, so nothing else may run.
   use ApiaryWeb.ConnCase, async: false
 
@@ -11,7 +11,7 @@ defmodule ApiaryWeb.HiveLive.OverviewBudgetTest do
   setup :register_and_log_in_user
 
   setup do
-    Application.put_env(:apiary, ApiaryWeb.HiveLive.Overview,
+    Application.put_env(:apiary, ApiaryWeb.WorkspaceLive.Overview,
       coalesce: 0,
       announce: 0,
       quiet_tick: 3_600_000,
@@ -21,8 +21,8 @@ defmodule ApiaryWeb.HiveLive.OverviewBudgetTest do
     :ok
   end
 
-  defp open(conn) do
-    {:ok, view, _html} = live(conn, ~p"/hive")
+  defp open(conn, scope) do
+    {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}")
     render_async(view, 5_000)
     view
   end
@@ -50,9 +50,12 @@ defmodule ApiaryWeb.HiveLive.OverviewBudgetTest do
       :counters.get(counter, 1)
     end
 
-    test "a change of one run costs the same on a hive of many runs", %{conn: conn, scope: scope} do
+    test "a change of one run costs the same on a workspace of many runs", %{
+      conn: conn,
+      scope: scope
+    } do
       small = for _ <- 1..8, do: started_run(scope, shop())
-      view = open(conn)
+      view = open(conn, scope)
       run = hd(small)
 
       small_cost =
@@ -71,8 +74,8 @@ defmodule ApiaryWeb.HiveLive.OverviewBudgetTest do
           end
         end)
 
-      # The same page, on a hive that has grown meanwhile: no broadcast for a row inserted
-      # straight into the table, so the page is where it was.
+      # The same page, on a workspace that has grown meanwhile: no broadcast for a row
+      # inserted straight into the table, so the page is where it was.
       for _ <- 1..60,
           do:
             run_fixture(scope, %{

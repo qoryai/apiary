@@ -1,9 +1,9 @@
 defmodule Apiary.Retention do
   @moduledoc """
-  How long a hive keeps what its runs sent, and the job that deletes what is older.
+  How long a workspace keeps what its runs sent, and the job that deletes what is older.
 
-  **The setting.** A hive has two, each a number of days or nil for unlimited, which is the
-  default: `events_retention_days` and `log_retention_days`. Owners change them
+  **The setting.** A workspace has two, each a number of days or nil for unlimited, which
+  is the default: `events_retention_days` and `log_retention_days`. Owners change them
   (`update_retention/2`). The log is carried by a run's events, so it is never kept longer
   than they are, and a setting that says otherwise is refused.
 
@@ -23,24 +23,25 @@ defmodule Apiary.Retention do
 
   The run's row stays, with everything the projector folded into it (state, times, labels,
   exit, `event_count`, `denied_count`), and so do its `connections`: the runs list, the
-  hive's connections and the run's header and Connections tab read as before. The run page
-  says on which date the events or the log were pruned where they would have been. A run
-  whose events are gone can no longer be projected again, so `Apiary.Runs.Projector.rebuild/1`
-  and `Apiary.Runs.Rebuild` leave it as it is.
+  workspace's connections and the run's header and Connections tab read as before. The run
+  page says on which date the events or the log were pruned where they would have been. A
+  run whose events are gone can no longer be projected again, so
+  `Apiary.Runs.Projector.rebuild/1` and `Apiary.Runs.Rebuild` leave it as it is.
 
   **The job.** `prune_all/1` takes a Postgres advisory lock, so of several nodes one
-  prunes, and walks the hives that have a setting. Every delete is one statement over at
-  most `:batch` rows (2,000) of one run, found through the unique indexes on
+  prunes, and walks the workspaces that have a setting. Every delete is one statement over
+  at most `:batch` rows (2,000) of one run, found through the unique indexes on
   `(run_id, sequence)`, in its own short transaction under the run's projection lock: no
   statement scans `events`, and none holds a lock longer than its batch. The runs that are
   due are read through the partial indexes `runs_retention_events_index` and
   `runs_retention_log_index`, which a pruned run leaves. One night prunes at most
-  `:max_runs` runs of a hive (10,000) and goes on the next night.
+  `:max_runs` runs of a workspace (10,000) and goes on the next night.
 
-  It says what it did: a `Apiary.Retention.RetentionRun` per hive per run of the job,
-  which the settings page lists, and one log line per hive, `retention pruned hive=…`.
-  With `dry_run: true` it deletes nothing, writes no record and returns the same counts.
-  `Apiary.Retention.Scheduler` runs it nightly; `mix apiary.prune` runs it by hand.
+  It says what it did: a `Apiary.Retention.RetentionRun` per workspace per run of the job,
+  which the settings page lists, and one log line per workspace,
+  `retention pruned workspace=…`. With `dry_run: true` it deletes nothing, writes no
+  record and returns the same counts. `Apiary.Retention.Scheduler` runs it nightly;
+  `mix apiary.prune` runs it by hand.
   """
 
   import Ecto.Query
@@ -49,7 +50,7 @@ defmodule Apiary.Retention do
 
   alias Apiary.Accounts.Scope
   alias Apiary.Organisations
-  alias Apiary.Organisations.Hive
+  alias Apiary.Organisations.Workspace
   alias Apiary.Repo
   alias Apiary.Retention.RetentionRun
   alias Apiary.Runs.{Delivery, Event, LogChunk, Projector, Run}
@@ -58,8 +59,8 @@ defmodule Apiary.Retention do
   @default_batch 2_000
   @default_max_runs 10_000
   @runs_page 100
-  # A scheduled job leaves a hive alone that was pruned less than this long ago: several
-  # nodes each have a timer, and the second to get the lock has nothing to add.
+  # A scheduled job leaves a workspace alone that was pruned less than this long ago:
+  # several nodes each have a timer, and the second to get the lock has nothing to add.
   @quiet_hours 12
 
   @type counts :: %{
@@ -72,30 +73,31 @@ defmodule Apiary.Retention do
 
   ## The setting
 
-  @doc "A changeset of the hive's retention settings, for the form."
+  @doc "A changeset of the workspace's retention settings, for the form."
   @spec change_retention(struct(), map()) :: Ecto.Changeset.t()
-  def change_retention(%Hive{} = hive, attrs \\ %{}), do: Hive.retention_changeset(hive, attrs)
+  def change_retention(%Workspace{} = workspace, attrs \\ %{}),
+    do: Workspace.retention_changeset(workspace, attrs)
 
-  @doc "Sets the retention of the scope's hive. Owners only."
+  @doc "Sets the retention of the scope's workspace. Owners only."
   @spec update_retention(struct(), map()) ::
           {:ok, struct()} | {:error, Ecto.Changeset.t() | :unauthorized}
-  def update_retention(%Scope{hive: %Hive{} = hive} = scope, attrs) do
+  def update_retention(%Scope{workspace: %Workspace{} = workspace} = scope, attrs) do
     if Organisations.owner?(scope) do
-      hive |> Hive.retention_changeset(attrs) |> Repo.update()
+      workspace |> Workspace.retention_changeset(attrs) |> Repo.update()
     else
       {:error, :unauthorized}
     end
   end
 
-  @doc "What the job did to the scope's hive, newest first, at most `limit` (default 10)."
+  @doc "What the job did to the scope's workspace, newest first, at most `limit` (default 10)."
   @spec list_retention_runs(struct(), pos_integer()) :: [RetentionRun.t()]
   def list_retention_runs(
-        %Scope{organisation: %{id: organisation_id}, hive: %Hive{id: hive_id}},
+        %Scope{organisation: %{id: organisation_id}, workspace: %Workspace{id: workspace_id}},
         limit \\ 10
       ) do
     Repo.all(
       from r in RetentionRun,
-        where: r.organisation_id == ^organisation_id and r.hive_id == ^hive_id,
+        where: r.organisation_id == ^organisation_id and r.workspace_id == ^workspace_id,
         order_by: [desc: r.started_at, desc: r.id],
         limit: ^min(max(limit, 1), 100)
     )
@@ -104,13 +106,14 @@ defmodule Apiary.Retention do
   ## The job
 
   @doc """
-  Prunes every hive that has a retention setting and returns one result per hive pruned,
-  `%{hive_id:, events_cutoff:, log_cutoff:, complete:, …counts}`; `{:error, :locked}` when
-  another node, or another `mix apiary.prune`, holds the job's lock.
+  Prunes every workspace that has a retention setting and returns one result per workspace
+  pruned, `%{workspace_id:, events_cutoff:, log_cutoff:, complete:, …counts}`;
+  `{:error, :locked}` when another node, or another `mix apiary.prune`, holds the job's
+  lock.
 
   Options: `trigger:` (`"schedule"` or `"manual"`, the default), `dry_run:`, `now:`,
-  `batch:` (rows a delete), `max_runs:` (runs of a hive a job). A scheduled job skips a
-  hive pruned in the last #{@quiet_hours} hours; a manual one never does.
+  `batch:` (rows a delete), `max_runs:` (runs of a workspace a job). A scheduled job skips
+  a workspace pruned in the last #{@quiet_hours} hours; a manual one never does.
   """
   @spec prune_all(keyword()) :: {:ok, [map()]} | {:error, :locked}
   def prune_all(opts \\ []) do
@@ -120,7 +123,7 @@ defmodule Apiary.Retention do
       fn ->
         if try_lock() do
           try do
-            {:ok, opts |> hives() |> Enum.map(&prune_hive(&1, opts))}
+            {:ok, opts |> workspaces() |> Enum.map(&prune_workspace(&1, opts))}
           after
             unlock()
           end
@@ -133,35 +136,35 @@ defmodule Apiary.Retention do
   end
 
   @doc """
-  Prunes one hive under its settings, as `prune_all/1` does for each; the options are the
-  same. Takes no job lock: `prune_all/1` is what the scheduler and the task call.
+  Prunes one workspace under its settings, as `prune_all/1` does for each; the options are
+  the same. Takes no job lock: `prune_all/1` is what the scheduler and the task call.
   """
-  @spec prune_hive(struct(), keyword()) :: map()
-  def prune_hive(%Hive{} = hive, opts \\ []) do
+  @spec prune_workspace(struct(), keyword()) :: map()
+  def prune_workspace(%Workspace{} = workspace, opts \\ []) do
     now = Keyword.get(opts, :now) || DateTime.utc_now()
     dry_run? = Keyword.get(opts, :dry_run, false)
     started_at = DateTime.utc_now()
 
-    events_cutoff = cutoff(now, hive.events_retention_days)
-    log_cutoff = cutoff(now, hive.log_retention_days)
+    events_cutoff = cutoff(now, workspace.events_retention_days)
+    log_cutoff = cutoff(now, workspace.log_retention_days)
 
-    {events_counts, events_complete?} = phase(hive, :events, events_cutoff, opts)
+    {events_counts, events_complete?} = phase(workspace, :events, events_cutoff, opts)
     # The runs past the events cut-off are the first phase's, whether or not it got to them.
     {log_counts, log_complete?} =
-      phase(hive, :log, log_cutoff, Keyword.put(opts, :not_before, events_cutoff))
+      phase(workspace, :log, log_cutoff, Keyword.put(opts, :not_before, events_cutoff))
 
     result =
       events_counts
       |> Map.merge(log_counts, fn _key, a, b -> a + b end)
       |> Map.merge(%{
-        hive_id: hive.id,
+        workspace_id: workspace.id,
         events_cutoff: events_cutoff,
         log_cutoff: log_cutoff,
         complete: events_complete? and log_complete?,
         dry_run: dry_run?
       })
 
-    unless dry_run?, do: record(hive, result, started_at, opts)
+    unless dry_run?, do: record(workspace, result, started_at, opts)
     result
   end
 
@@ -176,8 +179,8 @@ defmodule Apiary.Retention do
   def due_or_pruned?(%Run{id: id}) do
     Repo.exists?(
       from r in Run,
-        join: h in Hive,
-        on: h.id == r.hive_id,
+        join: h in Workspace,
+        on: h.id == r.workspace_id,
         where: r.id == ^id and not is_nil(h.events_retention_days),
         where: r.state not in ^Run.alive_states(),
         where:
@@ -191,32 +194,32 @@ defmodule Apiary.Retention do
   end
 
   @doc """
-  What a result of `prune_hive/2` says in a sentence, for the task's output.
+  What a result of `prune_workspace/2` says in a sentence, for the task's output.
   """
   @spec sentence(map()) :: String.t()
   def sentence(result) do
     verb = if result.dry_run, do: "would prune", else: "pruned"
 
-    "hive #{result.hive_id}: #{verb} #{result.runs_pruned} runs: " <>
+    "workspace #{result.workspace_id}: #{verb} #{result.runs_pruned} runs: " <>
       "#{result.events_deleted} events, #{result.log_chunks_deleted} log chunks " <>
       "(#{result.log_bytes_deleted} bytes), #{result.deliveries_deleted} deliveries; " <>
       "events before #{iso(result.events_cutoff)}, log before #{iso(result.log_cutoff)}" <>
       if(result.complete, do: ".", else: "; not finished, the next run goes on.")
   end
 
-  ## One phase over one hive
+  ## One phase over one workspace
 
-  defp phase(_hive, _kind, nil, _opts), do: {zero(), true}
+  defp phase(_workspace, _kind, nil, _opts), do: {zero(), true}
 
-  defp phase(hive, kind, cutoff, opts) do
+  defp phase(workspace, kind, cutoff, opts) do
     max_runs = Keyword.get(opts, :max_runs, @default_max_runs)
-    walk(hive, kind, cutoff, opts, nil, max_runs, zero())
+    walk(workspace, kind, cutoff, opts, nil, max_runs, zero())
   end
 
-  defp walk(_hive, _kind, _cutoff, _opts, _after, left, acc) when left <= 0, do: {acc, false}
+  defp walk(_workspace, _kind, _cutoff, _opts, _after, left, acc) when left <= 0, do: {acc, false}
 
-  defp walk(hive, kind, cutoff, opts, after_key, left, acc) do
-    case Repo.all(due(hive, kind, cutoff, opts, after_key, min(left, @runs_page))) do
+  defp walk(workspace, kind, cutoff, opts, after_key, left, acc) do
+    case Repo.all(due(workspace, kind, cutoff, opts, after_key, min(left, @runs_page))) do
       [] ->
         {acc, true}
 
@@ -232,16 +235,16 @@ defmodule Apiary.Retention do
         last = List.last(runs)
 
         {acc, complete?} =
-          walk(hive, kind, cutoff, opts, {last.age, last.id}, left - length(runs), acc)
+          walk(workspace, kind, cutoff, opts, {last.age, last.id}, left - length(runs), acc)
 
         {acc, complete? and not failed?}
     end
   end
 
-  # Read through the partial index of the phase: the hive, the age, the id, and only the
-  # runs the phase has not pruned.
+  # Read through the partial index of the phase: the workspace, the age, the id, and only
+  # the runs the phase has not pruned.
   defp due(
-         %Hive{id: hive_id, organisation_id: organisation_id},
+         %Workspace{id: workspace_id, organisation_id: organisation_id},
          kind,
          cutoff,
          opts,
@@ -250,7 +253,7 @@ defmodule Apiary.Retention do
        ) do
     query =
       from r in Run,
-        where: r.hive_id == ^hive_id and r.organisation_id == ^organisation_id,
+        where: r.workspace_id == ^workspace_id and r.organisation_id == ^organisation_id,
         where: fragment("COALESCE(?, ?) < ?", r.last_event_at, r.inserted_at, ^cutoff),
         where: r.state not in ^Run.alive_states(),
         order_by: [asc: fragment("COALESCE(?, ?)", r.last_event_at, r.inserted_at), asc: r.id],
@@ -258,7 +261,7 @@ defmodule Apiary.Retention do
         select: %{
           id: r.id,
           run_id: r.run_id,
-          hive_id: r.hive_id,
+          workspace_id: r.workspace_id,
           age: fragment("COALESCE(?, ?)", r.last_event_at, r.inserted_at)
         }
 
@@ -368,7 +371,7 @@ defmodule Apiary.Retention do
   defp events_of(run), do: from(e in Event, where: e.run_id == ^run.id)
 
   defp deliveries_of(run) do
-    from d in Delivery, where: d.hive_id == ^run.hive_id and d.run_id == ^run.run_id
+    from d in Delivery, where: d.workspace_id == ^run.workspace_id and d.run_id == ^run.run_id
   end
 
   # Log chunks give their size as they go: the bytes are what the setting is about.
@@ -432,18 +435,18 @@ defmodule Apiary.Retention do
 
   ## What it says
 
-  defp record(hive, result, started_at, opts) do
+  defp record(workspace, result, started_at, opts) do
     finished_at = DateTime.utc_now()
     trigger = Keyword.get(opts, :trigger, "manual")
 
     Repo.insert!(%RetentionRun{
-      organisation_id: hive.organisation_id,
-      hive_id: hive.id,
+      organisation_id: workspace.organisation_id,
+      workspace_id: workspace.id,
       trigger: trigger,
       started_at: started_at,
       finished_at: finished_at,
-      events_retention_days: hive.events_retention_days,
-      log_retention_days: hive.log_retention_days,
+      events_retention_days: workspace.events_retention_days,
+      log_retention_days: workspace.log_retention_days,
       events_cutoff: result.events_cutoff,
       log_cutoff: result.log_cutoff,
       runs_pruned: result.runs_pruned,
@@ -455,7 +458,7 @@ defmodule Apiary.Retention do
     })
 
     Logger.info(
-      "retention pruned hive=#{hive.id} trigger=#{trigger} runs=#{result.runs_pruned} " <>
+      "retention pruned workspace=#{workspace.id} trigger=#{trigger} runs=#{result.runs_pruned} " <>
         "events=#{result.events_deleted} log_chunks=#{result.log_chunks_deleted} " <>
         "log_bytes=#{result.log_bytes_deleted} deliveries=#{result.deliveries_deleted} " <>
         "events_cutoff=#{iso(result.events_cutoff)} log_cutoff=#{iso(result.log_cutoff)} " <>
@@ -466,11 +469,11 @@ defmodule Apiary.Retention do
   defp iso(nil), do: "none"
   defp iso(%DateTime{} = at), do: DateTime.to_iso8601(at)
 
-  ## The hives and the lock
+  ## The workspaces and the lock
 
-  defp hives(opts) do
+  defp workspaces(opts) do
     query =
-      from h in Hive,
+      from h in Workspace,
         where: not is_nil(h.events_retention_days) or not is_nil(h.log_retention_days),
         order_by: h.id
 
@@ -480,9 +483,10 @@ defmodule Apiary.Retention do
 
       recent =
         from r in RetentionRun,
-          where: r.hive_id == parent_as(:hive).id and r.started_at > ^since and r.complete
+          where:
+            r.workspace_id == parent_as(:workspace).id and r.started_at > ^since and r.complete
 
-      Repo.all(from h in query, as: :hive, where: not exists(recent))
+      Repo.all(from h in query, as: :workspace, where: not exists(recent))
     else
       Repo.all(query)
     end

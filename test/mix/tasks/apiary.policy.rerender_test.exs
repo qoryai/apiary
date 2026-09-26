@@ -25,7 +25,7 @@ defmodule Mix.Tasks.Apiary.Policy.RerenderTest do
   defp target_fixture(scope, path \\ "acme/site") do
     Repo.insert!(%Target{
       organisation_id: scope.organisation.id,
-      hive_id: scope.hive.id,
+      workspace_id: scope.workspace.id,
       system: "github.example",
       path: path,
       first_seen_at: DateTime.utc_now()
@@ -59,7 +59,7 @@ defmodule Mix.Tasks.Apiary.Policy.RerenderTest do
     Policy.list_changes(scope, holder).items
   end
 
-  test "a managed hive with deny rules gets a new version per holder whose bytes change, and no more",
+  test "a managed workspace with deny rules gets a new version per holder whose bytes change, and no more",
        %{scope: scope} do
     target = target_fixture(scope)
     {:ok, _} = Policy.allow(scope, nil, %{host: "*.example"})
@@ -73,7 +73,7 @@ defmodule Mix.Tasks.Apiary.Policy.RerenderTest do
     changes_before = length(changes(scope, nil)) + length(changes(scope, target))
 
     Rerender.run([])
-    assert_received {:mix_shell, :info, ["Rendered 1 hives again: 2 new versions."]}
+    assert_received {:mix_shell, :info, ["Rendered 1 workspaces again: 2 new versions."]}
     assert_received {:policy_changed, %{action: "rerendered"}}
 
     assert %{version: version} = configuration = current!(scope, nil)
@@ -100,14 +100,14 @@ defmodule Mix.Tasks.Apiary.Policy.RerenderTest do
 
     # Run again: the bytes are current, nothing is written and nothing is announced.
     Rerender.run([])
-    assert_received {:mix_shell, :info, ["Rendered 1 hives again: 0 new versions."]}
+    assert_received {:mix_shell, :info, ["Rendered 1 workspaces again: 0 new versions."]}
     refute_received {:policy_changed, _}
     assert current!(scope, nil).version == baseline + 1
     assert current!(scope, target).version == own + 1
     assert length(changes(scope, nil)) + length(changes(scope, target)) == changes_before + 2
   end
 
-  test "a hive without deny rules renders the bytes it had, and an unmanaged hive is untouched",
+  test "a workspace without deny rules renders the bytes it had, and an unmanaged workspace is untouched",
        %{scope: scope} do
     {:ok, _} = Policy.allow(scope, nil, %{host: "api.example"})
     version = current!(scope, nil).version
@@ -115,7 +115,7 @@ defmodule Mix.Tasks.Apiary.Policy.RerenderTest do
     refute Policy.managed?(unmanaged)
 
     Rerender.run([])
-    assert_received {:mix_shell, :info, ["Rendered 1 hives again: 0 new versions."]}
+    assert_received {:mix_shell, :info, ["Rendered 1 workspaces again: 0 new versions."]}
 
     assert current!(scope, nil).version == version
     assert Enum.map(changes(scope, nil), & &1.action) == ["rule_added"]
@@ -123,7 +123,7 @@ defmodule Mix.Tasks.Apiary.Policy.RerenderTest do
     assert {:error, _} = Policy.current_configuration(unmanaged, nil)
 
     assert Repo.aggregate(
-             from(c in RunConfiguration, where: c.hive_id == ^unmanaged.hive.id),
+             from(c in RunConfiguration, where: c.workspace_id == ^unmanaged.workspace.id),
              :count
            ) == 0
   end

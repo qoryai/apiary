@@ -39,7 +39,7 @@ defmodule Apiary.Runs.Connection do
     field :last_sequence, :integer, default: 0
 
     belongs_to :organisation, Apiary.Organisations.Organisation
-    belongs_to :hive, Apiary.Organisations.Hive
+    belongs_to :workspace, Apiary.Organisations.Workspace
     belongs_to :run, Apiary.Runs.Run
   end
 end

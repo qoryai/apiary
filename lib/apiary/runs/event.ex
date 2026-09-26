@@ -20,7 +20,7 @@ defmodule Apiary.Runs.Event do
     field :projected_at, :utc_datetime_usec
 
     belongs_to :organisation, Apiary.Organisations.Organisation
-    belongs_to :hive, Apiary.Organisations.Hive
+    belongs_to :workspace, Apiary.Organisations.Workspace
     belongs_to :run, Apiary.Runs.Run
   end
 end
