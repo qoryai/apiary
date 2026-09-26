@@ -1635,6 +1635,39 @@ defmodule ApiaryWeb.RunLive.ShowTest do
     end
 
     @tag needs: :security
+    test "the timeline shows a long tool argument cut short, and whole in its title", %{
+      conn: conn,
+      scope: scope
+    } do
+      argument = "acme/" <> String.duplicate("r", 95)
+
+      run =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "run.policy_applied",
+           tool_policy_data(%{
+             "tools" => [
+               %{"name" => "files", "argument" => argument, "hosts" => ["files.tools.internal"]}
+             ]
+           })}
+        ])
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      code = lv |> element("#e-2-tools code.q-rule") |> render() |> LazyHTML.from_fragment()
+      assert LazyHTML.text(code) == String.slice(argument, 0, 64) <> "…"
+      assert LazyHTML.attribute(code, "title") == [argument]
+      assert has_element?(lv, "#e-2-tools", "files.tools.internal")
+
+      # The Details tab shows it whole.
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/details")
+
+      assert has_element?(lv, "#policy-tools-0 code.q-rule", argument)
+    end
+
+    @tag needs: :security
     test "the policy in force counts the credentials and tools past those it lists", %{
       conn: conn,
       scope: scope

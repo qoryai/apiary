@@ -241,10 +241,11 @@ defmodule Apiary.Runs.RecordTest do
     test "the policy in force reads each credential's and each tool's argument", %{
       scope: scope
     } do
-      # "é" as one code point (two bytes), and as "e" and a combining accent: two code
-      # points and one grapheme. The database counts code points, and so does the cut.
-      e = "é"
-      combining = "é"
+      # An e with an acute accent as one code point, U+00E9 (two bytes), and as "e" and the
+      # combining accent U+0301: two code points and one grapheme. The database counts code
+      # points, and so does the cut.
+      e = "\u00E9"
+      combining = "e\u0301"
 
       credentials =
         [
@@ -428,8 +429,8 @@ defmodule Apiary.Runs.RecordTest do
                %{"name" => "bare"},
                %{"name" => "short", "argument" => "acme/shop", "hosts" => ["s"]},
                %{"name" => "long", "argument" => String.duplicate("l", 4096), "hosts" => []},
-               %{"name" => "accent", "argument" => String.duplicate("é", 300)},
-               %{"name" => "combining", "argument" => String.duplicate("é", 200)},
+               %{"name" => "accent", "argument" => String.duplicate("\u00E9", 300)},
+               %{"name" => "combining", "argument" => String.duplicate("e\u0301", 200)},
                %{"name" => "number", "argument" => 7},
                "junk"
              ]
@@ -460,9 +461,22 @@ defmodule Apiary.Runs.RecordTest do
 
       assert arguments["short"] == "acme/shop"
       assert arguments["long"] == String.duplicate("l", 256) <> "…"
-      assert arguments["accent"] == String.duplicate("é", 256) <> "…"
-      assert arguments["combining"] == String.duplicate("é", 128) <> "…"
+      assert arguments["accent"] == String.duplicate("\u00E9", 256) <> "…"
+      assert arguments["combining"] == String.duplicate("e\u0301", 128) <> "…"
       assert arguments["number"] == nil and arguments["bare"] == nil
+
+      # Its summary line shows 64 code points of it, "…" after.
+      shown =
+        for %{kind: :policy_applied, seq: 8, tools: tools} <- items,
+            tool <- tools,
+            into: %{},
+            do: {tool.name, tool.argument_shown}
+
+      assert shown["short"] == "acme/shop"
+      assert shown["long"] == String.duplicate("l", 64) <> "…"
+      assert shown["accent"] == String.duplicate("\u00E9", 64) <> "…"
+      assert shown["combining"] == String.duplicate("e\u0301", 32) <> "…"
+      assert shown["number"] == nil and shown["bare"] == nil
     end
   end
 

@@ -386,8 +386,9 @@ The contract has not fixed these; Apiary chose, and the runner should match:
   may contain `argument`, the argument the policy passed to it (up to 4096 code points in
   the contract). The policy in force on a run's Details tab reads it whole, cut only past
   4096 code points; the timeline's policy applied item reads a tool's cut at 256, the
-  longest argument the policy editor writes (`Apiary.Policy.Grammar.argument_max/0`). A cut
-  argument ends in `…`. Lengths are code points, as the schemas' `maxLength` and the
+  longest argument the policy editor writes (`Apiary.Policy.Grammar.argument_max/0`), and
+  its one-line summary shows the first 64 of them, with the 256 in the argument's title. A
+  cut argument ends in `…`. Lengths are code points, as the schemas' `maxLength` and the
   database's `left` count them, in the query and in `Timeline.slim/1` alike. The event
   lists each use of a credential, all with the same name and argument; the Details tab
   shows them as one entry with the hosts of every use. It reads the first twenty uses and

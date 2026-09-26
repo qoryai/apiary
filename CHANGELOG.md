@@ -90,7 +90,8 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
   The uses of one credential, which the event lists one by one with the same name and
   argument, show as one entry with the hosts of every use. Past the first twenty uses or
   tools the lists end in "and N more", counting the entries not shown. The timeline's
-  policy applied item shows each tool's argument too, cut at 256 characters with `…`.
+  policy applied item shows each tool's argument too: its first 64 characters, with `…`
+  when there are more, and up to 256 on hover.
 
 ### Changed
 

@@ -667,7 +667,10 @@ defmodule ApiaryWeb.RunPageComponents do
               {if i > 0, do: ", "}<.icon
                 name="hero-wrench-screwdriver-micro"
                 class="q-tool-icon size-3.5"
-              /><span class="font-mono text-[12.5px]">{tool.name}</span><span :if={tool[:argument]}>{" "}<code class="q-rule">{tool.argument}</code></span><span
+              /><span class="font-mono text-[12.5px]">{tool.name}</span><span :if={tool[:argument]}>{" "}<code
+                class="q-rule"
+                title={tool.argument}
+              >{tool.argument_shown}</code></span><span
                 :if={tool.hosts != []}
                 class="text-faint"
               > ({Enum.join(tool.hosts, ", ")})</span>

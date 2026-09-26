@@ -72,6 +72,9 @@ defmodule Apiary.Runs.Record.Timeline do
   @max_delta 3
   @max_allow 200
   @max_argument Apiary.Policy.Grammar.argument_max()
+  # The code points of a tool's argument its item's summary line shows; the rest is in the
+  # argument's title.
+  @shown_argument 64
   @lane_key 12
 
   @doc "The bytes of a payload a well shows before \"Show all\"."
@@ -707,7 +710,13 @@ defmodule Apiary.Runs.Record.Timeline do
       tools:
         for(
           tool <- event.tools || [],
-          do: %{name: tool["name"], argument: tool["argument"], hosts: tool["hosts"]}
+          do: %{
+            name: tool["name"],
+            argument: tool["argument"],
+            argument_shown:
+              tool["argument"] && bound_codepoints(tool["argument"], @shown_argument),
+            hosts: tool["hosts"]
+          }
         ),
       again: is_integer(item[:previous_seq]),
       previous_seq: item[:previous_seq],
