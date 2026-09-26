@@ -110,14 +110,6 @@ defmodule Apiary.Runs.ListingTest do
       assert parse(%{"zzz" => "1"}).dropped == []
     end
 
-    test "the state's former name in a shared link is read as the state, and canonicalised" do
-      filters = parse(%{"state" => "exited,failed,succeeded"})
-
-      assert filters.states == ["succeeded", "failed"]
-      assert filters.dropped == []
-      assert Filters.to_params(filters) == %{"state" => "succeeded,failed"}
-    end
-
     test "the states read as three families, and whole families are named as such" do
       assert Enum.map(Filters.families(), & &1.key) == ~w(alive ended_well ended_badly)
 
@@ -653,7 +645,7 @@ defmodule Apiary.Runs.ListingTest do
     } do
       call = tool_invocation_data(%{})
       # One run's last attempt was handed to the tool, another's to the same destination
-      # was not (a row projected before the tool was folded, say).
+      # was not.
       started(scope, shop(), 300, egress: [Map.drop(call, ["tool", "status"])])
       started(scope, shop(), 200, egress: [call, call])
 

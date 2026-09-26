@@ -473,7 +473,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
     } do
       assert effective.deny == ["tracker.internal.example", "*.paste.example"]
 
-      # Let through by an old runner with no rule: not allowed now, since the deny is decided
+      # Let through with no rule before the deny: not allowed now, since the deny is decided
       # before the suffix that allows the rest, so the row keeps its Allow and no second
       # deny is offered (`answered/3` then says the deny answered it).
       assert %{standing: :can_allow, deny: false, entry: %{action: :deny}} =

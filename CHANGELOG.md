@@ -36,8 +36,7 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
   counts it has without the filter.
 - `QORY_FEATURES`, the features an instance has, read once at boot: `observability`
   (the record) and `security` (the security policy), beside names kept for features not
-  built yet. `all`, the default when unset, is every feature, and nothing changes for an
-  existing installation; `all-security` is every feature but the security policy; a
+  built yet. `all`, the default when unset, is every feature; `all-security` is every feature but the security policy; a
   list, such as `observability,security`, names exactly the features on, and keeps a
   feature a later release adds off until it is listed. A feature left out is absent: its
   pages answer as a path that does not exist, the navigation, the overview, the run and
@@ -47,24 +46,24 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
   feature listed without `observability`, stops the boot. Switching a feature on later is
   a change of the value and a restart, with no migration. See the Install guide.
 
+### Changed
+
+- The events endpoint serves revision 1 of runner contract v1 and nothing else: a request
+  whose `X-Qory-Contract-Version` is not `1`, absent or sent twice included, is answered
+  `400 unsupported_contract_version` with the revisions served, `[1]`. The runner sends
+  the header on every request.
+- `mix apiary.rebuild` (`Apiary.Release.rebuild/1` in a release) projects every run whose
+  events are held again, a batch at a time by id; `--all` and `all: true` are gone.
+
 ### Migrations
 
 - `20260928000100`: `connections.last_tool` and `connections.last_status`, two nullable
   columns without a default: the tool whose host the last attempt was for, whether it
-  was handed to the tool or refused, and the status that answered it. Instant, no row is rewritten; reversible. Rows projected before it keep
-  null, which the console reads as a connection that is no tool invocation and has no
-  recorded answer, until `mix apiary.rebuild` (see Upgrading).
+  was handed to the tool or refused, and the status that answered it. Instant, no row is
+  rewritten; reversible.
 
 ### Upgrading
 
-- The events endpoint already stores the tool invocations a runner sends. A run received
-  before this release whose events name a tool or a status shows neither until it is
-  projected again: run `mix apiary.rebuild` once after the upgrade (in a release
-  `bin/apiary eval "Apiary.Release.rebuild()"`). It now also selects a run with a
-  connection whose last attempt names a tool or a status the row lacks, and leaves every
-  other run alone. It walks the runs in
-  windows of `batch` by id, so what each step reads is bounded by its window, where it
-  used to scan the tables it checks once a page.
 - Tools come from the run's policy, and this server never sends a run configuration that
   selects any: tool invocations come only from runs under the machine's own policy, its
   runner file.

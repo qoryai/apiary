@@ -8,6 +8,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
   import Ecto.Query
 
   alias Apiary.AccessKeys
+  alias Apiary.Contract.Signature
   alias Apiary.Repo
   alias Apiary.Runs
   alias Apiary.Runs.{Delivery, Event, Run}
@@ -31,6 +32,20 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
 
   defp events(run),
     do: Repo.all(from e in Event, where: e.run_id == ^run.id, order_by: e.sequence)
+
+  # A delivery signed as the runner signs it, with `versions` as its X-Qory-Contract-Version
+  # headers: none, one or several.
+  defp post_with_versions(key, secret, batch, versions) do
+    body = Jason.encode!(batch)
+    sent = for version <- versions, do: {"x-qory-contract-version", version}
+
+    build_conn()
+    |> put_req_header("x-qory-access-key", key.key_id)
+    |> put_req_header("x-qory-signature-256", Signature.sign(secret, body))
+    |> put_req_header("content-type", content_type())
+    |> then(&%{&1 | req_headers: &1.req_headers ++ sent})
+    |> post("/v1/events", body)
+  end
 
   describe "a valid delivery" do
     test "is answered 202 with the digest of discovery, and creates the run in the key's hive",
@@ -99,7 +114,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
                :lt
     end
 
-    test "a delivery that names no version leaves the versions the key has recorded",
+    test "a delivery whose User-Agent names no runner version leaves the one the key has recorded",
          %{scope: scope, key: key, secret: secret} do
       {subject, [ping, _]} = first_events()
       assert build_conn() |> signed_post(key.key_id, secret, [ping]) |> response(202)
@@ -107,10 +122,7 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
       beat = wire_event(subject, 2, "run.heartbeat", %{"elapsed_seconds" => 30})
 
       assert build_conn()
-             |> signed_post(key.key_id, secret, [beat],
-               contract_version: nil,
-               user_agent: "curl/8"
-             )
+             |> signed_post(key.key_id, secret, [beat], user_agent: "curl/8")
              |> response(202)
 
       key = AccessKeys.get_access_key!(scope, key.id)
@@ -208,19 +220,15 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
       assert data == %{"anything" => [1, %{"a" => nil}]}
     end
 
-    test "without X-Qory-Contract-Version and X-Qory-Delivery: a plain client of the contract",
+    test "without X-Qory-Delivery the delivery is recorded under an id of its own",
          %{scope: scope, key: key, secret: secret} do
       subject = Ecto.UUID.generate()
       beat = wire_event(subject, 1, "run.heartbeat", %{"elapsed_seconds" => 30})
 
-      conn =
-        signed_post(build_conn(), key.key_id, secret, [beat],
-          contract_version: nil,
-          delivery: nil
-        )
+      conn = signed_post(build_conn(), key.key_id, secret, [beat], delivery: nil)
 
       assert response(conn, 202)
-      assert run!(scope, subject).contract_version == nil
+      assert run!(scope, subject).contract_version == 1
       assert Repo.aggregate(from(d in Delivery, where: d.access_key_id == ^key.id), :count) == 1
     end
 
@@ -397,21 +405,12 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
       assert response(conn, 202)
     end
 
-    test "every revision of v1 is accepted, a later one than the server knows too",
-         %{key: key, secret: secret} do
-      for version <- ["1", "2", "3"] do
-        {_subject, batch} = first_events()
-        conn = signed_post(build_conn(), key.key_id, secret, batch, contract_version: version)
-        assert response(conn, 202)
-      end
-    end
-
-    test "an unsupported contract version is 400 and says what is served",
+    test "a contract version other than 1, absent or sent twice, is 400 and says what is served",
          %{scope: scope, key: key, secret: secret} do
       {subject, batch} = first_events()
 
-      for version <- ["0", "-1", "one", "1.0"] do
-        conn = signed_post(build_conn(), key.key_id, secret, batch, contract_version: version)
+      for versions <- [[], ["2"], ["0"], ["-1"], ["one"], ["1.0"], [""], ["1", "1"]] do
+        conn = post_with_versions(key, secret, batch, versions)
 
         assert json_response(conn, 400) == %{
                  "error" => "unsupported_contract_version",
@@ -514,7 +513,8 @@ defmodule ApiaryWeb.Contract.EventsControllerTest do
           build_conn()
           |> put_req_header("content-type", content_type())
           |> put_req_header("x-qory-access-key", key.key_id)
-          |> put_req_header("x-qory-signature-256", Apiary.Contract.Signature.sign(secret, body))
+          |> put_req_header("x-qory-signature-256", Signature.sign(secret, body))
+          |> put_req_header("x-qory-contract-version", "1")
           |> post(path, body)
 
         assert json_response(conn, 400) == %{"error" => "invalid_batch"}

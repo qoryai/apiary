@@ -13,6 +13,9 @@ defmodule Apiary.Runs.IngestConcurrencyTest do
   alias Apiary.Runs.{Batch, Event, Ingest, Run}
   alias Ecto.Adapters.SQL.Sandbox
 
+  # What the runner's request says beside its body: the revision of the contract.
+  @meta %{contract_version: 1}
+
   setup do
     Sandbox.mode(Repo, :auto)
     on_exit(fn -> Sandbox.mode(Repo, :manual) end)
@@ -47,7 +50,7 @@ defmodule Apiary.Runs.IngestConcurrencyTest do
 
     results =
       batches
-      |> Task.async_stream(&Ingest.ingest(key, &1), max_concurrency: 8, timeout: 30_000)
+      |> Task.async_stream(&Ingest.ingest(key, &1, @meta), max_concurrency: 8, timeout: 30_000)
       |> Enum.map(fn {:ok, result} -> result end)
 
     assert Enum.all?(results, &match?({:ok, %{status: 202, inserted: 1}}, &1))
@@ -77,7 +80,7 @@ defmodule Apiary.Runs.IngestConcurrencyTest do
     {:ok, first} = [ping] |> Jason.encode!() |> Batch.parse()
     {:ok, second} = [started] |> Jason.encode!() |> Batch.parse()
 
-    assert {:ok, %{status: 202, run: run}} = Ingest.ingest(key, first)
+    assert {:ok, %{status: 202, run: run}} = Ingest.ingest(key, first, @meta)
     test = self()
 
     # The close, as `Apiary.Runs.close_run/2` makes it, held open for a moment
@@ -95,7 +98,7 @@ defmodule Apiary.Runs.IngestConcurrencyTest do
       end)
 
     assert_receive :closing, 5_000
-    assert {:ok, %{status: 410}} = Ingest.ingest(key, second)
+    assert {:ok, %{status: 410}} = Ingest.ingest(key, second, @meta)
     Task.await(closing)
 
     assert Repo.aggregate(from(e in Event, where: e.run_id == ^run.id), :count) == 1

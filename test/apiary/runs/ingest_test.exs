@@ -7,6 +7,9 @@ defmodule Apiary.Runs.IngestTest do
 
   alias Apiary.Runs.{Batch, Delivery, Event, Ingest, Run}
 
+  # What the runner's request says beside its body: the revision of the contract.
+  @meta %{contract_version: 1}
+
   setup do
     %{scope: scope} = sign_up_fixture()
     %{access_key: key} = access_key_fixture(scope)
@@ -22,13 +25,13 @@ defmodule Apiary.Runs.IngestTest do
     {subject, [ping, started]} = first_events()
 
     assert {:ok, %{status: 202, inserted: 1, duplicates: 0, conflicts: 0, repeated: false}} =
-             Ingest.ingest(key, batch!([ping]))
+             Ingest.ingest(key, batch!([ping]), @meta)
 
     usurper = wire_event(subject, 1, "run.exited", %{"state" => "failed"})
 
     ExUnit.CaptureLog.capture_log(fn ->
       assert {:ok, %{status: 202, inserted: 1, duplicates: 1, conflicts: 1, run: run}} =
-               Ingest.ingest(key, batch!([ping, usurper, started]))
+               Ingest.ingest(key, batch!([ping, usurper, started]), @meta)
 
       assert run.event_count == 2
     end)
@@ -38,12 +41,12 @@ defmodule Apiary.Runs.IngestTest do
     {_subject, [ping, _]} = first_events()
 
     assert {:ok, %{inserted: 1, duplicates: 1, conflicts: 0}} =
-             Ingest.ingest(key, batch!([ping, ping]))
+             Ingest.ingest(key, batch!([ping, ping]), @meta)
   end
 
   test "a repeated delivery id is answered again and touches nothing", %{key: key} do
     {_subject, [ping, started]} = first_events()
-    meta = %{delivery_id: Ecto.UUID.generate()}
+    meta = %{contract_version: 1, delivery_id: Ecto.UUID.generate()}
 
     assert {:ok, %{status: 202, inserted: 1, repeated: false}} =
              Ingest.ingest(key, batch!([ping]), meta)
@@ -59,7 +62,7 @@ defmodule Apiary.Runs.IngestTest do
   test "the same delivery id under another key is another delivery", %{scope: scope, key: key} do
     %{access_key: other} = access_key_fixture(scope)
     {_subject, [ping, started]} = first_events()
-    meta = %{delivery_id: Ecto.UUID.generate()}
+    meta = %{contract_version: 1, delivery_id: Ecto.UUID.generate()}
 
     assert {:ok, %{inserted: 1}} = Ingest.ingest(key, batch!([ping]), meta)
     assert {:ok, %{inserted: 1, repeated: false}} = Ingest.ingest(other, batch!([started]), meta)
@@ -69,8 +72,8 @@ defmodule Apiary.Runs.IngestTest do
     %{access_key: other} = access_key_fixture(scope)
     {_subject, [ping, started]} = first_events()
 
-    assert {:ok, %{run: %Run{id: id}}} = Ingest.ingest(key, batch!([ping]))
-    assert {:ok, %{run: %Run{id: ^id} = run}} = Ingest.ingest(other, batch!([started]))
+    assert {:ok, %{run: %Run{id: id}}} = Ingest.ingest(key, batch!([ping]), @meta)
+    assert {:ok, %{run: %Run{id: ^id} = run}} = Ingest.ingest(other, batch!([started]), @meta)
     assert run.access_key_id == key.id
   end
 
@@ -84,7 +87,7 @@ defmodule Apiary.Runs.IngestTest do
 
     log =
       ExUnit.CaptureLog.capture_log(fn ->
-        assert Ingest.ingest(key, poisoned) == {:error, :unavailable}
+        assert Ingest.ingest(key, poisoned, @meta) == {:error, :unavailable}
       end)
 
     assert log =~ "could not be stored: Postgrex.Error"
@@ -93,7 +96,7 @@ defmodule Apiary.Runs.IngestTest do
     assert Repo.aggregate(Delivery, :count) == 0
 
     # And the connection is fine afterwards.
-    assert {:ok, %{status: 202, inserted: 1}} = Ingest.ingest(key, batch)
+    assert {:ok, %{status: 202, inserted: 1}} = Ingest.ingest(key, batch, @meta)
   end
 
   test "events are inserted in sequence order, whatever the order of the batch", %{key: key} do
@@ -125,7 +128,7 @@ defmodule Apiary.Runs.IngestTest do
 
     on_exit(fn -> :telemetry.detach(handler) end)
 
-    assert {:ok, %{inserted: 3}} = Ingest.ingest(key, batch!(events))
+    assert {:ok, %{inserted: 3}} = Ingest.ingest(key, batch!(events), @meta)
     assert_received {:inserted, params}
 
     order = for param <- params, sequence = ids[param], do: sequence

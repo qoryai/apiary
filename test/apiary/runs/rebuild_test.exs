@@ -7,16 +7,9 @@ defmodule Apiary.Runs.RebuildTest do
 
   alias Apiary.Runs.{Connection, Projector, Rebuild, Run}
 
-  Code.require_file(
-    "priv/repo/migrations/20260922000100_add_denied_count_and_last_mode.exs",
-    File.cwd!()
-  )
-
-  alias Apiary.Repo.Migrations.AddDeniedCountAndLastMode, as: Migration
-
-  @added [:last_mode, :last_path_rule, :last_credential, :last_request_method]
   @selected [:host, :port, :path, :attempts, :allowed, :denied, :last_decision, :last_rule] ++
-              [:last_outcome, :last_sequence | @added]
+              [:last_outcome, :last_sequence, :last_mode, :last_path_rule, :last_credential] ++
+              [:last_request_method, :last_tool, :last_status]
 
   setup do
     %{scope: scope_fixture()}
@@ -35,172 +28,46 @@ defmodule Apiary.Runs.RebuildTest do
     }
   end
 
-  # The rows as a release before the migration left them: the columns it adds are empty.
-  defp as_before_the_migration(run) do
-    Repo.update_all(from(c in Connection, where: c.run_id == ^run.id),
-      set: Enum.map(@added, &{&1, nil})
-    )
-
+  # A projection no event accounts for: the run's connections gone, its count reset.
+  defp lose_projection(run) do
+    Repo.delete_all(from(c in Connection, where: c.run_id == ^run.id))
     Repo.update_all(from(r in Run, where: r.id == ^run.id), set: [denied_count: 0])
   end
 
-  # What an upgrade does: the migration's statement, then the task.
-  defp backfill do
-    Repo.query!(Migration.denied_count_sql())
-    Rebuild.run()
-  end
-
   describe "run/1" do
-    test "rebuilds the runs projected before the columns existed, and only those", %{
+    test "projects every run again from its events, and doing it twice changes nothing", %{
       scope: scope
     } do
-      stale = run_fixture(scope)
-      fresh = run_fixture(scope)
+      lost = run_fixture(scope)
+      kept = run_fixture(scope)
       bare = run_fixture(scope)
 
-      for run <- [stale, fresh] do
+      for run <- [lost, kept] do
         event_fixture(run, 1, "run.egress", egress_data(%{"decision" => "denied", "rule" => ""}))
         {:ok, _} = Projector.project(run)
       end
 
-      expected = projection(stale)
-      as_before_the_migration(stale)
-      refute projection(stale) == expected
+      expected = projection(lost)
+      lose_projection(lost)
+      refute projection(lost) == expected
 
-      assert backfill() == %{rebuilt: 1, failed: 0}
-      assert projection(stale) == expected
+      assert Rebuild.run() == %{rebuilt: 3, failed: 0}
+      assert projection(lost) == expected
+      assert projection(kept) == expected
       assert projection(bare) == %{denied_count: 0, connections: []}
 
-      # Idempotent: nothing is left to do, and doing everything again changes nothing.
-      assert Rebuild.run() == %{rebuilt: 0, failed: 0}
-      assert Rebuild.run(all: true, batch: 1) == %{rebuilt: 3, failed: 0}
-      assert projection(stale) == expected
-      assert projection(fresh) == expected
+      assert Rebuild.run(batch: 1) == %{rebuilt: 3, failed: 0}
+      assert projection(lost) == expected
+      assert projection(kept) == expected
     end
 
-    test "selects a run whose result was folded before the cost was, and only that", %{
-      scope: scope
-    } do
-      costed = run_fixture(scope)
-      event_fixture(costed, 1, "session.result", %{"outcome" => "success", "cost_usd" => 0.25})
-      {:ok, _} = Projector.project(costed)
-      assert Decimal.equal?(Repo.get!(Run, costed.id).cost_usd, Decimal.new("0.25"))
-
-      # As a release before the column left it: the result folded, no cost on the row.
-      Repo.update_all(from(r in Run, where: r.id == ^costed.id), set: [cost_usd: nil])
-
-      # A result that carried no cost gives the rebuild nothing to do but the work.
-      free = run_fixture(scope)
-      event_fixture(free, 1, "session.result", %{"outcome" => "success"})
-      {:ok, _} = Projector.project(free)
-
-      assert Rebuild.run() == %{rebuilt: 2, failed: 0}
-      assert Decimal.equal?(Repo.get!(Run, costed.id).cost_usd, Decimal.new("0.25"))
-      assert Repo.get!(Run, free.id).cost_usd == nil
-    end
-
-    test "selects a run whose start reports a size folded before the size was, and only that",
-         %{scope: scope} do
-      sized = run_fixture(scope)
-      terminal = %{"interactive" => true, "terminal" => %{"cols" => 120, "rows" => 40}}
-      event_fixture(sized, 1, "run.started", started_data(terminal))
-      event_fixture(sized, 2, "run.resized", %{"cols" => 100, "rows" => 30})
-      {:ok, _} = Projector.project(sized)
-      assert %{terminal_cols: 100, terminal_rows: 30} = Repo.get!(Run, sized.id)
-
-      # As a release before the columns left it: the start folded, no size on the row.
-      Repo.update_all(from(r in Run, where: r.id == ^sized.id),
-        set: [terminal_cols: nil, terminal_rows: nil]
-      )
-
-      # A start on pipes reports no size and gives the rebuild nothing to do.
-      pipes = run_fixture(scope)
-      event_fixture(pipes, 1, "run.started", started_data())
-      {:ok, _} = Projector.project(pipes)
-
-      assert Rebuild.run() == %{rebuilt: 1, failed: 0}
-      assert %{terminal_cols: 100, terminal_rows: 30} = Repo.get!(Run, sized.id)
-      assert %{terminal_cols: nil} = Repo.get!(Run, pipes.id)
-      assert Rebuild.run() == %{rebuilt: 0, failed: 0}
-    end
-
-    test "selects a run whose tool invocations were folded before the tool and status were",
-         %{scope: scope} do
-      tooled = run_fixture(scope)
-      events_fixture(tooled, tool_record())
-      {:ok, _} = Projector.project(tooled)
-
-      expected =
-        Repo.all(
-          from c in Connection,
-            where: c.run_id == ^tooled.id,
-            order_by: [c.host, c.path],
-            select: {c.host, c.path, c.last_tool, c.last_status}
-        )
-
-      assert {"files.tools.internal", "/media/acme/shop/checkout.png", "files", 201} in expected
-
-      # As a release before the columns left them.
-      Repo.update_all(from(c in Connection, where: c.run_id == ^tooled.id),
-        set: [last_tool: nil, last_status: nil]
-      )
-
-      # A plain host that answered, before the status was kept.
-      answered = run_fixture(scope)
-
-      event_fixture(
-        answered,
-        1,
-        "run.egress",
-        egress_data(%{"method" => "HTTPS", "status" => 200})
-      )
-
-      {:ok, _} = Projector.project(answered)
-
-      Repo.update_all(from(c in Connection, where: c.run_id == ^answered.id),
-        set: [last_status: nil]
-      )
-
-      # A connection whose events name neither gives the rebuild nothing to do, and neither
-      # does one whose tool is not a name.
-      plain = run_fixture(scope)
-      event_fixture(plain, 1, "run.egress", egress_data())
-      event_fixture(plain, 2, "run.egress", egress_data(%{"host" => "b.example", "tool" => ""}))
-      {:ok, _} = Projector.project(plain)
-
-      assert Rebuild.run() == %{rebuilt: 2, failed: 0}
-
-      assert Repo.all(
-               from c in Connection,
-                 where: c.run_id == ^tooled.id,
-                 order_by: [c.host, c.path],
-                 select: {c.host, c.path, c.last_tool, c.last_status}
-             ) == expected
-
-      assert [%{last_status: 200}] =
-               Repo.all(from c in Connection, where: c.run_id == ^answered.id)
-
-      assert [%{last_tool: nil, last_status: nil}, %{last_tool: nil, last_status: nil}] =
-               Repo.all(from c in Connection, where: c.run_id == ^plain.id)
-
-      assert Rebuild.run() == %{rebuilt: 0, failed: 0}
-    end
-
-    test "walks in windows, and finds the runs that need it past a window that has none", %{
-      scope: scope
-    } do
-      for _ <- 1..3 do
-        run = run_fixture(scope)
-        event_fixture(run, 1, "run.egress", egress_data())
-        {:ok, _} = Projector.project(run)
-      end
-
+    test "walks the runs in windows of the batch", %{scope: scope} do
       runs =
         for _ <- 1..5 do
           run = run_fixture(scope)
           event_fixture(run, 1, "run.egress", egress_data())
           {:ok, _} = Projector.project(run)
-          as_before_the_migration(run)
+          lose_projection(run)
           run
         end
 
@@ -243,7 +110,7 @@ defmodule Apiary.Runs.RebuildTest do
     end
   end
 
-  property "incremental projection, rebuild/1 and the backfill agree, whatever the fields hold",
+  property "incremental projection and rebuild/1 agree, whatever the fields hold",
            %{scope: scope} do
     check all(
             events <- list_of(egress(), min_length: 1, max_length: 8),
@@ -263,12 +130,10 @@ defmodule Apiary.Runs.RebuildTest do
       {:ok, _} = Projector.rebuild(run)
       assert projection(run) == incremental
 
-      as_before_the_migration(run)
-      backfill()
-      assert projection(run) == incremental
-
       # Nothing longer than the fold's cut, and nothing cut inside a character.
-      for connection <- incremental.connections, key <- @added, value = connection[key] do
+      for connection <- incremental.connections,
+          key <- [:last_mode, :last_path_rule, :last_credential, :last_request_method],
+          value = connection[key] do
         assert String.valid?(value)
         assert byte_size(value) <= 1024
       end

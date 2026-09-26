@@ -76,8 +76,8 @@ defmodule Apiary.ContractFixtures do
 
   @doc """
   Posts `body` (a binary, or events to encode) to the events endpoint, signed with
-  `secret` under `key_id`. Options: `:signature`, `:content_type` (nil for none),
-  `:contract_version` (nil for none; 1 by default), `:delivery`,
+  `secret` under `key_id`, with `X-Qory-Contract-Version: 1` as the runner sends it.
+  Options: `:signature`, `:content_type` (nil for none), `:delivery`,
   `:run_configuration`, `:user_agent`, `:headers` (a list sent beside the others).
   """
   def signed_post(conn, key_id, secret, body, opts \\ []) do
@@ -89,7 +89,7 @@ defmodule Apiary.ContractFixtures do
         {"x-qory-signature-256", Keyword.get(opts, :signature, Signature.sign(secret, body))},
         {"user-agent", Keyword.get(opts, :user_agent, "qory-runner/0.4.0")},
         {"content-type", Keyword.get(opts, :content_type, @content_type)},
-        {"x-qory-contract-version", opts |> Keyword.get(:contract_version, 1) |> to_header()},
+        {"x-qory-contract-version", "1"},
         {"x-qory-delivery", Keyword.get_lazy(opts, :delivery, &Ecto.UUID.generate/0)},
         {"x-qory-run-configuration", Keyword.get(opts, :run_configuration)}
       ]
@@ -123,9 +123,6 @@ defmodule Apiary.ContractFixtures do
     |> then(&%{&1 | req_headers: &1.req_headers ++ Keyword.get(opts, :headers, [])})
     |> Phoenix.ConnTest.dispatch(ApiaryWeb.Endpoint, :get, target, nil)
   end
-
-  defp to_header(nil), do: nil
-  defp to_header(value), do: to_string(value)
 
   @doc """
   The runner's contract directory: `RUNNER_CONTRACT_DIR`, else the sibling

@@ -47,8 +47,7 @@ being one. Every variable named here is described in [Install and configure](ins
   smaller limit on request bodies turns them into errors the runner retries for ever.
   Allow at least 2 MiB on `/v1/events`.
   <!-- feature: security -->
-  Runner 0.5.0 and later sends every label of a run in the query of
-  `/v1/run-configuration`, which makes a request line of up to about 13 KB; the release
+  The runner sends every label of a run in the query of `/v1/run-configuration`, which makes a request line of up to about 13 KB; the release
   takes 16 KiB, and a proxy has to take as much.
   <!-- /feature -->
 - **WebSockets.** The console is LiveView: the proxy has to pass the `Upgrade` header on

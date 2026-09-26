@@ -11,6 +11,9 @@ defmodule Apiary.Contract.RecordedRunPrunedTest do
   alias Apiary.Retention
   alias Apiary.Runs.{Batch, Connection, Event, Ingest, LogChunk, Projector, Run}
 
+  # What the runner's request says beside its body: the revision of the contract.
+  @meta %{contract_version: 1}
+
   @moduletag :contract
 
   @runs (case Apiary.ContractFixtures.contract_dir() do
@@ -33,7 +36,7 @@ defmodule Apiary.Contract.RecordedRunPrunedTest do
   defp deliver(key, lines) do
     for chunk <- Enum.chunk_every(lines, 100) do
       {:ok, batch} = Batch.parse("[" <> Enum.join(chunk, ",") <> "]")
-      {:ok, result} = Ingest.ingest(key, batch)
+      {:ok, result} = Ingest.ingest(key, batch, @meta)
       result
     end
   end

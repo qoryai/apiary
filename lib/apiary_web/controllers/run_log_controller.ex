@@ -17,8 +17,7 @@ defmodule ApiaryWeb.RunLogController do
   the size in force right after `after`. An answer stops short of the next
   `dev.qory.run.resized`, and once every chunk before it is sent `x-qory-log-through` is
   the resize's own sequence, so the reader's next question is answered at the new size.
-  No header on a run on pipes, on one recorded before the runner reported its size, on a
-  single stream of pipes and on a download, which is every chunk whatever the size.
+  No header on a run on pipes, on a single stream of pipes and on a download, which is every chunk whatever the size.
 
   Scoped like the page: the run is looked up in the signed-in user's hive, and a run of
   another hive is `404`, like one that does not exist. The bytes are never rendered by the

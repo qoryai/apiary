@@ -78,7 +78,7 @@ does not know are to be ignored.
 | `X-Qory-Signature-256` | `sha256=` and the lowercase hex HMAC SHA-256 of the raw request body, keyed with the secret |
 | `Content-Type` | `application/cloudevents-batch+json` |
 | `X-Qory-Delivery` | a UUID per batch; a retry of the batch carries the same one |
-| `X-Qory-Contract-Version` | optional; `1` |
+| `X-Qory-Contract-Version` | `1`, the revision the runner sends on every request |
 | `X-Qory-Run-Configuration` | optional; the digest of the run configuration the run holds, `sha256=<hex>` |
 | `User-Agent` | `qory-runner/<version>` |
 
@@ -95,7 +95,7 @@ first refusal that applies is the answer:
 | `401` | any failure of authentication (see Failure) | `{"error":"unauthorized"}` |
 | `415` | the content type is not `application/cloudevents-batch+json` (its case and any parameters are ignored) | `{"error":"unsupported_media_type"}` |
 | `429` | the key has delivered more than its rate; `Retry-After` says how many seconds to wait | `{"error":"rate_limited"}` |
-| `400` | `X-Qory-Contract-Version` is sent and is not an integer from `1` up (a later revision than the server knows is accepted) | `{"error":"unsupported_contract_version","supported":[1]}` |
+| `400` | `X-Qory-Contract-Version` is not `1`, absent or sent twice included | `{"error":"unsupported_contract_version","supported":[1]}` |
 | `400` | the body is not a batch, or is over a limit below | `{"error":"invalid_batch"}` |
 | `410` | the hive has closed the run, or retention has pruned the run's events: the delivery is recorded, no event is stored | empty |
 | `503` | the batch could not be stored; nothing of it was | `{"error":"unavailable"}` |
@@ -159,10 +159,9 @@ the body is logged.
 ## Signed GET: the run configuration
 
 `GET /v1/run-configuration?<label>=<value>&…`, signed like discovery, the query signed as
-sent. Every query parameter is read as one of the run's labels: a runner before 0.5.0
-sends `forge` and `repository`, 0.5.0 and later every label. The hive's body (`Apiary.Body`)
-says which labels name the target; the software body's are `forge` and `repository`, so
-both are served alike. It answers `200`, `Content-Type: application/json`, with
+sent. Every query parameter is read as one of the run's labels, and the runner sends every
+label of the run. The hive's body (`Apiary.Body`) says which labels name the target; the
+software body's are `forge` and `repository`. It answers `200`, `Content-Type: application/json`, with
 `X-Qory-Run-Configuration: sha256=<lowercase hex>`, `ETag: "sha256=<hex>"` (the same string,
 quoted), `X-Qory-Configuration` and `Cache-Control: no-store`:
 
@@ -235,9 +234,8 @@ screen to each answer's size before writing its bytes, and xterm.js reflows as a
 does. A resize that arrives after the chunks past it (delivery is in any order) is applied
 on the next load, not to what is already on the screen.
 
-A run without a size is a run on pipes, or one recorded by a runner before the size was
-reported: the endpoint sends no size header and the page fits the screen to the box, as it
-did before, with the wrap toggle. On pipes `stream` is `stdout` or `stderr`, never
+A run without a size is a run on pipes: the endpoint sends no size header and the page fits
+the screen to the box, with the wrap toggle. On pipes `stream` is `stdout` or `stderr`, never
 `terminal`, and a single stream of a pipes run, or a download, is never sized.
 
 ## Failure
@@ -281,9 +279,9 @@ The contract has not fixed these; Apiary chose, and the runner should match:
   answers JSON only (no content negotiation on `Accept`).
 - The public base URL of the document comes from the application's own URL configuration,
   not from the request's `Host` header.
-- On the events endpoint, a `X-Qory-Contract-Version` that is sent and is not the integer `1`
-  (another number, not a number, sent twice) is `400` with the versions served; absent is
-  accepted. On a GET the header is still only recorded.
+- On the events endpoint, a `X-Qory-Contract-Version` that is not the integer `1` (absent,
+  another number, not a number, sent twice) is `400` with the versions served. On a GET the
+  header is only recorded.
 - The body limit is 2 MiB, twice the mebibyte a runner cuts a batch at, and it is checked
   before the signature.
 - The rate limit is per access key and per node: 50 batches a second, 100 at once
@@ -363,10 +361,8 @@ The contract has not fixed these; Apiary chose, and the runner should match:
   reached it: a tool invocation is an egress event that names a `tool` and whose
   `decision` is `allowed`, and nothing else (`Apiary.Runs.tool_invocation?/2`, and its
   SQL twin on `last_tool` and `last_decision`). The fold keeps the tool of a refused
-  request as of any other, and the pages read the decision with it. The fold and the
-  rebuild read `tool` and `status` from any egress event that carries them, and the
-  rebuild selects a run whose connection's last event names either while the row lacks
-  it. `request_id` is not projected: the timeline reads it from the event, where one
+  request as of any other, and the pages read the decision with it. The fold reads
+  `tool` and `status` from any egress event that carries them. `request_id` is not projected: the timeline reads it from the event, where one
   request is shown. The `tools` of `dev.qory.run.policy_applied` are read like its
   `credentials`: twenty at most, each with ten hosts at most. The vendored schemas and the
   contract fixtures at the pinned ref have no tools yet; the tests of tool invocations use

@@ -762,7 +762,7 @@ it is (deny mark, "Hive, locked", its beaten rule under it): the rule is in the 
 list, the hosts it covers are not in the allow list, and under observe it is the only thing
 denied: runs are denied those hosts and the record says "Rule `*.paste.example`", as under
 enforce. The mode card's notice says this in full (pf1), and the row's "Last 7 days" reads
-"2 denied" as any deny row does. A run recorded by a runner before 0.4.0 was let through, and
+"2 denied" as any deny row does. A run recorded before the deny existed was let through, and
 its row says so; the count is what the record says.
 
 The card's **footer** keeps the mode as a read-only summary of the control, "Mode **enforce**, the

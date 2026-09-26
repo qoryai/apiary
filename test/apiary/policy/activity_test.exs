@@ -285,7 +285,7 @@ defmodule Apiary.Policy.ActivityTest do
          ctx do
       {:ok, deny} = Policy.deny(ctx.scope, nil, %{host: "x.cdn.example"})
       assert {:ok, counts} = Policy.rule_activity(ctx.scope, nil, since())
-      # The record says the old runner let it through; the rule it is counted on is the deny.
+      # The record, from before the deny, says it was let through; it is counted on the deny.
       assert counts[deny.id] == %{allowed: 1, denied: 0}
       refute Map.has_key?(counts, ctx.cdn.id)
 

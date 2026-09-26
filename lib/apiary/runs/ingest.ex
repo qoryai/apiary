@@ -37,14 +37,16 @@ defmodule Apiary.Runs.Ingest do
   @insert_chunk 500
 
   @typedoc """
-  What the request said beside its body: `delivery_id` (`X-Qory-Delivery`; one is
-  made up when it is absent or not a UUID), `runner_version`, `contract_version`
-  and `run_configuration` (`X-Qory-Run-Configuration`), each nil when not sent.
+  What the request said beside its body: `contract_version`, the revision of
+  `X-Qory-Contract-Version`, which the runner sends on every request and the events
+  endpoint has checked; `delivery_id` (`X-Qory-Delivery`; one is made up when it is
+  absent or not a UUID), `runner_version` and `run_configuration`
+  (`X-Qory-Run-Configuration`), each nil when not sent.
   """
   @type meta :: %{
+          required(:contract_version) => pos_integer,
           optional(:delivery_id) => String.t() | nil,
           optional(:runner_version) => String.t() | nil,
-          optional(:contract_version) => integer | nil,
           optional(:run_configuration) => String.t() | nil
         }
 
@@ -65,7 +67,8 @@ defmodule Apiary.Runs.Ingest do
   managed, then one read of an index for the digest, two when the run's target has
   no configuration of its own and the baseline's is read after it.
   """
-  def ingest(%AccessKey{} = access_key, %Batch{} = batch, meta \\ %{}) do
+  @spec ingest(AccessKey.t(), Batch.t(), meta) :: {:ok, map} | {:error, :unavailable}
+  def ingest(%AccessKey{} = access_key, %Batch{} = batch, %{contract_version: _} = meta) do
     now = DateTime.utc_now()
     delivery_id = delivery_id(meta)
 
@@ -186,7 +189,7 @@ defmodule Apiary.Runs.Ingest do
           access_key_id: access_key.id,
           state: "pending",
           runner_version: meta[:runner_version],
-          contract_version: meta[:contract_version],
+          contract_version: meta.contract_version,
           inserted_at: now,
           updated_at: now
         }
@@ -344,7 +347,7 @@ defmodule Apiary.Runs.Ingest do
     AccessKeys.touch_delivery(access_key, %{
       last_used_at: now,
       last_runner_version: meta[:runner_version],
-      last_contract_version: meta[:contract_version],
+      last_contract_version: meta.contract_version,
       last_heartbeat_at: if(result.heartbeat, do: now)
     })
   rescue

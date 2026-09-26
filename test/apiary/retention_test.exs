@@ -274,7 +274,7 @@ defmodule Apiary.RetentionTest do
       assert Repo.get!(Run, run.id) == pruned
       assert count(Connection, run) == 2
 
-      assert Rebuild.run(all: true) == %{rebuilt: 0, failed: 0}
+      assert Rebuild.run() == %{rebuilt: 0, failed: 0}
       assert Repo.get!(Run, run.id) == pruned
       assert count(Connection, run) == 2
     end
