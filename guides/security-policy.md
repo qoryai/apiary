@@ -186,13 +186,16 @@ one: the workplace's policy has no tools. So a run has tools only when it runs u
 machine's own policy, the one in its [runner file](runner-file.md), and only such runs
 report tool invocations.
 
-The runner's proxy hands every request to a host a tool serves to that tool; the host may
-be a name that exists only on the machine, such as `files.tools.internal`. Each request
-decided on its path is a **tool invocation**: it is recorded like any connection, decided
-by the same rules and counted on the same pages, and the record adds the tool's name, the
-proxy's id of the request and, when the tool answered, its status. A connection refused on
-its host, by a deny rule, the wall's guard or the allow list, never reaches the point
-where requests are read: it names no tool and reads as a plain connection to the host.
+The runner's proxy hands a request to a host a tool serves to that tool when the rules let
+it through; the host may be a name that exists only on the machine, such as
+`files.tools.internal`. Each request to such a host is decided on its path, recorded like
+any connection, decided by the same rules and counted on the same pages, and the record
+adds the tool's name, the proxy's id of the request and, when the tool answered, its
+status. A **tool invocation** is a request that names a tool and was allowed, and nothing
+else. A request a path rule refused names the tool too, the tool whose host it was for,
+but it never reached the tool: it is no tool invocation. A connection refused on its host,
+by a deny rule, the wall's guard or the allow list, never reaches the point where requests
+are read: it names no tool and reads as a plain connection to the host.
 
 Wherever a connection is shown, a tool invocation reads as a call to its tool:
 
@@ -201,8 +204,9 @@ Wherever a connection is shown, a tool invocation reads as a call to its tool:
 - The reason says the request was **handed to** the tool, by the host's rule and the path
   rule that let it through. A request the rules let through that did not reach the tool,
   because the tool was not running or a reload closed the connection, says **for** the
-  tool instead. A request refused on its path never reached the tool, and its reason is
-  that of any denial.
+  tool instead.
+- A request refused on its path reads as any denial: the host leads, the reason is that
+  of the denial, and it adds that the request was refused before reaching the tool.
 - The outcome is **Answered** with the status the tool gave, or **Handed over** when no
   answer is recorded. A tool that is not running is a **Dial failed**, and a refusal is
   **Refused**, as for any host. A host whose requests the proxy reads shows the status it
@@ -212,9 +216,13 @@ Wherever a connection is shown, a tool invocation reads as a call to its tool:
   one request carries the proxy's id of it on hover.
 - The run's policy applied item and the policy in force on its Details tab list the tools
   and the hosts each serves.
-- On `/hive/connections`, **Tool invocations** keeps only those destinations, each whole:
-  its counts are the same as without the filter. The overview's denied destinations and
-  the list of what enforce would start denying name the tool the same way.
+- On `/hive/connections`, **Tool invocations** keeps only the destinations where a run's
+  last attempt was a tool invocation, each whole: its counts are the same as without the
+  filter. A destination where every run's last attempt was refused is not among them.
+- The list of what enforce would start denying and the overview's denied destinations
+  name a destination's tool, first, whenever a request to it named one, handed to the
+  tool or refused by a path rule: a refused request to a tool is a denied request to
+  that tool, and shows its refusal as any destination does.
 
 **Allow** and **Deny** on a tool invocation's row act on its host and path, like on any
 row: the rules decide what reaches a tool, and the tool decides what the request does.

@@ -86,7 +86,8 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       :ok
     end
 
-    test "are destinations that read as calls to their tool", %{conn: conn} do
+    test "are destinations that read as calls to their tool; a refused request is a denial",
+         %{conn: conn} do
       view = open(conn)
       id = dst("files.tools.internal", 443, "/media/acme/shop/checkout.png")
 
@@ -97,9 +98,16 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       assert text(view, "##{id} .q-why") =~ "Handed to files by rule files.tools.internal"
       assert text(view, "##{id} .q-outcome") == "Answered 200"
 
+      # Refused on its path, the request never reached the tool: host first, no tool mark.
       refused = dst("files.tools.internal", 443, "/media/acme/other/checkout.png")
-      assert has_element?(view, "##{refused}.q-denied .q-dest-tool")
+      assert has_element?(view, "##{refused}.q-denied .q-dest")
+      refute has_element?(view, "##{refused} .q-dest-tool")
+
+      assert text(view, "##{refused} .q-dest") =~
+               ~r"^files.tools.internal\s?:443 PUT /media/acme/other/checkout.png$"
+
       assert text(view, "##{refused} .q-why") =~ "Host allowed, no path rule matches."
+      assert text(view, "##{refused} .q-why") =~ "Refused before reaching the tool files"
       assert text(view, "##{refused} .q-outcome") == "Refused"
 
       # The plain host beside them reads as it did.
@@ -107,7 +115,8 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       assert text(view, "##{dst("registry.example")} .q-outcome") == "Connected"
     end
 
-    test "tools=1 keeps the tool invocations, and the chip toggles it", %{conn: conn} do
+    test "tools=1 keeps the tool invocations, not the refused requests, and the chip toggles it",
+         %{conn: conn} do
       view = open(conn)
       assert has_element?(view, "#connections-tools[aria-pressed=false]")
 
@@ -116,8 +125,13 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       render_async(view, 2_000)
 
       assert has_element?(view, "#connections-tools[aria-pressed=true]")
-      assert text(view, "#connections-summary") =~ "2 destinations"
+      assert text(view, "#connections-summary") =~ "1 destination"
       refute has_element?(view, "##{dst("registry.example")}")
+
+      refute has_element?(
+               view,
+               "##{dst("files.tools.internal", 443, "/media/acme/other/checkout.png")}"
+             )
 
       assert has_element?(
                view,

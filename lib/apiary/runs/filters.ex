@@ -9,7 +9,8 @@ defmodule Apiary.Runs.Filters do
   the values are compared as strings by `Apiary.Runs`.
 
   The defaults (group by target, the last seven days, page 1) are left out of the URL.
-  The hive's connections take `tools=1` for tool invocations only.
+  The hive's connections take `tools=1` for tool invocations only: requests that name a
+  tool and were allowed (`Apiary.Runs.tool_invocation?/2`), never one a path rule refused.
   On the runs list `since=all` is the way to say "no time range", which removing the range
   chip writes. The hive's connections are an aggregate over every connection in range, so
   their range is bounded: `since=90d` is the widest, and dates cover at most

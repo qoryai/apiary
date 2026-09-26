@@ -510,18 +510,45 @@ defmodule Apiary.Runs do
   defp where_text(query, field, :none), do: where(query, [r], is_nil(field(r, ^field)))
   defp where_text(query, field, value), do: where(query, [r], field(r, ^field) == ^value)
 
+  ## Tool invocations
+
+  @doc """
+  tool_invocation?/2 says whether an egress attempt is a tool invocation: it names a `tool`
+  and its `decision` is `"allowed"`, so the proxy handed the request to the tool. This is
+  the one definition; every page, listing and query of this application holds to it.
+
+  An attempt names a tool when the proxy decided it by its path for a host a tool serves.
+  One a path rule refused names the tool as well, the tool whose host it was for, and
+  never reached it: it is no tool invocation, and reads as any denial. A connection
+  refused on its host names no tool. `connections.last_tool` keeps the tool of the last
+  attempt in either case; with `last_decision` it says whether that attempt was a tool
+  invocation.
+  """
+  @spec tool_invocation?(String.t() | nil, String.t() | nil) :: boolean
+  def tool_invocation?(tool, decision),
+    do: is_binary(tool) and tool != "" and decision == "allowed"
+
+  # `tool_invocation?/2` in SQL, of a connection's last attempt: the fold never stores an
+  # empty tool, so a tool is a non-null `last_tool`.
+  defp tool_invocation do
+    dynamic([c], not is_nil(c.last_tool) and c.last_decision == "allowed")
+  end
+
   ## The hive's connections
 
   @doc """
   A page of the hive's destinations across the runs in range: one row per host, port and
   path, with how many runs reached it, the attempts, and the decision, rule, outcome and
-  the rest of the most recent attempt across those runs, the tool it was handed to
-  (`last_tool`) and what answered it (`last_status`) among them. Filters: `decision`
-  (destinations with any attempt so decided), `target`, `host` (the destination's), `tools`
-  (tool invocations only: destinations that a run's last attempt handed to a tool, kept
-  whole, so their counts are those without the filter) and the range, which is over when a run last reached the destination and never wider than
-  `Apiary.Runs.Filters.max_window_days/0` days, so the aggregate is over a bounded set. Denied destinations come first, then the
-  most recent.
+  the rest of the most recent attempt across those runs, the tool whose host it was for
+  (`last_tool`) and what answered it (`last_status`) among them; the attempt is a tool
+  invocation when `tool_invocation?/2` says so of `last_tool` and `last_decision`.
+  Filters: `decision` (destinations with any attempt so decided), `target`, `host` (the
+  destination's), `tools` (tool invocations only: the destinations where the last attempt
+  of a run was a tool invocation, that run's connection naming a tool with the decision
+  allowed; each is kept whole, so its counts are those without the filter) and the range,
+  which is over when a run last reached the destination and never wider than
+  `Apiary.Runs.Filters.max_window_days/0` days, so the aggregate is over a bounded set.
+  Denied destinations come first, then the most recent.
   """
   def page_destinations(%Scope{} = scope, %Filters{} = filters, now \\ DateTime.utc_now()) do
     query = destinations(scope, filters, now)
@@ -769,15 +796,16 @@ defmodule Apiary.Runs do
     |> where_tools(f.tools)
   end
 
-  # Tool invocations only: every row of a destination that any row under the same filters
-  # handed to a tool, so a destination is kept whole and counts the same with the filter
-  # as without it, and so do the runs and the facets.
+  # Tool invocations only: every row of a destination where any row under the same filters
+  # says its last attempt was a tool invocation, so a destination is kept whole and counts
+  # the same with the filter as without it, and so do the runs and the facets. A
+  # destination whose rows name a tool only on refused attempts never reached the tool.
   defp where_tools(query, false), do: query
 
   defp where_tools(query, true) do
     tooled =
       from c in query,
-        where: not is_nil(c.last_tool),
+        where: ^tool_invocation(),
         distinct: true,
         select: %{host: c.host, port: c.port, path: c.path}
 

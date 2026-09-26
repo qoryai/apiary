@@ -24,6 +24,7 @@ defmodule Apiary.Runs.Record.TimelineTest do
         host: data["host"],
         port: data["port"] && to_string(data["port"]),
         decision: data["decision"],
+        tool: data["tool"],
         background_tasks: data["background_tasks"]
       }
     end
@@ -207,6 +208,29 @@ defmodule Apiary.Runs.Record.TimelineTest do
                build([egress(1), egress(2), egress(3)])
 
       assert first == at(1) and last == at(3)
+    end
+  end
+
+  describe "index/2: tool invocations" do
+    test "allowed requests to a tool group as its calls; one a path rule refused is a denial" do
+      call = %{"host" => "files.tools.internal", "tool" => "files", "path" => "/media/a.png"}
+      refused = Map.merge(call, %{"decision" => "denied", "path_rule" => ""})
+
+      index =
+        index([
+          egress(1, call),
+          egress(2, call),
+          egress(3, refused),
+          egress(4, call),
+          egress(5, refused)
+        ])
+
+      assert [
+               %{seq: 1, kind: :connection_group, seqs: [1, 2], tool: "files"},
+               %{seq: 3, kind: :connection, decision: "denied", tool: nil},
+               %{seq: 4, kind: :connection, decision: "allowed", tool: "files"},
+               %{seq: 5, kind: :connection, decision: "denied", tool: nil}
+             ] = index.items
     end
   end
 

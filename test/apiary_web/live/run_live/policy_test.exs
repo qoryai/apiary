@@ -478,7 +478,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       refute has_element?(view, "#rule-popover")
     end
 
-    test "a tool invocation's row acts on its host and path, as any row does", %{
+    test "a refused request to a tool's host acts on its host and path, as any row does", %{
       conn: conn,
       scope: scope
     } do
@@ -495,7 +495,8 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       view = connections(conn, run)
       id = connection_id(run, "files.tools.internal")
 
-      assert has_element?(view, "#cx-#{id} .q-dest-tool .q-tool-name", "files")
+      refute has_element?(view, "#cx-#{id} .q-dest-tool")
+      assert has_element?(view, "#cx-#{id} .q-dest", "files.tools.internal")
       assert text(view, "button#cx-#{id}-act") == "Allow"
 
       view |> element("#cx-#{id}-act") |> render_click()

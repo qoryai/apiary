@@ -12,30 +12,34 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
 
 - Tool invocations, as runner contract v1 reports them. A runner can give a run tools,
   programs on its machine that serve hosts, and its proxy
-  hands every request to such a host to the tool. Each request decided on its path is a
-  `dev.qory.run.egress` event that names the `tool`, the proxy's `request_id` and, when
-  the tool answered, the `status`: it is recorded as a connection, decided by the same
-  rules and counted on the same pages, and it reads as a call to the tool wherever a
-  connection is shown: the run's Connections tab, `/hive/connections`, the timeline, the
-  overview's denied destinations and the list of what enforce would start denying. The
-  row leads with the tool's name, then the request line and the host; the reason says the
-  request was handed to the tool, by which rule and path, or was for the tool when it did
-  not reach it; the outcome is the status the tool answered (**Answered 200**), **Handed
-  over** when none is recorded, a failed dial when the tool is not running, a refusal as
-  before. A plain host whose requests the proxy reads shows the status it answered beside
-  **Connected**.
+  hands the requests to such a host that the rules let through to the tool. Each request
+  it decides on its path for such a host is a `dev.qory.run.egress` event that names the `tool`, the proxy's `request_id` and, when
+  the tool answered, the `status`, and is recorded as a connection, decided by the same
+  rules and counted on the same pages. A tool invocation is such a request that was
+  allowed: it reads as a call to the tool wherever a connection is shown: the run's
+  Connections tab, `/hive/connections` and the timeline. The row leads with the tool's name, then the request line and the host;
+  the reason says the request was handed to the tool, by which rule and path, or was for
+  the tool when it did not reach it; the outcome is the status the tool answered
+  (**Answered 200**), **Handed over** when none is recorded, a failed dial when the tool
+  is not running. A request a path rule refused never reached the tool and reads as any
+  denial, host first, saying it was refused before reaching the tool. The overview's
+  denied destinations and the list of what enforce would start denying name a
+  destination's tool whenever a request to it named one, a refused request included, as
+  a denied request to that tool. A plain host whose
+  requests the proxy reads shows the status it answered beside **Connected**.
 - On the run's timeline, allowed requests to one tool in a row fold into one line under
   the tool's name ("2 allowed requests"), a refused one is never folded, and a single
   request keeps the proxy's id on hover. The policy applied item lists the run's tools
   with the hosts they serve, and so does the Details tab under the policy in force.
-- `/hive/connections` has a **Tool invocations** toggle, `tools=1`, that keeps only
-  those destinations, each whole, with the counts it has without the filter.
+- `/hive/connections` has a **Tool invocations** toggle, `tools=1`, that keeps only the
+  destinations where a run's last attempt was a tool invocation, each whole, with the
+  counts it has without the filter.
 
 ### Migrations
 
 - `20260928000100`: `connections.last_tool` and `connections.last_status`, two nullable
-  columns without a default: the tool the last attempt was handed to and the status that
-  answered it. Instant, no row is rewritten; reversible. Rows projected before it keep
+  columns without a default: the tool whose host the last attempt was for, whether it
+  was handed to the tool or refused, and the status that answered it. Instant, no row is rewritten; reversible. Rows projected before it keep
   null, which the console reads as a connection that is no tool invocation and has no
   recorded answer, until `mix apiary.rebuild` (see Upgrading).
 

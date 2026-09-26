@@ -506,24 +506,89 @@ defmodule ApiaryWeb.RunComponentsTest do
              ) =~ "No rule matches. It was let through. For files Dial failed"
     end
 
-    test "a refused tool invocation reads as a denial of the call" do
-      html =
-        row(%{
-          host: "files.tools.internal",
-          method: "HTTPS",
-          last_request_method: "GET",
-          path: "/media/acme/other/checkout.png",
-          last_decision: "denied",
-          last_rule: "files.tools.internal",
-          last_path_rule: "",
-          last_tool: "files",
-          last_outcome: "refused"
-        })
+    test "a request a path rule refused is no tool invocation: it reads as any denial" do
+      refused = %{
+        host: "files.tools.internal",
+        method: "HTTPS",
+        last_request_method: "GET",
+        path: "/media/acme/other/checkout.png",
+        last_decision: "denied",
+        last_rule: "files.tools.internal",
+        last_path_rule: "",
+        last_tool: "files",
+        last_mode: "enforce",
+        last_outcome: "refused",
+        allowed: 0,
+        denied: 1,
+        runs: 1
+      }
 
-      assert text(html) =~ "Tool files GET /media/acme/other/checkout.png"
-      assert text(html) =~ "Host allowed, no path rule matches. Enforce mode denies it."
-      refute text(html) =~ "Handed to"
-      assert text(html) =~ "Refused"
+      for variant <- ~w(table hive) do
+        html = row(refused, variant)
+        [dest] = html |> LazyHTML.from_fragment() |> LazyHTML.query(".q-dest") |> Enum.to_list()
+
+        # The host leads, as for any denial; no wrench, no q-dest-tool.
+        assert text(LazyHTML.to_html(dest)) =~
+                 ~r/^files.tools.internal:443 GET \/media\/acme\/other\/checkout.png$/
+
+        refute html =~ "q-dest-tool"
+        refute html =~ "hero-wrench-screwdriver-micro"
+
+        assert text(html) =~
+                 "Host allowed, no path rule matches. Enforce mode denies it. Refused before reaching the tool files."
+
+        refute text(html) =~ "Handed to"
+        refute text(html) =~ "For files"
+        assert text(html) =~ "Refused"
+      end
+
+      # The same request read from its event, inline on the timeline.
+      event = %{
+        sequence: 6,
+        host: "files.tools.internal",
+        port: 443,
+        method: "HTTPS",
+        request_method: "GET",
+        path: "/media/acme/other/checkout.png",
+        decision: "denied",
+        rule: "files.tools.internal",
+        path_rule: "",
+        mode: "enforce",
+        outcome: "refused",
+        tool: "files",
+        at: ~U[2026-09-20 14:02:20.300Z]
+      }
+
+      assigns = %{event: event}
+
+      html =
+        rendered_to_string(~H"""
+        <RunComponents.connection_row id="e-6" connection={@event} variant="inline" />
+        """)
+
+      refute html =~ "q-dest-tool"
+      assert text(html) =~ ~r/^Denied files.tools.internal:443 GET/
+      assert text(html) =~ "Refused before reaching the tool files."
+
+      # The same request allowed is a tool invocation, and a call to the tool.
+      assigns = %{
+        event:
+          Map.merge(event, %{
+            decision: "allowed",
+            path_rule: "/media/acme/*",
+            outcome: "connected",
+            status: 200
+          })
+      }
+
+      html =
+        rendered_to_string(~H"""
+        <RunComponents.connection_row id="e-7" connection={@event} variant="inline" />
+        """)
+
+      assert html =~ "q-dest-tool"
+      assert text(html) =~ "Handed to files by rule files.tools.internal, path /media/acme/*"
+      refute text(html) =~ "Refused before"
     end
 
     test "a plain host's answer shows beside Connected, and one request names its id inline" do

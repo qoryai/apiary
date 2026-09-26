@@ -673,6 +673,40 @@ defmodule Apiary.Runs.ListingTest do
       assert summary == %{destinations: 1, denied: 0, attempts: 3, runs: 2}
     end
 
+    test "tools=1 keeps only tool invocations: a request a path rule refused is none", %{
+      scope: scope
+    } do
+      call = tool_invocation_data(%{})
+
+      refused =
+        tool_invocation_data(%{
+          "path" => "/media/acme/other/checkout.png",
+          "path_rule" => "",
+          "decision" => "denied",
+          "outcome" => "refused"
+        })
+        |> Map.delete("status")
+
+      started(scope, shop(), 300, egress: [call, refused])
+
+      # The refused request keeps the tool whose host it was for.
+      assert %{rows: rows} = Runs.page_destinations(scope, cx(%{}), @now)
+
+      assert %{last_tool: "files", last_decision: "denied"} =
+               Enum.find(rows, &(&1.path == "/media/acme/other/checkout.png"))
+
+      assert %{rows: [%{path: "/media/acme/shop/checkout.png"}], summary: %{destinations: 1}} =
+               Runs.page_destinations(scope, cx(%{"tools" => "1"}), @now)
+    end
+
+    test "tool_invocation?/2 is a request that names a tool and was allowed" do
+      assert Runs.tool_invocation?("files", "allowed")
+      refute Runs.tool_invocation?("files", "denied")
+      refute Runs.tool_invocation?(nil, "allowed")
+      refute Runs.tool_invocation?("", "allowed")
+      refute Runs.tool_invocation?("files", nil)
+    end
+
     test "the runs that reached a destination, the most recent first, paged", %{
       scope: scope,
       other: other,

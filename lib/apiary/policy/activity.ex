@@ -24,8 +24,13 @@ defmodule Apiary.Policy.Activity do
   Hosts and paths are a runner's words: compared, never made atoms of, and what is not a
   host is no rule's.
 
-  A destination that is a tool invocation carries `tool`, the tool its most recently seen
-  connection was handed to (nil otherwise), so a page names it as a call to the tool.
+  A destination, of what enforce would start denying and of the denied ones alike, carries
+  `tool`, the tool whose host it is, whenever a request to it in the range named one:
+  handed to the tool, or refused by a path rule before it reached the tool. It is the tool
+  of the most recently seen connection that names one, nil when none did. A request to a
+  tool that was refused is still a request to that tool, and the list shows its refusal as
+  for any destination; only an allowed one is a tool invocation
+  (`Apiary.Runs.tool_invocation?/2`), a call to the tool.
   """
 
   import Ecto.Query, warn: false
@@ -72,7 +77,7 @@ defmodule Apiary.Policy.Activity do
         host: host,
         path: path,
         attempts: rows |> Enum.map(& &1.allowed) |> Enum.sum(),
-        tool: last_tool(rows),
+        tool: host_tool(rows),
         runs: rows |> Enum.map(& &1.run_id) |> Enum.uniq() |> length(),
         last_seen_at: rows |> Enum.map(& &1.last_seen_at) |> Enum.max(DateTime),
         target_ids: rows |> Enum.map(& &1.target_id) |> Enum.reject(&is_nil/1) |> Enum.uniq()
@@ -146,7 +151,7 @@ defmodule Apiary.Policy.Activity do
         held: held?,
         locked: locked,
         denied: rows |> Enum.map(& &1.denied) |> Enum.sum(),
-        tool: last_tool(rows),
+        tool: host_tool(rows),
         runs: rows |> Enum.map(& &1.run_id) |> Enum.uniq() |> length(),
         last_seen_at: rows |> Enum.map(& &1.last_seen_at) |> Enum.max(DateTime),
         target_ids: rows |> Enum.map(& &1.target_id) |> Enum.reject(&is_nil/1) |> Enum.uniq()
@@ -157,9 +162,15 @@ defmodule Apiary.Policy.Activity do
     |> then(&with_targets(hive_id, &1))
   end
 
-  # The tool the most recently seen of a destination's rows was handed to: nil for a
-  # destination that is no tool invocation.
-  defp last_tool(rows), do: rows |> Enum.max_by(& &1.last_seen_at, DateTime) |> Map.get(:tool)
+  # The tool whose host a destination is: that of the most recently seen of its rows that
+  # names one, whatever became of the request, handed to the tool or refused before it;
+  # nil when none does.
+  defp host_tool(rows) do
+    case Enum.reject(rows, &is_nil(&1.tool)) do
+      [] -> nil
+      named -> named |> Enum.max_by(& &1.last_seen_at, DateTime) |> Map.get(:tool)
+    end
+  end
 
   @doc false
   def denied_summary(%Scope{hive: %Hive{} = hive}, since, opts \\ []) do

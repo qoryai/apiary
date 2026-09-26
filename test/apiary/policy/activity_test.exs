@@ -114,7 +114,7 @@ defmodule Apiary.Policy.ActivityTest do
   end
 
   describe "tool invocations" do
-    test "a destination names the tool its most recent connection was handed to" do
+    test "a destination let through names the tool of its tool invocation, a denied one the tool whose host it was for" do
       %{scope: scope} = sign_up_fixture()
 
       refused =
@@ -144,6 +144,53 @@ defmodule Apiary.Policy.ActivityTest do
                tool: "files",
                denied: 1
              } = denied
+    end
+  end
+
+  describe "a tool's host in the lists" do
+    test "a destination names its tool when any request to it did, the refused one included" do
+      %{scope: scope} = sign_up_fixture()
+      call = tool_invocation_data(%{})
+
+      # Two calls handed to the tool, then one on the same path a path rule refused.
+      refused =
+        tool_invocation_data(%{"path_rule" => "", "decision" => "denied", "outcome" => "refused"})
+        |> Map.delete("status")
+
+      started_run(scope, @site, egress: [call, call, refused])
+
+      assert {:ok, [uncovered]} = Policy.uncovered(scope, since())
+      assert %{host: "files.tools.internal", tool: "files", attempts: 2} = uncovered
+
+      # The refusal shows as a denied request to that tool.
+      assert {:ok, [denied]} = Policy.denied_destinations(scope, since())
+
+      assert %{
+               host: "files.tools.internal",
+               path: "/media/acme/shop/checkout.png",
+               tool: "files",
+               denied: 1
+             } = denied
+    end
+
+    test "a destination whose only request with the tool was refused still names the tool" do
+      %{scope: scope} = sign_up_fixture()
+
+      refused =
+        tool_invocation_data(%{"path_rule" => "", "decision" => "denied", "outcome" => "refused"})
+        |> Map.delete("status")
+
+      started_run(scope, @site, egress: [refused])
+
+      assert {:ok, []} = Policy.uncovered(scope, since())
+      assert {:ok, [%{tool: "files", denied: 1}]} = Policy.denied_destinations(scope, since())
+    end
+
+    test "a destination without a tool names none" do
+      %{scope: scope} = sign_up_fixture()
+      started_run(scope, @site, egress: [allowed("api.example")])
+
+      assert {:ok, [%{host: "api.example", tool: nil}]} = Policy.uncovered(scope, since())
     end
   end
 

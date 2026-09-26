@@ -179,14 +179,15 @@ defmodule Apiary.Runs.RecordTest do
   end
 
   describe "tool invocations" do
-    test "a connection names the tool its last attempt was handed to and what answered", %{
+    test "a connection names the tool whose host its last attempt was for and what answered", %{
       scope: scope
     } do
       run = projected(scope, tool_record())
 
       assert %{rows: rows, total: 3} = Record.connections(scope, run)
 
-      # Denied first: the call the policy refused never reached the tool, and names it.
+      # Denied first: the request a path rule refused never reached the tool, and names
+      # the tool whose host it was for.
       assert [
                %{
                  host: "files.tools.internal",

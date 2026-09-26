@@ -406,6 +406,11 @@ msgstr ""
 msgid "%{day}: no runs, %{denied}, open that day's runs"
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{destination}, a host the tool %{tool} serves"
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{destination}, request %{id}"
@@ -5124,7 +5129,7 @@ msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Programs on the runner's machine that serve hosts. The proxy hands every request to such a host to its tool, and records each as a tool invocation."
+msgid "Programs on the runner's machine that serve hosts. The proxy hands a request to such a host to its tool when the rules let it through: a tool invocation. One a path rule refused never reaches the tool."
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -5271,6 +5276,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Refused"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Refused before reaching the tool %{tool}."
 msgstr ""
 
 #: lib/apiary_web/live/hive_live/overview.ex

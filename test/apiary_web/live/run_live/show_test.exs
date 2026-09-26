@@ -768,7 +768,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert hosts.(html) =~ ~r/second\.example.*first\.example/s
     end
 
-    test "a tool invocation reads as a call to its tool, allowed or refused", %{
+    test "a tool invocation reads as a call to its tool, a refused request as a denial", %{
       conn: conn,
       scope: scope
     } do
@@ -792,7 +792,9 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert has_element?(lv, "#cx-#{call.id} .q-why", "Handed to")
       assert has_element?(lv, "#cx-#{call.id} .q-outcome", "Answered 201")
 
-      assert has_element?(lv, "#cx-#{refused.id}.q-denied .q-dest-tool .q-tool-name", "files")
+      assert has_element?(lv, "#cx-#{refused.id}.q-denied .q-dest", "files.tools.internal")
+      refute has_element?(lv, "#cx-#{refused.id} .q-dest-tool")
+      assert has_element?(lv, "#cx-#{refused.id} .q-why", "Refused before reaching the tool")
       assert has_element?(lv, "#cx-#{refused.id} .q-outcome", "Refused")
 
       refute has_element?(lv, "#cx-#{plain.id} .q-dest-tool")
@@ -1325,8 +1327,11 @@ defmodule ApiaryWeb.RunLive.ShowTest do
                ~s(#e-4-cx-5 .q-dest[data-request-id="0a1b2c3d4e5f60718293a4b5c6d7e8f9"])
              )
 
-      # The refused call is an item of its own, never folded into the group.
-      assert has_element?(lv, "#e-6-cx.q-cx-denied .q-tool-name", "files")
+      # The refused request is a denial of its own, never folded into the group, and names
+      # the tool only as the one it did not reach.
+      assert has_element?(lv, "#e-6-cx.q-cx-denied .q-dest", "files.tools.internal")
+      refute has_element?(lv, "#e-6-cx .q-dest-tool")
+      assert has_element?(lv, "#e-6-cx .q-for-tool", "files")
       assert has_element?(lv, "#e-3-cx .q-dest", "api.example.com")
       refute has_element?(lv, "#e-3-cx .q-dest-tool")
     end

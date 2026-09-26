@@ -6,9 +6,11 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   target" is this page with `repo` set, which the runs list links to.
 
   Every filter is a query parameter (`decision`, `repo`, `host`, `tools`, `since`, `from`,
-  `to`, `page`), read through `Apiary.Runs.Filters`. A tool invocation is a destination like
-  any other and reads as a call to its tool (`ApiaryWeb.RunComponents.connection_row/1`);
-  `tools=1` keeps only those. A destination's runs are read only when its
+  `to`, `page`), read through `Apiary.Runs.Filters`. A tool invocation
+  (`Apiary.Runs.tool_invocation?/2`) is a destination like any other and reads as a call to
+  its tool (`ApiaryWeb.RunComponents.connection_row/1`); a request a path rule refused
+  before it reached the tool reads as any denial. `tools=1` keeps only the destinations of
+  tool invocations. A destination's runs are read only when its
   row opens, ten at a time. While batches land the table does not move under the reader:
   the summary gains "New activity", which asks again and keeps the open rows open.
 

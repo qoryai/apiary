@@ -228,8 +228,9 @@ defmodule ApiaryWeb.OverviewComponents do
   attr :item, :map, required: true
   attr :now, :any, required: true
 
-  # A tool invocation leads with its tool, then the path, then the host, as a connection
-  # row does (`RunComponents.connection_row/1`).
+  # A denied destination of a tool's host is a denied request to that tool: it leads with
+  # the tool, then the path, then the host, beside the denial's mark, as the list of what
+  # enforce would start denying names it (`Apiary.Policy.denied_destinations/2`).
   defp attention_subject(%{item: %{kind: :denied, tool: tool}} = assigns) when is_binary(tool) do
     ~H"""
     <span
@@ -725,7 +726,11 @@ defmodule ApiaryWeb.OverviewComponents do
 
   defp destination_title(%{tool: tool, host: host, port: port, path: path})
        when is_binary(tool),
-       do: "#{tool} #{path} #{host}:#{port}"
+       do:
+         gettext("%{destination}, a host the tool %{tool} serves",
+           destination: "#{host}:#{port}#{path}",
+           tool: tool
+         )
 
   defp destination_title(%{host: host, port: port, path: path}), do: "#{host}:#{port}#{path}"
 
