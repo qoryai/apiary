@@ -1564,5 +1564,139 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
       assert has_element?(lv, "#policy-tools", "none")
     end
+
+    @tag needs: :security
+    test "the policy in force shows a credential's and a tool's argument beside its name", %{
+      conn: conn,
+      scope: scope
+    } do
+      run =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "run.policy_applied",
+           tool_policy_data(%{
+             "credentials" => [
+               %{
+                 "name" => "forge-token",
+                 "argument" => "acme/shop",
+                 "hosts" => ["forge.example"],
+                 "scheme" => "basic"
+               },
+               %{
+                 "name" => "forge-token",
+                 "argument" => "acme/shop",
+                 "hosts" => ["api.forge.example", "forge.example"],
+                 "scheme" => "bearer"
+               },
+               %{"name" => "model", "hosts" => ["api.model.example"], "scheme" => "header"},
+               %{
+                 "name" => "markup",
+                 "argument" => "<b>acme</b>",
+                 "hosts" => ["markup.example"],
+                 "scheme" => "bearer"
+               }
+             ],
+             "tools" => [
+               %{
+                 "name" => "files",
+                 "argument" => "acme/shop",
+                 "hosts" => ["files.tools.internal"]
+               }
+             ]
+           })}
+        ])
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/details")
+
+      # The uses of one credential show as one, its argument once, the hosts of every use.
+      assert has_element?(
+               lv,
+               "#policy-credentials-0",
+               "forge-token acme/shop (forge.example, api.forge.example)"
+             )
+
+      assert has_element?(lv, "#policy-credentials-0 code.q-rule", "acme/shop")
+      assert has_element?(lv, "#policy-credentials-1", "model (api.model.example)")
+      refute has_element?(lv, "#policy-credentials-1 code")
+      assert has_element?(lv, "#policy-credentials-2 code", "<b>acme</b>")
+      assert render(element(lv, "#policy-credentials-2 code")) =~ "&lt;b&gt;acme&lt;/b&gt;"
+      refute has_element?(lv, "#policy-credentials-3")
+      assert has_element?(lv, "#policy-tools-0", "files acme/shop (files.tools.internal)")
+      assert has_element?(lv, "#policy-tools-0 code.q-rule", "acme/shop")
+      refute has_element?(lv, "#policy-credentials", "more")
+
+      # The timeline's policy applied item shows a tool's argument, and no credentials.
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      assert has_element?(lv, "#e-2-tools code.q-rule", "acme/shop")
+      refute has_element?(lv, "#e-2", "forge-token")
+    end
+
+    @tag needs: :security
+    test "the timeline shows a long tool argument cut short, and whole in its title", %{
+      conn: conn,
+      scope: scope
+    } do
+      argument = "acme/" <> String.duplicate("r", 95)
+
+      run =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "run.policy_applied",
+           tool_policy_data(%{
+             "tools" => [
+               %{"name" => "files", "argument" => argument, "hosts" => ["files.tools.internal"]}
+             ]
+           })}
+        ])
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      code = lv |> element("#e-2-tools code.q-rule") |> render() |> LazyHTML.from_fragment()
+      assert LazyHTML.text(code) == String.slice(argument, 0, 64) <> "…"
+      assert LazyHTML.attribute(code, "title") == [argument]
+      assert has_element?(lv, "#e-2-tools", "files.tools.internal")
+
+      # The Details tab shows it whole.
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/details")
+
+      assert has_element?(lv, "#policy-tools-0 code.q-rule", argument)
+    end
+
+    @tag needs: :security
+    test "the policy in force counts the credentials and tools past those it lists", %{
+      conn: conn,
+      scope: scope
+    } do
+      # Fifteen credentials of two uses each: the twenty uses read are ten credentials.
+      uses =
+        for n <- 1..15, host <- ["a", "b"] do
+          %{"name" => "c#{n}", "argument" => "acme/r#{n}", "hosts" => ["#{host}#{n}.example"]}
+        end
+
+      run =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "run.policy_applied",
+           tool_policy_data(%{
+             "credentials" => uses,
+             "tools" => for(n <- 1..21, do: %{"name" => "t#{n}", "hosts" => []})
+           })}
+        ])
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/details")
+
+      assert has_element?(lv, "#policy-credentials-0", "c1 acme/r1 (a1.example, b1.example)")
+      assert has_element?(lv, "#policy-credentials-9")
+      refute has_element?(lv, "#policy-credentials-10")
+      assert has_element?(lv, "#policy-credentials", "and 5 more")
+      assert has_element?(lv, "#policy-tools-19")
+      assert has_element?(lv, "#policy-tools", "and 1 more")
+    end
   end
 end

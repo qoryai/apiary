@@ -122,6 +122,15 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
 - Qory itself is an actor of `Apiary.Access`: a job that no person enqueued acts as the
   instance, with a role of its own that allows pruning the audit trail and nothing else. A
   scope without a person that is not the instance's may still do nothing.
+- The policy in force on a run's Details tab shows each credential's and each tool's
+  `argument` from `dev.qory.run.policy_applied` beside its name, when the policy passed
+  one, such as `forge-token acme/shop (forge.example, api.forge.example)`: an audit of the
+  run reads what each token was minted for, whole, up to the contract's 4096 characters.
+  The uses of one credential, which the event lists one by one with the same name and
+  argument, show as one entry with the hosts of every use. Past the first twenty uses or
+  tools the lists end in "and N more", counting the entries not shown. The timeline's
+  policy applied item shows each tool's argument too: its first 64 characters, with `…`
+  when there are more, and up to 256 on hover.
 
 ### Changed
 
@@ -226,6 +235,9 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
 - `activity` is no longer a slug a workspace can take: `/:org/activity` is the
   organisation's Activity page. A workspace that took it moves to `activity-2` (see
   Migrations); its name is unchanged.
+- An argument in the policy editor is at most 256 code points, as the contract's schema
+  counts: a letter with a combining accent is two. The editor counted graphemes before,
+  and took an argument the schema then refused.
 
 ### Migrations
 
