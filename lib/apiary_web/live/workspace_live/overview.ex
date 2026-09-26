@@ -1,33 +1,32 @@
 defmodule ApiaryWeb.WorkspaceLive.Overview do
   @moduledoc """
-  The workspace overview, `/:org/:workspace`: the page a member lands on after sign-in
-  (`docs/design/brief-overview.md`). It answers two questions above the fold, in this
-  order: what needs you (the Needs attention list, a list of acts and nothing else) and
-  what your agents did (the activity strip, the alive rows, the fourteen-day chart, the
-  last runs). Policy, access keys and retention are a glance and a link.
+  The workspace overview, `/:org/:workspace`: the page a member lands on after sign-in. It
+  answers two questions above the fold, in this order: what needs you (the Needs attention
+  list, a list of acts and nothing else) and what your agents did (the activity strip, the
+  alive rows, the fourteen-day chart, the last runs). Policy, access keys and retention
+  are a glance and a link.
 
   Every number is a count the workspace already keeps; the page infers nothing. The first
-  paint is the shell: the count of alive runs, the keys, the policy's mode summary and
-  the skeletons; four asynchronous reads fill the regions (attention, activity, policy,
-  the keys and retention), none of them blocking, every one bounded. Two subscriptions
+  paint is the shell: the count of alive runs, the keys, the policy's mode summary and the
+  skeletons; four asynchronous reads fill the regions (attention, activity, policy, the
+  keys and retention), none of them blocking, every one bounded. Two subscriptions
   (`Apiary.Runs.subscribe/1`, `Apiary.Policy.subscribe/1`) keep it live: a run change
-  patches its row in place from the message and re-reads the alive rows, the last runs
-  and today's column at most once per 250 ms; a policy change re-reads the policy card
-  and the denied destinations; quiet and behind are recomputed on a 5 s timer without a
-  query. Nothing moves under the reader: new rows append, resolved items stay struck until
-  the next navigation, a run that is not on the page is "1 new run" in words.
+  patches its row in place from the message and re-reads the alive rows, the last runs and
+  today's column at most once per 250 ms; a policy change re-reads the policy card and the
+  denied destinations; quiet and behind are recomputed on a 5 s timer without a query.
+  Nothing moves under the reader (`docs/ui.md`): new rows append, resolved items stay
+  struck until the next navigation, a run that is not on the page is "1 new run" in words.
 
-  While no run has landed the page is the checklist of the empty workspace (oe6), each
-  step read from the record; when the first run lands the card stays with its third step
-  ticked and leaves at the next navigation.
+  While no run has landed the page is the checklist of the empty workspace, each step read
+  from the record; when the first run lands the card stays with its third step ticked and
+  leaves at the next navigation.
 
   The page is the record's, so it belongs to `observability`. Everything of the policy on
-  it belongs to `security` (decision 0070), and where that is off for the scope the page
-  is one that never had a policy: no policy card, no policy read and no subscription to
-  it, no item about the mode or the version in force, no denied destination offered for
-  an allow (that act is a rule), nothing that links to the policy. The strip still counts
-  the denied attempts and their destinations: the runner reported them, they are the
-  record's.
+  it belongs to `security`, and where that is off for the scope the page is one that never
+  had a policy: no policy card, no policy read and no subscription to it, no item about
+  the mode or the version in force, no denied destination offered for an allow (that act
+  is a rule), nothing that links to the policy. The strip still counts the denied attempts
+  and their destinations: the runner reported them, they are the record's.
 
   `thresholds/0` holds the design's choices in one place.
   """
@@ -61,8 +60,8 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   }
 
   @doc """
-  The design's choices, in one place (brief ol 4): an idle key at #{@thresholds.idle_key_days}
-  days, a lost run listed for #{@thresholds.lost_days} days, a run behind the policy after
+  The design's choices, in one place: an idle key at #{@thresholds.idle_key_days} days, a
+  lost run listed for #{@thresholds.lost_days} days, a run behind the policy after
   #{@thresholds.behind_intervals} heartbeat intervals, denied destinations over
   #{@thresholds.denied_days} days, the chart over #{@thresholds.chart_days} days. None of them
   is the record's; the record keeps the timestamps, the page draws the lines.
@@ -327,7 +326,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     {:ok, if(connected?(socket) and posted?, do: load(socket), else: socket)}
   end
 
-  # The four reads that fill the page, none blocking the first paint (oj 1); three where
+  # The four reads that fill the page, none blocking the first paint; three where
   # `security` is off, which has no policy to read.
   defp load(socket) do
     socket
@@ -376,7 +375,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     end)
   end
 
-  ## The reads (oj 3 to 7). Each runs in its own task; nothing here touches the socket.
+  ## The reads. Each runs in its own task; nothing here touches the socket.
 
   defp read_activity(scope, today, now, security?) do
     from = start_of(Date.add(today, -(@thresholds.chart_days - 1)))
@@ -462,8 +461,8 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   end
 
   # What the alive runs report against what is in force, in one bulk read; the reported
-  # version is looked up for a run that is behind, and only then (pd9). The configuration
-  # in force is `security`'s: without it nothing is compared and no run is behind.
+  # version is looked up for a run that is behind, and only then. The configuration in
+  # force is `security`'s: without it nothing is compared and no run is behind.
   defp drift_facts(_scope, _runs, false), do: %{}
 
   defp drift_facts(scope, runs, true) do
@@ -539,7 +538,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     %{alive_runs: shown, recent: recent, new_ids: new_ids} = socket.assigns
 
     # Alive rows: the ones on the page are patched in place, a run that ended leaves, a run
-    # that is new appends; the last runs never gain a row under the reader (oj 8).
+    # that is new appends; the last runs never gain a row under the reader.
     alive_ids = Enum.map(shown || [], & &1.id)
     fresh = Map.new(read.alive_runs, &{&1.id, &1})
 
@@ -652,8 +651,8 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
   @impl true
   def handle_info({:run_changed, %Run{} = run}, %{assigns: %{live?: false}} = socket) do
-    # The first run has landed: the checklist ticks its third step and stays (oe6); the
-    # activity and the cards render under it.
+    # The first run has landed: the checklist ticks its third step and stays; the activity
+    # and the cards render under it.
     socket =
       socket
       |> assign(live?: true, landed: run, alive: Runs.count_alive(socket.assigns.current_scope))
@@ -761,7 +760,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   defp refresh_runs(socket), do: socket
 
   # A run on the page is patched from the message, in place; a run that is not is a new
-  # run in words (rj 6), never a row inserted under the reader.
+  # run in words, never a row inserted under the reader.
   defp patch_run(socket, %Run{} = run) do
     %{alive_runs: alive_runs, recent: recent} = socket.assigns
 
@@ -840,10 +839,10 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
   def handle_event("close_confirm", _params, socket), do: {:noreply, socket}
 
-  ## The one-click allow of a denied destination (od2): the popover of pd8, called with the
-  ## destination's targets, exactly as the connections page calls it. A rule is
-  ## `security`'s: without it no row offers the act, and an event that asks anyway is
-  ## ignored, as an event for a row that is gone is.
+  ## The one-click allow of a denied destination: the popover of a connection row's Allow,
+  ## called with the destination's targets, exactly as the connections page calls it. A
+  ## rule is `security`'s: without it no row offers the act, and an event that asks anyway
+  ## is ignored, as an event for a row that is gone is.
 
   def handle_event("rule_" <> _event, _params, %{assigns: %{security?: false}} = socket),
     do: {:noreply, socket}
@@ -1085,9 +1084,9 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
   defp recheck_popover(socket), do: socket
 
-  ## The attention list (od1): built from the record in assigns, merged into what is shown.
+  ## The attention list: built from the record in assigns, merged into what is shown.
 
-  # Every candidate item, in the order of od1. Nothing here queries.
+  # Every candidate item, in the order the list shows them. Nothing here queries.
   defp candidates(assigns) do
     now = assigns.now
     since_lost = DateTime.add(now, -@thresholds.lost_days, :day)
@@ -1219,7 +1218,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   defp idle_days(_key, _now), do: nil
 
   # The list as shown: rows already there keep their place and are patched, rows whose item
-  # is gone are struck with the resolution in words, new items append (oa 5).
+  # is gone are struck with the resolution in words, new items append.
   defp recompute(%{assigns: %{live?: false}} = socket), do: socket
 
   defp recompute(socket) do
@@ -1262,8 +1261,8 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
         |> Enum.reject(&MapSet.member?(known, &1.id))
         |> Enum.map(&Map.merge(&1, %{arrived: settled?, resolved: nil}))
 
-      # Until the first reads have all landed the list is sorted as od1 orders it, whatever
-      # read came first; from then on rows keep their place and new ones append.
+      # Until the first reads have all landed the list is sorted in its own order,
+      # whatever read came first; from then on rows keep their place and new ones append.
       items =
         if settled? do
           kept ++ arrived
@@ -1353,7 +1352,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     end
   end
 
-  # What became of an item that is no longer on the record's list, in words (oe7).
+  # What became of an item that is no longer on the record's list, in words.
   defp resolution(%{kind: :denied}, _assigns),
     do: %{mark: :allowed, what: gettext("Allowed since."), done: nil}
 

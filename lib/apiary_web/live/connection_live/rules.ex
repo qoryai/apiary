@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.ConnectionLive.Rules do
   @moduledoc """
-  What a connection's row may ask of the policy (`docs/design/brief-policy.md`, pd8), for
-  the run's connections tab and for the workspace's connections page.
+  What a connection's row may ask of the policy, for the run's connections tab and for the
+  workspace's connections page.
 
   A row's **standing** is derived from the effective policy the page holds, never by a
   query per row: whether the row can ask for an allow or a deny, whether a locked rule of
@@ -13,8 +13,8 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   Everything a row carries is a runner's input. A host is put through the policy's own
   grammar before it is compared with a rule, and nothing here becomes an atom.
 
-  All of it is `security`'s: a page of an instance without it (decision 0070) asks
-  nothing here, and its rows have no standing.
+  All of it is `security`'s: a page of an instance without it asks nothing here, and its
+  rows have no standing.
   """
 
   use ApiaryWeb, :verified_routes

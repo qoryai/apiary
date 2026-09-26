@@ -190,8 +190,8 @@ defmodule Apiary.MixProject do
         "Mix tasks": [~r/^Mix\.Tasks/]
       ],
       # Read by `mix docs.all`, not by ExDoc: what a tree for an instance without the feature
-      # leaves out (decision 0070). A module that says `use ApiaryWeb.Features` needs its
-      # feature without being listed; a passage of a guide is marked in the guide,
+      # leaves out. A module that says `use ApiaryWeb.Features` needs its feature without
+      # being listed; a passage of a guide is marked in the guide,
       # `<!-- feature: security -->` to `<!-- /feature -->`. `all` is every feature: the
       # release notes name them all.
       features: [

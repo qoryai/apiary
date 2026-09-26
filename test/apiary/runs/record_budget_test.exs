@@ -19,7 +19,7 @@ defmodule Apiary.Runs.RecordBudgetTest do
     # What a read costs this server is set by the number of rows, never by what a runner
     # put in them.
     @tag timeout: 300_000
-    test "H1: a window of 300 calls with 512 KiB responses is read in under 32 MiB", %{
+    test "a window of 300 calls with 512 KiB responses is read in under 32 MiB", %{
       scope: scope
     } do
       run = run_fixture(scope)
@@ -80,7 +80,7 @@ defmodule Apiary.Runs.RecordBudgetTest do
       Process.demonitor(ref, [:flush])
 
       IO.puts(
-        "\n[budget H1] 300 calls with 512 KiB payloads: the reading process held #{div(bytes, 1024)} KiB (memory + binaries); the items are #{div(size, 1024)} KiB"
+        "\n[budget] 300 calls with 512 KiB payloads: the reading process held #{div(bytes, 1024)} KiB (memory + binaries); the items are #{div(size, 1024)} KiB"
       )
 
       assert bytes < 32 * 1024 * 1024, "held #{div(bytes, 1024)} KiB"

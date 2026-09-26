@@ -1,8 +1,7 @@
 defmodule Apiary.Organisations.Slug do
   @moduledoc """
-  Slug is the name of an organisation or a workspace in a URL: `/acme/platform/runs`
-  (decision 0073). An organisation's slug is unique on the instance, a workspace's within
-  its organisation.
+  Slug is the name of an organisation or a workspace in a URL: `/acme/platform/runs`. An
+  organisation's slug is unique on the instance, a workspace's within its organisation.
 
   A slug is 1 to 40 characters of lowercase `a`–`z`, `0`–`9` and hyphens, and starts
   and ends with a letter or a digit. It is made from the name when the organisation or

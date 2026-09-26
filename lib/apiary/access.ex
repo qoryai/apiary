@@ -73,8 +73,8 @@ defmodule Apiary.Access do
   }
 
   @moduledoc """
-  Whether someone may do something, answered in one place (decision 0076): may `scope`
-  take `action` on `subject`? `can?/3` answers yes or no, `authorize/3` says why not.
+  Whether someone may do something, answered in one place: may `scope` take `action` on
+  `subject`? `can?/3` answers yes or no, `authorize/3` says why not.
 
   - **`scope`** is who is asking and from where: an `Apiary.Accounts.Scope` of a person,
     with the organisation, the workspace and the membership its path names, or of an access
@@ -89,10 +89,10 @@ defmodule Apiary.Access do
 
   1. **The feature** the action belongs to (`Apiary.Features.on?/2`). An action of a
      feature that is off is `{:error, :not_found}`: a feature that is off is absent, not
-     forbidden (decision 0070).
+     forbidden.
   2. **Where the subject is.** A subject of another organisation, or of another workspace
      than the scope's, is `{:error, :not_found}`, so the answer does not tell that it
-     exists (decision 0073).
+     exists.
   3. **The role** of the one asking, in the role table below. An action the role does not
      allow is `{:error, :forbidden}`, and so is every action for a person without a
      membership where the scope is; the page decides whether it says forbidden or not
@@ -119,8 +119,7 @@ defmodule Apiary.Access do
   #{Enum.map_join([member: "a person with a member membership", owner: "a person with an owner membership", access_key: "a runner, with a key of the workspace"], "\n", fn {role, who} -> "| `#{role}` | #{who} | #{Enum.map_join(Map.fetch!(@roles, role), ", ", &"`#{&1}`")} |" end)}
 
   The managing relationship, the instance admin and the narrowing of features below the
-  instance (decision 0070) are not built yet. When they are, they are read here and
-  nowhere else.
+  instance are not built yet. When they are, they are read here and nowhere else.
   """
 
   @typedoc "An action, one of `actions/0`."

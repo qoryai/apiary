@@ -1,23 +1,24 @@
 defmodule ApiaryWeb.RunLive.Index do
   @moduledoc """
-  The runs of the workspace (`docs/design/brief-runs.md`, re1): one row per run with its
-  state, what it worked on, where and for how long, and its denials; grouped by target, by
-  task or not at all; filtered by state, target, task, runtime, host, time range and
-  denials. Every filter, the grouping and the page are query parameters, read through
-  `Apiary.Runs.Filters`: a value it does not know is dropped and the URL rewritten.
+  The runs of the workspace: one row per run with its state, what it worked on, where and
+  for how long, and its denials; grouped by target, by task or not at all; filtered by
+  state, target, task, runtime, host, time range and denials. Every filter, the grouping
+  and the page are query parameters, read through `Apiary.Runs.Filters`: a value it does
+  not know is dropped and the URL rewritten.
 
-  Live through the workspace's topic. A run on the page changes in place, by its DOM id;
-  changes are collected and applied at most every 250 ms, and the rows are a keyed
-  comprehension, so only the rows that changed are sent. A new
-  run that the filters return is never inserted under the reader: the summary line gains
-  "1 new run", said politely to a screen reader, which asks again when the reader follows it. Whether a running run has gone quiet is
-  decided here, on a 5 s timer and on every change, never in the browser.
+  Live through the workspace's topic (`docs/ui.md`). A run on the page changes in place,
+  by its DOM id; changes are collected and applied at most every 250 ms, and the rows are
+  a keyed comprehension, so only the rows that changed are sent. A new run that the
+  filters return is never inserted under the reader: the summary line gains "1 new run",
+  said politely to a screen reader, which asks again when the reader follows it. Whether a
+  running run has gone quiet is decided here, on a 5 s timer and on every change, never in
+  the browser.
 
   The page is loaded off the socket's process (`start_async`): the first render is the
   table's skeleton, later ones keep what is on screen until the new page arrives.
 
   The runs are the record (`observability`). A target's group links to its policy only
-  where the instance has `security`; without it the group has no such link (decision 0070).
+  where the instance has `security`; without it the group has no such link.
   """
   use ApiaryWeb, :live_view
   use ApiaryWeb.Features, :observability
@@ -336,7 +337,7 @@ defmodule ApiaryWeb.RunLive.Index do
     """
   end
 
-  ## The table (rd8)
+  ## The table
 
   attr :id, :string, required: true
   attr :groups, :list, required: true

@@ -3,7 +3,7 @@ defmodule Apiary.SchemaConstraintsTest do
 
   import Apiary.OrganisationsFixtures
 
-  test "H5: the database refuses a level other than owner or member" do
+  test "the database refuses a level other than owner or member" do
     %{membership: membership} = sign_up_fixture()
 
     assert_raise Postgrex.Error, ~r/memberships_level_check/, fn ->
@@ -13,7 +13,7 @@ defmodule Apiary.SchemaConstraintsTest do
     end
   end
 
-  test "H5: and the same for an invitation" do
+  test "the database refuses an invitation level other than owner or member" do
     %{scope: scope} = sign_up_fixture()
     %{invitation: invitation} = invitation_fixture(scope)
 
@@ -24,7 +24,7 @@ defmodule Apiary.SchemaConstraintsTest do
     end
   end
 
-  test "H5: the user references are indexed" do
+  test "the user references are indexed" do
     %{rows: rows} =
       Repo.query!("""
       SELECT indexname FROM pg_indexes

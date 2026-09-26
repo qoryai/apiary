@@ -37,7 +37,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
   end
 
   # What the policy made of the record is on the page only where the instance has
-  # `security`; the record itself is there in every configuration (decision 0070).
+  # `security`; the record itself is there in every configuration.
   defp security?, do: Apiary.Features.on?(:security)
 
   defp item_ids(html) do
@@ -101,7 +101,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       if security?() do
         assert has_element?(lv, "#run-facts", "Policy")
         assert html =~ "enforce"
-        # the run configuration it applied was not rendered by this workspace (pd9)
+        # the run configuration it applied was not rendered by this workspace
         assert has_element?(lv, "#policy-unrendered", "a4e1d0c97b3f")
         assert has_element?(lv, "#policy-unrendered", "not rendered here")
       else
@@ -1018,7 +1018,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
     end
   end
 
-  describe "read budget of a live page (H3)" do
+  describe "read budget of a live page" do
     # What twenty projections cost the page must not depend on how long the run is.
     defp live_run(scope, items) do
       now = DateTime.utc_now()
@@ -1109,7 +1109,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         {large_queries, large_rows, html} = twenty_projections(conn, scope, 3_000, unquote(path))
 
         IO.puts(
-          "\n[budget H3] #{unquote(tab)}: 20 projections on a run of 480 events: #{small_queries} queries, #{small_rows} rows; of 3,080 events: #{large_queries} queries, #{large_rows} rows"
+          "\n[budget] #{unquote(tab)}: 20 projections on a run of 480 events: #{small_queries} queries, #{small_rows} rows; of 3,080 events: #{large_queries} queries, #{large_rows} rows"
         )
 
         assert large_queries == small_queries
@@ -1164,7 +1164,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
     end
   end
 
-  describe "a call the record never ends (M1, M2)" do
+  describe "a call the record never ends" do
     setup %{scope: scope} do
       run =
         projected(scope, [
@@ -1236,7 +1236,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
     end
   end
 
-  describe "clocks (M3)" do
+  describe "clocks" do
     test "so far counts from the runner's elapsed seconds and this server's clock, never from started_at",
          %{conn: conn, scope: scope} do
       received = DateTime.add(DateTime.utc_now(), -5, :second)
@@ -1259,7 +1259,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
     end
   end
 
-  describe "bounds of what is drawn (M5, M7)" do
+  describe "bounds of what is drawn" do
     test "a dozen lane chips and the rest as a number; any lane can still be isolated", %{
       conn: conn,
       scope: scope
@@ -1359,7 +1359,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
     end
   end
 
-  describe "closing (M6)" do
+  describe "closing" do
     test "a crafted close_confirm does not close a run that has ended, and its end stays", %{
       conn: conn,
       scope: scope
@@ -1435,7 +1435,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
     end
   end
 
-  describe "read aloud (A3, A6, A9)" do
+  describe "read aloud" do
     test "an item in a subagent's lane says whose it is in words", %{conn: conn, scope: scope} do
       run = demo(scope, "session-with-subagents")
 

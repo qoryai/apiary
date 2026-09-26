@@ -5,8 +5,8 @@ defmodule ApiaryWeb.DocsController do
 
   `mix docs` (`Mix.Tasks.Docs.All`) builds the guides and the module reference into
   `priv/static/docs` once for each set of features the documentation differs by, one tree
-  per directory, in the release image too (decision 0070: a feature that is off is absent,
-  from the documentation as well). `dir/0` is the tree for the instance's features, and the
+  per directory, in the release image too (a feature that is off is absent, from the
+  documentation as well). `dir/0` is the tree for the instance's features, and the
   endpoint's `Plug.Static` for `/docs` reads its files from there. `docs` is therefore not
   in `ApiaryWeb.static_paths/0`: a tree is never reachable by its own directory.
 
@@ -58,7 +58,7 @@ defmodule ApiaryWeb.DocsController do
   listing is cheap, and it follows the features wherever a test switches them. It is the
   instance's features, not a caller's: the documentation is public, served before sign-in,
   so it cannot know an organisation; one granted less than its instance reads the
-  instance's documentation (decision 0070, *What grants cannot hide*).
+  instance's documentation.
   """
   @spec dir([Apiary.Features.feature()]) :: Path.t()
   def dir(features \\ Apiary.Features.enabled()) do

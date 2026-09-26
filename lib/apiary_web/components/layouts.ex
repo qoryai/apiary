@@ -38,9 +38,9 @@ defmodule ApiaryWeb.Layouts do
 
   @doc """
   nav_path/3 is where the navigation entry `key` leads in `workspace` of `organisation`:
-  a workspace's page under `/:org/:workspace/…`, an organisation's under `/:org/…`
-  (decision 0073). The switcher asks it for the entry the user is on, so switching keeps
-  the section; any other key leads to the workspace's overview.
+  a workspace's page under `/:org/:workspace/…`, an organisation's under `/:org/…`.
+  The switcher asks it for the entry the user is on, so switching keeps the section; any
+  other key leads to the workspace's overview.
   """
   @spec nav_path(atom, %Apiary.Organisations.Organisation{}, %Apiary.Organisations.Workspace{}) ::
           String.t()
@@ -340,9 +340,9 @@ defmodule ApiaryWeb.Layouts do
 
   defp nav_text(msgid), do: Gettext.gettext(ApiaryWeb.Gettext, msgid)
 
-  # The entries the scope may open. A feature that is off is absent, not disabled
-  # (decision 0070): no entry, greyed or otherwise, and so nothing beside it either
-  # (Policy's mode word goes with Policy). A section left empty goes too.
+  # The entries the scope may open. A feature that is off is absent, not disabled: no
+  # entry, greyed or otherwise, and so nothing beside it either (Policy's mode word goes
+  # with Policy). A section left empty goes too.
   defp nav_items(%{organisation: %{} = organisation, workspace: %{} = workspace} = scope) do
     for {section, label, items} <- @nav,
         shown = Enum.flat_map(items, &nav_item(scope, organisation, workspace, &1)),
@@ -432,9 +432,9 @@ defmodule ApiaryWeb.Layouts do
   # The organisation block at the top of the sidebar. Its third column is the switcher's
   # chevron slot in both variants, so nothing moves the day a second membership
   # arrives. One membership: text, the slot empty. Several: the switcher, a dropdown of
-  # links to each membership's workspace, at the section the user is on (decision 0073:
-  # the path says which workspace a page shows). A link loads the page afresh, so the
-  # session remembers the workspace for `/`.
+  # links to each membership's workspace, at the section the user is on (the path says
+  # which workspace a page shows). A link loads the page afresh, so the session remembers
+  # the workspace for `/`.
   defp organisation_block(%{memberships: memberships} = assigns) when length(memberships) > 1 do
     ~H"""
     <div

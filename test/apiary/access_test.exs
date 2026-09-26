@@ -10,7 +10,7 @@ defmodule Apiary.AccessTest do
   alias Apiary.Accounts.Scope
   alias Apiary.Features
 
-  # Every action, and who may take it on a workspace of one organisation (decision 0076).
+  # Every action, and who may take it on a workspace of one organisation.
   # Each actor a row does not list is asserted a no. The actors:
   #
   #   member              a member of the workspace
@@ -23,9 +23,9 @@ defmodule Apiary.AccessTest do
   #   feature_off         whoever the action is for, an owner or an access key, on an
   #                       instance without the action's feature
   #
-  # The managing relationship and the instance admin role of decision 0070 are not built
-  # yet: an operator's staff and the instance admin reach an organisation through a
-  # membership or not at all, so their rows are no. They change when those are built.
+  # The managing relationship and the instance admin role are not built yet: an operator's
+  # staff and the instance admin reach an organisation through a membership or not at all,
+  # so their rows are no. They change when those are built.
   @table [
     {:"organisation.rename", yes: [:owner, :feature_off]},
     {:"member.invite", yes: [:owner, :feature_off]},

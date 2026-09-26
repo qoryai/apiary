@@ -10,10 +10,10 @@ defmodule Apiary.Accounts.Scope do
 
   Beyond the user, the scope carries the organisation the caller is acting in,
   the workspace inside it and the caller's membership there, once
-  `Apiary.Organisations.resolve_scope/3` has loaded the ones a page's path names
-  (decision 0073), or `Apiary.Organisations.load_scope/2` the user's own. At the server
-  contract the scope is an access key's instead (`for_access_key/1`): no user, the key's
-  workspace. What a scope may do is `Apiary.Access`'s answer.
+  `Apiary.Organisations.resolve_scope/3` has loaded the ones a page's path names,
+  or `Apiary.Organisations.load_scope/2` the user's own. At the server contract the scope
+  is an access key's instead (`for_access_key/1`): no user, the key's workspace. What a
+  scope may do is `Apiary.Access`'s answer.
   """
 
   alias Apiary.AccessKeys.AccessKey

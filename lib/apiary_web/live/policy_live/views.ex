@@ -1,9 +1,8 @@
 defmodule ApiaryWeb.PolicyLive.Views do
   @moduledoc """
-  The views the workspace's policy and a target's policy share
-  (`docs/design/brief-policy.md`, pe4 and pe5): the history with its diffs, one version with
-  its document, and the export. Function components; the two LiveViews load what they show
-  through `ApiaryWeb.PolicyLive.Common`.
+  The views the workspace's policy and a target's policy share: the history with its
+  diffs, one version with its document, and the export. Function components; the two
+  LiveViews load what they show through `ApiaryWeb.PolicyLive.Common`.
   """
   use ApiaryWeb, :html
 
@@ -33,7 +32,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
     """
   end
 
-  ## pe4. History
+  ## History
 
   attr :history, :map, required: true
   attr :open, :any, default: nil
@@ -167,7 +166,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
   defp page_path(base, page) when page <= 1, do: base <> "/history"
   defp page_path(base, page), do: base <> "/history?page=#{page}"
 
-  ## pe5. Version
+  ## Version
 
   attr :v, :map, required: true
   attr :base, :string, required: true
@@ -365,7 +364,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
       if(query == [], do: "", else: "?" <> URI.encode_query(query))
   end
 
-  ## Export (S7)
+  ## Export
 
   attr :export, :map, required: true
   attr :close, :string, required: true

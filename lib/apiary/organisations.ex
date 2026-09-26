@@ -65,7 +65,7 @@ defmodule Apiary.Organisations do
 
   `:error` when a slug names nothing and when it names an organisation or a workspace
   the user is not a member of: one answer for both, so a slug does not tell whether it
-  exists (decision 0073).
+  exists.
   """
   @spec resolve_scope(Scope.t(), String.t(), String.t() | nil) :: {:ok, Scope.t()} | :error
   def resolve_scope(scope, organisation_slug, workspace_slug \\ nil)

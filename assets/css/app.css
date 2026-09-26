@@ -132,7 +132,7 @@
   --q-highlight: inset 0 1px 0 oklch(100% 0 0 / 0.28);
   --q-ease-out: cubic-bezier(0.2, 0, 0, 1);
   --q-ease-in: cubic-bezier(0.4, 0, 1, 1);
-  /* Runs and connections (M4): lanes, the denied tint, the terminal. */
+  /* Runs and connections: lanes, the denied tint, the terminal. */
   --q-lane-main: oklch(66% 0.01 80);
   --q-lane-a: oklch(52% 0.15 300);
   --q-lane-b: oklch(52% 0.085 205);
@@ -149,8 +149,8 @@
   --q-term-blue: oklch(78% 0.1 248);
   --q-term-magenta: oklch(78% 0.12 320);
   --q-term-cyan: oklch(82% 0.09 200);
-  /* NEW in M8: the overview's fourteen-day chart. Runs are a count, not a decision, so
-     their series is a neutral; today's column is the ink itself. */
+  /* The overview's fourteen-day chart. Runs are a count, not a decision, so their series
+     is a neutral; today's column is the ink itself. */
   --q-series-runs: oklch(62% 0.014 75);
   --q-series-runs-today: oklch(21% 0.012 65);
 }
@@ -1201,9 +1201,9 @@
   }
 }
 
-/* ==== Runs and connections (M4): the shared components of run_components.ex ====
-   Class names follow docs/design/runs-mock.html with a `q-` prefix, which keeps them
-   clear of daisyUI's own `.tabs`, `.label`, `.filter` and `.mark`. */
+/* ==== Runs and connections: the shared components of run_components.ex ====
+   Class names carry a `q-` prefix, which keeps them clear of daisyUI's own `.tabs`,
+   `.label`, `.filter` and `.mark` (docs/ui.md). */
 @layer qory {
   /* Long tooltips (sentences) wrap. */
   .q-tip-wide[data-tip]::before {
@@ -1213,7 +1213,7 @@
     text-align: left;
   }
 
-  /* ---- Run state badge (rd1) ---- */
+  /* ---- Run state badge ---- */
   .q-state {
     padding-left: 5px;
   }
@@ -1253,7 +1253,7 @@
     white-space: nowrap;
   }
 
-  /* ---- Filter bar (rd7) ---- */
+  /* ---- Filter bar ---- */
   .q-filters {
     display: flex;
     flex-wrap: wrap;
@@ -1483,7 +1483,7 @@
     text-underline-offset: 3px;
   }
 
-  /* ---- Runs table (rd8) ---- */
+  /* ---- Runs table ---- */
   .q-num {
     text-align: right !important;
     font-variant-numeric: tabular-nums;
@@ -1626,7 +1626,7 @@
     z-index: 1;
   }
 
-  /* ---- Run header (re2) ---- */
+  /* ---- Run header ---- */
   .q-alive {
     display: inline-flex;
     align-items: center;
@@ -1747,7 +1747,7 @@
     border-color: var(--q-border-field);
   }
 
-  /* ---- Tabs (rd9) ---- */
+  /* ---- Tabs ---- */
   .q-tabs {
     position: sticky;
     top: 0;
@@ -1814,7 +1814,7 @@
     }
   }
 
-  /* ---- Connection row (rd12) ---- */
+  /* ---- Connection row ---- */
   .q-cx {
     display: grid;
     min-height: 32px;
@@ -1947,7 +1947,7 @@
     padding-inline: 4px 12px !important;
   }
 
-  /* ---- Connections tables (rd13) ---- */
+  /* ---- Connections tables ---- */
   .q-cxt :where(th, td) {
     padding-inline: 12px;
   }
@@ -2043,7 +2043,7 @@
     text-align: right;
   }
 
-  /* ---- New items pill (rd15) ---- */
+  /* ---- New items pill ---- */
   .q-newpill {
     position: sticky;
     bottom: 16px;
@@ -2292,12 +2292,12 @@
 /* Make LiveView wrapper divs transparent for layout */
 [data-phx-session], [data-phx-teleported-src] { display: contents }
 
-/* ==== The run page (M4): header, timeline, terminal, details ====================
-   The components of run_page_components.ex and run_live/show.ex, after
-   docs/design/runs-mock.html. Everything shared with the runs list and the connections
-   pages is in the section above; nothing here restyles it. */
+/* ==== The run page: header, timeline, terminal, details ====================
+   The components of run_page_components.ex and run_live/show.ex. Everything shared with
+   the runs list and the connections pages is in the section above; nothing here restyles
+   it. */
 @layer qory {
-  /* ---- Run header (re2) ---- */
+  /* ---- Run header ---- */
   .q-run-head {
     display: grid;
     gap: 16px;
@@ -2475,7 +2475,7 @@
     to { transform: rotate(360deg); }
   }
 
-  /* ---- Timeline (rd10) ---- */
+  /* ---- Timeline ---- */
   .q-tl {
     --lane: 22px;
     --lanes: 1;
@@ -2833,7 +2833,7 @@
     font-size: 0.8125rem;
   }
 
-  /* ---- Terminal (rd14): dark in both themes ---- */
+  /* ---- Terminal: dark in both themes ---- */
   .q-termbox {
     display: grid;
     height: min(640px, 100dvh - 330px);
@@ -3189,9 +3189,9 @@
   }
 }
 
-/* ==== Rules from a row, the drift mark and the reload item (M5) ==================
-   brief-policy.md pd8, pd9 and pe6: what run_components.ex and run_page_components.ex
-   add to the M4 pages. Class names follow docs/design/policy-mock.html with `q-`. */
+/* ==== Rules from a row, the drift mark and the reload item ==================
+   What run_components.ex and run_page_components.ex add to the run and connections
+   pages. Class names carry a `q-` prefix. */
 @layer qory {
   .q-link {
     border-radius: var(--radius-selector);
@@ -3219,7 +3219,7 @@
     }
   }
 
-  /* ---- The slot of a connection's row (pd8): always visible, never on hover ---- */
+  /* ---- The slot of a connection's row: always visible, never on hover ---- */
   .q-cxt .q-slot {
     display: flex;
     width: auto;
@@ -3279,7 +3279,7 @@
     font-size: 0.6875rem;
   }
 
-  /* ---- The popover (pd8): top layer, under its button; a sheet on phones ---- */
+  /* ---- The popover: top layer, under its button; a sheet on phones ---- */
   .q-pop {
     position: fixed;
     inset: auto;
@@ -3473,7 +3473,7 @@
     }
   }
 
-  /* ---- The drift mark (pd9): amber, a triangle and words; it never pulses ---- */
+  /* ---- The drift mark: amber, a triangle and words; it never pulses ---- */
   .q-drift {
     display: inline-flex;
     height: 18px;
@@ -3509,7 +3509,7 @@
     white-space: normal;
   }
 
-  /* ---- "Policy applied again" (pe6): the delta of a reload ---- */
+  /* ---- "Policy applied again": the delta of a reload ---- */
   .q-delta {
     display: inline-flex;
     max-width: 32ch;
@@ -3529,7 +3529,7 @@
     background-color: var(--q-error-soft);
     color: var(--q-error-soft-content);
   }
-  /* ---- Deny in either mode (A3): the deny chips of a reload carry the deny mark ---- */
+  /* ---- Deny in either mode: the deny chips of a reload carry the deny mark ---- */
   .q-delta-deny {
     gap: 3px;
   }
@@ -3542,7 +3542,7 @@
     color: var(--q-muted);
     text-decoration: line-through;
   }
-  /* ---- end A3 ---- */
+  /* ---- end of deny in either mode ---- */
   .q-reload-say {
     max-width: 80ch;
     margin-top: 2px;
@@ -3557,12 +3557,11 @@
   }
 }
 
-/* ==== The security policy (M5): the components of policy_components.ex ==========
-   Class names follow docs/design/policy-mock.html with a `q-` prefix. The version pill,
-   the version link, the pending mark and the source chip are shared with the run page
-   and the connections pages. */
+/* ==== The security policy: the components of policy_components.ex ==========
+   Class names carry a `q-` prefix. The version pill, the version link, the pending mark
+   and the source chip are shared with the run page and the connections pages. */
 @layer qory {
-  /* ---- Version pill and version link (pd1) ---- */
+  /* ---- Version pill and version link ---- */
   .q-vpill {
     display: inline-flex;
     height: 28px;
@@ -3659,14 +3658,14 @@
     text-decoration: none;
   }
 
-  /* ---- The mark of a host nothing has decided yet (pd4, pd6) ---- */
+  /* ---- The mark of a host nothing has decided yet ---- */
   .q-mark-pend {
     border: 1.5px dashed var(--color-error);
     background: none;
     color: var(--color-error);
   }
 
-  /* ---- Source chip (pd5) ---- */
+  /* ---- Source chip ---- */
   .q-src {
     display: inline-flex;
     height: 20px;
@@ -3691,10 +3690,9 @@
   }
 }
 
-/* ==== The security policy (M5): the pages under /:org/:workspace/policy ==============
-   brief-policy.md pd2 to pd7, pe1 to pe5 and pi: the mode cards, the section card with a
-   composer on top of a table, rule rows and provenance, suggestions, history and diff,
-   the document well, the version page. */
+/* ==== The security policy: the pages under /:org/:workspace/policy ==============
+   The mode cards, the section card with a composer on top of a table, rule rows and
+   provenance, suggestions, history and diff, the document well, the version page. */
 @layer qory {
   .q-link {
     border: 0;
@@ -3789,7 +3787,7 @@
     background-repeat: no-repeat;
   }
 
-  /* ---- Mode: two radio cards (pd2) ---- */
+  /* ---- Mode: two radio cards ---- */
   .q-mode {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -3823,7 +3821,7 @@
     border-color: var(--q-border-subtle);
   }
 
-  /* ---- Repository mode (pd2a): whose mode, in one compact card ---- */
+  /* ---- Repository mode: whose mode, in one compact card ---- */
   .q-rmode {
     display: grid;
     grid-template-columns: auto auto minmax(0, 1fr);
@@ -3987,7 +3985,7 @@
     border-bottom-left-radius: var(--radius-box);
   }
 
-  /* ---- Composer and its reading line (pd3) ---- */
+  /* ---- Composer and its reading line ---- */
   .q-composer {
     display: grid;
     grid-template-columns: auto minmax(0, 1.2fr) minmax(0, 1fr) auto;
@@ -4063,7 +4061,7 @@
     grid-column: 1 / -1;
   }
 
-  /* ---- Rule rows (pd4) ---- */
+  /* ---- Rule rows ---- */
   .q-rules-wrap {
     min-width: 0;
   }
@@ -4262,7 +4260,7 @@
     display: none;
   }
 
-  /* ---- Suggestions (pd6) ---- */
+  /* ---- Suggestions ---- */
   .q-sugg-row {
     display: grid;
     grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.5fr) auto;
@@ -4355,7 +4353,7 @@
     font-size: 0.78125rem;
   }
 
-  /* ---- Repositories (pe2) ---- */
+  /* ---- Repositories ---- */
   .q-targets td {
     position: relative;
   }
@@ -4374,7 +4372,7 @@
     font: 500 12.5px/18px var(--font-mono);
   }
 
-  /* ---- History and diff (pd7) ---- */
+  /* ---- History and diff ---- */
   .q-day {
     padding: 10px 16px 6px;
     border-bottom: 1px solid var(--q-border-subtle);
@@ -4534,7 +4532,7 @@
     color: var(--q-faint);
   }
 
-  /* ---- Document well, version page (pe5) ---- */
+  /* ---- Document well, version page ---- */
   .q-docwell {
     min-width: 0;
     overflow: hidden;
@@ -4857,12 +4855,12 @@
   }
 }
 
-/* ==== The workspace overview (M8): the components of overview_components.ex ==========
-   What the agents did and what needs you (docs/design/brief-overview.md). The rows are the
-   suggestion rows of M5 (pd6), the strip is the key and value strip of M4 (rd4) with
-   stat-sized values, the last runs are the runs table of M4 (rd8) without groups. */
+/* ==== The workspace overview: the components of overview_components.ex ==========
+   What the agents did and what needs you. The rows are the suggestion rows of the policy
+   pages, the strip is the key and value strip of the run page with stat-sized values, the
+   last runs are the runs table without groups. */
 @layer qory {
-  /* ---- Layout (oe1): two columns from 1280 px, one below ---- */
+  /* ---- Layout: two columns from 1280 px, one below ---- */
   .q-grid2 {
     display: grid;
     grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
@@ -4930,7 +4928,7 @@
     text-decoration-color: currentColor;
   }
 
-  /* ---- Needs attention (od1): one list of acts ---- */
+  /* ---- Needs attention: one list of acts ---- */
   .q-att ul {
     display: grid;
   }
@@ -5035,7 +5033,7 @@
     color: var(--q-error-soft-content);
   }
 
-  /* ---- The activity strip (od6): the key and value strip with stat-sized values ---- */
+  /* ---- The activity strip: the key and value strip with stat-sized values ---- */
   .q-strip .q-kv {
     padding: 12px 16px 10px;
   }
@@ -5084,7 +5082,7 @@
     vertical-align: middle;
   }
 
-  /* ---- Alive rows (od3): state, task, repository, host, alive line; one link ---- */
+  /* ---- Alive rows: state, task, repository, host, alive line; one link ---- */
   .q-alive-row {
     position: relative;
     display: grid;
@@ -5140,7 +5138,7 @@
     font-size: 0.8125rem;
   }
 
-  /* ---- The fourteen-day chart (od5): two small multiples, one x axis, one tooltip ---- */
+  /* ---- The fourteen-day chart: two small multiples, one x axis, one tooltip ---- */
   .q-chart {
     position: relative;
     display: grid;
@@ -5284,7 +5282,7 @@
     display: inline;
   }
 
-  /* ---- Last runs (od4): the runs table without groups, 40 px rows ---- */
+  /* ---- Last runs: the runs table without groups, 40 px rows ---- */
   .q-last td {
     height: 40px;
     padding-block: 6px;
@@ -5298,7 +5296,7 @@
     font-size: 0.75rem;
   }
 
-  /* ---- Glance cards (od7, od9): a dl of facts, a few lines ---- */
+  /* ---- Glance cards: a dl of facts, a few lines ---- */
   .q-glance {
     display: grid;
     grid-template-columns: 96px minmax(0, 1fr);
@@ -5348,7 +5346,7 @@
     font-variant-numeric: tabular-nums;
   }
 
-  /* ---- Access keys (od8) ---- */
+  /* ---- Access keys ---- */
   .q-keyrows td {
     height: 40px;
     padding-block: 6px;
@@ -5388,7 +5386,7 @@
     text-underline-offset: 3px;
   }
 
-  /* ---- The empty workspace (oe6): the checklist card of brief.md h1 ---- */
+  /* ---- The empty workspace: its checklist card ---- */
   .q-landed {
     display: flex;
     align-items: center;
@@ -5402,7 +5400,7 @@
     color: var(--color-success);
   }
 
-  /* ---- Skeletons (oe5): the shape of the content, never a spinner ---- */
+  /* ---- Skeletons: the shape of the content, never a spinner ---- */
   .q-skel-line {
     display: block;
     height: 12px;

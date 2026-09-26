@@ -1,4 +1,4 @@
-// Clocks tick in the browser (brief-runs rj7). Every `<time data-tick>` on the page is
+// Clocks tick in the browser (docs/ui.md). Every `<time data-tick>` on the page is
 // re-rendered from one interval, once a second, paused while the tab is hidden, in the
 // same words the server rendered (ApiaryWeb.RunComponents), which it also hands over.
 //

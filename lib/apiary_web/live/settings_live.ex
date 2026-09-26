@@ -1,11 +1,10 @@
 defmodule ApiaryWeb.SettingsLive do
   @moduledoc """
-  Organisation and workspace settings, one page in two places (decision 0073): the
-  organisation's, `/:org/settings` (`:organisation`), with its name, its slug and the
-  owners; and the workspace's, `/:org/:workspace/settings` (`:workspace`), with its name,
-  its slug and retention: how long the workspace keeps a run's events and log output, and
-  what the nightly job last pruned. A slug is shown, not edited: renaming one is not
-  decided yet.
+  Organisation and workspace settings, one page in two places: the organisation's,
+  `/:org/settings` (`:organisation`), with its name, its slug and the owners; and the
+  workspace's, `/:org/:workspace/settings` (`:workspace`), with its name, its slug and
+  retention: how long the workspace keeps a run's events and log output, and what the
+  nightly job last pruned. A slug is shown, not edited: renaming one is not decided yet.
 
   The proof of the domain's words (`docs/lingo.md`): every sentence is a gettext call in
   engine words, and the software domain's catalogue says organisation and workspace.

@@ -1,6 +1,6 @@
 defmodule Apiary.Policy.Export do
   @moduledoc """
-  An effective policy as the text a node without a server is given (S7).
+  An effective policy as the text a node without a server is given.
 
   The runner file, `~/.config/qory/runner.yaml`, holds the machine's policy inline as its
   `egress` section, which says a mode, the hosts allowed, the hosts denied and nothing

@@ -1,9 +1,8 @@
 defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
   @moduledoc """
   The runs, a run's four tabs and the connections on an instance launched with
-  `QORY_FEATURES=observability` (decision 0070): the record is all there, and nothing of
-  the policy is, not greyed out, not a link, not a word. A rule event sent all the same
-  writes nothing.
+  `QORY_FEATURES=observability`: the record is all there, and nothing of the policy is,
+  not greyed out, not a link, not a word. A rule event sent all the same writes nothing.
 
   Only the page's own content is read (`#main`): the sidebar is the layout's.
   """

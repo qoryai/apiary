@@ -3,7 +3,7 @@ defmodule ApiaryWeb.Access do
   The web side of `Apiary.Access` for a page: `on_mount({ApiaryWeb.Access, action})` lets
   the page mount only for a reader who may take `action` on the workspace of the page's
   path, and answers as a path that does not exist otherwise (`ApiaryWeb.NotFound`), as a
-  slug the reader cannot see does (decision 0073). The page's own links and buttons ask
+  slug the reader cannot see does. The page's own links and buttons ask
   `Apiary.Access.can?/3` with the same actions.
 
   It follows the path scope's hook, which has loaded the organisation and the workspace,

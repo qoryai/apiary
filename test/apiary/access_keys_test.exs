@@ -96,7 +96,7 @@ defmodule Apiary.AccessKeysTest do
                scope |> AccessKeys.list_access_keys() |> Enum.map(& &1.id)
     end
 
-    test "H2: listed and fetched keys carry no secrets, only whether one is rotating" do
+    test "listed and fetched keys carry no secrets, only whether one is rotating" do
       %{scope: scope} = sign_up_fixture()
       %{access_key: plain} = access_key_fixture(scope)
       %{access_key: rotated} = access_key_fixture(scope)
@@ -200,7 +200,7 @@ defmodule Apiary.AccessKeysTest do
       assert {:error, :revoked} = AccessKeys.rotate_access_key(scope, key)
     end
 
-    test "H1: a stale struct rotates from the current row and cannot resurrect an old secret" do
+    test "a stale struct rotates from the current row and cannot resurrect an old secret" do
       %{scope: scope} = sign_up_fixture()
       %{access_key: stale, secret: first_secret} = access_key_fixture(scope)
       canonical = Signature.canonical_string("get", "/x", 1)
@@ -229,7 +229,7 @@ defmodule Apiary.AccessKeysTest do
       assert :error = AccessKeys.fetch_for_verification(stale.key_id)
     end
 
-    test "M1: a scope whose membership is gone cannot create, rotate, retire or revoke" do
+    test "a scope whose membership is gone cannot create, rotate, retire or revoke" do
       %{scope: scope} = sign_up_fixture()
       %{scope: member_scope, membership: membership} = member_fixture(scope, :member)
       %{access_key: key} = access_key_fixture(member_scope)

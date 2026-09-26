@@ -664,7 +664,7 @@ defmodule Apiary.Policy do
   end
 
   @doc """
-  The declared hosts shown against the rules (S5): `%{suggested: [suggestion], covered:
+  The declared hosts shown against the rules: `%{suggested: [suggestion], covered:
   [%{host:, by:, source:, rule_id:}]}`. `suggested` is `suggestions/3`. `covered` is the
   declared hosts a rule already allows, at most 20, by host: `by` is the entry of `allow`
   that covers the host as a runner would report it (the host itself, or a `*.` suffix),
@@ -1006,11 +1006,11 @@ defmodule Apiary.Policy do
   ## Export
 
   @doc """
-  The effective policy as text for a node without a server (S7): `runner_file`, the
-  `egress` section of `~/.config/qory/runner.yaml`, which holds the mode and the hosts;
-  and `policy_file`, a document in the contract's policy format for `qory run --policy`,
-  when the policy holds paths or credentials, which the runner file's section cannot say
-  (nil otherwise). `notes` are sentences for the page.
+  The effective policy as text for a node without a server: `runner_file`, the `egress`
+  section of `~/.config/qory/runner.yaml`, which holds the mode and the hosts; and
+  `policy_file`, a document in the contract's policy format for `qory run --policy`, when
+  the policy holds paths or credentials, which the runner file's section cannot say (nil
+  otherwise). `notes` are sentences for the page.
   """
   @spec export(Scope.t(), holder) ::
           {:ok, %{runner_file: String.t(), policy_file: String.t() | nil, notes: [String.t()]}}

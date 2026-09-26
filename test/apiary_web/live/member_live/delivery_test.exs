@@ -14,7 +14,7 @@ defmodule ApiaryWeb.MemberLive.DeliveryTest do
     on_exit(fn -> Application.put_env(:apiary, Apiary.Mailer, previous) end)
   end
 
-  test "H3: an invitation that cannot be sent is an error on the page, and is not kept", %{
+  test "an invitation that cannot be sent is an error on the page, and is not kept", %{
     conn: conn,
     scope: scope
   } do

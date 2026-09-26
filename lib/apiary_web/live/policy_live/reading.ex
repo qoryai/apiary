@@ -1,8 +1,8 @@
 defmodule ApiaryWeb.PolicyLive.Reading do
   @moduledoc """
-  The reading line of the rule composer (`docs/design/brief-policy.md`, pd3, pf2 to pf4): a
-  rule is read back in plain words before it is saved, and what cannot be said is refused
-  in a sentence that names the reason and the ways out.
+  The reading line of the rule composer: a rule is read back in plain words before it is
+  saved, and what cannot be said is refused in a sentence that names the reason and the
+  ways out.
 
   Pure: the form and the rules already on the page in, a reading out. No query runs per
   keystroke. The domain checks everything again at the write; this is where a person finds
@@ -118,7 +118,7 @@ defmodule ApiaryWeb.PolicyLive.Reading do
   def split(nil), do: []
   def split(text), do: text |> String.split(~r/[\s,]+/u, trim: true) |> Enum.uniq()
 
-  ## Not in the grammar (pf3)
+  ## Not in the grammar
 
   defp bad_host(host, paths) do
     path_too = if Enum.any?(paths, &(not Grammar.path?(&1))), do: [" " | bad_path()], else: []
@@ -522,7 +522,7 @@ defmodule ApiaryWeb.PolicyLive.Reading do
 
   defp path_chips(paths), do: paths |> Enum.map(&{:code, &1}) |> Enum.intersperse(" ")
 
-  ## Refusals (pf4)
+  ## Refusals
 
   # The allowed `*.` suffix a deny of `host` would sit under, in the scope's policy.
   defp allowed_suffix_above(host, context) do

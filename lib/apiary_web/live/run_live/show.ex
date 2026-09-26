@@ -18,10 +18,10 @@ defmodule ApiaryWeb.RunLive.Show do
 
   The run, its terminal, its timeline and its connections as the runner reported them are
   the record (`observability`). What the policy made of it is `security`'s, and an
-  instance without it (decision 0070) shows none of it: no policy in the header or on
-  Details, no drift, no version, no policy applied on the timeline, no reason by rule or
-  mode, no Allow or Deny. The page then neither reads the policy nor follows its topic,
-  and a rule event that arrives all the same is dropped before anything is looked up.
+  instance without it shows none of it: no policy in the header or on Details, no drift,
+  no version, no policy applied on the timeline, no reason by rule or mode, no Allow or
+  Deny. The page then neither reads the policy nor follows its topic, and a rule event
+  that arrives all the same is dropped before anything is looked up.
   """
   use ApiaryWeb, :live_view
   use ApiaryWeb.Features, :observability
@@ -888,8 +888,9 @@ defmodule ApiaryWeb.RunLive.Show do
     """
   end
 
-  # pd9. The mode, then the version the run last reported as a link to that exact version,
-  # then its digest; the drift mark takes the digest's place while the run is behind.
+  # The policy cell: the mode, then the version the run last reported as a link to that
+  # exact version, then its digest; the drift mark takes the digest's place while the run
+  # is behind.
   attr :policy, :any, required: true
   attr :digest, :string, default: nil, doc: "the runner's own digest of its policy document"
   attr :tips, :map, required: true
@@ -1211,8 +1212,8 @@ defmodule ApiaryWeb.RunLive.Show do
       counts: Record.connection_counts(scope, run),
       connections: Record.connections(scope, run, decision: decision, page: page),
       # The effective policy is read when the tab opens and when the policy changes, and
-      # every row's standing is derived from it: no query per row (pj7). Without security
-      # it is not read, and no row has a standing.
+      # every row's standing is derived from it: no query per row. Without security it is
+      # not read, and no row has a standing.
       effective:
         if(socket.assigns.security,
           do: socket.assigns.effective || Policy.effective(scope, socket.assigns.target)
@@ -1580,9 +1581,8 @@ defmodule ApiaryWeb.RunLive.Show do
     {:noreply, assign(socket, confirm_close: false)}
   end
 
-  ## A row's Allow and Deny (pd8). What the browser names is looked up among the rows the
-  ## page holds, which are the run's: an id of another run or another workspace finds
-  ## nothing.
+  ## A row's Allow and Deny. What the browser names is looked up among the rows the page
+  ## holds, which are the run's: an id of another run or another workspace finds nothing.
 
   # Without security there is no rule to write: a crafted event is dropped here, before
   # a row, a policy or a connection is read.
@@ -1865,9 +1865,9 @@ defmodule ApiaryWeb.RunLive.Show do
   defp fetched?(%{assigns: %{digests: digests}}),
     do: is_binary(digests.reported) or is_binary(digests.applied)
 
-  # pj8: drift is a comparison, read at mount, on each message of the policy's topic and
-  # when the run reports another digest. No timer decides it. Without security there is
-  # no policy to be behind.
+  # Drift is a comparison, read at mount, on each message of the policy's topic and when
+  # the run reports another digest. No timer decides it. Without security there is no
+  # policy to be behind.
   defp assign_policy_facts(%{assigns: %{security: false}} = socket), do: socket
 
   defp assign_policy_facts(%{assigns: %{run: %Run{} = run}} = socket) do

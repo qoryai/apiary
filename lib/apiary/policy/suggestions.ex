@@ -1,6 +1,6 @@
 defmodule Apiary.Policy.Suggestions do
   @moduledoc """
-  The hosts a target's harness declared and its policy neither covers nor denies (S5).
+  The hosts a target's harness declared and its policy neither covers nor denies.
 
   A run's `dev.qory.run.policy_applied` events report `harness_hosts`, the hosts the
   harness's modules declared; they decide nothing. Read here from the target's newest

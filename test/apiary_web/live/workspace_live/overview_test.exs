@@ -80,7 +80,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     )
   end
 
-  describe "the empty workspace (oe6)" do
+  describe "the empty workspace" do
     test "no key: the checklist is the page, step 1 current, nothing else renders", %{
       conn: conn,
       scope: scope
@@ -177,7 +177,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     end
   end
 
-  describe "the activity (od3 to od6)" do
+  describe "the activity" do
     test "the strip counts the families, the denials and no cost cell until a run reported one",
          %{conn: conn, scope: scope} do
       started_run(scope, shop(),
@@ -326,7 +326,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     end
   end
 
-  describe "the glances (od7 to od9)" do
+  describe "the glances" do
     @tag needs: :security
     test "policy: a new workspace, then a managed one with a version, targets and things to review",
          %{conn: conn, scope: scope} do
@@ -456,7 +456,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     end
   end
 
-  describe "needs attention (od1)" do
+  describe "needs attention" do
     @tag needs: :security
     test "is absent when there is nothing to do", %{conn: conn, scope: scope} do
       started_run(scope, shop())
@@ -790,7 +790,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     end
   end
 
-  describe "live (oa 5, oj 2)" do
+  describe "live" do
     test "a run that starts appends an alive row; one that ends leaves; the strip and chart follow",
          %{conn: conn, scope: scope} do
       first = started_run(scope, shop())

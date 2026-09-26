@@ -619,7 +619,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
   @doc "The DOM-safe key of a destination of the list."
   def would_key(%{host: host, path: path}), do: ApiaryWeb.RunComponents.dom_token({host, path})
 
-  ## The words of a change (pf6)
+  ## The words of a change
 
   @doc """
   The sentence of a change, its author first: rich text. `who` is the author's email, or

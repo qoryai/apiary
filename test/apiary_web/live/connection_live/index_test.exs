@@ -27,7 +27,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
   end
 
   # What the policy made of a row, and the links to it, are on the page only where the
-  # instance has `security`; the rows are there in every configuration (decision 0070).
+  # instance has `security`; the rows are there in every configuration.
   defp security?, do: Apiary.Features.on?(:security)
 
   # The note of a page filtered to one target, with its policy's link where there is one.

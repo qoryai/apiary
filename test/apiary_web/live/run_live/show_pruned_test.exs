@@ -65,7 +65,7 @@ defmodule ApiaryWeb.RunLive.ShowPrunedTest do
 
     assert has_element?(lv, "#run-id", run.run_id)
 
-    # the policy card is `security`'s (decision 0070)
+    # the policy card is `security`'s
     if Apiary.Features.on?(:security),
       do: assert(html =~ "The policy event was pruned with the run&#39;s events on #{today()}."),
       else: refute(html =~ "The policy event")

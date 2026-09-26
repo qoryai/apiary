@@ -2,7 +2,7 @@ defmodule ApiaryWeb.Features do
   @moduledoc """
   The web side of `Apiary.Features`: a page or an endpoint that belongs to a feature says so
   with `use ApiaryWeb.Features, :security`, and answers as a path that does not exist when
-  the feature is off. Not *forbidden*: a feature that is off is absent (decision 0070).
+  the feature is off. Not *forbidden*: a feature that is off is absent.
 
   The `use` defines `__feature__/0`. `ApiaryWeb.Features.Routes`, in the endpoint, reads it
   for the route a request matches and answers for the instance before any pipeline runs;

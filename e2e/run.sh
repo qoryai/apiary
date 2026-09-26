@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The end to end job of live reload (F3), and of a deny that holds under observe. See
+# The end to end job of live reload, and of a deny that holds under observe. See
 # e2e/README.md for what it proves.
 #
 #   e2e/run.sh            one run

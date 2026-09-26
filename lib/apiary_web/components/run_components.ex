@@ -1,25 +1,25 @@
 defmodule ApiaryWeb.RunComponents do
   @moduledoc """
-  The components the runs list, the run page and the connections pages share
-  (`docs/design/brief-runs.md`, rd1 to rd15): the run state badge, durations and times that
-  tick in the browser, the key and value strip, label chips, the alive indicator, the
-  filter bar, tabs, the connection row with its reason, the connections tables and the
-  new-items pill.
+  The components the runs list, the run page and the connections pages share: the run
+  state badge, durations and times that tick in the browser, the key and value strip,
+  label chips, the alive indicator, the filter bar, tabs, the connection row with its
+  reason, the connections tables and the new-items pill.
 
   Everything rendered here is a field of an event or a count of events; what the record
   lacks reads "n/a". Event data is untrusted: it is only ever interpolated, never `raw/1`.
 
   A connection is the record, and what the policy made of it is not: on an instance
-  without `security` (decision 0070) the pages pass `security={false}`, and a connection
-  says what the runner reported, allowed or denied, the host, the tool and the outcome,
-  with no rule, no mode and no rule action. The components do not ask `Apiary.Features`
-  themselves: the page asks with its scope and says so.
+  without `security` the pages pass `security={false}`, and a connection says what the
+  runner reported, allowed or denied, the host, the tool and the outcome, with no rule, no
+  mode and no rule action. The components do not ask `Apiary.Features` themselves: the
+  page asks with its scope and says so.
 
-  Times tick in the browser: every `<time data-tick=…>` is re-rendered once a second by the
-  `Ticker` hook's one interval (`assets/js/hooks/ticker.js`), in the same words the server
-  rendered, so the server never re-renders for a clock. The browser's clock is never
-  trusted: every ticking element carries the server's now at render (`data-now`), the hook
-  learns its offset from the server from it, and counts on the server's time.
+  Times tick in the browser (`docs/ui.md`): every `<time data-tick=…>` is re-rendered once
+  a second by the `Ticker` hook's one interval (`assets/js/hooks/ticker.js`), in the same
+  words the server rendered, so the server never re-renders for a clock. The browser's
+  clock is never trusted: every ticking element carries the server's now at render
+  (`data-now`), the hook learns its offset from the server from it, and counts on the
+  server's time.
   """
   use Phoenix.Component
   use Gettext, backend: ApiaryWeb.Gettext
@@ -47,7 +47,7 @@ defmodule ApiaryWeb.RunComponents do
   # cuts the sentence at. It never reaches the page.
   @hole "\u0000"
 
-  ## rd1. Run state
+  ## Run state
 
   @doc """
   The badge of a run's state, one family for the seven states. `quiet_for` (seconds since
@@ -240,7 +240,7 @@ defmodule ApiaryWeb.RunComponents do
   def elapsed(%{inserted_at: %DateTime{} = at}), do: {0, at}
   def elapsed(_run), do: {nil, nil}
 
-  ## rd2. Duration
+  ## Duration
 
   @doc """
   A duration. `ms` for what has ended; `elapsed_seconds` with `elapsed_at` (the server time
@@ -333,7 +333,7 @@ defmodule ApiaryWeb.RunComponents do
 
   defp pad(n), do: n |> Integer.to_string() |> String.pad_leading(2, "0")
 
-  ## rd3. Relative time and the offset
+  ## Relative time and the offset
 
   @doc """
   A time across runs: relative up to yesterday ("2 minutes ago", "Yesterday, 16:40"), then
@@ -431,7 +431,7 @@ defmodule ApiaryWeb.RunComponents do
   defp iso(%DateTime{} = at), do: DateTime.to_iso8601(at)
   defp iso(_at), do: nil
 
-  ## rd4. Key and value strip
+  ## Key and value strip
 
   @doc "The run header's facts as one bordered object."
   attr :id, :string, default: nil
@@ -467,7 +467,7 @@ defmodule ApiaryWeb.RunComponents do
     """
   end
 
-  ## rd5. Label chip
+  ## Label chip
 
   @doc "One label of a run: the key on a tinted ground, the value beside it."
   attr :key, :string, required: true
@@ -515,7 +515,7 @@ defmodule ApiaryWeb.RunComponents do
   def short_id(run_id) when is_binary(run_id), do: String.slice(run_id, 0, 8)
   def short_id(_run_id), do: gettext("n/a")
 
-  ## rd6. Alive indicator
+  ## Alive indicator
 
   @doc """
   The line at the right of a run's title: whether the record is still being written, and
@@ -622,7 +622,7 @@ defmodule ApiaryWeb.RunComponents do
 
   defp ended_sentence("closed", _run), do: gettext("Closed")
 
-  ## rd7. Filter bar
+  ## Filter bar
 
   @doc """
   The row of filter chips. Every chip is a query parameter; the LiveView patches the URL.
@@ -975,7 +975,7 @@ defmodule ApiaryWeb.RunComponents do
   defp count_label(n) when is_number(n), do: Format.number(n)
   defp count_label(other), do: other
 
-  ## rd9. Tabs
+  ## Tabs
 
   @doc "The tabs of a second-level page. Links, not an ARIA tablist: each tab is a URL."
   attr :id, :string, required: true
@@ -1007,7 +1007,7 @@ defmodule ApiaryWeb.RunComponents do
     """
   end
 
-  ## rd12. Connection row and mark
+  ## Connection row and mark
 
   @doc "The 18 px mark of a decision: allowed is soft with a check, denied is solid with a bar."
   attr :decision, :string, required: true
@@ -1590,7 +1590,7 @@ defmodule ApiaryWeb.RunComponents do
     """
   end
 
-  ## rd13. Connections tables
+  ## Connections tables
 
   @doc """
   The table of a run's connections (`variant="table"`, C1) or of the workspace's across
@@ -1718,7 +1718,7 @@ defmodule ApiaryWeb.RunComponents do
     |> binary_part(0, 16)
   end
 
-  ## pd8. What a connection's row may ask of the policy (brief-policy.md)
+  ## What a connection's row may ask of the policy (brief-policy.md)
 
   defp rule_action_attrs(act) do
     %{
@@ -1861,12 +1861,12 @@ defmodule ApiaryWeb.RunComponents do
   end
 
   @doc """
-  The line a row gains once a rule answers it (pd8, "After"). The row above it is the
-  record and stays as it was. `line` is `%{action, level, version, by, at, state,
-  reloaded_at}`; `state` is `:pending` (the run is alive and has not reported the digest
-  in force), `:in_force` (it has: claimed from the record, never after a timer),
-  `:ended`, `:machine` (the run takes no policy from this server) or `:workspace` (the
-  workspace's page, which says nothing of a run).
+  The line a row gains once a rule answers it. The row above it is the record and stays as
+  it was. `line` is `%{action, level, version, by, at, state, reloaded_at}`; `state` is
+  `:pending` (the run is alive and has not reported the digest in force), `:in_force` (it
+  has: claimed from the record, never after a timer), `:ended`, `:machine` (the run takes
+  no policy from this server) or `:workspace` (the workspace's page, which says nothing of
+  a run).
   """
   attr :id, :string, required: true
   attr :line, :map, required: true
@@ -1935,7 +1935,7 @@ defmodule ApiaryWeb.RunComponents do
   defp after_sentence(_line), do: nil
 
   @doc """
-  The popover of a row's Allow or Deny (pd8): a `popover` element in the top layer, so the
+  The popover of a row's Allow or Deny: a `popover` element in the top layer, so the
   table's scroll container cannot clip it, placed under its button by the `RulePopover`
   hook and a bottom sheet below 768 px. `popover` is the page's state of it:
 
@@ -2217,9 +2217,9 @@ defmodule ApiaryWeb.RunComponents do
   defp submit_label(_deny, _popover), do: gettext("Allow for …")
 
   @doc """
-  A version named on a run's pages: the link of pd1 and, since versions count per holder
-  (the baseline's apart from each target's), the words that say whose it is.
-  `version` is `%{n, path, label}`; a missing label says nothing.
+  A version named on a run's pages: the version link and, since versions count per holder
+  (the baseline's apart from each target's), the words that say whose it is. `version` is
+  `%{n, path, label}`; a missing label says nothing.
   """
   attr :version, :map, required: true
   attr :class, :any, default: nil
@@ -2258,7 +2258,7 @@ defmodule ApiaryWeb.RunComponents do
   # The baseline's label is made elsewhere, in engine words or already in the domain's.
   defp baseline?(label), do: label in ["workspace baseline", gettext("workspace baseline")]
 
-  ## pd9. The drift mark
+  ## The drift mark
 
   @doc """
   The mark of a run that is alive and last reported a run configuration other than the one
@@ -2312,7 +2312,7 @@ defmodule ApiaryWeb.RunComponents do
     |> Enum.join(" ")
   end
 
-  ## rd15. New items pill
+  ## New items pill
 
   @doc """
   The pill that counts what arrived while the reader was away from the live end. A button,

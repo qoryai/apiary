@@ -121,7 +121,7 @@ defmodule ApiaryWeb.Contract.ConfigurationControllerTest do
     assert touched.last_contract_version == 1
   end
 
-  test "M2: a key id that is not valid UTF-8 is 401, not a crash", %{conn: conn, secret: secret} do
+  test "a key id that is not valid UTF-8 is 401, not a crash", %{conn: conn, secret: secret} do
     for key_id <- [
           "ak_" <> <<0xFF, 0xFE>> <> "00000000000000",
           <<0xC3, 0x28>>,
@@ -136,7 +136,7 @@ defmodule ApiaryWeb.Contract.ConfigurationControllerTest do
     end
   end
 
-  test "M2: an over-long User-Agent succeeds and is recorded truncated", %{
+  test "an over-long User-Agent succeeds and is recorded truncated", %{
     conn: conn,
     key: key,
     secret: secret,
@@ -152,7 +152,7 @@ defmodule ApiaryWeb.Contract.ConfigurationControllerTest do
     assert touched.last_runner_version == String.duplicate("9", 80)
   end
 
-  test "M2: a User-Agent that is not printable text succeeds and records no version", %{
+  test "a User-Agent that is not printable text succeeds and records no version", %{
     conn: conn,
     key: key,
     secret: secret,

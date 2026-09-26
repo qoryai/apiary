@@ -9,10 +9,10 @@ jobs:
   test:
     name: Elixir tests (${{ matrix.name }})
     runs-on: ubuntu-latest
-    # The suite runs under each instance a launch may make (decision 0070): every feature,
-    # the wall and the record, and the record alone. A test that
-    # exercises a feature is tagged `needs:` and left out where the feature is off; the
-    # checks that do not depend on the features run once, with every feature.
+    # The suite runs under each instance a launch may make: every feature, the wall and
+    # the record, and the record alone. A test that exercises a feature is tagged `needs:`
+    # and left out where the feature is off; the checks that do not depend on the features
+    # run once, with every feature.
     strategy:
       fail-fast: false
       matrix:
