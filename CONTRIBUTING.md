@@ -69,161 +69,18 @@ errors and the tests, then `MIX_ENV=prod mix assets.deploy` to prove the assets 
 another name, set `PHX_HOST` (or a full `PUBLIC_URL`) in `mise.local.toml`, which is not
 tracked, or in the shell. Emails in development go to `http://localhost:4100/dev/mailbox`.
 
-## Layout
+## Developer documentation
 
-The application is under `lib/apiary/`, one context per concern, each with its schemas
-beside it:
+How the application is built and the rules its code follows are under [docs/](docs/):
+[architecture.md](docs/architecture.md) for the layout and the tenancy,
+[conventions.md](docs/conventions.md) for migrations, tests, doc comments and the vocabulary,
+[access.md](docs/access.md) for who may do what,
+[lingo.md](docs/lingo.md) for the words on the page,
+[contract-assumptions.md](docs/contract-assumptions.md) for the server contract, and
+[releases.md](docs/releases.md) for how a release is made. A change to what they describe
+changes them in the same pull request.
 
-- `Apiary.Accounts`: users, their tokens, the notifier, and `Apiary.Accounts.Scope`, the
-  caller: the user, the organisation, the workspace and the membership.
-- `Apiary.Organisations`: organisations, workspaces, memberships and invitations; sign-up,
-  the members of a workspace, renaming.
-- `Apiary.AccessKeys`: a workspace's access keys, their secrets encrypted at rest through
-  `Apiary.Vault`, rotation and revocation, and the lookup a signed request verifies against.
-- `Apiary.Contract`: the signature of a signed GET, pure functions with no database.
-- `Apiary.Release` and `Apiary.Release.Migrator`: what the release runs at boot.
+## Pull requests
 
-The web side is under `lib/apiary_web/`:
-
-- `contract/`: the server contract. `ApiaryWeb.Contract.SignedRequest` is the plug that
-  verifies a signed request and assigns the access key; the controllers behind it answer
-  the contract's endpoints: `ConfigurationController` for the discovery document,
-  `EventsController` for the events, whose body `RawBody` keeps as it was sent,
-  `RunConfigurationController` for the run configuration. Each of them refuses a
-  contract revision it does not serve through `ContractVersion`.
-- `live/`: the pages behind sign-in, one directory per area (`workspace_live`,
-  `member_live`, `access_key_live`, `settings_live`, `invitation_live`, `user_live`).
-- `controllers/`: health, the home page, and the session controllers.
-- `components/`: `core_components.ex` and the layouts. A page composes these; it does not
-  write its own button.
-- `lingo.ex`: the domain's words. Every visible string goes through Gettext in engine
-  words, and `priv/gettext/en@software/` says them in the software domain's; see
-  [docs/lingo.md](docs/lingo.md).
-- `router.ex` and `user_auth.ex`: the pipelines, the `live_session` blocks, and what a
-  mount loads into the scope. A workspace's pages are under `/:org/:workspace/…` and an
-  organisation's under `/:org/…`, by their slugs; the organisation and the workspace come
-  from the path, never from the session, and a slug the user is not a member of answers
-  not found. The names a slug can never be are in `reserved_slugs.ex`, and a new top-level
-  path or organisation page is added there in the same change.
-
-Migrations are under `priv/repo/migrations/`, one per change. Tests mirror the tree:
-`test/apiary/` for the contexts, `test/apiary_web/` for the plugs, controllers and pages.
-Fixtures are under `test/support/fixtures/`, one module per context; they create data the
-way the product does, through `Apiary.Organisations.sign_up_user/2` and the context
-functions, never by inserting rows directly. The one exception is the published key of the
-contract's fixtures, which no product function would create.
-
-The tests tagged `:contract` (`test/contract/`) replay the fixtures of the server contract
-from a checkout of qoryai/runner: `RUNNER_CONTRACT_DIR`, or `../../runner/main/contracts/runner/v1`
-when that is there. Without one they are excluded and a line says so; CI checks the runner
-out at the ref in `.runner-contract-ref` and sets `CONTRACT_FIXTURES_REQUIRED=1`, which makes
-their absence a failure.
-
-## Tenancy
-
-The organisation is the tenant, and the schema enforces it, not the pages:
-
-- Every table except the account tables (`users`, `users_tokens`) carries
-  `organisation_id`, and every table that belongs to a workspace carries `workspace_id`
-  beside it with the composite foreign key `(organisation_id, workspace_id)` against
-  `workspaces`, so no row can name a workspace of another organisation. Both come in the
-  table's first migration; no migration retrofits them.
-- A unique constraint is scoped by the organisation: `(organisation_id, name)` on
-  workspaces, `(organisation_id, user_id)` on memberships, `(organisation_id, email)` on
-  pending invitations, `(organisation_id, workspace_id, label)` on active access keys. A
-  name is unique inside an organisation, never across them.
-- Every context function that reads or writes an organisation's data takes an
-  `Apiary.Accounts.Scope` as its first argument and filters by its organisation and
-  workspace, and by nothing else the caller passes. The exceptions are the entry points
-  that have no caller yet: sign-up, an invitation token, and the key id of a signed
-  request.
-- A test for a new table asserts that a row of another organisation is not reachable
-  through a scope of this one: two `sign_up_fixture()` calls, a row in the first, a read
-  through the second that returns nothing or raises. `test/apiary/access_keys_test.exs`
-  has the shape.
-
-A page never touches `Apiary.Repo`; it calls a context with `@current_scope`.
-
-## Migrations
-
-One migration per change, generated with `mix ecto.gen.migration`, named for what it does.
-The rules are in [guides/upgrading.md](guides/upgrading.md), because they exist for the person
-who restarts a self-hosted installation; the short form:
-
-- **Expand, then contract, in separate releases.** A release adds; the release after it
-  removes what nothing reads any more. The previous release keeps running against the
-  schema the next one migrated, so a rollback of the application needs no rollback of the
-  database.
-- **Every migration reverses.** `change` when Ecto can invert it, an explicit `down`
-  otherwise. `Apiary.Release.rollback/2` runs it in production.
-- **No data rewrite inside a schema migration**, and indexes on large tables are created
-  concurrently.
-- **The tenant keys come first**, as above.
-
-The release's section in `CHANGELOG.md` names the tables the migration touches under
-Migrations and anything the operator has to do under Upgrading.
-
-## Tests
-
-A test is hermetic: the SQL sandbox for the database, the Swoosh test adapter for email,
-nothing that reaches the network. Fixtures hold synthetic data only: no real email
-address, no real host name of anyone's infrastructure, no real secret, no key or run
-recorded from anyone's machine. Name a test for the behaviour it pins, not for the function
-it calls; a LiveView test finds elements by the ids the template sets, not by the words on
-the page.
-
-## Doc comments
-
-Every context, schema and plug carries a `@moduledoc`, and every public context function a
-`@doc`. The conventions:
-
-- The first sentence starts with the name and is a complete sentence: `Organisations
-  holds ...`, `create_access_key/2 creates ...`.
-- A moduledoc says what the module owns, the words it defines, how a caller uses it, and
-  the invariants a caller must not break, such as which scope a function expects.
-- Say what the function does, including what it refuses (`{:error, :forbidden}`,
-  `{:error, :last_owner}`) and what it returns exactly once, such as a secret.
-- A comment inside a function says why the code exists or what is subtle in it, never what
-  the next line does.
-- Wrap at 90 columns.
-
-One vocabulary, no synonyms: **organisation** is the tenant, the thing that signs up;
-**workspace** is the unit of use inside it; **membership** is a user's place in an
-organisation and its workspace, at the level owner or member; **access key** is a
-workspace's credential for the server contract; **key id** is its public part, `ak_` and
-sixteen characters; **secret** is the part that signs, shown once; **run** is one
-execution of one session on a machine of the workspace; **event** is one thing a run
-reports, delivered to the events URL; **receiver** is what answers the events URL; **run
-configuration** is what the runner fetches before a run; **security policy** is
-`SECURITY.md`. An organisation is never a team, a tenant in prose or an account; a
-workspace is never a team, a project or a hive; an access key is never an API key or a
-token; a secret is never a password. The product surface is the one place with other
-words: a page, an email or a flash says a domain's words through Gettext, and the software
-domain calls a target a **repository** ([docs/lingo.md](docs/lingo.md)). So do the guides,
-which are written in the software domain's words. Organisation and workspace are the same
-words in every domain; apiary and hive are words of the apiary skin, which is not built
-yet. Code, schemas, migrations and this file say organisation and workspace.
-
-## Releases
-
-A release is a tag on a branch named after it, `v0.1.0`, opened as one pull request. That
-branch adds the release's section to `CHANGELOG.md`, `[X.Y.Z] - YYYY-MM-DD` with the day
-the tag lands, with Added, Changed and Fixed as they apply and always **Migrations**, the
-tables the release's migrations touch and whether one is long, and **Upgrading**, anything
-the operator has to do or know; a fix that goes to `main` outside a release branch goes
-under `[Unreleased]` until the next one. The same branch sets `version` in `mix.exs` to the
-tag without the `v`: that is what `GET /health` and `bin/apiary version` report, and the
-release workflow refuses a tag whose version `mix.exs` does not carry.
-
-Pushing `vX.Y.Z` to the GitHub mirror runs `.github/workflows/release.yml`, which takes
-the release body from the changelog, builds the image from the `Dockerfile` and publishes
-it to `ghcr.io` under the version and `latest`. `scripts/changelog-section.sh 0.1.0` prints
-the section the workflow would take, and fails when there is none, which is what stops a
-tag from publishing without one. Check both before tagging:
-
-```sh
-scripts/changelog-section.sh X.Y.Z
-grep 'version: "X.Y.Z"' mix.exs
-```
-
-Commit messages say what changed and why it was needed, in the imperative.
+Run `mix precommit` before opening one. Commit messages say what changed and why it was
+needed, in the imperative.

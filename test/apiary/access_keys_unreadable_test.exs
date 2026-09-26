@@ -34,6 +34,7 @@ defmodule Apiary.AccessKeysUnreadableTest do
   end
 
   test "verification says the secret is unreadable, in the log too, never 401's :error", %{
+    scope: scope,
     key: key
   } do
     log =
@@ -43,6 +44,9 @@ defmodule Apiary.AccessKeysUnreadableTest do
 
     assert log =~ "access key secret cannot be decrypted key_id=#{key.key_id}"
     assert log =~ "CLOAK_KEY"
+    # The line names the key's organisation and workspace by id, as metadata.
+    assert log =~ "organisation_id=#{scope.organisation.id}"
+    assert log =~ "workspace_id=#{scope.workspace.id}"
   end
 
   test "the key is still listed, without its secrets", %{scope: scope, key: key} do

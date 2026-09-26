@@ -118,6 +118,111 @@ defmodule Apiary.Organisations do
 
   def load_home_scope(scope, _workspace_id), do: scope
 
+  @doc """
+  job_scope/3 is the scope a job acts under (`Apiary.Job`), built from the
+  ids its arguments carry: the organisation, the workspace in it when `workspace_id` is not
+  nil, and the person whose action enqueued the job when `user_id` is not nil, with their
+  membership there when they still hold one. Without a person the scope's user is nil: the
+  instance acts. Without an organisation the scope is the instance's alone.
+
+  `:error` when the organisation, the workspace in it or the person no longer exists.
+  """
+  @spec job_scope(Ecto.UUID.t() | nil, Ecto.UUID.t() | nil, Ecto.UUID.t() | nil) ::
+          {:ok, Scope.t()} | :error
+  def job_scope(organisation_id, workspace_id, user_id) do
+    with {:ok, user} <- fetch_job_user(user_id),
+         {:ok, organisation} <- fetch_job_organisation(organisation_id),
+         {:ok, workspace} <- fetch_job_workspace(organisation, workspace_id) do
+      {:ok,
+       %Scope{
+         user: user,
+         organisation: organisation,
+         workspace: workspace,
+         membership: job_membership(user, organisation, workspace)
+       }}
+    end
+  end
+
+  defp fetch_job_user(nil), do: {:ok, nil}
+
+  defp fetch_job_user(user_id) do
+    case Repo.get(User, user_id) do
+      %User{} = user -> {:ok, user}
+      nil -> :error
+    end
+  end
+
+  defp fetch_job_organisation(nil), do: {:ok, nil}
+
+  defp fetch_job_organisation(organisation_id) do
+    case Repo.get(Organisation, organisation_id) do
+      %Organisation{} = organisation -> {:ok, organisation}
+      nil -> :error
+    end
+  end
+
+  defp fetch_job_workspace(_organisation, nil), do: {:ok, nil}
+  defp fetch_job_workspace(nil, _workspace_id), do: :error
+
+  defp fetch_job_workspace(%Organisation{id: organisation_id}, workspace_id) do
+    case Repo.get_by(Workspace, id: workspace_id, organisation_id: organisation_id) do
+      %Workspace{} = workspace -> {:ok, workspace}
+      nil -> :error
+    end
+  end
+
+  defp job_membership(nil, _organisation, _workspace), do: nil
+  defp job_membership(_user, nil, _workspace), do: nil
+
+  defp job_membership(%User{} = user, %Organisation{id: organisation_id}, workspace) do
+    query = user |> membership_query() |> where(organisation_id: ^organisation_id)
+
+    query =
+      case workspace do
+        %Workspace{id: workspace_id} -> where(query, workspace_id: ^workspace_id)
+        nil -> query
+      end
+
+    query |> limit(1) |> Repo.one()
+  end
+
+  @typedoc "Where a page of ids ends: the id of its last row; nil before the first page."
+  @type page_cursor :: Ecto.UUID.t() | nil
+
+  @doc """
+  One page of the ids of every organisation on the instance, in the order of their ids: at
+  most `limit` after `cursor`, and the cursor the next page starts after. For work done
+  once per organisation (`Apiary.Job.insert_per_organisation/3`); each page is one short
+  query on the primary key's index, so nothing is held open between pages.
+  """
+  @spec page_organisation_ids(page_cursor(), pos_integer()) ::
+          {[Ecto.UUID.t()], page_cursor()}
+  def page_organisation_ids(cursor, limit) do
+    from(o in Organisation, select: {o.id, o.id}) |> page_ids(cursor, limit)
+  end
+
+  @doc """
+  One page of the organisation and workspace ids of every workspace on the instance, in the
+  order of the workspaces' ids, as `page_organisation_ids/2` pages organisations. For work
+  done once per workspace (`Apiary.Job.insert_per_workspace/3`).
+  """
+  @spec page_workspace_ids(page_cursor(), pos_integer()) ::
+          {[{Ecto.UUID.t(), Ecto.UUID.t()}], page_cursor()}
+  def page_workspace_ids(cursor, limit) do
+    from(w in Workspace, select: {w.id, {w.organisation_id, w.id}}) |> page_ids(cursor, limit)
+  end
+
+  # Keyset pages on the primary key: a sweep needs every row once, in no particular order.
+  defp page_ids(query, cursor, limit) do
+    query = if cursor, do: where(query, [r], r.id > ^cursor), else: query
+    rows = query |> order_by([r], asc: r.id) |> limit(^limit) |> Repo.all()
+
+    case List.last(rows) do
+      nil -> {[], cursor}
+      {id, _ids} -> {Enum.map(rows, &elem(&1, 1)), id}
+    end
+  end
+
   defp put_membership(scope, %Membership{} = membership) do
     %{
       scope

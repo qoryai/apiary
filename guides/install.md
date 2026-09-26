@@ -71,14 +71,28 @@ they are.
 | `time` | when, UTC, ISO 8601 |
 | `severity` | the level: `info`, `warning`, `error` and so on |
 | `message` | the line's text |
-| `metadata` | of an explicit list and nothing else: `request_id`, `duration_us`, `application`, `domain`, `mfa`, `module`, `function`, `file`, `line`, `pid`, `crash_reason`, `initial_call`, `registered_name` |
+| `metadata` | of an explicit list and nothing else: `request_id`, `organisation_id`, `workspace_id`, `user_id`, `duration_us`, `application`, `domain`, `mfa`, `module`, `function`, `file`, `line`, `pid`, `crash_reason`, `initial_call`, `registered_name` |
 | `request` | on the one line written per request: `connection` with `protocol`, `method`, `path` and `status`, and `client` with `user_agent` and `ip` |
 
-A request line's duration is `metadata.duration_us`, in microseconds. No header and no body
-is ever logged, and neither is anything a runner signed or sent. Four routes carry a secret
-in their path, an invitation, its continuation, a log-in link and an email change; their
-secret segment is logged as `:token`, so a reader of the log cannot sign in or join an
-organisation with what it finds there.
+A line written while the apiary works for an organisation carries its id as
+`metadata.organisation_id`, and `metadata.workspace_id` when the work is in a workspace: a
+page under `/:org/…` and its reads, a runner's request, the projection of a run's events,
+a background job, and the line that says a job failed, was cancelled or was discarded. A
+line written for a signed-in person carries their id as `metadata.user_id`: every page
+they open, and a job their action enqueued. A person's own pages, their account settings
+and their organisations, carry `user_id` and no organisation or workspace. A runner's
+request is an access key's and carries no `user_id`.
+
+The ids are never a name, a slug or an email address, so a search by any of them finds
+everything that happened for it without the log holding a customer's or a person's names.
+`user_id` is a pseudonymous id: the log alone does not say who it is. A job's line names
+the job, its attempt and the kind of error, never its arguments or the error's message.
+
+A request line's duration is `metadata.duration_us`, in microseconds. No header and no
+body is ever logged, and neither is anything a runner signed or sent. Four routes carry a
+secret in their path, an invitation, its continuation, a log-in link and an email change;
+their secret segment is logged as `:token`, so a reader of the log cannot sign in or join
+an organisation with what it finds there.
 
 The exception is `MAIL_TO_LOG=true`, which writes whole emails to the log, links included.
 It is for a trial on one machine only.

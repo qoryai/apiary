@@ -60,8 +60,11 @@ config :apiary, ApiaryWeb.Endpoint,
 # Enable dev routes for dashboard and mailbox
 config :apiary, dev_routes: true
 
-# Do not include metadata nor timestamps in development logs
-config :logger, :default_formatter, format: "[$level] $message\n"
+# No timestamps in development logs, and of the metadata only the organisation,
+# workspace and person ids, where a line has them.
+config :logger, :default_formatter,
+  format: "[$level] $metadata$message\n",
+  metadata: [:organisation_id, :workspace_id, :user_id]
 
 # Set a higher stacktrace during development. Avoid configuring such
 # in production as building large stacktraces may be expensive.

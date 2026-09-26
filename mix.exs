@@ -50,6 +50,9 @@ defmodule Apiary.MixProject do
       {:phoenix_ecto, "~> 4.5"},
       {:ecto_sql, "~> 3.13"},
       {:postgrex, ">= 0.0.0"},
+      # Background work as durable jobs on Postgres: Apiary.Job. The
+      # open-source Oban only; never Oban Pro.
+      {:oban, "~> 2.24"},
       {:phoenix_html, "~> 4.1"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},
       {:phoenix_live_view, "~> 1.2.0"},
@@ -175,7 +178,14 @@ defmodule Apiary.MixProject do
         "Security policy": [~r/^Apiary\.Policy/],
         Retention: [~r/^Apiary\.Retention/],
         "Server contract": [~r/^Apiary\.Contract/, ~r/^ApiaryWeb\.Contract/],
-        Operation: [Apiary.Release, ~r/^Apiary\.Release\./, Apiary.Mailer, Apiary.Repo],
+        Operation: [
+          Apiary.Release,
+          ~r/^Apiary\.Release\./,
+          Apiary.Mailer,
+          Apiary.Repo,
+          ~r/^Apiary\.Job(\.|$)/,
+          Apiary.LogMetadata
+        ],
         Console: [~r/^ApiaryWeb/],
         "Mix tasks": [~r/^Mix\.Tasks/]
       ],
