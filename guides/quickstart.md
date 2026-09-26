@@ -184,9 +184,11 @@ the runner's version.
 
 ## Next
 
+<!-- feature: security -->
 - Until somebody changes the workplace's policy, runs use each machine's own policy. Read
   [The security policy](security-policy.md) before the first rule: the first change takes
   over for every machine of the workplace.
+<!-- /feature -->
 - `qory run --local` records to files only and does not contact the server.
 - To stop the trial: `docker compose down`. The database stays in the `postgres-data`
   volume; `docker compose down --volumes` deletes it.

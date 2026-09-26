@@ -27,6 +27,7 @@ defmodule ApiaryWeb.Contract.EventsController do
   are never logged.
   """
   use ApiaryWeb, :controller
+  use ApiaryWeb.Features, :observability
 
   alias Apiary.Runs.{Batch, Ingest, RateLimit}
   alias ApiaryWeb.Contract.{Configuration, SignedRequest}

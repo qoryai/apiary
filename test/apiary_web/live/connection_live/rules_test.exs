@@ -5,6 +5,9 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
   """
   use ApiaryWeb.ConnCase, async: true
 
+  # Every test here is a rule, a version or a policy on the run's pages: `security`.
+  @moduletag needs: :security
+
   import Phoenix.LiveViewTest
   import Apiary.OrganisationsFixtures
   import Apiary.RunListFixtures

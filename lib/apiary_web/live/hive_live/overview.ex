@@ -21,9 +21,18 @@ defmodule ApiaryWeb.HiveLive.Overview do
   read from the record; when the first run lands the card stays with its third step
   ticked and leaves at the next navigation.
 
+  The page is the record's, so it belongs to `observability`. Everything of the policy on
+  it belongs to `security` (decision 0070), and where that is off for the scope the page
+  is one that never had a policy: no policy card, no policy read and no subscription to
+  it, no item about the mode or the version in force, no denied destination offered for
+  an allow (that act is a rule), nothing that links to the policy. The strip still counts
+  the denied attempts and their destinations: the runner reported them, they are the
+  record's.
+
   `thresholds/0` holds the design's choices in one place.
   """
   use ApiaryWeb, :live_view
+  use ApiaryWeb.Features, :observability
 
   import ApiaryWeb.OverviewComponents
 
@@ -167,17 +176,18 @@ defmodule ApiaryWeb.HiveLive.Overview do
               </div>
             </section>
             <div class="q-stack">
-              <%= if @failed[:policy] do %>
-                <.sect id="overview-policy" title={gettext("Policy")}>
-                  <div class="q-lines">
-                    <.notice kind={:info}>
-                      <span id="policy-error">{not_loaded()}</span>
-                    </.notice>
-                  </div>
-                </.sect>
-              <% else %>
-                <.policy_glance policy={@policy} />
-              <% end %>
+              <.sect
+                :if={@security? && @failed[:policy]}
+                id="overview-policy"
+                title={gettext("Policy")}
+              >
+                <div class="q-lines">
+                  <.notice kind={:info}>
+                    <span id="policy-error">{not_loaded()}</span>
+                  </.notice>
+                </div>
+              </.sect>
+              <.policy_glance :if={@security? && !@failed[:policy]} policy={@policy} />
               <.retention_glance
                 hive={@current_scope.hive}
                 runs={@key_facts && @key_facts.retention}
@@ -247,10 +257,11 @@ defmodule ApiaryWeb.HiveLive.Overview do
     keys = scope |> AccessKeys.list_access_keys() |> Enum.filter(&is_nil(&1.revoked_at))
     alive = Runs.count_alive(scope)
     posted? = alive > 0 or Runs.recent_runs(scope, 1) != []
+    security? = Apiary.Features.on?(scope, :security)
 
     if connected?(socket) do
       Runs.subscribe(scope)
-      Policy.subscribe(scope)
+      if security?, do: Policy.subscribe(scope)
       Process.send_after(self(), :quiet_tick, window(:quiet_tick, 5_000))
       Process.send_after(self(), :refresh, window(:refresh, 60_000))
     end
@@ -262,7 +273,8 @@ defmodule ApiaryWeb.HiveLive.Overview do
         shown: @shown,
         keys: sort_keys(keys),
         alive: alive,
-        mode: Policy.mode_summary(scope),
+        security?: security?,
+        mode: if(security?, do: Policy.mode_summary(scope)),
         checklist?: not posted?,
         live?: posted?,
         landed: nil,
@@ -304,7 +316,8 @@ defmodule ApiaryWeb.HiveLive.Overview do
     {:ok, if(connected?(socket) and posted?, do: load(socket), else: socket)}
   end
 
-  # The four reads that fill the page, none blocking the first paint (oj 1).
+  # The four reads that fill the page, none blocking the first paint (oj 1); three where
+  # `security` is off, which has no policy to read.
   defp load(socket) do
     socket
     |> read(:activity)
@@ -314,14 +327,22 @@ defmodule ApiaryWeb.HiveLive.Overview do
   end
 
   defp read(socket, :activity) do
-    %{current_scope: scope, today: today} = socket.assigns
-    start_async(socket, :activity, fn -> read_activity(scope, today, DateTime.utc_now()) end)
+    %{current_scope: scope, today: today, security?: security?} = socket.assigns
+
+    start_async(socket, :activity, fn ->
+      read_activity(scope, today, DateTime.utc_now(), security?)
+    end)
   end
 
   defp read(socket, :attention) do
-    scope = socket.assigns.current_scope
-    start_async(socket, :attention, fn -> read_attention(scope, DateTime.utc_now()) end)
+    %{current_scope: scope, security?: security?} = socket.assigns
+
+    start_async(socket, :attention, fn ->
+      read_attention(scope, DateTime.utc_now(), security?)
+    end)
   end
+
+  defp read(%{assigns: %{security?: false}} = socket, :policy), do: socket
 
   defp read(socket, :policy) do
     scope = socket.assigns.current_scope
@@ -346,7 +367,7 @@ defmodule ApiaryWeb.HiveLive.Overview do
 
   ## The reads (oj 3 to 7). Each runs in its own task; nothing here touches the socket.
 
-  defp read_activity(scope, today, now) do
+  defp read_activity(scope, today, now, security?) do
     from = start_of(Date.add(today, -(@thresholds.chart_days - 1)))
     alive_runs = Runs.list_alive(scope, @shown)
 
@@ -354,7 +375,7 @@ defmodule ApiaryWeb.HiveLive.Overview do
       days: Runs.day_facts(scope, from),
       alive_runs: alive_runs,
       recent: Runs.recent_runs(scope, @shown),
-      drift: drift_facts(scope, alive_runs),
+      drift: drift_facts(scope, alive_runs, security?),
       alive: Runs.count_alive(scope),
       today: today,
       read_at: now
@@ -362,26 +383,31 @@ defmodule ApiaryWeb.HiveLive.Overview do
   end
 
   # Today's column, the alive rows and the last runs again: what a run change can move.
-  defp read_today(scope, today, now) do
+  defp read_today(scope, today, now, security?) do
     alive_runs = Runs.list_alive(scope, @shown)
 
     %{
       today: Runs.day_facts(scope, start_of(today)),
       alive_runs: alive_runs,
       recent: Runs.recent_runs(scope, @shown),
-      drift: drift_facts(scope, alive_runs),
+      drift: drift_facts(scope, alive_runs, security?),
       alive: Runs.count_alive(scope),
       lost: Runs.lost_since(scope, DateTime.add(now, -@thresholds.lost_days, :day), @shown + 1),
       read_at: now
     }
   end
 
-  defp read_attention(scope, now) do
+  defp read_attention(scope, now, security?) do
     since = DateTime.add(now, -@thresholds.denied_days, :day)
     window = DateTime.add(now, -@thresholds.chart_days, :day)
 
+    connections =
+      if security?,
+        do: Policy.overview_activity(scope, since, window),
+        else: record_denials(scope, window)
+
     %{
-      connections: Policy.overview_activity(scope, since, window),
+      connections: connections,
       lost: Runs.lost_since(scope, since, @shown + 1),
       keys: scope |> AccessKeys.list_access_keys() |> Enum.filter(&is_nil(&1.revoked_at)),
       read_at: now
@@ -413,9 +439,23 @@ defmodule ApiaryWeb.HiveLive.Overview do
     }
   end
 
+  # Without `security` no rule holds a denied destination and there is no act to offer on
+  # one: the connections are read for the strip's count of destinations alone, in the
+  # shape the attention read has, with nothing to list. `Policy.denied_summary/2` reads
+  # the recorded connections and no rule.
+  defp record_denials(scope, window) do
+    case Policy.denied_summary(scope, window) do
+      {:ok, %{destinations: n}} -> {:ok, %{denied: [], uncovered: [], denied_destinations: n}}
+      :unavailable -> :unavailable
+    end
+  end
+
   # What the alive runs report against what is in force, in one bulk read; the reported
-  # version is looked up for a run that is behind, and only then (pd9).
-  defp drift_facts(scope, runs) do
+  # version is looked up for a run that is behind, and only then (pd9). The configuration
+  # in force is `security`'s: without it nothing is compared and no run is behind.
+  defp drift_facts(_scope, _runs, false), do: %{}
+
+  defp drift_facts(scope, runs, true) do
     reported = Enum.filter(runs, &is_binary(&1.reported_run_configuration_digest))
 
     if reported == [] do
@@ -691,7 +731,7 @@ defmodule ApiaryWeb.HiveLive.Overview do
   # The coalesced re-read: today's column, the alive rows, the last runs, the lost runs. At
   # midnight UTC the window has moved: the fourteen days are read anew.
   defp refresh_runs(%{assigns: %{live?: true}} = socket) do
-    %{current_scope: scope, today: today} = socket.assigns
+    %{current_scope: scope, today: today, security?: security?} = socket.assigns
     now = DateTime.utc_now()
 
     if Date.compare(DateTime.to_date(now), today) == :gt do
@@ -699,9 +739,11 @@ defmodule ApiaryWeb.HiveLive.Overview do
 
       socket
       |> assign(today: new_today)
-      |> then(&start_async(&1, :activity, fn -> read_activity(scope, new_today, now) end))
+      |> then(
+        &start_async(&1, :activity, fn -> read_activity(scope, new_today, now, security?) end)
+      )
     else
-      start_async(socket, :today, fn -> read_today(scope, today, now) end)
+      start_async(socket, :today, fn -> read_today(scope, today, now, security?) end)
     end
   end
 
@@ -737,13 +779,13 @@ defmodule ApiaryWeb.HiveLive.Overview do
   end
 
   def handle_event("show_new", _params, socket) do
-    %{current_scope: scope, today: today} = socket.assigns
+    %{current_scope: scope, today: today, security?: security?} = socket.assigns
     now = DateTime.utc_now()
 
     socket =
       socket
       |> assign(new_ids: MapSet.new(), new_runs: 0, recent: nil)
-      |> then(&start_async(&1, :today, fn -> read_today(scope, today, now) end))
+      |> then(&start_async(&1, :today, fn -> read_today(scope, today, now, security?) end))
 
     {:noreply, socket}
   end
@@ -788,7 +830,12 @@ defmodule ApiaryWeb.HiveLive.Overview do
   def handle_event("close_confirm", _params, socket), do: {:noreply, socket}
 
   ## The one-click allow of a denied destination (od2): the popover of pd8, called with the
-  ## destination's targets, exactly as the connections page calls it.
+  ## destination's targets, exactly as the connections page calls it. A rule is
+  ## `security`'s: without it no row offers the act, and an event that asks anyway is
+  ## ignored, as an event for a row that is gone is.
+
+  def handle_event("rule_" <> _event, _params, %{assigns: %{security?: false}} = socket),
+    do: {:noreply, socket}
 
   def handle_event("rule_open", %{"id" => id, "level" => level}, socket) do
     case find_item(socket, id) do
@@ -1186,12 +1233,15 @@ defmodule ApiaryWeb.HiveLive.Overview do
 
       known = MapSet.new(shown, & &1.id)
 
-      # Settled once a recompute has seen the first three reads land: the list this one
-      # produces is the first the reader can have read in full.
+      # Settled once a recompute has seen the first three reads land (two without
+      # `security`, which has no policy read): the list this one produces is the first the
+      # reader can have read in full.
       settled? = assigns.settled
 
-      all_landed? =
-        MapSet.subset?(MapSet.new([:activity, :attention, :policy]), assigns.landed_reads)
+      first_reads =
+        if assigns.security?, do: [:activity, :attention, :policy], else: [:activity, :attention]
+
+      all_landed? = MapSet.subset?(MapSet.new(first_reads), assigns.landed_reads)
 
       arrived =
         candidates

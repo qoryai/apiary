@@ -12,6 +12,9 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
 
   Everything a row carries is a runner's input. A host is put through the policy's own
   grammar before it is compared with a rule, and nothing here becomes an atom.
+
+  All of it is `security`'s: a page of an instance without it (decision 0070) asks
+  nothing here, and its rows have no standing.
   """
 
   use ApiaryWeb, :verified_routes

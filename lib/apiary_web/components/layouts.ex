@@ -15,21 +15,23 @@ defmodule ApiaryWeb.Layouts do
 
   # Two sections: the record first, because it is why people open the console. The words
   # are marked for extraction here and translated when the sidebar renders (`nav_text/1`).
+  # Each entry names the feature it belongs to (`Apiary.Features`), nil for the entries
+  # every instance has; `nav_items/1` keeps the ones that are on.
   @nav [
     {gettext_noop("Hive"), gettext_noop("Main"),
      [
-       {:overview, gettext_noop("Overview"), "hero-squares-2x2-micro", "/hive"},
-       {:runs, gettext_noop("Runs"), "hero-play-circle-micro", "/hive/runs"},
+       {:overview, gettext_noop("Overview"), "hero-squares-2x2-micro", "/hive", :observability},
+       {:runs, gettext_noop("Runs"), "hero-play-circle-micro", "/hive/runs", :observability},
        {:connections, gettext_noop("Connections"), "hero-arrows-right-left-micro",
-        "/hive/connections"},
+        "/hive/connections", :observability},
        # After Connections, because the policy is what the connections are judged by.
-       {:policy, gettext_noop("Policy"), "hero-shield-check-micro", "/hive/policy"}
+       {:policy, gettext_noop("Policy"), "hero-shield-check-micro", "/hive/policy", :security}
      ]},
     {gettext_noop("Manage"), gettext_noop("Manage"),
      [
-       {:keys, gettext_noop("Access keys"), "hero-key-micro", "/hive/keys"},
-       {:members, gettext_noop("Members"), "hero-users-micro", "/hive/members"},
-       {:settings, gettext_noop("Settings"), "hero-cog-6-tooth-micro", "/hive/settings"}
+       {:keys, gettext_noop("Access keys"), "hero-key-micro", "/hive/keys", nil},
+       {:members, gettext_noop("Members"), "hero-users-micro", "/hive/members", nil},
+       {:settings, gettext_noop("Settings"), "hero-cog-6-tooth-micro", "/hive/settings", nil}
      ]}
   ]
 
@@ -68,7 +70,7 @@ defmodule ApiaryWeb.Layouts do
   def app(assigns) do
     assigns =
       assigns
-      |> assign(:nav_items, @nav)
+      |> assign(:nav_items, nav_items(assigns.current_scope))
       |> assign(:organisation, scope_field(assigns.current_scope, :organisation))
       |> assign(:hive, scope_field(assigns.current_scope, :hive))
       |> assign(:membership, scope_field(assigns.current_scope, :membership))
@@ -308,6 +310,22 @@ defmodule ApiaryWeb.Layouts do
   end
 
   defp nav_text(msgid), do: Gettext.gettext(ApiaryWeb.Gettext, msgid)
+
+  # The entries whose feature is on for the scope. A feature that is off is absent, not
+  # disabled (decision 0070): no entry, greyed or otherwise, and so nothing beside it
+  # either (Policy's mode word goes with Policy). A section left empty goes too.
+  defp nav_items(scope) do
+    for {section, label, items} <- @nav,
+        shown = Enum.flat_map(items, &nav_item(scope, &1)),
+        shown != [],
+        do: {section, label, shown}
+  end
+
+  defp nav_item(_scope, {key, text, icon, path, nil}), do: [{key, text, icon, path}]
+
+  defp nav_item(scope, {key, text, icon, path, feature}) do
+    if Apiary.Features.on?(scope, feature), do: [{key, text, icon, path}], else: []
+  end
 
   defp nav_count(%{keys: n}, :keys), do: n
   defp nav_count(%{members: n}, :members), do: n
@@ -562,7 +580,9 @@ defmodule ApiaryWeb.Layouts do
             <.icon name="hero-book-open-micro" class="size-4" /> {gettext("Docs")}
           </.link>
         </li>
-        <li role="none">
+        <%!-- The release notes name every feature, so only the documentation of an instance with
+             every one has them; the documentation is the instance's, and so is this check. --%>
+        <li :if={Apiary.Features.enabled() == Apiary.Features.all()} role="none">
           <.link href={~p"/docs/changelog.html"} role="menuitem" id="brand-menu-changelog">
             <.icon name="hero-list-bullet-micro" class="size-4" /> {gettext("Changelog")}
           </.link>
@@ -671,9 +691,15 @@ defmodule ApiaryWeb.Layouts do
           <p class="max-w-[30ch] text-balance text-[26px]/8 font-semibold tracking-[-0.025em]">
             {accented(gettext("Can you trust your agents? With Qory *you don't have to*."))}
           </p>
-          <p class="max-w-[46ch] text-[13px]/5 text-muted">
+          <%!-- Before sign-in there is no organisation: the instance's features decide. --%>
+          <p :if={Apiary.Features.on?(:security)} class="max-w-[46ch] text-[13px]/5 text-muted">
             {gettext(
               "Every session runs behind a security wall, reaches only what you allow, never holds your keys, and leaves a full record. Open source, so you can check all of that."
+            )}
+          </p>
+          <p :if={!Apiary.Features.on?(:security)} class="max-w-[46ch] text-[13px]/5 text-muted">
+            {gettext(
+              "Every session leaves a full record: what it ran, what it printed and where it reached out to. Open source, so you can check all of that."
             )}
           </p>
         </div>

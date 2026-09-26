@@ -9,6 +9,11 @@ defmodule ApiaryWeb.OverviewComponents do
   Nothing is inferred. Every component that renders inside a list takes its `id` from the
   caller (oj 8), so a live update patches a row in place and never by index. Times tick
   in the browser under the `Ticker` hook, as everywhere (rd3).
+
+  The policy's parts are the `security` feature's (decision 0070): `policy_glance/1`, the
+  attention items of kinds `:denied` (an allow is a rule), `:behind`, `:enforce` and
+  `:unmanaged`. None of them asks for itself; the caller leaves them out where the feature
+  is off, and what remains names, links to and offers nothing of the policy.
   """
   use Phoenix.Component
   use ApiaryWeb, :verified_routes

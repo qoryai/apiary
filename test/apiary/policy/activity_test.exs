@@ -2,6 +2,9 @@ defmodule Apiary.Policy.ActivityTest do
   # Not async: one test sets the cap in the application environment, which is global.
   use Apiary.DataCase, async: false
 
+  # The security policy: left out of a run without the security feature.
+  @moduletag needs: :security
+
   import Apiary.OrganisationsFixtures
   import Apiary.RunEventsFixtures, only: [tool_invocation_data: 1]
   import Apiary.RunListFixtures

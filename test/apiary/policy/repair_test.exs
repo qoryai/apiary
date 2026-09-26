@@ -7,6 +7,9 @@ defmodule Apiary.Policy.RepairTest do
   # temporary table; they run as the migration runs, alone.
   use Apiary.DataCase, async: false
 
+  # The security policy: left out of a run without the security feature.
+  @moduletag needs: :security
+
   import Apiary.OrganisationsFixtures
 
   Code.require_file(

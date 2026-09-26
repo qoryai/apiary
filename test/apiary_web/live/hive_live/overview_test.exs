@@ -319,6 +319,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
   end
 
   describe "the glances (od7 to od9)" do
+    @tag needs: :security
     test "policy: a new hive, then a managed one with a version, targets and things to review",
          %{conn: conn, scope: scope} do
       run = started_run(scope, shop())
@@ -435,6 +436,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
   end
 
   describe "needs attention (od1)" do
+    @tag needs: :security
     test "is absent when there is nothing to do", %{conn: conn, scope: scope} do
       started_run(scope, shop())
       {:ok, _} = Policy.set_mode(scope, "enforce")
@@ -443,6 +445,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
       assert has_element?(view, "#overview-strip")
     end
 
+    @tag needs: :security
     test "the kinds, in the order of the brief, bounded at five with the overflow linked", %{
       conn: conn,
       scope: scope
@@ -541,6 +544,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
       refute has_element?(view, "#att-key-#{idle.id}")
     end
 
+    @tag needs: :security
     test "the policy items: unmanaged with runs, enforce for an owner, open policy for a member",
          %{conn: conn, scope: scope} = ctx do
       started_run(scope, shop())
@@ -622,7 +626,10 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
       lost = lost_run(scope)
       started_run(scope, shop())
       view = open(conn)
-      assert text(view, "#attention-n") == "2"
+      # With `security` the unmanaged policy is the second item, and focus goes to it;
+      # without it the lost run is the only one, and focus goes to All runs.
+      security? = Apiary.Features.on?(:security)
+      assert text(view, "#attention-n") == if(security?, do: "2", else: "1")
 
       view |> element("#att-run-#{lost.run_id}-act") |> render_click()
       assert has_element?(view, "#close-run", "Close this run")
@@ -632,11 +639,14 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
       assert has_element?(view, "#att-run-#{lost.run_id}.q-resolved .q-mark-closed")
       assert text(view, "#att-run-#{lost.run_id}") =~ "Closed."
       refute has_element?(view, "#att-run-#{lost.run_id}-act")
-      assert text(view, "#attention-n") == "1"
+      assert text(view, "#attention-n") == if(security?, do: "1", else: "0")
       assert text(view, "#overview-announcer") == "nightly-mirror is closed."
-      assert_push_event(view, "overview:focus", %{id: "att-policy-unmanaged-act"})
+
+      next = if security?, do: "att-policy-unmanaged-act", else: "last-runs-all"
+      assert_push_event(view, "overview:focus", %{id: ^next})
     end
 
+    @tag needs: :security
     test "allow a denied destination here: the popover, the rule, the struck row", %{
       conn: conn,
       scope: scope
@@ -683,6 +693,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
       assert text(view, "#attention-n") == "0"
     end
 
+    @tag needs: :security
     test "a request a path rule refused is a denied request to its tool", %{
       conn: conn,
       scope: scope
@@ -712,6 +723,7 @@ defmodule ApiaryWeb.HiveLive.OverviewTest do
              )
     end
 
+    @tag needs: :security
     test "allow for the hive from the caret menu", %{conn: conn, scope: scope} do
       started_run(scope, shop(),
         egress: [%{"host" => "flags.example", "decision" => "denied", "rule" => ""}]

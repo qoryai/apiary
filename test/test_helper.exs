@@ -23,5 +23,11 @@ exclude =
 # A LiveView's async assigns and a PubSub message arrive in milliseconds on an idle machine
 # and not within the default 100 ms under a full, parallel suite: `render_async` and
 # `assert_receive` wait up to five seconds, and return as soon as there is something.
+# A test tagged `needs: feature` exercises that feature; the suite runs in CI under more
+# than one QORY_FEATURES, and a run without the feature leaves such tests out.
+exclude =
+  exclude ++
+    for(feature <- Apiary.Features.all() -- Apiary.Features.enabled(), do: {:needs, feature})
+
 ExUnit.start(exclude: exclude, assert_receive_timeout: 5_000)
 Ecto.Adapters.SQL.Sandbox.mode(Apiary.Repo, :manual)

@@ -117,12 +117,16 @@ defmodule Apiary.MixProject do
         "gettext.extract --check-up-to-date",
         "docs --warnings-as-errors",
         "test"
-      ]
+      ],
+      # The documentation is one tree per set of features (Mix.Tasks.Docs.All), so every
+      # `mix docs`, CI's and the image's among them, builds all of them.
+      docs: "docs.all"
     ]
   end
 
   # The documentation ships with the application: the guides and the module reference are
-  # built into priv/static/docs, which every instance serves at /docs.
+  # built into priv/static/docs, which every instance serves at /docs, once per set of
+  # features it differs by (`mix docs.all`).
   defp docs do
     [
       main: "quickstart",
@@ -166,6 +170,30 @@ defmodule Apiary.MixProject do
         Operation: [Apiary.Release, ~r/^Apiary\.Release\./, Apiary.Mailer, Apiary.Repo],
         Console: [~r/^ApiaryWeb/],
         "Mix tasks": [~r/^Mix\.Tasks/]
+      ],
+      # Read by `mix docs.all`, not by ExDoc: what a tree for an instance without the feature
+      # leaves out (decision 0070). A module that says `use ApiaryWeb.Features` needs its
+      # feature without being listed; a passage of a guide is marked in the guide,
+      # `<!-- feature: security -->` to `<!-- /feature -->`. `all` is every feature: the
+      # release notes name them all.
+      features: [
+        security: [
+          extras: ["guides/security-policy.md"],
+          modules: [
+            ~r/^Apiary\.Policy/,
+            ~r/^ApiaryWeb\.Policy/,
+            ApiaryWeb.ConnectionLive.Rules,
+            Mix.Tasks.Apiary.Policy.Rerender
+          ]
+        ],
+        # The release notes and the module reference name every feature, the prose of a
+        # shared module included, so only an instance with every feature serves them. The
+        # tasks the guides send a self-hoster to stay in every tree; their docs name no
+        # feature, and ExDoc warns of a `mix` span whose task a tree leaves out.
+        all: [
+          extras: ["CHANGELOG.md"],
+          modules: [~r/^(?!Mix\.Tasks\.Apiary\.(Rebuild|Prune)$)/]
+        ]
       ]
     ]
   end

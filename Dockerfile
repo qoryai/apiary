@@ -67,7 +67,9 @@ COPY assets assets
 RUN mix assets.deploy
 
 # The documentation ships with the application: the guides and the module reference are
-# built into priv/static/docs, which the release serves at /docs. After assets.deploy, so
+# built into priv/static/docs, which the release serves at /docs. `mix docs` is `mix
+# docs.all`: one tree per set of features the documentation differs by, every one in the
+# image, and each instance serves the one its QORY_FEATURES cover. After assets.deploy, so
 # phx.digest does not fingerprint them.
 COPY guides guides
 COPY CHANGELOG.md ./

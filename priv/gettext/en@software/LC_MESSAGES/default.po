@@ -1991,6 +1991,11 @@ msgstr ""
 msgid "Allowed since."
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Allowed."
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
 msgid "Already allowed by %{suffix}. Adding it changes nothing today and keeps the host allowed if the suffix rule is removed."
@@ -2478,6 +2483,11 @@ msgstr "Counted from this repository's recorded connections that today's rules s
 
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
+msgid "Counted per host, port and path from the run's egress events. The outcome is that of the last attempt."
+msgstr ""
+
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
 msgid "Counted per host, port and path from the run's egress events. The reason and outcome are those of the last attempt. A rule added here changes what happens next; what the record already says stays as it was."
 msgstr ""
 
@@ -2690,6 +2700,11 @@ msgid "Denied attempts, %{count} day"
 msgid_plural "Denied attempts, %{count} days"
 msgstr[0] ""
 msgstr[1] ""
+
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Denied destinations come first, then the most recent. The outcome is that of the last attempt across the runs shown."
+msgstr ""
 
 #: lib/apiary_web/live/connection_live/index.ex
 #, elixir-autogen, elixir-format
@@ -3116,6 +3131,11 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Every run the machines of this hive have posted, as their events tell it."
 msgstr "Every run the machines of this workplace have posted, as their events tell it."
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Every session leaves a full record: what it ran, what it printed and where it reached out to. Open source, so you can check all of that."
+msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
@@ -4695,6 +4715,11 @@ msgstr ""
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Not finished"
+msgstr ""
+
+#: lib/apiary/policy.ex
+#, elixir-autogen, elixir-format
+msgid "Not found."
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -7265,6 +7290,11 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Where the runs of this hive reached out to, and what the policy made of it. One row per host, port and path, across runs."
 msgstr "Where the runs of this workplace reached out to, and what the policy made of it. One row per host, port and path, across runs."
+
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Where the runs of this hive reached out to. One row per host, port and path, across runs."
+msgstr "Where the runs of this workplace reached out to. One row per host, port and path, across runs."
 
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format

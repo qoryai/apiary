@@ -1215,8 +1215,16 @@ defmodule Apiary.Policy do
   # another and versions count without gaps. `FOR NO KEY UPDATE`, not `FOR UPDATE`: every
   # insert of an event or a run takes `FOR KEY SHARE` on its hive through the foreign
   # key, and a policy write must never make the receiver wait; then the change, its row in the history and
-  # the renders. Whatever refuses rolls everything back.
-  defp write(%Scope{hive: %Hive{} = hive, user: user}, target_id, fun) do
+  # the renders. Whatever refuses rolls everything back. Where the `security` feature is
+  # off (`Apiary.Features`) there is no policy to write: every write is not found, as its
+  # pages are, whichever surface asked.
+  defp write(%Scope{} = scope, target_id, fun) do
+    if Apiary.Features.on?(scope, :security),
+      do: write_on(scope, target_id, fun),
+      else: {:error, not_found(gettext("Not found."))}
+  end
+
+  defp write_on(%Scope{hive: %Hive{} = hive, user: user}, target_id, fun) do
     result =
       Repo.transact(fn ->
         hive = Repo.one!(from h in Hive, where: h.id == ^hive.id, lock: "FOR NO KEY UPDATE")

@@ -29,6 +29,7 @@ defmodule Apiary.DataCase do
 
   setup tags do
     Apiary.DataCase.setup_sandbox(tags)
+    Apiary.DataCase.setup_features(tags)
     :ok
   end
 
@@ -39,6 +40,33 @@ defmodule Apiary.DataCase do
     pid = Ecto.Adapters.SQL.Sandbox.start_owner!(Apiary.Repo, shared: not tags[:async])
     on_exit(fn -> Ecto.Adapters.SQL.Sandbox.stop_owner(pid) end)
   end
+
+  @doc """
+  Switches the instance's features for one test: `@tag with_features: [:observability]`
+  runs it as an instance launched with `QORY_FEATURES=observability`, and puts back what
+  the suite runs under afterwards. The features are the whole node's, so the test must not
+  be async.
+
+  The other tag, `@tag needs: :security` (or `@moduletag`), marks a test that exercises a
+  feature; `test/test_helper.exs` leaves it out when the suite runs without that feature.
+  """
+  def setup_features(%{with_features: features} = tags) when is_list(features) do
+    if features == [] do
+      raise ArgumentError, "@tag with_features: [] would be every feature; list the ones meant"
+    end
+
+    if tags[:async] do
+      raise ArgumentError,
+            "@tag with_features: changes the whole node, so the test must not be async"
+    end
+
+    previous = Application.get_env(:apiary, :features)
+    {:ok, features} = Apiary.Features.parse(Enum.map_join(features, ",", &to_string/1))
+    Application.put_env(:apiary, :features, features)
+    on_exit(fn -> Application.put_env(:apiary, :features, previous) end)
+  end
+
+  def setup_features(_tags), do: :ok
 
   @doc """
   A helper that transforms changeset errors into a map of messages.

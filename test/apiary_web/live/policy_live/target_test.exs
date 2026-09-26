@@ -1,6 +1,9 @@
 defmodule ApiaryWeb.PolicyLive.TargetTest do
   use ApiaryWeb.ConnCase, async: true
 
+  # The security policy: left out of a run without the security feature.
+  @moduletag needs: :security
+
   import Phoenix.LiveViewTest
   import Apiary.OrganisationsFixtures
   import Apiary.RunEventsFixtures

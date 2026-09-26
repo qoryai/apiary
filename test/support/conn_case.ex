@@ -33,6 +33,7 @@ defmodule ApiaryWeb.ConnCase do
 
   setup tags do
     Apiary.DataCase.setup_sandbox(tags)
+    Apiary.DataCase.setup_features(tags)
     {:ok, conn: Phoenix.ConnTest.build_conn()}
   end
 

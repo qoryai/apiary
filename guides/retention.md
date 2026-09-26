@@ -41,7 +41,10 @@ What stays, in both cases, is the run itself: its row in the runs list with its 
 it worked on, its runtime, host, start, duration and exit, the number of events it sent and
 the number of connections it was denied, and its connections, one row per destination with
 the attempts, the decision, the rule and the outcome of the last attempt. The workplace's
-connections page and the counts on the policy pages read those rows and are unchanged.
+connections page reads those rows and is unchanged.
+<!-- feature: security -->
+So are the counts on the policy pages.
+<!-- /feature -->
 
 A pruned run takes nothing more. A runner that delivers a batch of it again, from a spool
 that outlived the retention, is answered `410` once the events are pruned, as for a run

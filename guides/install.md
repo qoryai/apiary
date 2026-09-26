@@ -182,6 +182,56 @@ environment variable SMTP_TLS must be always, if_available or never
 |---|---|---|
 | `DNS_CLUSTER_QUERY` | none | A DNS name whose A and AAAA records list the other nodes to cluster with. Not set means one node. |
 
+### Features
+
+| Variable | Required or default | Meaning and accepted values |
+|---|---|---|
+| `QORY_FEATURES` | `all` | The features this instance has: `all`; `all-` and the features left out, separated by commas; or the features on, separated by commas. Not set, or empty, is `all`. |
+
+- `observability`: the record, the runs with their terminals and timelines, the
+  connections, and retention. Every instance has it, and every other feature needs it.
+<!-- feature: security -->
+- `security`: the security policy, and the run configuration served to runners. Needs
+  `observability`.
+<!-- /feature -->
+
+A feature that is off is absent, not disabled: its pages answer not found, the console and
+the discovery document leave it out, and the documentation at `/docs` does not describe
+it. An instance with the record alone:
+
+```sh
+QORY_FEATURES=observability
+```
+<!-- feature: security -->
+
+The record and the security policy, and nothing else:
+
+```sh
+QORY_FEATURES=observability,security
+```
+
+Every feature but the security policy:
+
+```sh
+QORY_FEATURES=all-security
+```
+<!-- /feature -->
+
+The two forms differ when an upgrade brings a feature. `all` and `all-…` switch it on with
+the upgrade; a list leaves it off until you add it to the list.
+
+The value is read once, at boot. A name that is not a feature, or a feature without one it
+needs, stops the boot:
+
+```text
+environment variable QORY_FEATURES is not valid: unknown feature obsevability; the Install guide at /docs lists the features.
+Leave it unset or set it to all for every feature, or name them, for example:
+QORY_FEATURES=observability
+```
+
+To switch a feature on later, add it to the value and restart. Every instance has the
+whole database schema whatever its features, so nothing is migrated.
+
 ### Compose only
 
 | Variable | Required or default | Meaning and accepted values |

@@ -298,13 +298,22 @@ defmodule ApiaryWeb.UserAuth do
   end
 
   # The word beside Policy: the hive's default mode, once the hive has a policy of Qory's,
-  # and the modes of the targets that set their own. One read.
+  # and the modes of the targets that set their own. One read. Where the `security`
+  # feature is off there is no Policy entry to put it beside: nothing is read, and the
+  # counts carry no mode at all.
   defp policy_mode(%Scope{hive: nil}), do: %{mode: nil, own_modes: []}
 
   defp policy_mode(%Scope{} = scope) do
-    case Apiary.Policy.mode_summary(scope) do
-      %{managed?: true, mode: mode, own_modes: own_modes} -> %{mode: mode, own_modes: own_modes}
-      _unmanaged -> %{mode: nil, own_modes: []}
+    if Apiary.Features.on?(scope, :security) do
+      case Apiary.Policy.mode_summary(scope) do
+        %{managed?: true, mode: mode, own_modes: own_modes} ->
+          %{mode: mode, own_modes: own_modes}
+
+        _unmanaged ->
+          %{mode: nil, own_modes: []}
+      end
+    else
+      %{}
     end
   end
 
@@ -318,12 +327,16 @@ defmodule ApiaryWeb.UserAuth do
   # and then the process holds the topic more than once. The hook sees that, leaves one
   # subscription in place, and from then on passes every message on. A page that never
   # subscribed never sees a message it did not ask for.
+  #
+  # Without the `security` feature there is no word to follow and the hook subscribes to
+  # nothing: no page of such an instance hears of the policy.
   @policy_window 1_000
 
   defp follow_policy_mode(socket) do
     scope = socket.assigns.current_scope
 
-    if scope.hive && Phoenix.LiveView.connected?(socket) do
+    if scope.hive && Apiary.Features.on?(scope, :security) &&
+         Phoenix.LiveView.connected?(socket) do
       Apiary.Policy.subscribe(scope)
       topic = Apiary.Policy.topic(scope.hive.id)
 

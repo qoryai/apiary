@@ -1,6 +1,9 @@
 defmodule Apiary.Policy.SuggestionCountsTest do
   use Apiary.DataCase, async: true
 
+  # The security policy: left out of a run without the security feature.
+  @moduletag needs: :security
+
   import Apiary.OrganisationsFixtures
   import Apiary.RunEventsFixtures
   import Apiary.RunListFixtures

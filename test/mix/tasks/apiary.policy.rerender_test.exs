@@ -5,6 +5,9 @@ defmodule Mix.Tasks.Apiary.Policy.RerenderTest do
   """
   use Apiary.DataCase, async: false
 
+  # The security policy: left out of a run without the security feature.
+  @moduletag needs: :security
+
   import Apiary.OrganisationsFixtures
 
   alias Apiary.Policy

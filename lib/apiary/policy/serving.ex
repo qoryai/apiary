@@ -7,7 +7,9 @@ defmodule Apiary.Policy.Serving do
   A hive serves a run configuration only once somebody has made its policy
   (`Apiary.Policy.managed?/1`). Until then `fetch/2` is `{:error, :unmanaged}`,
   `digest_for/4` is nil, and nothing is rendered from here: the hive's machines use the
-  policy of their own `runner.yaml`.
+  policy of their own `runner.yaml`. The same holds on an instance, or for a hive, without
+  the `security` feature (`Apiary.Features`): nothing is served, the discovery document
+  names no `run` section, and the policy is absent from the contract.
 
   `fetch/2` is the run configuration endpoint's: the stored bytes and their digest for the
   target the labels name, the baseline's for a target the hive does not know or that has
@@ -44,15 +46,19 @@ defmodule Apiary.Policy.Serving do
   nothing.
   """
   @spec fetch(AccessKey.t(), term) :: {:ok, RunConfiguration.t()} | {:error, term}
-  def fetch(%AccessKey{organisation_id: organisation_id, hive_id: hive_id}, labels) do
-    if Policy.managed_hive?(hive_id),
+  def fetch(%AccessKey{organisation_id: organisation_id, hive_id: hive_id} = key, labels) do
+    if managed?(key),
       do: Policy.in_force(organisation_id, hive_id, target_id(hive_id, labels)),
       else: {:error, :unmanaged}
   end
 
-  @doc "Whether the key's hive serves a run configuration: `Apiary.Policy.managed?/1` for a key."
+  @doc """
+  Whether the key's hive serves a run configuration: `security` is on for the key
+  (`Apiary.Features.on?/2`) and `Apiary.Policy.managed?/1` holds for its hive.
+  """
   @spec managed?(AccessKey.t()) :: boolean
-  def managed?(%AccessKey{hive_id: hive_id}), do: Policy.managed_hive?(hive_id)
+  def managed?(%AccessKey{hive_id: hive_id} = key),
+    do: Apiary.Features.on?(key, :security) and Policy.managed_hive?(hive_id)
 
   @doc """
   The digest in force for a run of the key's managed hive (the caller has asked

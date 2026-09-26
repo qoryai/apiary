@@ -14,6 +14,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
   own until the first change here, and the page says so.
   """
   use ApiaryWeb, :live_view
+  use ApiaryWeb.Features, :security
 
   import ApiaryWeb.PolicyComponents
   import ApiaryWeb.PolicyLive.Views

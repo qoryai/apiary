@@ -151,16 +151,25 @@ defmodule ApiaryWeb.LayoutsTest do
       refute has_element?(view, "#brand-menu [tabindex]")
 
       menu = view |> element("#brand-menu ul[role='menu'][aria-label='Qory Apiary']") |> render()
-      assert before?(menu, "Docs", "Changelog")
-      assert before?(menu, "Changelog", "Source on GitHub")
-      assert length(Regex.scan(~r/role="menuitem"/, menu)) == 3
+
+      if Apiary.Features.enabled() == Apiary.Features.all() do
+        assert before?(menu, "Docs", "Changelog")
+        assert before?(menu, "Changelog", "Source on GitHub")
+        assert length(Regex.scan(~r/role="menuitem"/, menu)) == 3
+      else
+        refute menu =~ "Changelog"
+        assert before?(menu, "Docs", "Source on GitHub")
+        assert length(Regex.scan(~r/role="menuitem"/, menu)) == 2
+      end
 
       assert has_element?(
                view,
                "#brand-menu .dropdown-content li:first-child a#brand-menu-docs[href='/docs']"
              )
 
-      assert has_element?(view, "#brand-menu a#brand-menu-changelog[href='/docs/changelog.html']")
+      # The release notes name every feature: only an instance with every one links them.
+      assert has_element?(view, "#brand-menu a#brand-menu-changelog[href='/docs/changelog.html']") ==
+               (Apiary.Features.enabled() == Apiary.Features.all())
 
       assert has_element?(
                view,

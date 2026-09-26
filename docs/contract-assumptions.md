@@ -116,9 +116,8 @@ hundred), each with `id` and `subject` (lowercase UUIDs), `type` (beginning `dev
 tables hold: what passes them is stored, and no batch is answered `500`. Only this envelope is
 checked: `data` is not validated against the schema of its type, and a type this release does
 not know is stored like any other, so a newer runner's events are kept until a release reads
-them. A type outside `dev.qory.` fails the envelope: a runner before 0.5.1 names its events
-`ai.qory.*`, and every batch of it, the ping among them, is answered `400 invalid_batch`.
-The events 0.1.0 stored under the old names are renamed by migration 20260927000100.
+them. A type outside `dev.qory.` fails the envelope, and the batch is answered
+`400 invalid_batch`.
 
 What is stored, in one transaction, before the answer:
 

@@ -9,6 +9,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
   the page renders the not-found state and never another hive's rules.
   """
   use ApiaryWeb, :live_view
+  use ApiaryWeb.Features, :security
 
   import ApiaryWeb.PolicyComponents
   import ApiaryWeb.PolicyLive.Views
