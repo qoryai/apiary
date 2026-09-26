@@ -23,6 +23,13 @@ written out in [CONTRIBUTING.md](CONTRIBUTING.md).
   context function that touches an organisation's data takes an `Apiary.Accounts.Scope`
   first and filters by its organisation and workspace. A page never calls `Apiary.Repo`. A
   test for a new table asserts that a row of another organisation is not reachable.
+- **Access.** Whether someone may do something is asked of `Apiary.Access` and nowhere
+  else; no code compares a membership's level. A new action, or a new feature's actions,
+  go into its action list with their feature, into its role table, and into the rows of
+  `test/apiary/access_test.exs`, which fails for an action without rows. Every context
+  function that changes something calls `Access.authorize/3` before acting; a page asks
+  `Access.can?/3` with the same action for what it shows, and asks its read action with
+  `on_mount {ApiaryWeb.Access, action}`. The rules: [docs/access.md](docs/access.md).
 - **Migrations.** One per change, via `mix ecto.gen.migration`; expand in one release,
   contract in a later one; every migration reverses; tenant keys in the first migration of
   a table. The changelog section of a release lists them under Migrations. Rules and

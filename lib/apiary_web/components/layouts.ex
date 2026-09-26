@@ -15,18 +15,17 @@ defmodule ApiaryWeb.Layouts do
 
   # Two sections: the record first, because it is why people open the console. The words
   # are marked for extraction here and translated when the sidebar renders (`nav_text/1`).
-  # Each entry names the feature it belongs to (`Apiary.Features`), nil for the entries
-  # every instance has; `nav_items/1` keeps the ones that are on. Where an entry leads is
-  # `nav_path/3`'s.
+  # Each entry names the action its page is for (`Apiary.Access`), nil for the entries
+  # every member has; `nav_items/1` keeps the ones the reader may take, which leaves out
+  # those of a feature that is off. Where an entry leads is `nav_path/3`'s.
   @nav [
     {gettext_noop("Workspace"), gettext_noop("Main"),
      [
-       {:overview, gettext_noop("Overview"), "hero-squares-2x2-micro", :observability},
-       {:runs, gettext_noop("Runs"), "hero-play-circle-micro", :observability},
-       {:connections, gettext_noop("Connections"), "hero-arrows-right-left-micro",
-        :observability},
+       {:overview, gettext_noop("Overview"), "hero-squares-2x2-micro", :"run.read"},
+       {:runs, gettext_noop("Runs"), "hero-play-circle-micro", :"run.read"},
+       {:connections, gettext_noop("Connections"), "hero-arrows-right-left-micro", :"run.read"},
        # After Connections, because the policy is what the connections are judged by.
-       {:policy, gettext_noop("Policy"), "hero-shield-check-micro", :security}
+       {:policy, gettext_noop("Policy"), "hero-shield-check-micro", :"security_policy.read"}
      ]},
     {gettext_noop("Manage"), gettext_noop("Manage"),
      [
@@ -341,9 +340,9 @@ defmodule ApiaryWeb.Layouts do
 
   defp nav_text(msgid), do: Gettext.gettext(ApiaryWeb.Gettext, msgid)
 
-  # The entries whose feature is on for the scope. A feature that is off is absent, not
-  # disabled (decision 0070): no entry, greyed or otherwise, and so nothing beside it
-  # either (Policy's mode word goes with Policy). A section left empty goes too.
+  # The entries the scope may open. A feature that is off is absent, not disabled
+  # (decision 0070): no entry, greyed or otherwise, and so nothing beside it either
+  # (Policy's mode word goes with Policy). A section left empty goes too.
   defp nav_items(%{organisation: %{} = organisation, workspace: %{} = workspace} = scope) do
     for {section, label, items} <- @nav,
         shown = Enum.flat_map(items, &nav_item(scope, organisation, workspace, &1)),
@@ -353,30 +352,34 @@ defmodule ApiaryWeb.Layouts do
 
   defp nav_items(_scope), do: []
 
-  defp nav_item(scope, organisation, workspace, {key, text, icon, feature}) do
-    if is_nil(feature) or Apiary.Features.on?(scope, feature),
+  defp nav_item(scope, organisation, workspace, {key, text, icon, action}) do
+    if nav_open?(scope, action, workspace),
       do: [{key, text, icon, nav_path(key, organisation, workspace)}],
       else: []
   end
 
   # Where the switcher sends the user in another membership's workspace: the section
-  # they are on, when it is there too, else the overview.
-  defp switch_path(nav, %{organisation: organisation, workspace: workspace}) do
-    entry = @nav |> Enum.flat_map(&elem(&1, 2)) |> Enum.find(&(elem(&1, 0) == nav))
+  # they are on, when they may open it there too, else the first entry they may open
+  # there, the overview for a reader of the record. Asked with the scope that membership
+  # gives.
+  defp switch_path(nav, %{organisation: organisation, workspace: workspace} = membership) do
+    scope = %Apiary.Accounts.Scope{
+      organisation: organisation,
+      workspace: workspace,
+      membership: membership
+    }
 
-    case entry do
-      {key, _text, _icon, nil} ->
-        nav_path(key, organisation, workspace)
+    entries = Enum.flat_map(@nav, &elem(&1, 2))
+    may? = fn {_key, _text, _icon, action} -> nav_open?(scope, action, workspace) end
 
-      {key, _text, _icon, feature} ->
-        if Apiary.Features.on?(workspace, feature),
-          do: nav_path(key, organisation, workspace),
-          else: nav_path(:overview, organisation, workspace)
+    {key, _text, _icon, _action} =
+      Enum.find(entries, &(elem(&1, 0) == nav and may?.(&1))) || Enum.find(entries, may?)
 
-      nil ->
-        nav_path(:overview, organisation, workspace)
-    end
+    nav_path(key, organisation, workspace)
   end
+
+  defp nav_open?(_scope, nil, _workspace), do: true
+  defp nav_open?(scope, action, workspace), do: Apiary.Access.can?(scope, action, workspace)
 
   defp nav_count(%{keys: n}, :keys), do: n
   defp nav_count(%{members: n}, :members), do: n

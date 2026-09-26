@@ -71,7 +71,7 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
         lv |> form("#level-form-#{scope.membership.id}", %{level: "member"}) |> render_change()
 
       assert html =~ "The last owner cannot be removed or demoted"
-      assert Organisations.owner?(Organisations.load_scope(scope))
+      assert %{level: :owner} = Organisations.load_scope(scope).membership
     end
 
     test "removes a member and refuses to remove the last owner", %{conn: conn, scope: scope} do

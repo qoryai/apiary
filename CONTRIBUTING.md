@@ -181,7 +181,7 @@ Every context, schema and plug carries a `@moduledoc`, and every public context 
   holds ...`, `create_access_key/2 creates ...`.
 - A moduledoc says what the module owns, the words it defines, how a caller uses it, and
   the invariants a caller must not break, such as which scope a function expects.
-- Say what the function does, including what it refuses (`{:error, :unauthorized}`,
+- Say what the function does, including what it refuses (`{:error, :forbidden}`,
   `{:error, :last_owner}`) and what it returns exactly once, such as a secret.
 - A comment inside a function says why the code exists or what is subtle in it, never what
   the next line does.

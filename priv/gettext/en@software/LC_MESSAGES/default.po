@@ -7441,6 +7441,11 @@ msgstr ""
 msgid "You left the %{name} workspace."
 msgstr ""
 
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "You may not change this workspace's access keys."
+msgstr ""
+
 #: lib/apiary_web/user_auth.ex
 #, elixir-autogen, elixir-format
 msgid "You must log in to access this page."

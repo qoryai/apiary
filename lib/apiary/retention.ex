@@ -48,8 +48,8 @@ defmodule Apiary.Retention do
 
   require Logger
 
+  alias Apiary.Access
   alias Apiary.Accounts.Scope
-  alias Apiary.Organisations
   alias Apiary.Organisations.Workspace
   alias Apiary.Repo
   alias Apiary.Retention.RetentionRun
@@ -78,14 +78,12 @@ defmodule Apiary.Retention do
   def change_retention(%Workspace{} = workspace, attrs \\ %{}),
     do: Workspace.retention_changeset(workspace, attrs)
 
-  @doc "Sets the retention of the scope's workspace. Owners only."
+  @doc "Sets the retention of the scope's workspace (`retention.edit`)."
   @spec update_retention(struct(), map()) ::
-          {:ok, struct()} | {:error, Ecto.Changeset.t() | :unauthorized}
+          {:ok, struct()} | {:error, Ecto.Changeset.t() | Apiary.Access.reason()}
   def update_retention(%Scope{workspace: %Workspace{} = workspace} = scope, attrs) do
-    if Organisations.owner?(scope) do
+    with :ok <- Access.authorize(scope, :"retention.edit", workspace) do
       workspace |> Workspace.retention_changeset(attrs) |> Repo.update()
-    else
-      {:error, :unauthorized}
     end
   end
 

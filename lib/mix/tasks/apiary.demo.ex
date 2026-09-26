@@ -170,7 +170,9 @@ defmodule Mix.Tasks.Apiary.Demo do
     Policy.remove_rule(scope, rule)
   end
 
-  # The scope of the workspace's first owner: the policy is written in somebody's name.
+  # The scope of the workspace's first owner: the policy is written in somebody's name, and
+  # the demo's sets the mode. Which membership to write as is a choice of data; whether
+  # it may is `Apiary.Policy`'s question to `Apiary.Access`.
   defp owner_scope(workspace_id) do
     membership =
       Repo.one(

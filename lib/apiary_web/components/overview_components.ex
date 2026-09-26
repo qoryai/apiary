@@ -73,7 +73,7 @@ defmodule ApiaryWeb.OverviewComponents do
     required: true,
     doc: "the caller's scope: its organisation and workspace name the links"
 
-  attr :owner?, :boolean, default: false
+  attr :can_set_mode?, :boolean, default: false
   attr :now, :any, required: true
 
   def attention(assigns) do
@@ -110,7 +110,7 @@ defmodule ApiaryWeb.OverviewComponents do
           :for={item <- @items}
           scope={@scope}
           item={item}
-          owner?={@owner?}
+          can_set_mode?={@can_set_mode?}
           now={@now}
         />
       </ul>
@@ -123,7 +123,7 @@ defmodule ApiaryWeb.OverviewComponents do
     doc: "the caller's scope: its organisation and workspace name the links"
 
   attr :item, :map, required: true
-  attr :owner?, :boolean, required: true
+  attr :can_set_mode?, :boolean, required: true
   attr :now, :any, required: true
 
   defp attention_item(assigns) do
@@ -141,7 +141,7 @@ defmodule ApiaryWeb.OverviewComponents do
         <%= if @item.resolved && @item.resolved[:what] do %>
           {@item.resolved.what}
         <% else %>
-          <.attention_sentence item={@item} owner?={@owner?} now={@now} />
+          <.attention_sentence item={@item} can_set_mode?={@can_set_mode?} now={@now} />
         <% end %>
       </span>
       <span class="q-sugg-acts">
@@ -150,7 +150,7 @@ defmodule ApiaryWeb.OverviewComponents do
             <.icon name="hero-check-micro" class="size-3" />{@item.resolved.done}
           </span>
         <% else %>
-          <.attention_actions scope={@scope} item={@item} owner?={@owner?} />
+          <.attention_actions scope={@scope} item={@item} can_set_mode?={@can_set_mode?} />
         <% end %>
       </span>
     </li>
@@ -336,7 +336,7 @@ defmodule ApiaryWeb.OverviewComponents do
   end
 
   attr :item, :map, required: true
-  attr :owner?, :boolean, required: true
+  attr :can_set_mode?, :boolean, required: true
   attr :now, :any, required: true
 
   defp attention_sentence(%{item: %{kind: :denied, locked: locked}} = assigns)
@@ -445,7 +445,7 @@ defmodule ApiaryWeb.OverviewComponents do
           cap: Format.number(Apiary.Policy.Activity.cap())
         )}
     <% end %>
-    <span :if={!@owner?}>{gettext("Only an owner sets a mode.")}</span>
+    <span :if={!@can_set_mode?}>{gettext("Only an owner sets a mode.")}</span>
     """
   end
 
@@ -523,7 +523,7 @@ defmodule ApiaryWeb.OverviewComponents do
     doc: "the caller's scope: its organisation and workspace name the links"
 
   attr :item, :map, required: true
-  attr :owner?, :boolean, required: true
+  attr :can_set_mode?, :boolean, required: true
 
   defp attention_actions(%{item: %{kind: :denied, locked: locked}} = assigns)
        when is_binary(locked) do
@@ -648,6 +648,7 @@ defmodule ApiaryWeb.OverviewComponents do
   defp attention_actions(%{item: %{kind: :lost}} = assigns) do
     ~H"""
     <button
+      :if={Apiary.Access.can?(@scope, :"run.close", @item.run)}
       id={"#{@item.id}-act"}
       type="button"
       class="btn btn-xs"
@@ -690,7 +691,7 @@ defmodule ApiaryWeb.OverviewComponents do
   defp attention_actions(%{item: %{kind: :enforce}} = assigns) do
     ~H"""
     <%= cond do %>
-      <% !@owner? -> %>
+      <% !@can_set_mode? -> %>
         <.link
           id={"#{@item.id}-act"}
           navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/policy"}

@@ -25,11 +25,12 @@ defmodule ApiaryWeb.RunLive.Show do
   """
   use ApiaryWeb, :live_view
   use ApiaryWeb.Features, :observability
+  on_mount {ApiaryWeb.Access, :"run.read"}
 
   import ApiaryWeb.RunPageComponents
   import ApiaryWeb.PolicyComponents, only: [short_digest: 1]
 
-  alias Apiary.Features
+  alias Apiary.Access
   alias Apiary.Lingo.Domain
   alias Apiary.Policy
   alias Apiary.Runs
@@ -249,6 +250,7 @@ defmodule ApiaryWeb.RunLive.Show do
           {gettext("Timeline")}
         </:tab>
         <:tab
+          :if={Access.can?(@current_scope, :"run.read_log", @run)}
           patch={tab_path(@current_scope, @run, :terminal)}
           icon="hero-command-line-micro"
           current={@live_action == :terminal}
@@ -309,7 +311,10 @@ defmodule ApiaryWeb.RunLive.Show do
             run={@run}
             policy={@policy}
             session_id={@session_id}
-            closable={@run.state in Runs.closable_states()}
+            closable={
+              @run.state in Runs.closable_states() and
+                Access.can?(@current_scope, :"run.close", @run)
+            }
             tips={@tips}
             version={@reported_version}
             in_force={@in_force}
@@ -997,7 +1002,7 @@ defmodule ApiaryWeb.RunLive.Show do
   @impl true
   def mount(_params, _session, socket) do
     scope = socket.assigns.current_scope
-    security = Features.on?(scope, :security)
+    security = Access.can?(scope, :"security_policy.read", scope.workspace)
 
     # The policy's topic is followed from mount: the sidebar's hook looks, before the first
     # handle_params, at whether the page subscribed, and stops the message at itself when
@@ -1057,6 +1062,7 @@ defmodule ApiaryWeb.RunLive.Show do
   @impl true
   def handle_params(%{"run_id" => run_id} = params, _uri, socket) do
     socket = if socket.assigns.loaded_id == run_id, do: socket, else: load_run(socket, run_id)
+    refuse_terminal(socket)
 
     case socket.assigns do
       %{run: %Run{}, loaded: true} ->
@@ -1066,6 +1072,15 @@ defmodule ApiaryWeb.RunLive.Show do
         {:noreply, socket}
     end
   end
+
+  # The terminal tab is `run.read_log`'s: for a reader who may not, it is a path that does
+  # not exist, as the tab is not shown.
+  defp refuse_terminal(%{assigns: %{live_action: :terminal, run: %Run{} = run}} = socket) do
+    unless Access.can?(socket.assigns.current_scope, :"run.read_log", run),
+      do: raise(ApiaryWeb.NotFound)
+  end
+
+  defp refuse_terminal(_socket), do: :ok
 
   # The run row is read for the first, static render too: it says found or not found, and
   # gives the header. Everything else waits for the socket, so that opening the page reads
@@ -1181,7 +1196,10 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp read_tab(socket, :terminal, _decision, _page) do
     %{current_scope: scope, run: run} = socket.assigns
-    assign(socket, window_loaded: false, log: Record.log_summary(scope, run))
+
+    if Access.can?(scope, :"run.read_log", run),
+      do: assign(socket, window_loaded: false, log: Record.log_summary(scope, run)),
+      else: assign(socket, window_loaded: false)
   end
 
   defp read_tab(socket, :connections, decision, page) do
@@ -1552,7 +1570,7 @@ defmodule ApiaryWeb.RunLive.Show do
           |> refresh_run()
           |> put_flash(:error, gettext("This run has ended; its record keeps the end it posted."))
 
-        {:error, :unauthorized} ->
+        {:error, :forbidden} ->
           put_flash(socket, :error, gettext("You are no longer a member of this workspace."))
 
         {:error, :not_found} ->
@@ -1718,7 +1736,7 @@ defmodule ApiaryWeb.RunLive.Show do
           rule: act.entry.host,
           locked_by: locked && locked.changed_by && locked.changed_by.email,
           locked_at: locked && locked.inserted_at,
-          owner: owner?(scope),
+          owner: Access.can?(scope, :"security_policy.lock", scope.workspace),
           rule_path: Rules.rule_path(scope, nil, act.entry.host)
         }
       }
@@ -1751,9 +1769,6 @@ defmodule ApiaryWeb.RunLive.Show do
     |> Map.get(:items, [])
     |> Enum.find(&(&1.action == "rule_locked" and &1.subject == entry.host))
   end
-
-  defp owner?(%{membership: %{level: :owner}}), do: true
-  defp owner?(_scope), do: false
 
   defp deny_consequence(%{source: :workspace}) do
     %{

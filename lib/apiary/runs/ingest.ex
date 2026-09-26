@@ -24,8 +24,9 @@ defmodule Apiary.Runs.Ingest do
 
   require Logger
 
-  alias Apiary.AccessKeys
+  alias Apiary.{Access, AccessKeys}
   alias Apiary.AccessKeys.AccessKey
+  alias Apiary.Accounts.Scope
   alias Apiary.Policy.Serving
   alias Apiary.Repo
   alias Apiary.Runs
@@ -60,7 +61,8 @@ defmodule Apiary.Runs.Ingest do
   configuration (nil when that could not be read) and `run_configuration_digest` is
   the digest in force for the run's target, for the answer's headers (nil for a
   workspace that is not managed, and when it could not be read). `{:error, :unavailable}`
-  when the batch could not be stored.
+  when the batch could not be stored, and `{:error, :not_found}` when the key may not post
+  (`run.post_events` in `Apiary.Access`).
 
   The digest the request reported (`meta.run_configuration`) is kept on the delivery
   and, as the last one reported, on the run. The digest in force is read after the
@@ -68,17 +70,30 @@ defmodule Apiary.Runs.Ingest do
   managed, then one read of an index for the digest, two when the run's target has
   no configuration of its own and the baseline's is read after it.
   """
-  @spec ingest(AccessKey.t(), Batch.t(), meta) :: {:ok, map} | {:error, :unavailable}
+  @spec ingest(AccessKey.t(), Batch.t(), meta) ::
+          {:ok, map} | {:error, :unavailable | :not_found}
   def ingest(%AccessKey{} = access_key, %Batch{} = batch, %{contract_version: _} = meta) do
     now = DateTime.utc_now()
     delivery_id = delivery_id(meta)
+    # A verified key carries its workspace; one that does not is given it here.
+    access_key = Repo.preload(access_key, :workspace)
+    scope = Scope.for_access_key(access_key)
 
-    with {:ok, result} <- transact(access_key, batch, meta, delivery_id, now) do
+    with :ok <- may_post(scope),
+         {:ok, result} <- transact(access_key, batch, meta, delivery_id, now) do
       if not result.repeated, do: touch(access_key, result, meta, now)
       if result.conflicts > 0, do: log_conflicts(result)
       if result.status == 202, do: Projector.project_async(result.run)
 
       {:ok, Map.merge(result, in_force(access_key, result.run, batch, meta))}
+    end
+  end
+
+  # A key's scope is never refused a role here; what can refuse it is a feature that is off.
+  defp may_post(scope) do
+    case Access.authorize(scope, :"run.post_events", scope.workspace) do
+      :ok -> :ok
+      {:error, _reason} -> {:error, :not_found}
     end
   end
 

@@ -236,10 +236,10 @@ defmodule Apiary.AccessKeysTest do
 
       assert {:ok, _} = Apiary.Organisations.remove_member(scope, membership.id)
 
-      assert {:error, :unauthorized} = AccessKeys.create_access_key(member_scope, %{label: "x"})
-      assert {:error, :unauthorized} = AccessKeys.rotate_access_key(member_scope, key)
-      assert {:error, :unauthorized} = AccessKeys.retire_previous_secret(member_scope, key)
-      assert {:error, :unauthorized} = AccessKeys.revoke_access_key(member_scope, key)
+      assert {:error, :forbidden} = AccessKeys.create_access_key(member_scope, %{label: "x"})
+      assert {:error, :forbidden} = AccessKeys.rotate_access_key(member_scope, key)
+      assert {:error, :forbidden} = AccessKeys.retire_previous_secret(member_scope, key)
+      assert {:error, :forbidden} = AccessKeys.revoke_access_key(member_scope, key)
 
       assert {:ok, %AccessKey{revoked_at: nil, rotated_at: nil}} =
                AccessKeys.fetch_for_verification(key.key_id)

@@ -11,8 +11,10 @@ defmodule ApiaryWeb.Contract.EventsController do
   is `415`; a key over its rate is `429` with `Retry-After`; a request whose
   `X-Qory-Contract-Version` names no revision served is `400`
   (`ApiaryWeb.Contract.ContractVersion`, as on every endpoint of the contract);
-  a body that is not a batch is `400`; a run the workspace has closed is `410`; anything
-  else is stored and answered `202`, with nothing projected yet.
+  a body that is not a batch is `400`; a key `Apiary.Access` does not let post
+  (`run.post_events`) is `404`, as a path that does not exist; a run the workspace has
+  closed is `410`; anything else is stored and answered `202`, with nothing projected
+  yet.
 
   Every `202` and `410` carries the digests in force: `X-Qory-Configuration`, the
   digest the workspace's discovery answer carries, and, for a workspace whose policy
@@ -54,6 +56,9 @@ defmodule ApiaryWeb.Contract.EventsController do
 
       :error ->
         ContractVersion.refuse(conn)
+
+      {:error, :not_found} ->
+        conn |> put_status(404) |> json(%{error: "not_found"})
 
       {:error, _reason} ->
         conn |> put_status(503) |> json(%{error: "unavailable"})

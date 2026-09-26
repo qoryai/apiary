@@ -29,8 +29,9 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   """
   use ApiaryWeb, :live_view
   use ApiaryWeb.Features, :observability
+  on_mount {ApiaryWeb.Access, :"run.read"}
 
-  alias Apiary.Features
+  alias Apiary.Access
   alias Apiary.Policy
   alias Apiary.Runs
   alias Apiary.Runs.Filters
@@ -319,7 +320,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   @impl true
   def mount(_params, _session, socket) do
     scope = socket.assigns.current_scope
-    security = Features.on?(scope, :security)
+    security = Access.can?(scope, :"security_policy.read", scope.workspace)
 
     if connected?(socket) do
       Runs.subscribe(scope)
@@ -823,7 +824,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           rule: act.entry.host,
           locked_by: locked && locked.changed_by && locked.changed_by.email,
           locked_at: locked && locked.inserted_at,
-          owner: match?(%{membership: %{level: :owner}}, scope),
+          owner: Access.can?(scope, :"security_policy.lock", scope.workspace),
           rule_path: Rules.rule_path(scope, nil, act.entry.host)
         }
       }
