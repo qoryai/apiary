@@ -14,6 +14,7 @@ defmodule Apiary.AccessKeys do
   alias Apiary.{Access, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.AccessKeys.AccessKey
+  alias Apiary.LogMetadata
   alias Apiary.Organisations.{Workspace, Organisation}
 
   defguardp key_in_scope(scope, access_key)
@@ -210,13 +211,18 @@ defmodule Apiary.AccessKeys do
 
     case Repo.one(query) do
       %AccessKey{} = access_key ->
-        if readable?(access_key), do: {:ok, access_key}, else: unreadable(key_id)
+        if readable?(access_key) do
+          {:ok, access_key}
+        else
+          ids = LogMetadata.metadata(access_key.organisation_id, access_key.workspace_id)
+          unreadable(key_id, ids)
+        end
 
       nil ->
         :error
     end
   rescue
-    ArgumentError -> unreadable(key_id)
+    ArgumentError -> unreadable(key_id, owner_ids(key_id))
   end
 
   def fetch_for_verification(_key_id), do: :error
@@ -227,14 +233,33 @@ defmodule Apiary.AccessKeys do
     (is_binary(primary) or is_nil(primary)) and (is_binary(secondary) or is_nil(secondary))
   end
 
-  # The key id is public; nothing of the row is in the line.
-  defp unreadable(key_id) do
+  # The key id is public; nothing of the row is in the line but the organisation and
+  # workspace ids, as metadata.
+  defp unreadable(key_id, metadata) do
     Logger.error(
       "access key secret cannot be decrypted key_id=#{key_id}: " <>
-        "CLOAK_KEY is not the key the secret was encrypted with"
+        "CLOAK_KEY is not the key the secret was encrypted with",
+      metadata
     )
 
     {:error, :unreadable}
+  end
+
+  # When loading the row raised, its ids are read again without the secrets, which are
+  # what could not be read.
+
+  defp owner_ids(key_id) do
+    query =
+      from k in AccessKey,
+        where: k.key_id == ^key_id,
+        select: {k.organisation_id, k.workspace_id}
+
+    case Repo.one(query) do
+      {organisation_id, workspace_id} -> LogMetadata.metadata(organisation_id, workspace_id)
+      nil -> []
+    end
+  rescue
+    _exception -> []
   end
 
   @doc "Records a use: `last_used_at` now, plus `last_runner_version` and `last_contract_version` from `attrs`."

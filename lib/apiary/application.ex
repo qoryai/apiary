@@ -10,6 +10,9 @@ defmodule Apiary.Application do
     # First, so a wrong QORY_FEATURES stops the boot before anything is started.
     Apiary.Features.boot!()
     attach_request_log()
+    # A job's failure, cancellation or discard is one line, with its organisation and
+    # workspace ids and without its arguments.
+    Apiary.Job.Log.attach()
 
     children =
       [
@@ -22,6 +25,11 @@ defmodule Apiary.Application do
         Apiary.Runs.RateLimit
       ] ++
         migrator() ++
+        [
+          # The job queue, after the migrator so its tables exist when it
+          # starts. `Apiary.Job` is what every job runs inside.
+          {Oban, Application.fetch_env!(:apiary, Oban)}
+        ] ++
         liveness() ++
         retention() ++
         [

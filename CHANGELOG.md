@@ -63,6 +63,26 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
   workspace's domain afterwards. `Apiary.Lingo.Domain.for_workspace/1` reads it through
   the registry of domains, `Apiary.Lingo.Domain.domains/0`, and the projector names a
   run's target by the labelling rule of its workspace's domain.
+- Background work can run as durable jobs: Oban's open-source queue on the
+  same Postgres, in the supervision tree with one queue, `default`, five jobs at a time.
+  Finished, cancelled and discarded jobs are kept a week. A job is stopped after 25
+  minutes and retried, and one still marked executing after 30, orphaned by a node that
+  stopped, is run again. Every job runs inside `Apiary.Job`: its arguments name the
+  organisation and the workspace it works for, or say it is the instance's, and it acts
+  under a scope built from them, as the instance or as the person who enqueued it. A job
+  that fails, is cancelled or is discarded writes one log line with its worker, attempt,
+  state and the module of the error, never its arguments or the error's message. No
+  existing work has moved to it yet: retention, the lost-run check, delivery and mail
+  run as before.
+- Log lines written for an organisation carry its id, and the workspace's, as
+  `organisation_id` and `workspace_id` metadata: a page under `/:org/…` and its async
+  reads, a runner's request, a projection, a job, and the line of an access key whose
+  secret cannot be decrypted. Lines written for a signed-in person carry their id as
+  `user_id`: every page they open, and a job their action enqueued. A person's own pages
+  carry `user_id` and no organisation or workspace; a runner's request carries no
+  `user_id`. The ids, never a name, a slug or an email address; `user_id` is a
+  pseudonymous id. The JSON log's explicit list of metadata has all three, and so does the
+  log in development.
 
 ### Changed
 
@@ -161,6 +181,9 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
   `workspaces (organisation_id, slug)`, and a check of the characters and the length on
   each. It writes every organisation and workspace once, one row at a time: short on an
   installation, which holds a handful. Reversible: rolling it back drops both columns.
+- `20261002000100`: Oban's tables for the job queue, `oban_jobs` and `oban_peers`, with
+  their types, indexes and insert trigger, at Oban's migration version 14. New and empty:
+  instant. Reversible: rolling it back drops both tables and everything created with them.
 
 ### Upgrading
 

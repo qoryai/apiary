@@ -55,6 +55,9 @@ defmodule ApiaryWeb do
     quote do
       use Phoenix.LiveView
 
+      # Async work runs under the page's organisation and workspace ids (ApiaryWeb.Async).
+      use ApiaryWeb.Async
+
       # The domain's words: the locale follows the scope the live_session loaded.
       on_mount ApiaryWeb.Lingo
 
@@ -65,6 +68,8 @@ defmodule ApiaryWeb do
   def live_component do
     quote do
       use Phoenix.LiveComponent
+
+      use ApiaryWeb.Async
 
       unquote(html_helpers())
     end

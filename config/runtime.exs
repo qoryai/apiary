@@ -268,6 +268,9 @@ if config_env() == :prod do
       LoggerJSON.Formatters.Basic.new(
         metadata: [
           :request_id,
+          :organisation_id,
+          :workspace_id,
+          :user_id,
           :duration_us,
           :application,
           :domain,

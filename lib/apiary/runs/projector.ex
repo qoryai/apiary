@@ -82,7 +82,13 @@ defmodule Apiary.Runs.Projector do
     if inline?() do
       guarded(run)
     else
-      case Task.Supervisor.start_child(Apiary.Runs.TaskSupervisor, fn -> guarded(run) end) do
+      # The task starts with no Logger metadata: it logs under the run's ids.
+      task = fn ->
+        Apiary.LogMetadata.put_ids(run.organisation_id, run.workspace_id)
+        guarded(run)
+      end
+
+      case Task.Supervisor.start_child(Apiary.Runs.TaskSupervisor, task) do
         {:ok, _pid} -> :ok
         {:error, reason} -> log_failure(run, {:not_started, reason})
       end
