@@ -83,6 +83,12 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
   `user_id`. The ids, never a name, a slug or an email address; `user_id` is a
   pseudonymous id. The JSON log's explicit list of metadata has all three, and so does the
   log in development.
+- The policy in force on a run's Details tab shows each credential's and each tool's
+  `argument` from `dev.qory.run.policy_applied` beside its name, when the policy passed
+  one, such as `forge-token acme/shop (forge.example, api.forge.example)`: an audit of the
+  run reads what each token was minted for. An argument longer than 256 characters is cut
+  there and ends in `…`. The uses of one credential, which the event lists one by one with
+  the same name and argument, show as one entry with the hosts of every use.
 
 ### Changed
 

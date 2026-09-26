@@ -85,12 +85,18 @@ defmodule Apiary.Runs.Record do
   end
 
   # The first twenty objects of the array under `key` that have a string `name`, each as
-  # `{"name", "hosts"}`: the name cut at 120 characters, the first ten string hosts cut at
-  # 255. What a credential and a tool of `run.policy_applied` are read as, by `policy/2`
-  # and by the statement of the timeline's items alike. `%DATA%` is the event's data.
+  # `{"name", "argument", "hosts"}`: the name cut at 120 characters, the argument cut at
+  # `Timeline.max_argument/0` and ending in `…` when cut (null when the object has no
+  # non-empty string argument), the first ten string hosts cut at 255. What a credential
+  # and a tool of `run.policy_applied` are read as, by `policy/2` and by the statement of
+  # the timeline's items alike. `%DATA%` is the event's data.
   @named_hosts """
   (SELECT coalesce(jsonb_agg(jsonb_build_object(
       'name', left(c ->> 'name', 120),
+      'argument', CASE WHEN jsonb_typeof(c -> 'argument') = 'string' AND c ->> 'argument' <> '' THEN
+                    CASE WHEN length(left(c ->> 'argument', #{Timeline.max_argument() + 1})) > #{Timeline.max_argument()}
+                         THEN left(c ->> 'argument', #{Timeline.max_argument()}) || '…'
+                         ELSE c ->> 'argument' END END,
       'hosts', (SELECT coalesce(jsonb_agg(left(h #>> '{}', 255)), '[]'::jsonb)
                 FROM (SELECT h FROM jsonb_array_elements(
                         CASE WHEN jsonb_typeof(c -> 'hosts') = 'array' THEN c -> 'hosts' ELSE '[]'::jsonb END
@@ -137,7 +143,9 @@ defmodule Apiary.Runs.Record do
   The policy in force, from the run's last `run.policy_applied`: `%{sequence, time, mode,
   source, allow, allow_count, deny, deny_count, terminated, terminated_count,
   credentials, tools}`; the lists hold at most fifty strings, the credentials and the tools
-  at most twenty `%{"name", "hosts"}` each, with ten hosts at most. nil when the run has
+  at most twenty `%{"name", "argument", "hosts"}` each, with ten hosts at most and the
+  argument nil when the entry has none. One entry per entry of the event: the uses of one
+  credential are as many entries with the same name and argument. nil when the run has
   none.
   """
   def policy(%Scope{} = scope, %Run{} = run) do

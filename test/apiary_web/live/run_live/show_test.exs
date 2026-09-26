@@ -1564,5 +1564,66 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
       assert has_element?(lv, "#policy-tools", "none")
     end
+
+    @tag needs: :security
+    test "the policy in force shows a credential's and a tool's argument beside its name", %{
+      conn: conn,
+      scope: scope
+    } do
+      run =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "run.policy_applied",
+           tool_policy_data(%{
+             "credentials" => [
+               %{
+                 "name" => "forge-token",
+                 "argument" => "acme/shop",
+                 "hosts" => ["forge.example"],
+                 "scheme" => "basic"
+               },
+               %{
+                 "name" => "forge-token",
+                 "argument" => "acme/shop",
+                 "hosts" => ["api.forge.example", "forge.example"],
+                 "scheme" => "bearer"
+               },
+               %{"name" => "model", "hosts" => ["api.model.example"], "scheme" => "header"},
+               %{
+                 "name" => "markup",
+                 "argument" => "<b>acme</b>",
+                 "hosts" => ["markup.example"],
+                 "scheme" => "bearer"
+               }
+             ],
+             "tools" => [
+               %{
+                 "name" => "files",
+                 "argument" => "acme/shop",
+                 "hosts" => ["files.tools.internal"]
+               }
+             ]
+           })}
+        ])
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/details")
+
+      # The uses of one credential show as one, its argument once, the hosts of every use.
+      assert has_element?(
+               lv,
+               "#policy-credentials-0",
+               "forge-token acme/shop (forge.example, api.forge.example)"
+             )
+
+      assert has_element?(lv, "#policy-credentials-0 code.q-rule", "acme/shop")
+      assert has_element?(lv, "#policy-credentials-1", "model (api.model.example)")
+      refute has_element?(lv, "#policy-credentials-1 code")
+      assert has_element?(lv, "#policy-credentials-2 code", "<b>acme</b>")
+      assert render(element(lv, "#policy-credentials-2 code")) =~ "&lt;b&gt;acme&lt;/b&gt;"
+      refute has_element?(lv, "#policy-credentials-3")
+      assert has_element?(lv, "#policy-tools-0", "files acme/shop (files.tools.internal)")
+      assert has_element?(lv, "#policy-tools-0 code.q-rule", "acme/shop")
+    end
   end
 end

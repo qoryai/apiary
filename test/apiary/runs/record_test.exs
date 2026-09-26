@@ -238,6 +238,87 @@ defmodule Apiary.Runs.RecordTest do
       assert %{tools: []} = Record.policy(scope, run)
     end
 
+    test "the policy in force reads each credential's and each tool's argument", %{
+      scope: scope
+    } do
+      data =
+        tool_policy_data(%{
+          "credentials" => [
+            %{
+              "name" => "forge-token",
+              "argument" => "acme/shop",
+              "hosts" => ["forge.example"],
+              "scheme" => "basic"
+            },
+            %{
+              "name" => "forge-token",
+              "argument" => "acme/shop",
+              "hosts" => ["api.forge.example"],
+              "scheme" => "bearer"
+            },
+            %{"name" => "model", "hosts" => ["api.model.example"], "scheme" => "header"},
+            %{"name" => "whole", "argument" => String.duplicate("w", 256), "hosts" => []},
+            %{"name" => "long", "argument" => String.duplicate("l", 4096), "hosts" => []},
+            %{"name" => "empty", "argument" => "", "hosts" => []},
+            %{"name" => "number", "argument" => 7, "hosts" => []}
+          ],
+          "tools" => [
+            %{
+              "name" => "files",
+              "argument" => "acme/shop",
+              "hosts" => ["files.tools.internal"]
+            },
+            %{"name" => "bare", "hosts" => []}
+          ]
+        })
+
+      run =
+        projected(scope, [{1, "run.started", started_data()}, {2, "run.policy_applied", data}])
+
+      assert %{credentials: credentials, tools: tools} = Record.policy(scope, run)
+
+      # One entry per use, as the event lists them; the argument cut at 256 characters,
+      # visibly, and nil when the entry has no non-empty string.
+      assert credentials == [
+               %{
+                 "name" => "forge-token",
+                 "argument" => "acme/shop",
+                 "hosts" => ["forge.example"]
+               },
+               %{
+                 "name" => "forge-token",
+                 "argument" => "acme/shop",
+                 "hosts" => ["api.forge.example"]
+               },
+               %{"name" => "model", "argument" => nil, "hosts" => ["api.model.example"]},
+               %{"name" => "whole", "argument" => String.duplicate("w", 256), "hosts" => []},
+               %{
+                 "name" => "long",
+                 "argument" => String.duplicate("l", 256) <> "…",
+                 "hosts" => []
+               },
+               %{"name" => "empty", "argument" => nil, "hosts" => []},
+               %{"name" => "number", "argument" => nil, "hosts" => []}
+             ]
+
+      assert tools == [
+               %{
+                 "name" => "files",
+                 "argument" => "acme/shop",
+                 "hosts" => ["files.tools.internal"]
+               },
+               %{"name" => "bare", "argument" => nil, "hosts" => []}
+             ]
+
+      # Timeline.slim/1 reads the tools as the query does.
+      assert Timeline.slim(%{
+               sequence: 2,
+               type: "dev.qory.run.policy_applied",
+               time: DateTime.utc_now(),
+               data: put_in(data["tools"], data["tools"] ++ data["credentials"])
+             }).tools == tools ++ credentials
+    end
+
     test "the timeline reads tool invocations as calls, and groups a tool's allowed calls", %{
       scope: scope
     } do

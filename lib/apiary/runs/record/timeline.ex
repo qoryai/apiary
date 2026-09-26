@@ -71,6 +71,7 @@ defmodule Apiary.Runs.Record.Timeline do
   @max_open_lanes 1_000
   @max_delta 3
   @max_allow 200
+  @max_argument 256
   @lane_key 12
 
   @doc "The bytes of a payload a well shows before \"Show all\"."
@@ -87,6 +88,12 @@ defmodule Apiary.Runs.Record.Timeline do
 
   @doc "How many hosts of a policy applied event's allow list, and of its deny list, are read, at most."
   def max_allow, do: @max_allow
+
+  @doc """
+  How many characters of a credential's or a tool's argument are read, at most: the
+  longest argument the policy editor writes. A longer one is cut there and ends in `…`.
+  """
+  def max_argument, do: @max_argument
 
   @doc "The event types the index needs, with the `dev.qory.` prefix."
   def types, do: Enum.map(Map.keys(@kinds), &(@prefix <> &1))
@@ -1132,7 +1139,8 @@ defmodule Apiary.Runs.Record.Timeline do
   defp hosts(_other), do: []
 
   # The tools of a policy applied event as the query reads them: the first twenty objects
-  # with a string name, each `%{"name", "hosts"}`, the name cut at 120 characters and the
+  # with a string name, each `%{"name", "argument", "hosts"}`, the name cut at 120
+  # characters, the argument at 256 with `…` (nil when there is none) and the
   # first ten string hosts at 255.
   defp named_hosts(list) when is_list(list) do
     for item <- list, is_map(item), is_binary(item["name"]) do
@@ -1140,6 +1148,14 @@ defmodule Apiary.Runs.Record.Timeline do
 
       %{
         "name" => String.slice(item["name"], 0, 120),
+        "argument" =>
+          case item["argument"] do
+            argument when is_binary(argument) and argument != "" ->
+              bound(argument, @max_argument)
+
+            _ ->
+              nil
+          end,
         "hosts" =>
           hosts
           |> Enum.filter(&is_binary/1)

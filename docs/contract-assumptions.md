@@ -382,8 +382,13 @@ The contract has not fixed these; Apiary chose, and the runner should match:
   request as of any other, and the pages read the decision with it. The fold reads
   `tool` and `status` from any egress event that carries them. `request_id` is not projected: the timeline reads it from the event, where one
   request is shown. The `tools` of `dev.qory.run.policy_applied` are read like its
-  `credentials`: twenty at most, each with ten hosts at most. The vendored schemas and the
-  contract fixtures at the pinned ref have no tools yet; the tests of tool invocations use
+  `credentials`: twenty at most, each with ten hosts at most. A credential use and a tool
+  may contain `argument`, the argument the policy passed to it (up to 4096 characters in
+  the contract); it is read cut at 256 characters, the longest argument the policy editor
+  writes, and ends in `…` when cut. The event lists each use of a credential, all with the
+  same name and argument; the policy in force on a run's page shows them as one entry with
+  the hosts of every use. The vendored schemas and the contract fixtures at the pinned ref
+  have no tools and no arguments yet; the tests of tool invocations and of arguments use
   fixtures of their own.
 - What the runner's proxy does with the policy document, read from `internal/proxy`,
   `internal/policy` and `session` of the runner at the pinned ref, and what the apiary

@@ -780,13 +780,11 @@ defmodule ApiaryWeb.RunLive.Show do
             {strings(@policy.terminated, @policy.terminated_count) || gettext("none")}
           </dd>
           <dt>{gettext("Credentials")}</dt>
-          <dd class="font-mono">{named_hosts(@policy.credentials) || gettext("none")}</dd>
+          <.named_hosts id="policy-credentials" named={@policy.credentials} />
           <dt>
             <.term word={gettext("Tools")} standard={@tips.tools} class="q-tip-wide tooltip-right" />
           </dt>
-          <dd id="policy-tools" class="font-mono">
-            {named_hosts(@policy.tools) || gettext("none")}
-          </dd>
+          <.named_hosts id="policy-tools" named={@policy.tools} />
           <dt>{pgettext("plain", "Applied at")}</dt>
           <dd class="font-mono">#{pad(@policy.sequence)}</dd>
         </dl>
@@ -2370,16 +2368,37 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp strings(_other, _count), do: nil
 
-  # Credentials or tools by name, with the hosts each is for. Never a credential's value:
-  # the event carries none.
-  defp named_hosts([_ | _] = named) do
-    Enum.map_join(named, ", ", fn item ->
-      case item["hosts"] do
-        [_ | _] = hosts -> "#{item["name"]} (#{Enum.join(hosts, ", ")})"
-        _ -> item["name"]
-      end
-    end)
+  # Credentials or tools by name, each with the argument the policy passed to it, when it
+  # passed one, and the hosts it is for. The event lists each use of a credential, all with
+  # the same name and argument: they show as one, with the hosts of every use. Never a
+  # credential's value: the event contains none.
+  attr :id, :string, required: true
+  attr :named, :list, required: true, doc: ~s(`%{"name", "argument", "hosts"}` each)
+
+  defp named_hosts(assigns) do
+    assigns = assign(assigns, :named, group_named(assigns.named))
+
+    ~H"""
+    <dd id={@id} class="font-mono">
+      <span :if={@named == []}>{gettext("none")}</span>
+      <span :for={{item, i} <- Enum.with_index(@named)} id={"#{@id}-#{i}"}>{if i > 0, do: ", "}{item.name}<span :if={
+        item.argument
+      }>{" "}<code class="q-rule">{item.argument}</code></span><span :if={item.hosts}>{" "}({item.hosts})</span></span>
+    </dd>
+    """
   end
 
-  defp named_hosts(_other), do: nil
+  # In the order of the first use, with the hosts of every use in order, each once, joined;
+  # nil for none.
+  defp group_named(named) when is_list(named) do
+    by = &{&1["name"], &1["argument"]}
+    grouped = Enum.group_by(named, by, &List.wrap(&1["hosts"]))
+
+    for {name, argument} = key <- named |> Enum.map(by) |> Enum.uniq() do
+      hosts = grouped[key] |> Enum.concat() |> Enum.uniq()
+      %{name: name, argument: argument, hosts: if(hosts != [], do: Enum.join(hosts, ", "))}
+    end
+  end
+
+  defp group_named(_other), do: []
 end

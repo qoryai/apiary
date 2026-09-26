@@ -3066,6 +3066,11 @@
   .q-dl dd.font-mono {
     font-size: 0.78125rem;
   }
+  /* A credential's or a tool's argument in a list of them: it wraps with the list. */
+  .q-dl .q-rule {
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
   .q-arg:not(:last-child)::after {
     content: " ";
   }
