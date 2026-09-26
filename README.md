@@ -190,7 +190,8 @@ header, a body or a secret. Postgres is the only state: a `pg_dump` plus `CLOAK_
 See [CONTRIBUTING.md](CONTRIBUTING.md) for where contributions go and how the checkout is
 run: Erlang and Elixir from `mise.toml`, Postgres on `localhost:5432`, `mix setup`,
 `mix phx.server`, and `mix precommit` before a pull request. Contributions are made under
-the agreement in [CLA.md](CLA.md).
+the agreement in [CLA.md](CLA.md). How the application is built and the rules its code
+follows are under [docs/](docs/).
 
 ## Versioning and upgrading
 
