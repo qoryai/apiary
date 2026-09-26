@@ -29,7 +29,7 @@ written out in [CONTRIBUTING.md](CONTRIBUTING.md).
   `test/apiary/access_test.exs`, which fails for an action without rows. Every context
   function that changes something calls `Access.authorize/3` before acting; a page asks
   `Access.can?/3` with the same action for what it shows, and asks its read action with
-  `on_mount {ApiaryWeb.Access, action}`. Rules: CONTRIBUTING.md, Access.
+  `on_mount {ApiaryWeb.Access, action}`. The rules: [docs/access.md](docs/access.md).
 - **Migrations.** One per change, via `mix ecto.gen.migration`; expand in one release,
   contract in a later one; every migration reverses; tenant keys in the first migration of
   a table. The changelog section of a release lists them under Migrations. Rules and

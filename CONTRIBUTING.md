@@ -76,8 +76,6 @@ beside it:
 
 - `Apiary.Accounts`: users, their tokens, the notifier, and `Apiary.Accounts.Scope`, the
   caller: the user, the organisation, the workspace and the membership.
-- `Apiary.Access`: who may do what, the one question every context function and page
-  asks (see Access below).
 - `Apiary.Organisations`: organisations, workspaces, memberships and invitations; sign-up,
   the members of a workspace, renaming.
 - `Apiary.AccessKeys`: a workspace's access keys, their secrets encrypted at rest through
@@ -145,27 +143,6 @@ The organisation is the tenant, and the schema enforces it, not the pages:
   has the shape.
 
 A page never touches `Apiary.Repo`; it calls a context with `@current_scope`.
-
-## Access
-
-Whether someone may do something is answered by `Apiary.Access` and nowhere else
-(decision 0076). No code outside it compares a membership's level.
-
-- **A new action goes into the module.** Anything a person, an access key or a job can do
-  that changes something, or that reads something a role could one day be refused, is an
-  action. Add it once to the action list in `Apiary.Access`, with the feature it belongs
-  to, give it to the roles in the role table, and add its rows to the table in
-  `test/apiary/access_test.exs`: yes or no for every kind of actor. That test fails for an
-  action without rows. A new feature names its actions in the same list.
-- **The context function asks before it acts.** Every function that changes something
-  calls `Apiary.Access.authorize/3` with its action and the subject first, and returns what
-  it answers: `{:error, :not_found}` for a feature that is off or a subject of another
-  organisation or workspace, `{:error, :forbidden}` for a role that does not allow it. This
-  is the check that counts; a job and a contract endpoint reach the change through it too.
-- **The page asks the same question.** A page shows a button, a link or a tab by
-  `Apiary.Access.can?/3` with the same action, so the button and the function cannot
-  disagree, and a page that reads asks its read action on mount with
-  `on_mount {ApiaryWeb.Access, action}`, answering not found when refused.
 
 ## Migrations
 
