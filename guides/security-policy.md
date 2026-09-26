@@ -217,9 +217,9 @@ Wherever a connection is shown, a tool invocation reads as a call to its tool:
 - On the run's timeline, allowed requests to one tool in a row fold into one line that
   names the tool, "2 allowed requests"; a refused one is never folded away, and the row of
   one request carries the proxy's id of it on hover.
-- The run's policy applied item and the policy in force on its Details tab list the tools
-  and the hosts each serves; the policy in force shows each tool's argument beside its
-  name, when the policy passed one.
+- The run's policy applied item and the policy in force on its Details tab list the tools,
+  each with its argument beside its name when the policy passed one, and the hosts each
+  serves.
 - On `/:org/:workspace/connections`, **Tool invocations** keeps only the destinations
   where a run's last attempt was a tool invocation, each whole: its counts are the same as
   without the filter. A destination where every run's last attempt was refused is not

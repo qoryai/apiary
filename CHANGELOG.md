@@ -86,9 +86,11 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
 - The policy in force on a run's Details tab shows each credential's and each tool's
   `argument` from `dev.qory.run.policy_applied` beside its name, when the policy passed
   one, such as `forge-token acme/shop (forge.example, api.forge.example)`: an audit of the
-  run reads what each token was minted for. An argument longer than 256 characters is cut
-  there and ends in `…`. The uses of one credential, which the event lists one by one with
-  the same name and argument, show as one entry with the hosts of every use.
+  run reads what each token was minted for, whole, up to the contract's 4096 characters.
+  The uses of one credential, which the event lists one by one with the same name and
+  argument, show as one entry with the hosts of every use. Past the first twenty uses or
+  tools the lists end in "and N more", counting the entries not shown. The timeline's
+  policy applied item shows each tool's argument too, cut at 256 characters with `…`.
 
 ### Changed
 
@@ -165,6 +167,9 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
   `Apiary.Policy.Error`'s reason is `:forbidden` for it too; an action of a feature that
   is off is `{:error, :not_found}`. The events endpoint answers `404` to a key that may
   not post.
+- An argument in the policy editor is at most 256 code points, as the contract's schema
+  counts: a letter with a combining accent is two. The editor counted graphemes before,
+  and took an argument the schema then refused.
 
 ### Migrations
 

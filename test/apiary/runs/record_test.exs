@@ -241,27 +241,41 @@ defmodule Apiary.Runs.RecordTest do
     test "the policy in force reads each credential's and each tool's argument", %{
       scope: scope
     } do
+      # "é" as one code point (two bytes), and as "e" and a combining accent: two code
+      # points and one grapheme. The database counts code points, and so does the cut.
+      e = "é"
+      combining = "é"
+
+      credentials =
+        [
+          %{
+            "name" => "forge-token",
+            "argument" => "acme/shop",
+            "hosts" => ["forge.example"],
+            "scheme" => "basic"
+          },
+          %{
+            "name" => "forge-token",
+            "argument" => "acme/shop",
+            "hosts" => ["api.forge.example"],
+            "scheme" => "bearer"
+          },
+          %{"name" => "model", "hosts" => ["api.model.example"], "scheme" => "header"},
+          %{"name" => "whole", "argument" => String.duplicate("w", 4096), "hosts" => []},
+          %{"name" => "long", "argument" => String.duplicate("l", 5000), "hosts" => []},
+          %{"name" => "accent", "argument" => String.duplicate(e, 5000), "hosts" => []},
+          %{
+            "name" => "combining",
+            "argument" => String.duplicate(combining, 3000),
+            "hosts" => []
+          },
+          %{"name" => "empty", "argument" => "", "hosts" => []},
+          %{"name" => "number", "argument" => 7, "hosts" => []}
+        ]
+
       data =
         tool_policy_data(%{
-          "credentials" => [
-            %{
-              "name" => "forge-token",
-              "argument" => "acme/shop",
-              "hosts" => ["forge.example"],
-              "scheme" => "basic"
-            },
-            %{
-              "name" => "forge-token",
-              "argument" => "acme/shop",
-              "hosts" => ["api.forge.example"],
-              "scheme" => "bearer"
-            },
-            %{"name" => "model", "hosts" => ["api.model.example"], "scheme" => "header"},
-            %{"name" => "whole", "argument" => String.duplicate("w", 256), "hosts" => []},
-            %{"name" => "long", "argument" => String.duplicate("l", 4096), "hosts" => []},
-            %{"name" => "empty", "argument" => "", "hosts" => []},
-            %{"name" => "number", "argument" => 7, "hosts" => []}
-          ],
+          "credentials" => credentials,
           "tools" => [
             %{
               "name" => "files",
@@ -275,11 +289,11 @@ defmodule Apiary.Runs.RecordTest do
       run =
         projected(scope, [{1, "run.started", started_data()}, {2, "run.policy_applied", data}])
 
-      assert %{credentials: credentials, tools: tools} = Record.policy(scope, run)
+      assert %{credentials: read, tools: tools} = policy = Record.policy(scope, run)
 
-      # One entry per use, as the event lists them; the argument cut at 256 characters,
-      # visibly, and nil when the entry has no non-empty string.
-      assert credentials == [
+      # One entry per use, as the event lists them; the argument whole up to the contract's
+      # 4096 code points, cut there visibly, and nil when the entry has no non-empty string.
+      assert read == [
                %{
                  "name" => "forge-token",
                  "argument" => "acme/shop",
@@ -291,10 +305,20 @@ defmodule Apiary.Runs.RecordTest do
                  "hosts" => ["api.forge.example"]
                },
                %{"name" => "model", "argument" => nil, "hosts" => ["api.model.example"]},
-               %{"name" => "whole", "argument" => String.duplicate("w", 256), "hosts" => []},
+               %{"name" => "whole", "argument" => String.duplicate("w", 4096), "hosts" => []},
                %{
                  "name" => "long",
-                 "argument" => String.duplicate("l", 256) <> "…",
+                 "argument" => String.duplicate("l", 4096) <> "…",
+                 "hosts" => []
+               },
+               %{
+                 "name" => "accent",
+                 "argument" => String.duplicate(e, 4096) <> "…",
+                 "hosts" => []
+               },
+               %{
+                 "name" => "combining",
+                 "argument" => String.duplicate(combining, 2048) <> "…",
                  "hosts" => []
                },
                %{"name" => "empty", "argument" => nil, "hosts" => []},
@@ -310,13 +334,36 @@ defmodule Apiary.Runs.RecordTest do
                %{"name" => "bare", "argument" => nil, "hosts" => []}
              ]
 
-      # Timeline.slim/1 reads the tools as the query does.
-      assert Timeline.slim(%{
-               sequence: 2,
-               type: "dev.qory.run.policy_applied",
-               time: DateTime.utc_now(),
-               data: put_in(data["tools"], data["tools"] ++ data["credentials"])
-             }).tools == tools ++ credentials
+      # Counted as the page groups them: the two uses of forge-token are one; empty and
+      # number have no argument, each an entry of its own name.
+      assert policy.credentials_count == 8
+      assert policy.tools_count == 2
+    end
+
+    test "the counts of credentials and tools cover the entries past the twentieth", %{
+      scope: scope
+    } do
+      # Fifteen credentials of two uses each: the first twenty uses are ten credentials.
+      uses =
+        for n <- 1..15, host <- ["a", "b"] do
+          %{"name" => "c#{n}", "argument" => "acme/r#{n}", "hosts" => ["#{host}#{n}.example"]}
+        end
+
+      run =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "run.policy_applied",
+           tool_policy_data(%{
+             "credentials" => uses ++ ["junk", %{"hosts" => []}],
+             "tools" => for(n <- 1..25, do: %{"name" => "t#{n}", "hosts" => []})
+           })}
+        ])
+
+      policy = Record.policy(scope, run)
+      assert length(policy.credentials) == 20
+      assert policy.credentials_count == 15
+      assert length(policy.tools) == 20
+      assert policy.tools_count == 25
     end
 
     test "the timeline reads tool invocations as calls, and groups a tool's allowed calls", %{
@@ -379,6 +426,11 @@ defmodule Apiary.Runs.RecordTest do
              "tools" => [
                %{"name" => String.duplicate("n", 200), "hosts" => ["a", 7, "b"]},
                %{"name" => "bare"},
+               %{"name" => "short", "argument" => "acme/shop", "hosts" => ["s"]},
+               %{"name" => "long", "argument" => String.duplicate("l", 4096), "hosts" => []},
+               %{"name" => "accent", "argument" => String.duplicate("é", 300)},
+               %{"name" => "combining", "argument" => String.duplicate("é", 200)},
+               %{"name" => "number", "argument" => 7},
                "junk"
              ]
            })},
@@ -396,7 +448,21 @@ defmodule Apiary.Runs.RecordTest do
         )
         |> Map.new(&{&1.sequence, Timeline.slim(&1)})
 
-      assert Record.items(scope, run, index.items) == Timeline.build(index.items, whole)
+      items = Record.items(scope, run, index.items)
+      assert items == Timeline.build(index.items, whole)
+
+      # The timeline cuts an argument at 256 code points, "…" after; the Details tab does not.
+      arguments =
+        for %{kind: :policy_applied, seq: 8, tools: tools} <- items,
+            tool <- tools,
+            into: %{},
+            do: {tool.name, tool.argument}
+
+      assert arguments["short"] == "acme/shop"
+      assert arguments["long"] == String.duplicate("l", 256) <> "…"
+      assert arguments["accent"] == String.duplicate("é", 256) <> "…"
+      assert arguments["combining"] == String.duplicate("é", 128) <> "…"
+      assert arguments["number"] == nil and arguments["bare"] == nil
     end
   end
 
@@ -540,6 +606,7 @@ defmodule Apiary.Runs.RecordTest do
       assert Enum.all?(policy.deny, &(String.length(&1) <= 255))
       assert policy.terminated == [] and policy.terminated_count == 0
       assert length(policy.credentials) == 20
+      assert policy.credentials_count == 100
       assert %{"name" => "c1", "hosts" => hosts} = hd(policy.credentials)
       assert length(hosts) == 10
     end

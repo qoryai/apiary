@@ -1624,6 +1624,46 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       refute has_element?(lv, "#policy-credentials-3")
       assert has_element?(lv, "#policy-tools-0", "files acme/shop (files.tools.internal)")
       assert has_element?(lv, "#policy-tools-0 code.q-rule", "acme/shop")
+      refute has_element?(lv, "#policy-credentials", "more")
+
+      # The timeline's policy applied item shows a tool's argument, and no credentials.
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      assert has_element?(lv, "#e-2-tools code.q-rule", "acme/shop")
+      refute has_element?(lv, "#e-2", "forge-token")
+    end
+
+    @tag needs: :security
+    test "the policy in force counts the credentials and tools past those it lists", %{
+      conn: conn,
+      scope: scope
+    } do
+      # Fifteen credentials of two uses each: the twenty uses read are ten credentials.
+      uses =
+        for n <- 1..15, host <- ["a", "b"] do
+          %{"name" => "c#{n}", "argument" => "acme/r#{n}", "hosts" => ["#{host}#{n}.example"]}
+        end
+
+      run =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "run.policy_applied",
+           tool_policy_data(%{
+             "credentials" => uses,
+             "tools" => for(n <- 1..21, do: %{"name" => "t#{n}", "hosts" => []})
+           })}
+        ])
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/details")
+
+      assert has_element?(lv, "#policy-credentials-0", "c1 acme/r1 (a1.example, b1.example)")
+      assert has_element?(lv, "#policy-credentials-9")
+      refute has_element?(lv, "#policy-credentials-10")
+      assert has_element?(lv, "#policy-credentials", "and 5 more")
+      assert has_element?(lv, "#policy-tools-19")
+      assert has_element?(lv, "#policy-tools", "and 1 more")
     end
   end
 end

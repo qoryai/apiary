@@ -36,6 +36,15 @@ defmodule Apiary.Policy.GrammarTest do
     assert Grammar.argument?("acme/shop with a space, ü and 🐝")
   end
 
+  test "an argument is at most 256 code points, as the schema's maxLength counts" do
+    assert Grammar.argument?(String.duplicate("\u00E9", 256))
+    refute Grammar.argument?(String.duplicate("\u00E9", 257))
+    # 200 letters with a combining accent: 200 graphemes, 400 code points.
+    refute Grammar.argument?(String.duplicate("e\u0301", 200))
+    assert Grammar.argument?(String.duplicate("e\u0301", 128))
+    refute Grammar.argument?("")
+  end
+
   test "covers?/2 and matches?/2 are the runner's" do
     assert Grammar.covers?("*.example", "api.example")
     assert Grammar.covers?("*.example", "*.api.example")

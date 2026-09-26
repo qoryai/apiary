@@ -84,19 +84,29 @@ defmodule Apiary.Runs.Record do
     quote do: fragment(unquote(sql), unquote(data), unquote(data), unquote(data))
   end
 
+  # The longest `argument` of a credential use or a tool the runner's contract allows: the
+  # policy in force reads it whole.
+  @argument_read 4096
+
+  # An object's `argument`, when it is a non-empty string, cut at `%ARGUMENT%` code points
+  # and ending in `…` when cut; null otherwise. `c` is the object.
+  @argument_sql """
+  CASE WHEN jsonb_typeof(c -> 'argument') = 'string' AND c ->> 'argument' <> '' THEN
+    left(c ->> 'argument', %ARGUMENT%)
+      || CASE WHEN length(left(c ->> 'argument', %ARGUMENT% + 1)) > %ARGUMENT% THEN '…' ELSE '' END
+  END
+  """
+
   # The first twenty objects of the array under `key` that have a string `name`, each as
-  # `{"name", "argument", "hosts"}`: the name cut at 120 characters, the argument cut at
-  # `Timeline.max_argument/0` and ending in `…` when cut (null when the object has no
-  # non-empty string argument), the first ten string hosts cut at 255. What a credential
-  # and a tool of `run.policy_applied` are read as, by `policy/2` and by the statement of
-  # the timeline's items alike. `%DATA%` is the event's data.
+  # `{"name", "argument", "hosts"}`: the name cut at 120 characters, the argument as
+  # `@argument_sql` reads it, the first ten string hosts cut at 255. What a credential and
+  # a tool of `run.policy_applied` are read as, by `policy/2`, whose arguments are cut at
+  # `@argument_read`, and by the statement of the timeline's items, whose arguments are
+  # cut at `Timeline.max_argument/0`. `%DATA%` is the event's data.
   @named_hosts """
   (SELECT coalesce(jsonb_agg(jsonb_build_object(
       'name', left(c ->> 'name', 120),
-      'argument', CASE WHEN jsonb_typeof(c -> 'argument') = 'string' AND c ->> 'argument' <> '' THEN
-                    CASE WHEN length(left(c ->> 'argument', #{Timeline.max_argument() + 1})) > #{Timeline.max_argument()}
-                         THEN left(c ->> 'argument', #{Timeline.max_argument()}) || '…'
-                         ELSE c ->> 'argument' END END,
+      'argument', #{@argument_sql},
       'hosts', (SELECT coalesce(jsonb_agg(left(h #>> '{}', 255)), '[]'::jsonb)
                 FROM (SELECT h FROM jsonb_array_elements(
                         CASE WHEN jsonb_typeof(c -> 'hosts') = 'array' THEN c -> 'hosts' ELSE '[]'::jsonb END
@@ -109,7 +119,28 @@ defmodule Apiary.Runs.Record do
   """
 
   defmacrop named_hosts(data, key) do
-    sql = @named_hosts |> String.replace("%DATA%", "?") |> String.replace("%KEY%", key)
+    sql =
+      @named_hosts
+      |> String.replace("%DATA%", "?")
+      |> String.replace("%KEY%", key)
+      |> String.replace("%ARGUMENT%", Integer.to_string(@argument_read))
+
+    quote do: fragment(unquote(sql), unquote(data), unquote(data))
+  end
+
+  # How many entries the page makes of the array under `key`: one for each name and
+  # argument, as `named_hosts/2` reads them, among its objects with a string `name`, however
+  # many uses each has. The uses of one credential are one entry, so a count of them would
+  # count the same credential more than once.
+  defmacrop named_count(data, key) do
+    sql = """
+    (SELECT count(DISTINCT jsonb_build_array(left(c ->> 'name', 120), #{String.replace(@argument_sql, "%ARGUMENT%", Integer.to_string(@argument_read))}))
+       FROM jsonb_array_elements(
+              CASE WHEN jsonb_typeof(? -> '#{key}') = 'array' THEN ? -> '#{key}' ELSE '[]'::jsonb END
+            ) cs(c)
+      WHERE jsonb_typeof(c -> 'name') = 'string')
+    """
+
     quote do: fragment(unquote(sql), unquote(data), unquote(data))
   end
 
@@ -142,11 +173,13 @@ defmodule Apiary.Runs.Record do
   @doc """
   The policy in force, from the run's last `run.policy_applied`: `%{sequence, time, mode,
   source, allow, allow_count, deny, deny_count, terminated, terminated_count,
-  credentials, tools}`; the lists hold at most fifty strings, the credentials and the tools
-  at most twenty `%{"name", "argument", "hosts"}` each, with ten hosts at most and the
-  argument nil when the entry has none. One entry per entry of the event: the uses of one
-  credential are as many entries with the same name and argument. nil when the run has
-  none.
+  credentials, credentials_count, tools, tools_count}`; the lists hold at most fifty
+  strings, the credentials and the tools at most twenty `%{"name", "argument", "hosts"}`
+  each, with ten hosts at most and the argument whole up to the contract's 4096 code
+  points, nil when the entry has none. One entry per entry of the event: the uses of one
+  credential are as many entries with the same name and argument. A count is of the
+  different names and arguments among all of them, as the page groups them. nil when the
+  run has none.
   """
   def policy(%Scope{} = scope, %Run{} = run) do
     Repo.one(
@@ -166,7 +199,9 @@ defmodule Apiary.Runs.Record do
           terminated: strings(e.data, "terminated", 50, 255),
           terminated_count: array_length(e.data, "terminated"),
           credentials: named_hosts(e.data, "credentials"),
-          tools: named_hosts(e.data, "tools")
+          credentials_count: named_count(e.data, "credentials"),
+          tools: named_hosts(e.data, "tools"),
+          tools_count: named_count(e.data, "tools")
         }
     )
   end
@@ -362,7 +397,7 @@ defmodule Apiary.Runs.Record do
        FROM (SELECT v FROM jsonb_array_elements(CASE WHEN jsonb_typeof(e.data -> 'terminated') = 'array' THEN e.data -> 'terminated' ELSE '[]'::jsonb END) WITH ORDINALITY a(v, n)
              WHERE jsonb_typeof(v) = 'string' ORDER BY n LIMIT 5) q) AS terminated,
     CASE WHEN jsonb_typeof(e.data -> 'terminated') = 'array' THEN jsonb_array_length(e.data -> 'terminated') ELSE 0 END AS terminated_count,
-    CASE WHEN e.type = 'dev.qory.run.policy_applied' THEN #{String.replace(@named_hosts, "%DATA%", "e.data") |> String.replace("%KEY%", "tools")} END AS tools,
+    CASE WHEN e.type = 'dev.qory.run.policy_applied' THEN #{@named_hosts |> String.replace("%DATA%", "e.data") |> String.replace("%KEY%", "tools") |> String.replace("%ARGUMENT%", Integer.to_string(Timeline.max_argument()))} END AS tools,
     #{Enum.map_join(~w(command file_path pattern path url description), ",\n  ", &"CASE WHEN jsonb_typeof(x.i -> '#{&1}') = 'string' THEN left(x.i ->> '#{&1}', 400) END AS input_#{&1}")},
     (SELECT left(value #>> '{}', 400) FROM jsonb_each(CASE WHEN jsonb_typeof(x.i) = 'object' THEN x.i ELSE '{}'::jsonb END)
        WHERE jsonb_typeof(value) = 'string' AND value #>> '{}' <> '' ORDER BY key COLLATE "C" LIMIT 1) AS input_first,

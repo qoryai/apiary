@@ -780,11 +780,15 @@ defmodule ApiaryWeb.RunLive.Show do
             {strings(@policy.terminated, @policy.terminated_count) || gettext("none")}
           </dd>
           <dt>{gettext("Credentials")}</dt>
-          <.named_hosts id="policy-credentials" named={@policy.credentials} />
+          <.named_hosts
+            id="policy-credentials"
+            named={@policy.credentials}
+            count={@policy.credentials_count}
+          />
           <dt>
             <.term word={gettext("Tools")} standard={@tips.tools} class="q-tip-wide tooltip-right" />
           </dt>
-          <.named_hosts id="policy-tools" named={@policy.tools} />
+          <.named_hosts id="policy-tools" named={@policy.tools} count={@policy.tools_count} />
           <dt>{pgettext("plain", "Applied at")}</dt>
           <dd class="font-mono">#{pad(@policy.sequence)}</dd>
         </dl>
@@ -2371,12 +2375,15 @@ defmodule ApiaryWeb.RunLive.Show do
   # Credentials or tools by name, each with the argument the policy passed to it, when it
   # passed one, and the hosts it is for. The event lists each use of a credential, all with
   # the same name and argument: they show as one, with the hosts of every use. Never a
-  # credential's value: the event contains none.
+  # credential's value: the event contains none. Past the entries read, "and N more"
+  # counts the entries not shown, grouped the same way.
   attr :id, :string, required: true
   attr :named, :list, required: true, doc: ~s(`%{"name", "argument", "hosts"}` each)
+  attr :count, :integer, default: 0, doc: "the entries of the event, grouped"
 
   defp named_hosts(assigns) do
-    assigns = assign(assigns, :named, group_named(assigns.named))
+    named = group_named(assigns.named)
+    assigns = assign(assigns, named: named, more: (assigns.count || 0) - length(named))
 
     ~H"""
     <dd id={@id} class="font-mono">
@@ -2384,6 +2391,9 @@ defmodule ApiaryWeb.RunLive.Show do
       <span :for={{item, i} <- Enum.with_index(@named)} id={"#{@id}-#{i}"}>{if i > 0, do: ", "}{item.name}<span :if={
         item.argument
       }>{" "}<code class="q-rule">{item.argument}</code></span><span :if={item.hosts}>{" "}({item.hosts})</span></span>
+      <span :if={@more > 0}>
+        {ngettext("and %{number} more", "and %{number} more", @more, number: Format.number(@more))}
+      </span>
     </dd>
     """
   end
