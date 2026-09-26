@@ -81,7 +81,8 @@ The members of the object may come in another order, and the version is the rele
 ## 4. Sign up
 
 Open `http://localhost:4100/users/register`. Under **Create your account**, enter an email
-address, `ada@qory.example` say, and select **Create account**. No password is asked for:
+address, `ada@qory.example` say, and the **Organisation name**, usually your company's,
+`Acme` say, and select **Create account**. No password is asked for:
 the server sends a link, and the page says where it went and that the link works for 15
 minutes.
 
@@ -95,13 +96,14 @@ docker compose logs apiary | grep -o 'http://localhost:4100/users/log-in/[A-Za-z
 Open the link in the browser. The page reads **Welcome to Qory Apiary**; select **Confirm my
 account**. You land on the overview of your workspace.
 
-Signing up created an organisation, named after the part of your email before the `@`, one
-workspace in it named *Main*, and your membership as its owner. Both can be renamed under
-**Organisation** and **Settings**.
+Signing up created an organisation with the name you gave, one workspace in it named
+*Main*, and your membership as its owner. Both can be renamed under **Organisation** and
+**Settings**. Someone who signs up through an invitation joins its organisation and is
+not asked for a name.
 
 Every page of a workspace is under `/<organisation>/<workspace>/…`, both parts slugs made
-from the names at sign-up: an email `dana@example.com` gives `/dana/main`, and the runs
-are at `/dana/main/runs`. Renaming keeps a slug. A link to a page names its workspace, so
+from the names at sign-up: an organisation named `Acme` gives `/acme/main`, and the runs
+are at `/acme/main/runs`. Renaming keeps a slug. A link to a page names its workspace, so
 a colleague who is a member opens the same page, and anyone else gets *Not Found*.
 `http://localhost:4100/` and the log-in take you to the workspace you opened last in this
 browser, also after a log-out.

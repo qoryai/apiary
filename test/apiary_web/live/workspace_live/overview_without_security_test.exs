@@ -52,9 +52,10 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewWithoutSecurityTest do
     Policy.topic(scope.workspace.id) in Registry.keys(Apiary.PubSub, view.pid)
   end
 
-  # The tables only the policy keeps. Every query made by this test, the page it opens and
-  # the page's tasks is heard (they carry the test in `$callers`); nothing else is.
-  @policy_tables ~w(policy_rules policy_changes run_configurations)
+  # The tables the policy keeps, its history in the audit trail's. Every query made by
+  # this test, the page it opens and the page's tasks is heard (they carry the test in
+  # `$callers`); nothing else is.
+  @policy_tables ~w(policy_rules audit_entries run_configurations)
 
   defp policy_reads(fun) do
     handler = {__MODULE__, make_ref()}

@@ -39,8 +39,8 @@ defmodule Apiary.Organisations.SlugTest do
 
   describe "a new organisation and workspace" do
     test "get their slugs from their names at sign-up, numbered when taken" do
-      first = sign_up_fixture(%{email: "dana.ops@example.com"})
-      second = sign_up_fixture(%{email: "dana.ops@example.org"})
+      first = sign_up_fixture(%{organisation_name: "Dana Ops"})
+      second = sign_up_fixture(%{organisation_name: "Dana.Ops"})
 
       assert first.organisation.slug == "dana-ops"
       assert second.organisation.slug == "dana-ops-2"
@@ -50,10 +50,10 @@ defmodule Apiary.Organisations.SlugTest do
     end
 
     test "never get a name the router reserves" do
-      %{organisation: organisation} = sign_up_fixture(%{email: "settings@example.com"})
+      %{organisation: organisation} = sign_up_fixture(%{organisation_name: "Settings"})
       assert organisation.slug == "settings-2"
 
-      %{organisation: organisation} = sign_up_fixture(%{email: "users@example.com"})
+      %{organisation: organisation} = sign_up_fixture(%{organisation_name: "Users"})
       assert organisation.slug == "users-2"
     end
   end
@@ -82,7 +82,7 @@ defmodule Apiary.Organisations.SlugTest do
         if :counters.get(picks, 1) == 1, do: taken, else: Slug.from_name(name, "x")
       end
 
-      attrs = %{email: "fresh@example.com"}
+      attrs = %{email: "fresh@example.com", organisation_name: "Fresh"}
 
       assert {:ok, %{organisation: organisation, workspace: workspace, membership: membership}} =
                Apiary.Organisations.sign_up_user(attrs, nil, pick_slug: pick)
@@ -97,7 +97,9 @@ defmodule Apiary.Organisations.SlugTest do
       before = counts()
 
       assert {:error, %Ecto.Changeset{} = changeset} =
-               Apiary.Organisations.sign_up_user(%{email: "fresh@example.com"}, nil,
+               Apiary.Organisations.sign_up_user(
+                 %{email: "fresh@example.com", organisation_name: "Fresh"},
+                 nil,
                  pick_slug: fn _ -> taken end
                )
 

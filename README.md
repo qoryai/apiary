@@ -52,9 +52,10 @@ curl http://localhost:4100/health
 
 For the trial, `.env` sets `PUBLIC_URL=http://localhost:4100` and `MAIL_TO_LOG=true`,
 which writes the log-in link to the log instead of sending it. Open
-`http://localhost:4100/users/register`, enter an email address, and take the link from
-`docker compose logs apiary`. You land on the overview of your workspace. Every value, and
-what each one is for: [guides/quickstart.md](guides/quickstart.md).
+`http://localhost:4100/users/register`, enter an email address and your organisation's
+name, and take the link from `docker compose logs apiary`. You land on the overview of
+your workspace. Every value, and what each one is for:
+[guides/quickstart.md](guides/quickstart.md).
 
 ### 2. Connect a machine
 

@@ -83,6 +83,45 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
   `user_id`. The ids, never a name, a slug or an email address; `user_id` is a
   pseudonymous id. The JSON log's explicit list of metadata has all three, and so does the
   log in development.
+- The audit trail: every change made to what an organisation holds leaves one entry,
+  written in the change's transaction by the context function that makes it, so a change
+  that is refused or rolled back leaves none. An entry says who made the change (a person
+  or an access key by id, or Qory itself for its own scheduled work), the action
+  (`Apiary.Access`'s name for it), what it was made to, when, from which address and
+  client or by which job, and the changed fields before and after; never a secret, and
+  never a person's name or email address, which a page looks up from the account when it
+  shows it. Audited: signing up with a new organisation, renaming the organisation or a
+  workspace, inviting, changing the level of and removing a member, revoking and accepting
+  an invitation, creating, rotating (and retiring the previous secret of) and revoking an
+  access key, closing a run, the retention settings, every change of the security policy,
+  and the trail's own retention. The events a runner posts are the record, not the trail,
+  and leave none. Entries are never changed; a test finds exactly one entry for each
+  change and fails for an action that is neither audited nor said not to be.
+- The organisation's **Activity** page, `/:org/activity`, in the sidebar's Manage group
+  for owners: the trail newest first, fifty entries a page, filtered by workspace and by
+  action, each row saying when, who, what in a sentence, on what, and the change in a few
+  words. Members do not see it, and the path answers them not found.
+- `AUDIT_RETENTION_DAYS`, how long the audit trail keeps an entry: 365 days when unset, a
+  whole number from 90 to 2555, read at boot; a value outside stops the boot. Once a day,
+  at 02:40 UTC, a job per organisation deletes the older entries, run by Oban's cron
+  plugin, and each deletion that removed any is an entry of its own, by Qory. See the
+  Install guide.
+- `AUDIT_ADDRESS_RETENTION_DAYS`, how long an audit entry keeps the address and the
+  client it came from: 90 days when unset, from 1 day to `AUDIT_RETENTION_DAYS`, read at
+  boot; a value outside stops the boot and says the bound. The daily prune clears both
+  from older entries and keeps the rest of each for the trail's period; the clearing
+  writes no entry of its own, and a prune's entry counts what it cleared.
+- `TRUSTED_PROXIES`, the reverse proxies whose `X-Forwarded-For` the audit trail believes
+  for the address a change came from: addresses or CIDR ranges separated by commas, none
+  by default, checked at boot. Only for a request from one of them is the header read,
+  from its right-most hop leftwards, past the trusted proxies to the first address that
+  is not one; what the client wrote to the left of it is never read, a hop's port is
+  left out and an IPv4-mapped address is recorded as IPv4. A range of every address,
+  `0.0.0.0/0` or `::/0`, stops the boot. Without it the address is the peer's, a proxy's
+  when there is one. See the Install guide.
+- Qory itself is an actor of `Apiary.Access`: a job that no person enqueued acts as the
+  instance, with a role of its own that allows pruning the audit trail and nothing else. A
+  scope without a person that is not the instance's may still do nothing.
 
 ### Changed
 
@@ -159,6 +198,34 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
   `Apiary.Policy.Error`'s reason is `:forbidden` for it too; an action of a feature that
   is off is `{:error, :not_found}`. The events endpoint answers `404` to a key that may
   not post.
+- The security policy's history is part of the audit trail: its pages read the trail's
+  entries of the policy's actions, and show what they showed, who made each change, when,
+  the rules before and after, the version it left in force and the diff. A run
+  configuration names the entry of the change that rendered it (`audit_entry_id`, beside
+  `policy_change_id`, which names the same id), and a render again by
+  `mix apiary.policy.rerender` is an entry by Qory. The history is now kept as long as the
+  trail, a year unless `AUDIT_RETENTION_DAYS` says otherwise; the versions are kept
+  whatever their age. Whether a workspace serves a policy is read from its run
+  configurations, which only a change writes, so the trail's retention never stops it.
+- An invitation that could not be delivered is still not kept, and the page says so as
+  before; the trail keeps its invitation and its withdrawal, an `invitation.revoke` by the
+  same person with the reason `undelivered`. The email is sent after the invitation is
+  committed; one accepted before the relay's failure came back is kept, as it did
+  arrive, and the page says it was sent; one an owner revoked meanwhile is not withdrawn
+  again. Should the withdrawal itself fail, the page says the invitation is still
+  pending and lists it, to be revoked there. An expired invitation deleted when a new one
+  goes to its address is an `invitation.revoke` too, with the reason `expired`. Revoking a
+  revoked key, or retiring a previous secret that is not there, changes nothing and leaves
+  no entry.
+- Signing up without an invitation asks for the organisation's name beside the email
+  address, and the organisation and its slug are made from that name, by the same rules
+  as before; nothing is made from the address any more, so no part of it becomes an
+  organisation's name, slug or URL. The first workspace is still named Main. An invited
+  sign-up joins the invitation's organisation and asks for no name. Organisations that
+  exist keep their names and slugs.
+- `activity` is no longer a slug a workspace can take: `/:org/activity` is the
+  organisation's Activity page. A workspace that took it moves to `activity-2` (see
+  Migrations); its name is unchanged.
 
 ### Migrations
 
@@ -184,9 +251,37 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
 - `20261002000100`: Oban's tables for the job queue, `oban_jobs` and `oban_peers`, with
   their types, indexes and insert trigger, at Oban's migration version 14. New and empty:
   instant. Reversible: rolling it back drops both tables and everything created with them.
+- `20261003000100`: `audit_entries`, the audit trail, with `organisation_id` and a
+  nullable `workspace_id` under the composite key against `workspaces`, checks on the
+  kind of actor, and indexes on `(organisation_id, inserted_at, id)` and
+  `(workspace_id, subject_id, inserted_at)`. New and empty: instant. Reversible: rolling
+  it back drops the table.
+- `20261003000200`: `run_configurations.audit_entry_id`, nullable, without a default and
+  without a foreign key, and its index: instant, no row is rewritten. Reversible: rolling
+  it back drops both.
+- `20261003000300`: a data migration, apart from the schema's: every row of
+  `policy_changes` is copied into `audit_entries` under its own id, as the entry of its
+  policy action, and every run configuration's `audit_entry_id` is set to its
+  `policy_change_id`. Two statements over a few rows per change of a policy; copying again
+  copies nothing more. Reversible: rolling it back deletes the copies and clears the
+  references to them. `policy_changes` stays, no longer read and written for this release
+  only (see Upgrading).
+- `20261003000400`: a workspace whose slug is `activity` gets the first free of
+  `activity-2`, `activity-3` … in its organisation. One statement over the workspaces
+  holding it, most likely none. Rolling it back changes nothing.
 
 ### Upgrading
 
+- `policy_changes` is no longer read, and is still written for this release, each row
+  under the id of its change's audit entry, with the run configurations naming both: the
+  release before this one, rolled back to, finds the policy's history whole and every
+  managed workspace managed. A later release stops writing it and drops it, after
+  running the copy into the audit trail (`20261003000300`) once more for what a
+  rolled-back release wrote in the meantime.
+- Set `AUDIT_RETENTION_DAYS` before the upgrade if a year is not the period: the first
+  daily prune deletes what is older, the policy's history among it. Likewise
+  `AUDIT_ADDRESS_RETENTION_DAYS`, if 90 days is not how long a change's address should
+  be kept.
 - Tools come from the run's policy, and this server never sends a run configuration that
   selects any: tool invocations come only from runs under the machine's own policy, its
   runner file.
@@ -195,7 +290,7 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
 
 ### Added
 
-- A body: what makes the engine one kind of factory. The engine speaks of a **target** in a
+- A body: what names the engine for one kind of work. The engine speaks of a **target** in a
   **system**; a body names them for a domain and says which of a run's labels identify the
   target. The one body is software: a target is a repository, its system a forge, named by
   the `forge` and `repository` labels the `qory` command sets (`Apiary.Body`,

@@ -19,6 +19,19 @@ actions:
 3. gets its rows in `test/apiary/access_test.exs`: yes or no for every kind of actor that
    matters. The test fails for an action in the list without rows.
 
+## Who asks
+
+A **scope** is who asks: a person with the membership the page's path names, an access
+key at the server contract, or **the instance**, in a job no person enqueued
+(`Apiary.Accounts.Scope.for_instance/2`, which `Apiary.Job` gives such a job). The
+instance has a role of its own in the role table, with only what its jobs need: pruning
+the audit trail. Any other scope without a person may nothing, whatever it carries.
+
+An action taken on the strength of something other than a role, signing up or accepting
+an invitation with its token, is in the action list too, so the audit trail can name it,
+and no role has it: the context function checks the sign-up or the token, and asks
+nothing.
+
 ## The context function asks before it acts
 
 Every context function that changes something calls `Apiary.Access.authorize/3` with its
@@ -30,7 +43,9 @@ action and the subject first, and returns what it answers:
 
 This is the check that counts. `authorize/3` reads the membership again, so a scope loaded
 earlier cannot act on a level that has changed since. A job and a contract endpoint reach
-the change through the same function, so they are asked too.
+the change through the same function, so they are asked too. The same function writes the
+change's audit entry in the change's transaction (`Apiary.Audit`,
+[architecture.md](architecture.md)), with the action it asked.
 
 ## The page asks the same question
 

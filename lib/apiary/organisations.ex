@@ -19,7 +19,9 @@ defmodule Apiary.Organisations do
   use Gettext, backend: ApiaryWeb.Gettext
   import Ecto.Query, warn: false
 
-  alias Apiary.{Access, Repo}
+  require Logger
+
+  alias Apiary.{Access, Audit, Repo}
   alias Apiary.Accounts.{Scope, User, UserNotifier}
   alias Apiary.Organisations.{Workspace, Invitation, Membership, Organisation, Slug}
 
@@ -122,8 +124,9 @@ defmodule Apiary.Organisations do
   job_scope/3 is the scope a job acts under (`Apiary.Job`), built from the
   ids its arguments carry: the organisation, the workspace in it when `workspace_id` is not
   nil, and the person whose action enqueued the job when `user_id` is not nil, with their
-  membership there when they still hold one. Without a person the scope's user is nil: the
-  instance acts. Without an organisation the scope is the instance's alone.
+  membership there when they still hold one. Without a person the scope is the
+  instance's (`Apiary.Accounts.Scope.for_instance/2`): the instance acts, as its role in
+  `Apiary.Access` allows. Without an organisation the scope is the instance's alone.
 
   `:error` when the organisation, the workspace in it or the person no longer exists.
   """
@@ -133,13 +136,19 @@ defmodule Apiary.Organisations do
     with {:ok, user} <- fetch_job_user(user_id),
          {:ok, organisation} <- fetch_job_organisation(organisation_id),
          {:ok, workspace} <- fetch_job_workspace(organisation, workspace_id) do
-      {:ok,
-       %Scope{
-         user: user,
-         organisation: organisation,
-         workspace: workspace,
-         membership: job_membership(user, organisation, workspace)
-       }}
+      case user do
+        nil ->
+          {:ok, Scope.for_instance(organisation, workspace)}
+
+        %User{} ->
+          {:ok,
+           %Scope{
+             user: user,
+             organisation: organisation,
+             workspace: workspace,
+             membership: job_membership(user, organisation, workspace)
+           }}
+      end
     end
   end
 
@@ -171,7 +180,6 @@ defmodule Apiary.Organisations do
     end
   end
 
-  defp job_membership(nil, _organisation, _workspace), do: nil
   defp job_membership(_user, nil, _workspace), do: nil
 
   defp job_membership(%User{} = user, %Organisation{id: organisation_id}, workspace) do
@@ -246,14 +254,57 @@ defmodule Apiary.Organisations do
 
   ## Sign-up
 
+  @sign_up_types %{email: :string, organisation_name: :string}
+
+  @doc """
+  change_sign_up/2 is the changeset of the sign-up form: `email`, checked as an account's
+  address is, and, for a sign-up without an invitation, `organisation_name`, the name of
+  the organisation it creates, checked as an organisation's name is. `invited: true` for
+  a sign-up with an invitation, which creates no organisation and asks for no name;
+  `validate_unique: false` leaves out the read of whether the address is taken, as the
+  form does while it is typed in.
+  """
+  @spec change_sign_up(map, keyword) :: Ecto.Changeset.t()
+  def change_sign_up(attrs \\ %{}, opts \\ []) do
+    unique? = Keyword.get(opts, :validate_unique, true)
+    user = User.email_changeset(%User{}, attrs, validate_unique: unique?)
+
+    form =
+      {%{}, @sign_up_types}
+      |> Ecto.Changeset.cast(attrs, Map.keys(@sign_up_types))
+      |> Ecto.Changeset.update_change(:organisation_name, &String.trim/1)
+      |> copy_errors(user)
+
+    if Keyword.get(opts, :invited, false) do
+      form
+    else
+      name = Ecto.Changeset.get_field(form, :organisation_name)
+      copy_errors(form, Organisation.changeset(%Organisation{}, %{name: name}))
+    end
+  end
+
+  # The errors of the account's or the organisation's changeset, on the form's fields: the
+  # address on `email`, the organisation's name and slug on `organisation_name`, and
+  # anything else on `email`, which is where the form says it could not sign up.
+  defp copy_errors(form, %Ecto.Changeset{errors: errors}) do
+    Enum.reduce(errors, form, fn {field, {message, keys}}, form ->
+      field = if field in [:name, :slug], do: :organisation_name, else: :email
+      Ecto.Changeset.add_error(form, field, message, keys)
+    end)
+  end
+
   @doc """
   Registers a user and places them in an organisation, in one transaction.
 
-  Without an invitation token the user gets a new organisation named from the
-  email's local part, a workspace named "#{@default_workspace_name}" and an owner
-  membership. With a valid pending token the invitation is accepted instead: no
-  organisation is created and the membership is at the invitation's level. An invalid or
-  expired token behaves as no token.
+  Without an invitation token the user gets a new organisation named `organisation_name`,
+  with a slug made from that name, a workspace named "#{@default_workspace_name}" and an
+  owner membership: nothing is made from the address. With a valid pending token the
+  invitation is accepted instead: no organisation is created, no name is asked for, and
+  the membership is at the invitation's level. An invalid or expired token behaves as no
+  token.
+
+  A refusal is `{:error, changeset}`, the changeset of the sign-up form
+  (`change_sign_up/2`), with its errors on `email` and `organisation_name`.
 
   The invitation may also be given as the struct `get_invitation_by_token/1`
   returned earlier. Either way it is claimed inside the transaction: when someone
@@ -261,35 +312,54 @@ defmodule Apiary.Organisations do
   an error on `:email`. So it does when every slug picked for the new organisation was
   taken by a concurrent sign-up before the insert, a few times over.
 
-  `opts` is for tests: `pick_slug: fun`, given the organisation's name, stands in for the
-  pick of a free slug.
+  The audit trail has the sign-up, by the new user: `organisation.create` for a new
+  organisation, `invitation.accept` for an invitation, from `origin:` (see
+  `Apiary.Accounts.Scope.put_origin/2`), the request's address and client.
+
+  `opts` is also for tests: `pick_slug: fun`, given the organisation's name, stands in for
+  the pick of a free slug.
   """
   def sign_up_user(attrs, invitation_or_token \\ nil, opts \\ []) do
-    user_changeset = User.email_changeset(%User{}, attrs)
     pick = Keyword.get(opts, :pick_slug, &organisation_slug/1)
+    origin = Keyword.get(opts, :origin)
+    invitation = pending_invitation(invitation_or_token)
+    invited? = match?(%Invitation{}, invitation)
+    form = change_sign_up(attrs, invited: invited?, validate_unique: false)
 
-    multi =
-      case pending_invitation(invitation_or_token) do
-        %Invitation{} = invitation -> invited_sign_up_multi(user_changeset, invitation)
-        _ -> fresh_sign_up_multi(user_changeset, pick)
-      end
+    if form.valid? do
+      email = Ecto.Changeset.get_field(form, :email)
+      user_changeset = User.email_changeset(%User{}, %{email: email})
 
-    case Repo.transaction(multi) do
-      {:ok,
-       %{user: user, organisation: organisation, workspace: workspace, membership: membership}} ->
+      multi =
+        if invited?,
+          do: invited_sign_up_multi(user_changeset, invitation, origin),
+          else:
+            fresh_sign_up_multi(
+              user_changeset,
+              Ecto.Changeset.get_field(form, :organisation_name),
+              pick,
+              origin
+            )
+
+      case Repo.transaction(multi) do
         {:ok,
-         %{user: user, organisation: organisation, workspace: workspace, membership: membership}}
+         %{user: user, organisation: organisation, workspace: workspace, membership: membership}} ->
+          {:ok,
+           %{user: user, organisation: organisation, workspace: workspace, membership: membership}}
 
-      {:error, _step, %Ecto.Changeset{} = changeset, _changes} ->
-        {:error, changeset}
+        {:error, _step, %Ecto.Changeset{} = changeset, _changes} ->
+          {:error, form |> copy_errors(changeset) |> Map.put(:action, :insert)}
+      end
+    else
+      {:error, Map.put(form, :action, :insert)}
     end
   end
 
-  defp fresh_sign_up_multi(user_changeset, pick) do
+  defp fresh_sign_up_multi(user_changeset, name, pick, origin) do
     Ecto.Multi.new()
     |> Ecto.Multi.insert(:user, user_changeset)
-    |> Ecto.Multi.run(:organisation, fn _repo, %{user: user} ->
-      case insert_organisation(organisation_name_from_email(user.email), pick) do
+    |> Ecto.Multi.run(:organisation, fn _repo, _changes ->
+      case insert_organisation(name, pick) do
         {:ok, organisation} ->
           {:ok, organisation}
 
@@ -321,9 +391,20 @@ defmodule Apiary.Organisations do
                                          } ->
       membership_changeset(organisation, workspace, user, :owner)
     end)
+    |> Audit.record(
+      &sign_up_scope(&1, origin),
+      :"organisation.create",
+      & &1.organisation,
+      &%{details: %{workspace_id: &1.workspace.id, membership_id: &1.membership.id}}
+    )
   end
 
-  defp invited_sign_up_multi(user_changeset, %Invitation{} = invitation) do
+  # The new user, acting in the organisation they signed up into.
+  defp sign_up_scope(%{user: user, organisation: organisation, workspace: workspace}, origin) do
+    %Scope{user: user, organisation: organisation, workspace: workspace, origin: origin}
+  end
+
+  defp invited_sign_up_multi(user_changeset, %Invitation{} = invitation, origin) do
     Ecto.Multi.new()
     |> Ecto.Multi.insert(:user, user_changeset)
     |> Ecto.Multi.put(:organisation, invitation.organisation)
@@ -344,7 +425,18 @@ defmodule Apiary.Organisations do
     |> Ecto.Multi.insert(:membership, fn %{user: user} ->
       membership_changeset(invitation.organisation, invitation.workspace, user, invitation.level)
     end)
+    |> Audit.record(
+      &sign_up_scope(&1, origin),
+      :"invitation.accept",
+      invitation,
+      &accepted(invitation, &1.membership)
+    )
   end
+
+  # An accepted invitation: the level it gave and the membership it became; never the
+  # address it was sent to.
+  defp accepted(%Invitation{level: level}, %Membership{id: id}),
+    do: %{after: %{level: level}, details: %{membership_id: id}}
 
   defp membership_changeset(
          %Organisation{} = organisation,
@@ -399,35 +491,58 @@ defmodule Apiary.Organisations do
     end)
   end
 
-  defp organisation_name_from_email(email) do
-    case String.split(email, "@", parts: 2) do
-      [local, _] when local != "" -> local
-      _ -> email
-    end
-  end
-
   ## Settings
 
   def change_organisation(%Organisation{} = organisation, attrs \\ %{}) do
     Organisation.changeset(organisation, attrs)
   end
 
-  @doc "Renames the scope's organisation (`organisation.rename`)."
+  @doc "Renames the scope's organisation (`organisation.rename`), with its audit entry."
   def update_organisation(%Scope{organisation: %Organisation{} = organisation} = scope, attrs) do
-    with :ok <- Access.authorize(scope, :"organisation.rename", organisation) do
-      organisation |> Organisation.changeset(attrs) |> Repo.update()
-    end
+    Repo.transact(fn ->
+      with :ok <- Access.authorize(scope, :"organisation.rename", organisation),
+           {:ok, renamed} <- organisation |> Organisation.changeset(attrs) |> Repo.update(),
+           :ok <- record_edit(scope, :"organisation.rename", organisation, renamed, [:name]) do
+        {:ok, renamed}
+      end
+    end)
   end
 
   def change_workspace(%Workspace{} = workspace, attrs \\ %{}) do
     Workspace.changeset(workspace, attrs)
   end
 
-  @doc "Renames the scope's workspace (`workspace.rename`)."
+  @doc "Renames the scope's workspace (`workspace.rename`), with its audit entry."
   def update_workspace(%Scope{workspace: %Workspace{} = workspace} = scope, attrs) do
-    with :ok <- Access.authorize(scope, :"workspace.rename", workspace) do
-      workspace |> Workspace.changeset(attrs) |> Repo.update()
+    Repo.transact(fn ->
+      with :ok <- Access.authorize(scope, :"workspace.rename", workspace),
+           {:ok, renamed} <- workspace |> Workspace.changeset(attrs) |> Repo.update(),
+           :ok <- record_edit(scope, :"workspace.rename", workspace, renamed, [:name]) do
+        {:ok, renamed}
+      end
+    end)
+  end
+
+  # The entry of an edit, when it changed one of `fields`; an edit that changed nothing
+  # has nothing to record.
+  defp record_edit(scope, action, old, new, fields) do
+    case Audit.changed(old, new, fields) do
+      nil ->
+        :ok
+
+      changes ->
+        with {:ok, _entry} <- Audit.record(Repo, scope, action, new, changes), do: :ok
     end
+  end
+
+  @doc "list_workspaces/1 is the workspaces of the scope's organisation, by name."
+  @spec list_workspaces(Scope.t()) :: [%Workspace{}]
+  def list_workspaces(%Scope{organisation: %Organisation{id: organisation_id}}) do
+    Repo.all(
+      from w in Workspace,
+        where: w.organisation_id == ^organisation_id,
+        order_by: [asc: w.name, asc: w.id]
+    )
   end
 
   ## Members
@@ -460,8 +575,11 @@ defmodule Apiary.Organisations do
         with :ok <- lock_owners(scope),
              :ok <- Access.authorize(scope, :"member.change_level", scope.workspace),
              {:ok, membership} <- get_member(scope, membership_id),
-             :ok <- ensure_not_last_owner(membership, level) do
-          membership |> Membership.changeset(%{level: level}) |> Repo.update()
+             :ok <- ensure_not_last_owner(membership, level),
+             {:ok, changed} <-
+               membership |> Membership.changeset(%{level: level}) |> Repo.update(),
+             :ok <- record_member(scope, :"member.change_level", membership, changed) do
+          {:ok, changed}
         end
       end
       |> Repo.transact()
@@ -478,12 +596,32 @@ defmodule Apiary.Organisations do
       with :ok <- lock_owners(scope),
            :ok <- Access.authorize(scope, :"member.remove", scope.workspace),
            {:ok, membership} <- get_member(scope, membership_id),
-           :ok <- ensure_not_last_owner(membership, :removed) do
-        Repo.delete(membership)
+           :ok <- ensure_not_last_owner(membership, :removed),
+           {:ok, removed} <- Repo.delete(membership),
+           :ok <- record_member(scope, :"member.remove", membership, nil) do
+        {:ok, removed}
       end
     end
     |> Repo.transact()
     |> broadcast_membership_change()
+  end
+
+  # A membership's entry names its person by their user id, in `details`, since the
+  # membership of a removed member is gone.
+  defp record_member(scope, :"member.remove" = action, %Membership{} = membership, nil) do
+    data = %{before: %{level: membership.level}, details: %{user_id: membership.user_id}}
+    with {:ok, _entry} <- Audit.record(Repo, scope, action, membership, data), do: :ok
+  end
+
+  defp record_member(scope, action, %Membership{} = old, %Membership{} = new) do
+    case Audit.changed(old, new, [:level]) do
+      nil ->
+        :ok
+
+      changes ->
+        data = Map.put(changes, :details, %{user_id: new.user_id})
+        with {:ok, _entry} <- Audit.record(Repo, scope, action, new, data), do: :ok
+    end
   end
 
   # Owners of the organisation are locked so two concurrent changes cannot both
@@ -582,6 +720,20 @@ defmodule Apiary.Organisations do
   Invites an email address to the scope's workspace and emails the link built by
   `url_fun.(token)` (`member.invite`). An address that already belongs to a member of
   the organisation is refused with an error on `:email`.
+
+  The invitation and its audit entry (`member.invite`) are committed first, and the email
+  is sent after, so no transaction waits on the mail relay. An invitation that could not
+  be delivered is then withdrawn, `{:error, :delivery_failed}`: deleted, in a second
+  transaction, with an entry of `invitation.revoke` by the same person, its reason
+  `undelivered`, when it is still pending then. One the invitee accepted meanwhile (the
+  relay took the message and failed after) is kept and returned, `{:ok, invitation}`: it
+  arrived. One an owner revoked meanwhile is gone already; neither writes an entry.
+  Should the withdrawal itself fail, the invitation stays pending, undelivered:
+  `{:error, :delivery_failed_pending}`, for an owner to revoke.
+
+  An expired invitation to the same address, which would hold its pending place, is
+  deleted with the new one's, an `invitation.revoke` entry each, their reason `expired`.
+  The entries name an invitation and its level, never the address.
   """
   def invite_member(%Scope{} = scope, attrs, url_fun) when is_function(url_fun, 1) do
     with :ok <- Access.authorize(scope, :"member.invite", scope.workspace) do
@@ -605,12 +757,18 @@ defmodule Apiary.Organisations do
           with %Ecto.Changeset{valid?: true} = changeset <- changeset,
                :ok <-
                  delete_expired_invitations(
-                   organisation,
+                   scope,
                    Ecto.Changeset.get_field(changeset, :email)
-                 ) do
-            Repo.insert(changeset)
+                 ),
+               {:ok, invitation} <- Repo.insert(changeset),
+               {:ok, _entry} <-
+                 Audit.record(Repo, scope, :"member.invite", invitation, %{
+                   after: %{level: invitation.level}
+                 }) do
+            {:ok, invitation}
           else
             %Ecto.Changeset{} = changeset -> {:error, changeset}
+            {:error, _reason} = error -> error
           end
         end)
 
@@ -621,11 +779,61 @@ defmodule Apiary.Organisations do
 
           :error ->
             # An invitation nobody received must not occupy the pending slot.
-            Repo.delete(invitation, allow_stale: true)
-            {:error, :delivery_failed}
+            case withdraw_undelivered(scope, invitation) do
+              {:ok, {:accepted, accepted}} -> {:ok, accepted}
+              {:ok, _withdrawn_or_gone} -> {:error, :delivery_failed}
+              {:error, _reason} -> {:error, :delivery_failed_pending}
+            end
         end
       end
     end
+  end
+
+  # The invitation, as it is now, locked: a revocation or an acceptance of it waits, and
+  # one that came first is seen. Still pending, it is deleted, and the trail says why: its
+  # inviter revoked nothing, the mail relay refused it. Accepted meanwhile, the email did
+  # arrive, whatever the relay answered: it is kept, and the invitation stands. Revoked
+  # meanwhile, it is gone, and its revocation is in the trail already. Not asked of
+  # `Apiary.Access`: it undoes the caller's own invitation, which it was allowed a moment
+  # ago. A withdrawal the database refuses leaves the invitation pending, and is logged;
+  # `invite_member/3` says so, `{:error, :delivery_failed_pending}`.
+  defp withdraw_undelivered(%Scope{} = scope, %Invitation{id: id}) do
+    Repo.transact(fn ->
+      case Repo.one(from i in Invitation, where: i.id == ^id, lock: "FOR UPDATE") do
+        nil ->
+          {:ok, :gone}
+
+        %Invitation{accepted_at: %DateTime{}} = accepted ->
+          {:ok, {:accepted, accepted}}
+
+        %Invitation{} = pending ->
+          with {:ok, _deleted} <- Repo.delete(pending),
+               {:ok, _entry} <-
+                 Audit.record(Repo, scope, :"invitation.revoke", pending, %{
+                   before: %{level: pending.level},
+                   details: %{reason: "undelivered"}
+                 }) do
+            {:ok, :withdrawn}
+          end
+      end
+    end)
+    |> case do
+      {:ok, outcome} ->
+        {:ok, outcome}
+
+      {:error, _reason} = error ->
+        Logger.error("invitation not withdrawn after a failed delivery invitation=#{id}")
+        error
+    end
+  rescue
+    # The database is away, or a statement failed: the kind of failure only.
+    error ->
+      Logger.error(
+        "invitation not withdrawn after a failed delivery invitation=#{id} " <>
+          "error=#{inspect(error.__struct__)}"
+      )
+
+      {:error, :not_withdrawn}
   end
 
   defp deliver_invitation(%Invitation{email: email}, inviter, organisation, url) do
@@ -689,36 +897,64 @@ defmodule Apiary.Organisations do
   end
 
   # An expired invitation still occupies the pending slot for its email; a new
-  # invitation replaces it.
-  defp delete_expired_invitations(%Organisation{id: organisation_id}, email) do
+  # invitation replaces it. Each deleted is an entry of the trail, by the person whose
+  # invitation replaced it, as they asked for the deletion.
+  defp delete_expired_invitations(
+         %Scope{organisation: %Organisation{id: organisation_id}} = scope,
+         email
+       ) do
     now = DateTime.utc_now()
 
-    Repo.delete_all(
-      from i in Invitation,
-        where:
-          i.organisation_id == ^organisation_id and i.email == ^email and is_nil(i.accepted_at) and
-            i.expires_at <= ^now
-    )
+    {_count, expired} =
+      Repo.delete_all(
+        from i in Invitation,
+          where:
+            i.organisation_id == ^organisation_id and i.email == ^email and
+              is_nil(i.accepted_at) and i.expires_at <= ^now,
+          select: i
+      )
 
-    :ok
+    Enum.reduce_while(expired, :ok, fn invitation, :ok ->
+      case Audit.record(Repo, scope, :"invitation.revoke", invitation, %{
+             before: %{level: invitation.level},
+             details: %{reason: "expired"}
+           }) do
+        {:ok, _entry} -> {:cont, :ok}
+        {:error, _changeset} = error -> {:halt, error}
+      end
+    end)
   end
 
   @doc "Deletes a pending invitation (`invitation.revoke`)."
   def revoke_invitation(
-        %Scope{organisation: %Organisation{id: organisation_id} = organisation} = scope,
+        %Scope{organisation: %Organisation{} = organisation} = scope,
         invitation_id
       ) do
-    with :ok <- Access.authorize(scope, :"invitation.revoke", organisation) do
-      pending =
-        from i in Invitation,
-          where:
-            i.id == ^invitation_id and i.organisation_id == ^organisation_id and
-              is_nil(i.accepted_at)
-
-      case Repo.one(pending) do
-        %Invitation{} = invitation -> Repo.delete(invitation)
+    Repo.transact(fn ->
+      with :ok <- Access.authorize(scope, :"invitation.revoke", organisation),
+           %Invitation{} = invitation <- Repo.one(pending_invitation_query(scope, invitation_id)),
+           {:ok, revoked} <- Repo.delete(invitation),
+           {:ok, _entry} <-
+             Audit.record(Repo, scope, :"invitation.revoke", invitation, %{
+               before: %{level: invitation.level}
+             }) do
+        {:ok, revoked}
+      else
         nil -> {:error, :not_found}
+        {:error, _reason} = error -> error
       end
+    end)
+  end
+
+  defp pending_invitation_query(%Scope{organisation: %Organisation{id: organisation_id}}, id) do
+    case Ecto.UUID.cast(id) do
+      {:ok, id} ->
+        from i in Invitation,
+          where: i.id == ^id and i.organisation_id == ^organisation_id and is_nil(i.accepted_at),
+          lock: "FOR UPDATE"
+
+      :error ->
+        from i in Invitation, where: false
     end
   end
 
@@ -742,13 +978,18 @@ defmodule Apiary.Organisations do
   defp pending_invitation(token), do: get_invitation_by_token(token)
 
   @doc """
-  Accepts an invitation on behalf of a signed-in user: a membership at the
-  invitation's level, and the invitation marked accepted. Takes the URL token or
-  the invitation `get_invitation_by_token/1` returned earlier; the invitation is
-  claimed inside the transaction, so it makes one membership however many
-  callers hold it: the others get `{:error, :invalid}`.
+  Accepts an invitation on behalf of a signed-in user, the scope's: a membership at the
+  invitation's level, the invitation marked accepted, and the audit entry of
+  `invitation.accept`, by the user. Takes the URL token or the invitation
+  `get_invitation_by_token/1` returned earlier; the invitation is claimed inside the
+  transaction, so it makes one membership however many callers hold it: the others get
+  `{:error, :invalid}`. The token is the check: nobody's role is asked. A user alone, not
+  a scope, is accepted as a scope without an origin.
   """
-  def accept_invitation(%User{} = user, invitation_or_token) do
+  def accept_invitation(%User{} = user, invitation_or_token),
+    do: accept_invitation(Scope.for_user(user), invitation_or_token)
+
+  def accept_invitation(%Scope{user: %User{} = user} = scope, invitation_or_token) do
     case pending_invitation(invitation_or_token) do
       nil ->
         {:error, :invalid}
@@ -761,15 +1002,29 @@ defmodule Apiary.Organisations do
              ) do
             {:error, :already_member}
           else
-            with {:ok, _invitation} <- claim_invitation(invitation) do
-              Repo.insert(
-                membership_changeset(
-                  invitation.organisation,
-                  invitation.workspace,
-                  user,
-                  invitation.level
-                )
-              )
+            with {:ok, _invitation} <- claim_invitation(invitation),
+                 {:ok, membership} <-
+                   Repo.insert(
+                     membership_changeset(
+                       invitation.organisation,
+                       invitation.workspace,
+                       user,
+                       invitation.level
+                     )
+                   ),
+                 {:ok, _entry} <-
+                   Audit.record(
+                     Repo,
+                     %{
+                       scope
+                       | organisation: invitation.organisation,
+                         workspace: invitation.workspace
+                     },
+                     :"invitation.accept",
+                     invitation,
+                     accepted(invitation, membership)
+                   ) do
+              {:ok, membership}
             end
           end
         end)

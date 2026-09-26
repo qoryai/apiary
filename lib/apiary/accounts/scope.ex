@@ -12,18 +12,38 @@ defmodule Apiary.Accounts.Scope do
   the workspace inside it and the caller's membership there, once
   `Apiary.Organisations.resolve_scope/3` has loaded the ones a page's path names,
   or `Apiary.Organisations.load_scope/2` the user's own. At the server contract the scope
-  is an access key's instead (`for_access_key/1`): no user, the key's workspace. What a
-  scope may do is `Apiary.Access`'s answer.
+  is an access key's instead (`for_access_key/1`): no user, the key's workspace. A job
+  that no person enqueued acts as the instance (`for_instance/2`): no user, and
+  `instance: true`, the one mark `Apiary.Access` gives the instance's role by; a scope
+  without a person that does not carry it may nothing. What a scope may do is
+  `Apiary.Access`'s answer.
+
+  `origin` says from where the caller acts, for the audit trail (`Apiary.Audit`): the
+  address and the client of the request, `%{remote_ip:, user_agent:}`, which the web side
+  puts on the scope it loads (`put_origin/2`), or the worker of the job,
+  `%{worker: "Apiary.Audit.PruneJob"}`. Nil where nobody said.
   """
 
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.{Preferences, User}
-  alias Apiary.Organisations.Workspace
+  alias Apiary.Organisations.{Organisation, Workspace}
 
   @typedoc "Who is asking, and in which organisation and workspace."
   @type t :: %__MODULE__{}
 
-  defstruct user: nil, organisation: nil, workspace: nil, membership: nil, access_key: nil
+  @typedoc "From where the caller acts: a request's address and client, or a job."
+  @type origin ::
+          %{optional(:remote_ip) => String.t() | nil, optional(:user_agent) => String.t() | nil}
+          | %{worker: String.t()}
+          | nil
+
+  defstruct user: nil,
+            organisation: nil,
+            workspace: nil,
+            membership: nil,
+            access_key: nil,
+            instance: false,
+            origin: nil
 
   @doc """
   Creates a scope for the given user.
@@ -47,6 +67,23 @@ defmodule Apiary.Accounts.Scope do
   def for_access_key(%AccessKey{workspace: %Workspace{} = workspace} = access_key) do
     %__MODULE__{access_key: AccessKey.without_secrets(access_key), workspace: workspace}
   end
+
+  @doc """
+  The scope of the instance acting on its own, in `organisation` and, when given,
+  `workspace` of it: the scope of a job that no person enqueued (`Apiary.Job`). No user
+  and no membership; `Apiary.Access` answers it by the instance's role.
+  """
+  @spec for_instance(%Organisation{} | nil, %Workspace{} | nil) :: t
+  def for_instance(organisation, workspace \\ nil) do
+    %__MODULE__{instance: true, organisation: organisation, workspace: workspace}
+  end
+
+  @doc """
+  The scope with `origin`, from where its caller acts; nil stays nil.
+  """
+  @spec put_origin(t | nil, origin) :: t | nil
+  def put_origin(nil, _origin), do: nil
+  def put_origin(%__MODULE__{} = scope, origin), do: %{scope | origin: origin}
 
   @doc """
   The time zone the scope's times are shown in: its user's preference, an IANA name

@@ -11,9 +11,13 @@ defmodule ApiaryWeb.Endpoint do
     same_site: "Lax"
   ]
 
+  # The peer's address, the user agent and, behind a trusted proxy, `X-Forwarded-For` are
+  # where a change came from, for the audit trail (`ApiaryWeb.Origin`).
   socket "/live", Phoenix.LiveView.Socket,
-    websocket: [connect_info: [session: @session_options]],
-    longpoll: [connect_info: [session: @session_options]]
+    websocket: [
+      connect_info: [:peer_data, :user_agent, :x_headers, session: @session_options]
+    ],
+    longpoll: [connect_info: [:peer_data, :user_agent, :x_headers, session: @session_options]]
 
   # Serve at "/" the static files from "priv/static" directory.
   #

@@ -246,7 +246,9 @@ defmodule ApiaryWeb.Contract.EventsDigestsTest do
 
     deliver(ctx, [wire_event(subject, 3, "run.heartbeat", %{})], run_configuration: ctx.own)
 
-    assert_received {:query, "run_configurations", "SELECT" <> _}
+    # Whether the workspace serves a policy, then the digest in force: one read each.
+    assert_received {:query, "run_configurations", "SELECT TRUE" <> _}
+    assert_received {:query, "run_configurations", "SELECT r0." <> _}
     refute_received {:query, _source, _query}
   end
 end

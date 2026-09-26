@@ -62,10 +62,13 @@ defmodule Apiary.Job do
   `c:perform/2` is given the `Apiary.Accounts.Scope` built from the arguments
   (`Apiary.Organisations.job_scope/3`): the organisation and the workspace, and the person
   whose action enqueued the job when the arguments name them as `user_id`, with their
-  membership there when they still hold one. Without `user_id` the scope's user is nil,
-  and the actor of the job's changes is the instance. `for_scope/3` names the scope's
-  person, when it has one. A job whose organisation, workspace or person no longer exists
-  is cancelled, `{:cancel, :scope_gone}`, not retried; one whose arguments are wrong,
+  membership there when they still hold one. Without `user_id` the scope is the
+  instance's (`Apiary.Accounts.Scope.for_instance/2`): the actor of the job's changes is
+  the instance, which may what its role in `Apiary.Access` allows and nothing else. The
+  scope's `origin` is the job's worker, which the audit trail records as where a change
+  came from (`Apiary.Audit`). `for_scope/3` names the scope's person, when it has one. A
+  job whose organisation, workspace or person no longer exists is cancelled,
+  `{:cancel, :scope_gone}`, not retried; one whose arguments are wrong,
   `{:cancel, :invalid_arguments}`.
 
   ## Time
@@ -309,7 +312,9 @@ defmodule Apiary.Job do
   defp resume?(_states), do: false
 
   defp ensure_kind!(worker, kind) do
-    unless function_exported?(worker, :__apiary_job__, 0) and worker.__apiary_job__() == kind do
+    # Loaded first: a module nothing has called yet is not loaded, and exports nothing.
+    unless Code.ensure_loaded?(worker) and function_exported?(worker, :__apiary_job__, 0) and
+             worker.__apiary_job__() == kind do
       raise ArgumentError, "#{inspect(worker)} is not an Apiary.Job with scope: #{inspect(kind)}"
     end
   end
@@ -362,8 +367,11 @@ defmodule Apiary.Job do
 
         try do
           case Organisations.job_scope(organisation_id, workspace_id, ids["user_id"]) do
-            {:ok, scope} -> worker.perform(scope, job)
-            :error -> {:cancel, :scope_gone}
+            {:ok, scope} ->
+              worker.perform(Scope.put_origin(scope, %{worker: inspect(worker)}), job)
+
+            :error ->
+              {:cancel, :scope_gone}
           end
         after
           LogMetadata.restore(previous)

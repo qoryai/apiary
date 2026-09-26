@@ -20,18 +20,26 @@ defmodule Apiary.AccessTest do
   #   operator_elsewhere  an operator's staff, on an organisation it does not manage
   #   instance_admin      the instance admin, without a membership in the organisation
   #   access_key          a runner, with an access key of the workspace
-  #   feature_off         whoever the action is for, an owner or an access key, on an
-  #                       instance without the action's feature
+  #   instance            the instance itself, in a job no person enqueued
+  #   feature_off         whoever the action is for, an owner, an access key or the
+  #                       instance, on an instance without the action's feature
   #
   # The managing relationship and the instance admin role are not built yet: an operator's
   # staff and the instance admin reach an organisation through a membership or not at all,
   # so their rows are no. They change when those are built.
+  #
+  # Signing up and accepting an invitation are taken on the strength of the sign-up and the
+  # token, which no role is: nobody's row says yes.
   @table [
+    {:"organisation.create", yes: []},
     {:"organisation.rename", yes: [:owner, :feature_off]},
     {:"member.invite", yes: [:owner, :feature_off]},
     {:"member.change_level", yes: [:owner, :feature_off]},
     {:"member.remove", yes: [:owner, :feature_off]},
     {:"invitation.revoke", yes: [:owner, :feature_off]},
+    {:"invitation.accept", yes: []},
+    {:"audit.read", yes: [:owner, :feature_off]},
+    {:"audit.prune", yes: [:instance, :feature_off]},
     {:"workspace.rename", yes: [:owner, :feature_off]},
     {:"access_key.create", yes: [:member, :owner, :feature_off]},
     {:"access_key.rotate", yes: [:member, :owner, :feature_off]},
@@ -56,6 +64,7 @@ defmodule Apiary.AccessTest do
     :operator_elsewhere,
     :instance_admin,
     :access_key,
+    :instance,
     :feature_off
   ]
 
@@ -106,7 +115,8 @@ defmodule Apiary.AccessTest do
             organisation: client.organisation,
             workspace: client.workspace
           },
-          access_key: Scope.for_access_key(key)
+          access_key: Scope.for_access_key(key),
+          instance: Scope.for_instance(client.organisation, client.workspace)
         }
       }
     end
@@ -131,7 +141,7 @@ defmodule Apiary.AccessTest do
           answer ->
             :ok
 
-          actor == :feature_off ->
+          actor == :feature_off and Access.feature(action) != nil ->
             assert authorized == {:error, :not_found}
 
           actor in [:other_owner, :operator_elsewhere] ->
@@ -229,6 +239,24 @@ defmodule Apiary.AccessTest do
                {:error, :forbidden}
     end
 
+    test "a scope without a person may nothing unless it is the instance's" do
+      %{scope: owner} = sign_up_fixture()
+      nobody = %Scope{organisation: owner.organisation, workspace: owner.workspace}
+      instance = Scope.for_instance(owner.organisation, owner.workspace)
+
+      assert Access.reload(instance) == instance
+      assert Access.authorize(instance, :"audit.prune", owner.organisation) == :ok
+      assert Access.authorize(nobody, :"audit.prune", owner.organisation) == {:error, :forbidden}
+
+      # The mark alone, on a scope that has a person, is no instance.
+      marked = %{owner | instance: true}
+      assert Access.authorize(marked, :"audit.prune", owner.organisation) == {:error, :forbidden}
+
+      for action <- Access.actions() -- Access.roles().instance do
+        refute Access.can?(instance, action, owner.workspace), "the instance may #{action}"
+      end
+    end
+
     test "without a scope, nothing" do
       for action <- Access.actions() do
         refute Access.can?(nil, action, nil)
@@ -246,14 +274,27 @@ defmodule Apiary.AccessTest do
   # actions, the workspace for the rest; another organisation's owner and an operator's
   # staff elsewhere ask about the client's.
   defp asked(ctx, action, :feature_off) do
-    actor = if action in Access.roles().access_key, do: :access_key, else: :owner
+    actor =
+      cond do
+        action in Access.roles().access_key -> :access_key
+        action in Access.roles().instance -> :instance
+        true -> :owner
+      end
+
     {ctx.scopes[actor], subject(ctx.client, action)}
   end
 
   defp asked(ctx, action, actor), do: {ctx.scopes[actor], subject(ctx.client, action)}
 
   defp subject(%{organisation: organisation}, action)
-       when action in [:"organisation.rename", :"invitation.revoke"],
+       when action in [
+              :"organisation.create",
+              :"organisation.rename",
+              :"invitation.revoke",
+              :"invitation.accept",
+              :"audit.read",
+              :"audit.prune"
+            ],
        do: organisation
 
   defp subject(%{workspace: workspace}, _action), do: workspace

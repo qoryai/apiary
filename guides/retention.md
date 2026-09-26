@@ -2,7 +2,10 @@
 
 A workspace keeps everything its runs sent until an owner says otherwise. Retention is two
 settings of the workspace, each a number of days or empty for unlimited, and a nightly job
-that deletes what is older and says what it deleted.
+that deletes what is older and says what it deleted. A change of either setting is an
+entry of the organisation's audit trail, which has a retention of its own, set for the
+instance: `AUDIT_RETENTION_DAYS` for the entries, `AUDIT_ADDRESS_RETENTION_DAYS` for the
+address and the client each came from ([Install and configure](install.md)).
 
 ## The two settings
 

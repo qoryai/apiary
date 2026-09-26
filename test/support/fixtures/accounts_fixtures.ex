@@ -12,11 +12,16 @@ defmodule Apiary.AccountsFixtures do
   def unique_user_email, do: "user#{System.unique_integer()}@example.com"
   def valid_user_password, do: "hello world!"
 
+  # The organisation's name is the sign-up's (`Apiary.Organisations.sign_up_user/3`); an
+  # account alone ignores it.
   def valid_user_attributes(attrs \\ %{}) do
     Enum.into(attrs, %{
-      email: unique_user_email()
+      email: unique_user_email(),
+      organisation_name: unique_organisation_name()
     })
   end
+
+  def unique_organisation_name, do: "Organisation #{System.unique_integer([:positive])}"
 
   def unconfirmed_user_fixture(attrs \\ %{}) do
     {:ok, user} =

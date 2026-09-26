@@ -9,11 +9,12 @@ defmodule ApiaryWeb.Access do
   It follows the path scope's hook, which has loaded the organisation and the workspace,
   and `ApiaryWeb.Features`'s gate, which has already answered for a feature that is off.
 
-  Today every member may read what the pages ask, so no signed-in reader of a workspace is
-  refused here, nor by the run page's terminal tab (`run.read_log`), the access keys
-  page's refusal of a key action, or the log endpoint's refusal. Their end-to-end tests
-  land with the first role that is refused one of these; until then the hook is tested
-  on its own, and the answers in `Apiary.Access`'s table.
+  The organisation's Activity page (`audit.read`) is the one page a member is refused
+  here, and its test shows it. Every member may read what the other pages ask, so no
+  signed-in reader of a workspace is refused by them, nor by the run page's terminal tab
+  (`run.read_log`), the access keys page's refusal of a key action, or the log endpoint's
+  refusal. Their end-to-end tests land with the first role that is refused one of these;
+  until then the answers are in `Apiary.Access`'s table.
   """
 
   @doc false

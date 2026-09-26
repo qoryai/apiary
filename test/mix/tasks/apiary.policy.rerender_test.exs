@@ -95,7 +95,7 @@ defmodule Mix.Tasks.Apiary.Policy.RerenderTest do
 
     assert change.before == change.after
     assert change.version_after == baseline + 1
-    assert change.id == current!(scope, nil).policy_change_id
+    assert change.id == current!(scope, nil).audit_entry_id
     assert [%Change{action: "rerendered"} | _] = changes(scope, target)
 
     # Run again: the bytes are current, nothing is written and nothing is announced.

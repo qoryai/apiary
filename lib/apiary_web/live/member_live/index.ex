@@ -303,6 +303,20 @@ defmodule ApiaryWeb.MemberLive.Index do
            gettext("The invitation could not be sent, so it was not created. Try again.")
          )}
 
+      # Undelivered, and it could not be taken back: it is still pending, and the page
+      # lists it, where an owner revokes it.
+      {:error, :delivery_failed_pending} ->
+        {:noreply,
+         socket
+         |> put_flash(
+           :error,
+           gettext(
+             "The invitation could not be sent, and is still pending. Revoke it under Pending invitations, then try again."
+           )
+         )
+         |> load()
+         |> push_patch(to: members_path(socket))}
+
       {:error, :forbidden} ->
         {:noreply, unauthorized(socket)}
     end

@@ -21,13 +21,26 @@ defmodule Apiary.Policy do
 
   ## Writes
 
-  Every write is one transaction: the rule, a `policy_changes` row, and the render of the
-  baseline and of every target that has rules (or has had a configuration) of its own.
+  Every write is one transaction: the rule, its entry in the audit trail (`Apiary.Audit`),
+  and the render of the baseline and of every target that has rules (or has had a
+  configuration) of its own.
   A render is validated against the contract's schema before it is stored; a change whose
   render the schema or the resolution refuses is rolled back and answered with a sentence.
   A render that gives the same bytes as the version in force writes no new version. After
   the commit `{:policy_changed, %{workspace_id:, target_id:, action:}}` goes out on
   `topic/1`, `"policy:<workspace_id>"`.
+
+  ## History
+
+  The history of a policy is the audit trail's entries of the policy's actions
+  (`security_policy.edit`, `.lock`, `.set_mode`), read as `Apiary.Policy.Change`s: the
+  entry's subject is the holder, the target or the workspace for the baseline, its
+  `before` and `after` the holder's mode and rules, and its `details` the kind of change
+  (`rule_added` …), the host or credential it is about and the version it left in force.
+  Each run configuration a change rendered names the change's entry (`audit_entry_id`).
+  For one release more, each change also writes its row in `policy_changes`, under the
+  entry's id, and the configurations name it there too (`policy_change_id`): the release
+  before reads them after a rollback. Nothing here reads them.
 
   Who may write is `Apiary.Access`'s answer, asked in every write under the workspace's
   lock, on the caller's membership as it is then: `security_policy.edit` for a rule,
@@ -51,10 +64,12 @@ defmodule Apiary.Policy do
 
   require Logger
 
-  alias Apiary.Access
+  alias Apiary.{Access, Audit}
   alias Apiary.Accounts.{Scope, User}
+  alias Apiary.Audit.Entry
   alias Apiary.Organisations.{Workspace, Organisation}
-  alias Apiary.Policy.{Activity, Change, Effective, Error, Export, Grammar, Render, Resolution}
+  alias Apiary.Policy.{Activity, Change, ChangeRow, Effective, Error, Export, Grammar}
+  alias Apiary.Policy.{Render, Resolution}
   alias Apiary.Policy.{Rule, RunConfiguration, Schema, Suggestions}
   alias Apiary.Repo
   alias Apiary.Runs.{Connection, Target, Run}
@@ -66,6 +81,8 @@ defmodule Apiary.Policy do
   # repeat the list, and so the history's growth: quadratic in the rules, up to this.
   @rules_max 500
   @nobody "00000000-0000-0000-0000-000000000000"
+  # The actions of the policy's writes, whose audit entries are its history.
+  @history_actions ~w(security_policy.edit security_policy.lock security_policy.set_mode)
 
   @type holder :: nil | :workspace | Target.t()
   @type refusal :: {:error, Error.t()}
@@ -103,9 +120,12 @@ defmodule Apiary.Policy do
   def managed?(%Scope{workspace: %Workspace{id: workspace_id}}),
     do: managed_workspace?(workspace_id)
 
+  # The first change is what writes the first version, and nothing else writes one, so a
+  # workspace is managed once it has a run configuration: a fact the audit trail's
+  # retention cannot take away.
   @doc false
   def managed_workspace?(workspace_id) do
-    Repo.exists?(from c in Change, where: c.workspace_id == ^workspace_id)
+    Repo.exists?(from c in RunConfiguration, where: c.workspace_id == ^workspace_id)
   end
 
   @doc """
@@ -130,7 +150,9 @@ defmodule Apiary.Policy do
           where: h.id == ^workspace_id and h.organisation_id == ^org_id,
           select:
             {h.egress_mode,
-             exists(from(c in Change, where: c.workspace_id == parent_as(:workspace).id)),
+             exists(
+               from(c in RunConfiguration, where: c.workspace_id == parent_as(:workspace).id)
+             ),
              fragment(
                "ARRAY(SELECT p.egress_mode FROM targets p WHERE p.workspace_id = ? AND p.egress_mode IS NOT NULL)",
                h.id
@@ -819,18 +841,20 @@ defmodule Apiary.Policy do
     :workspace_id,
     :target_id,
     :changed_by_id,
-    :policy_change_id
+    :audit_entry_id
   ]
+  # An entry without its `before` and `after`, which repeat the holder's rules.
   @change_fields [
     :id,
+    :actor_kind,
+    :actor_id,
     :action,
-    :subject,
-    :version_after,
+    :subject_kind,
+    :subject_id,
+    :details,
     :inserted_at,
     :organisation_id,
-    :workspace_id,
-    :target_id,
-    :changed_by_id
+    :workspace_id
   ]
 
   @doc """
@@ -875,11 +899,11 @@ defmodule Apiary.Policy do
 
     Repo.all(
       from c in RunConfiguration,
-        where: c.workspace_id == ^workspace_id and c.policy_change_id in ^ids,
+        where: c.workspace_id == ^workspace_id and c.audit_entry_id in ^ids,
         order_by: [asc_nulls_first: c.target_id, asc: c.version],
         select: struct(c, ^@configuration_fields)
     )
-    |> Enum.group_by(& &1.policy_change_id)
+    |> Enum.group_by(& &1.audit_entry_id)
   end
 
   @doc """
@@ -895,15 +919,16 @@ defmodule Apiary.Policy do
       when is_list(holders) do
     {ids, baseline?} = holder_keys(holders)
 
-    Repo.all(
-      from c in Change,
-        where: c.workspace_id == ^workspace_id,
-        where: c.target_id in ^ids or (^baseline? and is_nil(c.target_id)),
-        distinct: c.target_id,
-        order_by: [asc: c.target_id, desc: c.inserted_at, desc: c.id],
-        select: struct(c, ^@change_fields),
-        preload: [:changed_by]
+    from(e in history(workspace_id),
+      where:
+        (e.subject_kind == "target" and e.subject_id in ^ids) or
+          (^baseline? and e.subject_kind == "workspace"),
+      distinct: [e.subject_kind, e.subject_id],
+      order_by: [asc: e.subject_kind, asc: e.subject_id, desc: e.inserted_at, desc: e.id],
+      select: struct(e, ^@change_fields)
     )
+    |> Repo.all()
+    |> changes([:changed_by])
     |> Map.new(&{&1.target_id, &1})
   end
 
@@ -937,25 +962,25 @@ defmodule Apiary.Policy do
   """
   @spec list_changes(Scope.t(), holder | :all, pos_integer) :: page(Change.t())
   def list_changes(%Scope{workspace: %Workspace{id: workspace_id}} = scope, holder, page \\ 1) do
-    query =
-      from c in Change,
-        where: c.workspace_id == ^workspace_id,
-        order_by: [desc: c.inserted_at, desc: c.id]
+    query = from e in history(workspace_id), order_by: [desc: e.inserted_at, desc: e.id]
 
     case holder do
       :all ->
-        query |> preload([:changed_by, :target]) |> paginate(page)
+        query |> paginate(page) |> changes_page([:changed_by, :target])
 
       holder ->
         case holder_id(scope, holder) do
           {:ok, nil} ->
-            query |> where([c], is_nil(c.target_id)) |> preload(:changed_by) |> paginate(page)
+            query
+            |> where([e], e.subject_kind == "workspace")
+            |> paginate(page)
+            |> changes_page([:changed_by])
 
           {:ok, target_id} ->
             query
-            |> where([c], c.target_id == ^target_id)
-            |> preload(:changed_by)
+            |> where([e], e.subject_kind == "target" and e.subject_id == ^target_id)
             |> paginate(page)
+            |> changes_page([:changed_by])
 
           {:error, _not_found} ->
             empty_page()
@@ -967,15 +992,49 @@ defmodule Apiary.Policy do
   @spec get_change(Scope.t(), String.t()) :: {:ok, Change.t()} | refusal
   def get_change(%Scope{workspace: %Workspace{id: workspace_id}}, id) do
     with {:ok, id} <- Ecto.UUID.cast(id),
-         %Change{} = change <-
-           Repo.one(
-             from c in Change,
-               where: c.id == ^id and c.workspace_id == ^workspace_id,
-               preload: [:changed_by, :target]
-           ) do
+         %Entry{} = entry <- Repo.one(from e in history(workspace_id), where: e.id == ^id) do
+      [change] = changes([entry], [:changed_by, :target])
       {:ok, change}
     else
       _ -> {:error, not_found(gettext("This workspace has no such change."))}
+    end
+  end
+
+  # The workspace's history: the audit entries of the policy's writes.
+  defp history(workspace_id) do
+    from e in Entry, where: e.workspace_id == ^workspace_id and e.action in @history_actions
+  end
+
+  defp changes_page(%{items: entries} = page, preloads),
+    do: %{page | items: changes(entries, preloads)}
+
+  # The entries as changes, with the people who made them (`changed_by`) and the targets
+  # they changed (`target`) read once for all of them, as `preloads` asks. A person whose
+  # account is gone is nil, as is a target.
+  defp changes(entries, preloads) do
+    changes = Enum.map(entries, &Change.from_entry/1)
+
+    people =
+      if :changed_by in preloads,
+        do: by_id(User, Enum.map(changes, & &1.changed_by_id)),
+        else: %{}
+
+    targets =
+      if :target in preloads,
+        do: by_id(Target, Enum.map(changes, & &1.target_id)),
+        else: %{}
+
+    Enum.map(changes, fn change ->
+      change
+      |> Map.put(:changed_by, people[change.changed_by_id])
+      |> Map.put(:target, targets[change.target_id])
+    end)
+  end
+
+  defp by_id(schema, ids) do
+    case ids |> Enum.reject(&is_nil/1) |> Enum.uniq() do
+      [] -> %{}
+      ids -> Repo.all(from r in schema, where: r.id in ^ids) |> Map.new(&{&1.id, &1})
     end
   end
 
@@ -1278,9 +1337,14 @@ defmodule Apiary.Policy do
           if before == after_ do
             {:ok, {value, nil}}
           else
-            change = insert_change(workspace, user, target_id, action, subject, before, after_)
+            change = new_change(workspace, user, target_id, action, subject, before, after_)
 
-            with :ok <- render_all(workspace, change), do: {:ok, {value, change}}
+            with :ok <- keep_change(change),
+                 {:ok, version} <- render_all(workspace, change),
+                 change = %{change | version_after: version},
+                 :ok <- record_change(scope, workspace, change) do
+              {:ok, {value, change}}
+            end
           end
         end
       end)
@@ -1331,8 +1395,11 @@ defmodule Apiary.Policy do
     }
   end
 
-  defp insert_change(workspace, user, target_id, action, subject, before, after_) do
-    Repo.insert!(%Change{
+  # A change about to be made: its entry's id is chosen now, so the run configurations it
+  # renders can name it before the entry, which says the version they came to, is written.
+  defp new_change(workspace, user, target_id, action, subject, before, after_) do
+    %Change{
+      id: Ecto.UUID.generate(version: 7, precision: :monotonic),
       organisation_id: workspace.organisation_id,
       workspace_id: workspace.id,
       target_id: target_id,
@@ -1340,9 +1407,76 @@ defmodule Apiary.Policy do
       subject: subject,
       before: before,
       after: after_,
-      changed_by_id: user_id(user),
+      changed_by_id: user_id(user)
+    }
+  end
+
+  # The change's row in `policy_changes`, under its entry's id, which the release before
+  # this one reads: written for one release more, so a rollback finds the history whole
+  # and every workspace managed that is (`Apiary.Policy.ChangeRow`). First, since the run
+  # configurations the change renders name it by a foreign key; its version is written
+  # with the entry.
+  defp keep_change(%Change{} = change) do
+    Repo.insert!(%ChangeRow{
+      id: change.id,
+      organisation_id: change.organisation_id,
+      workspace_id: change.workspace_id,
+      target_id: change.target_id,
+      action: change.action,
+      subject: change.subject,
+      before: change.before,
+      after: change.after,
+      changed_by_id: change.changed_by_id,
       inserted_at: DateTime.utc_now()
     })
+
+    :ok
+  end
+
+  # The change's audit entry: the action the kind of change took, on its holder, by the
+  # scope that made it; and the version it left in force on its `policy_changes` row.
+  # An entry the database refuses rolls the change back, with a sentence for the page.
+  defp record_change(%Scope{} = scope, %Workspace{} = workspace, %Change{} = change) do
+    Repo.update_all(from(c in ChangeRow, where: c.id == ^change.id),
+      set: [version_after: change.version_after]
+    )
+
+    holder =
+      case change.target_id do
+        nil ->
+          workspace
+
+        target_id ->
+          %Target{
+            id: target_id,
+            organisation_id: workspace.organisation_id,
+            workspace_id: workspace.id
+          }
+      end
+
+    Audit.record(
+      Repo,
+      scope,
+      Change.audit_action(change.action),
+      holder,
+      %{
+        before: change.before,
+        after: change.after,
+        details: %{change: change.action, subject: change.subject, version: change.version_after}
+      },
+      id: change.id
+    )
+    |> case do
+      {:ok, _entry} ->
+        :ok
+
+      {:error, _changeset} ->
+        {:error,
+         Error.new(
+           :invalid,
+           gettext("The change was not made: its entry in the audit trail could not be written.")
+         )}
+    end
   end
 
   @doc """
@@ -1355,7 +1489,7 @@ defmodule Apiary.Policy do
   """
   @spec rerender_all() :: %{workspaces: non_neg_integer, versions: non_neg_integer}
   def rerender_all do
-    Repo.all(from c in Change, distinct: true, select: c.workspace_id)
+    Repo.all(from c in RunConfiguration, distinct: true, select: c.workspace_id)
     |> Enum.reduce(%{workspaces: 0, versions: 0}, fn workspace_id, totals ->
       case rerender(workspace_id) do
         {:ok, versions} ->
@@ -1392,28 +1526,20 @@ defmodule Apiary.Policy do
                   snapshot = snapshot(workspace, target_id)
 
                   change =
-                    insert_change(
-                      workspace,
-                      nil,
-                      target_id,
-                      "rerendered",
-                      nil,
-                      snapshot,
-                      snapshot
+                    new_change(workspace, nil, target_id, "rerendered", nil, snapshot, snapshot)
+
+                  :ok = keep_change(change)
+                  configuration = store.(change)
+                  change = %{change | version_after: configuration.version}
+
+                  with :ok <- record_change(rerender_scope(workspace), workspace, change) do
+                    Logger.info(
+                      "policy rerendered workspace=#{workspace.id} target=#{target_id || "baseline"} " <>
+                        "version=#{current.version}->#{configuration.version}"
                     )
 
-                  configuration = store.(change)
-
-                  Repo.update_all(from(c in Change, where: c.id == ^change.id),
-                    set: [version_after: configuration.version]
-                  )
-
-                  Logger.info(
-                    "policy rerendered workspace=#{workspace.id} target=#{target_id || "baseline"} " <>
-                      "version=#{current.version}->#{configuration.version}"
-                  )
-
-                  {:ok, 1}
+                    {:ok, 1}
+                  end
               end
             end
           end)
@@ -1441,32 +1567,35 @@ defmodule Apiary.Policy do
     end
   end
 
+  # A render again after an upgrade is nobody's change: the instance's, by the task.
+  defp rerender_scope(%Workspace{} = workspace) do
+    %Organisation{id: workspace.organisation_id}
+    |> Scope.for_instance(workspace)
+    |> Scope.put_origin(%{worker: "mix apiary.policy.rerender"})
+  end
+
   # The baseline, and every target that has rules or a mode of its own or has had a
   # configuration of its own. A target with a mode of its own renders the same bytes
   # when the workspace's mode changes, so it gets no new version; one that follows the
   # workspace does. The rest: a target whose last rule went keeps its versions, and
   # its next one says what the baseline says.
-  defp render_all(%Workspace{} = workspace, change) do
+  # `{:ok, version}`: the version in force for the changed holder once every holder is
+  # rendered, which its entry records.
+  defp render_all(%Workspace{} = workspace, %Change{} = change) do
     render_holders(workspace, fn target_id, rendered, store ->
       case rendered do
         {:ok, _document} ->
           configuration = store.(change)
-
-          if change && change.target_id == target_id do
-            Repo.update_all(from(c in Change, where: c.id == ^change.id),
-              set: [version_after: configuration.version]
-            )
-          end
-
-          :ok
+          if change.target_id == target_id, do: {:ok, configuration.version}, else: :ok
 
         {:error, error} ->
           {:error, elsewhere(error, workspace, change, target_id)}
       end
     end)
     |> case do
-      {:ok, _count} -> :ok
-      {:error, _error} = refusal -> refusal
+      # Only the changed holder answers a count, its version, so the sum is that version.
+      {:ok, 0} -> {:ok, nil}
+      result -> result
     end
   end
 
@@ -1550,6 +1679,7 @@ defmodule Apiary.Policy do
           digest: digest,
           rendered_at: DateTime.utc_now(),
           changed_by_id: change && change.changed_by_id,
+          audit_entry_id: change && change.id,
           policy_change_id: change && change.id
         })
     end
@@ -1592,7 +1722,6 @@ defmodule Apiary.Policy do
 
   # A refusal that comes from another holder than the one being changed says which.
   defp elsewhere(%Error{} = error, _workspace, %Change{target_id: id}, id), do: error
-  defp elsewhere(%Error{} = error, _workspace, nil, _target_id), do: error
 
   defp elsewhere(%Error{} = error, _workspace, %Change{}, nil),
     do: %{

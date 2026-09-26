@@ -107,6 +107,8 @@ defmodule ApiaryWeb.InvitationLive.AcceptTest do
     assert html =~ "You are invited to the"
     assert html =~ owner.workspace.name
     assert html =~ ~s(value="bee@example.com")
+    # It joins an organisation, and so names none.
+    refute has_element?(lv, "#registration_form input[name='user[organisation_name]']")
 
     form = form(lv, "#registration_form", user: %{email: "bee@example.com"})
     html = render_submit(form)

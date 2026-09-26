@@ -50,6 +50,21 @@ the discovery document are all built from `PUBLIC_URL`, never from the request's
 header. A `PUBLIC_URL` that is not the address runners and people use gives them links that
 do not work.
 
+The audit trail records the address each change came from. Behind a proxy that is the
+proxy's, unless `TRUSTED_PROXIES` names it: addresses or CIDR ranges of the proxies in
+front of the release, separated by commas. For a request from one of them the release
+reads `X-Forwarded-For` from its right-most hop leftwards, passes over the hops the
+trusted proxies added, and takes the first address that is not one of them. What the
+client wrote to the left of that is never read, so a client cannot choose the address
+recorded. Name only the proxies that set the header themselves, and leave it unset when
+nothing is in front of the release: a proxy the release trusts is believed about every
+address it passes on. A range of every address, `0.0.0.0/0` or `::/0`, stops the boot,
+since it would believe any client about its own address. A hop's port is left out.
+
+```sh
+TRUSTED_PROXIES=10.0.0.0/8,192.0.2.7
+```
+
 ## Health
 
 `GET /health` needs no authentication and no session, and is never cached
@@ -245,6 +260,41 @@ QORY_FEATURES=observability
 
 To switch a feature on later, add it to the value and restart. Every instance has the
 whole database schema whatever its features, so nothing is migrated.
+
+### Audit trail
+
+| Variable | Required or default | Meaning and accepted values |
+|---|---|---|
+| `AUDIT_RETENTION_DAYS` | `365` | How many days the audit trail keeps an entry: a whole number from `90` to `2555` (seven years). Not set, or empty, is `365`. |
+| `AUDIT_ADDRESS_RETENTION_DAYS` | `90` | How many days an entry keeps the address and the client (the browser's user agent) it came from, after which they are cleared and the rest of the entry stays: a whole number from `1` to the value of `AUDIT_RETENTION_DAYS`. Not set, or empty, is `90`. |
+| `TRUSTED_PROXIES` | none | The reverse proxies whose `X-Forwarded-For` gives the address a change came from: addresses or CIDR ranges, separated by commas ([TLS and the reverse proxy](#tls-and-the-reverse-proxy)). Not set, or empty, trusts none. An entry that is neither, or a range of every address (a prefix of `0`), stops the boot. |
+
+Every change made to what an organisation holds leaves an entry in its audit trail, which
+its owners read on its Activity page, `/:org/activity`: who made it (a person, an access
+key, or Qory itself for its own scheduled work), when, from which address and client, and
+what it changed. An entry never holds a secret, nor a person's name or email address: it
+names a person by their account, and the page looks the address up when it shows it.
+<!-- feature: security -->
+The security policy's history is part of the trail.
+<!-- /feature -->
+
+Once a day, at 02:40 UTC, a job deletes every organisation's entries older than
+`AUDIT_RETENTION_DAYS`, and each deletion is itself an entry. The address and the client
+are personal data, kept for less: the same job clears them from the entries older than
+`AUDIT_ADDRESS_RETENTION_DAYS`, 90 days unless set, and leaves the rest of each entry for
+the trail's period. The clearing writes no entry of its own; a deletion's entry says how
+many it cleared beside. A value outside the bounds stops the boot:
+
+```text
+environment variable AUDIT_RETENTION_DAYS is not valid: it is a number of days from 90 to 2555, got: "30".
+Leave it unset for 365 days, or set it, for example:
+AUDIT_RETENTION_DAYS=730
+```
+
+An `AUDIT_ADDRESS_RETENTION_DAYS` longer than `AUDIT_RETENTION_DAYS` stops the boot too,
+since an address is not kept longer than its entry. The values are read at boot, so a
+change takes a restart. A shorter period deletes or clears what it no longer keeps at the
+next day's job; setting it longer again does not bring it back.
 
 ### Compose only
 

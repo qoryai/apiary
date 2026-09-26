@@ -2,7 +2,6 @@ defmodule ApiaryWeb.UserLive.Registration do
   use ApiaryWeb, :live_view
 
   alias Apiary.Accounts
-  alias Apiary.Accounts.User
   alias Apiary.Organisations
 
   @impl true
@@ -54,6 +53,20 @@ defmodule ApiaryWeb.UserLive.Registration do
             required
             phx-mounted={JS.focus()}
           />
+          <.input
+            :if={!@invitation}
+            field={@form[:organisation_name]}
+            type="text"
+            label={gettext("Organisation name")}
+            size="md"
+            autocomplete="organization"
+            hint={
+              gettext(
+                "Usually your company's name. Owners can change it later in the organisation's settings."
+              )
+            }
+            required
+          />
           <.button variant="primary" size="md" class="btn-block" loading_text={gettext("Creating")}>
             {gettext("Create account")}
           </.button>
@@ -81,7 +94,11 @@ defmodule ApiaryWeb.UserLive.Registration do
     invitation = token && Organisations.get_invitation_by_token(token)
     email = if invitation, do: invitation.email, else: nil
 
-    changeset = Accounts.change_user_email(%User{}, %{"email" => email}, validate_unique: false)
+    changeset =
+      Organisations.change_sign_up(%{"email" => email},
+        invited: not is_nil(invitation),
+        validate_unique: false
+      )
 
     {:ok,
      socket
@@ -89,12 +106,16 @@ defmodule ApiaryWeb.UserLive.Registration do
      |> assign(:sent_to, nil)
      |> assign(:invitation_token, if(invitation, do: token, else: nil))
      |> assign(:invitation, invitation)
+     # Where the sign-up comes from, for its audit entry: known while the page mounts.
+     |> assign(:origin, ApiaryWeb.Origin.from_socket(socket))
      |> assign_form(changeset), temporary_assigns: [form: nil]}
   end
 
   @impl true
   def handle_event("save", %{"user" => user_params}, socket) do
-    case Organisations.sign_up_user(user_params, socket.assigns.invitation_token) do
+    case Organisations.sign_up_user(user_params, socket.assigns.invitation_token,
+           origin: socket.assigns.origin
+         ) do
       {:ok, %{user: user}} ->
         {:ok, _} =
           Accounts.deliver_login_instructions(
@@ -110,7 +131,12 @@ defmodule ApiaryWeb.UserLive.Registration do
   end
 
   def handle_event("validate", %{"user" => user_params}, socket) do
-    changeset = Accounts.change_user_email(%User{}, user_params, validate_unique: false)
+    changeset =
+      Organisations.change_sign_up(user_params,
+        invited: not is_nil(socket.assigns.invitation),
+        validate_unique: false
+      )
+
     {:noreply, assign_form(socket, Map.put(changeset, :action, :validate))}
   end
 

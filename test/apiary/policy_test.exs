@@ -56,7 +56,7 @@ defmodule Apiary.PolicyTest do
 
       assert {:ok, "enforce"} = Policy.set_mode(scope, "enforce")
       assert Policy.get_mode(scope) == "enforce"
-      assert %{version: 1, policy_change_id: change_id} = first = current!(scope, nil)
+      assert %{version: 1, audit_entry_id: change_id} = first = current!(scope, nil)
       assert is_binary(change_id)
       assert policy(first)["egress"]["mode"] == "enforce"
       assert first.changed_by_id == scope.user.id
@@ -64,6 +64,31 @@ defmodule Apiary.PolicyTest do
       assert {:error, %Error{reason: :invalid, field: :mode}} = Policy.set_mode(scope, "log")
       assert {:ok, "enforce"} = Policy.set_mode(scope, "enforce")
       assert %{total: 1} = Policy.list_changes(scope, nil)
+    end
+
+    test "a change writes its audit entry and its policy_changes row, under one id", %{
+      scope: scope
+    } do
+      {:ok, _rule} = Policy.allow(scope, nil, %{host: "api.example"})
+
+      assert [%Apiary.Audit.Entry{id: id, action: "security_policy.edit"}] =
+               Repo.all(
+                 from e in Apiary.Audit.Entry,
+                   where: e.workspace_id == ^scope.workspace.id and like(e.action, "security%")
+               )
+
+      # The row the release before reads, as it wrote them: the same change, its author and
+      # the version it left in force, and the configuration it rendered names both.
+      assert %Apiary.Policy.ChangeRow{
+               action: "rule_added",
+               subject: "api.example",
+               target_id: nil,
+               version_after: 1,
+               changed_by_id: changed_by_id
+             } = Repo.get!(Apiary.Policy.ChangeRow, id)
+
+      assert changed_by_id == scope.user.id
+      assert %{version: 1, audit_entry_id: ^id, policy_change_id: ^id} = current!(scope, nil)
     end
   end
 

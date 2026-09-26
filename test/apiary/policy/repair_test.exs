@@ -18,7 +18,7 @@ defmodule Apiary.Policy.RepairTest do
   )
 
   alias Apiary.Policy
-  alias Apiary.Policy.{Change, RunConfiguration}
+  alias Apiary.Policy.RunConfiguration
   alias Apiary.Repo.Migrations.DeleteBaselinesRenderedByReads, as: Migration
 
   # What a read used to store: the empty observe baseline, as the render makes it.
@@ -53,7 +53,7 @@ defmodule Apiary.Policy.RepairTest do
       from c in RunConfiguration,
         where: c.workspace_id == ^scope.workspace.id and is_nil(c.target_id),
         order_by: c.version,
-        select: {c.version, not is_nil(c.policy_change_id)}
+        select: {c.version, not is_nil(c.audit_entry_id)}
     )
   end
 
@@ -90,12 +90,10 @@ defmodule Apiary.Policy.RepairTest do
 
     assert versions(scope) == [{1, true}, {2, true}]
 
-    assert Repo.all(
-             from c in Change,
-               where: is_nil(c.target_id),
-               order_by: c.inserted_at,
-               select: c.version_after
-           ) == [1, 2]
+    assert Repo.query!("""
+           SELECT version_after FROM policy_changes
+           WHERE target_id IS NULL ORDER BY inserted_at, id
+           """).rows == [[1], [2]]
 
     # The target's own versions are untouched, and the repair is idempotent.
     assert [%{version: 1}] =

@@ -12,11 +12,18 @@ defmodule Apiary.Access do
   # each, and fails for an action it has none for.
   @actions [
     # The organisation.
+    {:"organisation.create", nil,
+     "sign up with a new organisation: taken at sign-up, which no role asks"},
     {:"organisation.rename", nil, "rename the organisation"},
     {:"member.invite", nil, "invite a member, and see the pending invitations"},
     {:"member.change_level", nil, "make a member an owner, or an owner a member"},
     {:"member.remove", nil, "remove a member"},
     {:"invitation.revoke", nil, "revoke a pending invitation"},
+    {:"invitation.accept", nil,
+     "accept an invitation: its token allows it, and no role, so nobody is asked"},
+    # The audit trail.
+    {:"audit.read", nil, "read the organisation's audit trail, its Activity page"},
+    {:"audit.prune", nil, "delete the audit entries older than the instance keeps them"},
     # The workspace.
     {:"workspace.rename", nil, "rename the workspace"},
     {:"access_key.create", nil, "create an access key"},
@@ -52,8 +59,9 @@ defmodule Apiary.Access do
     :"security_policy.edit"
   ]
 
-  # Which role may take which action: the role table. A role is a membership's level, or
-  # `:access_key` for a runner at the server contract. An action no role lists is nobody's.
+  # Which role may take which action: the role table. A role is a membership's level,
+  # `:access_key` for a runner at the server contract, or `:instance` for a job no person
+  # enqueued. An action no role lists is nobody's.
   @roles %{
     member: @member,
     owner:
@@ -67,9 +75,12 @@ defmodule Apiary.Access do
           :"workspace.rename",
           :"retention.edit",
           :"security_policy.lock",
-          :"security_policy.set_mode"
+          :"security_policy.set_mode",
+          :"audit.read"
         ],
-    access_key: [:"run.post_events", :"run_configuration.fetch"]
+    access_key: [:"run.post_events", :"run_configuration.fetch"],
+    # What the instance's own jobs do, and nothing else.
+    instance: [:"audit.prune"]
   }
 
   @moduledoc """
@@ -77,8 +88,10 @@ defmodule Apiary.Access do
   `subject`? `can?/3` answers yes or no, `authorize/3` says why not.
 
   - **`scope`** is who is asking and from where: an `Apiary.Accounts.Scope` of a person,
-    with the organisation, the workspace and the membership its path names, or of an access
-    key at the server contract (`Apiary.Accounts.Scope.for_access_key/1`).
+    with the organisation, the workspace and the membership its path names, of an access
+    key at the server contract (`Apiary.Accounts.Scope.for_access_key/1`), or of the
+    instance, for a job no person enqueued (`Apiary.Accounts.Scope.for_instance/2`). Any
+    other scope without a person may nothing.
   - **`action`** is a verb of the engine, one of `actions/0`, each named once, with the
     feature it belongs to, in the table below.
   - **`subject`** is the thing acted on: an organisation, a workspace, or a row of one, such
@@ -116,7 +129,12 @@ defmodule Apiary.Access do
 
   | Role | Who | Actions |
   |---|---|---|
-  #{Enum.map_join([member: "a person with a member membership", owner: "a person with an owner membership", access_key: "a runner, with a key of the workspace"], "\n", fn {role, who} -> "| `#{role}` | #{who} | #{Enum.map_join(Map.fetch!(@roles, role), ", ", &"`#{&1}`")} |" end)}
+  #{Enum.map_join([member: "a person with a member membership", owner: "a person with an owner membership", access_key: "a runner, with a key of the workspace", instance: "the instance itself, in a job no person enqueued"], "\n", fn {role, who} -> "| `#{role}` | #{who} | #{Enum.map_join(Map.fetch!(@roles, role), ", ", &"`#{&1}`")} |" end)}
+
+  An action taken on the strength of something other than a role, a sign-up or an
+  invitation's token, is in the list for the audit trail (`Apiary.Audit`), whose entries
+  name the actions of this list, and no role has it: the context function checks the
+  token, and asks nothing here.
 
   The managing relationship, the instance admin and the narrowing of features below the
   instance are not built yet. When they are, they are read here and nowhere else.
@@ -126,7 +144,7 @@ defmodule Apiary.Access do
   @type action :: atom
 
   @typedoc "A role of `roles/0`."
-  @type role :: :owner | :member | :access_key
+  @type role :: :owner | :member | :access_key | :instance
 
   @typedoc """
   What an action is taken on: an organisation, a workspace, or a row that carries
@@ -187,9 +205,9 @@ defmodule Apiary.Access do
   @doc """
   The scope with the person's membership as the database has it now: its level as it is,
   or no membership when it is gone. One read. An access key's scope is returned as it is:
-  the key was verified on the request that carries it. Any other scope, one without a
-  user, an organisation, a workspace or a membership, comes back without a membership, so
-  it may nothing a role would allow.
+  the key was verified on the request that carries it; so is the instance's, which has no
+  membership to read. Any other scope, one without a user, an organisation, a workspace
+  or a membership, comes back without a membership, so it may nothing a role would allow.
 
   `lock: :share` reads the membership `FOR SHARE`, for a caller inside a transaction: a
   change of the level waits until the transaction ends, so what was asked stays true
@@ -199,6 +217,7 @@ defmodule Apiary.Access do
   def reload(scope, opts \\ [])
 
   def reload(%Scope{access_key: %AccessKey{}} = scope, _opts), do: scope
+  def reload(%Scope{instance: true, user: nil, access_key: nil} = scope, _opts), do: scope
 
   def reload(
         %Scope{
@@ -228,6 +247,7 @@ defmodule Apiary.Access do
   # The role as the scope carries it. A membership counts only where it is: in the scope's
   # organisation and workspace.
   defp role(%Scope{access_key: %AccessKey{}}), do: :access_key
+  defp role(%Scope{instance: true, user: nil, membership: nil}), do: :instance
 
   defp role(%Scope{
          organisation: %Organisation{id: organisation_id},
