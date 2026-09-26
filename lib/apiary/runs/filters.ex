@@ -318,7 +318,10 @@ defmodule Apiary.Runs.Filters do
     {seconds && DateTime.add(now, -seconds, :second), nil}
   end
 
-  @doc "The range in words, for the chip: \"last 7 days\", \"14 Sep to 20 Sep\"."
+  @doc """
+  The range in words, for the chip: "last 7 days", "14 Sept 2026 to 20 Sept 2026". The
+  dates are UTC days (`bounds/2`).
+  """
   def range_label(%__MODULE__{from: nil, to: nil, since: since}) do
     case since do
       "1h" -> gettext("last hour")
@@ -339,7 +342,7 @@ defmodule Apiary.Runs.Filters do
 
   @doc """
   The range as the end of a sentence, a phrase whole in itself: "in the last 7 days",
-  "up to 20 Sep 2026", "from 14 Sep 2026 to 20 Sep 2026"; nil when there is no range.
+  "up to 20 Sept 2026", "from 14 Sept 2026 to 20 Sept 2026"; nil when there is no range.
   """
   def range_phrase(%__MODULE__{from: nil, to: nil, since: since}) do
     case since do
@@ -359,7 +362,7 @@ defmodule Apiary.Runs.Filters do
   def range_phrase(%__MODULE__{from: from, to: to}),
     do: gettext("from %{from} to %{to}", from: day(from), to: day(to))
 
-  defp day(date), do: Calendar.strftime(date, "%-d %b %Y")
+  defp day(date), do: ApiaryWeb.Format.date(date)
 
   @doc """
   The two parameters of a target, for a link to a filtered page:

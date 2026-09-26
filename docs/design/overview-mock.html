@@ -446,7 +446,7 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
   <div class="seg" id="viewseg">
     <a href="#overview">Overview</a><a href="#quiet">Nothing to do</a><a href="#empty">Empty workspace</a><a href="#keys">Keys, no post</a><a href="#pinged">Key used</a><a href="#landed">First run</a><a href="#states">States</a>
   </div>
-  <div class="url" aria-hidden="true"><span>qory.example</span><b id="url">/workspace</b></div>
+  <div class="url" aria-hidden="true"><span>qory.example</span><b id="url">/acme/main</b></div>
   <div class="seg" id="roleseg"><button type="button" data-r="owner" aria-pressed="true">Owner</button><button type="button" data-r="member" aria-pressed="false">Member</button></div>
   <div class="seg" id="widthseg"><button type="button" data-w="desktop" aria-pressed="true"><svg class="i"><use href="#i-desk"/></svg>Desktop</button><button type="button" data-w="phone" aria-pressed="false"><svg class="i"><use href="#i-phone"/></svg>Phone</button></div>
   <div class="seg" id="themeseg"><button type="button" data-t="auto" aria-pressed="true">Auto</button><button type="button" data-t="light" aria-pressed="false"><svg class="i"><use href="#i-sun"/></svg>Light</button><button type="button" data-t="dark" aria-pressed="false"><svg class="i"><use href="#i-moon"/></svg>Dark</button></div>
@@ -481,7 +481,7 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
     <div class="sr-only" aria-live="polite" aria-atomic="true" id="overview-announcer"></div>
 
     <!-- ============ OVERVIEW: a busy workspace ============ -->
-    <div class="main-in" data-view="overview" data-url="/workspace" data-side="busy">
+    <div class="main-in" data-view="overview" data-url="/acme/main" data-side="busy">
       <div data-phead></div>
 
       <section class="sect att" aria-labelledby="att-h">
@@ -516,7 +516,7 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
     </div>
 
     <!-- ============ OVERVIEW: nothing needs attention ============ -->
-    <div class="main-in" data-view="quiet" data-url="/workspace" data-side="busy" hidden>
+    <div class="main-in" data-view="quiet" data-url="/acme/main" data-side="busy" hidden>
       <div data-phead></div>
       <div data-strip></div>
       <div class="grid2">
@@ -528,7 +528,7 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
     </div>
 
     <!-- ============ EMPTY WORKSPACE: no keys ============ -->
-    <div class="main-in" data-view="empty" data-url="/workspace" data-side="empty" hidden>
+    <div class="main-in" data-view="empty" data-url="/acme/main" data-side="empty" hidden>
       <div data-phead></div>
       <section class="sect onboard" aria-labelledby="ob-h1">
         <div>
@@ -553,7 +553,7 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
     </div>
 
     <!-- ============ EMPTY WORKSPACE: keys, nothing posted ============ -->
-    <div class="main-in" data-view="keys" data-url="/workspace" data-side="keys" hidden>
+    <div class="main-in" data-view="keys" data-url="/acme/main" data-side="keys" hidden>
       <div data-phead></div>
       <section class="sect onboard" aria-labelledby="ob-h2">
         <div>
@@ -585,7 +585,7 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
     </div>
 
     <!-- ============ EMPTY WORKSPACE: a key was used, no run yet ============ -->
-    <div class="main-in" data-view="pinged" data-url="/workspace" data-side="keys" hidden>
+    <div class="main-in" data-view="pinged" data-url="/acme/main" data-side="keys" hidden>
       <div data-phead></div>
       <section class="sect onboard" aria-labelledby="ob-h3">
         <div>
@@ -617,7 +617,7 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
     </div>
 
     <!-- ============ EMPTY WORKSPACE: the first run has landed (before the next navigation) ============ -->
-    <div class="main-in" data-view="landed" data-url="/workspace" data-side="first" hidden>
+    <div class="main-in" data-view="landed" data-url="/acme/main" data-side="first" hidden>
       <div data-phead></div>
       <section class="sect onboard" aria-labelledby="ob-h4">
         <div>
@@ -675,7 +675,7 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
     </div>
 
     <!-- ============ STATES: a specimen sheet ============ -->
-    <div class="main-in" data-view="states" data-url="/workspace (specimens)" data-side="busy" hidden>
+    <div class="main-in" data-view="states" data-url="/acme/main (specimens)" data-side="busy" hidden>
       <div class="page-head"><div><h1>States</h1><p>The overview's rows, cells and regions in every state the brief names. Not a page: a sheet.</p></div></div>
 
       <div class="spec"><span class="tag">Needs attention: the other kinds, and after an act</span>
@@ -801,7 +801,7 @@ a.rowlink::after { content: ""; position: absolute; inset: 0; } tr.row { positio
   var $ = function (s, r) { return (r || document).querySelector(s); }, $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
   var main = $("#main"), app = $("#app");
 
-  // The page head is the same on every view of /workspace: written once here.
+  // The page head is the same on every view of /acme/main: written once here.
   var head = '<div class="page-head"><div><h1>Platform</h1><p>The workspace of the Acme organisation.</p></div></div>';
   $$("[data-phead]").forEach(function (el) { el.innerHTML = head; });
 

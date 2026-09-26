@@ -20,10 +20,10 @@ server:
 ```
 
 The console writes this block for you, with the values filled in, when an access key is
-created or rotated under **Access keys**, `/workspace/keys`. The block begins with an
-`apiVersion` line; a runner file has one such line, so when the file exists already, add
-the `server` section alone. The file is read strictly: a key it does not know, or a key
-written twice, is refused with a message that names the file.
+created or rotated under **Access keys**, `/:org/:workspace/keys`. The block begins with
+an `apiVersion` line; a runner file has one such line, so when the file exists already,
+add the `server` section alone. The file is read strictly: a key it does not know, or a
+key written twice, is refused with a message that names the file.
 
 | Key | Holds |
 |---|---|

@@ -209,4 +209,85 @@ defmodule ApiaryWeb.UserLive.SettingsTest do
       assert message == "You must log in to access this page."
     end
   end
+
+  describe "preferences form" do
+    setup %{conn: conn} do
+      user = user_fixture()
+      %{conn: log_in_user(conn, user), user: user}
+    end
+
+    test "offers the time zones by region, the person's selected", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/users/settings")
+
+      assert has_element?(lv, "#preferences_time_zone option[value='Etc/UTC'][selected]")
+
+      assert has_element?(
+               lv,
+               "#preferences_time_zone optgroup[label='Europe'] option[value='Europe/Berlin']"
+             )
+
+      assert has_element?(
+               lv,
+               "#preferences_time_zone option[value='America/Argentina/Buenos_Aires']",
+               "Argentina/Buenos Aires"
+             )
+    end
+
+    test "with one language, shows it and offers no choice", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/users/settings")
+
+      refute has_element?(lv, "#preferences_language option")
+      assert has_element?(lv, "p#preferences_language")
+      refute has_element?(lv, "#preferences_form [name='preferences[skin]']")
+    end
+
+    test "saves the time zone and says so", %{conn: conn, user: user} do
+      {:ok, lv, _html} = live(conn, ~p"/users/settings")
+
+      html =
+        lv
+        |> form("#preferences_form", %{"preferences" => %{"time_zone" => "America/Lima"}})
+        |> render_submit()
+
+      assert html =~ "Preferences saved."
+      assert Accounts.get_user!(user.id).time_zone == "America/Lima"
+      assert has_element?(lv, "#preferences_time_zone option[value='America/Lima'][selected]")
+    end
+
+    test "refuses a time zone the database does not know", %{conn: conn, user: user} do
+      {:ok, lv, _html} = live(conn, ~p"/users/settings")
+
+      render_submit(lv, "update_preferences", %{"preferences" => %{"time_zone" => "Mars/Base"}})
+
+      assert has_element?(lv, "#preferences_time_zone-error")
+      refute has_element?(lv, "#preferences_time_zone option[value='Mars/Base']")
+      assert Accounts.get_user!(user.id).time_zone == "Etc/UTC"
+    end
+
+    test "refuses a language the application has no catalogue for", %{conn: conn, user: user} do
+      {:ok, lv, _html} = live(conn, ~p"/users/settings")
+
+      render_submit(lv, "update_preferences", %{"preferences" => %{"language" => "xx"}})
+
+      refute render(lv) =~ "Preferences saved."
+      assert Accounts.get_user!(user.id).language == "en"
+    end
+
+    test "keeps a zone chosen outside the list selected", %{conn: conn, user: user} do
+      for zone <- ["UTC", "Europe/Oslo"] do
+        {:ok, _user} = Accounts.update_user_preferences(user, %{time_zone: zone})
+        {:ok, lv, _html} = live(conn, ~p"/users/settings")
+
+        assert has_element?(lv, "#preferences_time_zone option[value='#{zone}'][selected]")
+      end
+    end
+
+    test "names each zone's countries, so a country without a zone of its own is found",
+         %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/users/settings")
+
+      assert has_element?(lv, "#preferences_time_zone option[value='Europe/Berlin']", "Norway")
+      assert has_element?(lv, "#preferences_time_zone option[value='Africa/Abidjan']", "Iceland")
+    end
+  end
 end

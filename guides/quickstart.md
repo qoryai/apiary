@@ -97,13 +97,28 @@ account**. You land on the overview of your workspace.
 
 Signing up created an organisation, named after the part of your email before the `@`, one
 workspace in it named *Main*, and your membership as its owner. Both can be renamed under
-**Settings**.
+**Organisation** and **Settings**.
+
+Every page of a workspace is under `/<organisation>/<workspace>/…`, both parts slugs made
+from the names at sign-up: an email `dana@example.com` gives `/dana/main`, and the runs
+are at `/dana/main/runs`. Renaming keeps a slug. A link to a page names its workspace, so
+a colleague who is a member opens the same page, and anyone else gets *Not Found*.
+`http://localhost:4100/` and the log-in take you to the workspace you opened last in this
+browser, also after a log-out.
+
+Your own preferences are under **Account settings**, in the menu of your account: the
+time zone the pages show times in (UTC until you choose one; every time is stored in UTC)
+and, once the instance has more than one, the language. They are yours in every
+organisation you belong to. Mail to you, such as a log-in link, is written in your
+language. The words of a workspace's pages are its domain's, chosen when the workspace is
+created: software, the one domain there is, which says repository, forge and pull
+request.
 
 ## 5. Create an access key
 
 An access key lets the machines of a workspace post their runs.
 
-1. Select **Access keys** in the sidebar, `/workspace/keys`.
+1. Select **Access keys** in the sidebar, `/:org/:workspace/keys`.
 2. Select **New access key**.
 3. Give it a **Label**, the machine or environment it is for, `build-01` say, and select
    **Create key**.
@@ -173,11 +188,11 @@ also written to `.qory/runs/<id>/` in the directory, whatever the server does.
 
 ## 8. See it
 
-Open `http://localhost:4100/workspace/runs`, **Runs** in the sidebar. The run is there
-with its state, runtime, host, start and duration; select it for its timeline, terminal,
-connections and details. The `hello` directory has no origin remote, so the run names no
-repository and is listed under **Unassigned**. A run started in a checkout with an origin
-remote is grouped under that repository.
+Open **Runs** in the sidebar, `http://localhost:4100/<organisation>/main/runs`. The run is
+there with its state, runtime, host, start and duration; select it for its timeline,
+terminal, connections and details. The `hello` directory has no origin remote, so the run
+names no repository and is listed under **Unassigned**. A run started in a checkout with
+an origin remote is grouped under that repository.
 
 On **Access keys**, the key's row now shows when it was last used, its last heartbeat and
 the runner's version.

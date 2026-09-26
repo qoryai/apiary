@@ -79,7 +79,7 @@ defmodule ApiaryWeb.RichText do
   `ngettext/4` whose bindings are rich text, as `rich_gettext/2`. `%{count}` is the raw
   number; to show it formatted or marked up, give it its own binding:
 
-      rich_ngettext("%{number} run", "%{number} runs", n, number: {:b, delimited(n)})
+      rich_ngettext("%{number} run", "%{number} runs", n, number: {:b, Format.number(n)})
   """
   defmacro rich_ngettext(msgid, msgid_plural, count, bindings \\ []) do
     quote do

@@ -88,7 +88,10 @@ const cellRatio = family => {
 // on the box as `data-words`); this script holds none. A count's words are [one, other].
 const fill = (template, bindings) =>
   template.replace(/%\{(\w+)\}/g, (all, key) => (key in bindings ? String(bindings[key]) : all))
-const counted = ([one, other], n) => fill(n === 1 ? one : other, {number: n.toLocaleString("en-GB")})
+// A number is grouped as the server groups it, in the reader's locale
+// (`ApiaryWeb.Format`, on the body as `data-locale`).
+const grouped = n => n.toLocaleString(document.body.dataset.locale || "en-GB")
+const counted = ([one, other], n) => fill(n === 1 ? one : other, {number: grouped(n)})
 
 export const Terminal = {
   async mounted() {
@@ -210,7 +213,10 @@ export const Terminal = {
     this.search.onDidChangeResults(({resultIndex, resultCount}) => {
       this.findCount.textContent =
         !this.find.value ? ""
-        : fill(this.words.found, resultCount === 0 ? {index: 0, total: 0} : {index: resultIndex + 1, total: resultCount})
+        : fill(this.words.found, {
+            index: grouped(resultCount === 0 ? 0 : resultIndex + 1),
+            total: grouped(resultCount),
+          })
     })
     // The reader scrolled away from the end: stop following, and let a screen reader in.
     this.term.onScroll(() => {

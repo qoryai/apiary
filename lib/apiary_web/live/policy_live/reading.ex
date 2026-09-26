@@ -25,6 +25,7 @@ defmodule ApiaryWeb.PolicyLive.Reading do
   import ApiaryWeb.RichText
 
   alias Apiary.Policy.Grammar
+  alias ApiaryWeb.Format
 
   @doc "The reading of an empty composer: what a rule is, before anything is typed."
   def hint, do: reading(:hint, hint_text())
@@ -479,16 +480,18 @@ defmodule ApiaryWeb.PolicyLive.Reading do
   defp allow_on_paths("*." <> suffix, n),
     do:
       rich_ngettext(
-        "allow every host below %{suffix} on %{count} path",
-        "allow every host below %{suffix} on %{count} paths",
+        "allow every host below %{suffix} on %{number} path",
+        "allow every host below %{suffix} on %{number} paths",
         n,
-        suffix: {:m, suffix}
+        suffix: {:m, suffix},
+        number: Format.number(n)
       )
 
   defp allow_on_paths(host, n),
     do:
-      rich_ngettext("allow %{host} on %{count} path", "allow %{host} on %{count} paths", n,
-        host: {:m, host}
+      rich_ngettext("allow %{host} on %{number} path", "allow %{host} on %{number} paths", n,
+        host: {:m, host},
+        number: Format.number(n)
       )
 
   defp not_itself("*." <> suffix),

@@ -167,6 +167,30 @@ defmodule Apiary.Accounts do
     |> update_user_and_delete_all_tokens()
   end
 
+  @doc """
+  Returns an `%Ecto.Changeset{}` for changing the user's preferences: language, time zone
+  and skin (`Apiary.Accounts.Preferences`).
+  """
+  @spec change_user_preferences(%User{}, map) :: Ecto.Changeset.t()
+  def change_user_preferences(%User{} = user, attrs \\ %{}) do
+    User.preferences_changeset(user, attrs)
+  end
+
+  @doc """
+  Updates the user's preferences. They are the person's own, in every organisation, so
+  the user is the only argument beside them; the session tokens are kept.
+
+  Returns `{:ok, user}`, or `{:error, changeset}` for a language the application has no
+  catalogue for, a time zone the zone database does not know or a skin that does not
+  exist.
+  """
+  @spec update_user_preferences(%User{}, map) :: {:ok, %User{}} | {:error, Ecto.Changeset.t()}
+  def update_user_preferences(%User{} = user, attrs) do
+    user
+    |> User.preferences_changeset(attrs)
+    |> Repo.update()
+  end
+
   ## Session
 
   @doc """

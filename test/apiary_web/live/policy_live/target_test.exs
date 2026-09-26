@@ -31,7 +31,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     {:ok, _} = Policy.allow(scope, nil, %{host: "registry.example"})
     {:ok, _} = Policy.allow(scope, nil, %{kind: "credential", name: "model-key"})
 
-    %{target: target, path: "/workspace/policy/targets/#{target.id}"}
+    %{target: target, path: workspace_path(scope, "/policy/targets/#{target.id}")}
   end
 
   defp open(conn, path) do
@@ -64,24 +64,30 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
   defp own(scope, target, host),
     do: Enum.find(Policy.list_rules(scope, target), &(&1.host == host))
 
-  test "another workspace's target is not found, nor is an id that is none", %{conn: conn} do
+  test "another workspace's target is not found, nor is an id that is none", %{
+    conn: conn,
+    scope: scope
+  } do
     other = scope_fixture()
     started_run(other, shop())
     [%{target: theirs}] = Policy.list_targets(other)
     {:ok, _} = Policy.allow(other, theirs, %{host: "secret.example"})
 
-    for path <- ["/workspace/policy/targets/#{theirs.id}", "/workspace/policy/targets/nope"] do
+    for path <- [
+          workspace_path(scope, "/policy/targets/#{theirs.id}"),
+          workspace_path(scope, "/policy/targets/nope")
+        ] do
       {:ok, view, html} = live(conn, path)
       assert html =~ "This repository is not in this workspace"
       refute html =~ "secret.example"
       assert has_element?(view, "#nav-policy[aria-current=page]")
-      assert has_element?(view, "a[href='/workspace/policy']", "Back to policy")
+      assert has_element?(view, "a[href='#{workspace_path(scope, "/policy")}']", "Back to policy")
       assert render_hook(view, "composer_save", %{}) =~ "This repository is not in this workspace"
     end
   end
 
   test "a target without rules of its own is the workspace's list, and says so",
-       %{conn: conn, path: path} do
+       %{conn: conn, path: path, scope: scope} do
     view = open(conn, path)
 
     assert has_element?(view, "h1", "acme/shop")
@@ -96,7 +102,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
 
     assert has_element?(
              view,
-             "##{row(view, "*.paste.example")} a[href^='/workspace/policy?rule='][href$='.paste.example']",
+             "##{row(view, "*.paste.example")} a[href^='#{workspace_path(scope, "/policy?rule=")}'][href$='.paste.example']",
              "Open"
            )
 
@@ -502,9 +508,9 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
   end
 
   test "a target served the baseline has no versions of its own: Document is the workspace's",
-       %{conn: conn, path: path} do
-    assert {:error, {:live_redirect, %{to: "/workspace/policy/versions/" <> _}}} =
-             live(conn, path <> "/document")
+       %{conn: conn, path: path, scope: scope} do
+    assert {:error, {:live_redirect, %{to: to}}} = live(conn, path <> "/document")
+    assert String.starts_with?(to, workspace_path(scope, "/policy/versions/"))
 
     view = open(conn, path <> "/versions/1")
     assert text(view, "#policy-page") =~ "This repository has no versions of its own"

@@ -76,71 +76,10 @@ defmodule ApiaryWeb.Router do
     end
   end
 
-  ## The workspace: everything behind sign-in with an organisation loaded
-
   scope "/", ApiaryWeb do
     pipe_through [:browser, :require_authenticated_user]
 
-    live_session :workspace,
-      on_mount: [
-        {ApiaryWeb.UserAuth, :require_authenticated},
-        {ApiaryWeb.UserAuth, :load_organisation},
-        {ApiaryWeb.UserAuth, :require_organisation}
-      ] do
-      live "/workspace", WorkspaceLive.Overview, :index
-      # The record: the runs of the workspace, and where they reached out to. With the
-      # rest of the workspace's pages, behind sign-in with an organisation loaded, so the
-      # scope they query through is there; every filter is a query parameter.
-      live "/workspace/runs", RunLive.Index, :index
-      live "/workspace/connections", ConnectionLive.Index, :index
-      # One run: four tabs of one LiveView, so a tab is a patch. `:run_id` is the run's
-      # subject, the id the runner prints, not the row's id.
-      live "/workspace/runs/:run_id", RunLive.Show, :timeline
-      live "/workspace/runs/:run_id/terminal", RunLive.Show, :terminal
-      live "/workspace/runs/:run_id/connections", RunLive.Show, :connections
-      live "/workspace/runs/:run_id/details", RunLive.Show, :details
-      # The security policy: the workspace's baseline and a target's view of it, one
-      # object with two scopes. Tabs, filters, the opened change, the compared version and
-      # the export modal are in the URL. `:target_id` is the target row's id, because
-      # a system and a path hold slashes.
-      live "/workspace/policy", PolicyLive.Show, :rules
-      live "/workspace/policy/targets", PolicyLive.Show, :targets
-      live "/workspace/policy/history", PolicyLive.Show, :history
-      live "/workspace/policy/document", PolicyLive.Show, :document
-      live "/workspace/policy/versions/:n", PolicyLive.Show, :version
-      live "/workspace/policy/versions/:n/export", PolicyLive.Show, :export
-      live "/workspace/policy/targets/:target_id", PolicyLive.Target, :rules
-      live "/workspace/policy/targets/:target_id/history", PolicyLive.Target, :history
-      live "/workspace/policy/targets/:target_id/document", PolicyLive.Target, :document
-      live "/workspace/policy/targets/:target_id/versions/:n", PolicyLive.Target, :version
-
-      live "/workspace/policy/targets/:target_id/versions/:n/export",
-           PolicyLive.Target,
-           :export
-
-      live "/workspace/keys", AccessKeyLive.Index, :index
-      live "/workspace/keys/new", AccessKeyLive.Index, :new
-      live "/workspace/keys/:id/rotate", AccessKeyLive.Index, :rotate
-      live "/workspace/keys/:id/revoke", AccessKeyLive.Index, :revoke
-      live "/workspace/members", MemberLive.Index, :index
-      live "/workspace/members/invite", MemberLive.Index, :invite
-      live "/workspace/members/:id/remove", MemberLive.Index, :remove
-      live "/workspace/settings", SettingsLive, :edit
-    end
-
-    live_session :no_organisation,
-      on_mount: [
-        {ApiaryWeb.UserAuth, :require_authenticated},
-        {ApiaryWeb.UserAuth, :load_organisation}
-      ] do
-      live "/no-workspace", WorkspaceLive.NoWorkspace, :index
-    end
-
-    # The raw bytes of a run's log, for the terminal of the run page. Not a page.
-    get "/workspace/runs/:run_id/log", RunLogController, :show
-
-    post "/organisations/switch", OrganisationSessionController, :switch
-    get "/invitations/:token/continue", OrganisationSessionController, :continue_invitation
+    get "/invitations/:token/continue", InvitationController, :continue
   end
 
   ## Authentication routes
@@ -155,6 +94,8 @@ defmodule ApiaryWeb.Router do
       ] do
       live "/users/settings", UserLive.Settings, :edit
       live "/users/settings/confirm-email/:token", UserLive.Settings, :confirm_email
+      # A user's organisations: for now the page of a user who has none (decision 0073).
+      live "/users/organisations", WorkspaceLive.NoWorkspace, :index
     end
 
     post "/users/update-password", UserSessionController, :update_password
@@ -173,5 +114,73 @@ defmodule ApiaryWeb.Router do
 
     post "/users/log-in", UserSessionController, :create
     delete "/users/log-out", UserSessionController, :delete
+  end
+
+  ## The organisations and their workspaces (decision 0073), last: `/:org` and
+  ## `/:org/:workspace` would match every path of one or two segments above. The first
+  ## segment is never one of `ApiaryWeb.ReservedSlugs.organisation/0`, the second of an
+  ## organisation's never one of `ApiaryWeb.ReservedSlugs.workspace/0`; the router's test
+  ## holds both lists to these routes.
+
+  pipeline :path_scope do
+    plug ApiaryWeb.ReservedSlugs
+  end
+
+  scope "/", ApiaryWeb do
+    pipe_through [:path_scope, :browser, :require_authenticated_user, :fetch_path_scope]
+
+    live_session :workspace,
+      on_mount: [
+        {ApiaryWeb.UserAuth, :require_authenticated},
+        {ApiaryWeb.UserAuth, :load_path_scope}
+      ] do
+      # The organisation's own pages. The workspace in the scope is the one of the user's
+      # membership in it.
+      scope "/:org" do
+        live "/members", MemberLive.Index, :index
+        live "/members/invite", MemberLive.Index, :invite
+        live "/members/:id/remove", MemberLive.Index, :remove
+        live "/settings", SettingsLive, :organisation
+      end
+
+      scope "/:org/:workspace" do
+        live "/", WorkspaceLive.Overview, :index
+        # The record: the runs of the workspace, and where they reached out to. Every
+        # filter is a query parameter.
+        live "/runs", RunLive.Index, :index
+        live "/connections", ConnectionLive.Index, :index
+        # One run: four tabs of one LiveView, so a tab is a patch. `:run_id` is the run's
+        # subject, the id the runner prints, not the row's id.
+        live "/runs/:run_id", RunLive.Show, :timeline
+        live "/runs/:run_id/terminal", RunLive.Show, :terminal
+        live "/runs/:run_id/connections", RunLive.Show, :connections
+        live "/runs/:run_id/details", RunLive.Show, :details
+        # The security policy: the workspace's baseline and a target's view of it, one
+        # object with two scopes. Tabs, filters, the opened change, the compared version
+        # and the export modal are in the URL. `:target_id` is the target row's id,
+        # because a system and a path hold slashes.
+        live "/policy", PolicyLive.Show, :rules
+        live "/policy/targets", PolicyLive.Show, :targets
+        live "/policy/history", PolicyLive.Show, :history
+        live "/policy/document", PolicyLive.Show, :document
+        live "/policy/versions/:n", PolicyLive.Show, :version
+        live "/policy/versions/:n/export", PolicyLive.Show, :export
+        live "/policy/targets/:target_id", PolicyLive.Target, :rules
+        live "/policy/targets/:target_id/history", PolicyLive.Target, :history
+        live "/policy/targets/:target_id/document", PolicyLive.Target, :document
+        live "/policy/targets/:target_id/versions/:n", PolicyLive.Target, :version
+        live "/policy/targets/:target_id/versions/:n/export", PolicyLive.Target, :export
+        live "/keys", AccessKeyLive.Index, :index
+        live "/keys/new", AccessKeyLive.Index, :new
+        live "/keys/:id/rotate", AccessKeyLive.Index, :rotate
+        live "/keys/:id/revoke", AccessKeyLive.Index, :revoke
+        live "/settings", SettingsLive, :workspace
+      end
+    end
+
+    # The organisation alone names no page: it sends on to the user's workspace in it.
+    get "/:org", PageController, :organisation
+    # The raw bytes of a run's log, for the terminal of the run page. Not a page.
+    get "/:org/:workspace/runs/:run_id/log", RunLogController, :show
   end
 end

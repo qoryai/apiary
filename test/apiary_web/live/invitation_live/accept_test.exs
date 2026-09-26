@@ -37,7 +37,7 @@ defmodule ApiaryWeb.InvitationLive.AcceptTest do
     assert get_session(conn, :user_return_to) == ~p"/invitations/#{token}/continue"
   end
 
-  test "signed in: accepts and switches to the new organisation", %{
+  test "signed in: accepts and opens the invited workspace", %{
     conn: conn,
     token: token,
     owner: owner
@@ -49,12 +49,10 @@ defmodule ApiaryWeb.InvitationLive.AcceptTest do
     assert html =~ "Accept invitation"
     assert html =~ user.email
 
-    html = lv |> element("button", "Accept invitation") |> render_click()
-    assert html =~ "phx-trigger-action"
+    workspace = ~p"/#{owner.organisation}/#{owner.workspace}"
 
-    conn = lv |> form("#switch-form") |> follow_trigger_action(conn)
-    assert redirected_to(conn) == ~p"/workspace"
-    assert get_session(conn, :organisation_id) == owner.organisation.id
+    assert {:error, {:redirect, %{to: ^workspace}}} =
+             lv |> element("button", "Accept invitation") |> render_click()
 
     assert Enum.any?(
              Organisations.list_memberships(user),
@@ -63,18 +61,12 @@ defmodule ApiaryWeb.InvitationLive.AcceptTest do
 
     assert Organisations.list_invitations(owner.scope) == []
 
-    # the session's organisation is the one shown
-    conn =
-      build_conn()
-      |> log_in_user(user)
-      |> put_session(:organisation_id, owner.organisation.id)
-
-    {:ok, _lv, html} = live(conn, ~p"/workspace")
+    # the path names the workspace, and the new member can open it
+    html = conn |> get(workspace) |> html_response(200)
     assert html =~ owner.workspace.name
-    assert html =~ ~p"/organisations/switch"
   end
 
-  test "signed in as an existing member: says so and switches", %{
+  test "signed in as an existing member: says so and opens the organisation", %{
     conn: conn,
     token: token,
     owner: owner
@@ -82,10 +74,21 @@ defmodule ApiaryWeb.InvitationLive.AcceptTest do
     conn = log_in_user(conn, owner.user)
 
     {:ok, lv, _html} = live(conn, ~p"/invitations/#{token}")
-    html = lv |> element("button", "Accept invitation") |> render_click()
 
-    assert html =~ "already a member"
-    assert html =~ "phx-trigger-action"
+    assert {:error, {:redirect, _}} =
+             lv |> element("button", "Accept invitation") |> render_click()
+
+    flash = assert_redirect(lv, ~p"/#{owner.organisation}")
+    assert flash["info"] =~ "already a member"
+  end
+
+  test "an invalid token links a signed-in user to their workspace", %{conn: conn} do
+    %{user: user} = sign_up_fixture()
+    {:ok, _lv, html} = live(log_in_user(conn, user), ~p"/invitations/not-a-token")
+
+    assert html =~ "no longer valid"
+    assert html =~ "Go to your workspace"
+    assert html =~ ~s(href="/")
   end
 
   test "an invalid token shows a friendly page", %{conn: conn} do

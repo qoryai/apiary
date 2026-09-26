@@ -21,8 +21,8 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewBudgetTest do
     :ok
   end
 
-  defp open(conn) do
-    {:ok, view, _html} = live(conn, ~p"/workspace")
+  defp open(conn, scope) do
+    {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}")
     render_async(view, 5_000)
     view
   end
@@ -55,7 +55,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewBudgetTest do
       scope: scope
     } do
       small = for _ <- 1..8, do: started_run(scope, shop())
-      view = open(conn)
+      view = open(conn, scope)
       run = hd(small)
 
       small_cost =

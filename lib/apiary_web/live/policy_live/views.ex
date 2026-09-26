@@ -52,21 +52,21 @@ defmodule ApiaryWeb.PolicyLive.Views do
           <span>
             <.rich text={
               rich_ngettext("%{number} change", "%{number} changes", @history.total,
-                number: {:b, to_string(@history.total), "font-medium text-base-content"}
+                number: {:b, Format.number(@history.total), "font-medium text-base-content"}
               )
             } />
           </span>
           <span>
             <.rich text={
               rich_ngettext("%{number} version", "%{number} versions", @summary.versions,
-                number: {:b, to_string(@summary.versions), "font-medium text-base-content"}
+                number: {:b, Format.number(@summary.versions), "font-medium text-base-content"}
               )
             } />
           </span>
           <span :if={@summary.since}>
             <.rich text={
               rich_gettext("since %{date}",
-                date: {:b, short_date(@summary.since), "font-medium text-base-content"}
+                date: {:b, Format.date(@summary.since), "font-medium text-base-content"}
               )
             } />
           </span>
@@ -77,7 +77,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
         <p class="px-4 py-3 text-[13px] text-muted">
           <%= if @summary.since do %>
             {gettext("No changes yet. Version 1 was rendered on %{date}.",
-              date: short_date(@summary.since)
+              date: Format.date(@summary.since)
             )}
           <% else %>
             {gettext("No changes yet.")}
@@ -108,8 +108,8 @@ defmodule ApiaryWeb.PolicyLive.Views do
       <div class="flex flex-wrap items-center justify-between gap-3">
         <p id="history-foot" class="max-w-[70ch] text-[12.5px]/[18px] text-faint">
           {gettext("Showing %{shown} of %{total}.",
-            shown: length(@history.rows),
-            total: @history.total
+            shown: Format.number(length(@history.rows)),
+            total: Format.number(@history.total)
           )}
           <span :if={@scope == :workspace}>
             {gettext("A change to the default mode re-renders every target that follows it.")}
@@ -150,10 +150,11 @@ defmodule ApiaryWeb.PolicyLive.Views do
   # The sentence under the document, split around the word that carries a tip.
   defp served_sentence(bytes) do
     rich_ngettext(
-      "\"As served\" is the exact byte, %{count} of it, that the %{digest} is taken over.",
-      "\"As served\" is the exact bytes, %{count} of them, that the %{digest} is taken over.",
+      "\"As served\" is the exact byte, %{number} of it, that the %{digest} is taken over.",
+      "\"As served\" is the exact bytes, %{number} of them, that the %{digest} is taken over.",
       bytes,
-      digest: :digest
+      digest: :digest,
+      number: Format.number(bytes)
     )
   end
 
@@ -176,7 +177,10 @@ defmodule ApiaryWeb.PolicyLive.Views do
     ~H"""
     <div id="policy-version" class="grid grid-cols-[minmax(0,1fr)] gap-6">
       <.kvs id="version-strip">
-        <.kv label={gettext("Rendered")} title={absolute(@v.configuration.rendered_at)}>
+        <.kv
+          label={gettext("Rendered")}
+          title={Format.datetime(@v.configuration.rendered_at, seconds: true, zone: true)}
+        >
           <.relative_time at={@v.configuration.rendered_at} />
         </.kv>
         <.kv label={gettext("Changed by")}>{@v.changed_by || gettext("n/a")}</.kv>
@@ -200,7 +204,9 @@ defmodule ApiaryWeb.PolicyLive.Views do
           sha256={short_digest(@v.configuration.digest)}…
         </.kv>
         <.kv label={gettext("Size")}>
-          {ngettext("%{count} byte", "%{count} bytes", byte_size(@v.configuration.document))}
+          {ngettext("%{number} byte", "%{number} bytes", byte_size(@v.configuration.document),
+            number: Format.number(byte_size(@v.configuration.document))
+          )}
         </.kv>
       </.kvs>
 
@@ -293,7 +299,12 @@ defmodule ApiaryWeb.PolicyLive.Views do
           </p>
         </div>
 
-        <.sect id="version-list" title={gettext("Versions")} count={@v.total} class="q-sect-side">
+        <.sect
+          id="version-list"
+          title={gettext("Versions")}
+          count={Format.number(@v.total)}
+          class="q-sect-side"
+        >
           <nav class="q-vlist" aria-label={gettext("Versions")}>
             <.link
               :for={item <- @v.versions}
@@ -307,7 +318,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
                 <small class="block">
                   {Enum.join(
                     Enum.reject(
-                      [Common.local(item.who), relative_label(item.at, @now)],
+                      [Common.local(item.who), Format.relative(item.at, @now)],
                       &is_nil/1
                     ),
                     " · "
@@ -327,7 +338,9 @@ defmodule ApiaryWeb.PolicyLive.Views do
             <.link :if={@v.earlier > 0} navigate={"#{@base}/history"} class="!text-muted">
               <span></span>
               <span>
-                {ngettext("%{count} earlier version", "%{count} earlier versions", @v.earlier)}
+                {ngettext("%{number} earlier version", "%{number} earlier versions", @v.earlier,
+                  number: Format.number(@v.earlier)
+                )}
               </span>
               <.icon name="hero-chevron-right-micro" class="size-3" />
             </.link>

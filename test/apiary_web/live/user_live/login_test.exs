@@ -98,7 +98,7 @@ defmodule ApiaryWeb.UserLive.LoginTest do
       render_submit(form)
       conn = follow_trigger_action(form, conn)
 
-      assert redirected_to(conn) == ~p"/workspace"
+      assert redirected_to(conn) == ~p"/users/organisations"
       assert get_session(conn, :user_token)
       assert conn.resp_cookies[@remember_me_cookie]
     end
@@ -117,7 +117,7 @@ defmodule ApiaryWeb.UserLive.LoginTest do
       render_submit(form)
       conn = follow_trigger_action(form, conn)
 
-      assert redirected_to(conn) == ~p"/workspace"
+      assert redirected_to(conn) == ~p"/users/organisations"
       assert get_session(conn, :user_token)
       refute conn.resp_cookies[@remember_me_cookie]
     end

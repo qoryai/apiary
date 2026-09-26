@@ -59,6 +59,15 @@ defmodule ApiaryWeb.ConnCase do
   end
 
   @doc """
+  The path of the scope's workspace, `/<organisation slug>/<workspace slug>`, followed by
+  `rest`: for a path a test cannot write with `~p`, such as one inside a selector. A
+  path a test visits is written `~p"/\#{scope.organisation}/\#{scope.workspace}/runs"`.
+  """
+  def workspace_path(%{organisation: organisation, workspace: workspace}, rest \\ "") do
+    "/#{organisation.slug}/#{workspace.slug}#{rest}"
+  end
+
+  @doc """
   Logs the given `user` into the `conn`.
 
   It returns an updated `conn`.

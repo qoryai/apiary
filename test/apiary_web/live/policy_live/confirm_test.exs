@@ -16,7 +16,7 @@ defmodule ApiaryWeb.PolicyLive.ConfirmTest do
     :ok
   end
 
-  # `/workspace/policy?confirm=enforce` is the
+  # `/:org/:workspace/policy?confirm=enforce` is the
   # overview's one-click nudge (brief-overview ol 3).
   describe "?confirm=enforce" do
     test "lands with the enforce confirm open for an owner, and drops the parameter", %{
@@ -25,8 +25,10 @@ defmodule ApiaryWeb.PolicyLive.ConfirmTest do
     } do
       {:ok, _} = Policy.allow(scope, nil, %{host: "api.example"})
 
-      {:ok, view, _html} = live(conn, ~p"/workspace/policy?confirm=enforce")
-      assert_patch(view, ~p"/workspace/policy")
+      {:ok, view, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/policy?confirm=enforce")
+
+      assert_patch(view, ~p"/#{scope.organisation}/#{scope.workspace}/policy")
       render_async(view, 5_000)
 
       assert has_element?(view, "#mode-enforce", "Set the workspace's default to enforce")
@@ -46,17 +48,25 @@ defmodule ApiaryWeb.PolicyLive.ConfirmTest do
       %{user: member} = member_fixture(scope, :member)
 
       {:ok, view, _html} =
-        live(log_in_user(build_conn(), member), ~p"/workspace/policy?confirm=enforce")
+        live(
+          log_in_user(build_conn(), member),
+          ~p"/#{scope.organisation}/#{scope.workspace}/policy?confirm=enforce"
+        )
 
-      assert_patch(view, ~p"/workspace/policy")
+      assert_patch(view, ~p"/#{scope.organisation}/#{scope.workspace}/policy")
       refute has_element?(view, "#mode-enforce")
 
-      {:ok, view, _html} = live(conn, ~p"/workspace/policy?confirm=observe")
+      {:ok, view, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/policy?confirm=observe")
+
       refute has_element?(view, "#mode-enforce")
 
       {:ok, _} = Policy.set_mode(scope, "enforce")
-      {:ok, view, _html} = live(conn, ~p"/workspace/policy?confirm=enforce")
-      assert_patch(view, ~p"/workspace/policy")
+
+      {:ok, view, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/policy?confirm=enforce")
+
+      assert_patch(view, ~p"/#{scope.organisation}/#{scope.workspace}/policy")
       refute has_element?(view, "#mode-enforce")
     end
   end

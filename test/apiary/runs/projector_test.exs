@@ -167,6 +167,21 @@ defmodule Apiary.Runs.ProjectorTest do
       assert Repo.aggregate(Target, :count) == 1
     end
 
+    test "the workspace's stored domain names the target, by its labelling rule",
+         %{run: run} do
+      Repo.update_all(
+        from(w in Apiary.Organisations.Workspace, where: w.id == ^run.workspace_id),
+        set: [domain: "example"]
+      )
+
+      labels = %{"platform" => "ads.example", "account" => "42", "forge" => "git.example.com"}
+      events_fixture(run, [{1, "run.started", started_data(%{"labels" => labels})}])
+
+      assert {:ok, projected} = Projector.project(run)
+      assert {projected.target_system, projected.target_path} == {"ads.example", "42"}
+      assert [%Target{system: "ads.example", path: "42"}] = Repo.all(Target)
+    end
+
     test "a label that cannot name a target leaves the run unassigned, its labels as sent",
          %{scope: scope, run: run} do
       bad = [

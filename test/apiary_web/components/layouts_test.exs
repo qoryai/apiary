@@ -17,8 +17,8 @@ defmodule ApiaryWeb.LayoutsTest do
     setup :register_and_log_in_user
 
     test "the sidebar comes before the top bar and main in the DOM, and the bar is in the content column",
-         %{conn: conn} do
-      {:ok, view, html} = live(conn, ~p"/workspace")
+         %{conn: conn, scope: scope} do
+      {:ok, view, html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}")
 
       assert before?(html, ~s(class="drawer-side), ~s(id="shell-content"))
       assert has_element?(view, "#shell-content > header#top-bar[aria-label='Top bar']")
@@ -29,9 +29,10 @@ defmodule ApiaryWeb.LayoutsTest do
 
     test "the top bar holds the theme toggle and then the account menu, on every page", %{
       conn: conn,
-      user: user
+      user: user,
+      scope: scope
     } do
-      {:ok, view, html} = live(conn, ~p"/workspace")
+      {:ok, view, html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}")
 
       # Both triggers are buttons, never a div with a tabindex: daisyUI takes the
       # pointer away from a [tabindex] trigger while its dropdown has focus, so the
@@ -56,7 +57,7 @@ defmodule ApiaryWeb.LayoutsTest do
       user: user,
       scope: scope
     } do
-      {:ok, view, _html} = live(conn, ~p"/workspace")
+      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}")
 
       assert has_element?(view, "#user-menu[phx-hook='Menu']")
       menu = view |> element("#user-menu ul[role='menu'][aria-label='Account']") |> render()
@@ -67,7 +68,7 @@ defmodule ApiaryWeb.LayoutsTest do
       refute menu =~ "Theme"
       # the docs are the product's, so they are in the brand menu, not here
       refute menu =~ "Docs"
-      refute menu =~ ~p"/organisations/switch"
+      refute menu =~ "Switch organisation"
 
       # a keyboard open focuses the first item: it is the first focusable thing in the list
       assert has_element?(
@@ -84,13 +85,13 @@ defmodule ApiaryWeb.LayoutsTest do
     test "a member's account menu says so", %{conn: _conn, scope: scope} do
       %{user: member} = member_fixture(scope, :member)
       conn = log_in_user(build_conn(), member)
-      {:ok, view, _html} = live(conn, ~p"/workspace")
+      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}")
       assert has_element?(view, "#user-menu-level", "Member of #{scope.organisation.name}")
     end
 
     test "the sidebar: the organisation row at the top, the nav, then the brand foot; no user card",
          %{conn: conn, user: user, scope: scope} do
-      {:ok, view, html} = live(conn, ~p"/workspace")
+      {:ok, view, html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}")
 
       sidebar = view |> element("#sidebar") |> render()
       assert before?(sidebar, ~s(id="organisation-row"), ~s(aria-label="Main"))
@@ -120,13 +121,14 @@ defmodule ApiaryWeb.LayoutsTest do
 
     test "with several memberships the organisation row is the switcher", %{
       conn: conn,
-      user: user
+      user: user,
+      scope: scope
     } do
       other = sign_up_fixture()
       %{token: token} = invitation_fixture(other.scope, %{"email" => user.email})
       {:ok, _membership} = Organisations.accept_invitation(user, token)
 
-      {:ok, view, _html} = live(conn, ~p"/workspace")
+      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}")
 
       refute has_element?(view, "#organisation-block")
 
@@ -135,15 +137,74 @@ defmodule ApiaryWeb.LayoutsTest do
                "#organisation-row #organisation-menu[phx-hook='Menu'] button#organisation-menu-button[aria-haspopup='menu']"
              )
 
+      # plain links to each workspace's own URL, the current one marked; no form
+      refute has_element?(view, "#organisation-menu form")
+
       assert has_element?(
                view,
-               "#organisation-menu form[action='#{~p"/organisations/switch"}'] button[name='organisation_id'][value='#{other.organisation.id}']"
+               "#organisation-menu a[role='menuitem'][aria-current='true'][href='#{workspace_path(scope)}']"
+             )
+
+      assert has_element?(
+               view,
+               "#organisation-menu a[role='menuitem']:not([aria-current])[href='#{workspace_path(other)}']",
+               other.organisation.name
              )
     end
 
+    test "the navigation leads to the workspace's pages and the organisation's", %{
+      conn: conn,
+      scope: scope
+    } do
+      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/keys")
+      org = "/#{scope.organisation.slug}"
+
+      # The policy's entry is there only on an instance with the security policy.
+      policy = if Apiary.Features.on?(:security), do: [policy: workspace_path(scope, "/policy")]
+
+      for {key, href} <-
+            [
+              overview: workspace_path(scope),
+              runs: workspace_path(scope, "/runs"),
+              connections: workspace_path(scope, "/connections")
+            ] ++
+              List.wrap(policy) ++
+              [
+                keys: workspace_path(scope, "/keys"),
+                members: org <> "/members",
+                settings: workspace_path(scope, "/settings"),
+                organisation: org <> "/settings"
+              ] do
+        assert has_element?(view, "#sidebar a#nav-#{key}[href='#{href}']"), "#{key}"
+      end
+
+      assert has_element?(view, "#nav-keys[aria-current='page']")
+    end
+
+    test "switching keeps the section the user is on", %{conn: conn, user: user, scope: scope} do
+      other = sign_up_fixture()
+      %{token: token} = invitation_fixture(other.scope, %{"email" => user.email})
+      {:ok, _membership} = Organisations.accept_invitation(user, token)
+      switch = "#organisation-menu a[role='menuitem']"
+
+      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/keys")
+      assert has_element?(view, "#{switch}[href='#{workspace_path(other, "/keys")}']")
+
+      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/members")
+      assert has_element?(view, "#{switch}[href='/#{other.organisation.slug}/members']")
+
+      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/settings")
+      assert has_element?(view, "#{switch}[href='/#{other.organisation.slug}/settings']")
+
+      # the link opens the other workspace, and the session remembers it for `/`
+      conn = get(conn, workspace_path(other, "/keys"))
+      assert html_response(conn, 200) =~ other.organisation.name
+      assert redirected_to(get(recycle(conn), ~p"/")) == workspace_path(other)
+    end
+
     test "the brand foot is the Qory Apiary menu: the version on it, docs, changelog and source in it",
-         %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/workspace")
+         %{conn: conn, scope: scope} do
+      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}")
 
       version = :apiary |> Application.spec(:vsn) |> List.to_string()
       assert has_element?(view, "#brand-foot #brand-menu.dropdown-top[phx-hook='Menu']")
@@ -194,7 +255,7 @@ defmodule ApiaryWeb.LayoutsTest do
     end
 
     test "the page title carries the product name as its suffix", %{conn: conn, scope: scope} do
-      {:ok, _view, html} = live(conn, ~p"/workspace/members")
+      {:ok, _view, html} = live(conn, ~p"/#{scope.organisation}/members")
       assert html =~ ~r{<title[^>]*>\s*Members · Qory Apiary\s*</title>}
       assert html =~ scope.workspace.name
     end
@@ -204,7 +265,7 @@ defmodule ApiaryWeb.LayoutsTest do
     test "no sidebar, no menu button, the brand at the left of the bar", %{conn: conn} do
       user = user_fixture()
       conn = log_in_user(conn, user)
-      {:ok, view, html} = live(conn, ~p"/no-workspace")
+      {:ok, view, html} = live(conn, ~p"/users/organisations")
 
       refute has_element?(view, "#sidebar")
       refute has_element?(view, "#nav-drawer, #nav-drawer-open")
@@ -247,10 +308,21 @@ defmodule ApiaryWeb.LayoutsTest do
     end
   end
 
-  describe "relative_time/2" do
+  describe "the reader" do
+    test "the body hands the scripts the locale and the time zone the server formats in", %{
+      conn: conn
+    } do
+      html = conn |> get(~p"/users/log-in") |> html_response(200)
+
+      assert html =~ ~s(data-locale="en-GB")
+      assert html =~ ~s(data-time-zone="Etc/UTC")
+    end
+  end
+
+  describe "time_ago" do
     test "says the time as people say it, with the count's plural" do
       now = ~U[2026-09-20 14:04:00Z]
-      time = &ApiaryWeb.CoreComponents.relative_time(&1, now)
+      time = &ApiaryWeb.Format.time_ago(&1, now)
 
       assert time.(~U[2026-09-20 14:03:30Z]) == "Just now"
       assert time.(~U[2026-09-20 14:03:00Z]) == "1 minute ago"
@@ -259,7 +331,7 @@ defmodule ApiaryWeb.LayoutsTest do
       assert time.(~U[2026-09-20 11:00:00Z]) == "3 hours ago"
       assert time.(~U[2026-09-19 16:40:03Z]) == "Yesterday, 16:40"
       assert time.(~U[2026-09-17 10:00:00Z]) == "3 days ago"
-      assert time.(~U[2026-09-01 10:00:00Z]) == "1 Sep 2026"
+      assert time.(~U[2026-09-01 10:00:00Z]) == "1 Sept 2026"
     end
   end
 end

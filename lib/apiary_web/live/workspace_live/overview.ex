@@ -1,6 +1,6 @@
 defmodule ApiaryWeb.WorkspaceLive.Overview do
   @moduledoc """
-  The workspace overview, `/workspace`: the page a member lands on after sign-in
+  The workspace overview, `/:org/:workspace`: the page a member lands on after sign-in
   (`docs/design/brief-overview.md`). It answers two questions above the fold, in this
   order: what needs you (the Needs attention list, a list of acts and nothing else) and
   what your agents did (the activity strip, the alive rows, the fourteen-day chart, the
@@ -37,7 +37,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   import ApiaryWeb.OverviewComponents
 
   import ApiaryWeb.RunComponents,
-    only: [rule_popover: 1, quiet_for: 2, beat: 1, delimited: 1]
+    only: [rule_popover: 1, quiet_for: 2, beat: 1]
 
   alias Apiary.AccessKeys
   alias Apiary.AccessKeys.AccessKey
@@ -105,9 +105,10 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
         </div>
 
         <%= if @checklist? do %>
-          <.onboarding keys={@keys} preview={@preview} landed={@landed} />
+          <.onboarding scope={@current_scope} keys={@keys} preview={@preview} landed={@landed} />
           <.access_keys
             :if={@keys != [] && !@live?}
+            scope={@current_scope}
             keys={Enum.take(@keys, @shown)}
             total={length(@keys)}
             last_runs={%{}}
@@ -119,6 +120,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
         <%= if @live? do %>
           <.attention
             :if={@attention_items}
+            scope={@current_scope}
             id="attention"
             items={Enum.take(@attention_items, @shown)}
             count={@attention_count}
@@ -127,7 +129,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
             now={@now}
           />
 
-          <.strip alive={@alive} facts={@facts} destinations={@destinations} />
+          <.strip scope={@current_scope} alive={@alive} facts={@facts} destinations={@destinations} />
 
           <div class="q-grid2">
             <section class="q-sect" id="overview-activity" aria-labelledby="overview-activity-h">
@@ -140,6 +142,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
                     </.notice>
                   <% @alive_runs -> %>
                     <.alive_rows
+                      scope={@current_scope}
                       id="alive"
                       runs={Enum.take(@alive_runs, @shown)}
                       count={@alive}
@@ -154,6 +157,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
               </div>
               <div class="q-part">
                 <.days_chart
+                  scope={@current_scope}
                   id="days"
                   days={@days}
                   today={@today}
@@ -169,7 +173,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
                   <span :if={@connections == :unavailable} id="activity-uncounted" class="text-muted">
                     {gettext(
                       "Denied destinations were not counted: this workspace recorded more than %{cap} connections in 7 days. The connections page counts them by destination.",
-                      cap: delimited(Policy.Activity.cap())
+                      cap: Format.number(Policy.Activity.cap())
                     )}
                   </span>
                 </p>
@@ -187,8 +191,13 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
                   </.notice>
                 </div>
               </.sect>
-              <.policy_glance :if={@security? && !@failed[:policy]} policy={@policy} />
+              <.policy_glance
+                :if={@security? && !@failed[:policy]}
+                scope={@current_scope}
+                policy={@policy}
+              />
               <.retention_glance
+                scope={@current_scope}
                 workspace={@current_scope.workspace}
                 runs={@key_facts && @key_facts.retention}
                 now={@now}
@@ -197,6 +206,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
           </div>
 
           <.recent_runs
+            scope={@current_scope}
             id="last-runs"
             runs={@recent}
             quiet_ids={@quiet_ids}
@@ -206,6 +216,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
           <.access_keys
             :if={@keys != []}
+            scope={@current_scope}
             keys={Enum.take(@keys, @shown)}
             total={length(@keys)}
             last_runs={@key_facts && @key_facts.last_runs}
@@ -474,11 +485,11 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
                  holder_of(scope, run.target_id),
                  run.reported_run_configuration_digest
                ) do
-            {:ok, configuration} -> version_map(configuration)
+            {:ok, configuration} -> version_map(scope, configuration)
             _ -> nil
           end
 
-        {run.id, %{in_force: version_map(in_force), reported: reported_version}}
+        {run.id, %{in_force: version_map(scope, in_force), reported: reported_version}}
       end
     end
   end
@@ -492,13 +503,13 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     end
   end
 
-  defp version_map(configuration) do
+  defp version_map(scope, configuration) do
     %{
       n: configuration.version,
       digest: configuration.digest,
       rendered_at: configuration.rendered_at,
       target_id: configuration.target_id,
-      path: Rules.version_path(configuration.target_id, configuration.version)
+      path: Rules.version_path(scope, configuration.target_id, configuration.version)
     }
   end
 
@@ -1128,7 +1139,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
           in_force: in_force,
           reported: facts.reported,
           beats: div(max(DateTime.diff(now, in_force.rendered_at, :second), 0), beat(run)),
-          compare: compare_path(in_force, facts.reported)
+          compare: compare_path(assigns.current_scope, in_force, facts.reported)
         }
       end
 
@@ -1195,10 +1206,11 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     end
   end
 
-  defp compare_path(in_force, %{n: m, target_id: same}) when same == in_force.target_id,
-    do: Rules.version_path(in_force.target_id, in_force.n, %{"compare" => m})
+  defp compare_path(scope, in_force, %{n: m, target_id: same})
+       when same == in_force.target_id,
+       do: Rules.version_path(scope, in_force.target_id, in_force.n, %{"compare" => m})
 
-  defp compare_path(in_force, _reported), do: in_force.path
+  defp compare_path(_scope, in_force, _reported), do: in_force.path
 
   defp idle_days(%AccessKey{last_used_at: %DateTime{} = at}, now),
     do: DateTime.diff(now, at, :day)
@@ -1270,7 +1282,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
           settled: all_landed?,
           attention_items: items,
           attention_count: length(unresolved) - length(hidden),
-          attention_more: more_link(hidden),
+          attention_more: more_link(socket.assigns.current_scope, hidden),
           quiet_ids: MapSet.new(for %{kind: :quiet, run: run} <- unresolved, do: run.id)
         )
 
@@ -1279,9 +1291,10 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
           announce(
             socket,
             ngettext(
-              "%{count} more item needs attention.",
-              "%{count} more items need attention.",
-              length(arrived)
+              "%{number} more item needs attention.",
+              "%{number} more items need attention.",
+              length(arrived),
+              number: Format.number(length(arrived))
             )
           ),
         else: socket
@@ -1291,45 +1304,50 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   end
 
   # The overflow is counted per kind; the link goes to the kind that overflowed first.
-  defp more_link([]), do: nil
+  defp more_link(_scope, []), do: nil
 
-  defp more_link([first | _] = hidden) do
+  defp more_link(scope, [first | _] = hidden) do
     count = length(hidden)
 
     case first.kind do
       :denied ->
         %{
           count: count,
-          navigate: ~p"/workspace/connections?#{%{"decision" => "denied"}}",
+          navigate:
+            ~p"/#{scope.organisation}/#{scope.workspace}/connections?#{%{"decision" => "denied"}}",
           title:
             ngettext(
-              "%{count} more item, on the connections page",
-              "%{count} more items, on the connections page",
-              count
+              "%{number} more item, on the connections page",
+              "%{number} more items, on the connections page",
+              count,
+              number: Format.number(count)
             )
         }
 
       kind when kind in [:lost, :quiet, :behind] ->
         %{
           count: count,
-          navigate: ~p"/workspace/runs?#{%{"state" => "pending,running,lost"}}",
+          navigate:
+            ~p"/#{scope.organisation}/#{scope.workspace}/runs?#{%{"state" => "pending,running,lost"}}",
           title:
             ngettext(
-              "%{count} more item, on the runs list",
-              "%{count} more items, on the runs list",
-              count
+              "%{number} more item, on the runs list",
+              "%{number} more items, on the runs list",
+              count,
+              number: Format.number(count)
             )
         }
 
       _ ->
         %{
           count: count,
-          navigate: ~p"/workspace/keys",
+          navigate: ~p"/#{scope.organisation}/#{scope.workspace}/keys",
           title:
             ngettext(
-              "%{count} more item, on the keys page",
-              "%{count} more items, on the keys page",
-              count
+              "%{number} more item, on the keys page",
+              "%{number} more items, on the keys page",
+              count,
+              number: Format.number(count)
             )
         }
     end
@@ -1390,7 +1408,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     assign(socket,
       attention_items: items,
       attention_count: length(unresolved) - length(hidden),
-      attention_more: more_link(hidden)
+      attention_more: more_link(socket.assigns.current_scope, hidden)
     )
   end
 
@@ -1531,7 +1549,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   defp close_title(run), do: {:b, run_title(run), "font-medium"}
 
   defp new_runs_text(n),
-    do: ngettext("%{number} new run", "%{number} new runs", n, number: delimited(n))
+    do: ngettext("%{number} new run", "%{number} new runs", n, number: Format.number(n))
 
   # What became of a run that ended while it was on the list.
   defp ended("succeeded"), do: gettext("Succeeded.")

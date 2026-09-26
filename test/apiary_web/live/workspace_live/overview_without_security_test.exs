@@ -42,8 +42,8 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewWithoutSecurityTest do
     })
   end
 
-  defp open(conn, path \\ "/workspace") do
-    {:ok, view, _html} = live(conn, path)
+  defp open(conn, scope) do
+    {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}")
     render_async(view, 5_000)
     view
   end
@@ -84,8 +84,11 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewWithoutSecurityTest do
   describe "with security off" do
     @describetag with_features: [:observability]
 
-    test "the sidebar has no Policy entry and no mode word, on every page", %{conn: conn} do
-      for path <- ["/workspace", "/workspace/keys"] do
+    test "the sidebar has no Policy entry and no mode word, on every page", %{
+      conn: conn,
+      scope: scope
+    } do
+      for path <- [workspace_path(scope), workspace_path(scope, "/keys")] do
         {:ok, view, _html} = live(conn, path)
 
         for key <- ~w(overview runs connections keys members settings),
@@ -93,7 +96,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewWithoutSecurityTest do
 
         refute has_element?(view, "#nav-policy")
         refute has_element?(view, "#nav-policy-mode")
-        refute has_element?(view, "#sidebar a[href^='/workspace/policy']")
+        refute has_element?(view, "#sidebar a[href^='#{workspace_path(scope, "/policy")}']")
       end
     end
 
@@ -107,16 +110,16 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewWithoutSecurityTest do
       refute Map.has_key?(counts, :own_modes)
 
       record(scope)
-      view = open(conn)
+      view = open(conn, scope)
       refute subscribed_to_policy?(view, scope)
 
-      {:ok, keys, _html} = live(conn, ~p"/workspace/keys")
+      {:ok, keys, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/keys")
       refute subscribed_to_policy?(keys, scope)
     end
 
     test "the overview reads nothing of the policy", %{conn: conn, scope: scope} do
       record(scope)
-      {view, reads} = policy_reads(fn -> open(conn) end)
+      {view, reads} = policy_reads(fn -> open(conn, scope) end)
 
       assert reads == []
       assert has_element?(view, "#overview-strip")
@@ -124,13 +127,13 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewWithoutSecurityTest do
 
     test "the overview is a page that never had a policy", %{conn: conn, scope: scope} do
       lost = record(scope)
-      view = open(conn)
+      view = open(conn, scope)
       html = render(view)
 
       # No card, no item, no act, no link, no word.
       refute has_element?(view, "#overview-policy")
       refute has_element?(view, "#policy-error")
-      refute has_element?(view, "a[href^='/workspace/policy']")
+      refute has_element?(view, "a[href^='#{workspace_path(scope, "/policy")}']")
       refute has_element?(view, "#attention li[data-kind=denied]")
       refute has_element?(view, "#attention li[data-kind=enforce]")
       refute has_element?(view, "#attention li[data-kind=unmanaged]")
@@ -149,7 +152,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewWithoutSecurityTest do
 
     test "an allow asked for anyway opens nothing", %{conn: conn, scope: scope} do
       record(scope)
-      view = open(conn)
+      view = open(conn, scope)
 
       id = "att-denied-#{:erlang.phash2({"files.cdn.example", 443, ""}, 4_294_967_296)}"
 
@@ -171,14 +174,23 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewWithoutSecurityTest do
       scope: scope
     } do
       record(scope)
-      {view, reads} = policy_reads(fn -> open(conn) end)
+      {view, reads} = policy_reads(fn -> open(conn, scope) end)
 
       # The probe the page without security passes hears the policy's reads here.
       assert reads != []
       assert render(view) =~ ~r/polic/i
-      assert has_element?(view, "#nav-policy[href='/workspace/policy']")
-      assert has_element?(view, "#overview-policy-open[href='/workspace/policy']")
-      assert has_element?(view, "#att-policy-unmanaged-act[href='/workspace/policy']")
+      assert has_element?(view, "#nav-policy[href='#{workspace_path(scope, "/policy")}']")
+
+      assert has_element?(
+               view,
+               "#overview-policy-open[href='#{workspace_path(scope, "/policy")}']"
+             )
+
+      assert has_element?(
+               view,
+               "#att-policy-unmanaged-act[href='#{workspace_path(scope, "/policy")}']"
+             )
+
       assert has_element?(view, "#attention li[data-kind=denied] [phx-click*=rule_open]")
       assert subscribed_to_policy?(view, scope)
       assert Map.has_key?(UserAuth.nav_counts(scope), :mode)

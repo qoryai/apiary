@@ -84,6 +84,27 @@ defmodule ApiaryWeb.Contract.EventsDigestsTest do
     assert in_force(deliver(ctx, [started])) == [ctx.own]
   end
 
+  test "the start's labels name the target by the key's domain without reading a workspace",
+       ctx do
+    {_subject, [_ping, started]} = first_events()
+    handler = "digest-workspaces-#{System.unique_integer()}"
+    parent = self()
+
+    :telemetry.attach(
+      handler,
+      [:apiary, :repo, :query],
+      fn _event, _measurements, %{source: source}, _config ->
+        if self() == parent and source == "workspaces", do: send(parent, :workspaces)
+      end,
+      nil
+    )
+
+    on_exit(fn -> :telemetry.detach(handler) end)
+
+    assert in_force(deliver(ctx, [started])) == [ctx.own]
+    refute_received :workspaces
+  end
+
   test "once projected, the run's target decides, and a change of policy changes the answer",
        ctx do
     {subject, [ping, started]} = first_events()
@@ -213,7 +234,10 @@ defmodule ApiaryWeb.Contract.EventsDigestsTest do
       handler,
       [:apiary, :repo, :query],
       fn _event, _measurements, %{source: source, query: query}, _config ->
-        if self() == parent and source == "run_configurations", do: send(parent, {:query, query})
+        # The workspaces too: the key's workspace, whose domain names a run's target, is
+        # read with the key and never again.
+        if self() == parent and source in ["run_configurations", "workspaces"],
+          do: send(parent, {:query, source, query})
       end,
       nil
     )
@@ -222,7 +246,7 @@ defmodule ApiaryWeb.Contract.EventsDigestsTest do
 
     deliver(ctx, [wire_event(subject, 3, "run.heartbeat", %{})], run_configuration: ctx.own)
 
-    assert_received {:query, "SELECT" <> _}
-    refute_received {:query, _}
+    assert_received {:query, "run_configurations", "SELECT" <> _}
+    refute_received {:query, _source, _query}
   end
 end

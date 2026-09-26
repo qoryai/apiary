@@ -23,8 +23,9 @@ defmodule ApiaryWeb.RunPageComponents do
     only: [badge: 1, icon: 1, notice: 1, empty_state: 1, listening: 1, term: 1]
 
   import ApiaryWeb.RunComponents,
-    only: [connection_row: 1, tool_mark: 1, duration: 1, offset: 1, delimited: 1, middle: 2]
+    only: [connection_row: 1, tool_mark: 1, duration: 1, offset: 1, middle: 2]
 
+  alias ApiaryWeb.Format
   alias ApiaryWeb.RunComponents
 
   alias Phoenix.LiveView.JS
@@ -135,7 +136,7 @@ defmodule ApiaryWeb.RunPageComponents do
       "%{number} task was still listed when the run ended",
       "%{number} tasks were still listed when the run ended",
       count,
-      number: delimited(count)
+      number: Format.number(count)
     )
   end
 
@@ -144,12 +145,12 @@ defmodule ApiaryWeb.RunPageComponents do
       "%{number} task still running in the background",
       "%{number} tasks still running in the background",
       count,
-      number: delimited(count)
+      number: Format.number(count)
     )
   end
 
   defp and_more(n),
-    do: ngettext("and %{number} more", "and %{number} more", n, number: delimited(n))
+    do: ngettext("and %{number} more", "and %{number} more", n, number: Format.number(n))
 
   ## rd16. Limits
 
@@ -218,7 +219,7 @@ defmodule ApiaryWeb.RunPageComponents do
     ~H"""
     {gettext(
       "This run's events were pruned on %{date}, under the workspace's retention. The run keeps its header, its counts and its connections; the timeline and the log output are gone.",
-      date: ApiaryWeb.CoreComponents.short_date(@at)
+      date: Format.date(@at)
     )}
     """
   end
@@ -227,7 +228,7 @@ defmodule ApiaryWeb.RunPageComponents do
     ~H"""
     {gettext(
       "This run's log output was pruned on %{date}, under the workspace's retention. The timeline and the connections are whole.",
-      date: ApiaryWeb.CoreComponents.short_date(@at)
+      date: Format.date(@at)
     )}
     """
   end
@@ -400,10 +401,11 @@ defmodule ApiaryWeb.RunPageComponents do
   end
 
   defp earlier_events(n),
-    do: ngettext("%{number} earlier event", "%{number} earlier events", n, number: delimited(n))
+    do:
+      ngettext("%{number} earlier event", "%{number} earlier events", n, number: Format.number(n))
 
   defp later_events(n),
-    do: ngettext("%{number} later event", "%{number} later events", n, number: delimited(n))
+    do: ngettext("%{number} later event", "%{number} later events", n, number: Format.number(n))
 
   @doc """
   One item: the gutter with the rails open at its sequence and its node, then the body.
@@ -745,7 +747,7 @@ defmodule ApiaryWeb.RunPageComponents do
             "%{number} connection while this call was open",
             "%{number} connections while this call was open",
             @item.connections_count,
-            number: delimited(@item.connections_count)
+            number: Format.number(@item.connections_count)
           )}
         </small>
         <.connection_row
@@ -878,14 +880,14 @@ defmodule ApiaryWeb.RunPageComponents do
                 "%{number} allowed request",
                 "%{number} allowed requests",
                 @item.connections_count,
-                number: delimited(@item.connections_count)
+                number: Format.number(@item.connections_count)
               ),
             else:
               ngettext(
                 "%{number} allowed connection",
                 "%{number} allowed connections",
                 @item.connections_count,
-                number: delimited(@item.connections_count)
+                number: Format.number(@item.connections_count)
               )}
           <span :if={@item.open_calls > 1} class="text-faint">· {calls_open(@item.open_calls)}</span>
         </span>
@@ -934,22 +936,25 @@ defmodule ApiaryWeb.RunPageComponents do
   end
 
   defp hosts_allowed(n),
-    do: ngettext("%{number} host allowed", "%{number} hosts allowed", n, number: delimited(n))
+    do: ngettext("%{number} host allowed", "%{number} hosts allowed", n, number: Format.number(n))
 
   defp hosts_denied(n),
-    do: ngettext("denies %{number} host", "denies %{number} hosts", n, number: delimited(n))
+    do: ngettext("denies %{number} host", "denies %{number} hosts", n, number: Format.number(n))
 
   defp more_counted(n) do
     ngettext(
       "%{number} more is counted on the Connections tab.",
       "%{number} more are counted on the Connections tab.",
       n,
-      number: delimited(n)
+      number: Format.number(n)
     )
   end
 
   defp calls_open(n),
-    do: ngettext("while %{count} call was open", "while %{count} calls were open", n)
+    do:
+      ngettext("while %{number} call was open", "while %{number} calls were open", n,
+        number: Format.number(n)
+      )
 
   ## The head row
 
@@ -1045,7 +1050,9 @@ defmodule ApiaryWeb.RunPageComponents do
   end
 
   defp hosts_words(0), do: gettext("no host")
-  defp hosts_words(n), do: ngettext("%{number} host", "%{number} hosts", n, number: delimited(n))
+
+  defp hosts_words(n),
+    do: ngettext("%{number} host", "%{number} hosts", n, number: Format.number(n))
 
   defp hosts_or_none(0), do: gettext("none")
   defp hosts_or_none(n), do: hosts_words(n)
@@ -1117,7 +1124,7 @@ defmodule ApiaryWeb.RunPageComponents do
     ~H"""
     <button type="button" class="q-show-all" phx-click="show_all" phx-value-seq={@seq}>{gettext(
       "Show all %{size}",
-      size: format_bytes(@bytes)
+      size: Format.bytes(@bytes)
     )}</button>
     """
   end
@@ -1137,20 +1144,11 @@ defmodule ApiaryWeb.RunPageComponents do
   defp well_size(%{lines: lines, bytes: bytes}) when is_integer(lines),
     do:
       gettext("%{size} · %{lines}",
-        size: format_bytes(bytes),
-        lines: ngettext("%{number} line", "%{number} lines", lines, number: delimited(lines))
+        size: Format.bytes(bytes),
+        lines: ngettext("%{number} line", "%{number} lines", lines, number: Format.number(lines))
       )
 
-  defp well_size(%{bytes: bytes}), do: format_bytes(bytes)
-
-  @doc "A byte count in the words of the terminal's foot: \"812 B\", \"48.2 KB\", \"1.4 MB\"."
-  def format_bytes(bytes) when bytes < 1024, do: gettext("%{number} B", number: bytes)
-
-  def format_bytes(bytes) when bytes < 1024 * 1024,
-    do: gettext("%{number} KB", number: Float.round(bytes / 1024, 1))
-
-  def format_bytes(bytes),
-    do: gettext("%{number} MB", number: Float.round(bytes / (1024 * 1024), 1))
+  defp well_size(%{bytes: bytes}), do: Format.bytes(bytes)
 
   ## Words
 
@@ -1175,7 +1173,9 @@ defmodule ApiaryWeb.RunPageComponents do
     [
       item.outcome,
       item.turns &&
-        ngettext("%{number} turn", "%{number} turns", item.turns, number: delimited(item.turns)),
+        ngettext("%{number} turn", "%{number} turns", item.turns,
+          number: Format.number(item.turns)
+        ),
       item.duration_ms && ApiaryWeb.RunComponents.format_duration_ms(item.duration_ms),
       item.cost_usd && cost(item.cost_usd)
     ]
@@ -1184,8 +1184,8 @@ defmodule ApiaryWeb.RunPageComponents do
   end
 
   # Two places, four when under a cent.
-  defp cost(usd) when usd < 0.01, do: "$" <> :erlang.float_to_binary(usd / 1, decimals: 4)
-  defp cost(usd), do: "$" <> :erlang.float_to_binary(usd / 1, decimals: 2)
+  defp cost(usd) when usd < 0.01, do: "$" <> Format.number(usd / 1, digits: 4)
+  defp cost(usd), do: "$" <> Format.number(usd / 1, digits: 2)
 
   @doc "A sequence as the page writes it: four digits at least."
   def pad(sequence) when is_integer(sequence),
@@ -1230,7 +1230,7 @@ defmodule ApiaryWeb.RunPageComponents do
     ~H"""
     <p id="live-end" class="q-tail">
       {gettext("End of the record.")} {ngettext("%{number} event.", "%{number} events.", @events,
-        number: delimited(@events)
+        number: Format.number(@events)
       )}
     </p>
     """
@@ -1394,9 +1394,9 @@ defmodule ApiaryWeb.RunPageComponents do
       <div class="q-term-foot">
         <span :if={@live} class="q-term-live"><i></i>{gettext("Live")}</span>
         <span :if={!@live}>{gettext("Ended")}</span>
-        <span>{format_bytes(@bytes)}</span>
+        <span>{Format.bytes(@bytes)}</span>
         <span class="q-term-opt">
-          {ngettext("%{number} chunk", "%{number} chunks", @chunks, number: delimited(@chunks))}
+          {ngettext("%{number} chunk", "%{number} chunks", @chunks, number: Format.number(@chunks))}
         </span>
         <span class="q-term-opt">{gettext("through #%{sequence}", sequence: pad(@through))}</span>
       </div>

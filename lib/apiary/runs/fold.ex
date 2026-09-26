@@ -423,13 +423,18 @@ defmodule Apiary.Runs.Fold do
   # (`Apiary.Lingo.Domain`), or nil. Labels that name no target stay in `labels` (cut like
   # the others) and the run is unassigned.
   defp target(run, %{"labels" => labels}) do
-    case Apiary.Lingo.Domain.target(Map.get(run, :workspace_id), labels) do
+    case Apiary.Lingo.Domain.target(workspace(run), labels) do
       {:ok, target} -> target
       :none -> nil
     end
   end
 
   defp target(_run, _data), do: nil
+
+  # The projector hands the run in with its workspace loaded, which carries the domain, so
+  # the fold reads no database. A run without it reads the default domain.
+  defp workspace(%{workspace: %Apiary.Organisations.Workspace{} = workspace}), do: workspace
+  defp workspace(_run), do: nil
 
   defp labels(data) do
     case data do

@@ -1,8 +1,10 @@
 defmodule Apiary.Accounts.UserNotifier do
   @moduledoc """
-  The mail sent to people. Each mail is written in the calling process's locale: a request
-  or a LiveView has already set the domain's (`ApiaryWeb.Lingo`), and a mail sent from a
-  job about a workspace wraps the call in `ApiaryWeb.Lingo.with_locale/2`.
+  The mail sent to people. A mail to a user is written for its recipient, in the user's
+  language (`ApiaryWeb.Lingo.with_locale/3`), whichever process sends it; none of them is
+  about a workspace, so it reads the default domain's words. An invitation goes to an
+  address that may have no account yet, so it is written in the calling process's locale:
+  a request or a LiveView has already set the inviter's (`ApiaryWeb.Lingo`).
   """
   use Gettext, backend: ApiaryWeb.Gettext
   import Swoosh.Email
@@ -38,24 +40,28 @@ defmodule Apiary.Accounts.UserNotifier do
   Deliver instructions to update a user email.
   """
   def deliver_update_email_instructions(user, url) do
-    deliver(user.email, gettext("Confirm your new email address for Qory Apiary"), [
-      gettext("Hi %{email},", email: user.email),
-      gettext(
-        "You can change the email address of your Qory Apiary account by visiting the URL below:"
-      ),
-      url,
-      gettext("If you did not ask for this change, ignore this email.")
-    ])
+    ApiaryWeb.Lingo.with_locale(nil, user, fn ->
+      deliver(user.email, gettext("Confirm your new email address for Qory Apiary"), [
+        gettext("Hi %{email},", email: user.email),
+        gettext(
+          "You can change the email address of your Qory Apiary account by visiting the URL below:"
+        ),
+        url,
+        gettext("If you did not ask for this change, ignore this email.")
+      ])
+    end)
   end
 
   @doc """
   Deliver instructions to log in with a magic link.
   """
   def deliver_login_instructions(user, url) do
-    case user do
-      %User{confirmed_at: nil} -> deliver_confirmation_instructions(user, url)
-      _ -> deliver_magic_link_instructions(user, url)
-    end
+    ApiaryWeb.Lingo.with_locale(nil, user, fn ->
+      case user do
+        %User{confirmed_at: nil} -> deliver_confirmation_instructions(user, url)
+        _ -> deliver_magic_link_instructions(user, url)
+      end
+    end)
   end
 
   defp deliver_magic_link_instructions(user, url) do

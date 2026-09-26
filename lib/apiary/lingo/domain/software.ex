@@ -27,5 +27,5 @@ defmodule Apiary.Lingo.Domain.Software do
   def target_labels, do: [@system_label, @path_label]
 
   @impl true
-  def locale, do: "en@software"
+  def name, do: "software"
 end

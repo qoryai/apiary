@@ -30,7 +30,7 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
 
     %{
       target: target,
-      path: "/workspace/policy/targets/#{target.id}",
+      path: workspace_path(scope, "/policy/targets/#{target.id}"),
       locked: locked,
       plain: plain,
       denied: denied,
@@ -49,7 +49,7 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
 
   describe "a member's crafted events on the workspace's page" do
     test "confirms with no dialog open do nothing", %{member_conn: conn, scope: scope} do
-      view = open(conn, "/workspace/policy")
+      view = open(conn, workspace_path(scope, "/policy"))
       before = rules(scope)
 
       for event <- ~w(mode_confirm lock_confirm remove_confirm target_mode_confirm) do
@@ -63,7 +63,7 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
 
     test "unlock, remove of a locked rule and saving over a locked host are refused",
          %{member_conn: conn, scope: scope, locked: locked} do
-      view = open(conn, "/workspace/policy")
+      view = open(conn, workspace_path(scope, "/policy"))
 
       render_hook(view, "lock_toggle", %{"id" => locked.id})
       assert rule(scope, "*.paste.example").locked
@@ -113,8 +113,8 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
     end
 
     test "change nothing there, from either page",
-         %{conn: conn, path: path, other: other, their_rule: rule, their_own: own} do
-      workspace = open(conn, "/workspace/policy")
+         %{conn: conn, path: path, other: other, their_rule: rule, their_own: own, scope: scope} do
+      workspace = open(conn, workspace_path(scope, "/policy"))
 
       for event <- ~w(lock_toggle remove edit_paths), id <- [rule.id, own.id, "nope", nil, %{}] do
         render_hook(workspace, event, %{"id" => id})
@@ -142,7 +142,7 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
     test "a removed rule is not removed twice, and a lock is not put on what is gone",
          %{conn: conn, scope: scope, locked: locked, plain: plain, target: target} do
       {:ok, _} = Policy.deny(scope, target, %{host: "github.example"})
-      view = open(conn, "/workspace/policy")
+      view = open(conn, workspace_path(scope, "/policy"))
 
       view |> element("#rule-#{plain.id}-lock") |> render_click()
       assert has_element?(view, "#lock-confirm")
@@ -173,7 +173,7 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
 
   describe "payloads no form sends" do
     test "leave the composer as it was and the page up", %{conn: conn, scope: scope} do
-      view = open(conn, "/workspace/policy")
+      view = open(conn, workspace_path(scope, "/policy"))
 
       for payload <- [
             %{"rule" => "text"},
@@ -215,19 +215,19 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
   end
 
   describe "parameters no link writes" do
-    test "are read as their defaults", %{conn: conn, path: path} do
+    test "are read as their defaults", %{conn: conn, path: path, scope: scope} do
       for query <- [
-            "/workspace/policy?show=%00&rule=%00",
-            "/workspace/policy?show[]=allow&rule[a]=b",
-            "/workspace/policy/targets?mode=",
-            "/workspace/policy/targets?mode=own%00",
-            "/workspace/policy/targets?mode[]=own",
-            "/workspace/policy/history?page=-1",
-            "/workspace/policy/history?page=99999999999999999999",
-            "/workspace/policy/history?page[]=2&change[]=x",
-            "/workspace/policy/history?change=%00",
-            "/workspace/policy/versions/1?compare=-3&view=%00",
-            "/workspace/policy/versions/1?compare[]=1&view[]=served",
+            workspace_path(scope, "/policy?show=%00&rule=%00"),
+            workspace_path(scope, "/policy?show[]=allow&rule[a]=b"),
+            workspace_path(scope, "/policy/targets?mode="),
+            workspace_path(scope, "/policy/targets?mode=own%00"),
+            workspace_path(scope, "/policy/targets?mode[]=own"),
+            workspace_path(scope, "/policy/history?page=-1"),
+            workspace_path(scope, "/policy/history?page=99999999999999999999"),
+            workspace_path(scope, "/policy/history?page[]=2&change[]=x"),
+            workspace_path(scope, "/policy/history?change=%00"),
+            workspace_path(scope, "/policy/versions/1?compare=-3&view=%00"),
+            workspace_path(scope, "/policy/versions/1?compare[]=1&view[]=served"),
             path <> "?show=%00&rule[]=x",
             path <> "/history?page=0&change=1"
           ] do
@@ -236,9 +236,9 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
       end
 
       for missing <- [
-            "/workspace/policy/versions/%00",
-            "/workspace/policy/versions/0",
-            "/workspace/policy/versions/99999999999"
+            workspace_path(scope, "/policy/versions/%00"),
+            workspace_path(scope, "/policy/versions/0"),
+            workspace_path(scope, "/policy/versions/99999999999")
           ] do
         view = open(conn, missing)
         assert has_element?(view, "h2", "There is no version"), missing

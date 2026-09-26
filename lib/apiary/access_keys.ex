@@ -199,10 +199,18 @@ defmodule Apiary.AccessKeys do
   The active key behind a key id, secrets decrypted, for request verification: `:error`
   for a key id the workspace does not hold or has revoked, and `{:error, :unreadable}`,
   with a line in the log, when the secrets cannot be decrypted with the key the instance
-  holds (`CLOAK_KEY` is not the one they were encrypted with).
+  holds (`CLOAK_KEY` is not the one they were encrypted with). The key comes with its
+  workspace, read in the same query: its domain names a run's target
+  (`Apiary.Policy.Serving`).
   """
   def fetch_for_verification(key_id) when is_binary(key_id) do
-    case Repo.one(from k in AccessKey, where: k.key_id == ^key_id and is_nil(k.revoked_at)) do
+    query =
+      from k in AccessKey,
+        join: w in assoc(k, :workspace),
+        where: k.key_id == ^key_id and is_nil(k.revoked_at),
+        preload: [workspace: w]
+
+    case Repo.one(query) do
       %AccessKey{} = access_key ->
         if readable?(access_key), do: {:ok, access_key}, else: unreadable(key_id)
 

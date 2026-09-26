@@ -6,8 +6,8 @@ that deletes what is older and says what it deleted.
 
 ## The two settings
 
-On **Settings**, `/workspace/settings`, under **Retention**. Only owners change them;
-members read them.
+On the workspace's **Settings**, `/:org/:workspace/settings`, under **Retention**. Only
+owners change them; members read them.
 
 | Setting | What it limits | Default |
 |---|---|---|

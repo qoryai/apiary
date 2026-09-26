@@ -455,8 +455,8 @@ bar's bottom border and the row's lower edge read as one line across the screen.
      hover:border-line-strong`, `hero-chevron-up-down-micro` in `text-faint`, opening a daisyUI
      `dropdown` (`menu menu-sm`, `top-full mt-1.5`, width of the sidebar minus 16 px). Title row
      "Switch organisation"; one item per membership: square avatar, organisation name,
-     workspace name in `text-faint`, `hero-check-micro` on the current one. Each item is a `<button>` in
-     a POST form to `/organisations/switch` with `organisation_id`.
+     workspace name in `text-faint`, `hero-check-micro` on the current one. Each item is a link to that
+     membership's workspace at the section the user is on (decision 0073).
      `aria-label="Switch organisation, current: Acme"`.
    - In the drawer the row also holds, after the block, the **Close menu** button: `btn btn-ghost
      btn-square md:hidden`, `hero-x-mark size-5`, `aria-label="Close menu"`.
@@ -804,7 +804,7 @@ always beside it.
 Copy below is final. `{workspace}` etc. are data. Words marked ~like this~ carry the term
 hover; organisation and workspace never do.
 
-### h1. Overview, empty (`/workspace`, no keys)
+### h1. Overview, empty (`/:org/:workspace`, no keys)
 
 ```
 Platform
@@ -831,10 +831,11 @@ The workspace of the Acme organisation.
 +------------------------------------------+--------------------------------+
 ```
 
-One bordered object, two columns (`grid md:grid-cols-2`), right column `bg-base-200 border-l`.
-The preview block uses the real endpoint URL and faint dots for the id and secret; no copy button.
-Step 1 is current. Below 768 px the right column is dropped and the listening line sits under the
-card. The button navigates to `/workspace/keys/new`. Page title is the workspace name.
+One bordered object, two columns (`grid md:grid-cols-2`), right column `bg-base-200
+border-l`. The preview block uses the real endpoint URL and faint dots for the id and
+secret; no copy button. Step 1 is current. Below 768 px the right column is dropped and
+the listening line sits under the card. The button navigates to
+`/:org/:workspace/keys/new`. Page title is the workspace name.
 
 ### h2. Overview, with keys
 
@@ -862,7 +863,7 @@ Stats are one joined object, each half links to its page. Step 1 done, step 2 cu
 unchanged from today ("active", "active, 1 revoked", "1 owner", "2 owners"). Replace "Runs will
 appear here once a machine posts." with the listening line.
 
-### h3. Access keys (`/workspace/keys`)
+### h3. Access keys (`/:org/:workspace/keys`)
 
 Header: **Access keys** / "A key lets the machines of this workspace post their runs.
 Create one per machine or environment and paste its server block into the runner file." /
@@ -910,8 +911,8 @@ at the right of the header.
 +--------------------------------------------------------------+
 ```
 
-The only exit is the primary button (replaces "Done"); it patches to `/workspace/keys`.
-Note the alert says "Qory", not "Apiary".
+The only exit is the primary button (replaces "Done"); it patches to
+`/:org/:workspace/keys`. Note the alert says "Qory", not "Apiary".
 
 **Rotate confirm** (md). **Rotate {label}** / "Rotating issues a new secret and shows it once. The
 previous secret keeps working until you retire it, so machines can move over one at a time without
@@ -930,7 +931,7 @@ reconnect them." / `[Cancel]` (initial focus) `[Revoke key]` (danger) → "Revok
 is revoked." with second line "Machines using it fail their next request." Error toasts unchanged:
 "{label} is already revoked.", "{label} is revoked and cannot be rotated."
 
-### h4. Members (`/workspace/members`)
+### h4. Members (`/:org/:workspace/members`)
 
 Header: **Members** / "The people in this workspace. Owners manage members, keys and
 settings; members manage keys and see every run." / owners see primary
@@ -966,7 +967,7 @@ demoted." Revoking an invitation needs no confirm; toast "Invitation to {email} 
 (Keep whatever strings the LiveView already flashes if they differ only in wording; align
 them to these.)
 
-### h5. Settings (`/workspace/settings`), 640 px column, stacked cards
+### h5. Settings (`/:org/:workspace/settings`), 640 px column, stacked cards
 
 ```
 Settings

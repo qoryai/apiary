@@ -65,6 +65,11 @@ defmodule Mix.Tasks.Apiary.Demo do
 
     Mix.shell().info("Replaying into the workspace of #{access_key.key_id}")
 
+    %{organisation: organisation, workspace: workspace} =
+      Repo.preload(access_key, [:organisation, :workspace])
+
+    runs_url = "#{ApiaryWeb.Endpoint.url()}/#{organisation.slug}/#{workspace.slug}/runs"
+
     for file <- files do
       case replay(access_key, file) do
         {:ok, %Run{} = run} ->
@@ -73,7 +78,7 @@ defmodule Mix.Tasks.Apiary.Demo do
           #{file |> Path.relative_to(Application.app_dir(:apiary)) |> Path.relative_to_cwd()}
             run id  #{run.run_id}
             state   #{run.state}, #{run.event_count} events
-            url     #{ApiaryWeb.Endpoint.url()}/workspace/runs/#{run.run_id}\
+            url     #{runs_url}/#{run.run_id}\
           """)
 
         {:error, reason} ->
@@ -299,7 +304,10 @@ defmodule Mix.Tasks.Apiary.Demo do
     end
   end
 
-  defp access_key!(nil) do
+  @doc false
+  # The key a replay signs with: `--key`'s, or the newest active key of the first
+  # workspace. Public for the tests.
+  def access_key!(nil) do
     workspace = Repo.one(from h in Workspace, order_by: [asc: h.inserted_at, asc: h.id], limit: 1)
     if is_nil(workspace), do: Mix.raise("there is no workspace yet: sign up first")
 
@@ -311,10 +319,15 @@ defmodule Mix.Tasks.Apiary.Demo do
           limit: 1
       )
 
-    key || Mix.raise("the first workspace has no access key that is not revoked: create one")
+    if is_nil(key),
+      do: Mix.raise("the first workspace has no access key that is not revoked: create one")
+
+    # As a verified key does (`AccessKeys.fetch_for_verification/1`), the key carries its
+    # workspace: its domain names a run's target.
+    %{key | workspace: workspace}
   end
 
-  defp access_key!(key_id) do
+  def access_key!(key_id) do
     case AccessKeys.fetch_for_verification(key_id) do
       {:ok, access_key} -> access_key
       :error -> Mix.raise("no access key #{key_id} that is not revoked")

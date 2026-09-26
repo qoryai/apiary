@@ -10,13 +10,13 @@ prefix.
 
 ## Amendment 4: a rule's action changes from its row
 
-The owner, 21 Sep 2026, on `/workspace/policy`: "I can't edit the rule for yahoo here to
-deny access. It constantly switches to stockanalysis rule. I would expect a popup for
-edition, with clear deny/allow buttons." Two things were wrong. The row's `⋯` menu offered
-no way to turn an allow into a deny: that lived only in the composer, as "Replace with
-deny", which nothing on the row points at. And a closed row menu was hit-testable: the
-app's `.menu` rule set `display` in a layer above daisyUI's closed-dropdown rule, so every
-closed menu hung, transparent, over the row below, and a click on the next row's `⋯`
+The owner, 21 Sep 2026, on `/:org/:workspace/policy`: "I can't edit the rule for yahoo
+here to deny access. It constantly switches to stockanalysis rule. I would expect a popup
+for edition, with clear deny/allow buttons." Two things were wrong. The row's `⋯` menu
+offered no way to turn an allow into a deny: that lived only in the composer, as "Replace
+with deny", which nothing on the row points at. And a closed row menu was hit-testable:
+the app's `.menu` rule set `display` in a layer above daisyUI's closed-dropdown rule, so
+every closed menu hung, transparent, over the row below, and a click on the next row's `⋯`
 landed on the menu above it (its first item, "Edit paths", which filled the composer with
 the wrong host). Marked **[A4]** where it lands.
 
@@ -196,27 +196,28 @@ All inside `live_session :workspace`, all `width="full"` (1200).
 
 | Page | Path | LiveView, action |
 |---|---|---|
-| Workspace policy, rules (default tab) | `/workspace/policy` | `PolicyLive.Show, :rules` |
-| Repositories | `/workspace/policy/targets` | `PolicyLive.Show, :targets` |
-| Workspace history | `/workspace/policy/history` | `PolicyLive.Show, :history` |
-| Workspace version (Document tab opens the current one) | `/workspace/policy/versions/:n` | `PolicyLive.Show, :version` |
-| Workspace export (modal over the version) | `/workspace/policy/versions/:n/export` | `PolicyLive.Show, :export` |
-| Repository, effective policy | `/workspace/policy/targets/:target_id` | `PolicyLive.Target, :rules` |
-| Repository history | `/workspace/policy/targets/:target_id/history` | `…, :history` |
-| Repository version | `/workspace/policy/targets/:target_id/versions/:n` | `…, :version` |
-| Repository export | `/workspace/policy/targets/:target_id/versions/:n/export` | `…, :export` |
+| Workspace policy, rules (default tab) | `/:org/:workspace/policy` | `PolicyLive.Show, :rules` |
+| Repositories | `/:org/:workspace/policy/targets` | `PolicyLive.Show, :targets` |
+| Workspace history | `/:org/:workspace/policy/history` | `PolicyLive.Show, :history` |
+| Workspace version (Document tab opens the current one) | `/:org/:workspace/policy/versions/:n` | `PolicyLive.Show, :version` |
+| Workspace export (modal over the version) | `/:org/:workspace/policy/versions/:n/export` | `PolicyLive.Show, :export` |
+| Repository, effective policy | `/:org/:workspace/policy/targets/:target_id` | `PolicyLive.Target, :rules` |
+| Repository history | `/:org/:workspace/policy/targets/:target_id/history` | `…, :history` |
+| Repository version | `/:org/:workspace/policy/targets/:target_id/versions/:n` | `…, :version` |
+| Repository export | `/:org/:workspace/policy/targets/:target_id/versions/:n/export` | `…, :export` |
 
-`/workspace/policy/document` and `/workspace/policy/targets/:id/document` redirect to the
-current version, so "Document" is a stable link and a version URL is a permanent one.
-`:target_id` is the repository row's id (a forge and path contain slashes). A repository
-of another workspace renders the not-found state, never another workspace's rules.
+`/:org/:workspace/policy/document` and `/:org/:workspace/policy/targets/:id/document`
+redirect to the current version, so "Document" is a stable link and a version URL is a
+permanent one. `:target_id` is the repository row's id (a forge and path contain slashes).
+A repository of another workspace renders the not-found state, never another workspace's
+rules.
 
-**Why not `/workspace/repositories/:id/policy`.** There is no repositories page in the
-console: a repository is a label on runs, and `/workspace/repositories` would be a parent
-that does not exist. The policy is one object with two scopes, the baseline and a
-repository's view of it, so both live under `/workspace/policy`, keep `nav={:policy}` lit,
-and share the breadcrumb `Policy › Repositories › github.example/acme/shop`. If a
-repositories section appears later, it links here.
+**Why not `/:org/:workspace/repositories/:id/policy`.** There is no repositories page in
+the console: a repository is a label on runs, and `/:org/:workspace/repositories` would be
+a parent that does not exist. The policy is one object with two scopes, the baseline and a
+repository's view of it, so both live under `/:org/:workspace/policy`, keep
+`nav={:policy}` lit, and share the breadcrumb `Policy › Repositories ›
+github.example/acme/shop`. If a repositories section appears later, it links here.
 
 Query parameters, all written with `push_patch`:
 
@@ -233,14 +234,15 @@ Query parameters, all written with `push_patch`:
 1. **From a run**: the breadcrumb's repository item keeps linking to the filtered runs list; the
    header's **Policy** cell links to the exact version the run reported (pe6), whose breadcrumb
    leads up to the repository's policy.
-2. **From connections**: the "Rule" button left in a row's slot after an allow or deny (pd8), and
-   on `/workspace/connections?target=…` the description's second sentence gains a link:
-   "Showing `github.example/acme/shop` only. Its policy".
+2. **From connections**: the "Rule" button left in a row's slot after an allow or deny
+   (pd8), and on `/:org/:workspace/connections?target=…` the description's second sentence
+   gains a link: "Showing `github.example/acme/shop` only. Its policy".
 3. **From the runs list**: the repository group header's facts gain a last item, the link
    "Policy", `text-xs text-muted`, shown on hover and focus of the header and always on touch.
 4. **From the policy page**: the Repositories tab lists every repository that has posted a run.
 5. **Back again**: the repository policy's tab row ends with two plain links, "Runs 5" and
-   "Connections", to `/workspace/runs?target=…` and `/workspace/connections?target=…`.
+   "Connections", to `/:org/:workspace/runs?target=…` and
+   `/:org/:workspace/connections?target=…`.
 
 ---
 
@@ -423,7 +425,7 @@ from · Last 7 days · (actions)**.
   on a locked rule. Repository page: one ghost `btn-xs` whose word is the act: a workspace
   rule reads **Disable here** (allow) or **Allow here** (deny); the repository's own rule
   reads **Remove**, or **Restore** when it exists only to disable a workspace rule; a
-  locked workspace rule reads the link **Open** (to `/workspace/policy?rule=…`).
+  locked workspace rule reads the link **Open** (to `/:org/:workspace/policy?rule=…`).
 - **Order**: locked rules first, then deny, then allow; inside each, by the host's labels read
   from the right, so `*.github.example` sits beside `github.example`. The card's footer says so.
 - **Fresh**: `bg-added` on every cell and an info-toned chip "New in v10" after the host.
@@ -642,7 +644,7 @@ The same version link replaces the bare digest in the run connections tab's summ
 Copy is final. `{…}` is data. ~word~ carries the term hover; organisation and
 workspace never do.
 
-### pe1. Workspace policy, rules (`/workspace/policy`)
+### pe1. Workspace policy, rules (`/:org/:workspace/policy`)
 
 ```
 Policy                                              [v14 | sha256 e3b0c44298fc | ⧉]  [↥ Export]
@@ -709,7 +711,7 @@ repository rules out of force; then a `sm` modal lists them (pf2).
 **lock** is an owner's. The page does not grey itself out for them: the mode cards and locks keep
 their look and say who can change them.
 
-### pe2. Repositories (`/workspace/policy/targets`)
+### pe2. Repositories (`/:org/:workspace/policy/targets`)
 
 Summary line ("4 repositories have posted runs · 2 with rules of their own · 1 sets its own mode
 · 1 with suggestions" [A1]), then one table: **Repository** (forge faint, path 500, mono; the row
@@ -722,7 +724,7 @@ short digest) · Last change. Sorted: suggestions first, then the most recent ch
 Phones: rows reflow to the name, the mode with its source, the chip and the suggestion
 chip. Footnote in pf.
 
-### pe3. Repository policy (`/workspace/policy/targets/:target_id`)
+### pe3. Repository policy (`/:org/:workspace/policy/targets/:target_id`)
 
 ```
 Policy › Repositories › github.example/acme/shop
@@ -890,11 +892,11 @@ fewer." when the deny list changed. A reload that changed only the mode reads "r
 | Observe [A3] | Records every connection and denies only what a deny rule names. A host no rule names is let through, and the record says so. |
 | Enforce | Denies a connection no rule allows, and records the denial. With no allow rule, a run reaches nothing. |
 | Badge on the checked card [A1] | Workspace default |
-| Fact, enforce is the default [A1] | In the last 7 days it denied **12** attempts to **3** destinations, in the 3 repositories that follow it. `See them` (to `/workspace/connections?decision=denied`). With every repository following: "… destinations." and no tail |
+| Fact, enforce is the default [A1] | In the last 7 days it denied **12** attempts to **3** destinations, in the 3 repositories that follow it. `See them` (to `/:org/:workspace/connections?decision=denied`). With every repository following: "… destinations." and no tail |
 | Fact, observe is the default [A1] | In the last 7 days **14** attempts to **2** destinations had no rule, in the 3 repositories that follow it. Enforce would deny them. `See them` |
 | Fact, new workspace [A1] | Not served yet: it applies from the first change here. |
 | Fact, nothing recorded | No run has reached out in the last 7 days. |
-| Under the cards [A1] | This is the workspace's default. A repository follows it unless an owner sets a mode of its own: `1 of 4 repositories does`, and observes. A wall's own refusals (the machine's address, a path that reads two ways) hold in either mode. The link goes to `/workspace/policy/targets?mode=own`. None: "… of its own. None does." Several with different modes: "`2 of 4 repositories do`: 1 observes, 1 enforces." A member's line adds "Only an owner sets a mode." |
+| Under the cards [A1] | This is the workspace's default. A repository follows it unless an owner sets a mode of its own: `1 of 4 repositories does`, and observes. A wall's own refusals (the machine's address, a path that reads two ways) hold in either mode. The link goes to `/:org/:workspace/policy/targets?mode=own`. None: "… of its own. None does." Several with different modes: "`2 of 4 repositories do`: 1 observes, 1 enforces." A member's line adds "Only an owner sets a mode." |
 | Confirm, default to enforce [A1] | **Set the workspace's default to enforce** / From the next heartbeat, about 30 s, **a connection no rule allows is denied** in the 3 repositories that follow the workspace's default, and in their 2 runs alive now. `github.example/acme/tax-service` sets its own mode and does not change. You can switch back at any time. / list head "Let through in the last 7 days with no rule matching, in those repositories" · "3 destinations" / "Counted from recorded connections that today's rules still do not cover. Enforce will deny these. A destination no run has reached yet is not in this list." / `[Cancel]` `[Set the default to enforce]` |
 | Confirm, default to observe [A1] [A3] | **Set the workspace's default to observe** / From the next heartbeat, about 30 s, **only what a deny rule names is denied** in the 3 repositories that follow the workspace's default, and in their 2 runs alive now: every other connection is let through and recorded. A repository that sets its own mode does not change. The rules stay as they are, locked ones too: a deny holds in either mode. / `[Cancel]` `[Set the default to observe]` |
 | Toasts [A1] | The workspace's default is enforce. 3 repositories follow it. Version 15. / The workspace's default is observe. 3 repositories follow it. Version 15. |
@@ -1014,14 +1016,14 @@ Subject is the author's email in 500; rules are mono chips. Built from `policy_c
 | Footnote, run connections (replaces the last sentence of M4's) | … A rule added here changes what happens next; what the record already says stays as it was. |
 | Toast [A1] | `files.cdn.example` is allowed for github.example/acme/shop. / Version 10. Running sessions have it within a heartbeat. (no Undo) |
 
-**[A1] One rule for every mode word near a run.** The reason sentences of `brief-runs.md` rf
-("Enforce mode denies it.", "Observe mode lets it through.") are built from the `mode` field of the
-egress event; the run header, the connections summary ("policy **enforce** `v9`") and the timeline's
-policy items from the `mode` of `policy_applied`. None may read the workspace's default or
-the repository's setting. On `/workspace/connections` a destination's reason is the last
-attempt's, so two repositories in different modes can give "Observe mode lets it through.
-· last attempt" on a row that also has denials; the sub-row's runs each carry their own
-counts, which is where the difference is read.
+**[A1] One rule for every mode word near a run.** The reason sentences of `brief-runs.md`
+rf ("Enforce mode denies it.", "Observe mode lets it through.") are built from the `mode`
+field of the egress event; the run header, the connections summary ("policy **enforce**
+`v9`") and the timeline's policy items from the `mode` of `policy_applied`. None may read
+the workspace's default or the repository's setting. On `/:org/:workspace/connections` a
+destination's reason is the last attempt's, so two repositories in different modes can
+give "Observe mode lets it through. · last attempt" on a row that also has denials; the
+sub-row's runs each carry their own counts, which is where the difference is read.
 
 "about 30 s" is the run's `heartbeat_interval_seconds` on a run page and the contract's default on
 the workspace pages.
@@ -1213,10 +1215,10 @@ Navigation and URLs
 - [ ] [A1] Sidebar tag is the workspace's default, with "· n own" when repositories set
   their own; absent on a new workspace
 - [ ] Sidebar item Policy with the mode word; `nav={:policy}` on every page below
-  `/workspace/policy`
+  `/:org/:workspace/policy`
 - [ ] Tabs, filters, the opened change, the compared version and the export modal are in the URL; a copied URL reproduces the view
-- [ ] Repository policy under `/workspace/policy/targets/:id`; reachable from the run
-  header, a row's Rule button, the connections page with `target`, the runs list group
+- [ ] Repository policy under `/:org/:workspace/policy/targets/:id`; reachable from the
+  run header, a row's Rule button, the connections page with `target`, the runs list group
   header, the Repositories tab
 
 Rules

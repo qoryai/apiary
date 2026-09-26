@@ -5,14 +5,15 @@ defmodule ApiaryWeb.PolicyComponents do
   the rule composer with its reading line, the rules table with provenance, the
   suggestions of the harness, the history of changes with its diff, and the document well.
 
-  The pages under `/workspace/policy` use all of them; the run page and the connections
-  pages use the first four, so a version, a rule and where it came from look the same
-  wherever a policy is named.
+  The pages under `/:org/:workspace/policy` use all of them; the run page and the
+  connections pages use the first four, so a version, a rule and where it came from look
+  the same wherever a policy is named.
 
   Everything rendered here comes from `Apiary.Policy` or from a form: hosts, paths and
   names are only ever interpolated, never `raw/1`.
   """
   use Phoenix.Component
+  use ApiaryWeb, :verified_routes
   use Gettext, backend: ApiaryWeb.Gettext
 
   import ApiaryWeb.CoreComponents,
@@ -22,6 +23,7 @@ defmodule ApiaryWeb.PolicyComponents do
 
   # `RunComponents` uses the shared components of this module, so nothing of it is imported
   # here: its functions are called by their full name, which is no compile-time dependency.
+  alias ApiaryWeb.Format
   alias ApiaryWeb.RunComponents
 
   alias Phoenix.LiveView.JS
@@ -182,6 +184,10 @@ defmodule ApiaryWeb.PolicyComponents do
   defp source_words(:target), do: gettext("This target")
   defp source_words(:workspace_locked), do: gettext("Workspace, locked")
 
+  # A count beside a title, grouped as the reader's language groups it.
+  defp count_label(n) when is_number(n), do: Format.number(n)
+  defp count_label(other), do: other
+
   ## Section card
 
   @doc """
@@ -203,7 +209,7 @@ defmodule ApiaryWeb.PolicyComponents do
     <section id={@id} class={["q-sect", @class]} aria-labelledby={"#{@id}-h"} {@rest}>
       <header>
         <h2 id={"#{@id}-h"}>{@title}</h2>
-        <span :if={@count} id={"#{@id}-n"} class="q-sect-n">{@count}</span>
+        <span :if={@count} id={"#{@id}-n"} class="q-sect-n">{count_label(@count)}</span>
         <span class="grow"></span>
         {render_slot(@trailing)}
         <p :if={@description != []}>{render_slot(@description)}</p>
@@ -228,6 +234,10 @@ defmodule ApiaryWeb.PolicyComponents do
   attr :served, :boolean, default: true, doc: "false on a new workspace: nothing is served yet"
   attr :following, :integer, default: 0, doc: "targets that follow the default"
   attr :own, :list, default: [], doc: "the modes of the targets that set their own"
+
+  attr :scope, :map,
+    required: true,
+    doc: "the caller's scope: its organisation and workspace name the links"
 
   attr :fact, :any,
     default: nil,
@@ -286,6 +296,7 @@ defmodule ApiaryWeb.PolicyComponents do
           <span id={"#{@id}-#{mode}-p"} class="q-mode-p">{sentence}</span>
           <span :if={@mode == mode && (@fact || !@served)} id={"#{@id}-fact"} class="q-mode-fact">
             <.mode_fact
+              scope={@scope}
               fact={if @served, do: @fact, else: :unserved}
               following={if @own != [], do: @following}
             />
@@ -294,7 +305,7 @@ defmodule ApiaryWeb.PolicyComponents do
       </div>
       <p id={"#{@id}-under"} class="text-[12.5px]/[18px] text-faint">
         {gettext("This is the workspace's default.")}
-        <.rich text={own_sentence(@own, @following)} />
+        <.rich text={own_sentence(@scope, @own, @following)} />
         {gettext(
           "A wall's own refusals (the machine's address, a path that reads two ways) hold in either mode."
         )}
@@ -306,13 +317,15 @@ defmodule ApiaryWeb.PolicyComponents do
 
   # Whether the targets follow the default: a whole sentence per case, the count a link to
   # the targets that set their own.
-  defp own_sentence([], _following),
+  defp own_sentence(_scope, [], _following),
     do: [gettext("A target follows it unless an owner sets a mode of its own: none does.")]
 
-  defp own_sentence([mode], following) do
+  defp own_sentence(scope, [mode], following) do
     own =
-      {:link, "/workspace/policy/targets?mode=own",
-       ngettext("1 of %{count} target does", "1 of %{count} targets does", following + 1)}
+      {:link, ~p"/#{scope.organisation}/#{scope.workspace}/policy/targets?mode=own",
+       ngettext("1 of %{number} target does", "1 of %{number} targets does", following + 1,
+         number: Format.number(following + 1)
+       )}
 
     if mode == "observe",
       do:
@@ -327,17 +340,18 @@ defmodule ApiaryWeb.PolicyComponents do
         )
   end
 
-  defp own_sentence(modes, following) do
+  defp own_sentence(scope, modes, following) do
     observe = Enum.count(modes, &(&1 == "observe"))
     enforce = length(modes) - observe
 
     own =
-      {:link, "/workspace/policy/targets?mode=own",
+      {:link, ~p"/#{scope.organisation}/#{scope.workspace}/policy/targets?mode=own",
        ngettext(
-         "%{number} of %{count} target do",
-         "%{number} of %{count} targets do",
+         "%{number} of %{total} target do",
+         "%{number} of %{total} targets do",
          following + length(modes),
-         number: length(modes)
+         number: Format.number(length(modes)),
+         total: Format.number(following + length(modes))
        )}
 
     cond do
@@ -357,14 +371,21 @@ defmodule ApiaryWeb.PolicyComponents do
         rich_gettext(
           "A target follows it unless an owner sets a mode of its own: %{own}: %{observe}, %{enforce}.",
           own: own,
-          observe: ngettext("%{count} observes", "%{count} observe", observe),
-          enforce: ngettext("%{count} enforces", "%{count} enforce", enforce)
+          observe:
+            ngettext("%{number} observes", "%{number} observe", observe,
+              number: Format.number(observe)
+            ),
+          enforce:
+            ngettext("%{number} enforces", "%{number} enforce", enforce,
+              number: Format.number(enforce)
+            )
         )
     end
   end
 
   attr :fact, :any, required: true
   attr :following, :integer, default: nil, doc: "the targets that follow, when some do not"
+  attr :scope, :map, required: true
 
   defp mode_fact(%{fact: :loading} = assigns) do
     ~H|<span class="skeleton q-skel inline-block w-64 align-middle"></span>|
@@ -385,7 +406,10 @@ defmodule ApiaryWeb.PolicyComponents do
   defp mode_fact(%{fact: %{denied: _}} = assigns) do
     ~H"""
     <.rich text={denied_sentence(@fact)} />
-    <.link navigate="/workspace/connections?decision=denied&since=7d" class="q-link">
+    <.link
+      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/connections?decision=denied&since=7d"}
+      class="q-link"
+    >
       {gettext("See them")}
     </.link>
     """
@@ -395,7 +419,12 @@ defmodule ApiaryWeb.PolicyComponents do
     ~H"""
     <.rich text={uncovered_sentence(@fact, @following)} />
     {gettext("Enforce would deny them.")}
-    <.link navigate="/workspace/connections?since=7d" class="q-link">{gettext("See them")}</.link>
+    <.link
+      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/connections?since=7d"}
+      class="q-link"
+    >
+      {gettext("See them")}
+    </.link>
     """
   end
 
@@ -415,24 +444,23 @@ defmodule ApiaryWeb.PolicyComponents do
 
   defp uncovered_sentence(fact, following) do
     rich_ngettext(
-      "In the last 7 days %{attempts} to %{destinations} had no rule, in the %{count} target that follows it.",
-      "In the last 7 days %{attempts} to %{destinations} had no rule, in the %{count} targets that follow it.",
+      "In the last 7 days %{attempts} to %{destinations} had no rule, in the %{number} target that follows it.",
+      "In the last 7 days %{attempts} to %{destinations} had no rule, in the %{number} targets that follow it.",
       following,
       attempts: attempts(fact.uncovered),
-      destinations: destinations(fact.destinations)
+      destinations: destinations(fact.destinations),
+      number: Format.number(following)
     )
   end
 
   defp attempts(n),
     do:
-      rich_ngettext("%{number} attempt", "%{number} attempts", n,
-        number: {:b, RunComponents.delimited(n)}
-      )
+      rich_ngettext("%{number} attempt", "%{number} attempts", n, number: {:b, Format.number(n)})
 
   defp destinations(n),
     do:
       rich_ngettext("%{number} destination", "%{number} destinations", n,
-        number: {:b, RunComponents.delimited(n)}
+        number: {:b, Format.number(n)}
       )
 
   ## pd2a. Target mode
@@ -747,7 +775,9 @@ defmodule ApiaryWeb.PolicyComponents do
         <.rich text={@reading.text} />
         <.reading_act :if={@reading.fix} act={@reading.fix} />
         <span :if={@queued > 0} id={"#{@id}-queued"} class="q-reads-queued">
-          {ngettext("%{count} more to add", "%{count} more to add", @queued)}
+          {ngettext("%{number} more to add", "%{number} more to add", @queued,
+            number: Format.number(@queued)
+          )}
         </span>
       </span>
     </div>
@@ -782,6 +812,11 @@ defmodule ApiaryWeb.PolicyComponents do
   attr :label, :string, required: true
   attr :rows, :list, required: true
   attr :scope, :atom, required: true, values: [:workspace, :target]
+
+  attr :current_scope, :map,
+    required: true,
+    doc: "the caller's scope: its organisation and workspace name the links"
+
   attr :can_lock, :boolean, default: false
   attr :activity, :any, default: :unavailable
   attr :fresh, :any, default: %{}, doc: "%{rule id => version}: new in the version in force"
@@ -819,6 +854,7 @@ defmodule ApiaryWeb.PolicyComponents do
             id={"rule-#{row.id}"}
             rule={row}
             scope={@scope}
+            current_scope={@current_scope}
             can_lock={@can_lock}
             seen={@seen? && seen(@activity, row)}
             seen?={@seen?}
@@ -846,6 +882,11 @@ defmodule ApiaryWeb.PolicyComponents do
   attr :id, :string, required: true
   attr :rule, :map, required: true
   attr :scope, :atom, required: true
+
+  attr :current_scope, :map,
+    required: true,
+    doc: "the caller's scope: its organisation and workspace name the links"
+
   attr :can_lock, :boolean, default: false
   attr :seen, :any, default: nil
   attr :seen?, :boolean, default: false
@@ -886,7 +927,12 @@ defmodule ApiaryWeb.PolicyComponents do
           <.lock rule={@rule} can_lock={@can_lock} id={@id} />
           <.rule_menu :if={@rule.can_change} id={"#{@id}-menu"} rule={@rule} can_lock={@can_lock} />
         </span>
-        <.target_act :if={@scope == :target} rule={@rule} id={@id} />
+        <.target_act
+          :if={@scope == :target}
+          rule={@rule}
+          id={@id}
+          current_scope={@current_scope}
+        />
       </td>
     </tr>
     <tr
@@ -927,20 +973,23 @@ defmodule ApiaryWeb.PolicyComponents do
   defp beaten_lead(%{kind: :cover}), do: gettext("Covers this target's rule")
 
   defp beaten_tail(%{kind: :lock, by: by, at: %DateTime{} = at}) when is_binary(by),
-    do: gettext("%{by} · %{date}. It is not in force.", by: by, date: day(at))
+    do: gettext("%{by} · %{date}. It is not in force.", by: by, date: Format.day(at))
 
   defp beaten_tail(%{kind: :lock, at: %DateTime{} = at}),
-    do: gettext("%{date}. It is not in force.", date: day(at))
+    do: gettext("%{date}. It is not in force.", date: Format.day(at))
 
   defp beaten_tail(%{kind: :lock}), do: gettext("It is not in force.")
 
   defp beaten_tail(%{kind: :override, action: "allow"} = beaten) do
     case beaten do
       %{winner_by: by, winner_at: %DateTime{} = at} when is_binary(by) ->
-        gettext("Disabled here by %{by} · %{date}. Other targets keep it.", by: by, date: day(at))
+        gettext("Disabled here by %{by} · %{date}. Other targets keep it.",
+          by: by,
+          date: Format.day(at)
+        )
 
       %{winner_at: %DateTime{} = at} ->
-        gettext("Disabled here · %{date}. Other targets keep it.", date: day(at))
+        gettext("Disabled here · %{date}. Other targets keep it.", date: Format.day(at))
 
       _beaten ->
         gettext("Disabled here. Other targets keep it.")
@@ -950,10 +999,10 @@ defmodule ApiaryWeb.PolicyComponents do
   defp beaten_tail(%{kind: :override} = beaten) do
     case beaten do
       %{winner_by: by, winner_at: %DateTime{} = at} when is_binary(by) ->
-        gettext("Allowed here by %{by} · %{date}.", by: by, date: day(at))
+        gettext("Allowed here by %{by} · %{date}.", by: by, date: Format.day(at))
 
       %{winner_at: %DateTime{} = at} ->
-        gettext("Allowed here · %{date}.", date: day(at))
+        gettext("Allowed here · %{date}.", date: Format.day(at))
 
       _beaten ->
         gettext("Allowed here.")
@@ -1037,18 +1086,18 @@ defmodule ApiaryWeb.PolicyComponents do
   defp seen(assigns) do
     ~H"""
     <span :if={@seen.allowed > 0} class="text-muted">
-      {gettext("%{number} allowed", number: RunComponents.delimited(@seen.allowed))}
+      {gettext("%{number} allowed", number: Format.number(@seen.allowed))}
     </span>
     <span :if={@seen.allowed > 0 && @seen.denied > 0} class="text-muted"> · </span>
     <span :if={@seen.denied > 0} class="q-bad">
-      {gettext("%{number} denied", number: RunComponents.delimited(@seen.denied))}
+      {gettext("%{number} denied", number: Format.number(@seen.denied))}
     </span>
     <span class="sr-only">{gettext("in the last 7 days")}</span>
     """
   end
 
   defp requests(n),
-    do: ngettext("%{number} request", "%{number} requests", n, number: RunComponents.delimited(n))
+    do: ngettext("%{number} request", "%{number} requests", n, number: Format.number(n))
 
   attr :by, :string, default: nil
   attr :at, :any, default: nil
@@ -1057,7 +1106,7 @@ defmodule ApiaryWeb.PolicyComponents do
     ~H"""
     <span class="q-who-when">
       {@by}
-      <small :if={@at}>{if @by, do: "· "}{day(@at)}</small>
+      <small :if={@at}>{if @by, do: "· "}{Format.day(@at)}</small>
     </span>
     """
   end
@@ -1189,6 +1238,7 @@ defmodule ApiaryWeb.PolicyComponents do
 
   attr :id, :string, required: true
   attr :rule, :map, required: true
+  attr :current_scope, :map, required: true
 
   defp target_act(%{rule: %{act: :open}} = assigns) do
     ~H"""
@@ -1200,7 +1250,9 @@ defmodule ApiaryWeb.PolicyComponents do
     >
       <.link
         id={"#{@id}-act"}
-        navigate={"/workspace/policy?rule=#{URI.encode_www_form(@rule.host)}"}
+        navigate={
+          ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy?#{%{"rule" => @rule.host}}"
+        }
         class="q-link q-link-xs pr-2"
         aria-label={gettext("Open the workspace's locked rule for %{host}", host: @rule.host)}
       >
@@ -1332,7 +1384,10 @@ defmodule ApiaryWeb.PolicyComponents do
       count={
         if @open == [],
           do: gettext("all allowed"),
-          else: ngettext("%{count} to review", "%{count} to review", length(@open))
+          else:
+            ngettext("%{number} to review", "%{number} to review", length(@open),
+              number: Format.number(length(@open))
+            )
       }
     >
       <:trailing>
@@ -1345,7 +1400,10 @@ defmodule ApiaryWeb.PolicyComponents do
         >
           {if length(@open) == 2,
             do: gettext("Allow both here"),
-            else: ngettext("Allow all %{count} here", "Allow all %{count} here", length(@open))}
+            else:
+              ngettext("Allow all %{number} here", "Allow all %{number} here", length(@open),
+                number: Format.number(length(@open))
+              )}
         </button>
       </:trailing>
       <:description>
@@ -1453,24 +1511,23 @@ defmodule ApiaryWeb.PolicyComponents do
   defp declared_sentence(runs) do
     rich_gettext("Declared by the %{harness} in %{runs}.",
       harness: {:term, gettext("harness"), harness_tip()},
-      runs:
-        {:b,
-         ngettext("%{number} run", "%{number} runs", runs, number: RunComponents.delimited(runs))}
+      runs: {:b, ngettext("%{number} run", "%{number} runs", runs, number: Format.number(runs))}
     )
   end
 
   defp times(1), do: gettext("once")
 
   defp times(n),
-    do: ngettext("%{number} time", "%{number} times", n, number: RunComponents.delimited(n))
+    do: ngettext("%{number} time", "%{number} times", n, number: Format.number(n))
 
   # The declared hosts already allowed, each with what allows it, in one sentence.
   defp covered_sentence(covered) do
     rich_ngettext(
-      "%{count} more declared host is already allowed: %{hosts}.",
-      "%{count} more declared hosts are already allowed: %{hosts}.",
+      "%{number} more declared host is already allowed: %{hosts}.",
+      "%{number} more declared hosts are already allowed: %{hosts}.",
       length(covered),
-      hosts: covered |> Enum.map(&covered_by/1) |> Enum.intersperse(", ")
+      hosts: covered |> Enum.map(&covered_by/1) |> Enum.intersperse(", "),
+      number: Format.number(length(covered))
     )
   end
 
@@ -1522,12 +1579,16 @@ defmodule ApiaryWeb.PolicyComponents do
 
   def change_list(assigns) do
     assigns =
-      assign(assigns, :days, Enum.chunk_by(assigns.changes, &DateTime.to_date(&1.at)))
+      assign(
+        assigns,
+        :days,
+        Enum.chunk_by(assigns.changes, &DateTime.to_date(Format.local(&1.at)))
+      )
 
     ~H"""
     <section id={@id} class="q-sect" aria-label={@label}>
       <div :for={day <- @days} class="contents">
-        <div class="q-day">{day_bar(hd(day).at, @now)}</div>
+        <div class="q-day">{Format.day_heading(hd(day).at, @now)}</div>
         <.change_row
           :for={change <- day}
           id={"chg-#{change.id}"}
@@ -1623,9 +1684,10 @@ defmodule ApiaryWeb.PolicyComponents do
       <div :if={@diff.document} class="q-dpanel">
         <div>
           <span>{gettext("document")}</span><span>{ngettext(
-            "application/json · %{count} byte",
-            "application/json · %{count} bytes",
-            @diff.bytes
+            "application/json · %{number} byte",
+            "application/json · %{number} bytes",
+            @diff.bytes,
+            number: Format.number(@diff.bytes)
           )}</span>
         </div>
         <.diff_lines lines={@diff.document} label={gettext("Difference of the rendered document")} />
@@ -1671,7 +1733,7 @@ defmodule ApiaryWeb.PolicyComponents do
   end
 
   defp changes(n),
-    do: ngettext("%{number} change", "%{number} changes", n, number: RunComponents.delimited(n))
+    do: ngettext("%{number} change", "%{number} changes", n, number: Format.number(n))
 
   defp gutter(:add), do: "+"
   defp gutter(:del), do: "−"
@@ -1725,24 +1787,5 @@ defmodule ApiaryWeb.PolicyComponents do
       {render_slot(@inner_block)}
     </div>
     """
-  end
-
-  ## Words
-
-  @doc "A day as a rule's author line says it: 16 Sep, with the year when it is not this one."
-  def day(%DateTime{} = at) do
-    if at.year == DateTime.utc_now().year,
-      do: Calendar.strftime(at, "%-d %b"),
-      else: Calendar.strftime(at, "%-d %b %Y")
-  end
-
-  def day(_at), do: nil
-
-  defp day_bar(%DateTime{} = at, %DateTime{} = now) do
-    case Date.diff(DateTime.to_date(now), DateTime.to_date(at)) do
-      0 -> gettext("Today")
-      1 -> gettext("Yesterday")
-      _ -> Calendar.strftime(at, "%-d %b %Y")
-    end
   end
 end

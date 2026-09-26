@@ -33,6 +33,7 @@ defmodule Apiary.Runs.Projector do
 
   require Logger
 
+  alias Apiary.Organisations.Workspace
   alias Apiary.Repo
   alias Apiary.Runs
   alias Apiary.Runs.{Connection, Event, Fold, LogChunk, Run, Target}
@@ -265,9 +266,12 @@ defmodule Apiary.Runs.Projector do
   defp pass(id, read) do
     lock(id)
 
-    with %Run{} = run <- locked_run(id),
+    with {%Run{} = run, domain} <- locked_run_and_domain(id),
          {:events, _run, [_ | _] = events} <- {:events, run, read.(id)} do
-      fold = fold_module().fold(run, events, latest(id, events))
+      # The fold reads no database: the workspace it names the target by comes with the
+      # run, carrying the domain whose labelling rule names it.
+      workspace = %Workspace{id: run.workspace_id, domain: domain}
+      fold = fold_module().fold(%{run | workspace: workspace}, events, latest(id, events))
 
       run =
         run
@@ -313,6 +317,17 @@ defmodule Apiary.Runs.Projector do
   end
 
   defp locked_run(id), do: Repo.one(from r in Run, where: r.id == ^id, lock: "FOR UPDATE")
+
+  # The run, locked, and its workspace's domain in the same statement. A scalar subquery,
+  # not a join: `FOR UPDATE` locks the run's row only, never the workspace's.
+  defp locked_run_and_domain(id) do
+    Repo.one(
+      from r in Run,
+        where: r.id == ^id,
+        lock: "FOR UPDATE",
+        select: {r, fragment("(SELECT domain FROM workspaces WHERE id = ?)", r.workspace_id)}
+    )
+  end
 
   defp unprojected(id), do: Repo.all(unprojected_query(id))
 

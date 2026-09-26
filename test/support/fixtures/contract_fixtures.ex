@@ -34,6 +34,8 @@ defmodule Apiary.ContractFixtures do
       label: "the contract's fixtures",
       secret_primary: @published_secret
     })
+    # As a verified key does, it carries its workspace (`fetch_for_verification/1`).
+    |> Map.put(:workspace, workspace)
   end
 
   @doc "An event as it is on the wire. `type` is given without the `dev.qory.` prefix."

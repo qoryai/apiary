@@ -46,6 +46,13 @@ config :phoenix_live_view,
 config :gettext, default_locale: "en@software", plural_forms: ApiaryWeb.Gettext.Plural
 config :apiary, ApiaryWeb.Gettext, default_locale: "en@software"
 
+# Dates, times and numbers are formatted from the Unicode CLDR (ApiaryWeb.Cldr,
+# ApiaryWeb.Format). Times are stored in UTC and shifted into the reader's zone with the
+# tz database compiled into the `tz` package, which also checks a person's time zone:
+# nothing is downloaded at runtime.
+config :ex_cldr, default_backend: ApiaryWeb.Cldr, json_library: Jason
+config :elixir, :time_zone_database, Tz.TimeZoneDatabase
+
 # Configure the mailer
 #
 # By default it uses the "Local" adapter which stores the emails

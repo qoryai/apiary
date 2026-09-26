@@ -176,12 +176,20 @@ defmodule ApiaryWeb.PolicyLive.Show do
   end
 
   defp apply_action(socket, :document, _params) do
+    scope = socket.assigns.current_scope
+
     case socket.assigns.version do
       %{version: n} ->
-        push_navigate(socket, to: ~p"/workspace/policy/versions/#{n}", replace: true)
+        push_navigate(socket,
+          to: ~p"/#{scope.organisation}/#{scope.workspace}/policy/versions/#{n}",
+          replace: true
+        )
 
       _ ->
-        push_navigate(socket, to: ~p"/workspace/policy", replace: true)
+        push_navigate(socket,
+          to: ~p"/#{scope.organisation}/#{scope.workspace}/policy",
+          replace: true
+        )
     end
   end
 
@@ -199,8 +207,11 @@ defmodule ApiaryWeb.PolicyLive.Show do
             assign(socket, :export, Common.export(socket, v.configuration))
 
           action == :export ->
+            scope = socket.assigns.current_scope
+
             push_patch(socket,
-              to: ~p"/workspace/policy/versions/#{v.latest}/export",
+              to:
+                ~p"/#{scope.organisation}/#{scope.workspace}/policy/versions/#{v.latest}/export",
               replace: true
             )
 
@@ -404,9 +415,10 @@ defmodule ApiaryWeb.PolicyLive.Show do
             default <>
               " " <>
               ngettext(
-                "%{count} target follows it.",
-                "%{count} targets follow it.",
-                following
+                "%{number} target follows it.",
+                "%{number} targets follow it.",
+                following,
+                number: Format.number(following)
               ),
             default
           )
@@ -684,8 +696,10 @@ defmodule ApiaryWeb.PolicyLive.Show do
     do: {:noreply, Common.schedule_reload(socket, change)}
 
   # `?confirm=enforce` did its work in `handle_params`; the address says the page alone.
-  def handle_info(:drop_confirm, socket),
-    do: {:noreply, push_patch(socket, to: ~p"/workspace/policy")}
+  def handle_info(:drop_confirm, socket) do
+    scope = socket.assigns.current_scope
+    {:noreply, push_patch(socket, to: ~p"/#{scope.organisation}/#{scope.workspace}/policy")}
+  end
 
   def handle_info(:policy_reload, socket) do
     touched = socket.assigns.touched
@@ -750,7 +764,9 @@ defmodule ApiaryWeb.PolicyLive.Show do
       <div id="policy-page" phx-hook="PolicyPage" class="grid grid-cols-[minmax(0,1fr)] gap-6">
         <div :if={@live_action in [:version, :export] && @v} class="grid gap-3">
           <nav class="q-crumbs" aria-label={gettext("Breadcrumb")}>
-            <.link navigate={~p"/workspace/policy"}>{gettext("Policy")}</.link>
+            <.link navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy"}>{gettext(
+              "Policy"
+            )}</.link>
             <.icon name="hero-chevron-right-micro" class="size-3" />
             <span class="q-here" aria-current="page">
               {gettext("Version %{version}", version: @v.configuration.version)}
@@ -773,12 +789,16 @@ defmodule ApiaryWeb.PolicyLive.Show do
                 id="policy-version-pill"
                 version={@version.version}
                 digest={@version.digest}
-                navigate={~p"/workspace/policy/history"}
+                navigate={
+                  ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy/history"
+                }
                 copy
               />
               <.button
                 id="policy-export-button"
-                navigate={~p"/workspace/policy/versions/#{@version.version}/export"}
+                navigate={
+                  ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy/versions/#{@version.version}/export"
+                }
               >
                 <.icon name="hero-arrow-up-tray-micro" class="size-4" />{gettext("Export")}
               </.button>
@@ -799,6 +819,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         </.header>
 
         <.policy_tabs
+          scope={@current_scope}
           live_action={@live_action}
           rules={length(@own)}
           targets={@target_total}
@@ -815,6 +836,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         <.rules_tab :if={@live_action == :rules} {assigns} />
         <.targets_tab
           :if={@live_action == :targets}
+          scope={@current_scope}
           rows={target_rows(@target_list, @target_details, @target_suggestions)}
           own_only={@own_only}
         />
@@ -842,11 +864,16 @@ defmodule ApiaryWeb.PolicyLive.Show do
           <:actions>
             <.button
               :if={@missing.latest}
-              navigate={~p"/workspace/policy/versions/#{@missing.latest.version}"}
+              navigate={
+                ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy/versions/#{@missing.latest.version}"
+              }
             >
               {gettext("Open version %{version}", version: @missing.latest.version)}
             </.button>
-            <.button :if={!@missing.latest} navigate={~p"/workspace/policy"}>
+            <.button
+              :if={!@missing.latest}
+              navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy"}
+            >
               {gettext("Back to policy")}
             </.button>
           </:actions>
@@ -857,10 +884,13 @@ defmodule ApiaryWeb.PolicyLive.Show do
       <.export_modal
         :if={@live_action == :export && @export}
         export={@export}
-        close={~p"/workspace/policy/versions/#{@v.configuration.version}"}
+        close={
+          ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy/versions/#{@v.configuration.version}"
+        }
       />
       <.mode_dialog
         :if={match?({:mode, _}, @dialog)}
+        scope={@current_scope}
         mode={elem(@dialog, 1)}
         would={@would}
         alive={if @own_modes == [], do: (@nav_counts && @nav_counts[:alive]) || 0, else: 0}
@@ -934,11 +964,15 @@ defmodule ApiaryWeb.PolicyLive.Show do
   attr :changes, :integer, required: true
   attr :document, :boolean, required: true
 
+  attr :scope, :map,
+    required: true,
+    doc: "the caller's scope: its organisation and workspace name the links"
+
   defp policy_tabs(assigns) do
     ~H"""
     <.tabs id="policy-tabs" label={gettext("Policy")}>
       <:tab
-        patch={~p"/workspace/policy"}
+        patch={~p"/#{@scope.organisation}/#{@scope.workspace}/policy"}
         icon="hero-shield-check-micro"
         current={@live_action == :rules}
         count={@rules > 0 && @rules}
@@ -946,7 +980,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         {gettext("Rules")}
       </:tab>
       <:tab
-        patch={~p"/workspace/policy/targets"}
+        patch={~p"/#{@scope.organisation}/#{@scope.workspace}/policy/targets"}
         icon="hero-book-open-micro"
         current={@live_action == :targets}
         count={@targets > 0 && @targets}
@@ -954,7 +988,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         {gettext("Targets")}
       </:tab>
       <:tab
-        patch={~p"/workspace/policy/history"}
+        patch={~p"/#{@scope.organisation}/#{@scope.workspace}/policy/history"}
         icon="hero-clock-micro"
         current={@live_action == :history}
         count={@changes > 0 && @changes}
@@ -963,7 +997,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
       </:tab>
       <:tab
         :if={@document}
-        patch={~p"/workspace/policy/document"}
+        patch={~p"/#{@scope.organisation}/#{@scope.workspace}/policy/document"}
         icon="hero-document-text-micro"
         current={@live_action in [:version, :export, :document]}
       >
@@ -996,6 +1030,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
 
     ~H"""
     <.mode_switch
+      scope={@current_scope}
       mode={@mode}
       can_edit={@owner?}
       served={@managed?}
@@ -1026,7 +1061,9 @@ defmodule ApiaryWeb.PolicyLive.Show do
           <.button id="policy-first-rule" variant="primary" phx-click="composer_open">
             <.icon name="hero-plus-micro" class="size-4" />{gettext("Add a host rule")}
           </.button>
-          <.button navigate={~p"/workspace/connections"}>{gettext("Go to connections")}</.button>
+          <.button navigate={
+            ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/connections"
+          }>{gettext("Go to connections")}</.button>
         </:actions>
       </.empty_state>
       <p
@@ -1053,23 +1090,28 @@ defmodule ApiaryWeb.PolicyLive.Show do
     <.sect :if={!@empty?} id="policy-hosts" title={gettext("Host rules")} count={length(@rows)}>
       <:trailing>
         <.segments id="policy-show" label={gettext("Show")}>
-          <:segment patch={~p"/workspace/policy"} pressed={@show == nil}>{gettext("All")}</:segment>
           <:segment
-            patch={~p"/workspace/policy?show=allow"}
+            patch={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy"}
+            pressed={@show == nil}
+          >
+            {gettext("All")}
+          </:segment>
+          <:segment
+            patch={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy?show=allow"}
             pressed={@show == "allow"}
             count={@counts.allow}
           >
             {gettext("Allow")}
           </:segment>
           <:segment
-            patch={~p"/workspace/policy?show=deny"}
+            patch={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy?show=deny"}
             pressed={@show == "deny"}
             count={@counts.deny}
           >
             {gettext("Deny")}
           </:segment>
           <:segment
-            patch={~p"/workspace/policy?show=locked"}
+            patch={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy?show=locked"}
             pressed={@show == "locked"}
             count={@counts.locked}
           >
@@ -1089,6 +1131,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         label={gettext("Host rules of the workspace")}
         rows={@shown}
         scope={:workspace}
+        current_scope={@current_scope}
         can_lock={@owner?}
         activity={async_value(@activity, :loading)}
         fresh={@fresh}
@@ -1138,6 +1181,10 @@ defmodule ApiaryWeb.PolicyLive.Show do
   attr :rows, :any, required: true
   attr :own_only, :boolean, default: false
 
+  attr :scope, :map,
+    required: true,
+    doc: "the caller's scope: its organisation and workspace name the links"
+
   defp targets_tab(%{rows: []} = assigns) do
     ~H"""
     <.empty_state tone="neutral" icon="hero-book-open" title={gettext("No targets yet")}>
@@ -1163,7 +1210,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
               "%{number} target has posted runs",
               "%{number} targets have posted runs",
               length(@rows),
-              number: {:b, to_string(length(@rows))}
+              number: {:b, Format.number(length(@rows))}
             )
           } />
         </span>
@@ -1173,7 +1220,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
               "%{number} with rules of their own",
               "%{number} with rules of their own",
               Enum.count(@rows, &(&1.own > 0)),
-              number: {:b, to_string(Enum.count(@rows, &(&1.own > 0)))}
+              number: {:b, Format.number(Enum.count(@rows, &(&1.own > 0)))}
             )
           } />
         </span>
@@ -1183,7 +1230,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
               "%{number} sets its own mode",
               "%{number} set their own mode",
               Enum.count(@rows, & &1.own_mode),
-              number: {:b, to_string(Enum.count(@rows, & &1.own_mode))}
+              number: {:b, Format.number(Enum.count(@rows, & &1.own_mode))}
             )
           } />
         </span>
@@ -1193,13 +1240,15 @@ defmodule ApiaryWeb.PolicyLive.Show do
               "%{number} with suggestions",
               "%{number} with suggestions",
               Enum.count(@rows, &suggested?/1),
-              number: {:b, to_string(Enum.count(@rows, &suggested?/1))}
+              number: {:b, Format.number(Enum.count(@rows, &suggested?/1))}
             )
           } />
         </span>
         <span :if={@own_only} id="targets-own-only">
           {gettext("Showing those that set their own mode.")}
-          <.link patch={~p"/workspace/policy/targets"} class="q-link">{gettext("Show all")}</.link>
+          <.link patch={~p"/#{@scope.organisation}/#{@scope.workspace}/policy/targets"} class="q-link">{gettext(
+            "Show all"
+          )}</.link>
         </span>
       </div>
       <div
@@ -1230,7 +1279,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
             <tr :for={row <- @shown} id={"target-#{row.id}"} role="row" class="q-target-row">
               <td role="cell" class="q-c-target">
                 <.link
-                  navigate={~p"/workspace/policy/targets/#{row.id}"}
+                  navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/policy/targets/#{row.id}"}
                   class="q-target-name q-rowlink"
                 >
                   <span class="q-target-system">{row.system}/</span><span class="q-target-path">{row.path}</span>
@@ -1273,7 +1322,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
               <td role="cell" class="q-num">
                 <.cell value={row.suggestions} none={gettext("n/a")}>
                   <span :if={row.suggestions > 0} class="q-newdot">
-                    {gettext("%{count} to review", count: row.suggestions)}
+                    {gettext("%{number} to review", number: Format.number(row.suggestions))}
                   </span>
                   <span :if={row.suggestions == 0} class="q-zero">
                     <span class="sr-only">{gettext("none")}</span><span aria-hidden="true">–</span>
@@ -1294,9 +1343,10 @@ defmodule ApiaryWeb.PolicyLive.Show do
                     }
                     navigate={
                       if is_nil(row.detail.version.target_id),
-                        do: ~p"/workspace/policy/versions/#{row.detail.version.version}",
+                        do:
+                          ~p"/#{@scope.organisation}/#{@scope.workspace}/policy/versions/#{row.detail.version.version}",
                         else:
-                          ~p"/workspace/policy/targets/#{row.id}/versions/#{row.detail.version.version}"
+                          ~p"/#{@scope.organisation}/#{@scope.workspace}/policy/targets/#{row.id}/versions/#{row.detail.version.version}"
                     }
                   />
                   <span :if={!row.detail.version} class="text-faint font-sans text-[13px]">
@@ -1348,6 +1398,10 @@ defmodule ApiaryWeb.PolicyLive.Show do
   attr :following, :integer, required: true
   attr :own, :integer, required: true
 
+  attr :scope, :map,
+    required: true,
+    doc: "the caller's scope: its organisation and workspace name the links"
+
   defp mode_dialog(%{mode: "enforce"} = assigns) do
     shown = if assigns.would, do: Enum.take(assigns.would.destinations, 8), else: []
 
@@ -1387,7 +1441,10 @@ defmodule ApiaryWeb.PolicyLive.Show do
           <span id="mode-would-n" class="tabular-nums">
             {if @left == 0,
               do: gettext("none left"),
-              else: ngettext("%{count} destination", "%{count} destinations", @left)}
+              else:
+                ngettext("%{number} destination", "%{number} destinations", @left,
+                  number: Format.number(@left)
+                )}
           </span>
         </div>
         <ul>
@@ -1405,10 +1462,13 @@ defmodule ApiaryWeb.PolicyLive.Show do
               {destination.host}<span :if={destination.path} class="text-muted">{destination.path}</span>
             </span>
             <small>
-              {ngettext("%{count} attempt", "%{count} attempts", destination.attempts)} · {ngettext(
-                "%{count} run",
-                "%{count} runs",
-                destination.runs
+              {ngettext("%{number} attempt", "%{number} attempts", destination.attempts,
+                number: Format.number(destination.attempts)
+              )} · {ngettext(
+                "%{number} run",
+                "%{number} runs",
+                destination.runs,
+                number: Format.number(destination.runs)
               )}
             </small>
             <button
@@ -1426,12 +1486,15 @@ defmodule ApiaryWeb.PolicyLive.Show do
         </ul>
         <p :if={length(@would.destinations) > 8} class="q-would-more">
           <%= for part <- more_words(length(@would.destinations) - 8) do %>
-            <.link :if={part == :link} navigate={~p"/workspace/connections?since=7d"} class="q-link">
+            <.link
+              :if={part == :link}
+              navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/connections?since=7d"}
+              class="q-link"
+            >
               {gettext("connections page")}
             </.link>{if part !=
-                                                                                                                                                                    :link,
-                                                                                                                                                                  do:
-                                                                                                                                                                    part}
+                                                                            :link,
+                                                                          do: part}
           <% end %>
         </p>
       </div>
@@ -1501,7 +1564,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
   # case is a whole sentence; the effect is a bold phrase of its own, `:effect` here.
   defp effect_words(mode, following, alive) do
     effect = :effect
-    runs = ngettext("%{count} run", "%{count} runs", alive)
+    runs = ngettext("%{number} run", "%{number} runs", alive, number: Format.number(alive))
 
     case {mode, following, alive} do
       {"enforce", 0, 0} ->
@@ -1519,19 +1582,21 @@ defmodule ApiaryWeb.PolicyLive.Show do
 
       {"enforce", _following, 0} ->
         rich_ngettext(
-          "From the next heartbeat, about 30 s, %{effect} in the %{count} target that follows the workspace's default.",
-          "From the next heartbeat, about 30 s, %{effect} in the %{count} targets that follow the workspace's default.",
+          "From the next heartbeat, about 30 s, %{effect} in the %{number} target that follows the workspace's default.",
+          "From the next heartbeat, about 30 s, %{effect} in the %{number} targets that follow the workspace's default.",
           following,
-          effect: effect
+          effect: effect,
+          number: Format.number(following)
         )
 
       {"enforce", _following, _alive} ->
         rich_ngettext(
-          "From the next heartbeat, about 30 s, %{effect} in the %{count} target that follows the workspace's default, and among the %{runs} alive now.",
-          "From the next heartbeat, about 30 s, %{effect} in the %{count} targets that follow the workspace's default, and among the %{runs} alive now.",
+          "From the next heartbeat, about 30 s, %{effect} in the %{number} target that follows the workspace's default, and among the %{runs} alive now.",
+          "From the next heartbeat, about 30 s, %{effect} in the %{number} targets that follow the workspace's default, and among the %{runs} alive now.",
           following,
           effect: effect,
-          runs: runs
+          runs: runs,
+          number: Format.number(following)
         )
 
       {_observe, 0, 0} ->
@@ -1549,19 +1614,21 @@ defmodule ApiaryWeb.PolicyLive.Show do
 
       {_observe, _following, 0} ->
         rich_ngettext(
-          "From the next heartbeat, about 30 s, %{effect} in the %{count} target that follows the workspace's default: every other connection is let through and recorded.",
-          "From the next heartbeat, about 30 s, %{effect} in the %{count} targets that follow the workspace's default: every other connection is let through and recorded.",
+          "From the next heartbeat, about 30 s, %{effect} in the %{number} target that follows the workspace's default: every other connection is let through and recorded.",
+          "From the next heartbeat, about 30 s, %{effect} in the %{number} targets that follow the workspace's default: every other connection is let through and recorded.",
           following,
-          effect: effect
+          effect: effect,
+          number: Format.number(following)
         )
 
       {_observe, _following, _alive} ->
         rich_ngettext(
-          "From the next heartbeat, about 30 s, %{effect} in the %{count} target that follows the workspace's default, and among the %{runs} alive now: every other connection is let through and recorded.",
-          "From the next heartbeat, about 30 s, %{effect} in the %{count} targets that follow the workspace's default, and among the %{runs} alive now: every other connection is let through and recorded.",
+          "From the next heartbeat, about 30 s, %{effect} in the %{number} target that follows the workspace's default, and among the %{runs} alive now: every other connection is let through and recorded.",
+          "From the next heartbeat, about 30 s, %{effect} in the %{number} targets that follow the workspace's default, and among the %{runs} alive now: every other connection is let through and recorded.",
           following,
           effect: effect,
-          runs: runs
+          runs: runs,
+          number: Format.number(following)
         )
     end
   end
@@ -1574,14 +1641,15 @@ defmodule ApiaryWeb.PolicyLive.Show do
   defp own_words(n),
     do:
       ngettext(
-        "%{count} target sets its own mode and does not change.",
-        "%{count} targets set their own mode and do not change.",
-        n
+        "%{number} target sets its own mode and does not change.",
+        "%{number} targets set their own mode and do not change.",
+        n,
+        number: Format.number(n)
       )
 
   # "and 4 more on the connections page", with the page a link.
   defp more_words(more),
-    do: rich_gettext("and %{more} more on the %{link}", more: to_string(more), link: :link)
+    do: rich_gettext("and %{more} more on the %{link}", more: Format.number(more), link: :link)
 
   @doc false
   def would_key(destination), do: Common.would_key(destination)
@@ -1600,9 +1668,9 @@ defmodule ApiaryWeb.PolicyLive.Show do
       <p class="text-muted">
         {gettext("A locked rule holds against every target.")}
         <b class="font-medium text-base-content">{ngettext(
-            "%{count} target rule stops being in force",
-            "%{count} target rules stop being in force",
-            length(@held)
+            "%{number} target rule stops being in force",
+            "%{number} target rules stop being in force",
+            length(@held), number: Format.number(length(@held))
           )}</b>:
       </p>
       <div class="q-would">
@@ -1646,9 +1714,10 @@ defmodule ApiaryWeb.PolicyLive.Show do
         </span>
         <span :if={@overriders != []}>
           {ngettext(
-            "%{count} target has a rule of its own on this host; it then has nothing to override and is kept.",
-            "%{count} targets have a rule of their own on this host; it then has nothing to override and is kept.",
-            length(@overriders)
+            "%{number} target has a rule of its own on this host; it then has nothing to override and is kept.",
+            "%{number} targets have a rule of their own on this host; it then has nothing to override and is kept.",
+            length(@overriders),
+            number: Format.number(length(@overriders))
           )}
         </span>
         {gettext("This takes effect within a heartbeat.")}

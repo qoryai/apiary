@@ -26,21 +26,26 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   ## Paths of the policy pages
 
   @doc "The page of one version of the baseline (`nil`) or of a target."
-  def version_path(target_id, n, query \\ %{})
+  def version_path(scope, target_id, n, query \\ %{})
 
-  def version_path(nil, n, query), do: ~p"/workspace/policy/versions/#{n}?#{query}"
+  def version_path(scope, nil, n, query),
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/policy/versions/#{n}?#{query}"
 
-  def version_path(target_id, n, query),
-    do: ~p"/workspace/policy/targets/#{target_id}/versions/#{n}?#{query}"
+  def version_path(scope, target_id, n, query),
+    do:
+      ~p"/#{scope.organisation}/#{scope.workspace}/policy/targets/#{target_id}/versions/#{n}?#{query}"
 
   @doc "The rule of `host` on the workspace's policy page (`nil`) or on a target's."
-  def rule_path(nil, host), do: ~p"/workspace/policy?#{%{"rule" => host}}"
+  def rule_path(scope, nil, host),
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/policy?#{%{"rule" => host}}"
 
-  def rule_path(target_id, host),
-    do: ~p"/workspace/policy/targets/#{target_id}?#{%{"rule" => host}}"
+  def rule_path(scope, target_id, host),
+    do:
+      ~p"/#{scope.organisation}/#{scope.workspace}/policy/targets/#{target_id}?#{%{"rule" => host}}"
 
   @doc "A target's policy page."
-  def target_policy_path(target_id), do: ~p"/workspace/policy/targets/#{target_id}"
+  def target_policy_path(scope, target_id),
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/policy/targets/#{target_id}"
 
   ## Versions
 
@@ -53,7 +58,7 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
 
   def version(scope, target, digest) do
     case Policy.configuration_for_digest(scope, target, digest) do
-      {:ok, configuration} -> version_of(configuration, target)
+      {:ok, configuration} -> version_of(scope, configuration, target)
       _ -> nil
     end
   end
@@ -62,9 +67,9 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   A run configuration as the pages here name a version. Versions count per holder, the
   baseline's apart from each target's, so every version is named with its `label`:
   "workspace baseline", or the target's system and path when `target` is the one the
-  configuration is of.
+  configuration is of. Its `path` is in `scope`'s workspace.
   """
-  def version_of(configuration, target \\ nil) do
+  def version_of(scope, configuration, target \\ nil) do
     %{
       n: configuration.version,
       digest: configuration.digest,
@@ -72,7 +77,7 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
       target_id: configuration.target_id,
       label: version_label(configuration.target_id, target),
       rendered_at: configuration.rendered_at,
-      path: version_path(configuration.target_id, configuration.version)
+      path: version_path(scope, configuration.target_id, configuration.version)
     }
   end
 

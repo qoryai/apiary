@@ -73,7 +73,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
             <.link
               :if={@security && @target}
               id="connections-target-policy"
-              navigate={Rules.target_policy_path(@target.id)}
+              navigate={Rules.target_policy_path(@current_scope, @target.id)}
               class="q-link"
             >
               {gettext("Its policy")}
@@ -97,7 +97,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
       <div :if={!@load_error} class="grid grid-cols-[minmax(0,1fr)] gap-6">
         <.filter_bar
           id="connections-filters"
-          clear={Filters.any?(@filters) && path(Filters.clear(@filters))}
+          clear={Filters.any?(@filters) && page_path(@current_scope, Filters.clear(@filters))}
         >
           <.segments id="connections-decision" label={gettext("Decision")}>
             <:segment
@@ -108,7 +108,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
                   {gettext("Denied"), "denied"}
                 ]
               }
-              patch={path(Filters.put(@filters, decision: value))}
+              patch={page_path(@current_scope, Filters.put(@filters, decision: value))}
               pressed={@filters.decision == value}
             >
               {label}
@@ -127,7 +127,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
                 target_label(@filters.target)
               )
             }
-            remove={path(Filters.put(@filters, target: nil))}
+            remove={page_path(@current_scope, Filters.put(@filters, target: nil))}
           />
           <.filter
             name="host"
@@ -136,7 +136,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
             label={gettext("Host")}
             value={@filters.host}
             options={with_chosen(facet_options(@facets, :host), @filters.host, @filters.host)}
-            remove={path(Filters.put(@filters, host: nil))}
+            remove={page_path(@current_scope, Filters.put(@filters, host: nil))}
           />
           <.filter_toggle
             id="connections-tools"
@@ -144,7 +144,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
             label={gettext("Tool invocations")}
             icon="hero-wrench-screwdriver-micro"
             pressed={@filters.tools}
-            patch={path(Filters.put(@filters, tools: !@filters.tools))}
+            patch={page_path(@current_scope, Filters.put(@filters, tools: !@filters.tools))}
           />
           <.filter
             name="since"
@@ -159,7 +159,8 @@ defmodule ApiaryWeb.ConnectionLive.Index do
               }
             }
             remove={
-              @filters.since != "90d" && path(Filters.put(@filters, since: "90d", from: nil, to: nil))
+              @filters.since != "90d" &&
+                page_path(@current_scope, Filters.put(@filters, since: "90d", from: nil, to: nil))
             }
           />
           <:trailing>
@@ -170,21 +171,21 @@ defmodule ApiaryWeb.ConnectionLive.Index do
                     "%{number} destination",
                     "%{number} destinations",
                     @listing.summary.destinations,
-                    number: {:b, delimited(@listing.summary.destinations)}
+                    number: {:b, Format.number(@listing.summary.destinations)}
                   )
                 } />
               </span>
               <span :if={@listing && @listing.summary.denied > 0}>
                 <.rich text={
                   rich_ngettext("%{number} denied", "%{number} denied", @listing.summary.denied,
-                    number: {:b, delimited(@listing.summary.denied)}
+                    number: {:b, Format.number(@listing.summary.denied)}
                   )
                 } />
               </span>
               <span :if={@listing}>
                 <.rich text={
                   rich_ngettext("%{number} run", "%{number} runs", @listing.summary.runs,
-                    number: {:b, delimited(@listing.summary.runs)}
+                    number: {:b, Format.number(@listing.summary.runs)}
                   )
                 } />
               </span>
@@ -246,7 +247,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           rows={@listing.rows}
           row_id={&destination_id/1}
           open={@open}
-          run_path={&run_path/1}
+          run_path={&run_path(@current_scope, &1)}
           acts={@acts}
           security={@security}
         />
@@ -269,7 +270,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
             <.button
               :if={narrowed?(@filters)}
               id="connections-clear"
-              patch={path(Filters.clear(@filters))}
+              patch={page_path(@current_scope, Filters.clear(@filters))}
             >
               {gettext("Clear filters")}
             </.button>
@@ -294,14 +295,14 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           <div :if={@listing.pages > 1} class="flex items-center gap-2">
             <.button
               id="connections-previous"
-              patch={path(%{@filters | page: @listing.page - 1})}
+              patch={page_path(@current_scope, %{@filters | page: @listing.page - 1})}
               disabled={@listing.page <= 1}
             >
               {gettext("Previous")}
             </.button>
             <.button
               id="connections-next"
-              patch={path(%{@filters | page: @listing.page + 1})}
+              patch={page_path(@current_scope, %{@filters | page: @listing.page + 1})}
               disabled={@listing.page >= @listing.pages}
             >
               {gettext("Next")}
@@ -350,7 +351,8 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   def handle_params(params, _uri, socket) do
     filters = Filters.parse(params, :connections)
 
-    if Filters.to_params(filters) == params do
+    # The path's organisation and workspace are not filters.
+    if Filters.to_params(filters) == Map.drop(params, ["org", "workspace"]) do
       # What is open belongs to the view it was opened in.
       open = if Filters.same?(filters, socket.assigns.filters), do: socket.assigns.open, else: %{}
 
@@ -364,13 +366,19 @@ defmodule ApiaryWeb.ConnectionLive.Index do
        socket
        |> assign(:dropped, filters.dropped)
        |> put_private(:rewrote, true)
-       |> push_patch(to: path(%{filters | dropped: []}), replace: true)}
+       |> push_patch(
+         to: page_path(socket.assigns.current_scope, %{filters | dropped: []}),
+         replace: true
+       )}
     end
   end
 
   @impl true
   def handle_event("filter", params, socket) do
-    {:noreply, push_patch(socket, to: path(Filters.change(socket.assigns.filters, params)))}
+    {:noreply,
+     push_patch(socket,
+       to: page_path(socket.assigns.current_scope, Filters.change(socket.assigns.filters, params))
+     )}
   end
 
   def handle_event("narrow", %{"_filter" => name, "q" => q}, socket)
@@ -706,7 +714,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
     Map.merge(standing, %{
       values: row_values(row),
       entry_host: entry.host,
-      rule_path: Rules.rule_path(holder_id, entry.host),
+      rule_path: Rules.rule_path(scope, holder_id, entry.host),
       after: %{
         action: action,
         level: if(entry.source == :target, do: :target, else: :workspace),
@@ -714,7 +722,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           change && is_integer(change.version) &&
             %{
               n: change.version,
-              path: Rules.version_path(holder_id, change.version),
+              path: Rules.version_path(scope, holder_id, change.version),
               label: Rules.version_label(holder_id, target)
             },
         by: change && who(change, scope),
@@ -816,7 +824,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           locked_by: locked && locked.changed_by && locked.changed_by.email,
           locked_at: locked && locked.inserted_at,
           owner: match?(%{membership: %{level: :owner}}, scope),
-          rule_path: Rules.rule_path(nil, act.entry.host)
+          rule_path: Rules.rule_path(scope, nil, act.entry.host)
         }
       }
     )
@@ -985,8 +993,11 @@ defmodule ApiaryWeb.ConnectionLive.Index do
         names: Enum.join(names, ", ")
       )
 
-  defp path(%Filters{} = filters), do: ~p"/workspace/connections?#{Filters.to_params(filters)}"
-  defp run_path(run), do: ~p"/workspace/runs/#{run.run_id}/connections"
+  defp page_path(scope, %Filters{} = filters),
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/connections?#{Filters.to_params(filters)}"
+
+  defp run_path(scope, run),
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/connections"
 
   defp narrowed?(%Filters{} = f),
     do: f.decision != nil or f.target != nil or f.host != nil or f.tools
@@ -1022,7 +1033,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
     do: gettext("No connections in %{from} to %{to}", from: day(from), to: day(to))
 
   # As `Filters.range_label/1` writes a day.
-  defp day(date), do: Calendar.strftime(date, "%-d %b %Y")
+  defp day(date), do: Format.date(date)
 
   # The target's name inside a sentence, set in mono.
   defp mono_part(text) do

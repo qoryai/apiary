@@ -27,7 +27,7 @@ defmodule ApiaryWeb.InvitationLive.Accept do
             variant="primary"
             size="md"
             class="btn-block"
-            navigate={~p"/workspace"}
+            href={~p"/"}
           >
             {gettext("Go to your workspace")}
           </.button>
@@ -66,16 +66,6 @@ defmodule ApiaryWeb.InvitationLive.Accept do
               {gettext("Not you? Log out")}
             </.button>
           </p>
-          <.form
-            for={%{}}
-            id="switch-form"
-            action={~p"/organisations/switch"}
-            method="post"
-            phx-trigger-action={@trigger_submit}
-            class="hidden"
-          >
-            <input type="hidden" name="organisation_id" value={@organisation_id} />
-          </.form>
         <% true -> %>
           <.invitation_summary invitation={@invitation} />
           <p class="text-sm/5 text-muted">
@@ -121,9 +111,7 @@ defmodule ApiaryWeb.InvitationLive.Accept do
      assign(socket,
        page_title: gettext("Invitation"),
        token: token,
-       invitation: Organisations.get_invitation_by_token(token),
-       trigger_submit: false,
-       organisation_id: nil
+       invitation: Organisations.get_invitation_by_token(token)
      )}
   end
 
@@ -132,9 +120,8 @@ defmodule ApiaryWeb.InvitationLive.Accept do
     %{current_scope: scope, token: token, invitation: invitation} = socket.assigns
 
     case Organisations.accept_invitation(scope.user, token) do
-      {:ok, membership} ->
-        {:noreply,
-         assign(socket, organisation_id: membership.organisation_id, trigger_submit: true)}
+      {:ok, _membership} ->
+        {:noreply, redirect(socket, to: workspace_path(invitation))}
 
       {:error, :already_member} ->
         {:noreply,
@@ -143,12 +130,17 @@ defmodule ApiaryWeb.InvitationLive.Accept do
            :info,
            gettext("You are already a member of %{name}.", name: invitation.organisation.name)
          )
-         |> assign(organisation_id: invitation.organisation_id, trigger_submit: true)}
+         |> redirect(to: ~p"/#{invitation.organisation}")}
 
       {:error, :invalid} ->
         {:noreply, assign(socket, :invitation, nil)}
     end
   end
+
+  # The workspace the invitation brings the user into: its own page, which the path names
+  # (decision 0073), loaded afresh so the session remembers it for `/`.
+  defp workspace_path(%{organisation: organisation, workspace: workspace}),
+    do: ~p"/#{organisation}/#{workspace}"
 
   # One sentence per level: the article and the word go together.
   defp invitation_sentence(%{level: :owner} = invitation) do

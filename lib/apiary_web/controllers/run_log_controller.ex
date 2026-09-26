@@ -4,7 +4,8 @@ defmodule ApiaryWeb.RunLogController do
   order, as the runtime wrote them. Not a page. The terminal of the run page reads it, and
   so does "Download the raw bytes".
 
-      GET /workspace/runs/:run_id/log?after=<sequence>&limit=<chunks>&stream=<name>&download=1
+      GET /:org/:workspace/runs/:run_id/log
+          ?after=<sequence>&limit=<chunks>&stream=<name>&download=1
 
   `after` defaults to 0 and `limit` to 2,000 chunks (at most 10,000); `stream` keeps one of
   `terminal`, `stdout` and `stderr`; `download=1` sends every chunk as an attachment. The
@@ -19,17 +20,17 @@ defmodule ApiaryWeb.RunLogController do
   the resize's own sequence, so the reader's next question is answered at the new size.
   No header on a run on pipes, on a single stream of pipes and on a download, which is every chunk whatever the size.
 
-  Scoped like the page: the run is looked up in the signed-in user's workspace, and a run
-  of another workspace is `404`, like one that does not exist. The bytes are never
-  rendered by the server; `nosniff` and the attachment type keep a browser from rendering
-  them either.
+  Scoped like the page: the pipeline resolves the organisation and workspace of the path
+  for a member and answers `404` for anybody else, the run is looked up in that
+  workspace, and a run of another workspace is `404`, like one that does not exist. The
+  bytes are never rendered by the server; `nosniff` and the attachment type keep a
+  browser from rendering them either.
 
   The log is the record, so it belongs to `observability`, which every instance has.
   """
   use ApiaryWeb, :controller
   use ApiaryWeb.Features, :observability
 
-  alias Apiary.Organisations
   alias Apiary.Runs.Record
 
   @streams ~w(terminal stdout stderr)
@@ -45,16 +46,12 @@ defmodule ApiaryWeb.RunLogController do
     end
   end
 
+  # The pipeline's `fetch_path_scope/2` has resolved the path's organisation and
+  # workspace.
   defp scope(conn) do
     case conn.assigns[:current_scope] do
-      %{user: %{}} = scope ->
-        case Organisations.load_scope(scope, get_session(conn, "organisation_id")) do
-          %{organisation: %{}, workspace: %{}} = scope -> {:ok, scope}
-          _ -> :error
-        end
-
-      _ ->
-        :error
+      %{user: %{}, organisation: %{}, workspace: %{}} = scope -> {:ok, scope}
+      _ -> :error
     end
   end
 

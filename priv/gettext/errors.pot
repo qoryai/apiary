@@ -59,6 +59,11 @@ msgstr ""
 msgid "cannot be longer than the events are kept: the log goes with a run's events"
 msgstr ""
 
+#: lib/apiary/organisations.ex
+#, elixir-autogen, elixir-format
+msgid "could not be signed up just now; please try again"
+msgstr ""
+
 #: lib/apiary/accounts/user.ex
 #, elixir-autogen, elixir-format
 msgid "did not change"
@@ -106,16 +111,52 @@ msgstr ""
 msgid "is already the name of a workspace in this organisation"
 msgstr ""
 
+#: lib/apiary/organisations/workspace.ex
+#, elixir-autogen, elixir-format
+msgid "is already the slug of a workspace in this organisation"
+msgstr ""
+
+#: lib/apiary/organisations/organisation.ex
+#, elixir-autogen, elixir-format
+msgid "is already the slug of another organisation"
+msgstr ""
+
 ## From Ecto.Changeset.put_change/3
 msgid "is invalid"
+msgstr ""
+
+#: lib/apiary/accounts/user.ex
+#, elixir-autogen, elixir-format
+msgid "is not a known time zone"
+msgstr ""
+
+#: lib/apiary/accounts/user.ex
+#, elixir-autogen, elixir-format
+msgid "is not a language this instance has"
+msgstr ""
+
+#: lib/apiary/organisations/organisation.ex
+#: lib/apiary/organisations/workspace.ex
+#, elixir-autogen, elixir-format
+msgid "is not a valid slug"
 msgstr ""
 
 ## From Ecto.Changeset.validate_exclusion/3
 msgid "is reserved"
 msgstr ""
 
+#: lib/apiary/organisations/slug.ex
+#, elixir-autogen, elixir-format
+msgid "is reserved for a page of Qory Apiary"
+msgstr ""
+
 ## From Ecto.Changeset.no_assoc_constraint/3
 msgid "is still associated with this entry"
+msgstr ""
+
+#: lib/apiary/organisations/slug.ex
+#, elixir-autogen, elixir-format
+msgid "may hold lowercase letters, digits and hyphens, and starts and ends with a letter or a digit"
 msgstr ""
 
 ## From Ecto.Changeset.validate_acceptance/3

@@ -185,11 +185,18 @@ defmodule ApiaryWeb.PolicyLive.Target do
   end
 
   defp apply_action(socket, :document, _params) do
+    scope = socket.assigns.current_scope
+
     to =
       case socket.assigns do
-        %{version: %{version: n}, baseline?: false} -> "#{socket.assigns.base}/versions/#{n}"
-        %{version: %{version: n}} -> ~p"/workspace/policy/versions/#{n}"
-        _ -> socket.assigns.base
+        %{version: %{version: n}, baseline?: false} ->
+          "#{socket.assigns.base}/versions/#{n}"
+
+        %{version: %{version: n}} ->
+          ~p"/#{scope.organisation}/#{scope.workspace}/policy/versions/#{n}"
+
+        _ ->
+          socket.assigns.base
       end
 
     push_navigate(socket, to: to, replace: true)
@@ -617,7 +624,9 @@ defmodule ApiaryWeb.PolicyLive.Target do
       >
         {gettext("The link may be for another workspace, or the target has not posted a run here.")}
         <:actions>
-          <.button navigate={~p"/workspace/policy"}>{gettext("Back to policy")}</.button>
+          <.button navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy"}>{gettext(
+            "Back to policy"
+          )}</.button>
         </:actions>
       </.empty_state>
     </Layouts.app>
@@ -637,7 +646,9 @@ defmodule ApiaryWeb.PolicyLive.Target do
       <div id="policy-page" phx-hook="PolicyPage" class="grid grid-cols-[minmax(0,1fr)] gap-6">
         <div class="grid gap-3">
           <nav class="q-crumbs" aria-label={gettext("Breadcrumb")}>
-            <.link navigate={~p"/workspace/policy"}>{gettext("Policy")}</.link>
+            <.link navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy"}>{gettext(
+              "Policy"
+            )}</.link>
             <.icon name="hero-chevron-right-micro" class="size-3" />
             <%= if @live_action in [:version, :export] && @v do %>
               <.link navigate={@base} class="font-mono text-xs">
@@ -648,7 +659,9 @@ defmodule ApiaryWeb.PolicyLive.Target do
                 {gettext("Version %{version}", version: @v.configuration.version)}
               </span>
             <% else %>
-              <.link navigate={~p"/workspace/policy/targets"}>{gettext("Targets")}</.link>
+              <.link navigate={
+                ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy/targets"
+              }>{gettext("Targets")}</.link>
               <.icon name="hero-chevron-right-micro" class="size-3" />
               <span class="q-here font-mono text-xs" aria-current="page">
                 <span class="text-faint">{@holder.system}/</span>{@holder.path}
@@ -682,7 +695,10 @@ defmodule ApiaryWeb.PolicyLive.Target do
                   version={@version.version}
                   digest={@version.digest}
                   navigate={
-                    if @baseline?, do: ~p"/workspace/policy/history", else: "#{@base}/history"
+                    if @baseline?,
+                      do:
+                        ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy/history",
+                      else: "#{@base}/history"
                   }
                   copy
                 />
@@ -698,7 +714,8 @@ defmodule ApiaryWeb.PolicyLive.Target do
                 id="policy-export-button"
                 navigate={
                   if @baseline?,
-                    do: ~p"/workspace/policy/versions/#{@version.version}/export",
+                    do:
+                      ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy/versions/#{@version.version}/export",
                     else: "#{@base}/versions/#{@version.version}/export"
                 }
               >
@@ -709,6 +726,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
         </div>
 
         <.target_tabs
+          scope={@current_scope}
           live_action={@live_action}
           base={@base}
           rules={length(@rows)}
@@ -811,7 +829,10 @@ defmodule ApiaryWeb.PolicyLive.Target do
           <span id="mode-would-n" class="tabular-nums">
             {if @left == 0,
               do: gettext("none left"),
-              else: ngettext("%{count} destination", "%{count} destinations", @left)}
+              else:
+                ngettext("%{number} destination", "%{number} destinations", @left,
+                  number: Format.number(@left)
+                )}
           </span>
         </div>
         <ul>
@@ -825,10 +846,13 @@ defmodule ApiaryWeb.PolicyLive.Target do
               {destination.host}<span :if={destination.path} class="text-muted">{destination.path}</span>
             </span>
             <small>
-              {ngettext("%{count} attempt", "%{count} attempts", destination.attempts)} · {ngettext(
-                "%{count} run",
-                "%{count} runs",
-                destination.runs
+              {ngettext("%{number} attempt", "%{number} attempts", destination.attempts,
+                number: Format.number(destination.attempts)
+              )} · {ngettext(
+                "%{number} run",
+                "%{number} runs",
+                destination.runs,
+                number: Format.number(destination.runs)
               )}
             </small>
             <%= cond do %>
@@ -859,9 +883,10 @@ defmodule ApiaryWeb.PolicyLive.Target do
         </ul>
         <p :if={length(@would.destinations) > 8} class="q-would-more">
           {ngettext(
-            "and %{count} more on the connections page",
-            "and %{count} more on the connections page",
-            length(@would.destinations) - 8
+            "and %{number} more on the connections page",
+            "and %{number} more on the connections page",
+            length(@would.destinations) - 8,
+            number: Format.number(length(@would.destinations) - 8)
           )}
         </p>
       </div>
@@ -938,10 +963,16 @@ defmodule ApiaryWeb.PolicyLive.Target do
 
   defp effective_count(rows, effective) do
     [
-      ngettext("%{count} rule", "%{count} rules", length(rows)),
-      ngettext("%{count} host allowed", "%{count} hosts allowed", length(effective.allow)),
+      ngettext("%{number} rule", "%{number} rules", length(rows),
+        number: Format.number(length(rows))
+      ),
+      ngettext("%{number} host allowed", "%{number} hosts allowed", length(effective.allow),
+        number: Format.number(length(effective.allow))
+      ),
       effective.deny != [] &&
-        ngettext("%{count} denied", "%{count} denied", length(effective.deny))
+        ngettext("%{number} denied", "%{number} denied", length(effective.deny),
+          number: Format.number(length(effective.deny))
+        )
     ]
     |> Enum.filter(& &1)
     |> Enum.join(" · ")
@@ -964,6 +995,10 @@ defmodule ApiaryWeb.PolicyLive.Target do
   attr :runs, :integer, required: true
   attr :document, :boolean, required: true
   attr :holder, :map, required: true
+
+  attr :scope, :map,
+    required: true,
+    doc: "the caller's scope: its organisation and workspace name the links"
 
   defp target_tabs(assigns) do
     assigns =
@@ -990,11 +1025,17 @@ defmodule ApiaryWeb.PolicyLive.Target do
       >
         <.icon name="hero-document-text-micro" class="size-4" />{gettext("Document")}
       </.link>
-      <.link id="policy-tab-runs" navigate={~p"/workspace/runs?#{@target_query}"}>
+      <.link
+        id="policy-tab-runs"
+        navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs?#{@target_query}"}
+      >
         <.icon name="hero-play-circle-micro" class="size-4" />{gettext("Runs")}
         <span :if={@runs > 0} class="q-tabs-n" title={gettext("In the last 7 days")}>{@runs}</span>
       </.link>
-      <.link id="policy-tab-connections" navigate={~p"/workspace/connections?#{@target_query}"}>
+      <.link
+        id="policy-tab-connections"
+        navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/connections?#{@target_query}"}
+      >
         <.icon name="hero-arrows-right-left-micro" class="size-4" />{gettext("Connections")}
       </.link>
     </nav>
@@ -1101,6 +1142,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
         label={gettext("Effective policy of %{target}", target: "#{@holder.system}/#{@holder.path}")}
         rows={@shown}
         scope={:target}
+        current_scope={@current_scope}
         activity={async_value(@activity)}
         fresh={@fresh}
         ruled_host={@ruled_host}

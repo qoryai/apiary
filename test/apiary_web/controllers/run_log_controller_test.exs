@@ -40,7 +40,7 @@ defmodule ApiaryWeb.RunLogControllerTest do
   defp through(conn), do: conn |> get_resp_header("x-qory-log-through") |> List.first()
   defp size(conn), do: conn |> get_resp_header("x-qory-log-size") |> List.first()
 
-  describe "GET /workspace/runs/:run_id/log" do
+  describe "GET /:org/:workspace/runs/:run_id/log" do
     setup :register_and_log_in_user
 
     test "streams the decoded bytes in sequence order and names the last sequence", %{
@@ -48,7 +48,7 @@ defmodule ApiaryWeb.RunLogControllerTest do
       scope: scope
     } do
       run = run_with_log(scope)
-      conn = get(conn, ~p"/workspace/runs/#{run.run_id}/log")
+      conn = get(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/log")
 
       assert conn.status == 200
       assert conn.state == :chunked
@@ -66,7 +66,7 @@ defmodule ApiaryWeb.RunLogControllerTest do
       conn =
         conn
         |> put_req_header("accept", "*/*")
-        |> get(~p"/workspace/runs/#{run.run_id}/log")
+        |> get(~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/log")
 
       assert conn.status == 200
       assert [_] = get_resp_header(conn, "x-qory-log-through")
@@ -75,18 +75,29 @@ defmodule ApiaryWeb.RunLogControllerTest do
     test "after, limit and stream", %{conn: conn, scope: scope} do
       run = run_with_log(scope)
 
-      conn1 = get(conn, ~p"/workspace/runs/#{run.run_id}/log?after=5")
+      conn1 =
+        get(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/log?after=5")
+
       assert conn1.resp_body == <<255, 0, 10>>
       assert get_resp_header(conn1, "x-qory-log-through") == ["9"]
 
-      conn2 = get(conn, ~p"/workspace/runs/#{run.run_id}/log?limit=1")
+      conn2 =
+        get(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/log?limit=1")
+
       assert conn2.resp_body == "building\n"
       assert get_resp_header(conn2, "x-qory-log-through") == ["5"]
 
-      conn3 = get(conn, ~p"/workspace/runs/#{run.run_id}/log?stream=stderr")
+      conn3 =
+        get(
+          conn,
+          ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/log?stream=stderr"
+        )
+
       assert conn3.resp_body == <<255, 0, 10>>
 
-      conn4 = get(conn, ~p"/workspace/runs/#{run.run_id}/log?after=9")
+      conn4 =
+        get(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/log?after=9")
+
       assert conn4.status == 200
       assert conn4.resp_body == ""
       assert get_resp_header(conn4, "x-qory-log-through") == ["9"]
@@ -98,7 +109,7 @@ defmodule ApiaryWeb.RunLogControllerTest do
     } do
       run = sized_run(scope)
       assert %{terminal_cols: 80, terminal_rows: 24} = Apiary.Repo.get!(Apiary.Runs.Run, run.id)
-      path = ~p"/workspace/runs/#{run.run_id}/log"
+      path = ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/log"
 
       # From the start: the chunks before the first resize, at the start's size, and the
       # answer reaches the resize itself.
@@ -134,7 +145,7 @@ defmodule ApiaryWeb.RunLogControllerTest do
       scope: scope
     } do
       run = run_with_log(scope)
-      conn = get(conn, ~p"/workspace/runs/#{run.run_id}/log")
+      conn = get(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/log")
       assert {through(conn), size(conn)} == {"9", nil}
     end
 
@@ -143,7 +154,12 @@ defmodule ApiaryWeb.RunLogControllerTest do
       scope: scope
     } do
       run = run_with_log(scope)
-      conn = get(conn, ~p"/workspace/runs/#{run.run_id}/log?download=1&limit=1")
+
+      conn =
+        get(
+          conn,
+          ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/log?download=1&limit=1"
+        )
 
       assert conn.resp_body == "building\n" <> <<255, 0, 10>>
 
@@ -162,24 +178,51 @@ defmodule ApiaryWeb.RunLogControllerTest do
             "stream=stdin",
             "after=99999999999"
           ] do
-        conn = get(conn, "/workspace/runs/#{run.run_id}/log?" <> query)
+        conn = get(conn, "#{workspace_path(scope)}/runs/#{run.run_id}/log?" <> query)
         assert conn.status == 400, query
       end
     end
 
-    test "a run of another workspace is not found, like one that does not exist", %{conn: conn} do
+    test "a run of another workspace is not found, like one that does not exist", %{
+      conn: conn,
+      scope: scope
+    } do
       theirs = run_with_log(scope_fixture())
 
-      assert get(conn, ~p"/workspace/runs/#{theirs.run_id}/log").status == 404
-      assert get(conn, ~p"/workspace/runs/#{Ecto.UUID.generate()}/log").status == 404
-      assert get(conn, ~p"/workspace/runs/not-a-uuid/log").status == 404
+      assert get(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{theirs.run_id}/log").status ==
+               404
+
+      assert get(
+               conn,
+               ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{Ecto.UUID.generate()}/log"
+             ).status == 404
+
+      assert get(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/not-a-uuid/log").status ==
+               404
+
       # The row id is not the address either.
-      assert get(conn, ~p"/workspace/runs/#{theirs.id}/log").status == 404
+      assert get(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{theirs.id}/log").status ==
+               404
+    end
+
+    test "a run of another organisation is not found by its own address", %{conn: conn} do
+      theirs = scope_fixture()
+      run = run_with_log(theirs)
+
+      conn = get(conn, ~p"/#{theirs.organisation}/#{theirs.workspace}/runs/#{run.run_id}/log")
+
+      assert conn.status == 404
+      refute conn.resp_body =~ "building"
+      assert get_resp_header(conn, "x-qory-log-through") == []
     end
   end
 
   test "signed out, the log redirects to the log-in page", %{conn: conn} do
-    conn = get(conn, ~p"/workspace/runs/#{Ecto.UUID.generate()}/log")
+    scope = scope_fixture()
+
+    conn =
+      get(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{Ecto.UUID.generate()}/log")
+
     assert redirected_to(conn) == ~p"/users/log-in"
   end
 end

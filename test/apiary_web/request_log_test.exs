@@ -33,12 +33,12 @@ defmodule ApiaryWeb.RequestLogTest do
       for path <- [
             "/",
             "/health",
-            "/workspace/keys",
+            "/acme/main/keys",
             "/users/log-in",
             "/users/settings",
             "/invitations",
             "/.well-known/qory-configuration",
-            "/workspace/members/7b1c/remove"
+            "/acme/members/7b1c/remove"
           ] do
         assert RequestLog.redact_path(path) == path
       end

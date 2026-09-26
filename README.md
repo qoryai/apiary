@@ -123,8 +123,8 @@ still in observe with rules ready to enforce.
 
 ## What it holds
 
-- **Runs**, `/workspace/runs`: every run of the workspace with its state, what it worked
-  on, runtime, host, start, duration and denials; grouped by repository or by task,
+- **Runs**, `/:org/:workspace/runs`: every run of the workspace with its state, what it
+  worked on, runtime, host, start, duration and denials; grouped by repository or by task,
   filtered, and live.
 - **Timeline**: the session in sequence, a tool call and its response as one item, one lane
   per agent, a connection inside the call it was made during.

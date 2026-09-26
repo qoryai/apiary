@@ -31,8 +31,8 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     :ok
   end
 
-  defp open(conn, path \\ "/workspace") do
-    {:ok, view, _html} = live(conn, path)
+  defp open(conn, scope) do
+    {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}")
     render_async(view, 5_000)
     view
   end
@@ -85,7 +85,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       conn: conn,
       scope: scope
     } do
-      {:ok, view, html} = live(conn, ~p"/workspace")
+      {:ok, view, html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}")
 
       assert html =~ scope.workspace.name
 
@@ -108,7 +108,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
         view
         |> element("#onboarding-create")
         |> render_click()
-        |> follow_redirect(conn, ~p"/workspace/keys/new")
+        |> follow_redirect(conn, ~p"/#{scope.organisation}/#{scope.workspace}/keys/new")
 
       assert html =~ "New access key"
     end
@@ -118,7 +118,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       scope: scope
     } do
       %{access_key: key} = access_key_fixture(scope, label: "build-01")
-      view = open(conn)
+      view = open(conn, scope)
 
       assert has_element?(view, "#onboarding[data-step='2'] h2", "Send your first run")
       assert text(view, "#onboarding") =~ "One key can serve many hosts"
@@ -138,7 +138,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     } do
       %{access_key: key} = access_key_fixture(scope, label: "build-01")
       {:ok, _} = AccessKeys.touch(key, %{last_runner_version: "v0.4.2", last_contract_version: 1})
-      view = open(conn)
+      view = open(conn, scope)
 
       assert has_element?(view, "#onboarding[data-step='3']")
       assert has_element?(view, "#onboarding .q-step-current", "See runs here")
@@ -150,7 +150,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     test "the first run lands: step 3 ticks, the card stays with a link, and leaves on the next mount",
          %{conn: conn, scope: scope} do
       access_key_fixture(scope, label: "build-01")
-      view = open(conn)
+      view = open(conn, scope)
       assert has_element?(view, "#onboarding[data-step='2']")
 
       run = run_fixture(scope)
@@ -163,7 +163,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       assert has_element?(
                view,
-               "#onboarding-landed a[href='/workspace/runs/#{run.run_id}']",
+               "#onboarding-landed a[href='#{workspace_path(scope, "/runs/#{run.run_id}")}']",
                "Open it"
              )
 
@@ -171,7 +171,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       assert has_element?(view, "#overview-strip")
       assert has_element?(view, "#overview-keys-create", "Create another access key")
 
-      view = open(conn)
+      view = open(conn, scope)
       refute has_element?(view, "#onboarding")
       assert has_element?(view, "#overview-keys-create")
     end
@@ -195,7 +195,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       # Another workspace counts for nothing here.
       started_run(scope_fixture(), shop())
 
-      view = open(conn)
+      view = open(conn, scope)
 
       assert text(view, "#overview-strip-alive") == "1"
       assert text(view, "#overview-strip-runs") == "3"
@@ -227,7 +227,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
           exit: %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 48_000}
         )
 
-      view = open(conn)
+      view = open(conn, scope)
 
       assert text(view, "#alive-n") == "2"
       assert has_element?(view, "#alive-#{running.run_id} .q-state-running")
@@ -240,7 +240,12 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       assert has_element?(view, "#last-runs tr#run-#{running.run_id} .q-c-target", "acme/shop")
       assert has_element?(view, "#last-runs tr#run-#{ended.run_id} .q-c-target", "no repository")
       assert has_element?(view, "#last-runs tr#run-#{ended.run_id} .q-c-dur", "48 s")
-      assert has_element?(view, "#last-runs-all[href='/workspace/runs']", "All runs")
+
+      assert has_element?(
+               view,
+               "#last-runs-all[href='#{workspace_path(scope, "/runs")}']",
+               "All runs"
+             )
 
       assert text(view, "#days-totals") =~ "3 runs · 0 denied attempts, 14 days"
       html = render(view)
@@ -253,7 +258,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       assert has_element?(
                view,
-               "#days a[data-day='#{today}'][href='/workspace/runs?from=#{today}&to=#{today}']"
+               "#days a[data-day='#{today}'][href='#{workspace_path(scope, "/runs?from=#{today}&to=#{today}")}']"
              )
 
       assert has_element?(
@@ -285,7 +290,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
         started_at: DateTime.add(DateTime.utc_now(), -20, :day)
       })
 
-      view = open(conn)
+      view = open(conn, scope)
 
       assert has_element?(view, "#alive-none", "No run alive now.")
       assert text(view, "#days-totals") == "No run in the last 14 days"
@@ -313,7 +318,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
         ]
       )
 
-      view = open(conn)
+      view = open(conn, scope)
       assert has_element?(view, "#activity-uncounted", "Denied destinations were not counted")
       refute has_element?(view, "#attention li[data-kind=denied]")
       # The strip's denials come from the runs, not from the capped read: they stay.
@@ -326,7 +331,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     test "policy: a new workspace, then a managed one with a version, targets and things to review",
          %{conn: conn, scope: scope} do
       run = started_run(scope, shop())
-      view = open(conn)
+      view = open(conn, scope)
 
       assert text(view, "#overview-policy-mode") =~
                "observe Not served Machines use their own policy until the first change here."
@@ -334,7 +339,11 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       assert has_element?(view, "#overview-policy-version", "No version yet")
       assert text(view, "#overview-policy-targets") =~ "1 has posted a run"
       assert has_element?(view, "#overview-policy-review", "Nothing declared and unallowed.")
-      assert has_element?(view, "#overview-policy-open[href='/workspace/policy']")
+
+      assert has_element?(
+               view,
+               "#overview-policy-open[href='#{workspace_path(scope, "/policy")}']"
+             )
 
       event_fixture(run, 20, "run.policy_applied", %{
         "harness_hosts" => ["registry.example", "cdn.example"]
@@ -362,13 +371,13 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
     test "retention: every sentence", %{conn: conn, scope: scope} do
       started_run(scope, shop())
-      view = open(conn)
+      view = open(conn, scope)
       assert text(view, "#overview-retention") =~ "This workspace keeps everything."
       refute has_element?(view, "#overview-retention-last")
 
       assert has_element?(
                view,
-               "#overview-retention-settings[href='/workspace/settings#retention']"
+               "#overview-retention-settings[href='#{workspace_path(scope, "/settings#retention")}']"
              )
 
       {:ok, _} =
@@ -377,7 +386,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
           "log_retention_days" => "30"
         })
 
-      view = open(conn)
+      view = open(conn, scope)
 
       assert text(view, "#overview-retention-setting") ==
                "Log output is pruned after 30 days, events after 90 days."
@@ -387,7 +396,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       workspace = Apiary.Repo.get!(Apiary.Organisations.Workspace, scope.workspace.id)
       %{runs_pruned: 0} = Retention.prune_workspace(workspace)
-      view = open(conn)
+      view = open(conn, scope)
 
       assert text(view, "#overview-retention-last") =~
                "Nothing was old enough to prune last night."
@@ -411,7 +420,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       Repo.update_all(from(r in Run, where: r.id in ^ids), set: [access_key_id: first.id])
       {:ok, _} = AccessKeys.touch(first, %{})
 
-      view = open(conn)
+      view = open(conn, scope)
 
       assert text(view, "#overview-keys-n") == "7"
 
@@ -430,7 +439,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       assert has_element?(
                view,
-               "#key-#{second.id} .q-c-last a[href='/workspace/runs/#{run.run_id}']",
+               "#key-#{second.id} .q-c-last a[href='#{workspace_path(scope, "/runs/#{run.run_id}")}']",
                "checkout-tax"
              )
 
@@ -438,7 +447,12 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       assert has_element?(view, "#key-#{second.id} .q-c-hosts", "ci-runner-07")
       assert has_element?(view, "#key-#{first.id} .q-c-hosts", "3 hosts")
       assert has_element?(view, "#key-#{newest.id} .q-c-hosts", "none")
-      assert has_element?(view, "#overview-keys-more[href='/workspace/keys']", "and 2 more")
+
+      assert has_element?(
+               view,
+               "#overview-keys-more[href='#{workspace_path(scope, "/keys")}']",
+               "and 2 more"
+             )
     end
   end
 
@@ -447,7 +461,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     test "is absent when there is nothing to do", %{conn: conn, scope: scope} do
       started_run(scope, shop())
       {:ok, _} = Policy.set_mode(scope, "enforce")
-      view = open(conn)
+      view = open(conn, scope)
       refute has_element?(view, "#attention")
       assert has_element?(view, "#overview-strip")
     end
@@ -477,11 +491,11 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       lost = lost_run(scope)
       quiet = started_run(scope, shop(), heartbeat: {45, 100, 30})
 
-      view = open(conn)
+      view = open(conn, scope)
 
       assert text(view, "#attention-n") == "5"
       assert has_element?(view, "#attention-more", "and 1 more")
-      assert has_element?(view, "#attention-more[href='/workspace/keys']")
+      assert has_element?(view, "#attention-more[href='#{workspace_path(scope, "/keys")}']")
 
       kinds =
         render(view)
@@ -532,7 +546,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       assert has_element?(
                view,
-               "#att-run-#{lost.run_id} a[href='/workspace/runs/#{lost.run_id}']",
+               "#att-run-#{lost.run_id} a[href='#{workspace_path(scope, "/runs/#{lost.run_id}")}']",
                "Open"
              )
 
@@ -543,7 +557,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       assert has_element?(
                view,
-               "#att-run-#{quiet.run_id}-act[href='/workspace/runs/#{quiet.run_id}']",
+               "#att-run-#{quiet.run_id}-act[href='#{workspace_path(scope, "/runs/#{quiet.run_id}")}']",
                "Open"
              )
 
@@ -555,7 +569,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     test "the policy items: unmanaged with runs, enforce for an owner, open policy for a member",
          %{conn: conn, scope: scope} = ctx do
       started_run(scope, shop())
-      view = open(conn)
+      view = open(conn, scope)
 
       assert text(view, "#att-policy-unmanaged") =~ "Qory serves no policy yet"
 
@@ -564,7 +578,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       assert has_element?(
                view,
-               "#att-policy-unmanaged-act[href='/workspace/policy']",
+               "#att-policy-unmanaged-act[href='#{workspace_path(scope, "/policy")}']",
                "Open policy"
              )
 
@@ -580,17 +594,17 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       assert has_element?(
                view,
-               "#att-policy-enforce-act.btn-primary[href='/workspace/policy?confirm=enforce']",
+               "#att-policy-enforce-act.btn-primary[href='#{workspace_path(scope, "/policy?confirm=enforce")}']",
                "Set the default to enforce"
              )
 
       member = as_member(ctx)
-      view = open(member)
+      view = open(member, scope)
       assert text(view, "#att-policy-enforce") =~ "Only an owner sets a mode."
 
       assert has_element?(
                view,
-               "#att-policy-enforce-act[href='/workspace/policy']",
+               "#att-policy-enforce-act[href='#{workspace_path(scope, "/policy")}']",
                "Open policy"
              )
 
@@ -601,14 +615,14 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
         egress: [%{"host" => "new.example", "decision" => "allowed", "rule" => ""}]
       )
 
-      view = open(conn)
+      view = open(conn, scope)
 
       assert text(view, "#att-policy-enforce") =~
                "Enforce would deny 1 destination reached in the last 7 days."
 
       assert has_element?(
                view,
-               "#att-policy-enforce-act[href='/workspace/policy']",
+               "#att-policy-enforce-act[href='#{workspace_path(scope, "/policy")}']",
                "Review on the policy page"
              )
     end
@@ -623,7 +637,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       %{access_key: fresh} = access_key_fixture(scope, label: "build-02")
       {:ok, _} = AccessKeys.touch(fresh, %{last_runner_version: "v0.4.1"})
 
-      view = open(conn)
+      view = open(conn, scope)
       assert text(view, "#att-key-#{idle.id}") =~ "old-runner #{idle.key_id}"
 
       assert text(view, "#att-key-#{idle.id}") =~
@@ -631,7 +645,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       assert has_element?(
                view,
-               "#att-key-#{idle.id}-act[href='/workspace/keys/#{idle.id}/revoke'][aria-label='Revoke old-runner']",
+               "#att-key-#{idle.id}-act[href='#{workspace_path(scope, "/keys/#{idle.id}/revoke")}'][aria-label='Revoke old-runner']",
                "Revoke"
              )
 
@@ -642,7 +656,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
          %{conn: conn, scope: scope} do
       lost = lost_run(scope)
       started_run(scope, shop())
-      view = open(conn)
+      view = open(conn, scope)
       # With `security` the unmanaged policy is the second item, and focus goes to it;
       # without it the lost run is the only one, and focus goes to All runs.
       security? = Apiary.Features.on?(:security)
@@ -673,7 +687,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
           egress: [%{"host" => "files.cdn.example", "decision" => "denied", "rule" => ""}]
         )
 
-      view = open(conn)
+      view = open(conn, scope)
 
       [item] =
         render(view)
@@ -726,7 +740,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
         ]
       )
 
-      view = open(conn)
+      view = open(conn, scope)
       selector = "#attention-list li[data-kind=denied]"
 
       assert has_element?(view, "#{selector} .q-dest-tool .q-tool-name", "files")
@@ -750,7 +764,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
         egress: [%{"host" => "flags.example", "decision" => "denied", "rule" => ""}]
       )
 
-      view = open(conn)
+      view = open(conn, scope)
 
       [item] =
         render(view)
@@ -780,7 +794,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     test "a run that starts appends an alive row; one that ends leaves; the strip and chart follow",
          %{conn: conn, scope: scope} do
       first = started_run(scope, shop())
-      view = open(conn)
+      view = open(conn, scope)
       assert text(view, "#alive-n") == "1"
 
       second = run_fixture(scope)
@@ -829,7 +843,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       scope: scope
     } do
       quiet = started_run(scope, shop(), heartbeat: {45, 100, 30})
-      view = open(conn)
+      view = open(conn, scope)
       assert has_element?(view, "#att-run-#{quiet.run_id}[data-kind=quiet]")
 
       event_fixture(
@@ -861,7 +875,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
     test "another workspace's runs change nothing here", %{conn: conn, scope: scope} do
       started_run(scope, shop())
-      view = open(conn)
+      view = open(conn, scope)
       other = scope_fixture()
       started_run(other, shop())
       render_async(view, 5_000)
@@ -870,12 +884,13 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     end
   end
 
-  test "redirects to log in when signed out" do
-    assert {:error, {:redirect, %{to: "/users/log-in"}}} = live(build_conn(), ~p"/workspace")
+  test "redirects to log in when signed out", %{scope: scope} do
+    assert {:error, {:redirect, %{to: "/users/log-in"}}} =
+             live(build_conn(), ~p"/#{scope.organisation}/#{scope.workspace}")
   end
 
-  test "sends a user without a workspace to a friendly page", %{conn: _conn} do
+  test "answers not found to a user who is not a member", %{scope: scope} do
     conn = log_in_user(build_conn(), Apiary.AccountsFixtures.user_fixture())
-    assert {:error, {:redirect, %{to: "/no-workspace"}}} = live(conn, ~p"/workspace")
+    assert conn |> get(~p"/#{scope.organisation}/#{scope.workspace}") |> html_response(404)
   end
 end

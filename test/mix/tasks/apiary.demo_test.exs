@@ -16,6 +16,17 @@ defmodule Mix.Tasks.Apiary.DemoTest do
     %{scope: scope, access_key: access_key}
   end
 
+  test "without --key, the first workspace's key carries its workspace, as a verified one",
+       %{scope: scope, access_key: access_key} do
+    key = Demo.access_key!(nil)
+    assert key.id == access_key.id
+    assert %Apiary.Organisations.Workspace{domain: "software"} = key.workspace
+    assert key.workspace.id == scope.workspace.id
+
+    assert {:ok, %Run{} = run} = Demo.replay(key, file("session-with-subagents"))
+    assert "sha256=" <> _ = run.run_configuration_digest
+  end
+
   defp file(name) do
     Enum.find(Demo.files(), &(&1 |> Path.dirname() |> Path.basename() == name)) ||
       flunk("no demo run #{name}")

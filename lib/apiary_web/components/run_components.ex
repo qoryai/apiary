@@ -27,8 +27,9 @@ defmodule ApiaryWeb.RunComponents do
   import ApiaryWeb.RichText
 
   import ApiaryWeb.CoreComponents,
-    only: [badge: 1, button: 1, icon: 1, mono: 1, notice: 1, term: 1, short_date: 1]
+    only: [badge: 1, button: 1, icon: 1, mono: 1, notice: 1, term: 1]
 
+  alias ApiaryWeb.Format
   # Called by its full name below: `PolicyComponents` imports this module.
   alias ApiaryWeb.PolicyComponents
 
@@ -183,7 +184,7 @@ defmodule ApiaryWeb.RunComponents do
   defp closed_tip(%DateTime{} = at),
     do:
       gettext("Closed by a member on %{date}. The run never posted its exit.",
-        date: short_date(at)
+        date: Format.date(at)
       )
 
   defp closed_tip(_at), do: gettext("Closed by a member. The run never posted its exit.")
@@ -308,7 +309,7 @@ defmodule ApiaryWeb.RunComponents do
   def format_duration_ms(ms, _precise) when ms < 1000, do: gettext("%{ms} ms", ms: ms)
 
   def format_duration_ms(ms, true) when ms < 60_000,
-    do: gettext("%{seconds} s", seconds: :erlang.float_to_binary(ms / 1000, decimals: 1))
+    do: gettext("%{seconds} s", seconds: Format.number(ms / 1000, digits: 1))
 
   def format_duration_ms(ms, _precise), do: format_seconds(div(ms, 1000))
 
@@ -336,7 +337,8 @@ defmodule ApiaryWeb.RunComponents do
 
   @doc """
   A time across runs: relative up to yesterday ("2 minutes ago", "Yesterday, 16:40"), then
-  "17 Sep, 09:30". `clock` gives "Today, 14:02:11". The absolute UTC time is the `title`.
+  "17 Sept, 09:30" (`ApiaryWeb.Format.relative/2`). `clock` gives "Today, 14:02:11"
+  (`ApiaryWeb.Format.clock/2`). The full time with its zone is the `title`.
   """
   attr :id, :string, default: nil
   attr :at, :any, required: true
@@ -351,10 +353,10 @@ defmodule ApiaryWeb.RunComponents do
       datetime={iso(@at)}
       data-tick={@format}
       data-now={iso(DateTime.utc_now())}
-      title={absolute(@at)}
+      title={Format.datetime(@at, seconds: true, zone: true)}
       aria-live="off"
       class={["tabular-nums", @class]}
-    >{if @format == "clock", do: clock_label(@at), else: relative_label(@at)}</time>
+    >{if @format == "clock", do: Format.clock(@at), else: Format.relative(@at)}</time>
     """
   end
 
@@ -364,70 +366,30 @@ defmodule ApiaryWeb.RunComponents do
     """
   end
 
-  @doc false
-  def relative_label(%DateTime{} = at, now \\ DateTime.utc_now()) do
-    seconds = max(DateTime.diff(now, at, :second), 0)
-    days = Date.diff(DateTime.to_date(now), DateTime.to_date(at))
-
-    cond do
-      seconds < 5 ->
-        gettext("Just now")
-
-      seconds < 60 ->
-        ngettext("%{count} second ago", "%{count} seconds ago", seconds)
-
-      seconds < 3600 ->
-        ngettext("%{count} minute ago", "%{count} minutes ago", div(seconds, 60))
-
-      days <= 0 ->
-        ngettext("%{count} hour ago", "%{count} hours ago", div(seconds, 3600))
-
-      days == 1 ->
-        gettext("Yesterday, %{time}", time: Calendar.strftime(at, "%H:%M"))
-
-      at.year == now.year ->
-        Calendar.strftime(at, "%-d %b, %H:%M")
-
-      true ->
-        Calendar.strftime(at, "%-d %b %Y, %H:%M")
-    end
-  end
-
-  @doc false
-  def clock_label(%DateTime{} = at, now \\ DateTime.utc_now()) do
-    case Date.diff(DateTime.to_date(now), DateTime.to_date(at)) do
-      0 -> gettext("Today, %{time}", time: Calendar.strftime(at, "%H:%M:%S"))
-      1 -> gettext("Yesterday, %{time}", time: Calendar.strftime(at, "%H:%M:%S"))
-      _ -> Calendar.strftime(at, "%-d %b %Y, %H:%M:%S")
-    end
-  end
-
   @doc """
-  The words the browser's clocks tick in (`assets/js/hooks/ticker.js`), in the domain's
+  The words the browser's clocks tick in (`assets/js/hooks/ticker.js`), in the reader's
   language, so the script holds none: every "N seconds ago" up to a minute, every "N
-  minutes ago" up to an hour and every "N hours ago" up to a day, each chosen by the
-  language's own plural rule; the templates of `format_seconds/1` and of the days; and the
-  months as `Calendar.strftime/2` writes them. The root layout puts them on the body.
+  minutes ago" up to an hour and every "N hours ago" up to a day of 25 hours, as
+  `ApiaryWeb.Format.ago/2` writes them; the templates of `format_seconds/1` and of the
+  days. The dates and times themselves the script formats with `Intl.DateTimeFormat`, in
+  the locale and the time zone of `ApiaryWeb.Format`, which the root layout puts on the
+  body beside these.
   """
   def clock_words do
     %{
       justNow: gettext("Just now"),
-      secondsAgo: for(n <- 0..59, do: ngettext("%{count} second ago", "%{count} seconds ago", n)),
-      minutesAgo: for(n <- 0..59, do: ngettext("%{count} minute ago", "%{count} minutes ago", n)),
-      hoursAgo: for(n <- 0..23, do: ngettext("%{count} hour ago", "%{count} hours ago", n)),
+      secondsAgo: for(n <- 0..59, do: Format.ago(n, :second)),
+      minutesAgo: for(n <- 0..59, do: Format.ago(n, :minute)),
+      # Up to 24: the day summer time ends has 25 hours.
+      hoursAgo: for(n <- 0..24, do: Format.ago(n, :hour)),
       today: gettext("Today, %{time}", time: "%{time}"),
       yesterday: gettext("Yesterday, %{time}", time: "%{time}"),
       seconds: gettext("%{seconds} s", seconds: "%{seconds}"),
       minutesSeconds:
         gettext("%{minutes} m %{seconds} s", minutes: "%{minutes}", seconds: "%{seconds}"),
-      hoursMinutes: gettext("%{hours} h %{minutes} m", hours: "%{hours}", minutes: "%{minutes}"),
-      months: for(m <- 1..12, do: Calendar.strftime(Date.new!(2000, m, 1), "%b"))
+      hoursMinutes: gettext("%{hours} h %{minutes} m", hours: "%{hours}", minutes: "%{minutes}")
     }
   end
-
-  @doc "\"20 Sep 2026, 14:02:11 UTC\"."
-  def absolute(%DateTime{} = at), do: Calendar.strftime(at, "%-d %b %Y, %H:%M:%S UTC")
-  def absolute(_at), do: nil
 
   @doc """
   An event's time inside a run, as an offset from `run.started`: "+0:08.1", "+1:02:08"
@@ -441,7 +403,7 @@ defmodule ApiaryWeb.RunComponents do
     ~H"""
     <span
       class={["font-mono text-[11.5px] text-faint tabular-nums whitespace-nowrap", @class]}
-      title={absolute_ms(@at)}
+      title={Format.datetime(@at, milliseconds: true, zone: true)}
     >{format_offset(@at, @from)}</span>
     """
   end
@@ -465,15 +427,6 @@ defmodule ApiaryWeb.RunComponents do
   end
 
   def format_offset(_at, _from), do: gettext("n/a")
-
-  defp absolute_ms(%DateTime{} = at) do
-    ms =
-      at.microsecond |> elem(0) |> div(1000) |> Integer.to_string() |> String.pad_leading(3, "0")
-
-    Calendar.strftime(at, "%-d %b %Y, %H:%M:%S") <> "." <> ms <> " UTC"
-  end
-
-  defp absolute_ms(_at), do: nil
 
   defp iso(%DateTime{} = at), do: DateTime.to_iso8601(at)
   defp iso(_at), do: nil
@@ -561,13 +514,6 @@ defmodule ApiaryWeb.RunComponents do
   @doc "The first eight characters of a run id, as the runner prints it."
   def short_id(run_id) when is_binary(run_id), do: String.slice(run_id, 0, 8)
   def short_id(_run_id), do: gettext("n/a")
-
-  @doc "1240 as \"1,240\"."
-  def delimited(n) when is_integer(n) do
-    n
-    |> Integer.to_string()
-    |> String.replace(~r/\B(?=(\d{3})+$)/, ",")
-  end
 
   ## rd6. Alive indicator
 
@@ -662,7 +608,7 @@ defmodule ApiaryWeb.RunComponents do
   defp ended_sentence("lost", %{} = run) do
     case Map.get(run, :last_heartbeat_at) || Map.get(run, :last_event_at) do
       %DateTime{} = at ->
-        gettext("Lost. Last heard %{time}", time: Calendar.strftime(at, "%-d %b %Y, %H:%M"))
+        gettext("Lost. Last heard %{time}", time: Format.datetime(at))
 
       _ ->
         gettext("Lost")
@@ -672,7 +618,7 @@ defmodule ApiaryWeb.RunComponents do
   defp ended_sentence("lost", _run), do: gettext("Lost")
 
   defp ended_sentence("closed", %{closed_at: %DateTime{} = at}),
-    do: gettext("Closed %{date}", date: short_date(at))
+    do: gettext("Closed %{date}", date: Format.date(at))
 
   defp ended_sentence("closed", _run), do: gettext("Closed")
 
@@ -822,8 +768,8 @@ defmodule ApiaryWeb.RunComponents do
           class="px-2 pb-1 text-xs text-faint"
         >
           {gettext("Showing %{shown} of %{total}: type to narrow",
-            shown: length(@options),
-            total: delimited(@total)
+            shown: Format.number(length(@options)),
+            total: Format.number(@total)
           )}
         </p>
         <form
@@ -959,7 +905,10 @@ defmodule ApiaryWeb.RunComponents do
     do: "#{option_label(a, options)}, #{option_label(b, options)}"
 
   defp shown_value(values, _options),
-    do: ngettext("%{count} selected", "%{count} selected", length(values))
+    do:
+      ngettext("%{number} selected", "%{number} selected", length(values),
+        number: Format.number(length(values))
+      )
 
   defp option_label(value, options) do
     Enum.find_value(options, value, fn {label, v, _count} ->
@@ -1015,12 +964,16 @@ defmodule ApiaryWeb.RunComponents do
       >
         {render_slot(segment)}
         <span :if={segment[:count]} class="font-mono text-[11px] text-faint tabular-nums">
-          {segment[:count]}
+          {count_label(segment[:count])}
         </span>
       </button>
     </div>
     """
   end
+
+  # A count beside a label, grouped as the reader's language groups it.
+  defp count_label(n) when is_number(n), do: Format.number(n)
+  defp count_label(other), do: other
 
   ## rd9. Tabs
 
@@ -1047,7 +1000,7 @@ defmodule ApiaryWeb.RunComponents do
         <.icon :if={tab[:icon]} name={tab[:icon]} class="size-4" />
         {render_slot(tab)}
         <span :if={tab[:count]} class={["q-tabs-n", tab[:tone] == "error" && "q-tabs-bad"]}>
-          {tab[:count]}
+          {count_label(tab[:count])}
         </span>
       </.link>
     </nav>
@@ -1171,10 +1124,10 @@ defmodule ApiaryWeb.RunComponents do
       <td>
         <div class="q-dcell"><.decision_mark decision={@c.decision} /><.destination c={@c} /></div>
       </td>
-      <td class="q-num">{delimited(@c.attempts)}</td>
-      <td class={["q-num", @c.allowed == 0 && "q-zero"]}>{delimited(@c.allowed)}</td>
+      <td class="q-num">{Format.number(@c.attempts)}</td>
+      <td class={["q-num", @c.allowed == 0 && "q-zero"]}>{Format.number(@c.allowed)}</td>
       <td class={["q-num", if(@c.denied == 0, do: "q-zero", else: "q-bad")]}>
-        {delimited(@c.denied)}
+        {Format.number(@c.denied)}
       </td>
       <td :if={@security} class="q-why">
         <.reason c={@c} variant="table" />
@@ -1225,16 +1178,16 @@ defmodule ApiaryWeb.RunComponents do
           <.decision_mark decision={@c.decision} /><.destination c={@c} />
         </div>
       </td>
-      <td class="q-num">{delimited(@c.runs)}</td>
-      <td class="q-num">{delimited(@c.attempts)}</td>
+      <td class="q-num">{Format.number(@c.runs)}</td>
+      <td class="q-num">{Format.number(@c.attempts)}</td>
       <td>
         <span class="q-split" aria-hidden="true"><i style={"width:#{@share}%"}></i><u style={"width:#{100 - @share}%"}></u></span>
         <span class={[
           "ml-1.5 tabular-nums",
           if(@c.allowed == 0 and @c.denied > 0, do: "q-bad", else: "text-muted")
         ]}>
-          {delimited(@c.allowed)} /
-          <span class={@c.denied > 0 && "q-bad"}>{delimited(@c.denied)}</span>
+          {Format.number(@c.allowed)} /
+          <span class={@c.denied > 0 && "q-bad"}>{Format.number(@c.denied)}</span>
         </span>
       </td>
       <td :if={@security} class="q-why">
@@ -1261,7 +1214,7 @@ defmodule ApiaryWeb.RunComponents do
               "%{number} run reached this destination",
               "%{number} runs reached this destination",
               @open.total,
-              number: delimited(@open.total)
+              number: Format.number(@open.total)
             )}
           </h3>
           <div class="q-hits">
@@ -1293,11 +1246,11 @@ defmodule ApiaryWeb.RunComponents do
                 {if hit.denied > 0,
                   do:
                     ngettext("%{number} denied", "%{number} denied", hit.denied,
-                      number: delimited(hit.denied)
+                      number: Format.number(hit.denied)
                     ),
                   else:
                     ngettext("%{number} allowed", "%{number} allowed", hit.allowed,
-                      number: delimited(hit.allowed)
+                      number: Format.number(hit.allowed)
                     )}
               </span>
               <.relative_time at={hit.last_seen_at} class="text-[12.5px] text-muted" />
@@ -1314,9 +1267,10 @@ defmodule ApiaryWeb.RunComponents do
             phx-value-path={@c.path}
           >
             {ngettext(
-              "Show %{count} more",
-              "Show %{count} more",
-              min(10, @open.total - length(@open.runs))
+              "Show %{number} more",
+              "Show %{number} more",
+              min(10, @open.total - length(@open.runs)),
+              number: Format.number(min(10, @open.total - length(@open.runs)))
             )}
           </button>
         </div>
@@ -2041,7 +1995,7 @@ defmodule ApiaryWeb.RunComponents do
                 do:
                   gettext("Locked by %{name} on %{date}.",
                     name: @popover.refusal.locked_by,
-                    date: short_date(@popover.refusal.locked_at)
+                    date: Format.date(@popover.refusal.locked_at)
                   ),
                 else: gettext("Locked by %{name}.", name: @popover.refusal.locked_by)}
             </span>
@@ -2104,7 +2058,9 @@ defmodule ApiaryWeb.RunComponents do
                 {middle(path, 40)}
               </.mono>
               <span :if={length(@what.paths) > 6}>
-                {ngettext("and %{count} more", "and %{count} more", length(@what.paths) - 6)}
+                {ngettext("and %{number} more", "and %{number} more", length(@what.paths) - 6,
+                  number: Format.number(length(@what.paths) - 6)
+                )}
               </span>
               <span :if={@what.paths == []}>{gettext("none, so no path is allowed")}</span>
             </legend>
@@ -2169,7 +2125,7 @@ defmodule ApiaryWeb.RunComponents do
                     "%{number} run",
                     "%{number} runs",
                     target.runs,
-                    number: delimited(target.runs)
+                    number: Format.number(target.runs)
                   )}
                 </option>
               </select>
@@ -2193,7 +2149,7 @@ defmodule ApiaryWeb.RunComponents do
             <.icon name="hero-arrow-path-micro" class="size-3.5" />
             <span id={"#{@id}-next"}>
               {gettext("Takes effect in running sessions within a heartbeat, about %{seconds} s.",
-                seconds: @popover.interval
+                seconds: Format.number(@popover.interval)
               )} {next_sentence(@popover)}
             </span>
           </p>
@@ -2349,7 +2305,7 @@ defmodule ApiaryWeb.RunComponents do
       ),
       gettext("%{version} has been in force since %{time}.",
         version: String.capitalize(version_words(in_force)),
-        time: clock_label(in_force.rendered_at)
+        time: Format.clock(in_force.rendered_at)
       ),
       gettext("A run reloads at its next heartbeat.")
     ]
@@ -2390,11 +2346,12 @@ defmodule ApiaryWeb.RunComponents do
   end
 
   defp new_words(count, "run"),
-    do: ngettext("%{number} new run", "%{number} new runs", count, number: delimited(count))
+    do: ngettext("%{number} new run", "%{number} new runs", count, number: Format.number(count))
 
   defp new_words(count, "line"),
-    do: ngettext("%{number} new line", "%{number} new lines", count, number: delimited(count))
+    do: ngettext("%{number} new line", "%{number} new lines", count, number: Format.number(count))
 
   defp new_words(count, _event),
-    do: ngettext("%{number} new event", "%{number} new events", count, number: delimited(count))
+    do:
+      ngettext("%{number} new event", "%{number} new events", count, number: Format.number(count))
 end

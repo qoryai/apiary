@@ -88,7 +88,7 @@ defmodule Apiary.Runs.ListingTest do
       assert Filters.bounds(filters, @now) ==
                {~U[2026-09-14 00:00:00.000000Z], ~U[2026-09-17 00:00:00.000000Z]}
 
-      assert Filters.range_label(filters) == "14 Sep 2026 to 16 Sep 2026"
+      assert Filters.range_label(filters) == "14 Sept 2026 to 16 Sept 2026"
       assert parse(%{"from" => "yesterday"}).since == "7d"
     end
 

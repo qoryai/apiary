@@ -1,8 +1,11 @@
 defmodule Apiary.Lingo.DomainTest do
-  use ExUnit.Case, async: true
+  use Apiary.DataCase, async: true
+
+  import Apiary.OrganisationsFixtures
 
   alias Apiary.Lingo.Domain
-  alias Apiary.Lingo.Domain.Software
+  alias Apiary.Lingo.Domain.{Example, Software}
+  alias Apiary.Organisations.Workspace
 
   @labels %{"forge" => "git.example.com", "repository" => "acme/shop"}
 
@@ -54,20 +57,71 @@ defmodule Apiary.Lingo.DomainTest do
       assert Software.target_labels() == ["forge", "repository"]
     end
 
-    test "its words are the software locale" do
-      assert Software.locale() == "en@software"
+    test "its name is the modifier of its locales" do
+      assert Software.name() == "software"
+    end
+  end
+
+  describe "the registry" do
+    test "names every domain by the name it gives itself, the software domain the default" do
+      assert Domain.domains()["software"] == Software
+      assert Domain.default() == Software
+      assert "software" in Domain.names()
+
+      for {name, domain} <- Domain.domains() do
+        assert domain.name() == name
+      end
+    end
+  end
+
+  describe "a workspace's domain" do
+    test "a new workspace is of the default domain, stored by name" do
+      %{workspace: workspace} = sign_up_fixture()
+      assert workspace.domain == "software"
+      assert Repo.reload!(workspace).domain == "software"
+      assert Domain.for_workspace(workspace) == Software
+    end
+
+    test "is read from the stored name the loaded workspace carries" do
+      %{workspace: workspace} = sign_up_fixture()
+      set_domain(workspace, "example")
+      workspace = Repo.reload!(workspace)
+
+      assert Domain.for_workspace(workspace) == Example
+
+      assert Domain.target(workspace, %{"platform" => "ads.example", "account" => "42"}) ==
+               {:ok, %{system: "ads.example", path: "42"}}
+
+      assert Domain.target_labels(workspace) == ["platform", "account"]
+    end
+
+    test "without a workspace, or with a name no domain has, it is the default" do
+      %{workspace: workspace} = sign_up_fixture()
+      set_domain(workspace, "retired")
+
+      assert Domain.for_workspace(Repo.reload!(workspace)) == Software
+      assert Domain.for_workspace(%Workspace{domain: "retired"}) == Software
+      assert Domain.for_workspace(nil) == Software
+    end
+
+    test "is chosen at creation among the domains there are" do
+      changeset = Workspace.create_changeset(%Workspace{}, %{name: "Ops", domain: "example"})
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :domain) == "example"
+
+      changeset = Workspace.create_changeset(%Workspace{}, %{name: "Ops", domain: "unknown"})
+      assert %{domain: ["is invalid"]} = errors_on(changeset)
+    end
+
+    test "a rename leaves the domain as it is" do
+      changeset = Workspace.changeset(%Workspace{domain: "example"}, %{name: "Ops", domain: "x"})
+      assert Ecto.Changeset.get_field(changeset, :domain) == "example"
     end
   end
 
   describe "Apiary.Lingo.Domain" do
-    test "every workspace has the software domain" do
-      assert Domain.for_workspace(nil) == Software
-      assert Domain.for_workspace(Ecto.UUID.generate()) == Software
-      assert Domain.for_workspace(%Apiary.Organisations.Workspace{}) == Software
-    end
-
     test "target/2 asks the workspace's domain, and labels that are not a map name none" do
-      workspace = Ecto.UUID.generate()
+      workspace = %Workspace{domain: "software"}
 
       assert Domain.target(workspace, @labels) ==
                {:ok, %{system: "git.example.com", path: "acme/shop"}}
@@ -80,7 +134,11 @@ defmodule Apiary.Lingo.DomainTest do
     end
 
     test "target_labels/1 asks the workspace's domain" do
-      assert Domain.target_labels(Ecto.UUID.generate()) == Software.target_labels()
+      assert Domain.target_labels(%Workspace{domain: "software"}) == Software.target_labels()
+      assert Domain.target_labels(nil) == Software.target_labels()
     end
   end
+
+  defp set_domain(%Workspace{id: id}, name),
+    do: Repo.update_all(from(w in Workspace, where: w.id == ^id), set: [domain: name])
 end

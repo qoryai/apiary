@@ -91,7 +91,7 @@ defmodule ApiaryWeb do
       # HTML escaping functionality
       import Phoenix.HTML
       # Core UI components
-      import ApiaryWeb.CoreComponents, except: [relative_time: 1, relative_time: 2]
+      import ApiaryWeb.CoreComponents
       # The components of the runs, run and connections pages
       import ApiaryWeb.RunComponents
       # Whole translated sentences with marked-up parts
@@ -100,6 +100,8 @@ defmodule ApiaryWeb do
       # Common modules used in templates
       alias Phoenix.LiveView.JS
       alias ApiaryWeb.Layouts
+      # Dates, times and numbers as the reader writes them
+      alias ApiaryWeb.Format
 
       # Routes generation with the ~p sigil
       unquote(verified_routes())

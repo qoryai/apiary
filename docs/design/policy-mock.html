@@ -527,7 +527,7 @@ dialog.modal::backdrop { background: var(--q-overlay); backdrop-filter: blur(2px
   <div class="seg" id="viewseg">
     <a href="#policy">Workspace policy</a><a href="#repositories">Repositories</a><a href="#repo">Repository</a><a href="#history">History</a><a href="#version">Version · export</a><a href="#connections">Row actions</a><a href="#run">Run header</a><a href="#states">States</a><a href="#empty">New workspace</a>
   </div>
-  <div class="url" aria-hidden="true"><span>qory.example</span><b id="url">/workspace/policy</b></div>
+  <div class="url" aria-hidden="true"><span>qory.example</span><b id="url">/acme/main/policy</b></div>
   <div class="seg" id="roleseg"><button type="button" data-r="owner" aria-pressed="true">Owner</button><button type="button" data-r="member" aria-pressed="false">Member</button></div>
   <div class="seg" id="widthseg"><button type="button" data-w="desktop" aria-pressed="true"><svg class="i"><use href="#i-desk"/></svg>Desktop</button><button type="button" data-w="phone" aria-pressed="false"><svg class="i"><use href="#i-phone"/></svg>Phone</button></div>
   <div class="seg" id="themeseg"><button type="button" data-t="auto" aria-pressed="true">Auto</button><button type="button" data-t="light" aria-pressed="false"><svg class="i"><use href="#i-sun"/></svg>Light</button><button type="button" data-t="dark" aria-pressed="false"><svg class="i"><use href="#i-moon"/></svg>Dark</button></div>
@@ -561,7 +561,7 @@ dialog.modal::backdrop { background: var(--q-overlay); backdrop-filter: blur(2px
     <main class="main" id="main">
 
     <!-- ============ WORKSPACE POLICY: RULES ============ -->
-    <div class="main-in" data-view="policy" data-nav="policy" data-url="/workspace/policy">
+    <div class="main-in" data-view="policy" data-nav="policy" data-url="/acme/main/policy">
       <div data-phead="workspace"></div>
       <nav class="tabs" aria-label="Policy" data-ptabs="workspace" data-cur="rules"></nav>
 
@@ -634,7 +634,7 @@ dialog.modal::backdrop { background: var(--q-overlay); backdrop-filter: blur(2px
     </div>
 
     <!-- ============ REPOSITORIES ============ -->
-    <div class="main-in" data-view="repositories" data-nav="policy" data-url="/workspace/policy/targets" hidden>
+    <div class="main-in" data-view="repositories" data-nav="policy" data-url="/acme/main/policy/targets" hidden>
       <div data-phead="workspace"></div>
       <nav class="tabs" aria-label="Policy" data-ptabs="workspace" data-cur="repositories"></nav>
       <div class="summary"><span><b>4</b> repositories have posted runs</span><span><b>2</b> with rules of their own</span><span><b>1</b> sets its own mode</span><span><b>1</b> with suggestions</span></div>
@@ -653,7 +653,7 @@ dialog.modal::backdrop { background: var(--q-overlay); backdrop-filter: blur(2px
     </div>
 
     <!-- ============ REPOSITORY POLICY ============ -->
-    <div class="main-in" data-view="repo" data-nav="policy" data-url="/workspace/policy/targets/rp_5f2c81" hidden>
+    <div class="main-in" data-view="repo" data-nav="policy" data-url="/acme/main/policy/targets/rp_5f2c81" hidden>
       <div style="display:grid;gap:12px">
         <nav class="crumbs" aria-label="Breadcrumb"><a href="#policy">Policy</a><svg class="i"><use href="#i-chev"/></svg><a href="#repositories">Repositories</a><svg class="i"><use href="#i-chev"/></svg><span class="mono" style="font-size:12px" aria-current="page"><span class="faint">github.example/</span>acme/shop</span></nav>
         <div class="page-head">
@@ -713,7 +713,7 @@ dialog.modal::backdrop { background: var(--q-overlay); backdrop-filter: blur(2px
     </div>
 
     <!-- ============ HISTORY ============ -->
-    <div class="main-in" data-view="history" data-nav="policy" data-url="/workspace/policy/history?change=41" hidden>
+    <div class="main-in" data-view="history" data-nav="policy" data-url="/acme/main/policy/history?change=41" hidden>
       <div data-phead="workspace"></div>
       <nav class="tabs" aria-label="Policy" data-ptabs="workspace" data-cur="history"></nav>
       <div class="filters" role="group" aria-label="Filters">
@@ -756,7 +756,7 @@ dialog.modal::backdrop { background: var(--q-overlay); backdrop-filter: blur(2px
     </div>
 
     <!-- ============ VERSION / DOCUMENT ============ -->
-    <div class="main-in" data-view="version" data-nav="policy" data-url="/workspace/policy/targets/rp_5f2c81/versions/10?compare=9" hidden>
+    <div class="main-in" data-view="version" data-nav="policy" data-url="/acme/main/policy/targets/rp_5f2c81/versions/10?compare=9" hidden>
       <div style="display:grid;gap:12px">
         <nav class="crumbs" aria-label="Breadcrumb"><a href="#policy">Policy</a><svg class="i"><use href="#i-chev"/></svg><a href="#repo"><span class="mono" style="font-size:12px"><span class="faint">github.example/</span>acme/shop</span></a><svg class="i"><use href="#i-chev"/></svg><span aria-current="page">Version 10</span></nav>
         <div class="page-head"><div class="run-title"><h1>Version 10</h1><span class="badge badge-success" style="padding-left:5px"><svg class="i sm" style="width:12px;height:12px"><use href="#i-check"/></svg>In force</span></div>
@@ -810,7 +810,7 @@ dialog.modal::backdrop { background: var(--q-overlay); backdrop-filter: blur(2px
     </div>
 
     <!-- ============ ROW ACTIONS: RUN CONNECTIONS ============ -->
-    <div class="main-in" data-view="connections" data-nav="runs" data-url="/workspace/runs/0191f2a4-3c5e-7b8d-9e0f-1a2b3c4d5e6f/connections" hidden>
+    <div class="main-in" data-view="connections" data-nav="runs" data-url="/acme/main/runs/0191f2a4-3c5e-7b8d-9e0f-1a2b3c4d5e6f/connections" hidden>
       <div class="run-head">
         <nav class="crumbs" aria-label="Breadcrumb"><a href="#run">Runs</a><svg class="i"><use href="#i-chev"/></svg><a href="#repo"><span class="mono" style="font-size:12px"><span class="faint">github.example/</span>acme/shop</span></a><svg class="i"><use href="#i-chev"/></svg><span class="mono" style="font-size:12px" aria-current="page">0191f2a4</span></nav>
         <div class="run-title"><h1>checkout-tax</h1><span class="badge badge-info state state-running"><i></i>Running</span><span class="alive" role="status" aria-live="off"><span class="ripple"></span><span>Alive, 4 s ago</span></span></div>
@@ -856,7 +856,7 @@ dialog.modal::backdrop { background: var(--q-overlay); backdrop-filter: blur(2px
     </div>
 
     <!-- ============ RUN HEADER AND TIMELINE ============ -->
-    <div class="main-in" data-view="run" data-nav="runs" data-url="/workspace/runs/0191f2a4-3c5e-7b8d-9e0f-1a2b3c4d5e6f" hidden>
+    <div class="main-in" data-view="run" data-nav="runs" data-url="/acme/main/runs/0191f2a4-3c5e-7b8d-9e0f-1a2b3c4d5e6f" hidden>
       <span class="cap">1 · the run is behind: it last reported v9, and v10 is in force</span>
       <div class="run-head">
         <nav class="crumbs" aria-label="Breadcrumb"><a href="#run">Runs</a><svg class="i"><use href="#i-chev"/></svg><a href="#repo"><span class="mono" style="font-size:12px"><span class="faint">github.example/</span>acme/shop</span></a><svg class="i"><use href="#i-chev"/></svg><span class="mono" style="font-size:12px" aria-current="page">0191f2a4</span></nav>
@@ -999,7 +999,7 @@ dialog.modal::backdrop { background: var(--q-overlay); backdrop-filter: blur(2px
     </div>
 
     <!-- ============ NEW WORKSPACE ============ -->
-    <div class="main-in" data-view="empty" data-nav="policy" data-url="/workspace/policy" hidden>
+    <div class="main-in" data-view="empty" data-nav="policy" data-url="/acme/main/policy" hidden>
       <div class="page-head"><div><h1>Policy</h1><p>What the runs of this workspace may reach through the runner's proxy. The policy can only allow: what no rule names is denied under enforce, and let through and recorded under observe.</p></div>
         <div class="head-side"><span class="vpill"><span class="dg">No version yet</span></span></div></div>
       <nav class="tabs" aria-label="Policy"><a href="#empty" aria-current="page"><svg class="i"><use href="#i-shieldok"/></svg>Rules</a><a href="#empty"><svg class="i"><use href="#i-repo"/></svg>Repositories</a><a href="#empty"><svg class="i"><use href="#i-clock"/></svg>History</a><a href="#empty"><svg class="i"><use href="#i-doc"/></svg>Document</a></nav>
@@ -1120,7 +1120,7 @@ dialog.modal::backdrop { background: var(--q-overlay); backdrop-filter: blur(2px
     $$("a[data-nav]").forEach(function (a) { if (a.getAttribute("data-nav") === el.getAttribute("data-nav")) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
     $$("#viewseg a").forEach(function (a) { a.setAttribute("aria-current", String(a.getAttribute("href") === "#" + view)); });
     app.classList.remove("drawer"); main.scrollTop = 0;
-    if (state && $("#dlg-" + state)) { $("#dlg-" + state).showModal(); if (state === "export") $("#url").textContent = "/workspace/policy/targets/rp_5f2c81/versions/10/export"; }
+    if (state && $("#dlg-" + state)) { $("#dlg-" + state).showModal(); if (state === "export") $("#url").textContent = "/acme/main/policy/targets/rp_5f2c81/versions/10/export"; }
     var p = $("#pop-live"); p.hidden = state === "closed"; placePop();
   }
   window.addEventListener("hashchange", route); window.addEventListener("resize", placePop); main.addEventListener("scroll", placePop, { passive: true });

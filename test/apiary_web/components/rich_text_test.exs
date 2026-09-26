@@ -46,7 +46,7 @@ defmodule ApiaryWeb.RichTextTest do
           {:b, ["<b>", {:m, "<i>"}], "font-medium"},
           {:code, "<u>"},
           {:bad, "<s>"},
-          {:link, "/workspace/runs", "<em>"},
+          {:link, "/acme/main/runs", "<em>"},
           {:href, "/dev/mailbox", "<q>"},
           nil,
           3
@@ -60,7 +60,7 @@ defmodule ApiaryWeb.RichTextTest do
 
       assert html =~ ~s(<code class="q-rule">&lt;u&gt;</code>)
       assert html =~ ~s(<span class="q-bad">&lt;s&gt;</span>)
-      assert html =~ ~s(href="/workspace/runs")
+      assert html =~ ~s(href="/acme/main/runs")
       assert html =~ ~s(href="/dev/mailbox")
       assert html =~ "3"
     end

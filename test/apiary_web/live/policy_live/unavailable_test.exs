@@ -46,19 +46,19 @@ defmodule ApiaryWeb.PolicyLive.UnavailableTest do
     assert Policy.rule_activity(scope, nil, DateTime.add(DateTime.utc_now(), -7, :day)) ==
              :unavailable
 
-    view = open(conn, "/workspace/policy")
+    view = open(conn, workspace_path(scope, "/policy"))
     assert has_element?(view, "#policy-rules .q-host", "registry.example")
     refute has_element?(view, "#policy-rules th", "Last 7 days")
     refute has_element?(view, "#policy-mode-fact")
     refute has_element?(view, "#policy-rules td.q-c-seen")
     refute view |> element("#policy-rules") |> render() =~ "not seen"
 
-    view = open(conn, "/workspace/policy/targets/#{target.id}")
+    view = open(conn, workspace_path(scope, "/policy/targets/#{target.id}"))
     assert has_element?(view, "#policy-rules .q-host", "registry.example")
     refute has_element?(view, "#policy-rules th", "Last 7 days")
 
     # The enforce confirm has no list to show, and says nothing in its place.
-    view = open(conn, "/workspace/policy")
+    view = open(conn, workspace_path(scope, "/policy"))
     view |> element("#policy-mode-enforce") |> render_click()
     assert has_element?(view, "#mode-enforce")
     refute has_element?(view, "#mode-would")

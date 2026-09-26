@@ -17,7 +17,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
   alias Apiary.Organisations
   alias Apiary.Policy
   alias Apiary.Policy.Grammar
-  alias ApiaryWeb.PolicyComponents
+  alias ApiaryWeb.Format
   alias ApiaryWeb.PolicyLive.Reading
 
   @week 7 * 24 * 3600
@@ -34,7 +34,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
     |> assign(
       holder: holder,
       scope_kind: if(holder, do: :target, else: :workspace),
-      base: base(holder),
+      base: base(scope, holder),
       owner?: owner?(scope),
       people: people(scope),
       fresh: %{},
@@ -50,8 +50,11 @@ defmodule ApiaryWeb.PolicyLive.Common do
     |> reset_credential()
   end
 
-  def base(nil), do: ~p"/workspace/policy"
-  def base(%{id: id}), do: ~p"/workspace/policy/targets/#{id}"
+  @doc "The path of the holder's policy page in `scope`'s workspace."
+  def base(scope, nil), do: ~p"/#{scope.organisation}/#{scope.workspace}/policy"
+
+  def base(scope, %{id: id}),
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/policy/targets/#{id}"
 
   def owner?(%{membership: %{level: :owner}}), do: true
   def owner?(_scope), do: false
@@ -241,7 +244,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
       {change.subject,
        %{
          by: change.changed_by && change.changed_by.email,
-         at: ApiaryWeb.CoreComponents.short_date(change.inserted_at)
+         at: Format.date(change.inserted_at)
        }}
     end)
   end
@@ -303,7 +306,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
         paths: rule.paths,
         locked: rule.locked,
         by: local(people[rule.created_by_id]),
-        at: PolicyComponents.day(rule.inserted_at)
+        at: Format.day(rule.inserted_at)
       }
     end
   end
@@ -401,7 +404,12 @@ defmodule ApiaryWeb.PolicyLive.Common do
   end
 
   def handle_event("open_workspace_rule", %{"host" => host}, socket) when is_binary(host) do
-    {:halt, push_navigate(socket, to: ~p"/workspace/policy?#{%{"rule" => host}}")}
+    scope = socket.assigns.current_scope
+
+    {:halt,
+     push_navigate(socket,
+       to: ~p"/#{scope.organisation}/#{scope.workspace}/policy?#{%{"rule" => host}}"
+     )}
   end
 
   def handle_event("credential_change", params, socket) when is_map(params) do
@@ -824,7 +832,11 @@ defmodule ApiaryWeb.PolicyLive.Common do
       if rest > 0,
         do: [
           {:ctx,
-           [ngettext("%{count} other rule: unchanged", "%{count} other rules: unchanged", rest)]}
+           [
+             ngettext("%{number} other rule: unchanged", "%{number} other rules: unchanged", rest,
+               number: Format.number(rest)
+             )
+           ]}
         ],
         else: []
 
@@ -945,7 +957,10 @@ defmodule ApiaryWeb.PolicyLive.Common do
     |> Enum.flat_map(fn
       [{:ctx, "      " <> _} | _] = run when length(run) > 4 ->
         Enum.take(run, 2) ++
-          [{:ctx, "      " <> gettext("… %{count} more", count: length(run) - 2)}]
+          [
+            {:ctx,
+             "      " <> gettext("… %{number} more", number: Format.number(length(run) - 2))}
+          ]
 
       run ->
         run
@@ -962,20 +977,27 @@ defmodule ApiaryWeb.PolicyLive.Common do
         gettext("no line changed")
 
       removed == 0 ->
-        ngettext("%{count} line added", "%{count} lines added", added)
+        ngettext("%{number} line added", "%{number} lines added", added,
+          number: Format.number(added)
+        )
 
       added == 0 ->
-        ngettext("%{count} line removed", "%{count} lines removed", removed)
+        ngettext("%{number} line removed", "%{number} lines removed", removed,
+          number: Format.number(removed)
+        )
 
       added == removed ->
-        ngettext("%{count} line changed", "%{count} lines changed", added)
+        ngettext("%{number} line changed", "%{number} lines changed", added,
+          number: Format.number(added)
+        )
 
       true ->
         ngettext(
-          "%{count} line added, %{removed} removed",
-          "%{count} lines added, %{removed} removed",
+          "%{number} line added, %{removed} removed",
+          "%{number} lines added, %{removed} removed",
           added,
-          removed: removed
+          removed: Format.number(removed),
+          number: Format.number(added)
         )
     end
   end
@@ -1266,10 +1288,11 @@ defmodule ApiaryWeb.PolicyLive.Common do
   defp caption("served", _compare, configuration, _lines),
     do:
       ngettext(
-        "v%{version} · %{count} byte · sha256 over exactly these",
-        "v%{version} · %{count} bytes · sha256 over exactly these",
+        "v%{version} · %{number} byte · sha256 over exactly these",
+        "v%{version} · %{number} bytes · sha256 over exactly these",
         byte_size(configuration.document),
-        version: configuration.version
+        version: configuration.version,
+        number: Format.number(byte_size(configuration.document))
       )
 
   @doc """

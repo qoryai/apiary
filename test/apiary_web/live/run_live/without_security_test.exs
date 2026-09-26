@@ -36,7 +36,7 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
     text = LazyHTML.text(main)
 
     refute text =~ @policy_words, "the page names the policy: " <> inspect(text)
-    refute main |> LazyHTML.query("a[href*='/workspace/policy']") |> Enum.any?()
+    refute main |> LazyHTML.query("a[href*='/policy']") |> Enum.any?()
     refute main |> LazyHTML.query("[phx-click*='rule_open']") |> Enum.any?()
     refute main |> LazyHTML.query("#rule-popover") |> Enum.any?()
     refute main |> LazyHTML.query(".q-after, .q-kv-policy, #card-policy") |> Enum.any?()
@@ -75,9 +75,12 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
 
     test "the header and the timeline are the record, without the policy applied", %{
       conn: conn,
-      run: run
+      run: run,
+      scope: scope
     } do
-      {:ok, lv, _html} = live(conn, ~p"/workspace/runs/#{run.run_id}")
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
       refute_policy(render(lv))
 
       assert has_element?(lv, "#run-facts", "dev-laptop")
@@ -92,7 +95,9 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
       assert has_element?(lv, "#timeline .q-why", "Handed to files")
 
       # a link to the policy's item is no way to it: the sequence is dropped
-      {:ok, lv, _html} = live(conn, ~p"/workspace/runs/#{run.run_id}?seq=2")
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}?seq=2")
+
       refute has_element?(lv, "ol#timeline[data-target]")
       refute_policy(render(lv))
     end
@@ -102,7 +107,9 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
       scope: scope,
       run: run
     } do
-      {:ok, lv, _html} = live(conn, ~p"/workspace/runs/#{run.run_id}/connections")
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/connections")
+
       html = render(lv)
       refute_policy(html)
 
@@ -132,7 +139,9 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
     end
 
     test "a crafted Allow or Deny writes nothing", %{conn: conn, scope: scope, run: run} do
-      {:ok, lv, _html} = live(conn, ~p"/workspace/runs/#{run.run_id}/connections")
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/connections")
+
       %{rows: rows} = Record.connections(scope, run)
       refused = Enum.find(rows, &(&1.path == "/media/acme/other/checkout.png"))
 
@@ -147,11 +156,15 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
       nothing_written()
     end
 
-    test "the terminal and the details are the record", %{conn: conn, run: run} do
-      {:ok, lv, _html} = live(conn, ~p"/workspace/runs/#{run.run_id}/terminal")
+    test "the terminal and the details are the record", %{conn: conn, run: run, scope: scope} do
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/terminal")
+
       refute_policy(render(lv))
 
-      {:ok, lv, _html} = live(conn, ~p"/workspace/runs/#{run.run_id}/details")
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/details")
+
       html = render(lv)
       refute_policy(html)
 
@@ -171,7 +184,7 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
         egress: [%{"host" => "files.cdn.example", "decision" => "denied", "rule" => ""}]
       )
 
-      {:ok, lv, _html} = live(conn, ~p"/workspace/runs")
+      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs")
       render_async(lv, 2_000)
       html = render(lv)
       refute_policy(html)
@@ -210,7 +223,7 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
       conn: conn,
       scope: scope
     } do
-      view = open(conn, ~p"/workspace/connections")
+      view = open(conn, ~p"/#{scope.organisation}/#{scope.workspace}/connections")
       refute_policy(render(view))
 
       cdn = dst("files.cdn.example")
@@ -229,11 +242,11 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
       refute_follows_policy(view, scope)
     end
 
-    test "per target, the page says which, and links to no policy", %{conn: conn} do
+    test "per target, the page says which, and links to no policy", %{conn: conn, scope: scope} do
       view =
         open(
           conn,
-          ~p"/workspace/connections?#{Filters.target_params("github.example", "acme/shop")}"
+          ~p"/#{scope.organisation}/#{scope.workspace}/connections?#{Filters.target_params("github.example", "acme/shop")}"
         )
 
       refute_policy(render(view))
@@ -241,8 +254,8 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
       refute has_element?(view, "#connections-target-policy")
     end
 
-    test "a crafted Allow or Deny writes nothing", %{conn: conn} do
-      view = open(conn, ~p"/workspace/connections")
+    test "a crafted Allow or Deny writes nothing", %{conn: conn, scope: scope} do
+      view = open(conn, ~p"/#{scope.organisation}/#{scope.workspace}/connections")
       values = %{"host" => "files.cdn.example", "port" => "443", "path" => ""}
 
       for action <- ~w(allow deny) do

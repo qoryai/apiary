@@ -84,6 +84,96 @@ defmodule Apiary.OrganisationsTest do
     end
   end
 
+  describe "resolve_scope/3" do
+    setup do
+      %{user: user} = signed_up = sign_up_fixture()
+      other = sign_up_fixture()
+      %{token: token} = invitation_fixture(other.scope, %{"email" => user.email})
+      {:ok, _membership} = Organisations.accept_invitation(user, token)
+      %{user: user, mine: signed_up, joined: other, stranger: sign_up_fixture()}
+    end
+
+    test "loads each organisation and workspace the user is a member of, by their slugs", ctx do
+      for %{organisation: organisation, workspace: workspace} <- [ctx.mine, ctx.joined] do
+        assert {:ok, scope} =
+                 Organisations.resolve_scope(
+                   Scope.for_user(ctx.user),
+                   organisation.slug,
+                   workspace.slug
+                 )
+
+        assert scope.organisation.id == organisation.id
+        assert scope.workspace.id == workspace.id
+        assert scope.membership.user_id == ctx.user.id
+
+        assert {:ok, %{workspace: %{id: id}}} =
+                 Organisations.resolve_scope(Scope.for_user(ctx.user), organisation.slug)
+
+        assert id == workspace.id
+      end
+    end
+
+    test "is one answer for a slug that does not exist and for one the user is no member of",
+         ctx do
+      scope = Scope.for_user(ctx.user)
+      stranger = ctx.stranger
+
+      assert :error =
+               Organisations.resolve_scope(
+                 scope,
+                 stranger.organisation.slug,
+                 stranger.workspace.slug
+               )
+
+      assert :error = Organisations.resolve_scope(scope, stranger.organisation.slug)
+      assert :error = Organisations.resolve_scope(scope, "no-such-organisation", "main")
+      assert :error = Organisations.resolve_scope(scope, ctx.mine.organisation.slug, "nothing")
+      assert :error = Organisations.resolve_scope(nil, ctx.mine.organisation.slug, "main")
+    end
+
+    test "never pairs an organisation with a workspace of another", ctx do
+      # A workspace of the stranger's organisation, with a slug the user's own does not
+      # hold.
+      {:ok, platform} =
+        %Apiary.Organisations.Workspace{organisation_id: ctx.stranger.organisation.id}
+        |> Apiary.Organisations.Workspace.changeset(%{name: "Platform"})
+        |> Apiary.Organisations.Workspace.put_slug("platform")
+        |> Apiary.Repo.insert()
+
+      assert :error =
+               Organisations.resolve_scope(
+                 Scope.for_user(ctx.user),
+                 ctx.mine.organisation.slug,
+                 platform.slug
+               )
+    end
+  end
+
+  describe "home_membership/2 and load_home_scope/2" do
+    test "the workspace last opened while the user holds it, else the earliest" do
+      %{user: user, workspace: first} = sign_up_fixture()
+      other = sign_up_fixture()
+      %{token: token} = invitation_fixture(other.scope, %{"email" => user.email})
+      {:ok, _membership} = Organisations.accept_invitation(user, token)
+
+      assert Organisations.home_membership(user).workspace_id == first.id
+
+      assert Organisations.home_membership(user, other.workspace.id).workspace_id ==
+               other.workspace.id
+
+      assert Organisations.home_membership(user, sign_up_fixture().workspace.id).workspace_id ==
+               first.id
+
+      scope = Organisations.load_home_scope(Scope.for_user(user), other.workspace.id)
+      assert scope.workspace.id == other.workspace.id
+      assert scope.organisation.id == other.organisation.id
+
+      loner = user_fixture()
+      assert Organisations.home_membership(loner) == nil
+      assert Organisations.load_home_scope(Scope.for_user(loner), nil) == Scope.for_user(loner)
+    end
+  end
+
   describe "settings" do
     test "owners rename the organisation and the workspace; members cannot" do
       %{scope: owner_scope} = sign_up_fixture()
@@ -217,7 +307,11 @@ defmodule Apiary.OrganisationsTest do
       %{user: outsider} = sign_up_fixture()
 
       other_workspace =
-        Repo.insert!(%Organisations.Workspace{organisation_id: organisation.id, name: "Second"})
+        Repo.insert!(%Organisations.Workspace{
+          organisation_id: organisation.id,
+          name: "Second",
+          slug: "second"
+        })
 
       elsewhere =
         Repo.insert!(%Membership{

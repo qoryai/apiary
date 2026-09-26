@@ -1,7 +1,11 @@
 defmodule ApiaryWeb.SettingsLive do
   @moduledoc """
-  Organisation and workspace settings: names, the owners, and retention: how long the
-  workspace keeps a run's events and log output, and what the nightly job last pruned.
+  Organisation and workspace settings, one page in two places (decision 0073): the
+  organisation's, `/:org/settings` (`:organisation`), with its name, its slug and the
+  owners; and the workspace's, `/:org/:workspace/settings` (`:workspace`), with its name,
+  its slug and retention: how long the workspace keeps a run's events and log output, and
+  what the nightly job last pruned. A slug is shown, not edited: renaming one is not
+  decided yet.
 
   The proof of the domain's words (`docs/lingo.md`): every sentence is a gettext call in
   engine words, and the software domain's catalogue says organisation and workspace.
@@ -11,8 +15,6 @@ defmodule ApiaryWeb.SettingsLive do
   alias Apiary.Organisations
   alias Apiary.Retention
 
-  import ApiaryWeb.RunPageComponents, only: [format_bytes: 1]
-
   @impl true
   def render(assigns) do
     ~H"""
@@ -21,15 +23,20 @@ defmodule ApiaryWeb.SettingsLive do
       current_scope={@current_scope}
       memberships={@memberships}
       counts={@nav_counts}
-      nav={:settings}
+      nav={if @live_action == :organisation, do: :organisation, else: :settings}
       width="narrow"
     >
-      <.header>
-        {gettext("Settings")}
+      <.header :if={@live_action == :organisation}>
+        {gettext("Organisation settings")}
         <:subtitle>
-          {gettext(
-            "The names of this organisation and its workspace, who owns them, and how long runs are kept."
-          )}
+          {gettext("The name of this organisation, where its pages are, and who owns it.")}
+        </:subtitle>
+      </.header>
+
+      <.header :if={@live_action == :workspace}>
+        {gettext("Workspace settings")}
+        <:subtitle>
+          {gettext("The name of this workspace, where its pages are, and how long runs are kept.")}
         </:subtitle>
       </.header>
 
@@ -37,7 +44,7 @@ defmodule ApiaryWeb.SettingsLive do
         {gettext("Only owners can change these settings. Ask an owner if a name needs to change.")}
       </.notice>
 
-      <.card>
+      <.card :if={@live_action == :organisation}>
         <:title>{gettext("Organisation name")}</:title>
         <.form
           for={@organisation_form}
@@ -56,6 +63,13 @@ defmodule ApiaryWeb.SettingsLive do
             required
           />
         </.form>
+        <p id="organisation-slug" class="text-[13px]/[20px] text-muted">
+          <.rich text={
+            rich_gettext("Its pages are under %{path}. Renaming the organisation keeps it.",
+              path: {:m, ~p"/#{@current_scope.organisation}"}
+            )
+          } />
+        </p>
         <:footer>
           <span>{gettext("Shown in the sidebar and in invitations.")}</span>
           <.button
@@ -70,7 +84,7 @@ defmodule ApiaryWeb.SettingsLive do
         </:footer>
       </.card>
 
-      <.card>
+      <.card :if={@live_action == :workspace}>
         <:title>{gettext("Workspace name")}</:title>
         <.form
           for={@workspace_form}
@@ -89,6 +103,13 @@ defmodule ApiaryWeb.SettingsLive do
             required
           />
         </.form>
+        <p id="workspace-slug" class="text-[13px]/[20px] text-muted">
+          <.rich text={
+            rich_gettext("Its pages are under %{path}. Renaming the workspace keeps it.",
+              path: {:m, ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}"}
+            )
+          } />
+        </p>
         <:footer>
           <span>{gettext("Shown in the sidebar and as the overview title.")}</span>
           <.button
@@ -103,7 +124,7 @@ defmodule ApiaryWeb.SettingsLive do
         </:footer>
       </.card>
 
-      <.card>
+      <.card :if={@live_action == :workspace}>
         <:title>{gettext("Retention")}</:title>
         <.form
           for={@retention_form}
@@ -156,7 +177,7 @@ defmodule ApiaryWeb.SettingsLive do
         </:footer>
       </.card>
 
-      <.card padding={false}>
+      <.card :if={@live_action == :workspace} padding={false}>
         <:title>{gettext("Pruned")}</:title>
         <p :if={@retention_runs == []} id="retention-runs-empty" class="px-5 py-4 text-muted">
           {if retention_set?(@current_scope.workspace),
@@ -169,7 +190,7 @@ defmodule ApiaryWeb.SettingsLive do
             id={"retention-run-#{run.id}"}
             class="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 px-5 py-2.5"
           >
-            <span class="font-medium tabular-nums">{short_datetime(run.started_at)}</span>
+            <span class="font-medium tabular-nums">{Format.datetime(run.started_at, zone: true)}</span>
             <.badge :if={run.trigger == "manual"}>{gettext("By hand")}</.badge>
             <.badge :if={!run.complete} color="warning">{gettext("Not finished")}</.badge>
             <span class="w-full text-[13px]/[20px] text-muted">{pruned_sentence(run)}</span>
@@ -179,17 +200,20 @@ defmodule ApiaryWeb.SettingsLive do
           <span>
             {ngettext(
               "The last run of the nightly job. It is also a line in the server's log.",
-              "The last %{count} runs of the nightly job. Each is also a line in the server's log.",
-              length(@retention_runs)
+              "The last %{number} runs of the nightly job. Each is also a line in the server's log.",
+              length(@retention_runs),
+              number: Format.number(length(@retention_runs))
             )}
           </span>
         </:footer>
       </.card>
 
-      <.card padding={false}>
+      <.card :if={@live_action == :organisation} padding={false}>
         <:title>{gettext("Owners")}</:title>
         <:actions>
-          <.button navigate={~p"/workspace/members"}>{gettext("Manage members")}</.button>
+          <.button navigate={~p"/#{@current_scope.organisation}/members"}>
+            {gettext("Manage members")}
+          </.button>
         </:actions>
         <ul id="owners" class="divide-y divide-line">
           <li
@@ -204,7 +228,7 @@ defmodule ApiaryWeb.SettingsLive do
             <span class="min-w-0 truncate font-medium">{owner.user.email}</span>
             <.badge :if={owner.user_id == @current_scope.user.id}>{gettext("You")}</.badge>
             <span class="ml-auto text-[13px]/[18px] tabular-nums text-faint">
-              {gettext("since %{date}", date: short_date(owner.inserted_at))}
+              {gettext("since %{date}", date: Format.date(owner.inserted_at))}
             </span>
           </li>
         </ul>
@@ -222,7 +246,10 @@ defmodule ApiaryWeb.SettingsLive do
 
     {:ok,
      socket
-     |> assign(page_title: gettext("Settings"), owner?: Organisations.owner?(scope))
+     |> assign(
+       page_title: page_title(socket.assigns.live_action),
+       owner?: Organisations.owner?(scope)
+     )
      |> assign_forms()
      |> load_owners()
      |> load_retention_runs()}
@@ -313,6 +340,9 @@ defmodule ApiaryWeb.SettingsLive do
     end
   end
 
+  defp page_title(:organisation), do: gettext("Organisation settings")
+  defp page_title(:workspace), do: gettext("Workspace settings")
+
   defp assign_forms(socket) do
     scope = socket.assigns.current_scope
 
@@ -359,7 +389,7 @@ defmodule ApiaryWeb.SettingsLive do
     )
   end
 
-  defp days(n), do: ngettext("%{count} day", "%{count} days", n)
+  defp days(n), do: ngettext("%{number} day", "%{number} days", n, number: Format.number(n))
 
   defp pruned_sentence(%{runs_pruned: 0}), do: gettext("Nothing was old enough to prune.")
 
@@ -368,16 +398,16 @@ defmodule ApiaryWeb.SettingsLive do
       gettext("%{runs}: %{events} and %{bytes} of log output in %{chunks}.",
         runs:
           ngettext("%{number} run", "%{number} runs", run.runs_pruned,
-            number: delimited(run.runs_pruned)
+            number: Format.number(run.runs_pruned)
           ),
         events:
           ngettext("%{number} event", "%{number} events", run.events_deleted,
-            number: delimited(run.events_deleted)
+            number: Format.number(run.events_deleted)
           ),
-        bytes: format_bytes(run.log_bytes_deleted),
+        bytes: Format.bytes(run.log_bytes_deleted),
         chunks:
           ngettext("%{number} chunk", "%{number} chunks", run.log_chunks_deleted,
-            number: delimited(run.log_chunks_deleted)
+            number: Format.number(run.log_chunks_deleted)
           )
       )
 
@@ -387,16 +417,16 @@ defmodule ApiaryWeb.SettingsLive do
   defp cutoffs(%{log_cutoff: nil, events_cutoff: nil}), do: []
 
   defp cutoffs(%{log_cutoff: log, events_cutoff: nil}),
-    do: [gettext("Pruned log output from before %{date}.", date: short_date(log))]
+    do: [gettext("Pruned log output from before %{date}.", date: Format.date(log))]
 
   defp cutoffs(%{log_cutoff: nil, events_cutoff: events}),
-    do: [gettext("Pruned events from before %{date}.", date: short_date(events))]
+    do: [gettext("Pruned events from before %{date}.", date: Format.date(events))]
 
   defp cutoffs(%{log_cutoff: log, events_cutoff: events}) do
     [
       gettext("Pruned log output from before %{log_date}, events from before %{events_date}.",
-        log_date: short_date(log),
-        events_date: short_date(events)
+        log_date: Format.date(log),
+        events_date: Format.date(events)
       )
     ]
   end

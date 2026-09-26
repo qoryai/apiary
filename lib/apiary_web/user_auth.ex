@@ -20,6 +20,11 @@ defmodule ApiaryWeb.UserAuth do
     same_site: "Lax"
   ]
 
+  # The workspace a signed-in user last opened, remembered for `/` and the log-in to send
+  # them back to. No page reads it to decide what it shows: the path says that
+  # (decision 0073).
+  @last_workspace :last_workspace_id
+
   # How old the session token should be before a new one is issued. When a request is made
   # with a session token older than this value, then a new session token will be created
   # and the session and remember-me cookies (if set) will be updated with the new token.
@@ -36,12 +41,12 @@ defmodule ApiaryWeb.UserAuth do
   or falls back to the `signed_in_path/1`.
   """
   def log_in_user(conn, user, params \\ %{}) do
-    user_return_to = get_session(conn, :user_return_to)
+    to = get_session(conn, :user_return_to) || signed_in_path(conn, user)
 
     conn
     |> create_or_extend_session(user, params)
     |> delete_session(:user_return_to)
-    |> redirect(to: user_return_to || signed_in_path(conn))
+    |> redirect(to: to)
   end
 
   @doc """
@@ -144,12 +149,18 @@ defmodule ApiaryWeb.UserAuth do
   #       |> put_session(:preferred_locale, preferred_locale)
   #     end
   #
+  #
+  # The workspace last opened is kept, so that `/` still sends back to it after a log-out
+  # and a log-in. It is an id and no credential, and `signed_in_path/1` follows it only
+  # for a user who is a member of that workspace.
   defp renew_session(conn, _user) do
     delete_csrf_token()
+    last_workspace = get_session(conn, @last_workspace)
 
     conn
     |> configure_session(renew: true)
     |> clear_session()
+    |> then(&if(last_workspace, do: put_session(&1, @last_workspace, last_workspace), else: &1))
   end
 
   defp maybe_write_remember_me_cookie(conn, token, %{"remember_me" => "true"}, _),
@@ -239,28 +250,24 @@ defmodule ApiaryWeb.UserAuth do
     scope = socket.assigns.current_scope
 
     if scope && scope.user do
-      scope = Organisations.load_scope(scope, session["organisation_id"])
-
-      {:cont,
-       socket
-       |> Phoenix.Component.assign(:current_scope, scope)
-       |> Phoenix.Component.assign(:memberships, Organisations.list_memberships(scope.user))
-       |> Phoenix.Component.assign(:nav_counts, nav_counts(scope))
-       |> follow_membership_changes()
-       |> follow_alive_runs()
-       |> follow_policy_mode()}
+      scope = Organisations.load_home_scope(scope, session[Atom.to_string(@last_workspace)])
+      {:cont, assign_organisation(socket, scope)}
     else
       {:cont, Phoenix.Component.assign(socket, memberships: [], nav_counts: nil)}
     end
   end
 
-  def on_mount(:require_organisation, _params, _session, socket) do
-    scope = socket.assigns.current_scope
+  # The organisation and the workspace come from the path (decision 0073): `/:org/…` and
+  # `/:org/:workspace/…`. A slug the user holds no membership in answers as a path that
+  # does not exist; the pipeline's `fetch_path_scope/2` has already answered so for the
+  # first render, and this answers for a live navigation.
+  def on_mount(:load_path_scope, params, session, socket) do
+    socket = mount_current_scope(socket, session)
+    scope = %{socket.assigns.current_scope | organisation: nil, workspace: nil, membership: nil}
 
-    if scope && scope.organisation do
-      {:cont, socket}
-    else
-      {:halt, Phoenix.LiveView.redirect(socket, to: ~p"/no-workspace")}
+    case Organisations.resolve_scope(scope, params["org"], params["workspace"]) do
+      {:ok, scope} -> {:cont, assign_organisation(socket, scope)}
+      :error -> raise ApiaryWeb.NotFound
     end
   end
 
@@ -280,6 +287,16 @@ defmodule ApiaryWeb.UserAuth do
 
       {:halt, socket}
     end
+  end
+
+  defp assign_organisation(socket, scope) do
+    socket
+    |> Phoenix.Component.assign(:current_scope, scope)
+    |> Phoenix.Component.assign(:memberships, Organisations.list_memberships(scope.user))
+    |> Phoenix.Component.assign(:nav_counts, nav_counts(scope))
+    |> follow_membership_changes()
+    |> follow_alive_runs()
+    |> follow_policy_mode()
   end
 
   @doc """
@@ -467,8 +484,8 @@ defmodule ApiaryWeb.UserAuth do
   end
 
   # An open page follows a change of the user's own membership: a new level is
-  # loaded into the scope, a membership that is gone sends the page to /workspace (and
-  # from there to wherever the user still belongs). The contexts authorize on the
+  # loaded into the scope, a membership that is gone sends the page to `/` (and from
+  # there to wherever the user still belongs). The contexts authorize on the
   # database whatever the page holds; this keeps what the page shows honest.
   defp follow_membership_changes(socket) do
     if Phoenix.LiveView.connected?(socket) do
@@ -486,15 +503,16 @@ defmodule ApiaryWeb.UserAuth do
 
   defp reload_membership(socket) do
     scope = socket.assigns.current_scope
-    organisation_id = scope.organisation && scope.organisation.id
 
     reloaded =
-      Organisations.load_scope(
-        %{scope | organisation: nil, workspace: nil, membership: nil},
-        organisation_id
-      )
+      scope.organisation &&
+        Organisations.resolve_scope(
+          %{scope | organisation: nil, workspace: nil, membership: nil},
+          scope.organisation.slug,
+          scope.workspace && scope.workspace.slug
+        )
 
-    if organisation_id && reloaded.organisation && reloaded.organisation.id == organisation_id do
+    with {:ok, reloaded} <- reloaded || :error do
       socket
       |> Phoenix.Component.assign(:current_scope, reloaded)
       |> Phoenix.Component.assign(:memberships, Organisations.list_memberships(scope.user))
@@ -506,7 +524,7 @@ defmodule ApiaryWeb.UserAuth do
           else: socket
       end)
     else
-      Phoenix.LiveView.redirect(socket, to: ~p"/workspace")
+      :error -> Phoenix.LiveView.redirect(socket, to: ~p"/")
     end
   end
 
@@ -521,8 +539,60 @@ defmodule ApiaryWeb.UserAuth do
     end)
   end
 
-  @doc "Returns the path to redirect to after log in: the workspace."
-  def signed_in_path(_), do: ~p"/workspace"
+  @doc """
+  signed_in_path/1 is where a signed-in user is sent, from `/` and after log-in: the
+  workspace the session remembers as last opened while the user is still a member of it,
+  else the user's earliest, and without a membership `/users/organisations`. A LiveView
+  cannot read the session, and is given `/`, which sends on the same way.
+  """
+  def signed_in_path(%Plug.Conn{} = conn) do
+    signed_in_path(conn, conn.assigns[:current_scope] && conn.assigns.current_scope.user)
+  end
+
+  def signed_in_path(_socket), do: ~p"/"
+
+  defp signed_in_path(conn, %Apiary.Accounts.User{} = user) do
+    case Organisations.home_membership(user, get_session(conn, @last_workspace)) do
+      %{organisation: organisation, workspace: workspace} -> ~p"/#{organisation}/#{workspace}"
+      nil -> ~p"/users/organisations"
+    end
+  end
+
+  defp signed_in_path(_conn, nil), do: ~p"/"
+
+  @doc """
+  Plug for the pages under `/:org/…` and `/:org/:workspace/…`: loads the organisation
+  and the workspace their path names into the scope
+  (`Apiary.Organisations.resolve_scope/3`) and remembers the workspace for
+  `signed_in_path/1`. A slug the user holds no
+  membership in is answered as a path that does not exist, as the router answers one
+  (decisions 0070 and 0073). Runs after `require_authenticated_user/2`.
+  """
+  def fetch_path_scope(conn, _opts) do
+    scope = conn.assigns.current_scope
+    %{"org" => organisation_slug} = params = conn.path_params
+
+    case Organisations.resolve_scope(scope, organisation_slug, params["workspace"]) do
+      {:ok, scope} ->
+        conn
+        |> assign(:current_scope, scope)
+        |> remember_workspace(scope.workspace.id)
+
+      :error ->
+        conn
+        |> put_resp_content_type("text/html")
+        |> send_resp(404, ApiaryWeb.ErrorHTML.render("404.html", %{}))
+        |> halt()
+    end
+  end
+
+  # Written only when it changes, so that a page and the log reads of its terminal do not
+  # each send the session cookie again.
+  defp remember_workspace(conn, workspace_id) do
+    if get_session(conn, @last_workspace) == workspace_id,
+      do: conn,
+      else: put_session(conn, @last_workspace, workspace_id)
+  end
 
   @doc """
   Plug for routes that require the user to be authenticated.

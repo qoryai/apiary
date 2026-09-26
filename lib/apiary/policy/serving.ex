@@ -3,7 +3,9 @@ defmodule Apiary.Policy.Serving do
   The run configuration as the wire reads it: for a runner, which has an access key's
   workspace and no user. Everything a runner names is untrusted: its labels are bounded
   strings, read by the workspace's domain (`Apiary.Lingo.Domain`) and compared to stored
-  ones, nothing more.
+  ones, nothing more. The key comes with its workspace, domain included, read in the one
+  query that verifies it (`Apiary.AccessKeys.fetch_for_verification/1`), so naming the
+  target costs no read of its own.
 
   A workspace serves a run configuration only once somebody has made its policy
   (`Apiary.Policy.managed?/1`). Until then `fetch/2` is `{:error, :unmanaged}`,
@@ -33,6 +35,7 @@ defmodule Apiary.Policy.Serving do
 
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Lingo.Domain
+  alias Apiary.Organisations.Workspace
   alias Apiary.Policy
   alias Apiary.Policy.RunConfiguration
   alias Apiary.Repo
@@ -52,7 +55,7 @@ defmodule Apiary.Policy.Serving do
         labels
       ) do
     if managed?(key),
-      do: Policy.in_force(organisation_id, workspace_id, target_id(workspace_id, labels)),
+      do: Policy.in_force(organisation_id, workspace_id, target_id(key, labels)),
       else: {:error, :unmanaged}
   end
 
@@ -75,7 +78,7 @@ defmodule Apiary.Policy.Serving do
     %AccessKey{organisation_id: organisation_id, workspace_id: workspace_id} = access_key
 
     with nil <- known_target(workspace_id, run, batch),
-         nil <- started_target(workspace_id, batch),
+         nil <- started_target(access_key, batch),
          true <- is_binary(reported) and Regex.match?(@digest, reported),
          true <- in_force?(workspace_id, reported) do
       reported
@@ -111,9 +114,9 @@ defmodule Apiary.Policy.Serving do
     )
   end
 
-  defp started_target(workspace_id, %Batch{events: events}) do
+  defp started_target(access_key, %Batch{events: events}) do
     with %{data: %{"labels" => labels}} <- Enum.find(events, &(&1.type == @started)) do
-      target_id(workspace_id, labels)
+      target_id(access_key, labels)
     else
       _ -> nil
     end
@@ -142,8 +145,13 @@ defmodule Apiary.Policy.Serving do
 
   # The labels name a target only by the workspace's domain, the rule the projector
   # follows too (`Apiary.Runs.Fold`): the wire and the projector pick the same, or none.
-  defp target_id(workspace_id, labels) do
-    case Domain.target(workspace_id, labels) do
+  # The key's workspace is loaded with it (`Apiary.AccessKeys.fetch_for_verification/1`):
+  # a key without it is a caller's mistake, not a reason to read the default domain.
+  defp target_id(
+         %AccessKey{workspace: %Workspace{} = workspace, workspace_id: workspace_id},
+         labels
+       ) do
+    case Domain.target(workspace, labels) do
       {:ok, %{system: system, path: path}} ->
         Repo.one(
           from t in Target,

@@ -1,10 +1,10 @@
 # Qory console: design brief for the workspace overview (M8)
 
-Implementation spec for the workspace overview, `/workspace`: the page a member lands on
-after sign-in. It extends `brief.md`, `brief-runs.md` and `brief-policy.md`; everything
-there (tokens, shell, components, tone, accessibility) still holds and is not repeated.
-The rendered reference is `overview-mock.html` beside this file; where the two disagree,
-this brief wins. Section letters continue the pattern with an `o` prefix.
+Implementation spec for the workspace overview, `/:org/:workspace`: the page a member
+lands on after sign-in. It extends `brief.md`, `brief-runs.md` and `brief-policy.md`;
+everything there (tokens, shell, components, tone, accessibility) still holds and is not
+repeated. The rendered reference is `overview-mock.html` beside this file; where the two
+disagree, this brief wins. Section letters continue the pattern with an `o` prefix.
 
 Naming. The brand is **Qory**. The page says **organisation** and **workspace**, plain
 words with no term hover (`docs/lingo.md`); "apiary" and "hive" are words of the per-user
@@ -67,11 +67,11 @@ The principles of the three earlier briefs apply. These five are added.
 
 ### Route and width
 
-`/workspace`, `WorkspaceLive.Overview`, `nav={:overview}`, `width="full"` (1200, as the
-runs and policy pages): the Activity card and the two glance cards sit side by side from a
-1280 px viewport (the content column is then 1000 px wide; below that the page is one
-column), and the two tables under them take the full width, which 960 cannot hold without
-scrolling them sideways. `<title>`: "Platform · Qory" (the workspace name; today's
+`/:org/:workspace`, `WorkspaceLive.Overview`, `nav={:overview}`, `width="full"` (1200, as
+the runs and policy pages): the Activity card and the two glance cards sit side by side
+from a 1280 px viewport (the content column is then 1000 px wide; below that the page is
+one column), and the two tables under them take the full width, which 960 cannot hold
+without scrolling them sideways. `<title>`: "Platform · Qory" (the workspace name; today's
 "Overview" goes: the sidebar already says Overview, and the tab should say which
 workspace).
 
@@ -83,21 +83,21 @@ opens. The only state kept is the reading preference of the chart's table toggle
 
 | From | To |
 |---|---|
-| Needs attention, a denied destination | the suggestion row's own **Allow** (in place, od2); "See them" → `/workspace/connections?decision=denied` |
-| Needs attention, a quiet run | `/workspace/runs/:run_id` |
+| Needs attention, a denied destination | the suggestion row's own **Allow** (in place, od2); "See them" → `/:org/:workspace/connections?decision=denied` |
+| Needs attention, a quiet run | `/:org/:workspace/runs/:run_id` |
 | Needs attention, a lost run | **Close** (in place, the existing `Runs.close_run/2` and its confirm); "Open" → the run |
-| Needs attention, a run behind the policy | `/workspace/runs/:run_id` and "What changed" → `/workspace/policy/targets/:id/versions/:n?compare=:m` |
-| Needs attention, observing with rules ready | `/workspace/policy?confirm=enforce` (opens the pe1 confirm on arrival; ol 3) |
-| Needs attention, no policy yet | `/workspace/policy` |
-| Needs attention, an idle key | `/workspace/keys/:id/revoke` (the keys page with its revoke confirm open; the existing patch route) |
-| Activity, a run row | `/workspace/runs/:run_id` |
-| Activity, "n alive" / "and n more" | `/workspace/runs?state=pending,running` |
-| Activity, "All runs" | `/workspace/runs` |
-| Activity, a chart column | `/workspace/runs?from=2026-09-14&to=2026-09-14` (that day); a denial column adds `&denials=1` |
-| Policy at a glance | `/workspace/policy`, `/workspace/policy/targets`, `/workspace/policy/targets?mode=own`, `/workspace/policy/targets/:id`, `/workspace/policy/versions/:n` |
-| Access keys, a key row | `/workspace/keys` (the key row is not its own page; the row's last run links to the run) |
-| Access keys, "Create another access key" | `/workspace/keys/new` |
-| Retention | `/workspace/settings#retention` |
+| Needs attention, a run behind the policy | `/:org/:workspace/runs/:run_id` and "What changed" → `/:org/:workspace/policy/targets/:id/versions/:n?compare=:m` |
+| Needs attention, observing with rules ready | `/:org/:workspace/policy?confirm=enforce` (opens the pe1 confirm on arrival; ol 3) |
+| Needs attention, no policy yet | `/:org/:workspace/policy` |
+| Needs attention, an idle key | `/:org/:workspace/keys/:id/revoke` (the keys page with its revoke confirm open; the existing patch route) |
+| Activity, a run row | `/:org/:workspace/runs/:run_id` |
+| Activity, "n alive" / "and n more" | `/:org/:workspace/runs?state=pending,running` |
+| Activity, "All runs" | `/:org/:workspace/runs` |
+| Activity, a chart column | `/:org/:workspace/runs?from=2026-09-14&to=2026-09-14` (that day); a denial column adds `&denials=1` |
+| Policy at a glance | `/:org/:workspace/policy`, `/:org/:workspace/policy/targets`, `/:org/:workspace/policy/targets?mode=own`, `/:org/:workspace/policy/targets/:id`, `/:org/:workspace/policy/versions/:n` |
+| Access keys, a key row | `/:org/:workspace/keys` (the key row is not its own page; the row's last run links to the run) |
+| Access keys, "Create another access key" | `/:org/:workspace/keys/new` |
+| Retention | `/:org/:workspace/settings#retention` |
 
 ### Sidebar
 
@@ -140,7 +140,7 @@ that renders inside a stream takes its `id` from the caller.
 # <.attention>
 attr :id, :string, required: true
 attr :items, :list, required: true     # ordered; empty renders nothing at all
-attr :more, :map, default: nil         # %{count: 3, navigate: "/workspace/connections?decision=denied"}
+attr :more, :map, default: nil         # %{count: 3, navigate: "/:org/:workspace/connections?decision=denied"}
 # <.attention_item>
 attr :id, :string, required: true      # stable: "att-denied-#{phash2({host, port, path})}", "att-run-#{run_id}", "att-key-#{id}", "att-policy-enforce"
 attr :kind, :atom, required: true      # :denied | :quiet | :lost | :behind | :enforce | :unmanaged | :idle_key
@@ -162,10 +162,10 @@ minimum, the `.sugg-row` grid of `brief-policy.md` pd6: a mark, a subject, a sen
 | `:quiet` | amber solid dot (rd1 quiet) | `<.run_state>` running-quiet, the task, the short id | No heartbeat for 47 s. Heartbeats are due every 30 s; after 90 s of silence it is marked lost. | default `btn-xs` **Open** |
 | `:lost` | amber `hero-signal-slash-micro` | `<.run_state state="lost">`, the task, the short id | Lost. Last heard Yesterday, 22:55, at least 8 m 30 s in. The run never posted its exit. | default `btn-xs` **Close** (the existing confirm; the row then reads "Closed") and ghost **Open** |
 | `:behind` | the drift badge (pd9) | the task, the short id | Still on `v9` after 2 heartbeats; `v10` has been in force for 1 m 40 s. A run reloads at its next heartbeat. | ghost `btn-xs` **What changed**, default **Open** |
-| `:enforce` | `hero-shield-exclamation-micro` in muted | **Observe is the workspace's default** | 6 allow rules are in force and every destination reached in the last 7 days is covered. Enforce would deny nothing today. | primary `btn-xs` **Set the default to enforce** (to `/workspace/policy?confirm=enforce`) |
+| `:enforce` | `hero-shield-exclamation-micro` in muted | **Observe is the workspace's default** | 6 allow rules are in force and every destination reached in the last 7 days is covered. Enforce would deny nothing today. | primary `btn-xs` **Set the default to enforce** (to `/:org/:workspace/policy?confirm=enforce`) |
 | `:enforce`, something uncovered | the same | the same | 6 rules are in force. Enforce would deny 2 destinations reached in the last 7 days. | default `btn-xs` **Review on the policy page** |
 | `:unmanaged` | `hero-shield-micro` in muted | **Qory serves no policy yet** | 11 runs landed under the machines' own policies. The first rule you add, or a mode you set, puts them under the workspace's. | default `btn-xs` **Open policy** |
-| `:idle_key` | `hero-key-micro` in faint | the label, the key id mono | Not seen for 34 days; last runner 0.4.1. A key nobody uses is a key to revoke. | danger-ghost `btn-xs` **Revoke** (to `/workspace/keys/:id/revoke`) |
+| `:idle_key` | `hero-key-micro` in faint | the label, the key id mono | Not seen for 34 days; last runner 0.4.1. A key nobody uses is a key to revoke. | danger-ghost `btn-xs` **Revoke** (to `/:org/:workspace/keys/:id/revoke`) |
 
 Order: denied destinations first (most denials first), then lost, quiet, behind (most recent
 first), then the one policy item, then idle keys (longest idle first). At most five rows; the
@@ -321,9 +321,9 @@ nudges.
 
 An access key is not a machine: one key often serves many hosts (a pool of ephemeral CI
 instances shares one), so the card is about keys and counts their hosts. A full-width card
-under Last runs, headed **Access keys** with the count of active keys in mono faint and, once
-the first run has landed, the link **Create another access key** on the right (to
-`/workspace/keys/new`). A `<.table>` of at most five active keys, most recently seen
+under Last runs, headed **Access keys** with the count of active keys in mono faint and,
+once the first run has landed, the link **Create another access key** on the right (to
+`/:org/:workspace/keys/new`). A `<.table>` of at most five active keys, most recently seen
 first, then the never-seen: **Key** (the label in 500, the key id in mono faint under it)
 · **Last seen** (`<.relative_time at={last_used_at}>`; "Never posted" faint) · **Runner**
 (`last_runner_version` mono, then `last_contract_version` as `v1` in mono faint 11.5
@@ -332,9 +332,9 @@ beside it with the title "Contract version 1"; "n/a" faint when the key never po
 one host's name in mono when there is one, "3 hosts" when more, "none" faint when the key
 posted no run with a host in the window) · **Last run** (`<.run_state>` and the task or
 short id, the start relative; a link to the run; "No run yet" faint). "and 2 more" under
-the table when the workspace has more active keys, to `/workspace/keys`. Revoked keys are
-not here (they are on the keys page). A key rotating shows the warning badge **Rotating**
-after its label, as the keys page does. The last run per key is one query
+the table when the workspace has more active keys, to `/:org/:workspace/keys`. Revoked
+keys are not here (they are on the keys page). A key rotating shows the warning badge
+**Rotating** after its label, as the keys page does. The last run per key is one query
 (`DISTINCT ON (access_key_id)` ordered by `started_at desc`, oj 5) and the hosts another,
 grouped by key over the same index and the window. Below 640 px the rows reflow: label and
 last seen on the first line, the last run on the second; the runner and hosts cells are
@@ -359,7 +359,7 @@ settings page tells them who can change it).
 Copy is final. `{…}` is data. ~word~ carries the term hover; organisation and
 workspace never do.
 
-### oe1. Overview, a busy workspace (`/workspace`)
+### oe1. Overview, a busy workspace (`/:org/:workspace`)
 
 ```
 >= 1280
@@ -471,9 +471,9 @@ px (`brief.md` h1), with the steps of `<.steps>` and the state of each step read
 | 2 Paste the server block into the runner file | any key has `last_used_at` (a machine verified with it: a ping, a heartbeat, a batch) | keys exist, none used |
 | 3 See runs here | any run has landed (`Runs.list_runs(scope, limit: 1) != []`) | a key was used, no run yet |
 
-- **No key** (`/workspace`, nothing posted, no keys): `brief.md` h1 as it is: title **Send
-  your first run**, "Nothing has posted to this workspace yet. An access key is all a
-  machine needs to start.", step 1 current, the primary button **Create an access key**,
+- **No key** (`/:org/:workspace`, nothing posted, no keys): `brief.md` h1 as it is: title
+  **Send your first run**, "Nothing has posted to this workspace yet. An access key is all
+  a machine needs to start.", step 1 current, the primary button **Create an access key**,
   the right column with the server block preview and the listening line "Listening for the
   first post from a machine." Step 2's sub-line reads "The secret is shown once, in the
   dialog that creates it. One key can serve many hosts: a pool of ephemeral instances
@@ -706,9 +706,9 @@ numbers without leaving.
 
 ## oj. Performance guidance for the builders
 
-Budget: the first paint of `/workspace` is one query (`count_alive/1`) plus what the shell
-already reads; every region is `assign_async` and lands within 200 ms on a workspace of
-100,000 runs; at most **nine** queries in total, every one bounded by a `LIMIT` or an
+Budget: the first paint of `/:org/:workspace` is one query (`count_alive/1`) plus what the
+shell already reads; every region is `assign_async` and lands within 200 ms on a workspace
+of 100,000 runs; at most **nine** queries in total, every one bounded by a `LIMIT` or an
 index range, none over `events`.
 
 1. **First paint is the shell.** Mount reads `Runs.count_alive/1`, `AccessKeys.list_access_keys/1`
@@ -759,8 +759,8 @@ index range, none over `events`.
 ## ok. Done checklist
 
 The page
-- [ ] `/workspace` at `width="full"`; `<title>` is the workspace name; the description
-  says "The workspace of the Acme organisation." with no term hover
+- [ ] `/:org/:workspace` at `width="full"`; `<title>` is the workspace name; the
+  description says "The workspace of the Acme organisation." with no term hover
 - [ ] Needs attention renders only actionable items, in the order of od1, at most five, "and n more" linking to the right page; absent when empty
 - [ ] Denied rows are the suggestion rows of pd6 with pd8's popover; the locked case reads the padlock sentence; one-click allow leaves the row struck until the next navigation
 - [ ] Quiet and lost from the record's timestamps; Close uses the existing confirm; behind only while alive and after two intervals; enforce and unmanaged from `mode_summary/1`; idle keys at 30 days
@@ -800,10 +800,10 @@ Quality
 2. **A count of suggestions across repositories.** `Policy.suggestions/3` is per repository. The
    card wants `%{repositories: n, hosts: n}` over the workspace in one bounded read
    (`Policy.suggestion_counts/1`); the loop over five repositories is the fallback.
-3. **`/workspace/policy?confirm=enforce`.** The `:enforce` item's button should land on
-   the policy page with the enforce confirm open (one click, as asked). That is a new
+3. **`/:org/:workspace/policy?confirm=enforce`.** The `:enforce` item's button should land
+   on the policy page with the enforce confirm open (one click, as asked). That is a new
    query parameter on M5's page, owned by another builder; without it the button goes to
-   `/workspace/policy` and the reader clicks Enforce there (two clicks).
+   `/:org/:workspace/policy` and the reader clicks Enforce there (two clicks).
 4. **Thresholds.** Idle key at 30 days, lost within 7 days, behind after two heartbeat intervals,
    denied over 7 days, the chart over 14. All four are the design's choices, not the record's;
    confirm or change them in one place (`Overview.thresholds/0`).

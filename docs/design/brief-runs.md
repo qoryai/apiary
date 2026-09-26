@@ -136,13 +136,13 @@ filter.
 
 | Page | Path | LiveView |
 |---|---|---|
-| Runs list | `/workspace/runs` | `RunLive.Index` |
-| Run, timeline (default tab) | `/workspace/runs/:run_id` | `RunLive.Show, :timeline` |
-| Run, terminal | `/workspace/runs/:run_id/terminal` | `RunLive.Show, :terminal` |
-| Run, connections | `/workspace/runs/:run_id/connections` | `RunLive.Show, :connections` |
-| Run, details | `/workspace/runs/:run_id/details` | `RunLive.Show, :details` |
-| Workspace connections | `/workspace/connections` | `ConnectionLive.Index` |
-| Raw log stream (not a page) | `/workspace/runs/:run_id/log` | `RunLogController` |
+| Runs list | `/:org/:workspace/runs` | `RunLive.Index` |
+| Run, timeline (default tab) | `/:org/:workspace/runs/:run_id` | `RunLive.Show, :timeline` |
+| Run, terminal | `/:org/:workspace/runs/:run_id/terminal` | `RunLive.Show, :terminal` |
+| Run, connections | `/:org/:workspace/runs/:run_id/connections` | `RunLive.Show, :connections` |
+| Run, details | `/:org/:workspace/runs/:run_id/details` | `RunLive.Show, :details` |
+| Workspace connections | `/:org/:workspace/connections` | `ConnectionLive.Index` |
+| Raw log stream (not a page) | `/:org/:workspace/runs/:run_id/log` | `RunLogController` |
 
 `:run_id` is the run's subject UUID (the id the runner prints), not the row id. The four tabs are
 one LiveView with four live actions, so switching tabs is a `patch` and the header does not
@@ -175,12 +175,12 @@ workspace's run.
 
 ### Breadcrumb
 
-`brief.md` rules out breadcrumbs on the top-level pages; that stays. The run page is the console's
-first second-level page and gets one line above its title: `Runs › github.example/acme/shop ›
-0191f2a4`. "Runs" links to `/workspace/runs` with the filters the reader came from (kept
-in the LiveView's `return_to`, default none); the repository links to
-`/workspace/runs?target=…`; the last item is the short id with `aria-current="page"`. An
-unassigned run drops the middle item.
+`brief.md` rules out breadcrumbs on the top-level pages; that stays. The run page is the
+console's first second-level page and gets one line above its title: `Runs ›
+github.example/acme/shop › 0191f2a4`. "Runs" links to `/:org/:workspace/runs` with the
+filters the reader came from (kept in the LiveView's `return_to`, default none); the
+repository links to `/:org/:workspace/runs?target=…`; the last item is the short id with
+`aria-current="page"`. An unassigned run drops the middle item.
 
 ### Content width
 
@@ -663,7 +663,7 @@ has both allowed and denied attempts, the reason ends with "· last attempt" in 
 
 ```elixir
 attr :id, :string, required: true
-attr :src, :string, required: true        # /workspace/runs/:run_id/log
+attr :src, :string, required: true        # /:org/:workspace/runs/:run_id/log
 attr :streams, :list, required: true      # ["terminal"] or ["stdout", "stderr"]
 attr :live, :boolean, required: true
 attr :bytes, :integer, required: true
@@ -730,7 +730,7 @@ never dismissible: it is a fact about the record.
 Copy is final. `{…}` is data. ~word~ carries the term hover; organisation and
 workspace never do.
 
-### re1. Runs list (`/workspace/runs`)
+### re1. Runs list (`/:org/:workspace/runs`)
 
 ```
 >= 768                                                           < 768
@@ -828,7 +828,7 @@ The terminal box and its one-line caption, nothing else. Wireframe:
 +--------------------------------------------------------------------------+
 ```
 
-### re5. Run connections tab and re6. Workspace connections (`/workspace/connections`)
+### re5. Run connections tab and re6. Workspace connections (`/:org/:workspace/connections`)
 
 Both are rd13. The workspace page's header: **Connections** / "Where the runs of this
 workspace reached out to, and what the policy made of it. One row per host, port and path,
@@ -843,8 +843,8 @@ scrolling.
 
 | Where | State | What renders |
 |---|---|---|
-| Runs list | no runs in the workspace, no keys | `<.empty_state icon="hero-play-circle">` **No runs yet** "A run appears here when a machine with an access key of this workspace starts one. Create a key, paste its server block into the runner file on the machine, and start a run." `[Create an access key]` primary → `/workspace/keys/new` |
-| Runs list | no runs, keys exist | same title; "No machine has posted a run to this workspace yet. The server block to paste into the runner file is on the access keys page." `[Go to access keys]` default → `/workspace/keys`; under it the listening line "Listening for the first run." |
+| Runs list | no runs in the workspace, no keys | `<.empty_state icon="hero-play-circle">` **No runs yet** "A run appears here when a machine with an access key of this workspace starts one. Create a key, paste its server block into the runner file on the machine, and start a run." `[Create an access key]` primary → `/:org/:workspace/keys/new` |
+| Runs list | no runs, keys exist | same title; "No machine has posted a run to this workspace yet. The server block to paste into the runner file is on the access keys page." `[Go to access keys]` default → `/:org/:workspace/keys`; under it the listening line "Listening for the first run." |
 | Runs list | filters match nothing | neutral hex tile `hero-funnel`: **No runs match these filters** "11 runs are hidden by them." `[Clear filters]` default |
 | Runs list | loading (first mount, async) | the table header and eight skeleton rows shaped like the columns; never a spinner |
 | Runs list | query failed | error `<.notice>`: "The runs could not be loaded. Reload the page; if it keeps happening, the server log has the reason." |
@@ -1062,7 +1062,7 @@ to the visible width. Tooltips open on tap and close on the next tap anywhere.
    "Show all 41 KB" fetches the event's `data` with a `phx-click` that streams the one item again.
    Closed `<details>` still render their wells (so find-in-page works) up to that cap.
 4. **The log has its own endpoint.**
-   `GET /workspace/runs/:run_id/log?stream=terminal&from={sequence}` answers
+   `GET /:org/:workspace/runs/:run_id/log?stream=terminal&from={sequence}` answers
    `application/octet-stream`, chunked, the concatenated bytes of `log_chunks` in sequence
    order, authorised like the page. The last sequence sent is the `X-Qory-Log-Through`
    header on a finished response. For a live run the hook reads what exists, then opens
