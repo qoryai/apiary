@@ -9,6 +9,12 @@ defmodule ApiaryWeb.RunComponents do
   Everything rendered here is a field of an event or a count of events; what the record
   lacks reads "n/a". Event data is untrusted: it is only ever interpolated, never `raw/1`.
 
+  A connection is the record, and what the policy made of it is not: on an instance
+  without `security` (decision 0070) the pages pass `security={false}`, and a connection
+  says what the runner reported, allowed or denied, the host, the tool and the outcome,
+  with no rule, no mode and no rule action. The components do not ask `Apiary.Features`
+  themselves: the page asks with its scope and says so.
+
   Times tick in the browser: every `<time data-tick=…>` is re-rendered once a second by the
   `Ticker` hook's one interval (`assets/js/hooks/ticker.js`), in the same words the server
   rendered, so the server never re-renders for a clock. The browser's clock is never
@@ -1114,6 +1120,10 @@ defmodule ApiaryWeb.RunComponents do
     default: nil,
     doc: "table and hive: what the row may ask of the policy, see `rule_action/1`"
 
+  attr :security, :boolean,
+    default: true,
+    doc: "false: the record alone, without the reason, the rule actions or the slot"
+
   slot :trailing, doc: "what the slot holds when `act` is not given"
 
   def connection_row(%{variant: "inline"} = assigns) do
@@ -1127,7 +1137,10 @@ defmodule ApiaryWeb.RunComponents do
     >
       <.decision_mark decision={@c.decision} />
       <.destination c={@c} />
-      <span class="q-why"><.reason c={@c} variant="inline" /><span :if={@caption} class="text-faint"> · {@caption}</span></span>
+      <span class="q-why"><.reason c={@c} variant="inline" security={@security} /><span
+        :if={@caption}
+        class="text-faint"
+      > · {@caption}</span></span>
       <.outcome value={@c.outcome} invocation={@c.invocation} status={@c.status} />
       <.offset
         :if={@started_at && @c.last_seen_at}
@@ -1154,7 +1167,7 @@ defmodule ApiaryWeb.RunComponents do
       <td class={["q-num", if(@c.denied == 0, do: "q-zero", else: "q-bad")]}>
         {delimited(@c.denied)}
       </td>
-      <td class="q-why">
+      <td :if={@security} class="q-why">
         <.reason c={@c} variant="table" />
         <.after_line :if={@act && @act[:after]} id={"#{@id}-after"} line={@act.after} />
       </td>
@@ -1162,7 +1175,7 @@ defmodule ApiaryWeb.RunComponents do
       <td class="q-meta">
         <.seen c={@c} started_at={@started_at} />
       </td>
-      <td class="q-slot-cell w-px">
+      <td :if={@security} class="q-slot-cell w-px">
         <span class="q-slot">
           <.rule_action :if={@act} id={"#{@id}-act"} connection={@c} {rule_action_attrs(@act)} />
           {if !@act, do: render_slot(@trailing)}
@@ -1215,7 +1228,7 @@ defmodule ApiaryWeb.RunComponents do
           <span class={@c.denied > 0 && "q-bad"}>{delimited(@c.denied)}</span>
         </span>
       </td>
-      <td class="q-why">
+      <td :if={@security} class="q-why">
         <.reason c={@c} variant="hive" /><span
           :if={@c.allowed > 0 and @c.denied > 0}
           class="text-faint"
@@ -1224,7 +1237,7 @@ defmodule ApiaryWeb.RunComponents do
       </td>
       <td><.outcome value={@c.outcome} invocation={@c.invocation} status={@c.status} /></td>
       <td class="q-meta"><.relative_time at={@c.last_seen_at} /></td>
-      <td class="q-slot-cell w-px">
+      <td :if={@security} class="q-slot-cell w-px">
         <span class="q-slot">
           <.rule_action :if={@act} id={"#{@id}-act"} connection={@c} {rule_action_attrs(@act)} />
           {if !@act, do: render_slot(@trailing)}
@@ -1232,7 +1245,7 @@ defmodule ApiaryWeb.RunComponents do
       </td>
     </tr>
     <tr :if={@open} id={"#{@id}-runs"} class="q-sub">
-      <td colspan="8">
+      <td colspan={if @security, do: 8, else: 6}>
         <div class="q-sub-in">
           <h3>
             {ngettext(
@@ -1402,6 +1415,21 @@ defmodule ApiaryWeb.RunComponents do
 
   attr :c, :map, required: true
   attr :variant, :string, required: true
+  attr :security, :boolean, default: true
+
+  # Without security only the inline row has a reason, and it is the record's: the
+  # decision, and the tool a request was for. Which rule matched, and in which mode, is
+  # what the policy made of it.
+  defp reason(%{security: false} = assigns) do
+    ~H"""
+    <b :if={@c.decision == "denied"}>{gettext("Denied.")}</b>
+    <.rich :if={@c.decision == "allowed" && @c.invocation} text={handed_sentence(@c, false)} />
+    <b :if={@c.decision == "allowed" && !@c.invocation}>{gettext("Allowed.")}</b>
+    <span :if={@c.decision == "denied" && @c.tool} class="q-for-tool">
+      <.rich text={rich_gettext("Refused before reaching the tool %{tool}.", tool: {:b, @c.tool})} />
+    </span>
+    """
+  end
 
   # C3: one sentence from the decision, the rule, the path rule and the mode of the last
   # attempt. The strings are rf's.
@@ -1481,8 +1509,15 @@ defmodule ApiaryWeb.RunComponents do
   # Handed to the tool, by the host's rule and the path rule when either matched, when the
   # request reached it. One that did not (the tool was not running, or a reload closed
   # the connection) was only for the tool: the outcome says what became of it.
-  defp handed_sentence(%{outcome: "connected"} = c), do: handed(c)
-  defp handed_sentence(c), do: meant(c)
+  defp handed_sentence(c, rules? \\ true)
+  defp handed_sentence(%{outcome: "connected"} = c, true), do: handed(c)
+  defp handed_sentence(c, true), do: meant(c)
+
+  # The same, of the record alone: no rule is named.
+  defp handed_sentence(%{outcome: "connected"} = c, false),
+    do: rich_gettext("Handed to %{tool}", tool: {:b, c.tool})
+
+  defp handed_sentence(c, false), do: rich_gettext("For %{tool}", tool: {:b, c.tool})
 
   defp handed(%{rule: nil, path_rule: nil} = c),
     do: rich_gettext("Handed to %{tool}", tool: {:b, c.tool})
@@ -1617,6 +1652,10 @@ defmodule ApiaryWeb.RunComponents do
     doc:
       "a row's DOM id => what it may ask of the policy (`rule_action/1`); nil leaves the slots empty"
 
+  attr :security, :boolean,
+    default: true,
+    doc: "false: no Reason column, no column of rule actions, and `acts` is not read"
+
   attr :class, :any, default: nil
 
   def connections_table(assigns) do
@@ -1639,7 +1678,7 @@ defmodule ApiaryWeb.RunComponents do
             <th scope="col" class="q-num">{gettext("Attempts")}</th>
             <th scope="col" class="q-num">{gettext("Allowed")}</th>
             <th scope="col" class="q-num">{gettext("Denied")}</th>
-            <th scope="col">{gettext("Reason")}</th>
+            <th :if={@security} scope="col">{gettext("Reason")}</th>
             <th scope="col">
               <.term
                 word={gettext("Outcome")}
@@ -1648,14 +1687,16 @@ defmodule ApiaryWeb.RunComponents do
               />
             </th>
             <th scope="col">{gettext("First and last seen")}</th>
-            <th scope="col" class="w-px"><span class="sr-only">{gettext("Rule actions")}</span></th>
+            <th :if={@security} scope="col" class="w-px">
+              <span class="sr-only">{gettext("Rule actions")}</span>
+            </th>
           </tr>
           <tr :if={@variant == "hive"}>
             <th scope="col">{gettext("Destination")}</th>
             <th scope="col" class="q-num">{gettext("Runs")}</th>
             <th scope="col" class="q-num">{gettext("Attempts")}</th>
             <th scope="col">{gettext("Allowed / denied")}</th>
-            <th scope="col">{gettext("Reason")}</th>
+            <th :if={@security} scope="col">{gettext("Reason")}</th>
             <th scope="col">
               <.term
                 word={gettext("Outcome")}
@@ -1664,7 +1705,9 @@ defmodule ApiaryWeb.RunComponents do
               />
             </th>
             <th scope="col">{gettext("Last seen")}</th>
-            <th scope="col" class="w-px"><span class="sr-only">{gettext("Rule actions")}</span></th>
+            <th :if={@security} scope="col" class="w-px">
+              <span class="sr-only">{gettext("Rule actions")}</span>
+            </th>
           </tr>
         </thead>
         <tbody id={@id}>
@@ -1676,7 +1719,8 @@ defmodule ApiaryWeb.RunComponents do
             started_at={@started_at}
             open={@open[destination_key(row)]}
             run_path={@run_path}
-            act={@acts && @acts[@row_id.(row)]}
+            act={@security && @acts && @acts[@row_id.(row)]}
+            security={@security}
           />
         </tbody>
       </table>

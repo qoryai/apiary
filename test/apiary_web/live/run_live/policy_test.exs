@@ -6,6 +6,9 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
   """
   use ApiaryWeb.ConnCase, async: true
 
+  # Every test here is a rule, a version or a policy on the run's pages: `security`.
+  @moduletag needs: :security
+
   import Ecto.Query
   import Phoenix.LiveViewTest
   import Apiary.OrganisationsFixtures

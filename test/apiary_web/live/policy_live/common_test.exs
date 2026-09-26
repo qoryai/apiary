@@ -1,6 +1,9 @@
 defmodule ApiaryWeb.PolicyLive.CommonTest do
   use ExUnit.Case, async: true
 
+  # The security policy: left out of a run without the security feature.
+  @moduletag needs: :security
+
   alias ApiaryWeb.PolicyLive.Common
 
   describe "export_head/3" do

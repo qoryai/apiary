@@ -1,9 +1,13 @@
 # The server contract
 
 The server contract is what a runner and a server say to each other: how a runner finds the
-server's endpoints, how it proves which access key it holds, how it delivers a run's events,
-and how it is given the run's security policy. Qory Apiary implements the server's side.
-A receiver of your own that implements the same contract takes the same runners.
+server's endpoints, how it proves which access key it holds, and how it delivers a run's
+events.
+<!-- feature: security -->
+It is also how a run is given its security policy.
+<!-- /feature -->
+Qory Apiary implements the server's side. A receiver of your own that implements the same
+contract takes the same runners.
 
 ## Where the contract lives
 
@@ -12,7 +16,10 @@ runner's repository: a README that defines every document and header, one JSON s
 document, and fixtures, among them signed requests with the status a receiver has to answer.
 This server implements version 1, revision 1, tool invocations included: the `tools` of
 `dev.qory.run.policy_applied`, and the `tool`, `request_id` and `status` of
-`dev.qory.run.egress` (see [Tool invocations](security-policy.md#tool-invocations)).
+`dev.qory.run.egress`.
+<!-- feature: security -->
+[Tool invocations](security-policy.md#tool-invocations) says what they are.
+<!-- /feature -->
 
 Where this page and the contract disagree, the contract wins. Two files in the server's
 repository tie the two together:
@@ -24,15 +31,20 @@ repository tie the two together:
   everything the contract has not fixed and the server chose, under "Assumed". This page is
   a summary of it.
 
+<!-- feature: security -->
 The contract's schemas for the run configuration and the policy are vendored in the server,
 and every run configuration is validated against them before it is stored.
+<!-- /feature -->
 
 ## Who is asking: the access key
 
 Every request names an access key and is signed with that key's secret. The key decides
-the workplace: a run is stored in the workplace of the key that delivered it, and a run
-configuration is the one of the key's workplace. After a rotation either of a key's two
-secrets verifies, until the previous one is retired or the key is revoked.
+the workplace: a run is stored in the workplace of the key that delivered it.
+<!-- feature: security -->
+A run configuration is the one of the key's workplace.
+<!-- /feature -->
+After a rotation either of a key's two secrets verifies, until the previous one is retired
+or the key is revoked.
 
 On every request:
 
@@ -50,7 +62,10 @@ answer.
 
 ### A signed GET
 
-For the configuration document and the run configuration.
+For the configuration document.
+<!-- feature: security -->
+The run configuration is fetched the same way.
+<!-- /feature -->
 
 | Header | Value |
 |---|---|
@@ -87,7 +102,9 @@ For the events endpoint.
 | `Content-Type` | `application/cloudevents-batch+json` |
 | `X-Qory-Delivery` | a UUID per batch; a retry of the batch carries the same one |
 | `X-Qory-Signature-256` | `sha256=` and the lower-case hex HMAC SHA-256 of the raw request body, keyed with the secret |
+<!-- feature: security -->
 | `X-Qory-Run-Configuration` | optional: the digest of the run configuration the run holds |
+<!-- /feature -->
 
 No timestamp is signed and no window is checked: a replayed batch is a duplicate, and the
 server discards duplicates by event id. The signature is verified over the bytes as
@@ -102,7 +119,7 @@ window, a signature that does not match. The body never says which, and nothing 
 request's headers is logged. The comparison is constant-time, and the key is looked up only
 after its shape is checked.
 
-## The three endpoints
+## The endpoints
 
 ### Discovery: `GET /.well-known/qory-configuration`
 
@@ -112,20 +129,21 @@ A signed GET. The answer is `200`, `application/json`, with the header
 ```json
 {
   "version": 1,
-  "events": {"url": "https://qory.example/v1/events", "types": ["*"]},
-  "run": {"url": "https://qory.example/v1/run-configuration"}
+  "events": {"url": "https://qory.example/v1/events", "types": ["*"]}
 }
 ```
 
 The URLs are built from the server's `PUBLIC_URL`, never from the request's `Host` header
 ([Install and configure](install.md)). A runner's `server.url` is that address, and the
-runner finds the other two endpoints through this document alone.
+runner finds the other endpoints through this document alone.
 
-The `run` section is there only for a workplace whose policy somebody has made. A
-workplace nobody has given a policy is answered the document without `run`, and its
-machines run under the policy of their own runner file ([The security
-policy](security-policy.md)). The document is therefore one of two, by workplace, and so
-is its digest.
+<!-- feature: security -->
+For a workplace whose policy somebody has made, the document has a `run` section too,
+`"run": {"url": "https://qory.example/v1/run-configuration"}`. A workplace nobody has given
+a policy is answered the document without `run`, and its machines run under the policy of
+their own runner file ([The security policy](security-policy.md)). The document is
+therefore one of two, by workplace, and so is its digest.
+<!-- /feature -->
 
 ### Events: `POST /v1/events`
 
@@ -163,13 +181,16 @@ version does not.
 - **The rate** is per access key and per node: 50 batches a second, 100 at once. Every
   request that passed the `413`, the `401` and the `415` spends one, whatever it is answered
   after that.
-- **The digests.** Every `202` and `410` carries `X-Qory-Configuration`, and for a
-  workplace with a policy `X-Qory-Run-Configuration`, the digest in force for the run's
-  repository. A runner that holds another digest fetches the document again. That is how a
-  change of the policy reaches a run in flight, and the whole of it: nothing in an
-  answer's body is read.
+- **The digests.** Every `202` and `410` carries `X-Qory-Configuration`. A runner that
+  holds another digest fetches the document again; nothing in an answer's body is read.
+  <!-- feature: security -->
+  For a workplace with a policy the answer carries `X-Qory-Run-Configuration` too, the
+  digest in force for the run's repository. That is how a change of the policy reaches a
+  run in flight, and the whole of it.
+  <!-- /feature -->
 - Neither the signature nor the body is logged, and no batch is answered `500`.
 
+<!-- feature: security -->
 ### The run configuration: `GET /v1/run-configuration`
 
 A signed GET, with the query signed as sent: one parameter per label of the run. Runner
@@ -211,10 +232,15 @@ last is read.
 The `security_policy` is the policy: the runner does not merge it with the machine's own.
 When the policy has deny rules its `egress` carries `deny` after `allow`, the hosts the
 runner denies first and in either mode; without any, the section is as above.
+<!-- /feature -->
 
 ## A receiver of your own
 
 The runner's repository ships a reference receiver and the fixtures any receiver is tested
-against. Discovery and the events endpoint are enough; a receiver that names no `run`
-section offers no run configuration, and the policy stays the machine's. On the machine it
-is configured like Qory Apiary ([The runner file's `server` section](runner-file.md)).
+against. Discovery and the events endpoint are enough.
+<!-- feature: security -->
+A receiver that names no `run` section offers no run configuration, and the policy stays
+the machine's.
+<!-- /feature -->
+On the machine it is configured like Qory Apiary ([The runner file's `server`
+section](runner-file.md)).

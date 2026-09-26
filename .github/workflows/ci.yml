@@ -7,8 +7,22 @@ on:
 
 jobs:
   test:
-    name: Elixir tests
+    name: Elixir tests (${{ matrix.name }})
     runs-on: ubuntu-latest
+    # The suite runs under each instance a launch may make (decision 0070): every feature,
+    # the wall and the record, and the record alone. A test that
+    # exercises a feature is tagged `needs:` and left out where the feature is off; the
+    # checks that do not depend on the features run once, with every feature.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: every feature
+            features: ""
+          - name: the wall and the record
+            features: observability,security,managed_organisations
+          - name: the record alone
+            features: observability
     services:
       postgres:
         image: postgres:18
@@ -58,15 +72,19 @@ jobs:
           mix deps.get
 
       - name: Check formatting
+        if: matrix.features == ''
         run: mix format --check-formatted
 
       - name: Compile without warnings
+        if: matrix.features == ''
         run: mix compile --warnings-as-errors
 
       - name: Check the Gettext catalogues are extracted
+        if: matrix.features == ''
         run: mix gettext.extract --check-up-to-date
 
       - name: Build the documentation without warnings
+        if: matrix.features == ''
         run: mix docs --warnings-as-errors
 
       - name: Test
@@ -74,9 +92,11 @@ jobs:
           MIX_ENV: test
           RUNNER_CONTRACT_DIR: ${{ github.workspace }}/tmp/runner/contracts/runner/v1
           CONTRACT_FIXTURES_REQUIRED: "1"
+          QORY_FEATURES: ${{ matrix.features }}
         run: mix test
 
       - name: Build the assets
+        if: matrix.features == ''
         env:
           MIX_ENV: prod
         run: mix assets.deploy

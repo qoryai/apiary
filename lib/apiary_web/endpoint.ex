@@ -27,6 +27,13 @@ defmodule ApiaryWeb.Endpoint do
     only: ApiaryWeb.static_paths(),
     raise_on_missing_only: code_reloading?
 
+  # The documentation, from the tree built for the instance's features (decision 0070):
+  # `priv/static/docs` holds one per set of features, and `dir/0` names the one to read.
+  plug Plug.Static,
+    at: "/docs",
+    from: {ApiaryWeb.DocsController, :dir, []},
+    gzip: not code_reloading?
+
   # Code reloading can be explicitly enabled under the
   # :code_reloader configuration of your endpoint.
   if code_reloading? do
@@ -55,6 +62,8 @@ defmodule ApiaryWeb.Endpoint do
   plug Plug.MethodOverride
   plug Plug.Head
   plug Plug.Session, @session_options
+  # A route of a feature this instance does not have is a path the router does not know.
+  plug ApiaryWeb.Features.Routes, ApiaryWeb.Router
   plug ApiaryWeb.Router
 
   @parsers Plug.Parsers.init(

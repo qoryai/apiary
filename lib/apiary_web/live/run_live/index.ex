@@ -15,8 +15,14 @@ defmodule ApiaryWeb.RunLive.Index do
 
   The page is loaded off the socket's process (`start_async`): the first render is the
   table's skeleton, later ones keep what is on screen until the new page arrives.
+
+  The runs are the record (`observability`). A target's group links to its policy only
+  where the instance has `security`; without it the group has no such link (decision 0070).
   """
   use ApiaryWeb, :live_view
+  use ApiaryWeb.Features, :observability
+
+  alias Apiary.Features
 
   alias Apiary.AccessKeys
   alias Apiary.Runs
@@ -215,6 +221,7 @@ defmodule ApiaryWeb.RunLive.Index do
           quiet_ids={@quiet_ids}
           loading={@listing == nil}
           connections_path={&connections_path/1}
+          security={@security}
         />
 
         <.empty_state
@@ -322,6 +329,7 @@ defmodule ApiaryWeb.RunLive.Index do
   attr :quiet_ids, :any, required: true
   attr :loading, :boolean, default: false
   attr :connections_path, :any, required: true
+  attr :security, :boolean, required: true
 
   defp runs_table(assigns) do
     assigns = assign(assigns, :columns, if(assigns.group_by == "none", do: 8, else: 7))
@@ -376,6 +384,7 @@ defmodule ApiaryWeb.RunLive.Index do
                 group={group}
                 facts={@facts[group.key]}
                 connections_path={@connections_path}
+                security={@security}
               />
             </td>
           </tr>
@@ -395,6 +404,7 @@ defmodule ApiaryWeb.RunLive.Index do
   attr :group, :map, required: true
   attr :facts, :any, default: nil
   attr :connections_path, :any, required: true
+  attr :security, :boolean, required: true
 
   defp group_header(assigns) do
     facts = assigns.facts || %{runs: length(assigns.group.runs), alive: 0, denials: 0}
@@ -439,7 +449,7 @@ defmodule ApiaryWeb.RunLive.Index do
           {gettext("Connections")}
         </.link>
         <.link
-          :if={@group.kind == :target && group_target_id(@group)}
+          :if={@security && @group.kind == :target && group_target_id(@group)}
           navigate={ApiaryWeb.ConnectionLive.Rules.target_policy_path(group_target_id(@group))}
           class="q-g-policy"
           aria-label={
@@ -612,7 +622,8 @@ defmodule ApiaryWeb.RunLive.Index do
        summary_window: :closed,
        dropped: [],
        narrow: %{},
-       has_keys: AccessKeys.list_access_keys(scope) != []
+       has_keys: AccessKeys.list_access_keys(scope) != [],
+       security: Features.on?(scope, :security)
      )}
   end
 

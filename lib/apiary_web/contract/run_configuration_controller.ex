@@ -26,6 +26,7 @@ defmodule ApiaryWeb.Contract.RunConfigurationController do
   the runner fails closed, as the contract has it.
   """
   use ApiaryWeb, :controller
+  use ApiaryWeb.Features, :security
 
   alias Apiary.Policy.Serving
   alias Apiary.Runs.RateLimit

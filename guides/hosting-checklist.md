@@ -20,6 +20,9 @@ being one. Every variable named here is described in [Install and configure](ins
   where the database backups are stored, not only in the `.env` of the machine.
   `CLOAK_KEY` never changes once an access key exists. [Backup and restore](backup.md)
   says what each loss costs.
+- **The features.** `QORY_FEATURES` says which features the instance has; not set, it has
+  all of them. A feature that is off is absent for everybody on the instance, so decide
+  before they arrive: [Install and configure](install.md#features).
 - **Postgres that is backed up.** The database is the only state. Schedule the dump, and
   restore one into an empty database once, before it is needed.
 - **The port is not public.** Publish the release's port to the reverse proxy only. In the
@@ -42,19 +45,23 @@ being one. Every variable named here is described in [Install and configure](ins
   [Retention](retention.md). Log output is most of what a run stores.
 - **The size of a request.** The receiver takes batches of up to 2 MiB; a proxy with a
   smaller limit on request bodies turns them into errors the runner retries for ever.
-  Allow at least 2 MiB on `/v1/events`. Runner 0.5.0 and later sends every label
-  of a run in the query of `/v1/run-configuration`, which makes a request line of up to
-  about 13 KB; the release takes 16 KiB, and a proxy has to take as much.
+  Allow at least 2 MiB on `/v1/events`.
+  <!-- feature: security -->
+  Runner 0.5.0 and later sends every label of a run in the query of
+  `/v1/run-configuration`, which makes a request line of up to about 13 KB; the release
+  takes 16 KiB, and a proxy has to take as much.
+  <!-- /feature -->
 - **WebSockets.** The console is LiveView: the proxy has to pass the `Upgrade` header on
   `/live`, and should not cut idle connections before 60 seconds.
 
 ## Upgrades
 
 An upgrade is a restart of the new image, which migrates before it serves:
-[Upgrading](upgrading.md). Read the release's section of the [changelog](CHANGELOG.md)
-first, back up, and upgrade one minor version at a time before 1.0. Two instances must not
-boot the same release at the same moment when its changelog says a migration builds an index
-`CONCURRENTLY`: start one, wait for `/health`, then the others.
+[Upgrading](upgrading.md). First read the release's section of the changelog,
+`CHANGELOG.md` at the root of the repository, then back up, and upgrade one minor version
+at a time before 1.0. Two instances must not boot the same release at the same moment when
+its changelog says a migration builds an index `CONCURRENTLY`: start one, wait for
+`/health`, then the others.
 
 ## Several nodes
 

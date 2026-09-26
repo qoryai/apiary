@@ -66,14 +66,19 @@ With a `server` section, every `qory run` on the machine:
    `/.well-known/qory-configuration` under `url`;
 2. sends a ping, a batch of one event, to the events URL the document names, which on this
    server is `/v1/events`;
+   <!-- feature: security -->
 3. when the document names a `run` section, fetches the run configuration for the checkout,
    a signed `GET` of `/v1/run-configuration` with the run's labels as the query. That
    document is the run's security policy;
+   <!-- /feature -->
 4. starts the runtime, and posts the run's events in signed batches while it runs.
 
-The run fails closed. A configuration fetch that fails or is refused, a ping the server
-does not accept, or a named run configuration that does not answer `200`: no run, and the
-error names the URL and the status. A redirect is not followed.
+The run fails closed. A configuration fetch that fails or is refused, or a ping the server
+does not accept: no run, and the error names the URL and the status.
+<!-- feature: security -->
+A named run configuration that does not answer `200` is no run either.
+<!-- /feature -->
+A redirect is not followed.
 
 Once the run is under way the server never delays the session. Events are posted behind a
 queue, what is undelivered when the run ends is kept under `.qory/runs/<id>/undelivered/`
@@ -91,6 +96,7 @@ runner file that still has a `webhook` section is refused with a message that sa
 is configured with the same `server` section, and implements the same contract: the
 configuration document and the events endpoint are enough.
 
+<!-- feature: security -->
 ## The `egress` section and the workplace's policy
 
 The runner file's `egress` section is the machine's own policy: a mode, `observe` or
@@ -123,12 +129,16 @@ Two sections of the runner file still matter under a workplace's policy. `creden
 defines what the machine has; the workplace's policy selects credentials by name and
 defines none, and a name the machine does not define is no run. `wall` starts the runtime
 in a container; a policy with paths or credentials needs one.
+<!-- /feature -->
 
 ## The `forge` and `repository` labels
 
-The server keeps a policy per repository. The runner asks for the run configuration with
-the run's labels, and the server reads the repository from two of them, `forge` and
-`repository`. Both come from the checkout's origin remote:
+The server reads a run's repository from two of its labels, `forge` and `repository`.
+<!-- feature: security -->
+It keeps a policy per repository, and the runner asks for the run configuration with the
+run's labels.
+<!-- /feature -->
+Both come from the checkout's origin remote:
 
 - `forge` is the remote's host;
 - `repository` is its path without the leading slash and without `.git`.
@@ -136,7 +146,10 @@ the run's labels, and the server reads the repository from two of them, `forge` 
 So the origin `git@git.example:acme/shop.git` gives `forge` `git.example` and `repository`
 `acme/shop`. Nothing else is read from the remote. A checkout with no origin remote, or one
 whose remote is on this machine, carries neither label: its runs are listed under
-**Unassigned** on the runs page and are served the workplace baseline.
+**Unassigned** on the runs page.
+<!-- feature: security -->
+They are served the workplace baseline.
+<!-- /feature -->
 
 To override, name them, and the caller's labels win over the remote's:
 
@@ -145,10 +158,16 @@ qory run --label forge=git.example --label repository=acme/shop
 ```
 
 The labels go into the run's first event with every other `--label`, and the console
-groups runs and keeps repository rules by these two. The server compares them to the
-stored labels byte for byte, so one repository reached through two remotes that spell it
-differently is two repositories unless the labels are named.
+groups runs by these two.
+<!-- feature: security -->
+It keeps repository rules by them too.
+<!-- /feature -->
+The server compares them to the stored labels byte for byte, so one repository reached
+through two remotes that spell it differently is two repositories unless the labels are
+named.
 
-Runner 0.5.0 and later sends every label of the run on the run configuration request; an earlier one sends `forge` and `repository` alone.
-The server reads the repository from these two either way. Any other label names no
-repository.
+<!-- feature: security -->
+Runner 0.5.0 and later sends every label of the run on the run configuration request; an
+earlier one sends `forge` and `repository` alone. The server reads the repository from
+these two either way. Any other label names no repository.
+<!-- /feature -->

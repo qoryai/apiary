@@ -24,6 +24,14 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
     view
   end
 
+  # What the policy made of a row, and the links to it, are on the page only where the
+  # instance has `security`; the rows are there in every configuration (decision 0070).
+  defp security?, do: Apiary.Features.on?(:security)
+
+  # The note of a page filtered to one target, with its policy's link where there is one.
+  defp target_note(target),
+    do: "Showing #{target} only." <> if(security?(), do: " Its policy", else: "")
+
   defp dst(host, port \\ 443, path \\ ""),
     do: RunComponents.destination_id(%{host: host, port: port, path: path})
 
@@ -95,7 +103,11 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
                "Tool files PUT /media/acme/shop/checkout.png files.tools.internal:443"
 
       assert has_element?(view, "##{id} .q-dest-tool .q-tool-name", "files")
-      assert text(view, "##{id} .q-why") =~ "Handed to files by rule files.tools.internal"
+
+      if security?(),
+        do: assert(text(view, "##{id} .q-why") =~ "Handed to files by rule files.tools.internal"),
+        else: refute(has_element?(view, "##{id} .q-why"))
+
       assert text(view, "##{id} .q-outcome") == "Answered 200"
 
       # Refused on its path, the request never reached the tool: host first, no tool mark.
@@ -106,8 +118,11 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       assert text(view, "##{refused} .q-dest") =~
                ~r"^files.tools.internal\s?:443 PUT /media/acme/other/checkout.png$"
 
-      assert text(view, "##{refused} .q-why") =~ "Host allowed, no path rule matches."
-      assert text(view, "##{refused} .q-why") =~ "Refused before reaching the tool files"
+      if security?() do
+        assert text(view, "##{refused} .q-why") =~ "Host allowed, no path rule matches."
+        assert text(view, "##{refused} .q-why") =~ "Refused before reaching the tool files"
+      end
+
       assert text(view, "##{refused} .q-outcome") == "Refused"
 
       # The plain host beside them reads as it did.
@@ -181,13 +196,21 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       cdn = text(view, "##{dst("files.cdn.example")}")
       assert cdn =~ "Denied files.cdn.example :443 CONNECT"
       assert cdn =~ "0 / 2"
-      assert cdn =~ "No rule matches. Enforce mode denies it."
+
+      if security?(),
+        do: assert(cdn =~ "No rule matches. Enforce mode denies it."),
+        else: refute(cdn =~ "No rule matches")
+
       assert cdn =~ "Refused"
       assert has_element?(view, "##{dst("files.cdn.example")}.q-denied")
 
       registry = text(view, "##{dst("registry.example")}")
       assert registry =~ "3 / 1"
-      assert registry =~ "Rule registry.example · last attempt"
+
+      if security?(),
+        do: assert(registry =~ "Rule registry.example · last attempt"),
+        else: refute(registry =~ "Rule")
+
       assert registry =~ "Connected"
 
       refute render(view) =~ "secret.example"
@@ -276,8 +299,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
     test "every filter is the URL; per target is the page with repo set", %{conn: conn} do
       view = open(conn, ~p"/hive/connections?system=gitlab.example&target=acme/shop")
 
-      assert text(view, "#connections-target-note") ==
-               "Showing gitlab.example/acme/shop only. Its policy"
+      assert text(view, "#connections-target-note") == target_note("gitlab.example/acme/shop")
 
       assert has_element?(view, "##{dst("registry.example")}")
       refute has_element?(view, "##{dst("files.cdn.example")}")
@@ -323,8 +345,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       assert has_element?(view, "##{dst("colon.example")}")
       refute has_element?(view, "##{dst("registry.example")}")
 
-      assert text(view, "#connections-target-note") ==
-               "Showing git.example:8443/acme/shop only. Its policy"
+      assert text(view, "#connections-target-note") == target_note("git.example:8443/acme/shop")
     end
 
     test "the range is bounded: the widest is 90 days, and it cannot be removed", %{conn: conn} do

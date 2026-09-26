@@ -23,8 +23,11 @@ defmodule ApiaryWeb.RunLogController do
   Scoped like the page: the run is looked up in the signed-in user's hive, and a run of
   another hive is `404`, like one that does not exist. The bytes are never rendered by the
   server; `nosniff` and the attachment type keep a browser from rendering them either.
+
+  The log is the record, so it belongs to `observability`, which every instance has.
   """
   use ApiaryWeb, :controller
+  use ApiaryWeb.Features, :observability
 
   alias Apiary.Organisations
   alias Apiary.Runs.Record

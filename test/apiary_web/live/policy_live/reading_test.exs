@@ -1,6 +1,9 @@
 defmodule ApiaryWeb.PolicyLive.ReadingTest do
   use ExUnit.Case, async: true
 
+  # The security policy: left out of a run without the security feature.
+  @moduletag needs: :security
+
   alias Apiary.Policy.Entry
   alias ApiaryWeb.PolicyLive.Reading
 

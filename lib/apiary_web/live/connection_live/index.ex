@@ -20,9 +20,17 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   several targets none is chosen until the reader chooses. The rule itself is made
   by `Apiary.Policy.rule_from_connection/4` from the most recent connection of the
   destination in the chosen scope, and what the domain refuses is said in its sentence.
+
+  The rows are the record (`observability`); the rules are `security`'s. On an instance
+  without `security` (decision 0070) the page is the record alone: no Reason column (which
+  rule matched, in which mode), no Allow or Deny, no popover, no link to a policy, and
+  the policy is neither read nor followed. A rule event that arrives all the same is
+  dropped before anything is looked up.
   """
   use ApiaryWeb, :live_view
+  use ApiaryWeb.Features, :observability
 
+  alias Apiary.Features
   alias Apiary.Policy
   alias Apiary.Runs
   alias Apiary.Runs.Filters
@@ -47,9 +55,15 @@ defmodule ApiaryWeb.ConnectionLive.Index do
       <.header>
         {gettext("Connections")}
         <:subtitle>
-          {gettext(
-            "Where the runs of this hive reached out to, and what the policy made of it. One row per host, port and path, across runs."
-          )}
+          {if @security,
+            do:
+              gettext(
+                "Where the runs of this hive reached out to, and what the policy made of it. One row per host, port and path, across runs."
+              ),
+            else:
+              gettext(
+                "Where the runs of this hive reached out to. One row per host, port and path, across runs."
+              )}
           <span :if={@filters.target} id="connections-target-note">
             <.rich text={
               rich_gettext("Showing %{target} only.",
@@ -57,7 +71,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
               )
             } />
             <.link
-              :if={@target}
+              :if={@security && @target}
               id="connections-target-policy"
               navigate={Rules.target_policy_path(@target.id)}
               class="q-link"
@@ -198,10 +212,11 @@ defmodule ApiaryWeb.ConnectionLive.Index do
                       gettext("Runs"),
                       gettext("Attempts"),
                       gettext("Allowed / denied"),
-                      gettext("Reason"),
+                      @security && gettext("Reason"),
                       gettext("Outcome"),
                       gettext("Last seen")
                     ]
+                    |> Enum.filter(& &1)
                 }>
                   {label}
                 </th>
@@ -215,7 +230,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
                 <td><span class="skeleton q-skel w-6"></span></td>
                 <td><span class="skeleton q-skel w-8"></span></td>
                 <td><span class="skeleton q-skel w-24"></span></td>
-                <td><span class="skeleton q-skel w-48"></span></td>
+                <td :if={@security}><span class="skeleton q-skel w-48"></span></td>
                 <td><span class="skeleton q-skel w-16"></span></td>
                 <td><span class="skeleton q-skel w-20"></span></td>
               </tr>
@@ -233,6 +248,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           open={@open}
           run_path={&run_path/1}
           acts={@acts}
+          security={@security}
         />
 
         <.empty_state
@@ -265,9 +281,15 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           class="flex flex-wrap items-center justify-between gap-3"
         >
           <p id="connections-footer" class="max-w-[80ch] text-[12.5px] text-faint">
-            {gettext(
-              "Denied destinations come first, then the most recent. The reason and outcome are those of the last attempt across the runs shown. A rule added here changes what happens next; what the record already says stays as it was."
-            )}
+            {if @security,
+              do:
+                gettext(
+                  "Denied destinations come first, then the most recent. The reason and outcome are those of the last attempt across the runs shown. A rule added here changes what happens next; what the record already says stays as it was."
+                ),
+              else:
+                gettext(
+                  "Denied destinations come first, then the most recent. The outcome is that of the last attempt across the runs shown."
+                )}
           </p>
           <div :if={@listing.pages > 1} class="flex items-center gap-2">
             <.button
@@ -288,16 +310,19 @@ defmodule ApiaryWeb.ConnectionLive.Index do
         </div>
       </div>
 
-      <.rule_popover :if={@popover} popover={@popover} />
+      <.rule_popover :if={@security && @popover} popover={@popover} />
     </Layouts.app>
     """
   end
 
   @impl true
   def mount(_params, _session, socket) do
+    scope = socket.assigns.current_scope
+    security = Features.on?(scope, :security)
+
     if connected?(socket) do
-      Runs.subscribe(socket.assigns.current_scope)
-      Policy.subscribe(socket.assigns.current_scope)
+      Runs.subscribe(scope)
+      if security, do: Policy.subscribe(scope)
     end
 
     {:ok,
@@ -316,7 +341,8 @@ defmodule ApiaryWeb.ConnectionLive.Index do
        acts: nil,
        popover: nil,
        own: [],
-       policy_flush_scheduled: false
+       policy_flush_scheduled: false,
+       security: security
      )}
   end
 
@@ -399,6 +425,12 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   ## A row's Allow and Deny (pd8). What the browser names is matched whole against the rows
   ## the page holds, and the rule is made from a connection read through the scope: a
   ## destination or a target of another hive finds nothing.
+
+  # Without security there is no rule to write: a crafted event is dropped here, before
+  # a row, a policy or a connection is read.
+  def handle_event(event, _params, %{assigns: %{security: false}} = socket)
+      when event in ~w(rule_open rule_change rule_cancel rule_submit),
+      do: {:noreply, socket}
 
   def handle_event("rule_open", %{"action" => action} = params, socket)
       when action in ~w(allow deny) do
@@ -553,7 +585,11 @@ defmodule ApiaryWeb.ConnectionLive.Index do
       else: {:noreply, socket}
   end
 
-  # The policy's topic: the rows' standing is read again, the listing is not.
+  # The policy's topic: the rows' standing is read again, the listing is not. A page
+  # without security never subscribed, and has no standing to read again.
+  def handle_info({:policy_changed, _what}, %{assigns: %{security: false}} = socket),
+    do: {:noreply, socket}
+
   def handle_info({:policy_changed, _what}, socket) do
     if socket.assigns.policy_flush_scheduled do
       {:noreply, socket}
@@ -571,7 +607,8 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   def handle_info(_other, socket), do: {:noreply, socket}
 
   defp load(socket) do
-    %{current_scope: scope, filters: filters, open: open, narrow: narrow} = socket.assigns
+    %{current_scope: scope, filters: filters, open: open, narrow: narrow, security: security} =
+      socket.assigns
 
     if connected?(socket) do
       start_async(socket, :load, fn ->
@@ -591,7 +628,8 @@ defmodule ApiaryWeb.ConnectionLive.Index do
              )}
           end
 
-        target = target_of(scope, filters.target)
+        # The target is read for its policy; without security nothing is.
+        target = if security, do: target_of(scope, filters.target)
 
         %{
           filters: filters,
@@ -599,8 +637,8 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           facets: Runs.destination_facets(scope, filters, now: now, narrow: narrow),
           open: open,
           target: target,
-          effective: Policy.effective(scope, target),
-          own: if(target, do: [], else: Rules.own_hosts(scope))
+          effective: if(security, do: Policy.effective(scope, target)),
+          own: if(security and is_nil(target), do: Rules.own_hosts(scope), else: [])
         }
       end)
     else
@@ -615,7 +653,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   defp target_of(scope, {system, path}), do: Runs.fetch_target(scope, system, path)
   defp target_of(_scope, _target), do: nil
 
-  defp refresh_policy(%{assigns: %{listing: %{}}} = socket) do
+  defp refresh_policy(%{assigns: %{security: true, listing: %{}}} = socket) do
     %{current_scope: scope, target: target} = socket.assigns
 
     socket

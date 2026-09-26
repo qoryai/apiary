@@ -9,6 +9,10 @@ defmodule ApiaryWeb.RunPageComponents do
   is never `raw/1`. A link is built by the caller from a verified route and a sequence
   number, never from a string of the record. The terminal's bytes are not rendered here
   at all: the `Terminal` hook feeds them to xterm.js.
+
+  `security={false}` is an instance without `security` (decision 0070): the timeline's
+  connections say what the runner reported and nothing of a rule. The run page leaves
+  the policy's items out of the index it hands over, so none reaches a component here.
   """
   use Phoenix.Component
   use Gettext, backend: ApiaryWeb.Gettext
@@ -323,6 +327,7 @@ defmodule ApiaryWeb.RunPageComponents do
   attr :connections, :boolean, default: true, doc: "false hides every connection (?cx=0)"
   attr :earlier, :integer, default: 0, doc: "items before the window"
   attr :later, :integer, default: 0, doc: "items after the window that are not new arrivals"
+  attr :security, :boolean, default: true, doc: "false: connections without rules or modes"
 
   def timeline(assigns) do
     ~H"""
@@ -355,6 +360,7 @@ defmodule ApiaryWeb.RunPageComponents do
           item={item}
           started_at={@started_at}
           seq_path={@seq_path}
+          security={@security}
         />
       </ol>
       <button
@@ -407,6 +413,7 @@ defmodule ApiaryWeb.RunPageComponents do
   attr :item, :map, required: true
   attr :started_at, :any, required: true
   attr :seq_path, :any, required: true
+  attr :security, :boolean, default: true
 
   def timeline_item(assigns) do
     ~H"""
@@ -436,7 +443,13 @@ defmodule ApiaryWeb.RunPageComponents do
             id: short_agent(@item.lane.id)
           )}
         </span>
-        <.item_body id={@id} item={@item} started_at={@started_at} seq_path={@seq_path} />
+        <.item_body
+          id={@id}
+          item={@item}
+          started_at={@started_at}
+          seq_path={@seq_path}
+          security={@security}
+        />
       </div>
     </li>
     """
@@ -532,6 +545,7 @@ defmodule ApiaryWeb.RunPageComponents do
   attr :item, :map, required: true
   attr :started_at, :any, required: true
   attr :seq_path, :any, required: true
+  attr :security, :boolean, default: true
 
   defp item_body(%{item: %{kind: :run_started}} = assigns) do
     ~H"""
@@ -740,6 +754,7 @@ defmodule ApiaryWeb.RunPageComponents do
           connection={cx}
           variant="inline"
           started_at={@started_at}
+          security={@security}
         />
         <small :if={@item.connections_count > length(@item.connections)}>
           {more_counted(@item.connections_count - length(@item.connections))}
@@ -835,6 +850,7 @@ defmodule ApiaryWeb.RunPageComponents do
       variant="inline"
       started_at={@started_at}
       caption={@item.open_calls > 1 && calls_open(@item.open_calls)}
+      security={@security}
     />
     """
   end
@@ -891,6 +907,7 @@ defmodule ApiaryWeb.RunPageComponents do
           connection={cx}
           variant="inline"
           started_at={@started_at}
+          security={@security}
         />
         <small :if={@item.connections_count > length(@item.connections)}>
           {more_counted(@item.connections_count - length(@item.connections))}

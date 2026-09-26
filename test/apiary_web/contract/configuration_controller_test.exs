@@ -37,6 +37,7 @@ defmodule ApiaryWeb.Contract.ConfigurationControllerTest do
     |> get(path)
   end
 
+  @tag needs: :security
   test "a hive whose policy somebody made is named the run section; the digest differs",
        %{scope: scope, key: key, secret: secret} do
     unmanaged = signed_get(build_conn(), key.key_id, secret)

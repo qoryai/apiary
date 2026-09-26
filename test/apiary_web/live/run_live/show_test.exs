@@ -36,6 +36,10 @@ defmodule ApiaryWeb.RunLive.ShowTest do
     render(lv)
   end
 
+  # What the policy made of the record is on the page only where the instance has
+  # `security`; the record itself is there in every configuration (decision 0070).
+  defp security?, do: Apiary.Features.on?(:security)
+
   defp item_ids(html) do
     html
     |> LazyHTML.from_document()
@@ -84,16 +88,24 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert html =~ "after it started"
 
       # the strip
-      for label <- ~w(Exit Started Duration Runtime Host Policy), do: assert(html =~ "#{label}")
+      for label <- ~w(Exit Started Duration Runtime Host), do: assert(html =~ "#{label}")
       assert html =~ "claude"
       assert html =~ "2.1.273"
       assert html =~ run.host
       assert html =~ run.wall
       assert html =~ run.image
-      assert html =~ "enforce"
-      # the run configuration it applied was not rendered by this hive (pd9)
-      assert has_element?(lv, "#policy-unrendered", "a4e1d0c97b3f")
-      assert has_element?(lv, "#policy-unrendered", "not rendered here")
+
+      if security?() do
+        assert has_element?(lv, "#run-facts", "Policy")
+        assert html =~ "enforce"
+        # the run configuration it applied was not rendered by this hive (pd9)
+        assert has_element?(lv, "#policy-unrendered", "a4e1d0c97b3f")
+        assert has_element?(lv, "#policy-unrendered", "not rendered here")
+      else
+        refute has_element?(lv, "#run-facts .q-kv-policy")
+        refute has_element?(lv, "#policy-unrendered")
+      end
+
       assert html =~ "3 m 52 s"
 
       # labels, in the record's order with forge, repository and task first
@@ -182,7 +194,6 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
       for words <- [
             "Run started",
-            "Policy applied",
             "Session started",
             "Prompt",
             "Subagent started",
@@ -197,8 +208,17 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       end
 
       assert html =~ "behind a docker wall"
-      assert html =~ "4 hosts allowed"
-      assert html =~ "fetched from the run configuration"
+
+      # the policy the run applied is an item where the instance has security, and only there
+      if security?() do
+        assert html =~ "Policy applied"
+        assert html =~ "4 hosts allowed"
+        assert html =~ "fetched from the run configuration"
+      else
+        refute html =~ "Policy applied"
+        refute html =~ "hosts allowed"
+      end
+
       assert html =~ "permission_prompt · Claude needs your permission to use Bash"
       assert html =~ "success · 14 turns · 3 m 49 s · $0.84"
       assert html =~ "exit 0"
@@ -262,7 +282,13 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
       assert has_element?(lv, "#e-58 .q-during", "1 connection while this call was open")
       assert has_element?(lv, "#e-58 .q-during .q-cx-denied", "registry.example")
-      assert has_element?(lv, "#e-58 .q-during", "No rule matches")
+
+      assert has_element?(
+               lv,
+               "#e-58 .q-during",
+               if(security?(), do: "No rule matches", else: "Denied.")
+             )
+
       refute has_element?(lv, "#e-59")
 
       # between items while the two Task calls were open, with the caption, and no node
@@ -706,18 +732,31 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
       assert first =~ "q-denied" and second =~ "q-denied"
 
-      assert html =~ "No rule matches."
-      assert html =~ "Enforce mode denies it."
       assert html =~ "Refused"
       assert html =~ "Dial failed"
       assert html =~ "POST /acme/shop.git/git-upload-pack"
-      assert html =~ "forge-token"
 
-      assert has_element?(
-               lv,
-               "#connections-footnote",
-               "A rule added here changes what happens next; what the record already says stays as it was."
-             )
+      # the reason is what the policy made of the attempt: which rule, in which mode
+      if security?() do
+        assert html =~ "No rule matches."
+        assert html =~ "Enforce mode denies it."
+        assert html =~ "forge-token"
+
+        assert has_element?(
+                 lv,
+                 "#connections-footnote",
+                 "A rule added here changes what happens next; what the record already says stays as it was."
+               )
+      else
+        refute html =~ "No rule matches."
+        refute has_element?(lv, "#run-connections .q-why")
+
+        assert has_element?(
+                 lv,
+                 "#connections-footnote",
+                 "The outcome is that of the last attempt."
+               )
+      end
 
       lv |> element("#decision button", "Denied") |> render_click()
       assert_patch(lv, ~p"/hive/runs/#{run.run_id}/connections?decision=denied")
@@ -789,12 +828,21 @@ defmodule ApiaryWeb.RunLive.ShowTest do
              )
 
       assert has_element?(lv, "#cx-#{call.id} .q-dest-tool .q-on", "files.tools.internal:443")
-      assert has_element?(lv, "#cx-#{call.id} .q-why", "Handed to")
+
+      if security?(),
+        do: assert(has_element?(lv, "#cx-#{call.id} .q-why", "Handed to")),
+        else: refute(has_element?(lv, "#cx-#{call.id} .q-why"))
+
       assert has_element?(lv, "#cx-#{call.id} .q-outcome", "Answered 201")
 
       assert has_element?(lv, "#cx-#{refused.id}.q-denied .q-dest", "files.tools.internal")
       refute has_element?(lv, "#cx-#{refused.id} .q-dest-tool")
-      assert has_element?(lv, "#cx-#{refused.id} .q-why", "Refused before reaching the tool")
+
+      if security?(),
+        do:
+          assert(has_element?(lv, "#cx-#{refused.id} .q-why", "Refused before reaching the tool")),
+        else: refute(has_element?(lv, "#cx-#{refused.id} .q-why"))
+
       assert has_element?(lv, "#cx-#{refused.id} .q-outcome", "Refused")
 
       refute has_element?(lv, "#cx-#{plain.id} .q-dest-tool")
@@ -816,16 +864,24 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       run = demo(scope, "session-with-subagents")
       {:ok, _lv, html} = live(conn, ~p"/hive/runs/#{run.run_id}/details")
 
-      for heading <- ["Command", "Policy in force", "Record"], do: assert(html =~ heading)
+      for heading <- ["Command", "Record"], do: assert(html =~ heading)
       assert html =~ "--verbose"
       assert html =~ "/work/shop"
       assert html =~ "No, on pipes"
       refute html =~ "<dt>Terminal</dt>"
       assert html =~ "0.10.0"
       assert html =~ "contract 1"
-      assert html =~ run.policy_digest
-      assert html =~ "api.llm.example, git.example.com"
-      assert html =~ "forge-token"
+
+      if security?() do
+        assert html =~ "Policy in force"
+        assert html =~ run.policy_digest
+        assert html =~ "api.llm.example, git.example.com"
+        assert html =~ "forge-token"
+      else
+        refute html =~ "Policy in force"
+        refute html =~ run.policy_digest
+      end
+
       assert html =~ run.run_id
       assert html =~ "projected through"
       assert html =~ "5b8e2f14-9c3a-4d7e-a1b6-3f0c8d2e7a45"
@@ -1313,8 +1369,13 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       run = projected(scope, tool_record())
       {:ok, lv, _html} = live(conn, ~p"/hive/runs/#{run.run_id}")
 
-      assert has_element?(lv, "#e-2-tools", "files")
-      assert has_element?(lv, "#e-2-tools", "files.tools.internal")
+      # the tools are listed on the policy applied, an item only where there is security
+      if security?() do
+        assert has_element?(lv, "#e-2-tools", "files")
+        assert has_element?(lv, "#e-2-tools", "files.tools.internal")
+      else
+        refute has_element?(lv, "#e-2")
+      end
 
       assert has_element?(lv, "#e-4-group .q-cx-sum .q-tool-name", "files")
       assert has_element?(lv, "#e-4-group .q-cx-sum", "2 allowed requests")
@@ -1336,6 +1397,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       refute has_element?(lv, "#e-3-cx .q-dest-tool")
     end
 
+    @tag needs: :security
     test "the policy in force names the tools and the hosts they serve", %{
       conn: conn,
       scope: scope

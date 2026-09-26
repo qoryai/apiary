@@ -80,6 +80,11 @@ defmodule Mix.Tasks.Apiary.Demo do
       end
     end
 
+    # An instance without the security feature has no policy to give the hive.
+    if Apiary.Features.on?(access_key, :security), do: demo_policy(access_key)
+  end
+
+  defp demo_policy(access_key) do
     case policy(access_key) do
       {:ok, changes} ->
         Mix.shell().info("\nThe hive has a security policy now: #{changes} changes.")

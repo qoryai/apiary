@@ -34,8 +34,10 @@ written out in [CONTRIBUTING.md](CONTRIBUTING.md).
   warnings as errors (`mix docs --warnings-as-errors`) and runs the tests. CI runs the
   same checks plus `MIX_ENV=prod mix assets.deploy`.
 - **Documentation.** It ships with the application: the guides are Markdown under
-  `guides/`, built with the module reference by ExDoc into `priv/static/docs` and served by
-  every instance at `/docs`. Every module gets a moduledoc stating its role and invariants,
+  `guides/`, built with the module reference by ExDoc (`mix docs`, an alias of
+  `mix docs.all`) into one tree per set of features under `priv/static/docs`, and every
+  instance serves at `/docs` the tree its features cover. A passage about one feature sits
+  between `<!-- feature: name -->` and `<!-- /feature -->` lines; see `Mix.Tasks.Docs.All`. Every module gets a moduledoc stating its role and invariants,
   every public function a doc and a spec. A change an operator or a user has to know about
   changes a guide in the same pull request.
 - Use the already included `:req` (`Req`) library for HTTP requests, **avoid** `:httpoison`,

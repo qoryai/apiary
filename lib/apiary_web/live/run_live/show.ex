@@ -14,12 +14,21 @@ defmodule ApiaryWeb.RunLive.Show do
   updated in place, and a new item is inserted only while the reader is at the live end;
   away from it the pill counts. No log byte crosses the socket: the terminal reads
   `/hive/runs/:run_id/log`, and the LiveView only says how far the log has advanced.
+
+  The run, its terminal, its timeline and its connections as the runner reported them are
+  the record (`observability`). What the policy made of it is `security`'s, and an
+  instance without it (decision 0070) shows none of it: no policy in the header or on
+  Details, no drift, no version, no policy applied on the timeline, no reason by rule or
+  mode, no Allow or Deny. The page then neither reads the policy nor follows its topic,
+  and a rule event that arrives all the same is dropped before anything is looked up.
   """
   use ApiaryWeb, :live_view
+  use ApiaryWeb.Features, :observability
 
   import ApiaryWeb.RunPageComponents
   import ApiaryWeb.PolicyComponents, only: [short_digest: 1]
 
+  alias Apiary.Features
   alias Apiary.Policy
   alias Apiary.Runs
   alias Apiary.Runs.{Filters, Record, Run}
@@ -151,7 +160,7 @@ defmodule ApiaryWeb.RunLive.Show do
             <% end %>
             <:sub :if={@run.wall && @run.image}>{@run.image}</:sub>
           </.kv>
-          <.kv label={gettext("Policy")} class="q-kv-policy">
+          <.kv :if={@security} label={gettext("Policy")} class="q-kv-policy">
             <.policy_value
               policy={@policy}
               digest={@run.policy_digest}
@@ -164,7 +173,7 @@ defmodule ApiaryWeb.RunLive.Show do
           </.kv>
         </.kvs>
 
-        <.notice :if={@in_force} kind={:warning} class="max-w-[100ch]">
+        <.notice :if={@security && @in_force} kind={:warning} class="max-w-[100ch]">
           <span id="run-behind">
             <b>{gettext("This run is behind the policy in force.")}</b>
             <.rich
@@ -284,6 +293,7 @@ defmodule ApiaryWeb.RunLive.Show do
             acts={@acts}
             version={@reported_version}
             in_force={@in_force}
+            security={@security}
           />
         <% @live_action == :details -> %>
           <.details_tab
@@ -295,6 +305,7 @@ defmodule ApiaryWeb.RunLive.Show do
             version={@reported_version}
             in_force={@in_force}
             digests={@digests}
+            security={@security}
           />
       <% end %>
 
@@ -317,7 +328,7 @@ defmodule ApiaryWeb.RunLive.Show do
         </:footer>
       </.modal>
 
-      <.rule_popover :if={@popover} popover={@popover} />
+      <.rule_popover :if={@security && @popover} popover={@popover} />
     </Layouts.app>
     """
   end
@@ -397,6 +408,7 @@ defmodule ApiaryWeb.RunLive.Show do
         connections={@cx}
         earlier={@earlier}
         later={max(@later - @new_count, 0)}
+        security={@security}
       />
 
       <.live_end
@@ -495,6 +507,7 @@ defmodule ApiaryWeb.RunLive.Show do
   attr :acts, :map, default: nil
   attr :version, :any, default: nil
   attr :in_force, :any, default: nil
+  attr :security, :boolean, required: true
 
   defp connections_tab(assigns) do
     ~H"""
@@ -540,7 +553,7 @@ defmodule ApiaryWeb.RunLive.Show do
               )
             } />
           </span>
-          <span :if={@policy}>
+          <span :if={@security && @policy}>
             {gettext("policy")} <b>{@policy.mode}</b>
             <.scoped_version :if={@version} version={@version} />
             <span
@@ -567,6 +580,7 @@ defmodule ApiaryWeb.RunLive.Show do
         rows={@connections.rows}
         started_at={@run.started_at}
         acts={@acts}
+        security={@security}
       />
       <div
         :if={@connections.total > 0}
@@ -595,9 +609,15 @@ defmodule ApiaryWeb.RunLive.Show do
         </div>
       </div>
       <p :if={@counts.all > 0} id="connections-footnote" class="max-w-[80ch] text-[12.5px] text-faint">
-        {gettext(
-          "Counted per host, port and path from the run's egress events. The reason and outcome are those of the last attempt. A rule added here changes what happens next; what the record already says stays as it was."
-        )}
+        {if @security,
+          do:
+            gettext(
+              "Counted per host, port and path from the run's egress events. The reason and outcome are those of the last attempt. A rule added here changes what happens next; what the record already says stays as it was."
+            ),
+          else:
+            gettext(
+              "Counted per host, port and path from the run's egress events. The outcome is that of the last attempt."
+            )}
       </p>
     </div>
     """
@@ -611,6 +631,7 @@ defmodule ApiaryWeb.RunLive.Show do
   attr :version, :any, default: nil
   attr :in_force, :any, default: nil
   attr :digests, :map, required: true
+  attr :security, :boolean, required: true
 
   defp details_tab(assigns) do
     ~H"""
@@ -666,7 +687,7 @@ defmodule ApiaryWeb.RunLive.Show do
         </dl>
       </section>
 
-      <section class="q-card" aria-labelledby="card-policy">
+      <section :if={@security} class="q-card" aria-labelledby="card-policy">
         <h2 id="card-policy">{gettext("Policy in force")}</h2>
         <dl :if={@policy} class="q-dl">
           <dt>{gettext("Mode")}</dt>
@@ -938,14 +959,19 @@ defmodule ApiaryWeb.RunLive.Show do
 
   @impl true
   def mount(_params, _session, socket) do
+    scope = socket.assigns.current_scope
+    security = Features.on?(scope, :security)
+
     # The policy's topic is followed from mount: the sidebar's hook looks, before the first
     # handle_params, at whether the page subscribed, and stops the message at itself when
     # it did not. Subscribing any later is both a second subscription and a deaf page.
-    if connected?(socket), do: Policy.subscribe(socket.assigns.current_scope)
+    # Without security there is no policy to follow.
+    if security and connected?(socket), do: Policy.subscribe(scope)
 
     {:ok,
      socket
      |> assign(
+       security: security,
        run: nil,
        loaded_id: nil,
        loaded: false,
@@ -1019,20 +1045,22 @@ defmodule ApiaryWeb.RunLive.Show do
           Runs.subscribe(scope, run)
           Process.send_after(self(), :quiet_tick, @quiet_tick_ms)
 
+          security = socket.assigns.security
+
           socket
           |> assign(
             loaded: true,
             window_loaded: false,
             full: MapSet.new(),
-            index: Record.timeline(scope, run),
-            policy: Record.policy(scope, run),
+            policy: if(security, do: Record.policy(scope, run)),
             counts: Record.connection_counts(scope, run),
-            target: target_of(scope, run),
+            target: if(security, do: target_of(scope, run)),
             versions: %{},
             effective: nil,
             acts: nil,
             popover: nil
           )
+          |> put_index(Record.timeline(scope, run))
           |> assign_policy_facts()
         else
           socket
@@ -1124,8 +1152,12 @@ defmodule ApiaryWeb.RunLive.Show do
       counts: Record.connection_counts(scope, run),
       connections: Record.connections(scope, run, decision: decision, page: page),
       # The effective policy is read when the tab opens and when the policy changes, and
-      # every row's standing is derived from it: no query per row (pj7).
-      effective: socket.assigns.effective || Policy.effective(scope, socket.assigns.target)
+      # every row's standing is derived from it: no query per row (pj7). Without security
+      # it is not read, and no row has a standing.
+      effective:
+        if(socket.assigns.security,
+          do: socket.assigns.effective || Policy.effective(scope, socket.assigns.target)
+        )
     )
     |> assign_acts()
   end
@@ -1250,7 +1282,10 @@ defmodule ApiaryWeb.RunLive.Show do
 
   # The version each policy applied names, where this hive rendered it. The run's own are
   # held already; any other digest costs one indexed read, and a build asks for at most
-  # #{@max_versions}, whatever a runner put in its events.
+  # #{@max_versions}, whatever a runner put in its events. Without security the index
+  # holds no policy applied, and nothing is asked.
+  defp with_versions(items, %{assigns: %{security: false}}), do: items
+
   defp with_versions(items, socket) do
     %{current_scope: scope, target: target, versions: known} = socket.assigns
 
@@ -1283,6 +1318,24 @@ defmodule ApiaryWeb.RunLive.Show do
         version = Rules.version(scope, target, digest)
         {version, Map.put(known, digest, version)}
     end
+  end
+
+  # The index the page holds. Without security the policy's items are not the page's: they
+  # leave the items, and every sequence that points at one leaves `by_seq`, so neither a
+  # window nor a `?seq=` can reach one. The index's own state keeps them, so the next
+  # extension folds the record as it always does.
+  defp put_index(%{assigns: %{security: true}} = socket, index), do: assign(socket, index: index)
+
+  defp put_index(socket, index) do
+    {policy, items} = Enum.split_with(index.items, &(&1.kind == :policy_applied))
+    dropped = MapSet.new(policy, & &1.seq)
+
+    by_seq =
+      if policy == [],
+        do: index.by_seq,
+        else: Map.reject(index.by_seq, fn {_seq, item_seq} -> item_seq in dropped end)
+
+    assign(socket, index: %{index | items: items, by_seq: by_seq})
   end
 
   defp assign_window_counts(socket) do
@@ -1459,6 +1512,12 @@ defmodule ApiaryWeb.RunLive.Show do
 
   ## A row's Allow and Deny (pd8). What the browser names is looked up among the rows the
   ## page holds, which are the run's: an id of another run or another hive finds nothing.
+
+  # Without security there is no rule to write: a crafted event is dropped here, before
+  # a row, a policy or a connection is read.
+  def handle_event(event, _params, %{assigns: %{security: false}} = socket)
+      when event in ~w(rule_open rule_change rule_cancel rule_submit),
+      do: {:noreply, socket}
 
   def handle_event("rule_open", %{"id" => id, "action" => action}, socket)
       when is_binary(id) and action in ~w(allow deny) do
@@ -1737,7 +1796,10 @@ defmodule ApiaryWeb.RunLive.Show do
     do: is_binary(digests.reported) or is_binary(digests.applied)
 
   # pj8: drift is a comparison, read at mount, on each message of the policy's topic and
-  # when the run reports another digest. No timer decides it.
+  # when the run reports another digest. No timer decides it. Without security there is
+  # no policy to be behind.
+  defp assign_policy_facts(%{assigns: %{security: false}} = socket), do: socket
+
   defp assign_policy_facts(%{assigns: %{run: %Run{} = run}} = socket) do
     %{current_scope: scope, target: target, versions: known} = socket.assigns
     digests = Rules.digests(scope, run)
@@ -1770,7 +1832,7 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp assign_policy_facts(socket), do: socket
 
-  defp refresh_policy(%{assigns: %{run: %Run{}, loaded: true}} = socket) do
+  defp refresh_policy(%{assigns: %{security: true, run: %Run{}, loaded: true}} = socket) do
     %{current_scope: scope, target: target, live_action: tab} = socket.assigns
     socket = assign_policy_facts(socket)
 
@@ -1927,7 +1989,11 @@ defmodule ApiaryWeb.RunLive.Show do
     end
   end
 
-  # The policy's topic: coalesced like the run's, one read per #{@coalesce_ms} ms.
+  # The policy's topic: coalesced like the run's, one read per #{@coalesce_ms} ms. A page
+  # without security never subscribed, and has nothing of the policy to read again.
+  def handle_info({:policy_changed, _what}, %{assigns: %{security: false}} = socket),
+    do: {:noreply, socket}
+
   def handle_info({:policy_changed, _what}, socket) do
     if socket.assigns.policy_flush_scheduled do
       {:noreply, socket}
@@ -2052,12 +2118,13 @@ defmodule ApiaryWeb.RunLive.Show do
           end
       end
 
-    socket = assign(socket, index: index)
+    socket = put_index(socket, index)
+    security = socket.assigns.security
 
     case rows do
       :stale ->
         socket
-        |> assign(policy: Record.policy(scope, run), window_loaded: false)
+        |> assign(policy: if(security, do: Record.policy(scope, run)), window_loaded: false)
         |> read_tab(tab, socket.assigns.decision, socket.assigns.connections.page)
 
       rows ->
@@ -2066,7 +2133,7 @@ defmodule ApiaryWeb.RunLive.Show do
 
         socket
         |> then(
-          &if("dev.qory.run.policy_applied" in types,
+          &if(security and "dev.qory.run.policy_applied" in types,
             do: &1 |> assign(policy: Record.policy(scope, run)) |> announce_reload() |> reline(),
             else: &1
           )

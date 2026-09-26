@@ -107,8 +107,8 @@ with it.
 Without the `CLOAK_KEY` the dump was taken under, those secrets cannot be read. What that
 looks like, so it is recognised:
 
-- Every signed request of a runner holding such a key, the configuration document, the
-  run configuration and every batch of events, is answered `503` with
+- Every signed request of a runner holding such a key, the configuration document and every
+  batch of events among them, is answered `503` with
   `{"error":"unavailable"}`, never `401`: the instance is at fault, not the machine. The
   runner fails closed, so no machine starts a run against this server and no events
   arrive. For each request the log has `access key secret cannot be decrypted
@@ -124,8 +124,10 @@ file ([The runner file's `server` section](runner-file.md)). When the right `CLO
 turns up, put it back before rotating and every existing secret reads again.
 
 Everything else survives: accounts, organisations, workplaces and memberships, runs,
-events, logs, connections, the security policy with its versions and history, and the
-access keys' own rows with their labels and key ids.
+events, logs, connections, and the access keys' own rows with their labels and key ids.
+<!-- feature: security -->
+So does the security policy, with its versions and history.
+<!-- /feature -->
 
 For the same reason `CLOAK_KEY` must never change on a running installation once an access
 key exists.
@@ -151,8 +153,10 @@ are taken, restore the newest dump on another machine:
 3. Restore as under "The compose installation" above.
 4. `curl http://localhost:4100/health` answers `200`.
 5. Ask for a log-in link at `http://localhost:4100/users/log-in` with your own address, take
-   it from `docker compose logs apiary`, and sign in. The runs, the policy and its history
-   are there.
+   it from `docker compose logs apiary`, and sign in. The runs are there.
+   <!-- feature: security -->
+   So are the policy and its history.
+   <!-- /feature -->
 6. Prove the access key secrets are readable. On the same machine, with the `qory` command,
    point a runner file's `server` section at `http://localhost:4100` with the access key and
    secret of a key that existed when the dump was taken, and start a run. A run that starts

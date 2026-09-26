@@ -33,8 +33,11 @@ defmodule Apiary.Contract.SignedFixturesTest do
 
     %{scope: scope} = sign_up_fixture()
     published_key_fixture(scope)
-    # A hive serves a run configuration once somebody has made its policy.
-    {:ok, _rule} = Apiary.Policy.allow(scope, nil, %{host: "api.example"})
+    # A hive serves a run configuration once somebody has made its policy; an instance
+    # without the security feature serves none, and its fixtures are left out below.
+    if Apiary.Features.on?(:security),
+      do: {:ok, _rule} = Apiary.Policy.allow(scope, nil, %{host: "api.example"})
+
     %{scope: scope}
   end
 
@@ -58,6 +61,15 @@ defmodule Apiary.Contract.SignedFixturesTest do
 
   for file <- @files, Path.basename(file) not in @skipped do
     @file_path file
+    # The run configuration is the security feature's: absent, not answered, without it.
+    if file
+       |> File.read!()
+       |> Jason.decode!()
+       |> Map.fetch!("target")
+       |> URI.parse()
+       |> Map.fetch!(:path) == "/v1/run-configuration",
+       do: @tag(needs: :security)
+
     test "#{Path.basename(file)} is answered as the contract expects" do
       fixture = @file_path |> File.read!() |> Jason.decode!()
 
@@ -79,6 +91,7 @@ defmodule Apiary.Contract.SignedFixturesTest do
     end
   end
 
+  @tag needs: :security
   test "get-run-configuration-valid: the answer is a run configuration under its digest" do
     fixture =
       contract_dir()

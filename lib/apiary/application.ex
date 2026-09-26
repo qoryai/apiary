@@ -7,6 +7,8 @@ defmodule Apiary.Application do
 
   @impl true
   def start(_type, _args) do
+    # First, so a wrong QORY_FEATURES stops the boot before anything is started.
+    Apiary.Features.boot!()
     attach_request_log()
 
     children =

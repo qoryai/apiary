@@ -34,6 +34,18 @@ a restart does before doing it (the Upgrading guide, `guides/upgrading.md`).
 - `/hive/connections` has a **Tool invocations** toggle, `tools=1`, that keeps only the
   destinations where a run's last attempt was a tool invocation, each whole, with the
   counts it has without the filter.
+- `QORY_FEATURES`, the features an instance has, read once at boot: `observability`
+  (the record) and `security` (the security policy), beside names kept for features not
+  built yet. `all`, the default when unset, is every feature, and nothing changes for an
+  existing installation; `all-security` is every feature but the security policy; a
+  list, such as `observability,security`, names exactly the features on, and keeps a
+  feature a later release adds off until it is listed. A feature left out is absent: its
+  pages answer as a path that does not exist, the navigation, the overview, the run and
+  connection pages and the documentation at `/docs` do not show it, and the server
+  contract does not advertise it; without `security` the discovery document has no `run`
+  section, so runners keep the policy of their own runner file. An unknown name, or a
+  feature listed without `observability`, stops the boot. Switching a feature on later is
+  a change of the value and a restart, with no migration. See the Install guide.
 
 ### Migrations
 

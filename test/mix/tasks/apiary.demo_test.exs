@@ -210,6 +210,8 @@ defmodule Mix.Tasks.Apiary.DemoTest do
   end
 
   describe "policy/1" do
+    @describetag needs: :security
+
     test "gives a hive without rules a policy with overrides, a lock, versions and a history",
          %{scope: scope, access_key: access_key} do
       assert {:ok, _run} = Demo.replay(access_key, file("session-with-subagents"))

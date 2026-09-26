@@ -7,6 +7,9 @@ defmodule ApiaryWeb.PolicyLive.UnavailableTest do
   """
   use ApiaryWeb.ConnCase, async: false
 
+  # The security policy: left out of a run without the security feature.
+  @moduletag needs: :security
+
   import Phoenix.LiveViewTest
   import Apiary.RunListFixtures
 

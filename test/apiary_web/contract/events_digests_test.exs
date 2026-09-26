@@ -5,6 +5,9 @@ defmodule ApiaryWeb.Contract.EventsDigestsTest do
   """
   use ApiaryWeb.ConnCase, async: true
 
+  # The security policy: left out of a run without the security feature.
+  @moduletag needs: :security
+
   import Apiary.AccessKeysFixtures
   import Apiary.ContractFixtures
   import Apiary.OrganisationsFixtures

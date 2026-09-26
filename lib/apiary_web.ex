@@ -17,9 +17,10 @@ defmodule ApiaryWeb do
   those modules here.
   """
 
-  # `docs` is what `mix docs` builds: served by every instance, absent until it is built.
+  # Not `docs`: `priv/static/docs` holds a tree of the documentation per set of features,
+  # and the endpoint serves /docs from the instance's tree alone (ApiaryWeb.DocsController).
   def static_paths,
-    do: ~w(assets fonts images favicon.ico favicon.svg favicon-32.png robots.txt docs)
+    do: ~w(assets fonts images favicon.ico favicon.svg favicon-32.png robots.txt)
 
   def router do
     quote do
