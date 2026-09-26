@@ -344,7 +344,7 @@ defmodule ApiaryWeb.RunComponentsTest do
       assert text(html) =~ "No rule matches. Observe mode lets it through."
     end
 
-    test "a row projected before the mode was kept does not name a mode" do
+    test "a connection whose event named no mode does not name one" do
       assert text(row(%{last_decision: "denied", last_rule: "", last_mode: nil})) =~
                "No rule matches. The policy denies it."
     end

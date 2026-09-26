@@ -167,7 +167,6 @@ through two remotes that spell it differently is two repositories unless the lab
 named.
 
 <!-- feature: security -->
-Runner 0.5.0 and later sends every label of the run on the run configuration request; an
-earlier one sends `forge` and `repository` alone. The server reads the repository from
-these two either way. Any other label names no repository.
+The runner sends every label of the run on the run configuration request. The server
+reads the repository from `forge` and `repository`; any other label names no repository.
 <!-- /feature -->

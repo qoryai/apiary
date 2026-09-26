@@ -156,7 +156,7 @@ this order, and the first refusal that applies is the answer:
 | `401` | any failure of authentication | `{"error":"unauthorized"}` |
 | `415` | the content type is not `application/cloudevents-batch+json` | `{"error":"unsupported_media_type"}` |
 | `429` | the key has delivered more than its rate; `Retry-After` says how many seconds to wait | `{"error":"rate_limited"}` |
-| `400` | `X-Qory-Contract-Version` is sent and is not an integer from `1` up; a later revision than `1` is accepted, since a revision only adds | `{"error":"unsupported_contract_version","supported":[1]}` |
+| `400` | `X-Qory-Contract-Version` is not `1`, absent or sent twice included | `{"error":"unsupported_contract_version","supported":[1]}` |
 | `400` | the body is not a batch, or is over a limit | `{"error":"invalid_batch"}` |
 | `410` | the workplace has closed the run: the delivery is recorded, no event is stored | empty |
 | `503` | the batch could not be stored; nothing of it was | `{"error":"unavailable"}` |
@@ -193,10 +193,9 @@ version does not.
 <!-- feature: security -->
 ### The run configuration: `GET /v1/run-configuration`
 
-A signed GET, with the query signed as sent: one parameter per label of the run. Runner
-0.5.0 and later sends every label of the run, such as
-`?forge=github.com&issue=77&repository=acme%2Fshop`. An earlier runner sends only
-`?forge=<label>&repository=<label>`, each parameter only when the run has that label. The
+A signed GET, with the query signed as sent: one parameter per label of the run. The
+runner sends every label of the run, such as
+`?forge=github.com&issue=77&repository=acme%2Fshop`. The
 server reads every parameter as a label and reads the repository from two of them, `forge`
 and `repository` (`Apiary.Body.Software`). Any other label names nothing. A repository the
 workplace does not know, or labels that name none, get the workplace's baseline.

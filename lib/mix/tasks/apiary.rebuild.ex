@@ -2,11 +2,9 @@ defmodule Mix.Tasks.Apiary.Rebuild do
   @shortdoc "Projects runs again from their events, in batches"
 
   @moduledoc """
-  Projects runs again from their events: what fills the columns a release adds to the
-  projection on the rows that were projected before it.
+  Projects every run again from its events.
 
-      mix apiary.rebuild              # the runs that need it
-      mix apiary.rebuild --all        # every run
+      mix apiary.rebuild              # every run, a hundred at a time
       mix apiary.rebuild --batch 50   # runs read at a time (default 100)
 
   Batched, idempotent and safe beside a running server (`Apiary.Runs.Rebuild`). In a
@@ -17,7 +15,7 @@ defmodule Mix.Tasks.Apiary.Rebuild do
 
   @impl Mix.Task
   def run(args) do
-    {opts, _rest} = OptionParser.parse!(args, strict: [all: :boolean, batch: :integer])
+    {opts, _rest} = OptionParser.parse!(args, strict: [batch: :integer])
     Mix.Task.run("app.start")
 
     %{rebuilt: rebuilt, failed: failed} = Apiary.Runs.Rebuild.run(opts)

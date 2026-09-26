@@ -21,8 +21,8 @@ defmodule Apiary.Release do
 
   @doc """
   Projects runs again from their events, as `mix apiary.rebuild` does where there is Mix:
-  `bin/apiary eval "Apiary.Release.rebuild()"`. `all: true` for every run, `batch:` for
-  the batch size. See `Apiary.Runs.Rebuild`.
+  `bin/apiary eval "Apiary.Release.rebuild()"`: every run, `batch:` for the batch size.
+  See `Apiary.Runs.Rebuild`.
   """
   def rebuild(opts \\ []) do
     load_app()

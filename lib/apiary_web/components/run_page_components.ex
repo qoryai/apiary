@@ -1279,8 +1279,8 @@ defmodule ApiaryWeb.RunPageComponents do
   bytes. The hook reads the log from `src` and asks again when the LiveView says the log
   has advanced.
 
-  `cols` and `rows` are the pseudo-terminal's size as the record last said it, or nil: a
-  run on pipes, or one recorded before the runner reported the size. With a size the hook
+  `cols` and `rows` are the pseudo-terminal's size as the record last said it, or nil for
+  a run on pipes. With a size the hook
   replays at the recorded size, each answer of `src` at the size its bytes were written
   to, and the box grows to the rows; without one it fits the screen to the box and offers
   to wrap.

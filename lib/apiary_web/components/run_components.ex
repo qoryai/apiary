@@ -1554,7 +1554,7 @@ defmodule ApiaryWeb.RunComponents do
     )
   end
 
-  # The mode is the event's; a row projected before the mode was kept says only what it knows.
+  # The mode is the event's; an event that names neither mode says only what it knows.
   defp mode_sentence("enforce", :denies), do: gettext("Enforce mode denies it.")
   defp mode_sentence("observe", :lets_through), do: gettext("Observe mode lets it through.")
   defp mode_sentence(_mode, :denies), do: gettext("The policy denies it.")

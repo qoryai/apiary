@@ -227,10 +227,6 @@ Wherever a connection is shown, a tool invocation reads as a call to its tool:
 **Allow** and **Deny** on a tool invocation's row act on its host and path, like on any
 row: the rules decide what reaches a tool, and the tool decides what the request does.
 
-A run received before the release that shows tool invocations keeps them as plain
-connections until `mix apiary.rebuild` projects it again (see the [upgrading
-guide](upgrading.md#projections-after-an-upgrade)).
-
 ## Export for a node without a server
 
 A machine that reports to no server can be given the same policy as files. **Export**, on the

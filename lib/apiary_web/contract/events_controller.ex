@@ -8,12 +8,10 @@ defmodule ApiaryWeb.Contract.EventsController do
   (`ApiaryWeb.Contract.RawBody`), a request that does not verify is `401`
   (`ApiaryWeb.Contract.SignedRequest`, over the raw bytes, before anything is
   parsed). Then: a content type other than `application/cloudevents-batch+json`
-  is `415`; a key over its rate is `429` with `Retry-After`; a
-  `X-Qory-Contract-Version` that is not a revision of v1 (an integer from 1 up) is
-  `400` and says which revisions are known (absent is accepted: a plain client of the
-  contract; a later revision than the ones known is accepted too, since a revision
-  only adds and the server serves what it knows); a body that is
-  not a batch is `400`; a run the hive has closed is `410`; anything else is
+  is `415`; a key over its rate is `429` with `Retry-After`; a request whose
+  `X-Qory-Contract-Version` is not `1`, the revision of v1 the runner sends on every
+  request, absent or sent twice included, is `400` and says which revisions are served;
+  a body that is not a batch is `400`; a run the hive has closed is `410`; anything else is
   stored and answered `202`, with nothing projected yet.
 
   Every `202` and `410` carries the digests in force: `X-Qory-Configuration`, the
@@ -33,7 +31,7 @@ defmodule ApiaryWeb.Contract.EventsController do
   alias ApiaryWeb.Contract.{Configuration, SignedRequest}
 
   @content_type "application/cloudevents-batch+json"
-  # The revisions of contract v1 this server knows. A later one is accepted.
+  # The revisions of contract v1 this server serves.
   @known [1]
 
   def create(conn, _params) do
@@ -41,9 +39,10 @@ defmodule ApiaryWeb.Contract.EventsController do
 
     with :ok <- content_type(conn),
          :ok <- rate(access_key),
-         :ok <- contract_version(conn),
+         {:ok, version} <- contract_version(conn),
          {:ok, batch} <- batch(conn.assigns.raw_body),
-         {:ok, %{status: status} = result} <- Ingest.ingest(access_key, batch, meta(conn)) do
+         {:ok, %{status: status} = result} <-
+           Ingest.ingest(access_key, batch, meta(conn, version)) do
       conn
       |> put_configuration(result[:managed])
       |> put_run_configuration(result[:run_configuration_digest])
@@ -99,24 +98,15 @@ defmodule ApiaryWeb.Contract.EventsController do
     end
   end
 
+  # Sent once, a decimal integer, and a revision this server serves.
   defp contract_version(conn) do
-    case get_req_header(conn, "x-qory-contract-version") do
-      [] ->
-        :ok
-
-      [value] ->
-        case Integer.parse(value) do
-          {version, ""} when version >= 1 -> :ok
-          _ -> unsupported_contract_version()
-        end
-
-      _ ->
-        unsupported_contract_version()
+    with [value] <- get_req_header(conn, "x-qory-contract-version"),
+         {version, ""} <- Integer.parse(value),
+         true <- version in @known do
+      {:ok, version}
+    else
+      _ -> {:refuse, 400, %{error: "unsupported_contract_version", supported: @known}, []}
     end
-  end
-
-  defp unsupported_contract_version do
-    {:refuse, 400, %{error: "unsupported_contract_version", supported: @known}, []}
   end
 
   defp batch(raw_body) do
@@ -126,12 +116,12 @@ defmodule ApiaryWeb.Contract.EventsController do
     end
   end
 
-  defp meta(conn) do
+  defp meta(conn, version) do
     %{
       delivery_id: single(conn, "x-qory-delivery"),
       run_configuration: single(conn, "x-qory-run-configuration"),
       runner_version: SignedRequest.runner_version(conn),
-      contract_version: SignedRequest.contract_version(conn)
+      contract_version: version
     }
   end
 

@@ -15,6 +15,9 @@ defmodule Apiary.Runs.IngestPrunedTest do
   alias Apiary.Retention
   alias Apiary.Runs.{Batch, Connection, Delivery, Event, Ingest, LogChunk, Projector, Run}
 
+  # What the runner's request says beside its body: the revision of the contract.
+  @meta %{contract_version: 1}
+
   setup do
     %{scope: scope} = sign_up_fixture()
     %{scope: scope, key: published_key_fixture(scope)}
@@ -35,7 +38,7 @@ defmodule Apiary.Runs.IngestPrunedTest do
 
   defp deliver(key, events) do
     {:ok, batch} = Batch.parse(Jason.encode!(events))
-    {:ok, result} = Ingest.ingest(key, batch)
+    {:ok, result} = Ingest.ingest(key, batch, @meta)
     result
   end
 

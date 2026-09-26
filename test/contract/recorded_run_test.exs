@@ -16,6 +16,9 @@ defmodule Apiary.Contract.RecordedRunTest do
   alias Apiary.Repo
   alias Apiary.Runs.{Batch, Connection, Event, Ingest, LogChunk, Projector, Run}
 
+  # What the runner's request says beside its body: the revision of the contract.
+  @meta %{contract_version: 1}
+
   @moduletag :contract
 
   @runs (case Apiary.ContractFixtures.contract_dir() do
@@ -86,7 +89,7 @@ defmodule Apiary.Contract.RecordedRunTest do
 
   def ingest!(key, lines) do
     {:ok, batch} = Batch.parse("[" <> Enum.join(lines, ",") <> "]")
-    assert {:ok, %{status: 202}} = Ingest.ingest(key, batch)
+    assert {:ok, %{status: 202}} = Ingest.ingest(key, batch, @meta)
   end
 
   for file <- @runs do
