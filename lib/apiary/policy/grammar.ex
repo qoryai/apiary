@@ -54,9 +54,14 @@ defmodule Apiary.Policy.Grammar do
 
   def credential_name?(_name), do: false
 
-  @doc "Whether `argument` is one a credential may be asked with: 1 to 256 characters, none of control."
+  @doc """
+  Whether `argument` is a valid argument of a credential: 1 to 256 characters, none of
+  them a control character, a line separator or a paragraph separator. Characters are
+  code points, as the schema's `maxLength` counts them: a letter with a combining accent
+  is two.
+  """
   def argument?(argument) when is_binary(argument) do
-    String.valid?(argument) and String.length(argument) in 1..@argument_max and
+    String.valid?(argument) and length(String.codepoints(argument)) in 1..@argument_max and
       not Regex.match?(@line, argument)
   end
 

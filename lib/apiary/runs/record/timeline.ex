@@ -71,6 +71,10 @@ defmodule Apiary.Runs.Record.Timeline do
   @max_open_lanes 1_000
   @max_delta 3
   @max_allow 200
+  @max_argument Apiary.Policy.Grammar.argument_max()
+  # The code points of a tool's argument its item's summary line shows; the rest is in the
+  # argument's title.
+  @shown_argument 64
   @lane_key 12
 
   @doc "The bytes of a payload a well shows before \"Show all\"."
@@ -87,6 +91,13 @@ defmodule Apiary.Runs.Record.Timeline do
 
   @doc "How many hosts of a policy applied event's allow list, and of its deny list, are read, at most."
   def max_allow, do: @max_allow
+
+  @doc """
+  How many code points of a tool's argument the timeline reads, at most: the longest
+  argument the policy editor writes (`Apiary.Policy.Grammar.argument_max/0`). A longer one
+  is cut there and ends in `…`.
+  """
+  def max_argument, do: @max_argument
 
   @doc "The event types the index needs, with the `dev.qory.` prefix."
   def types, do: Enum.map(Map.keys(@kinds), &(@prefix <> &1))
@@ -696,7 +707,17 @@ defmodule Apiary.Runs.Record.Timeline do
       denied_hosts: event.deny_count || 0,
       terminated: event.terminated || [],
       terminated_count: event.terminated_count || 0,
-      tools: for(tool <- event.tools || [], do: %{name: tool["name"], hosts: tool["hosts"]}),
+      tools:
+        for(
+          tool <- event.tools || [],
+          do: %{
+            name: tool["name"],
+            argument: tool["argument"],
+            argument_shown:
+              tool["argument"] && bound_codepoints(tool["argument"], @shown_argument),
+            hosts: tool["hosts"]
+          }
+        ),
       again: is_integer(item[:previous_seq]),
       previous_seq: item[:previous_seq],
       previous_digest: is_map(previous) && previous[:run_configuration],
@@ -1132,14 +1153,23 @@ defmodule Apiary.Runs.Record.Timeline do
   defp hosts(_other), do: []
 
   # The tools of a policy applied event as the query reads them: the first twenty objects
-  # with a string name, each `%{"name", "hosts"}`, the name cut at 120 characters and the
-  # first ten string hosts at 255.
+  # with a string name, each `%{"name", "argument", "hosts"}`, the name cut at 120
+  # characters, the argument at 256 code points with `…` (nil when there is
+  # none) and the first ten string hosts at 255.
   defp named_hosts(list) when is_list(list) do
     for item <- list, is_map(item), is_binary(item["name"]) do
       hosts = if is_list(item["hosts"]), do: item["hosts"], else: []
 
       %{
         "name" => String.slice(item["name"], 0, 120),
+        "argument" =>
+          case item["argument"] do
+            argument when is_binary(argument) and argument != "" ->
+              bound_codepoints(argument, @max_argument)
+
+            _ ->
+              nil
+          end,
         "hosts" =>
           hosts
           |> Enum.filter(&is_binary/1)
@@ -1171,4 +1201,17 @@ defmodule Apiary.Runs.Record.Timeline do
   defp bound(value, limit) do
     if String.length(value) > limit, do: String.slice(value, 0, limit) <> "…", else: value
   end
+
+  # Cut at `limit` code points, as the database's `left/2` counts, with `…` when cut.
+  defp bound_codepoints(value, limit) do
+    case skip_codepoints(value, limit) do
+      "" -> value
+      rest -> binary_part(value, 0, byte_size(value) - byte_size(rest)) <> "…"
+    end
+  end
+
+  defp skip_codepoints(rest, 0), do: rest
+  defp skip_codepoints(<<_::utf8, rest::binary>>, n), do: skip_codepoints(rest, n - 1)
+  defp skip_codepoints(<<_, rest::binary>>, n), do: skip_codepoints(rest, n - 1)
+  defp skip_codepoints(<<>>, _n), do: <<>>
 end

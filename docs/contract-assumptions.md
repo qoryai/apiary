@@ -382,9 +382,20 @@ The contract has not fixed these; Apiary chose, and the runner should match:
   request as of any other, and the pages read the decision with it. The fold reads
   `tool` and `status` from any egress event that carries them. `request_id` is not projected: the timeline reads it from the event, where one
   request is shown. The `tools` of `dev.qory.run.policy_applied` are read like its
-  `credentials`: twenty at most, each with ten hosts at most. The vendored schemas and the
-  contract fixtures at the pinned ref have no tools yet; the tests of tool invocations use
-  fixtures of their own.
+  `credentials`: twenty at most, each with ten hosts at most. A credential use and a tool
+  may contain `argument`, the argument the policy passed to it (up to 4096 code points in
+  the contract). The policy in force on a run's Details tab reads it whole, cut only past
+  4096 code points; the timeline's policy applied item reads a tool's cut at 256, the
+  longest argument the policy editor writes (`Apiary.Policy.Grammar.argument_max/0`), and
+  its one-line summary shows the first 64 of them, with the 256 in the argument's title. A
+  cut argument ends in `…`. Lengths are code points, as the schemas' `maxLength` and the
+  database's `left` count them, in the query and in `Timeline.slim/1` alike. The event
+  lists each use of a credential, all with the same name and argument; the Details tab
+  shows them as one entry with the hosts of every use. It reads the first twenty uses and
+  the first twenty tools, and counts the different names and arguments among all of them,
+  so "and N more" is the number of entries, grouped, that it does not show. The vendored
+  schemas and the contract fixtures at the pinned ref have no tools and no arguments yet;
+  the tests of tool invocations and of arguments use fixtures of their own.
 - What the runner's proxy does with the policy document, read from `internal/proxy`,
   `internal/policy` and `session` of the runner at the pinned ref, and what the apiary
   renders for it:

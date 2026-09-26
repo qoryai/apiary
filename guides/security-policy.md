@@ -29,7 +29,9 @@ A rule allows or denies one thing:
 - **A credential**, by name, with an argument when the machine's adapter takes one: a name
   such as `forge-token` and an argument such as `acme/shop`. The policy names a credential
   and never holds one. Each machine defines its credentials in its own runner file, and a
-  run whose policy names a credential its machine does not define does not start.
+  run whose policy names a credential its machine does not define does not start. The
+  policy in force on a run's Details tab lists each of the run's credentials with its
+  argument and the hosts it is for, such as `forge-token acme/shop (forge.example)`.
 
 Paths and credentials need a wall. Without one the runner refuses to start a run whose
 policy has either.
@@ -215,8 +217,9 @@ Wherever a connection is shown, a tool invocation reads as a call to its tool:
 - On the run's timeline, allowed requests to one tool in a row fold into one line that
   names the tool, "2 allowed requests"; a refused one is never folded away, and the row of
   one request carries the proxy's id of it on hover.
-- The run's policy applied item and the policy in force on its Details tab list the tools
-  and the hosts each serves.
+- The run's policy applied item and the policy in force on its Details tab list the tools,
+  each with its argument beside its name when the policy passed one, and the hosts each
+  serves.
 - On `/:org/:workspace/connections`, **Tool invocations** keeps only the destinations
   where a run's last attempt was a tool invocation, each whole: its counts are the same as
   without the filter. A destination where every run's last attempt was refused is not
