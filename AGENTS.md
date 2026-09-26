@@ -1,6 +1,7 @@
 The apiary is the control plane console of Qory: a Phoenix 1.8 / LiveView application on Postgres. This file
-is for an agent working in the repository; the rules for people are the same and are
-written out in [CONTRIBUTING.md](CONTRIBUTING.md).
+is for an agent working in the repository; the rules for people are the same, and are
+written out in [CONTRIBUTING.md](CONTRIBUTING.md) and the developer documentation under
+[docs/](docs/).
 
 ## Project guidelines
 
@@ -37,6 +38,12 @@ written out in [CONTRIBUTING.md](CONTRIBUTING.md).
   warnings as errors, drops unused lock entries, formats, builds the documentation with
   warnings as errors (`mix docs --warnings-as-errors`) and runs the tests. CI runs the
   same checks plus `MIX_ENV=prod mix assets.deploy`.
+- **Developer documentation** lives under `docs/`: `architecture.md` (layout, tenancy),
+  `conventions.md` (migrations, tests, doc comments, vocabulary), `lingo.md`,
+  `contract-assumptions.md`, `releases.md`. `CONTRIBUTING.md` says only how to contribute
+  (where contributions go, the CLA, the licence, running the checkout, pull requests); how
+  the code is built or what rule it follows goes in `docs/`, changed in the same pull request
+  as the code it describes.
 - **Documentation.** It ships with the application: the guides are Markdown under
   `guides/`, built with the module reference by ExDoc (`mix docs`, an alias of
   `mix docs.all`) into one tree per set of features under `priv/static/docs`, and every
