@@ -9,8 +9,8 @@ defmodule ApiaryWeb.Contract.EventsController do
   (`ApiaryWeb.Contract.SignedRequest`, over the raw bytes, before anything is
   parsed). Then: a content type other than `application/cloudevents-batch+json`
   is `415`; a key over its rate is `429` with `Retry-After`; a request whose
-  `X-Qory-Contract-Version` is not `1`, the revision of v1 the runner sends on every
-  request, absent or sent twice included, is `400` and says which revisions are served;
+  `X-Qory-Contract-Version` names no revision served is `400`
+  (`ApiaryWeb.Contract.ContractVersion`, as on every endpoint of the contract);
   a body that is not a batch is `400`; a run the hive has closed is `410`; anything else is
   stored and answered `202`, with nothing projected yet.
 
@@ -28,18 +28,16 @@ defmodule ApiaryWeb.Contract.EventsController do
   use ApiaryWeb.Features, :observability
 
   alias Apiary.Runs.{Batch, Ingest, RateLimit}
-  alias ApiaryWeb.Contract.{Configuration, SignedRequest}
+  alias ApiaryWeb.Contract.{Configuration, ContractVersion, SignedRequest}
 
   @content_type "application/cloudevents-batch+json"
-  # The revisions of contract v1 this server serves.
-  @known [1]
 
   def create(conn, _params) do
     access_key = conn.assigns.access_key
 
     with :ok <- content_type(conn),
          :ok <- rate(access_key),
-         {:ok, version} <- contract_version(conn),
+         {:ok, version} <- ContractVersion.fetch(conn),
          {:ok, batch} <- batch(conn.assigns.raw_body),
          {:ok, %{status: status} = result} <-
            Ingest.ingest(access_key, batch, meta(conn, version)) do
@@ -53,6 +51,9 @@ defmodule ApiaryWeb.Contract.EventsController do
         |> Enum.reduce(conn, fn {name, value}, conn -> put_resp_header(conn, name, value) end)
         |> put_status(status)
         |> json(body)
+
+      :error ->
+        ContractVersion.refuse(conn)
 
       {:error, _reason} ->
         conn |> put_status(503) |> json(%{error: "unavailable"})
@@ -95,17 +96,6 @@ defmodule ApiaryWeb.Contract.EventsController do
 
       {:error, seconds} ->
         {:refuse, 429, %{error: "rate_limited"}, [{"retry-after", Integer.to_string(seconds)}]}
-    end
-  end
-
-  # Sent once, a decimal integer, and a revision this server serves.
-  defp contract_version(conn) do
-    with [value] <- get_req_header(conn, "x-qory-contract-version"),
-         {version, ""} <- Integer.parse(value),
-         true <- version in @known do
-      {:ok, version}
-    else
-      _ -> {:refuse, 400, %{error: "unsupported_contract_version", supported: @known}, []}
     end
   end
 
