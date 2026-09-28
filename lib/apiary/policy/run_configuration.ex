@@ -1,0 +1,28 @@
+defmodule Apiary.Policy.RunConfiguration do
+  @moduledoc """
+  A run configuration as it was served: immutable. `document` is the exact bytes a
+  runner is given, `digest` is `sha256=` and the hex of those bytes, the string of the
+  `X-Qory-Run-Configuration` header. `version` counts from 1 per workspace and target; the
+  baseline's rows have no target. The current one is the highest version.
+  """
+  use Ecto.Schema
+
+  @type t :: %__MODULE__{}
+
+  @primary_key {:id, :binary_id, autogenerate: true}
+  @foreign_key_type :binary_id
+  schema "run_configurations" do
+    field :version, :integer
+    field :document, :string
+    field :digest, :string
+    field :rendered_at, :utc_datetime_usec
+
+    belongs_to :organisation, Apiary.Organisations.Organisation
+    belongs_to :workspace, Apiary.Organisations.Workspace
+    belongs_to :target, Apiary.Runs.Target
+    belongs_to :changed_by, Apiary.Accounts.User
+    # The audit entry of the policy change that rendered it (`Apiary.Policy.Change`), nil
+    # for a version older than the history. No foreign key: the entry is pruned by age.
+    field :audit_entry_id, Ecto.UUID
+  end
+end

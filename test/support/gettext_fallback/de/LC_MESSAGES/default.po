@@ -1,0 +1,21 @@
+# The language's catalogue of ApiaryWeb.Gettext.FallbackTest: every sentence in German.
+msgid ""
+msgstr ""
+"Language: de\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Settings"
+msgstr "Einstellungen"
+
+msgid "Every target follows it."
+msgstr "Jedes Ziel folgt ihr."
+
+msgid "%{count} member"
+msgid_plural "%{count} members"
+msgstr[0] "%{count} Mitglied"
+msgstr[1] "%{count} Mitglieder"
+
+msgid "%{count} target"
+msgid_plural "%{count} targets"
+msgstr[0] "%{count} Ziel"
+msgstr[1] "%{count} Ziele"

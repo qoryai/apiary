@@ -1,0 +1,22 @@
+<Layouts.auth flash={@flash} current_scope={@current_scope}>
+  <div id="docs-not-built">
+    <.empty_state
+      icon="hero-book-open"
+      tone="neutral"
+      heading="h1"
+      title={gettext("The documentation is not built")}
+    >
+      <.rich text={
+        rich_pgettext(
+          "plain",
+          "A release image builds it and serves it here. In a checkout, run %{command} and reload this page. The guides are also in the %{directory} directory of the repository, as Markdown.",
+          command: {:code, "mix docs"},
+          directory: {:code, "guides"}
+        )
+      } />
+      <:actions>
+        <.button navigate={~p"/"}>{gettext("Back to Qory Apiary")}</.button>
+      </:actions>
+    </.empty_state>
+  </div>
+</Layouts.auth>

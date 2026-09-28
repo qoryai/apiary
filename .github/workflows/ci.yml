@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: Elixir tests (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    # The suite runs under each instance a launch may make: every feature, the wall and
+    # the record, and the record alone. A test that exercises a feature is tagged `needs:`
+    # and left out where the feature is off; the checks that do not depend on the features
+    # run once, with every feature.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: every feature
+            features: ""
+          - name: the record alone
+            features: observability
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+
+      # The fixtures of the server contract live in the runner's repository; the tests
+      # tagged :contract replay them, at the ref pinned in .runner-contract-ref.
+      # The whole history is fetched, so the ref may be a tag, a branch or a short commit id.
+      - name: Fetch the runner's repository
+        uses: actions/checkout@v7
+        with:
+          repository: qoryai/runner
+          path: tmp/runner
+          fetch-depth: 0
+          token: ${{ secrets.RUNNER_REPOSITORY_TOKEN || github.token }}
+
+      - name: Check out the pinned ref of the runner's contract
+        run: git -C tmp/runner checkout --detach "$(grep -v '^#' .runner-contract-ref | head -n 1 | tr -d '[:space:]')"
+
+      - name: Install the toolchain pinned in mise.toml
+        uses: jdx/mise-action@v3
+
+      - name: Restore dependencies and build
+        uses: actions/cache@v6
+        with:
+          path: |
+            deps
+            _build
+          key: mix-${{ runner.os }}-${{ hashFiles('mise.toml', 'mix.lock') }}
+          restore-keys: |
+            mix-${{ runner.os }}-
+
+      - name: Fetch dependencies
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get
+
+      - name: Check formatting
+        if: matrix.features == ''
+        run: mix format --check-formatted
+
+      - name: Compile without warnings
+        if: matrix.features == ''
+        run: mix compile --warnings-as-errors
+
+      - name: Check the Gettext catalogues are extracted
+        if: matrix.features == ''
+        run: mix gettext.extract --check-up-to-date
+
+      - name: Build the documentation without warnings
+        if: matrix.features == ''
+        run: mix docs --warnings-as-errors
+
+      - name: Test
+        env:
+          MIX_ENV: test
+          RUNNER_CONTRACT_DIR: ${{ github.workspace }}/tmp/runner/contracts/runner/v1
+          CONTRACT_FIXTURES_REQUIRED: "1"
+          QORY_FEATURES: ${{ matrix.features }}
+        run: mix test
+
+      - name: Build the assets
+        if: matrix.features == ''
+        env:
+          MIX_ENV: prod
+        run: mix assets.deploy

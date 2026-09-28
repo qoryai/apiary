@@ -1,0 +1,80 @@
+defmodule Apiary.Policy.Schema do
+  @moduledoc """
+  The contract's `run-configuration.schema.json` and the `policy.schema.json` it refers
+  to, vendored under `priv/contract/`, and the validation every rendered document passes
+  before it is stored. A test compares the vendored files with the runner's contract
+  directory when `RUNNER_CONTRACT_DIR` is set, as CI sets it.
+
+  The schema's patterns are anchored with `^` and `$`, and `$` also matches before a final
+  newline: `"api.example\n"` passes them. This validation is the check of the document's
+  shape, not the guard of a host, a path or a name: that is `Apiary.Policy.Grammar`, whose
+  patterns are anchored with `\\A` and `\\z` and which every rule passes before it is stored.
+
+  The validator is built once and kept in `:persistent_term`, with the modification
+  times of the two files; a validation after either file changed builds it again, so a
+  checkout running with a code reloader takes a new schema without a restart. Nothing is
+  fetched: a reference outside the two files does not resolve.
+  """
+
+  @behaviour JSV.Resolver
+
+  @base "https://qory.dev/contracts/runner/v1/"
+  @files ~w(policy.schema.json run-configuration.schema.json)
+
+  @doc "The vendored schema files, by name."
+  def files, do: @files
+
+  @doc "Where a vendored schema file is."
+  def path(file) when file in @files, do: Application.app_dir(:apiary, ["priv", "contract", file])
+
+  @doc """
+  Validates a run configuration document, as bytes. `:ok`, or `{:error, reason}` with
+  what the schema refuses, for a log and not for a page.
+  """
+  @spec validate(binary) :: :ok | {:error, term}
+  def validate(document) when is_binary(document) do
+    with {:ok, decoded} <- Jason.decode(document),
+         {:ok, _document} <- JSV.validate(decoded, root()) do
+      :ok
+    else
+      {:error, %JSV.ValidationError{} = error} -> {:error, JSV.normalize_error(error)}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp root do
+    stamp = stamp()
+
+    case :persistent_term.get(__MODULE__, nil) do
+      {^stamp, root} ->
+        root
+
+      _stale_or_none ->
+        root =
+          JSV.build!(%{"$ref" => @base <> "run-configuration.schema.json"},
+            resolver: __MODULE__,
+            formats: true
+          )
+
+        :persistent_term.put(__MODULE__, {stamp, root})
+        root
+    end
+  end
+
+  # The files as they are on disk: a stat each, which a write, the one caller, can afford.
+  defp stamp do
+    for file <- @files do
+      case File.stat(path(file), time: :posix) do
+        {:ok, %File.Stat{mtime: mtime, size: size}} -> {file, mtime, size}
+        {:error, reason} -> {file, reason}
+      end
+    end
+  end
+
+  @impl JSV.Resolver
+  def resolve(@base <> file, _opts) when file in @files do
+    with {:ok, body} <- File.read(path(file)), do: Jason.decode(body)
+  end
+
+  def resolve(url, _opts), do: {:error, {:not_vendored, url}}
+end

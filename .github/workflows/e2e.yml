@@ -1,0 +1,103 @@
+name: End to end
+
+# Live reload, end to end (e2e/README.md): a session behind a Docker wall on a Linux
+# node, refused a host, allowed from the console, let through within the budget.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  live-reload:
+    name: Live reload behind a wall
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+
+      # The node's command is built from source: qory at the ref in .qory-e2e-ref, against
+      # the runner at the ref in .runner-contract-ref, the one whose contract the tests
+      # replay. The whole history is fetched, so a ref may be a tag, a branch or a short
+      # commit id. Both live outside the workspace's tracked files, under tmp/.
+      - name: Fetch the runner's repository
+        uses: actions/checkout@v7
+        with:
+          repository: qoryai/runner
+          path: tmp/runner
+          fetch-depth: 0
+          token: ${{ secrets.RUNNER_REPOSITORY_TOKEN || github.token }}
+
+      - name: Fetch qory's repository
+        uses: actions/checkout@v7
+        with:
+          repository: qoryai/qory
+          path: tmp/qory
+          fetch-depth: 0
+          token: ${{ secrets.RUNNER_REPOSITORY_TOKEN || github.token }}
+
+      - name: Check out the pinned refs
+        run: |
+          git -C tmp/runner checkout --detach "$(grep -v '^#' .runner-contract-ref | head -n 1 | tr -d '[:space:]')"
+          git -C tmp/qory checkout --detach "$(grep -v '^#' .qory-e2e-ref | head -n 1 | tr -d '[:space:]')"
+
+      - name: Install the toolchain pinned in mise.toml
+        uses: jdx/mise-action@v3
+
+      - name: Install the Go qory is built with
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: tmp/qory/go.mod
+          cache-dependency-path: tmp/qory/go.sum
+
+      - name: Restore dependencies and build
+        uses: actions/cache@v6
+        with:
+          path: |
+            deps
+            _build
+          key: mix-e2e-${{ runner.os }}-${{ hashFiles('mise.toml', 'mix.lock') }}
+          restore-keys: |
+            mix-e2e-${{ runner.os }}-
+
+      - name: Fetch dependencies
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get
+
+      - name: Run the job
+        env:
+          QORY_SRC: ${{ github.workspace }}/tmp/qory
+          RUNNER_SRC: ${{ github.workspace }}/tmp/runner
+          E2E_DATABASE_URL: ecto://postgres:postgres@localhost:5432/apiary_e2e
+        run: e2e/run.sh
+
+      # What the job printed and what the session printed. The runner file, the one place
+      # the key's secret is, is removed by the job and is not among them.
+      - name: Keep the logs
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: e2e-logs
+          path: |
+            tmp/e2e/run-*.log
+            tmp/e2e/session-*.log
+          if-no-files-found: ignore

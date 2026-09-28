@@ -1,0 +1,18 @@
+<Layouts.auth flash={@flash}>
+  <Layouts.auth_heading>
+    {gettext("Welcome to Qory Apiary")}
+    <:subtitle>
+      {gettext(
+        "Give your workspace an access key, paste it into the runner file on your machines, and every run they make lands here."
+      )}
+    </:subtitle>
+  </Layouts.auth_heading>
+  <div class="grid gap-2">
+    <.button variant="primary" size="md" class="btn-block" navigate={~p"/users/log-in"}>
+      {gettext("Log in")}
+    </.button>
+    <.button :if={@sign_up?} size="md" class="btn-block" navigate={~p"/users/register"}>
+      {gettext("Create an account")}
+    </.button>
+  </div>
+</Layouts.auth>

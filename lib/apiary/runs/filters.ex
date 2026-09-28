@@ -1,0 +1,492 @@
+defmodule Apiary.Runs.Filters do
+  @moduledoc """
+  What the runs list and the workspace's connections page are filtered by, read from query
+  parameters and written back to them, so that every view is a URL.
+
+  `parse/2` never fails: a value it does not know is dropped, and `to_params/1` of the
+  result is the canonical query, which the page patches to when it differs from what it was
+  given. Nothing here becomes an atom from input, and nothing is interpolated into a query:
+  the values are compared as strings by `Apiary.Runs`.
+
+  The defaults (group by target, the last seven days, page 1) are left out of the URL.
+  The workspace's connections take `tools=1` for tool invocations only: requests that name
+  a tool and were allowed (`Apiary.Runs.tool_invocation?/2`), never one a path rule
+  refused. On the runs list `since=all` is the way to say "no time range", which removing
+  the range chip writes. The workspace's connections are an aggregate over every
+  connection in range, so their range is bounded: `since=90d` is the widest, and dates
+  cover at most 90 days, counted back from `to` (or on from `from` when only it is given).
+
+  A target is two parameters, `system` and `target` (the path), because either may
+  hold any character, a colon included; `target=none` without a `system` is "no target".
+  `target_params/2` writes them, for every link to a filtered page.
+
+  A value that is present and refused (not one the page offers, not a string, longer than
+  the column it is compared with, or holding a control character, which Postgres would
+  refuse) is named in `dropped`, so the page can say that the link was not read in full
+  instead of silently showing an unfiltered list.
+  """
+
+  use Gettext, backend: ApiaryWeb.Gettext
+
+  alias Apiary.Runs.Run
+
+  @groups ~w(target task none)
+  # The three families every surface reads the states as, in the order they are shown.
+  # `closed` is stopped by the workspace, not a failure of the run, and sits with the bad
+  # endings for scanning. Only their states go in a URL:
+  # `state=failed,timed_out,lost,closed`. The three families every surface counts runs in
+  # (`Apiary.Runs.Run`): one definition.
+  @families [
+    %{key: "alive", label: gettext_noop("Alive"), states: Run.alive_states()},
+    %{key: "ended_well", label: gettext_noop("Ended well"), states: Run.ended_well_states()},
+    %{key: "ended_badly", label: gettext_noop("Ended badly"), states: Run.ended_badly_states()}
+  ]
+  @family_keys Enum.map(@families, & &1.key)
+  @ranges %{runs: ~w(1h 24h 7d 30d all), connections: ~w(1h 24h 7d 30d 90d)}
+  @max_window_days 90
+  @decisions ~w(allowed denied)
+  @default_since "7d"
+  # What the fold stores of a label, a runtime or a host, in bytes.
+  @max_text 1024
+  @max_page 100_000
+
+  defstruct kind: :runs,
+            group: "target",
+            states: [],
+            target: nil,
+            task: nil,
+            runtime: nil,
+            host: nil,
+            since: @default_since,
+            from: nil,
+            to: nil,
+            denials: false,
+            decision: nil,
+            tools: false,
+            page: 1,
+            dropped: []
+
+  @type t :: %__MODULE__{
+          kind: :runs | :connections,
+          group: String.t(),
+          states: [String.t()],
+          target: nil | :none | {String.t(), String.t()},
+          task: nil | :none | String.t(),
+          runtime: nil | String.t(),
+          host: nil | String.t(),
+          since: nil | String.t(),
+          from: nil | Date.t(),
+          to: nil | Date.t(),
+          denials: boolean(),
+          decision: nil | String.t(),
+          tools: boolean(),
+          page: pos_integer(),
+          dropped: [String.t()]
+        }
+
+  @doc "The widest window the workspace's connections are aggregated over, in days."
+  def max_window_days, do: @max_window_days
+
+  @typedoc "A family of states: its key, the heading it is shown under and its states."
+  @type family :: %{key: String.t(), label: String.t(), states: [String.t()]}
+
+  @doc """
+  The three families the states read as, in the order they are shown: alive (`pending`,
+  `running`), ended well (`succeeded`) and ended badly (`failed`, `timed_out`, `lost`,
+  `closed`). Every state is in exactly one. The labels are in the domain's words:
+  translated here, at call time, because the list is made at compile time.
+  """
+  @spec families() :: [family()]
+  def families,
+    do: Enum.map(@families, &%{&1 | label: Gettext.gettext(ApiaryWeb.Gettext, &1.label)})
+
+  @doc "The states of a family, by its key; nil for a key that is not one."
+  @spec family_states(String.t()) :: [String.t()] | nil
+  def family_states(key), do: Enum.find_value(@families, &(&1.key == key and &1.states))
+
+  @doc """
+  The keys of the families these states are, in the families' order, when the states are
+  exactly one or more whole families; nil otherwise (a part of a family, or nothing). This
+  is what lets the chip and the empty state say "ended badly" for the four states.
+  """
+  @spec families_of([String.t()]) :: [String.t()] | nil
+  def families_of(states) when is_list(states) do
+    chosen = MapSet.new(states)
+    whole = Enum.filter(@families, fn family -> Enum.all?(family.states, &(&1 in chosen)) end)
+    covered = whole |> Enum.flat_map(& &1.states) |> MapSet.new()
+
+    if whole != [] and MapSet.equal?(chosen, covered), do: Enum.map(whole, & &1.key)
+  end
+
+  @doc "The time ranges a page offers, as `{label, value}`."
+  def ranges(kind \\ :runs)
+
+  def ranges(:runs),
+    do: [
+      {gettext("Last hour"), "1h"},
+      {gettext("Last 24 hours"), "24h"},
+      {gettext("Last 7 days"), "7d"},
+      {gettext("Last 30 days"), "30d"}
+    ]
+
+  def ranges(:connections), do: ranges(:runs) ++ [{gettext("Last 90 days"), "90d"}]
+
+  @doc "Reads the parameters of the runs list (`:runs`) or the workspace's connections (`:connections`)."
+  @spec parse(map(), :runs | :connections) :: t()
+  def parse(params, kind \\ :runs) when is_map(params) and kind in [:runs, :connections] do
+    {from, d1} = read(params, "from", &date/1)
+    {to, d2} = read(params, "to", &date/1)
+    {from, to} = if from && to && Date.compare(from, to) == :gt, do: {to, from}, else: {from, to}
+    {from, to} = clamp(from, to, kind)
+
+    {target, d3} = target(params)
+    {host, d4} = read(params, "host", &text/1)
+    {since, d5} = read(params, "since", &one_of(&1, @ranges[kind]))
+    {page, d6} = read(params, "page", &page/1)
+
+    filters = %__MODULE__{
+      kind: kind,
+      target: target,
+      host: host,
+      from: from,
+      to: to,
+      since: if(from || to, do: nil, else: since || @default_since),
+      page: page || 1,
+      dropped: d1 ++ d2 ++ d3 ++ d4 ++ d5 ++ d6
+    }
+
+    case kind do
+      :runs ->
+        {group, d7} = read(params, "group", &one_of(&1, @groups))
+        {states, d8} = states(params)
+        {task, d9} = read(params, "task", &none_or_text/1)
+        {runtime, d10} = read(params, "runtime", &text/1)
+        {denials, d11} = read(params, "denials", &if(&1 == "1", do: true))
+
+        %{
+          filters
+          | group: group || "target",
+            states: states,
+            task: task,
+            runtime: runtime,
+            denials: denials == true,
+            dropped: filters.dropped ++ d7 ++ d8 ++ d9 ++ d10 ++ d11
+        }
+
+      :connections ->
+        {decision, d7} = read(params, "decision", &one_of(&1, @decisions))
+        {tools, d8} = read(params, "tools", &if(&1 == "1", do: true))
+
+        %{
+          filters
+          | decision: decision,
+            tools: tools == true,
+            dropped: filters.dropped ++ d7 ++ d8
+        }
+    end
+  end
+
+  # The value of a parameter as `reader` reads it, and the parameter's name when it was
+  # there and was refused.
+  defp read(params, name, reader) do
+    case Map.fetch(params, name) do
+      :error ->
+        {nil, []}
+
+      {:ok, raw} ->
+        case reader.(raw) do
+          nil -> {nil, [name]}
+          value -> {value, []}
+        end
+    end
+  end
+
+  @doc "The canonical query of the filters: string keys, defaults left out."
+  @spec to_params(t()) :: %{optional(String.t()) => String.t()}
+  def to_params(%__MODULE__{} = f) do
+    [
+      {"group", f.group != "target" && f.kind == :runs && f.group},
+      {"state", f.states != [] && Enum.join(f.states, ",")},
+      {"system", match?({_system, _path}, f.target) && elem(f.target, 0)},
+      {"target", target_param(f.target)},
+      {"task", if(f.task == :none, do: "none", else: f.task)},
+      {"runtime", f.runtime},
+      {"host", f.host},
+      {"since", f.since not in [nil, @default_since] && f.since},
+      {"from", f.from && Date.to_iso8601(f.from)},
+      {"to", f.to && Date.to_iso8601(f.to)},
+      {"denials", f.denials && "1"},
+      {"decision", f.decision},
+      {"tools", f.tools && "1"},
+      {"page", f.page > 1 && Integer.to_string(f.page)}
+    ]
+    |> Enum.filter(fn {_key, value} -> is_binary(value) end)
+    |> Map.new()
+  end
+
+  @doc "Whether anything narrows the list: the range counts when it is not the default."
+  def any?(%__MODULE__{} = f) do
+    f.states != [] or f.target != nil or f.task != nil or f.runtime != nil or f.host != nil or
+      f.since != @default_since or f.denials or f.decision != nil or f.tools
+  end
+
+  @doc "The filters with no filter set: the grouping stays, the page and the rest go."
+  def clear(%__MODULE__{kind: kind, group: group}), do: %__MODULE__{kind: kind, group: group}
+
+  @doc "Sets fields and returns to page 1, which every change of a filter does."
+  def put(%__MODULE__{} = f, changes), do: struct!(%{f | page: 1, dropped: []}, changes)
+
+  @doc "The filters without what `parse/2` noted: what two views are compared by."
+  def same?(%__MODULE__{} = a, %__MODULE__{} = b), do: %{a | dropped: []} == %{b | dropped: []}
+
+  @doc """
+  The filters after a change in a filter's menu: `form` is what the menu's form sends, the
+  name of the filter in `_filter` and its fields. Read through `parse/2` like a URL, so a
+  value the page did not offer is dropped all the same. Returns to page 1.
+
+  The State menu's headings are checkboxes named `family_<key>` (value `1`). When the change
+  came from one (`_target`), the states are the form's `state` boxes plus the family's states
+  if the heading is checked, minus them if not; so the heading works without JavaScript, and
+  the same when the page's script has already ticked the family's boxes. The URL still says
+  the states and never a family.
+  """
+  @spec change(t(), map()) :: t()
+  def change(%__MODULE__{} = f, %{"_filter" => name} = form) do
+    current = f |> to_params() |> Map.delete("page")
+
+    changed =
+      case name do
+        "state" ->
+          states = form["state"] |> List.wrap() |> Enum.filter(&is_binary/1)
+
+          states =
+            case form["_target"] do
+              ["family_" <> key] when key in @family_keys ->
+                toggle_family(states, key, form["family_#{key}"] in ["1", "on", "true"])
+
+              _state_box ->
+                states
+            end
+
+          Map.put(current, "state", Enum.join(states, ","))
+
+        "since" ->
+          if form["_target"] in [["from"], ["to"]] do
+            current |> Map.delete("since") |> Map.merge(Map.take(form, ["from", "to"]))
+          else
+            current |> Map.drop(["from", "to"]) |> Map.merge(Map.take(form, ["since"]))
+          end
+
+        "target" ->
+          current
+          |> Map.drop(["system", "target"])
+          |> Map.merge(target_from_value(form["target"]))
+
+        name when name in ~w(task runtime host) ->
+          Map.merge(current, Map.take(form, [name]))
+
+        _other ->
+          current
+      end
+
+    parse(changed, f.kind)
+  end
+
+  def change(%__MODULE__{} = f, _form), do: f
+
+  defp toggle_family(states, key, true), do: Enum.uniq(states ++ family_states(key))
+  defp toggle_family(states, key, false), do: states -- family_states(key)
+
+  @doc "The instants the range covers, `{from, to}`, either of them nil for open."
+  @spec bounds(t(), DateTime.t()) :: {DateTime.t() | nil, DateTime.t() | nil}
+  def bounds(%__MODULE__{from: from, to: to}, _now) when not is_nil(from) or not is_nil(to) do
+    {from && DateTime.new!(from, ~T[00:00:00.000000], "Etc/UTC"),
+     to && DateTime.new!(Date.add(to, 1), ~T[00:00:00.000000], "Etc/UTC")}
+  end
+
+  def bounds(%__MODULE__{since: since}, now) do
+    seconds =
+      case since do
+        "1h" -> 3600
+        "24h" -> 86_400
+        "7d" -> 7 * 86_400
+        "30d" -> 30 * 86_400
+        "90d" -> 90 * 86_400
+        _all -> nil
+      end
+
+    {seconds && DateTime.add(now, -seconds, :second), nil}
+  end
+
+  @doc """
+  The range in words, for the chip: "last 7 days", "14 Sept 2026 to 20 Sept 2026". The
+  dates are UTC days (`bounds/2`).
+  """
+  def range_label(%__MODULE__{from: nil, to: nil, since: since}) do
+    case since do
+      "1h" -> gettext("last hour")
+      "24h" -> gettext("last 24 hours")
+      "7d" -> gettext("last 7 days")
+      "30d" -> gettext("last 30 days")
+      "90d" -> gettext("last 90 days")
+      _all -> nil
+    end
+  end
+
+  def range_label(%__MODULE__{from: from, to: nil}), do: gettext("from %{date}", date: day(from))
+  def range_label(%__MODULE__{from: nil, to: to}), do: gettext("to %{date}", date: day(to))
+  def range_label(%__MODULE__{from: same, to: same}), do: day(same)
+
+  def range_label(%__MODULE__{from: from, to: to}),
+    do: gettext("%{from} to %{to}", from: day(from), to: day(to))
+
+  @doc """
+  The range as the end of a sentence, a phrase whole in itself: "in the last 7 days",
+  "up to 20 Sept 2026", "from 14 Sept 2026 to 20 Sept 2026"; nil when there is no range.
+  """
+  def range_phrase(%__MODULE__{from: nil, to: nil, since: since}) do
+    case since do
+      "1h" -> gettext("in the last hour")
+      "24h" -> gettext("in the last 24 hours")
+      "7d" -> gettext("in the last 7 days")
+      "30d" -> gettext("in the last 30 days")
+      "90d" -> gettext("in the last 90 days")
+      _all -> nil
+    end
+  end
+
+  def range_phrase(%__MODULE__{from: from, to: nil}), do: gettext("from %{date}", date: day(from))
+  def range_phrase(%__MODULE__{from: nil, to: to}), do: gettext("up to %{date}", date: day(to))
+  def range_phrase(%__MODULE__{from: same, to: same}), do: gettext("on %{date}", date: day(same))
+
+  def range_phrase(%__MODULE__{from: from, to: to}),
+    do: gettext("from %{from} to %{to}", from: day(from), to: day(to))
+
+  defp day(date), do: ApiaryWeb.Format.date(date)
+
+  @doc """
+  The two parameters of a target, for a link to a filtered page:
+  `%{"system" => system, "target" => path}`; `%{"target" => "none"}` for runs without one.
+  """
+  @spec target_params(String.t() | nil, String.t() | nil) :: %{String.t() => String.t()}
+  def target_params(system, path) when is_binary(system) and is_binary(path),
+    do: %{"system" => system, "target" => path}
+
+  def target_params(_system, _path), do: %{"target" => "none"}
+
+  @doc """
+  A target as the one value of a menu's option: `none`, or the JSON of `[system, path]`,
+  which no system or path can be mistaken for. `change/2` reads it back.
+  """
+  def target_value(nil), do: nil
+  def target_value(:none), do: "none"
+  def target_value({system, path}), do: Jason.encode!([system, path])
+
+  defp target_from_value("none"), do: %{"target" => "none"}
+
+  defp target_from_value(value) when is_binary(value) do
+    case Jason.decode(value) do
+      {:ok, [system, path]} when is_binary(system) and is_binary(path) ->
+        target_params(system, path)
+
+      _ ->
+        %{"target" => value}
+    end
+  end
+
+  defp target_from_value(_value), do: %{}
+
+  defp target_param(nil), do: nil
+  defp target_param(:none), do: "none"
+  defp target_param({_system, path}), do: path
+
+  # `target=none` alone is "no target"; otherwise both parts, or neither.
+  defp target(params) do
+    case {Map.fetch(params, "system"), Map.fetch(params, "target")} do
+      {:error, :error} ->
+        {nil, []}
+
+      {:error, {:ok, "none"}} ->
+        {:none, []}
+
+      {{:ok, system}, {:ok, path}} ->
+        if text(system) && text(path), do: {{system, path}, []}, else: {nil, ["target"]}
+
+      _one_without_the_other ->
+        {nil, ["target"]}
+    end
+  end
+
+  # A window of dates no wider than the page's bound.
+  defp clamp(from, to, :connections) when not is_nil(from) or not is_nil(to) do
+    case {from, to} do
+      {from, nil} ->
+        {from, Date.add(from, @max_window_days - 1)}
+
+      {nil, to} ->
+        {Date.add(to, -(@max_window_days - 1)), to}
+
+      {from, to} ->
+        earliest = Date.add(to, -(@max_window_days - 1))
+        {if(Date.compare(from, earliest) == :lt, do: earliest, else: from), to}
+    end
+  end
+
+  defp clamp(from, to, _kind), do: {from, to}
+
+  defp states(params) do
+    case Map.fetch(params, "state") do
+      :error ->
+        {[], []}
+
+      {:ok, value} when is_binary(value) ->
+        chosen =
+          value
+          |> String.split(",", trim: true)
+          |> Enum.uniq()
+
+        known = Enum.filter(Run.states(), &(&1 in chosen))
+        {known, if(length(known) == length(chosen) and chosen != [], do: [], else: ["state"])}
+
+      {:ok, _other} ->
+        {[], ["state"]}
+    end
+  end
+
+  defp one_of(value, allowed) when is_binary(value), do: if(value in allowed, do: value)
+  defp one_of(_value, _allowed), do: nil
+
+  defp none_or_text("none"), do: :none
+  defp none_or_text(value), do: text(value)
+
+  defp text(value) when is_binary(value) do
+    if value != "" and fits?(value), do: value
+  end
+
+  defp text(_value), do: nil
+
+  # Postgres refuses a NUL in text, and no label, runtime or host a reader would filter by
+  # holds a control character: a value with one is refused here, not by the database.
+  defp fits?(value) do
+    byte_size(value) <= @max_text and String.valid?(value) and
+      not String.match?(value, ~r/[\x00-\x1F\x7F]/)
+  end
+
+  defp date(value) when is_binary(value) do
+    case Date.from_iso8601(value) do
+      {:ok, %Date{year: year} = date} when year in 2000..2999 -> date
+      _ -> nil
+    end
+  end
+
+  defp date(_value), do: nil
+
+  defp page(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {page, ""} when page in 1..@max_page -> page
+      _ -> nil
+    end
+  end
+
+  defp page(_value), do: nil
+end

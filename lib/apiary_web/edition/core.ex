@@ -1,0 +1,47 @@
+defmodule ApiaryWeb.Edition.Core do
+  @moduledoc """
+  The core's web edition, and the default (`ApiaryWeb.Edition`): the console's pages as
+  the core has them, with nothing added. No navigation entry, count, switcher entry or
+  place, or settings tab beyond the core's, every slot empty, no words for a reader, a
+  refusal or actions beyond the core's, no reserved name beyond the core's, and no Gettext
+  backend beside the core's own.
+
+  An edition that `use`s `ApiaryWeb.Edition` answers as this module does for every
+  callback it does not override.
+  """
+
+  @behaviour ApiaryWeb.Edition
+
+  @impl true
+  def nav_entries(_scope), do: []
+
+  @impl true
+  def nav_counts(_scope), do: %{}
+
+  @impl true
+  def switcher_entries(_scope), do: []
+
+  @impl true
+  def place_scope(_place, _workspace), do: nil
+
+  @impl true
+  def reader_sentence(_where, _scope), do: nil
+
+  @impl true
+  def refusal_sentence(_reason), do: nil
+
+  @impl true
+  def settings_tabs(_scope), do: []
+
+  @impl true
+  def slot(_name, _assigns), do: nil
+
+  @impl true
+  def activity_describer, do: nil
+
+  @impl true
+  def reserved_slugs, do: %{}
+
+  @impl true
+  def gettext_backend, do: nil
+end

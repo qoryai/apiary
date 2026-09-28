@@ -1,0 +1,218 @@
+defmodule Apiary.MixProject do
+  use Mix.Project
+
+  def project do
+    [
+      app: :apiary,
+      version: "0.1.0",
+      elixir: "~> 1.17",
+      elixirc_paths: elixirc_paths(Mix.env()),
+      start_permanent: Mix.env() == :prod,
+      aliases: aliases(),
+      deps: deps(),
+      compilers: [:phoenix_live_view] ++ Mix.compilers(),
+      listeners: [Phoenix.CodeReloader],
+      # Catalogues without line numbers and sorted by msgid, so moving code does not
+      # change them and CI can check they are extracted (docs/lingo.md).
+      gettext: [write_reference_line_numbers: false, sort_by_msgid: :case_sensitive],
+      name: "Qory Apiary",
+      docs: docs()
+    ]
+  end
+
+  # Configuration for the OTP application.
+  #
+  # Type `mix help compile.app` for more information.
+  def application do
+    [
+      mod: {Apiary.Application, []},
+      extra_applications: [:logger, :runtime_tools]
+    ]
+  end
+
+  def cli do
+    [
+      preferred_envs: [precommit: :test]
+    ]
+  end
+
+  # Specifies which paths to compile per environment.
+  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(_), do: ["lib"]
+
+  # Specifies your project dependencies.
+  #
+  # Type `mix help deps` for examples and options.
+  defp deps do
+    [
+      {:bcrypt_elixir, "~> 3.0"},
+      {:phoenix, "~> 1.8.14"},
+      {:phoenix_ecto, "~> 4.5"},
+      {:ecto_sql, "~> 3.13"},
+      {:postgrex, ">= 0.0.0"},
+      # Background work as durable jobs on Postgres: Apiary.Job. The
+      # open-source Oban only; never Oban Pro.
+      {:oban, "~> 2.24"},
+      {:phoenix_html, "~> 4.1"},
+      {:phoenix_live_reload, "~> 1.2", only: :dev},
+      {:phoenix_live_view, "~> 1.2.0"},
+      {:lazy_html, ">= 0.1.0", only: :test},
+      {:stream_data, "~> 1.0", only: [:dev, :test]},
+      {:jsv, "~> 0.23"},
+      {:phoenix_live_dashboard, "~> 0.9.1"},
+      {:esbuild, "~> 0.10", runtime: Mix.env() == :dev},
+      {:tailwind, "~> 0.5", runtime: Mix.env() == :dev},
+      {:heroicons,
+       github: "tailwindlabs/heroicons",
+       tag: "v2.2.0",
+       sparse: "optimized",
+       app: false,
+       compile: false,
+       depth: 1},
+      {:daisyui,
+       github: "saadeghi/daisyui",
+       tag: "v5.5.20",
+       sparse: "packages/bundle",
+       app: false,
+       compile: false,
+       depth: 1},
+      {:swoosh, "~> 1.16"},
+      {:req, "~> 0.5"},
+      {:telemetry_metrics, "~> 1.0"},
+      {:telemetry_poller, "~> 1.0"},
+      {:gettext, "~> 1.0"},
+      # Dates, times and numbers as each language writes them, from the Unicode CLDR
+      # (ApiaryWeb.Cldr, ApiaryWeb.Format); tz is the IANA time zone database compiled in:
+      # a person's time zone is validated and times shifted out of UTC with no download
+      # at runtime.
+      {:ex_cldr, "~> 2.47"},
+      {:ex_cldr_numbers, "~> 2.38"},
+      {:ex_cldr_dates_times, "~> 2.25"},
+      {:tz, "~> 0.28.4"},
+      {:jason, "~> 1.2"},
+      {:dns_cluster, "~> 0.3.0"},
+      {:bandit, "~> 1.5"},
+      {:cloak_ecto, "~> 1.3"},
+      {:logger_json, "~> 7.0"},
+      {:gen_smtp, "~> 1.3"},
+      # In every environment, the release build included: the image builds the docs it
+      # serves at /docs. Never started, so it is not in the release.
+      {:ex_doc, "~> 0.38", runtime: false}
+    ]
+  end
+
+  # Aliases are shortcuts or tasks specific to the current project.
+  # For example, to install project dependencies and perform other setup tasks, run:
+  #
+  #     $ mix setup
+  #
+  # See the documentation for `Mix` for more info on aliases.
+  defp aliases do
+    [
+      setup: ["deps.get", "ecto.setup", "assets.setup", "assets.build"],
+      "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
+      "ecto.reset": ["ecto.drop", "ecto.setup"],
+      test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
+      "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
+      "assets.build": ["compile", "tailwind apiary", "esbuild apiary"],
+      "assets.deploy": [
+        "compile",
+        "tailwind apiary --minify",
+        "esbuild apiary --minify",
+        "phx.digest"
+      ],
+      precommit: [
+        "compile --warnings-as-errors",
+        "deps.unlock --unused",
+        "format",
+        "gettext.extract --check-up-to-date",
+        "docs --warnings-as-errors",
+        "test"
+      ],
+      # The documentation is one tree per set of features (Mix.Tasks.Docs.All), so every
+      # `mix docs`, CI's and the image's among them, builds all of them.
+      docs: "docs.all"
+    ]
+  end
+
+  # The documentation ships with the application: the guides and the module reference are
+  # built into priv/static/docs, which every instance serves at /docs, once per set of
+  # features it differs by (`mix docs.all`).
+  defp docs do
+    [
+      main: "quickstart",
+      output: "priv/static/docs",
+      formatters: ["html"],
+      logo: "priv/static/images/logo.svg",
+      favicon: "priv/static/favicon.svg",
+      api_reference: true,
+      extras: [
+        "guides/quickstart.md",
+        "guides/install.md",
+        "guides/upgrading.md",
+        "guides/backup.md",
+        "guides/retention.md",
+        "guides/hosting-checklist.md",
+        "guides/security-policy.md",
+        "guides/runner-file.md",
+        "guides/contract.md",
+        "CHANGELOG.md"
+      ],
+      groups_for_extras: [
+        "Start here": ["guides/quickstart.md"],
+        "Self-hosting": [
+          "guides/install.md",
+          "guides/upgrading.md",
+          "guides/backup.md",
+          "guides/retention.md",
+          "guides/hosting-checklist.md"
+        ],
+        "Using Qory Apiary": ["guides/security-policy.md", "guides/runner-file.md"],
+        Reference: ["guides/contract.md", "CHANGELOG.md"]
+      ],
+      groups_for_modules: [
+        "Accounts and organisations": [~r/^Apiary\.Accounts/, ~r/^Apiary\.Organisations/],
+        "Access keys": [~r/^Apiary\.AccessKeys/, ~r/^Apiary\.Encrypted/, Apiary.Vault],
+        "Runs and the record": [~r/^Apiary\.Runs/],
+        Domains: [~r/^Apiary\.Lingo\.Domain/],
+        "Security policy": [~r/^Apiary\.Policy/],
+        Retention: [~r/^Apiary\.Retention/],
+        "Server contract": [~r/^Apiary\.Contract/, ~r/^ApiaryWeb\.Contract/],
+        Operation: [
+          Apiary.Release,
+          ~r/^Apiary\.Release\./,
+          Apiary.Mailer,
+          Apiary.Repo,
+          ~r/^Apiary\.Job(\.|$)/,
+          Apiary.LogMetadata
+        ],
+        Console: [~r/^ApiaryWeb/],
+        "Mix tasks": [~r/^Mix\.Tasks/]
+      ],
+      # Read by `mix docs.all`, not by ExDoc: what a tree for an instance without the feature
+      # leaves out. A module that says `use ApiaryWeb.Features` needs its feature without
+      # being listed; a passage of a guide is marked in the guide,
+      # `<!-- feature: security -->` to `<!-- /feature -->`. `all` is every feature: the
+      # release notes name them all.
+      features: [
+        security: [
+          extras: ["guides/security-policy.md"],
+          modules: [
+            ~r/^Apiary\.Policy/,
+            ~r/^ApiaryWeb\.Policy/,
+            ApiaryWeb.ConnectionLive.Rules,
+            Mix.Tasks.Apiary.Policy.Rerender
+          ]
+        ],
+        # The release notes and the module reference name every feature, the prose of a
+        # shared module included, so only an instance with every feature serves them. The
+        # tasks the guides send a self-hoster to stay in every tree; their docs name no
+        # feature, and ExDoc warns of a `mix` span whose task a tree leaves out.
+        all: [
+          extras: ["CHANGELOG.md"],
+          modules: [~r/^(?!Mix\.Tasks\.Apiary\.(Rebuild|Prune)$)/]
+        ]
+      ]
+    ]
+  end
+end

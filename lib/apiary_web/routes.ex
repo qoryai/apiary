@@ -1,0 +1,380 @@
+defmodule ApiaryWeb.Routes do
+  @moduledoc """
+  The core's routes, as macros a router calls: `ApiaryWeb.Router` calls them and nothing
+  else, and an edition's router (`ApiaryWeb.Edition.router/0`) calls them too, with its
+  own routes in their blocks and beside them.
+
+      use ApiaryWeb, :router
+      import ApiaryWeb.Routes
+
+      pipelines()
+      public_routes()
+      account_routes()
+      visitor_routes()
+      organisation_routes()
+
+  - `pipelines/0`: `:browser`, `:api`, `:contract` (a signed request of the server
+    contract) and `:path_scope` (the reserved names, `ApiaryWeb.ReservedSlugs`), with the
+    plugs of `ApiaryWeb.UserAuth` the routes pipe through imported. First, since the
+    others pipe through them.
+  - `public_routes/0`: the home page, `/docs`, `/health`, the server contract under
+    `/.well-known` and `/v1`, and, where `:dev_routes` is set, `/dev`.
+  - `account_routes/1`: a signed-in person's own pages under `/users` and an invitation's
+    continuation, behind sign-in, in the `live_session :require_authenticated_user`.
+  - `visitor_routes/1`: registration, log-in and an invitation, for anyone, in the
+    `live_session :current_user`, with the session's controller routes.
+  - `organisation_routes/1`: the organisation's pages under `/:org/…` and a workspace's
+    under `/:org/:workspace/…`, in the `live_session :workspace`, last: `/:org` and
+    `/:org/:workspace` would match every path of one or two segments before them. The
+    first segment is never one of `ApiaryWeb.ReservedSlugs.organisation/0`, the second of
+    an organisation's never one of `ApiaryWeb.ReservedSlugs.workspace/0`;
+    `test/apiary_web/reserved_slugs_test.exs` holds both lists to the router's routes.
+
+  The three route macros that hold a `live_session` take a `do` block, the caller's routes
+  in that `live_session`, with its `on_mount` hooks and pipelines: after the core's in
+  `:require_authenticated_user` and `:current_user`, and in `:workspace` after the
+  organisation's own pages and before `/:org/:workspace`, so that an organisation page of
+  the caller's is not taken for a workspace. The block is wrapped in
+  `scope "/", alias: false`, so it names its modules in full:
+
+      organisation_routes do
+        live "/:org/reports", MyEditionWeb.ReportLive, :index
+      end
+
+  They also take `except:`, a literal list of the core's paths, written in full, that the
+  caller serves with its own routes instead (every route at such a path is left out): a
+  page whose behaviour differs is the caller's page at the core's path. A path that is not
+  one of the macro's raises `ArgumentError`.
+
+      visitor_routes except: ["/users/register"] do
+        live "/users/register", MyEditionWeb.RegistrationLive, :new
+      end
+  """
+
+  # Where a macro's block goes among its routes.
+  @block :"$apiary_web_routes_block"
+
+  # The router's calls that define a route at their first argument's path.
+  @verbs [:live, :get, :post, :put, :patch, :delete, :forward, :live_dashboard]
+
+  @doc """
+  pipelines/0 defines the pipelines the core's routes pipe through, and imports the plugs
+  of `ApiaryWeb.UserAuth` they name.
+  """
+  defmacro pipelines do
+    quote do
+      import ApiaryWeb.UserAuth,
+        only: [
+          fetch_current_scope_for_user: 2,
+          require_authenticated_user: 2,
+          fetch_path_scope: 2
+        ]
+
+      pipeline :browser do
+        plug :accepts, ["html"]
+        plug :fetch_session
+        plug :fetch_live_flash
+        plug :put_root_layout, html: {ApiaryWeb.Layouts, :root}
+        plug :protect_from_forgery
+        plug :put_secure_browser_headers
+        plug :fetch_current_scope_for_user
+        plug ApiaryWeb.Lingo
+      end
+
+      pipeline :api do
+        plug :accepts, ["json"]
+      end
+
+      # A request of the server contract, signed with an access key.
+      pipeline :contract do
+        plug :accepts, ["json"]
+        plug ApiaryWeb.Contract.SignedRequest
+      end
+
+      # First for the organisation's and the workspace's pages: a segment in the place of
+      # a slug that can never be one answers as a path the router does not know.
+      pipeline :path_scope do
+        plug ApiaryWeb.ReservedSlugs
+      end
+    end
+  end
+
+  @doc """
+  public_routes/0 defines the routes that answer without sign-in: the home page, the
+  documentation, health, the server contract and the development routes.
+  """
+  defmacro public_routes do
+    quote do
+      scope "/", ApiaryWeb do
+        pipe_through :browser
+
+        get "/", PageController, :home
+
+        # The documentation. The endpoint serves the built files under /docs; these answer
+        # /docs itself and what was not found. Public: no authentication.
+        get "/docs", DocsController, :index
+        get "/docs/*path", DocsController, :missing
+      end
+
+      scope "/", ApiaryWeb do
+        pipe_through :api
+
+        get "/health", HealthController, :show
+      end
+
+      # The server contract: signed requests, discovery, events, run configuration.
+      scope "/.well-known", ApiaryWeb.Contract do
+        pipe_through :contract
+
+        get "/qory-configuration", ConfigurationController, :show
+      end
+
+      scope "/v1", ApiaryWeb.Contract do
+        pipe_through :contract
+
+        post "/events", EventsController, :create
+        get "/run-configuration", RunConfigurationController, :show
+      end
+
+      # LiveDashboard and the Swoosh mailbox preview, in development only.
+      if Application.compile_env(:apiary, :dev_routes) do
+        import Phoenix.LiveDashboard.Router
+
+        scope "/dev" do
+          pipe_through :browser
+
+          live_dashboard "/dashboard", metrics: ApiaryWeb.Telemetry
+          forward "/mailbox", Plug.Swoosh.MailboxPreview
+        end
+      end
+    end
+  end
+
+  @doc """
+  account_routes/1 defines a signed-in person's own pages and an invitation's
+  continuation, behind sign-in; the block's routes go into the
+  `live_session :require_authenticated_user`, after the core's.
+  """
+  defmacro account_routes(opts \\ [], block \\ []) do
+    routes =
+      quote do
+        scope "/", ApiaryWeb do
+          pipe_through [:browser, :require_authenticated_user]
+
+          get "/invitations/:token/continue", InvitationController, :continue
+        end
+
+        scope "/", ApiaryWeb do
+          pipe_through [:browser, :require_authenticated_user]
+
+          live_session :require_authenticated_user,
+            on_mount: [
+              {ApiaryWeb.UserAuth, :require_authenticated},
+              {ApiaryWeb.UserAuth, :load_organisation}
+            ] do
+            live "/users/settings", UserLive.Settings, :edit
+            # The confirmation of deleting one's own account, a modal over the settings.
+            live "/users/settings/delete", UserLive.Settings, :delete
+            live "/users/settings/confirm-email/:token", UserLive.Settings, :confirm_email
+            # A user's organisations: each in use, and those marked for deletion that they
+            # own, whose deletion they can cancel there; the page of a user who has none.
+            live "/users/organisations", UserLive.Organisations, :index
+            unquote(@block)
+          end
+
+          post "/users/update-password", UserSessionController, :update_password
+        end
+      end
+
+    compose(routes, opts, block)
+  end
+
+  @doc """
+  visitor_routes/1 defines registration, log-in and an invitation's page, for anyone,
+  and the session's controller routes; the block's routes go into the
+  `live_session :current_user`, after the core's.
+  """
+  defmacro visitor_routes(opts \\ [], block \\ []) do
+    routes =
+      quote do
+        scope "/", ApiaryWeb do
+          pipe_through [:browser]
+
+          live_session :current_user,
+            on_mount: [{ApiaryWeb.UserAuth, :mount_current_scope}] do
+            live "/users/register", UserLive.Registration, :new
+            live "/users/log-in", UserLive.Login, :new
+            live "/users/log-in/:token", UserLive.Confirmation, :new
+            live "/invitations/:token", InvitationLive.Accept, :show
+            unquote(@block)
+          end
+
+          post "/users/log-in", UserSessionController, :create
+          delete "/users/log-out", UserSessionController, :delete
+          # After an account is deleted: ends the page's own session, signed out already.
+          get "/users/account-deleted", UserSessionController, :account_deleted
+        end
+      end
+
+    compose(routes, opts, block)
+  end
+
+  @doc """
+  organisation_routes/1 defines the organisation's pages and its workspaces', and the
+  raw log of a run; the block's routes go into the `live_session :workspace`, after the
+  organisation's own pages and before the workspace's.
+  """
+  defmacro organisation_routes(opts \\ [], block \\ []) do
+    routes =
+      quote do
+        scope "/", ApiaryWeb do
+          pipe_through [:path_scope, :browser, :require_authenticated_user, :fetch_path_scope]
+
+          live_session :workspace,
+            on_mount: [
+              {ApiaryWeb.UserAuth, :require_authenticated},
+              {ApiaryWeb.UserAuth, :load_path_scope}
+            ] do
+            # The organisation's own pages. The workspace in the scope is the one the user
+            # opened last, while they reach it, else the first they reach; none for a
+            # member who reaches no workspace yet.
+            scope "/:org" do
+              # The organisation alone: it sends on to that workspace, or says that the
+              # member reaches none yet.
+              live "/", OrganisationLive, :index
+              live "/members", MemberLive.Index, :index
+              live "/members/invite", MemberLive.Index, :invite
+              live "/members/:id/remove", MemberLive.Index, :remove
+              # The confirmation of suspending a membership, a modal over the members.
+              live "/members/:id/suspend", MemberLive.Index, :suspend
+              live "/settings", SettingsLive, :organisation
+              # The confirmations of deleting the organisation and one of its workspaces,
+              # modals over its settings.
+              live "/settings/delete", SettingsLive, :delete_organisation
+              live "/settings/workspaces/:workspace_id/delete", SettingsLive, :delete_workspace
+              # The organisation's audit trail, for the readers `audit.read` allows.
+              live "/activity", ActivityLive, :index
+            end
+
+            unquote(@block)
+
+            scope "/:org/:workspace" do
+              live "/", WorkspaceLive.Overview, :index
+              # The record: the runs of the workspace, and where they reached out to.
+              # Every filter is a query parameter.
+              live "/runs", RunLive.Index, :index
+              live "/connections", ConnectionLive.Index, :index
+              # One run: four tabs of one LiveView, so a tab is a patch. `:run_id` is the
+              # run's subject, the id the runner prints, not the row's id.
+              live "/runs/:run_id", RunLive.Show, :timeline
+              live "/runs/:run_id/terminal", RunLive.Show, :terminal
+              live "/runs/:run_id/connections", RunLive.Show, :connections
+              live "/runs/:run_id/details", RunLive.Show, :details
+              # The security policy: the workspace's baseline and a target's view of it,
+              # one object with two scopes. Tabs, filters, the opened change, the compared
+              # version and the export modal are in the URL. `:target_id` is the target
+              # row's id, because a system and a path hold slashes.
+              live "/policy", PolicyLive.Show, :rules
+              live "/policy/targets", PolicyLive.Show, :targets
+              live "/policy/history", PolicyLive.Show, :history
+              live "/policy/document", PolicyLive.Show, :document
+              live "/policy/versions/:n", PolicyLive.Show, :version
+              live "/policy/versions/:n/export", PolicyLive.Show, :export
+              live "/policy/targets/:target_id", PolicyLive.Target, :rules
+              live "/policy/targets/:target_id/history", PolicyLive.Target, :history
+              live "/policy/targets/:target_id/document", PolicyLive.Target, :document
+              live "/policy/targets/:target_id/versions/:n", PolicyLive.Target, :version
+              live "/policy/targets/:target_id/versions/:n/export", PolicyLive.Target, :export
+              live "/keys", AccessKeyLive.Index, :index
+              live "/keys/new", AccessKeyLive.Index, :new
+              live "/keys/:id/rotate", AccessKeyLive.Index, :rotate
+              live "/keys/:id/revoke", AccessKeyLive.Index, :revoke
+              live "/settings", SettingsLive, :workspace
+            end
+          end
+
+          # The raw bytes of a run's log, for the terminal of the run page. Not a page.
+          get "/:org/:workspace/runs/:run_id/log", RunLogController, :show
+        end
+      end
+
+    compose(routes, opts, block)
+  end
+
+  # The core's routes without those `except:` names, and the caller's block where the
+  # core's routes mark its place. A `do` block comes apart from the options:
+  # `account_routes(except: [...]) do ... end` is
+  # `account_routes([except: [...]], [do: ...])`.
+  defp compose(routes, opts, block) do
+    opts = Keyword.validate!(opts ++ block, [:except, :do])
+    except = Keyword.get(opts, :except, [])
+
+    case except -- paths(routes, "/") do
+      [] -> :ok
+      unknown -> raise ArgumentError, "except: names no route of these: #{inspect(unknown)}"
+    end
+
+    routes
+    |> keep("/", except)
+    |> Macro.prewalk(fn
+      @block -> inject(opts[:do])
+      node -> node
+    end)
+  end
+
+  defp inject(nil), do: nil
+
+  defp inject(block) do
+    quote do
+      scope "/", alias: false do
+        unquote(block)
+      end
+    end
+  end
+
+  # The routes as the router defines them, left out when their full path is in `except`:
+  # walked through the blocks, scopes (whose paths prefix theirs), live sessions and
+  # conditions they sit in.
+  defp keep({:__block__, meta, exprs}, prefix, except),
+    do: {:__block__, meta, for(expr <- exprs, kept = keep(expr, prefix, except), do: kept)}
+
+  defp keep({:scope, meta, [path | args]}, prefix, except) when is_binary(path),
+    do: {:scope, meta, [path | keep_in_do(args, join(prefix, path), except)]}
+
+  defp keep({call, meta, args}, prefix, except)
+       when call in [:live_session, :if] and is_list(args),
+       do: {call, meta, keep_in_do(args, prefix, except)}
+
+  defp keep({verb, _meta, [path | _]} = route, prefix, except)
+       when verb in @verbs and is_binary(path),
+       do: if(join(prefix, path) in except, do: nil, else: route)
+
+  defp keep(expr, _prefix, _except), do: expr
+
+  defp keep_in_do(args, prefix, except) do
+    Enum.map(args, fn
+      [do: body] -> [do: keep(body, prefix, except)]
+      arg -> arg
+    end)
+  end
+
+  # Every full path the routes define.
+  defp paths({:__block__, _meta, exprs}, prefix), do: Enum.flat_map(exprs, &paths(&1, prefix))
+
+  defp paths({:scope, _meta, [path | args]}, prefix) when is_binary(path),
+    do: paths_in_do(args, join(prefix, path))
+
+  defp paths({call, _meta, args}, prefix) when call in [:live_session, :if] and is_list(args),
+    do: paths_in_do(args, prefix)
+
+  defp paths({verb, _meta, [path | _]}, prefix) when verb in @verbs and is_binary(path),
+    do: [join(prefix, path)]
+
+  defp paths(_expr, _prefix), do: []
+
+  defp paths_in_do(args, prefix),
+    do: for([do: body] <- args, path <- paths(body, prefix), do: path)
+
+  defp join(prefix, path),
+    do: "/" <> (String.split(prefix <> "/" <> path, "/", trim: true) |> Enum.join("/"))
+end

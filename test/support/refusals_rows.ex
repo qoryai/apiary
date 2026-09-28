@@ -1,0 +1,365 @@
+defmodule ApiaryWeb.RefusalsRows do
+  @moduledoc """
+  RefusalsRows is the core's rows of the refusals test (`ApiaryWeb.RefusalsCase`): every
+  change the core's pages offer, sent by someone of the core who may not make it. The
+  actors, each signed in, opening the row's page in a browser of their own:
+
+      owner           an owner of the organisation
+      member          a member of the organisation
+      admin           an admin of the organisation
+      removed_member  a member whose page was opened, and who was removed from the
+                      organisation before the event
+      demoted_admin   an admin whose page was opened, a modal or a dialog of an admin's
+                      included, and who was made a member before the event, as a demotion
+                      leaves them
+      demoted_owner   an owner whose page was opened, and who was made an admin before
+                      the event
+      other_owner     an owner of another organisation: on its own pages, sending ids of
+                      this one, and on this one's, which they do not reach
+
+  The world: an organisation with an owner, a second owner, an admin and two members; a
+  second workspace, and a third marked for deletion; in the first workspace a rule, a
+  locked rule, a target, an access key, a run that has not ended, and a pending
+  invitation; and another organisation, with its owner.
+  """
+
+  @behaviour ApiaryWeb.RefusalsCase
+
+  import Ecto.Query
+  import Apiary.AccessKeysFixtures
+  import Apiary.OrganisationsFixtures
+  import Apiary.RunListFixtures
+
+  alias Apiary.{Deletion, Policy, Repo}
+  alias Apiary.Organisations.Membership
+  alias Apiary.Runs.Target
+  alias ApiaryWeb.RefusalsCase
+
+  @impl true
+  def actors do
+    [:owner, :member, :admin, :removed_member, :demoted_admin, :demoted_owner, :other_owner]
+  end
+
+  @impl true
+  def rows do
+    [
+      # The members page.
+      {:"member.change_level", :member, "/:org/members", "set_level",
+       %{"membership_id" => :other_member, "level" => "admin"}},
+      {:"member.change_level", :admin, "/:org/members", "set_level",
+       %{"membership_id" => :other_member, "level" => "admin"}},
+      {:"member.change_level", :demoted_owner, "/:org/members", "set_level",
+       %{"membership_id" => :other_member, "level" => "admin"}},
+      # An admin acting on an owner.
+      {:"member.change_level", :admin, "/:org/members", "set_level",
+       %{"membership_id" => :second_owner, "level" => "member"}},
+      # A level that is none, from one who may not change levels.
+      {:"member.change_level", :admin, "/:org/members", "set_level",
+       %{"membership_id" => :other_member, "level" => "superuser"}},
+      # Another organisation's owner, on its own members page, naming this one's member.
+      {:"member.change_level", :other_owner, "/:other_org/members", "set_level",
+       %{"membership_id" => :other_member, "level" => "admin"}, answer: :not_found},
+      # Without the modal of a member open: refused to a member; to an admin, who may
+      # remove a member, it is a second click, and the list is shown again.
+      {:"member.remove", :member, "/:org/members", "remove", %{}},
+      {:"member.remove", :admin, "/:org/members", "remove", %{}, answer: :ignored},
+      {:"member.remove", :demoted_admin, "/:org/members/:other_member/remove", "remove", %{}},
+      # An admin who opened a member's removal, the member made an owner meanwhile.
+      {:"member.remove", :admin, "/:org/members/:other_member/remove", "remove", %{},
+       meanwhile: {:level, :other_member, :owner}},
+      # This organisation's member, in a removal's modal of another organisation's path:
+      # the modal does not open, and the page says the member is gone, as for one who left.
+      {:"member.remove", :other_owner, "/:other_org/members/:other_member/remove", "remove", %{},
+       answer: :refused_at_mount},
+      {:"member.invite", :member, "/:org/members", "invite",
+       %{"invitation" => %{"email" => "invitee@example.com"}}},
+      {:"member.invite", :demoted_admin, "/:org/members/invite", "invite",
+       %{"invitation" => %{"email" => "invitee@example.com"}}},
+      {:"invitation.revoke", :member, "/:org/members", "revoke_invitation",
+       %{"id" => :invitation}},
+      {:"invitation.revoke", :other_owner, "/:other_org/members", "revoke_invitation",
+       %{"id" => :invitation}, answer: :not_found},
+      # Suspending and activating a person's membership: an owner acts on admins and
+      # members, an admin on members only. A member cannot open a member's suspension, so
+      # their `suspend` arrives without it and the page refuses it for their role; the
+      # demoted admin's row, whose modal was open, reaches the context function.
+      {:"member.suspend", :member, "/:org/members", "suspend", %{}},
+      {:"member.suspend", :member, "/:org/members/:other_member/suspend", "suspend", %{},
+       answer: :refused_at_mount},
+      {:"member.suspend", :demoted_admin, "/:org/members/:other_member/suspend", "suspend", %{}},
+      {:"member.suspend", :admin, "/:org/members/:other_member/suspend", "suspend", %{},
+       meanwhile: {:level, :other_member, :owner}},
+      {:"member.suspend", :other_owner, "/:other_org/members/:other_member/suspend", "suspend",
+       %{}, answer: :refused_at_mount},
+      {:"member.activate", :member, "/:org/members", "activate", %{"id" => :other_member}},
+      {:"member.activate", :admin, "/:org/members", "activate", %{"id" => :second_owner}},
+      {:"member.activate", :other_owner, "/:other_org/members", "activate",
+       %{"id" => :other_member}, answer: :not_found},
+      # An owner does not suspend another owner: the member whose suspension the owner
+      # opened is made an owner meanwhile, and the event reaches the server's check.
+      {:"member.suspend", :owner, "/:org/members/:other_member/suspend", "suspend", %{},
+       meanwhile: {:level, :other_member, :owner}},
+
+      # The settings, and their deletion modals.
+      {:"organisation.rename", :member, "/:org/settings", "save_organisation",
+       %{"organisation" => %{"name" => "Renamed"}}},
+      # An organisation the person does not reach answers 404 before any page opens.
+      {:"organisation.rename", :other_owner, "/:org/settings", "save_organisation",
+       %{"organisation" => %{"name" => "Renamed"}}, answer: :not_found_at_mount},
+      {:"workspace.rename", :member, "/:org/:workspace/settings", "save_workspace",
+       %{"workspace" => %{"name" => "Renamed"}}},
+      {:"retention.edit", :member, "/:org/:workspace/settings", "save_retention",
+       %{"retention" => %{"events_retention_days" => "7", "log_retention_days" => "7"}}},
+      {:"organisation.delete", :member, "/:org/settings", "delete_organisation",
+       %{"confirm" => %{"slug" => :org}}},
+      {:"organisation.delete", :admin, "/:org/settings", "delete_organisation",
+       %{"confirm" => %{"slug" => :org}}},
+      {:"organisation.delete", :demoted_owner, "/:org/settings/delete", "delete_organisation",
+       %{"confirm" => %{"slug" => :org}}},
+      {:"organisation.restore", :member, "/users/organisations", "restore",
+       %{"id" => :organisation_id}, setup: :organisation_marked},
+      {:"organisation.restore", :admin, "/users/organisations", "restore",
+       %{"id" => :organisation_id}, setup: :organisation_marked},
+      {:"organisation.restore", :other_owner, "/users/organisations", "restore",
+       %{"id" => :organisation_id}, setup: :organisation_marked, answer: :not_found},
+      # A member's page never holds a workspace to delete, since its modal opens only for
+      # one who may: the event is answered as for a workspace that is gone, and the
+      # context is not asked. The demoted admin's row below is the one that reaches it.
+      {:"workspace.delete", :member, "/:org/settings", "delete_workspace",
+       %{"confirm" => %{"slug" => :workspace_b}}},
+      {:"workspace.delete", :demoted_admin, "/:org/settings/workspaces/:workspace_b_id/delete",
+       "delete_workspace", %{"confirm" => %{"slug" => :workspace_b}}},
+      # This organisation's workspace, in a deletion's modal of another organisation's
+      # path: the modal does not open, and the page says it cannot be deleted there.
+      {:"workspace.delete", :other_owner,
+       "/:other_org/settings/workspaces/:workspace_b_id/delete", "delete_workspace",
+       %{"confirm" => %{"slug" => :workspace_b}}, answer: :refused_at_mount},
+      {:"workspace.restore", :member, "/:org/settings", "restore_workspace",
+       %{"id" => :workspace_c_id}},
+      # This organisation's workspace marked for deletion, restored from another
+      # organisation's settings: whether it exists is not told.
+      {:"workspace.restore", :other_owner, "/:other_org/settings", "restore_workspace",
+       %{"id" => :workspace_c_id}, answer: :not_found},
+
+      # The security policy.
+      {:"security_policy.set_mode", :member, "/:org/:workspace/policy", "mode_ask",
+       %{"mode" => "enforce"}},
+      {:"security_policy.set_mode", :member, "/:org/:workspace/policy", "mode_confirm", %{},
+       answer: :ignored},
+      {:"security_policy.set_mode", :demoted_admin, "/:org/:workspace/policy", "mode_confirm",
+       %{}, prelude: [{"mode_ask", %{"mode" => "enforce"}}]},
+      {:"security_policy.set_mode", :member, "/:org/:workspace/policy/targets/:target",
+       "target_mode_ask", %{"setting" => "enforce"}},
+      {:"security_policy.edit", :removed_member, "/:org/:workspace/policy", "composer_save", %{},
+       prelude: [{"composer_change", %{"rule" => %{"host" => "new.example", "paths" => ""}}}]},
+      # Another organisation's owner, on its own policy, naming this one's rule.
+      {:"security_policy.edit", :other_owner, "/:other_org/:other_ws/policy", "remove",
+       %{"id" => :rule_open}, answer: :not_found},
+      {:"security_policy.edit", :other_owner, "/:other_org/:other_ws/policy", "change_action",
+       %{"id" => :rule_open}, answer: :not_found},
+      {:"security_policy.edit", :other_owner, "/:other_org/:other_ws/policy/targets/:target",
+       "row_act", %{"id" => :rule_open, "act" => "disable"}, answer: :not_found},
+      {:"security_policy.lock", :member, "/:org/:workspace/policy", "lock_toggle",
+       %{"id" => :rule_open}},
+      # An admin locking a rule, unlocking one, and changing a locked one.
+      {:"security_policy.lock", :admin, "/:org/:workspace/policy", "lock_toggle",
+       %{"id" => :rule_open}},
+      {:"security_policy.lock", :admin, "/:org/:workspace/policy", "lock_toggle",
+       %{"id" => :rule_locked}},
+      {:"security_policy.lock", :admin, "/:org/:workspace/policy", "change_action",
+       %{"id" => :rule_locked}},
+      {:"security_policy.lock", :demoted_owner, "/:org/:workspace/policy", "lock_toggle",
+       %{"id" => :rule_open}},
+      {:"security_policy.lock", :demoted_owner, "/:org/:workspace/policy", "composer_save", %{},
+       prelude: [
+         {"composer_change", %{"rule" => %{"host" => "locked.example", "paths" => ""}}}
+       ]},
+      {:"security_policy.lock", :member, "/:org/:workspace/policy", "remove_confirm", %{},
+       prelude: [{"remove", %{"id" => :rule_locked}}]},
+      # A member's deny of a rule that the owner locked after the composer read it.
+      {:"security_policy.lock", :member, "/:org/:workspace/policy", "composer_save", %{},
+       prelude: [
+         {"composer_action", %{"action" => "deny"}},
+         {"composer_change", %{"rule" => %{"host" => "open.example", "paths" => ""}}}
+       ],
+       meanwhile: {:locked, :rule_open}},
+      {:"security_policy.lock", :member, "/:org/:workspace/policy/targets/:target", "row_act",
+       %{"id" => :rule_locked, "act" => "allow_here"}},
+
+      # The access keys.
+      {:"access_key.create", :removed_member, "/:org/:workspace/keys/new", "create",
+       %{"access_key" => %{"label" => "removed"}}},
+      {:"access_key.rotate", :removed_member, "/:org/:workspace/keys/:key/rotate", "rotate", %{}},
+      {:"access_key.rotate", :removed_member, "/:org/:workspace/keys", "retire_confirm", %{},
+       prelude: [{"retire", %{"id" => :key}}]},
+      # Without the key's modal open, from a member, who may rotate and revoke keys: a
+      # second click, and the list is shown again.
+      {:"access_key.rotate", :member, "/:org/:workspace/keys", "rotate", %{}, answer: :ignored},
+      {:"access_key.rotate", :member, "/:org/:workspace/keys", "retire_confirm", %{},
+       answer: :ignored},
+      {:"access_key.revoke", :member, "/:org/:workspace/keys", "revoke", %{}, answer: :ignored},
+      {:"access_key.revoke", :removed_member, "/:org/:workspace/keys/:key/revoke", "revoke", %{}},
+      # The key's modal is a path: another organisation's key is a 404 as the page opens.
+      {:"access_key.rotate", :other_owner, "/:other_org/:other_ws/keys/:key/rotate", "rotate",
+       %{}, answer: :not_found_at_mount},
+      {:"access_key.rotate", :other_owner, "/:other_org/:other_ws/keys", "retire",
+       %{"id" => :key}, answer: :not_found},
+      {:"access_key.revoke", :other_owner, "/:other_org/:other_ws/keys/:key/revoke", "revoke",
+       %{}, answer: :not_found_at_mount},
+
+      # A run.
+      {:"run.close", :removed_member, "/:org/:workspace/runs/:run", "close_confirm", %{},
+       prelude: [{"close", %{}}]},
+      {:"run.close", :other_owner, "/:other_org/:other_ws/runs/:run", "close_confirm", %{},
+       prelude: [{"close", %{}}], answer: :not_found}
+    ]
+  end
+
+  # Reads: a page asks them on mount and for what it shows, and changes nothing; their
+  # refusals are the Access hook's (`test/apiary_web/access_test.exs`). The instance's own
+  # jobs: no page offers them. The server contract: an access key's, at a signed request,
+  # which the contract's tests refuse (`test/apiary_web/contract/`). Taken on the strength
+  # of an invitation's token, which no role is: nobody is refused it by their level. The
+  # release commands: run on the instance's host by whoever controls it, never offered by
+  # a page (`test/apiary/instance_admin_test.exs`). A sign-up's: it creates an
+  # organisation for a person who is not signed in, and asks no one's level; no page of
+  # the core offers it to a signed-in person.
+  @impl true
+  def exempt do
+    %{
+      reads: [:"run.read", :"run.read_log", :"security_policy.read", :"audit.read"],
+      jobs: [:"organisation.purge", :"workspace.purge", :"audit.prune"],
+      contract: [:"run.post_events", :"run_configuration.fetch"],
+      token: [:"invitation.accept"],
+      release: [:"instance_admin.grant", :"instance_admin.revoke"],
+      sign_up: [:"organisation.create"]
+    }
+  end
+
+  @impl true
+  def setup(_world) do
+    %{scope: owner} = sign_up_fixture()
+    workspace_b = workspace_fixture(owner.organisation)
+    workspace_c = workspace_fixture(owner.organisation)
+    {:ok, _} = Deletion.delete_workspace(owner, workspace_c.id, workspace_c.slug)
+
+    # The rules are the security policy's, which an instance without it does not have.
+    {rule_open, rule_locked} =
+      if :security in Apiary.Features.enabled() do
+        {:ok, open} = Policy.allow(owner, nil, %{host: "open.example"})
+        {:ok, locked} = Policy.deny(owner, nil, %{host: "locked.example", locked: true})
+        {open, locked}
+      else
+        {nil, nil}
+      end
+
+    target =
+      Repo.insert!(%Target{
+        organisation_id: owner.organisation.id,
+        workspace_id: owner.workspace.id,
+        system: "github.example",
+        path: "acme/site",
+        first_seen_at: DateTime.utc_now()
+      })
+
+    %{access_key: key} = access_key_fixture(owner)
+    run = started_run(owner)
+    %{invitation: invitation} = invitation_fixture(owner)
+    admin = RefusalsCase.person(owner, :admin)
+    member = RefusalsCase.person(owner, :member)
+    second_owner = RefusalsCase.person(owner, :owner)
+    other = sign_up_fixture()
+
+    %{
+      owner: owner,
+      organisation: owner.organisation,
+      workspace: owner.workspace,
+      workspace_b: workspace_b,
+      workspace_c: workspace_c,
+      second_owner: second_owner,
+      admin: admin,
+      member: member,
+      other_member: RefusalsCase.person(owner, :member),
+      removed_member: member,
+      demoted_admin: admin,
+      demoted_owner: second_owner,
+      other_owner: other,
+      other_organisation: other.organisation,
+      other_workspace: other.workspace,
+      rule_open: rule_open,
+      rule_locked: rule_locked,
+      target: target,
+      key: key,
+      run: run,
+      invitation: invitation
+    }
+  end
+
+  @impl true
+  def value(:org, world), do: world.organisation.slug
+  def value(:workspace, world), do: world.workspace.slug
+  def value(:workspace_b, world), do: world.workspace_b.slug
+  def value(:other_org, world), do: world.other_organisation.slug
+  def value(:other_ws, world), do: world.other_workspace.slug
+  def value(:other_member, world), do: {:id, world.other_member.membership.id}
+  def value(:second_owner, world), do: {:id, world.second_owner.membership.id}
+  def value(:invitation, world), do: {:id, world.invitation.id}
+  def value(:organisation_id, world), do: {:id, world.organisation.id}
+  def value(:workspace_id, world), do: {:id, world.workspace.id}
+  def value(:workspace_b_id, world), do: {:id, world.workspace_b.id}
+  def value(:workspace_c_id, world), do: {:id, world.workspace_c.id}
+  def value(:rule_open, world), do: {:id, world.rule_open.id}
+  def value(:rule_locked, world), do: {:id, world.rule_locked.id}
+  def value(:target, world), do: {:id, world.target.id}
+  def value(:key, world), do: {:id, world.key.id}
+  def value(:run, world), do: {:id, world.run.run_id}
+  def value(_name, _world), do: nil
+
+  # The organisation, the other one, whose pages its owner sends this one's ids from, and
+  # the member's account.
+  @impl true
+  def watched(world), do: [world.organisation, world.other_organisation, world.member.user]
+
+  # The organisation marked for deletion by its owner.
+  @impl true
+  def before_page(:organisation_marked, world) do
+    if is_nil(Repo.reload!(world.organisation).deletion_marked_at),
+      do: {:ok, _} = Deletion.delete_organisation(world.owner, world.organisation.slug)
+
+    :ok
+  end
+
+  def before_page(_step, _world), do: nil
+
+  # The member is no longer of the organisation.
+  @impl true
+  def meanwhile(:removed_member, world) do
+    {1, _} =
+      Repo.delete_all(from m in Membership, where: m.id == ^world.removed_member.membership.id)
+
+    :ok
+  end
+
+  def meanwhile(:demoted_admin, world), do: change_level(world, world.demoted_admin, :member)
+  def meanwhile(:demoted_owner, world), do: change_level(world, world.demoted_owner, :admin)
+
+  def meanwhile({:level, person, level}, world),
+    do: change_level(world, Map.fetch!(world, person), level)
+
+  # The rule is locked, as an owner locks it.
+  def meanwhile({:locked, rule}, world) do
+    %{id: id} = Map.fetch!(world, rule)
+    Repo.update_all(from(r in Apiary.Policy.Rule, where: r.id == ^id), set: [locked: true])
+    :ok
+  end
+
+  def meanwhile(_step, _world), do: nil
+
+  # The level changed in the database, and the edition told, as the owner's change of it
+  # tells it (`c:Apiary.Edition.membership_changed/5`): what the edition makes of a
+  # demotion, it makes here too.
+  defp change_level(world, person, level) do
+    changed = RefusalsCase.put_level(person, level)
+    :ok = Apiary.Edition.membership_changed(Repo, world.owner, :level, person.membership, changed)
+  end
+end

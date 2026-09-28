@@ -1,0 +1,1702 @@
+defmodule ApiaryWeb.RunLive.ShowTest do
+  use ApiaryWeb.ConnCase, async: true
+
+  import Phoenix.LiveViewTest
+  import Apiary.AccessKeysFixtures
+  import Apiary.OrganisationsFixtures
+  import Apiary.RunEventsFixtures
+
+  alias Apiary.Runs
+  alias Apiary.Runs.Projector
+  alias Mix.Tasks.Apiary.Demo
+
+  defp demo(scope, name, now \\ DateTime.utc_now()) do
+    %{access_key: access_key} = access_key_fixture(scope)
+    file = Enum.find(Demo.files(), &(&1 |> Path.dirname() |> Path.basename() == name))
+    {:ok, run} = Demo.replay(access_key, file, now)
+    run
+  end
+
+  defp projected(scope, events, attrs \\ %{}) do
+    run = run_fixture(scope, attrs)
+    events_fixture(run, events)
+    {:ok, run} = Projector.project(run)
+    run
+  end
+
+  defp project_more(run, events) do
+    events_fixture(run, events)
+    {:ok, run} = Projector.project(run)
+    run
+  end
+
+  # The page coalesces projections; a test asks for the read at once.
+  defp flush(lv) do
+    send(lv.pid, :flush)
+    render(lv)
+  end
+
+  # What the policy made of the record is on the page only where the instance has
+  # `security`; the record itself is there in every configuration.
+  defp security?, do: Apiary.Features.on?(:security)
+
+  defp item_ids(html) do
+    html
+    |> LazyHTML.from_document()
+    |> LazyHTML.query("ol#timeline > li")
+    |> LazyHTML.attribute("id")
+  end
+
+  setup :register_and_log_in_user
+
+  describe "not found" do
+    test "a run of another workspace, an unknown id and a malformed id render the same state", %{
+      conn: conn,
+      scope: scope
+    } do
+      theirs = projected(scope_fixture(), record())
+
+      for id <- [theirs.run_id, theirs.id, Ecto.UUID.generate(), "0191f2a4"],
+          path <- ["", "/terminal", "/connections", "/details"] do
+        {:ok, _lv, html} = live(conn, "#{workspace_path(scope)}/runs/#{id}#{path}")
+        assert html =~ "This run is not in this workspace"
+        assert html =~ "Back to runs"
+        refute html =~ "dev-laptop"
+      end
+    end
+
+    test "signed out, the page redirects to the log-in page", %{scope: scope} do
+      conn = build_conn()
+
+      assert {:error, {:redirect, %{to: "/users/log-in"}}} =
+               live(conn, "#{workspace_path(scope)}/runs/#{Ecto.UUID.generate()}")
+    end
+  end
+
+  describe "the header (U6)" do
+    test "everything from run.started, run.exited and the policy applied", %{
+      conn: conn,
+      scope: scope
+    } do
+      run = demo(scope, "session-with-subagents")
+
+      {:ok, lv, html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      # breadcrumb, title, state, alive sentence
+      assert html =~ ~s(aria-label="Breadcrumb")
+      assert html =~ String.slice(run.run_id, 0, 8)
+      assert has_element?(lv, "h1#run-title", run.task)
+      assert html =~ "Succeeded"
+      assert html =~ "after it started"
+
+      # the strip
+      for label <- ~w(Exit Started Duration Runtime Host), do: assert(html =~ "#{label}")
+      assert html =~ "claude"
+      assert html =~ "2.1.273"
+      assert html =~ run.host
+      assert html =~ run.wall
+      assert html =~ run.image
+
+      if security?() do
+        assert has_element?(lv, "#run-facts", "Policy")
+        assert html =~ "enforce"
+        # the run configuration it applied was not rendered by this workspace
+        assert has_element?(lv, "#policy-unrendered", "a4e1d0c97b3f")
+        assert has_element?(lv, "#policy-unrendered", "not rendered here")
+      else
+        refute has_element?(lv, "#run-facts .q-kv-policy")
+        refute has_element?(lv, "#policy-unrendered")
+      end
+
+      assert html =~ "3 m 52 s"
+
+      # labels, in the record's order with forge, repository and task first
+      assert html
+             |> LazyHTML.from_document()
+             |> LazyHTML.query(".q-labels .q-label i")
+             |> Enum.map(&LazyHTML.text/1) ==
+               ~w(forge repository task)
+
+      # tabs with their counts
+      assert has_element?(lv, "#run-tabs a[aria-current='page']", "Timeline")
+
+      assert has_element?(
+               lv,
+               "#run-tabs a .q-tabs-n",
+               "#{Apiary.Runs.Record.timeline(scope, run).session_items}"
+             )
+
+      assert has_element?(lv, "#run-tabs a .q-tabs-n.q-tabs-bad", "2 denied")
+      assert html =~ ~s(aria-current="page")
+    end
+
+    test "a run without a task is titled by its short id, and one without a wall says None", %{
+      conn: conn,
+      scope: scope
+    } do
+      run = projected(scope, [{1, "run.started", started_data(%{"labels" => %{}})}])
+
+      {:ok, lv, html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      assert has_element?(lv, "h1#run-title", "Run #{String.slice(run.run_id, 0, 8)}")
+      assert html =~ "This run had no wall"
+      refute html =~ "Labels"
+      # unassigned: the breadcrumb has no target
+      refute html =~ "runs?system="
+    end
+
+    test "a pending run says Ping only and waits on every tab but Details", %{
+      conn: conn,
+      scope: scope
+    } do
+      run =
+        projected(scope, [{1, "ping", %{"runner_version" => "0.10.0", "contract_version" => 1}}])
+
+      for path <- ["", "/terminal", "/connections"] do
+        {:ok, _lv, html} = live(conn, "#{workspace_path(scope)}/runs/#{run.run_id}#{path}")
+        assert html =~ "Ping only"
+        assert html =~ "Waiting for the run to start"
+        assert html =~ "The run&#39;s first event has not arrived."
+      end
+    end
+
+    test "quiet: amber after one missed interval, by the server's clock", %{
+      conn: conn,
+      scope: scope
+    } do
+      long_ago = DateTime.add(DateTime.utc_now(), -47, :second)
+
+      run =
+        projected(scope, [
+          {1, "run.started", started_data(), time: DateTime.add(long_ago, -60, :second)},
+          {2, "run.heartbeat", %{"elapsed_seconds" => 60, "interval_seconds" => 30},
+           time: long_ago, received_at: long_ago}
+        ])
+
+      {:ok, _lv, html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      assert html =~ "No heartbeat for"
+      assert html =~ "q-alive-amber"
+      assert html =~ "at least"
+      assert html =~ "1 m 00 s"
+    end
+  end
+
+  describe "the timeline (P2, P3, P4)" do
+    setup %{scope: scope} do
+      %{run: demo(scope, "session-with-subagents")}
+    end
+
+    test "every kind of item, in sequence order", %{conn: conn, run: run, scope: scope} do
+      {:ok, lv, html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      ids = item_ids(html)
+      assert hd(ids) == "e-2"
+      assert List.last(ids) == "e-101"
+      assert ids == Enum.sort_by(ids, fn "e-" <> n -> String.to_integer(n) end)
+
+      for words <- [
+            "Run started",
+            "Session started",
+            "Prompt",
+            "Subagent started",
+            "Subagent finished",
+            "Notification",
+            "Turn finished",
+            "Result",
+            "Session ended",
+            "Run exited"
+          ] do
+        assert html =~ words
+      end
+
+      assert html =~ "behind a docker wall"
+
+      # the policy the run applied is an item where the instance has security, and only there
+      if security?() do
+        assert html =~ "Policy applied"
+        assert html =~ "4 hosts allowed"
+        assert html =~ "fetched from the run configuration"
+      else
+        refute html =~ "Policy applied"
+        refute html =~ "hosts allowed"
+      end
+
+      assert html =~ "permission_prompt · Claude needs your permission to use Bash"
+      assert html =~ "success · 14 turns · 3 m 49 s · $0.84"
+      assert html =~ "exit 0"
+      assert html =~ "End of the record. 101 events."
+      assert has_element?(lv, "ol#timeline[aria-label='Session timeline, oldest first']")
+      refute html =~ "aria-live=\"polite\" id=\"timeline\""
+    end
+
+    test "three lanes with a key, a who chip where a lane opens and closes", %{
+      conn: conn,
+      run: run,
+      scope: scope
+    } do
+      {:ok, lv, html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      assert has_element?(lv, "button.q-lanekey.q-lane-main", "Main session")
+      assert has_element?(lv, "button.q-lanekey.q-lane-a", "Explore")
+      assert has_element?(lv, "button.q-lanekey.q-lane-b", "general-purpose")
+      assert html =~ "agent-demo-a1"
+      assert has_element?(lv, "ol.q-lanes-3")
+
+      # start and finish brackets
+      assert has_element?(lv, "#e-21 .q-r.q-rail-1.q-r-from")
+      assert has_element?(lv, "#e-21 .q-h.q-rail-1.q-lane-a")
+      assert has_element?(lv, "#e-21 .q-who.q-lane-a", "Explore")
+      assert has_element?(lv, "#e-36 .q-r.q-rail-1.q-r-to")
+      assert has_element?(lv, "#e-22 .q-r.q-rail-2.q-r-from")
+      assert has_element?(lv, "#e-49 .q-r.q-rail-2.q-r-to")
+
+      # a subagent's tool sits on the subagent's rail, with all three rails passing
+      assert has_element?(lv, "#e-25 .q-n.q-rail-1.q-lane-a")
+      assert has_element?(lv, "#e-25 .q-r.q-rail-2")
+      assert has_element?(lv, "#e-25[data-lane='agent-demo-a1']")
+    end
+
+    test "a tool pairs its events: summary, duration, input and response; a failed one starts open",
+         %{conn: conn, run: run, scope: scope} do
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      assert has_element?(lv, "#e-11 summary .q-k", "Read")
+      assert has_element?(lv, "#e-11 summary .q-s", "/work/shop/package.json")
+      assert has_element?(lv, "#e-11 .q-well", "input")
+      assert has_element?(lv, "#e-11 .q-well", "response")
+      assert has_element?(lv, "#e-11 .q-well .q-key", "\"file_path\"")
+      refute has_element?(lv, "#e-11 details[open]")
+      # the end of a call is not an item of its own
+      refute has_element?(lv, "#e-12")
+
+      assert has_element?(lv, "#e-25 summary .q-s", "CheckoutForm in /work/shop/src")
+
+      assert has_element?(lv, "#e-58 details[open]")
+      assert has_element?(lv, "#e-58 summary .q-bad", "Failed")
+      assert has_element?(lv, "#e-58 .q-n.q-n-fail")
+      assert has_element?(lv, "#e-58 .q-well.q-well-err", "error")
+    end
+
+    test "a connection sits inside a call only when exactly one was open, and says while", %{
+      conn: conn,
+      run: run,
+      scope: scope
+    } do
+      {:ok, lv, html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      assert has_element?(lv, "#e-58 .q-during", "1 connection while this call was open")
+      assert has_element?(lv, "#e-58 .q-during .q-cx-denied", "registry.example")
+
+      assert has_element?(
+               lv,
+               "#e-58 .q-during",
+               if(security?(), do: "No rule matches", else: "Denied.")
+             )
+
+      refute has_element?(lv, "#e-59")
+
+      # between items while the two Task calls were open, with the caption, and no node
+      assert html =~ "while 2 calls were open"
+      assert has_element?(lv, "#e-6.q-ti-cx")
+      refute has_element?(lv, "#e-6 .q-n")
+
+      refute html =~ "because"
+    end
+
+    test "?seq= targets the item that holds the event; an unknown one is dropped from the URL", %{
+      conn: conn,
+      run: run,
+      scope: scope
+    } do
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}?seq=59")
+
+      assert has_element?(lv, "ol#timeline[data-target='e-58']")
+
+      # what is not valid is dropped: the page is the plain one, and its links carry none of it
+      {:ok, lv, html} =
+        live(
+          conn,
+          ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}?seq=99999&lane=nobody&cx=7&x=1"
+        )
+
+      refute has_element?(lv, "ol#timeline[data-target]")
+      refute has_element?(lv, "ol#timeline[data-isolate]")
+      assert has_element?(lv, "ol#timeline[data-cx='1']")
+      refute html =~ "nobody"
+      refute html =~ "99999"
+
+      # a valid one among them is kept
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}?seq=58&x=1")
+
+      assert has_element?(lv, "ol#timeline[data-target='e-58']")
+    end
+
+    test "?lane= isolates a lane and ?cx=0 hides the connections; both are toggles that patch", %{
+      conn: conn,
+      run: run,
+      scope: scope
+    } do
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      lv |> element("button.q-lanekey.q-lane-a") |> render_click()
+
+      assert_patch(
+        lv,
+        ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}?lane=agent-demo-a1"
+      )
+
+      assert has_element?(lv, "ol#timeline[data-isolate='agent-demo-a1']")
+      assert has_element?(lv, "button.q-lanekey.q-lane-a[aria-pressed='true']")
+      assert has_element?(lv, "button.q-lanekey.q-lane-b[aria-pressed='false']")
+
+      lv |> element("#toggle-connections") |> render_click()
+
+      assert_patch(
+        lv,
+        ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}?cx=0&lane=agent-demo-a1"
+      )
+
+      assert has_element?(lv, "ol#timeline[data-cx='0']")
+
+      lv |> element("button.q-lanekey.q-lane-a") |> render_click()
+      assert_patch(lv, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}?cx=0")
+      refute has_element?(lv, "ol#timeline[data-isolate]")
+    end
+
+    test "event data is escaped", %{conn: conn, scope: scope} do
+      run =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "session.prompt_submitted", %{"prompt" => "<script>alert(1)</script>"}},
+          {3, "session.tool_started",
+           %{
+             "tool" => "<b>Bash</b>",
+             "tool_use_id" => "t",
+             "input" => %{"command" => "<img src=x onerror=1>"}
+           }}
+        ])
+
+      {:ok, _lv, html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      refute html =~ "<script>alert(1)</script>"
+      refute html =~ "<img src=x"
+      refute html =~ "<b>Bash</b>"
+      assert html =~ "&lt;script&gt;alert(1)&lt;/script&gt;"
+    end
+
+    test "a payload over the cap is cut, and Show all loads the rest of that one item", %{
+      conn: conn,
+      scope: scope
+    } do
+      big = String.duplicate("0123456789abcdef", 1024) <> "THE-END"
+
+      run =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "session.tool_started",
+           %{"tool" => "Bash", "tool_use_id" => "t", "input" => %{"command" => "cat big"}}},
+          {3, "session.tool_finished",
+           %{"tool" => "Bash", "tool_use_id" => "t", "response" => big}}
+        ])
+
+      {:ok, lv, html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      refute html =~ "THE-END"
+      assert html =~ "Show all 16.4 kB"
+
+      html = lv |> element("#e-2 button.q-show-all") |> render_click()
+      assert html =~ "THE-END"
+      refute html =~ "Show all"
+    end
+  end
+
+  describe "the limits (P5)" do
+    test "another runtime: the sentence stands above the runner's items", %{
+      conn: conn,
+      scope: scope
+    } do
+      run = demo(scope, "failed-run")
+
+      {:ok, lv, html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      assert html =~ "Session events exist only for Claude Code."
+      assert has_element?(lv, ".q-limits code.q-rule", "make")
+      assert html =~ "Run started"
+      assert html =~ "exit 2"
+      assert html =~ "Failed"
+    end
+
+    test "a walled claude run with no hook events reads as the contract's known limit", %{
+      conn: conn,
+      scope: scope
+    } do
+      run =
+        projected(scope, [
+          {1, "run.started",
+           started_data(%{"wall" => "docker", "image" => "registry.example/agent:1"})},
+          {2, "session.result", %{"outcome" => "success", "result" => "done"}},
+          {3, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1000}}
+        ])
+
+      {:ok, _lv, html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      assert html =~ "on an engine inside a virtual machine"
+      assert html =~ "Only the result, read from the runtime&#39;s output, is shown."
+    end
+
+    test "claude without a wall and without session events: the hooks sentence", %{
+      conn: conn,
+      scope: scope
+    } do
+      run =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1000}}
+        ])
+
+      {:ok, _lv, html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      assert html =~ "No session events arrived."
+    end
+
+    test "a young live run has no limits sentence yet, only the live end", %{
+      conn: conn,
+      scope: scope
+    } do
+      run = projected(scope, [{1, "run.started", started_data(), time: DateTime.utc_now()}])
+
+      {:ok, _lv, html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      refute html =~ "No session events arrived."
+      assert html =~ "Listening for the next batch."
+    end
+  end
+
+  describe "live (P6, P7)" do
+    setup %{scope: scope} do
+      now = DateTime.utc_now()
+
+      run =
+        projected(scope, [
+          {1, "run.started", started_data(), time: DateTime.add(now, -30, :second)},
+          {2, "session.prompt_submitted", %{"prompt" => "go"},
+           time: DateTime.add(now, -29, :second)},
+          {3, "session.tool_started",
+           %{"tool" => "Bash", "tool_use_id" => "t1", "input" => %{"command" => "sleep 9"}},
+           time: DateTime.add(now, -28, :second)}
+        ])
+
+      %{run: run, now: now}
+    end
+
+    test "an open tool is Running; its end updates the item in place", %{
+      conn: conn,
+      run: run,
+      now: now,
+      scope: scope
+    } do
+      {:ok, lv, html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      assert has_element?(lv, "#e-3 .q-running", "Running")
+      assert has_element?(lv, "#e-3 .q-n .q-spin")
+      assert has_element?(lv, "#e-3 .q-r-live")
+      assert html =~ "Listening for the next batch."
+
+      project_more(run, [
+        {4, "session.tool_finished",
+         %{"tool" => "Bash", "tool_use_id" => "t1", "response" => "ok", "duration_ms" => 9000},
+         time: now}
+      ])
+
+      html = flush(lv)
+      refute has_element?(lv, "#e-3 .q-running")
+      assert has_element?(lv, "#e-3 .q-well", "response")
+      assert item_ids(html) == ["e-1", "e-2", "e-3"]
+      refute has_element?(lv, "#new-events.q-newpill-show")
+    end
+
+    test "away from the end new items are counted, not inserted; the pill loads them", %{
+      conn: conn,
+      run: run,
+      now: now,
+      scope: scope
+    } do
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      project_more(run, [
+        {4, "session.notification", %{"kind" => "idle_prompt", "message" => "waiting"},
+         time: now},
+        {5, "session.turn_finished", %{"message" => "done"}, time: now}
+      ])
+
+      html = flush(lv)
+      assert item_ids(html) == ["e-1", "e-2", "e-3"]
+      assert has_element?(lv, "#new-events.q-newpill-show", "2 new events")
+      assert has_element?(lv, "#run-announcer", "2 new events.")
+
+      html = lv |> element("#new-events") |> render_click()
+      assert item_ids(html) == ["e-1", "e-2", "e-3", "e-4", "e-5"]
+      refute has_element?(lv, "#new-events.q-newpill-show")
+      assert_push_event(lv, "timeline:end", %{focus: "e-4"})
+    end
+
+    test "at the live end new items append", %{conn: conn, run: run, now: now, scope: scope} do
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      render_hook(element(lv, "#run-timeline"), "live_end", %{"at_end" => true})
+
+      project_more(run, [{4, "session.turn_finished", %{"message" => "done"}, time: now}])
+
+      html = flush(lv)
+      assert item_ids(html) == ["e-1", "e-2", "e-3", "e-4"]
+      refute has_element?(lv, "#new-events.q-newpill-show")
+      # the item that was last no longer fades its rail
+      refute has_element?(lv, "#e-3 .q-r-live")
+    end
+
+    test "background tasks: listed while outstanding, in the record's words when the run ends", %{
+      conn: conn,
+      run: run,
+      now: now,
+      scope: scope
+    } do
+      task = %{
+        "id" => "b3f1",
+        "type" => "shell",
+        "status" => "running",
+        "command" => "pytest tests/checkout -q"
+      }
+
+      {:ok, lv, html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      refute html =~ "in the background"
+
+      run =
+        project_more(run, [
+          {4, "session.turn_finished", %{"message" => "m", "background_tasks" => [task]},
+           time: now}
+        ])
+
+      html = flush(lv)
+      assert html =~ "1 task"
+      assert html =~ "still running in the background"
+      assert html =~ "pytest tests/checkout -q"
+      assert html =~ "shell b3f1 · listed at #0004"
+
+      project_more(run, [
+        {5, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 30_000},
+         time: now}
+      ])
+
+      html = flush(lv)
+      assert html =~ "was still listed when the run ended"
+      assert has_element?(lv, "#background-tasks .q-spin-still")
+    end
+
+    test "a state change is announced once, and the header follows", %{
+      conn: conn,
+      run: run,
+      now: now,
+      scope: scope
+    } do
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      project_more(run, [
+        {4, "run.exited", %{"state" => "failed", "exit_code" => 1, "duration_ms" => 30_000},
+         time: now}
+      ])
+
+      html = flush(lv)
+
+      assert has_element?(lv, "#run-announcer", "Run failed with exit 1.")
+      assert html =~ "Failed with exit 1"
+      assert html =~ "End of the record."
+    end
+  end
+
+  describe "windowing (rj)" do
+    test "300 items on mount, 200 more at either end, 600 at most, rails right at the edges", %{
+      conn: conn,
+      scope: scope
+    } do
+      events =
+        [{1, "run.started", started_data()}] ++
+          for(
+            n <- 2..900,
+            do: {n, "session.notification", %{"kind" => "k", "message" => "m#{n}"}}
+          ) ++
+          [{901, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1}}]
+
+      run = projected(scope, events)
+
+      {:ok, lv, html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      ids = item_ids(html)
+      assert length(ids) == 300
+      assert hd(ids) == "e-1" and List.last(ids) == "e-300"
+      assert has_element?(lv, "#timeline-later", "601 later events")
+      refute has_element?(lv, "#timeline-earlier")
+
+      html = lv |> element("#timeline-later") |> render_click()
+      assert html |> item_ids() |> List.last() == "e-500"
+
+      # around a target
+      {:ok, lv, html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}?seq=700")
+
+      ids = item_ids(html)
+      assert length(ids) == 300
+      assert hd(ids) == "e-550" and List.last(ids) == "e-849"
+      assert has_element?(lv, "#timeline-earlier", "549 earlier events")
+      assert has_element?(lv, "#e-550 .q-r-through")
+
+      html = lv |> element("#timeline-earlier") |> render_click()
+      ids = item_ids(html)
+      assert hd(ids) == "e-350"
+      assert ids == Enum.sort_by(ids, fn "e-" <> n -> String.to_integer(n) end)
+      assert has_element?(lv, "#timeline-earlier", "349 earlier events")
+    end
+  end
+
+  describe "the terminal tab (P1)" do
+    test "the box points the hook at the log endpoint and carries numbers, never bytes", %{
+      conn: conn,
+      scope: scope
+    } do
+      run = demo(scope, "session-with-subagents")
+
+      {:ok, lv, html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/terminal")
+
+      assert has_element?(
+               lv,
+               "#terminal[phx-hook='Terminal'][data-src='#{workspace_path(scope)}/runs/#{run.run_id}/log']"
+             )
+
+      assert has_element?(lv, "#terminal[data-live='false']")
+      assert has_element?(lv, "#terminal [data-stream='stdout']")
+      assert has_element?(lv, "#terminal [data-stream='stderr']")
+      assert has_element?(lv, "#terminal [role='log'][aria-live='off']")
+
+      assert has_element?(
+               lv,
+               "#terminal a[href='#{workspace_path(scope)}/runs/#{run.run_id}/log?download=1']"
+             )
+
+      assert html =~ "Ended"
+      assert html =~ "chunks"
+      assert html =~ "through #0100"
+      assert html =~ "The bytes as the runtime wrote them"
+      assert has_element?(lv, "#terminal[data-sized='false'] [data-wrap]")
+      refute has_element?(lv, "#terminal[data-cols]")
+      refute html =~ "vitest"
+    end
+
+    test "a run with a recorded size replays at it: the size on the box, no wrap", %{
+      conn: conn,
+      scope: scope
+    } do
+      run =
+        projected(scope, [
+          {1, "run.started",
+           started_data(%{"interactive" => true, "terminal" => %{"cols" => 120, "rows" => 40}})},
+          {2, "run.log", %{"stream" => "terminal", "bytes" => Base.encode64("one\r\n")}},
+          {3, "run.resized", %{"cols" => 100, "rows" => 30}},
+          {4, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1}}
+        ])
+
+      {:ok, lv, html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/terminal")
+
+      assert has_element?(lv, "#terminal[data-sized='true'][data-cols='100'][data-rows='30']")
+      assert has_element?(lv, "#terminal [data-size]", "100×30")
+      refute has_element?(lv, "#terminal [data-wrap]")
+      assert html =~ "replayed at the size the runtime ran at"
+
+      {:ok, _lv, html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/details")
+
+      assert html =~ "Yes, on a pseudo-terminal"
+      assert html =~ "100×30"
+    end
+
+    test "a live run tails: the page says how far the log advanced", %{conn: conn, scope: scope} do
+      now = DateTime.utc_now()
+
+      run =
+        projected(scope, [
+          {1, "run.started", started_data(%{"interactive" => true}), time: now},
+          {2, "run.log", %{"stream" => "terminal", "bytes" => Base.encode64("one\n")}, time: now}
+        ])
+
+      {:ok, lv, html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/terminal")
+
+      assert html =~ "Live"
+      assert has_element?(lv, "#terminal .q-tseg-one", "terminal")
+      assert has_element?(lv, "#terminal [data-follow][aria-pressed='true']")
+
+      project_more(run, [
+        {3, "run.log", %{"stream" => "terminal", "bytes" => Base.encode64("two\n")}, time: now}
+      ])
+
+      html = flush(lv)
+
+      assert_push_event(lv, "log_advanced", %{through: 3})
+      assert html =~ "through #0003"
+      assert html =~ "2 chunks"
+    end
+
+    test "no output: yet, for a live run; none, for an ended one", %{conn: conn, scope: scope} do
+      live_run = projected(scope, [{1, "run.started", started_data(), time: DateTime.utc_now()}])
+
+      {:ok, _lv, html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{live_run.run_id}/terminal")
+
+      assert html =~ "No output yet"
+
+      ended =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1}}
+        ])
+
+      {:ok, _lv, html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{ended.run_id}/terminal")
+
+      assert html =~ "This run wrote no output"
+    end
+  end
+
+  describe "the connections tab (C1, C3)" do
+    test "one row per destination, denied first, with the reason and the outcome", %{
+      conn: conn,
+      scope: scope
+    } do
+      run = demo(scope, "session-with-subagents")
+
+      {:ok, lv, html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/connections")
+
+      assert html =~ "attempts to"
+      assert html =~ "destinations"
+
+      assert [first, second | _] =
+               html
+               |> LazyHTML.from_document()
+               |> LazyHTML.query("#run-connections > tr")
+               |> LazyHTML.attribute("class")
+
+      assert first =~ "q-denied" and second =~ "q-denied"
+
+      assert html =~ "Refused"
+      assert html =~ "Dial failed"
+      assert html =~ "POST /acme/shop.git/git-upload-pack"
+
+      # the reason is what the policy made of the attempt: which rule, in which mode
+      if security?() do
+        assert html =~ "No rule matches."
+        assert html =~ "Enforce mode denies it."
+        assert html =~ "forge-token"
+
+        assert has_element?(
+                 lv,
+                 "#connections-footnote",
+                 "A rule added here changes what happens next; what the record already says stays as it was."
+               )
+      else
+        refute html =~ "No rule matches."
+        refute has_element?(lv, "#run-connections .q-why")
+
+        assert has_element?(
+                 lv,
+                 "#connections-footnote",
+                 "The outcome is that of the last attempt."
+               )
+      end
+
+      lv |> element("#decision button", "Denied") |> render_click()
+
+      assert_patch(
+        lv,
+        ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/connections?decision=denied"
+      )
+
+      html = render(lv)
+      refute html =~ "git-upload-pack"
+      assert html =~ "registry.example"
+
+      {:ok, lv, _html} =
+        live(
+          conn,
+          ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/connections?decision=maybe"
+        )
+
+      assert has_element?(lv, "#decision button[aria-pressed='true']", "All")
+    end
+
+    test "a row holds its place when it is seen again: the order is by first seen", %{
+      conn: conn,
+      scope: scope
+    } do
+      denied = fn host ->
+        egress_data(%{
+          "host" => host,
+          "decision" => "denied",
+          "rule" => "",
+          "outcome" => "refused"
+        })
+      end
+
+      t = DateTime.utc_now()
+      at = &DateTime.add(t, &1, :second)
+
+      run =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "run.egress", denied.("first.example"), time: at.(1)},
+          {3, "run.egress", denied.("second.example"), time: at.(2)}
+        ])
+
+      hosts = fn html ->
+        html
+        |> LazyHTML.from_document()
+        |> LazyHTML.query("#run-connections > tr .q-dest")
+        |> LazyHTML.text()
+      end
+
+      {:ok, _lv, html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/connections")
+
+      assert hosts.(html) =~ ~r/second\.example.*first\.example/s
+
+      # the first host is refused again, later than the second: it stays below it
+      project_more(run, [{4, "run.egress", denied.("first.example"), time: at.(30)}])
+
+      {:ok, _lv, html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/connections")
+
+      assert hosts.(html) =~ ~r/second\.example.*first\.example/s
+    end
+
+    test "a tool invocation reads as a call to its tool, a refused request as a denial", %{
+      conn: conn,
+      scope: scope
+    } do
+      run = projected(scope, tool_record())
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/connections")
+
+      %{rows: rows} = Apiary.Runs.Record.connections(scope, run)
+      call = Enum.find(rows, &(&1.path == "/media/acme/shop/checkout.png"))
+      refused = Enum.find(rows, &(&1.path == "/media/acme/other/checkout.png"))
+      plain = Enum.find(rows, &(&1.host == "api.example.com"))
+
+      assert has_element?(lv, "#cx-#{call.id} .q-dest-tool .q-tool-name", "files")
+
+      assert has_element?(
+               lv,
+               "#cx-#{call.id} .q-dest-tool .q-rq",
+               "PUT /media/acme/shop/checkout.png"
+             )
+
+      assert has_element?(lv, "#cx-#{call.id} .q-dest-tool .q-on", "files.tools.internal:443")
+
+      if security?(),
+        do: assert(has_element?(lv, "#cx-#{call.id} .q-why", "Handed to")),
+        else: refute(has_element?(lv, "#cx-#{call.id} .q-why"))
+
+      assert has_element?(lv, "#cx-#{call.id} .q-outcome", "Answered 201")
+
+      assert has_element?(lv, "#cx-#{refused.id}.q-denied .q-dest", "files.tools.internal")
+      refute has_element?(lv, "#cx-#{refused.id} .q-dest-tool")
+
+      if security?(),
+        do:
+          assert(has_element?(lv, "#cx-#{refused.id} .q-why", "Refused before reaching the tool")),
+        else: refute(has_element?(lv, "#cx-#{refused.id} .q-why"))
+
+      assert has_element?(lv, "#cx-#{refused.id} .q-outcome", "Refused")
+
+      refute has_element?(lv, "#cx-#{plain.id} .q-dest-tool")
+      assert has_element?(lv, "#cx-#{plain.id} .q-outcome", "Connected")
+    end
+
+    test "no egress: the sentence, never an empty table", %{conn: conn, scope: scope} do
+      run = projected(scope, [{1, "run.started", started_data()}])
+
+      {:ok, _lv, html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/connections")
+
+      assert html =~ "No connections recorded"
+      assert html =~ "No connection went through the runner&#39;s proxy."
+      refute html =~ "<table"
+    end
+  end
+
+  describe "the details tab" do
+    test "the command, the policy in force and the record", %{conn: conn, scope: scope} do
+      run = demo(scope, "session-with-subagents")
+
+      {:ok, _lv, html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/details")
+
+      for heading <- ["Command", "Record"], do: assert(html =~ heading)
+      assert html =~ "--verbose"
+      assert html =~ "/work/shop"
+      assert html =~ "No, on pipes"
+      refute html =~ "<dt>Terminal</dt>"
+      assert html =~ "0.10.0"
+      assert html =~ "contract 1"
+
+      if security?() do
+        assert html =~ "Policy in force"
+        assert html =~ run.policy_digest
+        assert html =~ "api.llm.example, git.example.com"
+        assert html =~ "forge-token"
+      else
+        refute html =~ "Policy in force"
+        refute html =~ run.policy_digest
+      end
+
+      assert html =~ run.run_id
+      assert html =~ "projected through"
+      assert html =~ "5b8e2f14-9c3a-4d7e-a1b6-3f0c8d2e7a45"
+      # a succeeded run is not closed by hand
+      refute html =~ "close-run-button"
+    end
+
+    test "a member closes a quiet run after confirming in a modal", %{conn: conn, scope: scope} do
+      run =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "run.heartbeat", %{"elapsed_seconds" => 30, "interval_seconds" => 30}}
+        ])
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/details")
+
+      refute has_element?(lv, "#close-run")
+      lv |> element("#close-run-button") |> render_click()
+      assert has_element?(lv, "#close-run", "A close is final")
+
+      lv |> element("#close-run button", "Cancel") |> render_click()
+      refute has_element?(lv, "#close-run")
+      assert Runs.get_run!(scope, run.id).state == "running"
+
+      lv |> element("#close-run-button") |> render_click()
+      html = lv |> element("#close-run button", "Close run") |> render_click()
+
+      assert Runs.get_run!(scope, run.id).state == "closed"
+      assert html =~ "Closed"
+      refute has_element?(lv, "#close-run-button")
+      assert has_element?(lv, "#run-announcer", "Run closed.")
+    end
+  end
+
+  describe "read budget of a live page" do
+    # What twenty projections cost the page must not depend on how long the run is.
+    defp live_run(scope, items) do
+      now = DateTime.utc_now()
+
+      events =
+        [{1, "run.started", started_data(), time: now}] ++
+          for(
+            n <- 2..items,
+            do: {n, "session.notification", %{"kind" => "k", "message" => "m#{n}"}, time: now}
+          ) ++
+          for(
+            n <- (items + 1)..(items + 40),
+            do: {n, "run.egress", egress_data(%{"host" => "h#{n}.example"}), time: now}
+          ) ++
+          for(
+            n <- (items + 41)..(items + 80),
+            do:
+              {n, "run.log", %{"stream" => "stdout", "bytes" => Base.encode64("l\n")}, time: now}
+          )
+
+      {projected(scope, events), items + 80, now}
+    end
+
+    defp twenty_projections(conn, scope, items, path) do
+      {run, last, now} = live_run(scope, items)
+      {:ok, lv, _html} = live(conn, "#{workspace_path(scope)}/runs/#{run.run_id}" <> path)
+
+      handler = {__MODULE__, make_ref()}
+      counter = :counters.new(2, [])
+      page = lv.pid
+
+      :telemetry.attach(
+        handler,
+        [:apiary, :repo, :query],
+        fn _event, _measurements, metadata, _config ->
+          # The sidebar's count of alive runs comes on a timer of its own, in the page's
+          # process; it is tagged, and is not what this budget is about.
+          if self() == page and not (metadata[:options][:sidebar] == true) do
+            :counters.add(counter, 1, 1)
+
+            case metadata[:result] do
+              {:ok, %{num_rows: rows}} when is_integer(rows) -> :counters.add(counter, 2, rows)
+              _ -> :ok
+            end
+          end
+        end,
+        nil
+      )
+
+      for n <- 1..20 do
+        sequence = last + n
+
+        event =
+          case rem(n, 4) do
+            0 ->
+              {sequence, "run.egress", egress_data(%{"host" => "late#{n}.example"}), time: now}
+
+            1 ->
+              {sequence, "run.log", %{"stream" => "stdout", "bytes" => Base.encode64("x\n")},
+               time: now}
+
+            _ ->
+              {sequence, "session.notification", %{"kind" => "k", "message" => "new #{n}"},
+               time: now}
+          end
+
+        project_more(run, [event])
+        flush(lv)
+      end
+
+      :telemetry.detach(handler)
+      html = render(lv)
+      {:counters.get(counter, 1), :counters.get(counter, 2), html}
+    end
+
+    for {tab, path} <- [
+          timeline: "",
+          terminal: "/terminal",
+          connections: "/connections",
+          details: "/details"
+        ] do
+      test "#{tab}: twenty projections read the same whatever the size of the run", %{
+        conn: conn,
+        scope: scope
+      } do
+        # Both are longer than a window, so what differs is the size of the run alone.
+        {small_queries, small_rows, _} = twenty_projections(conn, scope, 400, unquote(path))
+        {large_queries, large_rows, html} = twenty_projections(conn, scope, 3_000, unquote(path))
+
+        IO.puts(
+          "\n[budget] #{unquote(tab)}: 20 projections on a run of 480 events: #{small_queries} queries, #{small_rows} rows; of 3,080 events: #{large_queries} queries, #{large_rows} rows"
+        )
+
+        assert large_queries == small_queries
+        assert large_rows == small_rows
+        assert large_queries <= 80
+
+        # and the page followed all the same
+        if unquote(tab) == :timeline, do: assert(html =~ "new events")
+        if unquote(tab) == :terminal, do: assert(html =~ "45 chunks")
+      end
+    end
+
+    test "opening the page reads the record once: the static render has the header and a skeleton",
+         %{conn: conn, scope: scope} do
+      run = demo(scope, "session-with-subagents")
+
+      html =
+        conn
+        |> get(~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+        |> html_response(200)
+
+      assert html =~ run.task
+      assert html =~ "Succeeded"
+      assert html =~ ~s(id="run-loading")
+      refute html =~ ~s(id="timeline")
+      refute html =~ "package.json"
+    end
+
+    test "an event that arrives below what the page holds is read in its place", %{
+      conn: conn,
+      scope: scope
+    } do
+      now = DateTime.utc_now()
+
+      run =
+        projected(scope, [
+          {1, "run.started", started_data(), time: now},
+          {2, "session.prompt_submitted", %{"prompt" => "go"}, time: now},
+          {5, "session.turn_finished", %{"message" => "done"}, time: now}
+        ])
+
+      {:ok, lv, html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      assert item_ids(html) == ["e-1", "e-2", "e-5"]
+
+      project_more(run, [
+        {3, "session.notification", %{"kind" => "late", "message" => "late"}, time: now}
+      ])
+
+      assert lv |> flush() |> item_ids() == ["e-1", "e-2", "e-3", "e-5"]
+    end
+  end
+
+  describe "a call the record never ends" do
+    setup %{scope: scope} do
+      run =
+        projected(scope, [
+          {1, "session.tool_started",
+           %{"tool" => "Bash", "tool_use_id" => "t", "input" => %{"command" => "sleep 9"}}},
+          {2, "session.turn_finished", %{"message" => "done"}},
+          {3, "session.ended", %{"reason" => "other"}},
+          {4, "session.started", %{"source" => "resume"}},
+          {5, "run.egress",
+           egress_data(%{
+             "host" => "late.example",
+             "decision" => "denied",
+             "outcome" => "refused",
+             "rule" => ""
+           })}
+        ])
+
+      %{run: run}
+    end
+
+    test "the later connection is an item at its own sequence, and ?seq=5 is that item", %{
+      conn: conn,
+      run: run,
+      scope: scope
+    } do
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}?seq=5")
+
+      assert has_element?(lv, "ol#timeline[data-target='e-5']")
+      assert has_element?(lv, "#e-5.q-ti-cx .q-cx-denied", "late.example")
+      refute has_element?(lv, "#e-1 .q-during")
+    end
+
+    test "the call reads No end recorded, never Running", %{conn: conn, run: run, scope: scope} do
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      assert has_element?(lv, "#e-1 .q-no-end", "No end recorded")
+      refute has_element?(lv, "#e-1 .q-running")
+      refute has_element?(lv, "#e-1 .q-spin")
+    end
+
+    test "on a run that has ended an open call is not Running either", %{conn: conn, scope: scope} do
+      now = DateTime.utc_now()
+
+      run =
+        projected(scope, [
+          {1, "run.started", started_data(), time: now},
+          {2, "session.tool_started",
+           %{"tool" => "Bash", "tool_use_id" => "t", "input" => %{"command" => "x"}}, time: now}
+        ])
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      assert has_element?(lv, "#e-2 .q-running", "Running")
+
+      # the run is found lost: no projection, only the change of state
+      {:ok, lost} =
+        Runs.get_run!(scope, run.id)
+        |> Ecto.Changeset.change(state: "lost")
+        |> Apiary.Repo.update()
+
+      send(lv.pid, {:run_changed, lost})
+      flush(lv)
+
+      refute has_element?(lv, "#e-2 .q-running")
+      assert has_element?(lv, "#e-2 .q-no-end", "No end recorded")
+    end
+  end
+
+  describe "clocks" do
+    test "so far counts from the runner's elapsed seconds and this server's clock, never from started_at",
+         %{conn: conn, scope: scope} do
+      received = DateTime.add(DateTime.utc_now(), -5, :second)
+
+      run =
+        projected(scope, [
+          # The runner's clock is a day behind.
+          {1, "run.started", started_data(),
+           time: DateTime.add(received, -86_400, :second), received_at: received},
+          {2, "run.heartbeat", %{"elapsed_seconds" => 600, "interval_seconds" => 60},
+           time: DateTime.add(received, -85_800, :second), received_at: received}
+        ])
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      assert has_element?(lv, "#run-duration[data-base='600']")
+      assert lv |> element("#run-duration") |> render() =~ ~r/10 m 0\d s/
+      refute render(lv) =~ "24 h"
+    end
+  end
+
+  describe "bounds of what is drawn" do
+    test "a dozen lane chips and the rest as a number; any lane can still be isolated", %{
+      conn: conn,
+      scope: scope
+    } do
+      now = DateTime.utc_now()
+
+      events =
+        [{1, "run.started", started_data(), time: now}] ++
+          for(
+            n <- 1..30,
+            do:
+              {n + 1, "session.subagent_started",
+               %{"agent_id" => "agent-#{n}", "agent_type" => "Explore"}, time: now}
+          )
+
+      run = projected(scope, events)
+
+      {:ok, lv, html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      assert html
+             |> LazyHTML.from_document()
+             |> LazyHTML.query("button.q-lanekey")
+             |> Enum.count() == 13
+
+      assert has_element?(lv, "#more-lanes", "and 18 more")
+      # ids are the lanes' numbers, not the runner's strings
+      assert has_element?(lv, "button#lane-0", "Main session")
+      assert has_element?(lv, "button#lane-12", "agent-12")
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}?lane=agent-27")
+
+      assert has_element?(lv, "ol#timeline[data-isolate='agent-27']")
+      assert has_element?(lv, "button#lane-27[aria-pressed='true']", "agent-27")
+    end
+
+    test "the run's connections page by fifty, denied first, and Showing x of y is true", %{
+      conn: conn,
+      scope: scope
+    } do
+      events =
+        [{1, "run.started", started_data()}] ++
+          for(n <- 1..120, do: {n + 1, "run.egress", egress_data(%{"host" => "h#{n}.example"})}) ++
+          [
+            {200, "run.egress",
+             egress_data(%{
+               "host" => "denied.example",
+               "decision" => "denied",
+               "outcome" => "refused",
+               "rule" => ""
+             })}
+          ]
+
+      run = projected(scope, events)
+
+      {:ok, lv, html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/connections")
+
+      assert html =~ "Showing 50 of 121."
+
+      assert html
+             |> LazyHTML.from_document()
+             |> LazyHTML.query("#run-connections > tr")
+             |> Enum.count() == 50
+
+      assert has_element?(lv, "#run-connections > tr:first-child", "denied.example")
+      assert html =~ "121"
+
+      lv |> element("#connections-pages a", "Next") |> render_click()
+
+      assert_patch(
+        lv,
+        ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/connections?page=2"
+      )
+
+      refute has_element?(lv, "#run-connections", "denied.example")
+
+      {:ok, lv, html} =
+        live(
+          conn,
+          ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/connections?page=3"
+        )
+
+      assert html =~ "Showing 21 of 121."
+      refute has_element?(lv, "#connections-pages a", "Next")
+
+      # a page past the last is the last
+      {:ok, lv, _html} =
+        live(
+          conn,
+          ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/connections?page=99&decision=denied"
+        )
+
+      assert has_element?(lv, "#decision button[aria-pressed='true']", "Denied")
+      assert render(lv) =~ "Showing 1 of 1."
+    end
+  end
+
+  describe "closing" do
+    test "a crafted close_confirm does not close a run that has ended, and its end stays", %{
+      conn: conn,
+      scope: scope
+    } do
+      for {exit, state} <- [
+            {%{"state" => "failed", "exit_code" => 1, "duration_ms" => 5}, "failed"},
+            {%{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 5}, "succeeded"},
+            {%{"state" => "failed", "exit_code" => -1, "reason" => "timeout", "duration_ms" => 5},
+             "timed_out"}
+          ] do
+        run = projected(scope, [{1, "run.started", started_data()}, {2, "run.exited", exit}])
+        assert run.state == state
+
+        {:ok, lv, _html} =
+          live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/details")
+
+        refute has_element?(lv, "#close-run-button")
+
+        render_hook(lv, "close", %{})
+        refute has_element?(lv, "#close-run")
+
+        render_hook(lv, "close_confirm", %{})
+
+        after_close = Runs.get_run!(scope, run.id)
+        assert after_close.state == state
+        assert after_close.closed_at == nil
+        assert after_close.closed_by_id == nil
+      end
+    end
+
+    test "the context refuses, whoever asks", %{scope: scope} do
+      ended =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "run.exited", %{"state" => "failed", "exit_code" => 1}}
+        ])
+
+      assert Runs.close_run(scope, ended) == {:error, :not_closable}
+      assert Runs.get_run!(scope, ended.id).state == "failed"
+
+      for state <- Runs.closable_states() do
+        run = run_fixture(scope, %{state: state})
+        assert {:ok, %{state: "closed"} = closed} = Runs.close_run(scope, run)
+        # closing a closed run changes nothing
+        assert {:ok, %{closed_at: at}} = Runs.close_run(scope, closed)
+        assert at == closed.closed_at
+      end
+
+      # a run of another workspace is not found, whatever its state
+      assert Runs.close_run(scope, run_fixture(scope_fixture())) == {:error, :not_found}
+    end
+
+    test "close and close_confirm on a page without a run do nothing", %{conn: conn, scope: scope} do
+      {:ok, lv, _html} = live(conn, "#{workspace_path(scope)}/runs/#{Ecto.UUID.generate()}")
+
+      assert render_hook(lv, "close", %{}) =~ "This run is not in this workspace"
+      assert render_hook(lv, "close_confirm", %{}) =~ "This run is not in this workspace"
+      assert render_hook(lv, "show_all", %{"seq" => "1"}) =~ "This run is not in this workspace"
+      assert render_hook(lv, "load_earlier", %{}) =~ "This run is not in this workspace"
+    end
+
+    test "after a close, focus is sent to the page's heading", %{conn: conn, scope: scope} do
+      run = projected(scope, [{1, "run.started", started_data()}])
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/details")
+
+      lv |> element("#close-run-button") |> render_click()
+      lv |> element("#close-run button", "Close run") |> render_click()
+
+      assert_push_event(lv, "run:focus", %{id: "run-title"})
+      assert has_element?(lv, "h1#run-title[tabindex='-1'][phx-hook='FocusOn']")
+    end
+  end
+
+  describe "read aloud" do
+    test "an item in a subagent's lane says whose it is in words", %{conn: conn, scope: scope} do
+      run = demo(scope, "session-with-subagents")
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      assert has_element?(lv, "#e-25 .sr-only", "in Explore -demo-a1")
+      assert has_element?(lv, "#e-27 .sr-only", "in general-purpose -demo-a2")
+      refute has_element?(lv, "#e-11 .sr-only", "in ")
+    end
+
+    test "earlier items are announced, and the list only says oldest first when it starts at the start",
+         %{conn: conn, scope: scope} do
+      events =
+        [{1, "run.started", started_data()}] ++
+          for(
+            n <- 2..400,
+            do: {n, "session.notification", %{"kind" => "k", "message" => "m#{n}"}}
+          )
+
+      run = projected(scope, events)
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      assert has_element?(
+               lv,
+               "ol#timeline[aria-label='Session timeline, in sequence order; 100 later events not loaded']"
+             )
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}?seq=400")
+
+      assert has_element?(
+               lv,
+               "ol#timeline[aria-label^='Session timeline, in sequence order; 100 earlier events not loaded']"
+             )
+
+      lv |> element("#timeline-earlier") |> render_click()
+      assert has_element?(lv, "#run-announcer", "100 earlier events loaded.")
+      assert has_element?(lv, "ol#timeline[aria-label='Session timeline, oldest first']")
+    end
+
+    test "the terminal offers the log as text and a polite place for a summary; xterm's reader mode is never on",
+         %{conn: conn, scope: scope} do
+      run = demo(scope, "session-with-subagents")
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/terminal")
+
+      assert has_element?(
+               lv,
+               "#terminal a.sr-only[href$='/log?download=1']",
+               "Read the log as text"
+             )
+
+      assert has_element?(lv, "#terminal [data-announce][aria-live='polite']")
+      # one tab stop: xterm's own input, which the hook names with its keys
+      refute has_element?(lv, "#terminal [data-screen][tabindex]")
+
+      hook = File.read!(Path.expand("../../../../assets/js/hooks/terminal.js", __DIR__))
+      assert hook =~ "screenReaderMode: false"
+      refute hook =~ "screenReaderMode = "
+      assert hook =~ "linkHandler"
+    end
+  end
+
+  describe "a run with tools" do
+    test "the timeline groups a tool's allowed calls under its name and lists the tools", %{
+      conn: conn,
+      scope: scope
+    } do
+      run = projected(scope, tool_record())
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      # the tools are listed on the policy applied, an item only where there is security
+      if security?() do
+        assert has_element?(lv, "#e-2-tools", "files")
+        assert has_element?(lv, "#e-2-tools", "files.tools.internal")
+      else
+        refute has_element?(lv, "#e-2")
+      end
+
+      assert has_element?(lv, "#e-4-group .q-cx-sum .q-tool-name", "files")
+      assert has_element?(lv, "#e-4-group .q-cx-sum", "2 allowed requests")
+      refute render(element(lv, "#e-4-group .q-cx-sum")) =~ "calls"
+      assert has_element?(lv, "#e-4-cx-4 .q-outcome", "Answered 200")
+      assert has_element?(lv, "#e-4-cx-5 .q-outcome", "Answered 201")
+
+      assert has_element?(
+               lv,
+               ~s(#e-4-cx-5 .q-dest[data-request-id="0a1b2c3d4e5f60718293a4b5c6d7e8f9"])
+             )
+
+      # The refused request is a denial of its own, never folded into the group, and names
+      # the tool only as the one it did not reach.
+      assert has_element?(lv, "#e-6-cx.q-cx-denied .q-dest", "files.tools.internal")
+      refute has_element?(lv, "#e-6-cx .q-dest-tool")
+      assert has_element?(lv, "#e-6-cx .q-for-tool", "files")
+      assert has_element?(lv, "#e-3-cx .q-dest", "api.example.com")
+      refute has_element?(lv, "#e-3-cx .q-dest-tool")
+    end
+
+    @tag needs: :security
+    test "the policy in force names the tools and the hosts they serve", %{
+      conn: conn,
+      scope: scope
+    } do
+      run = projected(scope, tool_record())
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/details")
+
+      assert has_element?(lv, "#policy-tools", "files (files.tools.internal)")
+
+      run =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "run.policy_applied", tool_policy_data(%{"tools" => []})}
+        ])
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/details")
+
+      assert has_element?(lv, "#policy-tools", "none")
+    end
+
+    @tag needs: :security
+    test "the policy in force shows a credential's and a tool's argument beside its name", %{
+      conn: conn,
+      scope: scope
+    } do
+      run =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "run.policy_applied",
+           tool_policy_data(%{
+             "credentials" => [
+               %{
+                 "name" => "forge-token",
+                 "argument" => "acme/shop",
+                 "hosts" => ["forge.example"],
+                 "scheme" => "basic"
+               },
+               %{
+                 "name" => "forge-token",
+                 "argument" => "acme/shop",
+                 "hosts" => ["api.forge.example", "forge.example"],
+                 "scheme" => "bearer"
+               },
+               %{"name" => "model", "hosts" => ["api.model.example"], "scheme" => "header"},
+               %{
+                 "name" => "markup",
+                 "argument" => "<b>acme</b>",
+                 "hosts" => ["markup.example"],
+                 "scheme" => "bearer"
+               }
+             ],
+             "tools" => [
+               %{
+                 "name" => "files",
+                 "argument" => "acme/shop",
+                 "hosts" => ["files.tools.internal"]
+               }
+             ]
+           })}
+        ])
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/details")
+
+      # The uses of one credential show as one, its argument once, the hosts of every use.
+      assert has_element?(
+               lv,
+               "#policy-credentials-0",
+               "forge-token acme/shop (forge.example, api.forge.example)"
+             )
+
+      assert has_element?(lv, "#policy-credentials-0 code.q-rule", "acme/shop")
+      assert has_element?(lv, "#policy-credentials-1", "model (api.model.example)")
+      refute has_element?(lv, "#policy-credentials-1 code")
+      assert has_element?(lv, "#policy-credentials-2 code", "<b>acme</b>")
+      assert render(element(lv, "#policy-credentials-2 code")) =~ "&lt;b&gt;acme&lt;/b&gt;"
+      refute has_element?(lv, "#policy-credentials-3")
+      assert has_element?(lv, "#policy-tools-0", "files acme/shop (files.tools.internal)")
+      assert has_element?(lv, "#policy-tools-0 code.q-rule", "acme/shop")
+      refute has_element?(lv, "#policy-credentials", "more")
+
+      # The timeline's policy applied item shows a tool's argument, and no credentials.
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      assert has_element?(lv, "#e-2-tools code.q-rule", "acme/shop")
+      refute has_element?(lv, "#e-2", "forge-token")
+    end
+
+    @tag needs: :security
+    test "the timeline shows a long tool argument cut short, and whole in its title", %{
+      conn: conn,
+      scope: scope
+    } do
+      argument = "acme/" <> String.duplicate("r", 95)
+
+      run =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "run.policy_applied",
+           tool_policy_data(%{
+             "tools" => [
+               %{"name" => "files", "argument" => argument, "hosts" => ["files.tools.internal"]}
+             ]
+           })}
+        ])
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      code = lv |> element("#e-2-tools code.q-rule") |> render() |> LazyHTML.from_fragment()
+      assert LazyHTML.text(code) == String.slice(argument, 0, 64) <> "…"
+      assert LazyHTML.attribute(code, "title") == [argument]
+      assert has_element?(lv, "#e-2-tools", "files.tools.internal")
+
+      # The Details tab shows it whole.
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/details")
+
+      assert has_element?(lv, "#policy-tools-0 code.q-rule", argument)
+    end
+
+    @tag needs: :security
+    test "the policy in force counts the credentials and tools past those it lists", %{
+      conn: conn,
+      scope: scope
+    } do
+      # Fifteen credentials of two uses each: the twenty uses read are ten credentials.
+      uses =
+        for n <- 1..15, host <- ["a", "b"] do
+          %{"name" => "c#{n}", "argument" => "acme/r#{n}", "hosts" => ["#{host}#{n}.example"]}
+        end
+
+      run =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "run.policy_applied",
+           tool_policy_data(%{
+             "credentials" => uses,
+             "tools" => for(n <- 1..21, do: %{"name" => "t#{n}", "hosts" => []})
+           })}
+        ])
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/details")
+
+      assert has_element?(lv, "#policy-credentials-0", "c1 acme/r1 (a1.example, b1.example)")
+      assert has_element?(lv, "#policy-credentials-9")
+      refute has_element?(lv, "#policy-credentials-10")
+      assert has_element?(lv, "#policy-credentials", "and 5 more")
+      assert has_element?(lv, "#policy-tools-19")
+      assert has_element?(lv, "#policy-tools", "and 1 more")
+    end
+  end
+end
