@@ -27,9 +27,9 @@ defmodule Apiary.Retention do
 
   The run's row stays, with everything the projector folded into it (state, times, labels,
   exit, `event_count`, `denied_count`), and so do its `connections`: the runs list, the
-  workspace's connections and the run's header and Connections tab read as before. The run
-  page says on which date the events or the log were pruned where they would have been. A
-  run whose events are gone can no longer be projected again, so
+  workspace's Network access and the run's header and Network access tab read as before.
+  The run page says on which date the events or the log were pruned where they would have
+  been. A run whose events are gone can no longer be projected again, so
   `Apiary.Runs.Projector.rebuild/1` and `Apiary.Runs.Rebuild` leave it as it is.
 
   **The job.** `prune_all/1` takes a Postgres advisory lock, so of several nodes one

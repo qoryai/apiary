@@ -179,7 +179,10 @@ and the workspace's Network access (`ApiaryWeb.ConnectionLive.Index`,
 way to allow or deny it) are one flat list each, and `Apiary.Runs.Filters` reads and
 writes every control of them. The page was Connections: `/:org/:workspace/connections`
 and a run's `/runs/:run_id/connections` send on to the new paths with their query, moved
-permanently (`ApiaryWeb.MovedController`).
+permanently (`ApiaryWeb.MovedController`). A connection as a thing keeps its word: a row is
+a destination and the connections made to it. The Policy page's hosts and paths are its
+Network access section, which links to the page ("See what the runs reached"); the page's
+rule links lead to the rule there.
 
 - **Views** are the runs list's All, Alive, Ended badly and With denials, and Network
   access's decisions, each counted under every other filter; All is current when no
@@ -203,6 +206,20 @@ permanently (`ApiaryWeb.MovedController`).
   target after it until the table is 1000 px wide, then in a column; its state a dot
   (`<.run_mark>`) with its word where the state needs a look, and its denials red only
   when there are any.
+- **A destination is one line** (`<.connections_table>`, `RunComponents.connection_row/1`):
+  its host in mono, the port faint and the path muted, the only strong text; its runs and
+  attempts muted numbers; allowed and denied a thin split with its two numbers, the denied
+  one red only when there is one, and the words for a screen reader; the reason of the last
+  attempt one muted line, the rule in mono and nothing bold, whole on hover, a line under
+  the destination below 600 px of table. No tint and no decision mark (a run's tab keeps
+  its marks). Columns join as the table widens, so nothing is cut at the right: the reason
+  from 600 px, the last seen from 780, the runs from 840, the attempts and the outcome from
+  1300. Allow and Deny are text shown on hover, on focus inside the row and while the
+  row's popover or menu is open (always on a touch screen, in the menu alone below 600 px
+  of table); the ⋯ menu (`rule_menu/1`) holds Allow…, Deny…, Only this host and Copy the
+  host. A locked rule, and the wall, are a faint lock: the menu says who locked it and
+  when, or why no rule changes it, and leads to the rule. A row opened by its chevron
+  lists the runs that reached it as lines under it, a dot for each state, no box.
 - **Pages** of 25, 50 or 100 (`<.pager>`), "1–50 of 3,137", the page before and after named
   by the order (Newer, Older), and Jump to date on the orders by time.
 - **The preview** is for 1920 px and more: a pane beside the list, a rule at its left and no
@@ -372,7 +389,8 @@ inverted.
   the current step and the mark. It is too light to be text on the light theme: links and
   the active navigation icon use `accent`.
 - **Colour marks a state, never a mood,** and is never the only carrier: a badge has its
-  word, an error its icon and sentence, an allowed or denied row its glyph and word.
+  word, an error its icon and sentence, an allowed or denied connection of a run its glyph
+  and word, a destination's denied number the words of its split.
 - **Borders on the page, shadows in the air.** What rests on the page has a 1 px border
   and at most `shadow-xs`; only what floats (menus, toasts, tooltips, modals, the drawer)
   has a real shadow.

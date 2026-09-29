@@ -1,12 +1,13 @@
 defmodule ApiaryWeb.RunComponents do
   @moduledoc """
-  The components the runs list, the run page and the connections pages share: the run
+  The components the runs list, the run page and Network access share: the run
   state badge and the state's mark in a row, durations and times that tick in the
   browser, the key and value strip, label chips, the alive indicator, what a list of runs
   adds to `CoreComponents`' list controls (a Filter menu section's options, the rail of
   targets, the pager; docs/ui.md, Lists), a target's one notation, the runs table and the
   preview beside it, the filter chips the Activity page keeps, tabs, the connection row
-  with its reason, the connections tables and the new-items pill.
+  with its reason, the connections tables (the content of Network access, with a row's
+  text actions and ⋯ menu) and the new-items pill.
 
   Everything rendered here is a field of an event or a count of events; what the record
   lacks reads "n/a". Event data is untrusted: it is only ever interpolated, never `raw/1`.

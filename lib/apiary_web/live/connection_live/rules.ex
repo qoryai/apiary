@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.ConnectionLive.Rules do
   @moduledoc """
-  What a connection's row may ask of the policy, for the run's connections tab and for the
-  workspace's connections page.
+  What a connection's row may ask of the policy, for the run's Network access tab and for
+  the workspace's Network access page (and a target's tab).
 
   A row's **rule option**, the rule it may ask the policy for or why it may ask for none,
   is derived from the effective policy the page holds, never by a query per row: whether

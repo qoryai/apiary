@@ -44,8 +44,11 @@ disables a host the workspace allows.
 
 ## The workspace's baseline and a repository's rules
 
-The workspace has a baseline of rules, on `/:org/:workspace/policy`. A repository has
-rules of its own on top, on `/:org/:workspace/policy/targets/:target_id`; the list of
+The workspace has a baseline of rules, on `/:org/:workspace/policy`: the hosts and paths
+in its **Network access** section, the credentials in **Credentials**. What the runs
+reached, and what decided it, is the **Network access** page beside **Policy** in the
+sidebar, `/:org/:workspace/network`, where each row can allow or deny its host; the
+section links to it, and its rules link back. A repository has rules of its own on top, on `/:org/:workspace/policy/targets/:target_id`; the list of
 repositories is `/:org/:workspace/policy/targets`. A repository appears there once a run
 names it, by the `forge` and `repository` labels the runner takes from the checkout's
 origin remote ([The runner file's `server` section](runner-file.md)).

@@ -1,9 +1,18 @@
 defmodule ApiaryWeb.ConnectionLive.Index do
   @moduledoc """
-  Where the runs of the workspace reached out to: one row per host, port and path across
-  the runs in range, with the reason and the outcome of the most recent attempt, and
-  behind each row's chevron the runs that reached it. "Per target" is this page with the
-  target set, which the run page links to.
+  Network access (`/:org/:workspace/network`, once Connections, whose paths send on here):
+  where the runs of the workspace reached out to, what the policy made of it, and the way
+  to allow or deny it. One row per host, port and path across the runs in range, with the
+  reason and the outcome of the most recent attempt, and behind each row's chevron the
+  runs that reached it. "Per target" is this page with the target set, which the run page
+  links to. A connection as a thing keeps its word: a row is a destination and the
+  connections made to it.
+
+  A row is one line on the row spec (`ApiaryWeb.RunComponents.connection_row/1`): no tint
+  and no bordered button; Allow and Deny are text shown on hover, focus and while open,
+  beside the row's ⋯ menu (Allow…, Deny…, Only this host, Copy the host), and a locked
+  rule is a lock whose menu says who locked it (`ApiaryWeb.ConnectionLive.Rules.locks/2`,
+  one read for the page).
 
   It is narrowed as every list is (docs/ui.md, Lists): the decisions as views (every
   destination, the denied, the allowed, each counted under the other filters), one query
@@ -28,7 +37,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   the most recent connection of the destination in the chosen scope, and what the domain
   refuses is said in its sentence.
 
-  A target's page shows the same content in its Connections tab, with the target fixed
+  A target's page shows the same content in its Network access tab, with the target fixed
   (`fix_target/3`): its own path, no Target section, token or rail, and the target in every
   query.
 
@@ -114,7 +123,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   @doc """
   content/1 is the page's content under its header: the views, the query, the menus and
   the tokens, the rail, the destinations and their pages, and the rule's popover. A
-  target's page renders it in its Connections tab, where "New activity" leads it.
+  target's page renders it in its Network access tab, where "New activity" leads it.
   """
   def content(assigns) do
     ~H"""
@@ -489,7 +498,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
 
   @doc """
   fix_target/3 makes the page a target's: its links lead to `path`, the target's
-  Connections tab, and every query keeps `{system, path}`, which the parameters the tab
+  Network access tab, and every query keeps `{system, path}`, which the parameters the tab
   hands `handle_params/3` carry. The target's page has no rail to read.
   """
   def fix_target(socket, path, {system, target_path}) when is_binary(path),

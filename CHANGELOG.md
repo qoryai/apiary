@@ -45,7 +45,12 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
   `state:`, `started:>2026-09-01` and more) and free text, one Filter menu, sorting, the
   repositories beside the list with their runs from 1280 px, pages of 25 to 100 with a
   jump to a date, and from 1920 px a preview of the run chosen with the end of its log.
-  The workspace's connections are narrowed the same way.
+- Network access, in the sidebar's Guard beside the Policy (`/:org/:workspace/network`,
+  and a tab of each run and each repository): every destination the runs reached, what
+  decided it, and Allow or Deny from its row, narrowed the same way as the runs. Its
+  rows are one line each, the denied number the one red, with the actions on hover and
+  in a ⋯ menu. The policy's host rules are its Network access section, which links back
+  to it. The page was called Connections; its old paths send on to the new ones.
 - The features an instance has, switched at launch (`QORY_FEATURES`), and the guides and
   module reference every instance serves at `/docs`.
 
