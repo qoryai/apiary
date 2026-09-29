@@ -323,11 +323,13 @@ defmodule ApiaryWeb.TargetLive.Index do
         </.filter_tokens>
 
         <p :if={Query.narrowed?(@query) && @listing} id="targets-summary" class="q-tgt-summary">
-          <.rich text={
-            rich_ngettext("%{number} target matches", "%{number} targets match", @listing.total,
-              number: {:b, Format.number(@listing.total)}
-            )
-          } />
+          <span>
+            <.rich text={
+              rich_ngettext("%{number} target matches", "%{number} targets match", @listing.total,
+                number: {:b, Format.number(@listing.total)}
+              )
+            } />
+          </span>
         </p>
 
         <.notice :if={@load_error} kind={:error} class="max-w-[80ch]">

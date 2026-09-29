@@ -7368,12 +7368,23 @@
     gap: 12px;
   }
   .q-tgt-summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 12px;
     color: var(--q-muted);
     font-size: 0.8125rem;
   }
   .q-tgt-summary b {
     color: var(--color-base-content);
     font-weight: 600;
+  }
+  .q-tgt-summary > a {
+    color: var(--color-accent);
+  }
+  .q-tgt-summary > a:hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
   }
 
   /* A row: the pin, the path the title, the last run, the runs of fourteen days. */

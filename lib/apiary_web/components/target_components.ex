@@ -182,10 +182,10 @@ defmodule ApiaryWeb.TargetComponents do
           {run.task || short_id(run.run_id)}
         </.link>
       </:col>
-      <:col :let={run} label={gettext("Runtime")} kind="faint" from="lg" class="whitespace-nowrap">
+      <:col :let={run} label={gettext("Runtime")} kind="faint" from="md" class="whitespace-nowrap">
         {Enum.join(Enum.reject([run.runtime, run.runtime_version], &is_nil/1), " ")}
       </:col>
-      <:col :let={run} label={gettext("Host")} kind="faint" from="lg" class="whitespace-nowrap">
+      <:col :let={run} label={gettext("Host")} kind="faint" from="md" class="whitespace-nowrap">
         <span class="q-mono">{run.host}</span>
       </:col>
       <:col :let={run} label={gettext("Started")} class="whitespace-nowrap">
