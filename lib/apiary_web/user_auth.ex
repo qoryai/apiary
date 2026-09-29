@@ -332,7 +332,8 @@ defmodule ApiaryWeb.UserAuth do
 
   @doc """
   The counts the sidebar shows beside Runs (alive now), Access keys (active keys) and
-  Members, with the policy's mode beside Policy, and the edition's beside its entries
+  Members, with the policy's mode beside Policy, the targets the person pinned in the
+  workspace (`pins`, `Apiary.Targets.list_pins/2`), and the edition's beside its entries
   (`c:ApiaryWeb.Edition.nav_counts/1`).
   """
   def nav_counts(%Scope{organisation: nil}), do: nil
@@ -348,10 +349,19 @@ defmodule ApiaryWeb.UserAuth do
     %{
       keys: scope |> AccessKeys.list_access_keys() |> Enum.count(&is_nil(&1.revoked_at)),
       members: scope |> Organisations.list_members() |> length(),
-      alive: Apiary.Runs.count_alive(scope)
+      alive: Apiary.Runs.count_alive(scope),
+      pins: pins(scope)
     }
     |> Map.merge(policy_mode(scope))
     |> Map.merge(ApiaryWeb.Edition.nav_counts(scope))
+  end
+
+  # The targets the person pinned in the workspace, the first seven in the order pinned:
+  # the sidebar's Pinned group. None where they may not read its runs.
+  defp pins(%Scope{} = scope) do
+    if Apiary.Access.can?(scope, :"run.read", scope.workspace),
+      do: Apiary.Targets.list_pins(scope, 7),
+      else: []
   end
 
   # The word beside Policy: the workspace's default mode, once the workspace has a policy
