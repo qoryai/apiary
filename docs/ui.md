@@ -19,10 +19,12 @@ The shell is section 4 of the v2 design brief (the knowledge vault's
   `ApiaryWeb.Edition.nav_entries/1`, and never in a page.
 - **The top bar** is one `<header aria-label="Top bar">`, 48 px, across the window and
   above the sidebar, first in the tab order after Skip to content. From the left: the
-  mark (home), the **breadcrumb** (`<nav id="breadcrumb">`: the organisation, the
-  workspace, each a link to its home, and the page's own segments, a target or a record,
-  the last one the page with `aria-current="page"`), then **Search or jump to**, **New**
-  and the **account menu**. A page's title stays its `<h1>`; the breadcrumb is navigation.
+  **breadcrumb** (`<nav id="breadcrumb">`: the organisation first, its tile and its name,
+  then the workspace, each a link to its home, and the page's own segments, a target or a
+  record, the last one the page with `aria-current="page"`), then **Search or jump to**,
+  **New** and the **account menu**. The bar has no mark: Qory Apiary is the sidebar's
+  foot. A page's title stays its `<h1>`; the breadcrumb is navigation. A page without a
+  person has no sidebar, and the Qory Apiary menu opens downward from the bar's left.
 - **The switcher.** With more than one place to go, or an edition's entry after the places
   (`ApiaryWeb.Edition.switcher_entries/1`), the chevrons beside the organisation and the
   workspace open one popover (`role="dialog"`, the `Switcher` hook): a search that filters
@@ -38,26 +40,33 @@ The shell is section 4 of the v2 design brief (the knowledge vault's
   comes from the server; a runner's words are written as text.
 - **New** offers only what the reader may do where the page is
   (`ApiaryWeb.Layouts.new_entries/1`). **The account menu** holds who they are and their
-  level there, their settings and organisations, the theme (Auto, Light, Dark), the docs,
-  the changelog, the source and the version, and Log out.
+  level there, their settings and organisations, the theme (Auto, Light, Dark), and Log
+  out; nothing about Qory Apiary itself.
 - **The sidebar** holds the scope's pages and nothing else, in groups, each a `<nav>` with
   its own name: a workspace's Overview, then Record (Runs, Targets, Connections) and Guard
   (Policy), then the targets the person pinned (`counts.pins`, the first seven in the
   order pinned, `Apiary.Targets.list_pins/2`; on a target's page its pin is the current
   entry); an organisation's
-  Overview, Activity and the edition's groups (`ApiaryWeb.Edition.nav_sections/0`); the
-  person's Profile, Preferences and Organisations, which are their settings' list.
-  Settings is at its foot, the scope's own; a page of Settings (an entry of the section
-  `:settings`, such as Access keys) marks it as the current entry. The active item carries
-  `aria-current="page"`. A group whose feature is off is absent, not greyed.
-- **The sidebar folds to icons** from 768 px, by its Collapse control or the `[` key; the
-  fold is a reading preference in `localStorage`, set before the first paint by the root
-  layout's script, and while folded each item's name is its title.
-- **Below 768 px the sidebar is a drawer** behind the bar's Open menu button. The
-  `NavDrawer` hook moves focus into the drawer, makes the top bar and `#shell-content`
-  inert and stops the page scrolling behind it; the scrim, Escape, the Close menu button
-  and any navigation close it, and focus returns to the menu button. The bar names the last
-  segment of the breadcrumb only.
+  Overview, Activity and the edition's groups (`ApiaryWeb.Edition.nav_sections/0`). On a
+  page of settings it lists the settings instead (Settings, below). The active item
+  carries `aria-current="page"`. A group whose feature is off is absent, not greyed.
+- **The sidebar's foot** holds the scope's Settings (not on a page of settings), then,
+  under a rule, **the Qory Apiary menu** (`#brand-menu`): the mark, the name and the
+  version, opening upward to Docs, Changelog (on an instance with every feature) and
+  Source on GitHub, what is about the product rather than the person; and at the right of
+  it the fold.
+- **The sidebar folds to icons** from 768 px, by the fold (`#sidebar-collapse`, an icon
+  button named Collapse sidebar, or Expand sidebar while folded, in its label and its
+  tooltip) or the `[` key; the fold is a reading preference in `localStorage`, set before
+  the first paint by the root layout's script, and while folded each item's name is its
+  title. Folded, the foot is the fold over the mark alone, which still opens the menu,
+  upward and to the right; the groups are split by rules, their headings gone.
+- **Below 768 px the sidebar is a drawer** behind the bar's Open menu button, its head a
+  Close menu button and its foot the same, without the fold. The `NavDrawer` hook moves
+  focus into the drawer, makes the top bar and `#shell-content` inert and stops the page
+  scrolling behind it; the scrim, Escape, the Close menu button and any navigation close
+  it, and focus returns to the menu button. The bar names the last segment of the
+  breadcrumb only.
 - **Landmarks.** A Skip to content link is the first thing in the tab order and targets
   the one `<main id="main">`. A page has one `<h1>`, the title of its `<.header>`, which
   also holds a one-line description and at most one primary and one default action. Card
@@ -66,27 +75,41 @@ The shell is section 4 of the v2 design brief (the knowledge vault's
 ## Settings
 
 Configuration is not navigation: what is set up once and changed rarely lives in the
-settings of its scope, GitHub's way, one section a page with the list of sections beside it
-(`ApiaryWeb.SettingsComponents.layout/1`). The list is `sections/2`, entries of
-`ApiaryWeb.Nav.Entry` a page reads when it mounts: a section the reader may not open is not
-in it, and its path sends them to General and says why.
+settings, one section a page (`ApiaryWeb.SettingsComponents`). There are three kinds, an
+organisation's, a workspace's and the person's own, and one is never hidden inside
+another: on a page of any of them the sidebar lists, in place of the scope's pages, a way
+back (‹ Back to the workspace, or to the organisation when the scope has no workspace),
+then every kind the reader may change, each under its kind and place ("Organisation ·
+8wonders", "Workspace · Main", "Your account"), in the breadcrumb's order and the person
+last. The list is `SettingsComponents.nav/1`, which a page reads when it mounts and
+passes to `Layouts.app/1` as `settings`, with its own section's key as `section`: a
+section the reader may not open is not in it, and its path sends them to General and says
+why. People and Access keys carry their counts; a danger zone is marked by its red icon
+alone. An entry's id is `settings-tab-<key>`, its key unique among the three kinds.
 
 - **An organisation's** (`/:org/settings/…`): General (name, slug, owners), People
   (`/settings/people`: members, invitations, suspensions), Workspaces (owners and admins),
-  Audit log (the Activity page, `/:org/activity`, which keeps its path), the edition's
-  sections (`ApiaryWeb.Edition.settings_tabs/1`), and Danger zone (deleting it).
+  Audit log (the Activity page, `/:org/activity`, which keeps its path and the
+  organisation's sidebar), the edition's sections (`ApiaryWeb.Edition.settings_tabs/1`),
+  and Danger zone (deleting it).
 - **A workspace's** (`/:org/:workspace/settings/…`): General (name, slug), Access keys
   (`/settings/keys`), Retention, and Danger zone (deleting it, while it is one of several).
 - **A person's** (`/users/settings`, `/users/settings/preferences`,
   `/users/organisations`): Profile (email, password, deleting the account), Preferences,
-  Organisations; their list is the sidebar of a person's pages.
+  Organisations. Their pages carry the workspace they opened last, so their list shows
+  that organisation's and workspace's settings beside their own; a person with no
+  organisation sees their own alone.
 
-The list ends with the settings a person may want next ("Elsewhere": the organisation's or
-the workspace's, and their own), from 1024 px; below, it is a row of links above the
-section. A section of forms keeps a 720 px column, one that is a list (People, Access keys)
-960 px. Invite, rotate, revoke, remove, suspend and the deletions stay dialogs over their
-section, each at a path of its own. The old paths, `/:org/members/…` and
-`/:org/:workspace/keys/…`, send on to the new ones (`ApiaryWeb.MovedController`).
+The workspace sidebar's Settings leads to the workspace's General, the organisation's to
+the organisation's General, and the account menu's Your settings to Profile: one view, one
+list, another current entry. **The section is the page** (`SettingsComponents.layout/1`):
+one faint line that names the kind and the place ("Workspace settings · Main"), the
+section's title as the page's `<h1>`, one sentence of what it is for, then its content; a
+section of forms keeps a 720 px column, one that is a list (People, Access keys) 960 px.
+The breadcrumb ends with Settings on an organisation's and a workspace's settings; a
+person's page names itself. Invite, rotate, revoke, remove, suspend and the deletions stay
+dialogs over their section, each at a path of its own. The old paths, `/:org/members/…`
+and `/:org/:workspace/keys/…`, send on to the new ones (`ApiaryWeb.MovedController`).
 
 An organisation's own path, `/:org`, is its overview (`ApiaryWeb.OrganisationLive`): the
 workspaces the person reaches, what each is doing, and the organisation's people. The

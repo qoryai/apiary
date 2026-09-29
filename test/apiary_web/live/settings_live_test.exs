@@ -19,7 +19,7 @@ defmodule ApiaryWeb.SettingsLiveTest do
       refute has_element?(lv, "#workspace-form")
       refute has_element?(lv, "#retention-form")
       assert html =~ "The name of this organisation, where its pages are, and who owns it."
-      assert has_element?(lv, "#nav-organisation[aria-current='page']")
+      assert has_element?(lv, "#settings-tab-organisation[aria-current='page']")
       assert has_element?(lv, "#organisation-slug span", "/#{scope.organisation.slug}")
 
       page = lv |> element("#main") |> render() |> LazyHTML.from_fragment() |> LazyHTML.text()
@@ -38,8 +38,8 @@ defmodule ApiaryWeb.SettingsLiveTest do
 
       assert html =~ "The name of this workspace, and where its pages are."
 
-      assert has_element?(lv, "aside#sidebar[aria-label='Workspace']")
-      assert has_element?(lv, "#nav-settings[aria-current='page']")
+      assert has_element?(lv, "aside#sidebar[aria-label='Settings']")
+      assert has_element?(lv, "#settings-tab-general[aria-current='page']")
       assert has_element?(lv, "#workspace-slug span", workspace_path(scope))
       assert html =~ scope.workspace.name
 
@@ -230,16 +230,31 @@ defmodule ApiaryWeb.SettingsLiveTest do
             people: ~p"/#{org}/settings/people",
             workspaces: ~p"/#{org}/settings/workspaces",
             audit_log: ~p"/#{org}/activity",
-            danger: ~p"/#{org}/settings/danger",
-            workspace_settings: ~p"/#{org}/#{scope.workspace}/settings",
-            your_settings: ~p"/users/settings"
+            danger: ~p"/#{org}/settings/danger"
           ] do
-        assert has_element?(lv, ~s(#settings-tab-#{key}[href="#{path}"]))
+        assert has_element?(
+                 lv,
+                 ~s(#settings-group-organisation #settings-tab-#{key}[href="#{path}"])
+               )
       end
 
+      # The other kinds are beside it, each under its own name; no cross-link, no Elsewhere.
+      assert has_element?(
+               lv,
+               ~s(#settings-group-workspace #settings-tab-general[href="#{~p"/#{org}/#{scope.workspace}/settings"}"])
+             )
+
+      assert has_element?(
+               lv,
+               ~s(#settings-group-person #settings-tab-user_settings[href="/users/settings"])
+             )
+
+      refute has_element?(lv, "#settings-tab-workspace_settings, #settings-tab-your_settings")
+      refute render(lv) =~ "Elsewhere"
+
       assert has_element?(lv, "#settings-tab-organisation[aria-current=page]")
-      assert has_element?(lv, "h1", "Organisation settings")
-      assert has_element?(lv, "#settings-section-title", "General")
+      assert has_element?(lv, "#settings-kind", "Organisation settings · #{org.name}")
+      assert has_element?(lv, "h1#settings-section-title", "General")
 
       {:ok, lv, _html} = live(conn, ~p"/#{org}/settings/workspaces")
       assert has_element?(lv, "#settings-tab-workspaces[aria-current=page]")
@@ -258,16 +273,30 @@ defmodule ApiaryWeb.SettingsLiveTest do
             general: base,
             keys: base <> "/keys",
             retention: base <> "/retention",
-            danger: base <> "/danger",
-            organisation_settings: ~p"/#{scope.organisation}/settings"
+            workspace_danger: base <> "/danger"
           ] do
-        assert has_element?(lv, ~s(#settings-tab-#{key}[href="#{path}"]))
+        assert has_element?(
+                 lv,
+                 ~s(#settings-group-workspace #settings-tab-#{key}[href="#{path}"])
+               )
       end
 
+      assert has_element?(
+               lv,
+               ~s(#settings-group-organisation #settings-tab-organisation[href="#{~p"/#{scope.organisation}/settings"}"])
+             )
+
+      refute has_element?(lv, "#settings-tab-organisation_settings")
+
       assert has_element?(lv, "#settings-tab-retention[aria-current=page]")
-      assert has_element?(lv, "h1", "Workspace settings")
+      assert has_element?(lv, "#settings-kind", "Workspace settings · #{scope.workspace.name}")
+      assert has_element?(lv, "h1#settings-section-title", "Retention")
       assert has_element?(lv, "#retention-form")
       refute has_element?(lv, "#workspace-form")
+
+      {:ok, lv, _html} = live(conn, base <> "/danger")
+      assert has_element?(lv, "#settings-tab-workspace_danger[aria-current=page]")
+      refute has_element?(lv, "#settings-tab-danger[aria-current=page]")
     end
 
     test "a workspace's danger zone deletes it when it is one of several, after its slug",
@@ -305,6 +334,9 @@ defmodule ApiaryWeb.SettingsLiveTest do
       refute has_element?(lv, "#settings-tab-workspaces")
       refute has_element?(lv, "#settings-tab-danger")
       refute has_element?(lv, "#settings-tab-audit_log")
+      # nor the workspace's
+      assert has_element?(lv, "#settings-tab-retention")
+      refute has_element?(lv, "#settings-tab-workspace_danger")
     end
   end
 

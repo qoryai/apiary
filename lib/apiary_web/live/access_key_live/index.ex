@@ -19,11 +19,12 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
       memberships={@memberships}
       counts={@nav_counts}
       nav={:keys}
+      settings={@settings_nav}
+      section={:keys}
     >
       <SettingsComponents.layout
         scope={@current_scope}
         kind={:workspace}
-        sections={@sections}
         current={:keys}
         measure="list"
         title={gettext("Access keys")}
@@ -378,7 +379,7 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
        reveal: nil,
        retire_key: nil
      )
-     |> assign(:sections, SettingsComponents.sections(socket.assigns.current_scope, :workspace))
+     |> assign(:settings_nav, SettingsComponents.nav(socket.assigns.current_scope))
      |> load_keys()}
   end
 

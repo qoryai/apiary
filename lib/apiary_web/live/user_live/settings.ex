@@ -1,10 +1,11 @@
 defmodule ApiaryWeb.UserLive.Settings do
   @moduledoc """
-  A person's own settings, one section a page, whose list is the sidebar of a person's
-  pages (`ApiaryWeb.Layouts`): Profile, `/users/settings` (`:edit`), their email address,
-  their password and deleting their account, confirmed in a modal over it,
-  `/users/settings/delete` (`:delete`); and Preferences, `/users/settings/preferences`
-  (`:preferences`), their time zone and language. The theme is the account menu's.
+  A person's own settings, one section a page (`ApiaryWeb.SettingsComponents`): Profile,
+  `/users/settings` (`:edit`), their email address, their password and deleting their
+  account, confirmed in a modal over it, `/users/settings/delete` (`:delete`); and
+  Preferences, `/users/settings/preferences` (`:preferences`), their time zone and
+  language. The theme is the account menu's. The sidebar lists them under Your account,
+  after the settings of the organisation and the workspace the person opened last.
   """
   use ApiaryWeb, :live_view
 
@@ -12,7 +13,7 @@ defmodule ApiaryWeb.UserLive.Settings do
 
   alias Apiary.{Accounts, Organisations}
   alias Apiary.Accounts.Preferences
-  alias ApiaryWeb.UserAuth
+  alias ApiaryWeb.{SettingsComponents, UserAuth}
 
   @impl true
   def render(assigns) do
@@ -22,186 +23,191 @@ defmodule ApiaryWeb.UserLive.Settings do
       current_scope={@current_scope}
       memberships={@memberships}
       counts={assigns[:nav_counts]}
-      nav={if @live_action == :preferences, do: :user_preferences, else: :user_settings}
+      nav={section(@live_action)}
       width="read"
+      settings={@settings_nav}
+      section={section(@live_action)}
     >
-      <.header :if={@live_action != :preferences}>
-        {gettext("Profile")}
-        <:subtitle>{gettext("Your email address and password, and your account itself.")}</:subtitle>
-      </.header>
-      <.header :if={@live_action == :preferences}>
-        {gettext("Preferences")}
-        <:subtitle>
+      <SettingsComponents.layout
+        scope={@current_scope}
+        kind={:person}
+        current={section(@live_action)}
+        title={if @live_action == :preferences, do: gettext("Preferences"), else: gettext("Profile")}
+      >
+        <:subtitle :if={@live_action != :preferences}>
+          {gettext("Your email address and password, and your account itself.")}
+        </:subtitle>
+        <:subtitle :if={@live_action == :preferences}>
           {gettext("How the console shows things to you, in every organisation you belong to.")}
         </:subtitle>
-      </.header>
 
-      <.card :if={@live_action != :preferences}>
-        <:title>{gettext("Email")}</:title>
-        <.form
-          for={@email_form}
-          id="email_form"
-          phx-submit="update_email"
-          phx-change="validate_email"
-          class="grid max-w-[420px] gap-4"
-        >
-          <.input
-            field={@email_form[:email]}
-            type="email"
-            label={gettext("Email")}
-            autocomplete="username"
-            spellcheck="false"
-            required
-          />
-        </.form>
-        <:footer>
-          <span>{gettext("We send a confirmation link to the new address.")}</span>
-          <.button type="submit" form="email_form" loading_text={gettext("Sending")}>
-            {gettext("Change email")}
-          </.button>
-        </:footer>
-      </.card>
+        <.card :if={@live_action != :preferences}>
+          <:title>{gettext("Email")}</:title>
+          <.form
+            for={@email_form}
+            id="email_form"
+            phx-submit="update_email"
+            phx-change="validate_email"
+            class="grid max-w-[420px] gap-4"
+          >
+            <.input
+              field={@email_form[:email]}
+              type="email"
+              label={gettext("Email")}
+              autocomplete="username"
+              spellcheck="false"
+              required
+            />
+          </.form>
+          <:footer>
+            <span>{gettext("We send a confirmation link to the new address.")}</span>
+            <.button type="submit" form="email_form" loading_text={gettext("Sending")}>
+              {gettext("Change email")}
+            </.button>
+          </:footer>
+        </.card>
 
-      <.card :if={@live_action != :preferences}>
-        <:title>{gettext("Password")}</:title>
-        <.form
-          for={@password_form}
-          id="password_form"
-          action={~p"/users/update-password"}
-          method="post"
-          phx-change="validate_password"
-          phx-submit="update_password"
-          phx-trigger-action={@trigger_submit}
-          class="grid max-w-[420px] gap-4"
-        >
-          <input
-            name={@password_form[:email].name}
-            type="hidden"
-            id="hidden_user_email"
-            autocomplete="username"
-            value={@current_email}
-          />
-          <.input
-            field={@password_form[:password]}
-            type="password"
-            label={gettext("New password")}
-            hint={gettext("At least 12 characters.")}
-            autocomplete="new-password"
-            spellcheck="false"
-            required
-          />
-          <.input
-            field={@password_form[:password_confirmation]}
-            type="password"
-            label={gettext("Confirm new password")}
-            autocomplete="new-password"
-            spellcheck="false"
-          />
-        </.form>
-        <:footer>
-          <span>{gettext("Optional. Log-in links keep working either way.")}</span>
-          <.button type="submit" form="password_form" loading_text={gettext("Saving")}>
-            {gettext("Save password")}
-          </.button>
-        </:footer>
-      </.card>
+        <.card :if={@live_action != :preferences}>
+          <:title>{gettext("Password")}</:title>
+          <.form
+            for={@password_form}
+            id="password_form"
+            action={~p"/users/update-password"}
+            method="post"
+            phx-change="validate_password"
+            phx-submit="update_password"
+            phx-trigger-action={@trigger_submit}
+            class="grid max-w-[420px] gap-4"
+          >
+            <input
+              name={@password_form[:email].name}
+              type="hidden"
+              id="hidden_user_email"
+              autocomplete="username"
+              value={@current_email}
+            />
+            <.input
+              field={@password_form[:password]}
+              type="password"
+              label={gettext("New password")}
+              hint={gettext("At least 12 characters.")}
+              autocomplete="new-password"
+              spellcheck="false"
+              required
+            />
+            <.input
+              field={@password_form[:password_confirmation]}
+              type="password"
+              label={gettext("Confirm new password")}
+              autocomplete="new-password"
+              spellcheck="false"
+            />
+          </.form>
+          <:footer>
+            <span>{gettext("Optional. Log-in links keep working either way.")}</span>
+            <.button type="submit" form="password_form" loading_text={gettext("Saving")}>
+              {gettext("Save password")}
+            </.button>
+          </:footer>
+        </.card>
 
-      <.card :if={@live_action == :preferences} id="preferences">
-        <:title>{gettext("Time and language")}</:title>
-        <.form
-          for={@preferences_form}
-          id="preferences_form"
-          phx-submit="update_preferences"
-          class="grid max-w-[420px] gap-4"
-        >
-          <.input
-            field={@preferences_form[:time_zone]}
-            type="select"
-            label={gettext("Time zone")}
-            hint={gettext("Times are shown in this zone. They are kept in UTC.")}
-            options={time_zone_options(@preferences_form[:time_zone].value)}
-          />
-          <.input
-            :if={length(@languages) > 1}
-            field={@preferences_form[:language]}
-            type="select"
-            label={gettext("Language")}
-            options={Enum.map(@languages, &{language_name(&1), &1})}
-          />
-        </.form>
-        <p :if={length(@languages) <= 1} id="preferences_language" class="text-[13px] text-muted">
-          {gettext("Pages are in English, the one language this instance has.")}
-        </p>
-        <:footer>
-          <span>{gettext("Yours in every organisation you belong to.")}</span>
-          <.button type="submit" form="preferences_form" loading_text={gettext("Saving")}>
-            {gettext("Save preferences")}
-          </.button>
-        </:footer>
-      </.card>
+        <.card :if={@live_action == :preferences} id="preferences">
+          <:title>{gettext("Time and language")}</:title>
+          <.form
+            for={@preferences_form}
+            id="preferences_form"
+            phx-submit="update_preferences"
+            class="grid max-w-[420px] gap-4"
+          >
+            <.input
+              field={@preferences_form[:time_zone]}
+              type="select"
+              label={gettext("Time zone")}
+              hint={gettext("Times are shown in this zone. They are kept in UTC.")}
+              options={time_zone_options(@preferences_form[:time_zone].value)}
+            />
+            <.input
+              :if={length(@languages) > 1}
+              field={@preferences_form[:language]}
+              type="select"
+              label={gettext("Language")}
+              options={Enum.map(@languages, &{language_name(&1), &1})}
+            />
+          </.form>
+          <p :if={length(@languages) <= 1} id="preferences_language" class="text-[13px] text-muted">
+            {gettext("Pages are in English, the one language this instance has.")}
+          </p>
+          <:footer>
+            <span>{gettext("Yours in every organisation you belong to.")}</span>
+            <.button type="submit" form="preferences_form" loading_text={gettext("Saving")}>
+              {gettext("Save preferences")}
+            </.button>
+          </:footer>
+        </.card>
 
-      <.card :if={@live_action != :preferences} id="delete-account">
-        <:title>{gettext("Delete account")}</:title>
-        <p class="max-w-[60ch] text-muted">
-          {gettext(
-            "Your email address, password and preferences are erased, and you leave every organisation you belong to. What you made in a workspace stays there and names you as a former member. The address is free for a new account at once."
-          )}
-        </p>
-        <div :if={is_nil(@sole_owned)} id="delete-account-loading" aria-busy="true">
-          <span class="sr-only">{gettext("Checking the organisations you own")}</span>
-          <span class="skeleton q-skel w-64"></span>
-        </div>
-        <.notice :if={@sole_owned not in [nil, []]} kind={:warning}>
-          <p id="delete-account-blocked">
-            {ngettext(
-              "You are the only owner of this organisation. Make another member an owner, or delete the organisation, before you delete your account.",
-              "You are the only owner of these organisations. Make another member an owner of each, or delete it, before you delete your account.",
-              length(@sole_owned)
+        <.card :if={@live_action != :preferences} id="delete-account">
+          <:title>{gettext("Delete account")}</:title>
+          <p class="max-w-[60ch] text-muted">
+            {gettext(
+              "Your email address, password and preferences are erased, and you leave every organisation you belong to. What you made in a workspace stays there and names you as a former member. The address is free for a new account at once."
             )}
           </p>
-          <ul id="sole-owned" class="mt-1.5 grid gap-0.5">
-            <li :for={organisation <- @sole_owned} id={"sole-owned-#{organisation.id}"}>
-              <.link navigate={~p"/#{organisation}/settings"} class="link font-medium">
-                {organisation.name}
-              </.link>
-            </li>
-          </ul>
-        </.notice>
-        <.notice :if={@sole_owned == [] and @marked_alone != []} kind={:warning}>
-          <p id="delete-account-orphans">
-            {ngettext(
-              "You are the only owner of an organisation that is deleted and waits to be purged. Once your account is deleted, nobody is left who can cancel its deletion.",
-              "You are the only owner of organisations that are deleted and wait to be purged. Once your account is deleted, nobody is left who can cancel their deletion.",
-              length(@marked_alone)
-            )}
-          </p>
-          <ul id="marked-alone" class="mt-1.5 grid gap-0.5">
-            <li :for={organisation <- @marked_alone} id={"marked-alone-#{organisation.id}"}>
-              <span class="font-medium">{organisation.name}</span>
-            </li>
-          </ul>
-        </.notice>
-        <:footer>
-          <span>{gettext("It cannot be undone.")}</span>
-          <.button
-            :if={@sole_owned == []}
-            id="delete-account-button"
-            variant="danger"
-            patch={~p"/users/settings/delete"}
-          >
-            {gettext("Delete account")}
-          </.button>
-          <.button
-            :if={@sole_owned != []}
-            id="delete-account-button"
-            type="button"
-            variant="danger"
-            disabled
-          >
-            {gettext("Delete account")}
-          </.button>
-        </:footer>
-      </.card>
+          <div :if={is_nil(@sole_owned)} id="delete-account-loading" aria-busy="true">
+            <span class="sr-only">{gettext("Checking the organisations you own")}</span>
+            <span class="skeleton q-skel w-64"></span>
+          </div>
+          <.notice :if={@sole_owned not in [nil, []]} kind={:warning}>
+            <p id="delete-account-blocked">
+              {ngettext(
+                "You are the only owner of this organisation. Make another member an owner, or delete the organisation, before you delete your account.",
+                "You are the only owner of these organisations. Make another member an owner of each, or delete it, before you delete your account.",
+                length(@sole_owned)
+              )}
+            </p>
+            <ul id="sole-owned" class="mt-1.5 grid gap-0.5">
+              <li :for={organisation <- @sole_owned} id={"sole-owned-#{organisation.id}"}>
+                <.link navigate={~p"/#{organisation}/settings"} class="link font-medium">
+                  {organisation.name}
+                </.link>
+              </li>
+            </ul>
+          </.notice>
+          <.notice :if={@sole_owned == [] and @marked_alone != []} kind={:warning}>
+            <p id="delete-account-orphans">
+              {ngettext(
+                "You are the only owner of an organisation that is deleted and waits to be purged. Once your account is deleted, nobody is left who can cancel its deletion.",
+                "You are the only owner of organisations that are deleted and wait to be purged. Once your account is deleted, nobody is left who can cancel their deletion.",
+                length(@marked_alone)
+              )}
+            </p>
+            <ul id="marked-alone" class="mt-1.5 grid gap-0.5">
+              <li :for={organisation <- @marked_alone} id={"marked-alone-#{organisation.id}"}>
+                <span class="font-medium">{organisation.name}</span>
+              </li>
+            </ul>
+          </.notice>
+          <:footer>
+            <span>{gettext("It cannot be undone.")}</span>
+            <.button
+              :if={@sole_owned == []}
+              id="delete-account-button"
+              variant="danger"
+              patch={~p"/users/settings/delete"}
+            >
+              {gettext("Delete account")}
+            </.button>
+            <.button
+              :if={@sole_owned != []}
+              id="delete-account-button"
+              type="button"
+              variant="danger"
+              disabled
+            >
+              {gettext("Delete account")}
+            </.button>
+          </:footer>
+        </.card>
+      </SettingsComponents.layout>
 
       <.modal
         :if={@live_action == :delete}
@@ -271,12 +277,23 @@ defmodule ApiaryWeb.UserLive.Settings do
       |> assign(:session_token, session["user_token"])
       |> assign(sole_owned: nil, marked_alone: [])
       |> load_sole_owned()
+      |> load_settings_nav()
+      |> UserAuth.on_membership_change(&load_settings_nav/1)
 
     {:ok, socket}
   end
 
   @impl true
   def handle_params(_params, _uri, socket), do: {:noreply, socket}
+
+  # The section of the page, the key of its entry among the person's pages.
+  defp section(:preferences), do: :user_preferences
+  defp section(_profile), do: :user_settings
+
+  # The settings the reader may change, the sidebar's list: the organisation's and the
+  # workspace's of the scope the page carries, and their own.
+  defp load_settings_nav(socket),
+    do: assign(socket, :settings_nav, SettingsComponents.nav(socket.assigns.current_scope))
 
   defp page_title(:preferences), do: gettext("Preferences") <> " · " <> gettext("Your settings")
   defp page_title(_profile), do: gettext("Profile") <> " · " <> gettext("Your settings")

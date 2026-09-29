@@ -1232,17 +1232,6 @@
     -webkit-backdrop-filter: blur(10px);
     backdrop-filter: blur(10px);
   }
-  .q-mark {
-    display: grid;
-    width: 1.75rem;
-    height: 1.75rem;
-    flex: none;
-    place-items: center;
-    border-radius: var(--radius-field);
-  }
-  .q-mark:hover {
-    background-color: var(--color-base-300);
-  }
 
   /* ---- Breadcrumb: the organisation, the workspace, the page's own segments ---- */
   .q-trail-nav {
@@ -1485,7 +1474,7 @@
     font-weight: 500;
   }
 
-  /* ---- The sidebar: the scope's pages ---- */
+  /* ---- The sidebar: the scope's pages, or on a page of settings the settings ---- */
   .q-sidebar {
     display: flex;
     height: 100dvh;
@@ -1505,8 +1494,98 @@
     display: grid;
     flex: none;
     gap: 1px;
-    padding: 8px;
+    padding: 0 8px 8px;
+  }
+  /* The drawer's head, below 768 px: its close button. */
+  .q-drawer-head {
+    display: flex;
+    height: 3rem;
+    flex: none;
+    align-items: center;
+    justify-content: flex-end;
+    padding-inline: 12px;
+  }
+  /* The foot's last row: the Qory Apiary menu and, at its right, the fold. */
+  .q-brand-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin: 4px -8px 0;
+    padding: 8px 8px 0;
     border-top: 1px solid var(--q-border-subtle);
+  }
+  .q-brand {
+    display: block;
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+  .q-brand-btn {
+    display: flex;
+    width: 100%;
+    height: 2.5rem;
+    min-width: 0;
+    align-items: center;
+    gap: 8px;
+    padding-inline: 8px;
+    border-radius: var(--radius-field);
+    color: var(--q-muted);
+    text-align: left;
+    white-space: nowrap;
+    outline-offset: -2px;
+    cursor: pointer;
+    transition: color 120ms var(--q-ease-out), background-color 120ms var(--q-ease-out);
+  }
+  .q-brand-btn:hover,
+  .q-brand-btn[aria-expanded="true"] {
+    background-color: var(--color-base-300);
+    color: var(--color-base-content);
+  }
+  .q-brand-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 0.8125rem;
+    line-height: 1.125rem;
+    font-weight: 500;
+    letter-spacing: -0.03em;
+  }
+  .q-brand-version {
+    margin-left: auto;
+    color: var(--q-faint);
+    font-family: var(--font-mono);
+    font-size: 0.71875rem;
+    line-height: 1rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .q-brand-chev {
+    flex: none;
+    color: var(--q-faint);
+  }
+  /* The top bar's, on a page without a sidebar. */
+  .q-topbar .q-brand {
+    flex: none;
+  }
+  .q-topbar .q-brand-btn {
+    height: 2rem;
+  }
+  .q-topbar .q-brand-chev {
+    margin-left: -2px;
+  }
+  /* The fold: an icon, faint until it is pointed at; its name is its tooltip. */
+  .q-collapse {
+    display: grid;
+    width: 1.75rem;
+    height: 1.75rem;
+    flex: none;
+    place-items: center;
+    border-radius: var(--radius-field);
+    color: var(--q-faint);
+    cursor: pointer;
+    transition: color 120ms var(--q-ease-out), background-color 120ms var(--q-ease-out);
+  }
+  .q-collapse:hover {
+    background-color: var(--color-base-300);
+    color: var(--color-base-content);
   }
   .q-nav-group {
     display: grid;
@@ -1514,11 +1593,14 @@
     margin-bottom: 14px;
   }
   .q-nav-heading {
+    overflow: hidden;
     padding: 0 8px 4px;
     color: var(--q-faint);
     font-size: 0.75rem;
     line-height: 1rem;
     font-weight: 500;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .q-nav-item {
     display: flex;
@@ -1552,6 +1634,13 @@
   .q-nav-item[aria-current="page"] .q-nav-icon {
     color: var(--color-accent);
   }
+  /* A danger zone: its icon red, its words only when pointed at or current. */
+  .q-nav-danger .q-nav-icon,
+  .q-nav-danger[aria-current="page"] .q-nav-icon,
+  .q-nav-danger:hover,
+  .q-nav-danger[aria-current="page"] {
+    color: var(--color-error);
+  }
   .q-nav-text {
     min-width: 0;
     overflow: hidden;
@@ -1580,12 +1669,24 @@
     color: var(--q-faint);
   }
   @media (min-width: 768px) {
+    /* The organisation's tile over the sidebar's icons. */
+    .q-topbar {
+      padding-left: 0.625rem;
+    }
+    /* A menu or a tooltip of the sidebar may reach past its edge, over the page. */
+    #shell .drawer-side {
+      overflow: visible;
+    }
+    .q-drawer-head {
+      display: none;
+    }
     .q-sidebar {
       height: 100%;
       width: 15rem;
       box-shadow: none;
     }
-    .q-nav-item {
+    .q-nav-item,
+    .q-brand-btn {
       height: 2rem;
       font-size: 0.8125rem;
     }
@@ -1618,6 +1719,23 @@
     [data-sidebar="collapsed"] .q-collapse-icon {
       rotate: 180deg;
     }
+    /* Folded, the foot is the fold, full width, over the mark alone, which still opens
+       the menu, upward and to the right. */
+    [data-sidebar="collapsed"] .q-brand-row {
+      flex-direction: column-reverse;
+      align-items: stretch;
+    }
+    [data-sidebar="collapsed"] .q-collapse {
+      width: 100%;
+      height: 2rem;
+    }
+    [data-sidebar="collapsed"] .q-brand-btn {
+      justify-content: center;
+      padding: 0;
+    }
+    [data-sidebar="collapsed"] :is(.q-brand-name, .q-brand-version, .q-brand-chev) {
+      display: none;
+    }
   }
 
   /* ---- The page: one left edge, three widths ---- */
@@ -1645,78 +1763,18 @@
     max-width: 45rem;
   }
 
-  /* ---- Settings: the list of sections beside the section (SettingsComponents) ---- */
+  /* ---- Settings: a section is the page (SettingsComponents); the list is the sidebar's ---- */
   .q-settings {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    gap: 16px;
-  }
-  .q-settings-title {
-    font-size: 1.375rem;
-    line-height: 1.75rem;
-    font-weight: 600;
-    letter-spacing: -0.01em;
-  }
-  /* Below 1024 px the list is a row of links above the section. */
-  .q-settings-nav {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 2px 4px;
-    padding-bottom: 12px;
-    border-bottom: 1px solid var(--q-border-subtle);
-  }
-  .q-settings-group {
-    display: contents;
-  }
-  .q-settings-heading,
-  .q-settings-group-elsewhere {
-    display: none;
-  }
-  .q-settings-link {
-    display: flex;
-    min-width: 0;
-    height: 2.25rem;
-    align-items: center;
-    gap: 10px;
-    padding-inline: 10px;
-    border-radius: var(--radius-field);
-    color: var(--q-muted);
-    font-size: 0.875rem;
-    font-weight: 500;
-    white-space: nowrap;
-    outline-offset: -2px;
-    transition: color 120ms var(--q-ease-out), background-color 120ms var(--q-ease-out);
-  }
-  .q-settings-link:hover {
-    background-color: var(--color-base-200);
-    color: var(--color-base-content);
-  }
-  .q-settings-link[aria-current="page"] {
-    background-color: var(--color-base-200);
-    color: var(--color-base-content);
-  }
-  .q-settings-icon {
-    flex: none;
-    color: var(--q-faint);
-  }
-  .q-settings-link[aria-current="page"] .q-settings-icon {
-    color: var(--color-accent);
-  }
-  .q-settings-danger,
-  .q-settings-danger .q-settings-icon {
-    color: var(--color-error);
-  }
-  .q-settings-main {
     display: grid;
     min-width: 0;
     grid-template-columns: minmax(0, 1fr);
     align-content: start;
     gap: 20px;
   }
-  .q-settings-main-read {
+  .q-settings-read {
     max-width: 45rem;
   }
-  .q-settings-main-list {
+  .q-settings-list {
     max-width: 60rem;
   }
   .q-settings-head {
@@ -1724,70 +1782,37 @@
     flex-wrap: wrap;
     align-items: flex-start;
     gap: 12px 16px;
-    padding-bottom: 16px;
-    border-bottom: 1px solid var(--q-border-subtle);
   }
   /* The title and its sentence take the line; the actions go under them when they would
      squeeze it. */
   .q-settings-head > :first-child {
     flex: 1 1 20rem;
   }
-  .q-settings-head-title {
-    font-size: 1.125rem;
-    line-height: 1.625rem;
-    font-weight: 600;
+  .q-settings-kind {
+    margin-bottom: 2px;
+    color: var(--q-faint);
+    font-size: 0.78125rem;
+    line-height: 1.125rem;
   }
-  .q-settings-head-sub {
+  .q-settings-title {
+    font-size: 1.25rem;
+    line-height: 1.75rem;
+    font-weight: 600;
+    letter-spacing: -0.017em;
+  }
+  .q-settings-sub {
     margin-top: 2px;
-    max-width: 72ch;
+    max-width: 62ch;
     color: var(--q-muted);
     font-size: 0.875rem;
     line-height: 1.25rem;
   }
-  /* From 1024 px: a column of sections at the page's left edge, the section beside it. */
-  @media (min-width: 1024px) {
-    .q-settings {
-      grid-template-columns: 13.75rem minmax(0, 1fr);
-      column-gap: 32px;
-      row-gap: 20px;
-    }
-    .q-settings-title {
-      grid-column: 1 / -1;
-    }
-    .q-settings-nav {
-      display: grid;
-      align-content: start;
-      gap: 0;
-      padding-bottom: 0;
-      border-bottom: 0;
-      position: sticky;
-      top: 4.5rem;
-    }
-    .q-settings-group,
-    .q-settings-group-elsewhere {
-      display: grid;
-      gap: 1px;
-    }
-    .q-settings-group + .q-settings-group {
-      margin-top: 8px;
-      padding-top: 8px;
-      border-top: 1px solid var(--q-border-subtle);
-    }
-    .q-settings-heading {
-      display: block;
-      padding: 4px 10px 4px;
-      color: var(--q-faint);
-      font-size: 0.75rem;
-      line-height: 1rem;
-      font-weight: 500;
-    }
-    .q-settings-link {
-      height: 2rem;
-      font-size: 0.8125rem;
-    }
-    .q-settings-link[aria-current="page"] {
-      box-shadow: inset 2px 0 0 var(--color-primary);
-    }
+  .q-settings-actions {
+    display: flex;
+    flex: none;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
   }
 
   /* ---- Search or jump to: the palette ---- */

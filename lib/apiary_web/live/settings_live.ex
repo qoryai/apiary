@@ -1,7 +1,8 @@
 defmodule ApiaryWeb.SettingsLive do
   @moduledoc """
   The core's sections of the organisation's and the workspace's settings, one section a
-  page beside the list of them (`ApiaryWeb.SettingsComponents`).
+  page, with every kind of settings the reader may change listed in the sidebar
+  (`ApiaryWeb.SettingsComponents`).
 
   - The organisation's: General, `/:org/settings` (`:organisation`), its name, its slug and
     its owners; Workspaces, `/:org/settings/workspaces` (`:workspaces`), for an owner or an
@@ -40,8 +41,8 @@ defmodule ApiaryWeb.SettingsLive do
     delete_organisation: {:organisation, :danger},
     workspace: {:workspace, :general},
     retention: {:workspace, :retention},
-    workspace_danger: {:workspace, :danger},
-    delete_this_workspace: {:workspace, :danger}
+    workspace_danger: {:workspace, :workspace_danger},
+    delete_this_workspace: {:workspace, :workspace_danger}
   }
 
   @impl true
@@ -53,11 +54,12 @@ defmodule ApiaryWeb.SettingsLive do
       memberships={@memberships}
       counts={@nav_counts}
       nav={if @page == :organisation, do: :organisation, else: :settings}
+      settings={@settings_nav}
+      section={@section}
     >
       <SettingsComponents.layout
         scope={@current_scope}
         kind={@page}
-        sections={@sections}
         current={@section}
         title={section_title(@section)}
       >
@@ -333,7 +335,7 @@ defmodule ApiaryWeb.SettingsLive do
   end
 
   # The organisation's Danger zone: its deletion, or why it cannot be deleted.
-  defp section(%{section: :danger, page: :organisation} = assigns) do
+  defp section(%{section: :danger} = assigns) do
     ~H"""
     <.card :if={may?(@current_scope, :"organisation.delete")} id="delete-organisation">
       <:title>{gettext("Delete organisation")}</:title>
@@ -518,7 +520,7 @@ defmodule ApiaryWeb.SettingsLive do
   end
 
   # The workspace's Danger zone: its deletion, unless it is the organisation's only one.
-  defp section(%{section: :danger, page: :workspace} = assigns) do
+  defp section(%{section: :workspace_danger} = assigns) do
     ~H"""
     <.card id="delete-workspace">
       <:title>{gettext("Delete this workspace")}</:title>
@@ -552,7 +554,9 @@ defmodule ApiaryWeb.SettingsLive do
   defp section_title(:general), do: gettext("General")
   defp section_title(:workspaces), do: gettext("Workspaces")
   defp section_title(:retention), do: gettext("Retention")
-  defp section_title(:danger), do: gettext("Danger zone")
+
+  defp section_title(danger) when danger in [:danger, :workspace_danger],
+    do: gettext("Danger zone")
 
   defp section_subtitle(:organisation, :organisation),
     do: gettext("The name of this organisation, where its pages are, and who owns it.")
@@ -569,7 +573,7 @@ defmodule ApiaryWeb.SettingsLive do
   defp section_subtitle(:workspace, :retention),
     do: gettext("How long this workspace keeps a run's events and log output.")
 
-  defp section_subtitle(:workspace, :danger),
+  defp section_subtitle(:workspace, :workspace_danger),
     do: gettext("What cannot be undone once the purge has run.")
 
   @impl true
@@ -660,9 +664,9 @@ defmodule ApiaryWeb.SettingsLive do
     |> push_patch(to: to)
   end
 
-  # Whether the section of the page is one of the reader's (`SettingsComponents.sections/2`).
-  defp section?(%{sections: sections, section: section}),
-    do: Enum.any?(sections, &(&1.key == section))
+  # Whether the section of the page is one of the reader's (`SettingsComponents.nav/1`).
+  defp section?(%{settings_nav: nav, section: section}),
+    do: Enum.any?(nav, fn {_kind, entries} -> Enum.any?(entries, &(&1.key == section)) end)
 
   defp general_path(scope, action) do
     case Map.fetch!(@sections, action) do
@@ -986,14 +990,9 @@ defmodule ApiaryWeb.SettingsLive do
     assign(socket, :owners, owners)
   end
 
-  # The sections of the settings, the edition's among them, for the list beside the page.
+  # The settings the reader may change, the edition's sections among them, for the sidebar.
   defp load_sections(socket),
-    do:
-      assign(
-        socket,
-        :sections,
-        SettingsComponents.sections(socket.assigns.current_scope, socket.assigns.page)
-      )
+    do: assign(socket, :settings_nav, SettingsComponents.nav(socket.assigns.current_scope))
 
   # A change of the reader's membership, or of the people of the organisation, told to
   # the page (`ApiaryWeb.UserAuth.on_membership_change/2`), loads the scope again, and here

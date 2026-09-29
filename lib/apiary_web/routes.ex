@@ -283,7 +283,7 @@ defmodule ApiaryWeb.Routes do
             scope "/:org" do
               # The organisation's overview: its workspaces and its people.
               live "/", OrganisationLive, :index
-              # Its settings, one section a page, the list of them beside it
+              # Its settings, one section a page, the list of every kind in the sidebar
               # (`ApiaryWeb.SettingsComponents`). General is the settings' own path.
               live "/settings", SettingsLive, :organisation
               live "/settings/people", MemberLive.Index, :index

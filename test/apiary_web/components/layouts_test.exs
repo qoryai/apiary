@@ -29,21 +29,22 @@ defmodule ApiaryWeb.LayoutsTest do
       assert has_element?(view, "aside#sidebar nav[aria-label='Record']")
     end
 
-    test "the top bar: home, where the page is, Search or jump to, New, then the account menu",
+    test "the top bar: where the page is, the organisation first, Search or jump to, New, then the account menu",
          %{conn: conn, user: user, scope: scope} do
       {:ok, view, html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs")
 
-      assert has_element?(
-               view,
-               "#top-bar a#top-bar-home[href='/'][aria-label='Qory Apiary, home']"
-             )
+      # No mark: Qory Apiary is the sidebar's foot. The bar starts with the organisation.
+      refute has_element?(view, "#top-bar-home")
+      refute has_element?(view, "#top-bar #brand-menu")
 
       # the breadcrumb: the organisation and the workspace, each a link to its home
       assert has_element?(
                view,
-               "#top-bar nav#breadcrumb[aria-label='Where you are'] a[href='/#{scope.organisation.slug}']",
+               "#top-bar nav#breadcrumb[aria-label='Where you are'] li:first-child a[href='/#{scope.organisation.slug}']",
                scope.organisation.name
              )
+
+      assert before?(html, ~s(id="nav-drawer-open"), ~s(id="breadcrumb"))
 
       assert has_element?(
                view,
@@ -94,7 +95,7 @@ defmodule ApiaryWeb.LayoutsTest do
       refute has_element?(view, "#new-menu-invite")
     end
 
-    test "the account menu: who you are, your settings and organisations, the theme, Qory Apiary, log out",
+    test "the account menu: who you are, your settings and organisations, the theme, log out",
          %{conn: conn, user: user, scope: scope} do
       {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}")
 
@@ -104,9 +105,15 @@ defmodule ApiaryWeb.LayoutsTest do
       assert menu =~ "Owner of #{scope.organisation.name}"
       assert before?(menu, "Your settings", "Your organisations")
       assert before?(menu, "Your organisations", "Theme")
-      assert before?(menu, "Theme", "Docs")
-      assert before?(menu, "Docs", "Log out")
+      assert before?(menu, "Theme", "Log out")
       refute menu =~ "Switch organisation"
+
+      # Nothing about Qory Apiary: that is the brand menu's, at the sidebar's foot.
+      refute menu =~ "Docs"
+      refute menu =~ "Qory Apiary"
+
+      for id <- ~w(user-menu-docs user-menu-changelog user-menu-source user-menu-version),
+          do: refute(has_element?(view, "##{id}"), id)
 
       # a keyboard open focuses the first item: it is the first focusable thing in the list
       assert has_element?(
@@ -127,20 +134,6 @@ defmodule ApiaryWeb.LayoutsTest do
                )
       end
 
-      assert has_element?(view, "#user-menu a#user-menu-docs[href='/docs']")
-
-      # The release notes name every feature: only an instance with every one links them.
-      assert has_element?(view, "#user-menu a#user-menu-changelog[href='/docs/changelog.html']") ==
-               (Apiary.Features.enabled() == Apiary.Features.all())
-
-      assert has_element?(
-               view,
-               "#user-menu a#user-menu-source[href='https://github.com/qoryai/apiary'][rel='noopener'][target='_blank']"
-             )
-
-      version = :apiary |> Application.spec(:vsn) |> List.to_string()
-      assert has_element?(view, "#user-menu #user-menu-version", version)
-
       assert has_element?(
                view,
                "#user-menu a#user-menu-log-out[href='/users/log-out'][data-method='delete']"
@@ -154,7 +147,7 @@ defmodule ApiaryWeb.LayoutsTest do
       assert has_element?(view, "#user-menu-level", "Member of #{scope.organisation.name}")
     end
 
-    test "a workspace's sidebar: its pages in groups, Settings at the foot, the fold",
+    test "a workspace's sidebar: its pages in groups, Settings at the foot, Qory Apiary, the fold",
          %{conn: conn, scope: scope} do
       {:ok, view, html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}")
 
@@ -179,30 +172,178 @@ defmodule ApiaryWeb.LayoutsTest do
       for key <- ~w(keys members activity organisation),
           do: refute(has_element?(view, "#nav-#{key}"), key)
 
+      # The foot: Settings, then the Qory Apiary menu, opening upward, and the fold.
       assert has_element?(
                view,
-               "#sidebar button#sidebar-collapse[data-sidebar-collapse][aria-keyshortcuts='[']"
+               "#sidebar .q-sidebar-foot #brand-menu.dropdown-top[phx-hook='Menu'] button#brand-menu-button[aria-haspopup='menu']"
              )
 
-      assert has_element?(view, "#sidebar button[data-drawer-close][aria-label='Close menu']")
+      version = :apiary |> Application.spec(:vsn) |> List.to_string()
+      assert has_element?(view, "#brand-menu-button #brand-version", version)
+
+      assert has_element?(
+               view,
+               "#brand-menu-button[aria-label='Qory Apiary menu, version #{version}']"
+             )
+
+      assert has_element?(view, "#brand-menu a#brand-menu-docs[role='menuitem'][href='/docs']")
+
+      # The release notes name every feature: only an instance with every one links them.
+      assert has_element?(view, "#brand-menu a#brand-menu-changelog[href='/docs/changelog.html']") ==
+               (Apiary.Features.enabled() == Apiary.Features.all())
+
+      assert has_element?(
+               view,
+               "#brand-menu a#brand-menu-source[href='https://github.com/qoryai/apiary'][rel='noopener'][target='_blank']"
+             )
+
+      # The fold is an icon: its name in its label and its tooltip, and the [ key.
+      assert has_element?(
+               view,
+               "#brand-foot button#sidebar-collapse[data-sidebar-collapse][aria-keyshortcuts='['][aria-label='Collapse sidebar'][data-tip='Collapse sidebar'][data-label-folded='Expand sidebar']"
+             )
+
+      refute has_element?(view, "#sidebar-collapse .q-nav-text, #sidebar-collapse kbd")
+      assert before?(html, ~s(id="nav-settings"), ~s(id="brand-menu"))
+      assert before?(html, ~s(id="brand-menu"), ~s(id="sidebar-collapse"))
+
+      # The drawer's head is its close button; the mark is the foot's.
+      assert has_element?(
+               view,
+               "#sidebar .q-drawer-head button[data-drawer-close][aria-label='Close menu']"
+             )
+
+      refute has_element?(view, "#sidebar .q-drawer-head svg:not(.hero-x-mark)")
     end
 
-    test "a page of a workspace's Settings marks Settings", %{conn: conn, scope: scope} do
-      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/keys")
+    test "a page of settings lists every kind the reader may change, in place of the scope's pages",
+         %{conn: conn, scope: scope} do
+      org = scope.organisation
+      ws = scope.workspace
+      {:ok, view, html} = live(conn, ~p"/#{org}/#{ws}/settings/keys")
 
-      assert has_element?(view, "aside#sidebar[aria-label='Workspace']")
-      assert has_element?(view, "#nav-settings[aria-current='page']")
-      refute has_element?(view, "#nav-keys")
+      assert has_element?(view, "aside#sidebar[aria-label='Settings']")
+
+      # The way back, to the workspace the settings were opened from.
+      assert has_element?(
+               view,
+               "#sidebar a#settings-back[href='#{workspace_path(scope)}']",
+               "Back to #{ws.name}"
+             )
+
+      # The organisation's, the workspace's, then the person's, each named by kind and place.
+      assert has_element?(
+               view,
+               "nav#settings-group-organisation[aria-label='Organisation · #{org.name}']"
+             )
+
+      assert has_element?(
+               view,
+               "#settings-group-organisation .q-nav-heading",
+               "Organisation · #{org.name}"
+             )
+
+      assert has_element?(
+               view,
+               "#settings-group-workspace .q-nav-heading",
+               "Workspace · #{ws.name}"
+             )
+
+      assert has_element?(view, "#settings-group-person .q-nav-heading", "Your account")
+      assert before?(html, ~s(id="settings-back"), ~s(id="settings-group-organisation"))
+
+      assert before?(
+               html,
+               ~s(id="settings-group-organisation"),
+               ~s(id="settings-group-workspace")
+             )
+
+      assert before?(html, ~s(id="settings-group-workspace"), ~s(id="settings-group-person"))
+
+      for {group, key, href} <- [
+            {:organisation, :organisation, ~p"/#{org}/settings"},
+            {:organisation, :people, ~p"/#{org}/settings/people"},
+            {:organisation, :workspaces, ~p"/#{org}/settings/workspaces"},
+            {:organisation, :danger, ~p"/#{org}/settings/danger"},
+            {:workspace, :general, ~p"/#{org}/#{ws}/settings"},
+            {:workspace, :keys, ~p"/#{org}/#{ws}/settings/keys"},
+            {:workspace, :retention, ~p"/#{org}/#{ws}/settings/retention"},
+            {:workspace, :workspace_danger, ~p"/#{org}/#{ws}/settings/danger"},
+            {:person, :user_settings, ~p"/users/settings"},
+            {:person, :user_preferences, ~p"/users/settings/preferences"},
+            {:person, :user_organisations, ~p"/users/organisations"}
+          ] do
+        assert has_element?(
+                 view,
+                 "#settings-group-#{group} a#settings-tab-#{key}[href='#{href}']"
+               ),
+               "#{key}"
+      end
+
+      # The current section is the current entry; the counts beside People and Access keys;
+      # the danger zones marked, red only by their icon.
+      assert has_element?(view, "#settings-tab-keys[aria-current='page']")
+      assert has_element?(view, "#settings-tab-keys .q-nav-count")
+      assert has_element?(view, "#settings-tab-people .q-nav-count", "1")
+      assert has_element?(view, "#settings-tab-danger.q-nav-danger")
+      assert has_element?(view, "#settings-tab-workspace_danger.q-nav-danger")
+
+      # No page of the scope, no Settings at the foot; the Qory Apiary menu stays.
+      for key <- ~w(overview runs connections policy settings),
+          do: refute(has_element?(view, "#nav-#{key}"), key)
+
+      refute has_element?(view, "#nav-group-home, #nav-group-record, #nav-group-pinned")
+      assert has_element?(view, ".q-sidebar-foot #brand-menu")
+      assert has_element?(view, ".q-sidebar-foot #sidebar-collapse")
+
+      # The breadcrumb: the organisation, the workspace, Settings.
+      assert has_element?(view, "#breadcrumb a[href='#{workspace_path(scope)}']", ws.name)
+
+      assert has_element?(
+               view,
+               "#breadcrumb #breadcrumb-settings[aria-current='page']",
+               "Settings"
+             )
+
+      # The section is the page: the kind and place, then its title as the page's h1.
+      assert has_element?(view, "#main #settings-kind", "Workspace settings · #{ws.name}")
+      assert has_element?(view, "#main h1#settings-section-title", "Access keys")
+      refute has_element?(view, "#main #settings-tabs")
+    end
+
+    test "an organisation's settings: its own breadcrumb, the same list", %{
+      conn: conn,
+      scope: scope
+    } do
+      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/settings/people")
+
+      assert has_element?(view, "aside#sidebar[aria-label='Settings']")
+      assert has_element?(view, "#settings-tab-people[aria-current='page']")
+      assert has_element?(view, "#settings-group-workspace #settings-tab-general")
+      assert has_element?(view, "#settings-group-person #settings-tab-user_settings")
+      assert has_element?(view, "#settings-back[href='#{workspace_path(scope)}']")
+
+      # the breadcrumb names the organisation, no workspace, and Settings
+      assert has_element?(view, "#breadcrumb", scope.organisation.name)
+      refute has_element?(view, "#breadcrumb a[href='#{workspace_path(scope)}']")
+      assert has_element?(view, "#breadcrumb #breadcrumb-settings[aria-current='page']")
+
+      assert has_element?(
+               view,
+               "#settings-kind",
+               "Organisation settings · #{scope.organisation.name}"
+             )
     end
 
     test "an organisation's page shows the organisation's sidebar", %{conn: conn, scope: scope} do
-      for path <- [
-            ~p"/#{scope.organisation}/settings/people",
-            ~p"/#{scope.organisation}/settings"
+      for {path, current} <- [
+            {~p"/#{scope.organisation}", "nav-organisation_overview"},
+            {~p"/#{scope.organisation}/activity", "nav-activity"}
           ] do
         {:ok, view, _html} = live(conn, path)
 
         assert has_element?(view, "aside#sidebar[aria-label='Organisation']")
+        assert has_element?(view, "##{current}[aria-current='page']")
 
         assert has_element?(
                  view,
@@ -211,11 +352,13 @@ defmodule ApiaryWeb.LayoutsTest do
 
         assert has_element?(
                  view,
-                 ".q-sidebar-foot a#nav-organisation[href='/#{scope.organisation.slug}/settings'][aria-current='page']"
+                 ".q-sidebar-foot a#nav-organisation[href='/#{scope.organisation.slug}/settings']:not([aria-current])"
                )
 
         for key <- ~w(overview runs connections policy settings members),
             do: refute(has_element?(view, "#nav-#{key}"), "#{path} #{key}")
+
+        refute has_element?(view, "#settings-back, #breadcrumb-settings")
 
         # the breadcrumb names the organisation and no workspace
         assert has_element?(view, "#breadcrumb", scope.organisation.name)
@@ -223,17 +366,32 @@ defmodule ApiaryWeb.LayoutsTest do
       end
     end
 
-    test "a person's own page shows the person's sidebar and no notices of an organisation",
-         %{conn: conn} do
+    test "a person's own page lists the settings, theirs with the place's they opened last",
+         %{conn: conn, scope: scope} do
       {:ok, view, _html} = live(conn, ~p"/users/settings")
 
-      assert has_element?(view, "aside#sidebar[aria-label='Your account']")
-      assert has_element?(view, "#nav-user_settings[href='/users/settings'][aria-current='page']")
-      assert has_element?(view, "#nav-user_preferences[href='/users/settings/preferences']")
-      assert has_element?(view, "#nav-user_organisations[href='/users/organisations']")
+      assert has_element?(view, "aside#sidebar[aria-label='Settings']")
+
+      assert has_element?(
+               view,
+               "#settings-group-person #settings-tab-user_settings[href='/users/settings'][aria-current='page']"
+             )
+
+      assert has_element?(
+               view,
+               "#settings-tab-user_preferences[href='/users/settings/preferences']"
+             )
+
+      assert has_element?(view, "#settings-tab-user_organisations[href='/users/organisations']")
+      assert has_element?(view, "#settings-group-organisation #settings-tab-organisation")
+      assert has_element?(view, "#settings-group-workspace #settings-tab-keys")
+      assert has_element?(view, "#settings-back[href='#{workspace_path(scope)}']")
       refute has_element?(view, "#nav-overview, #nav-activity, #nav-settings")
       assert has_element?(view, "#breadcrumb a[href='/users/settings']", "Your settings")
       assert has_element?(view, "#breadcrumb [aria-current='page']", "Profile")
+      refute has_element?(view, "#breadcrumb-settings")
+      assert has_element?(view, "#settings-kind", "Your account")
+      assert has_element?(view, "#main h1#settings-section-title", "Profile")
     end
 
     test "one place: the breadcrumb's segments are links, with no switcher", %{
@@ -431,8 +589,11 @@ defmodule ApiaryWeb.LayoutsTest do
       conn = log_in_user(conn, user)
       {:ok, view, html} = live(conn, ~p"/users/organisations")
 
-      assert has_element?(view, "aside#sidebar[aria-label='Your account']")
-      assert has_element?(view, "#nav-user_organisations[aria-current='page']")
+      # Their own settings alone, and nowhere to go back to.
+      assert has_element?(view, "aside#sidebar[aria-label='Settings']")
+      assert has_element?(view, "#settings-tab-user_organisations[aria-current='page']")
+      refute has_element?(view, "#settings-group-organisation, #settings-group-workspace")
+      refute has_element?(view, "#settings-back")
       refute has_element?(view, "#palette-open, #palette, #new-menu")
 
       assert has_element?(
@@ -441,8 +602,30 @@ defmodule ApiaryWeb.LayoutsTest do
              )
 
       assert has_element?(view, "#user-menu-level", "Not part of an organisation yet")
-      assert has_element?(view, "#user-menu a#user-menu-docs[href='/docs']")
+      assert has_element?(view, "#sidebar #brand-menu a#brand-menu-docs[href='/docs']")
       assert html =~ ~r{<title[^>]*>\s*No workspace yet · Qory Apiary\s*</title>}
+    end
+  end
+
+  describe "a page without a person" do
+    test "has no sidebar, and the Qory Apiary menu opens downward from the bar" do
+      assigns = %{}
+
+      html =
+        ~H"""
+        <ApiaryWeb.Layouts.app flash={%{}} current_scope={nil}>
+          <p>page</p>
+        </ApiaryWeb.Layouts.app>
+        """
+        |> rendered_to_string()
+
+      refute html =~ ~s(id="sidebar")
+      refute html =~ ~s(id="breadcrumb")
+      refute html =~ ~s(id="user-menu")
+      assert html =~ ~r{<header[^>]*id="top-bar".*id="brand-menu"}s
+      refute html =~ "dropdown-top"
+      assert html =~ ~s(id="brand-menu-docs")
+      assert html =~ "hero-chevron-down-micro"
     end
   end
 

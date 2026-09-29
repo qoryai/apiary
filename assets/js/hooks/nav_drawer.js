@@ -1,8 +1,9 @@
 // The sidebar. Below 768 px it is a drawer: focus moves in and back out, the top bar and
 // the page behind are inert and do not scroll, Escape and navigation close it. From 768 px
-// it folds to icons and back, by its Collapse control or the [ key outside a field; the
-// fold is a reading preference in localStorage, which the root layout applies before the
-// first paint, and while it is folded each item's name is its title.
+// it folds to icons and back, by its fold button or the [ key outside a field; the fold is
+// a reading preference in localStorage, which the root layout applies before the first
+// paint. While it is folded each item's name is its title, and the fold button is named
+// for what it does then, in the words the server put on it (data-label, data-label-folded).
 const KEY = "qory:sidebar"
 
 export const NavDrawer = {
@@ -92,8 +93,11 @@ export const NavDrawer = {
       if (folded && text) item.setAttribute("title", text)
       else if (!item.id.startsWith("nav-pin-")) item.removeAttribute("title")
     }
-    this.el
-      .querySelector("[data-sidebar-collapse]")
-      ?.setAttribute("aria-pressed", String(folded))
+    const fold = this.el.querySelector("[data-sidebar-collapse]")
+    const label = fold?.dataset[folded ? "labelFolded" : "label"]
+    if (label) {
+      fold.setAttribute("aria-label", label)
+      fold.dataset.tip = label
+    }
   },
 }

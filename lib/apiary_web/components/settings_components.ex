@@ -1,8 +1,8 @@
 defmodule ApiaryWeb.SettingsComponents do
   @moduledoc """
-  The settings of an organisation and of a workspace, GitHub's way: one page per section,
-  and beside it the list of the sections (`layout/1`). Configuration lives here, set up
-  once and changed rarely; the sidebar holds the pages people use every day.
+  The settings, in one place (`docs/ui.md`, Settings): an organisation's, a workspace's and
+  a person's own, one section a page. Configuration lives here, set up once and changed
+  rarely; the sidebar holds the pages people use every day.
 
   - An organisation's (`/:org/settings/…`): General (its name and owners), People (its
     members, invitations and suspended memberships), Workspaces, Audit log (the Activity
@@ -11,15 +11,19 @@ defmodule ApiaryWeb.SettingsComponents do
     zone (deleting the organisation).
   - A workspace's (`/:org/:workspace/settings/…`): General (its name), Access keys,
     Retention, then Danger zone (deleting the workspace).
+  - A person's own (`/users/settings…`, `/users/organisations`): Profile, Preferences and
+    Organisations, the entries of the person's pages (`ApiaryWeb.Layouts.nav_entries/1`).
 
-  Each list ends with the other settings a person may want next: the organisation's or the
-  workspace's, and their own. A section the reader may not open is absent from the list,
-  as a navigation entry is; its page still refuses them.
+  On a page of any of them the sidebar lists all three kinds the reader may change, each
+  under its kind and place, in place of the scope's pages (`nav/1`, given to
+  `ApiaryWeb.Layouts.app/1` as `settings`): the organisation's, the workspace's, then the
+  person's. A section the reader may not open is absent from the list, as a navigation
+  entry is; its page still refuses them. A section's key names it among all three kinds,
+  and gives its entry's DOM id, `settings-tab-<key>`.
 
-  A page of the settings reads its sections when it mounts, and again when the reader's
-  membership changes (`sections/2`), since an edition's section may ask the database
-  whether it has anything for the reader; it renders them with `layout/1`, its own marked
-  current.
+  A page of the settings reads the list when it mounts, and again when the reader's
+  membership changes, since an edition's section may ask the database whether it has
+  anything for the reader; it renders its section with `layout/1`.
   """
   use ApiaryWeb, :html
 
@@ -27,13 +31,37 @@ defmodule ApiaryWeb.SettingsComponents do
   alias Apiary.Accounts.Scope
   alias ApiaryWeb.Nav.Entry
 
+  @type kind :: :organisation | :workspace | :person
+
   @doc """
-  sections/2 is the sections of the organisation's (`:organisation`) or the workspace's
-  (`:workspace`) settings the reader of `scope` may open, as `ApiaryWeb.Nav.Entry` values,
-  in the list's order; each entry's `section` is its group: `:main`, `:edition`, `:danger`
-  or `:elsewhere`.
+  nav/1 is what the reader of `scope` may change, by kind, as the sidebar lists it on a page
+  of settings: the organisation's sections when the scope has an organisation, the
+  workspace's when it has a workspace, each only when the reader may open one of them, then
+  the person's own, always. The person's own pages carry the workspace last opened
+  (`ApiaryWeb.UserAuth.on_mount/4`, `:load_organisation`), so theirs show all three kinds
+  too.
   """
-  @spec sections(Scope.t(), :organisation | :workspace) :: [Entry.t()]
+  @spec nav(Scope.t()) :: [{kind, [Entry.t()]}]
+  def nav(%Scope{} = scope) do
+    for kind <- [:organisation, :workspace, :person],
+        entries = kind_sections(scope, kind),
+        entries != [],
+        do: {kind, entries}
+  end
+
+  defp kind_sections(%Scope{organisation: nil}, kind) when kind in [:organisation, :workspace],
+    do: []
+
+  defp kind_sections(%Scope{workspace: nil}, :workspace), do: []
+  defp kind_sections(scope, kind), do: sections(scope, kind)
+
+  @doc """
+  sections/2 is the sections of the organisation's (`:organisation`), the workspace's
+  (`:workspace`) or the person's own (`:person`) settings the reader of `scope` may open,
+  as `ApiaryWeb.Nav.Entry` values, in the list's order; each entry's `section` is its
+  group: `:main`, `:edition` or `:danger`.
+  """
+  @spec sections(Scope.t(), kind) :: [Entry.t()]
   def sections(%Scope{organisation: organisation} = scope, :organisation) do
     main = [
       %Entry{
@@ -41,14 +69,17 @@ defmodule ApiaryWeb.SettingsComponents do
         key: :organisation,
         label: gettext("General"),
         icon: "hero-adjustments-horizontal-micro",
-        path: ~p"/#{organisation}/settings"
+        path: ~p"/#{organisation}/settings",
+        place: :organisation
       },
       %Entry{
         section: :main,
         key: :people,
         label: gettext("People"),
         icon: "hero-users-micro",
-        path: ~p"/#{organisation}/settings/people"
+        path: ~p"/#{organisation}/settings/people",
+        place: :organisation,
+        count: :members
       },
       can?(scope, :"workspace.delete") &&
         %Entry{
@@ -56,7 +87,8 @@ defmodule ApiaryWeb.SettingsComponents do
           key: :workspaces,
           label: gettext("Workspaces"),
           icon: "hero-squares-2x2-micro",
-          path: ~p"/#{organisation}/settings/workspaces"
+          path: ~p"/#{organisation}/settings/workspaces",
+          place: :organisation
         },
       can?(scope, :"audit.read") &&
         %Entry{
@@ -64,7 +96,8 @@ defmodule ApiaryWeb.SettingsComponents do
           key: :audit_log,
           label: gettext("Audit log"),
           icon: "hero-clipboard-document-list-micro",
-          path: ~p"/#{organisation}/activity"
+          path: ~p"/#{organisation}/activity",
+          place: :organisation
         }
     ]
 
@@ -78,22 +111,11 @@ defmodule ApiaryWeb.SettingsComponents do
           key: :danger,
           label: gettext("Danger zone"),
           icon: "hero-exclamation-triangle-micro",
-          path: ~p"/#{organisation}/settings/danger"
+          path: ~p"/#{organisation}/settings/danger",
+          place: :organisation
         }
 
-    elsewhere = [
-      scope.workspace &&
-        %Entry{
-          section: :elsewhere,
-          key: :workspace_settings,
-          label: gettext("Workspace settings"),
-          icon: "hero-cog-6-tooth-micro",
-          path: ~p"/#{organisation}/#{scope.workspace}/settings"
-        },
-      your_settings()
-    ]
-
-    Enum.filter(main ++ edition ++ [danger] ++ elsewhere, & &1)
+    Enum.filter(main ++ edition ++ [danger], & &1)
   end
 
   def sections(%Scope{organisation: organisation, workspace: workspace} = scope, :workspace) do
@@ -111,7 +133,8 @@ defmodule ApiaryWeb.SettingsComponents do
           key: :keys,
           label: gettext("Access keys"),
           icon: "hero-key-micro",
-          path: ~p"/#{organisation}/#{workspace}/settings/keys"
+          path: ~p"/#{organisation}/#{workspace}/settings/keys",
+          count: :keys
         },
         %Entry{
           section: :main,
@@ -123,32 +146,20 @@ defmodule ApiaryWeb.SettingsComponents do
         can?(scope, :"workspace.delete") &&
           %Entry{
             section: :danger,
-            key: :danger,
+            key: :workspace_danger,
             label: gettext("Danger zone"),
             icon: "hero-exclamation-triangle-micro",
             path: ~p"/#{organisation}/#{workspace}/settings/danger"
-          },
-        %Entry{
-          section: :elsewhere,
-          key: :organisation_settings,
-          label: gettext("Organisation settings"),
-          icon: "hero-building-office-2-micro",
-          path: ~p"/#{organisation}/settings"
-        },
-        your_settings()
+          }
       ],
       & &1
     )
   end
 
-  defp your_settings do
-    %Entry{
-      section: :elsewhere,
-      key: :your_settings,
-      label: gettext("Your settings"),
-      icon: "hero-user-circle-micro",
-      path: ~p"/users/settings"
-    }
+  def sections(%Scope{} = scope, :person) do
+    for %Entry{place: :person} = entry <- ApiaryWeb.Layouts.nav_entries(scope),
+        is_nil(entry.filter) or entry.filter.(scope, nil),
+        do: %{entry | section: :main}
   end
 
   # The organisation's danger zone: deleting it, for whoever may; and for an owner of the
@@ -165,18 +176,18 @@ defmodule ApiaryWeb.SettingsComponents do
     do: Access.can?(scope, action, organisation)
 
   @doc """
-  layout/1 is a page of the settings: the settings' heading, the list of the sections
-  beside the section (`sections/2`), `current` marked, and the section itself, its title,
-  what it is for and its actions above its content. From 1024 px the list is a column at
-  the page's left edge; below, it is a row of links above the section.
+  layout/1 is a section of the settings, which is the page: one faint line that names the
+  kind of settings and its place ("Workspace settings · Main", "Your account"), the
+  section's title as the page's `<h1>`, one sentence of what it is for, at most one
+  primary and one default action, then its content. The list of the sections is the
+  sidebar's (`nav/1`).
 
   A section of forms keeps a 720 px column (`measure="read"`); one that is a list, such
   as the people or the access keys, a 960 px one (`measure="list"`).
   """
   attr :scope, :any, required: true
-  attr :kind, :atom, required: true, values: [:organisation, :workspace]
-  attr :sections, :list, required: true, doc: "the sections, as `sections/2` gives them"
-  attr :current, :atom, required: true, doc: "the key of the section of the page"
+  attr :kind, :atom, required: true, values: [:organisation, :workspace, :person]
+  attr :current, :atom, required: true, doc: "the key of the section, which gives its DOM id"
   attr :measure, :string, default: "read", values: ~w(read list)
   attr :title, :string, required: true, doc: "the section's title"
   slot :subtitle, doc: "one sentence: what the section is for"
@@ -184,57 +195,44 @@ defmodule ApiaryWeb.SettingsComponents do
   slot :inner_block, required: true
 
   def layout(assigns) do
-    assigns =
-      assign(
-        assigns,
-        :groups,
-        assigns.sections |> Enum.chunk_by(& &1.section) |> Enum.map(&{hd(&1).section, &1})
-      )
-
     ~H"""
-    <div class="q-settings">
-      <h1 class="q-settings-title">
-        {if @kind == :organisation,
-          do: gettext("Organisation settings"),
-          else: gettext("Workspace settings")}
-      </h1>
-
-      <nav id="settings-tabs" class="q-settings-nav" aria-label={gettext("Settings")}>
-        <div
-          :for={{group, entries} <- @groups}
-          class={["q-settings-group", "q-settings-group-#{group}"]}
-        >
-          <p :if={group == :elsewhere} class="q-settings-heading">{gettext("Elsewhere")}</p>
-          <.link
-            :for={entry <- entries}
-            id={"settings-tab-#{entry.key}"}
-            navigate={Entry.path(entry, @scope.organisation, @scope.workspace)}
-            aria-current={entry.key == @current && "page"}
-            class={["q-settings-link", entry.section == :danger && "q-settings-danger"]}
-          >
-            <.icon name={entry.icon} class="q-settings-icon size-4" />
-            <span class="truncate">{entry.label}</span>
-          </.link>
-        </div>
-      </nav>
-
-      <section
-        id={"settings-section-#{@current}"}
-        class={["q-settings-main", "q-settings-main-#{@measure}"]}
-        aria-labelledby="settings-section-title"
-      >
-        <header class="q-settings-head">
+    <section
+      id={"settings-section-#{@current}"}
+      class={["q-settings", "q-settings-#{@measure}"]}
+      aria-labelledby="settings-section-title"
+    >
+      <header>
+        <p id="settings-kind" class="q-settings-kind">{kind_line(@kind, @scope)}</p>
+        <div class="q-settings-head">
           <div class="min-w-0">
-            <h2 id="settings-section-title" class="q-settings-head-title">{@title}</h2>
-            <p :if={@subtitle != []} class="q-settings-head-sub">{render_slot(@subtitle)}</p>
+            <h1 id="settings-section-title" class="q-settings-title">{@title}</h1>
+            <p :if={@subtitle != []} class="q-settings-sub">{render_slot(@subtitle)}</p>
           </div>
-          <div :if={@actions != []} class="flex flex-none flex-wrap items-center gap-2">
-            {render_slot(@actions)}
-          </div>
-        </header>
-        {render_slot(@inner_block)}
-      </section>
-    </div>
+          <div :if={@actions != []} class="q-settings-actions">{render_slot(@actions)}</div>
+        </div>
+      </header>
+      {render_slot(@inner_block)}
+    </section>
     """
   end
+
+  @doc """
+  heading/2 is the name of a kind of settings where the sidebar lists it: the kind, then
+  its place's name ("Organisation · 8wonders", "Workspace · Main"), and "Your account" for
+  the person's own.
+  """
+  @spec heading(kind, Scope.t()) :: String.t()
+  def heading(:organisation, scope),
+    do: gettext("Organisation · %{name}", name: scope.organisation.name)
+
+  def heading(:workspace, scope), do: gettext("Workspace · %{name}", name: scope.workspace.name)
+  def heading(:person, _scope), do: gettext("Your account")
+
+  defp kind_line(:organisation, scope),
+    do: gettext("Organisation settings · %{name}", name: scope.organisation.name)
+
+  defp kind_line(:workspace, scope),
+    do: gettext("Workspace settings · %{name}", name: scope.workspace.name)
+
+  defp kind_line(:person, _scope), do: gettext("Your account")
 end

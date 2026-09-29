@@ -97,8 +97,9 @@ Open the link in the browser. The page reads **Welcome to Qory Apiary**; select 
 account**. You land on the overview of your workspace.
 
 Signing up created an organisation with the name you gave, one workspace in it named
-*Main*, and your membership as its owner. Both can be renamed in their **Settings**, at the
-foot of the sidebar. As the first person to sign up on this instance you are also its **instance
+*Main*, and your membership as its owner. Both can be renamed in their settings: select
+**Settings** at the foot of the sidebar, which then lists the organisation's settings, the
+workspace's and your own side by side. As the first person to sign up on this instance you are also its **instance
 admin**: your organisation is the instance's own, and its owners are the instance's
 admins. Nobody else can sign up without an invitation
 ([Install and configure](install.md#sign-up-and-invitations)), so invite your colleagues
@@ -119,7 +120,7 @@ and an admin manages members only, not owners or other admins. A **member** work
 workspace and manages neither the members nor the settings. `http://localhost:4100/` and
 the log-in take you to the workspace.
 
-Your own preferences are under **Account settings**, in the menu of your account: the
+Your own preferences are under **Your settings › Preferences**, in the menu of your account: the
 time zone the pages show times in (UTC until you choose one; every time is stored in UTC)
 and, once the instance has more than one, the language. They are yours, not the
 organisation's. Mail to you, such as a log-in link, is written in your language. The words

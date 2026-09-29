@@ -8,12 +8,16 @@ defmodule ApiaryWeb.Layouts do
   The shell shows one scope at a time, the one the page belongs to: a workspace, an
   organisation or the person. The top bar says where the page is and switches it (the
   breadcrumb and its switcher), searches and jumps (the palette), and holds New and the
-  account menu; the sidebar holds that scope's pages and nothing else.
+  account menu; the sidebar holds that scope's pages and nothing else, or, on a page of
+  settings, every kind of settings the reader may change (`ApiaryWeb.SettingsComponents`).
+  Qory Apiary itself, its mark, version, docs and source, is the menu at the sidebar's
+  foot.
   """
   use ApiaryWeb, :html
 
   alias Apiary.Access
   alias ApiaryWeb.Nav.Entry
+  alias ApiaryWeb.SettingsComponents
 
   # Embed all files in layouts/* within this module.
   # The default root.html.heex file contains the HTML
@@ -213,13 +217,16 @@ defmodule ApiaryWeb.Layouts do
   The application shell: a 48 px top bar across the window, then the sidebar of the
   page's scope beside the main column.
 
-  The top bar holds, from the left, the mark (home), the breadcrumb (the organisation, the
-  workspace and whatever the page adds in its `crumb` slots), whose chevrons open the
-  switcher; then Search or jump to (the palette), New and the account menu. The sidebar
-  holds the pages of the page's scope, which the entry it passes as `nav` belongs to
-  (`ApiaryWeb.Nav.Entry`'s `place`): a workspace's, an organisation's or the person's.
-  It folds to icons from 768 px, and below that it is a drawer behind the bar's menu
-  button.
+  The top bar holds, from the left, the breadcrumb (the organisation, the workspace and
+  whatever the page adds in its `crumb` slots), whose chevrons open the switcher; then
+  Search or jump to (the palette), New and the account menu. The sidebar holds the pages
+  of the page's scope, which the entry it passes as `nav` belongs to
+  (`ApiaryWeb.Nav.Entry`'s `place`): a workspace's, an organisation's or the person's. A
+  page of settings passes `settings` and `section`, and the sidebar lists the settings in
+  their place, with a way back to the workspace. At its foot are the scope's Settings,
+  the Qory Apiary menu and the control that folds it to icons, from 768 px; below that it
+  is a drawer behind the bar's menu button. A page without a person has no sidebar, and
+  the Qory Apiary menu opens from the bar.
 
   An organisation's page, one with a navigation item (`nav`) of a workspace or an
   organisation, opens with the edition's notices (the `:notices` slot,
@@ -263,6 +270,15 @@ defmodule ApiaryWeb.Layouts do
     doc:
       "the id of the target the page is about: its entry under Pinned, when it is pinned, is the current one"
 
+  attr :settings, :list,
+    default: nil,
+    doc:
+      "on a page of settings, what the reader may change by kind, as `ApiaryWeb.SettingsComponents.nav/1` gives it: the sidebar lists it in place of the scope's pages, and the breadcrumb ends with Settings"
+
+  attr :section, :atom,
+    default: nil,
+    doc: "on a page of settings, the key of its section: the list's current entry"
+
   slot :crumb,
     doc: "the breadcrumb's segments after the workspace: a target, a record; the last is the page" do
     attr :navigate, :string, doc: "where the segment leads; none for the page itself"
@@ -287,12 +303,18 @@ defmodule ApiaryWeb.Layouts do
       |> assign(:workspace, workspace)
       |> assign(:place, place)
       |> assign(:nav_entries, entries)
-      |> assign(:groups, nav_groups(scope, place, assigns.counts, entries))
-      |> assign(:foot, foot(scope, place, entries))
+      |> assign(
+        :groups,
+        if(assigns.settings, do: [], else: nav_groups(scope, place, assigns.counts, entries))
+      )
+      |> assign(:foot, !assigns.settings && foot(scope, place, entries))
       |> assign(:under_settings, current && current.section == :settings)
       |> assign(
         :pins,
-        if(place == :workspace, do: pins(assigns.counts, organisation, workspace), else: [])
+        if(place == :workspace and !assigns.settings,
+          do: pins(assigns.counts, organisation, workspace),
+          else: []
+        )
       )
       |> assign(:show_notices, notices?(assigns.notices, current))
 
@@ -315,6 +337,7 @@ defmodule ApiaryWeb.Layouts do
         nav={@nav}
         nav_entries={@nav_entries}
         crumb={@crumb}
+        settings={@settings != nil}
         sidebar={@user != nil}
       />
 
@@ -331,11 +354,14 @@ defmodule ApiaryWeb.Layouts do
         <div class="drawer-side z-50 md:top-12 md:z-20 md:h-[calc(100dvh-3rem)]">
           <label for="nav-drawer" class="drawer-overlay" aria-hidden="true"></label>
           <.sidebar
+            scope={@scope}
             place={@place}
             nav={@nav}
             groups={@groups}
             foot={@foot}
             under_settings={@under_settings}
+            settings={@settings}
+            section={@section}
             pins={@pins}
             target={@target}
             counts={@counts}
@@ -381,7 +407,8 @@ defmodule ApiaryWeb.Layouts do
   defp notices?(nil, nil), do: false
 
   # The bar: 48 px, across the window, above the sidebar. Its left says where the page is,
-  # its right what the person may do from anywhere.
+  # the organisation first, its right what the person may do from anywhere. Without a
+  # sidebar, for a page without a person, the Qory Apiary menu opens from its left.
   attr :scope, :any, required: true
   attr :user, :any, required: true
   attr :organisation, :any, required: true
@@ -391,6 +418,7 @@ defmodule ApiaryWeb.Layouts do
   attr :nav, :atom, required: true
   attr :nav_entries, :list, required: true
   attr :crumb, :list, required: true
+  attr :settings, :boolean, required: true
   attr :sidebar, :boolean, required: true
 
   defp top_bar(assigns) do
@@ -416,11 +444,10 @@ defmodule ApiaryWeb.Layouts do
       >
         <.icon name="hero-bars-3" class="size-5" />
       </button>
-      <.link id="top-bar-home" href={~p"/"} class="q-mark" aria-label={gettext("Qory Apiary, home")}>
-        <.logo_mark class="size-5" />
-      </.link>
+      <.brand_menu :if={!@sidebar} version={version()} direction="down" />
 
       <.breadcrumb
+        :if={@user}
         scope={@scope}
         organisation={@organisation}
         workspace={@workspace}
@@ -429,6 +456,7 @@ defmodule ApiaryWeb.Layouts do
         nav={@nav}
         nav_entries={@nav_entries}
         crumb={@crumb}
+        settings={@settings}
       />
 
       <div class="flex-1"></div>
@@ -457,9 +485,10 @@ defmodule ApiaryWeb.Layouts do
   end
 
   # Where the page is: the organisation and the workspace, each a link to its home, and
-  # the page's own segments. With more than one place to go (or an edition's entry after
-  # the places) the chevron beside the organisation and the workspace opens the switcher.
-  # A person's own page names itself.
+  # the page's own segments; a page of an organisation's or a workspace's settings ends
+  # with Settings. With more than one place to go (or an edition's entry after the
+  # places) the chevron beside the organisation and the workspace opens the switcher. A
+  # person's own page names itself.
   attr :scope, :any, required: true
   attr :organisation, :any, required: true
   attr :workspace, :any, required: true
@@ -468,6 +497,7 @@ defmodule ApiaryWeb.Layouts do
   attr :nav, :atom, required: true
   attr :nav_entries, :list, required: true
   attr :crumb, :list, required: true
+  attr :settings, :boolean, required: true
 
   defp breadcrumb(%{place: :person} = assigns) do
     assigns =
@@ -510,6 +540,7 @@ defmodule ApiaryWeb.Layouts do
       |> assign(:places, places)
       |> assign(:switcher_entries, switcher_entries)
       |> assign(:workspace, if(assigns.place == :workspace, do: assigns.workspace))
+      |> assign(:settings, assigns.settings and assigns.crumb == [])
 
     ~H"""
     <nav id="breadcrumb" aria-label={gettext("Where you are")} class="q-trail-nav">
@@ -520,7 +551,10 @@ defmodule ApiaryWeb.Layouts do
         data-current={@switcher? && current_switch_id(@organisation, @workspace)}
       >
         <ol class="q-trail">
-          <li class={["q-trail-item", (@workspace || @crumb != []) && "q-trail-lead"]}>
+          <li class={[
+            "q-trail-item",
+            (@workspace || @crumb != [] || @settings) && "q-trail-lead"
+          ]}>
             <.link
               navigate={~p"/#{@organisation}"}
               class="q-trail-link"
@@ -535,7 +569,10 @@ defmodule ApiaryWeb.Layouts do
               label={gettext("Switch organisation, current: %{name}", name: @organisation.name)}
             />
           </li>
-          <li :if={@workspace} class={["q-trail-item", @crumb != [] && "q-trail-lead"]}>
+          <li
+            :if={@workspace}
+            class={["q-trail-item", (@crumb != [] || @settings) && "q-trail-lead"]}
+          >
             <span class="q-trail-sep max-md:hidden" aria-hidden="true">/</span>
             <.link
               navigate={~p"/#{@organisation}/#{@workspace}"}
@@ -564,6 +601,12 @@ defmodule ApiaryWeb.Layouts do
               aria-current={i == length(@crumb) - 1 && "page"}
             >
               {render_slot(crumb)}
+            </span>
+          </li>
+          <li :if={@settings} class="q-trail-item">
+            <span class="q-trail-sep max-md:hidden" aria-hidden="true">/</span>
+            <span id="breadcrumb-settings" class="q-trail-link q-trail-page" aria-current="page">
+              {gettext("Settings")}
             </span>
           </li>
         </ol>
@@ -812,12 +855,9 @@ defmodule ApiaryWeb.Layouts do
   attr :scope, :any, required: true
 
   # The account menu at the right end of the top bar: who you are and your level where
-  # the page is; your settings and organisations; the theme, set once and kept; what is
-  # about Qory Apiary itself (the docs this instance serves, its changelog, the source and
-  # the version); log out.
+  # the page is; your settings and organisations; the theme, set once and kept; log out.
+  # What is about Qory Apiary itself is the brand menu's, at the sidebar's foot.
   defp account_menu(assigns) do
-    assigns = assign(assigns, :version, version())
-
     ~H"""
     <div
       id="user-menu"
@@ -892,45 +932,11 @@ defmodule ApiaryWeb.Layouts do
         </li>
         <li class="menu-divider" role="separator"></li>
         <li role="none">
-          <.link href={~p"/docs"} role="menuitem" id="user-menu-docs">
-            <.icon name="hero-book-open-micro" class="size-4" /> {gettext("Docs")}
-          </.link>
-        </li>
-        <%!-- The release notes name every feature, so only the documentation of an instance with
-             every one has them; the documentation is the instance's, and so is this check. --%>
-        <li :if={Apiary.Features.enabled() == Apiary.Features.all()} role="none">
-          <.link href={~p"/docs/changelog.html"} role="menuitem" id="user-menu-changelog">
-            <.icon name="hero-list-bullet-micro" class="size-4" /> {gettext("Changelog")}
-          </.link>
-        </li>
-        <li role="none">
-          <.link
-            href="https://github.com/qoryai/apiary"
-            target="_blank"
-            rel="noopener"
-            role="menuitem"
-            id="user-menu-source"
-          >
-            <.icon name="hero-code-bracket-micro" class="size-4" /> {gettext("Source on GitHub")}
-            <.icon name="hero-arrow-top-right-on-square-micro" class="ml-auto size-3.5 text-faint" />
-          </.link>
-        </li>
-        <li class="menu-divider" role="separator"></li>
-        <li role="none">
           <.link href={~p"/users/log-out"} method="delete" role="menuitem" id="user-menu-log-out">
             <.icon name="hero-arrow-right-start-on-rectangle-micro" class="size-4" /> {gettext(
               "Log out"
             )}
           </.link>
-        </li>
-        <li :if={@version} role="presentation">
-          <span
-            id="user-menu-version"
-            class="flex cursor-default items-center gap-2 px-2 pb-1 pt-1.5 text-xs/4 text-faint hover:bg-transparent"
-          >
-            <.logo_mark class="size-3.5" /> Qory Apiary
-            <span class="ml-auto font-mono tabular-nums">{@version}</span>
-          </span>
         </li>
       </ul>
     </div>
@@ -1031,22 +1037,33 @@ defmodule ApiaryWeb.Layouts do
   end
 
   # The sidebar: the pages of the page's scope, in their groups, each a `<nav>` with its
-  # own name; the targets the person pinned, on a workspace's pages; at the foot the
-  # scope's Settings and the control that folds the sidebar to icons.
+  # own name; the targets the person pinned, on a workspace's pages. On a page of settings
+  # it lists the settings instead: a way back to the workspace (the organisation, without
+  # one), then each kind the reader may change under its kind and place. At the foot the
+  # scope's Settings (not on a page of settings), then the Qory Apiary menu and the
+  # control that folds the sidebar to icons.
+  attr :scope, :any, required: true
   attr :place, :atom, required: true
   attr :nav, :atom, required: true
   attr :groups, :list, required: true
   attr :foot, :any, required: true
   attr :under_settings, :boolean, required: true
+  attr :settings, :list, required: true
+  attr :section, :atom, required: true
   attr :pins, :list, required: true
   attr :target, :string, required: true
   attr :counts, :any, required: true
 
   defp sidebar(assigns) do
+    assigns = assign(assigns, :version, version())
+
     ~H"""
-    <aside id="sidebar" aria-label={sidebar_label(@place)} class="q-sidebar">
-      <div class="flex h-12 flex-none items-center justify-between px-3 md:hidden">
-        <.logo_mark class="size-5" />
+    <aside
+      id="sidebar"
+      aria-label={if @settings, do: gettext("Settings"), else: sidebar_label(@place)}
+      class="q-sidebar"
+    >
+      <div class="q-drawer-head">
         <button
           type="button"
           data-drawer-close
@@ -1057,7 +1074,40 @@ defmodule ApiaryWeb.Layouts do
         </button>
       </div>
 
-      <div class="q-sidebar-body">
+      <div :if={@settings} class="q-sidebar-body">
+        <div :if={back = settings_back(@scope)} class="q-nav-group">
+          <.link
+            id="settings-back"
+            navigate={elem(back, 0)}
+            class="q-nav-item"
+            phx-mounted={JS.ignore_attributes(["title"])}
+          >
+            <.icon name="hero-chevron-left-micro" class="q-nav-icon size-4" />
+            <span class="q-nav-text">{gettext("Back to %{name}", name: elem(back, 1))}</span>
+          </.link>
+        </div>
+        <nav
+          :for={{kind, entries} <- @settings}
+          id={"settings-group-#{kind}"}
+          class="q-nav-group"
+          aria-label={SettingsComponents.heading(kind, @scope)}
+        >
+          <p class="q-nav-heading" aria-hidden="true">
+            {SettingsComponents.heading(kind, @scope)}
+          </p>
+          <.nav_item
+            :for={entry <- entries}
+            id={"settings-tab-#{entry.key}"}
+            entry={entry}
+            path={entry_path(entry, @scope)}
+            current={entry.key == @section}
+            counts={@counts}
+            danger={entry.section == :danger}
+          />
+        </nav>
+      </div>
+
+      <div :if={!@settings} class="q-sidebar-body">
         <nav
           :for={{section, heading, items} <- @groups}
           class="q-nav-group"
@@ -1106,36 +1156,52 @@ defmodule ApiaryWeb.Layouts do
           current={@nav == elem(@foot, 0).key or @under_settings}
           counts={@counts}
         />
-        <button
-          id="sidebar-collapse"
-          type="button"
-          class="q-nav-item q-collapse"
-          data-sidebar-collapse
-          aria-pressed="false"
-          aria-keyshortcuts="["
-          phx-mounted={JS.ignore_attributes(["aria-pressed", "title"])}
-        >
-          <.icon name="hero-chevron-double-left-micro" class="q-nav-icon q-collapse-icon size-4" />
-          <span class="q-nav-text">{gettext("Collapse sidebar")}</span>
-          <kbd class="q-kbd q-nav-count" aria-hidden="true">[</kbd>
-        </button>
+        <div id="brand-foot" class="q-brand-row">
+          <.brand_menu version={@version} direction="up" />
+          <button
+            id="sidebar-collapse"
+            type="button"
+            class="q-collapse tooltip tooltip-right"
+            data-sidebar-collapse
+            data-tip={gettext("Collapse sidebar")}
+            data-label={gettext("Collapse sidebar")}
+            data-label-folded={gettext("Expand sidebar")}
+            aria-label={gettext("Collapse sidebar")}
+            aria-keyshortcuts="["
+            phx-mounted={JS.ignore_attributes(["aria-label", "data-tip"])}
+          >
+            <.icon name="hero-chevron-double-left-micro" class="q-collapse-icon size-4" />
+          </button>
+        </div>
       </div>
     </aside>
     """
   end
 
+  # Where a page of settings leads back to: the workspace of the scope, else its
+  # organisation; nothing for a person with no organisation, whose pages are theirs alone.
+  defp settings_back(%{organisation: %{} = organisation, workspace: %{} = workspace}),
+    do: {~p"/#{organisation}/#{workspace}", workspace.name}
+
+  defp settings_back(%{organisation: %{} = organisation}),
+    do: {~p"/#{organisation}", organisation.name}
+
+  defp settings_back(_scope), do: nil
+
+  attr :id, :string, default: nil, doc: "the DOM id; `nav-<key>` without one"
   attr :entry, :any, required: true
   attr :path, :string, required: true
   attr :current, :boolean, required: true
   attr :counts, :any, required: true
+  attr :danger, :boolean, default: false, doc: "a danger zone: its icon red"
 
   defp nav_item(assigns) do
     ~H"""
     <.link
-      id={"nav-#{@entry.key}"}
+      id={@id || "nav-#{@entry.key}"}
       navigate={@path}
       aria-current={@current && "page"}
-      class="q-nav-item"
+      class={["q-nav-item", @danger && "q-nav-danger"]}
       phx-mounted={JS.ignore_attributes(["title"])}
     >
       <.icon name={@entry.icon} class="q-nav-icon size-4" />
@@ -1167,6 +1233,88 @@ defmodule ApiaryWeb.Layouts do
     """
   end
 
+  attr :version, :any, required: true
+  attr :direction, :string, required: true, values: ~w(up down)
+
+  # The product's menu, on the brand: the mark and "Qory Apiary" with the version at the
+  # right, opening upward from the sidebar's foot and downward from the bar when there is
+  # no sidebar. It holds what is about Qory Apiary itself, not about the person: the docs
+  # this instance serves, its changelog and the source. Folded, the sidebar shows the mark
+  # alone, still the menu's button.
+  defp brand_menu(assigns) do
+    ~H"""
+    <div
+      id="brand-menu"
+      class={["q-brand dropdown", @direction == "up" && "dropdown-top"]}
+      phx-hook="Menu"
+      phx-mounted={JS.ignore_attributes(["class"])}
+    >
+      <button
+        id="brand-menu-button"
+        type="button"
+        class="q-brand-btn"
+        aria-haspopup="menu"
+        aria-expanded="false"
+        aria-label={
+          if @version,
+            do: gettext("Qory Apiary menu, version %{version}", version: @version),
+            else: gettext("Qory Apiary menu")
+        }
+        phx-mounted={JS.ignore_attributes(["aria-expanded"])}
+      >
+        <.logo_mark class="size-[18px]" />
+        <span class="q-brand-name">Qory Apiary</span>
+        <span
+          :if={@version}
+          id="brand-version"
+          class="q-brand-version"
+          title={gettext("Version %{version}", version: @version)}
+        >
+          {@version}
+        </span>
+        <.icon
+          name={if @direction == "up", do: "hero-chevron-up-micro", else: "hero-chevron-down-micro"}
+          class="q-brand-chev size-4"
+        />
+      </button>
+      <ul
+        class={[
+          "menu menu-sm dropdown-content w-56",
+          if(@direction == "up", do: "left-0 bottom-full mb-1.5", else: "left-0 top-full mt-1.5")
+        ]}
+        role="menu"
+        aria-label="Qory Apiary"
+      >
+        <li role="none">
+          <.link href={~p"/docs"} role="menuitem" id="brand-menu-docs">
+            <.icon name="hero-book-open-micro" class="size-4" /> {gettext("Docs")}
+          </.link>
+        </li>
+        <%!-- The release notes name every feature, so only the documentation of an instance with
+             every one has them; the documentation is the instance's, and so is this check. --%>
+        <li :if={Apiary.Features.enabled() == Apiary.Features.all()} role="none">
+          <.link href={~p"/docs/changelog.html"} role="menuitem" id="brand-menu-changelog">
+            <.icon name="hero-list-bullet-micro" class="size-4" /> {gettext("Changelog")}
+          </.link>
+        </li>
+        <li class="menu-divider" role="separator"></li>
+        <li role="none">
+          <.link
+            href="https://github.com/qoryai/apiary"
+            target="_blank"
+            rel="noopener"
+            role="menuitem"
+            id="brand-menu-source"
+          >
+            <.icon name="hero-code-bracket-micro" class="size-4" /> {gettext("Source on GitHub")}
+            <.icon name="hero-arrow-top-right-on-square-micro" class="ml-auto size-3.5 text-faint" />
+          </.link>
+        </li>
+      </ul>
+    </div>
+    """
+  end
+
   defp sidebar_label(:workspace), do: gettext("Workspace")
   defp sidebar_label(:organisation), do: gettext("Organisation")
   defp sidebar_label(_person), do: gettext("Your account")
@@ -1185,7 +1333,7 @@ defmodule ApiaryWeb.Layouts do
   defp pins(_counts, _organisation, _workspace), do: []
 
   # The running version, from the application's spec. Nil before the spec exists
-  # (a clean compile), and then the account menu shows none.
+  # (a clean compile), and then the brand menu shows none.
   defp version do
     case Application.spec(:apiary, :vsn) do
       nil -> nil

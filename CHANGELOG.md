@@ -30,11 +30,14 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
 - The audit trail of every change, on the organisation's Activity page; retention of a
   run's events and log output, set per workspace; deletion of a workspace or an
   organisation, marked first and purged after a grace period.
-- The console's shell: a top bar that says where a page is and switches to any
-  organisation or workspace with a search, Search or jump to (⌘K) for pages,
-  repositories, runs and places, New, and a sidebar of the page's workspace,
-  organisation or account, which folds to icons. Pages start at one left edge and use the
-  width of the screen: lists up to 1680 px, a run's page all of it, forms 720 px.
+- The console's shell: a top bar that says where a page is, the organisation first, and
+  switches to any organisation or workspace with a search, Search or jump to (⌘K) for
+  pages, repositories, runs and places, New, and a sidebar of the page's workspace,
+  organisation or account, which folds to icons, with the Qory Apiary menu (docs,
+  changelog, source, version) at its foot. Settings in one place: on any page of settings
+  the sidebar lists the organisation's, the workspace's and your own, each under its name.
+  Pages start at one left edge and use the width of the screen: lists up to 1680 px, a
+  run's page all of it, forms 720 px.
 - The runs list as a record read by filters, not groups: views (All, Alive, Ended badly,
   With denials) with their counts, one filter field that takes qualifiers (`repo:`,
   `state:`, `started:>2026-09-01` and more) and free text, one Filter menu, sorting, the

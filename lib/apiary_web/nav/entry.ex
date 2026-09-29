@@ -3,19 +3,21 @@ defmodule ApiaryWeb.Nav.Entry do
   An entry of the console's navigation, as data: a link of the sidebar, which the core and
   the edition (`c:ApiaryWeb.Edition.nav_entries/1`) each give, one of the organisation
   switcher's below the places it switches to (`c:ApiaryWeb.Edition.switcher_entries/1`),
-  or a tab of the organisation's settings (`c:ApiaryWeb.Edition.settings_tabs/1`).
+  or a section of the settings (`ApiaryWeb.SettingsComponents`, and the edition's of the
+  organisation's, `c:ApiaryWeb.Edition.settings_tabs/1`).
   `ApiaryWeb.Layouts` decides from these which to show and where they lead, and nothing
   else does.
 
   - `section`: where the entry goes in its scope's sidebar: `:home` (the scope's first
     entries, without a heading), `:record` or `:guard` (a workspace's groups), a section of
     the edition's (`c:ApiaryWeb.Edition.nav_sections/0`), `:foot` (Settings, at the
-    sidebar's foot) or `:settings` (a page of the scope's Settings, not in the sidebar: its
-    page marks Settings as the current entry). An edition's entry goes after the core's of
-    its section. Nil outside the sidebar.
+    sidebar's foot) or `:settings` (a page of the scope's Settings, not among the scope's
+    pages: its page lists the settings in the sidebar). An edition's entry goes after the
+    core's of its section. A section of the settings is in `:main`, `:edition` or
+    `:danger`. Nil outside the sidebar.
   - `key`: names the entry. A page passes it as its `nav` to be marked the current one,
     and it gives the DOM id: `nav-<key>` in the sidebar, `organisation-menu-<key>` in the
-    switcher.
+    switcher, `settings-tab-<key>` in the list of the settings.
   - `label`: its words, translated by whoever gives the entry.
   - `icon`: a heroicon's name, as `<.icon>` takes it.
   - `path`: where it leads: a path, or a function of the organisation and the workspace

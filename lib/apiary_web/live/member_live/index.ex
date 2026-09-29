@@ -39,11 +39,12 @@ defmodule ApiaryWeb.MemberLive.Index do
       memberships={@memberships}
       counts={@nav_counts}
       nav={:members}
+      settings={@settings_nav}
+      section={:people}
     >
       <SettingsComponents.layout
         scope={@current_scope}
         kind={:organisation}
-        sections={@sections}
         current={:people}
         measure="list"
         title={gettext("People")}
@@ -660,7 +661,7 @@ defmodule ApiaryWeb.MemberLive.Index do
 
     socket
     |> assign(members: members, invitations: invitations)
-    |> assign(:sections, SettingsComponents.sections(scope, :organisation))
+    |> assign(:settings_nav, SettingsComponents.nav(scope))
     |> assign(:nav_counts, Map.put(socket.assigns.nav_counts || %{}, :members, length(members)))
   end
 
