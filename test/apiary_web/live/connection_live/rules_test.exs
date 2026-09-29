@@ -117,6 +117,14 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       assert has_element?(view, "button##{registry}-act.q-act-t[data-action=deny]", "Deny")
       assert has_element?(view, "##{registry}-menu-deny", "Deny…")
       refute has_element?(view, "##{registry}-menu-allow")
+
+      # The rule that decides it is a link to the rule, in the policy's Network access.
+      assert has_element?(
+               view,
+               ~s(a##{registry}-menu-rule[href="#{workspace_path(scope, "/policy?rule=registry.example")}"]),
+               "Show the rule"
+             )
+
       view |> element("##{registry}-menu-deny") |> render_click()
       assert has_element?(view, ~s(#rule-popover[data-anchor="#{registry}-act"]))
       assert text(view, "#rule-popover-title") == "Deny registry.example"

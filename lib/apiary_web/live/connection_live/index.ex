@@ -997,11 +997,21 @@ defmodule ApiaryWeb.ConnectionLive.Index do
     })
   end
 
-  defp act(row, rule_option, _changes, _socket) do
+  # A row a rule decides links to that rule, in the Network access section of its policy.
+  defp act(row, rule_option, _changes, socket) do
+    %{current_scope: scope, target: target} = socket.assigns
+    entry = rule_option.entry
+
     Map.merge(rule_option, %{
       values: row_values(row),
-      entry_host: rule_option.entry && rule_option.entry.host,
-      rule_path: nil,
+      entry_host: entry && entry.host,
+      rule_path:
+        entry && entry.host &&
+          Rules.rule_path(
+            scope,
+            if(entry.source == :target and target, do: target.id),
+            entry.host
+          ),
       after: nil
     })
   end

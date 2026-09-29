@@ -2768,10 +2768,12 @@ defmodule ApiaryWeb.RunComponents do
   @doc """
   A row's ⋯ menu (`CoreComponents.row_menu/1`), beside its text action and shown with it:
   Allow… and Deny… where the row may ask for them, opening the same popover, anchored at
-  the text action (`act_id`); where no one here changes what happened, why (the locked
-  rule and who locked it, when the newest history says so, or the wall) with the way to
-  the rule; the rule that answers the row; then Only this host, where the list can be
-  narrowed to it (`host_path`), and Copy the host.
+  the text action (`act_id`), and the rule in force that decides the row, where one does;
+  where no one here changes what happened, why (the locked rule and who locked it, when the
+  newest history says so, or the wall) with the way to the rule; the rule that answers the
+  row; then Only this host, where the list can be narrowed to it (`host_path`), and Copy
+  the host. A rule's link (`rule_path`) leads to the rule in its policy's Network access
+  section.
   """
   attr :id, :string, required: true
   attr :act_id, :string, required: true, doc: "the row's text action, the popover's anchor"
@@ -2837,6 +2839,9 @@ defmodule ApiaryWeb.RunComponents do
             aria-haspopup="dialog"
           >
             {gettext("Deny…")}
+          </.menu_item>
+          <.menu_item :if={@rule_path} id={"#{@id}-rule"} navigate={@rule_path}>
+            {gettext("Show the rule")}
           </.menu_item>
           <.menu_divider />
         <% nil -> %>

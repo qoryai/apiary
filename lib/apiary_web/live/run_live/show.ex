@@ -2128,11 +2128,21 @@ defmodule ApiaryWeb.RunLive.Show do
     })
   end
 
-  defp act(_socket, row, rule_option, _changes) do
+  # A row a rule decides links to that rule, in the Network access section of its policy.
+  defp act(socket, row, rule_option, _changes) do
+    %{target: target, current_scope: scope} = socket.assigns
+    entry = rule_option.entry
+
     Map.merge(rule_option, %{
       values: %{"id" => row.id},
-      entry_host: rule_option.entry && rule_option.entry.host,
-      rule_path: nil,
+      entry_host: entry && entry.host,
+      rule_path:
+        entry && entry.host &&
+          Rules.rule_path(
+            scope,
+            if(entry.source == :target and target, do: target.id),
+            entry.host
+          ),
       after: nil
     })
   end
