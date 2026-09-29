@@ -141,7 +141,7 @@ defmodule ApiaryWeb.RunLive.Index do
                   values={List.wrap(Filters.target_value(@filters.target))}
                   options={
                     with_chosen(
-                      facet_options(@facets, :target),
+                      target_options(@facets, @shared),
                       Filters.target_value(@filters.target),
                       @filters.target && target_text(@filters.target, @shared)
                     )
@@ -1108,6 +1108,16 @@ defmodule ApiaryWeb.RunLive.Index do
 
   defp qualifier(:target), do: pgettext("qualifier", "target")
   defp qualifier(key), do: Atom.to_string(key)
+
+  # The Target section's options in the one notation of a target.
+  defp target_options(facets, shared) do
+    for {label, value, count} <- facet_options(facets, :target) do
+      case Jason.decode(value) do
+        {:ok, [system, path]} -> {target_text({system, path}, shared), value, count}
+        _none -> {label, value, count}
+      end
+    end
+  end
 
   # A target as the query writes it: its system before its path only where the path is on
   # more than one system, as every page writes a target.

@@ -856,7 +856,7 @@ defmodule ApiaryWeb.RunComponents do
               class={if @multiple, do: "checkbox checkbox-xs", else: "radio radio-xs"}
             />
             <span class="min-w-0 flex-1 truncate" title={label}>{label}</span>
-            <span :if={count} class="font-mono text-[11.5px] text-faint tabular-nums">
+            <span :if={count} class="flex-none font-mono text-[11.5px] text-faint tabular-nums">
               {count_label(count)}
             </span>
           </label>
@@ -903,7 +903,7 @@ defmodule ApiaryWeb.RunComponents do
                     data-tip={@tips[to_string(value)]}
                   >{label}</span>
                 </span>
-                <span :if={count} class="font-mono text-[11.5px] text-faint tabular-nums">
+                <span :if={count} class="flex-none font-mono text-[11.5px] text-faint tabular-nums">
                   {count_label(count)}
                 </span>
               </label>
