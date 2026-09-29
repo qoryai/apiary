@@ -137,30 +137,30 @@ defmodule ApiaryWeb.ActivityLive do
 
         <div :if={@rows not in [nil, []]} aria-busy={to_string(@loading)}>
           <.table id="activity" label={gettext("Activity")} rows={@rows} row_id={&"entry-#{&1.id}"}>
-            <:col :let={row} label={gettext("When")} class="whitespace-nowrap">
-              <.relative_time id={"entry-#{row.id}-time"} at={row.at} class="text-muted" />
+            <:col :let={row} label={gettext("When")}>
+              <.relative_time id={"entry-#{row.id}-time"} at={row.at} />
             </:col>
             <:col :let={row} label={gettext("Who")}>
               <.actor actor={row.actor} id={"entry-#{row.id}-actor"} />
             </:col>
-            <:col :let={row} label={gettext("What")}>
+            <:col :let={row} label={gettext("What")} kind="title">
               <span id={"entry-#{row.id}-action"}>{row.sentence}</span>
             </:col>
             <:col :let={row} label={gettext("Subject")}>
-              <div id={"entry-#{row.id}-subject"} class="grid min-w-0">
-                <span class="truncate">
-                  <.link :if={row.subject.href} navigate={row.subject.href} class="link">
+              <span id={"entry-#{row.id}-subject"} class="flex min-w-0 items-baseline gap-2">
+                <span class="max-w-[48ch] truncate">
+                  <.link :if={row.subject.href} navigate={row.subject.href} class="hover:underline">
                     <.subject_text subject={row.subject} />
                   </.link>
                   <.subject_text :if={!row.subject.href} subject={row.subject} />
                 </span>
-                <span :if={row.place} class="truncate text-[12.5px]/[18px] text-faint">
+                <span :if={row.place} class="q-faint truncate">
                   {gettext("in %{workspace}", workspace: row.place)}
                 </span>
-              </div>
+              </span>
             </:col>
-            <:col :let={row} label={gettext("Change")}>
-              <span id={"entry-#{row.id}-change"} class="grid text-muted">
+            <:col :let={row} label={gettext("Change")} kind="faint" from="md">
+              <span id={"entry-#{row.id}-change"} class="grid">
                 <span :for={line <- row.change}><.rich text={line} /></span>
               </span>
             </:col>
@@ -203,17 +203,17 @@ defmodule ApiaryWeb.ActivityLive do
     <span id={@id} class="inline-flex min-w-0 items-center gap-2">
       <%= case @actor.kind do %>
         <% :person -> %>
-          <span class="truncate font-medium">{@actor.text}</span>
-          <.badge :if={@actor.you?}>{gettext("You")}</.badge>
+          <span class="truncate">{@actor.text}</span>
+          <span :if={@actor.you?} class="q-faint">{gettext("you")}</span>
         <% :gone -> %>
-          <span class="truncate text-muted">{@actor.text}</span>
+          <span class="q-faint truncate">{@actor.text}</span>
         <% :access_key -> %>
-          <.icon name="hero-key-micro" class="size-4 flex-none text-faint" />
-          <span :if={@actor.text} class="truncate font-medium">{@actor.text}</span>
-          <.mono bare>{@actor.detail}</.mono>
+          <.icon name="hero-key-micro" class="size-3.5 flex-none text-faint" />
+          <span :if={@actor.text} class="truncate">{@actor.text}</span>
+          <span class="q-faint q-mono">{@actor.detail}</span>
         <% :instance -> %>
-          <.icon name="hero-cpu-chip-micro" class="size-4 flex-none text-faint" />
-          <span class="font-medium">{@actor.text}</span>
+          <.icon name="hero-cpu-chip-micro" class="size-3.5 flex-none text-faint" />
+          <span>{@actor.text}</span>
       <% end %>
     </span>
     """
@@ -223,7 +223,7 @@ defmodule ApiaryWeb.ActivityLive do
 
   defp subject_text(%{subject: %{mono: true}} = assigns) do
     ~H"""
-    <span class="font-mono text-[12.5px]">{@subject.text}</span>
+    <span class="font-mono text-[12px]">{@subject.text}</span>
     """
   end
 

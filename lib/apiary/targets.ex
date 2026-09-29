@@ -14,8 +14,8 @@ defmodule Apiary.Targets do
   holds, so it leaves no audit entry; it goes with its target and with its workspace.
 
   **The notation.** A target is written as its path, with its system before it only where
-  the same path is in more than one system of the workspace (`shared_paths/2`), and on
-  the target's own page.
+  the same path is in more than one system of the workspace
+  (`Apiary.Runs.shared_paths/2`), and on the target's own page.
 
   **The index** (`page/3`) is read in one query, bounded by a window of fourteen days:
   the runs of the window grouped by target and day, which a range of the runs list's
@@ -110,30 +110,10 @@ defmodule Apiary.Targets do
     end
   end
 
-  @doc """
-  shared_paths/2 is which of `paths` are the path of more than one target of the scope's
-  workspace, in different systems: the paths the notation writes with their system.
-  """
-  @spec shared_paths(Scope.t(), [String.t()]) :: MapSet.t(String.t())
-  def shared_paths(%Scope{}, []), do: MapSet.new()
-
-  def shared_paths(%Scope{} = scope, paths) when is_list(paths) do
-    paths = Enum.uniq(paths)
-
-    from(t in in_scope(scope),
-      where: t.path in ^paths,
-      group_by: t.path,
-      having: count(t.id) > 1,
-      select: t.path
-    )
-    |> Repo.all()
-    |> MapSet.new()
-  end
-
   @doc "shared?/2 says whether the target's path is also a path in another system of its workspace."
   @spec shared?(Scope.t(), String.t()) :: boolean
   def shared?(%Scope{} = scope, path) when is_binary(path),
-    do: MapSet.member?(shared_paths(scope, [path]), path)
+    do: MapSet.member?(Apiary.Runs.shared_paths(scope, [path]), path)
 
   def shared?(%Scope{}, _path), do: false
 

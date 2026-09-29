@@ -74,6 +74,18 @@ defmodule ApiaryWeb.TargetLive.Query do
 
   def parse_search(_q), do: {[], ""}
 
+  @doc """
+  pending/1 is what the reader typed without the words that look like a qualifier
+  (`key:value`), known or half typed: the free text of a search sent before Enter.
+  """
+  @spec pending(String.t()) :: String.t()
+  def pending(q) when is_binary(q) do
+    q
+    |> String.split()
+    |> Enum.reject(&String.match?(&1, ~r/^[a-z]+:/i))
+    |> Enum.join(" ")
+  end
+
   defp qualifier(word) do
     system = system_key()
 

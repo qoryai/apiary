@@ -118,9 +118,13 @@ defmodule ApiaryWeb.TargetLive.Index do
   def handle_async(:refresh, {:exit, _reason}, socket), do: {:noreply, socket}
 
   @impl true
-  def handle_event("search", %{"q" => typed}, socket) do
+  # The search is sent as the reader types and on Enter: a qualifier they typed becomes a
+  # token on Enter only, so one half typed is never applied; until then it is left out.
+  def handle_event("search", %{"q" => typed} = params, socket) do
     query = socket.assigns.query
     {tokens, text} = Query.parse_search(typed)
+    tokens = if Map.has_key?(params, "_target"), do: [], else: tokens
+    text = if Map.has_key?(params, "_target"), do: Query.pending(typed), else: text
     query = %{query | tokens: Enum.uniq(query.tokens ++ tokens), text: text, page: 1}
     {:noreply, push_patch(socket, to: index_path(socket.assigns.current_scope, query))}
   end
@@ -203,12 +207,12 @@ defmodule ApiaryWeb.TargetLive.Index do
       </.header>
 
       <div class="q-tgt-list">
-        <.view_tabs id="targets-views" label={gettext("Views")}>
+        <.views id="targets-views" label={gettext("Views")}>
           <:view
             id="targets-view-all"
             patch={index_path(@current_scope, %{@query | view: :all, page: 1})}
             current={@query.view == :all}
-            count={@counts && @counts.all}
+            count={@counts && Format.number(@counts.all)}
           >
             {gettext("All")}
           </:view>
@@ -216,7 +220,7 @@ defmodule ApiaryWeb.TargetLive.Index do
             id="targets-view-active"
             patch={index_path(@current_scope, %{@query | view: :active, page: 1})}
             current={@query.view == :active}
-            count={@counts && @counts.active}
+            count={@counts && Format.number(@counts.active)}
           >
             {gettext("Active this week")}
           </:view>
@@ -224,58 +228,106 @@ defmodule ApiaryWeb.TargetLive.Index do
             id="targets-view-never"
             patch={index_path(@current_scope, %{@query | view: :never, page: 1})}
             current={@query.view == :never}
-            count={@counts && @counts.never}
+            count={@counts && Format.number(@counts.never)}
           >
             {gettext("Never ran")}
           </:view>
-        </.view_tabs>
+        </.views>
 
-        <div class="q-tgt-query">
-          <form id="targets-search" class="q-tgt-qbar" phx-submit="search" role="search">
-            <.icon name="hero-magnifying-glass-micro" class="size-4 flex-none text-faint" />
-            <span :for={token <- @query.tokens} class="q-tgt-qtok">
-              <span class="q-tgt-qtok-k">{token_key(token)}:</span>{token_value(token)}
-              <.link
-                patch={index_path(@current_scope, Query.toggle(@query, token))}
-                aria-label={gettext("Remove %{filter}", filter: Query.token_text(token))}
-              >
-                <.icon name="hero-x-mark-micro" class="size-3" />
-              </.link>
-            </span>
-            <label for="targets-q" class="sr-only">{gettext("Find a target")}</label>
-            <input
-              id="targets-q"
-              type="search"
-              name="q"
-              value={@query.text}
-              placeholder={placeholder(@systems)}
-              autocomplete="off"
-              spellcheck="false"
-            />
-          </form>
-          <.filter_menu
-            query={@query}
-            systems={@systems}
-            security={@security}
-            current_scope={@current_scope}
+        <div class="q-bar">
+          <.list_search
+            id="targets-search"
+            value={@query.text}
+            label={gettext("Find a target")}
+            placeholder={placeholder(@systems)}
+            class="grow"
           />
-          <.sort_menu query={@query} current_scope={@current_scope} />
+          <.filter_menu id="targets-filter" count={length(@query.tokens)}>
+            <.menu_heading :if={@systems != []} title={gettext("System")} />
+            <.filter_item
+              :for={{system, count} <- @systems}
+              id={"targets-filter-system-#{system}"}
+              scope={@current_scope}
+              query={@query}
+              token={{:system, system}}
+              hint={
+                ngettext("%{number} target", "%{number} targets", count, number: Format.number(count))
+              }
+            >
+              <span class="font-mono">{system}</span>
+            </.filter_item>
+            <.menu_heading title={gettext("Activity")} />
+            <.filter_item
+              id="targets-filter-quiet-30"
+              scope={@current_scope}
+              query={@query}
+              token={{:activity, :quiet_30}}
+            >
+              {gettext("No run in 30 days")}
+            </.filter_item>
+            <.filter_item
+              id="targets-filter-quiet-90"
+              scope={@current_scope}
+              query={@query}
+              token={{:activity, :quiet_90}}
+            >
+              {gettext("No run in 90 days")}
+            </.filter_item>
+            <.menu_heading :if={@security} title={gettext("Policy")} />
+            <.filter_item
+              :for={{mode, words} <- mode_options()}
+              :if={@security}
+              id={"targets-filter-#{mode}"}
+              scope={@current_scope}
+              query={@query}
+              token={{:mode, mode}}
+            >
+              {words}
+            </.filter_item>
+            <.menu_heading title={gettext("Pinned")} />
+            <.filter_item
+              id="targets-filter-pinned"
+              scope={@current_scope}
+              query={@query}
+              token={{:pinned, true}}
+              multiple
+            >
+              {gettext("Pinned by you")}
+            </.filter_item>
+          </.filter_menu>
+          <.sort_menu id="targets-sort" current={sort_label(@query.sort)}>
+            <.menu_item
+              :for={sort <- Targets.sorts()}
+              id={"targets-sort-#{sort}"}
+              patch={index_path(@current_scope, %{@query | sort: sort, page: 1})}
+              checked={@query.sort == sort}
+            >
+              {sort_label(sort)}
+            </.menu_item>
+          </.sort_menu>
         </div>
 
-        <p :if={Query.narrowed?(@query) && @listing} id="targets-summary" class="q-tgt-summary">
-          <span>
-            <.rich text={
-              rich_ngettext("%{number} target matches", "%{number} targets match", @listing.total,
-                number: {:b, Format.number(@listing.total)}
-              )
-            } />
-          </span>
-          <.link
-            id="targets-clear"
-            patch={index_path(@current_scope, %Query{view: @query.view, sort: @query.sort})}
+        <.filter_tokens
+          id="targets-tokens"
+          clear={index_path(@current_scope, %Query{view: @query.view, sort: @query.sort})}
+        >
+          <:token
+            :for={token <- @query.tokens}
+            patch={index_path(@current_scope, Query.toggle(@query, token))}
+            label={gettext("Remove %{filter}", filter: Query.token_text(token))}
           >
-            {gettext("Clear")}
-          </.link>
+            <span class="font-mono">
+              <span class="text-muted">{token_key(token)}:</span>{token_value(token)}
+            </span>
+          </:token>
+        </.filter_tokens>
+
+        <p :if={Query.narrowed?(@query) && @listing} id="targets-summary" class="q-tgt-summary">
+          <.rich text={
+            rich_ngettext("%{number} target matches", "%{number} targets match", @listing.total,
+              number: {:b, Format.number(@listing.total)}
+            )
+          } />
         </p>
 
         <.notice :if={@load_error} kind={:error} class="max-w-[80ch]">
@@ -309,96 +361,90 @@ defmodule ApiaryWeb.TargetLive.Index do
           </.empty_state>
         </div>
 
-        <div
+        <.table
           :if={@listing && @listing.rows != []}
-          class="q-tgt-table-wrap"
-          tabindex="0"
-          role="region"
-          aria-label={gettext("Targets")}
+          id="targets"
+          label={gettext("Targets")}
+          rows={@listing.rows}
+          row_id={&"target-#{&1.target.id}"}
+          class="q-tgt-index"
         >
-          <table class={["q-tgt-table q-tgt-index", @query.view == :never && "q-tgt-never"]}>
-            <thead>
-              <tr>
-                <th scope="col" class="q-tgt-c-pin">
-                  <span class="sr-only">{gettext("Pinned")}</span>
-                </th>
-                <th scope="col">{gettext("Target")}</th>
-                <th scope="col" class="q-tgt-k1 q-tgt-act">{gettext("Last run")}</th>
-                <th scope="col" class="q-tgt-k2 q-tgt-act">{gettext("Runs, 14 days")}</th>
-                <th
-                  scope="col"
-                  class="q-tgt-k4 q-tgt-act q-tgt-r"
-                  title={gettext("Of the runs that ended in the last 14 days, those that ended well")}
-                >
-                  {gettext("Ended well")}
-                </th>
-                <th
-                  scope="col"
-                  class="q-tgt-k3 q-tgt-act q-tgt-r"
-                  title={gettext("Denied attempts in the last 7 days")}
-                >
-                  {gettext("Denied")}
-                </th>
-                <th :if={@security} scope="col" class="q-tgt-k4">{gettext("Policy")}</th>
-              </tr>
-            </thead>
-            <tbody id="targets">
-              <tr :for={row <- @listing.rows} id={"target-#{row.target.id}"}>
-                <td class="q-tgt-c-pin">
-                  <.pin_button
-                    id={"target-pin-#{row.target.id}"}
-                    target={row.target}
-                    pinned={MapSet.member?(@pinned, row.target.id)}
-                  />
-                </td>
-                <td class="q-tgt-c-name">
-                  <.link
-                    id={"target-link-#{row.target.id}"}
-                    navigate={target_path(@current_scope, row.target.system, row.target.path)}
-                    class="q-tgt-name"
-                    title={"#{row.target.system}/#{row.target.path}"}
-                  >
-                    <.target_name path={row.target.path} system={row.shared && row.target.system} />
-                  </.link>
-                  <span :if={row.last} class="q-tgt-sub" aria-hidden="true">
-                    <.last_run last={row.last} />
-                  </span>
-                </td>
-                <td class="q-tgt-k1 q-tgt-act whitespace-nowrap">
-                  <.last_run :if={row.last} last={row.last} />
-                  <span :if={!row.last} class="text-faint">{gettext("Never ran")}</span>
-                </td>
-                <td class="q-tgt-k2 q-tgt-act whitespace-nowrap">
-                  <span :if={row.runs > 0} class="q-tgt-sp">
-                    <.spark days={row.days} />
-                    <span class="q-tgt-num">{Format.number(row.runs)}</span>
-                  </span>
-                </td>
-                <td class="q-tgt-k4 q-tgt-act q-tgt-r q-tgt-num">
-                  <span :if={rate = rate(row)} class={rate < 80 && "text-error"}>
-                    {gettext("%{percent}%", percent: rate)}
-                  </span>
-                </td>
-                <td class="q-tgt-k3 q-tgt-act q-tgt-r">
-                  <.denied
-                    count={row.denied}
-                    title={
-                      ngettext(
-                        "%{number} denied attempt in the last 7 days",
-                        "%{number} denied attempts in the last 7 days",
-                        row.denied,
-                        number: Format.number(row.denied)
-                      )
-                    }
-                  />
-                </td>
-                <td :if={@security} class="q-tgt-k4 whitespace-nowrap">
-                  {own_mode(row.target.egress_mode)}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+          <:col :let={row} class="q-tgt-c-pin">
+            <.pin_button
+              id={"target-pin-#{row.target.id}"}
+              target={row.target}
+              pinned={MapSet.member?(@pinned, row.target.id)}
+            />
+          </:col>
+          <:col :let={row} label={gettext("Target")} kind="title" class="q-tgt-c-name">
+            <.link
+              id={"target-link-#{row.target.id}"}
+              navigate={target_path(@current_scope, row.target.system, row.target.path)}
+              class="q-tgt-name"
+              title={"#{row.target.system}/#{row.target.path}"}
+            >
+              <.target_name path={row.target.path} system={row.shared && row.target.system} />
+            </.link>
+            <span :if={row.last && @query.view != :never} class="q-tgt-sub" aria-hidden="true">
+              <.last_run last={row.last} />
+            </span>
+          </:col>
+          <:col
+            :let={row}
+            :if={@query.view != :never}
+            label={gettext("Last run")}
+            from="sm"
+            class="whitespace-nowrap"
+          >
+            <.last_run :if={row.last} last={row.last} />
+            <span :if={!row.last} class="q-faint">{gettext("Never ran")}</span>
+          </:col>
+          <:col
+            :let={row}
+            :if={@query.view != :never}
+            label={gettext("Runs, 14 days")}
+            from="sm"
+            class="whitespace-nowrap"
+          >
+            <span :if={row.runs > 0} class="q-tgt-sp">
+              <.sparkline values={row.days} />
+              <span class="q-num">{Format.number(row.runs)}</span>
+            </span>
+          </:col>
+          <:col
+            :let={row}
+            :if={@query.view != :never}
+            label={gettext("Ended well")}
+            kind="num"
+            from="md"
+          >
+            <span :if={rate = rate(row)} class={rate < 80 && "text-error"}>
+              {gettext("%{percent}%", percent: rate)}
+            </span>
+          </:col>
+          <:col
+            :let={row}
+            :if={@query.view != :never}
+            label={gettext("Denied")}
+            kind="num"
+            from="md"
+          >
+            <.denied
+              count={row.denied}
+              title={
+                ngettext(
+                  "%{number} denied attempt in the last 7 days",
+                  "%{number} denied attempts in the last 7 days",
+                  row.denied,
+                  number: Format.number(row.denied)
+                )
+              }
+            />
+          </:col>
+          <:col :let={row} :if={@security} label={gettext("Policy")} from="md">
+            {own_mode(row.target.egress_mode)}
+          </:col>
+        </.table>
 
         <nav
           :if={@listing && @listing.total > 0}
@@ -456,195 +502,48 @@ defmodule ApiaryWeb.TargetLive.Index do
     """
   end
 
-  # One Filter menu: its sections write the qualifiers the search takes, each a link that
-  # adds its qualifier or takes it away.
-  attr :query, :any, required: true
-  attr :systems, :list, required: true
-  attr :security, :boolean, required: true
-  attr :current_scope, :any, required: true
-
-  defp filter_menu(assigns) do
-    ~H"""
-    <div
-      id="targets-filter"
-      class="dropdown dropdown-end"
-      phx-hook="Menu"
-      phx-mounted={JS.ignore_attributes(["class"])}
-    >
-      <button
-        id="targets-filter-button"
-        type="button"
-        class="btn btn-sm q-tgt-menubtn"
-        aria-haspopup="menu"
-        aria-expanded="false"
-        phx-mounted={JS.ignore_attributes(["aria-expanded"])}
-      >
-        <.icon name="hero-funnel" class="size-4" />{gettext("Filter")}
-      </button>
-      <ul
-        class="menu menu-sm dropdown-content q-tgt-menu right-0 top-full mt-1.5 w-72"
-        role="menu"
-        aria-label={gettext("Filter")}
-      >
-        <li :if={@systems != []} class="menu-title" role="presentation">{gettext("System")}</li>
-        <li :for={{system, count} <- @systems} role="none">
-          <.filter_item
-            current_scope={@current_scope}
-            query={@query}
-            token={{:system, system}}
-            id={"targets-filter-system-#{system}"}
-          >
-            <span class="min-w-0 flex-1 truncate font-mono text-[12.5px]">{system}</span>
-            <span class="q-tgt-menu-n">{Format.number(count)}</span>
-          </.filter_item>
-        </li>
-        <li class="menu-title" role="presentation">{gettext("Activity")}</li>
-        <li role="none">
-          <.filter_item
-            current_scope={@current_scope}
-            query={@query}
-            token={{:activity, :quiet_30}}
-            id="targets-filter-quiet-30"
-          >
-            {gettext("No run in 30 days")}
-          </.filter_item>
-        </li>
-        <li role="none">
-          <.filter_item
-            current_scope={@current_scope}
-            query={@query}
-            token={{:activity, :quiet_90}}
-            id="targets-filter-quiet-90"
-          >
-            {gettext("No run in 90 days")}
-          </.filter_item>
-        </li>
-        <li :if={@security} class="menu-title" role="presentation">{gettext("Policy")}</li>
-        <li :if={@security} role="none">
-          <.filter_item
-            current_scope={@current_scope}
-            query={@query}
-            token={{:mode, :follows}}
-            id="targets-filter-follows"
-          >
-            {gettext("Follows the workspace")}
-          </.filter_item>
-        </li>
-        <li :if={@security} role="none">
-          <.filter_item
-            current_scope={@current_scope}
-            query={@query}
-            token={{:mode, :observes}}
-            id="targets-filter-observes"
-          >
-            {gettext("Observes on its own")}
-          </.filter_item>
-        </li>
-        <li :if={@security} role="none">
-          <.filter_item
-            current_scope={@current_scope}
-            query={@query}
-            token={{:mode, :enforces}}
-            id="targets-filter-enforces"
-          >
-            {gettext("Enforces on its own")}
-          </.filter_item>
-        </li>
-        <li class="menu-title" role="presentation">{gettext("Pinned")}</li>
-        <li role="none">
-          <.filter_item
-            current_scope={@current_scope}
-            query={@query}
-            token={{:pinned, true}}
-            id="targets-filter-pinned"
-          >
-            {gettext("Pinned by you")}
-          </.filter_item>
-        </li>
-      </ul>
-    </div>
-    """
-  end
-
+  # An item of the Filter menu: a link that adds its qualifier or takes it away. The
+  # kinds but Pinned hold one value, as a set of radios.
   attr :id, :string, required: true
-  attr :current_scope, :any, required: true
+  attr :scope, :any, required: true
   attr :query, :any, required: true
   attr :token, :any, required: true
+  attr :hint, :string, default: nil
+  attr :multiple, :boolean, default: false
   slot :inner_block, required: true
 
   defp filter_item(assigns) do
-    assigns = assign(assigns, :on, assigns.token in assigns.query.tokens)
-
     ~H"""
-    <.link
+    <.menu_item
       id={@id}
-      patch={index_path(@current_scope, Query.toggle(@query, @token))}
-      role="menuitemcheckbox"
-      aria-checked={to_string(@on)}
+      patch={index_path(@scope, Query.toggle(@query, @token))}
+      checked={@token in @query.tokens}
+      multiple={@multiple}
+      hint={@hint}
     >
-      <.icon name="hero-check-micro" class={["size-4", !@on && "invisible"]} />
       {render_slot(@inner_block)}
-    </.link>
-    """
-  end
-
-  attr :query, :any, required: true
-  attr :current_scope, :any, required: true
-
-  defp sort_menu(assigns) do
-    ~H"""
-    <div
-      id="targets-sort"
-      class="dropdown dropdown-end"
-      phx-hook="Menu"
-      phx-mounted={JS.ignore_attributes(["class"])}
-    >
-      <button
-        id="targets-sort-button"
-        type="button"
-        class="btn btn-sm q-tgt-menubtn"
-        aria-haspopup="menu"
-        aria-expanded="false"
-        aria-label={gettext("Sort: %{order}", order: sort_word(@query.sort))}
-        phx-mounted={JS.ignore_attributes(["aria-expanded"])}
-      >
-        <.icon name="hero-arrows-up-down" class="size-4" />{sort_word(@query.sort)}
-      </button>
-      <ul
-        class="menu menu-sm dropdown-content q-tgt-menu right-0 top-full mt-1.5 w-60"
-        role="menu"
-        aria-label={gettext("Sort")}
-      >
-        <li :for={sort <- Targets.sorts()} role="none">
-          <.link
-            id={"targets-sort-#{sort}"}
-            patch={index_path(@current_scope, %{@query | sort: sort, page: 1})}
-            role="menuitemradio"
-            aria-checked={to_string(@query.sort == sort)}
-          >
-            <.icon name="hero-check-micro" class={["size-4", @query.sort != sort && "invisible"]} />
-            {sort_label(sort)}
-          </.link>
-        </li>
-      </ul>
-    </div>
+    </.menu_item>
     """
   end
 
   defp table_skeleton(assigns) do
     ~H"""
-    <div id="targets-loading" class="q-tgt-table-wrap" aria-busy="true">
-      <table class="q-tgt-table">
+    <div
+      id="targets-loading"
+      class="q-tbl overflow-x-auto rounded-box border border-line bg-base-100 shadow-xs"
+      aria-busy="true"
+    >
+      <table class="table">
         <tbody>
           <tr :for={n <- 1..8}>
             <td class="q-tgt-c-pin"></td>
             <td>
               <span class={["skeleton q-skel", if(rem(n, 2) == 0, do: "w-44", else: "w-32")]}></span>
             </td>
-            <td class="q-tgt-k1"><span class="skeleton q-skel w-24"></span></td>
-            <td class="q-tgt-k2"><span class="skeleton q-skel w-24"></span></td>
-            <td class="q-tgt-k4"><span class="skeleton q-skel ml-auto w-10"></span></td>
-            <td class="q-tgt-k3"><span class="skeleton q-skel ml-auto w-6"></span></td>
+            <td class="q-from-sm"><span class="skeleton q-skel w-24"></span></td>
+            <td class="q-from-sm"><span class="skeleton q-skel w-24"></span></td>
+            <td class="q-from-md"><span class="skeleton q-skel ml-auto w-10"></span></td>
+            <td class="q-from-md"><span class="skeleton q-skel ml-auto w-6"></span></td>
           </tr>
         </tbody>
       </table>
@@ -670,11 +569,6 @@ defmodule ApiaryWeb.TargetLive.Index do
   defp token_value(token),
     do: token |> Query.token_text() |> String.split(":", parts: 2) |> List.last()
 
-  defp sort_word(:last_run), do: gettext("Last run")
-  defp sort_word(:name), do: gettext("Name")
-  defp sort_word(:runs), do: gettext("Most runs")
-  defp sort_word(:denials), do: gettext("Most denials")
-
   defp sort_label(:last_run), do: gettext("Last run")
   defp sort_label(:name), do: gettext("Name")
   defp sort_label(:runs), do: gettext("Most runs in 14 days")
@@ -699,6 +593,13 @@ defmodule ApiaryWeb.TargetLive.Index do
     do: round(well * 100 / (well + badly))
 
   defp rate(_row), do: nil
+
+  defp mode_options,
+    do: [
+      follows: gettext("Follows the workspace"),
+      observes: gettext("Observes on its own"),
+      enforces: gettext("Enforces on its own")
+    ]
 
   defp own_mode("observe"), do: gettext("observes")
   defp own_mode("enforce"), do: gettext("enforces")

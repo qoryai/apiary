@@ -1024,10 +1024,11 @@ defmodule Apiary.Runs do
   @doc """
   What the organisation's overview says of each of `workspaces`, the workspaces of the
   scope's organisation the reader reaches: `%{workspace_id => %{alive:, runs:, denied:,
-  last_at:, days:}}`, where `runs` and `denied` count the last seven UTC days (today
-  included), `days` the runs of each of the last fourteen, oldest first, and `last_at` is
-  when the workspace's last run started (nil when it has none). A workspace of another
-  organisation is left out. Three reads, whatever the number of workspaces.
+  last_at:, days:, targets:}}`, where `runs` and `denied` count the last fourteen UTC days
+  (today included), `days` the runs of each of them, oldest first, `last_at` is when the
+  workspace's last run started (nil when it has none) and `targets` how many targets it
+  has. A workspace of another organisation is left out. Four reads, whatever the number
+  of workspaces.
   """
   @spec workspace_facts(Scope.t(), [%Workspace{}], DateTime.t()) :: %{
           optional(Ecto.UUID.t()) => map
@@ -1088,25 +1089,155 @@ defmodule Apiary.Runs do
       )
       |> Map.new()
 
-    week = Date.add(today, -6)
+    targets =
+      Repo.all(
+        from t in Target,
+          where: t.organisation_id == ^organisation_id and t.workspace_id in ^ids,
+          group_by: t.workspace_id,
+          select: {t.workspace_id, count(t.id)}
+      )
+      |> Map.new()
+
     by_workspace = Enum.group_by(per_day, &elem(&1, 0))
 
     Map.new(ids, fn id ->
       rows = Map.get(by_workspace, id, [])
-      counts = Map.new(rows, fn {_id, date, runs, denied} -> {date, {runs, denied}} end)
-
-      recent =
-        for {_id, date, runs, denied} <- rows, Date.compare(date, week) != :lt, do: {runs, denied}
+      counts = Map.new(rows, fn {_id, date, runs, _denied} -> {date, runs} end)
 
       {id,
        %{
          alive: Map.get(alive, id, 0),
-         runs: recent |> Enum.map(&elem(&1, 0)) |> Enum.sum(),
-         denied: recent |> Enum.map(&elem(&1, 1)) |> Enum.sum(),
+         runs: rows |> Enum.map(&elem(&1, 2)) |> Enum.sum(),
+         denied: rows |> Enum.map(&elem(&1, 3)) |> Enum.sum(),
          last_at: Map.get(last_at, id),
-         days: for(d <- Date.range(first, today), do: counts |> Map.get(d, {0, 0}) |> elem(0))
+         days: for(d <- Date.range(first, today), do: Map.get(counts, d, 0)),
+         targets: Map.get(targets, id, 0)
        }}
     end)
+  end
+
+  @typedoc """
+  A target of the overview's Active targets: its `system` and `path`, whether the same
+  path is on another system of the workspace too (`shared?`, which is when the system is
+  shown), its `runs` and `denied` attempts since the window opened, its runs of each UTC
+  day of the window, oldest first (`days`), and its last run (`last`).
+  """
+  @type active_target :: %{
+          id: Ecto.UUID.t(),
+          system: String.t(),
+          path: String.t(),
+          shared?: boolean,
+          runs: non_neg_integer,
+          denied: non_neg_integer,
+          days: [non_neg_integer],
+          last: Run.t() | nil
+        }
+
+  @doc """
+  active_targets/3 is what the workspace overview's Active targets say: the `limit`
+  (default 8) targets with the most runs that started on or after the UTC day `from`,
+  most first (by path on a tie), each an `t:active_target/0` with its runs of every day
+  from `from` to today; and `targets`, how many targets the workspace has. Five short
+  reads over the window's runs and the targets, whatever their number.
+  """
+  @spec active_targets(Scope.t(), Date.t(), pos_integer) :: %{
+          rows: [active_target],
+          targets: non_neg_integer
+        }
+  def active_targets(scope, from, limit \\ 8)
+
+  def active_targets(%Scope{} = scope, %Date{} = from, limit) do
+    start = DateTime.new!(from, ~T[00:00:00.000000], "Etc/UTC")
+    window = where(in_scope(scope), ^dynamic([r], ^by_start() >= ^start))
+
+    top =
+      Repo.all(
+        from r in window,
+          join: t in Target,
+          on: t.id == r.target_id,
+          group_by: [t.id, t.system, t.path],
+          order_by: [desc: count(r.id), asc: t.path, asc: t.system],
+          limit: ^bound(limit),
+          select: %{
+            id: t.id,
+            system: t.system,
+            path: t.path,
+            runs: count(r.id),
+            denied: type(coalesce(sum(r.denied_count), 0), :integer)
+          }
+      )
+
+    ids = Enum.map(top, & &1.id)
+
+    per_day =
+      Repo.all(
+        from r in window,
+          where: r.target_id in ^ids,
+          group_by: [
+            r.target_id,
+            fragment("(COALESCE(?, ?) AT TIME ZONE 'UTC')::date", r.started_at, r.inserted_at)
+          ],
+          select:
+            {r.target_id,
+             type(
+               fragment("(COALESCE(?, ?) AT TIME ZONE 'UTC')::date", r.started_at, r.inserted_at),
+               :date
+             ), count(r.id)}
+      )
+      |> Enum.group_by(&elem(&1, 0), &{elem(&1, 1), elem(&1, 2)})
+
+    last =
+      Repo.all(
+        from r in window,
+          where: r.target_id in ^ids,
+          distinct: r.target_id,
+          order_by: [r.target_id, desc: coalesce(r.started_at, r.inserted_at), desc: r.id]
+      )
+      |> Map.new(&{&1.target_id, &1})
+
+    shared = shared_paths(scope, Enum.map(top, & &1.path))
+
+    targets = Repo.aggregate(targets_in(scope), :count)
+
+    today = Date.utc_today()
+    days = if Date.compare(from, today) == :gt, do: [], else: Date.range(from, today)
+
+    rows =
+      for row <- top do
+        counts = Map.new(Map.get(per_day, row.id, []))
+
+        Map.merge(row, %{
+          shared?: MapSet.member?(shared, row.path),
+          days: for(day <- days, do: Map.get(counts, day, 0)),
+          last: Map.get(last, row.id)
+        })
+      end
+
+    %{rows: rows, targets: targets}
+  end
+
+  @doc """
+  shared_paths/2 is which of `paths` (every path, without them) name a target on more than
+  one system of the workspace: where a page shows a target's system beside its path.
+  """
+  @spec shared_paths(Scope.t(), [String.t()] | :all) :: MapSet.t(String.t())
+  def shared_paths(scope, paths \\ :all)
+
+  def shared_paths(%Scope{}, []), do: MapSet.new()
+
+  def shared_paths(%Scope{} = scope, paths) do
+    query =
+      if paths == :all,
+        do: targets_in(scope),
+        else: where(targets_in(scope), [t], t.path in ^Enum.uniq(paths))
+
+    Repo.all(
+      from t in query,
+        group_by: t.path,
+        having: count(t.id) > 1,
+        select: t.path
+    )
+    |> MapSet.new()
   end
 
   @doc "The alive runs of the workspace, the most recently started first; at most `limit` (default 6)."
@@ -1341,5 +1472,13 @@ defmodule Apiary.Runs do
     from r in Run,
       as: :run,
       where: r.organisation_id == ^organisation_id and r.workspace_id == ^workspace_id
+  end
+
+  defp targets_in(%Scope{
+         organisation: %Organisation{id: organisation_id},
+         workspace: %Workspace{id: workspace_id}
+       }) do
+    from t in Target,
+      where: t.organisation_id == ^organisation_id and t.workspace_id == ^workspace_id
   end
 end

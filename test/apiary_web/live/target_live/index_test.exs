@@ -68,7 +68,7 @@ defmodule ApiaryWeb.TargetLive.IndexTest do
     # The last run went badly: its word shows, and so do the denied attempts.
     assert has_element?(view, "#{row} .q-tgt-lw", "Failed")
     assert has_element?(view, "#{row} .q-tgt-denied", "1")
-    assert has_element?(view, "#{row} .q-tgt-spark")
+    assert has_element?(view, "#{row} .q-spark")
     assert has_element?(view, "#{row} .text-error", "0%")
     assert has_element?(view, "#targets-pager", "1–3 of 3")
   end
@@ -94,17 +94,24 @@ defmodule ApiaryWeb.TargetLive.IndexTest do
   } do
     view = open(conn, scope)
 
+    # As the reader types, a qualifier is left out until they press Enter.
+    view
+    |> form("#targets-search")
+    |> render_change(%{"q" => "forge:github.exa shop", "_target" => ["q"]})
+
+    assert_patch(view, workspace_path(scope, "/targets?q=shop"))
+
     view |> form("#targets-search", %{"q" => "forge:github.example shop"}) |> render_submit()
     path = workspace_path(scope, "/targets?q=forge%3Agithub.example+shop")
     assert_patch(view, path)
     render_async(view, 2_000)
 
     assert rows(view) == ["github.example/acme/shop"]
-    assert has_element?(view, ".q-tgt-qtok", "github.example")
-    assert has_element?(view, "#targets-q[value=shop]")
+    assert has_element?(view, "#targets-tokens .q-tok", "github.example")
+    assert has_element?(view, "#targets-search-input[value=shop]")
     assert has_element?(view, "#targets-summary", "1 repository matches")
 
-    view |> element(".q-tgt-qtok a") |> render_click()
+    view |> element("#targets-tokens .q-tok a") |> render_click()
     assert_patch(view, workspace_path(scope, "/targets?q=shop"))
   end
 
@@ -123,7 +130,7 @@ defmodule ApiaryWeb.TargetLive.IndexTest do
     assert has_element?(view, "#targets-filter-quiet-30[aria-checked=true]")
 
     view = open(conn, scope, "?sort=name")
-    assert has_element?(view, "#targets-sort-button", "Name")
+    assert has_element?(view, "#targets-sort-button[aria-label='Sort: Name']")
     assert rows(view) == ["acme/api", "github.example/acme/shop", "gitlab.example/acme/shop"]
 
     :ok = Targets.pin(scope, api)

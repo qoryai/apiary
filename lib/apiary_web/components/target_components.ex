@@ -6,7 +6,7 @@ defmodule ApiaryWeb.TargetComponents do
 
   **The notation.** A target is its path in mono; its system goes before it, faint, only
   where the same path is in more than one system of the workspace
-  (`Apiary.Targets.shared_paths/2`) and on the target's own header. `target_path/4` is
+  (`Apiary.Runs.shared_paths/2`) and on the target's own header. `target_path/4` is
   where a target's page is: `/:org/:workspace/targets/:system/*path`, its tabs after a
   `-` segment (`…/-/runs`), GitLab's way, so no tab can be taken for a part of a path.
 
@@ -65,7 +65,7 @@ defmodule ApiaryWeb.TargetComponents do
 
   @doc """
   A target in its notation: the path in mono, the system faint before it when `system` is
-  given. The caller decides whether it is (`Apiary.Targets.shared_paths/2`).
+  given. The caller decides whether it is (`Apiary.Runs.shared_paths/2`).
   """
   attr :path, :string, required: true
   attr :system, :string, default: nil, doc: "shown before the path; nil leaves it out"
@@ -95,81 +95,6 @@ defmodule ApiaryWeb.TargetComponents do
     <span class={["q-sdot", "q-sdot-#{@state}", @class]} {@rest}>
       <i aria-hidden="true"></i><span class={@quiet && "sr-only"}>{state_label(@state)}</span>
     </span>
-    """
-  end
-
-  @doc """
-  The views of a list, as tabs above it, each with its count: links, the current one
-  marked `aria-current="page"`.
-  """
-  attr :id, :string, required: true
-  attr :label, :string, required: true
-
-  slot :view, required: true do
-    attr :id, :string
-    attr :patch, :string, required: true
-    attr :current, :boolean
-    attr :count, :integer
-  end
-
-  def view_tabs(assigns) do
-    ~H"""
-    <nav id={@id} class="q-tgt-views" aria-label={@label}>
-      <.link
-        :for={view <- @view}
-        id={view[:id]}
-        patch={view.patch}
-        aria-current={view[:current] && "page"}
-      >
-        {render_slot(view)}
-        <span :if={view[:count]} class="q-tgt-views-n">{Format.number(view.count)}</span>
-      </.link>
-    </nav>
-    """
-  end
-
-  @doc """
-  Runs a day as a row of bars, today last and in ink: a shape, not a chart to read values
-  from; the number beside it says how many.
-  """
-  attr :days, :list, required: true
-  attr :width, :integer, default: 84
-  attr :height, :integer, default: 20
-  attr :stretch, :boolean, default: false, doc: "fills the width its box gives it"
-  attr :class, :any, default: nil
-
-  def spark(assigns) do
-    count = max(length(assigns.days), 1)
-    max = Enum.max([1 | assigns.days])
-    bar = max(div(assigns.width, count) - 1, 1)
-
-    bars =
-      for {runs, i} <- Enum.with_index(assigns.days) do
-        height = if runs == 0, do: 1, else: max(2, round(runs / max * (assigns.height - 1)))
-        %{x: i * (bar + 1), h: height, today: i == count - 1}
-      end
-
-    assigns = assign(assigns, bars: bars, bar: bar, full: count * (bar + 1) - 1)
-
-    ~H"""
-    <svg
-      class={["q-tgt-spark", @class]}
-      width={@full}
-      height={@height}
-      viewBox={"0 0 #{@full} #{@height}"}
-      preserveAspectRatio={@stretch && "none"}
-      aria-hidden="true"
-    >
-      <rect
-        :for={b <- @bars}
-        x={b.x}
-        y={@height - b.h}
-        width={@bar}
-        height={b.h}
-        rx="0.5"
-        class={b.today && "q-tgt-spark-today"}
-      />
-    </svg>
     """
   end
 
@@ -227,67 +152,60 @@ defmodule ApiaryWeb.TargetComponents do
   end
 
   @doc """
-  A target's runs, one line each on the runs list's row: the state's dot, the title (the
-  task, or the run's id), the runtime and the host, faint, when it started, how long it
-  took and its denied attempts. The target is the page's, so the row leaves it out.
+  A target's runs, one line each on the row spec (`<.table>`): the state's dot, the title
+  (the task, or the run's id), the runtime and the host, faint, when it started, how long
+  it took and its denied attempts. The target is the page's, so the row leaves it out.
   """
   attr :id, :string, required: true
   attr :label, :string, required: true
   attr :runs, :list, required: true
   attr :scope, :any, required: true
-  attr :head, :boolean, default: true, doc: "whether the columns are named"
+  attr :class, :any, default: nil
 
   def run_rows(assigns) do
     ~H"""
-    <div class="q-tgt-table-wrap" tabindex="0" role="region" aria-label={@label}>
-      <table class="q-tgt-table q-tgt-runs">
-        <thead :if={@head}>
-          <tr>
-            <th scope="col">{gettext("State")}</th>
-            <th scope="col">{gettext("Run")}</th>
-            <th scope="col" class="q-tgt-k-rt">{gettext("Runtime")}</th>
-            <th scope="col" class="q-tgt-k-rt">{gettext("Host")}</th>
-            <th scope="col">{gettext("Started")}</th>
-            <th scope="col" class="q-tgt-k-dur q-tgt-r">{gettext("Duration")}</th>
-            <th scope="col" class="q-tgt-r">{gettext("Denied")}</th>
-          </tr>
-        </thead>
-        <tbody id={@id}>
-          <tr :for={run <- @runs} id={"#{@id}-#{run.id}"}>
-            <td class="q-tgt-st"><.state_mark state={run.state} /></td>
-            <td class="q-tgt-run">
-              <.link
-                navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{run.run_id}"}
-                class="q-tgt-title"
-              >
-                {run.task || short_id(run.run_id)}
-              </.link>
-            </td>
-            <td class="q-tgt-k-rt q-tgt-faint whitespace-nowrap">
-              {Enum.join(Enum.reject([run.runtime, run.runtime_version], &is_nil/1), " ")}
-            </td>
-            <td class="q-tgt-k-rt q-tgt-faint whitespace-nowrap font-mono">{run.host}</td>
-            <td class="whitespace-nowrap">
-              <.relative_time at={run.started_at || run.inserted_at} />
-            </td>
-            <td class="q-tgt-k-dur q-tgt-r whitespace-nowrap">
-              <.duration :if={run.state in Apiary.Runs.Run.alive_states()} {alive_clock(run)} />
-              <.duration :if={run.state not in Apiary.Runs.Run.alive_states()} ms={run.duration_ms} />
-            </td>
-            <td class="q-tgt-r">
-              <.denied
-                count={run.denied_count}
-                title={
-                  ngettext("%{number} denied attempt", "%{number} denied attempts", run.denied_count,
-                    number: Format.number(run.denied_count)
-                  )
-                }
-              />
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+    <.table
+      id={@id}
+      label={@label}
+      rows={@runs}
+      row_id={&"#{@id}-#{&1.id}"}
+      class={["q-tgt-runs", @class]}
+    >
+      <:col :let={run} label={gettext("State")} class="q-tgt-st">
+        <.state_mark state={run.state} />
+      </:col>
+      <:col :let={run} label={gettext("Run")} kind="title" class="q-tgt-run">
+        <.link
+          navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{run.run_id}"}
+          class="q-tgt-title"
+        >
+          {run.task || short_id(run.run_id)}
+        </.link>
+      </:col>
+      <:col :let={run} label={gettext("Runtime")} kind="faint" from="lg" class="whitespace-nowrap">
+        {Enum.join(Enum.reject([run.runtime, run.runtime_version], &is_nil/1), " ")}
+      </:col>
+      <:col :let={run} label={gettext("Host")} kind="faint" from="lg" class="whitespace-nowrap">
+        <span class="q-mono">{run.host}</span>
+      </:col>
+      <:col :let={run} label={gettext("Started")} class="whitespace-nowrap">
+        <.relative_time at={run.started_at || run.inserted_at} />
+      </:col>
+      <:col :let={run} label={gettext("Duration")} kind="num" from="sm" class="whitespace-nowrap">
+        <.duration :if={run.state in Apiary.Runs.Run.alive_states()} {alive_clock(run)} />
+        <.duration :if={run.state not in Apiary.Runs.Run.alive_states()} ms={run.duration_ms} />
+      </:col>
+      <:col :let={run} label={gettext("Denied")} kind="num">
+        <.denied
+          count={run.denied_count}
+          title={
+            ngettext("%{number} denied attempt", "%{number} denied attempts", run.denied_count,
+              number: Format.number(run.denied_count)
+            )
+          }
+        />
+      </:col>
+    </.table>
     """
   end
 

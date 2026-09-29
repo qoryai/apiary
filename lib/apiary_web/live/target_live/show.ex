@@ -466,7 +466,7 @@ defmodule ApiaryWeb.TargetLive.Show do
             label={gettext("The last runs")}
             runs={@runs}
             scope={@scope}
-            head={false}
+            class="q-tgt-inset"
           />
         </section>
 
@@ -549,7 +549,7 @@ defmodule ApiaryWeb.TargetLive.Show do
         <section class="q-tgt-bigspark">
           <h3>{gettext("Runs, 14 days")}</h3>
           <span :if={!@facts} class="skeleton q-skel h-10 w-full"></span>
-          <.spark :if={@facts} days={@facts.days} width={280} height={40} stretch class="w-full" />
+          <.sparkline :if={@facts} values={@facts.days} />
           <p :if={@facts}>{window_words(@facts.window)}</p>
         </section>
 

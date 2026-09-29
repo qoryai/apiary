@@ -913,14 +913,14 @@ defmodule ApiaryWeb.PolicyLive.Target do
 
   defp target_tabs(assigns) do
     ~H"""
-    <nav id="policy-tabs" class="q-tgt-views" aria-label={gettext("Target policy")}>
+    <nav id="policy-tabs" class="q-views" aria-label={gettext("Target policy")}>
       <.link patch={@base} aria-current={@action == :rules && "page"}>
         {gettext("Effective policy")}
-        <span :if={@rules > 0} class="q-tgt-views-n">{@rules}</span>
+        <span :if={@rules > 0} class="q-views-n">{@rules}</span>
       </.link>
       <.link patch={"#{@base}/history"} aria-current={@action == :history && "page"}>
         {gettext("History")}
-        <span :if={@changes > 0} class="q-tgt-views-n">{@changes}</span>
+        <span :if={@changes > 0} class="q-views-n">{@changes}</span>
       </.link>
       <.link
         :if={@document}

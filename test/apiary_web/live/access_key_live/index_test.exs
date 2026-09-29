@@ -19,23 +19,34 @@ defmodule ApiaryWeb.AccessKeyLive.IndexTest do
       assert html =~ "New access key"
     end
 
-    test "shows each key's last heartbeat under its last use", %{conn: conn, scope: scope} do
-      %{access_key: beating} = access_key_fixture(scope, label: "build-01")
+    test "shows each key's last use, and a key never used says so", %{conn: conn, scope: scope} do
+      %{access_key: used} = access_key_fixture(scope, label: "build-01")
       %{access_key: silent} = access_key_fixture(scope, label: "build-02")
 
       Apiary.Repo.update_all(
-        where(AccessKey, id: ^beating.id),
-        set: [last_heartbeat_at: DateTime.add(DateTime.utc_now(), -300, :second)]
+        where(AccessKey, id: ^used.id),
+        set: [last_used_at: DateTime.add(DateTime.utc_now(), -300, :second)]
       )
 
       {:ok, lv, html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/keys")
 
       assert html =~ ~r/Last used.*Runner/s
-      assert lv |> element("#key-#{beating.id}") |> render() =~ ~r/Heartbeat.*5 minutes ago/s
+      assert lv |> element("#key-#{used.id}") |> render() =~ "5 minutes ago"
 
       row = lv |> element("#key-#{silent.id}") |> render()
-      assert row =~ "No heartbeat yet"
+      assert row =~ "Never used; created"
       refute row =~ "minutes ago"
+    end
+
+    test "an active key says no state, and its acts are in its menu", %{conn: conn, scope: scope} do
+      %{access_key: key} = access_key_fixture(scope, label: "build-03")
+
+      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/keys")
+
+      refute has_element?(lv, "#key-#{key.id}-state")
+      assert has_element?(lv, "#key-#{key.id}-menu #key-#{key.id}-rotate", "Rotate")
+      assert has_element?(lv, "#key-#{key.id}-menu #key-#{key.id}-revoke", "Revoke")
+      refute has_element?(lv, "#key-#{key.id} .badge")
     end
 
     test "creates a key and reveals the secret once", %{conn: conn, scope: scope} do
@@ -70,7 +81,7 @@ defmodule ApiaryWeb.AccessKeyLive.IndexTest do
       assert html =~ "build-server-1"
       assert html =~ key.key_id
       assert html =~ "Active"
-      assert html =~ "Never posted"
+      assert html =~ "Never used"
       refute html =~ secret
 
       # the secret never appears again
@@ -104,7 +115,7 @@ defmodule ApiaryWeb.AccessKeyLive.IndexTest do
       assert_patch(lv, ~p"/#{scope.organisation}/#{scope.workspace}/settings/keys")
 
       html = render(lv)
-      assert html =~ "Rotating"
+      assert has_element?(lv, "#key-#{key.id}-state", "Rotated")
       assert html =~ "Retire previous secret"
       refute html =~ new_secret
       assert AccessKey.status(AccessKeys.get_access_key!(scope, key.id)) == :rotating
@@ -114,7 +125,7 @@ defmodule ApiaryWeb.AccessKeyLive.IndexTest do
 
       html = lv |> element("#retire-secret button", "Retire previous secret") |> render_click()
       assert html =~ "is retired"
-      refute html =~ "Rotating"
+      refute has_element?(lv, "#key-#{key.id}-state")
       assert AccessKey.status(AccessKeys.get_access_key!(scope, key.id)) == :active
     end
 
@@ -137,7 +148,7 @@ defmodule ApiaryWeb.AccessKeyLive.IndexTest do
 
       html = render(lv)
       assert html =~ "runner-b is revoked"
-      assert html =~ "Revoked"
+      assert has_element?(lv, "#key-#{key.id}-state", "Revoked")
       refute has_element?(lv, "#key-#{key.id} a", "Rotate")
       refute has_element?(lv, "#key-#{key.id} a", "Revoke")
       assert AccessKeys.get_access_key!(scope, key.id).revoked_at
@@ -187,7 +198,7 @@ defmodule ApiaryWeb.AccessKeyLive.IndexTest do
       {:ok, _, second_secret} = AccessKeys.rotate_access_key(scope, key)
 
       {:ok, lv, html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/keys")
-      assert html =~ "Rotating"
+      assert html =~ "Rotated"
 
       state = :sys.get_state(lv.pid)
       dump = inspect(state, limit: :infinity, printable_limit: :infinity, structs: false)

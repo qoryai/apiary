@@ -650,8 +650,8 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
          %{conn: conn, docs: docs, scope: scope} do
       view = open(conn, scope, "/policy/targets")
       assert text(view, "#targets-summary") =~ "1 sets its own mode"
-      assert text(view, "#target-#{docs.id} .q-c-mode") == "enforce Its own"
-      assert text(view, "#policy-targets") =~ "observe Workspace default"
+      assert text(view, "#target-#{docs.id} .q-c-mode") == "enforce its own"
+      assert text(view, "#policy-targets") =~ "observe Workspace baseline"
 
       view = open(conn, scope, "/policy/targets?mode=own")
       assert has_element?(view, "#target-#{docs.id}")
@@ -689,8 +689,8 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert text(view, "#target-#{target.id}") =~ "Own rules"
       assert text(view, "#target-#{target.id}") =~ "v1"
       # Whose version each row shows, and no bare 0 where nothing is to review.
-      assert text(view, "#target-#{target.id} .q-vpill") =~ "of github.example/acme/shop"
-      assert text(view, "#policy-targets") =~ "of workspace baseline"
+      refute text(view, "#target-#{target.id} .q-c-version") =~ "baseline"
+      assert text(view, "#policy-targets") =~ "v1 of the workspace baseline"
 
       refute view |> element("#target-#{target.id} td.q-num:nth-of-type(6)") |> render() =~
                ">0<"

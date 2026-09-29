@@ -74,88 +74,104 @@ defmodule ApiaryWeb.UserLive.Organisations do
           </:actions>
         </.header>
 
-        <.card :if={@memberships != []} id="organisations" padding={false}>
-          <ul class="divide-y divide-line">
-            <li
-              :for={membership <- @memberships}
-              id={"organisation-#{membership.organisation.id}"}
-              class="flex flex-wrap items-center gap-x-2.5 gap-y-1 px-5 py-2.5"
-            >
+        <.table
+          :if={@memberships != []}
+          id="organisations"
+          label={gettext("Your organisations")}
+          rows={@memberships}
+          row_id={&"organisation-#{&1.organisation.id}"}
+        >
+          <:col :let={membership} label={gettext("Organisation")} kind="title">
+            <span class="q-nm">
               <.avatar name={membership.organisation.name} kind="organisation" />
-              <.link href={organisation_path(membership)} class="link min-w-0 truncate font-medium">
+              <.link href={organisation_path(membership)} class="q-title hover:underline">
                 {membership.organisation.name}
               </.link>
-              <span :for={workspace <- membership.workspaces} class="min-w-0 truncate text-muted">
-                {workspace.name}
-              </span>
-            </li>
-          </ul>
-        </.card>
+            </span>
+          </:col>
+          <:col :let={membership} label={gettext("Workspaces")}>
+            <span class="block max-w-[40ch] truncate">
+              {Enum.map_join(membership.workspaces, ", ", & &1.name)}
+            </span>
+          </:col>
+          <:col :let={membership} label={gettext("Level")} from="sm">
+            {level_text(Map.get(membership, :level))}
+          </:col>
+        </.table>
 
         <section :if={@suspended != []} id="suspended-memberships" class="grid gap-3">
-          <h2 class="text-[15px]/[22px] font-semibold tracking-[-0.006em]">
-            {gettext("Suspended memberships")}
-          </h2>
-          <p class="max-w-[60ch] text-[13px]/[20px] text-muted">
+          <h2 class="text-[14px]/5 font-semibold">{gettext("Suspended memberships")}</h2>
+          <p class="max-w-[60ch] text-[12.5px]/[18px] text-muted">
             {gettext(
               "Your membership in these organisations is suspended: you cannot open them or act in them. An owner or an admin of each can activate it."
             )}
           </p>
-          <.card padding={false}>
-            <ul class="divide-y divide-line">
-              <li
-                :for={membership <- @suspended}
-                id={"suspended-#{membership.organisation.id}"}
-                class="flex flex-wrap items-center gap-x-2.5 gap-y-1 px-5 py-2.5"
-              >
+          <.table
+            id="suspended"
+            label={gettext("Suspended memberships")}
+            rows={@suspended}
+            row_id={&"suspended-#{&1.organisation.id}"}
+            row_class={fn _ -> "row-off" end}
+          >
+            <:col :let={membership} label={gettext("Organisation")} kind="title">
+              <span class="q-nm">
                 <.avatar name={membership.organisation.name} kind="organisation" />
-                <span class="min-w-0 truncate font-medium">{membership.organisation.name}</span>
-                <.badge color="warning" dot class="ml-auto">{gettext("Suspended")}</.badge>
-              </li>
-            </ul>
-          </.card>
+                <span class="q-title">{membership.organisation.name}</span>
+              </span>
+            </:col>
+            <:col label={gettext("State")}>
+              <.state_word>{gettext("Suspended")}</.state_word>
+            </:col>
+          </.table>
         </section>
 
         <section :if={@pending != []} id="pending-deletions" class="grid gap-3">
-          <h2 class="text-[15px]/[22px] font-semibold tracking-[-0.006em]">
-            {gettext("Deleted, waiting to be purged")}
-          </h2>
-          <p class="max-w-[60ch] text-[13px]/[20px] text-muted">
+          <h2 class="text-[14px]/5 font-semibold">{gettext("Deleted, waiting to be purged")}</h2>
+          <p class="max-w-[60ch] text-[12.5px]/[18px] text-muted">
             {gettext(
               "Nobody can open these organisations and their access keys do not work. Until the day each is purged, you can cancel its deletion, which brings everything back."
             )}
           </p>
-          <.card padding={false}>
-            <ul class="divide-y divide-line">
-              <li
-                :for={organisation <- @pending}
-                id={"pending-#{organisation.id}"}
-                class="flex flex-wrap items-center gap-x-2.5 gap-y-1 px-5 py-2.5"
-              >
+          <.table
+            id="pending"
+            label={gettext("Deleted, waiting to be purged")}
+            rows={@pending}
+            row_id={&"pending-#{&1.id}"}
+          >
+            <:col :let={organisation} label={gettext("Organisation")} kind="title">
+              <span class="q-nm">
                 <.avatar name={organisation.name} kind="organisation" />
-                <span class="min-w-0 truncate font-medium">{organisation.name}</span>
-                <span class="text-[13px]/[18px] tabular-nums text-muted">
-                  {gettext("Purged on %{date}", date: Format.date(organisation.purge_after))}
-                </span>
-                <.button
-                  id={"restore-#{organisation.id}"}
-                  size="xs"
-                  class="ml-auto"
-                  phx-click="restore"
-                  phx-value-id={organisation.id}
-                  aria-label={gettext("Cancel the deletion of %{name}", name: organisation.name)}
-                  loading_text={gettext("Cancelling")}
-                >
-                  {gettext("Cancel deletion")}
-                </.button>
-              </li>
-            </ul>
-          </.card>
+                <span class="q-title">{organisation.name}</span>
+              </span>
+            </:col>
+            <:col :let={organisation} label={gettext("Purged")} kind="hot">
+              <span class="tabular-nums">
+                {gettext("Purged on %{date}", date: Format.date(organisation.purge_after))}
+              </span>
+            </:col>
+            <:action :let={organisation}>
+              <.button
+                id={"restore-#{organisation.id}"}
+                variant="link"
+                phx-click="restore"
+                phx-value-id={organisation.id}
+                aria-label={gettext("Cancel the deletion of %{name}", name: organisation.name)}
+                loading_text={gettext("Cancelling")}
+              >
+                {gettext("Cancel deletion")}
+              </.button>
+            </:action>
+          </.table>
         </section>
       <% end %>
     </Layouts.app>
     """
   end
+
+  defp level_text(:owner), do: gettext("Owner")
+  defp level_text(:admin), do: gettext("Admin")
+  defp level_text(:member), do: gettext("Member")
+  defp level_text(_none), do: nil
 
   # An edition's entry, as a button of the page's actions: the first is the main one.
   attr :entry, Entry, required: true

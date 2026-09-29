@@ -284,7 +284,7 @@ defmodule Apiary.TargetsTest do
       assert [{%{system: "gitlab.example"}, 1}] = Targets.elsewhere(scope, shop)
       assert Targets.count_runs(scope, shop) == 3
       assert Targets.shared?(scope, "acme/shop")
-      assert Targets.shared_paths(scope, ["acme/shop", "acme/api"]) == MapSet.new(["acme/shop"])
+      refute Targets.shared?(scope, "acme/api")
     end
   end
 end

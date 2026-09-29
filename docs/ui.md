@@ -93,6 +93,66 @@ workspaces the person reaches, what each is doing, and the organisation's people
 breadcrumb's organisation leads there; `/` still sends a person to the workspace they
 opened last.
 
+## Lists
+
+A page that lists things reads top down, and every level of it has a look of its own
+(principles 8 to 12 of the v2 brief): a summary, the largest numbers on the page, only
+where the page has one; then blocks or tables, each one box; then rows. Two levels that
+look alike are one level too many, and nothing is boxed inside a row.
+
+- **A row is one line.** Its title, the thing's name, is the only strong text: 14 px,
+  medium, in the text colour. Every other cell is 12.5 px and muted; what is tertiary is
+  faint; the one fact that needs someone is lifted to the text colour (`q-hot`). `<.table>`
+  does this by default: a column says `kind="title"`, `"hot"`, `"faint"` or `"num"`, and a
+  secondary word beside the title (an id, a slug, "you") takes `q-side`. A row out of use
+  (revoked, suspended) is `row-off`, its title muted.
+- **A state is said only when it is not the usual one.** An active key, a member in use,
+  a run that ended well say nothing (a screen reader hears the word); a rotated key, a
+  suspended member, a revoked key say so in words (`<.state_word>`), with a dot and the
+  text colour when the state needs someone. A pill is for a state of at most two words
+  that needs someone, and never on every row.
+- **A row's acts.** The one act its state asks for is a text action (`<.button
+  variant="link">`, "Retire previous secret"); the rest are in its ⋯ menu
+  (`<.row_menu>` with `<.menu_item>`s, a heading and dividers between groups), which
+  floats in the top layer so the table's scroll region never clips it. A choice of one,
+  such as a person's level, is a set of `menuitemradio` items with what each means. A
+  destructive item opens its confirm dialog at a path of its own; red is for that
+  dialog's button only. No bordered button on every row.
+- **Columns grow with the table**, not the screen: `from="sm" | "md" | "lg"` shows a
+  column from 600, 1000 or 1300 px of the table's own width (a container query), so a
+  table in a narrow pane reflows as it would on a narrow screen.
+- **A target** is its path in mono, with its system in faint type before it only where the
+  same path is on more than one system (`Apiary.Runs.shared_paths/2`).
+- **One way to narrow a list**: views as tabs with their counts (`<.views>`), one search
+  (`<.list_search>`), one Filter menu whose sections write the filters
+  (`<.filter_menu>`), Sort (`<.sort_menu>`), and the filters in force as removable tokens
+  under the bar (`<.filter_tokens>`). Every choice is in the URL. No row of facet buttons;
+  a rail never repeats a menu.
+
+## The overviews
+
+The workspace overview (`ApiaryWeb.WorkspaceLive.Overview`, `OverviewComponents`) answers
+what needs the reader, then what their agents did, and never grows with the data:
+
+- **The summary**: alive now, runs, runs that ended badly and denied attempts over
+  fourteen days, each a link to the list it counts.
+- **Needs attention**: one line an item, its mark, its subject, where it is, the reason
+  in a few words (the longer sentence on hover), when, and the one text act that settles
+  it; five shown and "and n more". A resolved item stays, struck, until the next
+  navigation; one that arrives is announced (`#overview-announcer`), never inserted above
+  what is read.
+- **Activity**: runs and denied attempts per day on one day axis, drawn for the width the
+  `DaysChart` hook measured, with its table twin a text action away.
+- **Active targets**: the eight with the most runs, each with its last run (a dot, and a
+  word only when it is running or ended badly), a sparkline of its days and its denials.
+- **Guard**: a few lines of key and value, each with a muted detail and one link: the
+  policy's mode and version, the targets with rules of their own, retention.
+- A workspace no run has reached is one box: the steps from a key to the first run and
+  the server block to paste.
+
+An organisation's overview lists its workspaces one line each, six at most and a link to
+all, with its people and details as lines beside them.
+
 ## Targets
 
 A workspace's targets have an index and a page each, GitHub's organisation repositories
@@ -101,7 +161,7 @@ reads are `Apiary.Targets`'s, the looks `ApiaryWeb.TargetComponents`'s).
 
 - **The notation.** A target is its path in mono (`<.target_name>`); its system goes
   before it, faint, only where the same path is in another system of the workspace
-  (`Apiary.Targets.shared_paths/2`), and always on its own header and crumb. A run's state
+  (`Apiary.Runs.shared_paths/2`), and always on its own header and crumb. A run's state
   is a dot and, when the run needs a look, its word (`<.state_mark>`), never a pill.
 - **The index** (`/:org/:workspace/targets`, width `list`) is narrowed the way every list
   is: views as tabs with the workspace's counts (All, Active this week, Never ran), one
@@ -178,9 +238,15 @@ or an attribute of one, not a copy.
   without one cannot be dismissed. Focus returns to what opened it.
 - **Menus** are daisyUI dropdowns under the `Menu` hook: a click opens and leaves focus on
   the trigger; Enter, Space and ArrowDown open and focus the first item, ArrowUp the last;
-  the arrows wrap, Home and End go to the ends, Escape closes and returns focus.
+  the arrows wrap, Home and End go to the ends, Escape closes and returns focus. With
+  `data-float` the list is a popover in the top layer, placed under its trigger, so no
+  scroll region clips it (a row's menu, a list's Filter and Sort).
 - **`<.table>`** is a scroll region of its own, focusable and labelled (`label`), so a
-  wide table scrolls inside the page and never the page sideways.
+  wide table scrolls inside the page and never the page sideways; its rows follow the
+  row spec (Lists, above).
+- **`<.row_menu>`** is a row's ⋯ menu; `<.views>`, `<.list_search>`, `<.filter_menu>`,
+  `<.sort_menu>` and `<.filter_tokens>` are a list's controls; `<.state_word>` says a
+  row's state in words; `<.sparkline>` draws runs a day.
 - **`<.empty_state>`** says what is missing and offers the one next step.
 
 The styles are in `assets/css/app.css`. Overrides of daisyUI are in `@layer utilities`,

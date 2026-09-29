@@ -27,7 +27,7 @@ defmodule ApiaryWeb.OrganisationLiveTest do
       assert has_element?(view, "#nav-organisation_overview[aria-current=page]")
 
       # The workspaces' facts land off the first paint.
-      assert render_async(view) =~ "Runs, 7 days"
+      assert render_async(view) =~ "none alive"
     end
 
     test "the root sends on to the workspace opened last while it is reached, else the first",

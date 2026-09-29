@@ -64,95 +64,75 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
           row_id={&"key-#{&1.id}"}
           row_class={&(&1.revoked_at && "row-off")}
         >
-          <:col :let={key} label={gettext("Key")}>
-            <div class="grid gap-0.5">
-              <span class="font-medium">{key.label}</span>
-              <div class="relative w-fit text-[12px] text-muted">
-                <.mono bare>{key.key_id}</.mono>
-                <.copy_button
-                  :if={is_nil(key.revoked_at)}
-                  id={"copy-key-id-#{key.id}"}
-                  text={key.key_id}
-                  label={gettext("Copy key id")}
-                  placement="right"
-                  class="row-reveal !absolute left-full top-1/2 -translate-y-1/2 [&>button]:[--size:1.25rem] [&_.hero-clipboard-document-micro]:size-3.5"
-                  icon_only
-                />
-              </div>
-            </div>
-          </:col>
-          <:col :let={key} label={gettext("Status")}>
-            <div class="grid justify-items-start gap-0.5">
-              <.status_badge status={AccessKey.status(key)} />
-              <span class="text-[12px] tabular-nums text-faint">
-                {gettext("Created %{date}", date: Format.date(key.inserted_at))}
-              </span>
-            </div>
-          </:col>
-          <:col :let={key} label={gettext("Last used")}>
-            <div class="grid gap-0.5">
-              <span :if={AccessKey.never_used?(key)} class="text-faint">{gettext("Never posted")}</span>
-              <.time_ago
-                :if={!AccessKey.never_used?(key)}
-                at={key.last_used_at}
-                class={["tabular-nums", is_nil(key.revoked_at) && "text-muted"]}
+          <:col :let={key} label={gettext("Key")} kind="title">
+            <span class="q-nm">
+              <span class="q-title">{key.label}</span>
+              <span class="q-side q-mono">{key.key_id}</span>
+              <.copy_button
+                :if={is_nil(key.revoked_at)}
+                id={"copy-key-id-#{key.id}"}
+                text={key.key_id}
+                label={gettext("Copy key id")}
+                placement="right"
+                class="row-reveal [&>button]:[--size:1.25rem] [&_.hero-clipboard-document-micro]:size-3.5"
+                icon_only
               />
-              <span class="text-[12px] text-faint">
-                <span :if={is_nil(key.last_heartbeat_at)}>{gettext("No heartbeat yet")}</span>
-                <span :if={key.last_heartbeat_at}>
-                  {gettext("Heartbeat")} <.time_ago at={key.last_heartbeat_at} class="tabular-nums" />
-                </span>
-              </span>
-            </div>
-          </:col>
-          <:col :let={key} label={gettext("Runner")}>
-            <span :if={key.last_runner_version} class="font-mono text-[12.5px]">
-              {key.last_runner_version}
             </span>
-            <span :if={!key.last_runner_version} class="text-faint">{gettext("n/a")}</span>
+          </:col>
+          <:col :let={key} label={gettext("Last used")} from="sm">
+            <span :if={AccessKey.never_used?(key)} class="q-faint">
+              {gettext("Never used; created %{date}", date: Format.day(key.inserted_at))}
+            </span>
+            <.time_ago
+              :if={!AccessKey.never_used?(key)}
+              at={key.last_used_at}
+              class="tabular-nums"
+            />
+          </:col>
+          <:col :let={key} label={gettext("Runner")} kind="faint" from="sm">
+            <span :if={key.last_runner_version} class="q-mono">{key.last_runner_version}</span>
+            <span :if={!key.last_runner_version}>{gettext("n/a")}</span>
+          </:col>
+          <:col :let={key} label={gettext("State")}>
+            <.key_state
+              key={key}
+              can_retire={Access.can?(@current_scope, :"access_key.rotate", key)}
+            />
           </:col>
           <:action :let={key}>
-            <%= case AccessKey.status(key) do %>
-              <% :revoked -> %>
-                <span class="whitespace-nowrap px-2 text-xs/6 text-faint">
-                  {gettext("Revoked %{date}", date: Format.date(key.revoked_at))}
-                </span>
-              <% status -> %>
-                <.button
-                  :if={status == :rotating && Access.can?(@current_scope, :"access_key.rotate", key)}
-                  variant="ghost"
-                  size="xs"
-                  phx-click="retire"
-                  phx-value-id={key.id}
-                  aria-label={gettext("Retire the previous secret of %{label}", label: key.label)}
-                >
-                  {gettext("Retire previous secret")}
-                </.button>
-                <.button
-                  :if={Access.can?(@current_scope, :"access_key.rotate", key)}
-                  variant="ghost"
-                  size="xs"
-                  patch={
-                    ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/keys/#{key.id}/rotate"
-                  }
-                  aria-label={gettext("Rotate %{label}", label: key.label)}
-                >
-                  {gettext("Rotate")}
-                </.button>
-                <.button
-                  :if={Access.can?(@current_scope, :"access_key.revoke", key)}
-                  variant="danger-ghost"
-                  size="xs"
-                  patch={
-                    ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/keys/#{key.id}/revoke"
-                  }
-                  aria-label={gettext("Revoke %{label}", label: key.label)}
-                >
-                  {gettext("Revoke")}
-                </.button>
-            <% end %>
+            <.row_menu
+              :if={is_nil(key.revoked_at)}
+              id={"key-#{key.id}-menu"}
+              label={gettext("Actions for %{label}", label: key.label)}
+            >
+              <.menu_item
+                :if={Access.can?(@current_scope, :"access_key.rotate", key)}
+                id={"key-#{key.id}-rotate"}
+                patch={
+                  ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/keys/#{key.id}/rotate"
+                }
+                aria-label={gettext("Rotate %{label}", label: key.label)}
+              >
+                {gettext("Rotate…")}
+              </.menu_item>
+              <.menu_item
+                :if={Access.can?(@current_scope, :"access_key.revoke", key)}
+                id={"key-#{key.id}-revoke"}
+                patch={
+                  ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/keys/#{key.id}/revoke"
+                }
+                aria-label={gettext("Revoke %{label}", label: key.label)}
+              >
+                {gettext("Revoke…")}
+              </.menu_item>
+            </.row_menu>
           </:action>
         </.table>
+        <p :if={@keys != []} class="text-[12.5px]/[18px] text-faint">
+          {gettext(
+            "A revoked key stays listed, so the runs it posted keep a name. Rotating shows the new secret once; the previous one works until you retire it."
+          )}
+        </p>
       </SettingsComponents.layout>
 
       <.modal
@@ -291,23 +271,35 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
     """
   end
 
-  attr :status, :atom, required: true
+  attr :key, AccessKey, required: true
+  attr :can_retire, :boolean, required: true
 
-  defp status_badge(%{status: :active} = assigns) do
+  # The state is said only when it is not the usual one: a rotated key, with the one act
+  # its state asks for, and a revoked key, with its date. An active key says so to a
+  # screen reader alone.
+  defp key_state(assigns) do
     ~H"""
-    <.badge color="success" dot>{gettext("Active")}</.badge>
-    """
-  end
-
-  defp status_badge(%{status: :rotating} = assigns) do
-    ~H"""
-    <.badge color="warning" dot>{gettext("Rotating")}</.badge>
-    """
-  end
-
-  defp status_badge(%{status: :revoked} = assigns) do
-    ~H"""
-    <.badge color="neutral" dot>{gettext("Revoked")}</.badge>
+    <%= case AccessKey.status(@key) do %>
+      <% :active -> %>
+        <span class="sr-only">{gettext("Active")}</span>
+      <% :rotating -> %>
+        <span class="inline-flex items-center gap-3">
+          <.state_word id={"key-#{@key.id}-state"} hot>{gettext("Rotated")}</.state_word>
+          <.button
+            :if={@can_retire}
+            variant="link"
+            phx-click="retire"
+            phx-value-id={@key.id}
+            aria-label={gettext("Retire the previous secret of %{label}", label: @key.label)}
+          >
+            {gettext("Retire previous secret")}
+          </.button>
+        </span>
+      <% :revoked -> %>
+        <.state_word id={"key-#{@key.id}-state"}>
+          {gettext("Revoked %{date}", date: Format.day(@key.revoked_at))}
+        </.state_word>
+    <% end %>
     """
   end
 

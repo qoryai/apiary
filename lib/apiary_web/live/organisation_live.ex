@@ -1,10 +1,10 @@
 defmodule ApiaryWeb.OrganisationLive do
   @moduledoc """
   An organisation's overview, `/:org`, where the breadcrumb's organisation leads: the
-  workspaces the person reaches in it, each with what it is doing (alive runs, its runs
-  and denials of the last seven days, runs a day over fourteen, its last run and, where
-  the workspace has `security`, its policy's mode), and beside them its people and what
-  the organisation is.
+  workspaces the person reaches in it, one line each (its targets and, where the workspace
+  has `security`, its policy's mode, what is alive, its runs a day over fourteen with their
+  count, its denied attempts and its last run), at most six and a link to all of them;
+  beside them its people and its details, as lines, not boxes (`docs/ui.md`, Lists).
 
   A member who reaches no workspace yet, where the edition says which workspaces their
   level reaches (`c:Apiary.Edition.reaches_workspace?/3`), is told so, and led to the
@@ -12,13 +12,16 @@ defmodule ApiaryWeb.OrganisationLive do
   one while the page is open, the member's scope is loaded again (`ApiaryWeb.UserAuth`),
   and the page offers the workspace.
 
-  The workspaces' facts are read off the first paint (`assign_async`), in three reads
+  The workspaces' facts are read off the first paint (`assign_async`), in four reads
   whatever their number (`Apiary.Runs.workspace_facts/3`).
   """
   use ApiaryWeb, :live_view
 
   alias Apiary.{Access, Organisations, Policy, Runs}
   alias ApiaryWeb.UserAuth
+
+  # The workspaces shown; beyond them, the link to all of them.
+  @shown 6
 
   @impl true
   def render(assigns) do
@@ -82,111 +85,114 @@ defmodule ApiaryWeb.OrganisationLive do
           </div>
         </.notice>
 
-        <section class="q-org-main" aria-labelledby="workspaces-title">
-          <div class="q-org-head">
-            <h2 id="workspaces-title" class="q-org-title">
-              {gettext("Workspaces")}
-              <span class="q-org-count">{Format.number(length(@workspaces))}</span>
-            </h2>
+        <div class="q-org-main">
+          <section class="q-blk" aria-labelledby="workspaces-title">
+            <div class="q-band">
+              <h2 id="workspaces-title">{gettext("Workspaces")}</h2>
+              <span class="q-band-n">{Format.number(length(@workspaces))}</span>
+              <span class="q-band-hint">{gettext("14 days")}</span>
+            </div>
+            <ul id="workspaces" class="q-rows">
+              <li :for={workspace <- Enum.take(@workspaces, @shown)} id={"workspace-#{workspace.id}"}>
+                <.workspace_row
+                  scope={@current_scope}
+                  workspace={workspace}
+                  facts={@facts.ok? && @facts.result[workspace.id]}
+                  mode={@modes[workspace.id]}
+                />
+              </li>
+            </ul>
+            <p :if={@facts.failed} id="workspaces-error" class="q-blk-none">
+              {gettext(
+                "What the workspaces are doing could not be read. Reload the page to try again."
+              )}
+            </p>
             <.link
-              :if={Access.can?(@current_scope, :"workspace.delete", @current_scope.organisation)}
-              id="manage-workspaces"
+              :if={length(@workspaces) > @shown}
+              id="workspaces-all"
               navigate={~p"/#{@current_scope.organisation}/settings/workspaces"}
-              class="link text-[13px]"
+              class="q-more"
             >
-              {gettext("Manage workspaces")}
+              {ngettext("All %{number} workspace", "All %{number} workspaces", length(@workspaces),
+                number: Format.number(length(@workspaces))
+              )}
+              <.icon name="hero-arrow-right-micro" class="size-3.5" />
             </.link>
-          </div>
-          <ul id="workspaces" class="q-org-grid">
-            <li :for={workspace <- @workspaces} id={"workspace-#{workspace.id}"}>
-              <.workspace_card
-                scope={@current_scope}
-                workspace={workspace}
-                facts={@facts.ok? && @facts.result[workspace.id]}
-                mode={@modes[workspace.id]}
-              />
-            </li>
-          </ul>
-          <p :if={@facts.failed} id="workspaces-error" class="text-muted">
-            {gettext("What the workspaces are doing could not be read. Reload the page to try again.")}
-          </p>
-        </section>
+          </section>
+        </div>
 
-        <aside class="q-org-rail" aria-label={gettext("About the organisation")}>
-          <.card id="people">
-            <:title>{gettext("People")}</:title>
-            <:actions>
+        <aside class="q-org-side" aria-label={gettext("About the organisation")}>
+          <section id="people" class="q-blk" aria-labelledby="people-title">
+            <div class="q-band">
+              <h2 id="people-title">{gettext("People")}</h2>
+              <span class="q-band-n">{Format.number(length(@people.active))}</span>
+              <span class="q-grow"></span>
               <.link
-                id="people-open"
-                navigate={~p"/#{@current_scope.organisation}/settings/people"}
-                class="link text-[13px]"
-              >
-                {gettext("See everyone")}
-              </.link>
-            </:actions>
-            <p class="flex items-baseline gap-2">
-              <span class="text-[26px]/8 font-semibold tabular-nums">
-                {Format.number(length(@people.active))}
-              </span>
-              <span class="text-muted">
-                {ngettext("person", "people", length(@people.active))}
-              </span>
-            </p>
-            <dl class="q-org-levels">
-              <div :for={{level, label} <- levels()}>
-                <dt>{label}</dt>
-                <dd class="tabular-nums">{Format.number(Map.get(@people.levels, level, 0))}</dd>
-              </div>
-            </dl>
-            <p :if={@people.invitations > 0} id="people-invitations" class="text-[13px] text-muted">
-              {ngettext(
-                "%{number} invitation pending",
-                "%{number} invitations pending",
-                @people.invitations,
-                number: Format.number(@people.invitations)
-              )}
-            </p>
-            <p :if={@people.suspended > 0} id="people-suspended" class="text-[13px] text-muted">
-              {ngettext("%{number} suspended", "%{number} suspended", @people.suspended,
-                number: Format.number(@people.suspended)
-              )}
-            </p>
-            <:footer :if={Access.can?(@current_scope, :"member.invite", @current_scope.workspace)}>
-              <span></span>
-              <.button
+                :if={Access.can?(@current_scope, :"member.invite", @current_scope.workspace)}
                 id="people-invite"
-                size="sm"
                 navigate={~p"/#{@current_scope.organisation}/settings/people/invite"}
+                class="q-band-do"
               >
-                <.icon name="hero-user-plus-micro" class="size-4" /> {gettext("Invite people")}
-              </.button>
-            </:footer>
-          </.card>
-
-          <.card id="about">
-            <:title>{gettext("Details")}</:title>
-            <:actions>
-              <.link
-                id="about-settings"
-                navigate={~p"/#{@current_scope.organisation}/settings"}
-                class="link text-[13px]"
-              >
-                {gettext("Settings")}
+                {gettext("Invite")}
               </.link>
-            </:actions>
-            <dl class="q-org-details">
+            </div>
+            <div class="q-ppl">
+              <div class="q-avs" aria-hidden="true">
+                <.avatar :for={member <- Enum.take(@people.active, 6)} name={member.user.email} />
+                <span :if={length(@people.active) > 6} class="q-avs-n">
+                  {ngettext("and %{number} more", "and %{number} more", length(@people.active) - 6,
+                    number: Format.number(length(@people.active) - 6)
+                  )}
+                </span>
+              </div>
+              <span id="people-levels">{levels_line(@people)}</span>
+              <span :if={@people.suspended > 0} id="people-suspended">
+                {ngettext("%{number} suspended", "%{number} suspended", @people.suspended,
+                  number: Format.number(@people.suspended)
+                )}
+              </span>
+              <span :if={@people.invitations > 0} id="people-invitations" class="q-hot">
+                {ngettext(
+                  "%{number} invitation pending",
+                  "%{number} invitations pending",
+                  @people.invitations,
+                  number: Format.number(@people.invitations)
+                )}
+              </span>
+            </div>
+            <.link
+              id="people-open"
+              navigate={~p"/#{@current_scope.organisation}/settings/people"}
+              class="q-more"
+            >
+              {gettext("All people")}<.icon name="hero-arrow-right-micro" class="size-3.5" />
+            </.link>
+          </section>
+
+          <section id="about" class="q-blk" aria-labelledby="about-title">
+            <div class="q-band">
+              <h2 id="about-title">{gettext("Details")}</h2>
+            </div>
+            <dl class="q-kvl">
               <dt>{gettext("Slug")}</dt>
-              <dd>
-                <.mono bare>{@current_scope.organisation.slug}</.mono>
-              </dd>
+              <dd class="q-mono">{@current_scope.organisation.slug}</dd>
               <dt>{gettext("Owners")}</dt>
-              <dd class="grid min-w-0 gap-0.5">
-                <span :for={owner <- @people.owners} class="truncate">{owner.user.email}</span>
+              <dd class="truncate" title={Enum.map_join(@people.owners, ", ", & &1.user.email)}>
+                {Enum.map_join(@people.owners, ", ", & &1.user.email)}
               </dd>
               <dt>{gettext("Created")}</dt>
-              <dd class="tabular-nums">{Format.date(@current_scope.organisation.inserted_at)}</dd>
+              <dd class="q-muted tabular-nums">
+                {Format.date(@current_scope.organisation.inserted_at)}
+              </dd>
             </dl>
-          </.card>
+            <.link
+              id="about-settings"
+              navigate={~p"/#{@current_scope.organisation}/settings"}
+              class="q-more"
+            >
+              {gettext("Settings")}<.icon name="hero-arrow-right-micro" class="size-3.5" />
+            </.link>
+          </section>
         </aside>
       </div>
     </Layouts.app>
@@ -198,100 +204,87 @@ defmodule ApiaryWeb.OrganisationLive do
   attr :facts, :any, required: true, doc: "the workspace's facts, nil while they load"
   attr :mode, :string, default: nil
 
-  defp workspace_card(assigns) do
+  # A workspace, one line: its name (the title), how many targets and its policy's mode in
+  # faint words, what is alive, its runs a day with their count, its denied attempts and
+  # its last run.
+  defp workspace_row(assigns) do
     ~H"""
-    <article class="q-ws-card" aria-labelledby={"workspace-#{@workspace.id}-name"}>
-      <header class="q-ws-card-head">
-        <.link
-          id={"workspace-#{@workspace.id}-name"}
-          navigate={~p"/#{@scope.organisation}/#{@workspace}"}
-          class="q-ws-card-name"
-        >
-          {@workspace.name}
-        </.link>
-        <span :if={@mode} class="q-ws-card-mode" title={gettext("The policy's default mode")}>
-          {@mode}
-        </span>
-      </header>
-
-      <dl :if={@facts} class="q-ws-card-stats">
-        <div>
-          <dt>{gettext("Alive now")}</dt>
-          <dd class="flex items-center gap-1.5">
-            <span :if={@facts.alive > 0} class="q-dot q-ripple !size-1.5" aria-hidden="true"></span>
-            {Format.number(@facts.alive)}
-          </dd>
-        </div>
-        <div>
-          <dt>{gettext("Runs, 7 days")}</dt>
-          <dd>{Format.number(@facts.runs)}</dd>
-        </div>
-        <div>
-          <dt>{gettext("Denied, 7 days")}</dt>
-          <dd class={@facts.denied > 0 && "text-error"}>{Format.number(@facts.denied)}</dd>
-        </div>
-      </dl>
-      <div :if={!@facts} class="q-ws-card-stats" aria-busy="true">
-        <span class="skeleton q-skel h-10 w-full"></span>
-      </div>
-
-      <.spark :if={@facts} days={@facts.days} />
-
-      <p class="q-ws-card-foot">
-        <%= cond do %>
-          <% !@facts -> %>
-            <span class="skeleton q-skel w-40"></span>
-          <% @facts.last_at -> %>
-            <span class="text-faint">{gettext("Last run")}</span>
-            <.time_ago at={@facts.last_at} class="tabular-nums" />
-          <% true -> %>
-            <span class="text-faint">{gettext("No run yet")}</span>
-        <% end %>
-      </p>
-    </article>
-    """
-  end
-
-  # Runs a day over the last fourteen, today last and in ink: a shape, not a chart to read
-  # values from; the numbers beside it say how many.
-  attr :days, :list, required: true
-
-  defp spark(assigns) do
-    max = Enum.max([1 | assigns.days])
-    count = length(assigns.days)
-
-    bars =
-      assigns.days
-      |> Enum.with_index()
-      |> Enum.map(fn {runs, i} ->
-        height = if runs == 0, do: 1, else: max(2, round(runs / max * 32))
-        %{x: i * 10, h: height, today: i == count - 1}
-      end)
-
-    assigns = assign(assigns, bars: bars, width: count * 10 - 2)
-
-    ~H"""
-    <svg
-      class="q-ws-card-spark"
-      viewBox={"0 0 #{@width} 32"}
-      preserveAspectRatio="none"
-      aria-hidden="true"
+    <.link
+      id={"workspace-#{@workspace.id}-name"}
+      navigate={~p"/#{@scope.organisation}/#{@workspace}"}
+      class="q-wr"
     >
-      <rect
-        :for={bar <- @bars}
-        x={bar.x}
-        y={32 - bar.h}
-        width="8"
-        height={bar.h}
-        rx="1"
-        class={if bar.today, do: "fill-base-content", else: "fill-base-content/25"}
-      />
-    </svg>
+      <span class="q-wr-nm">
+        <b>{@workspace.name}</b>
+        <span :if={@facts}>{workspace_note(@facts, @mode)}</span>
+      </span>
+      <%= if @facts do %>
+        <span class={["q-wr-al", @facts.alive == 0 && "q-none-alive"]}>
+          {if @facts.alive == 0,
+            do: gettext("none alive"),
+            else: gettext("%{number} alive", number: Format.number(@facts.alive))}
+        </span>
+        <span class="q-wr-sp">
+          <.sparkline values={@facts.days} />
+          {ngettext("%{number} run", "%{number} runs", @facts.runs,
+            number: Format.number(@facts.runs)
+          )}
+        </span>
+        <span class="q-wr-den">
+          <span :if={@facts.denied > 0} class="inline-flex items-center gap-1">
+            <.icon name="hero-no-symbol-micro" class="size-3 text-error" />
+            {ngettext("%{number} denied", "%{number} denied", @facts.denied,
+              number: Format.number(@facts.denied)
+            )}
+          </span>
+        </span>
+        <span class="q-wr-when">
+          <.time_ago :if={@facts.last_at} at={@facts.last_at} />
+          <span :if={!@facts.last_at} class="q-faint">{gettext("No run yet")}</span>
+        </span>
+      <% else %>
+        <span class="skeleton q-skel-line w-16"></span>
+        <span class="skeleton q-skel-line w-32"></span>
+        <span></span>
+        <span class="skeleton q-skel-line w-20"></span>
+      <% end %>
+    </.link>
     """
   end
 
-  defp levels,
-    do: [owner: gettext("Owners"), admin: gettext("Admins"), member: gettext("Members")]
+  # The faint words beside a workspace's name: its targets, and its policy's mode.
+  defp workspace_note(facts, nil),
+    do:
+      ngettext("%{number} target", "%{number} targets", facts.targets,
+        number: Format.number(facts.targets)
+      )
+
+  defp workspace_note(facts, mode),
+    do:
+      gettext("%{targets} · %{mode}",
+        targets:
+          ngettext("%{number} target", "%{number} targets", facts.targets,
+            number: Format.number(facts.targets)
+          ),
+        mode: mode
+      )
+
+  # The people in use, by level, in one line.
+  defp levels_line(people) do
+    [:owner, :admin, :member]
+    |> Enum.map(&{&1, Map.get(people.levels, &1, 0)})
+    |> Enum.reject(fn {_level, n} -> n == 0 end)
+    |> Enum.map_join(", ", fn {level, n} -> level_count(level, n) end)
+  end
+
+  defp level_count(:owner, n),
+    do: ngettext("%{number} owner", "%{number} owners", n, number: Format.number(n))
+
+  defp level_count(:admin, n),
+    do: ngettext("%{number} admin", "%{number} admins", n, number: Format.number(n))
+
+  defp level_count(:member, n),
+    do: ngettext("%{number} member", "%{number} members", n, number: Format.number(n))
 
   defp organisation_name(name) do
     assigns = %{name: name}
@@ -325,6 +318,7 @@ defmodule ApiaryWeb.OrganisationLive do
     socket
     # A member who waited on this page for a workspace is told they have one, and offered it.
     |> assign(:added, Map.get(socket.assigns, :waiting, false))
+    |> assign(:shown, @shown)
     |> assign(:waiting, false)
     |> assign(:page_title, scope.organisation.name)
     |> assign(:workspaces, workspaces)
