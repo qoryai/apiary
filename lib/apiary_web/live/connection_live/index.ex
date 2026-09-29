@@ -420,12 +420,18 @@ defmodule ApiaryWeb.ConnectionLive.Index do
     """
   end
 
-  # "New activity": beside the page's title, or leading a target's tab.
+  # "New activity": beside the page's title, or leading a target's tab. While there is none
+  # the live region is kept out of the flow, so it takes no row of a tab's grid.
   attr :stale, :boolean, required: true
 
   defp new_status(assigns) do
     ~H"""
-    <span id="connections-new-status" role="status" aria-live="polite">
+    <span
+      id="connections-new-status"
+      class={!@stale && "absolute"}
+      role="status"
+      aria-live="polite"
+    >
       <button
         :if={@stale}
         id="connections-refresh"

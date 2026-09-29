@@ -353,7 +353,9 @@ defmodule ApiaryWeb.TargetLive.Show do
         scope={@current_scope}
       />
 
-      <ConnectionLive.Index.content :if={@tab == :connections} {assigns} />
+      <div :if={@tab == :connections} id="connections-page" class="q-lp">
+        <ConnectionLive.Index.content {assigns} />
+      </div>
       <PolicyLive.Target.content :if={@tab == :policy} {assigns} />
     </Layouts.app>
     """
