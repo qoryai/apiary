@@ -66,17 +66,17 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
 
       {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings/people")
 
-      html = lv |> form("#level-form-#{membership.id}", %{level: "owner"}) |> render_change()
+      html = lv |> element("#member-#{membership.id}-level-owner") |> render_click()
       assert html =~ "#{member.email} is now an owner."
 
-      html = lv |> form("#level-form-#{membership.id}", %{level: "admin"}) |> render_change()
+      html = lv |> element("#member-#{membership.id}-level-admin") |> render_click()
       assert html =~ "#{member.email} is now an admin."
 
-      html = lv |> form("#level-form-#{membership.id}", %{level: "member"}) |> render_change()
+      html = lv |> element("#member-#{membership.id}-level-member") |> render_click()
       assert html =~ "#{member.email} is now a member."
 
       html =
-        lv |> form("#level-form-#{scope.membership.id}", %{level: "member"}) |> render_change()
+        lv |> element("#member-#{scope.membership.id}-level-member") |> render_click()
 
       assert html =~ "The last owner cannot be removed or demoted"
       assert %{level: :owner} = Organisations.load_scope(scope).membership
@@ -160,7 +160,7 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
     test "changes no level, and removes and manages members only", ctx do
       {:ok, lv, _html} = live(ctx.conn, ~p"/#{ctx.scope.organisation}/settings/people")
 
-      refute has_element?(lv, "form[phx-change=set_level]")
+      refute has_element?(lv, "[phx-click=set_level]")
       assert has_element?(lv, "#member-#{ctx.member.id}-remove")
 
       for target <- [ctx.owner.membership, ctx.other_admin] do
@@ -238,13 +238,13 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       third: third
     } do
       {:ok, lv, html} = live(conn, ~p"/#{scope.organisation}/settings/people")
-      assert html =~ "level-form-#{third.id}"
+      assert html =~ "member-#{third.id}-level-owner"
 
       assert {:ok, _} = Organisations.set_member_level(founder.scope, membership.id, :member)
 
       # The page follows the change: the owner controls are gone.
       html = render(lv)
-      refute html =~ "level-form-#{third.id}"
+      refute html =~ "member-#{third.id}-level-owner"
       refute html =~ "Invite people"
 
       # And the events a stale page could still send are refused.
@@ -270,7 +270,7 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       # Demoted behind the page's back: no broadcast reaches it.
       membership |> Ecto.Changeset.change(level: :member) |> Apiary.Repo.update!()
 
-      html = lv |> form("#level-form-#{third.id}", %{level: "owner"}) |> render_change()
+      html = lv |> element("#member-#{third.id}-level-owner") |> render_click()
       assert html =~ "Only owners and admins manage members"
       assert Apiary.Repo.get!(Organisations.Membership, third.id).level == :member
     end
@@ -304,7 +304,7 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       refute html =~ "Invite people"
       refute html =~ "Pending invitations"
       refute has_element?(lv, "a", "Remove")
-      refute has_element?(lv, "form[phx-change=set_level]")
+      refute has_element?(lv, "[phx-click=set_level]")
     end
 
     test "cannot open the invite or remove dialogs", %{conn: conn, owner: owner, scope: scope} do

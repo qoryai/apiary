@@ -20,8 +20,8 @@ defmodule ApiaryWeb.SettingsLive do
   until it is purged (`Apiary.Deletion`).
 
   An edition adds sections to the organisation's settings, each a page of its own
-  (`ApiaryWeb.SettingsComponents`), and to each workspace in Workspaces what its
-  `:workspace_actions` slot renders (`ApiaryWeb.Extension`).
+  (`ApiaryWeb.SettingsComponents`), and to each workspace's ⋯ menu in Workspaces the items
+  its `:workspace_actions` slot renders (`ApiaryWeb.Extension`).
 
   The proof of the domain's words (`docs/lingo.md`): every sentence is a gettext call in
   engine words, and the software domain's catalogue says organisation and workspace.
@@ -229,7 +229,9 @@ defmodule ApiaryWeb.SettingsLive do
             kind={if owner.user_id == @current_scope.user.id, do: "self", else: "person"}
           />
           <span class="min-w-0 truncate font-medium">{owner.user.email}</span>
-          <.badge :if={owner.user_id == @current_scope.user.id}>{gettext("You")}</.badge>
+          <span :if={owner.user_id == @current_scope.user.id} class="text-[12.5px] text-faint">
+            {gettext("you")}
+          </span>
           <span class="ml-auto text-[13px]/[18px] tabular-nums text-faint">
             {gettext("since %{date}", date: Format.date(owner.inserted_at))}
           </span>
@@ -274,53 +276,56 @@ defmodule ApiaryWeb.SettingsLive do
       </div>
     </.notice>
 
-    <.card id="workspaces" padding={false}>
-      <ul class="divide-y divide-line">
-        <li
-          :for={workspace <- @workspaces}
-          id={"workspace-#{workspace.id}"}
-          class="flex flex-wrap items-center gap-x-2.5 gap-y-1 px-5 py-3"
-        >
-          <.link
-            navigate={~p"/#{@current_scope.organisation}/#{workspace}"}
-            class="min-w-0 truncate font-medium hover:underline"
-          >
+    <.table
+      id="workspaces"
+      label={gettext("Workspaces")}
+      rows={@workspaces}
+      row_id={&"workspace-#{&1.id}"}
+    >
+      <:col :let={workspace} label={gettext("Workspace")} kind="title">
+        <span class="q-nm">
+          <.link navigate={~p"/#{@current_scope.organisation}/#{workspace}"} class="q-title hover:underline">
             {workspace.name}
           </.link>
-          <.mono bare class="text-faint">{workspace.slug}</.mono>
-          <span class="ml-auto flex flex-wrap items-center justify-end gap-x-2.5 gap-y-1">
-            <ApiaryWeb.Extension.slot
-              name={:workspace_actions}
-              scope={@current_scope}
-              workspace={workspace}
-            />
-            <.button
-              :if={length(@workspaces) > 1}
-              variant="danger-ghost"
-              size="xs"
-              patch={~p"/#{@current_scope.organisation}/settings/workspaces/#{workspace.id}/delete"}
-              aria-label={gettext("Delete the workspace %{name}", name: workspace.name)}
-            >
-              {gettext("Delete")}
-            </.button>
-          </span>
-        </li>
-      </ul>
-      <:footer>
-        <span id="workspaces-note">
-          {if length(@workspaces) > 1,
-            do:
-              gettext(
-                "A deleted workspace is purged after %{days}; until then an owner or an admin can cancel the deletion here.",
-                days: days(Deletion.grace_days())
-              ),
-            else:
-              gettext(
-                "The organisation's only workspace is not deleted on its own: delete the organisation instead."
-              )}
+          <span class="q-side q-mono">{workspace.slug}</span>
         </span>
-      </:footer>
-    </.card>
+      </:col>
+      <:col :let={workspace} label={gettext("Created")} from="sm">
+        <span class="tabular-nums">{Format.day(workspace.inserted_at)}</span>
+      </:col>
+      <:action :let={workspace}>
+        <.row_menu
+          id={"workspace-#{workspace.id}-menu"}
+          label={gettext("Actions for the workspace %{name}", name: workspace.name)}
+        >
+          <ApiaryWeb.Extension.slot
+            name={:workspace_actions}
+            scope={@current_scope}
+            workspace={workspace}
+          />
+          <.menu_item
+            :if={length(@workspaces) > 1}
+            id={"workspace-#{workspace.id}-delete"}
+            patch={~p"/#{@current_scope.organisation}/settings/workspaces/#{workspace.id}/delete"}
+            aria-label={gettext("Delete the workspace %{name}", name: workspace.name)}
+          >
+            {gettext("Delete…")}
+          </.menu_item>
+        </.row_menu>
+      </:action>
+    </.table>
+    <p id="workspaces-note" class="text-[12.5px]/[18px] text-faint">
+      {if length(@workspaces) > 1,
+        do:
+          gettext(
+            "A deleted workspace is purged after %{days}; until then an owner or an admin can cancel the deletion here.",
+            days: days(Deletion.grace_days())
+          ),
+        else:
+          gettext(
+            "The organisation's only workspace is not deleted on its own: delete the organisation instead."
+          )}
+    </p>
     """
   end
 
@@ -486,8 +491,12 @@ defmodule ApiaryWeb.SettingsLive do
           class="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 px-5 py-2.5"
         >
           <span class="font-medium tabular-nums">{Format.datetime(run.started_at, zone: true)}</span>
-          <.badge :if={run.trigger == "manual"}>{gettext("By hand")}</.badge>
-          <.badge :if={!run.complete} color="warning">{gettext("Not finished")}</.badge>
+          <span :if={run.trigger == "manual"} class="text-[12.5px] text-muted">
+            {gettext("By hand")}
+          </span>
+          <.state_word :if={!run.complete} hot class="text-[12.5px]">
+            {gettext("Not finished")}
+          </.state_word>
           <span class="w-full text-[13px]/[20px] text-muted">{pruned_sentence(run)}</span>
         </li>
       </ul>
