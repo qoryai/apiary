@@ -358,6 +358,9 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert text(view, "#runs-filter-value-state") == "Failed"
       assert text(view, "#runs-filter-value-since") == "last 24 hours"
       assert text(view, "#runs-filter-value-denials") == "With denials"
+
+      view |> element("#runs-filters-clear") |> render_click()
+      assert_patch(view, runs(scope))
     end
 
     test "the query: qualifiers become the URL's filters, the rest is the free text", %{
@@ -450,8 +453,10 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       view |> form("#filter-denials-form") |> render_change(%{"denials" => "1"})
       assert_patch(view, runs(scope, "?denials=1&state=running&task=mirror-sync"))
 
+      # Nothing matches: the empty state clears them, and the line that counts is not there.
       render_async(view)
-      view |> element("#runs-filters-clear") |> render_click()
+      refute has_element?(view, "#runs-summary")
+      view |> element("#runs-clear") |> render_click()
       assert_patch(view, runs(scope))
     end
 
