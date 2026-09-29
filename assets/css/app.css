@@ -1998,6 +1998,12 @@
       display: table-cell;
     }
   }
+  /* Where the table is narrow, an id beside the title gives way to the other columns. */
+  @container (max-width: 599px) {
+    .q-tbl .q-side.q-mono {
+      display: none;
+    }
+  }
   /* The name cell of a person or a thing with a mark: avatar, name, faint words. */
   .q-nm {
     display: flex;
