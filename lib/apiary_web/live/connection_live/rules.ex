@@ -23,26 +23,40 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
 
   alias Apiary.Policy
   alias Apiary.Policy.{Effective, Entry, Grammar}
+  alias ApiaryWeb.TargetComponents
 
   ## Paths of the policy pages
 
-  @doc "The page of one version of the baseline (`nil`) or of a target."
-  def version_path(scope, target_id, n, query \\ %{})
+  @doc """
+  The page of one version of the baseline (`nil`) or of a target (an `Apiary.Runs.Target`,
+  or anything with its `system` and `path`): the workspace's policy page, or the target's
+  Policy tab (`ApiaryWeb.TargetComponents.target_path/4`).
+  """
+  def version_path(scope, target, n, query \\ %{})
 
   def version_path(scope, nil, n, query),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/policy/versions/#{n}?#{query}"
 
-  def version_path(scope, target_id, n, query),
+  def version_path(scope, %{system: system, path: path}, n, query),
     do:
-      ~p"/#{scope.organisation}/#{scope.workspace}/policy/targets/#{target_id}/versions/#{n}?#{query}"
+      TargetComponents.target_path(scope, system, path, ["policy", "versions", to_string(n)]) <>
+        query_string(query)
 
-  @doc "The rule of `host` on the workspace's policy page (`nil`) or on a target's."
+  @doc """
+  The rule of `host` in the Network access section of the workspace's policy page (`nil`)
+  or of a target's Policy tab (`target`, with its `system` and `path`), which lands on the
+  page of the list that holds it.
+  """
   def rule_path(scope, nil, host),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/policy?#{%{"rule" => host}}"
 
-  def rule_path(scope, target_id, host),
+  def rule_path(scope, %{system: system, path: path}, host),
     do:
-      ~p"/#{scope.organisation}/#{scope.workspace}/policy/targets/#{target_id}?#{%{"rule" => host}}"
+      TargetComponents.target_path(scope, system, path, ["policy"]) <>
+        query_string(%{"rule" => host})
+
+  defp query_string(query) when query == %{}, do: ""
+  defp query_string(query), do: "?" <> URI.encode_query(query)
 
   @doc """
   locks/2 is who locked the rule of each of `hosts` and when, `%{host => %{by:, at:}}`,
@@ -65,10 +79,6 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
     end
   end
 
-  @doc "A target's policy page."
-  def target_policy_path(scope, target_id),
-    do: ~p"/#{scope.organisation}/#{scope.workspace}/policy/targets/#{target_id}"
-
   ## Versions
 
   @doc """
@@ -89,9 +99,12 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   A run configuration as the pages here name a version. Versions count per holder, the
   baseline's apart from each target's, so every version is named with its `label`:
   "workspace baseline", or the target's system and path when `target` is the one the
-  configuration is of. Its `path` is in `scope`'s workspace.
+  configuration is of. Its `path` is in `scope`'s workspace: the target's Policy tab for a
+  target's version, the target read when it is not `target`, and nil when it cannot be.
   """
   def version_of(scope, configuration, target \\ nil) do
+    holder = holder(scope, configuration.target_id, target)
+
     %{
       n: configuration.version,
       digest: configuration.digest,
@@ -99,8 +112,22 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
       target_id: configuration.target_id,
       label: version_label(configuration.target_id, target),
       rendered_at: configuration.rendered_at,
-      path: version_path(scope, configuration.target_id, configuration.version)
+      path:
+        if(configuration.target_id && is_nil(holder),
+          do: nil,
+          else: version_path(scope, holder, configuration.version)
+        )
     }
+  end
+
+  defp holder(_scope, nil, _target), do: nil
+  defp holder(_scope, id, %{id: id} = target), do: target
+
+  defp holder(scope, id, _target) do
+    case Policy.get_target(scope, id) do
+      {:ok, target} -> target
+      _ -> nil
+    end
   end
 
   @doc "The words that say whose numbering a version is in."

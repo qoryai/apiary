@@ -471,17 +471,20 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
           in_force = versions[run.target_id] || versions[nil],
           in_force.digest != run.reported_run_configuration_digest,
           into: %{} do
+        holder = holder_of(scope, run.target_id)
+
         reported_version =
           case Policy.configuration_for_digest(
                  scope,
-                 holder_of(scope, run.target_id),
+                 holder,
                  run.reported_run_configuration_digest
                ) do
-            {:ok, configuration} -> version_map(scope, configuration)
+            {:ok, configuration} -> version_map(scope, configuration, holder)
             _ -> nil
           end
 
-        {run.id, %{in_force: version_map(scope, in_force), reported: reported_version}}
+        {run.id,
+         %{in_force: version_map(scope, in_force, holder), reported: reported_version}}
       end
     end
   end
@@ -495,13 +498,22 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     end
   end
 
-  defp version_map(scope, configuration) do
+  # A target's version is on its Policy tab: `holder` is the run's target, the one target
+  # a run's versions are of; no path when it could not be read.
+  defp version_map(scope, configuration, holder) do
+    holder = if configuration.target_id, do: holder
+
     %{
       n: configuration.version,
       digest: configuration.digest,
       rendered_at: configuration.rendered_at,
       target_id: configuration.target_id,
-      path: Rules.version_path(scope, configuration.target_id, configuration.version)
+      holder: holder,
+      path:
+        if(configuration.target_id && is_nil(holder),
+          do: nil,
+          else: Rules.version_path(scope, holder, configuration.version)
+        )
     }
   end
 
@@ -1186,8 +1198,8 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   end
 
   defp compare_path(scope, in_force, %{n: m, target_id: same})
-       when same == in_force.target_id,
-       do: Rules.version_path(scope, in_force.target_id, in_force.n, %{"compare" => m})
+       when same == in_force.target_id and (is_nil(same) or in_force.holder != nil),
+       do: Rules.version_path(scope, in_force.holder, in_force.n, %{"compare" => m})
 
   defp compare_path(_scope, in_force, _reported), do: in_force.path
 

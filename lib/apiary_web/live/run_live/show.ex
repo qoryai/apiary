@@ -222,7 +222,7 @@ defmodule ApiaryWeb.RunLive.Show do
               <div class="mt-1">
                 <.link
                   id="run-behind-diff"
-                  navigate={behind_path(@current_scope, @reported_version, @in_force)}
+                  navigate={behind_path(@current_scope, @target, @reported_version, @in_force)}
                   class="q-link"
                 >
                   {if comparable?(@reported_version, @in_force),
@@ -2102,14 +2102,14 @@ defmodule ApiaryWeb.RunLive.Show do
        )
        when not is_nil(entry) do
     %{target: target, current_scope: scope} = socket.assigns
-    holder_id = if entry.source == :target and target, do: target.id
+    holder = if entry.source == :target and target, do: target
     change = Rules.change_for(entry, changes)
 
     rule_option
     |> Map.merge(%{
       values: %{"id" => row.id},
       entry_host: entry.host,
-      rule_path: Rules.rule_path(scope, holder_id, entry.host),
+      rule_path: Rules.rule_path(scope, holder, entry.host),
       after: %{
         action: action,
         level: if(entry.source == :target, do: :target, else: :workspace),
@@ -2117,8 +2117,8 @@ defmodule ApiaryWeb.RunLive.Show do
           change && is_integer(change.version) &&
             %{
               n: change.version,
-              path: Rules.version_path(scope, holder_id, change.version),
-              label: Rules.version_label(holder_id, target)
+              path: Rules.version_path(scope, holder, change.version),
+              label: Rules.version_label(holder && holder.id, target)
             },
         by: change && who(change, scope),
         at: (change && change.at) || (entry.rule && entry.rule.updated_at),
@@ -2138,11 +2138,7 @@ defmodule ApiaryWeb.RunLive.Show do
       entry_host: entry && entry.host,
       rule_path:
         entry && entry.host &&
-          Rules.rule_path(
-            scope,
-            if(entry.source == :target and target, do: target.id),
-            entry.host
-          ),
+          Rules.rule_path(scope, if(entry.source == :target and target, do: target), entry.host),
       after: nil
     })
   end
@@ -2180,9 +2176,14 @@ defmodule ApiaryWeb.RunLive.Show do
   defp comparable?(%{target_id: id}, %{target_id: id}), do: true
   defp comparable?(_reported, _in_force), do: false
 
-  defp behind_path(scope, reported, in_force) do
-    if comparable?(reported, in_force),
-      do: Rules.version_path(scope, in_force.target_id, in_force.n, %{"compare" => reported.n}),
+  # A target's version is on the run's target's Policy tab: the only target a run's
+  # versions are of.
+  defp behind_path(scope, target, reported, in_force) do
+    if comparable?(reported, in_force) and (is_nil(in_force.target_id) or target != nil),
+      do:
+        Rules.version_path(scope, in_force.target_id && target, in_force.n, %{
+          "compare" => reported.n
+        }),
       else: in_force.path
   end
 

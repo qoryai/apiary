@@ -48,10 +48,13 @@ The workspace has a baseline of rules, on `/:org/:workspace/policy`: the hosts a
 in its **Network access** section, the credentials in **Credentials**. What the runs
 reached, and what decided it, is the **Network access** page beside **Policy** in the
 sidebar, `/:org/:workspace/network`, where each row can allow or deny its host; the
-section links to it, and its rules link back. A repository has rules of its own on top, on `/:org/:workspace/policy/targets/:target_id`; the list of
-repositories is `/:org/:workspace/policy/targets`. A repository appears there once a run
-names it, by the `forge` and `repository` labels the runner takes from the checkout's
-origin remote ([The runner file's `server` section](runner-file.md)).
+section links to it, and its rules link back. A repository has rules of its own on top,
+on the **Policy** tab of the repository's page,
+`/:org/:workspace/targets/:forge/:path/-/policy` (the old address,
+`/:org/:workspace/policy/targets/:id` and what followed it, sends on there); the list of
+repositories and their policy is `/:org/:workspace/policy/targets`. A repository appears
+there once a run names it, by the `forge` and `repository` labels the runner takes from the
+checkout's origin remote ([The runner file's `server` section](runner-file.md)).
 
 A repository without rules of its own is served the workspace baseline, and so is a run
 that names no repository.
@@ -126,8 +129,7 @@ direction, and each change is confirmed. A wall's own refusals, the machine's ow
 say, hold in either mode.
 
 The workspace's mode is a default. A repository follows it until an owner or an admin
-gives the repository a mode of its own, on the repository's page under
-`/:org/:workspace/policy/targets`: **Follow the workspace**, **Observe** or **Enforce**,
+gives the repository a mode of its own, on the repository's Policy tab: **Follow the workspace**, **Observe** or **Enforce**,
 with what is in effect and where it comes from. A change of the workspace's mode reaches
 the repositories that follow it and leaves the others as they are. The mode and the rules
 are apart: a repository in enforce under a workspace in observe is held to its effective
@@ -155,7 +157,7 @@ it is stored.
   version**. The change is still in the history. A lock often does this: it holds against
   repositories and leaves the workspace's document as it was.
 - **History**, `/:org/:workspace/policy/history` and
-  `/:org/:workspace/policy/targets/:target_id/history`, has every change with who made it,
+  `/:org/:workspace/targets/:forge/:path/-/policy/history`, has every change with who made it,
   when, the rules before and after, the version it made or that it made none, and its diff
   in rules and in document lines. Changes to a repository's own rules are in that
   repository's history. The history is the policy's part of the organisation's audit
@@ -163,7 +165,7 @@ it is stored.
   (`AUDIT_RETENTION_DAYS`, [Install and configure](install.md)). The versions are kept
   whatever their age.
 - **A version's page**, `/:org/:workspace/policy/versions/:n` and
-  `/:org/:workspace/policy/targets/:target_id/versions/:n`, has the changes from any
+  `/:org/:workspace/targets/:forge/:path/-/policy/versions/:n`, has the changes from any
   earlier version, the document indented for reading, and the bytes as served.
   `/:org/:workspace/policy/document` is the document in force.
 
@@ -243,7 +245,7 @@ row: the rules decide what reaches a tool, and the tool decides what the request
 
 A machine that reports to no server can be given the same policy as files. **Export**, on
 the policy page and on a version's page, `/:org/:workspace/policy/versions/:n/export` and
-`/:org/:workspace/policy/targets/:target_id/versions/:n/export`, gives the effective
+`/:org/:workspace/targets/:forge/:path/-/policy/versions/:n/export`, gives the effective
 policy of that version as text, with **Download**:
 
 - the `egress` section for the machine's runner file, which says a mode, the hosts

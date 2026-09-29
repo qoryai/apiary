@@ -971,13 +971,13 @@ defmodule ApiaryWeb.ConnectionLive.Index do
        )
        when not is_nil(entry) do
     %{current_scope: scope, target: target} = socket.assigns
-    holder_id = if entry.source == :target and target, do: target.id
+    holder = if entry.source == :target and target, do: target
     change = Rules.change_for(entry, changes)
 
     Map.merge(rule_option, %{
       values: row_values(row),
       entry_host: entry.host,
-      rule_path: Rules.rule_path(scope, holder_id, entry.host),
+      rule_path: Rules.rule_path(scope, holder, entry.host),
       after: %{
         action: action,
         level: if(entry.source == :target, do: :target, else: :workspace),
@@ -985,8 +985,8 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           change && is_integer(change.version) &&
             %{
               n: change.version,
-              path: Rules.version_path(scope, holder_id, change.version),
-              label: Rules.version_label(holder_id, target)
+              path: Rules.version_path(scope, holder, change.version),
+              label: Rules.version_label(holder && holder.id, target)
             },
         by: change && who(change, scope),
         at: (change && change.at) || (entry.rule && entry.rule.updated_at),
@@ -1007,11 +1007,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
       entry_host: entry && entry.host,
       rule_path:
         entry && entry.host &&
-          Rules.rule_path(
-            scope,
-            if(entry.source == :target and target, do: target.id),
-            entry.host
-          ),
+          Rules.rule_path(scope, if(entry.source == :target and target, do: target), entry.host),
       after: nil
     })
   end

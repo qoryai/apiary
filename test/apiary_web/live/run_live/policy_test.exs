@@ -13,6 +13,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
   import Apiary.OrganisationsFixtures
   import Apiary.RunEventsFixtures
   import Apiary.RunListFixtures, only: [shop: 0]
+  import ApiaryWeb.TargetComponents, only: [target_path: 4]
 
   alias Apiary.Policy
   alias Apiary.Repo
@@ -177,7 +178,11 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
 
       path =
-        "#{workspace_path(scope)}/policy/targets/#{target.id}/versions/#{configuration.version}"
+        target_path(scope, target.system, target.path, [
+          "policy",
+          "versions",
+          "#{configuration.version}"
+        ])
 
       assert has_element?(
                view,
@@ -235,7 +240,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       assert notice =~ "github.example/acme/shop's v1"
       assert notice =~ "is in force"
       # the two numberings do not compare: the link opens the version in force
-      path = "#{workspace_path(scope)}/policy/targets/#{target.id}/versions/1"
+      path = target_path(scope, target.system, target.path, ["policy", "versions", "1"])
 
       assert has_element?(
                view,
@@ -298,7 +303,8 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
                "it decides by github.example/acme/shop's v#{old.version}"
 
       compare =
-        "#{workspace_path(scope)}/policy/targets/#{target.id}/versions/#{new.version}?compare=#{old.version}"
+        target_path(scope, target.system, target.path, ["policy", "versions", "#{new.version}"]) <>
+          "?compare=#{old.version}"
 
       assert has_element?(view, ~s(#run-behind-diff[href="#{compare}"]))
       assert text(view, "#run-announcer") == "This run is behind the policy in force."
@@ -619,7 +625,9 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       assert line =~ "The run has not reloaded yet."
       refute line =~ "In force in this run"
 
-      rule = "#{workspace_path(scope)}/policy/targets/#{target.id}?rule=files.cdn.example"
+      rule =
+        target_path(scope, target.system, target.path, ["policy"]) <> "?rule=files.cdn.example"
+
       assert has_element?(view, ~s(a#cx-#{id}-act[href="#{rule}"]), "Rule")
 
       # the toast names the change and the version
