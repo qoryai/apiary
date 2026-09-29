@@ -89,7 +89,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewWithoutSecurityTest do
       conn: conn,
       scope: scope
     } do
-      for path <- [workspace_path(scope), workspace_path(scope, "/settings/keys")] do
+      for path <- [workspace_path(scope), workspace_path(scope, "/runs")] do
         {:ok, view, _html} = live(conn, path)
 
         for key <- ~w(overview runs connections settings),

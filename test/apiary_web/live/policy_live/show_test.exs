@@ -919,7 +919,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       scope: scope
     } do
       {:ok, _} = Policy.allow(scope, nil, %{host: "registry.example"})
-      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings")
+      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs")
 
       {:ok, _} = Policy.set_mode(scope, "enforce")
       assert text(view, "#nav-policy-mode") == "enforce"
@@ -928,7 +928,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
 
     test "the mode word follows the policy on a page that does not", %{conn: conn, scope: scope} do
       {:ok, _} = Policy.allow(scope, nil, %{host: "registry.example"})
-      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/keys")
+      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs")
       assert text(view, "#nav-policy-mode") == "observe"
 
       {:ok, _} = Policy.set_mode(scope, "enforce")
