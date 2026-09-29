@@ -64,6 +64,14 @@ defmodule ApiaryWeb.Layouts do
       },
       %Entry{
         section: :record,
+        key: :targets,
+        label: gettext("Targets"),
+        icon: "hero-folder-micro",
+        path: fn organisation, workspace -> ~p"/#{organisation}/#{workspace}/targets" end,
+        action: :"run.read"
+      },
+      %Entry{
+        section: :record,
         key: :connections,
         label: gettext("Connections"),
         icon: "hero-arrows-right-left-micro",

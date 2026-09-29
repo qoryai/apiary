@@ -309,6 +309,11 @@ defmodule ApiaryWeb.Routes do
               # Every filter is a query parameter.
               live "/runs", RunLive.Index, :index
               live "/connections", ConnectionLive.Index, :index
+              # The targets the workspace's runs changed, and one target's page: its path
+              # is the glob, its tabs follow a `-` segment (`…/-/runs`), and a tab's own
+              # paths follow the tab (`…/-/policy/history`).
+              live "/targets", TargetLive.Index, :index
+              live "/targets/:system/*path", TargetLive.Show, :show
               # One run: four tabs of one LiveView, so a tab is a patch. `:run_id` is the
               # run's subject, the id the runner prints, not the row's id.
               live "/runs/:run_id", RunLive.Show, :timeline

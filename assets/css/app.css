@@ -6382,3 +6382,82 @@
     }
   }
 }
+
+/* ==== Targets: the components of target_components.ex and the targets' pages ==========
+   The notation of a target and the mark of a run's state are every page's; the rest is
+   the index (`/targets`) and a target's page. One look per level: the path is the only
+   strong text of a row, everything else is small and grey, and colour goes only to what
+   needs someone. */
+@layer qory {
+  /* A target: the path in mono; the system faint before it where the path is shared. */
+  .q-tname {
+    font-family: var(--font-mono);
+    font-size: 0.78125rem;
+    white-space: nowrap;
+  }
+  .q-tname-sys {
+    color: var(--q-faint);
+    font-weight: 400;
+  }
+  .q-tname-sep {
+    margin: 0 1px;
+    color: var(--q-border-field);
+  }
+
+  /* A run's state: a dot, and a word when the run needs a look. */
+  .q-sdot {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--q-muted);
+    font-size: 0.78125rem;
+    white-space: nowrap;
+  }
+  .q-sdot > i {
+    position: relative;
+    width: 8px;
+    height: 8px;
+    flex: none;
+    border-radius: 9999px;
+    background-color: var(--q-border-field);
+  }
+  .q-sdot-succeeded > i {
+    background-color: var(--color-success);
+  }
+  .q-sdot-running {
+    color: var(--color-base-content);
+  }
+  .q-sdot-running > i {
+    background-color: var(--color-info);
+  }
+  .q-sdot-running > i::after {
+    content: "";
+    position: absolute;
+    inset: -3px;
+    border: 1px solid var(--color-info);
+    border-radius: 9999px;
+    animation: q-ripple 1.6s var(--q-ease-out) infinite;
+  }
+  .q-sdot-pending > i {
+    background: none;
+    box-shadow: inset 0 0 0 1.5px var(--q-border-field);
+  }
+  .q-sdot-failed,
+  .q-sdot-timed_out {
+    color: var(--color-error);
+  }
+  .q-sdot-failed > i,
+  .q-sdot-timed_out > i {
+    background-color: var(--color-error);
+  }
+  .q-sdot-lost {
+    color: var(--q-primary-soft-content);
+  }
+  .q-sdot-lost > i {
+    background-color: var(--color-warning);
+  }
+  .phx-client-error .q-sdot-running > i::after,
+  .phx-server-error .q-sdot-running > i::after {
+    display: none;
+  }
+}
