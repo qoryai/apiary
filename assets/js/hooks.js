@@ -10,7 +10,7 @@ import {Switcher} from "./hooks/switcher"
 import {Palette} from "./hooks/palette"
 import {Toast, autoDismiss} from "./hooks/toast"
 import {Ticker} from "./hooks/ticker"
-import {RunList, QueryBar} from "./hooks/runs"
+import {RunList} from "./hooks/runs"
 import {LiveEnd} from "./hooks/live_end"
 import {TimelineKeys} from "./hooks/timeline_keys"
 import {Terminal} from "./hooks/terminal"
@@ -32,7 +32,6 @@ export const hooks = {
   Toast,
   Ticker,
   RunList,
-  QueryBar,
   LiveEnd,
   TimelineKeys,
   Terminal,

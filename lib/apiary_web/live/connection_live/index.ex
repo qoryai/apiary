@@ -486,7 +486,6 @@ defmodule ApiaryWeb.ConnectionLive.Index do
      socket
      |> assign(:refused, refused)
      |> put_private(:notice_kept, refused != [])
-     |> push_event("query:set", %{id: "connections-query-input", value: filters.q || ""})
      |> push_patch(to: page_path(scope, filters))}
   end
 

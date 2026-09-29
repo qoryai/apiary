@@ -558,7 +558,6 @@ defmodule ApiaryWeb.RunLive.Index do
      socket
      |> assign(:refused, refused)
      |> put_private(:notice_kept, refused != [])
-     |> push_event("query:set", %{id: "runs-query-input", value: filters.q || ""})
      |> push_patch(to: page_path(scope, filters))}
   end
 

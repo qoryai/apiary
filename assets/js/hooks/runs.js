@@ -1,4 +1,4 @@
-// The runs list and the controls of a list.
+// The runs list.
 
 // The width the preview pane is for: from here a row chosen in the list opens beside it.
 const WIDE = "(min-width: 1920px)"
@@ -60,27 +60,5 @@ export const RunList = {
   },
   destroyed() {
     this.query?.removeEventListener("change", this.report)
-  },
-}
-
-// The query field of a list: Backspace in the empty field takes the last token out, as a
-// chip field does; after a submit the page says what the field holds now (the free text,
-// the qualifiers having become tokens).
-export const QueryBar = {
-  mounted() {
-    this.input = () => this.el.querySelector("input[name=q]")
-    this.el.addEventListener("keydown", e => {
-      const input = this.input()
-      if (e.key !== "Backspace" || e.target !== input || input.value !== "") return
-      const remove = [...this.el.querySelectorAll("[data-token-remove]")].pop()
-      if (remove) {
-        e.preventDefault()
-        remove.click()
-      }
-    })
-    this.handleEvent("query:set", ({id, value}) => {
-      const input = this.input()
-      if (input && input.id === id) input.value = value
-    })
   },
 }
