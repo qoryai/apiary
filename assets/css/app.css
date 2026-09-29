@@ -6274,6 +6274,19 @@
   .q-sect-side > header h2 {
     font-size: 0.84375rem;
   }
+  /* A section's link to a page of its own, such as Network access from the policy's. */
+  .q-sect-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--color-accent);
+    font-size: 0.8125rem;
+    white-space: nowrap;
+  }
+  .q-sect-link:hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
   .q-sect-n {
     color: var(--q-faint);
     font-family: var(--font-mono);

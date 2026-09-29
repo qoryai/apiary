@@ -310,6 +310,20 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
 
       assert hosts == ["*.paste.example", "api.example", "github.example", "*.github.example"]
       assert text(view, "#policy-hosts-n") == "4"
+
+      # The section is Network access, and leads to the page of what the runs reached.
+      assert has_element?(view, "#policy-hosts-h", "Network access")
+
+      assert has_element?(
+               view,
+               "#policy-hosts a#policy-hosts-network[href='#{workspace_path(scope, "/network")}']"
+             )
+
+      assert has_element?(
+               view,
+               "[role=region][aria-label='Network access rules of the workspace']"
+             )
+
       assert has_element?(view, "#policy-rules code.q-rule", "/v1/*")
       assert has_element?(view, "#policy-rules .q-every", "every path")
       assert text(view, "#policy-credential-rows") =~ "model-key"

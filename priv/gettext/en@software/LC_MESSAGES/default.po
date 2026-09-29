@@ -4203,16 +4203,6 @@ msgstr ""
 msgid "Host allowed, no path rule matches."
 msgstr ""
 
-#: lib/apiary_web/live/policy_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Host rules"
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Host rules of the workspace"
-msgstr ""
-
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Hosts the runtime says it needs, from the policy applied events of this target's latest runs."
@@ -5184,6 +5174,7 @@ msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/live/connection_live/index.ex
+#: lib/apiary_web/live/policy_live/show.ex
 #: lib/apiary_web/live/run_live/show.ex
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
@@ -5208,6 +5199,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Network access page"
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Network access rules of the workspace"
 msgstr ""
 
 #: lib/apiary_web/live/target_live/show.ex
@@ -7147,6 +7143,11 @@ msgstr ""
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "See them"
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "See what the runs reached"
 msgstr ""
 
 #: lib/apiary_web/live/connection_live/index.ex
