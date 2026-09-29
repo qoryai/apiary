@@ -164,19 +164,20 @@ reads are `Apiary.Targets`'s, the looks `ApiaryWeb.TargetComponents`'s).
   (`Apiary.Runs.shared_paths/2`), and always on its own header and crumb. A run's state
   is a dot and, when the run needs a look, its word (`<.state_mark>`), never a pill.
 - **The index** (`/:org/:workspace/targets`, width `list`) is narrowed the way every list
-  is: views as tabs with the workspace's counts (All, Active this week, Never ran), one
-  search that takes qualifiers (`forge:` in the software domain, `mode:`, `activity:`,
-  `is:pinned`; `ApiaryWeb.TargetLive.Query`), one Filter menu that writes the same
-  qualifiers, shown as tokens in the search, and Sort (Last run, Name, Most runs in 14
-  days, Most denials in 7). All of it is the URL; a value the page does not know is left
-  out. A row is one line: the reader's ★, the path the only strong text, the last run as a
-  dot and a time (its word when it is running or went badly), a 14-day sparkline of runs
-  with their number, the share that ended well (in the error colour below 80 %), the
-  denied attempts of 7 days in red when there are any, and the policy mode only where the
-  target sets its own. Pages of 50. The columns come in with the table's own width; below
-  480 px the last run is a line under the path. It reads in one query bounded by the
-  fourteen days, and re-reads at most once a second as runs land, changing the rows it
-  holds in place.
+  is (Lists, above): views with the workspace's counts (All, Active this week, Never ran),
+  one search, one Filter menu (System, Activity, Policy, Pinned) and Sort (Last run, Name,
+  Most runs in 14 days, Most denials in 7), with the filters in force as tokens under the
+  bar. A filter is a qualifier of the search (`forge:` in the software domain, `mode:`,
+  `activity:`, `is:pinned`; `ApiaryWeb.TargetLive.Query`): the menu writes it, and one
+  the reader types becomes a token on Enter, never half typed. All of it is the URL; a
+  value the page does not know is left out. A row is one line on the row spec: the
+  reader's ★, the path the title, the last run as a dot and a time (its word when it is
+  running or went badly), a 14-day sparkline of runs with their number, the share that
+  ended well (in the error colour below 80 %), the denied attempts of 7 days in red when
+  there are any, and the policy mode only where the target sets its own. Pages of 50.
+  Below 600 px of table the last run is a line under the path. It reads in one query
+  bounded by the fourteen days, and re-reads at most once a second as runs land, changing
+  the rows it holds in place.
 - **A target's page** is `/:org/:workspace/targets/:system/*path`, its tabs after a `-`
   segment, GitLab's way (`target_path/4`): Overview at the bare path, then `…/-/runs`,
   `…/-/connections` and, with `security`, `…/-/policy` with the policy's own paths after
