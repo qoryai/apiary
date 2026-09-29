@@ -109,27 +109,29 @@ defmodule ApiaryWeb.RunLive.Index do
               id={"runs-view-#{view.key}"}
               patch={page_path(@current_scope, view.filters)}
               current={view.current}
-              count={@views && Map.fetch!(@views, view.count)}
+              count={@views && Format.number(Map.fetch!(@views, view.count))}
             >
               {view.label}
             </:view>
           </.views>
 
-          <div id="runs-filters" class="q-query" role="search" aria-label={gettext("Filter runs")}>
-            <.query_bar
+          <div id="runs-filters" class="q-bar">
+            <.list_search
               id="runs-query"
+              class="q-find-query"
               label={gettext("Filter runs")}
               placeholder={gettext("Filter runs, e.g. state:failed host:gpu-01 started:>2026-09-01")}
               value={@filters.q}
-              tokens={tokens(@current_scope, @filters, @dup)}
+              change="query"
+              live={false}
             />
-            <.filter_menu id="runs-filter">
+            <.filter_menu id="runs-filter" count={length(Filters.tokens(@filters))}>
               <:section
                 key="target"
                 label={gettext("Target")}
                 icon="hero-folder-micro"
                 qualifier={pgettext("qualifier", "target")}
-                value={@filters.target && target_text(@filters.target, @dup)}
+                value={@filters.target && target_text(@filters.target, @shared)}
                 rail
               >
                 <.filter_options
@@ -141,7 +143,7 @@ defmodule ApiaryWeb.RunLive.Index do
                     with_chosen(
                       facet_options(@facets, :target),
                       Filters.target_value(@filters.target),
-                      @filters.target && target_text(@filters.target, @dup)
+                      @filters.target && target_text(@filters.target, @shared)
                     )
                   }
                   total={facet_total(@facets, :target)}
@@ -231,21 +233,32 @@ defmodule ApiaryWeb.RunLive.Index do
                 />
               </:section>
             </.filter_menu>
-            <.sort_menu
-              id="runs-sort"
-              current={sort_label(@filters.sort)}
-              name={gettext("Sort: %{order}", order: sort_name(@filters.sort))}
-            >
-              <:option
+            <.sort_menu id="runs-sort" current={sort_name(@filters.sort)}>
+              <.menu_item
                 :for={sort <- Filters.sorts(:runs)}
                 id={"runs-sort-#{sort}"}
                 patch={page_path(@current_scope, Filters.put(@filters, sort: sort))}
                 checked={@filters.sort == sort}
               >
                 {sort_label(sort)}
-              </:option>
+              </.menu_item>
             </.sort_menu>
           </div>
+
+          <.filter_tokens
+            id="runs-tokens"
+            clear={Filters.any?(@filters) && page_path(@current_scope, Filters.clear(@filters))}
+          >
+            <:token
+              :for={token <- tokens(@current_scope, @filters, @shared)}
+              id={token.id}
+              class="q-tok-q"
+              patch={token.remove}
+              label={gettext("Remove %{token}", token: "#{token.qualifier}:#{token.value}")}
+            >
+              <span class="q-tok-k">{token.qualifier}:</span>{token.value}
+            </:token>
+          </.filter_tokens>
 
           <div class="q-with-rail">
             <.target_rail
@@ -253,7 +266,7 @@ defmodule ApiaryWeb.RunLive.Index do
               label={gettext("Targets")}
               rail={@rail}
               chosen={@filters.target}
-              dup={@dup}
+              shared={@shared}
               query={@rail_query}
               path={&page_path(@current_scope, Filters.put(@filters, target: &1))}
             />
@@ -265,22 +278,14 @@ defmodule ApiaryWeb.RunLive.Index do
                   id="runs-summary"
                   class="q-matchline"
                 >
-                  <span>
-                    <.rich text={
-                      rich_ngettext(
-                        "%{number} run matches",
-                        "%{number} runs match",
-                        @listing.total,
-                        number: {:b, Format.number(@listing.total)}
-                      )
-                    } />
-                  </span>
-                  <.link
-                    id="runs-filters-clear"
-                    patch={page_path(@current_scope, Filters.clear(@filters))}
-                  >
-                    {gettext("Clear")}
-                  </.link>
+                  <.rich text={
+                    rich_ngettext(
+                      "%{number} run matches",
+                      "%{number} runs match",
+                      @listing.total,
+                      number: {:b, Format.number(@listing.total)}
+                    )
+                  } />
                 </p>
 
                 <.runs_table
@@ -292,7 +297,7 @@ defmodule ApiaryWeb.RunLive.Index do
                   quiet_ids={@quiet_ids}
                   selected={@preview_on && @preview_id}
                   loading={@listing == nil}
-                  dup={@dup}
+                  shared={@shared}
                   phx-hook="RunList"
                 />
 
@@ -307,13 +312,13 @@ defmodule ApiaryWeb.RunLive.Index do
                   </span>
                   <:actions>
                     <.button
-                      :if={last_token(@current_scope, @filters, @dup)}
+                      :if={last_token(@current_scope, @filters, @shared)}
                       id="runs-remove-last"
-                      patch={last_token(@current_scope, @filters, @dup).remove}
+                      patch={last_token(@current_scope, @filters, @shared).remove}
                     >
                       {gettext("Remove %{token}",
                         token:
-                          "#{last_token(@current_scope, @filters, @dup).qualifier}:#{last_token(@current_scope, @filters, @dup).value}"
+                          "#{last_token(@current_scope, @filters, @shared).qualifier}:#{last_token(@current_scope, @filters, @shared).value}"
                       )}
                     </.button>
                     <.button
@@ -414,7 +419,7 @@ defmodule ApiaryWeb.RunLive.Index do
                 id="runs-preview"
                 scope={@current_scope}
                 preview={@preview}
-                dup={@dup}
+                shared={@shared}
               />
             </div>
           </div>
@@ -485,7 +490,7 @@ defmodule ApiaryWeb.RunLive.Index do
        facets: %{},
        narrow: %{},
        limits: %{},
-       dup: MapSet.new(),
+       shared: MapSet.new(),
        workspace_runs: nil,
        new_ids: MapSet.new(),
        quiet_ids: MapSet.new(),
@@ -662,7 +667,7 @@ defmodule ApiaryWeb.RunLive.Index do
          views: loaded.views,
          rail: loaded.rail,
          facets: loaded.facets,
-         dup: loaded.dup,
+         shared: loaded.shared,
          workspace_runs: loaded.workspace_runs,
          loaded_at: loaded.at,
          new_ids: MapSet.new(),
@@ -843,7 +848,7 @@ defmodule ApiaryWeb.RunLive.Index do
             views: Runs.view_counts(scope, filters, now),
             rail: Runs.target_counts(scope, filters, [now: now] ++ rail_opts),
             facets: Runs.run_facets(scope, filters, [now: now] ++ facets_opts),
-            dup: Runs.duplicate_paths(scope),
+            shared: Runs.shared_paths(scope),
             workspace_runs: if(listing.total == 0, do: Runs.count_runs(scope))
           }
         end)
@@ -1079,7 +1084,7 @@ defmodule ApiaryWeb.RunLive.Index do
   end
 
   # The filters as tokens in the query field, less the ones the current view says.
-  defp tokens(scope, filters, dup) do
+  defp tokens(scope, filters, shared) do
     except =
       if filters.states != [] and Enum.any?(tl(view_list(filters)), & &1.current),
         do: [:state],
@@ -1088,7 +1093,7 @@ defmodule ApiaryWeb.RunLive.Index do
     except = if filters.denials and filters.states == [], do: [:denied | except], else: except
 
     filters
-    |> Filters.tokens(except: except, target_text: &target_text(&1, dup))
+    |> Filters.tokens(except: except, target_text: &target_text(&1, shared))
     |> Enum.map(fn token ->
       %{
         id: "runs-token-#{token.key}",
@@ -1099,18 +1104,18 @@ defmodule ApiaryWeb.RunLive.Index do
     end)
   end
 
-  defp last_token(scope, filters, dup), do: scope |> tokens(filters, dup) |> List.last()
+  defp last_token(scope, filters, shared), do: scope |> tokens(filters, shared) |> List.last()
 
   defp qualifier(:target), do: pgettext("qualifier", "target")
   defp qualifier(key), do: Atom.to_string(key)
 
   # A target as the query writes it: its system before its path only where the path is on
   # more than one system, as every page writes a target.
-  defp target_text(:none, _dup), do: "none"
-  defp target_text({nil, path}, _dup), do: path
+  defp target_text(:none, _shared), do: "none"
+  defp target_text({nil, path}, _shared), do: path
 
-  defp target_text({system, path}, dup),
-    do: if(MapSet.member?(dup, path), do: "#{system}/#{path}", else: path)
+  defp target_text({system, path}, shared),
+    do: if(MapSet.member?(shared, path), do: "#{system}/#{path}", else: path)
 
   defp text_sections do
     [

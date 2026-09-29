@@ -163,7 +163,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
              )
 
       # One notation: a path the workspace has on one system reads as the path alone.
-      refute has_element?(view, "#{row(run)} .q-tn-sys")
+      refute has_element?(view, "#{row(run)} .q-tname-sys")
 
       assert text(view, "#runs-view-all") == "All 1"
       assert text(view, "#runs-view-ended-badly") == "Ended badly 1"
@@ -209,8 +209,8 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       api = started_run(scope, %{"forge" => "github.example", "repository" => "acme/api"})
       view = open(conn, scope)
 
-      assert text(view, "#{row(github)} .q-rl-c3") == "github.example / acme/shop"
-      assert text(view, "#{row(gitlab)} .q-rl-inl") == "gitlab.example / acme/shop"
+      assert text(view, "#{row(github)} .q-rl-c3") == "github.example/ acme/shop"
+      assert text(view, "#{row(gitlab)} .q-rl-inl") == "gitlab.example/ acme/shop"
       assert text(view, "#{row(api)} .q-rl-c3") == "acme/api"
     end
 
@@ -359,7 +359,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert text(view, "#runs-filter-value-since") == "last 24 hours"
       assert text(view, "#runs-filter-value-denials") == "With denials"
 
-      view |> element("#runs-filters-clear") |> render_click()
+      view |> element("#runs-tokens-clear") |> render_click()
       assert_patch(view, runs(scope))
     end
 
@@ -588,7 +588,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
     } do
       view = open(conn, scope)
 
-      assert has_element?(view, "#runs-sort-button[aria-label='Sort: newest first']", "Newest")
+      assert has_element?(view, "#runs-sort-button[aria-label='Sort: newest first']", "Sort")
       assert has_element?(view, "#runs-sort-newest[role=menuitemradio][aria-checked=true]")
 
       view |> element("#runs-sort-oldest") |> render_click()
@@ -603,7 +603,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
         |> Enum.flat_map(&LazyHTML.attribute(&1, "data-run"))
 
       assert ids == [failed.run_id, running.run_id]
-      assert has_element?(view, "#runs-sort-button", "Oldest")
+      assert has_element?(view, "#runs-sort-oldest[aria-checked=true]", "Oldest")
 
       view |> element("#runs-sort-denials") |> render_click()
       assert_patch(view, runs(scope, "?sort=denials"))
@@ -924,8 +924,8 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       quiet = started_run(scope, shop(), ago: 600, heartbeat: {47, 510, 30})
       view = open(conn, scope)
 
-      assert has_element?(view, "#runs-filters[role=search]")
-      assert has_element?(view, "#runs-query-input[aria-label='Filter runs']")
+      assert has_element?(view, "#runs-query[role=search] label", "Filter runs")
+      assert has_element?(view, "#runs-query-input[name=q]")
       assert has_element?(view, "#runs-filter-panel[role=dialog][aria-label=Filter]")
       assert has_element?(view, "#runs-sort-button[aria-haspopup=menu]")
       assert has_element?(view, "#runs-per button[type=button][aria-pressed=true]", "50")

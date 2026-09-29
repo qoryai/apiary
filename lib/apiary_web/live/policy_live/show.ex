@@ -1200,11 +1200,19 @@ defmodule ApiaryWeb.PolicyLive.Show do
   end
 
   defp targets_tab(assigns) do
+    # A target is its path; its system is said only where the path is on more than one.
+    shared =
+      assigns.rows
+      |> Enum.frequencies_by(& &1.path)
+      |> Enum.filter(fn {_path, n} -> n > 1 end)
+      |> MapSet.new(&elem(&1, 0))
+
     assigns =
       assign(
         assigns,
-        :shown,
-        if(assigns.own_only, do: Enum.filter(assigns.rows, & &1.own_mode), else: assigns.rows)
+        shown:
+          if(assigns.own_only, do: Enum.filter(assigns.rows, & &1.own_mode), else: assigns.rows),
+        shared: shared
       )
 
     ~H"""
@@ -1258,7 +1266,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         </span>
       </div>
       <div
-        class="overflow-x-auto rounded-box border border-line bg-base-100 shadow-xs"
+        class="q-tbl overflow-x-auto rounded-box border border-line bg-base-100 shadow-xs"
         tabindex="0"
         role="region"
         aria-label={gettext("Targets and their policy")}
@@ -1287,37 +1295,22 @@ defmodule ApiaryWeb.PolicyLive.Show do
                 <.link
                   navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/policy/targets/#{row.id}"}
                   class="q-target-name q-rowlink"
+                  title={"#{row.system}/#{row.path}"}
                 >
-                  <span class="q-target-system">{row.system}/</span><span class="q-target-path">{row.path}</span>
+                  <span :if={MapSet.member?(@shared, row.path)} class="q-target-system">{row.system}/</span><span class="q-target-path">{row.path}</span>
                 </.link>
               </td>
               <td role="cell" class="q-c-mode">
-                <span class="mr-1.5 text-[13px] font-medium">{row.mode}</span>
-                <.source_chip
-                  :if={row.own_mode}
-                  source={:target}
-                  label={gettext("Its own")}
-                  class="q-src-bare"
-                />
-                <.source_chip
-                  :if={!row.own_mode}
-                  source={:workspace}
-                  label={gettext("Workspace default")}
-                  class="q-src-bare"
-                />
+                <span :if={row.own_mode} class="q-hot">{row.mode}</span>
+                <span :if={row.own_mode} class="q-faint">{gettext("its own")}</span>
+                <span :if={!row.own_mode}>{row.mode}</span>
               </td>
               <td role="cell">
-                <.source_chip :if={row.own > 0} source={:target} label={gettext("Own rules")} />
-                <.source_chip
-                  :if={row.own == 0 && row.own_mode}
-                  source={:target}
-                  label={gettext("Own mode")}
-                />
-                <.source_chip
-                  :if={row.own == 0 && !row.own_mode}
-                  source={:workspace}
-                  label={gettext("Workspace baseline")}
-                />
+                <span :if={row.own > 0}>{gettext("Own rules")}</span>
+                <span :if={row.own == 0 && row.own_mode}>{gettext("Own mode")}</span>
+                <span :if={row.own == 0 && !row.own_mode} class="q-faint">
+                  {gettext("Workspace baseline")}
+                </span>
               </td>
               <td role="cell" class={["q-num q-opt", row.own == 0 && "q-zero"]}>{row.own}</td>
               <td role="cell" class="q-num q-opt">
@@ -1327,7 +1320,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
               </td>
               <td role="cell" class="q-num">
                 <.cell value={row.suggestions} none={gettext("n/a")}>
-                  <span :if={row.suggestions > 0} class="q-newdot">
+                  <span :if={row.suggestions > 0} class="q-hot">
                     {gettext("%{number} to review", number: Format.number(row.suggestions))}
                   </span>
                   <span :if={row.suggestions == 0} class="q-zero">
@@ -1335,34 +1328,33 @@ defmodule ApiaryWeb.PolicyLive.Show do
                   </span>
                 </.cell>
               </td>
-              <td role="cell" class="q-opt font-mono text-[12.5px]">
+              <td role="cell" class="q-opt q-c-version">
                 <.cell value={row.detail} none={gettext("n/a")}>
-                  <.version_pill
-                    :if={row.detail.version}
-                    size="sm"
-                    version={row.detail.version.version}
-                    digest={row.detail.version.digest}
-                    scope={
-                      if is_nil(row.detail.version.target_id),
-                        do: gettext("workspace baseline"),
-                        else: "#{row.system}/#{row.path}"
-                    }
-                    navigate={
-                      if is_nil(row.detail.version.target_id),
-                        do:
-                          ~p"/#{@scope.organisation}/#{@scope.workspace}/policy/versions/#{row.detail.version.version}",
-                        else:
-                          ~p"/#{@scope.organisation}/#{@scope.workspace}/policy/targets/#{row.id}/versions/#{row.detail.version.version}"
-                    }
-                  />
-                  <span :if={!row.detail.version} class="text-faint font-sans text-[13px]">
+                  <span :if={row.detail.version} title={row.detail.version.digest}>
+                    <.link
+                      navigate={
+                        if is_nil(row.detail.version.target_id),
+                          do:
+                            ~p"/#{@scope.organisation}/#{@scope.workspace}/policy/versions/#{row.detail.version.version}",
+                          else:
+                            ~p"/#{@scope.organisation}/#{@scope.workspace}/policy/targets/#{row.id}/versions/#{row.detail.version.version}"
+                      }
+                      class="q-mono hover:underline"
+                    >
+                      <span class="sr-only">{gettext("Version")} </span>v{row.detail.version.version}
+                    </.link>
+                    <span :if={is_nil(row.detail.version.target_id)} class="q-faint">
+                      {gettext("of the workspace baseline")}
+                    </span>
+                  </span>
+                  <span :if={!row.detail.version} class="q-faint">
                     {gettext("no version yet")}
                   </span>
                 </.cell>
               </td>
-              <td role="cell" class="q-opt text-muted tabular-nums">
+              <td role="cell" class="q-opt tabular-nums">
                 <.relative_time :if={row.changed} at={row.changed} />
-                <span :if={!row.changed} class="text-faint">{gettext("n/a")}</span>
+                <span :if={!row.changed} class="q-faint">{gettext("n/a")}</span>
               </td>
             </tr>
           </tbody>

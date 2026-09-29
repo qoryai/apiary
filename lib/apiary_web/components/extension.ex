@@ -14,9 +14,9 @@ defmodule ApiaryWeb.Extension do
   |---|---|---|
   | `:notices` | every page of an organisation, under the top bar, before the page | `organisation`, `counts` (the navigation's, `ApiaryWeb.UserAuth.nav_counts/1`, or nil) |
   | `:members_heading` | the members page, in its header, under its description | |
-  | `:member_access` | each row of the members page, under the member's name | `member` |
-  | `:member_actions` | each row of the members page, before its own actions | `member` |
-  | `:workspace_actions` | each workspace of the organisation's settings | `workspace` |
+  | `:member_access` | each row of the members page, beside the member's name: one line of muted text | `member` |
+  | `:member_actions` | each row of the members page, in its ⋯ menu before the page's own items: `CoreComponents.menu_item/1`s | `member` |
+  | `:workspace_actions` | each workspace of the organisation's settings, in its ⋯ menu before the page's own items: `CoreComponents.menu_item/1`s | `workspace` |
   | `:policy_notices` | the workspace's policy page, above its tabs' content | `changes`, the number of the policy's changes: it renders the slot again as the policy changes |
   | `:activity_toolbar` | the Activity page, right under its header (reserved) | |
   | `:activity_filters` | the Activity page's filter bar, after its filters (reserved) | |

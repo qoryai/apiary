@@ -91,6 +91,105 @@ workspaces the person reaches, what each is doing, and the organisation's people
 breadcrumb's organisation leads there; `/` still sends a person to the workspace they
 opened last.
 
+## Lists
+
+A page that lists things reads top down, and every level of it has a look of its own
+(principles 8 to 12 of the v2 brief): a summary, the largest numbers on the page, only
+where the page has one; then blocks or tables, each one box; then rows. Two levels that
+look alike are one level too many, and nothing is boxed inside a row.
+
+- **A row is one line.** Its title, the thing's name, is the only strong text: 14 px,
+  medium, in the text colour. Every other cell is 12.5 px and muted; what is tertiary is
+  faint; the one fact that needs someone is lifted to the text colour (`q-hot`). `<.table>`
+  does this by default: a column says `kind="title"`, `"hot"`, `"faint"` or `"num"`, and a
+  secondary word beside the title (an id, a slug, "you") takes `q-side`. A row out of use
+  (revoked, suspended) is `row-off`, its title muted.
+- **A state is said only when it is not the usual one.** An active key, a member in use,
+  a run that ended well say nothing (a screen reader hears the word); a rotated key, a
+  suspended member, a revoked key say so in words (`<.state_word>`), with a dot and the
+  text colour when the state needs someone. A pill is for a state of at most two words
+  that needs someone, and never on every row.
+- **A row's acts.** The one act its state asks for is a text action (`<.button
+  variant="link">`, "Retire previous secret"); the rest are in its ⋯ menu
+  (`<.row_menu>` with `<.menu_item>`s, a heading and dividers between groups), which
+  floats in the top layer so the table's scroll region never clips it. A choice of one,
+  such as a person's level, is a set of `menuitemradio` items with what each means. A
+  destructive item opens its confirm dialog at a path of its own; red is for that
+  dialog's button only. No bordered button on every row.
+- **Columns grow with the table**, not the screen: `from="sm" | "md" | "lg"` shows a
+  column from 600, 1000 or 1300 px of the table's own width (a container query), so a
+  table in a narrow pane reflows as it would on a narrow screen.
+- **A target** is its path in mono, with its system in faint type before it only where the
+  same path is on more than one system (`<.target_name>`, `Apiary.Runs.shared_paths/2`).
+- **One way to narrow a list**: views as tabs with their counts (`<.views>`), one search
+  (`<.list_search>`), one Filter menu whose sections write the filters
+  (`<.filter_menu>`), Sort (`<.sort_menu>`), and the filters in force as removable tokens
+  under the bar (`<.filter_tokens>`). Every choice is in the URL. No row of facet buttons;
+  a rail never repeats a menu.
+
+### The runs list and the connections
+
+A long record is narrowed by filters written in the URL, never folded into groups the
+reader has to open (the brief's principle 4). The runs list (`ApiaryWeb.RunLive.Index`)
+and the workspace's connections (`ApiaryWeb.ConnectionLive.Index`) are one flat list each,
+and `Apiary.Runs.Filters` reads and writes every control of them.
+
+- **Views** are the runs list's All, Alive, Ended badly and With denials, and the
+  connections' decisions, each counted under every other filter; All is current when no
+  other is. A view's own filter is not repeated as a token. The number that matches is a
+  line over the list, only when the list is narrowed ("87 runs match").
+- **The search is a query** (`<.list_search live={false}>`, sent on Enter): qualifiers
+  (`repo:`, `state:`, `task:`, `runtime:`, `host:`, `key:`, `started:>2026-09-01`,
+  `denied:yes`; `decision:`, `tools:`, `seen:` on the connections) become the URL's
+  parameters and show as tokens, and the other words are the free text, `q`, matched as
+  text without regard to case (a run's id, task or target; a destination's host or
+  path). A word it cannot read is said in a notice, never dropped in silence.
+- **The Filter menu has sections** (`<.filter_menu>` with `section`s): too many values for
+  a menu, each section searches its values on the server over every value there is,
+  fifty shown and more on asking, each counted under the other filters
+  (`RunComponents.filter_options/1`).
+- **The rail** (`<.target_rail>`, from 1280 px) holds the targets with their counts under
+  every filter but the target: a search on the server, every target, the pinned ones
+  (`counts.pins`), then the busiest twenty and "n more". Choosing one sets the target;
+  below 1280 px the Filter menu's Target section does it, never both.
+- **A run is one line** (`<.runs_table>`): its task, else its id, the only strong text; its
+  target after it until the table is 1000 px wide, then in a column; its state a dot
+  (`<.run_mark>`) with its word where the state needs a look, and its denials red only
+  when there are any.
+- **Pages** of 25, 50 or 100 (`<.pager>`), "1–50 of 3,137", the page before and after named
+  by the order (Newer, Older), and Jump to date on the orders by time.
+- **The preview** is for 1920 px and more: a pane beside the list, a rule at its left and no
+  card, of the run chosen (`?run=`; the first row until the reader chooses one), with the
+  last lines of its log as plain text. The `RunList` hook tells the page the width, turns
+  a row's click into a choice there, and moves it with ↑ and ↓; Enter or a second click
+  opens the run. Below 1920 px a row is a link to its page.
+- **Nothing to show** is an empty state with no table and no pages: what the filters hide,
+  the last filter to remove and Clear filters.
+
+## The overviews
+
+The workspace overview (`ApiaryWeb.WorkspaceLive.Overview`, `OverviewComponents`) answers
+what needs the reader, then what their agents did, and never grows with the data:
+
+- **The summary**: alive now, runs, runs that ended badly and denied attempts over
+  fourteen days, each a link to the list it counts.
+- **Needs attention**: one line an item, its mark, its subject, where it is, the reason
+  in a few words (the longer sentence on hover), when, and the one text act that settles
+  it; five shown and "and n more". A resolved item stays, struck, until the next
+  navigation; one that arrives is announced (`#overview-announcer`), never inserted above
+  what is read.
+- **Activity**: runs and denied attempts per day on one day axis, drawn for the width the
+  `DaysChart` hook measured, with its table twin a text action away.
+- **Active targets**: the eight with the most runs, each with its last run (a dot, and a
+  word only when it is running or ended badly), a sparkline of its days and its denials.
+- **Guard**: a few lines of key and value, each with a muted detail and one link: the
+  policy's mode and version, the targets with rules of their own, retention.
+- A workspace no run has reached is one box: the steps from a key to the first run and
+  the server block to paste.
+
+An organisation's overview lists its workspaces one line each, six at most and a link to
+all, with its people and details as lines beside them.
+
 ## Widths
 
 Every page starts at the same left edge, 32 px from the sidebar (24 px below 1024 px, 16
@@ -107,61 +206,13 @@ A sticky tab bar (`.q-tabs`) sticks under the top bar and bleeds to the page's g
 `@layer qory`: a Tailwind display utility on the same element loses to them, so the shell
 hides its own parts on phones in that block.
 
-## Lists
-
-A long list is narrowed one way, GitHub's (the brief's principles 4 and 12): filters that
-are written in the URL, never groups the reader has to open. The runs list
-(`ApiaryWeb.RunLive.Index`) is the pattern, and the workspace's connections follow it; the
-controls are `RunComponents`', and `Apiary.Runs.Filters` reads and writes every one of them.
-
-- **Views** are tabs above the list (`<.views>`): a few fixed ones, each a link that sets the
-  filters it stands for and keeps the others, with its count under the other filters; the
-  current one is `aria-current="page"`, and All when no other is. The runs list's are All,
-  Alive, Ended badly and With denials; the connections' are the decisions. The counts are
-  the only numbers above the list; a line under the controls says how many match only when
-  the list is narrowed ("87 runs match · Clear").
-- **One query field** (`<.query_bar>`) shows the filters set as tokens, `qualifier:value`,
-  each with its own remove button, and takes more on Enter: qualifiers (`repo:`, `state:`,
-  `task:`, `runtime:`, `host:`, `key:`, `started:>2026-09-01`, `denied:yes` on the runs list)
-  become the URL's parameters, the rest is the free text, `q`, matched as text and without
-  regard to case. A word it cannot read is said in a notice, never dropped in silence. A
-  view's own filter is not repeated as a token.
-- **One Filter menu** (`<.filter_menu>`) writes the same filters: a dialog that lists its
-  sections, then the one chosen, with a way back. A section's values are counted under
-  the other filters and searched on the server over every value there is (`narrow`), fifty
-  shown, more on asking. No row of facet buttons.
-- **Sort** (`<.sort_menu>`) is a menu of orders, each a link.
-- **The rail** (`<.target_rail>`, from 1280 px) is the targets with their counts under
-  every filter but the target: a search on the server, every target, the pinned ones
-  (`counts.pins`), then the busiest twenty and "n more". Choosing one sets the target; below
-  1280 px the Filter menu's Target section does it instead, and never both.
-- **A row is one line** (the brief's principle 9): the title, the only strong text; its
-  target after it in muted mono until the table is 1000 px wide, then in a column; the
-  other facts small and grey, the tertiary ones faint. Colour only for what needs someone:
-  a run's state is a dot, with its word for a state that needs a look (never for one that
-  ended well), and denials are red only when there are any. Columns join by the table's
-  own width (container queries), so a table beside a rail or a preview reflows as a
-  narrower screen would.
-- **A target has one notation** (`<.target_name>`): its path in mono, its system faint
-  before it only where the workspace has that path on more than one system
-  (`Apiary.Runs.duplicate_paths/1`).
-- **Pages** of 25, 50 or 100, "1–50 of 3,137", the page before and after named by the order
-  (Newer, Older), and Jump to date on the orders by time; the page is a parameter, so a
-  page is a link.
-- **The preview** of the runs list is for 1920 px and more: a pane beside the list, a
-  rule at its left and no card, of the run chosen (`?run=`; the first row until the
-  reader chooses one). The `RunList` hook tells the page the width, turns a row's click
-  into a choice there, and moves it with ↑ and ↓; Enter or a second click opens the run.
-  Below 1920 px a row is a link to its page.
-- **Nothing narrowing, nothing to show** is an empty state with no table and no pages:
-  what the filters hide, the last filter to remove and Clear filters.
-
 ## Components
 
 A page composes components; it does not write its own button, input, table, modal or
 badge. The general ones are in `ApiaryWeb.CoreComponents` (`core_components.ex`); the
-ones a group of pages shares are beside them: `RunComponents` for the controls of a list,
-the runs list, the run page and the connections pages, `RunPageComponents` for the run page,
+ones a group of pages shares are beside them: `RunComponents` for the runs list (its
+Filter menu's sections, the rail, the pager, the runs table and the preview), the run page
+and the connections pages, `RunPageComponents` for the run page,
 `PolicyComponents` and `OverviewComponents` for theirs, and `ApiaryWeb.RichText` for a
 translated sentence with markup in it. A look a second page needs becomes a component,
 or an attribute of one, not a copy.
@@ -176,9 +227,15 @@ or an attribute of one, not a copy.
   without one cannot be dismissed. Focus returns to what opened it.
 - **Menus** are daisyUI dropdowns under the `Menu` hook: a click opens and leaves focus on
   the trigger; Enter, Space and ArrowDown open and focus the first item, ArrowUp the last;
-  the arrows wrap, Home and End go to the ends, Escape closes and returns focus.
+  the arrows wrap, Home and End go to the ends, Escape closes and returns focus. With
+  `data-float` the list is a popover in the top layer, placed under its trigger, so no
+  scroll region clips it (a row's menu, a list's Filter and Sort).
 - **`<.table>`** is a scroll region of its own, focusable and labelled (`label`), so a
-  wide table scrolls inside the page and never the page sideways.
+  wide table scrolls inside the page and never the page sideways; its rows follow the
+  row spec (Lists, above).
+- **`<.row_menu>`** is a row's ⋯ menu; `<.views>`, `<.list_search>`, `<.filter_menu>`,
+  `<.sort_menu>` and `<.filter_tokens>` are a list's controls; `<.state_word>` says a
+  row's state in words; `<.sparkline>` draws runs a day.
 - **`<.empty_state>`** says what is missing and offers the one next step.
 
 The styles are in `assets/css/app.css`. Overrides of daisyUI are in `@layer utilities`,

@@ -1,8 +1,8 @@
 // The fourteen-day chart of the workspace overview. The server renders the SVG; this hook
-// owns what only the browser knows: the one tooltip for both plots, placed under the
-// hovered or focused slot; the reading preference of the table twin, kept in
-// localStorage; Home and End between the slots; and, on a coarse pointer, the first tap
-// that opens the tooltip before the second follows the link.
+// owns what only the browser knows: the chart's width, which the server draws for; the one
+// tooltip for both plots, placed over the hovered or focused slot; the reading preference
+// of the table twin, kept in localStorage; Home and End between the slots; and, on a
+// coarse pointer, the first tap that opens the tooltip before the second follows the link.
 //
 // The tooltip element is the hook's (`phx-update="ignore"`); everything else is patched
 // by LiveView and read here from data attributes.
@@ -52,10 +52,13 @@ export const DaysChart = {
       this.pushEvent("chart_table", {on: stored === "1"})
     }
 
-    // Below 480 px the server draws the phone geometry (16 px columns, every third label).
+    // The server draws for the width the chart has, so its words are never scaled; it is
+    // told again when the width moves by 10 px or more.
     this.measure = () => {
-      const narrow = this.el.clientWidth > 0 && this.el.clientWidth < 480
-      if (String(narrow ? 1 : 0) !== this.el.dataset.narrow) this.pushEvent("chart_size", {narrow})
+      const width = Math.floor(this.el.clientWidth)
+      if (width > 0 && Math.abs(width - Number(this.el.dataset.width || 0)) >= 10) {
+        this.pushEvent("chart_size", {width})
+      }
     }
     this.onResize = () => {
       clearTimeout(this.resizeTimer)

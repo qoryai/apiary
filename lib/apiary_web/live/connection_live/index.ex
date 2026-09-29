@@ -123,32 +123,32 @@ defmodule ApiaryWeb.ConnectionLive.Index do
               id={"connections-view-#{key}"}
               patch={page_path(@current_scope, Filters.put(@filters, decision: decision))}
               current={@filters.decision == decision}
-              count={@views && Map.fetch!(@views, String.to_existing_atom(key))}
+              count={@views && Format.number(Map.fetch!(@views, String.to_existing_atom(key)))}
             >
               {label}
             </:view>
           </.views>
 
-          <div
-            id="connections-filters"
-            class="q-query"
-            role="search"
-            aria-label={gettext("Filter connections")}
-          >
-            <.query_bar
+          <div id="connections-filters" class="q-bar">
+            <.list_search
               id="connections-query"
+              class="q-find-query"
               label={gettext("Filter connections")}
               placeholder={gettext("Filter connections, e.g. host:registry.example seen:24h")}
               value={@filters.q}
-              tokens={tokens(@current_scope, @filters, @dup)}
+              change="query"
+              live={false}
             />
-            <.filter_menu id="connections-filter">
+            <.filter_menu
+              id="connections-filter"
+              count={length(Filters.tokens(@filters, except: [:decision]))}
+            >
               <:section
                 key="target"
                 label={gettext("Target")}
                 icon="hero-folder-micro"
                 qualifier={pgettext("qualifier", "target")}
-                value={@filters.target && target_text(@filters.target, @dup)}
+                value={@filters.target && target_text(@filters.target, @shared)}
                 rail
               >
                 <.filter_options
@@ -160,7 +160,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
                     with_chosen(
                       facet_options(@facets, :target),
                       Filters.target_value(@filters.target),
-                      @filters.target && target_text(@filters.target, @dup)
+                      @filters.target && target_text(@filters.target, @shared)
                     )
                   }
                   total={facet_total(@facets, :target)}
@@ -224,21 +224,32 @@ defmodule ApiaryWeb.ConnectionLive.Index do
                 />
               </:section>
             </.filter_menu>
-            <.sort_menu
-              id="connections-sort"
-              current={sort_label(@filters.sort)}
-              name={gettext("Sort: %{order}", order: sort_name(@filters.sort))}
-            >
-              <:option
+            <.sort_menu id="connections-sort" current={sort_name(@filters.sort)}>
+              <.menu_item
                 :for={sort <- Filters.sorts(:connections)}
                 id={"connections-sort-#{sort}"}
                 patch={page_path(@current_scope, Filters.put(@filters, sort: sort))}
                 checked={@filters.sort == sort}
               >
                 {sort_label(sort)}
-              </:option>
+              </.menu_item>
             </.sort_menu>
           </div>
+
+          <.filter_tokens
+            id="connections-tokens"
+            clear={narrowed?(@filters) && page_path(@current_scope, Filters.clear(@filters))}
+          >
+            <:token
+              :for={token <- tokens(@current_scope, @filters, @shared)}
+              id={token.id}
+              class="q-tok-q"
+              patch={token.remove}
+              label={gettext("Remove %{token}", token: "#{token.qualifier}:#{token.value}")}
+            >
+              <span class="q-tok-k">{token.qualifier}:</span>{token.value}
+            </:token>
+          </.filter_tokens>
 
           <div class="q-with-rail">
             <.target_rail
@@ -246,7 +257,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
               label={gettext("Targets")}
               rail={@rail}
               chosen={@filters.target}
-              dup={@dup}
+              shared={@shared}
               query={@rail_query}
               path={&page_path(@current_scope, Filters.put(@filters, target: &1))}
             />
@@ -257,29 +268,21 @@ defmodule ApiaryWeb.ConnectionLive.Index do
                 id="connections-summary"
                 class="q-matchline"
               >
-                <span>
-                  <.rich text={
-                    rich_gettext("%{destinations} across %{runs}",
-                      destinations:
-                        rich_ngettext(
-                          "%{number} destination matches",
-                          "%{number} destinations match",
-                          @listing.summary.destinations,
-                          number: {:b, Format.number(@listing.summary.destinations)}
-                        ),
-                      runs:
-                        rich_ngettext("%{number} run", "%{number} runs", @listing.summary.runs,
-                          number: {:b, Format.number(@listing.summary.runs)}
-                        )
-                    )
-                  } />
-                </span>
-                <.link
-                  id="connections-filters-clear"
-                  patch={page_path(@current_scope, Filters.clear(@filters))}
-                >
-                  {gettext("Clear")}
-                </.link>
+                <.rich text={
+                  rich_gettext("%{destinations} across %{runs}",
+                    destinations:
+                      rich_ngettext(
+                        "%{number} destination matches",
+                        "%{number} destinations match",
+                        @listing.summary.destinations,
+                        number: {:b, Format.number(@listing.summary.destinations)}
+                      ),
+                    runs:
+                      rich_ngettext("%{number} run", "%{number} runs", @listing.summary.runs,
+                        number: {:b, Format.number(@listing.summary.runs)}
+                      )
+                  )
+                } />
               </p>
 
               <div
@@ -420,7 +423,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
        rail: nil,
        rail_query: nil,
        rail_limit: Runs.rail_size(),
-       dup: MapSet.new(),
+       shared: MapSet.new(),
        facets: %{},
        open: %{},
        stale: false,
@@ -684,7 +687,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
          listing: loaded.listing,
          views: loaded.views,
          rail: loaded.rail,
-         dup: loaded.dup,
+         shared: loaded.shared,
          facets: loaded.facets,
          open: loaded.open,
          target: loaded.target,
@@ -777,7 +780,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           listing: listing,
           views: Runs.destination_views(scope, filters, now),
           rail: Runs.destination_target_counts(scope, filters, [now: now] ++ rail_opts),
-          dup: Runs.duplicate_paths(scope),
+          shared: Runs.shared_paths(scope),
           facets: Runs.destination_facets(scope, filters, [now: now] ++ facets_opts),
           open: open,
           target: target,
@@ -1193,9 +1196,9 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   end
 
   # The filters as tokens in the query field; the decision is the view's.
-  defp tokens(scope, filters, dup) do
+  defp tokens(scope, filters, shared) do
     filters
-    |> Filters.tokens(except: [:decision], target_text: &target_text(&1, dup))
+    |> Filters.tokens(except: [:decision], target_text: &target_text(&1, shared))
     |> Enum.map(fn token ->
       %{
         id: "connections-token-#{token.key}",
@@ -1212,11 +1215,11 @@ defmodule ApiaryWeb.ConnectionLive.Index do
 
   # A target as the query writes it: its system before its path only where the path is on
   # more than one system, as every page writes a target.
-  defp target_text(:none, _dup), do: "none"
-  defp target_text({nil, path}, _dup), do: path
+  defp target_text(:none, _shared), do: "none"
+  defp target_text({nil, path}, _shared), do: path
 
-  defp target_text({system, path}, dup),
-    do: if(MapSet.member?(dup, path), do: "#{system}/#{path}", else: path)
+  defp target_text({system, path}, shared),
+    do: if(MapSet.member?(shared, path), do: "#{system}/#{path}", else: path)
 
   defp sort_label("denied"), do: gettext("Denied first")
   defp sort_label("recent"), do: gettext("Last seen")

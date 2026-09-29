@@ -10,12 +10,17 @@ defmodule ApiaryWeb.MemberLive.Index do
   person joins as a member. Members see the page read-only. What each may is asked of
   `Apiary.Access`.
 
-  An edition adds to the page through its slots (`ApiaryWeb.Extension`): under its title
-  (`:members_heading`), under each member's name (`:member_access`) and among each
-  member's actions (`:member_actions`).
+  Each person is one row on the row spec (`docs/ui.md`, Lists): the email is the title,
+  the level is plain text, and what a reader may do to a membership is in its ⋯ menu:
+  the level, as a choice of three with what each may do, suspending, activating and
+  removing, each of the last three but activating confirmed in a dialog at its own path.
 
-  A suspended membership is listed with its badge: its person acts here no more until it
-  is activated. Owners suspend and activate admins and members, admins members only
+  An edition adds to the page through its slots (`ApiaryWeb.Extension`): under its title
+  (`:members_heading`), beside each member's name (`:member_access`) and among the items
+  of each member's menu (`:member_actions`).
+
+  A suspended membership says so in place of its level: its person acts here no more
+  until it is activated. Owners suspend and activate admins and members, admins members only
   (`Apiary.Organisations.suspend_member/2`, `activate_member/2`); suspending is confirmed
   in a modal, `/:org/settings/people/:id/suspend`.
   """
@@ -59,94 +64,87 @@ defmodule ApiaryWeb.MemberLive.Index do
           </.button>
         </:actions>
 
-        <.table id="members" label={gettext("Members")} rows={@members} row_id={&"member-#{&1.id}"}>
-          <:col :let={m} label={gettext("Member")}>
-            <div class="flex items-center gap-2.5">
+        <.table
+          id="members"
+          label={gettext("Members")}
+          rows={@members}
+          row_id={&"member-#{&1.id}"}
+          row_class={&(&1.suspended_at && "row-off")}
+        >
+          <:col :let={m} label={gettext("Member")} kind="title">
+            <span class="q-nm">
               <.avatar
                 name={m.user.email}
                 kind={if m.user_id == @current_scope.user.id, do: "self", else: "person"}
               />
-              <div class="grid min-w-0 gap-1">
-                <div class="flex flex-wrap items-center gap-2.5">
-                  <span class="font-medium">{m.user.email}</span>
-                  <.badge :if={m.user_id == @current_scope.user.id}>{gettext("You")}</.badge>
-                  <span :if={m.suspended_at} id={"member-#{m.id}-suspended"}>
-                    <.badge color="warning" dot>{gettext("Suspended")}</.badge>
-                  </span>
-                </div>
-                <ApiaryWeb.Extension.slot name={:member_access} scope={@current_scope} member={m} />
-              </div>
-            </div>
+              <span class="q-title">{m.user.email}</span>
+              <span :if={m.user_id == @current_scope.user.id} class="q-side">{gettext("you")}</span>
+              <ApiaryWeb.Extension.slot name={:member_access} scope={@current_scope} member={m} />
+            </span>
           </:col>
           <:col :let={m} label={gettext("Level")}>
-            <%= if Access.can?(@current_scope, :"member.change_level", m) do %>
-              <form phx-change="set_level" id={"level-form-#{m.id}"}>
-                <input type="hidden" name="membership_id" value={m.id} />
-                <label for={"level-#{m.id}"} class="sr-only">
-                  {gettext("Level of %{email}", email: m.user.email)}
-                </label>
-                <select id={"level-#{m.id}"} name="level" class="select select-xs">
-                  {Phoenix.HTML.Form.options_for_select(@levels, Atom.to_string(m.level))}
-                </select>
-              </form>
-            <% else %>
-              <.level_badge level={m.level} />
-            <% end %>
+            <.state_word :if={m.suspended_at} id={"member-#{m.id}-suspended"}>
+              {gettext("Suspended")}
+            </.state_word>
+            <span :if={!m.suspended_at} id={"member-#{m.id}-level"}>{level_text(m.level)}</span>
           </:col>
-          <:col :let={m} label={gettext("Joined")}>
-            <span class="tabular-nums text-muted">{Format.date(m.inserted_at)}</span>
+          <:col :let={m} label={gettext("Joined")} from="sm">
+            <span class="tabular-nums">{Format.day(m.inserted_at)}</span>
           </:col>
           <:action :let={m}>
-            <ApiaryWeb.Extension.slot name={:member_actions} scope={@current_scope} member={m} />
-          </:action>
-          <:action
-            :let={m}
-            :if={
-              Access.can?(@current_scope, :"member.suspend", @current_scope.organisation) or
-                Access.can?(@current_scope, :"member.activate", @current_scope.organisation)
-            }
-          >
-            <.button
-              :if={is_nil(m.suspended_at) and Access.can?(@current_scope, :"member.suspend", m)}
-              id={"member-#{m.id}-suspend"}
-              variant="danger-ghost"
-              size="xs"
-              patch={~p"/#{@current_scope.organisation}/settings/people/#{m.id}/suspend"}
-              aria-label={gettext("Suspend %{email}", email: m.user.email)}
+            <.row_menu
+              id={"member-#{m.id}-menu"}
+              label={gettext("Actions for %{email}", email: m.user.email)}
             >
-              {suspend_label(m)}
-            </.button>
-            <.button
-              :if={m.suspended_at && Access.can?(@current_scope, :"member.activate", m)}
-              id={"member-#{m.id}-activate"}
-              size="xs"
-              phx-click="activate"
-              phx-value-id={m.id}
-              aria-label={gettext("Activate %{email}", email: m.user.email)}
-              loading_text={gettext("Activating")}
-            >
-              {gettext("Activate")}
-            </.button>
-          </:action>
-          <%!-- Everyone may leave: the column is there for every reader. --%>
-          <:action :let={m}>
-            <.button
-              :if={Access.can?(@current_scope, :"member.remove", m)}
-              id={"member-#{m.id}-remove"}
-              variant="danger-ghost"
-              size="xs"
-              patch={~p"/#{@current_scope.organisation}/settings/people/#{m.id}/remove"}
-              aria-label={
-                if m.user_id == @current_scope.user.id,
-                  do:
-                    gettext("Leave %{organisation}", organisation: @current_scope.organisation.name),
-                  else: gettext("Remove %{email}", email: m.user.email)
-              }
-            >
-              {if m.user_id == @current_scope.user.id,
-                do: gettext("Leave"),
-                else: gettext("Remove")}
-            </.button>
+              <%= if Access.can?(@current_scope, :"member.change_level", m) do %>
+                <.menu_heading title={m.user.email} sub={gettext("Level")} />
+                <.menu_item
+                  :for={{level, hint} <- level_hints()}
+                  id={"member-#{m.id}-level-#{level}"}
+                  checked={m.level == level}
+                  hint={hint}
+                  phx-click="set_level"
+                  phx-value-membership_id={m.id}
+                  phx-value-level={level}
+                >
+                  {level_text(level)}
+                </.menu_item>
+                <.menu_divider />
+              <% end %>
+              <ApiaryWeb.Extension.slot name={:member_actions} scope={@current_scope} member={m} />
+              <.menu_item
+                :if={is_nil(m.suspended_at) and Access.can?(@current_scope, :"member.suspend", m)}
+                id={"member-#{m.id}-suspend"}
+                patch={~p"/#{@current_scope.organisation}/settings/people/#{m.id}/suspend"}
+                aria-label={gettext("Suspend %{email}", email: m.user.email)}
+              >
+                {gettext("Suspend…")}
+              </.menu_item>
+              <.menu_item
+                :if={m.suspended_at && Access.can?(@current_scope, :"member.activate", m)}
+                id={"member-#{m.id}-activate"}
+                phx-click="activate"
+                phx-value-id={m.id}
+                aria-label={gettext("Activate %{email}", email: m.user.email)}
+              >
+                {gettext("Activate")}
+              </.menu_item>
+              <.menu_item
+                :if={Access.can?(@current_scope, :"member.remove", m)}
+                id={"member-#{m.id}-remove"}
+                patch={~p"/#{@current_scope.organisation}/settings/people/#{m.id}/remove"}
+                aria-label={
+                  if m.user_id == @current_scope.user.id,
+                    do:
+                      gettext("Leave %{organisation}", organisation: @current_scope.organisation.name),
+                    else: gettext("Remove %{email}", email: m.user.email)
+                }
+              >
+                {if m.user_id == @current_scope.user.id,
+                  do: gettext("Leave…"),
+                  else: gettext("Remove…")}
+              </.menu_item>
+            </.row_menu>
           </:action>
         </.table>
 
@@ -155,17 +153,17 @@ defmodule ApiaryWeb.MemberLive.Index do
             Access.can?(@current_scope, :"member.invite", @current_scope.workspace) ||
               @invitations != []
           }
-          class="mt-2 grid gap-3"
+          class="mt-4 grid gap-3"
         >
-          <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-            <h3 class="text-[15px]/[22px] font-semibold tracking-[-0.006em]">
-              {gettext("Pending invitations")}
-            </h3>
-            <p class="text-[12.5px]/[18px] text-muted">
-              {gettext("Invitations expire after seven days.")}
-            </p>
-          </div>
-          <p :if={@invitations == []} class="text-muted">{gettext("No pending invitations.")}</p>
+          <h3 class="flex items-baseline gap-2 text-[14px]/5 font-semibold">
+            {gettext("Pending invitations")}
+            <span :if={@invitations != []} class="text-[12.5px] font-normal tabular-nums text-faint">
+              {Format.number(length(@invitations))}
+            </span>
+          </h3>
+          <p :if={@invitations == []} class="text-[12.5px] text-muted">
+            {gettext("No pending invitations.")}
+          </p>
           <.table
             :if={@invitations != []}
             id="invitations"
@@ -173,37 +171,48 @@ defmodule ApiaryWeb.MemberLive.Index do
             rows={@invitations}
             row_id={&"invitation-#{&1.id}"}
           >
-            <:col :let={i} label={gettext("Email")}>
-              <div class="flex items-center gap-2.5">
+            <:col :let={i} label={gettext("Email")} kind="title">
+              <span class="q-nm">
                 <.avatar kind="pending" />
-                <span class="font-medium">{i.email}</span>
-              </div>
+                <span class="q-title">{i.email}</span>
+              </span>
             </:col>
             <:col :let={i} label={gettext("Workspace")}>
               <span id={"invitation-#{i.id}-workspace"}>{i.workspace.name}</span>
             </:col>
-            <:col :let={i} label={gettext("Sent")}>
-              <span class="tabular-nums text-muted">{Format.date(i.inserted_at)}</span>
+            <:col :let={i} label={gettext("Sent")} from="sm">
+              <span class="tabular-nums">{Format.day(i.inserted_at)}</span>
             </:col>
             <:col :let={i} label={gettext("Expires")}>
-              <span class="tabular-nums text-muted">{Format.date(i.expires_at)}</span>
+              <span class={["tabular-nums", expires_soon?(i) && "q-hot"]}>
+                {Format.day(i.expires_at)}
+              </span>
             </:col>
             <:action
               :let={i}
               :if={Access.can?(@current_scope, :"invitation.revoke", @current_scope.organisation)}
             >
-              <.button
+              <.row_menu
                 :if={Access.can?(@current_scope, :"invitation.revoke", i)}
-                variant="danger-ghost"
-                size="xs"
-                phx-click="revoke_invitation"
-                phx-value-id={i.id}
-                aria-label={gettext("Revoke the invitation to %{email}", email: i.email)}
+                id={"invitation-#{i.id}-menu"}
+                label={gettext("Actions for the invitation to %{email}", email: i.email)}
               >
-                {gettext("Revoke")}
-              </.button>
+                <.menu_item
+                  id={"invitation-#{i.id}-revoke"}
+                  phx-click="revoke_invitation"
+                  phx-value-id={i.id}
+                  aria-label={gettext("Revoke the invitation to %{email}", email: i.email)}
+                >
+                  {gettext("Revoke")}
+                </.menu_item>
+              </.row_menu>
             </:action>
           </.table>
+          <p class="text-[12.5px]/[18px] text-faint">
+            {gettext(
+              "An invitation expires after seven days. The last owner cannot be removed or demoted."
+            )}
+          </p>
         </section>
       </SettingsComponents.layout>
 
@@ -324,34 +333,22 @@ defmodule ApiaryWeb.MemberLive.Index do
     """
   end
 
-  # The levels a person may be given here.
-  defp level_options do
-    for level <- Membership.levels(), do: {level_text(level), Atom.to_string(level)}
-  end
-
   defp level_text(:owner), do: gettext("Owner")
   defp level_text(:admin), do: gettext("Admin")
   defp level_text(:member), do: gettext("Member")
 
-  attr :level, :atom, required: true
-
-  defp level_badge(%{level: :owner} = assigns) do
-    ~H"""
-    <.badge>{gettext("Owner")}</.badge>
-    """
+  # The levels a person may be given here, each with what it may do.
+  defp level_hints do
+    for level <- Membership.levels(), do: {level, level_hint(level)}
   end
 
-  defp level_badge(%{level: :admin} = assigns) do
-    ~H"""
-    <.badge>{gettext("Admin")}</.badge>
-    """
-  end
+  defp level_hint(:owner), do: gettext("Changes everything, including who owns the organisation")
+  defp level_hint(:admin), do: gettext("Manages members, workspaces and settings")
+  defp level_hint(:member), do: gettext("Manages keys and sees the runs")
 
-  defp level_badge(assigns) do
-    ~H"""
-    <.badge>{gettext("Member")}</.badge>
-    """
-  end
+  # An invitation that runs out within a day is the one fact of its row to act on.
+  defp expires_soon?(invitation),
+    do: DateTime.diff(invitation.expires_at, DateTime.utc_now(), :hour) < 24
 
   @impl true
   def mount(_params, _session, socket) do
@@ -359,7 +356,6 @@ defmodule ApiaryWeb.MemberLive.Index do
      socket
      |> assign(
        page_title: gettext("People") <> " · " <> gettext("Organisation settings"),
-       levels: level_options(),
        member: nil
      )
      |> load()}

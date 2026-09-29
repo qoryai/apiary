@@ -694,7 +694,7 @@ defmodule Apiary.Runs.ListingTest do
     end
 
     test "a path on two systems is written with its system; repo: finds it", %{scope: scope} do
-      assert Runs.duplicate_paths(scope) == MapSet.new(["acme/shop"])
+      assert Runs.shared_paths(scope) == MapSet.new(["acme/shop"])
 
       assert Runs.resolve_target(scope, "acme/api") == {"github.example", "acme/api"}
       assert Runs.resolve_target(scope, "ACME/API") == {"github.example", "acme/api"}

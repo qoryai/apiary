@@ -2,8 +2,8 @@ defmodule ApiaryWeb.RunComponents do
   @moduledoc """
   The components the runs list, the run page and the connections pages share: the run
   state badge and the state's mark in a row, durations and times that tick in the
-  browser, the key and value strip, label chips, the alive indicator, the controls of a
-  list (views, the query field, the Filter menu and its sections, Sort, the rail of
+  browser, the key and value strip, label chips, the alive indicator, what a list of runs
+  adds to `CoreComponents`' list controls (a Filter menu section's options, the rail of
   targets, the pager; docs/ui.md, Lists), a target's one notation, the runs table and the
   preview beside it, the filter chips the Activity page keeps, tabs, the connection row
   with its reason, the connections tables and the new-items pill.
@@ -1046,199 +1046,10 @@ defmodule ApiaryWeb.RunComponents do
 
   ## The controls of a list
 
-  # A list is narrowed one way (docs/ui.md, Lists): views as tabs, one query field whose
-  # filters show as removable tokens, one Filter menu, Sort; from 1280 px a rail of the
-  # targets beside the list. The same components serve the runs list and the workspace's
-  # connections.
-
-  @doc """
-  The views of a list as tabs above it, each a link that sets the filters it stands for,
-  with its count (a skeleton while `count` is nil); the current one `aria-current="page"`.
-  """
-  attr :id, :string, required: true
-  attr :label, :string, required: true
-
-  slot :view, required: true do
-    attr :id, :string
-    attr :patch, :string, required: true
-    attr :current, :boolean
-    attr :count, :any
-  end
-
-  def views(assigns) do
-    ~H"""
-    <nav id={@id} class="q-views" aria-label={@label}>
-      <.link
-        :for={view <- @view}
-        id={view[:id]}
-        patch={view.patch}
-        aria-current={view[:current] == true && "page"}
-      >
-        {render_slot(view)}
-        <span :if={is_integer(view[:count])} class="q-views-n">{Format.number(view.count)}</span>
-        <span :if={!is_integer(view[:count])} class="skeleton q-skel q-views-skel"></span>
-      </.link>
-    </nav>
-    """
-  end
-
-  @doc """
-  The query field: the filters set as tokens, each with a button that removes it (a link
-  that patches), and a text field for more, which sends `event` with `q` on Enter. The
-  page reads the words (`Apiary.Runs.Filters.apply_query/3`). The `QueryBar` hook removes
-  the last token on Backspace in the empty field, and takes the field's value from the
-  server after a submit (`query:set`).
-  """
-  attr :id, :string, required: true
-  attr :label, :string, required: true, doc: "the field's name, for a screen reader"
-  attr :placeholder, :string, required: true
-  attr :value, :string, default: nil, doc: "the free text"
-  attr :event, :string, default: "query"
-
-  attr :tokens, :list,
-    default: [],
-    doc: "`%{id:, qualifier:, value:, remove:}`, `remove` the path without the token"
-
-  def query_bar(assigns) do
-    ~H"""
-    <form id={@id} class="q-qbar-form" phx-submit={@event} phx-hook="QueryBar">
-      <label class="q-qbar">
-        <.icon name="hero-magnifying-glass-micro" class="q-qbar-i size-4" />
-        <span :for={token <- @tokens} id={token.id} class="q-tok">
-          <span class="q-tok-k">{token.qualifier}:</span><span class="q-tok-v">{token.value}</span>
-          <.link
-            patch={token.remove}
-            class="q-tok-x"
-            data-token-remove
-            aria-label={gettext("Remove %{token}", token: "#{token.qualifier}:#{token.value}")}
-          >
-            <.icon name="hero-x-mark-micro" class="size-3" />
-          </.link>
-        </span>
-        <input
-          id={"#{@id}-input"}
-          type="text"
-          name="q"
-          value={@value}
-          placeholder={@placeholder}
-          aria-label={@label}
-          autocomplete="off"
-          autocapitalize="off"
-          spellcheck="false"
-          enterkeyhint="search"
-          maxlength="512"
-        />
-      </label>
-    </form>
-    """
-  end
-
-  @doc """
-  The one Filter menu of a list: a dialog under a button, first the list of its sections,
-  then the section chosen, whose content is the slot (`filter_options/1`, usually), with a
-  way back. Moving between the two is done in the browser (`Phoenix.LiveView.JS`), so a
-  section opens at once and its form stays where it is while the page patches. A section
-  marked `rail` is the rail's, and shows only where the rail is not (below 1280 px).
-  """
-  attr :id, :string, required: true
-  attr :label, :string, default: nil, doc: "the button's word; nil says Filter"
-
-  slot :section, required: true do
-    attr :key, :string, required: true
-    attr :label, :string, required: true
-    attr :icon, :string, required: true
-    attr :qualifier, :string, doc: "the query's word for it, shown faint"
-    attr :value, :string, doc: "what it is set to, when it is"
-    attr :rail, :boolean
-  end
-
-  def filter_menu(assigns) do
-    ~H"""
-    <div
-      id={@id}
-      class="q-fm dropdown dropdown-end"
-      phx-hook="Menu"
-      phx-mounted={JS.ignore_attributes(["class"])}
-    >
-      <button
-        id={"#{@id}-button"}
-        type="button"
-        class="btn btn-sm q-ctl"
-        aria-haspopup="dialog"
-        aria-controls={"#{@id}-panel"}
-        aria-expanded="false"
-        phx-mounted={JS.ignore_attributes(["aria-expanded"])}
-        phx-click={
-          JS.show(to: "##{@id}-sections")
-          |> JS.hide(to: "##{@id}-panel .q-fm-section")
-        }
-      >
-        <.icon name="hero-funnel-micro" class="size-4" />{@label || gettext("Filter")}
-      </button>
-      <div
-        id={"#{@id}-panel"}
-        role="dialog"
-        aria-label={@label || gettext("Filter")}
-        class="dropdown-content q-fm-panel"
-        tabindex="-1"
-      >
-        <div id={"#{@id}-sections"} class="q-fm-sections">
-          <p class="q-fm-h" aria-hidden="true">{gettext("Filter by")}</p>
-          <button
-            :for={section <- @section}
-            id={"#{@id}-open-#{section.key}"}
-            type="button"
-            class={["q-fm-opt", section[:rail] && "q-norail"]}
-            aria-describedby={section[:value] && "#{@id}-value-#{section.key}"}
-            phx-click={
-              JS.show(to: "##{@id}-section-#{section.key}")
-              |> JS.focus_first(to: "##{@id}-section-#{section.key}")
-              |> JS.hide(to: "##{@id}-sections")
-            }
-          >
-            <.icon name={section.icon} class="size-4" />
-            <span class="q-fm-label">{section.label}</span>
-            <span
-              :if={section[:value]}
-              id={"#{@id}-value-#{section.key}"}
-              class="q-fm-value"
-              title={section[:value]}
-            >
-              {section[:value]}
-            </span>
-            <span :if={!section[:value] && section[:qualifier]} class="q-fm-meta" aria-hidden="true">
-              {section.qualifier}:
-            </span>
-          </button>
-        </div>
-        <div
-          :for={section <- @section}
-          id={"#{@id}-section-#{section.key}"}
-          class="q-fm-section hidden"
-          role="group"
-          aria-labelledby={"#{@id}-title-#{section.key}"}
-        >
-          <div class="q-fm-head">
-            <button
-              type="button"
-              class="q-fm-back"
-              aria-label={gettext("Back to every filter")}
-              phx-click={
-                JS.show(to: "##{@id}-sections")
-                |> JS.focus(to: "##{@id}-open-#{section.key}")
-                |> JS.hide(to: "##{@id}-section-#{section.key}")
-              }
-            >
-              <.icon name="hero-chevron-left-micro" class="size-4" />
-            </button>
-            <p id={"#{@id}-title-#{section.key}"} class="q-fm-title">{section.label}</p>
-          </div>
-          {render_slot(section)}
-        </div>
-      </div>
-    </div>
-    """
-  end
+  # A list is narrowed one way (docs/ui.md, Lists), with `CoreComponents`' views, search,
+  # Filter menu, Sort and tokens. What a list of runs adds is here: the content of a
+  # Filter menu's section (`filter_options/1`, `filter_check/1`), the rail of targets
+  # beside the list from 1280 px, and the pager.
 
   @doc """
   A form of one checkbox, for a filter that is on or off (With denials, Tool invocations):
@@ -1269,72 +1080,21 @@ defmodule ApiaryWeb.RunComponents do
   end
 
   @doc """
-  The Sort menu: a button that names the order in force and a menu of the orders, each a
-  link that patches (`role="menuitemradio"`).
+  A target as every page writes it: its path in mono, and its system faint before it only
+  where the same path is on more than one system of the workspace (`shared`,
+  `Apiary.Runs.shared_paths/2`); the whole `system/path` is its title.
   """
-  attr :id, :string, required: true
-  attr :current, :string, required: true, doc: "the order in force, short: Newest"
-  attr :name, :string, required: true, doc: "the button's name: Sort: newest first"
-
-  slot :option, required: true do
-    attr :id, :string
-    attr :patch, :string, required: true
-    attr :checked, :boolean
-  end
-
-  def sort_menu(assigns) do
-    ~H"""
-    <div
-      id={@id}
-      class="q-sort dropdown dropdown-end"
-      phx-hook="Menu"
-      phx-mounted={JS.ignore_attributes(["class"])}
-    >
-      <button
-        id={"#{@id}-button"}
-        type="button"
-        class="btn btn-sm q-ctl"
-        aria-haspopup="menu"
-        aria-expanded="false"
-        aria-label={@name}
-        phx-mounted={JS.ignore_attributes(["aria-expanded"])}
-      >
-        <.icon name="hero-arrows-up-down-micro" class="size-4" />{@current}
-      </button>
-      <ul class="menu menu-sm dropdown-content right-0 top-full mt-1.5 w-52" role="menu">
-        <li class="menu-title" role="presentation">{gettext("Sort by")}</li>
-        <li :for={option <- @option} role="none">
-          <.link
-            id={option[:id]}
-            patch={option.patch}
-            role="menuitemradio"
-            aria-checked={to_string(option[:checked] == true)}
-          >
-            <span class="flex-1">{render_slot(option)}</span>
-            <.icon :if={option[:checked]} name="hero-check-micro" class="size-4 !text-accent" />
-          </.link>
-        </li>
-      </ul>
-    </div>
-    """
-  end
-
-  @doc """
-  A target in the one notation every page writes it in: its path in mono, with its system
-  faint before it only where the workspace has the same path on more than one system
-  (`dup`); the whole `system/path` is its title.
-  """
-  attr :system, :string, default: nil
+  attr :system, :string, required: true
   attr :path, :string, required: true
-  attr :dup, :boolean, default: false
+  attr :shared, :any, default: MapSet.new()
   attr :class, :any, default: nil
 
   def target_name(assigns) do
     ~H"""
-    <span class={["q-tn", @class]} title={@system && "#{@system}/#{@path}"}><span
-      :if={@dup && @system}
-      class="q-tn-sys"
-    >{@system}<span class="q-tn-sep">/</span></span>{@path}</span>
+    <span class={["q-tname", @class]} title={"#{@system}/#{@path}"}><span
+      :if={MapSet.member?(@shared, @path)}
+      class="q-tname-sys"
+    >{@system}/</span>{@path}</span>
     """
   end
 
@@ -1350,14 +1110,14 @@ defmodule ApiaryWeb.RunComponents do
   attr :label, :string, required: true
   attr :rail, :map, default: nil, doc: "`Apiary.Runs.target_counts/3`; nil while it loads"
   attr :chosen, :any, default: nil, doc: "the target the filters hold"
-  attr :dup, :any, default: nil, doc: "the paths on more than one system (a MapSet)"
+  attr :shared, :any, default: nil, doc: "the paths on more than one system (a MapSet)"
   attr :path, :any, required: true
   attr :query, :string, default: nil
   attr :search, :string, default: "rail_search"
   attr :more, :string, default: "rail_more"
 
   def target_rail(assigns) do
-    assigns = assign(assigns, :dup, assigns.dup || MapSet.new())
+    assigns = assign(assigns, :shared, assigns.shared || MapSet.new())
 
     ~H"""
     <nav id={@id} class="q-rail" aria-label={@label}>
@@ -1396,7 +1156,7 @@ defmodule ApiaryWeb.RunComponents do
             id={@id}
             target={target}
             chosen={@chosen}
-            dup={@dup}
+            shared={@shared}
             path={@path}
           />
         </div>
@@ -1414,7 +1174,7 @@ defmodule ApiaryWeb.RunComponents do
             id={@id}
             target={target}
             chosen={@chosen}
-            dup={@dup}
+            shared={@shared}
             path={@path}
           />
           <.link
@@ -1444,7 +1204,7 @@ defmodule ApiaryWeb.RunComponents do
   attr :id, :string, required: true
   attr :target, :map, required: true
   attr :chosen, :any, required: true
-  attr :dup, :any, required: true
+  attr :shared, :any, required: true
   attr :path, :any, required: true
 
   defp rail_target(assigns) do
@@ -1461,7 +1221,7 @@ defmodule ApiaryWeb.RunComponents do
         class="q-rail-name"
         system={@target.system}
         path={@target.path}
-        dup={MapSet.member?(@dup, @target.path)}
+        shared={@shared}
       />
       <span class={["q-rail-n", @target.runs == 0 && "q-rail-n0"]}>
         {Format.number(@target.runs)}
@@ -1611,14 +1371,14 @@ defmodule ApiaryWeb.RunComponents do
   attr :quiet_ids, :any, default: nil
   attr :selected, :string, default: nil, doc: "the run_id of the row the preview shows"
   attr :loading, :boolean, default: false
-  attr :dup, :any, default: nil, doc: "the paths on more than one system (a MapSet)"
+  attr :shared, :any, default: nil, doc: "the paths on more than one system (a MapSet)"
   attr :target, :boolean, default: true
   attr :rest, :global
 
   def runs_table(assigns) do
     assigns =
       assigns
-      |> assign(:dup, assigns.dup || MapSet.new())
+      |> assign(:shared, assigns.shared || MapSet.new())
       |> assign(:quiet_ids, assigns.quiet_ids || MapSet.new())
 
     ~H"""
@@ -1669,7 +1429,7 @@ defmodule ApiaryWeb.RunComponents do
             scope={@scope}
             run={run}
             target={@target}
-            dup={@target && run.target_path && MapSet.member?(@dup, run.target_path)}
+            shared={@shared}
             quiet={MapSet.member?(@quiet_ids, run.id)}
             selected={@selected == run.run_id}
           />
@@ -1682,7 +1442,7 @@ defmodule ApiaryWeb.RunComponents do
   attr :scope, :map, required: true
   attr :run, :map, required: true
   attr :target, :boolean, required: true
-  attr :dup, :boolean, default: false
+  attr :shared, :any, required: true
   attr :quiet, :boolean, default: false
   attr :selected, :boolean, default: false
 
@@ -1718,7 +1478,7 @@ defmodule ApiaryWeb.RunComponents do
             class="q-rl-inl"
             system={@run.target_system}
             path={@run.target_path}
-            dup={@dup}
+            shared={@shared}
           />
         </span>
       </td>
@@ -1727,7 +1487,7 @@ defmodule ApiaryWeb.RunComponents do
           :if={@run.target_system && @run.target_path}
           system={@run.target_system}
           path={@run.target_path}
-          dup={@dup}
+          shared={@shared}
         />
         <span :if={!(@run.target_system && @run.target_path)} class="q-rl-faint">
           {gettext("n/a")}
@@ -1800,10 +1560,10 @@ defmodule ApiaryWeb.RunComponents do
   attr :id, :string, required: true
   attr :scope, :map, required: true
   attr :preview, :map, default: nil, doc: "%{run:, lines:, denials:, quiet:}"
-  attr :dup, :any, default: nil
+  attr :shared, :any, default: nil
 
   def run_preview(assigns) do
-    assigns = assign(assigns, :dup, assigns.dup || MapSet.new())
+    assigns = assign(assigns, :shared, assigns.shared || MapSet.new())
 
     ~H"""
     <aside id={@id} class="q-pv" aria-label={gettext("Run preview")} aria-busy={to_string(!@preview)}>
@@ -1839,7 +1599,7 @@ defmodule ApiaryWeb.RunComponents do
             :if={@preview.run.target_system && @preview.run.target_path}
             system={@preview.run.target_system}
             path={@preview.run.target_path}
-            dup={MapSet.member?(@dup, @preview.run.target_path)}
+            shared={@shared}
           />
           <span :if={@preview.run.runtime}>
             {@preview.run.runtime} {@preview.run.runtime_version}

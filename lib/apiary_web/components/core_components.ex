@@ -312,7 +312,8 @@ defmodule ApiaryWeb.CoreComponents do
   Renders a button, or a link styled as one when `href`, `navigate` or `patch` is given.
 
   `loading_text` is the gerund shown with a spinner while the button's form
-  submits or its click is in flight; the button keeps its width.
+  submits or its click is in flight; the button keeps its width. A `link` button, a
+  row's text action, takes none: its words stay while it is in flight.
 
   ## Examples
 
@@ -344,8 +345,12 @@ defmodule ApiaryWeb.CoreComponents do
       """
     else
       ~H"""
-      <button class={@classes} data-busy={@loading_text && ""} {@rest}>
-        <%= if @loading_text do %>
+      <button
+        class={@classes}
+        data-busy={@loading_text && @variant != "link" && ""}
+        {@rest}
+      >
+        <%= if @loading_text && @variant != "link" do %>
           <span class="btn-label">{render_slot(@inner_block)}</span>
           <span class="btn-busy" aria-hidden="true">
             <span class="loading loading-spinner loading-xs" />{@loading_text}
@@ -1043,13 +1048,23 @@ defmodule ApiaryWeb.CoreComponents do
   ## Tables
 
   @doc """
-  Renders a table inside a focusable scroll region.
+  Renders a table inside a focusable scroll region, on the row spec (`docs/ui.md`, Lists):
+  one line a row, its title the only strong text, every other cell small and muted.
+
+  A column says what its cells are with `kind`: `"title"` for the row's name (14 px,
+  medium, the text colour; a secondary word inside it takes `q-side`), `"hot"` for the
+  one fact that needs someone, `"faint"` for what is tertiary, `"num"` for a count
+  (right-aligned, tabular). `from` hides a column below a width of the table's own
+  (`"sm"` 600 px, `"md"` 1000 px, `"lg"` 1300 px), so a table in a narrow pane reflows as
+  on a narrow screen. A row's actions are its last column: a text action for the one
+  thing a row's state asks for, and the rest in a `row_menu/1`; never a bordered button
+  on every row, and never red outside the confirm dialog.
 
   ## Examples
 
       <.table id="users" label="Users" rows={@users}>
-        <:col :let={user} label="id">{user.id}</:col>
-        <:col :let={user} label="username">{user.username}</:col>
+        <:col :let={user} label="Name" kind="title">{user.name}</:col>
+        <:col :let={user} label="Joined" from="sm">{Format.date(user.inserted_at)}</:col>
       </.table>
   """
   attr :id, :string, required: true
@@ -1067,6 +1082,8 @@ defmodule ApiaryWeb.CoreComponents do
   slot :col, required: true do
     attr :label, :string
     attr :class, :string
+    attr :kind, :string, doc: "title, hot, faint or num"
+    attr :from, :string, doc: "sm, md or lg: the table width from which the column shows"
   end
 
   slot :action, doc: "the slot for showing user actions in the last table column"
@@ -1079,7 +1096,7 @@ defmodule ApiaryWeb.CoreComponents do
 
     ~H"""
     <div
-      class={["overflow-x-auto rounded-box border border-line bg-base-100 shadow-xs", @class]}
+      class={["q-tbl overflow-x-auto rounded-box border border-line bg-base-100 shadow-xs", @class]}
       tabindex="0"
       role="region"
       aria-label={@label || @id}
@@ -1087,7 +1104,13 @@ defmodule ApiaryWeb.CoreComponents do
       <table class="table">
         <thead>
           <tr>
-            <th :for={col <- @col} scope="col" class={col[:class]}>{col[:label]}</th>
+            <th
+              :for={col <- @col}
+              scope="col"
+              class={[head_class(col), col[:class]]}
+            >
+              {col[:label]}
+            </th>
             <th :if={@action != []} scope="col" class="w-px">
               <span class="sr-only">{gettext("Actions")}</span>
             </th>
@@ -1102,12 +1125,12 @@ defmodule ApiaryWeb.CoreComponents do
             <td
               :for={col <- @col}
               phx-click={@row_click && @row_click.(row)}
-              class={[@row_click && "cursor-pointer", col[:class]]}
+              class={[@row_click && "cursor-pointer", col_class(col), col[:class]]}
             >
               {render_slot(col, @row_item.(row))}
             </td>
             <td :if={@action != []} class="cell-actions w-px text-right">
-              <div class="flex items-center justify-end gap-0.5">
+              <div class="flex items-center justify-end gap-1">
                 <%= for action <- @action do %>
                   {render_slot(action, @row_item.(row))}
                 <% end %>
@@ -1116,6 +1139,524 @@ defmodule ApiaryWeb.CoreComponents do
           </tr>
         </tbody>
       </table>
+    </div>
+    """
+  end
+
+  # A head cell takes its column's alignment and width, not the look of its cells.
+  defp head_class(col) do
+    [col[:kind] == "num" && "q-num", from_class(col[:from])]
+  end
+
+  defp col_class(col) do
+    [
+      case col[:kind] do
+        "title" -> "q-td-title"
+        "hot" -> "q-hot"
+        "faint" -> "q-faint"
+        "num" -> "q-num"
+        _ -> nil
+      end,
+      from_class(col[:from])
+    ]
+  end
+
+  defp from_class("sm"), do: "q-from-sm"
+  defp from_class("md"), do: "q-from-md"
+  defp from_class("lg"), do: "q-from-lg"
+  defp from_class(_from), do: nil
+
+  @doc """
+  The ⋯ menu of a row: the actions a row offers beyond its one text action, under the
+  `Menu` hook. The list floats in the top layer (`data-float`), so the table's scroll
+  region never clips it. Its items are `menu_item/1`, with `menu_heading/1` and
+  `menu_divider/1` between them; an edition's slot may add items of its own. A menu
+  with no item shows no trigger.
+
+      <.row_menu id={"key-\#{key.id}-menu"} label={gettext("Actions for %{label}", label: key.label)}>
+        <.menu_item patch={rotate_path}>{gettext("Rotate…")}</.menu_item>
+      </.row_menu>
+  """
+  attr :id, :string, required: true
+  attr :label, :string, required: true, doc: "the trigger's accessible name, naming the row"
+  attr :class, :any, default: nil
+  slot :inner_block
+
+  def row_menu(assigns) do
+    ~H"""
+    <div
+      id={@id}
+      class={["q-rowmenu dropdown dropdown-end", @class]}
+      phx-hook="Menu"
+      data-float
+      phx-mounted={JS.ignore_attributes(["class"])}
+    >
+      <button
+        id={"#{@id}-button"}
+        type="button"
+        class="q-rowmenu-btn btn btn-ghost btn-xs btn-square"
+        aria-haspopup="menu"
+        aria-expanded="false"
+        aria-label={@label}
+        phx-mounted={JS.ignore_attributes(["aria-expanded"])}
+      >
+        <.icon name="hero-ellipsis-horizontal-micro" class="size-4" />
+      </button>
+      <ul
+        class="q-rowmenu-list menu menu-sm dropdown-content"
+        role="menu"
+        aria-label={@label}
+        popover="manual"
+        phx-mounted={JS.ignore_attributes(["style"])}
+      >
+        {render_slot(@inner_block)}
+      </ul>
+    </div>
+    """
+  end
+
+  @doc """
+  An item of a menu (`row_menu/1`, `filter_menu/1`, `sort_menu/1`): a link when given
+  `navigate`, `patch` or `href`, else a button. `checked` makes it one of a set
+  (`menuitemradio`, or `menuitemcheckbox` with `multiple`) with its mark; `hint` is a
+  faint line under its words. It is never red: a destructive act opens its confirm
+  dialog, which is.
+  """
+  attr :rest, :global, include: ~w(href navigate patch method disabled)
+  attr :checked, :any, default: nil, doc: "true or false for one of a set; nil for an act"
+  attr :multiple, :boolean, default: false
+  attr :hint, :string, default: nil
+  attr :class, :any, default: nil
+  slot :inner_block, required: true
+
+  def menu_item(assigns) do
+    assigns =
+      assign(assigns,
+        role:
+          cond do
+            is_nil(assigns.checked) -> "menuitem"
+            assigns.multiple -> "menuitemcheckbox"
+            true -> "menuitemradio"
+          end,
+        link?: assigns.rest[:href] || assigns.rest[:navigate] || assigns.rest[:patch]
+      )
+
+    ~H"""
+    <li role="none" class={["q-mi", @hint && "q-mi-hint", @class]}>
+      <.link
+        :if={@link?}
+        role={@role}
+        aria-checked={!is_nil(@checked) && to_string(@checked)}
+        {@rest}
+      >
+        <.menu_check :if={!is_nil(@checked)} checked={@checked} />
+        <span class="q-mi-t">{render_slot(@inner_block)}<span :if={@hint}>{@hint}</span></span>
+      </.link>
+      <button
+        :if={!@link?}
+        type="button"
+        role={@role}
+        aria-checked={!is_nil(@checked) && to_string(@checked)}
+        data-menu-close
+        {@rest}
+      >
+        <.menu_check :if={!is_nil(@checked)} checked={@checked} />
+        <span class="q-mi-t">{render_slot(@inner_block)}<span :if={@hint}>{@hint}</span></span>
+      </button>
+    </li>
+    """
+  end
+
+  attr :checked, :boolean, required: true
+
+  defp menu_check(assigns) do
+    ~H"""
+    <span class="q-mi-ck" aria-hidden="true">
+      <.icon :if={@checked} name="hero-check-micro" class="size-4" />
+    </span>
+    """
+  end
+
+  @doc "A menu's heading: what the items under it are about, and an optional faint line."
+  attr :title, :string, required: true
+  attr :sub, :string, default: nil
+
+  def menu_heading(assigns) do
+    ~H"""
+    <li role="presentation" class="q-mh">
+      <span class="q-mh-t">{@title}</span>
+      <span :if={@sub} class="q-mh-s">{@sub}</span>
+    </li>
+    """
+  end
+
+  @doc "A rule between two groups of a menu's items."
+  def menu_divider(assigns) do
+    ~H"""
+    <li role="separator" class="menu-divider"></li>
+    """
+  end
+
+  @doc """
+  A row's state in words, said only when it is not the usual one ("Rotated",
+  "Suspended", "Revoked 2 Sept"). Plain muted text; `hot` lifts it to the text colour
+  with a dot of `tone` for a state that needs someone. Never a pill.
+  """
+  attr :id, :string, default: nil
+  attr :hot, :boolean, default: false
+  attr :tone, :string, default: "warning", values: ~w(warning error info)
+  attr :class, :any, default: nil
+  slot :inner_block, required: true
+
+  def state_word(assigns) do
+    ~H"""
+    <span id={@id} class={["q-stw", @hot && "q-stw-hot q-stw-#{@tone}", @class]}>
+      <span :if={@hot} class="q-stw-dot" aria-hidden="true"></span>{render_slot(@inner_block)}
+    </span>
+    """
+  end
+
+  @doc """
+  Runs a day as small bars, oldest first, the last one (today) in ink: a shape to read at
+  a glance, not a chart to read values from; the numbers beside it say how many.
+  """
+  attr :values, :list, required: true
+  attr :class, :any, default: nil
+
+  def sparkline(assigns) do
+    max = Enum.max([1 | assigns.values])
+    count = max(length(assigns.values), 1)
+
+    bars =
+      assigns.values
+      |> Enum.with_index()
+      |> Enum.map(fn {n, i} ->
+        h = if n == 0, do: 1, else: max(2, round(n / max * 18))
+        %{x: i * 6, h: h, today: i == count - 1, zero: n == 0}
+      end)
+
+    assigns = assign(assigns, bars: bars, width: count * 6 - 1)
+
+    ~H"""
+    <svg
+      class={["q-spark", @class]}
+      viewBox={"0 0 #{@width} 18"}
+      preserveAspectRatio="none"
+      aria-hidden="true"
+    >
+      <rect
+        :for={bar <- @bars}
+        x={bar.x}
+        y={18 - bar.h}
+        width="5"
+        height={bar.h}
+        class={[bar.today && "q-spark-today", bar.zero && "q-spark-zero"]}
+      />
+    </svg>
+    """
+  end
+
+  ## List controls
+
+  @doc """
+  A list's views, as tabs over it: a few stored filters, each a link with its count, the
+  current one marked `aria-current="page"` (`docs/ui.md`, Lists).
+
+      <.views label={gettext("Views")}>
+        <:view patch={~p"/..."} count={50} current>{gettext("All")}</:view>
+      </.views>
+  """
+  attr :id, :string, default: nil
+  attr :label, :string, required: true
+
+  slot :view, required: true do
+    attr :id, :string
+    attr :patch, :string
+    attr :navigate, :string
+    attr :count, :any
+    attr :current, :boolean
+  end
+
+  def views(assigns) do
+    ~H"""
+    <nav id={@id} class="q-views" aria-label={@label}>
+      <.link
+        :for={view <- @view}
+        id={view[:id]}
+        patch={view[:patch]}
+        navigate={view[:navigate]}
+        aria-current={view[:current] && "page"}
+      >
+        {render_slot(view)}<span :if={view[:count]} class="q-views-n">{view[:count]}</span>
+      </.link>
+    </nav>
+    """
+  end
+
+  @doc """
+  A list's search: one field, sent as the reader types (`change`, 200 ms after they stop)
+  and on Enter. Its value lives in the page's URL, which the page patches. `live={false}`
+  sends it on Enter only, for a query whose words are read as a whole (qualifiers such as
+  `state:failed`, which the page turns into filters).
+  """
+  attr :id, :string, required: true
+  attr :name, :string, default: "q"
+  attr :value, :string, default: nil
+  attr :label, :string, required: true
+  attr :placeholder, :string, default: nil
+  attr :change, :string, default: "search", doc: "the event the form sends"
+  attr :live, :boolean, default: true
+  attr :class, :any, default: nil
+
+  def list_search(assigns) do
+    ~H"""
+    <form
+      id={@id}
+      class={["q-find", @class]}
+      role="search"
+      phx-change={@live && @change}
+      phx-submit={@change}
+    >
+      <label>
+        <.icon name="hero-magnifying-glass-micro" class="q-find-i size-4" />
+        <span class="sr-only">{@label}</span>
+        <input
+          id={"#{@id}-input"}
+          type="search"
+          name={@name}
+          value={@value}
+          placeholder={@placeholder || @label}
+          autocomplete="off"
+          spellcheck="false"
+          phx-debounce={@live && "200"}
+          enterkeyhint="search"
+          class="input input-sm"
+        />
+      </label>
+    </form>
+    """
+  end
+
+  @doc """
+  The one Filter menu of a list: its sections, each a heading and the values that narrow
+  the list by it, as `menu_item/1`s (`checked` and `multiple`); what is chosen shows under
+  the bar as `filter_tokens/1`. `count` is how many filters are on.
+
+  A list whose sections hold more values than a menu can (a list of runs: hundreds of
+  targets, thousands of tasks) gives `section`s instead: the menu is then a dialog that
+  lists the sections, each with the word the query writes it with (`qualifier`) or what it
+  is set to (`value`), and opens the one chosen in its place, with a way back. A section's
+  content is the slot's: a form that searches its values on the server and sets the
+  filter (`ApiaryWeb.RunComponents.filter_options/1`). Moving between the two is done in
+  the browser (`Phoenix.LiveView.JS`), so a section opens at once and stays open while
+  the page patches. A section marked `rail` is one the page's rail does from 1280 px, and
+  shows only below it.
+  """
+  attr :id, :string, required: true
+  attr :count, :integer, default: 0
+  slot :inner_block
+
+  slot :section do
+    attr :key, :string, required: true
+    attr :label, :string, required: true
+    attr :icon, :string, required: true
+    attr :qualifier, :string
+    attr :value, :string
+    attr :rail, :boolean
+  end
+
+  def filter_menu(%{section: [_ | _]} = assigns) do
+    ~H"""
+    <div
+      id={@id}
+      class="q-listmenu q-fm dropdown dropdown-end"
+      phx-hook="Menu"
+      phx-mounted={JS.ignore_attributes(["class"])}
+    >
+      <button
+        id={"#{@id}-button"}
+        type="button"
+        class="btn btn-sm"
+        aria-haspopup="dialog"
+        aria-controls={"#{@id}-panel"}
+        aria-expanded="false"
+        phx-mounted={JS.ignore_attributes(["aria-expanded"])}
+        phx-click={
+          JS.show(to: "##{@id}-sections")
+          |> JS.hide(to: "##{@id}-panel .q-fm-section")
+        }
+      >
+        <.icon name="hero-funnel-micro" class="size-4 text-faint" />{gettext("Filter")}
+        <span :if={@count > 0} class="q-listmenu-n">{@count}</span>
+      </button>
+      <div
+        id={"#{@id}-panel"}
+        role="dialog"
+        aria-label={gettext("Filter")}
+        class="dropdown-content q-fm-panel"
+        tabindex="-1"
+      >
+        <div id={"#{@id}-sections"} class="q-fm-sections">
+          <p class="q-fm-h" aria-hidden="true">{gettext("Filter by")}</p>
+          <button
+            :for={section <- @section}
+            id={"#{@id}-open-#{section.key}"}
+            type="button"
+            class={["q-fm-opt", section[:rail] && "q-norail"]}
+            aria-describedby={section[:value] && "#{@id}-value-#{section.key}"}
+            phx-click={
+              JS.show(to: "##{@id}-section-#{section.key}")
+              |> JS.focus_first(to: "##{@id}-section-#{section.key}")
+              |> JS.hide(to: "##{@id}-sections")
+            }
+          >
+            <.icon name={section.icon} class="size-4" />
+            <span class="q-fm-label">{section.label}</span>
+            <span
+              :if={section[:value]}
+              id={"#{@id}-value-#{section.key}"}
+              class="q-fm-value"
+              title={section[:value]}
+            >
+              {section[:value]}
+            </span>
+            <span :if={!section[:value] && section[:qualifier]} class="q-fm-meta" aria-hidden="true">
+              {section.qualifier}:
+            </span>
+          </button>
+        </div>
+        <div
+          :for={section <- @section}
+          id={"#{@id}-section-#{section.key}"}
+          class="q-fm-section hidden"
+          role="group"
+          aria-labelledby={"#{@id}-title-#{section.key}"}
+        >
+          <div class="q-fm-head">
+            <button
+              type="button"
+              class="q-fm-back"
+              aria-label={gettext("Back to every filter")}
+              phx-click={
+                JS.show(to: "##{@id}-sections")
+                |> JS.focus(to: "##{@id}-open-#{section.key}")
+                |> JS.hide(to: "##{@id}-section-#{section.key}")
+              }
+            >
+              <.icon name="hero-chevron-left-micro" class="size-4" />
+            </button>
+            <p id={"#{@id}-title-#{section.key}"} class="q-fm-title">{section.label}</p>
+          </div>
+          {render_slot(section)}
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  def filter_menu(assigns) do
+    ~H"""
+    <div
+      id={@id}
+      class="q-listmenu dropdown dropdown-end"
+      phx-hook="Menu"
+      data-float
+      phx-mounted={JS.ignore_attributes(["class"])}
+    >
+      <button
+        id={"#{@id}-button"}
+        type="button"
+        class="btn btn-sm"
+        aria-haspopup="menu"
+        aria-expanded="false"
+        phx-mounted={JS.ignore_attributes(["aria-expanded"])}
+      >
+        <.icon name="hero-funnel-micro" class="size-4 text-faint" />{gettext("Filter")}
+        <span :if={@count > 0} class="q-listmenu-n">{@count}</span>
+      </button>
+      <ul
+        class="q-rowmenu-list q-listmenu-list menu menu-sm dropdown-content"
+        role="menu"
+        aria-label={gettext("Filter")}
+        popover="manual"
+        phx-mounted={JS.ignore_attributes(["style"])}
+      >
+        {render_slot(@inner_block)}
+      </ul>
+    </div>
+    """
+  end
+
+  @doc """
+  A list's Sort: the orders it can be read in, as `menu_item/1`s with `checked`; the
+  trigger names the order in force for a screen reader.
+  """
+  attr :id, :string, required: true
+  attr :current, :string, required: true, doc: "the order in force, in words"
+  slot :inner_block, required: true
+
+  def sort_menu(assigns) do
+    ~H"""
+    <div
+      id={@id}
+      class="q-listmenu dropdown dropdown-end"
+      phx-hook="Menu"
+      data-float
+      phx-mounted={JS.ignore_attributes(["class"])}
+    >
+      <button
+        id={"#{@id}-button"}
+        type="button"
+        class="btn btn-sm"
+        aria-haspopup="menu"
+        aria-expanded="false"
+        aria-label={gettext("Sort: %{order}", order: @current)}
+        phx-mounted={JS.ignore_attributes(["aria-expanded"])}
+      >
+        <.icon name="hero-arrows-up-down-micro" class="size-4 text-faint" />{gettext("Sort")}
+      </button>
+      <ul
+        class="q-rowmenu-list q-listmenu-list menu menu-sm dropdown-content"
+        role="menu"
+        aria-label={gettext("Sort")}
+        popover="manual"
+        phx-mounted={JS.ignore_attributes(["style"])}
+      >
+        {render_slot(@inner_block)}
+      </ul>
+    </div>
+    """
+  end
+
+  @doc """
+  The filters in force, under a list's bar: each a token that says what it keeps and a
+  link that takes it away, and "Clear" for them all. Nothing when none is on.
+  """
+  attr :id, :string, required: true
+  attr :clear, :string, default: nil, doc: "the path with no filter on"
+
+  slot :token do
+    attr :id, :string
+    attr :patch, :string, required: true
+    attr :label, :string, required: true, doc: "what taking it away says, for a screen reader"
+    attr :class, :string, doc: "q-tok-q for a query's word, `qualifier:value`"
+  end
+
+  slot :inner_block, doc: "after the tokens: how many the filters keep, say"
+
+  def filter_tokens(assigns) do
+    ~H"""
+    <div :if={@token != []} id={@id} class="q-tokens">
+      <span :for={token <- @token} id={token[:id]} class={["q-tok", token[:class]]}>
+        {render_slot(token)}
+        <.link patch={token.patch} aria-label={token.label} class="q-tok-x">
+          <.icon name="hero-x-mark-micro" class="size-3.5" />
+        </.link>
+      </span>
+      <.link :if={@clear} id={"#{@id}-clear"} patch={@clear} class="q-tok-clear">
+        {gettext("Clear")}
+      </.link>
+      {render_slot(@inner_block)}
     </div>
     """
   end

@@ -707,18 +707,25 @@
     color: var(--q-faint);
   }
 
-  /* ---- Table ---- */
+  /* ---- Table ----
+     The row spec (docs/ui.md, Lists): a body cell is small and muted by default; the
+     row's title, what needs someone and what is tertiary are marked (`q-td-title`,
+     `q-hot`, `q-faint`, in the list block below). */
   :where(.table) {
     width: 100%;
     border-radius: 0;
-    font-size: 0.875rem;
-    line-height: 1.25rem;
+    color: var(--q-muted);
+    font-size: 0.78125rem;
+    line-height: 1.125rem;
   }
   :where(.table) :where(th, td) {
-    padding: 0.625rem 0.625rem;
+    padding: 0.25rem 0.75rem;
     white-space: nowrap;
     vertical-align: middle;
     text-align: left;
+  }
+  :where(.table) :where(tbody td) {
+    height: 2.75rem;
   }
   :where(.table) :where(th, td):first-child {
     padding-left: 1rem;
@@ -731,13 +738,13 @@
     padding-right: 0.5rem;
   }
   :where(.table) :where(thead) :where(th) {
-    padding-block: 0.5625rem;
+    height: 2.25rem;
+    padding-block: 0;
     background-color: var(--color-base-200);
     color: var(--q-muted);
-    font-size: 0.75rem;
+    font-size: 0.78125rem;
     line-height: 1rem;
     font-weight: 500;
-    letter-spacing: 0.005em;
   }
   :where(.table) :where(thead tr, tbody tr:not(:last-child)) {
     border-bottom: 1px solid var(--q-border-subtle);
@@ -1787,156 +1794,6 @@
     }
   }
 
-  /* ---- An organisation's overview: its workspaces, and its people beside them ---- */
-  .q-org {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    gap: 24px;
-  }
-  .q-org-main {
-    display: grid;
-    min-width: 0;
-    align-content: start;
-    gap: 12px;
-  }
-  .q-org-rail {
-    display: grid;
-    align-content: start;
-    gap: 16px;
-  }
-  .q-org-head {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 12px;
-  }
-  .q-org-title {
-    font-size: 0.9375rem;
-    line-height: 1.375rem;
-    font-weight: 600;
-  }
-  .q-org-count {
-    margin-left: 6px;
-    color: var(--q-faint);
-    font-weight: 400;
-    font-variant-numeric: tabular-nums;
-  }
-  .q-org-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
-    gap: 12px;
-  }
-  .q-org-levels {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    margin-top: 12px;
-    border: 1px solid var(--q-border-subtle);
-    border-radius: var(--radius-field);
-  }
-  .q-org-levels > div {
-    padding: 8px 10px;
-  }
-  .q-org-levels > div + div {
-    border-left: 1px solid var(--q-border-subtle);
-  }
-  .q-org-levels dt {
-    color: var(--q-muted);
-    font-size: 0.75rem;
-    line-height: 1rem;
-  }
-  .q-org-levels dd {
-    font-size: 0.9375rem;
-    font-weight: 600;
-  }
-  .q-org-details {
-    display: grid;
-    grid-template-columns: max-content minmax(0, 1fr);
-    gap: 8px 16px;
-    font-size: 0.8125rem;
-    line-height: 1.25rem;
-  }
-  .q-org-details dt {
-    color: var(--q-muted);
-  }
-  /* A workspace: its name, three numbers, runs a day, its last run. */
-  .q-ws-card {
-    display: grid;
-    height: 100%;
-    gap: 14px;
-    padding: 16px 16px 14px;
-    border: 1px solid var(--q-border-subtle);
-    border-radius: var(--radius-box);
-    background-color: var(--color-base-100);
-    box-shadow: var(--q-shadow-xs);
-  }
-  .q-ws-card-head {
-    display: flex;
-    min-width: 0;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 12px;
-  }
-  .q-ws-card-name {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: 0.9375rem;
-    line-height: 1.375rem;
-    font-weight: 600;
-  }
-  .q-ws-card-name:hover {
-    text-decoration: underline;
-    text-underline-offset: 3px;
-  }
-  .q-ws-card-mode {
-    flex: none;
-    color: var(--q-faint);
-    font-family: var(--font-mono);
-    font-size: 0.75rem;
-  }
-  .q-ws-card-stats {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 8px;
-  }
-  .q-ws-card-stats dt {
-    color: var(--q-muted);
-    font-size: 0.75rem;
-    line-height: 1rem;
-  }
-  .q-ws-card-stats dd {
-    font-size: 1.25rem;
-    line-height: 1.75rem;
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-  }
-  .q-ws-card-spark {
-    display: block;
-    width: 100%;
-    height: 32px;
-  }
-  .q-ws-card-foot {
-    display: flex;
-    justify-content: space-between;
-    gap: 12px;
-    padding-top: 10px;
-    border-top: 1px solid var(--q-border-subtle);
-    color: var(--q-muted);
-    font-size: 0.8125rem;
-    line-height: 1.125rem;
-  }
-  /* From 1280 px the people and the details are a rail beside the workspaces. */
-  @media (min-width: 1280px) {
-    .q-org {
-      grid-template-columns: minmax(0, 1fr) 20rem;
-      column-gap: 32px;
-    }
-    .q-org-top {
-      grid-column: 1 / -1;
-    }
-  }
-
   /* ---- Search or jump to: the palette ---- */
   .q-palette {
     position: fixed;
@@ -2065,6 +1922,442 @@
     .q-collapse {
       display: none;
     }
+  }
+}
+
+/* ==== Lists: the row spec and a list's controls (`CoreComponents.table/1`, `row_menu/1`,
+   `views/1`, `list_search/1`, `filter_menu/1`, `sort_menu/1`, `filter_tokens/1`,
+   `state_word/1`, `sparkline/1`). docs/ui.md, Lists. ==== */
+@layer qory {
+  /* ---- The row: the title is the only strong text; the rest small and muted ---- */
+  .q-tbl {
+    container-type: inline-size;
+  }
+  .q-td-title,
+  .q-title {
+    color: var(--color-base-content);
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    font-weight: 500;
+  }
+  .q-title-mono {
+    color: var(--color-base-content);
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+    font-weight: 500;
+  }
+  /* A secondary word beside the title: an id, a slug, "you". */
+  .q-side {
+    color: var(--q-faint);
+    font-size: 0.78125rem;
+    font-weight: 400;
+  }
+  .q-side.q-mono,
+  .q-mono.q-side {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+  }
+  .q-hot {
+    color: var(--color-base-content);
+  }
+  .q-faint {
+    color: var(--q-faint);
+  }
+  .q-muted {
+    color: var(--q-muted);
+  }
+  .q-mono {
+    font-family: var(--font-mono);
+  }
+  /* A row out of use (revoked, suspended, deleted): its title steps down to muted. */
+  .table tr.row-off .q-td-title,
+  .table tr.row-off .q-title {
+    color: var(--q-muted);
+    font-weight: 400;
+  }
+  .table tr.row-off td {
+    color: var(--q-faint);
+  }
+  /* Columns that show from a width of the table's own, not the screen's. */
+  .q-tbl :is(th, td):is(.q-from-sm, .q-from-md, .q-from-lg) {
+    display: none;
+  }
+  @container (min-width: 600px) {
+    .q-tbl :is(th, td).q-from-sm {
+      display: table-cell;
+    }
+  }
+  @container (min-width: 1000px) {
+    .q-tbl :is(th, td).q-from-md {
+      display: table-cell;
+    }
+  }
+  @container (min-width: 1300px) {
+    .q-tbl :is(th, td).q-from-lg {
+      display: table-cell;
+    }
+  }
+  /* Where the table is narrow, an id beside the title gives way to the other columns. */
+  @container (max-width: 599px) {
+    .q-tbl .q-side.q-mono {
+      display: none;
+    }
+  }
+  /* The name cell of a person or a thing with a mark: avatar, name, faint words. */
+  .q-nm {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 0.625rem;
+  }
+  .q-nm > .q-title,
+  .q-nm > .q-title-mono {
+    flex: none;
+    max-width: min(48ch, 42cqi);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .q-nm > .q-side {
+    flex: none;
+  }
+
+  /* ---- A state in words: muted; a dot and the text colour when it needs someone ---- */
+  .q-stw {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--q-muted);
+    white-space: nowrap;
+  }
+  .q-stw-hot {
+    color: var(--color-base-content);
+  }
+  .q-stw-dot {
+    width: 8px;
+    height: 8px;
+    flex: none;
+    border-radius: 9999px;
+    background-color: var(--color-warning);
+  }
+  .q-stw-error .q-stw-dot {
+    background-color: var(--color-error);
+  }
+  .q-stw-info .q-stw-dot {
+    background-color: var(--color-info);
+  }
+
+  /* ---- The ⋯ menu of a row: faint until the row is read, a list in the top layer ---- */
+  .q-rowmenu-btn {
+    color: var(--q-faint);
+  }
+  .q-rowmenu-btn:hover,
+  .q-rowmenu-btn[aria-expanded="true"] {
+    color: var(--color-base-content);
+  }
+  .q-rowmenu-btn[aria-expanded="true"] {
+    background-color: var(--color-base-300);
+  }
+  .q-rowmenu:not(:has(li)) {
+    display: none;
+  }
+  .q-rowmenu-list {
+    min-width: 13.75rem;
+    max-width: min(22rem, calc(100vw - 16px));
+    max-height: min(28rem, calc(100dvh - 16px));
+    overflow: auto;
+    border: 0;
+    color: var(--color-base-content);
+  }
+  .q-rowmenu-list:popover-open {
+    display: flex;
+  }
+  .menu .q-mi > :is(a, button) {
+    justify-content: flex-start;
+  }
+  .menu .q-mi-hint > :is(a, button) {
+    height: auto;
+    align-items: flex-start;
+    padding-block: 0.375rem;
+  }
+  .q-mi-t {
+    display: grid;
+    min-width: 0;
+  }
+  .q-mi-t > span {
+    color: var(--q-faint);
+    font-size: 0.75rem;
+    line-height: 1rem;
+    white-space: normal;
+  }
+  .q-mi-ck {
+    display: grid;
+    width: 1rem;
+    flex: none;
+    place-items: center;
+    color: var(--color-accent);
+  }
+  .q-mi-hint .q-mi-ck {
+    margin-top: 1px;
+  }
+  .menu .q-mh {
+    display: grid;
+    gap: 0;
+    padding: 0.375rem 0.5rem 0.25rem;
+    line-height: 1.125rem;
+  }
+  /* In a menu with a choice of one, every item's words start after the check mark. */
+  .q-rowmenu-list:has([role="menuitemradio"]) .q-mi > :is(a, button) > .q-mi-t:first-child {
+    padding-left: 1.5rem;
+  }
+  .q-rowmenu-list:has([role="menuitemradio"]) .q-mh {
+    padding-left: 2rem;
+  }
+  /* daisyUI pads every child of a menu's item; a heading's words are not controls. */
+  .menu .q-mh > span {
+    display: block;
+    padding: 0;
+    border-radius: 0;
+  }
+  .q-mh-t {
+    overflow: hidden;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .q-mh-s {
+    color: var(--q-faint);
+    font-size: 0.75rem;
+    line-height: 1rem;
+  }
+
+  /* ---- A list's bar: views as tabs, a search, one Filter menu, Sort; tokens under it ---- */
+  .q-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+  .q-bar > .q-grow {
+    flex: 1;
+  }
+  .q-views {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .q-views > a {
+    display: inline-flex;
+    height: 30px;
+    align-items: center;
+    gap: 6px;
+    padding: 0 10px;
+    border-radius: var(--radius-field);
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+    white-space: nowrap;
+    transition: background-color 120ms var(--q-ease-out);
+  }
+  .q-views > a:hover {
+    background-color: var(--color-base-300);
+    color: var(--color-base-content);
+  }
+  .q-views > a[aria-current="page"] {
+    background-color: var(--color-base-300);
+    color: var(--color-base-content);
+    font-weight: 500;
+  }
+  .q-views-n {
+    color: var(--q-faint);
+    font-size: 0.75rem;
+    font-weight: 400;
+    font-variant-numeric: tabular-nums;
+  }
+  .q-find {
+    width: min(320px, 100%);
+  }
+  .q-find label {
+    position: relative;
+    display: block;
+  }
+  .q-find-i {
+    position: absolute;
+    z-index: 1;
+    left: 10px;
+    top: 50%;
+    translate: 0 -50%;
+    color: var(--q-faint);
+    pointer-events: none;
+  }
+  .q-find input {
+    width: 100%;
+    padding-left: 32px;
+  }
+  .q-listmenu-n {
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    background-color: var(--color-base-300);
+    color: var(--q-muted);
+    font-size: 0.75rem;
+    line-height: 18px;
+    font-variant-numeric: tabular-nums;
+  }
+  .q-tokens {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+  }
+  .q-tok {
+    display: inline-flex;
+    height: 24px;
+    align-items: center;
+    gap: 4px;
+    padding: 0 4px 0 8px;
+    border-radius: var(--radius-selector);
+    background-color: var(--color-base-300);
+    color: var(--color-base-content);
+    font-size: 0.78125rem;
+    white-space: nowrap;
+  }
+  .q-tok-x {
+    display: grid;
+    width: 18px;
+    height: 18px;
+    place-items: center;
+    border-radius: 3px;
+    color: var(--q-faint);
+  }
+  .q-tok-x:hover {
+    background-color: var(--q-border-subtle);
+    color: var(--color-base-content);
+  }
+  .q-tok-clear {
+    color: var(--color-accent);
+    font-size: 0.78125rem;
+    font-weight: 500;
+  }
+  .q-tok-clear:hover {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  @media (max-width: 767.98px) {
+    .q-find {
+      width: 100%;
+    }
+  }
+
+  /* ---- Sparkline: runs a day, today in ink ---- */
+  .q-spark {
+    display: block;
+    width: 84px;
+    height: 18px;
+    flex: none;
+  }
+  .q-spark rect {
+    fill: var(--q-series-runs);
+  }
+  .q-spark rect.q-spark-today {
+    fill: var(--q-series-runs-today);
+  }
+  .q-spark rect.q-spark-zero {
+    fill: var(--q-border-strong);
+  }
+
+  /* ---- A block: one box, a band, then rows or lines; nothing inside it has a border of
+     its own (the overviews) ---- */
+  .q-blk {
+    container-type: inline-size;
+    min-width: 0;
+    overflow: clip;
+    border: 1px solid var(--q-border-subtle);
+    border-radius: var(--radius-box);
+    background-color: var(--color-base-100);
+  }
+  .q-band {
+    display: flex;
+    min-height: 40px;
+    align-items: center;
+    gap: 10px;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--q-border-subtle);
+    background-color: var(--color-base-200);
+  }
+  .q-band h2 {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    font-weight: 600;
+  }
+  .q-band-n {
+    color: var(--q-muted);
+    font-size: 0.78125rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .q-band-hint {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--q-faint);
+    font-size: 0.78125rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .q-band > .q-grow {
+    flex: 1;
+  }
+  .q-band-do,
+  .q-do {
+    color: var(--color-accent);
+    font-size: 0.78125rem;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .q-band-do:hover,
+  .q-do:hover {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .q-more {
+    display: flex;
+    height: 38px;
+    align-items: center;
+    gap: 6px;
+    padding: 0 16px;
+    border-top: 1px solid var(--q-border-subtle);
+    color: var(--color-accent);
+    font-size: 0.8125rem;
+    transition: background-color 120ms var(--q-ease-out);
+  }
+  .q-more:hover {
+    background-color: var(--color-base-200);
+  }
+  .q-rows {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .q-rows > li + li {
+    border-top: 1px solid var(--q-border-subtle);
+  }
+  /* Key-value lines: a faint key, a value in the text colour, muted details. */
+  .q-kvl {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 8px 16px;
+    margin: 0;
+    padding: 14px 16px;
+    font-size: 0.78125rem;
+    line-height: 1.125rem;
+  }
+  .q-kvl dt {
+    color: var(--q-faint);
+  }
+  .q-kvl dd {
+    min-width: 0;
+    margin: 0;
+    color: var(--color-base-content);
   }
 }
 
@@ -2362,7 +2655,8 @@
     gap: 16px;
     max-width: 105rem;
   }
-  .q-lp > .q-views + .q-query {
+  .q-lp > .q-views + .q-bar,
+  .q-lp > .q-bar + .q-tokens {
     margin-top: -4px;
   }
   @media (min-width: 1920px) {
@@ -2375,135 +2669,31 @@
     justify-self: auto;
   }
 
-  .q-views {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-  }
-  .q-views a {
-    display: inline-flex;
-    height: 30px;
-    align-items: center;
-    gap: 6px;
-    padding-inline: 10px;
-    border-radius: var(--radius-field);
-    color: var(--q-muted);
-    font-size: 0.8125rem;
-    transition: background-color 120ms var(--q-ease-out), color 120ms var(--q-ease-out);
-  }
-  .q-views a:hover {
-    background-color: var(--color-base-300);
-    color: var(--color-base-content);
-  }
-  .q-views a[aria-current="page"] {
-    background-color: var(--color-base-300);
-    color: var(--color-base-content);
-    font-weight: 500;
-  }
-  .q-views-n {
-    color: var(--q-faint);
-    font-size: 0.75rem;
-    font-weight: 400;
-    font-variant-numeric: tabular-nums;
-  }
-  .q-views a[aria-current="page"] .q-views-n {
-    color: var(--q-muted);
-  }
-  .q-views-skel {
-    width: 1.75rem;
-    height: 0.625rem;
-  }
-
-  .q-query {
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
-  }
-  .q-qbar-form {
+  /* The query field takes the bar's width; its tokens are query words, in mono. */
+  .q-find.q-find-query {
+    width: auto;
     min-width: 0;
-    flex: 1 1 auto;
+    flex: 1 1 20rem;
   }
-  .q-qbar {
-    display: flex;
-    min-height: 2rem;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 4px 6px;
-    padding: 3px 8px;
-    border: 1px solid var(--q-border-field);
-    border-radius: var(--radius-field);
-    background-color: var(--color-base-100);
-    box-shadow: var(--q-shadow-xs);
-    cursor: text;
-    transition: border-color 120ms var(--q-ease-out), box-shadow 120ms var(--q-ease-out);
-  }
-  .q-qbar:hover {
-    border-color: var(--q-muted);
-  }
-  .q-qbar:focus-within {
-    border-color: var(--q-ring);
-    box-shadow: 0 0 0 3px color-mix(in oklab, var(--q-ring) 28%, transparent);
-  }
-  .q-qbar-i {
-    flex: none;
-    color: var(--q-faint);
-  }
-  .q-qbar input {
-    height: 24px;
-    min-width: 8rem;
-    flex: 1 1 12rem;
-    border: 0;
-    background: none;
-    color: var(--color-base-content);
+  .q-find-query input {
     font-family: var(--font-mono);
     font-size: 0.78125rem;
-    outline: none;
   }
-  .q-qbar input::placeholder {
+  .q-find-query input::placeholder {
     color: var(--q-faint);
     opacity: 1;
   }
-  .q-tok {
-    display: inline-flex;
-    height: 22px;
-    max-width: 100%;
-    align-items: center;
-    gap: 2px;
-    padding: 0 3px 0 6px;
-    border-radius: var(--radius-selector);
-    background-color: var(--color-base-300);
+  .q-tok.q-tok-q {
     font-family: var(--font-mono);
     font-size: 0.75rem;
-    white-space: nowrap;
   }
-  .q-tok-k {
+  .q-tok-q .q-tok-k {
     color: var(--q-muted);
   }
-  .q-tok-v {
-    max-width: 36ch;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .q-tok-x {
-    display: grid;
-    width: 16px;
-    height: 16px;
-    flex: none;
-    place-items: center;
-    border-radius: 3px;
-    color: var(--q-faint);
-  }
-  .q-tok-x:hover {
-    background-color: var(--q-border-subtle);
-    color: var(--color-base-content);
-  }
-  .q-ctl [class*="hero-"] {
-    color: var(--q-faint);
-  }
 
-  /* The Filter menu: its sections, then the one chosen; the Sort menu is a plain menu. */
-  .q-fm,
-  .q-sort {
+  /* A Filter menu of sections (`CoreComponents.filter_menu/1` with `section`s): the
+     sections, then the one chosen, in a dialog under the button. */
+  .q-fm {
     position: relative;
     flex: none;
   }
@@ -2698,6 +2888,9 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  .q-rail-name.q-tname {
+    font-size: 0.78125rem;
+  }
   .q-rail-plain {
     font-family: var(--font-sans);
   }
@@ -2741,21 +2934,6 @@
     margin: 9px 8px;
   }
 
-  /* A target, one notation everywhere: the path in mono, its system faint before it only
-     where the path is on more than one system. */
-  .q-tn {
-    font-family: var(--font-mono);
-    font-size: 0.78125rem;
-    white-space: nowrap;
-  }
-  .q-tn-sys {
-    color: var(--q-faint);
-  }
-  .q-tn-sep {
-    margin-inline: 1px;
-    color: var(--q-border-field);
-  }
-
   /* The list beside the preview: the pane from 1920 px, when a run is chosen. */
   .q-with-preview {
     display: grid;
@@ -2779,9 +2957,6 @@
     }
   }
   .q-matchline {
-    display: flex;
-    align-items: baseline;
-    gap: 14px;
     margin-bottom: 10px;
     color: var(--q-muted);
     font-size: 0.8125rem;
@@ -2790,11 +2965,6 @@
     color: var(--color-base-content);
     font-weight: 600;
     font-variant-numeric: tabular-nums;
-  }
-  .q-matchline a:hover {
-    color: var(--color-base-content);
-    text-decoration: underline;
-    text-underline-offset: 3px;
   }
 
   /* The runs list: one line a run; the columns join by the table's own width. */
@@ -3796,10 +3966,7 @@
   }
 
   @media (max-width: 767.98px) {
-    .q-query {
-      flex-wrap: wrap;
-    }
-    .q-qbar-form {
+    .q-find.q-find-query {
       flex-basis: 100%;
     }
     .q-fm {
@@ -6545,61 +6712,145 @@
   }
 }
 
-/* ==== The workspace overview: the components of overview_components.ex ==========
-   What the agents did and what needs you. The rows are the suggestion rows of the policy
-   pages, the strip is the key and value strip of the run page with stat-sized values, the
-   last runs are the runs table without groups. */
+/* ==== The policy's tables on the row spec (docs/ui.md, Lists): the host or the target is
+   the title; an allow is a faint mark and a deny its red one; paths, sources, counts and
+   authors are small grey words, never chips; a lock shows as words when it is on and on
+   hover when it is not. ==== */
 @layer qory {
-  /* ---- Layout: two columns from 1280 px, one below ---- */
-  .q-grid2 {
-    display: grid;
-    grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
-    gap: 24px;
-    align-items: start;
+  .q-rules td.q-c-rule .q-host,
+  .q-targets .q-target-path {
+    color: var(--color-base-content);
+    font: 500 13px/20px var(--font-mono);
   }
-  .q-stack {
-    display: grid;
-    min-width: 0;
-    gap: 16px;
+  .q-targets .q-target-system {
+    font: 12.5px/20px var(--font-mono);
   }
-  @media (max-width: 1279.98px) {
-    .q-grid2 {
-      grid-template-columns: minmax(0, 1fr);
+  .q-rules .q-mark-ok {
+    background: none;
+    color: var(--q-faint);
+  }
+  .q-rules .q-mark-no {
+    background: none;
+    color: var(--color-error);
+  }
+  .q-rules .q-chips {
+    gap: 2px 10px;
+  }
+  .q-rules .q-chips .q-rule {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--q-muted);
+    font-size: 0.75rem;
+  }
+  .q-rules .q-bad {
+    color: var(--q-muted);
+    font-weight: 400;
+  }
+  .q-rules .q-src {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--q-muted);
+    font-size: 0.78125rem;
+  }
+  .q-rules .q-newdot {
+    padding: 0;
+    background: none;
+    color: var(--q-info-soft-content);
+    font-size: 0.75rem;
+  }
+  .q-rules .q-lockbtn[aria-pressed="true"] {
+    border-color: transparent;
+    background: none;
+    color: var(--q-muted);
+  }
+  @media (hover: hover) {
+    .q-rules tr:not(:hover, :focus-within) .q-lockbtn[aria-pressed="false"] {
+      opacity: 0;
     }
   }
-  .q-sect > .q-part {
-    display: grid;
-    min-width: 0;
-    gap: 8px;
-    padding: 12px 16px 14px;
-    border-bottom: 1px solid var(--q-border-subtle);
+  .q-rules .q-rowacts .btn-square {
+    color: var(--q-faint);
   }
-  .q-sect > .q-part:last-child {
-    border-bottom: 0;
+  .q-rules .q-rowacts .btn-square:hover {
+    color: var(--color-base-content);
   }
-  .q-part-h {
-    display: flex;
-    min-height: 22px;
-    align-items: center;
-    gap: 8px;
+  .q-targets .q-c-version .q-mono {
+    font-size: 0.75rem;
   }
-  .q-part-h h3 {
-    font-size: 0.8125rem;
-    font-weight: 600;
-    line-height: 18px;
+  /* The history's rows: the version a change made is grey words, and a host in its
+     sentence is mono in the text colour; nothing boxed inside the row. */
+  .q-chg .q-vpill {
+    height: auto;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    color: var(--q-muted);
   }
-  .q-part-h .q-sect-n {
-    font-variant-numeric: tabular-nums;
+  .q-chg .q-vpill > * {
+    padding-inline: 0;
   }
-  .q-sect > header .q-sect-n {
-    font-variant-numeric: tabular-nums;
+  .q-chg .q-vpill > * + * {
+    margin-left: 8px;
+    border-left: 0;
   }
-  .q-sect > header .q-link,
-  .q-part-h .q-link {
-    font-size: 0.8125rem;
+  .q-chg .q-vpill-v {
+    font-weight: 500;
   }
-  .q-part-h .q-link {
+  .q-chg .q-vpill-dg {
+    color: var(--q-faint);
+  }
+  .q-chg-say code.q-rule {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--color-base-content);
     font-size: 0.78125rem;
+  }
+}
+
+/* ==== The overviews: the workspace's (`OverviewComponents`) and an organisation's ==========
+   One look per level: the summary is the largest type on the page; a block is one box with a
+   band and its rows or lines, nothing boxed inside it; a row is one line whose subject is the
+   only strong text. Every block shows the few and links the many. */
+@layer qory {
+  /* ---- Layout: one column; from 1440 px the chart beside the targets ---- */
+  .q-ov {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "sum" "att" "act" "rep" "grd";
+    gap: 20px;
+    align-items: start;
+  }
+  .q-ov > * {
+    min-width: 0;
+  }
+  .q-ov > .q-sum {
+    grid-area: sum;
+  }
+  .q-ov > .q-att {
+    grid-area: att;
+  }
+  .q-ov > .q-ov-act {
+    grid-area: act;
+  }
+  .q-ov > .q-ov-rep {
+    grid-area: rep;
+  }
+  .q-ov > .q-ov-grd {
+    grid-area: grd;
+  }
+  @media (min-width: 1440px) {
+    .q-ov {
+      grid-template-columns: minmax(0, 1fr) clamp(380px, 32%, 520px);
+      grid-template-areas: "sum sum" "att att" "rep act" "grd grd";
+    }
+  }
+  .q-blk-none {
+    padding: 14px 16px;
+    color: var(--q-faint);
+    font-size: 0.8125rem;
   }
   .q-link {
     border: 0;
@@ -6617,90 +6868,243 @@
   .q-link:hover {
     text-decoration-color: currentColor;
   }
-
-  /* ---- Needs attention: one list of acts ---- */
-  .q-att ul {
-    display: grid;
-  }
-  .q-att .q-sugg-row {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr) auto;
-  }
-  .q-att-subj {
-    display: flex;
-    min-width: 0;
-    align-items: center;
-    gap: 10px;
-    font-size: 0.8125rem;
-  }
-  .q-att-subj .q-host {
+  /* A row's one act: words, never a bordered button. */
+  .q-act {
+    justify-self: end;
+    margin-right: -4px;
+    padding: 2px 4px;
+    border: 0;
+    border-radius: var(--radius-selector);
+    background: none;
+    color: var(--color-accent);
+    font-size: 0.78125rem;
     font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background-color 120ms var(--q-ease-out);
   }
-  .q-att-subj .q-host .q-port,
-  .q-att-subj .q-host .q-path {
+  .q-act:hover,
+  .q-act[aria-expanded="true"] {
+    background-color: var(--color-base-300);
+  }
+  .q-tname {
+    font-family: var(--font-mono);
+    white-space: nowrap;
+  }
+  .q-tname-sys {
     color: var(--q-faint);
     font-weight: 400;
   }
-  .q-att-task {
-    overflow: hidden;
+
+  /* ---- 1. The summary: the largest numbers on the page, in one strip ---- */
+  .q-sum {
+    container-type: inline-size;
+  }
+  .q-sum-in {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    overflow: clip;
+    border: 1px solid var(--q-border-subtle);
+    border-radius: var(--radius-box);
+    background-color: var(--color-base-100);
+  }
+  .q-sum-short {
+    display: none;
+  }
+  @container (max-width: 1000px) {
+    .q-sum-long {
+      display: none;
+    }
+    .q-sum-short {
+      display: block;
+    }
+  }
+  .q-sum-c {
+    display: grid;
+    grid-template-rows: auto auto 1fr;
     min-width: 0;
+    gap: 2px;
+    padding: 14px 18px;
+    border-left: 1px solid var(--q-border-subtle);
+    color: inherit;
+    transition: background-color 120ms var(--q-ease-out);
+  }
+  .q-sum-c:first-child {
+    border-left: 0;
+  }
+  a.q-sum-c:hover {
+    background-color: var(--color-base-200);
+  }
+  a.q-sum-c:focus-visible {
+    outline-offset: -2px;
+  }
+  .q-sum-k {
+    color: var(--q-muted);
+    font-size: 0.8125rem;
     font-weight: 500;
+    line-height: 18px;
+  }
+  .q-sum-v {
+    font-size: 1.75rem;
+    font-weight: 600;
+    line-height: 2.125rem;
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
+  }
+  .q-sum-s {
+    overflow: hidden;
+    color: var(--q-faint);
+    font-size: 0.75rem;
+    line-height: 1rem;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .q-att-rid {
+  .q-sum .q-skel-v {
+    display: block;
+    width: 4ch;
+    height: 28px;
+    margin-block: 3px;
+  }
+  @container (max-width: 560px) {
+    .q-sum-in {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .q-sum-c:nth-child(n) {
+      border-top: 1px solid var(--q-border-subtle);
+      border-left: 0;
+    }
+    .q-sum-c:nth-child(-n + 2) {
+      border-top: 0;
+    }
+    .q-sum-c:nth-child(2n) {
+      border-left: 1px solid var(--q-border-subtle);
+    }
+    .q-sum-v {
+      font-size: 1.375rem;
+      line-height: 1.75rem;
+    }
+  }
+
+  /* ---- 2. Needs attention: mark, subject, where, reason, when, one act ---- */
+  .q-ar {
+    display: grid;
+    grid-template-columns: 16px minmax(0, 1fr) minmax(0, 220px) minmax(0, 240px) 100px auto;
+    align-items: center;
+    gap: 12px;
+    min-height: 44px;
+    padding: 4px 16px 4px 14px;
+    color: var(--q-muted);
+    font-size: 0.78125rem;
+    transition: background-color 120ms var(--q-ease-out);
+  }
+  .q-ar:hover {
+    background-color: var(--color-base-200);
+  }
+  .q-ar-subj {
+    display: flex;
+    min-width: 0;
+    align-items: baseline;
+    gap: 10px;
+  }
+  .q-ar-t {
+    overflow: hidden;
+    min-width: 0;
+    color: var(--color-base-content);
+    font-size: 0.875rem;
+    font-weight: 500;
+    line-height: 1.25rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  a.q-ar-t:hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    text-decoration-color: var(--q-border-field);
+  }
+  .q-ar-t.q-mono {
+    font-size: 0.8125rem;
+  }
+  .q-ar-t .q-port,
+  .q-ar-t .q-path {
+    color: var(--q-faint);
+    font-weight: 400;
+  }
+  .q-ar-id {
+    flex: none;
     color: var(--q-faint);
     font-family: var(--font-mono);
     font-size: 0.75rem;
-    line-height: 1rem;
+  }
+  .q-ar-where {
+    overflow: hidden;
+    min-width: 0;
+    text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .q-att-lead {
-    font-weight: 600;
+  .q-ar-where .q-tname {
+    font-size: 0.75rem;
   }
-  .q-att .q-sugg-what .q-rule {
-    font-size: 0.71875rem;
+  .q-ar-why {
+    overflow: hidden;
+    min-width: 0;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
-  .q-mark-amber {
+  .q-ar-when {
+    text-align: right;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .q-ar-act {
+    display: flex;
+    justify-content: flex-end;
+    min-width: 3rem;
+  }
+  .q-amk {
+    display: grid;
+    width: 16px;
+    height: 16px;
+    place-items: center;
     background: none;
-    color: var(--q-primary-soft-content);
   }
-  .q-mark-amber [class*="hero-"],
-  .q-mark-plain [class*="hero-"] {
-    width: 14px;
-    height: 14px;
+  .q-amk-denied {
+    color: var(--color-error);
   }
-  .q-mark-dot::before {
+  .q-amk-plain {
+    color: var(--q-muted);
+  }
+  .q-amk-faint,
+  .q-amk.q-mark-faint,
+  .q-amk.q-mark-closed {
+    color: var(--q-faint);
+  }
+  .q-amk.q-mark-ok {
+    background: none;
+    color: var(--color-success);
+  }
+  .q-amk-warn {
+    color: var(--color-warning);
+  }
+  .q-amk-quiet::before,
+  .q-amk-lost::before {
     content: "";
     width: 8px;
     height: 8px;
     border-radius: 9999px;
-    background-color: currentColor;
+    background-color: var(--color-warning);
   }
-  .q-mark-plain {
-    background: none;
+  .q-amk-quiet::before {
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-warning) 25%, transparent);
+  }
+  .q-ar.q-resolved .q-ar-t {
     color: var(--q-muted);
+    font-weight: 400;
   }
-  .q-mark-faint {
+  .q-ar.q-resolved .q-ar-why {
     color: var(--q-faint);
   }
-  .q-mark-lock {
-    background-color: var(--color-base-200);
-    color: var(--color-base-content);
-  }
-  .q-mark-closed {
-    background-color: var(--color-base-200);
-    color: var(--q-muted);
-  }
-  .q-att li.q-resolved .q-sugg-what,
-  .q-att li.q-resolved .q-att-subj {
-    color: var(--q-faint);
-  }
-  .q-att li.q-resolved .q-att-subj :is(.q-host, .q-att-task) {
-    color: var(--q-muted);
-  }
-  /* A row that arrived while the page was open: opacity alone, never height (og). */
-  .q-att li.q-arrived,
-  .q-alive-row.q-arrived {
+  /* A row that arrived while the page was open: opacity alone, never height. */
+  .q-ar.q-arrived {
     animation: q-appear 180ms var(--q-ease-out);
   }
   @keyframes q-appear {
@@ -6711,121 +7115,69 @@
       opacity: 1;
     }
   }
-  .q-btn-danger-ghost {
-    border-color: transparent;
-    background: transparent;
-    box-shadow: none;
-    color: var(--color-error);
+  @container (max-width: 1100px) {
+    .q-ar {
+      grid-template-columns: 16px minmax(0, 1fr) minmax(0, 220px) 100px auto;
+    }
+    .q-ar-where {
+      display: none;
+    }
   }
-  .q-btn-danger-ghost:hover {
-    border-color: transparent;
-    background-color: var(--q-error-soft);
-    color: var(--q-error-soft-content);
+  @container (max-width: 700px) {
+    .q-ar {
+      grid-template-columns: 16px minmax(0, 1fr) auto;
+      grid-template-rows: auto auto;
+      row-gap: 0;
+      padding-block: 6px;
+    }
+    .q-amk {
+      grid-row: 1 / 3;
+    }
+    .q-ar-why {
+      grid-column: 2;
+      grid-row: 2;
+    }
+    .q-ar-when {
+      display: none;
+    }
+    .q-ar-act {
+      grid-column: 3;
+      grid-row: 1 / 3;
+    }
   }
 
-  /* ---- The activity strip: the key and value strip with stat-sized values ---- */
-  .q-strip .q-kv {
-    padding: 12px 16px 10px;
+  /* ---- Activity: the chart and its caption ---- */
+  .q-ov-chart {
+    display: grid;
+    gap: 10px;
+    padding: 12px 16px;
   }
-  .q-strip .q-kv dd {
-    overflow: visible;
-    min-width: 4ch;
-    font-size: 1.5rem;
-    font-weight: 600;
-    line-height: 2rem;
-    letter-spacing: -0.02em;
-    font-variant-numeric: tabular-nums;
-    white-space: normal;
-  }
-  .q-strip .q-kv dd.q-bad {
-    color: var(--q-error-soft-content);
-  }
-  .q-strip .q-kv dd.q-na {
+  .q-cap {
     color: var(--q-faint);
-    font-size: 1.25rem;
-    font-weight: 400;
+    font-size: 0.75rem;
+    line-height: 17px;
   }
-  .q-strip .q-kv small {
-    display: block;
-    color: var(--q-faint);
-    font-family: var(--font-sans);
-    font-size: 0.78125rem;
-    font-weight: 400;
-    line-height: 18px;
-    letter-spacing: 0;
-  }
-  .q-strip .q-kv small b {
+  .q-cap b {
     color: var(--q-muted);
     font-weight: 500;
   }
-  .q-strip a.q-kv {
-    color: inherit;
-    transition: background-color 120ms var(--q-ease-out);
+  button.q-band-do {
+    border: 0;
+    padding: 0;
+    background: none;
+    cursor: pointer;
   }
-  .q-strip a.q-kv:hover {
-    background-color: var(--color-base-200);
+  /* While the socket is away: the live cue reads Reconnecting. */
+  .q-live-off {
+    display: none;
   }
-  .q-strip .q-skel-v {
-    display: inline-block;
-    width: 3ch;
-    height: 24px;
-    vertical-align: middle;
+  .phx-client-error .q-live-on,
+  .phx-server-error .q-live-on {
+    display: none;
   }
-
-  /* ---- Alive rows: state, task, repository, host, alive line; one link ---- */
-  .q-alive-row {
-    position: relative;
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 12px;
-    min-height: 40px;
-    margin-inline: -8px;
-    padding: 4px 8px;
-    border-radius: var(--radius-field);
-    font-size: 0.8125rem;
-    transition: background-color 120ms var(--q-ease-out);
-  }
-  .q-alive-row:hover {
-    background-color: var(--color-base-200);
-  }
-  .q-alive-row .q-run-cell {
-    min-width: 0;
-  }
-  .q-alive-row .q-where {
-    display: grid;
-    min-width: 0;
-  }
-  .q-alive-row .q-target {
-    overflow: hidden;
-    min-width: 0;
-    font-family: var(--font-mono);
-    font-size: 0.78125rem;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .q-alive-row .q-target .q-system {
-    color: var(--q-faint);
-    font-size: 0.75rem;
-  }
-  .q-alive-row .q-host {
-    color: var(--q-muted);
-    font-family: var(--font-mono);
-    font-size: 0.78125rem;
-    line-height: 18px;
-  }
-  .q-alive-row .q-alive {
-    margin-left: 0;
-    font-size: 0.78125rem;
-  }
-  .q-alive-row .q-alive .tooltip,
-  .q-alive-row .q-quiet {
-    position: relative;
-    z-index: 1;
-  }
-  .q-none {
-    color: var(--q-faint);
-    font-size: 0.8125rem;
+  .phx-client-error .q-live-off,
+  .phx-server-error .q-live-off {
+    display: inline;
   }
 
   /* ---- The fourteen-day chart: two small multiples, one x axis, one tooltip ---- */
@@ -6834,39 +7186,15 @@
     display: grid;
     gap: 6px;
   }
-  .q-chart-totals {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px 14px;
-    color: var(--q-muted);
-    font-size: 0.78125rem;
-  }
-  .q-chart-totals b {
-    color: var(--color-base-content);
-    font-weight: 500;
-    font-variant-numeric: tabular-nums;
-  }
-  .q-chart-totals .grow {
-    flex: 1;
-  }
-  .q-chart-empty .q-chart-totals b {
-    color: var(--q-faint);
-    font-weight: 400;
-  }
-  .q-chart .q-tbtn[aria-pressed="true"] {
-    border-color: transparent;
-    background-color: var(--color-base-300);
-  }
   .q-chart svg {
     display: block;
-    width: 100%;
+    max-width: 100%;
     height: auto;
     overflow: visible;
   }
   .q-chart .q-ttl {
     fill: var(--q-muted);
-    font: 500 11.5px/16px var(--font-sans);
+    font: 12px/16px var(--font-sans);
   }
   .q-chart .q-max {
     fill: var(--q-faint);
@@ -6875,9 +7203,8 @@
   }
   .q-chart .q-ax {
     fill: var(--q-faint);
-    font: 11px/16px var(--font-sans);
+    font: 11.5px/16px var(--font-sans);
     font-variant-numeric: tabular-nums;
-    text-anchor: middle;
   }
   .q-chart .q-ax-today {
     fill: var(--q-muted);
@@ -6951,143 +7278,367 @@
     background-color: var(--color-error);
   }
   .q-chart .q-chart-table {
-    margin-top: 2px;
-    font-size: 0.8125rem;
-  }
-  .q-foot {
-    color: var(--q-faint);
-    font-size: 0.78125rem;
-    line-height: 18px;
-  }
-  /* While the socket is away: the live cue reads Reconnecting. */
-  .q-live-off {
-    display: none;
-  }
-  .phx-client-error .q-live-on,
-  .phx-server-error .q-live-on {
-    display: none;
-  }
-  .phx-client-error .q-live-off,
-  .phx-server-error .q-live-off {
-    display: inline;
-  }
-
-  /* ---- Last runs: the runs table without groups, 40 px rows ---- */
-  .q-last td {
-    height: 40px;
-    padding-block: 6px;
-  }
-  .q-last td.q-c-target {
-    font-family: var(--font-mono);
-    font-size: 0.78125rem;
-  }
-  .q-last td.q-c-target .q-system {
-    color: var(--q-faint);
-    font-size: 0.75rem;
-  }
-
-  /* ---- Glance cards: a dl of facts, a few lines ---- */
-  .q-glance {
-    display: grid;
-    grid-template-columns: 96px minmax(0, 1fr);
-    align-items: baseline;
-    gap: 10px 12px;
-    padding: 12px 16px 14px;
-    font-size: 0.8125rem;
-  }
-  .q-glance dt {
-    color: var(--q-muted);
-    font-size: 0.75rem;
-    font-weight: 500;
-    line-height: 18px;
-  }
-  .q-glance dd {
-    display: flex;
-    min-width: 0;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 4px 8px;
-    line-height: 18px;
-  }
-  .q-glance dd b {
-    font-weight: 500;
-  }
-  .q-glance dd .q-muted {
-    color: var(--q-muted);
-  }
-  .q-glance .badge {
-    height: 18px;
-    font-size: 0.6875rem;
-  }
-  .q-glance .q-vpill-sm {
-    height: 22px;
-  }
-  .q-lines {
-    display: grid;
-    gap: 4px;
-    padding: 12px 16px 14px;
-    color: var(--q-muted);
-    font-size: 0.8125rem;
-    line-height: 19px;
-  }
-  .q-lines b {
-    color: var(--color-base-content);
-    font-weight: 500;
-    font-variant-numeric: tabular-nums;
-  }
-
-  /* ---- Access keys ---- */
-  .q-keyrows td {
-    height: 40px;
-    padding-block: 6px;
-  }
-  .q-kcell {
-    display: grid;
-  }
-  .q-kcell b {
-    font-weight: 500;
-  }
-  .q-kcell b .badge {
-    height: 18px;
-    margin-left: 6px;
-    font-size: 0.6875rem;
-    vertical-align: 1px;
-  }
-  .q-kcell span {
-    color: var(--q-faint);
-    font-family: var(--font-mono);
-    font-size: 0.75rem;
-    line-height: 1rem;
-  }
-  .q-lastrun {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    min-width: 0;
-  }
-  .q-lastrun .q-lastrun-task {
     overflow: hidden;
-    max-width: 24ch;
+    border: 1px solid var(--q-border-subtle);
+    border-radius: var(--radius-field);
+  }
+  /* ---- 3. Active targets: one line each; the target is the title ---- */
+  .q-rr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 170px 172px 84px;
+    align-items: center;
+    gap: 12px;
+    min-height: 44px;
+    padding: 4px 16px;
+    color: var(--q-muted);
+    font-size: 0.78125rem;
+    transition: background-color 120ms var(--q-ease-out);
+  }
+  a.q-rr:hover {
+    background-color: var(--color-base-200);
+  }
+  .q-rr-p {
+    overflow: hidden;
+    min-width: 0;
+    color: var(--color-base-content);
+    font-size: 0.8125rem;
+    font-weight: 500;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .q-lastrun:hover .q-lastrun-task {
-    text-decoration: underline;
-    text-underline-offset: 3px;
+  .q-rr-last {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+  }
+  .q-rr-sp {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+  }
+  .q-rr-n {
+    min-width: 7ch;
+    text-align: right;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .q-rr-den {
+    text-align: right;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  @container (max-width: 560px) {
+    .q-rr {
+      grid-template-columns: minmax(0, 1fr) auto 64px;
+    }
+    .q-rr .q-spark,
+    .q-rr-last .q-rs-t,
+    .q-rr-den {
+      display: none;
+    }
+  }
+  /* A run's state: a dot, and its word when it needs a look. */
+  .q-rs {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+  }
+  .q-rs-dot {
+    width: 8px;
+    height: 8px;
+    flex: none;
+    border-radius: 9999px;
+    background-color: var(--q-border-field);
+  }
+  .q-rs-succeeded .q-rs-dot {
+    background-color: var(--color-success);
+  }
+  .q-rs-running {
+    color: var(--color-base-content);
+  }
+  .q-rs-running .q-rs-dot {
+    background-color: var(--color-info);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-info) 22%, transparent);
+  }
+  .q-rs-quiet {
+    color: var(--color-base-content);
+  }
+  .q-rs-quiet .q-rs-dot {
+    background-color: var(--color-warning);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-warning) 25%, transparent);
+  }
+  .q-rs-failed,
+  .q-rs-timed_out {
+    color: var(--color-error);
+  }
+  .q-rs-failed .q-rs-dot,
+  .q-rs-timed_out .q-rs-dot {
+    background-color: var(--color-error);
+  }
+  .q-rs-lost {
+    color: var(--q-primary-soft-content);
+  }
+  .q-rs-lost .q-rs-dot {
+    background-color: var(--color-warning);
   }
 
-  /* ---- The empty workspace: its checklist card ---- */
+  /* ---- 4. Guard: key-value lines, side by side where the block is wide ---- */
+  .q-gl {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .q-gr {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-content: start;
+    align-items: baseline;
+    gap: 1px 10px;
+    padding: 11px 16px 12px;
+    border-top: 1px solid var(--q-border-subtle);
+    color: var(--q-muted);
+    font-size: 0.78125rem;
+  }
+  .q-gr:first-child {
+    border-top: 0;
+  }
+  .q-gr-v {
+    overflow: hidden;
+    min-width: 0;
+    color: var(--color-base-content);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    line-height: 19px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .q-gr-d {
+    grid-column: 1 / -1;
+    color: var(--q-faint);
+    font-size: 0.75rem;
+    line-height: 17px;
+  }
+  .q-gr-d .q-mono {
+    font-size: 0.71875rem;
+  }
+  @container (min-width: 900px) {
+    .q-gl {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    .q-gl.q-gl-one {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .q-gr {
+      border-top: 0;
+      border-left: 1px solid var(--q-border-subtle);
+    }
+    .q-gr:first-child {
+      border-left: 0;
+    }
+  }
+
+  /* ---- The empty workspace: one box, no panel inside it ---- */
+  .q-onb {
+    display: grid;
+    max-width: 1040px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 28px;
+    padding: 24px;
+    border: 1px solid var(--q-border-subtle);
+    border-radius: var(--radius-box);
+    background-color: var(--color-base-100);
+  }
+  @media (min-width: 1280px) {
+    .q-onb {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 0.95fr);
+      gap: 40px;
+    }
+  }
+  .q-onb h2 {
+    font-size: 1.125rem;
+    font-weight: 600;
+    line-height: 1.625rem;
+  }
+  .q-onb-lead {
+    max-width: 52ch;
+    margin-top: 4px;
+    color: var(--q-muted);
+  }
+  .q-onb-paste {
+    display: grid;
+    align-content: start;
+    gap: 8px;
+  }
+  .q-onb-lbl {
+    color: var(--q-faint);
+    font-size: 0.75rem;
+  }
+  .q-onb-pre {
+    overflow-x: auto;
+    margin: 0;
+    padding: 12px 14px;
+    border-radius: var(--radius-field);
+    background-color: var(--q-code-bg);
+    font: 12.5px/20px var(--font-mono);
+    tab-size: 2;
+  }
+  .q-onb-k {
+    color: var(--q-muted);
+  }
+  .q-onb-after {
+    max-width: 1040px;
+    margin-top: -8px;
+    color: var(--q-faint);
+    font-size: 0.78125rem;
+  }
   .q-landed {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding-top: 12px;
-    border-top: 1px solid var(--q-border-subtle);
+    margin-top: 16px;
     color: var(--q-muted);
     font-size: 0.8125rem;
   }
   .q-landed [class*="hero-"] {
     color: var(--color-success);
+  }
+
+  /* ---- An organisation's overview: its workspaces as rows, people and details as lines ---- */
+  .q-org {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+    align-items: start;
+  }
+  .q-org > * {
+    min-width: 0;
+  }
+  .q-org-main,
+  .q-org-side {
+    display: grid;
+    min-width: 0;
+    gap: 20px;
+  }
+  @media (min-width: 1280px) {
+    .q-org {
+      grid-template-columns: minmax(0, 1fr) clamp(300px, 25%, 380px);
+    }
+    .q-org > .q-org-top {
+      grid-column: 1 / -1;
+    }
+  }
+  .q-wr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 90px 172px 84px 110px;
+    align-items: center;
+    gap: 12px;
+    min-height: 48px;
+    padding: 4px 16px;
+    color: var(--q-muted);
+    font-size: 0.78125rem;
+    transition: background-color 120ms var(--q-ease-out);
+  }
+  a.q-wr:hover {
+    background-color: var(--color-base-200);
+  }
+  .q-wr-nm {
+    display: flex;
+    min-width: 0;
+    align-items: baseline;
+    gap: 10px;
+  }
+  .q-wr-nm b {
+    overflow: hidden;
+    color: var(--color-base-content);
+    font-size: 0.875rem;
+    font-weight: 500;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .q-wr-nm span {
+    overflow: hidden;
+    color: var(--q-faint);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .q-wr-al {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+  }
+  .q-wr-al::before {
+    content: "";
+    width: 7px;
+    height: 7px;
+    flex: none;
+    border-radius: 9999px;
+    background-color: var(--color-info);
+  }
+  .q-wr-al.q-none-alive {
+    color: var(--q-faint);
+  }
+  .q-wr-al.q-none-alive::before {
+    display: none;
+  }
+  .q-wr-sp {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .q-wr-den,
+  .q-wr-when {
+    text-align: right;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  @container (max-width: 760px) {
+    .q-wr {
+      grid-template-columns: minmax(0, 1fr) 90px 110px;
+    }
+    .q-wr-sp,
+    .q-wr-den {
+      display: none;
+    }
+  }
+  @container (max-width: 480px) {
+    .q-wr {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+    .q-wr-al,
+    .q-wr-nm span {
+      display: none;
+    }
+  }
+  .q-ppl {
+    display: grid;
+    gap: 6px;
+    padding: 14px 16px;
+    line-height: 18px;
+    color: var(--q-muted);
+    font-size: 0.78125rem;
+  }
+  .q-ppl .q-hot {
+    color: var(--color-base-content);
+  }
+  .q-avs {
+    display: flex;
+    align-items: center;
+  }
+  .q-avs > .avatar {
+    margin-right: -5px;
+  }
+  .q-avs > .avatar > div {
+    box-shadow: 0 0 0 2px var(--color-base-100);
+  }
+  .q-avs-n {
+    margin-left: 12px;
   }
 
   /* ---- Skeletons: the shape of the content, never a spinner ---- */
@@ -7097,110 +7648,15 @@
     border-radius: var(--radius-selector);
   }
 
-  /* ---- Touch targets (oh) ---- */
+  /* ---- Touch targets ---- */
   @media (pointer: coarse) {
-    .q-att .q-sugg-acts .btn,
-    .q-chart .q-tbtn {
-      min-width: 40px;
-      height: 40px;
-    }
-  }
-
-  /* ---- Phone (oi) ---- */
-  @media (max-width: 767.98px) {
-    .q-att .q-sugg-row {
-      grid-template-columns: minmax(0, 1fr) auto;
-    }
-    .q-att .q-sugg-what {
-      grid-column: 1 / -1;
-      grid-row: 2;
-    }
-    .q-att .q-sugg-acts .btn {
-      height: 32px;
-    }
-    .q-alive-row {
-      grid-template-columns: max-content minmax(0, 1fr);
-      row-gap: 2px;
-      padding-block: 8px;
-    }
-    .q-alive-row > .q-state-wrap {
-      justify-self: start;
-    }
-    .q-alive-row .q-where {
-      grid-column: 1 / -1;
-    }
-    .q-alive-row .q-host {
-      display: none;
-    }
-    .q-alive-row .q-alive {
-      grid-column: 1 / -1;
-    }
-    .q-glance {
-      grid-template-columns: minmax(0, 1fr);
-      gap: 2px 0;
-    }
-    .q-glance dt {
-      margin-top: 8px;
-    }
-    .q-glance dt:first-child {
-      margin-top: 0;
-    }
-  }
-
-  /* The keys table reflows into blocks below 640 px, as the runs table does. */
-  @media (max-width: 639.98px) {
-    .q-keyrows thead,
-    .q-keyrows td.q-c-rv,
-    .q-keyrows td.q-c-hosts {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-      clip-path: inset(50%);
-      white-space: nowrap;
-    }
-    .q-keyrows,
-    .q-keyrows tbody {
-      display: block;
-    }
-    .q-keyrows tr {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: 2px 12px;
-      padding: 10px 16px;
-      border-bottom: 1px solid var(--q-border-subtle);
-    }
-    .q-keyrows tbody tr:last-child {
-      border-bottom: 0;
-    }
-    .q-keyrows td {
-      display: block;
-      overflow: hidden;
-      height: auto;
-      padding: 0;
-      border: 0;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .q-keyrows td.q-c-key {
-      grid-column: 1;
-      grid-row: 1;
-    }
-    .q-keyrows td.q-c-seen {
-      grid-column: 2;
-      grid-row: 1;
-      justify-self: end;
-      font-size: 0.78125rem;
-    }
-    .q-keyrows td.q-c-last {
-      grid-column: 1 / -1;
-      grid-row: 2;
+    .q-act {
+      min-height: 40px;
     }
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .q-att li.q-arrived,
-    .q-alive-row.q-arrived {
+    .q-ar.q-arrived {
       animation: none;
     }
   }
