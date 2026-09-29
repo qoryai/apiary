@@ -828,8 +828,8 @@ msgstr[1] ""
 
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
-msgid "%{number} more is counted on the Connections tab."
-msgid_plural "%{number} more are counted on the Connections tab."
+msgid "%{number} more is counted on the Network access tab."
+msgid_plural "%{number} more are counted on the Network access tab."
 msgstr[0] ""
 msgstr[1] ""
 
@@ -842,8 +842,8 @@ msgstr[1] ""
 
 #: lib/apiary_web/live/workspace_live/overview.ex
 #, elixir-autogen, elixir-format
-msgid "%{number} more item, on the connections page"
-msgid_plural "%{number} more items, on the connections page"
+msgid "%{number} more item, on the Network access page"
+msgid_plural "%{number} more items, on the Network access page"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -2016,7 +2016,7 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Add the hosts your runs need here, or let a run reach out first and allow its hosts from the Connections page, one row at a time."
+msgid "Add the hosts your runs need here, or let a run reach out first and allow its hosts from the Network access page, one row at a time."
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -2831,10 +2831,7 @@ msgstr ""
 msgid "Connection lost."
 msgstr ""
 
-#: lib/apiary_web/components/layouts.ex
-#: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/run_live/show.ex
-#: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Connections"
 msgstr ""
@@ -2842,21 +2839,6 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Connections before this item were decided by %{version}."
-msgstr ""
-
-#: lib/apiary_web/live/run_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Connections of this run"
-msgstr ""
-
-#: lib/apiary_web/live/connection_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Connections of this workspace"
-msgstr ""
-
-#: lib/apiary_web/live/target_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Connections · %{target}"
 msgstr ""
 
 #: lib/apiary_web/components/core_components.ex
@@ -3268,7 +3250,7 @@ msgstr ""
 
 #: lib/apiary_web/live/workspace_live/overview.ex
 #, elixir-autogen, elixir-format
-msgid "Denied destinations were not counted: this workspace recorded more than %{cap} connections in 7 days. The connections page counts them by destination."
+msgid "Denied destinations were not counted: this workspace recorded more than %{cap} connections in 7 days. The Network access page counts them by destination."
 msgstr ""
 
 #: lib/apiary_web/live/connection_live/index.ex
@@ -3859,12 +3841,12 @@ msgstr ""
 
 #: lib/apiary_web/live/connection_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Filter connections"
+msgid "Filter destinations"
 msgstr ""
 
 #: lib/apiary_web/live/connection_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Filter connections, e.g. host:registry.example seen:24h"
+msgid "Filter destinations, e.g. host:registry.example seen:24h"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/index.ex
@@ -4113,14 +4095,14 @@ msgstr ""
 msgid "Go to"
 msgstr ""
 
+#: lib/apiary_web/live/policy_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Go to Network access"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Go to access keys"
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Go to connections"
 msgstr ""
 
 #: lib/apiary_web/live/activity_live.ex
@@ -5203,6 +5185,39 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Needs attention"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#: lib/apiary_web/live/connection_live/index.ex
+#: lib/apiary_web/live/run_live/show.ex
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Network access"
+msgstr ""
+
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Network access of this run"
+msgstr ""
+
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Network access of this target"
+msgstr ""
+
+#: lib/apiary_web/live/connection_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Network access of this workspace"
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Network access page"
+msgstr ""
+
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Network access · %{target}"
 msgstr ""
 
 #: lib/apiary_web/live/target_live/index.ex
@@ -8701,7 +8716,7 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Until the first change here, every machine of this workspace runs under its own policy, the one in its runner file. The first rule you add, or a mode you set, renders version 1, and machines take their policy from Qory from then on. You can also let a run reach out first and allow its hosts from the Connections page, one row at a time."
+msgid "Until the first change here, every machine of this workspace runs under its own policy, the one in its runner file. The first rule you add, or a mode you set, renders version 1, and machines take their policy from Qory from then on. You can also let a run reach out first and allow its hosts from the Network access page, one row at a time."
 msgstr ""
 
 #: lib/apiary_web/live/access_key_live/index.ex
@@ -9405,8 +9420,8 @@ msgstr[1] ""
 
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
-msgid "and %{number} more on the connections page"
-msgid_plural "and %{number} more on the connections page"
+msgid "and %{number} more on the Network access page"
+msgid_plural "and %{number} more on the Network access page"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -9466,11 +9481,6 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "by rule"
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "connections page"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex

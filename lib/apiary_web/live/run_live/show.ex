@@ -263,7 +263,7 @@ defmodule ApiaryWeb.RunLive.Show do
               count={connections_count(@counts)}
               tone={@counts.denied > 0 && "error"}
             >
-              {gettext("Connections")}
+              {gettext("Network access")}
             </:tab>
             <:tab
               id="run-tab-details"
@@ -666,7 +666,7 @@ defmodule ApiaryWeb.RunLive.Show do
       <.connections_table
         :if={@counts.all > 0}
         id="run-connections"
-        label={gettext("Connections of this run")}
+        label={gettext("Network access of this run")}
         rows={@connections.rows}
         started_at={@run.started_at}
         acts={@acts}

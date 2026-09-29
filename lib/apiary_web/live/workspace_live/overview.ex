@@ -188,7 +188,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
                 <span class="q-live-off">{gettext("Reconnecting.")}</span>
                 <span :if={@connections == :unavailable} id="activity-uncounted">
                   {gettext(
-                    "Denied destinations were not counted: this workspace recorded more than %{cap} connections in 7 days. The connections page counts them by destination.",
+                    "Denied destinations were not counted: this workspace recorded more than %{cap} connections in 7 days. The Network access page counts them by destination.",
                     cap: Format.number(Policy.Activity.cap())
                   )}
                 </span>
@@ -1296,8 +1296,8 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
             ~p"/#{scope.organisation}/#{scope.workspace}/connections?#{%{"decision" => "denied"}}",
           title:
             ngettext(
-              "%{number} more item, on the connections page",
-              "%{number} more items, on the connections page",
+              "%{number} more item, on the Network access page",
+              "%{number} more items, on the Network access page",
               count,
               number: Format.number(count)
             )

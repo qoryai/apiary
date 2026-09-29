@@ -66,7 +66,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
     >
       <div id="connections-page" class="q-lp">
         <.header>
-          {gettext("Connections")}
+          {gettext("Network access")}
           <:subtitle>
             {if @security,
               do:
@@ -149,8 +149,8 @@ defmodule ApiaryWeb.ConnectionLive.Index do
         <.list_search
           id="connections-query"
           class="q-find-query"
-          label={gettext("Filter connections")}
-          placeholder={gettext("Filter connections, e.g. host:registry.example seen:24h")}
+          label={gettext("Filter destinations")}
+          placeholder={gettext("Filter destinations, e.g. host:registry.example seen:24h")}
           value={@filters.q}
           change="query"
           live={false}
@@ -351,7 +351,11 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           <.connections_table
             :if={@listing && @listing.rows != []}
             id="destinations"
-            label={gettext("Connections of this workspace")}
+            label={
+              if @page_base.fixed,
+                do: gettext("Network access of this target"),
+                else: gettext("Network access of this workspace")
+            }
             variant="workspace"
             rows={@listing.rows}
             row_id={&destination_id/1}
@@ -457,7 +461,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
 
     {:ok,
      assign(socket,
-       page_title: gettext("Connections"),
+       page_title: gettext("Network access"),
        filters: Filters.new(:connections),
        listing: nil,
        views: nil,

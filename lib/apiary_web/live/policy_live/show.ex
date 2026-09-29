@@ -1057,7 +1057,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
       >
         <span :if={!@managed?} id="policy-unmanaged">
           {gettext(
-            "Until the first change here, every machine of this workspace runs under its own policy, the one in its runner file. The first rule you add, or a mode you set, renders version 1, and machines take their policy from Qory from then on. You can also let a run reach out first and allow its hosts from the Connections page, one row at a time."
+            "Until the first change here, every machine of this workspace runs under its own policy, the one in its runner file. The first rule you add, or a mode you set, renders version 1, and machines take their policy from Qory from then on. You can also let a run reach out first and allow its hosts from the Network access page, one row at a time."
           )}
         </span>
         <span :if={@managed?}>
@@ -1065,7 +1065,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
             do: gettext("With no rules, runs reach everything and every connection is recorded."),
             else: gettext("With no rules, a run under enforce reaches nothing.")}
           {gettext(
-            "Add the hosts your runs need here, or let a run reach out first and allow its hosts from the Connections page, one row at a time."
+            "Add the hosts your runs need here, or let a run reach out first and allow its hosts from the Network access page, one row at a time."
           )}
         </span>
         <:actions>
@@ -1074,7 +1074,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
           </.button>
           <.button navigate={
             ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/connections"
-          }>{gettext("Go to connections")}</.button>
+          }>{gettext("Go to Network access")}</.button>
         </:actions>
       </.empty_state>
       <p
@@ -1500,10 +1500,10 @@ defmodule ApiaryWeb.PolicyLive.Show do
               navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/connections?since=7d"}
               class="q-link"
             >
-              {gettext("connections page")}
+              {gettext("Network access page")}
             </.link>{if part !=
-                                                                            :link,
-                                                                          do: part}
+                                                                               :link,
+                                                                             do: part}
           <% end %>
         </p>
       </div>
@@ -1656,7 +1656,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         number: Format.number(n)
       )
 
-  # "and 4 more on the connections page", with the page a link.
+  # "and 4 more on the Network access page", with the page a link.
   defp more_words(more),
     do: rich_gettext("and %{more} more on the %{link}", more: Format.number(more), link: :link)
 

@@ -77,7 +77,7 @@ defmodule ApiaryWeb.Layouts do
       %Entry{
         section: :record,
         key: :connections,
-        label: gettext("Connections"),
+        label: gettext("Network access"),
         icon: "hero-arrows-right-left-micro",
         path: fn organisation, workspace -> ~p"/#{organisation}/#{workspace}/connections" end,
         action: :"run.read"

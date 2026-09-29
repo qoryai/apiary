@@ -955,8 +955,8 @@ defmodule ApiaryWeb.RunPageComponents do
 
   defp more_counted(n) do
     ngettext(
-      "%{number} more is counted on the Connections tab.",
-      "%{number} more are counted on the Connections tab.",
+      "%{number} more is counted on the Network access tab.",
+      "%{number} more are counted on the Network access tab.",
       n,
       number: Format.number(n)
     )

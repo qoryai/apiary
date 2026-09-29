@@ -110,7 +110,7 @@ defmodule ApiaryWeb.TargetLive.Show do
       target_path(scope, target.system, target.path, ["connections"]),
       {target.system, target.path}
     )
-    |> assign(:page_title, gettext("Connections · %{target}", target: name(target)))
+    |> assign(:page_title, gettext("Network access · %{target}", target: name(target)))
   end
 
   defp mount_tab(socket, {:policy, action, _params}, _session) do
@@ -321,7 +321,7 @@ defmodule ApiaryWeb.TargetLive.Show do
           current={@tab == :connections}
           icon="hero-arrows-right-left-micro"
         >
-          {gettext("Connections")}
+          {gettext("Network access")}
         </:tab>
         <:tab
           :if={@security}
@@ -484,7 +484,7 @@ defmodule ApiaryWeb.TargetLive.Show do
               navigate={page_path(@scope, @target, ["connections"]) <> "?decision=denied"}
               class="q-tgt-more"
             >
-              {gettext("Connections")}<.icon name="hero-arrow-right-micro" class="size-3.5" />
+              {gettext("Network access")}<.icon name="hero-arrow-right-micro" class="size-3.5" />
             </.link>
           </div>
           <.card_skeleton :if={@about.loading} rows={2} />

@@ -799,8 +799,8 @@ defmodule ApiaryWeb.PolicyLive.Target do
         </ul>
         <p :if={length(@would.destinations) > 8} class="q-would-more">
           {ngettext(
-            "and %{number} more on the connections page",
-            "and %{number} more on the connections page",
+            "and %{number} more on the Network access page",
+            "and %{number} more on the Network access page",
             length(@would.destinations) - 8,
             number: Format.number(length(@would.destinations) - 8)
           )}
