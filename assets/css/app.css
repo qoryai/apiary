@@ -6009,6 +6009,75 @@
   }
 }
 
+/* ==== The policy's tables on the row spec (docs/ui.md, Lists): the host or the target is
+   the title; an allow is a faint mark and a deny its red one; paths, sources, counts and
+   authors are small grey words, never chips; a lock shows as words when it is on and on
+   hover when it is not. ==== */
+@layer qory {
+  .q-rules td.q-c-rule .q-host,
+  .q-targets .q-target-path {
+    color: var(--color-base-content);
+    font: 500 13px/20px var(--font-mono);
+  }
+  .q-targets .q-target-system {
+    font: 12.5px/20px var(--font-mono);
+  }
+  .q-rules .q-mark-ok {
+    background: none;
+    color: var(--q-faint);
+  }
+  .q-rules .q-mark-no {
+    background: none;
+    color: var(--color-error);
+  }
+  .q-rules .q-chips {
+    gap: 2px 10px;
+  }
+  .q-rules .q-chips .q-rule {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--q-muted);
+    font-size: 0.75rem;
+  }
+  .q-rules .q-bad {
+    color: var(--q-muted);
+    font-weight: 400;
+  }
+  .q-rules .q-src {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--q-muted);
+    font-size: 0.78125rem;
+  }
+  .q-rules .q-newdot {
+    padding: 0;
+    background: none;
+    color: var(--q-info-soft-content);
+    font-size: 0.75rem;
+  }
+  .q-rules .q-lockbtn[aria-pressed="true"] {
+    border-color: transparent;
+    background: none;
+    color: var(--q-muted);
+  }
+  @media (hover: hover) {
+    .q-rules tr:not(:hover, :focus-within) .q-lockbtn[aria-pressed="false"] {
+      opacity: 0;
+    }
+  }
+  .q-rules .q-rowacts .btn-square {
+    color: var(--q-faint);
+  }
+  .q-rules .q-rowacts .btn-square:hover {
+    color: var(--color-base-content);
+  }
+  .q-targets .q-c-version .q-mono {
+    font-size: 0.75rem;
+  }
+}
+
 /* ==== The overviews: the workspace's (`OverviewComponents`) and an organisation's ==========
    One look per level: the summary is the largest type on the page; a block is one box with a
    band and its rows or lines, nothing boxed inside it; a row is one line whose subject is the

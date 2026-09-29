@@ -4272,11 +4272,6 @@ msgstr ""
 msgid "It was let through."
 msgstr ""
 
-#: lib/apiary_web/live/policy_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Its own"
-msgstr ""
-
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "Its own from now on. It followed the workspace's default."
@@ -8472,7 +8467,6 @@ msgid "Workspace baseline"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
-#: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Workspace default"
 msgstr ""
@@ -8551,11 +8545,6 @@ msgstr ""
 #: lib/apiary_web/format.ex
 #, elixir-autogen, elixir-format
 msgid "Yesterday, %{time}"
-msgstr ""
-
-#: lib/apiary_web/live/activity_live.ex
-#, elixir-autogen, elixir-format
-msgid "You"
 msgstr ""
 
 #: lib/apiary_web/live/organisation_live.ex
@@ -9123,6 +9112,11 @@ msgstr ""
 msgid "is taken out of the paths in force for the host."
 msgstr ""
 
+#: lib/apiary_web/live/policy_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "its own"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "lane (%{tip})"
@@ -9319,6 +9313,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "of"
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "of the workspace baseline"
 msgstr ""
 
 #: lib/apiary/runs/filters.ex
@@ -9625,12 +9624,12 @@ msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/connection_live/rules.ex
-#: lib/apiary_web/live/policy_live/show.ex
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
 msgid "workspace baseline"
 msgstr ""
 
+#: lib/apiary_web/live/activity_live.ex
 #: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/member_live/index.ex
 #: lib/apiary_web/live/run_live/show.ex
