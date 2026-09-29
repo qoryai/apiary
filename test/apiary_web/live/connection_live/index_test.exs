@@ -134,7 +134,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       refute has_element?(view, "##{refused} .q-dest-tool")
 
       assert text(view, "##{refused} .q-dest") =~
-               ~r"^files.tools.internal\s?:443 PUT /media/acme/other/checkout.png$"
+               ~r"^files.tools.internal\s?:443 /media/acme/other/checkout.png$"
 
       if security?() do
         assert text(view, "##{refused} .q-why") =~ "Host allowed, no path rule matches."
@@ -217,9 +217,13 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
 
       assert rows == [dst("files.cdn.example"), dst("registry.example")]
 
+      # The title is the host and its port (a path when there is one); the split says
+      # allowed and denied in words, the denied number red only when there is one.
       cdn = text(view, "##{dst("files.cdn.example")}")
-      assert cdn =~ "Denied files.cdn.example :443 CONNECT"
-      assert cdn =~ "0 / 2"
+      assert text(view, "##{dst("files.cdn.example")} .q-dest") == "files.cdn.example :443"
+      assert cdn =~ "0 / 2 0 allowed, 2 denied"
+      assert has_element?(view, "##{dst("files.cdn.example")} .q-cx-split .q-cx-bad", "2")
+      assert has_element?(view, "##{dst("registry.example")} .q-cx-split .q-cx-bad", "1")
 
       if security?(),
         do: assert(cdn =~ "No rule matches. Enforce mode denies it."),

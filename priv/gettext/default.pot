@@ -73,6 +73,11 @@ msgstr ""
 msgid "%{added} added, %{removed} removed; denies %{deny_added} more and %{deny_removed} fewer."
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{allowed} allowed, %{denied} denied"
+msgstr ""
+
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "%{attempts} in %{runs}"
@@ -1609,6 +1614,11 @@ msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
+msgid "A locked rule of the workspace"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
 msgid "A locked workspace rule allows %{host}"
 msgstr ""
 
@@ -1919,6 +1929,7 @@ msgstr ""
 msgid "Actions for %{host}"
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/access_key_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Actions for %{label}"
@@ -2293,6 +2304,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Allowed."
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Allow…"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/reading.ex
@@ -2838,6 +2854,7 @@ msgstr ""
 
 #: lib/apiary_web/components/core_components.ex
 #: lib/apiary_web/components/policy_components.ex
+#: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Copied"
@@ -2883,6 +2900,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Copy the digest"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Copy the host"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -3367,6 +3389,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "Deny rules and locks are not in the document: they decide what it lists."
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Deny…"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -4859,6 +4886,16 @@ msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
+msgid "Locked by %{name}"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Locked by %{name} on %{date}"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
 msgid "Locked by %{name} on %{date}."
 msgstr ""
 
@@ -5961,8 +5998,14 @@ msgstr ""
 msgid "Only the secret issued at the last rotation keeps working. A machine still on the previous secret fails its next request."
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Only this host"
+msgstr ""
+
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/policy_components.ex
+#: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Open"
 msgstr ""
@@ -7318,6 +7361,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
 msgid "Show the locked rule"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Show the rule"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/views.ex

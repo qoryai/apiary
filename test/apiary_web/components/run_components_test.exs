@@ -431,8 +431,15 @@ defmodule ApiaryWeb.RunComponentsTest do
           "workspace"
         )
 
-      assert text(html) =~ "65 / 8"
+      # A thin split and its numbers, the words for a screen reader; no mark, no tint.
+      assert text(html) =~ "65/8 65 allowed, 8 denied"
+      assert html =~ ~s(title="65 allowed, 8 denied")
+      refute html =~ "q-mark"
       assert text(html) =~ "Rule registry.example · last attempt"
+
+      # The reason is one line, whole in its title, and folds under the destination.
+      assert html =~ ~s(title="Rule registry.example · last attempt")
+      assert html =~ ~s(class="q-cx-fold")
       assert html =~ ~s(aria-expanded="false")
       assert html =~ "width:89%"
     end
@@ -468,7 +475,9 @@ defmodule ApiaryWeb.RunComponentsTest do
 
         assert text(html) =~ "Answered 200"
         refute text(html) =~ "Connected"
-        assert html =~ "q-mark-ok"
+
+        # A run's row keeps the decision's mark; the workspace's rows have none.
+        assert html =~ "q-mark-ok" == (variant == "table")
       end
 
       # A tool that answered with an error is told apart; one with no path rule says none.
@@ -538,9 +547,13 @@ defmodule ApiaryWeb.RunComponentsTest do
         html = row(refused, variant)
         [dest] = html |> LazyHTML.from_fragment() |> LazyHTML.query(".q-dest") |> Enum.to_list()
 
-        # The host leads, as for any denial; no wrench, no q-dest-tool.
+        # The host leads, as for any denial; no wrench, no q-dest-tool. A run's row names
+        # the request; the workspace's title is the host, the port and the path.
         assert text(LazyHTML.to_html(dest)) =~
-                 ~r/^files.tools.internal:443 GET \/media\/acme\/other\/checkout.png$/
+                 if(variant == "table",
+                   do: ~r/^files.tools.internal:443 GET \/media\/acme\/other\/checkout.png$/,
+                   else: ~r/^files.tools.internal:443 \/media\/acme\/other\/checkout.png$/
+                 )
 
         refute html =~ "q-dest-tool"
         refute html =~ "hero-wrench-screwdriver-micro"

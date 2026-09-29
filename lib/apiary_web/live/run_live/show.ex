@@ -258,7 +258,7 @@ defmodule ApiaryWeb.RunLive.Show do
             <:tab
               id="run-tab-connections"
               patch={tab_path(@current_scope, @run, :connections)}
-              icon="hero-arrows-right-left-micro"
+              icon="hero-globe-alt-micro"
               current={@live_action == :connections}
               count={connections_count(@counts)}
               tone={@counts.denied > 0 && "error"}
@@ -2070,9 +2070,21 @@ defmodule ApiaryWeb.RunLive.Show do
     rule_options =
       for {row, rule_option} <- rule_options, do: {row, Rules.answered(rule_option, row, changes)}
 
+    # Who locked a locked rule, for the menu of the rows it decides: one read.
+    locks =
+      Rules.locks(
+        scope,
+        for(
+          {_row, %{rule_option: option, entry: %{host: host}}} <- rule_options,
+          option in [:locked_deny, :locked_allow],
+          uniq: true,
+          do: host
+        )
+      )
+
     acts =
       for {row, rule_option} <- rule_options, into: %{} do
-        {"cx-#{row.id}", act(socket, row, rule_option, changes)}
+        {"cx-#{row.id}", act(socket, row, rule_option, changes) |> locked(locks, scope)}
       end
 
     socket |> assign(acts: acts) |> mark_expanded()
@@ -2126,6 +2138,13 @@ defmodule ApiaryWeb.RunLive.Show do
   defp who(%{by_id: id}, %{user: %{id: id}}) when not is_nil(id), do: gettext("you")
   defp who(%{by: name}, _scope) when is_binary(name), do: ApiaryWeb.People.short(name)
   defp who(_change, _scope), do: nil
+
+  # A locked rule's row: the way to the rule, and who locked it when that is known.
+  defp locked(%{rule_option: option, entry: %{host: host}} = act, locks, scope)
+       when option in [:locked_deny, :locked_allow],
+       do: Map.merge(act, %{rule_path: Rules.rule_path(scope, nil, host), locked: locks[host]})
+
+  defp locked(act, _locks, _scope), do: act
 
   # "In force in this run" is claimed from the record alone: the run reported the digest
   # that is in force. Never after a timer, and never of a run that takes no policy here.

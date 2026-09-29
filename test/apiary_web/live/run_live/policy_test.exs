@@ -494,7 +494,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       %{run: run}
     end
 
-    test "Allow, Deny, the padlock, and nothing for the wall: always there", %{
+    test "Allow and Deny as text with the menu, the padlock, and a lock for the wall", %{
       conn: conn,
       run: run,
       scope: scope
@@ -503,10 +503,19 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       id = &"#cx-#{connection_id(run, &1)}-act"
 
       assert text(view, "button" <> id.("files.cdn.example")) == "Allow"
-      # no rule decides it, so it can be denied outright too; the Deny is a bordered button
-      assert text(view, "button" <> id.("files.cdn.example") <> "-deny.q-rowbtn-deny") == "Deny"
+      # no rule decides it, so it can be denied outright too: a text action like the Allow
+      assert text(view, "button" <> id.("files.cdn.example") <> "-deny.q-act-t[data-action=deny]") ==
+               "Deny"
+
       assert text(view, "button" <> id.("registry.example")) == "Deny"
       refute has_element?(view, "button" <> id.("registry.example") <> "-deny")
+
+      # The row's menu offers the same, and the host; no bordered button on any row.
+      menu = "#cx-#{connection_id(run, "files.cdn.example")}-menu"
+      assert has_element?(view, menu <> "-allow", "Allow…")
+      assert has_element?(view, menu <> "-deny", "Deny…")
+      assert has_element?(view, menu <> "-copy[data-copy='files.cdn.example']")
+      refute has_element?(view, "#run-connections .q-rowbtn")
 
       assert has_element?(
                view,
@@ -777,7 +786,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       run = policy_run(scope, egress: [observed], mode: "observe")
       view = connections(conn, scope, run)
       id = connection_id(run, "files.cdn.example")
-      assert has_element?(view, "button#cx-#{id}-act.q-rowbtn-allow", "Allow")
+      assert has_element?(view, "button#cx-#{id}-act[data-action=allow]", "Allow")
       view |> element("#cx-#{id}-act-deny") |> render_click()
 
       assert text(view, "#rule-popover-title") == "Deny files.cdn.example"

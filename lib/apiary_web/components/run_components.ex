@@ -31,7 +31,18 @@ defmodule ApiaryWeb.RunComponents do
   import ApiaryWeb.RichText
 
   import ApiaryWeb.CoreComponents,
-    only: [badge: 1, button: 1, icon: 1, mono: 1, notice: 1, term: 1]
+    only: [
+      badge: 1,
+      button: 1,
+      icon: 1,
+      menu_divider: 1,
+      menu_heading: 1,
+      menu_item: 1,
+      mono: 1,
+      notice: 1,
+      row_menu: 1,
+      term: 1
+    ]
 
   alias ApiaryWeb.Format
   # Called by its full name below: `PolicyComponents` imports this module.
@@ -1769,8 +1780,16 @@ defmodule ApiaryWeb.RunComponents do
 
   @doc """
   One connection, the same wherever it appears. `inline` is the 32 px row of the timeline,
-  `table` a row of a run's connections, `workspace` a row of the workspace's, with the
-  disclosure of the runs that reached the destination.
+  `table` a row of a run's Network access, `workspace` a row of the workspace's (and of a
+  target's tab), with the disclosure of the runs that reached the destination.
+
+  The `workspace` row is on the row spec (docs/ui.md, Lists): one line, no tint and no
+  mark; the destination, its host in mono with the port faint and the path muted, is the
+  only strong text; the runs and the attempts are muted numbers; allowed and denied are a
+  thin split with their numbers, the denied one red only when there is one; the reason is
+  one muted line, whole on hover, and folds under the destination below 600 px of table.
+  Columns join as the table widens (`connections_table/1`). A row's acts are
+  `rule_action/1` and `rule_menu/1`.
 
   `connection` is a projection row (`last_decision`, `last_rule`, …) or a map read from one
   egress event (`decision`, `rule`, …); both spellings are read.
@@ -1795,7 +1814,11 @@ defmodule ApiaryWeb.RunComponents do
 
   attr :run_path, :any,
     default: nil,
-    doc: "workspace: a function from a run to its connections page"
+    doc: "workspace: a function from a run to its Network access tab"
+
+  attr :host_path, :any,
+    default: nil,
+    doc: "table and workspace: a function from a host to the list narrowed to it, for the menu"
 
   attr :act, :map,
     default: nil,
@@ -1839,28 +1862,43 @@ defmodule ApiaryWeb.RunComponents do
     assigns = assign(assigns, :c, normalise(assigns.connection))
 
     ~H"""
-    <tr id={@id} class={["q-row", @c.decision == "denied" && "q-denied"]} data-decision={@c.decision}>
-      <td>
+    <tr
+      id={@id}
+      class={["q-row q-cxr", @c.decision == "denied" && "q-denied"]}
+      data-decision={@c.decision}
+    >
+      <td class="q-cx-d">
         <div class="q-dcell"><.decision_mark decision={@c.decision} /><.destination c={@c} /></div>
+        <span :if={@security} class="q-cx-fold q-cx-fold-marked">
+          <.reason c={@c} variant="table" />
+        </span>
       </td>
-      <td class="q-num">{Format.number(@c.attempts)}</td>
-      <td class={["q-num", @c.allowed == 0 && "q-zero"]}>{Format.number(@c.allowed)}</td>
-      <td class={["q-num", if(@c.denied == 0, do: "q-zero", else: "q-bad")]}>
+      <td class="q-num q-from-sm">{Format.number(@c.attempts)}</td>
+      <td class={["q-num q-from-md", @c.allowed == 0 && "q-zero"]}>{Format.number(@c.allowed)}</td>
+      <td class={["q-num", if(@c.denied == 0, do: "q-zero", else: "q-cx-bad")]}>
         {Format.number(@c.denied)}
       </td>
-      <td :if={@security} class="q-why">
+      <td :if={@security} class="q-why q-from-sm">
         <.reason c={@c} variant="table" />
         <.after_line :if={@act && @act[:after]} id={"#{@id}-after"} line={@act.after} />
       </td>
-      <td><.outcome value={@c.outcome} invocation={@c.invocation} status={@c.status} /></td>
-      <td class="q-meta">
+      <td class="q-from-sm">
+        <.outcome value={@c.outcome} invocation={@c.invocation} status={@c.status} />
+      </td>
+      <td class="q-meta q-cx-nw q-from-md">
         <.seen c={@c} started_at={@started_at} />
       </td>
-      <td :if={@security} class="q-slot-cell w-px">
-        <span class="q-slot">
-          <.rule_action :if={@act} id={"#{@id}-act"} connection={@c} {rule_action_attrs(@act)} />
-          {if !@act, do: render_slot(@trailing)}
-        </span>
+      <td :if={@security} class="q-cx-acts">
+        <.rule_action :if={@act} id={"#{@id}-act"} connection={@c} {rule_action_attrs(@act)} />
+        <.rule_menu
+          :if={@act}
+          id={"#{@id}-menu"}
+          act_id={"#{@id}-act"}
+          connection={@c}
+          act={@act}
+          host_path={@host_path}
+        />
+        {if !@act, do: render_slot(@trailing)}
       </td>
     </tr>
     """
@@ -1873,60 +1911,68 @@ defmodule ApiaryWeb.RunComponents do
       assigns
       |> assign(:c, c)
       |> assign(:share, share(c.allowed, c.denied))
+      |> assign(:mixed, c.allowed > 0 and c.denied > 0)
 
     ~H"""
-    <tr id={@id} class={["q-row", @c.decision == "denied" && "q-denied"]} data-decision={@c.decision}>
-      <td>
-        <div class="q-dcell">
-          <button
-            type="button"
-            id={"#{@id}-toggle"}
-            class="q-expander"
-            phx-click={@toggle}
-            phx-value-host={@c.host}
-            phx-value-port={@c.port}
-            phx-value-path={@c.path}
-            aria-expanded={to_string(@open != nil)}
-            aria-controls={"#{@id}-runs"}
-            aria-label={
-              gettext("Runs that reached %{destination}", destination: destination_words(@c))
-            }
-          >
-            <.icon name="hero-chevron-right-micro" class="size-3" />
-          </button>
-          <.decision_mark decision={@c.decision} /><.destination c={@c} />
-        </div>
+    <tr
+      id={@id}
+      class={["q-row q-cxr", @c.decision == "denied" && "q-denied"]}
+      data-decision={@c.decision}
+    >
+      <td class="q-cx-ex">
+        <button
+          type="button"
+          id={"#{@id}-toggle"}
+          class="q-expander"
+          phx-click={@toggle}
+          phx-value-host={@c.host}
+          phx-value-port={@c.port}
+          phx-value-path={@c.path}
+          aria-expanded={to_string(@open != nil)}
+          aria-controls={"#{@id}-runs"}
+          aria-label={gettext("Runs that reached %{destination}", destination: destination_words(@c))}
+        >
+          <.icon name="hero-chevron-right-micro" class="size-3.5" />
+        </button>
       </td>
-      <td class="q-num">{Format.number(@c.runs)}</td>
-      <td class="q-num">{Format.number(@c.attempts)}</td>
-      <td>
-        <span class="q-split" aria-hidden="true"><i style={"width:#{@share}%"}></i><u style={"width:#{100 - @share}%"}></u></span>
-        <span class={[
-          "ml-1.5 tabular-nums",
-          if(@c.allowed == 0 and @c.denied > 0, do: "q-bad", else: "text-muted")
-        ]}>
-          {Format.number(@c.allowed)} /
-          <span class={@c.denied > 0 && "q-bad"}>{Format.number(@c.denied)}</span>
+      <td class="q-cx-d">
+        <.destination_title c={@c} />
+        <span :if={@security} class="q-cx-fold">
+          <.reason c={@c} variant="workspace" />
         </span>
       </td>
-      <td :if={@security} class="q-why">
-        <.reason c={@c} variant="workspace" /><span
-          :if={@c.allowed > 0 and @c.denied > 0}
-          class="text-faint"
-        > · {gettext("last attempt")}</span>
+      <td class="q-num q-cx-runs">{Format.number(@c.runs)}</td>
+      <td class="q-num q-from-lg">{Format.number(@c.attempts)}</td>
+      <td class="q-cx-nw">
+        <.split allowed={@c.allowed} denied={@c.denied} share={@share} />
+      </td>
+      <td :if={@security} class="q-why q-from-sm">
+        <span class="q-why-l" title={reason_title(@c, @mixed)}>
+          <.reason c={@c} variant="workspace" /><span
+            :if={@mixed}
+            class="text-faint"
+          > · {gettext("last attempt")}</span>
+        </span>
         <.after_line :if={@act && @act[:after]} id={"#{@id}-after"} line={@act.after} />
       </td>
-      <td><.outcome value={@c.outcome} invocation={@c.invocation} status={@c.status} /></td>
-      <td class="q-meta"><.relative_time at={@c.last_seen_at} /></td>
-      <td :if={@security} class="q-slot-cell w-px">
-        <span class="q-slot">
-          <.rule_action :if={@act} id={"#{@id}-act"} connection={@c} {rule_action_attrs(@act)} />
-          {if !@act, do: render_slot(@trailing)}
-        </span>
+      <td class="q-cx-nw q-from-lg">
+        <.outcome value={@c.outcome} invocation={@c.invocation} status={@c.status} />
+      </td>
+      <td class="q-meta q-cx-nw q-cx-seen"><.relative_time at={@c.last_seen_at} /></td>
+      <td :if={@security} class="q-cx-acts">
+        <.rule_action :if={@act} id={"#{@id}-act"} connection={@c} {rule_action_attrs(@act)} />
+        <.rule_menu
+          id={"#{@id}-menu"}
+          act_id={"#{@id}-act"}
+          connection={@c}
+          act={@act}
+          host_path={@host_path}
+        />
+        {if !@act, do: render_slot(@trailing)}
       </td>
     </tr>
     <tr :if={@open} id={"#{@id}-runs"} class="q-sub">
-      <td colspan={if @security, do: 8, else: 6}>
+      <td colspan={if @security, do: 9, else: 7}>
         <div class="q-sub-in">
           <h3>
             {ngettext(
@@ -1943,13 +1989,7 @@ defmodule ApiaryWeb.RunComponents do
               navigate={@run_path && @run_path.(hit.run)}
               class="q-hit"
             >
-              <.run_state
-                state={hit.run.state}
-                exit_code={hit.run.exit_code}
-                signal={hit.run.signal}
-                quiet_for={quiet_for(hit.run)}
-                note={false}
-              />
+              <.run_mark state={hit.run.state} quiet_for={quiet_for(hit.run)} />
               <span class="truncate">
                 <b :if={hit.run.task} class="font-medium">{hit.run.task}</b>
                 <span class={["font-mono text-xs text-faint", hit.run.task && "ml-1"]}>
@@ -1979,7 +2019,7 @@ defmodule ApiaryWeb.RunComponents do
             :if={length(@open.runs) < @open.total}
             type="button"
             id={"#{@id}-more"}
-            class="btn btn-ghost btn-xs justify-self-start"
+            class="q-link q-hits-more"
             phx-click={@more}
             phx-value-host={@c.host}
             phx-value-port={@c.port}
@@ -2036,6 +2076,121 @@ defmodule ApiaryWeb.RunComponents do
     do: round(allowed * 100 / (allowed + denied))
 
   defp share(_allowed, _denied), do: 100
+
+  attr :allowed, :integer, required: true
+  attr :denied, :integer, required: true
+  attr :share, :integer, required: true
+
+  # Allowed and denied as a thin split and its two numbers: a zero faint, the denied
+  # number red only when there is one. The words are the title and a screen reader's.
+  defp split(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :words,
+        gettext("%{allowed} allowed, %{denied} denied",
+          allowed: Format.number(assigns.allowed),
+          denied: Format.number(assigns.denied)
+        )
+      )
+
+    ~H"""
+    <span class="q-cx-split" title={@words}>
+      <span class="q-split" aria-hidden="true"><i style={"width:#{@share}%"}></i><u style={"width:#{100 - @share}%"}></u></span>
+      <span aria-hidden="true"><span class={@allowed == 0 && "q-zero"}>{Format.number(@allowed)}</span><span class="q-cx-sl">/</span><span class={
+        if(@denied > 0, do: "q-cx-bad", else: "q-zero")
+      }>{Format.number(@denied)}</span></span>
+      <span class="sr-only">{@words}</span>
+    </span>
+    """
+  end
+
+  attr :c, :map, required: true
+
+  # The destination as a row's title: the host in mono, the port faint, the path muted and
+  # cut in the middle. A tool invocation leads with its tool, as everywhere.
+  defp destination_title(%{c: %{invocation: true}} = assigns), do: destination(assigns)
+
+  defp destination_title(assigns) do
+    ~H"""
+    <span
+      class="q-dest q-cx-t"
+      title={destination_title_words(@c)}
+      data-request-id={@c.request_id}
+    >
+      <span class="q-cx-h">{@c.host}<span class="q-cx-p">:{@c.port}</span></span>
+      <span :if={@c.path != ""} class="q-cx-path">{middle(@c.path, 96)}</span>
+    </span>
+    """
+  end
+
+  defp destination_title_words(%{path: ""} = c), do: "#{c.host}:#{c.port}"
+  defp destination_title_words(c), do: "#{c.host}:#{c.port} #{c.path}"
+
+  # The reason as words alone, for the title that shows a cut reason whole: the sentences
+  # `reason/1` shows for a row of the workspace, in the same order.
+  defp reason_title(c, mixed) do
+    parts = %{rule: c.rule || "", path: c.path_rule || ""}
+
+    main =
+      case reason_kind(c) do
+        :own_address ->
+          [gettext("The wall refuses the machine's own address,"), gettext("in either mode.")]
+
+        :ambiguous_path ->
+          [
+            gettext("The path can be read two ways."),
+            gettext("The wall denies it in either mode.")
+          ]
+
+        :denied_no_rule ->
+          [gettext("No rule matches."), mode_sentence(c.mode, :denies)]
+
+        :denied_no_path_rule ->
+          [gettext("Host allowed, no path rule matches."), mode_sentence(c.mode, :denies)]
+
+        :tool_by_rule ->
+          [plain_text(handed_sentence(c), parts)]
+
+        :tool_no_rule ->
+          [
+            gettext("No rule matches."),
+            mode_sentence(c.mode, :lets_through),
+            plain_text(handed_sentence(c), parts)
+          ]
+
+        :allowed_no_rule ->
+          [gettext("No rule matches."), mode_sentence(c.mode, :lets_through)]
+
+        kind when kind in [:denied_by_rule, :allowed_by_rule] ->
+          [rule_words(c)]
+
+        :unknown ->
+          [gettext("n/a")]
+      end
+
+    closed =
+      c.decision == "allowed" && c.outcome == "refused" &&
+        gettext("Closed when a new policy denied the host.")
+
+    tool =
+      c.decision == "denied" && c.tool &&
+        plain_text(rich_gettext("Refused before reaching the tool %{tool}.", tool: {:b, c.tool}))
+
+    words = [main, closed, tool] |> List.flatten() |> Enum.reject(&(&1 in [nil, false, ""]))
+    Enum.join(words, " ") <> if(mixed, do: " · " <> gettext("last attempt"), else: "")
+  end
+
+  # "Rule api.example, path /v1/*, credential model-key", as the row shows it.
+  defp rule_words(c) do
+    [
+      gettext("Rule") <> " " <> (c.rule || ""),
+      c.path_rule && gettext("path") <> " " <> c.path_rule,
+      c.decision == "allowed" && c.credential && gettext("credential") <> " " <> c.credential
+    ]
+    |> Enum.reject(&(&1 in [nil, false]))
+    |> Enum.join(", ")
+  end
 
   defp destination_words(c) do
     [c.invocation && c.tool, request_line(c), c.host]
@@ -2313,9 +2468,17 @@ defmodule ApiaryWeb.RunComponents do
 
   @doc """
   The table of a run's connections (`variant="table"`, C1) or of the workspace's across
-  runs (`variant="workspace"`, C2). `rows` are connections as `<.connection_row>` reads
-  them; `row_id` gives each its DOM id (`"cx-<id>"` for a projection row, `"dst-<hash>"`
-  for a destination).
+  runs (`variant="workspace"`, C2), the content of a Network access page or tab. `rows`
+  are connections as `<.connection_row>` reads them; `row_id` gives each its DOM id
+  (`"cx-<id>"` for a projection row, `"dst-<hash>"` for a destination).
+
+  Both are on the row spec, with no tint, and fit their width: columns join as the table's
+  own width grows (a container query, as `CoreComponents.table/1`'s `from`), so nothing is
+  cut at the right. The workspace's: the reason from 600 px (below it, a line under the
+  destination), the last seen from 780, the runs from 840, the attempts and the outcome
+  from 1300; the destination and its split never go. A run's: the attempts, the reason and
+  the outcome from 600, the allowed and the times from 1000; the destination and the
+  denied never go.
   """
   attr :id, :string, required: true
   attr :label, :string, required: true, doc: "the accessible name of the scroll region"
@@ -2329,6 +2492,10 @@ defmodule ApiaryWeb.RunComponents do
     doc: "workspace: `destination_key/1` of an open destination => %{runs, total}"
 
   attr :run_path, :any, default: nil
+
+  attr :host_path, :any,
+    default: nil,
+    doc: "a function from a host to the list narrowed to it, for a row's menu; nil offers none"
 
   attr :acts, :map,
     default: nil,
@@ -2349,46 +2516,47 @@ defmodule ApiaryWeb.RunComponents do
 
     ~H"""
     <div
-      class={["overflow-x-auto rounded-box border border-line bg-base-100 shadow-xs", @class]}
+      class={["q-tbl overflow-x-auto rounded-box border border-line bg-base-100 shadow-xs", @class]}
       tabindex="0"
       role="region"
       aria-label={@label}
     >
-      <table class="table q-cxt">
+      <table class={["table q-cxt", if(@variant == "workspace", do: "q-cxt-ws", else: "q-cxt-run")]}>
         <thead>
           <tr :if={@variant == "table"}>
             <th scope="col">{gettext("Destination")}</th>
-            <th scope="col" class="q-num">{gettext("Attempts")}</th>
-            <th scope="col" class="q-num">{gettext("Allowed")}</th>
+            <th scope="col" class="q-num q-from-sm">{gettext("Attempts")}</th>
+            <th scope="col" class="q-num q-from-md">{gettext("Allowed")}</th>
             <th scope="col" class="q-num">{gettext("Denied")}</th>
-            <th :if={@security} scope="col">{gettext("Reason")}</th>
-            <th scope="col">
+            <th :if={@security} scope="col" class="q-from-sm">{gettext("Reason")}</th>
+            <th scope="col" class="q-from-sm">
               <.term
                 word={gettext("Outcome")}
                 standard={@outcome_tip}
                 class="q-tip-wide tooltip-bottom"
               />
             </th>
-            <th scope="col">{gettext("First and last seen")}</th>
-            <th :if={@security} scope="col" class="w-px">
+            <th scope="col" class="q-from-md">{gettext("First and last seen")}</th>
+            <th :if={@security} scope="col" class="q-cx-acts">
               <span class="sr-only">{gettext("Rule actions")}</span>
             </th>
           </tr>
           <tr :if={@variant == "workspace"}>
+            <th scope="col" class="q-cx-ex"><span class="sr-only">{gettext("Open")}</span></th>
             <th scope="col">{gettext("Destination")}</th>
-            <th scope="col" class="q-num">{gettext("Runs")}</th>
-            <th scope="col" class="q-num">{gettext("Attempts")}</th>
+            <th scope="col" class="q-num q-cx-runs">{gettext("Runs")}</th>
+            <th scope="col" class="q-num q-from-lg">{gettext("Attempts")}</th>
             <th scope="col">{gettext("Allowed / denied")}</th>
-            <th :if={@security} scope="col">{gettext("Reason")}</th>
-            <th scope="col">
+            <th :if={@security} scope="col" class="q-from-sm">{gettext("Reason")}</th>
+            <th scope="col" class="q-from-lg">
               <.term
                 word={gettext("Outcome")}
                 standard={@outcome_tip}
                 class="q-tip-wide tooltip-bottom"
               />
             </th>
-            <th scope="col">{gettext("Last seen")}</th>
-            <th :if={@security} scope="col" class="w-px">
+            <th scope="col" class="q-cx-seen">{gettext("Last seen")}</th>
+            <th :if={@security} scope="col" class="q-cx-acts">
               <span class="sr-only">{gettext("Rule actions")}</span>
             </th>
           </tr>
@@ -2402,6 +2570,7 @@ defmodule ApiaryWeb.RunComponents do
             started_at={@started_at}
             open={@open[destination_key(row)]}
             run_path={@run_path}
+            host_path={@host_path}
             act={@security && @acts && @acts[@row_id.(row)]}
             security={@security}
           />
@@ -2452,12 +2621,16 @@ defmodule ApiaryWeb.RunComponents do
   end
 
   @doc """
-  The trailing slot of a connection's row. The row's `rule_option` says what it holds: a
-  button that opens the popover (`:can_allow`, `:can_deny`; a `:can_allow` row with `deny`
-  holds a ghost Deny before the Allow, since no rule decides it yet), a padlock that opens
-  the refusal (`:locked_deny`, `:locked_allow`), nothing the wall's refusals (`:wall`) and
-  a host no rule can name (`:unnameable`), and the link to the rule once one answers the
-  row (`{:rule_added, _}`). Always visible: never on hover alone.
+  A row's text action: what its rule option lets the reader ask of the policy, shown on
+  hover, on focus inside the row and while its popover or menu is open, never a bordered
+  button on every row (docs/ui.md, Lists). `:can_allow` is Allow and `:can_deny` Deny, each
+  opening the popover; a `:can_allow` row with `deny`, which no rule decides yet, holds
+  Deny before Allow. A locked rule of the workspace (`:locked_deny`, `:locked_allow`) is a
+  faint lock, always shown, that opens the refusal; the wall's refusals (`:wall`) are a
+  faint lock that says no rule changes this; a host no rule can name (`:unnameable`) says
+  so to a screen reader alone; a rule that answers the row (`{:rule_added, _}`) links to
+  it. The rest of a row's acts are its menu (`rule_menu/1`). `data-action` names what a
+  text action asks.
 
   `values` ride on the `rule_open` event; they name the row and are looked up among the
   rows the page holds, never trusted.
@@ -2469,16 +2642,17 @@ defmodule ApiaryWeb.RunComponents do
   attr :rule_path, :string, default: nil
   attr :entry_host, :string, default: nil, doc: "the host of the locked rule, for the tooltip"
   attr :expanded, :boolean, default: false
-  attr :expanded_action, :atom, default: nil, doc: "which of two buttons the open popover is of"
+  attr :expanded_action, :atom, default: nil, doc: "which of two actions the open popover is of"
   attr :deny, :boolean, default: false, doc: "a `:can_allow` row no rule decides: Deny too"
 
   def rule_action(%{rule_option: :can_allow, deny: true} = assigns) do
     ~H"""
-    <span id={"#{@id}-both"} class="q-rowacts-pair">
+    <span id={"#{@id}-both"} class="q-acts-pair">
       <button
         type="button"
         id={"#{@id}-deny"}
-        class="btn btn-xs q-rowbtn q-rowbtn-deny"
+        class="q-act-t q-hov"
+        data-action="deny"
         phx-click={JS.push("rule_open", value: Map.put(@values, "action", "deny"))}
         aria-haspopup="dialog"
         aria-expanded={to_string(@expanded and @expanded_action == :deny)}
@@ -2489,7 +2663,8 @@ defmodule ApiaryWeb.RunComponents do
       <button
         type="button"
         id={@id}
-        class="btn btn-xs q-rowbtn q-rowbtn-allow"
+        class="q-act-t q-hov"
+        data-action="allow"
         phx-click={JS.push("rule_open", value: Map.put(@values, "action", "allow"))}
         aria-haspopup="dialog"
         aria-expanded={to_string(@expanded and @expanded_action != :deny)}
@@ -2509,10 +2684,8 @@ defmodule ApiaryWeb.RunComponents do
     <button
       type="button"
       id={@id}
-      class={[
-        "btn btn-xs q-rowbtn",
-        if(@action == "deny", do: "q-rowbtn-deny", else: "q-rowbtn-allow")
-      ]}
+      class="q-act-t q-hov"
+      data-action={@action}
       phx-click={JS.push("rule_open", value: Map.put(@values, "action", @action))}
       aria-haspopup="dialog"
       aria-expanded={to_string(@expanded)}
@@ -2529,20 +2702,18 @@ defmodule ApiaryWeb.RunComponents do
 
   def rule_action(%{rule_option: rule_option} = assigns)
       when rule_option in [:locked_deny, :locked_allow] do
-    host = assigns.entry_host || assigns.connection.host
-
-    tip =
-      if rule_option == :locked_deny,
-        do: gettext("A locked workspace rule denies %{host}", host: host),
-        else: gettext("A locked workspace rule allows %{host}", host: host)
-
-    assigns = assign(assigns, :tip, tip)
+    assigns =
+      assign(
+        assigns,
+        :tip,
+        locked_tip(rule_option, assigns.entry_host || assigns.connection.host)
+      )
 
     ~H"""
     <button
       type="button"
       id={@id}
-      class="btn btn-ghost btn-xs btn-square q-rowbtn tooltip tooltip-left"
+      class="q-act-lock tooltip tooltip-left"
       data-tip={@tip}
       phx-click={
         JS.push("rule_open",
@@ -2565,7 +2736,7 @@ defmodule ApiaryWeb.RunComponents do
       :if={@rule_path}
       id={@id}
       navigate={@rule_path}
-      class="btn btn-ghost btn-xs q-rowbtn"
+      class="q-act-t q-hov"
       aria-label={gettext("The rule for %{host}", host: @connection.host)}
     >
       {gettext("Rule")}
@@ -2574,12 +2745,136 @@ defmodule ApiaryWeb.RunComponents do
   end
 
   def rule_action(%{rule_option: :wall} = assigns) do
-    ~H|<span id={@id} class="sr-only">{gettext("No rule changes this")}</span>|
+    ~H"""
+    <span id={@id} class="q-act-lock" title={gettext("No rule changes this")}>
+      <.icon name="hero-lock-closed-micro" class="size-3.5" /><span class="sr-only">{gettext(
+        "No rule changes this"
+      )}</span>
+    </span>
+    """
   end
 
   def rule_action(assigns) do
     ~H|<span id={@id} class="sr-only">{gettext("No rule can name this host")}</span>|
   end
+
+  defp locked_tip(:locked_deny, host),
+    do: gettext("A locked workspace rule denies %{host}", host: host)
+
+  defp locked_tip(_locked_allow, host),
+    do: gettext("A locked workspace rule allows %{host}", host: host)
+
+  @doc """
+  A row's ⋯ menu (`CoreComponents.row_menu/1`), beside its text action and shown with it:
+  Allow… and Deny… where the row may ask for them, opening the same popover, anchored at
+  the text action (`act_id`); where no one here changes what happened, why (the locked
+  rule and who locked it, when the newest history says so, or the wall) with the way to
+  the rule; the rule that answers the row; then Only this host, where the list can be
+  narrowed to it (`host_path`), and Copy the host.
+  """
+  attr :id, :string, required: true
+  attr :act_id, :string, required: true, doc: "the row's text action, the popover's anchor"
+  attr :connection, :map, required: true, doc: "the row's connection, as the row reads it"
+  attr :act, :map, default: nil, doc: "the row's act, as `rule_action/1` reads it; nil for none"
+  attr :host_path, :any, default: nil
+
+  def rule_menu(assigns) do
+    act = assigns.act || %{}
+    option = act[:rule_option]
+
+    assigns =
+      assign(assigns,
+        kind: menu_kind(option),
+        option: option,
+        values: act[:values] || %{},
+        rule_path: act[:rule_path],
+        locked: act[:locked],
+        both: option == :can_allow and act[:deny] == true,
+        entry_host: act[:entry_host] || assigns.connection.host
+      )
+
+    ~H"""
+    <.row_menu
+      id={@id}
+      class="q-hov"
+      label={gettext("Actions for %{label}", label: @connection.host)}
+    >
+      <%= case @kind do %>
+        <% :locked -> %>
+          <.menu_heading title={locked_words(@locked)} sub={locked_holds(@option)} />
+          <.menu_item :if={@rule_path} id={"#{@id}-rule"} navigate={@rule_path}>
+            {gettext("Show the locked rule")}
+          </.menu_item>
+          <.menu_divider />
+        <% :wall -> %>
+          <.menu_heading
+            title={gettext("No rule changes this")}
+            sub={reason_title(@connection, false)}
+          />
+          <.menu_divider />
+        <% :unnameable -> %>
+          <.menu_heading title={gettext("No rule can name this host")} />
+          <.menu_divider />
+        <% :rule -> %>
+          <.menu_item :if={@rule_path} id={"#{@id}-rule"} navigate={@rule_path}>
+            {gettext("Show the rule")}
+          </.menu_item>
+          <.menu_divider :if={@rule_path} />
+        <% :open -> %>
+          <.menu_item
+            :if={@option == :can_allow}
+            id={"#{@id}-allow"}
+            phx-click={JS.push("rule_open", value: Map.put(@values, "action", "allow"))}
+            aria-haspopup="dialog"
+          >
+            {gettext("Allow…")}
+          </.menu_item>
+          <.menu_item
+            :if={@option == :can_deny or @both}
+            id={"#{@id}-deny"}
+            phx-click={JS.push("rule_open", value: Map.put(@values, "action", "deny"))}
+            aria-haspopup="dialog"
+          >
+            {gettext("Deny…")}
+          </.menu_item>
+          <.menu_divider />
+        <% nil -> %>
+      <% end %>
+      <.menu_item :if={@host_path} id={"#{@id}-host"} patch={@host_path.(@connection.host)}>
+        {gettext("Only this host")}
+      </.menu_item>
+      <.menu_item
+        id={"#{@id}-copy"}
+        phx-hook="CopyToClipboard"
+        data-copy={@connection.host}
+        data-copied-words={gettext("Copied")}
+      >
+        {gettext("Copy the host")}<span class="sr-only" aria-live="polite"></span>
+      </.menu_item>
+    </.row_menu>
+    """
+  end
+
+  defp menu_kind(option) when option in [:locked_deny, :locked_allow], do: :locked
+  defp menu_kind(option) when option in [:can_allow, :can_deny], do: :open
+  defp menu_kind({:rule_added, _action}), do: :rule
+  defp menu_kind(:wall), do: :wall
+  defp menu_kind(:unnameable), do: :unnameable
+  defp menu_kind(_none), do: nil
+
+  # Who locked the rule and when, as a heading; the newest history may not say.
+  defp locked_words(%{by: by, at: %DateTime{} = at}) when is_binary(by),
+    do: gettext("Locked by %{name} on %{date}", name: by, date: Format.date(at))
+
+  defp locked_words(%{by: by}) when is_binary(by), do: gettext("Locked by %{name}", name: by)
+  defp locked_words(_unknown), do: gettext("A locked rule of the workspace")
+
+  # What a locked rule means for the row, as the refusal says it.
+  defp locked_holds(:locked_deny),
+    do: gettext("It holds against every target, so no rule added here would change what happens.")
+
+  defp locked_holds(_locked_allow),
+    do: gettext("It holds against every target, so a deny added here would change nothing.")
 
   @doc """
   The line a row gains once a rule answers it. The row above it is the record and stays as

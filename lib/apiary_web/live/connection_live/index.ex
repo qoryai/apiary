@@ -306,43 +306,41 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           <div
             :if={@listing == nil}
             id="connections-loading"
-            class="overflow-x-auto rounded-box border border-line bg-base-100"
+            class="q-tbl overflow-x-auto rounded-box border border-line bg-base-100"
             aria-busy="true"
           >
-            <table class="table q-cxt">
+            <table class="table q-cxt q-cxt-ws">
               <thead>
                 <tr>
-                  <th :for={
-                    label <-
-                      [
-                        gettext("Destination"),
-                        gettext("Runs"),
-                        gettext("Attempts"),
-                        gettext("Allowed / denied"),
-                        @security && gettext("Reason"),
-                        gettext("Outcome"),
-                        gettext("Last seen")
-                      ]
-                      |> Enum.filter(& &1)
-                  }>
-                    {label}
-                  </th>
+                  <th class="q-cx-ex"></th>
+                  <th>{gettext("Destination")}</th>
+                  <th class="q-num q-cx-runs">{gettext("Runs")}</th>
+                  <th class="q-num q-from-lg">{gettext("Attempts")}</th>
+                  <th>{gettext("Allowed / denied")}</th>
+                  <th :if={@security} class="q-from-sm">{gettext("Reason")}</th>
+                  <th class="q-from-lg">{gettext("Outcome")}</th>
+                  <th class="q-cx-seen">{gettext("Last seen")}</th>
+                  <th :if={@security} class="q-cx-acts"></th>
                 </tr>
               </thead>
               <tbody>
                 <tr :for={n <- 1..8}>
-                  <td>
+                  <td class="q-cx-ex"></td>
+                  <td class="q-cx-d">
                     <span class={[
                       "skeleton q-skel",
                       if(rem(n, 2) == 0, do: "w-56", else: "w-44")
                     ]}></span>
                   </td>
-                  <td><span class="skeleton q-skel w-6"></span></td>
-                  <td><span class="skeleton q-skel w-8"></span></td>
+                  <td class="q-cx-runs"><span class="skeleton q-skel ml-auto w-6"></span></td>
+                  <td class="q-from-lg"><span class="skeleton q-skel ml-auto w-8"></span></td>
                   <td><span class="skeleton q-skel w-24"></span></td>
-                  <td :if={@security}><span class="skeleton q-skel w-48"></span></td>
-                  <td><span class="skeleton q-skel w-16"></span></td>
-                  <td><span class="skeleton q-skel w-20"></span></td>
+                  <td :if={@security} class="q-from-sm">
+                    <span class="skeleton q-skel w-40"></span>
+                  </td>
+                  <td class="q-from-lg"><span class="skeleton q-skel w-16"></span></td>
+                  <td class="q-cx-seen"><span class="skeleton q-skel w-20"></span></td>
+                  <td :if={@security} class="q-cx-acts"></td>
                 </tr>
               </tbody>
             </table>
@@ -361,6 +359,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
             row_id={&destination_id/1}
             open={@open}
             run_path={&run_path(@current_scope, &1)}
+            host_path={&page_path(@page_base, Filters.put(@filters, host: &1))}
             acts={@acts}
             security={@security}
           />
@@ -926,6 +925,18 @@ defmodule ApiaryWeb.ConnectionLive.Index do
     open = socket.assigns.popover && socket.assigns.popover.anchor
     action = socket.assigns.popover && socket.assigns.popover[:action]
 
+    # Who locked a locked rule, for the menu of the rows it decides: one read.
+    locks =
+      Rules.locks(
+        scope,
+        for(
+          {_row, %{rule_option: option, entry: %{host: host}}} <- rule_options,
+          option in [:locked_deny, :locked_allow],
+          uniq: true,
+          do: host
+        )
+      )
+
     acts =
       for {row, rule_option} <- rule_options, into: %{} do
         id = destination_id(row)
@@ -934,7 +945,8 @@ defmodule ApiaryWeb.ConnectionLive.Index do
         {id,
          row
          |> act(rule_option, changes, socket)
-         |> Map.merge(%{expanded: expanded, expanded_action: expanded && action})}
+         |> Map.merge(%{expanded: expanded, expanded_action: expanded && action})
+         |> locked(locks, scope)}
       end
 
     assign(socket, acts: acts)
@@ -984,6 +996,13 @@ defmodule ApiaryWeb.ConnectionLive.Index do
       after: nil
     })
   end
+
+  # A locked rule's row: the way to the rule, and who locked it when that is known.
+  defp locked(%{rule_option: option, entry: %{host: host}} = act, locks, scope)
+       when option in [:locked_deny, :locked_allow],
+       do: Map.merge(act, %{rule_path: Rules.rule_path(scope, nil, host), locked: locks[host]})
+
+  defp locked(act, _locks, _scope), do: act
 
   defp row_values(row),
     do: %{"host" => row.host, "port" => Integer.to_string(row.port), "path" => row.path || ""}

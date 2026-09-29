@@ -333,7 +333,7 @@ defmodule ApiaryWeb.TargetLive.Show do
           id="target-tab-connections"
           navigate={page_path(@current_scope, @target, ["network"])}
           current={@tab == :connections}
-          icon="hero-arrows-right-left-micro"
+          icon="hero-globe-alt-micro"
         >
           {gettext("Network access")}
         </:tab>

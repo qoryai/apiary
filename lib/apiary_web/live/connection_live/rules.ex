@@ -44,6 +44,27 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
     do:
       ~p"/#{scope.organisation}/#{scope.workspace}/policy/targets/#{target_id}?#{%{"rule" => host}}"
 
+  @doc """
+  locks/2 is who locked the rule of each of `hosts` and when, `%{host => %{by:, at:}}`,
+  from the newest page of the workspace's history: one read, none for no host, and a host
+  locked further back than that page is absent.
+  """
+  def locks(_scope, []), do: %{}
+
+  def locks(scope, hosts) do
+    changes = scope |> Policy.list_changes(nil, 1) |> Map.get(:items, [])
+
+    for %{action: "rule_locked", subject: host} = change <- changes,
+        host in hosts,
+        reduce: %{} do
+      locks ->
+        Map.put_new(locks, host, %{
+          by: ApiaryWeb.People.email(change.changed_by),
+          at: change.inserted_at
+        })
+    end
+  end
+
   @doc "A target's policy page."
   def target_policy_path(scope, target_id),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/policy/targets/#{target_id}"

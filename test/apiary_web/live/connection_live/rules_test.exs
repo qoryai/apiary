@@ -1,6 +1,6 @@
 defmodule ApiaryWeb.ConnectionLive.RulesTest do
   @moduledoc """
-  Allow and Deny from a row of the workspace's connections page, and a row's rule option
+  Allow and Deny from a row of the workspace's Network access page, and a row's rule option
   (`ApiaryWeb.ConnectionLive.Rules`).
   """
   use ApiaryWeb.ConnCase, async: true
@@ -85,7 +85,52 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
     :ok
   end
 
-  describe "the workspace's connections page" do
+  describe "the workspace's Network access page" do
+    test "a row's acts are text and its menu; a locked rule says who locked it, the wall why",
+         %{conn: conn, scope: scope} do
+      {:ok, rule} = Policy.deny(scope, nil, %{host: "files.cdn.example"})
+      {:ok, _} = Policy.lock(scope, rule)
+      view = open(conn, scope)
+
+      # A locked rule: a lock that opens the refusal; the menu says who locked it and when,
+      # and leads to the rule.
+      cdn = dst("files.cdn.example")
+      assert has_element?(view, "button##{cdn}-act.q-act-lock")
+      assert text(view, "##{cdn}-menu .q-mh-t") =~ "Locked by #{scope.user.email} on "
+
+      assert has_element?(
+               view,
+               ~s(a##{cdn}-menu-rule[href="#{workspace_path(scope, "/policy?rule=files.cdn.example")}"])
+             )
+
+      # The wall: a lock, and the menu says why no rule changes it.
+      wall = dst("169.254.169.254", 80)
+      assert has_element?(view, "span##{wall}-act.q-act-lock")
+      assert text(view, "##{wall}-menu .q-mh-t") == "No rule changes this"
+
+      assert text(view, "##{wall}-menu .q-mh-s") ==
+               "The wall refuses the machine's own address, in either mode."
+
+      # A row a rule allows: Deny as text, and in the menu, where it opens the same
+      # popover, at the row's text action.
+      registry = dst("registry.example")
+      assert has_element?(view, "button##{registry}-act.q-act-t[data-action=deny]", "Deny")
+      assert has_element?(view, "##{registry}-menu-deny", "Deny…")
+      refute has_element?(view, "##{registry}-menu-allow")
+      view |> element("##{registry}-menu-deny") |> render_click()
+      assert has_element?(view, ~s(#rule-popover[data-anchor="#{registry}-act"]))
+      assert text(view, "#rule-popover-title") == "Deny registry.example"
+
+      # The reason is one line, whole in its title; no bordered button on any row.
+      assert has_element?(view, ~s(##{registry} .q-why-l[title="Rule registry.example"]))
+      refute has_element?(view, "#destinations .q-rowbtn")
+
+      # Only this host narrows the list to it; Copy the host copies it.
+      assert has_element?(view, "##{registry}-menu-copy[data-copy='registry.example']")
+      view |> element("##{registry}-menu-host") |> render_click()
+      assert_patch(view, workspace_path(scope, "/network?host=registry.example"))
+    end
+
     test "every row has its slot, and the scope of a rule is not guessed", %{
       conn: conn,
       scope: scope
@@ -360,7 +405,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
     } do
       view = open(conn, scope)
       id = dst("files.cdn.example")
-      assert has_element?(view, "button##{id}-act-deny.q-rowbtn-deny", "Deny")
+      assert has_element?(view, "button##{id}-act-deny[data-action=deny]", "Deny")
       assert has_element?(view, "button##{id}-act", "Allow")
 
       view |> element("##{id}-act-deny") |> render_click()
