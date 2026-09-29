@@ -5,6 +5,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
   @moduletag needs: :security
 
   import Phoenix.LiveViewTest
+  import ApiaryWeb.TargetComponents, only: [target_path: 4]
   import Apiary.OrganisationsFixtures
   import Apiary.RunEventsFixtures, only: [tool_invocation_data: 1]
   import Apiary.RunListFixtures
@@ -698,7 +699,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
 
       assert has_element?(
                view,
-               "#target-#{target.id} a[href='#{workspace_path(scope, "/policy/targets/#{target.id}")}']"
+               "#target-#{target.id} a[href='#{target_path(scope, target.system, target.path, ["policy"])}']"
              )
     end
   end

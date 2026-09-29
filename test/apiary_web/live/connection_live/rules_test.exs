@@ -9,6 +9,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
   @moduletag needs: :security
 
   import Phoenix.LiveViewTest
+  import ApiaryWeb.TargetComponents, only: [target_path: 4]
   import Apiary.OrganisationsFixtures
   import Apiary.RunListFixtures
 
@@ -171,7 +172,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
 
       assert has_element?(
                view,
-               ~s(#connections-target-policy[href="#{workspace_path(scope, "/policy/targets/#{github.id}")}"]),
+               ~s(#connections-target-policy[href="#{target_path(scope, github.system, github.path, ["policy"])}"]),
                "Its policy"
              )
 

@@ -151,7 +151,7 @@ defmodule ApiaryWeb.RefusalsRows do
        answer: :ignored},
       {:"security_policy.set_mode", :demoted_admin, "/:org/:workspace/policy", "mode_confirm",
        %{}, prelude: [{"mode_ask", %{"mode" => "enforce"}}]},
-      {:"security_policy.set_mode", :member, "/:org/:workspace/policy/targets/:target",
+      {:"security_policy.set_mode", :member, "/:org/:workspace/targets/:target_page/-/policy",
        "target_mode_ask", %{"setting" => "enforce"}},
       {:"security_policy.edit", :removed_member, "/:org/:workspace/policy", "composer_save", %{},
        prelude: [{"composer_change", %{"rule" => %{"host" => "new.example", "paths" => ""}}}]},
@@ -160,8 +160,9 @@ defmodule ApiaryWeb.RefusalsRows do
        %{"id" => :rule_open}, answer: :not_found},
       {:"security_policy.edit", :other_owner, "/:other_org/:other_ws/policy", "change_action",
        %{"id" => :rule_open}, answer: :not_found},
-      {:"security_policy.edit", :other_owner, "/:other_org/:other_ws/policy/targets/:target",
-       "row_act", %{"id" => :rule_open, "act" => "disable"}, answer: :not_found},
+      {:"security_policy.edit", :other_owner,
+       "/:other_org/:other_ws/targets/:target_page/-/policy", "row_act",
+       %{"id" => :rule_open, "act" => "disable"}, answer: :not_found},
       {:"security_policy.lock", :member, "/:org/:workspace/policy", "lock_toggle",
        %{"id" => :rule_open}},
       # An admin locking a rule, unlocking one, and changing a locked one.
@@ -186,8 +187,8 @@ defmodule ApiaryWeb.RefusalsRows do
          {"composer_change", %{"rule" => %{"host" => "open.example", "paths" => ""}}}
        ],
        meanwhile: {:locked, :rule_open}},
-      {:"security_policy.lock", :member, "/:org/:workspace/policy/targets/:target", "row_act",
-       %{"id" => :rule_locked, "act" => "allow_here"}},
+      {:"security_policy.lock", :member, "/:org/:workspace/targets/:target_page/-/policy",
+       "row_act", %{"id" => :rule_locked, "act" => "allow_here"}},
 
       # The access keys.
       {:"access_key.create", :removed_member, "/:org/:workspace/settings/keys/new", "create",
@@ -277,6 +278,16 @@ defmodule ApiaryWeb.RefusalsRows do
     second_owner = RefusalsCase.person(owner, :owner)
     other = sign_up_fixture()
 
+    # The same path in the other organisation, whose page its owner names this one's ids
+    # from.
+    Repo.insert!(%Target{
+      organisation_id: other.organisation.id,
+      workspace_id: other.workspace.id,
+      system: target.system,
+      path: target.path,
+      first_seen_at: DateTime.utc_now()
+    })
+
     %{
       owner: owner,
       organisation: owner.organisation,
@@ -318,6 +329,7 @@ defmodule ApiaryWeb.RefusalsRows do
   def value(:rule_open, world), do: {:id, world.rule_open.id}
   def value(:rule_locked, world), do: {:id, world.rule_locked.id}
   def value(:target, world), do: {:id, world.target.id}
+  def value(:target_page, world), do: "#{world.target.system}/#{world.target.path}"
   def value(:key, world), do: {:id, world.key.id}
   def value(:run, world), do: {:id, world.run.run_id}
   def value(_name, _world), do: nil

@@ -591,7 +591,12 @@ defmodule ApiaryWeb.PolicyLive.Target do
   def content(assigns) do
     ~H"""
     <div id="policy-page" phx-hook="PolicyPage" class="grid grid-cols-[minmax(0,1fr)] gap-6">
-      <Show.version_head :if={@action in [:version, :export] && @v} v={@v} base={@base} />
+      <Show.version_head
+        :if={@action in [:version, :export] && @v}
+        v={@v}
+        base={@base}
+        heading="h2"
+      />
 
       <div
         :if={!(@action in [:version, :export] && @v)}

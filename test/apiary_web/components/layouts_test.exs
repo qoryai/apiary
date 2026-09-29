@@ -390,16 +390,22 @@ defmodule ApiaryWeb.LayoutsTest do
     test "a workspace's sidebar lists the targets the counts carry, and nothing without them" do
       %{scope: scope} = sign_up_fixture()
 
+      shop = Ecto.UUID.generate()
+      api = Ecto.UUID.generate()
+
       pins = [
-        %{key: "1", label: "acme/shop", system: "github.example", href: "/somewhere/shop"},
-        %{key: "2", label: "acme/api", system: "github.example", href: "/somewhere/api"}
+        %{id: shop, system: "github.example", path: "acme/shop", shared: true},
+        %{id: api, system: "github.example", path: "acme/api", shared: false}
       ]
 
       html = shell(scope, :runs, %{pins: pins})
       assert html =~ ~s(id="nav-group-pinned")
-      assert html =~ ~s(id="nav-pin-1")
-      assert html =~ ~s(href="/somewhere/api")
+      assert html =~ ~s(id="nav-pin-#{shop}")
+      assert html =~ ~s(href="#{workspace_path(scope, "/targets/github.example/acme/api")}")
       assert before?(html, "acme/shop", "acme/api")
+      # The system shows where the same path is in another system, and nowhere else.
+      assert html =~ ~r{q-nav-pin-sys">\s*github.example/\s*</span>\s*acme/shop}
+      refute html =~ ~r{q-nav-pin-sys">\s*github.example/\s*</span>\s*acme/api}
 
       refute shell(scope, :runs, %{}) =~ "nav-group-pinned"
       # an organisation's page lists none
