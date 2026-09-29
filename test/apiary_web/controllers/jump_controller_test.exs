@@ -26,8 +26,8 @@ defmodule ApiaryWeb.JumpControllerTest do
 
     assert "Runs" in labels(go_to)
     assert "Settings › Access keys" in labels(go_to)
-    assert "Settings › Members" in labels(go_to)
-    assert "Your settings" in labels(go_to)
+    assert "Settings › People" in labels(go_to)
+    assert "Profile" in labels(go_to)
 
     runs = Enum.find(go_to["items"], &(&1["label"] == "Runs"))
     assert runs["href"] == workspace_path(scope, "/runs")

@@ -43,7 +43,12 @@ defmodule ApiaryWeb.RunLive.IndexTest do
     test "no runs and no keys: create a key", %{conn: conn, scope: scope} do
       view = open(conn, scope)
       assert has_element?(view, "h2", "No runs yet")
-      assert has_element?(view, "#runs-create-key[href='#{workspace_path(scope)}/keys/new']")
+
+      assert has_element?(
+               view,
+               "#runs-create-key[href='#{workspace_path(scope)}/settings/keys/new']"
+             )
+
       refute has_element?(view, "#runs")
       assert has_element?(view, "#nav-runs[aria-current=page]")
       refute has_element?(view, "#nav-runs-alive")
@@ -52,7 +57,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
     test "no runs, keys exist: go to the keys, and listen", %{conn: conn, scope: scope} do
       access_key_fixture(scope)
       view = open(conn, scope)
-      assert has_element?(view, "#runs-go-to-keys[href='#{workspace_path(scope)}/keys']")
+      assert has_element?(view, "#runs-go-to-keys[href='#{workspace_path(scope)}/settings/keys']")
       assert render(view) =~ "Listening for the first run."
     end
 
@@ -886,7 +891,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       conn: conn,
       scope: scope
     } do
-      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/keys")
+      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/keys")
       refute has_element?(view, "#nav-runs-alive")
 
       run = started_run(scope, shop(), ago: 5)

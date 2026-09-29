@@ -77,13 +77,13 @@ defmodule ApiaryWeb.LayoutsTest do
 
       assert has_element?(
                view,
-               "#new-menu a#new-menu-key[role='menuitem'][href='#{workspace_path(scope, "/keys/new")}']",
+               "#new-menu a#new-menu-key[role='menuitem'][href='#{workspace_path(scope, "/settings/keys/new")}']",
                "New access key"
              )
 
       assert has_element?(
                view,
-               "#new-menu a#new-menu-invite[href='/#{scope.organisation.slug}/members/invite']",
+               "#new-menu a#new-menu-invite[href='/#{scope.organisation.slug}/settings/people/invite']",
                "Invite people"
              )
 
@@ -188,7 +188,7 @@ defmodule ApiaryWeb.LayoutsTest do
     end
 
     test "a page of a workspace's Settings marks Settings", %{conn: conn, scope: scope} do
-      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/keys")
+      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/keys")
 
       assert has_element?(view, "aside#sidebar[aria-label='Workspace']")
       assert has_element?(view, "#nav-settings[aria-current='page']")
@@ -196,7 +196,10 @@ defmodule ApiaryWeb.LayoutsTest do
     end
 
     test "an organisation's page shows the organisation's sidebar", %{conn: conn, scope: scope} do
-      for path <- [~p"/#{scope.organisation}/members", ~p"/#{scope.organisation}/settings"] do
+      for path <- [
+            ~p"/#{scope.organisation}/settings/people",
+            ~p"/#{scope.organisation}/settings"
+          ] do
         {:ok, view, _html} = live(conn, path)
 
         assert has_element?(view, "aside#sidebar[aria-label='Organisation']")
@@ -226,9 +229,11 @@ defmodule ApiaryWeb.LayoutsTest do
 
       assert has_element?(view, "aside#sidebar[aria-label='Your account']")
       assert has_element?(view, "#nav-user_settings[href='/users/settings'][aria-current='page']")
+      assert has_element?(view, "#nav-user_preferences[href='/users/settings/preferences']")
       assert has_element?(view, "#nav-user_organisations[href='/users/organisations']")
       refute has_element?(view, "#nav-overview, #nav-activity, #nav-settings")
-      assert has_element?(view, "#breadcrumb [aria-current='page']", "Your settings")
+      assert has_element?(view, "#breadcrumb a[href='/users/settings']", "Your settings")
+      assert has_element?(view, "#breadcrumb [aria-current='page']", "Profile")
     end
 
     test "one place: the breadcrumb's segments are links, with no switcher", %{
@@ -325,17 +330,17 @@ defmodule ApiaryWeb.LayoutsTest do
       {:ok, _membership} = Organisations.accept_invitation(user, token)
       switch = "#organisation-menu a[data-place]"
 
-      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/keys")
-      assert has_element?(view, "#{switch}[href='#{workspace_path(other, "/keys")}']")
+      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/keys")
+      assert has_element?(view, "#{switch}[href='#{workspace_path(other, "/settings/keys")}']")
 
-      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/members")
-      assert has_element?(view, "#{switch}[href='/#{other.organisation.slug}/members']")
+      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/settings/people")
+      assert has_element?(view, "#{switch}[href='/#{other.organisation.slug}/settings/people']")
 
       {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/settings")
       assert has_element?(view, "#{switch}[href='/#{other.organisation.slug}/settings']")
 
       # the link opens the other workspace, and the session remembers it for `/`
-      conn = get(conn, workspace_path(other, "/keys"))
+      conn = get(conn, workspace_path(other, "/settings/keys"))
       assert html_response(conn, 200) =~ other.organisation.name
       assert redirected_to(get(recycle(conn), ~p"/")) == workspace_path(other)
     end
@@ -375,8 +380,8 @@ defmodule ApiaryWeb.LayoutsTest do
     end
 
     test "the page title carries the product name as its suffix", %{conn: conn, scope: scope} do
-      {:ok, _view, html} = live(conn, ~p"/#{scope.organisation}/members")
-      assert html =~ ~r{<title[^>]*>\s*Members · Qory Apiary\s*</title>}
+      {:ok, _view, html} = live(conn, ~p"/#{scope.organisation}/settings/people")
+      assert html =~ ~r{<title[^>]*>\s*People · Organisation settings · Qory Apiary\s*</title>}
       assert html =~ scope.organisation.name
     end
   end

@@ -1340,7 +1340,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       _ ->
         %{
           count: count,
-          navigate: ~p"/#{scope.organisation}/#{scope.workspace}/keys",
+          navigate: ~p"/#{scope.organisation}/#{scope.workspace}/settings/keys",
           title:
             ngettext(
               "%{number} more item, on the keys page",

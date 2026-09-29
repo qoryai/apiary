@@ -8,7 +8,7 @@ defmodule ApiaryWeb.ReservedSlugs do
   organisation under `/:org/…`, so an organisation slug shares the first segment of the
   path with the instance's own paths (`/users`, `/docs`, `/v1`, the static files, the
   LiveView socket), and a workspace slug shares the second with the organisation's own
-  pages (`/:org/settings`, `/:org/members`). `organisation/0` and `workspace/0` name
+  pages (`/:org/settings`, `/:org/activity`). `organisation/0` and `workspace/0` name
   them.
 
   The core reserves only the paths it serves. An edition reserves the paths it adds, and

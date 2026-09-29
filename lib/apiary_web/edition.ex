@@ -33,7 +33,7 @@ defmodule ApiaryWeb.Edition do
   - **Readers and refusals**: `c:reader_sentence/2`, what the pages say to a person who
     reads an organisation through the edition's reach (`Apiary.Access.reader/1`);
     `c:refusal_sentence/1`, what a page says of a refusal the edition gave.
-  - **Pages**: `c:settings_tabs/1`, the tabs the organisation's settings add;
+  - **Pages**: `c:settings_tabs/1`, the sections the organisation's settings add;
     `c:slot/2`, what the edition renders in a named place of a core page
     (`ApiaryWeb.Extension`); `c:activity_describer/0`, the module that says the
     edition's actions in words on the Activity page.
@@ -101,7 +101,11 @@ defmodule ApiaryWeb.Edition do
   """
   @callback refusal_sentence(reason :: atom) :: String.t() | nil
 
-  @doc "The tabs the edition adds to the organisation's settings."
+  @doc """
+  The sections the edition adds to the organisation's settings, each a page of its own, in
+  the list beside the settings (`ApiaryWeb.SettingsComponents`), after the core's and before
+  Danger zone.
+  """
   @callback settings_tabs(Scope.t()) :: [Entry.t()]
 
   @doc """

@@ -1,12 +1,14 @@
 defmodule ApiaryWeb.AccessKeyLive.Index do
   @moduledoc """
-  The workspace's access keys: list, create (reveal-once), rotate, retire the
-  previous secret, revoke.
+  The workspace's access keys, a section of its settings (`ApiaryWeb.SettingsComponents`),
+  `/:org/:workspace/settings/keys`: list, create (reveal-once), rotate, retire the previous
+  secret, revoke, the last three in modals over the list.
   """
   use ApiaryWeb, :live_view
 
   alias Apiary.{Access, AccessKeys}
   alias Apiary.AccessKeys.AccessKey
+  alias ApiaryWeb.SettingsComponents
 
   @impl true
   def render(assigns) do
@@ -18,8 +20,14 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
       counts={@nav_counts}
       nav={:keys}
     >
-      <.header>
-        {gettext("Access keys")}
+      <SettingsComponents.layout
+        scope={@current_scope}
+        kind={:workspace}
+        sections={@sections}
+        current={:keys}
+        measure="list"
+        title={gettext("Access keys")}
+      >
         <:subtitle>
           {gettext(
             "A key lets the machines of this workspace post their runs. Create one per machine or environment and paste its server block into the runner file."
@@ -27,130 +35,133 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
         </:subtitle>
         <:actions :if={Access.can?(@current_scope, :"access_key.create", @current_scope.workspace)}>
           <.button
+            id="new-access-key"
             variant="primary"
-            patch={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/keys/new"}
+            patch={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/keys/new"}
           >
             <.icon name="hero-plus-micro" class="size-4" /> {gettext("New access key")}
           </.button>
         </:actions>
-      </.header>
 
-      <.empty_state :if={@keys == []} icon="hero-key" title={gettext("No access keys yet")}>
-        <p>
-          {gettext(
-            "Create a key and paste its server block into the runner file on a machine. It posts its runs to this workspace from then on."
-          )}
-        </p>
-        <:actions :if={Access.can?(@current_scope, :"access_key.create", @current_scope.workspace)}>
-          <.button patch={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/keys/new"}>{gettext(
-            "Create an access key"
-          )}</.button>
-        </:actions>
-      </.empty_state>
+        <.empty_state :if={@keys == []} icon="hero-key" title={gettext("No access keys yet")}>
+          <p>
+            {gettext(
+              "Create a key and paste its server block into the runner file on a machine. It posts its runs to this workspace from then on."
+            )}
+          </p>
+          <:actions :if={Access.can?(@current_scope, :"access_key.create", @current_scope.workspace)}>
+            <.button patch={
+              ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/keys/new"
+            }>{gettext("Create an access key")}</.button>
+          </:actions>
+        </.empty_state>
 
-      <.table
-        :if={@keys != []}
-        id="access-keys"
-        label={gettext("Access keys")}
-        rows={@keys}
-        row_id={&"key-#{&1.id}"}
-        row_class={&(&1.revoked_at && "row-off")}
-      >
-        <:col :let={key} label={gettext("Label")}>
-          <span class="font-medium">{key.label}</span>
-        </:col>
-        <:col :let={key} label={gettext("Key id")}>
-          <div class="relative w-fit">
-            <.mono bare>{key.key_id}</.mono>
-            <.copy_button
-              :if={is_nil(key.revoked_at)}
-              id={"copy-key-id-#{key.id}"}
-              text={key.key_id}
-              label={gettext("Copy key id")}
-              placement="right"
-              class="row-reveal !absolute left-full top-1/2 -translate-y-1/2 [&>button]:[--size:1.25rem] [&_.hero-clipboard-document-micro]:size-3.5"
-              icon_only
-            />
-          </div>
-        </:col>
-        <:col :let={key} label={gettext("Status")}>
-          <.status_badge status={AccessKey.status(key)} />
-        </:col>
-        <:col :let={key} label={gettext("Created")}>
-          <span class={["tabular-nums", is_nil(key.revoked_at) && "text-muted"]}>
-            {Format.date(key.inserted_at)}
-          </span>
-        </:col>
-        <:col :let={key} label={gettext("Last used")}>
-          <span :if={AccessKey.never_used?(key)} class="text-faint">{gettext("Never posted")}</span>
-          <.time_ago
-            :if={!AccessKey.never_used?(key)}
-            at={key.last_used_at}
-            class={["tabular-nums", is_nil(key.revoked_at) && "text-muted"]}
-          />
-        </:col>
-        <:col :let={key} label={gettext("Last heartbeat")}>
-          <span :if={is_nil(key.last_heartbeat_at)} class="text-faint">{gettext("Never")}</span>
-          <.time_ago
-            :if={key.last_heartbeat_at}
-            at={key.last_heartbeat_at}
-            class={["tabular-nums", is_nil(key.revoked_at) && "text-muted"]}
-          />
-        </:col>
-        <:col :let={key} label={gettext("Runner")}>
-          <span :if={key.last_runner_version} class="font-mono text-[12.5px]">
-            {key.last_runner_version}
-          </span>
-          <span :if={!key.last_runner_version} class="text-faint">{gettext("n/a")}</span>
-        </:col>
-        <:action :let={key}>
-          <%= case AccessKey.status(key) do %>
-            <% :revoked -> %>
-              <span class="whitespace-nowrap px-2 text-xs/6 text-faint">
-                {gettext("Revoked %{date}", date: Format.date(key.revoked_at))}
+        <.table
+          :if={@keys != []}
+          id="access-keys"
+          label={gettext("Access keys")}
+          rows={@keys}
+          row_id={&"key-#{&1.id}"}
+          row_class={&(&1.revoked_at && "row-off")}
+        >
+          <:col :let={key} label={gettext("Key")}>
+            <div class="grid gap-0.5">
+              <span class="font-medium">{key.label}</span>
+              <div class="relative w-fit text-[12px] text-muted">
+                <.mono bare>{key.key_id}</.mono>
+                <.copy_button
+                  :if={is_nil(key.revoked_at)}
+                  id={"copy-key-id-#{key.id}"}
+                  text={key.key_id}
+                  label={gettext("Copy key id")}
+                  placement="right"
+                  class="row-reveal !absolute left-full top-1/2 -translate-y-1/2 [&>button]:[--size:1.25rem] [&_.hero-clipboard-document-micro]:size-3.5"
+                  icon_only
+                />
+              </div>
+            </div>
+          </:col>
+          <:col :let={key} label={gettext("Status")}>
+            <div class="grid justify-items-start gap-0.5">
+              <.status_badge status={AccessKey.status(key)} />
+              <span class="text-[12px] tabular-nums text-faint">
+                {gettext("Created %{date}", date: Format.date(key.inserted_at))}
               </span>
-            <% status -> %>
-              <.button
-                :if={status == :rotating && Access.can?(@current_scope, :"access_key.rotate", key)}
-                variant="ghost"
-                size="xs"
-                phx-click="retire"
-                phx-value-id={key.id}
-                aria-label={gettext("Retire the previous secret of %{label}", label: key.label)}
-              >
-                {gettext("Retire previous secret")}
-              </.button>
-              <.button
-                :if={Access.can?(@current_scope, :"access_key.rotate", key)}
-                variant="ghost"
-                size="xs"
-                patch={
-                  ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/keys/#{key.id}/rotate"
-                }
-                aria-label={gettext("Rotate %{label}", label: key.label)}
-              >
-                {gettext("Rotate")}
-              </.button>
-              <.button
-                :if={Access.can?(@current_scope, :"access_key.revoke", key)}
-                variant="danger-ghost"
-                size="xs"
-                patch={
-                  ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/keys/#{key.id}/revoke"
-                }
-                aria-label={gettext("Revoke %{label}", label: key.label)}
-              >
-                {gettext("Revoke")}
-              </.button>
-          <% end %>
-        </:action>
-      </.table>
+            </div>
+          </:col>
+          <:col :let={key} label={gettext("Last used")}>
+            <div class="grid gap-0.5">
+              <span :if={AccessKey.never_used?(key)} class="text-faint">{gettext("Never posted")}</span>
+              <.time_ago
+                :if={!AccessKey.never_used?(key)}
+                at={key.last_used_at}
+                class={["tabular-nums", is_nil(key.revoked_at) && "text-muted"]}
+              />
+              <span class="text-[12px] text-faint">
+                <span :if={is_nil(key.last_heartbeat_at)}>{gettext("No heartbeat yet")}</span>
+                <span :if={key.last_heartbeat_at}>
+                  {gettext("Heartbeat")} <.time_ago at={key.last_heartbeat_at} class="tabular-nums" />
+                </span>
+              </span>
+            </div>
+          </:col>
+          <:col :let={key} label={gettext("Runner")}>
+            <span :if={key.last_runner_version} class="font-mono text-[12.5px]">
+              {key.last_runner_version}
+            </span>
+            <span :if={!key.last_runner_version} class="text-faint">{gettext("n/a")}</span>
+          </:col>
+          <:action :let={key}>
+            <%= case AccessKey.status(key) do %>
+              <% :revoked -> %>
+                <span class="whitespace-nowrap px-2 text-xs/6 text-faint">
+                  {gettext("Revoked %{date}", date: Format.date(key.revoked_at))}
+                </span>
+              <% status -> %>
+                <.button
+                  :if={status == :rotating && Access.can?(@current_scope, :"access_key.rotate", key)}
+                  variant="ghost"
+                  size="xs"
+                  phx-click="retire"
+                  phx-value-id={key.id}
+                  aria-label={gettext("Retire the previous secret of %{label}", label: key.label)}
+                >
+                  {gettext("Retire previous secret")}
+                </.button>
+                <.button
+                  :if={Access.can?(@current_scope, :"access_key.rotate", key)}
+                  variant="ghost"
+                  size="xs"
+                  patch={
+                    ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/keys/#{key.id}/rotate"
+                  }
+                  aria-label={gettext("Rotate %{label}", label: key.label)}
+                >
+                  {gettext("Rotate")}
+                </.button>
+                <.button
+                  :if={Access.can?(@current_scope, :"access_key.revoke", key)}
+                  variant="danger-ghost"
+                  size="xs"
+                  patch={
+                    ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/keys/#{key.id}/revoke"
+                  }
+                  aria-label={gettext("Revoke %{label}", label: key.label)}
+                >
+                  {gettext("Revoke")}
+                </.button>
+            <% end %>
+          </:action>
+        </.table>
+      </SettingsComponents.layout>
 
       <.modal
         :if={@live_action == :new && is_nil(@reveal)}
         id="new-key"
         title={gettext("New access key")}
-        on_cancel={JS.patch(~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/keys")}
+        on_cancel={
+          JS.patch(~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/keys")
+        }
       >
         <.form
           for={@form}
@@ -170,9 +181,9 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
           />
         </.form>
         <:footer>
-          <.button patch={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/keys"}>{gettext(
-            "Cancel"
-          )}</.button>
+          <.button patch={
+            ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/keys"
+          }>{gettext("Cancel")}</.button>
           <.button
             variant="primary"
             type="submit"
@@ -203,7 +214,7 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
         <:footer>
           <.button
             variant="primary"
-            patch={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/keys"}
+            patch={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/keys"}
             data-autofocus
           >
             {gettext("I have copied the secret")}
@@ -215,7 +226,9 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
         :if={@live_action == :rotate && @key && is_nil(@reveal)}
         id="rotate-key"
         title={gettext("Rotate %{label}", label: @key.label)}
-        on_cancel={JS.patch(~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/keys")}
+        on_cancel={
+          JS.patch(~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/keys")
+        }
       >
         <p class="text-muted">
           {gettext(
@@ -223,9 +236,9 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
           )}
         </p>
         <:footer>
-          <.button patch={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/keys"}>{gettext(
-            "Cancel"
-          )}</.button>
+          <.button patch={
+            ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/keys"
+          }>{gettext("Cancel")}</.button>
           <.button variant="primary" phx-click="rotate" loading_text={gettext("Rotating")}>
             {gettext("Rotate key")}
           </.button>
@@ -236,7 +249,9 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
         :if={@live_action == :revoke && @key}
         id="revoke-key"
         title={gettext("Revoke %{label}", label: @key.label)}
-        on_cancel={JS.patch(~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/keys")}
+        on_cancel={
+          JS.patch(~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/keys")
+        }
       >
         <p class="text-muted">
           {gettext(
@@ -245,7 +260,7 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
         </p>
         <:footer>
           <.button
-            patch={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/keys"}
+            patch={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/keys"}
             data-autofocus
           >{gettext("Cancel")}</.button>
           <.button variant="danger" phx-click="revoke" loading_text={gettext("Revoking")}>
@@ -365,7 +380,13 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
   def mount(_params, _session, socket) do
     {:ok,
      socket
-     |> assign(page_title: gettext("Access keys"), key: nil, reveal: nil, retire_key: nil)
+     |> assign(
+       page_title: gettext("Access keys") <> " · " <> gettext("Workspace settings"),
+       key: nil,
+       reveal: nil,
+       retire_key: nil
+     )
+     |> assign(:sections, SettingsComponents.sections(socket.assigns.current_scope, :workspace))
      |> load_keys()}
   end
 
@@ -526,7 +547,7 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
 
   defp keys_path(socket) do
     %{organisation: organisation, workspace: workspace} = socket.assigns.current_scope
-    ~p"/#{organisation}/#{workspace}/keys"
+    ~p"/#{organisation}/#{workspace}/settings/keys"
   end
 
   # The membership this page was opened with is gone, or the person no longer reaches the

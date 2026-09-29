@@ -569,7 +569,7 @@ defmodule ApiaryWeb.UserAuth do
   membership that is gone, or a workspace of the path the user no longer reaches, sends
   the page to `/`; a membership suspended sends it to `/users/organisations`, which says
   so; a page of a feature taken away from the organisation or the workspace meanwhile
-  (`Apiary.Features.of/2`) sends it to the organisation's members page, which every
+  (`Apiary.Features.of/2`) sends it to the organisation's overview, which every
   organisation has, and says so; an organisation's page keeps its workspace while the user
   reaches it.
   """
@@ -602,7 +602,7 @@ defmodule ApiaryWeb.UserAuth do
             organisation: reloaded.organisation.name
           )
         )
-        |> Phoenix.LiveView.redirect(to: ~p"/#{reloaded.organisation}/members")
+        |> Phoenix.LiveView.redirect(to: ~p"/#{reloaded.organisation}")
 
       :error ->
         case suspended_membership(scope, scope.organisation && scope.organisation.slug) do

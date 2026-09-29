@@ -138,7 +138,7 @@ defmodule ApiaryWeb.OriginTest do
     end
 
     test "a request: the peer, and the client it sent", %{conn: conn, scope: scope} do
-      conn = get(conn, ~p"/#{scope.organisation}/members")
+      conn = get(conn, ~p"/#{scope.organisation}/settings/people")
       assert html_response(conn, 200)
 
       {:ok, _} = Organisations.update_workspace(conn.assigns.current_scope, %{name: "Renamed"})
@@ -151,7 +151,7 @@ defmodule ApiaryWeb.OriginTest do
       scope: scope
     } do
       trust(@proxies)
-      conn = get(conn, ~p"/#{scope.organisation}/members")
+      conn = get(conn, ~p"/#{scope.organisation}/settings/people")
 
       {:ok, _} = Organisations.update_workspace(conn.assigns.current_scope, %{name: "Renamed"})
 

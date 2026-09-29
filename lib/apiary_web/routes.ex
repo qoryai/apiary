@@ -185,7 +185,10 @@ defmodule ApiaryWeb.Routes do
               {ApiaryWeb.UserAuth, :require_authenticated},
               {ApiaryWeb.UserAuth, :load_organisation}
             ] do
+            # A person's settings, one section a page: Profile (email, password, deleting the
+            # account) and Preferences.
             live "/users/settings", UserLive.Settings, :edit
+            live "/users/settings/preferences", UserLive.Settings, :preferences
             # The confirmation of deleting one's own account, a modal over the settings.
             live "/users/settings/delete", UserLive.Settings, :delete
             live "/users/settings/confirm-email/:token", UserLive.Settings, :confirm_email
@@ -254,6 +257,18 @@ defmodule ApiaryWeb.Routes do
           get "/:org/:workspace/jump", JumpController, :show
         end
 
+        # The paths of pages that moved under the settings, sent on to where they are now,
+        # so a link someone kept still lands. Before the pages, whose `/:org/:workspace`
+        # would take `/:org/members`.
+        scope "/", ApiaryWeb do
+          pipe_through [:path_scope, :browser]
+
+          get "/:org/members", MovedController, :show
+          get "/:org/members/*rest", MovedController, :show
+          get "/:org/:workspace/keys", MovedController, :show
+          get "/:org/:workspace/keys/*rest", MovedController, :show
+        end
+
         scope "/", ApiaryWeb do
           pipe_through [:path_scope, :browser, :require_authenticated_user, :fetch_path_scope]
 
@@ -266,19 +281,22 @@ defmodule ApiaryWeb.Routes do
             # opened last, while they reach it, else the first they reach; none for a
             # member who reaches no workspace yet.
             scope "/:org" do
-              # The organisation alone: it sends on to that workspace, or says that the
-              # member reaches none yet.
+              # The organisation's overview: its workspaces and its people.
               live "/", OrganisationLive, :index
-              live "/members", MemberLive.Index, :index
-              live "/members/invite", MemberLive.Index, :invite
-              live "/members/:id/remove", MemberLive.Index, :remove
-              # The confirmation of suspending a membership, a modal over the members.
-              live "/members/:id/suspend", MemberLive.Index, :suspend
+              # Its settings, one section a page, the list of them beside it
+              # (`ApiaryWeb.SettingsComponents`). General is the settings' own path.
               live "/settings", SettingsLive, :organisation
-              # The confirmations of deleting the organisation and one of its workspaces,
-              # modals over its settings.
-              live "/settings/delete", SettingsLive, :delete_organisation
+              live "/settings/people", MemberLive.Index, :index
+              live "/settings/people/invite", MemberLive.Index, :invite
+              live "/settings/people/:id/remove", MemberLive.Index, :remove
+              # The confirmation of suspending a membership, a modal over the people.
+              live "/settings/people/:id/suspend", MemberLive.Index, :suspend
+              live "/settings/workspaces", SettingsLive, :workspaces
+              # The confirmation of deleting a workspace, a modal over the workspaces.
               live "/settings/workspaces/:workspace_id/delete", SettingsLive, :delete_workspace
+              live "/settings/danger", SettingsLive, :danger
+              # The confirmation of deleting the organisation, a modal over the danger zone.
+              live "/settings/delete", SettingsLive, :delete_organisation
               # The organisation's audit trail, for the readers `audit.read` allows.
               live "/activity", ActivityLive, :index
             end
@@ -312,11 +330,16 @@ defmodule ApiaryWeb.Routes do
               live "/policy/targets/:target_id/document", PolicyLive.Target, :document
               live "/policy/targets/:target_id/versions/:n", PolicyLive.Target, :version
               live "/policy/targets/:target_id/versions/:n/export", PolicyLive.Target, :export
-              live "/keys", AccessKeyLive.Index, :index
-              live "/keys/new", AccessKeyLive.Index, :new
-              live "/keys/:id/rotate", AccessKeyLive.Index, :rotate
-              live "/keys/:id/revoke", AccessKeyLive.Index, :revoke
+              # Its settings, one section a page, as the organisation's.
               live "/settings", SettingsLive, :workspace
+              live "/settings/keys", AccessKeyLive.Index, :index
+              live "/settings/keys/new", AccessKeyLive.Index, :new
+              live "/settings/keys/:id/rotate", AccessKeyLive.Index, :rotate
+              live "/settings/keys/:id/revoke", AccessKeyLive.Index, :revoke
+              live "/settings/retention", SettingsLive, :retention
+              live "/settings/danger", SettingsLive, :workspace_danger
+              # The confirmation of deleting this workspace, a modal over its danger zone.
+              live "/settings/delete", SettingsLive, :delete_this_workspace
             end
           end
 

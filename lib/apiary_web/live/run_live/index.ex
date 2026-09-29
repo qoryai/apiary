@@ -313,7 +313,9 @@ defmodule ApiaryWeb.RunLive.Index do
             <.button
               id="runs-create-key"
               variant="primary"
-              navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/keys/new"}
+              navigate={
+                ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/keys/new"
+              }
             >
               {gettext("Create an access key")}
             </.button>
@@ -325,7 +327,7 @@ defmodule ApiaryWeb.RunLive.Index do
           <:actions>
             <.button
               id="runs-go-to-keys"
-              navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/keys"}
+              navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/keys"}
             >
               {gettext("Go to access keys")}
             </.button>

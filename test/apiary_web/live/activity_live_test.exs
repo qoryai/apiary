@@ -330,7 +330,7 @@ defmodule ApiaryWeb.ActivityLiveTest do
         get(conn, "/#{owner.organisation.slug}/activity")
       end)
 
-      {:ok, view, _html} = live(conn, ~p"/#{owner.organisation}/members")
+      {:ok, view, _html} = live(conn, ~p"/#{owner.organisation}/settings/people")
       refute has_element?(view, "#nav-activity")
     end
   end

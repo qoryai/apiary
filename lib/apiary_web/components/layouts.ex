@@ -84,7 +84,7 @@ defmodule ApiaryWeb.Layouts do
         key: :keys,
         label: gettext("Access keys"),
         icon: "hero-key-micro",
-        path: fn organisation, workspace -> ~p"/#{organisation}/#{workspace}/keys" end,
+        path: fn organisation, workspace -> ~p"/#{organisation}/#{workspace}/settings/keys" end,
         count: :keys
       },
       %Entry{
@@ -97,6 +97,14 @@ defmodule ApiaryWeb.Layouts do
       # An organisation's pages.
       %Entry{
         section: :home,
+        key: :organisation_overview,
+        label: gettext("Overview"),
+        icon: "hero-squares-2x2-micro",
+        path: fn organisation, _workspace -> ~p"/#{organisation}" end,
+        place: :organisation
+      },
+      %Entry{
+        section: :home,
         key: :activity,
         label: gettext("Activity"),
         icon: "hero-clipboard-document-list-micro",
@@ -107,9 +115,9 @@ defmodule ApiaryWeb.Layouts do
       %Entry{
         section: :settings,
         key: :members,
-        label: gettext("Members"),
+        label: gettext("People"),
         icon: "hero-users-micro",
-        path: fn organisation, _workspace -> ~p"/#{organisation}/members" end,
+        path: fn organisation, _workspace -> ~p"/#{organisation}/settings/people" end,
         place: :organisation,
         count: :members
       },
@@ -121,19 +129,27 @@ defmodule ApiaryWeb.Layouts do
         path: fn organisation, _workspace -> ~p"/#{organisation}/settings" end,
         place: :organisation
       },
-      # A person's own pages.
+      # A person's own pages: their settings, one section a page, and their organisations.
       %Entry{
         section: :home,
         key: :user_settings,
-        label: gettext("Your settings"),
+        label: gettext("Profile"),
         icon: "hero-user-circle-micro",
         path: ~p"/users/settings",
         place: :person
       },
       %Entry{
         section: :home,
+        key: :user_preferences,
+        label: gettext("Preferences"),
+        icon: "hero-adjustments-horizontal-micro",
+        path: ~p"/users/settings/preferences",
+        place: :person
+      },
+      %Entry{
+        section: :home,
         key: :user_organisations,
-        label: gettext("Your organisations"),
+        label: gettext("Organisations"),
         icon: "hero-building-office-2-micro",
         path: ~p"/users/organisations",
         place: :person
@@ -153,7 +169,7 @@ defmodule ApiaryWeb.Layouts do
           key: :key,
           label: gettext("New access key"),
           icon: "hero-key-micro",
-          path: ~p"/#{organisation}/#{workspace}/keys/new",
+          path: ~p"/#{organisation}/#{workspace}/settings/keys/new",
           action: :"access_key.create"
         }
 
@@ -161,7 +177,7 @@ defmodule ApiaryWeb.Layouts do
       key: :invite,
       label: gettext("Invite people"),
       icon: "hero-user-plus-micro",
-      path: ~p"/#{organisation}/members/invite",
+      path: ~p"/#{organisation}/settings/people/invite",
       place: :organisation,
       action: :"member.invite"
     }
@@ -447,7 +463,13 @@ defmodule ApiaryWeb.Layouts do
     ~H"""
     <nav id="breadcrumb" aria-label={gettext("Where you are")} class="q-trail-nav">
       <ol class="q-trail">
+        <li class={["q-trail-item", @here && "q-trail-lead"]}>
+          <.link navigate={~p"/users/settings"} class="q-trail-link">
+            {gettext("Your settings")}
+          </.link>
+        </li>
         <li :if={@here} class="q-trail-item">
+          <span class="q-trail-sep max-md:hidden" aria-hidden="true">/</span>
           <span class="q-trail-link q-trail-page" aria-current="page">{@here.label}</span>
         </li>
       </ol>

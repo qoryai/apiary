@@ -1,20 +1,26 @@
 defmodule ApiaryWeb.SettingsLive do
   @moduledoc """
-  Organisation and workspace settings, one page in two places: the organisation's,
-  `/:org/settings` (`:organisation`), with its name, its slug, the owners and, for an
-  owner, its workspaces and the deletion of a workspace or of the organisation; and the
-  workspace's, `/:org/:workspace/settings` (`:workspace`), with its name, its slug and
-  retention: how long the workspace keeps a run's events and log output, and what the
-  nightly job last pruned. A slug is shown, not edited: renaming one is not decided yet.
+  The core's sections of the organisation's and the workspace's settings, one section a
+  page beside the list of them (`ApiaryWeb.SettingsComponents`).
 
-  Deleting asks to type the slug, in a modal over the organisation's settings:
-  `/:org/settings/delete` (`:delete_organisation`) and
-  `/:org/settings/workspaces/:workspace_id/delete` (`:delete_workspace`). A workspace
-  marked for deletion is a notice at the top of the organisation's settings, where an
-  owner or an admin cancels it until it is purged (`Apiary.Deletion`).
+  - The organisation's: General, `/:org/settings` (`:organisation`), its name, its slug and
+    its owners; Workspaces, `/:org/settings/workspaces` (`:workspaces`), for an owner or an
+    admin, with the deletion of one and the cancelling of a deletion; Danger zone,
+    `/:org/settings/danger` (`:danger`), the deletion of the organisation.
+  - The workspace's: General, `/:org/:workspace/settings` (`:workspace`), its name and its
+    slug; Retention, `/:org/:workspace/settings/retention` (`:retention`), how long the
+    workspace keeps a run's events and log output, and what the nightly job last pruned;
+    Danger zone, `/:org/:workspace/settings/danger` (`:workspace_danger`), its deletion.
 
-  An edition adds tabs to the organisation's settings, each a page of its own
-  (`ApiaryWeb.SettingsComponents`), and to each workspace of the organisation what its
+  A slug is shown, not edited: renaming one is not decided yet. Deleting asks to type the
+  slug, in a modal over its section: `/:org/settings/delete` (`:delete_organisation`),
+  `/:org/settings/workspaces/:workspace_id/delete` (`:delete_workspace`) and
+  `/:org/:workspace/settings/delete` (`:delete_this_workspace`). A workspace marked for
+  deletion is a notice at the top of Workspaces, where an owner or an admin cancels it
+  until it is purged (`Apiary.Deletion`).
+
+  An edition adds sections to the organisation's settings, each a page of its own
+  (`ApiaryWeb.SettingsComponents`), and to each workspace in Workspaces what its
   `:workspace_actions` slot renders (`ApiaryWeb.Extension`).
 
   The proof of the domain's words (`docs/lingo.md`): every sentence is a gettext call in
@@ -25,6 +31,19 @@ defmodule ApiaryWeb.SettingsLive do
   alias Apiary.{Access, Deletion, Organisations, Retention}
   alias ApiaryWeb.{SettingsComponents, UserAuth}
 
+  # Each page of this LiveView: the settings it is part of and its section's key.
+  @sections %{
+    organisation: {:organisation, :organisation},
+    workspaces: {:organisation, :workspaces},
+    delete_workspace: {:organisation, :workspaces},
+    danger: {:organisation, :danger},
+    delete_organisation: {:organisation, :danger},
+    workspace: {:workspace, :general},
+    retention: {:workspace, :retention},
+    workspace_danger: {:workspace, :danger},
+    delete_this_workspace: {:workspace, :danger}
+  }
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -34,352 +53,23 @@ defmodule ApiaryWeb.SettingsLive do
       memberships={@memberships}
       counts={@nav_counts}
       nav={if @page == :organisation, do: :organisation, else: :settings}
-      width="read"
     >
-      <.header :if={@page == :organisation}>
-        {gettext("Organisation settings")}
-        <:subtitle>
-          {gettext("The name of this organisation, where its pages are, and who owns it.")}
-        </:subtitle>
-      </.header>
-
-      <SettingsComponents.settings_tabs
-        :if={@page == :organisation}
-        tabs={@tabs}
-        current={:organisation}
-        organisation={@current_scope.organisation}
-      />
-
-      <.header :if={@page == :workspace}>
-        {gettext("Workspace settings")}
-        <:subtitle>
-          {gettext("The name of this workspace, where its pages are, and how long runs are kept.")}
-        </:subtitle>
-      </.header>
-
-      <.notice
-        :for={workspace <- @marked_workspaces}
-        :if={@page == :organisation}
-        kind={:warning}
-        class="max-w-[80ch]"
+      <SettingsComponents.layout
+        scope={@current_scope}
+        kind={@page}
+        sections={@sections}
+        current={@section}
+        title={section_title(@section)}
       >
-        <div
-          id={"marked-workspace-#{workspace.id}"}
-          class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2"
-        >
-          <span>
-            <.rich text={
-              rich_gettext(
-                "The workspace %{name} is deleted and is purged on %{date}, with its runs and access keys. Until then an owner or an admin can cancel the deletion.",
-                name: {:b, workspace.name},
-                date: Format.date(workspace.purge_after)
-              )
-            } />
-          </span>
-          <.button
-            :if={may?(@current_scope, :"workspace.restore")}
-            id={"restore-workspace-#{workspace.id}"}
-            size="xs"
-            phx-click="restore_workspace"
-            phx-value-id={workspace.id}
-            aria-label={gettext("Cancel the deletion of %{name}", name: workspace.name)}
-            loading_text={gettext("Cancelling")}
-          >
-            {gettext("Cancel deletion")}
-          </.button>
-        </div>
-      </.notice>
-
-      <.notice :if={refused_for_level?(@current_scope, settings_action(@page))} kind={:info}>
-        {gettext(
-          "Only owners and admins can change these settings. Ask one of them if a name needs to change."
-        )}
-      </.notice>
-
-      <.card :if={@page == :organisation}>
-        <:title>{gettext("Organisation name")}</:title>
-        <.form
-          for={@organisation_form}
-          id="organisation-form"
-          phx-change="validate_organisation"
-          phx-submit="save_organisation"
-          class="grid max-w-[420px] gap-4"
-        >
-          <.input
-            field={@organisation_form[:name]}
-            type="text"
-            label={gettext("Name")}
-            debounce="200"
-            autocomplete="off"
-            disabled={!may?(@current_scope, :"organisation.rename")}
-            required
-          />
-        </.form>
-        <p id="organisation-slug" class="text-[13px]/[20px] text-muted">
-          <.rich text={
-            rich_gettext("Its pages are under %{path}. Renaming the organisation keeps it.",
-              path: {:m, ~p"/#{@current_scope.organisation}"}
-            )
-          } />
-        </p>
-        <:footer>
-          <span>{gettext("Shown in the sidebar and in invitations.")}</span>
-          <.button
-            :if={may?(@current_scope, :"organisation.rename")}
-            type="submit"
-            form="organisation-form"
-            disabled={!@organisation_form.source.valid?}
-            loading_text={gettext("Saving")}
-          >
-            {gettext("Save")}
-          </.button>
-        </:footer>
-      </.card>
-
-      <.card :if={@page == :workspace}>
-        <:title>{gettext("Workspace name")}</:title>
-        <.form
-          for={@workspace_form}
-          id="workspace-form"
-          phx-change="validate_workspace"
-          phx-submit="save_workspace"
-          class="grid max-w-[420px] gap-4"
-        >
-          <.input
-            field={@workspace_form[:name]}
-            type="text"
-            label={gettext("Name")}
-            debounce="200"
-            autocomplete="off"
-            disabled={!may?(@current_scope, :"workspace.rename")}
-            required
-          />
-        </.form>
-        <p id="workspace-slug" class="text-[13px]/[20px] text-muted">
-          <.rich text={
-            rich_gettext("Its pages are under %{path}. Renaming the workspace keeps it.",
-              path: {:m, ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}"}
-            )
-          } />
-        </p>
-        <:footer>
-          <span>{gettext("Shown in the sidebar and as the overview title.")}</span>
-          <.button
-            :if={may?(@current_scope, :"workspace.rename")}
-            type="submit"
-            form="workspace-form"
-            disabled={!@workspace_form.source.valid?}
-            loading_text={gettext("Saving")}
-          >
-            {gettext("Save")}
-          </.button>
-        </:footer>
-      </.card>
-
-      <.card :if={@page == :workspace}>
-        <:title>{gettext("Retention")}</:title>
-        <.form
-          for={@retention_form}
-          id="retention-form"
-          phx-change="validate_retention"
-          phx-submit="save_retention"
-          class="grid max-w-[420px] gap-4"
-        >
-          <.input
-            field={@retention_form[:events_retention_days]}
-            type="number"
-            label={gettext("Keep a run's events for")}
-            placeholder={gettext("Forever")}
-            min="1"
-            max="3650"
-            step="1"
-            inputmode="numeric"
-            debounce="200"
-            disabled={!may?(@current_scope, :"retention.edit")}
-          />
-          <.input
-            field={@retention_form[:log_retention_days]}
-            type="number"
-            label={gettext("Keep a run's log output for")}
-            placeholder={gettext("Forever")}
-            min="1"
-            max="3650"
-            step="1"
-            inputmode="numeric"
-            debounce="200"
-            disabled={!may?(@current_scope, :"retention.edit")}
-          />
-        </.form>
-        <p class="max-w-[60ch] text-[13px]/[20px] text-muted">
-          {gettext(
-            "In days; empty keeps everything. A run that ended is pruned whole, counted from its last event: first its log output, then its timeline. The run stays in the list with its state, its counts and its connections, and its page says what was pruned and when. Pruned data comes back only from a backup."
-          )}
-        </p>
-        <:footer>
-          <span id="retention-summary">{retention_summary(@current_scope.workspace)}</span>
-          <.button
-            :if={may?(@current_scope, :"retention.edit")}
-            type="submit"
-            form="retention-form"
-            disabled={!@retention_form.source.valid?}
-            loading_text={gettext("Saving")}
-          >
-            {gettext("Save")}
-          </.button>
-        </:footer>
-      </.card>
-
-      <.card :if={@page == :workspace} padding={false}>
-        <:title>{gettext("Pruned")}</:title>
-        <p :if={@retention_runs == []} id="retention-runs-empty" class="px-5 py-4 text-muted">
-          {if retention_set?(@current_scope.workspace),
-            do: gettext("Nothing has been pruned yet. The job runs every night."),
-            else: gettext("Nothing is pruned: this workspace keeps everything.")}
-        </p>
-        <ul :if={@retention_runs != []} id="retention-runs" class="divide-y divide-line">
-          <li
-            :for={run <- @retention_runs}
-            id={"retention-run-#{run.id}"}
-            class="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 px-5 py-2.5"
-          >
-            <span class="font-medium tabular-nums">{Format.datetime(run.started_at, zone: true)}</span>
-            <.badge :if={run.trigger == "manual"}>{gettext("By hand")}</.badge>
-            <.badge :if={!run.complete} color="warning">{gettext("Not finished")}</.badge>
-            <span class="w-full text-[13px]/[20px] text-muted">{pruned_sentence(run)}</span>
-          </li>
-        </ul>
-        <:footer>
-          <span>
-            {ngettext(
-              "The last run of the nightly job. It is also a line in the server's log.",
-              "The last %{number} runs of the nightly job. Each is also a line in the server's log.",
-              length(@retention_runs),
-              number: Format.number(length(@retention_runs))
-            )}
-          </span>
-        </:footer>
-      </.card>
-
-      <.card :if={@page == :organisation} padding={false}>
-        <:title>{gettext("Owners")}</:title>
-        <:actions>
-          <.button navigate={~p"/#{@current_scope.organisation}/members"}>
-            {gettext("Manage members")}
-          </.button>
-        </:actions>
-        <ul id="owners" class="divide-y divide-line">
-          <li
-            :for={owner <- @owners}
-            id={"owner-#{owner.id}"}
-            class="flex flex-wrap items-center gap-x-2.5 gap-y-1 px-5 py-2.5"
-          >
-            <.avatar
-              name={owner.user.email}
-              kind={if owner.user_id == @current_scope.user.id, do: "self", else: "person"}
-            />
-            <span class="min-w-0 truncate font-medium">{owner.user.email}</span>
-            <.badge :if={owner.user_id == @current_scope.user.id}>{gettext("You")}</.badge>
-            <span class="ml-auto text-[13px]/[18px] tabular-nums text-faint">
-              {gettext("since %{date}", date: Format.date(owner.inserted_at))}
-            </span>
-          </li>
-        </ul>
-        <:footer>
-          <span>{gettext("The last owner cannot be removed or demoted.")}</span>
-        </:footer>
-      </.card>
-
-      <.card
-        :if={@page == :organisation && may?(@current_scope, :"workspace.delete")}
-        id="workspaces"
-        padding={false}
-      >
-        <:title>{gettext("Workspaces")}</:title>
-        <ul class="divide-y divide-line">
-          <li
-            :for={workspace <- @workspaces}
-            id={"workspace-#{workspace.id}"}
-            class="flex flex-wrap items-center gap-x-2.5 gap-y-1 px-5 py-2.5"
-          >
-            <span class="min-w-0 truncate font-medium">{workspace.name}</span>
-            <.mono bare class="text-faint">{workspace.slug}</.mono>
-            <span class="ml-auto flex flex-wrap items-center justify-end gap-x-2.5 gap-y-1">
-              <ApiaryWeb.Extension.slot
-                name={:workspace_actions}
-                scope={@current_scope}
-                workspace={workspace}
-              />
-              <.button
-                :if={length(@workspaces) > 1}
-                variant="danger-ghost"
-                size="xs"
-                patch={~p"/#{@current_scope.organisation}/settings/workspaces/#{workspace.id}/delete"}
-                aria-label={gettext("Delete the workspace %{name}", name: workspace.name)}
-              >
-                {gettext("Delete")}
-              </.button>
-            </span>
-          </li>
-        </ul>
-        <:footer>
-          <span id="workspaces-note">
-            {if length(@workspaces) > 1,
-              do:
-                gettext(
-                  "A deleted workspace is purged after %{days}; until then an owner or an admin can cancel the deletion here.",
-                  days: days(Deletion.grace_days())
-                ),
-              else:
-                gettext(
-                  "The organisation's only workspace is not deleted on its own: delete the organisation instead."
-                )}
-          </span>
-        </:footer>
-      </.card>
-
-      <.card
-        :if={@page == :organisation && may?(@current_scope, :"organisation.delete")}
-        id="delete-organisation"
-      >
-        <:title>{gettext("Delete organisation")}</:title>
-        <p class="max-w-[60ch] text-muted">
-          {gettext(
-            "Everything in it is deleted with it: its workspaces, runs, access keys, policy, members and activity. It disappears for every member at once, and is purged after %{days}; until then its owners can cancel the deletion from their organisations page.",
-            days: days(Deletion.grace_days())
-          )}
-        </p>
-        <:footer>
-          <span>{gettext("After the purge, nothing brings it back.")}</span>
-          <.button
-            id="delete-organisation-button"
-            variant="danger"
-            patch={~p"/#{@current_scope.organisation}/settings/delete"}
-          >
-            {gettext("Delete organisation")}
-          </.button>
-        </:footer>
-      </.card>
-
-      <.card
-        :if={
-          @page == :organisation && may?(@current_scope, :"organisation.rename") &&
-            Access.refused_on?(:"organisation.delete", @current_scope.organisation)
-        }
-        id="delete-organisation-kept"
-      >
-        <:title>{gettext("Delete organisation")}</:title>
-        <p class="max-w-[60ch] text-muted">
-          {gettext(
-            "This is the instance's organisation, whose owners run the instance, so it cannot be deleted."
-          )}
-        </p>
-      </.card>
+        <:subtitle>{section_subtitle(@page, @section)}</:subtitle>
+        {section(assigns)}
+      </SettingsComponents.layout>
 
       <.modal
         :if={@live_action == :delete_organisation}
         id="delete-organisation-modal"
         title={gettext("Delete %{name}", name: @current_scope.organisation.name)}
-        on_cancel={JS.patch(~p"/#{@current_scope.organisation}/settings")}
+        on_cancel={JS.patch(~p"/#{@current_scope.organisation}/settings/danger")}
       >
         <p class="text-muted">
           {gettext(
@@ -408,7 +98,7 @@ defmodule ApiaryWeb.SettingsLive do
           />
         </.form>
         <:footer>
-          <.button patch={~p"/#{@current_scope.organisation}/settings"} data-autofocus>
+          <.button patch={~p"/#{@current_scope.organisation}/settings/danger"} data-autofocus>
             {gettext("Cancel")}
           </.button>
           <.button
@@ -425,14 +115,14 @@ defmodule ApiaryWeb.SettingsLive do
       </.modal>
 
       <.modal
-        :if={@live_action == :delete_workspace && @deleting}
+        :if={@live_action in [:delete_workspace, :delete_this_workspace] && @deleting}
         id="delete-workspace-modal"
         title={gettext("Delete %{name}", name: @deleting.name)}
-        on_cancel={JS.patch(~p"/#{@current_scope.organisation}/settings")}
+        on_cancel={JS.patch(section_path(@current_scope, @live_action))}
       >
         <p class="text-muted">
           {gettext(
-            "The workspace disappears at once, with its runs, policy and access keys, which stop working. Its members stay in the organisation. It is purged after %{days}; until then an owner or an admin can cancel the deletion on this page.",
+            "The workspace disappears at once, with its runs, policy and access keys, which stop working. Its members stay in the organisation. It is purged after %{days}; until then an owner or an admin can cancel the deletion in the organisation's settings.",
             days: days(Deletion.grace_days())
           )}
         </p>
@@ -453,7 +143,7 @@ defmodule ApiaryWeb.SettingsLive do
           />
         </.form>
         <:footer>
-          <.button patch={~p"/#{@current_scope.organisation}/settings"} data-autofocus>
+          <.button patch={section_path(@current_scope, @live_action)} data-autofocus>
             {gettext("Cancel")}
           </.button>
           <.button
@@ -472,17 +162,414 @@ defmodule ApiaryWeb.SettingsLive do
     """
   end
 
+  # The organisation's General: its name and its owners.
+  defp section(%{section: :organisation} = assigns) do
+    ~H"""
+    <.notice :if={refused_for_level?(@current_scope, :"organisation.rename")} kind={:info}>
+      {gettext(
+        "Only owners and admins can change these settings. Ask one of them if a name needs to change."
+      )}
+    </.notice>
+
+    <.card>
+      <:title>{gettext("Organisation name")}</:title>
+      <.form
+        for={@organisation_form}
+        id="organisation-form"
+        phx-change="validate_organisation"
+        phx-submit="save_organisation"
+        class="grid max-w-[420px] gap-4"
+      >
+        <.input
+          field={@organisation_form[:name]}
+          type="text"
+          label={gettext("Name")}
+          debounce="200"
+          autocomplete="off"
+          disabled={!may?(@current_scope, :"organisation.rename")}
+          required
+        />
+      </.form>
+      <p id="organisation-slug" class="text-[13px]/[20px] text-muted">
+        <.rich text={
+          rich_gettext("Its pages are under %{path}. Renaming the organisation keeps it.",
+            path: {:m, ~p"/#{@current_scope.organisation}"}
+          )
+        } />
+      </p>
+      <:footer>
+        <span>{gettext("Shown in the breadcrumb, the switcher and invitations.")}</span>
+        <.button
+          :if={may?(@current_scope, :"organisation.rename")}
+          type="submit"
+          form="organisation-form"
+          disabled={!@organisation_form.source.valid?}
+          loading_text={gettext("Saving")}
+        >
+          {gettext("Save")}
+        </.button>
+      </:footer>
+    </.card>
+
+    <.card padding={false}>
+      <:title>{gettext("Owners")}</:title>
+      <:actions>
+        <.button navigate={~p"/#{@current_scope.organisation}/settings/people"}>
+          {gettext("Manage people")}
+        </.button>
+      </:actions>
+      <ul id="owners" class="divide-y divide-line">
+        <li
+          :for={owner <- @owners}
+          id={"owner-#{owner.id}"}
+          class="flex flex-wrap items-center gap-x-2.5 gap-y-1 px-5 py-2.5"
+        >
+          <.avatar
+            name={owner.user.email}
+            kind={if owner.user_id == @current_scope.user.id, do: "self", else: "person"}
+          />
+          <span class="min-w-0 truncate font-medium">{owner.user.email}</span>
+          <.badge :if={owner.user_id == @current_scope.user.id}>{gettext("You")}</.badge>
+          <span class="ml-auto text-[13px]/[18px] tabular-nums text-faint">
+            {gettext("since %{date}", date: Format.date(owner.inserted_at))}
+          </span>
+        </li>
+      </ul>
+      <:footer>
+        <span>{gettext("The last owner cannot be removed or demoted.")}</span>
+      </:footer>
+    </.card>
+    """
+  end
+
+  # The organisation's Workspaces: each with the edition's actions and its deletion, and
+  # the ones marked for deletion, whose deletion an owner or an admin cancels.
+  defp section(%{section: :workspaces} = assigns) do
+    ~H"""
+    <.notice :for={workspace <- @marked_workspaces} kind={:warning}>
+      <div
+        id={"marked-workspace-#{workspace.id}"}
+        class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2"
+      >
+        <span>
+          <.rich text={
+            rich_gettext(
+              "The workspace %{name} is deleted and is purged on %{date}, with its runs and access keys. Until then an owner or an admin can cancel the deletion.",
+              name: {:b, workspace.name},
+              date: Format.date(workspace.purge_after)
+            )
+          } />
+        </span>
+        <.button
+          :if={may?(@current_scope, :"workspace.restore")}
+          id={"restore-workspace-#{workspace.id}"}
+          size="xs"
+          phx-click="restore_workspace"
+          phx-value-id={workspace.id}
+          aria-label={gettext("Cancel the deletion of %{name}", name: workspace.name)}
+          loading_text={gettext("Cancelling")}
+        >
+          {gettext("Cancel deletion")}
+        </.button>
+      </div>
+    </.notice>
+
+    <.card id="workspaces" padding={false}>
+      <ul class="divide-y divide-line">
+        <li
+          :for={workspace <- @workspaces}
+          id={"workspace-#{workspace.id}"}
+          class="flex flex-wrap items-center gap-x-2.5 gap-y-1 px-5 py-3"
+        >
+          <.link
+            navigate={~p"/#{@current_scope.organisation}/#{workspace}"}
+            class="min-w-0 truncate font-medium hover:underline"
+          >
+            {workspace.name}
+          </.link>
+          <.mono bare class="text-faint">{workspace.slug}</.mono>
+          <span class="ml-auto flex flex-wrap items-center justify-end gap-x-2.5 gap-y-1">
+            <ApiaryWeb.Extension.slot
+              name={:workspace_actions}
+              scope={@current_scope}
+              workspace={workspace}
+            />
+            <.button
+              :if={length(@workspaces) > 1}
+              variant="danger-ghost"
+              size="xs"
+              patch={~p"/#{@current_scope.organisation}/settings/workspaces/#{workspace.id}/delete"}
+              aria-label={gettext("Delete the workspace %{name}", name: workspace.name)}
+            >
+              {gettext("Delete")}
+            </.button>
+          </span>
+        </li>
+      </ul>
+      <:footer>
+        <span id="workspaces-note">
+          {if length(@workspaces) > 1,
+            do:
+              gettext(
+                "A deleted workspace is purged after %{days}; until then an owner or an admin can cancel the deletion here.",
+                days: days(Deletion.grace_days())
+              ),
+            else:
+              gettext(
+                "The organisation's only workspace is not deleted on its own: delete the organisation instead."
+              )}
+        </span>
+      </:footer>
+    </.card>
+    """
+  end
+
+  # The organisation's Danger zone: its deletion, or why it cannot be deleted.
+  defp section(%{section: :danger, page: :organisation} = assigns) do
+    ~H"""
+    <.card :if={may?(@current_scope, :"organisation.delete")} id="delete-organisation">
+      <:title>{gettext("Delete organisation")}</:title>
+      <p class="max-w-[60ch] text-muted">
+        {gettext(
+          "Everything in it is deleted with it: its workspaces, runs, access keys, policy, members and activity. It disappears for every member at once, and is purged after %{days}; until then its owners can cancel the deletion from their organisations page.",
+          days: days(Deletion.grace_days())
+        )}
+      </p>
+      <:footer>
+        <span>{gettext("After the purge, nothing brings it back.")}</span>
+        <.button
+          id="delete-organisation-button"
+          variant="danger"
+          patch={~p"/#{@current_scope.organisation}/settings/delete"}
+        >
+          {gettext("Delete organisation")}
+        </.button>
+      </:footer>
+    </.card>
+
+    <.card
+      :if={
+        !may?(@current_scope, :"organisation.delete") &&
+          Access.refused_on?(:"organisation.delete", @current_scope.organisation)
+      }
+      id="delete-organisation-kept"
+    >
+      <:title>{gettext("Delete organisation")}</:title>
+      <p class="max-w-[60ch] text-muted">
+        {gettext(
+          "This is the instance's organisation, whose owners run the instance, so it cannot be deleted."
+        )}
+      </p>
+    </.card>
+    """
+  end
+
+  # The workspace's General: its name.
+  defp section(%{section: :general} = assigns) do
+    ~H"""
+    <.notice :if={refused_for_level?(@current_scope, :"workspace.rename")} kind={:info}>
+      {gettext(
+        "Only owners and admins can change these settings. Ask one of them if a name needs to change."
+      )}
+    </.notice>
+
+    <.card>
+      <:title>{gettext("Workspace name")}</:title>
+      <.form
+        for={@workspace_form}
+        id="workspace-form"
+        phx-change="validate_workspace"
+        phx-submit="save_workspace"
+        class="grid max-w-[420px] gap-4"
+      >
+        <.input
+          field={@workspace_form[:name]}
+          type="text"
+          label={gettext("Name")}
+          debounce="200"
+          autocomplete="off"
+          disabled={!may?(@current_scope, :"workspace.rename")}
+          required
+        />
+      </.form>
+      <p id="workspace-slug" class="text-[13px]/[20px] text-muted">
+        <.rich text={
+          rich_gettext("Its pages are under %{path}. Renaming the workspace keeps it.",
+            path: {:m, ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}"}
+          )
+        } />
+      </p>
+      <:footer>
+        <span>{gettext("Shown in the breadcrumb, the switcher and as the overview title.")}</span>
+        <.button
+          :if={may?(@current_scope, :"workspace.rename")}
+          type="submit"
+          form="workspace-form"
+          disabled={!@workspace_form.source.valid?}
+          loading_text={gettext("Saving")}
+        >
+          {gettext("Save")}
+        </.button>
+      </:footer>
+    </.card>
+    """
+  end
+
+  # The workspace's Retention: how long a run's events and log output are kept, and what
+  # the nightly job last pruned.
+  defp section(%{section: :retention} = assigns) do
+    ~H"""
+    <.card>
+      <:title>{gettext("Keep for")}</:title>
+      <.form
+        for={@retention_form}
+        id="retention-form"
+        phx-change="validate_retention"
+        phx-submit="save_retention"
+        class="grid max-w-[420px] gap-4"
+      >
+        <.input
+          field={@retention_form[:events_retention_days]}
+          type="number"
+          label={gettext("Keep a run's events for")}
+          placeholder={gettext("Forever")}
+          min="1"
+          max="3650"
+          step="1"
+          inputmode="numeric"
+          debounce="200"
+          disabled={!may?(@current_scope, :"retention.edit")}
+        />
+        <.input
+          field={@retention_form[:log_retention_days]}
+          type="number"
+          label={gettext("Keep a run's log output for")}
+          placeholder={gettext("Forever")}
+          min="1"
+          max="3650"
+          step="1"
+          inputmode="numeric"
+          debounce="200"
+          disabled={!may?(@current_scope, :"retention.edit")}
+        />
+      </.form>
+      <p class="max-w-[60ch] text-[13px]/[20px] text-muted">
+        {gettext(
+          "In days; empty keeps everything. A run that ended is pruned whole, counted from its last event: first its log output, then its timeline. The run stays in the list with its state, its counts and its connections, and its page says what was pruned and when. Pruned data comes back only from a backup."
+        )}
+      </p>
+      <:footer>
+        <span id="retention-summary">{retention_summary(@current_scope.workspace)}</span>
+        <.button
+          :if={may?(@current_scope, :"retention.edit")}
+          type="submit"
+          form="retention-form"
+          disabled={!@retention_form.source.valid?}
+          loading_text={gettext("Saving")}
+        >
+          {gettext("Save")}
+        </.button>
+      </:footer>
+    </.card>
+
+    <.card padding={false}>
+      <:title>{gettext("Pruned")}</:title>
+      <p :if={@retention_runs == []} id="retention-runs-empty" class="px-5 py-4 text-muted">
+        {if retention_set?(@current_scope.workspace),
+          do: gettext("Nothing has been pruned yet. The job runs every night."),
+          else: gettext("Nothing is pruned: this workspace keeps everything.")}
+      </p>
+      <ul :if={@retention_runs != []} id="retention-runs" class="divide-y divide-line">
+        <li
+          :for={run <- @retention_runs}
+          id={"retention-run-#{run.id}"}
+          class="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 px-5 py-2.5"
+        >
+          <span class="font-medium tabular-nums">{Format.datetime(run.started_at, zone: true)}</span>
+          <.badge :if={run.trigger == "manual"}>{gettext("By hand")}</.badge>
+          <.badge :if={!run.complete} color="warning">{gettext("Not finished")}</.badge>
+          <span class="w-full text-[13px]/[20px] text-muted">{pruned_sentence(run)}</span>
+        </li>
+      </ul>
+      <:footer>
+        <span>
+          {ngettext(
+            "The last run of the nightly job. It is also a line in the server's log.",
+            "The last %{number} runs of the nightly job. Each is also a line in the server's log.",
+            length(@retention_runs),
+            number: Format.number(length(@retention_runs))
+          )}
+        </span>
+      </:footer>
+    </.card>
+    """
+  end
+
+  # The workspace's Danger zone: its deletion, unless it is the organisation's only one.
+  defp section(%{section: :danger, page: :workspace} = assigns) do
+    ~H"""
+    <.card id="delete-workspace">
+      <:title>{gettext("Delete this workspace")}</:title>
+      <p class="max-w-[60ch] text-muted">
+        {if length(@workspaces) > 1,
+          do:
+            gettext(
+              "Its runs, policy and access keys are deleted with it, and its keys stop working. Its members stay in the organisation. It is purged after %{days}; until then an owner or an admin can cancel the deletion in the organisation's settings.",
+              days: days(Deletion.grace_days())
+            ),
+          else:
+            gettext(
+              "The organisation's only workspace is not deleted on its own: delete the organisation instead."
+            )}
+      </p>
+      <:footer :if={length(@workspaces) > 1}>
+        <span>{gettext("After the purge, nothing brings it back.")}</span>
+        <.button
+          id="delete-workspace-button"
+          variant="danger"
+          patch={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/delete"}
+        >
+          {gettext("Delete workspace")}
+        </.button>
+      </:footer>
+    </.card>
+    """
+  end
+
+  defp section_title(:organisation), do: gettext("General")
+  defp section_title(:general), do: gettext("General")
+  defp section_title(:workspaces), do: gettext("Workspaces")
+  defp section_title(:retention), do: gettext("Retention")
+  defp section_title(:danger), do: gettext("Danger zone")
+
+  defp section_subtitle(:organisation, :organisation),
+    do: gettext("The name of this organisation, where its pages are, and who owns it.")
+
+  defp section_subtitle(:organisation, :workspaces),
+    do: gettext("The workspaces of this organisation, and the ones waiting to be purged.")
+
+  defp section_subtitle(:organisation, :danger),
+    do: gettext("What cannot be undone once the purge has run.")
+
+  defp section_subtitle(:workspace, :general),
+    do: gettext("The name of this workspace, and where its pages are.")
+
+  defp section_subtitle(:workspace, :retention),
+    do: gettext("How long this workspace keeps a run's events and log output.")
+
+  defp section_subtitle(:workspace, :danger),
+    do: gettext("What cannot be undone once the purge has run.")
+
   @impl true
   def mount(_params, _session, socket) do
-    page = page(socket.assigns.live_action)
-
     {:ok,
      socket
-     |> assign(page: page, page_title: page_title(page), deleting: nil)
+     |> assign(deleting: nil)
+     |> assign_section()
      |> assign_forms()
      |> assign_confirm()
      |> load_owners()
-     |> load_tabs()
+     |> load_sections()
      |> load_workspaces()
      |> load_retention_runs()
      |> follow_memberships()}
@@ -490,7 +577,17 @@ defmodule ApiaryWeb.SettingsLive do
 
   @impl true
   def handle_params(params, _uri, socket) do
-    {:noreply, apply_action(socket, socket.assigns.live_action, params)}
+    {:noreply, socket |> assign_section() |> apply_action(socket.assigns.live_action, params)}
+  end
+
+  # The section of the page's action: a modal is over its section, and a patch to another
+  # section of the same settings shows that one.
+  defp assign_section(socket) do
+    {page, section} = Map.fetch!(@sections, socket.assigns.live_action)
+
+    socket
+    |> assign(page: page, section: section)
+    |> assign(:page_title, page_title(page, section))
   end
 
   defp apply_action(socket, :delete_organisation, _params) do
@@ -499,11 +596,31 @@ defmodule ApiaryWeb.SettingsLive do
       else: refused(socket)
   end
 
-  defp apply_action(socket, :delete_workspace, %{"workspace_id" => id}) do
+  # A section the reader may not open is not in their list; its path sends them to the
+  # settings' General, and says why.
+  defp apply_action(socket, action, _params)
+       when action in [:workspaces, :danger, :workspace_danger] do
+    if section?(socket.assigns),
+      do: assign(socket, :deleting, nil),
+      else: refused(socket, general_path(socket.assigns.current_scope, action))
+  end
+
+  defp apply_action(socket, :delete_workspace, %{"workspace_id" => id}),
+    do: deleting(socket, Enum.find(socket.assigns.workspaces, &(&1.id == id)))
+
+  defp apply_action(socket, :delete_this_workspace, _params) do
+    workspace = socket.assigns.current_scope.workspace
+    deleting(socket, Enum.find(socket.assigns.workspaces, &(&1.id == workspace.id)))
+  end
+
+  defp apply_action(socket, _page, _params), do: assign(socket, :deleting, nil)
+
+  # The workspace the modal deletes, while it is one of several the reader may delete.
+  defp deleting(socket, workspace) do
     scope = socket.assigns.current_scope
 
-    case Enum.find(socket.assigns.workspaces, &(&1.id == id)) do
-      %{} = workspace when length(socket.assigns.workspaces) > 1 ->
+    case workspace do
+      %{} when length(socket.assigns.workspaces) > 1 ->
         if may?(scope, :"workspace.delete"),
           do: socket |> assign(:deleting, workspace) |> assign_confirm(),
           else: refused(socket)
@@ -511,16 +628,35 @@ defmodule ApiaryWeb.SettingsLive do
       _gone_or_last ->
         socket
         |> put_flash(:error, gettext("That workspace cannot be deleted here."))
-        |> push_patch(to: organisation_path(scope))
+        |> push_patch(to: section_path(scope, socket.assigns.live_action))
     end
   end
 
-  defp apply_action(socket, _page, _params), do: assign(socket, :deleting, nil)
+  defp refused(socket, to \\ nil) do
+    scope = socket.assigns.current_scope
+    action = socket.assigns.live_action
 
-  defp refused(socket) do
+    to =
+      to ||
+        if(section?(socket.assigns),
+          do: section_path(scope, action),
+          else: general_path(scope, action)
+        )
+
     socket
     |> put_flash(:error, deletion_refused())
-    |> push_patch(to: organisation_path(socket.assigns.current_scope))
+    |> push_patch(to: to)
+  end
+
+  # Whether the section of the page is one of the reader's (`SettingsComponents.sections/2`).
+  defp section?(%{sections: sections, section: section}),
+    do: Enum.any?(sections, &(&1.key == section))
+
+  defp general_path(scope, action) do
+    case Map.fetch!(@sections, action) do
+      {:organisation, _section} -> ~p"/#{scope.organisation}/settings"
+      {:workspace, _section} -> ~p"/#{scope.organisation}/#{scope.workspace}/settings"
+    end
   end
 
   defp deletion_refused,
@@ -645,7 +781,7 @@ defmodule ApiaryWeb.SettingsLive do
             {:noreply,
              socket
              |> put_flash(:error, sentence)
-             |> push_patch(to: organisation_path(scope))}
+             |> push_patch(to: section_path(scope, :delete_organisation))}
 
           _none ->
             {:noreply, gone(socket)}
@@ -668,11 +804,11 @@ defmodule ApiaryWeb.SettingsLive do
             )
           )
 
-        # The workspace the page's scope holds: the page is loaded again, in another.
+        # The workspace the page's scope holds: the organisation's workspaces are loaded
+        # again, in another.
         if scope.workspace && deleted.id == scope.workspace.id,
-          do: {:noreply, push_navigate(socket, to: organisation_path(scope))},
-          else:
-            {:noreply, socket |> load_workspaces() |> push_patch(to: organisation_path(scope))}
+          do: {:noreply, push_navigate(socket, to: workspaces_path(scope))},
+          else: {:noreply, socket |> load_workspaces() |> push_patch(to: workspaces_path(scope))}
 
       {:error, :confirmation} ->
         {:noreply, assign_confirm(socket, %{"slug" => slug}, :mismatch)}
@@ -687,7 +823,7 @@ defmodule ApiaryWeb.SettingsLive do
            )
          )
          |> load_workspaces()
-         |> push_patch(to: organisation_path(scope))}
+         |> push_patch(to: section_path(scope, socket.assigns.live_action))}
 
       {:error, :forbidden} ->
         {:noreply, unauthorized(socket, deletion_refused())}
@@ -729,11 +865,6 @@ defmodule ApiaryWeb.SettingsLive do
     end
   end
 
-  # What the page's forms change: the organisation's name on the organisation's page, the
-  # workspace's name on the workspace's; retention is asked for on its own.
-  defp settings_action(:organisation), do: :"organisation.rename"
-  defp settings_action(:workspace), do: :"workspace.rename"
-
   # Whether the level of the reader's membership holds no `action`, which the notice says.
   # A reader with no membership, and a place read-only for everyone, say why in the
   # notices at the top of the page (`ApiaryWeb.Extension`).
@@ -758,13 +889,25 @@ defmodule ApiaryWeb.SettingsLive do
 
   defp may?(scope, action), do: Access.can?(scope, action, scope.workspace)
 
-  defp page(:workspace), do: :workspace
-  defp page(_organisation), do: :organisation
+  defp page_title(page, section) do
+    settings =
+      if page == :organisation,
+        do: gettext("Organisation settings"),
+        else: gettext("Workspace settings")
 
-  defp page_title(:organisation), do: gettext("Organisation settings")
-  defp page_title(:workspace), do: gettext("Workspace settings")
+    section_title(section) <> " · " <> settings
+  end
 
-  defp organisation_path(scope), do: ~p"/#{scope.organisation}/settings"
+  defp workspaces_path(scope), do: ~p"/#{scope.organisation}/settings/workspaces"
+
+  # The section a modal is over, where the page goes back to once the modal is done.
+  defp section_path(scope, action) when action in [:delete_organisation, :danger],
+    do: ~p"/#{scope.organisation}/settings/danger"
+
+  defp section_path(scope, action) when action in [:delete_this_workspace, :workspace_danger],
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/settings/danger"
+
+  defp section_path(scope, _workspaces), do: workspaces_path(scope)
 
   # The slug typed to confirm a deletion, and whether it was refused.
   defp assign_confirm(socket, params \\ %{}, refused \\ nil) do
@@ -777,11 +920,13 @@ defmodule ApiaryWeb.SettingsLive do
     assign(socket, :confirm_form, to_form(params, as: :confirm, errors: errors))
   end
 
-  # The workspaces of the organisation in use, and those marked for deletion: an owner's.
+  # The workspaces of the organisation in use, and those marked for deletion, for whoever
+  # may delete one: Workspaces lists them, and a workspace's danger zone asks whether it is
+  # the only one.
   defp load_workspaces(socket) do
     scope = socket.assigns.current_scope
 
-    if socket.assigns.page == :organisation and may?(scope, :"workspace.delete") do
+    if may?(scope, :"workspace.delete") do
       assign(socket,
         workspaces: Organisations.list_workspaces(scope),
         marked_workspaces: Deletion.list_marked_workspaces(scope)
@@ -796,7 +941,7 @@ defmodule ApiaryWeb.SettingsLive do
     socket
     |> put_flash(:error, gettext("That is no longer there to delete."))
     |> load_workspaces()
-    |> push_patch(to: organisation_path(socket.assigns.current_scope))
+    |> push_patch(to: section_path(socket.assigns.current_scope, socket.assigns.live_action))
   end
 
   # The organisation's page of a member who reaches no workspace yet has no workspace, and
@@ -829,23 +974,24 @@ defmodule ApiaryWeb.SettingsLive do
     assign(socket, :owners, owners)
   end
 
-  # The tabs of the organisation's settings, the edition's among them, for its page.
-  defp load_tabs(%{assigns: %{page: :organisation}} = socket),
-    do: assign(socket, :tabs, SettingsComponents.list_tabs(socket.assigns.current_scope))
-
-  defp load_tabs(socket), do: assign(socket, :tabs, [])
+  # The sections of the settings, the edition's among them, for the list beside the page.
+  defp load_sections(socket),
+    do:
+      assign(
+        socket,
+        :sections,
+        SettingsComponents.sections(socket.assigns.current_scope, socket.assigns.page)
+      )
 
   # A change of the reader's membership, or of the people of the organisation, told to
   # the page (`ApiaryWeb.UserAuth.on_membership_change/2`), loads the scope again, and here
-  # the forms, the owners and the tabs with it.
-  defp follow_memberships(%{assigns: %{page: :organisation}} = socket) do
+  # the forms, the owners, the sections and the workspaces with it.
+  defp follow_memberships(socket) do
     UserAuth.on_membership_change(
       socket,
-      &(&1 |> assign_forms() |> load_owners() |> load_tabs())
+      &(&1 |> assign_forms() |> load_owners() |> load_sections() |> load_workspaces())
     )
   end
-
-  defp follow_memberships(socket), do: socket
 
   defp load_retention_runs(%{assigns: %{current_scope: %{workspace: nil}}} = socket),
     do: assign(socket, :retention_runs, [])

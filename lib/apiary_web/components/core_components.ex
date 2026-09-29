@@ -758,7 +758,7 @@ defmodule ApiaryWeb.CoreComponents do
   Summary figures as one bordered object with internal dividers.
 
       <.stats>
-        <.stat label="Access keys" value={3} hint="active" navigate={~p"/\#{@current_scope.organisation}/\#{@current_scope.workspace}/keys"} />
+        <.stat label="Access keys" value={3} hint="active" navigate={~p"/\#{@current_scope.organisation}/\#{@current_scope.workspace}/settings/keys"} />
       </.stats>
   """
   attr :class, :any, default: nil
@@ -1128,10 +1128,10 @@ defmodule ApiaryWeb.CoreComponents do
   live action) and pass an `on_cancel` JS command, usually a patch back to the
   index. `dismissable={false}` leaves the footer's button as the only exit.
 
-      <.modal :if={@live_action == :new} id="new-key" on_cancel={JS.patch(~p"/\#{@current_scope.organisation}/\#{@current_scope.workspace}/keys")} title="New access key">
+      <.modal :if={@live_action == :new} id="new-key" on_cancel={JS.patch(~p"/\#{@current_scope.organisation}/\#{@current_scope.workspace}/settings/keys")} title="New access key">
         ...
         <:footer>
-          <.button patch={~p"/\#{@current_scope.organisation}/\#{@current_scope.workspace}/keys"}>Cancel</.button>
+          <.button patch={~p"/\#{@current_scope.organisation}/\#{@current_scope.workspace}/settings/keys"}>Cancel</.button>
         </:footer>
       </.modal>
 

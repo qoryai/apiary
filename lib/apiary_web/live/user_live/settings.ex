@@ -1,4 +1,11 @@
 defmodule ApiaryWeb.UserLive.Settings do
+  @moduledoc """
+  A person's own settings, one section a page, whose list is the sidebar of a person's
+  pages (`ApiaryWeb.Layouts`): Profile, `/users/settings` (`:edit`), their email address,
+  their password and deleting their account, confirmed in a modal over it,
+  `/users/settings/delete` (`:delete`); and Preferences, `/users/settings/preferences`
+  (`:preferences`), their time zone and language. The theme is the account menu's.
+  """
   use ApiaryWeb, :live_view
 
   on_mount {ApiaryWeb.UserAuth, :require_sudo_mode}
@@ -15,15 +22,21 @@ defmodule ApiaryWeb.UserLive.Settings do
       current_scope={@current_scope}
       memberships={@memberships}
       counts={assigns[:nav_counts]}
-      nav={:user_settings}
+      nav={if @live_action == :preferences, do: :user_preferences, else: :user_settings}
       width="read"
     >
-      <.header>
-        {gettext("Your settings")}
-        <:subtitle>{gettext("Your email address, password and preferences.")}</:subtitle>
+      <.header :if={@live_action != :preferences}>
+        {gettext("Profile")}
+        <:subtitle>{gettext("Your email address and password, and your account itself.")}</:subtitle>
+      </.header>
+      <.header :if={@live_action == :preferences}>
+        {gettext("Preferences")}
+        <:subtitle>
+          {gettext("How the console shows things to you, in every organisation you belong to.")}
+        </:subtitle>
       </.header>
 
-      <.card>
+      <.card :if={@live_action != :preferences}>
         <:title>{gettext("Email")}</:title>
         <.form
           for={@email_form}
@@ -49,7 +62,7 @@ defmodule ApiaryWeb.UserLive.Settings do
         </:footer>
       </.card>
 
-      <.card>
+      <.card :if={@live_action != :preferences}>
         <:title>{gettext("Password")}</:title>
         <.form
           for={@password_form}
@@ -93,8 +106,8 @@ defmodule ApiaryWeb.UserLive.Settings do
         </:footer>
       </.card>
 
-      <.card id="preferences">
-        <:title>{gettext("Preferences")}</:title>
+      <.card :if={@live_action == :preferences} id="preferences">
+        <:title>{gettext("Time and language")}</:title>
         <.form
           for={@preferences_form}
           id="preferences_form"
@@ -127,7 +140,7 @@ defmodule ApiaryWeb.UserLive.Settings do
         </:footer>
       </.card>
 
-      <.card id="delete-account">
+      <.card :if={@live_action != :preferences} id="delete-account">
         <:title>{gettext("Delete account")}</:title>
         <p class="max-w-[60ch] text-muted">
           {gettext(
@@ -245,7 +258,7 @@ defmodule ApiaryWeb.UserLive.Settings do
 
     socket =
       socket
-      |> assign(:page_title, gettext("Your settings"))
+      |> assign(:page_title, page_title(socket.assigns.live_action))
       |> assign(:current_email, user.email)
       |> assign(:email_form, to_form(email_changeset))
       |> assign(:password_form, to_form(password_changeset))
@@ -264,6 +277,9 @@ defmodule ApiaryWeb.UserLive.Settings do
 
   @impl true
   def handle_params(_params, _uri, socket), do: {:noreply, socket}
+
+  defp page_title(:preferences), do: gettext("Preferences") <> " · " <> gettext("Your settings")
+  defp page_title(_profile), do: gettext("Profile") <> " · " <> gettext("Your settings")
 
   @impl true
   def handle_async(:sole_owned, {:ok, {sole_owned, marked_alone}}, socket),
@@ -346,7 +362,7 @@ defmodule ApiaryWeb.UserLive.Settings do
         # Another language is another locale: the page is mounted again to be written in
         # it, and the time zone reaches every page as it mounts with the new scope.
         if user.language != socket.assigns.current_scope.user.language do
-          {:noreply, push_navigate(socket, to: ~p"/users/settings")}
+          {:noreply, push_navigate(socket, to: ~p"/users/settings/preferences")}
         else
           {:noreply,
            socket

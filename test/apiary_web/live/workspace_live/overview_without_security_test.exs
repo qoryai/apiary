@@ -89,7 +89,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewWithoutSecurityTest do
       conn: conn,
       scope: scope
     } do
-      for path <- [workspace_path(scope), workspace_path(scope, "/keys")] do
+      for path <- [workspace_path(scope), workspace_path(scope, "/settings/keys")] do
         {:ok, view, _html} = live(conn, path)
 
         for key <- ~w(overview runs connections settings),
@@ -114,7 +114,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewWithoutSecurityTest do
       view = open(conn, scope)
       refute subscribed_to_policy?(view, scope)
 
-      {:ok, keys, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/keys")
+      {:ok, keys, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/keys")
       refute subscribed_to_policy?(keys, scope)
     end
 

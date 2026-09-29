@@ -18,7 +18,7 @@ defmodule ApiaryWeb.MemberLive.DeliveryTest do
     conn: conn,
     scope: scope
   } do
-    {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/members/invite")
+    {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings/people/invite")
 
     html =
       lv
@@ -47,7 +47,7 @@ defmodule ApiaryWeb.MemberLive.DeliveryTest do
     FOR EACH ROW EXECUTE FUNCTION refuse_invitation_deletes()
     """)
 
-    {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/members/invite")
+    {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings/people/invite")
 
     html =
       lv

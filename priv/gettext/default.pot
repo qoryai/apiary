@@ -708,6 +708,13 @@ msgid_plural "%{number} hosts allowed"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/live/organisation_live.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} invitation pending"
+msgid_plural "%{number} invitations pending"
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} item needs attention"
@@ -957,6 +964,13 @@ msgstr[1] ""
 #, elixir-autogen, elixir-format
 msgid "%{number} sets its own mode"
 msgid_plural "%{number} set their own mode"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/organisation_live.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} suspended"
+msgid_plural "%{number} suspended"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -1729,6 +1743,11 @@ msgstr ""
 msgid "A wall's own refusals (the machine's address, a path that reads two ways) hold in either mode."
 msgstr ""
 
+#: lib/apiary_web/live/organisation_live.ex
+#, elixir-autogen, elixir-format
+msgid "About the organisation"
+msgstr ""
+
 #: lib/apiary_web/live/invitation_live/accept.ex
 #, elixir-autogen, elixir-format
 msgid "Accept invitation"
@@ -1762,6 +1781,7 @@ msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/live/access_key_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Access keys"
@@ -1906,6 +1926,11 @@ msgstr ""
 msgid "Admin of %{name}"
 msgstr ""
 
+#: lib/apiary_web/live/organisation_live.ex
+#, elixir-autogen, elixir-format
+msgid "Admins"
+msgstr ""
+
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "After the purge, nothing brings it back."
@@ -1918,6 +1943,7 @@ msgid "Alive"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/live/organisation_live.ex
 #: lib/apiary_web/live/workspace_live/overview.ex
 #, elixir-autogen, elixir-format
 msgid "Alive now"
@@ -2152,11 +2178,6 @@ msgstr ""
 msgid "An invitation"
 msgstr ""
 
-#: lib/apiary_web/live/organisation_live.ex
-#, elixir-autogen, elixir-format
-msgid "An owner or an admin of the organisation added you to %{workspace}."
-msgstr ""
-
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Answered %{status}"
@@ -2227,6 +2248,11 @@ msgstr ""
 #: lib/apiary_web/live/connection_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Attempts"
+msgstr ""
+
+#: lib/apiary_web/components/settings_components.ex
+#, elixir-autogen, elixir-format
+msgid "Audit log"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -2797,9 +2823,14 @@ msgstr ""
 msgid "Create your account"
 msgstr ""
 
-#: lib/apiary_web/live/access_key_live/index.ex
+#: lib/apiary_web/live/organisation_live.ex
 #, elixir-autogen, elixir-format
 msgid "Created"
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Created %{date}"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -2869,6 +2900,12 @@ msgstr ""
 msgid "Credentials: %{credentials}."
 msgstr ""
 
+#: lib/apiary_web/components/settings_components.ex
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "Danger zone"
+msgstr ""
+
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Dark"
@@ -2923,6 +2960,11 @@ msgstr ""
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Delete the workspace %{name}"
+msgstr ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "Delete this workspace"
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -3074,6 +3116,11 @@ msgstr ""
 msgid "Denied hosts"
 msgstr ""
 
+#: lib/apiary_web/live/organisation_live.ex
+#, elixir-autogen, elixir-format
+msgid "Denied, 7 days"
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Denied."
@@ -3154,6 +3201,7 @@ msgstr ""
 msgid "Destination"
 msgstr ""
 
+#: lib/apiary_web/live/organisation_live.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Details"
@@ -3308,6 +3356,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Elapsed at the last heartbeat. The clock stops counting when heartbeats stop."
+msgstr ""
+
+#: lib/apiary_web/components/settings_components.ex
+#, elixir-autogen, elixir-format
+msgid "Elsewhere"
 msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex
@@ -3719,6 +3772,7 @@ msgid "From the workspace"
 msgstr ""
 
 #: lib/apiary_web/components/settings_components.ex
+#: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "General"
 msgstr ""
@@ -3791,6 +3845,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Has denials"
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Heartbeat"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -3872,6 +3931,16 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Hosts, 7 days"
+msgstr ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "How long this workspace keeps a run's events and log output."
+msgstr ""
+
+#: lib/apiary_web/live/user_live/settings.ex
+#, elixir-autogen, elixir-format
+msgid "How the console shows things to you, in every organisation you belong to."
 msgstr ""
 
 #: lib/apiary_web/live/access_key_live/index.ex
@@ -4022,12 +4091,9 @@ msgstr ""
 msgid "Invite a member"
 msgstr ""
 
-#: lib/apiary_web/live/member_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Invite member"
-msgstr ""
-
 #: lib/apiary_web/components/layouts.ex
+#: lib/apiary_web/live/member_live/index.ex
+#: lib/apiary_web/live/organisation_live.ex
 #, elixir-autogen, elixir-format
 msgid "Invite people"
 msgstr ""
@@ -4165,6 +4231,11 @@ msgstr ""
 msgid "Its policy"
 msgstr ""
 
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "Its runs, policy and access keys are deleted with it, and its keys stop working. Its members stay in the organisation. It is purged after %{days}; until then an owner or an admin can cancel the deletion in the organisation's settings."
+msgstr ""
+
 #: lib/apiary_web/live/invitation_live/accept.ex
 #, elixir-autogen, elixir-format
 msgid "Join %{name}"
@@ -4206,6 +4277,11 @@ msgstr ""
 msgid "Keep a run's log output for"
 msgstr ""
 
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "Keep for"
+msgstr ""
+
 #: lib/apiary_web/live/user_live/confirmation.ex
 #: lib/apiary_web/live/user_live/login.ex
 #, elixir-autogen, elixir-format
@@ -4213,6 +4289,7 @@ msgid "Keep me signed in"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/live/access_key_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Key"
 msgstr ""
@@ -4298,7 +4375,6 @@ msgstr ""
 msgid "Last event #%{sequence}."
 msgstr ""
 
-#: lib/apiary_web/live/access_key_live/index.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Last heartbeat"
@@ -4320,6 +4396,7 @@ msgid "Last night pruned %{runs}: %{events} and %{bytes} of log output in %{chun
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/live/organisation_live.ex
 #, elixir-autogen, elixir-format
 msgid "Last run"
 msgstr ""
@@ -4670,7 +4747,12 @@ msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
-msgid "Manage members"
+msgid "Manage people"
+msgstr ""
+
+#: lib/apiary_web/live/organisation_live.ex
+#, elixir-autogen, elixir-format
+msgid "Manage workspaces"
 msgstr ""
 
 #: lib/apiary_web/live/workspace_live/overview.ex
@@ -4714,8 +4796,8 @@ msgstr ""
 msgid "Member's level changed"
 msgstr ""
 
-#: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/live/member_live/index.ex
+#: lib/apiary_web/live/organisation_live.ex
 #, elixir-autogen, elixir-format
 msgid "Members"
 msgstr ""
@@ -4769,11 +4851,6 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Needs attention"
-msgstr ""
-
-#: lib/apiary_web/live/access_key_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Never"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -4982,6 +5059,11 @@ msgstr ""
 msgid "No heartbeat for %{since}. Heartbeats are due every %{interval}; after %{silence} of silence it is marked %{lost}."
 msgstr ""
 
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No heartbeat yet"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "No host rules yet. Add the first above."
@@ -5103,6 +5185,7 @@ msgid "No run in the last 14 days."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/live/organisation_live.ex
 #, elixir-autogen, elixir-format
 msgid "No run yet"
 msgstr ""
@@ -5468,11 +5551,6 @@ msgstr ""
 msgid "Open %{version}"
 msgstr ""
 
-#: lib/apiary_web/live/organisation_live.ex
-#, elixir-autogen, elixir-format
-msgid "Open %{workspace}"
-msgstr ""
-
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Open connections to the host are closed at the reload."
@@ -5555,6 +5633,8 @@ msgstr ""
 msgid "Organisation renamed to %{name}."
 msgstr ""
 
+#: lib/apiary_web/components/settings_components.ex
+#: lib/apiary_web/live/member_live/index.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Organisation settings"
@@ -5563,6 +5643,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Organisation's deletion cancelled"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Organisations"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/target.ex
@@ -5623,6 +5708,7 @@ msgstr ""
 msgid "Owner of %{name}"
 msgstr ""
 
+#: lib/apiary_web/live/organisation_live.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Owners"
@@ -5682,6 +5768,14 @@ msgstr ""
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Pending invitations"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#: lib/apiary_web/components/settings_components.ex
+#: lib/apiary_web/live/member_live/index.ex
+#: lib/apiary_web/live/organisation_live.ex
+#, elixir-autogen, elixir-format
+msgid "People"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -5755,6 +5849,7 @@ msgstr ""
 msgid "Prefer a password? You can set one in account settings."
 msgstr ""
 
+#: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
 msgid "Preferences"
@@ -5770,6 +5865,12 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Previous"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#: lib/apiary_web/live/user_live/settings.ex
+#, elixir-autogen, elixir-format
+msgid "Profile"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -6122,6 +6223,7 @@ msgid "Results"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Retention"
@@ -6447,6 +6549,11 @@ msgid_plural "Runs, %{number} days"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/live/organisation_live.ex
+#, elixir-autogen, elixir-format
+msgid "Runs, 7 days"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Runs, grouped by target"
@@ -6512,6 +6619,11 @@ msgstr ""
 #: lib/apiary_web/live/access_key_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Secret"
+msgstr ""
+
+#: lib/apiary_web/live/organisation_live.ex
+#, elixir-autogen, elixir-format
+msgid "See everyone"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -6641,6 +6753,7 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/settings_components.ex
+#: lib/apiary_web/live/organisation_live.ex
 #, elixir-autogen, elixir-format
 msgid "Settings"
 msgstr ""
@@ -6725,12 +6838,12 @@ msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
-msgid "Shown in the sidebar and as the overview title."
+msgid "Shown in the breadcrumb, the switcher and as the overview title."
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
-msgid "Shown in the sidebar and in invitations."
+msgid "Shown in the breadcrumb, the switcher and invitations."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/views.ex
@@ -6761,6 +6874,11 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Skip to content"
+msgstr ""
+
+#: lib/apiary_web/live/organisation_live.ex
+#, elixir-autogen, elixir-format
+msgid "Slug"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -7265,12 +7383,17 @@ msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
-msgid "The name of this workspace, where its pages are, and how long runs are kept."
+msgid "The name of this workspace, and where its pages are."
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "The organisation's only workspace is not deleted on its own: delete the organisation instead."
+msgstr ""
+
+#: lib/apiary_web/live/organisation_live.ex
+#, elixir-autogen, elixir-format
+msgid "The organisation's workspaces and its people."
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -7312,6 +7435,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "The policy event was pruned with the run's events on %{date}."
+msgstr ""
+
+#: lib/apiary_web/live/organisation_live.ex
+#, elixir-autogen, elixir-format
+msgid "The policy's default mode"
 msgstr ""
 
 #: lib/apiary_web/live/access_key_live/index.ex
@@ -7505,7 +7633,7 @@ msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
-msgid "The workspace disappears at once, with its runs, policy and access keys, which stop working. Its members stay in the organisation. It is purged after %{days}; until then an owner or an admin can cancel the deletion on this page."
+msgid "The workspace disappears at once, with its runs, policy and access keys, which stop working. Its members stay in the organisation. It is purged after %{days}; until then an owner or an admin can cancel the deletion in the organisation's settings."
 msgstr ""
 
 #: lib/apiary_web/live/workspace_live/overview.ex
@@ -7561,6 +7689,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
 msgid "The workspace's rules with no target's own: what a target without rules, or a run that names none, is served."
+msgstr ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "The workspaces of this organisation, and the ones waiting to be purged."
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -7842,6 +7975,11 @@ msgstr ""
 #: lib/apiary/policy.ex
 #, elixir-autogen, elixir-format
 msgid "This workspace served no run configuration with that digest."
+msgstr ""
+
+#: lib/apiary_web/live/user_live/settings.ex
+#, elixir-autogen, elixir-format
+msgid "Time and language"
 msgstr ""
 
 #: lib/apiary_web/live/user_live/settings.ex
@@ -8159,6 +8297,11 @@ msgstr ""
 msgid "What became of the connection. Connected: the dial succeeded, with the status the host answered when the proxy read the request. Answered: the tool the request was handed to answered with that status. Handed over: the tool took the request, and no answer is recorded. Dial failed: allowed, but the host or the tool did not answer. Refused: never dialled."
 msgstr ""
 
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "What cannot be undone once the purge has run."
+msgstr ""
+
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "What changed"
@@ -8197,6 +8340,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "What the runs of this workspace may reach through the runner's proxy."
+msgstr ""
+
+#: lib/apiary_web/live/organisation_live.ex
+#, elixir-autogen, elixir-format
+msgid "What the workspaces are doing could not be read. Reload the page to try again."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -8314,6 +8462,8 @@ msgstr ""
 msgid "Workspace renamed to %{name}."
 msgstr ""
 
+#: lib/apiary_web/components/settings_components.ex
+#: lib/apiary_web/live/access_key_live/index.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Workspace settings"
@@ -8334,6 +8484,8 @@ msgstr ""
 msgid "Workspace, locked"
 msgstr ""
 
+#: lib/apiary_web/components/settings_components.ex
+#: lib/apiary_web/live/organisation_live.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Workspaces"
@@ -8465,11 +8617,6 @@ msgstr ""
 
 #: lib/apiary_web/live/organisation_live.ex
 #, elixir-autogen, elixir-format
-msgid "You have been added to a workspace"
-msgstr ""
-
-#: lib/apiary_web/live/organisation_live.ex
-#, elixir-autogen, elixir-format
 msgid "You have not been added to a workspace yet"
 msgstr ""
 
@@ -8537,6 +8684,11 @@ msgstr ""
 
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
+msgid "Your email address and password, and your account itself."
+msgstr ""
+
+#: lib/apiary_web/live/user_live/settings.ex
+#, elixir-autogen, elixir-format
 msgid "Your email address is changed."
 msgstr ""
 
@@ -8548,11 +8700,6 @@ msgstr ""
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
 msgid "Your email address, password and preferences are erased, and you leave every organisation you belong to. What you made in a workspace stays there and names you as a former member. The address is free for a new account at once."
-msgstr ""
-
-#: lib/apiary_web/live/user_live/settings.ex
-#, elixir-autogen, elixir-format
-msgid "Your email address, password and preferences."
 msgstr ""
 
 #: lib/apiary/accounts/user_notifier.ex
@@ -8592,6 +8739,7 @@ msgid "Your password is updated."
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
+#: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/live/user_live/organisations.ex
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
@@ -9205,6 +9353,13 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "path"
 msgstr ""
+
+#: lib/apiary_web/live/organisation_live.ex
+#, elixir-autogen, elixir-format
+msgid "person"
+msgid_plural "people"
+msgstr[0] ""
+msgstr[1] ""
 
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format

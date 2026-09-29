@@ -15,7 +15,7 @@ defmodule ApiaryWeb.DeletionLiveTest do
     setup :register_and_log_in_user
 
     test "the only workspace is not deleted on its own", %{conn: conn, scope: scope} do
-      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings")
+      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings/workspaces")
 
       assert has_element?(lv, "#workspace-#{scope.workspace.id}", scope.workspace.name)
       refute has_element?(lv, "#workspaces a", "Delete")
@@ -23,7 +23,7 @@ defmodule ApiaryWeb.DeletionLiveTest do
 
       # A crafted path to its modal says so, and deletes nothing.
       path = ~p"/#{scope.organisation}/settings/workspaces/#{scope.workspace.id}/delete"
-      settings = ~p"/#{scope.organisation}/settings"
+      settings = ~p"/#{scope.organisation}/settings/workspaces"
 
       assert {:error, {:live_redirect, %{to: ^settings, flash: flash}}} = live(conn, path)
       assert flash["error"] == "That workspace cannot be deleted here."
@@ -35,7 +35,7 @@ defmodule ApiaryWeb.DeletionLiveTest do
       scope: scope
     } do
       workspace = workspace_fixture(scope.organisation, "Staging")
-      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings")
+      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings/workspaces")
 
       lv |> element("#workspace-#{workspace.id} a", "Delete") |> render_click()
       assert_patch(lv, ~p"/#{scope.organisation}/settings/workspaces/#{workspace.id}/delete")
@@ -74,7 +74,7 @@ defmodule ApiaryWeb.DeletionLiveTest do
     test "deletes the organisation, and its owner cancels it from their organisations",
          %{conn: conn, scope: scope} do
       %{access_key: key} = access_key_fixture(scope)
-      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings")
+      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings/danger")
 
       lv |> element("#delete-organisation-button") |> render_click()
       assert_patch(lv, ~p"/#{scope.organisation}/settings/delete")
@@ -121,6 +121,14 @@ defmodule ApiaryWeb.DeletionLiveTest do
       refute has_element?(lv, "#delete-organisation")
 
       settings = ~p"/#{organisation}/settings"
+
+      for section <- ["/workspaces", "/danger", "/delete"] do
+        assert {:error, {:live_redirect, %{to: ^settings, flash: flash}}} =
+                 live(conn, ~p"/#{organisation}/settings" <> section)
+
+        assert flash["error"] ==
+                 "Only owners and admins delete a workspace, and only owners the organisation."
+      end
 
       assert {:error, {:live_redirect, %{to: ^settings, flash: flash}}} =
                live(conn, ~p"/#{organisation}/settings/delete")

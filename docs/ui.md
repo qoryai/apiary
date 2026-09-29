@@ -42,12 +42,12 @@ The shell is section 4 of the v2 design brief (the knowledge vault's
   the changelog, the source and the version, and Log out.
 - **The sidebar** holds the scope's pages and nothing else, in groups, each a `<nav>` with
   its own name: a workspace's Overview, then Record (Runs, Connections) and Guard
-  (Policy), then the targets the person pinned (`counts.pins`); an organisation's Activity
-  and the edition's groups (`ApiaryWeb.Edition.nav_sections/0`); the person's settings
-  and organisations. Settings is at its foot, the scope's own; a page of Settings (an
-  entry of the section `:settings`, such as Access keys) marks it as the current entry.
-  The active item carries `aria-current="page"`. A group whose feature is off is absent,
-  not greyed.
+  (Policy), then the targets the person pinned (`counts.pins`); an organisation's
+  Overview, Activity and the edition's groups (`ApiaryWeb.Edition.nav_sections/0`); the
+  person's Profile, Preferences and Organisations, which are their settings' list.
+  Settings is at its foot, the scope's own; a page of Settings (an entry of the section
+  `:settings`, such as Access keys) marks it as the current entry. The active item carries
+  `aria-current="page"`. A group whose feature is off is absent, not greyed.
 - **The sidebar folds to icons** from 768 px, by its Collapse control or the `[` key; the
   fold is a reading preference in `localStorage`, set before the first paint by the root
   layout's script, and while folded each item's name is its title.
@@ -60,6 +60,36 @@ The shell is section 4 of the v2 design brief (the knowledge vault's
   the one `<main id="main">`. A page has one `<h1>`, the title of its `<.header>`, which
   also holds a one-line description and at most one primary and one default action. Card
   and modal titles are `<h2>`.
+
+## Settings
+
+Configuration is not navigation: what is set up once and changed rarely lives in the
+settings of its scope, GitHub's way, one section a page with the list of sections beside it
+(`ApiaryWeb.SettingsComponents.layout/1`). The list is `sections/2`, entries of
+`ApiaryWeb.Nav.Entry` a page reads when it mounts: a section the reader may not open is not
+in it, and its path sends them to General and says why.
+
+- **An organisation's** (`/:org/settings/…`): General (name, slug, owners), People
+  (`/settings/people`: members, invitations, suspensions), Workspaces (owners and admins),
+  Audit log (the Activity page, `/:org/activity`, which keeps its path), the edition's
+  sections (`ApiaryWeb.Edition.settings_tabs/1`), and Danger zone (deleting it).
+- **A workspace's** (`/:org/:workspace/settings/…`): General (name, slug), Access keys
+  (`/settings/keys`), Retention, and Danger zone (deleting it, while it is one of several).
+- **A person's** (`/users/settings`, `/users/settings/preferences`,
+  `/users/organisations`): Profile (email, password, deleting the account), Preferences,
+  Organisations; their list is the sidebar of a person's pages.
+
+The list ends with the settings a person may want next ("Elsewhere": the organisation's or
+the workspace's, and their own), from 1024 px; below, it is a row of links above the
+section. A section of forms keeps a 720 px column, one that is a list (People, Access keys)
+960 px. Invite, rotate, revoke, remove, suspend and the deletions stay dialogs over their
+section, each at a path of its own. The old paths, `/:org/members/…` and
+`/:org/:workspace/keys/…`, send on to the new ones (`ApiaryWeb.MovedController`).
+
+An organisation's own path, `/:org`, is its overview (`ApiaryWeb.OrganisationLive`): the
+workspaces the person reaches, what each is doing, and the organisation's people. The
+breadcrumb's organisation leads there; `/` still sends a person to the workspace they
+opened last.
 
 ## Widths
 
@@ -106,7 +136,7 @@ wrapped in `:where()` so a Tailwind utility on the element still wins; the class
 of pages owns are in `@layer qory` and start with `q-`, clear of daisyUI's names.
 
 An edition adds to a core page only in the places the page gives it: a slot
-(`ApiaryWeb.Extension`), a tab of the organisation's settings (`ApiaryWeb.SettingsComponents`)
+(`ApiaryWeb.Extension`), a section of the organisation's settings (`ApiaryWeb.SettingsComponents`)
 or a navigation entry. What it renders there links to its own pages, which handle its
 events; a page whose behaviour differs is the edition's own at the same path.
 

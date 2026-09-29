@@ -217,7 +217,7 @@ defmodule ApiaryWeb.UserLive.SettingsTest do
     end
 
     test "offers the time zones by region, the person's selected", %{conn: conn} do
-      {:ok, lv, _html} = live(conn, ~p"/users/settings")
+      {:ok, lv, _html} = live(conn, ~p"/users/settings/preferences")
 
       assert has_element?(lv, "#preferences_time_zone option[value='Etc/UTC'][selected]")
 
@@ -234,7 +234,7 @@ defmodule ApiaryWeb.UserLive.SettingsTest do
     end
 
     test "with one language, shows it and offers no choice", %{conn: conn} do
-      {:ok, lv, _html} = live(conn, ~p"/users/settings")
+      {:ok, lv, _html} = live(conn, ~p"/users/settings/preferences")
 
       refute has_element?(lv, "#preferences_language option")
       assert has_element?(lv, "p#preferences_language")
@@ -242,7 +242,7 @@ defmodule ApiaryWeb.UserLive.SettingsTest do
     end
 
     test "saves the time zone and says so", %{conn: conn, user: user} do
-      {:ok, lv, _html} = live(conn, ~p"/users/settings")
+      {:ok, lv, _html} = live(conn, ~p"/users/settings/preferences")
 
       html =
         lv
@@ -255,7 +255,7 @@ defmodule ApiaryWeb.UserLive.SettingsTest do
     end
 
     test "refuses a time zone the database does not know", %{conn: conn, user: user} do
-      {:ok, lv, _html} = live(conn, ~p"/users/settings")
+      {:ok, lv, _html} = live(conn, ~p"/users/settings/preferences")
 
       render_submit(lv, "update_preferences", %{"preferences" => %{"time_zone" => "Mars/Base"}})
 
@@ -265,7 +265,7 @@ defmodule ApiaryWeb.UserLive.SettingsTest do
     end
 
     test "refuses a language the application has no catalogue for", %{conn: conn, user: user} do
-      {:ok, lv, _html} = live(conn, ~p"/users/settings")
+      {:ok, lv, _html} = live(conn, ~p"/users/settings/preferences")
 
       render_submit(lv, "update_preferences", %{"preferences" => %{"language" => "xx"}})
 
@@ -276,7 +276,7 @@ defmodule ApiaryWeb.UserLive.SettingsTest do
     test "keeps a zone chosen outside the list selected", %{conn: conn, user: user} do
       for zone <- ["UTC", "Europe/Oslo"] do
         {:ok, _user} = Accounts.update_user_preferences(user, %{time_zone: zone})
-        {:ok, lv, _html} = live(conn, ~p"/users/settings")
+        {:ok, lv, _html} = live(conn, ~p"/users/settings/preferences")
 
         assert has_element?(lv, "#preferences_time_zone option[value='#{zone}'][selected]")
       end
@@ -284,7 +284,7 @@ defmodule ApiaryWeb.UserLive.SettingsTest do
 
     test "names each zone's countries, so a country without a zone of its own is found",
          %{conn: conn} do
-      {:ok, lv, _html} = live(conn, ~p"/users/settings")
+      {:ok, lv, _html} = live(conn, ~p"/users/settings/preferences")
 
       assert has_element?(lv, "#preferences_time_zone option[value='Europe/Berlin']", "Norway")
       assert has_element?(lv, "#preferences_time_zone option[value='Africa/Abidjan']", "Iceland")

@@ -734,7 +734,7 @@ defmodule ApiaryWeb.OverviewComponents do
     ~H"""
     <.link
       id={"#{@item.id}-act"}
-      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/keys/#{@item.key.id}/revoke"}
+      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/settings/keys/#{@item.key.id}/revoke"}
       class="btn btn-xs q-btn-danger-ghost"
       aria-label={gettext("Revoke %{key}", key: @item.key.label)}
     >
@@ -1931,7 +1931,7 @@ defmodule ApiaryWeb.OverviewComponents do
         <.link
           :if={@create?}
           id={"#{@id}-create"}
-          navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/keys/new"}
+          navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/settings/keys/new"}
           class="q-link"
         >
           {gettext("Create another access key")}
@@ -2035,7 +2035,7 @@ defmodule ApiaryWeb.OverviewComponents do
       <:footer :if={@total > length(@keys)}>
         <.link
           id={"#{@id}-more"}
-          navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/keys"}
+          navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/settings/keys"}
           class="q-link"
         >
           {ngettext("and %{number} more", "and %{number} more", @total - length(@keys),
@@ -2125,7 +2125,7 @@ defmodule ApiaryWeb.OverviewComponents do
           <.button
             id={"#{@id}-create"}
             variant="primary"
-            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/keys/new"}
+            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/settings/keys/new"}
             class="max-[479px]:w-full"
           >
             <.icon name="hero-plus-micro" class="size-4" /> {gettext("Create an access key")}
@@ -2134,7 +2134,7 @@ defmodule ApiaryWeb.OverviewComponents do
         <div :if={@current in [2, 3]}>
           <.button
             id={"#{@id}-keys"}
-            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/keys"}
+            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/settings/keys"}
             class="max-[479px]:w-full"
           >
             {gettext("Manage access keys")}

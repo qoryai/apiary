@@ -108,7 +108,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
         view
         |> element("#onboarding-create")
         |> render_click()
-        |> follow_redirect(conn, ~p"/#{scope.organisation}/#{scope.workspace}/keys/new")
+        |> follow_redirect(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/keys/new")
 
       assert html =~ "New access key"
     end
@@ -450,7 +450,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       assert has_element?(
                view,
-               "#overview-keys-more[href='#{workspace_path(scope, "/keys")}']",
+               "#overview-keys-more[href='#{workspace_path(scope, "/settings/keys")}']",
                "and 2 more"
              )
     end
@@ -495,7 +495,11 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       assert text(view, "#attention-n") == "5"
       assert has_element?(view, "#attention-more", "and 1 more")
-      assert has_element?(view, "#attention-more[href='#{workspace_path(scope, "/keys")}']")
+
+      assert has_element?(
+               view,
+               "#attention-more[href='#{workspace_path(scope, "/settings/keys")}']"
+             )
 
       kinds =
         render(view)
@@ -645,7 +649,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       assert has_element?(
                view,
-               "#att-key-#{idle.id}-act[href='#{workspace_path(scope, "/keys/#{idle.id}/revoke")}'][aria-label='Revoke old-runner']",
+               "#att-key-#{idle.id}-act[href='#{workspace_path(scope, "/settings/keys/#{idle.id}/revoke")}'][aria-label='Revoke old-runner']",
                "Revoke"
              )
 

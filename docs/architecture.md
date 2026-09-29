@@ -289,7 +289,7 @@ What an edition may do, by where it is asked (`Apiary.Edition`, `ApiaryWeb.Editi
   a place of its own gives and the heading it lists such a place under
   (`switcher_entries/1`, `place_scope/2`, `place_group/1`); what a page says to a person it lets in without
   a membership, and of a refusal of its own (`reader_sentence/2`, `refusal_sentence/1`);
-  settings tabs (`settings_tabs/1`, `ApiaryWeb.SettingsComponents`); what it renders in
+  settings sections (`settings_tabs/1`, `ApiaryWeb.SettingsComponents`); what it renders in
   the named places of the core's pages (`slot/2`, `ApiaryWeb.Extension`); the words for
   its actions on the Activity page (`activity_describer/0`); and the names its own paths
   take (`reserved_slugs/0`).

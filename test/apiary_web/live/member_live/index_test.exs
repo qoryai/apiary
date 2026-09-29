@@ -11,10 +11,10 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
     setup :register_and_log_in_user
 
     test "lists the members", %{conn: conn, user: user, scope: scope} do
-      {:ok, lv, html} = live(conn, ~p"/#{scope.organisation}/members")
+      {:ok, lv, html} = live(conn, ~p"/#{scope.organisation}/settings/people")
       assert html =~ user.email
       assert html =~ "You"
-      assert html =~ "Invite member"
+      assert html =~ "Invite people"
 
       assert html =~
                "The people in this organisation. Owners and admins manage members and settings; members manage keys and see the runs."
@@ -23,16 +23,16 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
     end
 
     test "invites a member and can revoke the invitation", %{conn: conn, scope: scope} do
-      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/members")
+      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings/people")
 
-      lv |> element("a", "Invite member") |> render_click()
-      assert_patch(lv, ~p"/#{scope.organisation}/members/invite")
+      lv |> element("#invite-people") |> render_click()
+      assert_patch(lv, ~p"/#{scope.organisation}/settings/people/invite")
 
       lv
       |> form("#invitation-form", invitation: %{email: "bee@example.com"})
       |> render_submit()
 
-      assert_patch(lv, ~p"/#{scope.organisation}/members")
+      assert_patch(lv, ~p"/#{scope.organisation}/settings/people")
 
       html = render(lv)
       assert html =~ "Invitation sent to bee@example.com"
@@ -46,7 +46,7 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
     end
 
     test "refuses to invite an existing member", %{conn: conn, user: user, scope: scope} do
-      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/members/invite")
+      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings/people/invite")
 
       html =
         lv
@@ -64,7 +64,7 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
     } do
       %{membership: membership, user: member} = member_fixture(scope, :member)
 
-      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/members")
+      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings/people")
 
       html = lv |> form("#level-form-#{membership.id}", %{level: "owner"}) |> render_change()
       assert html =~ "#{member.email} is now an owner."
@@ -85,14 +85,14 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
     test "removes a member and refuses to remove the last owner", %{conn: conn, scope: scope} do
       %{membership: membership, user: member} = member_fixture(scope, :member)
 
-      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/members")
+      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings/people")
 
       lv |> element("#member-#{membership.id} a", "Remove") |> render_click()
-      assert_patch(lv, ~p"/#{scope.organisation}/members/#{membership.id}/remove")
+      assert_patch(lv, ~p"/#{scope.organisation}/settings/people/#{membership.id}/remove")
       assert has_element?(lv, "#remove-member")
 
       lv |> element("#remove-member button", "Remove member") |> render_click()
-      assert_patch(lv, ~p"/#{scope.organisation}/members")
+      assert_patch(lv, ~p"/#{scope.organisation}/settings/people")
 
       html = render(lv)
       assert html =~ "#{member.email} is removed"
@@ -120,7 +120,7 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
 
       # Opened Platform last: the invitation is sent from it.
       conn = conn |> get(~p"/#{organisation}/#{platform}") |> recycle()
-      {:ok, lv, _html} = live(conn, ~p"/#{organisation}/members/invite")
+      {:ok, lv, _html} = live(conn, ~p"/#{organisation}/settings/people/invite")
 
       lv
       |> form("#invitation-form", invitation: %{email: "bee@example.com"})
@@ -131,7 +131,7 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
 
       # Then Main.
       conn = conn |> get(~p"/#{organisation}/#{scope.workspace}") |> recycle()
-      {:ok, lv, _html} = live(conn, ~p"/#{organisation}/members")
+      {:ok, lv, _html} = live(conn, ~p"/#{organisation}/settings/people")
       assert has_element?(lv, "#invitation-#{invitation.id}-workspace", "Platform")
 
       lv |> element("#invitation-#{invitation.id} button", "Revoke") |> render_click()
@@ -158,7 +158,7 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
     end
 
     test "changes no level, and removes and manages members only", ctx do
-      {:ok, lv, _html} = live(ctx.conn, ~p"/#{ctx.scope.organisation}/members")
+      {:ok, lv, _html} = live(ctx.conn, ~p"/#{ctx.scope.organisation}/settings/people")
 
       refute has_element?(lv, "form[phx-change=set_level]")
       assert has_element?(lv, "#member-#{ctx.member.id}-remove")
@@ -177,12 +177,12 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       assert {:error, {_, %{to: _members}}} =
                live(
                  ctx.conn,
-                 ~p"/#{ctx.scope.organisation}/members/#{ctx.owner.membership.id}/remove"
+                 ~p"/#{ctx.scope.organisation}/settings/people/#{ctx.owner.membership.id}/remove"
                )
     end
 
     test "invites by address alone, and the person joins as a member", ctx do
-      {:ok, lv, _html} = live(ctx.conn, ~p"/#{ctx.scope.organisation}/members/invite")
+      {:ok, lv, _html} = live(ctx.conn, ~p"/#{ctx.scope.organisation}/settings/people/invite")
 
       refute has_element?(lv, "#invitation-form select")
       refute has_element?(lv, "#invitation-form [name='invitation[level]']")
@@ -206,7 +206,9 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
 
     test "an owner is offered no level to invite at either", %{conn: conn} do
       %{user: user, scope: scope} = sign_up_fixture()
-      {:ok, lv, html} = live(log_in_user(conn, user), ~p"/#{scope.organisation}/members/invite")
+
+      {:ok, lv, html} =
+        live(log_in_user(conn, user), ~p"/#{scope.organisation}/settings/people/invite")
 
       refute has_element?(lv, "#invitation-form select")
       assert html =~ "as a member"
@@ -235,7 +237,7 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       membership: membership,
       third: third
     } do
-      {:ok, lv, html} = live(conn, ~p"/#{scope.organisation}/members")
+      {:ok, lv, html} = live(conn, ~p"/#{scope.organisation}/settings/people")
       assert html =~ "level-form-#{third.id}"
 
       assert {:ok, _} = Organisations.set_member_level(founder.scope, membership.id, :member)
@@ -243,7 +245,7 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       # The page follows the change: the owner controls are gone.
       html = render(lv)
       refute html =~ "level-form-#{third.id}"
-      refute html =~ "Invite member"
+      refute html =~ "Invite people"
 
       # And the events a stale page could still send are refused.
       html = render_hook(lv, "set_level", %{"membership_id" => third.id, "level" => "owner"})
@@ -263,7 +265,7 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       membership: membership,
       third: third
     } do
-      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/members")
+      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings/people")
 
       # Demoted behind the page's back: no broadcast reaches it.
       membership |> Ecto.Changeset.change(level: :member) |> Apiary.Repo.update!()
@@ -279,7 +281,7 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       founder: founder,
       membership: membership
     } do
-      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/members")
+      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings/people")
       assert {:ok, _} = Organisations.remove_member(founder.scope, membership.id)
       assert_redirect(lv, ~p"/")
     end
@@ -293,35 +295,38 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
     end
 
     test "sees the page read-only", %{conn: conn, owner: owner, user: user, scope: scope} do
-      {:ok, lv, html} = live(conn, ~p"/#{scope.organisation}/members")
+      {:ok, lv, html} = live(conn, ~p"/#{scope.organisation}/settings/people")
 
       assert html =~ owner.user.email
       assert html =~ user.email
       assert html =~ "Owner"
       assert html =~ "Member"
-      refute html =~ "Invite member"
+      refute html =~ "Invite people"
       refute html =~ "Pending invitations"
       refute has_element?(lv, "a", "Remove")
       refute has_element?(lv, "form[phx-change=set_level]")
     end
 
     test "cannot open the invite or remove dialogs", %{conn: conn, owner: owner, scope: scope} do
-      members = ~p"/#{scope.organisation}/members"
+      members = ~p"/#{scope.organisation}/settings/people"
 
       assert {:error, {_, %{to: ^members}}} =
-               live(conn, ~p"/#{scope.organisation}/members/invite")
+               live(conn, ~p"/#{scope.organisation}/settings/people/invite")
 
       assert {:error, {_, %{to: ^members}}} =
-               live(conn, ~p"/#{scope.organisation}/members/#{owner.membership.id}/remove")
+               live(
+                 conn,
+                 ~p"/#{scope.organisation}/settings/people/#{owner.membership.id}/remove"
+               )
     end
 
     test "leaves the organisation", %{conn: conn, owner: owner, scope: scope} do
-      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/members")
+      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings/people")
 
       # Only their own row has the button.
       refute has_element?(lv, "#member-#{owner.membership.id}-remove")
       lv |> element("#member-#{scope.membership.id}-remove", "Leave") |> render_click()
-      assert_patch(lv, ~p"/#{scope.organisation}/members/#{scope.membership.id}/remove")
+      assert_patch(lv, ~p"/#{scope.organisation}/settings/people/#{scope.membership.id}/remove")
 
       lv |> element("#leave-confirm") |> render_click()
       assert_redirect(lv, ~p"/")
@@ -340,7 +345,7 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
     test "an owner suspends a member after confirming, and activates them again", ctx do
       %{owner: owner, member: member} = ctx
       conn = log_in_user(ctx.conn, owner.user)
-      {:ok, lv, _html} = live(conn, ~p"/#{owner.organisation}/members")
+      {:ok, lv, _html} = live(conn, ~p"/#{owner.organisation}/settings/people")
 
       refute has_element?(lv, "#member-#{member.membership.id}-suspended")
       refute has_element?(lv, "#member-#{member.membership.id}-activate")
@@ -348,11 +353,11 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       refute has_element?(lv, "#member-#{owner.membership.id}-suspend")
 
       lv |> element("#member-#{member.membership.id}-suspend") |> render_click()
-      assert_patch(lv, ~p"/#{owner.organisation}/members/#{member.membership.id}/suspend")
+      assert_patch(lv, ~p"/#{owner.organisation}/settings/people/#{member.membership.id}/suspend")
       assert has_element?(lv, "#suspend-member", "until an owner or an admin activates them")
 
       lv |> element("#suspend-confirm") |> render_click()
-      assert_patch(lv, ~p"/#{owner.organisation}/members")
+      assert_patch(lv, ~p"/#{owner.organisation}/settings/people")
       assert render(lv) =~ "#{member.user.email} is suspended."
       assert has_element?(lv, "#member-#{member.membership.id}-suspended", "Suspended")
       refute has_element?(lv, "#member-#{member.membership.id}-suspend")
@@ -370,7 +375,7 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       {:ok, _} = Organisations.suspend_member(owner.scope, other.membership.id)
 
       conn = log_in_user(ctx.conn, admin.user)
-      {:ok, lv, _html} = live(conn, ~p"/#{owner.organisation}/members")
+      {:ok, lv, _html} = live(conn, ~p"/#{owner.organisation}/settings/people")
 
       assert has_element?(lv, "#member-#{member.membership.id}-suspend")
       refute has_element?(lv, "#member-#{owner.membership.id}-suspend")
@@ -380,9 +385,12 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
 
       # The owner's modal by its path is refused, and the event without it suspends no one.
       assert {:error, {:live_redirect, %{to: to}}} =
-               live(conn, ~p"/#{owner.organisation}/members/#{owner.membership.id}/suspend")
+               live(
+                 conn,
+                 ~p"/#{owner.organisation}/settings/people/#{owner.membership.id}/suspend"
+               )
 
-      assert to == ~p"/#{owner.organisation}/members"
+      assert to == ~p"/#{owner.organisation}/settings/people"
       render_hook(lv, "suspend", %{})
       refute Repo.get!(Membership, owner.membership.id).suspended_at
 
@@ -396,7 +404,7 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       {:ok, _} = Organisations.suspend_member(owner.scope, admin.membership.id)
 
       conn = log_in_user(ctx.conn, member.user)
-      {:ok, lv, _html} = live(conn, ~p"/#{owner.organisation}/members")
+      {:ok, lv, _html} = live(conn, ~p"/#{owner.organisation}/settings/people")
 
       assert has_element?(lv, "#member-#{admin.membership.id}-suspended")
       refute has_element?(lv, "#member-#{owner.membership.id}-suspend")
@@ -406,7 +414,7 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
     test "the suspended person's open page leaves, and says why", ctx do
       %{owner: owner, member: member} = ctx
       conn = log_in_user(ctx.conn, member.user)
-      {:ok, lv, _html} = live(conn, ~p"/#{owner.organisation}/members")
+      {:ok, lv, _html} = live(conn, ~p"/#{owner.organisation}/settings/people")
 
       {:ok, _} = Organisations.suspend_member(owner.scope, member.membership.id)
 
