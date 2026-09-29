@@ -64,6 +64,24 @@ defmodule ApiaryWeb.OrganisationLive do
           </.header>
         </div>
 
+        <.notice :if={@added} kind={:info} class="q-org-top">
+          <div id="added" class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+            <span>
+              {gettext("An owner or an admin of the organisation added you to %{workspace}.",
+                workspace: @current_scope.workspace.name
+              )}
+            </span>
+            <.button
+              id="added-open"
+              size="xs"
+              variant="primary"
+              href={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}"}
+            >
+              {gettext("Open %{workspace}", workspace: @current_scope.workspace.name)}
+            </.button>
+          </div>
+        </.notice>
+
         <section class="q-org-main" aria-labelledby="workspaces-title">
           <div class="q-org-head">
             <h2 id="workspaces-title" class="q-org-title">
@@ -291,13 +309,23 @@ defmodule ApiaryWeb.OrganisationLive do
   # What the page shows, read again when the reader's membership changes: a member added
   # to a workspace while the page was open sees the organisation's workspaces then.
   defp load(%{assigns: %{current_scope: %{workspace: nil}}} = socket),
-    do: assign(socket, page_title: gettext("No workspace yet"), workspaces: [], modes: %{})
+    do:
+      assign(socket,
+        page_title: gettext("No workspace yet"),
+        workspaces: [],
+        modes: %{},
+        waiting: true,
+        added: false
+      )
 
   defp load(socket) do
     scope = socket.assigns.current_scope
     workspaces = reached(socket.assigns.memberships, scope)
 
     socket
+    # A member who waited on this page for a workspace is told they have one, and offered it.
+    |> assign(:added, Map.get(socket.assigns, :waiting, false))
+    |> assign(:waiting, false)
     |> assign(:page_title, scope.organisation.name)
     |> assign(:workspaces, workspaces)
     |> assign(:modes, modes(scope, workspaces))

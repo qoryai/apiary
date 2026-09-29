@@ -1029,7 +1029,7 @@ defmodule Apiary.Runs do
   when the workspace's last run started (nil when it has none). A workspace of another
   organisation is left out. Three reads, whatever the number of workspaces.
   """
-  @spec workspace_facts(Scope.t(), [Workspace.t()], DateTime.t()) :: %{
+  @spec workspace_facts(Scope.t(), [%Workspace{}], DateTime.t()) :: %{
           optional(Ecto.UUID.t()) => map
         }
   def workspace_facts(scope, workspaces, now \\ DateTime.utc_now())

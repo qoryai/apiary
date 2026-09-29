@@ -2178,6 +2178,11 @@ msgstr ""
 msgid "An invitation"
 msgstr ""
 
+#: lib/apiary_web/live/organisation_live.ex
+#, elixir-autogen, elixir-format
+msgid "An owner or an admin of the organisation added you to %{workspace}."
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Answered %{status}"
@@ -5549,6 +5554,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Open %{version}"
+msgstr ""
+
+#: lib/apiary_web/live/organisation_live.ex
+#, elixir-autogen, elixir-format
+msgid "Open %{workspace}"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
