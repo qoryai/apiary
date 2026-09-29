@@ -158,7 +158,7 @@ defmodule ApiaryWeb.LayoutsTest do
             [
               overview: workspace_path(scope),
               runs: workspace_path(scope, "/runs"),
-              connections: workspace_path(scope, "/connections")
+              network: workspace_path(scope, "/connections")
             ] ++ List.wrap(policy) ++ [settings: workspace_path(scope, "/settings")] do
         assert has_element?(view, "#sidebar a#nav-#{key}[href='#{href}']"), "#{key}"
       end
@@ -166,6 +166,14 @@ defmodule ApiaryWeb.LayoutsTest do
       assert has_element?(view, "#nav-overview[aria-current='page']")
       assert before?(html, ~s(id="nav-group-home"), ~s(id="nav-group-record"))
       assert has_element?(view, "#nav-group-record #nav-runs")
+
+      # Guard: Network access, then the rules that decide it.
+      assert has_element?(view, "#nav-group-guard #nav-network")
+      refute has_element?(view, "#nav-group-record #nav-network")
+
+      if policy,
+        do: assert(before?(html, ~s(id="nav-network"), ~s(id="nav-policy")))
+
       assert has_element?(view, ".q-sidebar-foot #nav-settings")
 
       # the organisation's pages and the pages of Settings are not a workspace's entries
@@ -276,7 +284,7 @@ defmodule ApiaryWeb.LayoutsTest do
                  ".q-sidebar-foot a#nav-organisation[href='/#{org.slug}/settings'][aria-current='page']"
                )
 
-        for key <- ~w(overview runs connections policy settings members),
+        for key <- ~w(overview runs network policy settings members),
             do: refute(has_element?(view, "#nav-#{key}"), "#{path} #{key}")
 
         assert has_element?(view, "#main h1", "Organisation settings")
@@ -316,7 +324,7 @@ defmodule ApiaryWeb.LayoutsTest do
                  ".q-sidebar-foot a#nav-organisation[href='/#{scope.organisation.slug}/settings']:not([aria-current])"
                )
 
-        for key <- ~w(overview runs connections policy settings members),
+        for key <- ~w(overview runs network policy settings members),
             do: refute(has_element?(view, "#nav-#{key}"), "#{path} #{key}")
 
         refute has_element?(view, "#breadcrumb-settings")

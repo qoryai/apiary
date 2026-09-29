@@ -60,7 +60,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
                "Widen the range, or wait for a run to reach out."
 
       assert text(view, "#connections-empty") =~ "Only programs that honour the proxy"
-      assert has_element?(view, "#nav-connections[aria-current=page]")
+      assert has_element?(view, "#nav-network[aria-current=page]")
     end
 
     test "the first render is the table's skeleton", %{conn: conn, scope: scope} do

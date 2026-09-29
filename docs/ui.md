@@ -43,8 +43,9 @@ The shell is section 4 of the v2 design brief (the knowledge vault's
   level there, their settings and organisations, the theme (Auto, Light, Dark), and Log
   out; nothing about Qory Apiary itself.
 - **The sidebar** holds the scope's pages and nothing else, in groups, each a `<nav>` with
-  its own name: a workspace's Overview, then Record (Runs, Targets, Connections) and Guard
-  (Policy), then the targets the person pinned (`counts.pins`, the first seven in the
+  its own name: a workspace's Overview, then Record (Runs, Targets) and Guard (Network
+  access, then Policy; without `security` Network access alone, the record of it), then
+  the targets the person pinned (`counts.pins`, the first seven in the
   order pinned, `Apiary.Targets.list_pins/2`; on a target's page its pin is the current
   entry); an organisation's
   Overview, Activity and the edition's groups (`ApiaryWeb.Edition.nav_sections/0`); the

@@ -61,7 +61,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
       current_scope={@current_scope}
       memberships={@memberships}
       counts={@nav_counts}
-      nav={:connections}
+      nav={:network}
       width="work"
     >
       <div id="connections-page" class="q-lp">

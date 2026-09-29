@@ -77,15 +77,17 @@ defmodule ApiaryWeb.Layouts do
         path: fn organisation, workspace -> ~p"/#{organisation}/#{workspace}/targets" end,
         action: :"run.read"
       },
+      # Guard: what the runs reached and what decided it, then the rules that decide. On an
+      # instance without the security policy Network access is the group's one entry, the
+      # record of it.
       %Entry{
-        section: :record,
-        key: :connections,
+        section: :guard,
+        key: :network,
         label: gettext("Network access"),
-        icon: "hero-arrows-right-left-micro",
+        icon: "hero-globe-alt-micro",
         path: fn organisation, workspace -> ~p"/#{organisation}/#{workspace}/connections" end,
         action: :"run.read"
       },
-      # What the connections are judged by.
       %Entry{
         section: :guard,
         key: :policy,
