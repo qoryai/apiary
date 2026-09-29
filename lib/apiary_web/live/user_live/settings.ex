@@ -1,11 +1,12 @@
 defmodule ApiaryWeb.UserLive.Settings do
   @moduledoc """
   A person's own settings, one section a page (`ApiaryWeb.SettingsComponents`): Profile,
-  `/users/settings` (`:edit`), their email address, their password and deleting their
-  account, confirmed in a modal over it, `/users/settings/delete` (`:delete`); and
-  Preferences, `/users/settings/preferences` (`:preferences`), their time zone and
-  language. The theme is the account menu's. The sidebar lists them under Your account,
-  after the settings of the organisation and the workspace the person opened last.
+  `/users/settings` (`:edit`), their email address, their password and, last, its danger
+  zone, deleting their account, confirmed in a modal over it, `/users/settings/delete`
+  (`:delete`); and Preferences, `/users/settings/preferences` (`:preferences`), their time
+  zone and language. The theme is the account menu's. The sidebar lists them under Your
+  account, after the settings of the organisation and the workspace the person opened
+  last.
   """
   use ApiaryWeb, :live_view
 
@@ -145,13 +146,24 @@ defmodule ApiaryWeb.UserLive.Settings do
           </:footer>
         </.card>
 
-        <.card :if={@live_action != :preferences} id="delete-account">
-          <:title>{gettext("Delete account")}</:title>
-          <p class="max-w-[60ch] text-muted">
+        <SettingsComponents.danger_zone :if={@live_action != :preferences}>
+          <SettingsComponents.danger_action id="delete-account" title={gettext("Delete account")}>
             {gettext(
-              "Your email address, password and preferences are erased, and you leave every organisation you belong to. What you made in a workspace stays there and names you as a former member. The address is free for a new account at once."
+              "Your email address, password and preferences are erased and you leave every organisation you belong to, which cannot be undone; what you made in a workspace stays there and names you as a former member."
             )}
-          </p>
+            <:action>
+              <.button
+                :if={@sole_owned == []}
+                id="delete-account-button"
+                patch={~p"/users/settings/delete"}
+              >
+                {gettext("Delete account…")}
+              </.button>
+              <.button :if={@sole_owned != []} id="delete-account-button" type="button" disabled>
+                {gettext("Delete account…")}
+              </.button>
+            </:action>
+          </SettingsComponents.danger_action>
           <div :if={is_nil(@sole_owned)} id="delete-account-loading" aria-busy="true">
             <span class="sr-only">{gettext("Checking the organisations you own")}</span>
             <span class="skeleton q-skel w-64"></span>
@@ -186,27 +198,7 @@ defmodule ApiaryWeb.UserLive.Settings do
               </li>
             </ul>
           </.notice>
-          <:footer>
-            <span>{gettext("It cannot be undone.")}</span>
-            <.button
-              :if={@sole_owned == []}
-              id="delete-account-button"
-              variant="danger"
-              patch={~p"/users/settings/delete"}
-            >
-              {gettext("Delete account")}
-            </.button>
-            <.button
-              :if={@sole_owned != []}
-              id="delete-account-button"
-              type="button"
-              variant="danger"
-              disabled
-            >
-              {gettext("Delete account")}
-            </.button>
-          </:footer>
-        </.card>
+        </SettingsComponents.danger_zone>
       </SettingsComponents.layout>
 
       <.modal

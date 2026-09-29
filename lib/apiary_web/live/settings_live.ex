@@ -4,21 +4,25 @@ defmodule ApiaryWeb.SettingsLive do
   page, with every kind of settings the reader may change listed in the sidebar
   (`ApiaryWeb.SettingsComponents`).
 
-  - The organisation's: General, `/:org/settings` (`:organisation`), its name, its slug and
-    its owners; Workspaces, `/:org/settings/workspaces` (`:workspaces`), for an owner or an
-    admin, with the deletion of one and the cancelling of a deletion; Danger zone,
-    `/:org/settings/danger` (`:danger`), the deletion of the organisation.
-  - The workspace's: General, `/:org/:workspace/settings` (`:workspace`), its name and its
-    slug; Retention, `/:org/:workspace/settings/retention` (`:retention`), how long the
-    workspace keeps a run's events and log output, and what the nightly job last pruned;
-    Danger zone, `/:org/:workspace/settings/danger` (`:workspace_danger`), its deletion.
+  - The organisation's: General, `/:org/settings` (`:organisation`), its name, its slug,
+    its owners and, last, its danger zone, the deletion of the organisation; Workspaces,
+    `/:org/settings/workspaces` (`:workspaces`), for an owner or an admin, with the
+    deletion of one and the cancelling of a deletion.
+  - The workspace's: General, `/:org/:workspace/settings` (`:workspace`), its name, its
+    slug and, last, its danger zone, its deletion while it is one of several; Retention,
+    `/:org/:workspace/settings/retention` (`:retention`), how long the workspace keeps a
+    run's events and log output, and what the nightly job last pruned.
 
   A slug is shown, not edited: renaming one is not decided yet. Deleting asks to type the
-  slug, in a modal over its section: `/:org/settings/delete` (`:delete_organisation`),
-  `/:org/settings/workspaces/:workspace_id/delete` (`:delete_workspace`) and
-  `/:org/:workspace/settings/delete` (`:delete_this_workspace`). A workspace marked for
-  deletion is a notice at the top of Workspaces, where an owner or an admin cancels it
-  until it is purged (`Apiary.Deletion`).
+  slug, in a modal over its section: the organisation's over General at
+  `/:org/settings/danger` (`:danger`, and `/:org/settings/delete`, `:delete_organisation`),
+  this workspace's over General at `/:org/:workspace/settings/danger` (`:workspace_danger`,
+  and `/:org/:workspace/settings/delete`, `:delete_this_workspace`), and any workspace's
+  over Workspaces at `/:org/settings/workspaces/:workspace_id/delete`
+  (`:delete_workspace`). The danger zones are no section of their own: nothing that
+  cannot be undone is an entry of the settings' list. A workspace marked for deletion is a
+  notice at the top of Workspaces, where an owner or an admin cancels it until it is
+  purged (`Apiary.Deletion`).
 
   An edition adds sections to the organisation's settings, each a page of its own
   (`ApiaryWeb.SettingsComponents`), and to each workspace's ⋯ menu in Workspaces the items
@@ -37,13 +41,18 @@ defmodule ApiaryWeb.SettingsLive do
     organisation: {:organisation, :organisation},
     workspaces: {:organisation, :workspaces},
     delete_workspace: {:organisation, :workspaces},
-    danger: {:organisation, :danger},
-    delete_organisation: {:organisation, :danger},
+    danger: {:organisation, :organisation},
+    delete_organisation: {:organisation, :organisation},
     workspace: {:workspace, :general},
     retention: {:workspace, :retention},
-    workspace_danger: {:workspace, :workspace_danger},
-    delete_this_workspace: {:workspace, :workspace_danger}
+    workspace_danger: {:workspace, :general},
+    delete_this_workspace: {:workspace, :general}
   }
+
+  # The pages that are a confirm dialog over General, the organisation's and this
+  # workspace's deletion.
+  @delete_organisation [:danger, :delete_organisation]
+  @delete_this_workspace [:workspace_danger, :delete_this_workspace]
 
   @impl true
   def render(assigns) do
@@ -68,10 +77,10 @@ defmodule ApiaryWeb.SettingsLive do
       </SettingsComponents.layout>
 
       <.modal
-        :if={@live_action == :delete_organisation}
+        :if={@live_action in [:danger, :delete_organisation]}
         id="delete-organisation-modal"
         title={gettext("Delete %{name}", name: @current_scope.organisation.name)}
-        on_cancel={JS.patch(~p"/#{@current_scope.organisation}/settings/danger")}
+        on_cancel={JS.patch(~p"/#{@current_scope.organisation}/settings")}
       >
         <p class="text-muted">
           {gettext(
@@ -100,7 +109,7 @@ defmodule ApiaryWeb.SettingsLive do
           />
         </.form>
         <:footer>
-          <.button patch={~p"/#{@current_scope.organisation}/settings/danger"} data-autofocus>
+          <.button patch={~p"/#{@current_scope.organisation}/settings"} data-autofocus>
             {gettext("Cancel")}
           </.button>
           <.button
@@ -117,7 +126,10 @@ defmodule ApiaryWeb.SettingsLive do
       </.modal>
 
       <.modal
-        :if={@live_action in [:delete_workspace, :delete_this_workspace] && @deleting}
+        :if={
+          @live_action in [:delete_workspace, :workspace_danger, :delete_this_workspace] &&
+            @deleting
+        }
         id="delete-workspace-modal"
         title={gettext("Delete %{name}", name: @deleting.name)}
         on_cancel={JS.patch(section_path(@current_scope, @live_action))}
@@ -243,6 +255,36 @@ defmodule ApiaryWeb.SettingsLive do
         <span>{gettext("The last owner cannot be removed or demoted.")}</span>
       </:footer>
     </.card>
+
+    <SettingsComponents.danger_zone :if={
+      may?(@current_scope, :"organisation.delete") or organisation_kept?(@current_scope)
+    }>
+      <SettingsComponents.danger_action
+        :if={may?(@current_scope, :"organisation.delete")}
+        id="delete-organisation"
+        title={gettext("Delete this organisation")}
+      >
+        {gettext(
+          "Its workspaces, runs, access keys, policy, members and activity go with it, for every member at once, and after the purge, %{days} later, nothing brings them back.",
+          days: days(Deletion.grace_days())
+        )}
+        <:action>
+          <.button
+            id="delete-organisation-button"
+            patch={~p"/#{@current_scope.organisation}/settings/danger"}
+          >
+            {gettext("Delete organisation…")}
+          </.button>
+        </:action>
+      </SettingsComponents.danger_action>
+      <SettingsComponents.danger_action
+        :if={!may?(@current_scope, :"organisation.delete")}
+        id="delete-organisation-kept"
+        title={gettext("Delete this organisation")}
+      >
+        {organisation_kept()}
+      </SettingsComponents.danger_action>
+    </SettingsComponents.danger_zone>
     """
   end
 
@@ -334,46 +376,6 @@ defmodule ApiaryWeb.SettingsLive do
     """
   end
 
-  # The organisation's Danger zone: its deletion, or why it cannot be deleted.
-  defp section(%{section: :danger} = assigns) do
-    ~H"""
-    <.card :if={may?(@current_scope, :"organisation.delete")} id="delete-organisation">
-      <:title>{gettext("Delete organisation")}</:title>
-      <p class="max-w-[60ch] text-muted">
-        {gettext(
-          "Everything in it is deleted with it: its workspaces, runs, access keys, policy, members and activity. It disappears for every member at once, and is purged after %{days}; until then its owners can cancel the deletion from their organisations page.",
-          days: days(Deletion.grace_days())
-        )}
-      </p>
-      <:footer>
-        <span>{gettext("After the purge, nothing brings it back.")}</span>
-        <.button
-          id="delete-organisation-button"
-          variant="danger"
-          patch={~p"/#{@current_scope.organisation}/settings/delete"}
-        >
-          {gettext("Delete organisation")}
-        </.button>
-      </:footer>
-    </.card>
-
-    <.card
-      :if={
-        !may?(@current_scope, :"organisation.delete") &&
-          Access.refused_on?(:"organisation.delete", @current_scope.organisation)
-      }
-      id="delete-organisation-kept"
-    >
-      <:title>{gettext("Delete organisation")}</:title>
-      <p class="max-w-[60ch] text-muted">
-        {gettext(
-          "This is the instance's organisation, whose owners run the instance, so it cannot be deleted."
-        )}
-      </p>
-    </.card>
-    """
-  end
-
   # The workspace's General: its name.
   defp section(%{section: :general} = assigns) do
     ~H"""
@@ -422,6 +424,32 @@ defmodule ApiaryWeb.SettingsLive do
         </.button>
       </:footer>
     </.card>
+
+    <SettingsComponents.danger_zone :if={may?(@current_scope, :"workspace.delete")}>
+      <SettingsComponents.danger_action
+        id="delete-workspace"
+        title={gettext("Delete this workspace")}
+      >
+        {if length(@workspaces) > 1,
+          do:
+            gettext(
+              "Its runs, policy and access keys go with it, and its keys stop working; its members stay in the organisation. After the purge, %{days} later, nothing brings it back.",
+              days: days(Deletion.grace_days())
+            ),
+          else:
+            gettext(
+              "The organisation's only workspace is not deleted on its own: delete the organisation instead."
+            )}
+        <:action :if={length(@workspaces) > 1}>
+          <.button
+            id="delete-workspace-button"
+            patch={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/danger"}
+          >
+            {gettext("Delete workspace…")}
+          </.button>
+        </:action>
+      </SettingsComponents.danger_action>
+    </SettingsComponents.danger_zone>
     """
   end
 
@@ -519,44 +547,10 @@ defmodule ApiaryWeb.SettingsLive do
     """
   end
 
-  # The workspace's Danger zone: its deletion, unless it is the organisation's only one.
-  defp section(%{section: :workspace_danger} = assigns) do
-    ~H"""
-    <.card id="delete-workspace">
-      <:title>{gettext("Delete this workspace")}</:title>
-      <p class="max-w-[60ch] text-muted">
-        {if length(@workspaces) > 1,
-          do:
-            gettext(
-              "Its runs, policy and access keys are deleted with it, and its keys stop working. Its members stay in the organisation. It is purged after %{days}; until then an owner or an admin can cancel the deletion in the organisation's settings.",
-              days: days(Deletion.grace_days())
-            ),
-          else:
-            gettext(
-              "The organisation's only workspace is not deleted on its own: delete the organisation instead."
-            )}
-      </p>
-      <:footer :if={length(@workspaces) > 1}>
-        <span>{gettext("After the purge, nothing brings it back.")}</span>
-        <.button
-          id="delete-workspace-button"
-          variant="danger"
-          patch={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/delete"}
-        >
-          {gettext("Delete workspace")}
-        </.button>
-      </:footer>
-    </.card>
-    """
-  end
-
   defp section_title(:organisation), do: gettext("General")
   defp section_title(:general), do: gettext("General")
   defp section_title(:workspaces), do: gettext("Workspaces")
   defp section_title(:retention), do: gettext("Retention")
-
-  defp section_title(danger) when danger in [:danger, :workspace_danger],
-    do: gettext("Danger zone")
 
   defp section_subtitle(:organisation, :organisation),
     do: gettext("The name of this organisation, where its pages are, and who owns it.")
@@ -564,17 +558,11 @@ defmodule ApiaryWeb.SettingsLive do
   defp section_subtitle(:organisation, :workspaces),
     do: gettext("The workspaces of this organisation, and the ones waiting to be purged.")
 
-  defp section_subtitle(:organisation, :danger),
-    do: gettext("What cannot be undone once the purge has run.")
-
   defp section_subtitle(:workspace, :general),
     do: gettext("The name of this workspace, and where its pages are.")
 
   defp section_subtitle(:workspace, :retention),
     do: gettext("How long this workspace keeps a run's events and log output.")
-
-  defp section_subtitle(:workspace, :workspace_danger),
-    do: gettext("What cannot be undone once the purge has run.")
 
   @impl true
   def mount(_params, _session, socket) do
@@ -606,27 +594,33 @@ defmodule ApiaryWeb.SettingsLive do
     |> assign(:page_title, page_title(page, section))
   end
 
-  defp apply_action(socket, :delete_organisation, _params) do
-    if may?(socket.assigns.current_scope, :"organisation.delete"),
+  # The organisation's deletion, a dialog over General, for whoever may; anyone else is
+  # sent to General, which says why.
+  defp apply_action(socket, action, _params) when action in @delete_organisation do
+    scope = socket.assigns.current_scope
+
+    if may?(scope, :"organisation.delete"),
       do: socket |> assign(:deleting, nil) |> assign_confirm(),
-      else: refused(socket)
+      else: refused(socket, general_path(scope, action))
   end
 
   # A section the reader may not open is not in their list; its path sends them to the
   # settings' General, and says why.
-  defp apply_action(socket, action, _params)
-       when action in [:workspaces, :danger, :workspace_danger] do
+  defp apply_action(socket, :workspaces, _params) do
     if section?(socket.assigns),
       do: assign(socket, :deleting, nil),
-      else: refused(socket, general_path(socket.assigns.current_scope, action))
+      else: refused(socket, general_path(socket.assigns.current_scope, :workspaces))
   end
 
   defp apply_action(socket, :delete_workspace, %{"workspace_id" => id}),
     do: deleting(socket, Enum.find(socket.assigns.workspaces, &(&1.id == id)))
 
-  defp apply_action(socket, :delete_this_workspace, _params) do
-    workspace = socket.assigns.current_scope.workspace
-    deleting(socket, Enum.find(socket.assigns.workspaces, &(&1.id == workspace.id)))
+  defp apply_action(socket, action, _params) when action in @delete_this_workspace do
+    scope = socket.assigns.current_scope
+
+    if may?(scope, :"workspace.delete"),
+      do: deleting(socket, Enum.find(socket.assigns.workspaces, &(&1.id == scope.workspace.id))),
+      else: refused(socket, general_path(scope, action))
   end
 
   defp apply_action(socket, _page, _params), do: assign(socket, :deleting, nil)
@@ -659,8 +653,14 @@ defmodule ApiaryWeb.SettingsLive do
           else: general_path(scope, action)
         )
 
+    # The instance's organisation is deleted by nobody, which its danger zone says too.
+    sentence =
+      if action in @delete_organisation and organisation_kept?(scope),
+        do: organisation_kept(),
+        else: deletion_refused()
+
     socket
-    |> put_flash(:error, deletion_refused())
+    |> put_flash(:error, sentence)
     |> push_patch(to: to)
   end
 
@@ -677,6 +677,19 @@ defmodule ApiaryWeb.SettingsLive do
 
   defp deletion_refused,
     do: gettext("Only owners and admins delete a workspace, and only owners the organisation.")
+
+  # An organisation no level may delete, the instance's own, whose danger zone says why to
+  # whoever may rename it.
+  defp organisation_kept?(scope),
+    do:
+      !may?(scope, :"organisation.delete") and may?(scope, :"organisation.rename") and
+        Access.refused_on?(:"organisation.delete", scope.organisation)
+
+  defp organisation_kept,
+    do:
+      gettext(
+        "This is the instance's organisation, whose owners run the instance, so it cannot be deleted."
+      )
 
   @impl true
   def handle_event("validate_organisation", %{"organisation" => params}, socket) do
@@ -917,11 +930,11 @@ defmodule ApiaryWeb.SettingsLive do
   defp workspaces_path(scope), do: ~p"/#{scope.organisation}/settings/workspaces"
 
   # The section a modal is over, where the page goes back to once the modal is done.
-  defp section_path(scope, action) when action in [:delete_organisation, :danger],
-    do: ~p"/#{scope.organisation}/settings/danger"
+  defp section_path(scope, action) when action in @delete_organisation,
+    do: ~p"/#{scope.organisation}/settings"
 
-  defp section_path(scope, action) when action in [:delete_this_workspace, :workspace_danger],
-    do: ~p"/#{scope.organisation}/#{scope.workspace}/settings/danger"
+  defp section_path(scope, action) when action in @delete_this_workspace,
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/settings"
 
   defp section_path(scope, _workspaces), do: workspaces_path(scope)
 

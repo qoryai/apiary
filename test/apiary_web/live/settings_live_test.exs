@@ -229,8 +229,7 @@ defmodule ApiaryWeb.SettingsLiveTest do
             organisation: ~p"/#{org}/settings",
             people: ~p"/#{org}/settings/people",
             workspaces: ~p"/#{org}/settings/workspaces",
-            audit_log: ~p"/#{org}/activity",
-            danger: ~p"/#{org}/settings/danger"
+            audit_log: ~p"/#{org}/activity"
           ] do
         assert has_element?(
                  lv,
@@ -260,9 +259,26 @@ defmodule ApiaryWeb.SettingsLiveTest do
       assert has_element?(lv, "#settings-tab-workspaces[aria-current=page]")
       assert has_element?(lv, "#workspace-#{scope.workspace.id}", scope.workspace.name)
 
-      {:ok, lv, _html} = live(conn, ~p"/#{org}/settings/danger")
-      assert has_element?(lv, "#settings-tab-danger[aria-current=page]")
-      assert has_element?(lv, "#delete-organisation-button")
+      # The danger zone ends General, and its dialog is at a path of its own over it.
+      {:ok, lv, html} = live(conn, ~p"/#{org}/settings")
+      assert has_element?(lv, "#danger-zone h2", "Danger zone")
+      assert html =~ ~r/id="owners".*id="danger-zone"/s
+
+      assert has_element?(
+               lv,
+               "#danger-zone #delete-organisation a#delete-organisation-button[href='#{~p"/#{org}/settings/danger"}']"
+             )
+
+      refute has_element?(lv, "#delete-organisation-modal")
+
+      lv |> element("#delete-organisation-button") |> render_click()
+      assert_patch(lv, ~p"/#{org}/settings/danger")
+      assert has_element?(lv, "#delete-organisation-modal")
+      assert has_element?(lv, "#settings-tab-organisation[aria-current=page]")
+      assert has_element?(lv, "h1#settings-section-title", "General")
+
+      {:ok, lv, _html} = live(conn, ~p"/#{org}/settings/delete")
+      assert has_element?(lv, "#delete-organisation-modal")
     end
 
     test "the workspace's list, and a section a page", %{conn: conn, scope: scope} do
@@ -272,8 +288,7 @@ defmodule ApiaryWeb.SettingsLiveTest do
       for {key, path} <- [
             general: base,
             keys: base <> "/keys",
-            retention: base <> "/retention",
-            workspace_danger: base <> "/danger"
+            retention: base <> "/retention"
           ] do
         assert has_element?(
                  lv,
@@ -294,9 +309,7 @@ defmodule ApiaryWeb.SettingsLiveTest do
       assert has_element?(lv, "#retention-form")
       refute has_element?(lv, "#workspace-form")
 
-      {:ok, lv, _html} = live(conn, base <> "/danger")
-      assert has_element?(lv, "#settings-tab-workspace_danger[aria-current=page]")
-      refute has_element?(lv, "#settings-tab-danger[aria-current=page]")
+      refute has_element?(lv, "#danger-zone")
     end
 
     test "a workspace's danger zone deletes it when it is one of several, after its slug",
@@ -304,10 +317,12 @@ defmodule ApiaryWeb.SettingsLiveTest do
       org = scope.organisation
       platform = workspace_fixture(org, "Platform")
 
-      {:ok, lv, _html} = live(conn, ~p"/#{org}/#{platform}/settings/danger")
+      {:ok, lv, _html} = live(conn, ~p"/#{org}/#{platform}/settings")
+      assert has_element?(lv, "#danger-zone #delete-workspace", "Delete this workspace")
       lv |> element("#delete-workspace-button") |> render_click()
-      assert_patch(lv, ~p"/#{org}/#{platform}/settings/delete")
+      assert_patch(lv, ~p"/#{org}/#{platform}/settings/danger")
       assert has_element?(lv, "#delete-workspace-modal")
+      assert has_element?(lv, "#settings-tab-general[aria-current=page]")
 
       lv |> form("#delete-workspace-form", confirm: %{slug: platform.slug}) |> render_submit()
       {path, flash} = assert_redirect(lv)
@@ -317,11 +332,22 @@ defmodule ApiaryWeb.SettingsLiveTest do
 
     test "the only workspace's danger zone says why it is not deleted on its own",
          %{conn: conn, scope: scope} do
-      {:ok, lv, html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/danger")
+      general = ~p"/#{scope.organisation}/#{scope.workspace}/settings"
+      {:ok, lv, _html} = live(conn, general)
 
-      assert html =~ "The organisation&#39;s only workspace is not deleted on its own"
+      assert has_element?(
+               lv,
+               "#danger-zone #delete-workspace",
+               "The organisation's only workspace is not deleted on its own"
+             )
+
       refute has_element?(lv, "#delete-workspace-button")
+
+      # Its dialog's path says so, and goes back to General.
+      assert {:error, {:live_redirect, %{to: ^general, flash: flash}}} =
+               live(conn, general <> "/danger")
+
+      assert flash["error"] == "That workspace cannot be deleted here."
     end
 
     test "a member sees no Workspaces and no Danger zone", %{conn: conn} do
@@ -332,11 +358,13 @@ defmodule ApiaryWeb.SettingsLiveTest do
       {:ok, lv, _html} = live(conn, ~p"/#{owner.organisation}/settings")
       assert has_element?(lv, "#settings-tab-people")
       refute has_element?(lv, "#settings-tab-workspaces")
-      refute has_element?(lv, "#settings-tab-danger")
       refute has_element?(lv, "#settings-tab-audit_log")
+      refute has_element?(lv, "#danger-zone")
+
       # nor the workspace's
+      {:ok, lv, _html} = live(conn, ~p"/#{owner.organisation}/#{owner.workspace}/settings")
       assert has_element?(lv, "#settings-tab-retention")
-      refute has_element?(lv, "#settings-tab-workspace_danger")
+      refute has_element?(lv, "#danger-zone")
     end
   end
 

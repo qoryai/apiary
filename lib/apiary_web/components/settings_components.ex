@@ -4,15 +4,19 @@ defmodule ApiaryWeb.SettingsComponents do
   a person's own, one section a page. Configuration lives here, set up once and changed
   rarely; the sidebar holds the pages people use every day.
 
-  - An organisation's (`/:org/settings/…`): General (its name and owners), People (its
-    members, invitations and suspended memberships), Workspaces, Audit log (the Activity
-    page, which keeps its own path), then the edition's sections
-    (`c:ApiaryWeb.Edition.settings_tabs/1`), each a page of the edition's own, then Danger
-    zone (deleting the organisation).
-  - A workspace's (`/:org/:workspace/settings/…`): General (its name), Access keys,
-    Retention, then Danger zone (deleting the workspace).
-  - A person's own (`/users/settings…`, `/users/organisations`): Profile, Preferences and
-    Organisations, the entries of the person's pages (`ApiaryWeb.Layouts.nav_entries/1`).
+  - An organisation's (`/:org/settings/…`): General (its name and owners, and deleting
+    it), People (its members, invitations and suspended memberships), Workspaces, Audit log
+    (the Activity page, which keeps its own path), then the edition's sections
+    (`c:ApiaryWeb.Edition.settings_tabs/1`), each a page of the edition's own.
+  - A workspace's (`/:org/:workspace/settings/…`): General (its name, and deleting it),
+    Access keys, Retention.
+  - A person's own (`/users/settings…`, `/users/organisations`): Profile (and deleting
+    the account), Preferences and Organisations, the entries of the person's pages
+    (`ApiaryWeb.Layouts.nav_entries/1`).
+
+  What cannot be undone is never an entry of the list: it is the danger zone at the end of
+  its scope's General page, or of Profile (`danger_zone/1`), GitHub's way, and its confirm
+  dialog is at a path of its own over that page.
 
   On a page of any of them the sidebar lists all three kinds the reader may change, each
   under its kind and place, in place of the scope's pages (`nav/1`, given to
@@ -59,7 +63,7 @@ defmodule ApiaryWeb.SettingsComponents do
   sections/2 is the sections of the organisation's (`:organisation`), the workspace's
   (`:workspace`) or the person's own (`:person`) settings the reader of `scope` may open,
   as `ApiaryWeb.Nav.Entry` values, in the list's order; each entry's `section` is its
-  group: `:main`, `:edition` or `:danger`.
+  group: `:main` or `:edition`.
   """
   @spec sections(Scope.t(), kind) :: [Entry.t()]
   def sections(%Scope{organisation: organisation} = scope, :organisation) do
@@ -104,56 +108,34 @@ defmodule ApiaryWeb.SettingsComponents do
     edition =
       for %Entry{} = tab <- ApiaryWeb.Edition.settings_tabs(scope), do: %{tab | section: :edition}
 
-    danger =
-      danger_zone?(scope) &&
-        %Entry{
-          section: :danger,
-          key: :danger,
-          label: gettext("Danger zone"),
-          icon: "hero-exclamation-triangle-micro",
-          path: ~p"/#{organisation}/settings/danger",
-          place: :organisation
-        }
-
-    Enum.filter(main ++ edition ++ [danger], & &1)
+    Enum.filter(main ++ edition, & &1)
   end
 
-  def sections(%Scope{organisation: organisation, workspace: workspace} = scope, :workspace) do
-    Enum.filter(
-      [
-        %Entry{
-          section: :main,
-          key: :general,
-          label: gettext("General"),
-          icon: "hero-adjustments-horizontal-micro",
-          path: ~p"/#{organisation}/#{workspace}/settings"
-        },
-        %Entry{
-          section: :main,
-          key: :keys,
-          label: gettext("Access keys"),
-          icon: "hero-key-micro",
-          path: ~p"/#{organisation}/#{workspace}/settings/keys",
-          count: :keys
-        },
-        %Entry{
-          section: :main,
-          key: :retention,
-          label: gettext("Retention"),
-          icon: "hero-archive-box-micro",
-          path: ~p"/#{organisation}/#{workspace}/settings/retention"
-        },
-        can?(scope, :"workspace.delete") &&
-          %Entry{
-            section: :danger,
-            key: :workspace_danger,
-            label: gettext("Danger zone"),
-            icon: "hero-exclamation-triangle-micro",
-            path: ~p"/#{organisation}/#{workspace}/settings/danger"
-          }
-      ],
-      & &1
-    )
+  def sections(%Scope{organisation: organisation, workspace: workspace}, :workspace) do
+    [
+      %Entry{
+        section: :main,
+        key: :general,
+        label: gettext("General"),
+        icon: "hero-adjustments-horizontal-micro",
+        path: ~p"/#{organisation}/#{workspace}/settings"
+      },
+      %Entry{
+        section: :main,
+        key: :keys,
+        label: gettext("Access keys"),
+        icon: "hero-key-micro",
+        path: ~p"/#{organisation}/#{workspace}/settings/keys",
+        count: :keys
+      },
+      %Entry{
+        section: :main,
+        key: :retention,
+        label: gettext("Retention"),
+        icon: "hero-archive-box-micro",
+        path: ~p"/#{organisation}/#{workspace}/settings/retention"
+      }
+    ]
   end
 
   def sections(%Scope{} = scope, :person) do
@@ -162,16 +144,8 @@ defmodule ApiaryWeb.SettingsComponents do
         do: %{entry | section: :main}
   end
 
-  # The organisation's danger zone: deleting it, for whoever may; and for an owner of the
-  # instance's organisation, which cannot be deleted, the sentence that says why.
-  defp danger_zone?(%Scope{organisation: organisation} = scope) do
-    can?(scope, :"organisation.delete") or
-      (can?(scope, :"organisation.rename") and
-         Access.refused_on?(:"organisation.delete", organisation))
-  end
-
-  # The settings' actions are asked of the organisation: deleting a workspace, reading the
-  # audit trail and deleting the organisation are its.
+  # The settings' actions are asked of the organisation: listing its workspaces, whose
+  # deletion is its, and reading the audit trail.
   defp can?(%Scope{organisation: organisation} = scope, action),
     do: Access.can?(scope, action, organisation)
 
@@ -213,6 +187,48 @@ defmodule ApiaryWeb.SettingsComponents do
       </header>
       {render_slot(@inner_block)}
     </section>
+    """
+  end
+
+  @doc """
+  danger_zone/1 is the last part of a scope's General page, and of Profile: after a rule,
+  the heading Danger zone, the page's only red words, and one line for each act that
+  cannot be undone (`danger_action/1`), with whatever the page says of it under its line.
+  No box: the lines rest on the page. It is absent for a reader who may do none of them.
+  """
+  attr :id, :string, default: "danger-zone"
+  slot :inner_block, required: true
+
+  def danger_zone(assigns) do
+    ~H"""
+    <section id={@id} class="q-danger" aria-labelledby={"#{@id}-title"}>
+      <h2 id={"#{@id}-title"} class="q-danger-title">{gettext("Danger zone")}</h2>
+      {render_slot(@inner_block)}
+    </section>
+    """
+  end
+
+  @doc """
+  danger_action/1 is one line of a danger zone: the act's title, one muted sentence of
+  what it does and what cannot be undone, and at the right its button, a default one in
+  the error colour, which opens the act's confirm dialog at a path of its own; the red
+  button is the dialog's. Without a button, where the act is not there, the sentence says
+  why.
+  """
+  attr :id, :string, required: true
+  attr :title, :string, required: true
+  slot :inner_block, required: true, doc: "the sentence"
+  slot :action, doc: "the button that opens the confirm dialog"
+
+  def danger_action(assigns) do
+    ~H"""
+    <div id={@id} class="q-danger-line">
+      <div class="q-danger-what">
+        <h3 class="q-danger-name">{@title}</h3>
+        <p class="q-danger-sub">{render_slot(@inner_block)}</p>
+      </div>
+      <div :if={@action != []} class="q-danger-act">{render_slot(@action)}</div>
+    </div>
     """
   end
 

@@ -1102,7 +1102,6 @@ defmodule ApiaryWeb.Layouts do
             path={entry_path(entry, @scope)}
             current={entry.key == @section}
             counts={@counts}
-            danger={entry.section == :danger}
           />
         </nav>
       </div>
@@ -1193,7 +1192,6 @@ defmodule ApiaryWeb.Layouts do
   attr :path, :string, required: true
   attr :current, :boolean, required: true
   attr :counts, :any, required: true
-  attr :danger, :boolean, default: false, doc: "a danger zone: its icon red"
 
   defp nav_item(assigns) do
     ~H"""
@@ -1201,7 +1199,7 @@ defmodule ApiaryWeb.Layouts do
       id={@id || "nav-#{@entry.key}"}
       navigate={@path}
       aria-current={@current && "page"}
-      class={["q-nav-item", @danger && "q-nav-danger"]}
+      class="q-nav-item"
       phx-mounted={JS.ignore_attributes(["title"])}
     >
       <.icon name={@entry.icon} class="q-nav-icon size-4" />

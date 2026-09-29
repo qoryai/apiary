@@ -74,10 +74,10 @@ defmodule ApiaryWeb.DeletionLiveTest do
     test "deletes the organisation, and its owner cancels it from their organisations",
          %{conn: conn, scope: scope} do
       %{access_key: key} = access_key_fixture(scope)
-      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings/danger")
+      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings")
 
       lv |> element("#delete-organisation-button") |> render_click()
-      assert_patch(lv, ~p"/#{scope.organisation}/settings/delete")
+      assert_patch(lv, ~p"/#{scope.organisation}/settings/danger")
       assert has_element?(lv, "#delete-organisation-modal")
 
       slug = scope.organisation.slug
@@ -118,6 +118,7 @@ defmodule ApiaryWeb.DeletionLiveTest do
       organisation = owner.scope.organisation
       {:ok, lv, _html} = live(conn, ~p"/#{organisation}/settings")
       refute has_element?(lv, "#workspaces")
+      refute has_element?(lv, "#danger-zone")
       refute has_element?(lv, "#delete-organisation")
 
       settings = ~p"/#{organisation}/settings"
@@ -200,9 +201,13 @@ defmodule ApiaryWeb.DeletionLiveTest do
 
       render_async(lv)
       refute has_element?(lv, "#delete-account-blocked")
+      # Deleting the account is the danger zone that ends Profile, and no entry of the list.
+      assert has_element?(lv, "#danger-zone #delete-account", "Delete account")
+      refute has_element?(lv, "#sidebar a[href='/users/settings/delete']")
       lv |> element("a#delete-account-button") |> render_click()
       assert_patch(lv, ~p"/users/settings/delete")
       assert has_element?(lv, "#delete-account-modal")
+      assert has_element?(lv, "#settings-tab-user_settings[aria-current='page']")
 
       lv |> element("#delete-account-confirm") |> render_click()
       assert_redirect(lv, ~p"/users/account-deleted")

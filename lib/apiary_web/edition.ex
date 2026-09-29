@@ -104,8 +104,8 @@ defmodule ApiaryWeb.Edition do
   @doc """
   The sections the edition adds to the organisation's settings, each a page of its own, in
   the organisation's group of the settings' list in the sidebar
-  (`ApiaryWeb.SettingsComponents`), after the core's and before Danger zone. A section's
-  key names it among every kind of settings.
+  (`ApiaryWeb.SettingsComponents`), after the core's. A section's key names it among every
+  kind of settings.
   """
   @callback settings_tabs(Scope.t()) :: [Entry.t()]
 

@@ -264,11 +264,9 @@ defmodule ApiaryWeb.LayoutsTest do
             {:organisation, :organisation, ~p"/#{org}/settings"},
             {:organisation, :people, ~p"/#{org}/settings/people"},
             {:organisation, :workspaces, ~p"/#{org}/settings/workspaces"},
-            {:organisation, :danger, ~p"/#{org}/settings/danger"},
             {:workspace, :general, ~p"/#{org}/#{ws}/settings"},
             {:workspace, :keys, ~p"/#{org}/#{ws}/settings/keys"},
             {:workspace, :retention, ~p"/#{org}/#{ws}/settings/retention"},
-            {:workspace, :workspace_danger, ~p"/#{org}/#{ws}/settings/danger"},
             {:person, :user_settings, ~p"/users/settings"},
             {:person, :user_preferences, ~p"/users/settings/preferences"},
             {:person, :user_organisations, ~p"/users/organisations"}
@@ -280,13 +278,16 @@ defmodule ApiaryWeb.LayoutsTest do
                "#{key}"
       end
 
-      # The current section is the current entry; the counts beside People and Access keys;
-      # the danger zones marked, red only by their icon.
+      # The current section is the current entry; the counts beside People and Access keys.
       assert has_element?(view, "#settings-tab-keys[aria-current='page']")
       assert has_element?(view, "#settings-tab-keys .q-nav-count")
       assert has_element?(view, "#settings-tab-people .q-nav-count", "1")
-      assert has_element?(view, "#settings-tab-danger.q-nav-danger")
-      assert has_element?(view, "#settings-tab-workspace_danger.q-nav-danger")
+
+      # What cannot be undone is no entry of the list: it ends its General page.
+      refute has_element?(view, "#sidebar a[href$='/settings/danger']")
+      refute has_element?(view, "#sidebar a[href='/users/settings/delete']")
+      refute has_element?(view, "#settings-tab-danger, #settings-tab-workspace_danger")
+      refute view |> element("#sidebar") |> render() =~ "Danger zone"
 
       # No page of the scope, no Settings at the foot; the Qory Apiary menu stays.
       for key <- ~w(overview runs connections policy settings),

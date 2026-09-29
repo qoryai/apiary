@@ -189,7 +189,7 @@ defmodule ApiaryWeb.Routes do
             # account) and Preferences.
             live "/users/settings", UserLive.Settings, :edit
             live "/users/settings/preferences", UserLive.Settings, :preferences
-            # The confirmation of deleting one's own account, a modal over the settings.
+            # The confirmation of deleting one's own account, a modal over Profile.
             live "/users/settings/delete", UserLive.Settings, :delete
             live "/users/settings/confirm-email/:token", UserLive.Settings, :confirm_email
             # A user's organisations: each in use, and those marked for deletion that they
@@ -294,8 +294,9 @@ defmodule ApiaryWeb.Routes do
               live "/settings/workspaces", SettingsLive, :workspaces
               # The confirmation of deleting a workspace, a modal over the workspaces.
               live "/settings/workspaces/:workspace_id/delete", SettingsLive, :delete_workspace
+              # The confirmation of deleting the organisation, a modal over General, whose
+              # danger zone opens it; the second path opens the same.
               live "/settings/danger", SettingsLive, :danger
-              # The confirmation of deleting the organisation, a modal over the danger zone.
               live "/settings/delete", SettingsLive, :delete_organisation
               # The organisation's audit trail, for the readers `audit.read` allows.
               live "/activity", ActivityLive, :index
@@ -336,8 +337,9 @@ defmodule ApiaryWeb.Routes do
               live "/settings/keys/:id/rotate", AccessKeyLive.Index, :rotate
               live "/settings/keys/:id/revoke", AccessKeyLive.Index, :revoke
               live "/settings/retention", SettingsLive, :retention
+              # The confirmation of deleting this workspace, a modal over General, whose
+              # danger zone opens it; the second path opens the same.
               live "/settings/danger", SettingsLive, :workspace_danger
-              # The confirmation of deleting this workspace, a modal over its danger zone.
               live "/settings/delete", SettingsLive, :delete_this_workspace
             end
           end

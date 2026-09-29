@@ -13,8 +13,8 @@ defmodule ApiaryWeb.Nav.Entry do
     the edition's (`c:ApiaryWeb.Edition.nav_sections/0`), `:foot` (Settings, at the
     sidebar's foot) or `:settings` (a page of the scope's Settings, not among the scope's
     pages: its page lists the settings in the sidebar). An edition's entry goes after the
-    core's of its section. A section of the settings is in `:main`, `:edition` or
-    `:danger`. Nil outside the sidebar.
+    core's of its section. A section of the settings is in `:main` or `:edition`. Nil
+    outside the sidebar.
   - `key`: names the entry. A page passes it as its `nav` to be marked the current one,
     and it gives the DOM id: `nav-<key>` in the sidebar, `organisation-menu-<key>` in the
     switcher, `settings-tab-<key>` in the list of the settings.

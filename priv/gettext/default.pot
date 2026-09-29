@@ -2047,11 +2047,6 @@ msgstr ""
 msgid "Admin of %{name}"
 msgstr ""
 
-#: lib/apiary_web/live/settings_live.ex
-#, elixir-autogen, elixir-format
-msgid "After the purge, nothing brings it back."
-msgstr ""
-
 #: lib/apiary/runs/filters.ex
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/run_live/index.ex
@@ -3083,7 +3078,6 @@ msgid "Credentials: %{credentials}."
 msgstr ""
 
 #: lib/apiary_web/components/settings_components.ex
-#: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Danger zone"
 msgstr ""
@@ -3131,6 +3125,11 @@ msgstr ""
 
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
+msgid "Delete account…"
+msgstr ""
+
+#: lib/apiary_web/live/user_live/settings.ex
+#, elixir-autogen, elixir-format
 msgid "Delete my account"
 msgstr ""
 
@@ -3141,7 +3140,17 @@ msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
+msgid "Delete organisation…"
+msgstr ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
 msgid "Delete the workspace %{name}"
+msgstr ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "Delete this organisation"
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -3152,6 +3161,11 @@ msgstr ""
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Delete workspace"
+msgstr ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "Delete workspace…"
 msgstr ""
 
 #: lib/apiary_web/live/user_live/settings.ex
@@ -3764,11 +3778,6 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Every target of %{workspace}."
-msgstr ""
-
-#: lib/apiary_web/live/settings_live.ex
-#, elixir-autogen, elixir-format
-msgid "Everything in it is deleted with it: its workspaces, runs, access keys, policy, members and activity. It disappears for every member at once, and is purged after %{days}; until then its owners can cancel the deletion from their organisations page."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -4400,11 +4409,6 @@ msgstr ""
 msgid "Invited a member"
 msgstr ""
 
-#: lib/apiary_web/live/user_live/settings.ex
-#, elixir-autogen, elixir-format
-msgid "It cannot be undone."
-msgstr ""
-
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "It changes nothing while this rule stands."
@@ -4525,7 +4529,12 @@ msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
-msgid "Its runs, policy and access keys are deleted with it, and its keys stop working. Its members stay in the organisation. It is purged after %{days}; until then an owner or an admin can cancel the deletion in the organisation's settings."
+msgid "Its runs, policy and access keys go with it, and its keys stop working; its members stay in the organisation. After the purge, %{days} later, nothing brings it back."
+msgstr ""
+
+#: lib/apiary_web/live/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "Its workspaces, runs, access keys, policy, members and activity go with it, for every member at once, and after the purge, %{days} later, nothing brings them back."
 msgstr ""
 
 #: lib/apiary_web/live/invitation_live/accept.ex
@@ -8877,11 +8886,6 @@ msgstr ""
 msgid "What became of the connection. Connected: the dial succeeded, with the status the host answered when the proxy read the request. Answered: the tool the request was handed to answered with that status. Handed over: the tool took the request, and no answer is recorded. Dial failed: allowed, but the host or the tool did not answer. Refused: never dialled."
 msgstr ""
 
-#: lib/apiary_web/live/settings_live.ex
-#, elixir-autogen, elixir-format
-msgid "What cannot be undone once the purge has run."
-msgstr ""
-
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "What changed"
@@ -9287,12 +9291,12 @@ msgstr ""
 
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
-msgid "Your email address, password and preferences are erased at once, you leave every organisation you belong to, and you are logged out everywhere. This cannot be undone: to come back, sign up again, as a new account."
+msgid "Your email address, password and preferences are erased and you leave every organisation you belong to, which cannot be undone; what you made in a workspace stays there and names you as a former member."
 msgstr ""
 
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
-msgid "Your email address, password and preferences are erased, and you leave every organisation you belong to. What you made in a workspace stays there and names you as a former member. The address is free for a new account at once."
+msgid "Your email address, password and preferences are erased at once, you leave every organisation you belong to, and you are logged out everywhere. This cannot be undone: to come back, sign up again, as a new account."
 msgstr ""
 
 #: lib/apiary/accounts/user_notifier.ex

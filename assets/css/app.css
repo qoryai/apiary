@@ -1634,13 +1634,6 @@
   .q-nav-item[aria-current="page"] .q-nav-icon {
     color: var(--color-accent);
   }
-  /* A danger zone: its icon red, its words only when pointed at or current. */
-  .q-nav-danger .q-nav-icon,
-  .q-nav-danger[aria-current="page"] .q-nav-icon,
-  .q-nav-danger:hover,
-  .q-nav-danger[aria-current="page"] {
-    color: var(--color-error);
-  }
   .q-nav-text {
     min-width: 0;
     overflow: hidden;
@@ -1813,6 +1806,55 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 8px;
+  }
+  /* The danger zone, last on General and on Profile: a rule, a red heading, a line per
+     act, and no box. */
+  .q-danger {
+    display: grid;
+    gap: 12px;
+    margin-top: 8px;
+    padding-top: 24px;
+    border-top: 1px solid var(--q-border-subtle);
+  }
+  .q-danger-title {
+    color: var(--color-error);
+    font-size: 0.9375rem;
+    line-height: 1.375rem;
+    font-weight: 600;
+    letter-spacing: -0.006em;
+  }
+  .q-danger-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 24px;
+  }
+  .q-danger-line + .q-danger-line {
+    padding-top: 12px;
+    border-top: 1px solid var(--q-border-subtle);
+  }
+  .q-danger-what {
+    min-width: 0;
+    flex: 1 1 20rem;
+  }
+  .q-danger-name {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    font-weight: 500;
+  }
+  .q-danger-sub {
+    margin-top: 2px;
+    max-width: 62ch;
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+  }
+  .q-danger-act {
+    flex: none;
+  }
+  .q-danger-act .btn:not(:disabled) {
+    color: var(--color-error);
   }
 
   /* ---- Search or jump to: the palette ---- */

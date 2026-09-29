@@ -84,21 +84,34 @@ then every kind the reader may change, each under its kind and place ("Organisat
 last. The list is `SettingsComponents.nav/1`, which a page reads when it mounts and
 passes to `Layouts.app/1` as `settings`, with its own section's key as `section`: a
 section the reader may not open is not in it, and its path sends them to General and says
-why. People and Access keys carry their counts; a danger zone is marked by its red icon
-alone. An entry's id is `settings-tab-<key>`, its key unique among the three kinds.
+why. People and Access keys carry their counts. An entry's id is `settings-tab-<key>`,
+its key unique among the three kinds. Nothing that cannot be undone is an entry of the
+list, and nothing in it is red.
 
-- **An organisation's** (`/:org/settings/…`): General (name, slug, owners), People
-  (`/settings/people`: members, invitations, suspensions), Workspaces (owners and admins),
-  Audit log (the Activity page, `/:org/activity`, which keeps its path and the
-  organisation's sidebar), the edition's sections (`ApiaryWeb.Edition.settings_tabs/1`),
-  and Danger zone (deleting it).
-- **A workspace's** (`/:org/:workspace/settings/…`): General (name, slug), Access keys
-  (`/settings/keys`), Retention, and Danger zone (deleting it, while it is one of several).
+- **An organisation's** (`/:org/settings/…`): General (name, slug, owners, and its danger
+  zone), People (`/settings/people`: members, invitations, suspensions), Workspaces
+  (owners and admins), Audit log (the Activity page, `/:org/activity`, which keeps its
+  path and the organisation's sidebar), and the edition's sections
+  (`ApiaryWeb.Edition.settings_tabs/1`).
+- **A workspace's** (`/:org/:workspace/settings/…`): General (name, slug, and its danger
+  zone), Access keys (`/settings/keys`), Retention.
 - **A person's** (`/users/settings`, `/users/settings/preferences`,
-  `/users/organisations`): Profile (email, password, deleting the account), Preferences,
+  `/users/organisations`): Profile (email, password, and its danger zone), Preferences,
   Organisations. Their pages carry the workspace they opened last, so their list shows
   that organisation's and workspace's settings beside their own; a person with no
   organisation sees their own alone.
+
+**The danger zone** ends its scope's General page, and Profile, GitHub's way
+(`SettingsComponents.danger_zone/1`): after a rule, the heading Danger zone, the page's
+only red words, then a line for each act that cannot be undone (`danger_action/1`), its
+title, one muted sentence of what it does and what cannot be undone, and at the right a
+default button in the error colour, Delete organisation…, Delete workspace… or Delete
+account…. No box. The button opens the confirm dialog, where the red button is, at a path
+of its own over the page: `/:org/settings/danger`, `/:org/:workspace/settings/danger` and
+`/users/settings/delete` (the older `/…/settings/delete` paths open the same dialogs).
+Where the act is not there, the line says why in place of the button: the instance's own
+organisation, the organisation's only workspace. A reader who may not delete the scope
+sees no danger zone, and the dialog's path sends them to General and says why.
 
 The workspace sidebar's Settings leads to the workspace's General, the organisation's to
 the organisation's General, and the account menu's Your settings to Profile: one view, one
