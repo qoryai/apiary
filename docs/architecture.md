@@ -33,6 +33,9 @@ beside it:
   edition's, then the core's.
 - `Apiary.AccessKeys`: a workspace's access keys, their secrets encrypted at rest through
   `Apiary.Vault`, rotation and revocation, and the lookup a signed request verifies against.
+- `Apiary.Targets`: the workspace's targets as the pages read them, the index in one query
+  bounded by fourteen days and a target's page, and the targets a person pinned
+  (`target_pins`), their own reading preference, which leaves no audit entry.
 - `Apiary.Contract`: the signature of a signed GET, pure functions with no database.
 - `Apiary.Edition`: the edition this build is, asked at the few places where an edition
   may add to the core or narrow it (An edition's part, below). `Apiary.Edition.Core` is
@@ -49,10 +52,10 @@ The web side is under `lib/apiary_web/`:
   `RunConfigurationController` for the run configuration. Each of them refuses a
   contract revision it does not serve through `ContractVersion`.
 - `live/`: the pages behind sign-in, one directory per area (`workspace_live`,
-  `run_live`, `connection_live`, `policy_live`, `member_live`, `access_key_live`,
-  `invitation_live`, and `user_live`, a person's own pages, their account and their
-  organisations), `settings_live.ex`, the organisation's settings, `activity_live.ex`,
-  the organisation's audit trail, whose words for each action are
+  `run_live`, `target_live`, `connection_live`, `policy_live`, `member_live`,
+  `access_key_live`, `invitation_live`, and `user_live`, a person's own pages, their
+  account and their organisations), `settings_live.ex`, the organisation's settings,
+  `activity_live.ex`, the organisation's audit trail, whose words for each action are
   `ApiaryWeb.Activity.Describer`'s, the edition's first, then the core's, and
   `organisation_live.ex`, the organisation's own path, which sends on to a workspace or
   says the person reaches none yet.

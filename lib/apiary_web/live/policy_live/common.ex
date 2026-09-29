@@ -53,8 +53,8 @@ defmodule ApiaryWeb.PolicyLive.Common do
   @doc "The path of the holder's policy page in `scope`'s workspace."
   def base(scope, nil), do: ~p"/#{scope.organisation}/#{scope.workspace}/policy"
 
-  def base(scope, %{id: id}),
-    do: ~p"/#{scope.organisation}/#{scope.workspace}/policy/targets/#{id}"
+  def base(scope, %{system: system, path: path}),
+    do: ApiaryWeb.TargetComponents.target_path(scope, system, path, ["policy"])
 
   @doc """
   Whether the reader of a policy page may take `action` on the workspace's security

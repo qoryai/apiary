@@ -241,7 +241,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       assert has_element?(
                view,
-               "#active-#{target.id} a[href='#{workspace_path(scope, "/runs?system=github.example&target=acme%2Fshop")}']"
+               "#active-#{target.id} a[href='#{workspace_path(scope, "/targets/github.example/acme/shop")}']"
              )
 
       assert has_element?(view, "#overview-targets-all", "All 1 repository")

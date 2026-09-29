@@ -37,7 +37,6 @@ defmodule ApiaryWeb.OverviewComponents do
       tool_mark: 1
     ]
 
-  alias Apiary.Runs.Filters
   alias ApiaryWeb.Format
   alias Phoenix.LiveView.JS
 
@@ -931,9 +930,7 @@ defmodule ApiaryWeb.OverviewComponents do
       <ul :if={@rows not in [nil, []]} id={"#{@id}-list"} class="q-rows">
         <li :for={row <- @rows} id={"active-#{row.id}"}>
           <.link
-            navigate={
-              ~p"/#{@scope.organisation}/#{@scope.workspace}/runs?#{Filters.target_params(row.system, row.path)}"
-            }
+            navigate={ApiaryWeb.TargetComponents.target_path(@scope, row.system, row.path, [])}
             class="q-rr"
           >
             <span class="q-rr-p">
@@ -971,7 +968,7 @@ defmodule ApiaryWeb.OverviewComponents do
       </ul>
       <.link
         id={"#{@id}-all"}
-        navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs"}
+        navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/targets"}
         class="q-more"
       >
         {ngettext("All %{number} target", "All %{number} targets", @targets,
@@ -1485,7 +1482,9 @@ defmodule ApiaryWeb.OverviewComponents do
 
     ~H"""
     <.link
-      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/policy/targets/#{@target.id}"}
+      navigate={
+        ApiaryWeb.TargetComponents.target_path(@scope, @target.system, @target.path, ["policy"])
+      }
       class="q-mono hover:underline"
     >{@target.path}</.link>
     """

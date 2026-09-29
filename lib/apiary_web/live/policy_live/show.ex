@@ -921,13 +921,18 @@ defmodule ApiaryWeb.PolicyLive.Show do
   attr :v, :map, required: true
   attr :base, :string, required: true
 
+  attr :heading, :string,
+    default: "h1",
+    values: ~w(h1 h2),
+    doc: "h2 under a page's own title, as a target's Policy tab has"
+
   def version_head(assigns) do
     ~H"""
     <header class="flex flex-wrap items-start justify-between gap-4">
       <div class="q-run-title">
-        <h1 class="text-xl/7 font-semibold tracking-[-0.017em]">
+        <.dynamic_tag tag_name={@heading} class="text-xl/7 font-semibold tracking-[-0.017em]">
           {gettext("Version %{version}", version: @v.configuration.version)}
-        </h1>
+        </.dynamic_tag>
         <.badge :if={@v.current?} color="success">
           <.icon name="hero-check-micro" class="size-3" />{gettext("In force")}
         </.badge>
@@ -1293,7 +1298,9 @@ defmodule ApiaryWeb.PolicyLive.Show do
             <tr :for={row <- @shown} id={"target-#{row.id}"} role="row" class="q-target-row">
               <td role="cell" class="q-c-target">
                 <.link
-                  navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/policy/targets/#{row.id}"}
+                  navigate={
+                    ApiaryWeb.TargetComponents.target_path(@scope, row.system, row.path, ["policy"])
+                  }
                   class="q-target-name q-rowlink"
                   title={"#{row.system}/#{row.path}"}
                 >
@@ -1337,7 +1344,11 @@ defmodule ApiaryWeb.PolicyLive.Show do
                           do:
                             ~p"/#{@scope.organisation}/#{@scope.workspace}/policy/versions/#{row.detail.version.version}",
                           else:
-                            ~p"/#{@scope.organisation}/#{@scope.workspace}/policy/targets/#{row.id}/versions/#{row.detail.version.version}"
+                            ApiaryWeb.TargetComponents.target_path(@scope, row.system, row.path, [
+                              "policy",
+                              "versions",
+                              to_string(row.detail.version.version)
+                            ])
                       }
                       class="q-mono hover:underline"
                     >

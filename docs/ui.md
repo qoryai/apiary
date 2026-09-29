@@ -41,8 +41,10 @@ The shell is section 4 of the v2 design brief (the knowledge vault's
   level there, their settings and organisations, the theme (Auto, Light, Dark), the docs,
   the changelog, the source and the version, and Log out.
 - **The sidebar** holds the scope's pages and nothing else, in groups, each a `<nav>` with
-  its own name: a workspace's Overview, then Record (Runs, Connections) and Guard
-  (Policy), then the targets the person pinned (`counts.pins`); an organisation's
+  its own name: a workspace's Overview, then Record (Runs, Targets, Connections) and Guard
+  (Policy), then the targets the person pinned (`counts.pins`, the first seven in the
+  order pinned, `Apiary.Targets.list_pins/2`; on a target's page its pin is the current
+  entry); an organisation's
   Overview, Activity and the edition's groups (`ApiaryWeb.Edition.nav_sections/0`); the
   person's Profile, Preferences and Organisations, which are their settings' list.
   Settings is at its foot, the scope's own; a page of Settings (an entry of the section
@@ -190,6 +192,58 @@ what needs the reader, then what their agents did, and never grows with the data
 An organisation's overview lists its workspaces one line each, six at most and a link to
 all, with its people and details as lines beside them.
 
+## Targets
+
+A workspace's targets have an index and a page each, GitHub's organisation repositories
+and repository page in the target's words (`ApiaryWeb.TargetLive.Index`, `…Show`; the
+reads are `Apiary.Targets`'s, the looks `ApiaryWeb.TargetComponents`'s).
+
+- **The notation.** A target is its path in mono (`<.target_name>`); its system goes
+  before it, faint, only where the same path is in another system of the workspace
+  (`Apiary.Runs.shared_paths/2`), and always on its own header and crumb. A run's state
+  is a dot and, when the run needs a look, its word (`<.state_mark>`), never a pill.
+- **The index** (`/:org/:workspace/targets`, width `list`) is narrowed the way every list
+  is (Lists, above): views with the workspace's counts (All, Active this week, Never ran),
+  one search, one Filter menu (System, Activity, Policy, Pinned) and Sort (Last run, Name,
+  Most runs in 14 days, Most denials in 7), with the filters in force as tokens under the
+  bar. A filter is a qualifier of the search (`forge:` in the software domain, `mode:`,
+  `activity:`, `is:pinned`; `ApiaryWeb.TargetLive.Query`): the menu writes it, and one
+  the reader types becomes a token on Enter, never half typed. All of it is the URL; a
+  value the page does not know is left out. A row is one line on the row spec: the
+  reader's ★, the path the title, the last run as a dot and a time (its word when it is
+  running or went badly), a 14-day sparkline of runs with their number, the share that
+  ended well (in the error colour below 80 %), the denied attempts of 7 days in red when
+  there are any, and the policy mode only where the target sets its own. Pages of 50.
+  Below 600 px of table the last run is a line under the path. It reads in one query
+  bounded by the fourteen days, and re-reads at most once a second as runs land, changing
+  the rows it holds in place.
+- **A target's page** is `/:org/:workspace/targets/:system/*path`, its tabs after a `-`
+  segment, GitLab's way (`target_path/4`): Overview at the bare path, then `…/-/runs`,
+  `…/-/connections` and, with `security`, `…/-/policy` with the policy's own paths after
+  it (`/history`, `/document`, `/versions/:n`, `/export`). A path with a segment that
+  would be misread (empty, `-`, `.`, `..`) is one segment, its slashes escaped. A target
+  the workspace does not have, and a tab the page does not know, are not found. The header
+  is the target in full with the reader's pin, one muted line (its runs since it was first
+  seen, its last run, and its mode only where it sets its own) and Open on the system when
+  the system is a host name; the breadcrumb's third segment is the target.
+  - **Overview**: two cards, each one list, the few with a link to the many (its last
+    runs; the destinations it was denied in 14 days), beside a plain About column (the
+    system and path, when it was first seen and by which run, the same path elsewhere,
+    its runs a day, its machines and runtimes). A run that lands is counted, never
+    inserted, and comes in when asked.
+  - **Runs**: its latest runs, one line each, and all of them in the runs list.
+  - **Connections**: the connections page's content with the target fixed
+    (`ApiaryWeb.ConnectionLive.Index.fix_target/3`): its own path, no Target section,
+    token or rail, and "New activity" leading the tab.
+  - **Policy**: the target's view of the policy (`ApiaryWeb.PolicyLive.Target`), its
+    effective list, history and document as views under the page's tabs. Its old paths,
+    `/policy/targets/:target_id/…`, send on here (`ApiaryWeb.TargetMovedController`).
+
+  A tab is its own mount; a tab another page's module answers is handed the page's
+  parameters, events and messages while it is open.
+- **Pins** are the person's own (`target_pins`): the ★ of a row and of the header, and the
+  sidebar's Pinned group.
+
 ## Widths
 
 Every page starts at the same left edge, 32 px from the sidebar (24 px below 1024 px, 16
@@ -311,15 +365,54 @@ collection `app.js` and an edition's bundle import. It holds no words (see
 [lingo.md](lingo.md)), and keeps in `localStorage` only a reading preference, such as
 the sidebar's fold; filters, the order, the page and a chosen row are query parameters.
 
+## The run page
+
+A run is a work surface (`ApiaryWeb.RunLive.Show`, width `work`): the column takes the
+width, and from 1440 px the **Details rail** (320 px, sticky under the top bar, scrolling
+on its own) sits beside it. The top bar's breadcrumb ends with the run's target, a link to
+the target's page, and `Run 0191f2a4`; the page has no breadcrumb of its own.
+
+- **The header is two lines**: the title (the task, or the run's short id) alone, then
+  one muted meta line that starts with the state as a dot and its word
+  (`ApiaryWeb.TargetComponents.state_mark/1`), then, each after a faint middle dot, how
+  alive the run is while it runs, the target (its page), the runtime, the host, when it
+  started, how long it took and its denials, in red, which lead to its denied
+  connections. At the right: Close run while the run may be closed, and a ⋯ menu (Copy
+  run id, Raw log, Download log). The seven cells of v1 are the rail's.
+- **The tabs**, Timeline, Terminal, Connections and, below 1440 px, Details, stick under
+  the top bar; each is a live action of the one LiveView, so a tab is a patch.
+- **The Details rail** is key and value lines under small headings (Run, Labels, Command,
+  Record, Policy in force), no card and no chip; the run's labels are its own
+  identifiers, in mono, and one that names the target leads to its page. Below 1440 px the
+  Details tab shows this same element in the column, its sections as cards
+  (`q-run-on-details`), so the two never disagree and no id is drawn twice.
+- **The timeline's open items are flat**: a rule in the item's state's colour under the
+  chevron, the content indented beside it, code with a faint label and no border, a
+  connection line with a plain glyph and no row tint, the prompt as quoted text with a
+  rule.
+
 ## The terminal
 
 `<.terminal>` in `RunPageComponents` is dark in both themes: the recorded output's colours
-are written against a dark ground. The `Terminal` hook reads the bytes from the run's log
-endpoint and hands them to xterm.js as `Uint8Array`s, never decoded strings, in slices per
-frame so a long log does not block input. The bytes never cross the LiveView socket: the
-LiveView sends the foot's numbers and a signal that the log advanced. xterm.js is vendored
-under `assets/vendor/xterm`, built as its own bundle and loaded on the hook's first mount,
-by no other page. The screen is `role="log"` with `aria-live="off"`.
+are written against a dark ground. It fills the window below the tab bar, never under
+380 px. The `Terminal` hook reads the bytes from the run's log endpoint and hands them to
+xterm.js as `Uint8Array`s, never decoded strings, in slices per frame so a long log does
+not block input. The bytes never cross the LiveView socket: the LiveView sends the foot's
+numbers and a signal that the log advanced. xterm.js is vendored under
+`assets/vendor/xterm`, built as its own bundle and loaded on the hook's first mount, by no
+other page. The screen is `role="log"` with `aria-live="off"`.
+
+- **The recorded width is kept.** A run whose record says its pseudo-terminal's size is
+  drawn at those columns and rows, centred only inside the box's own darker ground, which
+  fills the column; it scrolls inside the box when it is larger. A run on pipes is fitted
+  to the box, with Wrap.
+- **The bar**: the stream, search (`/`), follow (End), wrap, the **text size** (A−, A+,
+  11 to 18 px, and Fit, the largest size at which a recorded screen's columns fit), a
+  reading preference kept in `localStorage`; download; **Focus** (`f` outside a field;
+  Escape leaves), a class on the root that folds the shell, the header, the tabs and the
+  rail away so the box takes the window; and **Full screen**, the browser's, on the box,
+  shown only where the browser has it. A narrow box names its buttons on hover only
+  (a container query), so the bar never wraps.
 
 ## Words
 

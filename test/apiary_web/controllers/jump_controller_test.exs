@@ -60,8 +60,7 @@ defmodule ApiaryWeb.JumpControllerTest do
     [target] = group(answer, "Repositories")["items"]
     assert target["label"] == "acme/shop"
     assert target["detail"] == "github.example"
-    assert target["href"] =~ workspace_path(scope, "/runs?")
-    assert target["href"] =~ "system=github.example"
+    assert target["href"] == workspace_path(scope, "/targets/github.example/acme/shop")
 
     short = String.slice(run.run_id, 0, 8)
     href = workspace_path(scope, "/runs/#{run.run_id}")

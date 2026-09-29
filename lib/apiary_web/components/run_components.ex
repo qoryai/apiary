@@ -1081,20 +1081,27 @@ defmodule ApiaryWeb.RunComponents do
 
   @doc """
   A target as every page writes it: its path in mono, and its system faint before it only
-  where the same path is on more than one system of the workspace (`shared`,
-  `Apiary.Runs.shared_paths/2`); the whole `system/path` is its title.
+  where the same path is on more than one system of the workspace. Given `shared`
+  (`Apiary.Runs.shared_paths/2`) the component decides; without it the caller has, and a
+  `system` given is shown. The whole `system/path` is its title.
   """
-  attr :system, :string, required: true
   attr :path, :string, required: true
-  attr :shared, :any, default: MapSet.new()
+  attr :system, :string, default: nil
+  attr :shared, :any, default: nil, doc: "the paths on more than one system (a MapSet)"
   attr :class, :any, default: nil
+  attr :rest, :global
 
   def target_name(assigns) do
+    %{system: system, path: path, shared: shared} = assigns
+
+    assigns =
+      assign(assigns,
+        shown: system && (is_nil(shared) or MapSet.member?(shared, path)) && system,
+        title: if(system, do: "#{system}/#{path}", else: path)
+      )
+
     ~H"""
-    <span class={["q-tname", @class]} title={"#{@system}/#{@path}"}><span
-      :if={MapSet.member?(@shared, @path)}
-      class="q-tname-sys"
-    >{@system}/</span>{@path}</span>
+    <span class={["q-tname", @class]} title={@title} {@rest}><span :if={@shown} class="q-tname-sys">{@shown}<span class="q-tname-sep">/</span></span>{@path}</span>
     """
   end
 

@@ -209,8 +209,8 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       api = started_run(scope, %{"forge" => "github.example", "repository" => "acme/api"})
       view = open(conn, scope)
 
-      assert text(view, "#{row(github)} .q-rl-c3") == "github.example/ acme/shop"
-      assert text(view, "#{row(gitlab)} .q-rl-inl") == "gitlab.example/ acme/shop"
+      assert text(view, "#{row(github)} .q-rl-c3") == "github.example / acme/shop"
+      assert text(view, "#{row(gitlab)} .q-rl-inl") == "gitlab.example / acme/shop"
       assert text(view, "#{row(api)} .q-rl-c3") == "acme/api"
     end
 

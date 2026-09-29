@@ -64,6 +64,14 @@ defmodule ApiaryWeb.Layouts do
       },
       %Entry{
         section: :record,
+        key: :targets,
+        label: gettext("Targets"),
+        icon: "hero-folder-micro",
+        path: fn organisation, workspace -> ~p"/#{organisation}/#{workspace}/targets" end,
+        action: :"run.read"
+      },
+      %Entry{
+        section: :record,
         key: :connections,
         label: gettext("Connections"),
         icon: "hero-arrows-right-left-micro",
@@ -242,13 +250,18 @@ defmodule ApiaryWeb.Layouts do
   attr :counts, :map,
     default: nil,
     doc:
-      "%{keys: active keys, members: members, alive: runs alive now, mode: the policy's default mode, own_modes: the modes targets set, pins: the pinned targets, `%{key, label, system, href}`}"
+      "%{keys: active keys, members: members, alive: runs alive now, mode: the policy's default mode, own_modes: the modes targets set, pins: the pinned targets, `%{id, system, path, shared}` (`Apiary.Targets.list_pins/2`)}"
 
   attr :width, :string,
     default: "list",
     values: ~w(list work read),
     doc:
       "list: fluid up to 1680 px; work: fluid, no cap, for a work surface or a list with a rail or a preview beside it; read: a 720 px column, for forms and prose. Every width starts at the same left edge"
+
+  attr :target, :string,
+    default: nil,
+    doc:
+      "the id of the target the page is about: its entry under Pinned, when it is pinned, is the current one"
 
   slot :crumb,
     doc: "the breadcrumb's segments after the workspace: a target, a record; the last is the page" do
@@ -277,7 +290,10 @@ defmodule ApiaryWeb.Layouts do
       |> assign(:groups, nav_groups(scope, place, assigns.counts, entries))
       |> assign(:foot, foot(scope, place, entries))
       |> assign(:under_settings, current && current.section == :settings)
-      |> assign(:pins, if(place == :workspace, do: pins(assigns.counts), else: []))
+      |> assign(
+        :pins,
+        if(place == :workspace, do: pins(assigns.counts, organisation, workspace), else: [])
+      )
       |> assign(:show_notices, notices?(assigns.notices, current))
 
     ~H"""
@@ -321,6 +337,7 @@ defmodule ApiaryWeb.Layouts do
             foot={@foot}
             under_settings={@under_settings}
             pins={@pins}
+            target={@target}
             counts={@counts}
           />
         </div>
@@ -1022,6 +1039,7 @@ defmodule ApiaryWeb.Layouts do
   attr :foot, :any, required: true
   attr :under_settings, :boolean, required: true
   attr :pins, :list, required: true
+  attr :target, :string, required: true
   attr :counts, :any, required: true
 
   defp sidebar(assigns) do
@@ -1051,7 +1069,7 @@ defmodule ApiaryWeb.Layouts do
             :for={{entry, path} <- items}
             entry={entry}
             path={path}
-            current={@nav == entry.key}
+            current={@nav == entry.key and not Enum.any?(@pins, &(&1.id == @target))}
             counts={@counts}
           />
         </nav>
@@ -1065,14 +1083,17 @@ defmodule ApiaryWeb.Layouts do
           <p class="q-nav-heading" aria-hidden="true">{gettext("Pinned")}</p>
           <.link
             :for={pin <- @pins}
-            id={"nav-pin-#{pin.key}"}
+            id={"nav-pin-#{pin.id}"}
             navigate={pin.href}
+            aria-current={pin.id == @target && "page"}
             class="q-nav-item"
-            title={pin[:system] && "#{pin.system}/#{pin.label}"}
+            title={"#{pin.system}/#{pin.path}"}
             phx-mounted={JS.ignore_attributes(["title"])}
           >
-            <span class="q-nav-pin" aria-hidden="true">{pin_letter(pin.label)}</span>
-            <span class="q-nav-text">{pin.label}</span>
+            <.icon name="hero-folder-micro" class="q-nav-icon size-4" />
+            <span class="q-nav-text q-nav-pin">
+              <span :if={pin.shared} class="q-nav-pin-sys">{pin.system}/</span>{pin.path}
+            </span>
           </.link>
         </nav>
       </div>
@@ -1150,12 +1171,18 @@ defmodule ApiaryWeb.Layouts do
   defp sidebar_label(:organisation), do: gettext("Organisation")
   defp sidebar_label(_person), do: gettext("Your account")
 
-  defp pin_letter(label) do
-    label |> String.split("/") |> List.last() |> String.first() |> Kernel.||("?")
+  # The pinned targets, each with the path of its page.
+  defp pins(%{pins: pins}, organisation, workspace) when is_list(pins) do
+    for pin <- Enum.take(pins, @pins) do
+      Map.put(
+        pin,
+        :href,
+        ApiaryWeb.TargetComponents.target_path(organisation, workspace, pin.system, pin.path, [])
+      )
+    end
   end
 
-  defp pins(%{pins: pins}) when is_list(pins), do: Enum.take(pins, @pins)
-  defp pins(_counts), do: []
+  defp pins(_counts, _organisation, _workspace), do: []
 
   # The running version, from the application's spec. Nil before the spec exists
   # (a clean compile), and then the account menu shows none.

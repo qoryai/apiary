@@ -309,27 +309,26 @@ defmodule ApiaryWeb.Routes do
               # Every filter is a query parameter.
               live "/runs", RunLive.Index, :index
               live "/connections", ConnectionLive.Index, :index
+              # The targets the workspace's runs changed, and one target's page: its path
+              # is the glob, its tabs follow a `-` segment (`…/-/runs`), and a tab's own
+              # paths follow the tab (`…/-/policy/history`).
+              live "/targets", TargetLive.Index, :index
+              live "/targets/:system/*path", TargetLive.Show, :show
               # One run: four tabs of one LiveView, so a tab is a patch. `:run_id` is the
               # run's subject, the id the runner prints, not the row's id.
               live "/runs/:run_id", RunLive.Show, :timeline
               live "/runs/:run_id/terminal", RunLive.Show, :terminal
               live "/runs/:run_id/connections", RunLive.Show, :connections
               live "/runs/:run_id/details", RunLive.Show, :details
-              # The security policy: the workspace's baseline and a target's view of it,
-              # one object with two scopes. Tabs, filters, the opened change, the compared
-              # version and the export modal are in the URL. `:target_id` is the target
-              # row's id, because a system and a path hold slashes.
+              # The security policy: the workspace's baseline; a target's view of it is
+              # the Policy tab of the target's page. Tabs, filters, the opened change, the
+              # compared version and the export modal are in the URL.
               live "/policy", PolicyLive.Show, :rules
               live "/policy/targets", PolicyLive.Show, :targets
               live "/policy/history", PolicyLive.Show, :history
               live "/policy/document", PolicyLive.Show, :document
               live "/policy/versions/:n", PolicyLive.Show, :version
               live "/policy/versions/:n/export", PolicyLive.Show, :export
-              live "/policy/targets/:target_id", PolicyLive.Target, :rules
-              live "/policy/targets/:target_id/history", PolicyLive.Target, :history
-              live "/policy/targets/:target_id/document", PolicyLive.Target, :document
-              live "/policy/targets/:target_id/versions/:n", PolicyLive.Target, :version
-              live "/policy/targets/:target_id/versions/:n/export", PolicyLive.Target, :export
               # Its settings, one section a page, as the organisation's.
               live "/settings", SettingsLive, :workspace
               live "/settings/keys", AccessKeyLive.Index, :index
@@ -345,6 +344,11 @@ defmodule ApiaryWeb.Routes do
 
           # The raw bytes of a run's log, for the terminal of the run page. Not a page.
           get "/:org/:workspace/runs/:run_id/log", RunLogController, :show
+
+          # A target's policy had a page of its own, by the target row's id; it is the
+          # Policy tab of the target's page now, where these send on to.
+          get "/:org/:workspace/policy/targets/:target_id", TargetMovedController, :show
+          get "/:org/:workspace/policy/targets/:target_id/*rest", TargetMovedController, :show
         end
       end
 

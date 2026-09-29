@@ -1,49 +1,47 @@
 defmodule ApiaryWeb.PolicyLive.Target do
   @moduledoc """
-  A target's view of the workspace's policy: the effective list, one row per host in force
-  with where it came from, the rules that lost hung under the rule that beat them; the
-  hosts the harness declared; the target's own history, versions and export.
+  A target's view of the workspace's policy, the Policy tab of the target's page
+  (`ApiaryWeb.TargetLive.Show`, `…/-/policy`): the effective list, one row per host in
+  force with where it came from, the rules that lost hung under the rule that beat them;
+  the hosts the harness declared; the target's own history (`…/-/policy/history`),
+  versions (`…/-/policy/versions/:n`, with `/export`) and document.
 
-  `:target_id` is the target row's id. A target of another workspace is not found:
-  the page renders the not-found state and never another workspace's rules.
+  Not a page of its own: the target's page mounts it with the target it found in its own
+  workspace (`mount/2`), puts the tab's action in `:action` (`:rules`, `:history`,
+  `:document`, `:version`, `:export`) and hands it the page's parameters, events and
+  messages while the tab is open (`handle_params/2`, `handle_event/3`, `handle_info/2`);
+  it renders the tab's content (`content/1`) under the page's header and tabs. The old
+  paths, `/policy/targets/:target_id/…`, send on to the tab (`ApiaryWeb.MovedController`).
   """
-  use ApiaryWeb, :live_view
-  use ApiaryWeb.Features, :security
-  on_mount {ApiaryWeb.Access, :"security_policy.read"}
+  use ApiaryWeb, :html
+  use ApiaryWeb.Async
 
   import ApiaryWeb.PolicyComponents
   import ApiaryWeb.PolicyLive.Views
 
   alias Apiary.Policy
-  alias Apiary.Runs.Filters
   alias ApiaryWeb.PolicyLive.Common
   alias Apiary.Policy.Grammar
   alias ApiaryWeb.PolicyLive.Show
 
   @shows ~w(workspace target overrides)
 
-  @impl true
-  def mount(%{"target_id" => id}, _session, socket) do
-    case Policy.get_target(socket.assigns.current_scope, id) do
-      {:ok, target} ->
-        socket =
-          socket
-          |> Common.mount(target)
-          |> assign(reload: &load/1, show: nil, ruled_host: nil, allowed: %{})
-          |> assign(history: nil, open_change: nil, diff: nil, v: nil, export: nil, missing: nil)
-          |> assign(credentials_open: false, summary: nil, would: nil, params: %{})
+  @doc """
+  mount/2 is the tab's assigns for `target`, a target of the scope's workspace, and the
+  subscription to the policy's changes. The tab is read once, by the connected mount:
+  the first render is its skeleton.
+  """
+  def mount(socket, target) do
+    socket =
+      socket
+      |> Common.mount(target)
+      |> assign(reload: &load/1, show: nil, ruled_host: nil, allowed: %{})
+      |> assign(history: nil, open_change: nil, diff: nil, v: nil, export: nil, missing: nil)
+      |> assign(credentials_open: false, summary: nil, would: nil, params: %{})
 
-        # The page is read once, by the connected mount: the first render is its skeleton.
-        socket =
-          if connected?(socket),
-            do: socket |> load() |> assign(:loaded, true),
-            else: assign(socket, loaded: false, page_title: gettext("Policy"))
-
-        {:ok, socket}
-
-      {:error, _not_found} ->
-        {:ok, assign(socket, holder: :not_found, loaded: true, page_title: gettext("Policy"))}
-    end
+    if connected?(socket),
+      do: socket |> load() |> assign(:loaded, true),
+      else: assign(socket, loaded: false)
   end
 
   defp load(socket) do
@@ -89,7 +87,6 @@ defmodule ApiaryWeb.PolicyLive.Target do
       version: version,
       baseline?: !own?,
       change_total: changes.total,
-      run_total: run_total(scope, target),
       suggestions: declared.suggested,
       covered: declared.covered,
       reload_pending: false,
@@ -102,12 +99,6 @@ defmodule ApiaryWeb.PolicyLive.Target do
       )
     end)
     |> load_record()
-  end
-
-  # How many runs the Runs tab leads to: the runs list's own count, every run of the
-  # target, so the number and the page agree.
-  defp run_total(scope, %{system: system, path: path}) do
-    Apiary.Runs.count_runs(scope, Filters.parse(Filters.target_params(system, path), :runs))
   end
 
   defp credentials(effective, socket) do
@@ -146,15 +137,15 @@ defmodule ApiaryWeb.PolicyLive.Target do
     end
   end
 
-  @impl true
-  def handle_params(_params, _uri, %{assigns: %{holder: :not_found}} = socket),
-    do: {:noreply, socket}
+  @doc """
+  handle_params/2 applies the tab's action (`:action`) with the page's parameters: the
+  rule the URL points at, the history's page and opened change, the version shown.
+  """
+  def handle_params(_params, %{assigns: %{loaded: false}} = socket), do: {:noreply, socket}
 
-  def handle_params(_params, _uri, %{assigns: %{loaded: false}} = socket), do: {:noreply, socket}
-
-  def handle_params(params, _uri, socket) do
+  def handle_params(params, socket) do
     socket = assign(socket, missing: nil, export: nil, params: params, now: DateTime.utc_now())
-    {:noreply, apply_action(socket, socket.assigns.live_action, params)}
+    {:noreply, apply_action(socket, socket.assigns.action, params)}
   end
 
   defp apply_action(socket, :rules, params) do
@@ -248,10 +239,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
 
   ## Events
 
-  @impl true
-  def handle_event(_event, _params, %{assigns: %{holder: :not_found}} = socket),
-    do: {:noreply, socket}
-
+  @doc "handle_event/3 is the tab's answer to an event of its content."
   def handle_event(event, params, socket) do
     case Common.handle_event(event, params, socket) do
       {:halt, socket} -> {:noreply, socket}
@@ -545,10 +533,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
 
   ## Messages
 
-  @impl true
-  def handle_info({:policy_changed, _change}, %{assigns: %{holder: :not_found}} = socket),
-    do: {:noreply, socket}
-
+  @doc "handle_info/2 follows the policy: a change reloads the tab, coalesced."
   def handle_info({:policy_changed, _change}, socket),
     do: {:noreply, Common.schedule_reload(socket)}
 
@@ -563,7 +548,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
     # What the URL shows is read again too: a version in force a moment ago may be
     # superseded now.
     socket =
-      case socket.assigns.live_action do
+      case socket.assigns.action do
         :history ->
           apply_action(socket, :history, socket.assigns.params)
 
@@ -583,214 +568,147 @@ defmodule ApiaryWeb.PolicyLive.Target do
     {:noreply, socket}
   end
 
+  def handle_info(_message, socket), do: {:noreply, socket}
+
   ## Render
 
-  @impl true
-  def render(%{loaded: false} = assigns) do
+  @doc """
+  content/1 is the tab's content, under the target's page's header and tabs: what the
+  policy of the target is, with the version in force and its export; the tab's own
+  views (the effective policy, its history, its document); the view of the action; and
+  the dialogs. Its skeleton until the connected mount has read it.
+  """
+  def content(%{loaded: false} = assigns) do
     ~H"""
-    <Layouts.app
-      flash={@flash}
-      current_scope={@current_scope}
-      memberships={@memberships}
-      counts={@nav_counts}
-      nav={:policy}
-      width="list"
-    >
-      <.page_skeleton title={"#{@holder.system}/#{@holder.path}"} />
-    </Layouts.app>
+    <div id="policy-page" class="grid gap-3" aria-busy="true">
+      <span class="skeleton q-skel w-96 max-w-full"></span>
+      <span class="skeleton q-skel w-64"></span>
+      <span class="skeleton q-skel mt-4 h-40 w-full"></span>
+    </div>
     """
   end
 
-  def render(%{holder: :not_found} = assigns) do
+  def content(assigns) do
     ~H"""
-    <Layouts.app
-      flash={@flash}
-      current_scope={@current_scope}
-      memberships={@memberships}
-      counts={@nav_counts}
-      nav={:policy}
-      width="list"
-    >
-      <.empty_state
-        tone="neutral"
-        icon="hero-magnifying-glass"
-        heading="h1"
-        title={gettext("This target is not in this workspace")}
+    <div id="policy-page" phx-hook="PolicyPage" class="grid grid-cols-[minmax(0,1fr)] gap-6">
+      <Show.version_head
+        :if={@action in [:version, :export] && @v}
+        v={@v}
+        base={@base}
+        heading="h2"
+      />
+
+      <div
+        :if={!(@action in [:version, :export] && @v)}
+        class="flex flex-wrap items-start justify-between gap-4"
       >
-        {gettext("The link may be for another workspace, or the target has not posted a run here.")}
-        <:actions>
-          <.button navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy"}>{gettext(
-            "Back to policy"
-          )}</.button>
-        </:actions>
-      </.empty_state>
-    </Layouts.app>
-    """
-  end
-
-  def render(assigns) do
-    ~H"""
-    <Layouts.app
-      flash={@flash}
-      current_scope={@current_scope}
-      memberships={@memberships}
-      counts={@nav_counts}
-      nav={:policy}
-      width="list"
-    >
-      <:crumb>
-        <span class="truncate"><span class="text-faint">{@holder.system}/</span>{@holder.path}</span>
-      </:crumb>
-      <div id="policy-page" phx-hook="PolicyPage" class="grid grid-cols-[minmax(0,1fr)] gap-6">
-        <div class="grid gap-3">
-          <nav class="q-crumbs" aria-label={gettext("Breadcrumb")}>
-            <.link navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy"}>{gettext(
-              "Policy"
-            )}</.link>
-            <.icon name="hero-chevron-right-micro" class="size-3" />
-            <%= if @live_action in [:version, :export] && @v do %>
-              <.link navigate={@base} class="font-mono text-xs">
-                <span class="text-faint">{@holder.system}/</span>{@holder.path}
-              </.link>
-              <.icon name="hero-chevron-right-micro" class="size-3" />
-              <span class="q-here" aria-current="page">
-                {gettext("Version %{version}", version: @v.configuration.version)}
-              </span>
-            <% else %>
-              <.link navigate={
-                ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy/targets"
-              }>{gettext("Targets")}</.link>
-              <.icon name="hero-chevron-right-micro" class="size-3" />
-              <span class="q-here font-mono text-xs" aria-current="page">
-                <span class="text-faint">{@holder.system}/</span>{@holder.path}
-              </span>
-            <% end %>
-          </nav>
-
-          <Show.version_head :if={@live_action in [:version, :export] && @v} v={@v} base={@base} />
-
-          <header
-            :if={!(@live_action in [:version, :export] && @v)}
-            class="flex flex-wrap items-start justify-between gap-4"
+        <p class="min-w-0 max-w-[62ch] flex-1 basis-72 text-sm/5 text-muted">
+          {gettext(
+            "What runs of this target may reach: the workspace's rules, then this target's own."
+          )}
+          {gettext(
+            "Where the two meet on a host, the target wins, unless the workspace's rule is locked."
+          )}
+        </p>
+        <div :if={@version} class="q-head-side">
+          <span class="inline-flex items-center gap-2">
+            <.version_pill
+              id="policy-version-pill"
+              version={@version.version}
+              digest={@version.digest}
+              navigate={
+                if @baseline?,
+                  do: ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy/history",
+                  else: "#{@base}/history"
+              }
+              copy
+            />
+            <small :if={@baseline?} id="policy-baseline" class="text-xs text-faint">
+              <.term
+                word={gettext("workspace baseline")}
+                standard={baseline_tip()}
+                class="q-tip-wide tooltip-left"
+              />
+            </small>
+          </span>
+          <.button
+            id="policy-export-button"
+            navigate={
+              if @baseline?,
+                do:
+                  ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy/versions/#{@version.version}/export",
+                else: "#{@base}/versions/#{@version.version}/export"
+            }
           >
-            <div class="min-w-0 flex-1 basis-72">
-              <h1 class="break-all font-mono text-[17px]/7 font-semibold">
-                <span class="font-normal text-faint">{@holder.system}/</span>{@holder.path}
-              </h1>
-              <p class="mt-0.5 max-w-[62ch] text-sm/5 text-muted">
-                {gettext(
-                  "What runs of this target may reach: the workspace's rules, then this target's own."
-                )}
-                {gettext(
-                  "Where the two meet on a host, the target wins, unless the workspace's rule is locked."
-                )}
-              </p>
-            </div>
-            <div :if={@version} class="q-head-side">
-              <span class="inline-flex items-center gap-2">
-                <.version_pill
-                  id="policy-version-pill"
-                  version={@version.version}
-                  digest={@version.digest}
-                  navigate={
-                    if @baseline?,
-                      do:
-                        ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy/history",
-                      else: "#{@base}/history"
-                  }
-                  copy
-                />
-                <small :if={@baseline?} id="policy-baseline" class="text-xs text-faint">
-                  <.term
-                    word={gettext("workspace baseline")}
-                    standard={baseline_tip()}
-                    class="q-tip-wide tooltip-left"
-                  />
-                </small>
-              </span>
-              <.button
-                id="policy-export-button"
-                navigate={
-                  if @baseline?,
-                    do:
-                      ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy/versions/#{@version.version}/export",
-                    else: "#{@base}/versions/#{@version.version}/export"
-                }
-              >
-                <.icon name="hero-arrow-up-tray-micro" class="size-4" />{gettext("Export")}
-              </.button>
-            </div>
-          </header>
+            <.icon name="hero-arrow-up-tray-micro" class="size-4" />{gettext("Export")}
+          </.button>
         </div>
-
-        <.target_tabs
-          scope={@current_scope}
-          live_action={@live_action}
-          base={@base}
-          rules={length(@rows)}
-          changes={@change_total}
-          runs={@run_total}
-          document={@version != nil}
-          holder={@holder}
-        />
-
-        <div id="policy-announce" class="sr-only" role="status" aria-live="polite">{@announce}</div>
-
-        <.notice :if={@write_error} kind={:error} class="max-w-[80ch]">
-          <span id="policy-write-error" role="alert">{@write_error}</span>
-        </.notice>
-
-        <.rules_tab :if={@live_action == :rules} {assigns} />
-        <.history_view
-          :if={@live_action == :history && @history}
-          history={@history}
-          open={@open_change}
-          diff={@diff}
-          base={@base}
-          scope={:target}
-          summary={@summary}
-          now={@now}
-        />
-        <.version_view :if={@live_action in [:version, :export] && @v} v={@v} base={@base} now={@now} />
-        <.empty_state
-          :if={@missing}
-          tone="neutral"
-          icon="hero-magnifying-glass"
-          title={gettext("There is no version %{version}", version: String.slice(@missing.n, 0, 12))}
-        >
-          <span :if={@missing.latest}>
-            {gettext("The latest is version %{version}.", version: @missing.latest.version)}
-          </span>
-          <span :if={!@missing.latest}>
-            {gettext("This target has no versions of its own: it is served the workspace baseline.")}
-          </span>
-          <:actions>
-            <.button :if={@missing.latest} navigate={"#{@base}/versions/#{@missing.latest.version}"}>
-              {gettext("Open version %{version}", version: @missing.latest.version)}
-            </.button>
-            <.button :if={!@missing.latest} navigate={@base}>
-              {gettext("Back to the target's policy")}
-            </.button>
-          </:actions>
-        </.empty_state>
       </div>
 
-      <.keys_dialog />
-      <.target_mode_dialog
-        :if={match?({:target_mode, _, _}, @dialog)}
-        setting={elem(@dialog, 1)}
-        becomes={elem(@dialog, 2)}
-        name={Common.holder_name(%{assigns: %{holder: @holder}})}
-        workspace={@mode.workspace}
-        would={@would}
-        locked_denies={@locked_denies}
+      <.target_tabs
+        action={@action}
+        base={@base}
+        rules={length(@rows)}
+        changes={@change_total}
+        document={@version != nil}
       />
-      <.export_modal
-        :if={@live_action == :export && @export}
-        export={@export}
-        close={"#{@base}/versions/#{@v.configuration.version}"}
+
+      <div id="policy-announce" class="sr-only" role="status" aria-live="polite">{@announce}</div>
+
+      <.notice :if={@write_error} kind={:error} class="max-w-[80ch]">
+        <span id="policy-write-error" role="alert">{@write_error}</span>
+      </.notice>
+
+      <.rules_tab :if={@action == :rules} {assigns} />
+      <.history_view
+        :if={@action == :history && @history}
+        history={@history}
+        open={@open_change}
+        diff={@diff}
+        base={@base}
+        scope={:target}
+        summary={@summary}
+        now={@now}
       />
-    </Layouts.app>
+      <.version_view :if={@action in [:version, :export] && @v} v={@v} base={@base} now={@now} />
+      <.empty_state
+        :if={@missing}
+        tone="neutral"
+        icon="hero-magnifying-glass"
+        title={gettext("There is no version %{version}", version: String.slice(@missing.n, 0, 12))}
+      >
+        <span :if={@missing.latest}>
+          {gettext("The latest is version %{version}.", version: @missing.latest.version)}
+        </span>
+        <span :if={!@missing.latest}>
+          {gettext("This target has no versions of its own: it is served the workspace baseline.")}
+        </span>
+        <:actions>
+          <.button :if={@missing.latest} navigate={"#{@base}/versions/#{@missing.latest.version}"}>
+            {gettext("Open version %{version}", version: @missing.latest.version)}
+          </.button>
+          <.button :if={!@missing.latest} navigate={@base}>
+            {gettext("Back to the target's policy")}
+          </.button>
+        </:actions>
+      </.empty_state>
+    </div>
+
+    <.keys_dialog />
+    <.target_mode_dialog
+      :if={match?({:target_mode, _, _}, @dialog)}
+      setting={elem(@dialog, 1)}
+      becomes={elem(@dialog, 2)}
+      name={Common.holder_name(%{assigns: %{holder: @holder}})}
+      workspace={@mode.workspace}
+      would={@would}
+      locked_denies={@locked_denies}
+    />
+    <.export_modal
+      :if={@action == :export && @export}
+      export={@export}
+      close={"#{@base}/versions/#{@v.configuration.version}"}
+    />
     """
   end
 
@@ -986,55 +904,30 @@ defmodule ApiaryWeb.PolicyLive.Target do
         mode: mode
       )
 
-  attr :live_action, :atom, required: true
+  # The tab's own views, under the page's tabs: views, not a second bar of tabs.
+  attr :action, :atom, required: true
   attr :base, :string, required: true
   attr :rules, :integer, required: true
   attr :changes, :integer, required: true
-  attr :runs, :integer, required: true
   attr :document, :boolean, required: true
-  attr :holder, :map, required: true
-
-  attr :scope, :map,
-    required: true,
-    doc: "the caller's scope: its organisation and workspace name the links"
 
   defp target_tabs(assigns) do
-    assigns =
-      assign(
-        assigns,
-        :target_query,
-        Filters.target_params(assigns.holder.system, assigns.holder.path)
-      )
-
     ~H"""
-    <nav id="policy-tabs" class="q-tabs" aria-label={gettext("Target policy")}>
-      <.link patch={@base} aria-current={@live_action == :rules && "page"}>
-        <.icon name="hero-shield-check-micro" class="size-4" />{gettext("Effective policy")}
-        <span :if={@rules > 0} class="q-tabs-n">{@rules}</span>
+    <nav id="policy-tabs" class="q-views" aria-label={gettext("Target policy")}>
+      <.link patch={@base} aria-current={@action == :rules && "page"}>
+        {gettext("Effective policy")}
+        <span :if={@rules > 0} class="q-views-n">{@rules}</span>
       </.link>
-      <.link patch={"#{@base}/history"} aria-current={@live_action == :history && "page"}>
-        <.icon name="hero-clock-micro" class="size-4" />{gettext("History")}
-        <span :if={@changes > 0} class="q-tabs-n">{@changes}</span>
+      <.link patch={"#{@base}/history"} aria-current={@action == :history && "page"}>
+        {gettext("History")}
+        <span :if={@changes > 0} class="q-views-n">{@changes}</span>
       </.link>
       <.link
         :if={@document}
         patch={"#{@base}/document"}
-        aria-current={@live_action in [:version, :export] && "page"}
+        aria-current={@action in [:version, :export] && "page"}
       >
-        <.icon name="hero-document-text-micro" class="size-4" />{gettext("Document")}
-      </.link>
-      <.link
-        id="policy-tab-runs"
-        navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs?#{@target_query}"}
-      >
-        <.icon name="hero-play-circle-micro" class="size-4" />{gettext("Runs")}
-        <span :if={@runs > 0} class="q-tabs-n">{Format.number(@runs)}</span>
-      </.link>
-      <.link
-        id="policy-tab-connections"
-        navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/connections?#{@target_query}"}
-      >
-        <.icon name="hero-arrows-right-left-micro" class="size-4" />{gettext("Connections")}
+        {gettext("Document")}
       </.link>
     </nav>
     """

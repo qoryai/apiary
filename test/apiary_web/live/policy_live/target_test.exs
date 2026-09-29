@@ -6,6 +6,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
 
   import Phoenix.LiveViewTest
   import Apiary.OrganisationsFixtures
+  import ApiaryWeb.TargetComponents, only: [target_path: 4]
   import Apiary.RunEventsFixtures
   import Apiary.RunListFixtures
 
@@ -31,7 +32,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     {:ok, _} = Policy.allow(scope, nil, %{host: "registry.example"})
     {:ok, _} = Policy.allow(scope, nil, %{kind: "credential", name: "model-key"})
 
-    %{target: target, path: workspace_path(scope, "/policy/targets/#{target.id}")}
+    %{target: target, path: target_path(scope, target.system, target.path, ["policy"])}
   end
 
   defp open(conn, path) do
@@ -64,26 +65,34 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
   defp own(scope, target, host),
     do: Enum.find(Policy.list_rules(scope, target), &(&1.host == host))
 
-  test "another workspace's target is not found, nor is an id that is none", %{
+  test "another workspace's target is not found, by its path or by its old id", %{
     conn: conn,
     scope: scope
   } do
     other = scope_fixture()
-    started_run(other, shop())
+    started_run(other, %{"forge" => "github.example", "repository" => "acme/theirs"})
     [%{target: theirs}] = Policy.list_targets(other)
     {:ok, _} = Policy.allow(other, theirs, %{host: "secret.example"})
 
-    for path <- [
-          workspace_path(scope, "/policy/targets/#{theirs.id}"),
-          workspace_path(scope, "/policy/targets/nope")
-        ] do
-      {:ok, view, html} = live(conn, path)
-      assert html =~ "This repository is not in this workspace"
-      refute html =~ "secret.example"
-      assert has_element?(view, "#nav-policy[aria-current=page]")
-      assert has_element?(view, "a[href='#{workspace_path(scope, "/policy")}']", "Back to policy")
-      assert render_hook(view, "composer_save", %{}) =~ "This repository is not in this workspace"
+    assert_raise Ecto.NoResultsError, fn ->
+      live(conn, target_path(scope, theirs.system, theirs.path, ["policy"]))
     end
+
+    for id <- [theirs.id, "nope"] do
+      assert_error_sent 404, fn -> get(conn, workspace_path(scope, "/policy/targets/#{id}")) end
+    end
+  end
+
+  test "the old paths of a target's policy send on to the Policy tab", %{
+    conn: conn,
+    scope: scope,
+    target: target,
+    path: path
+  } do
+    old = workspace_path(scope, "/policy/targets/#{target.id}")
+    assert redirected_to(get(conn, old)) == path
+    assert redirected_to(get(conn, old <> "/history?page=2")) == path <> "/history?page=2"
+    assert redirected_to(get(conn, old <> "/versions/3/export")) == path <> "/versions/3/export"
   end
 
   test "a target without rules of its own is the workspace's list, and says so",
@@ -109,9 +118,10 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     assert text(view, "#policy-effective-foot") =~
              "Mode observe , the workspace's default. Credentials: model-key from the workspace."
 
-    assert has_element?(view, "#policy-tab-runs[href*='target=acme%2Fshop']")
-    assert text(view, "#policy-tab-runs") == "Runs 1"
-    assert has_element?(view, "#policy-tab-connections[href*='system=github.example']")
+    # The target's page holds the tab: its runs and connections are its other tabs.
+    assert has_element?(view, "#target-tab-policy[aria-current=page]")
+    assert has_element?(view, "#target-tab-runs[href$='/acme/shop/-/runs']")
+    assert has_element?(view, "#target-tab-connections[href$='/acme/shop/-/connections']")
   end
 
   test "disable here, then restore: the beaten rule hangs under the rule that beat it",
@@ -491,8 +501,8 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     assert to == path <> "/versions/1"
 
     view = open(conn, path <> "/versions/1")
-    assert has_element?(view, "h1", "Version 1")
-    assert has_element?(view, ".q-crumbs a[href='#{path}']")
+    assert has_element?(view, "h2", "Version 1")
+    assert has_element?(view, "#policy-tabs a[href='#{path}']", "Effective policy")
 
     view = open(conn, path <> "/versions/1/export")
     assert text(view, "#export-lead") =~ "github.example/acme/shop"
