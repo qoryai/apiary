@@ -23,11 +23,13 @@ defmodule ApiaryWeb.Edition do
   The callbacks, by where they are asked:
 
   - **Navigation** (`ApiaryWeb.Layouts`): `c:nav_entries/1`, the sidebar's entries after
-    the core's, and `c:switcher_entries/1`, the organisation switcher's after its places,
-    each an `ApiaryWeb.Nav.Entry`; `c:nav_counts/1`, the numbers beside them, merged into
+    the core's, and `c:switcher_entries/1`, the switcher's after its places, each an
+    `ApiaryWeb.Nav.Entry`; `c:nav_sections/0`, the headings of the edition's own groups of
+    the sidebar; `c:nav_counts/1`, the numbers beside them, merged into
     `ApiaryWeb.UserAuth.nav_counts/1`; `c:place_scope/2`, the scope a place of the
     switcher gives, for a place the edition lists (`c:Apiary.Edition.places/1`) or a
-    membership it puts more on.
+    membership it puts more on; `c:place_group/1`, the heading the switcher lists such a
+    place under.
   - **Readers and refusals**: `c:reader_sentence/2`, what the pages say to a person who
     reads an organisation through the edition's reach (`Apiary.Access.reader/1`);
     `c:refusal_sentence/1`, what a page says of a refusal the edition gave.
@@ -59,6 +61,21 @@ defmodule ApiaryWeb.Edition do
 
   @doc "The organisation switcher's entries after the places it switches to."
   @callback switcher_entries(Scope.t()) :: [Entry.t()]
+
+  @doc """
+  The edition's own groups of the sidebar, in order, after the core's: each the `section`
+  its entries name (`ApiaryWeb.Nav.Entry`) and its heading, translated, or nil for a group
+  without one. An entry of a section neither the core nor the edition names goes last,
+  without a heading.
+  """
+  @callback nav_sections() :: [{atom, String.t() | nil}]
+
+  @doc """
+  The heading the switcher lists a place under (`c:Apiary.Edition.places/1`), translated,
+  such as the clients a person reaches through their operator; nil for the person's own
+  organisations, which the switcher lists first.
+  """
+  @callback place_group(place :: term) :: String.t() | nil
 
   @doc """
   The scope a place of the organisation switcher gives in `workspace`, as
@@ -120,6 +137,8 @@ defmodule ApiaryWeb.Edition do
     nav_entries: 1,
     nav_counts: 1,
     switcher_entries: 1,
+    nav_sections: 0,
+    place_group: 1,
     place_scope: 2,
     reader_sentence: 2,
     refusal_sentence: 1,
