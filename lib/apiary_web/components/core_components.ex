@@ -930,19 +930,21 @@ defmodule ApiaryWeb.CoreComponents do
   """
   attr :name, :string, default: nil
   attr :kind, :string, default: "person", values: ~w(person self organisation pending)
-  attr :size, :string, default: "sm", values: ~w(sm md lg)
+  attr :size, :string, default: "sm", values: ~w(xs sm md lg)
   attr :class, :any, default: nil
 
   def avatar(assigns) do
     ~H"""
     <span class={["avatar avatar-placeholder flex-none", @class]} aria-hidden="true">
       <div class={[
+        @size == "xs" && "size-[18px] text-[10.5px]",
         @size == "sm" && "size-6 text-[11px]",
         @size == "md" && "size-7 text-xs",
         @size == "lg" && "size-8 text-[13px]",
         @kind == "person" && "rounded-full bg-base-300 text-muted ring-1 ring-inset ring-line",
         @kind == "self" && "rounded-full bg-primary-soft text-primary-soft-content",
-        @kind == "organisation" && "rounded-field bg-neutral text-neutral-content",
+        @kind == "organisation" && @size == "xs" && "rounded-selector bg-neutral text-neutral-content",
+        @kind == "organisation" && @size != "xs" && "rounded-field bg-neutral text-neutral-content",
         @kind == "pending" &&
           "rounded-full border border-dashed border-line-field bg-transparent text-faint"
       ]}>

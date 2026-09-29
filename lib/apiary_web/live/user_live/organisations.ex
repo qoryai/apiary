@@ -27,7 +27,8 @@ defmodule ApiaryWeb.UserLive.Organisations do
       current_scope={@current_scope}
       memberships={@memberships}
       counts={assigns[:nav_counts]}
-      width="narrow"
+      nav={:user_organisations}
+      width="read"
     >
       <%= if @memberships == [] and @pending == [] and @suspended == [] do %>
         <.empty_state
@@ -51,7 +52,7 @@ defmodule ApiaryWeb.UserLive.Organisations do
               primary={index == 0}
               scope={@current_scope}
             />
-            <.button href={~p"/users/settings"}>{gettext("Account settings")}</.button>
+            <.button href={~p"/users/settings"}>{gettext("Your settings")}</.button>
             <.button href={~p"/users/log-out"} method="delete" variant="ghost">
               {gettext("Log out")}
             </.button>

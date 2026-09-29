@@ -1104,6 +1104,87 @@ defmodule Apiary.Runs do
 
   defp bound(limit), do: limit |> max(1) |> min(@max_limit)
 
+  ## Search or jump to
+
+  @doc """
+  search_targets/3 is the workspace's targets whose system and path, as `system/path`,
+  hold `text` anywhere, case-insensitively and as text (`like/1`): at most `limit`, by
+  path. What the palette finds (`ApiaryWeb.JumpController`).
+  """
+  @spec search_targets(Scope.t(), String.t(), pos_integer) :: [Target.t()]
+  def search_targets(
+        %Scope{organisation: %Organisation{id: organisation_id}, workspace: %Workspace{id: id}},
+        text,
+        limit \\ 8
+      ) do
+    case like(text) do
+      nil ->
+        []
+
+      pattern ->
+        Repo.all(
+          from t in Target,
+            where: t.organisation_id == ^organisation_id and t.workspace_id == ^id,
+            where: ilike(fragment("? || '/' || ?", t.system, t.path), ^pattern),
+            order_by: [asc: t.path, asc: t.system],
+            limit: ^bound(limit)
+        )
+    end
+  end
+
+  @doc """
+  search_runs/3 is the workspace's runs that `text` names: by the start of their id, as
+  the runner prints it (four hexadecimal characters at least, a whole id or the address
+  of a run's page too), or by their task, which holds it anywhere; newest first, at most
+  `limit`. What the palette finds (`ApiaryWeb.JumpController`).
+  """
+  @spec search_runs(Scope.t(), String.t(), pos_integer) :: [Run.t()]
+  def search_runs(%Scope{} = scope, text, limit \\ 8) when is_binary(text) do
+    prefix = run_id_prefix(text)
+    pattern = like(text)
+
+    condition =
+      case {prefix, pattern} do
+        {nil, nil} ->
+          nil
+
+        {nil, pattern} ->
+          dynamic([r], ilike(r.task, ^pattern))
+
+        {prefix, nil} ->
+          dynamic([r], fragment("?::text LIKE ?", r.run_id, ^prefix))
+
+        {prefix, pattern} ->
+          dynamic([r], fragment("?::text LIKE ?", r.run_id, ^prefix) or ilike(r.task, ^pattern))
+      end
+
+    if condition do
+      Repo.all(
+        from r in in_scope(scope),
+          where: ^condition,
+          order_by: [desc: coalesce(r.started_at, r.inserted_at), desc: r.id],
+          limit: ^bound(limit)
+      )
+    else
+      []
+    end
+  end
+
+  # The start of a run's id in what was typed, as the operand of LIKE: a run page's
+  # address gives its id; otherwise four to thirty-six hexadecimal characters and hyphens.
+  defp run_id_prefix(text) do
+    text = String.trim(text)
+
+    case Regex.run(~r"/runs/([0-9a-fA-F-]{36})(?:[/?#]|$)", text) do
+      [_, run_id] ->
+        String.downcase(run_id)
+
+      nil ->
+        if Regex.match?(~r/\A[0-9a-fA-F-]{4,36}\z/, text),
+          do: String.downcase(text) <> "%"
+    end
+  end
+
   ## Closing
 
   @closable_states ~w(pending running lost)

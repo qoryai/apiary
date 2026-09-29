@@ -39,7 +39,7 @@ defmodule ApiaryWeb.SettingsLiveTest do
       assert html =~
                "The name of this workspace, where its pages are, and how long runs are kept."
 
-      assert has_element?(lv, "#sidebar p", "Workspace")
+      assert has_element?(lv, "aside#sidebar[aria-label='Workspace']")
       assert has_element?(lv, "#nav-settings[aria-current='page']")
       assert has_element?(lv, "#workspace-slug span", workspace_path(scope))
       assert html =~ scope.workspace.name

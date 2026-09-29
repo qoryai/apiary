@@ -7,34 +7,74 @@ one. The words on them are in [lingo.md](lingo.md); where the code lives is in
 ## The shell
 
 Every page behind sign-in renders inside `ApiaryWeb.Layouts.app/1`, which takes the
-page's active navigation item (`nav`), the counts the sidebar shows (`counts`) and the
-width of its column (`width`): `wide` is 960 px, `narrow` 640 px for settings, and `full`
-1200 px for the runs, run and connections pages.
+page's active navigation item (`nav`), the counts the sidebar shows (`counts`), the width
+of its column (`width`) and, in `crumb` slots, the page's own segments of the breadcrumb.
+The shell is section 4 of the v2 design brief (the knowledge vault's
+`product/design/apiary/v2/`): it shows one scope at a time, the one the page belongs to.
 
-- **The sidebar is the organisation's.** At its top the organisation and the workspace,
-  which become the switcher when the person has more than one place to go: a workspace
-  they reach in each organisation, or an organisation where they reach none yet, and last
-  the edition's entries (`ApiaryWeb.Edition.switcher_entries/1`), each leading to a page
-  of the edition's own; then the navigation, two groups, each a `<nav>` with its own
-  label, and only the organisation's own entries without a workspace; at its foot the Qory
-  Apiary menu with the version. The active item carries `aria-current="page"`. The navigation
-  is data, `ApiaryWeb.Nav.Entry` values: a new item of the core goes in `nav_entries/1`
-  of `ApiaryWeb.Layouts`, an edition's in its `ApiaryWeb.Edition.nav_entries/1`, and
-  never in a page.
-- **The top bar** is one `<header aria-label="Top bar">`, 52 px, level with the sidebar's
-  top row. It holds the theme menu and the account menu at its right end and nothing of
-  the page: no title, no breadcrumb.
-- **Below 768 px the sidebar is a drawer** behind the bar's Open menu button. The drawer's
-  side comes before the content in the DOM, so the tab order is sidebar, top bar, main at
-  every width without a `tabindex`. The `NavDrawer` hook moves focus into the drawer,
-  makes `#shell-content` inert and stops the page scrolling behind it; the scrim, Escape,
-  the Close menu button and any navigation close it, and focus returns to the menu button.
-- **Without a membership** there is no sidebar and no drawer: the bar carries the Qory
-  Apiary menu at its left.
+- **A page belongs to one scope**: a workspace, an organisation or the person. The
+  navigation is data, `ApiaryWeb.Nav.Entry` values, and the entry a page passes as `nav`
+  names its scope (`place`) and so the sidebar it shows. A new item of the core goes in
+  `nav_entries/1` of `ApiaryWeb.Layouts`, an edition's in its
+  `ApiaryWeb.Edition.nav_entries/1`, and never in a page.
+- **The top bar** is one `<header aria-label="Top bar">`, 48 px, across the window and
+  above the sidebar, first in the tab order after Skip to content. From the left: the
+  mark (home), the **breadcrumb** (`<nav id="breadcrumb">`: the organisation, the
+  workspace, each a link to its home, and the page's own segments, a target or a record,
+  the last one the page with `aria-current="page"`), then **Search or jump to**, **New**
+  and the **account menu**. A page's title stays its `<h1>`; the breadcrumb is navigation.
+- **The switcher.** With more than one place to go, or an edition's entry after the places
+  (`ApiaryWeb.Edition.switcher_entries/1`), the chevrons beside the organisation and the
+  workspace open one popover (`role="dialog"`, the `Switcher` hook): a search that filters
+  as the reader types, the places opened last (kept in `localStorage`), then each
+  organisation with its workspaces, a link to each at the section the reader is on, and
+  the edition's groups of places under their own headings
+  (`ApiaryWeb.Edition.place_group/1`). ↑ and ↓ move, Enter opens the first match, Escape
+  closes and gives focus back. With one place the segments are links and nothing more.
+- **Search or jump to** (⌘K, Ctrl+K, and / outside a field) is a `<dialog>` under the
+  `Palette` hook, which asks `ApiaryWeb.JumpController` (`/:org/:workspace/jump`,
+  `/:org/jump`) what matches, 150 ms after the reader stops typing: the pages of the
+  navigation, targets, runs by id or task, places, and what New offers. Every word of it
+  comes from the server; a runner's words are written as text.
+- **New** offers only what the reader may do where the page is
+  (`ApiaryWeb.Layouts.new_entries/1`). **The account menu** holds who they are and their
+  level there, their settings and organisations, the theme (Auto, Light, Dark), the docs,
+  the changelog, the source and the version, and Log out.
+- **The sidebar** holds the scope's pages and nothing else, in groups, each a `<nav>` with
+  its own name: a workspace's Overview, then Record (Runs, Connections) and Guard
+  (Policy), then the targets the person pinned (`counts.pins`); an organisation's Activity
+  and the edition's groups (`ApiaryWeb.Edition.nav_sections/0`); the person's settings
+  and organisations. Settings is at its foot, the scope's own; a page of Settings (an
+  entry of the section `:settings`, such as Access keys) marks it as the current entry.
+  The active item carries `aria-current="page"`. A group whose feature is off is absent,
+  not greyed.
+- **The sidebar folds to icons** from 768 px, by its Collapse control or the `[` key; the
+  fold is a reading preference in `localStorage`, set before the first paint by the root
+  layout's script, and while folded each item's name is its title.
+- **Below 768 px the sidebar is a drawer** behind the bar's Open menu button. The
+  `NavDrawer` hook moves focus into the drawer, makes the top bar and `#shell-content`
+  inert and stops the page scrolling behind it; the scrim, Escape, the Close menu button
+  and any navigation close it, and focus returns to the menu button. The bar names the last
+  segment of the breadcrumb only.
 - **Landmarks.** A Skip to content link is the first thing in the tab order and targets
   the one `<main id="main">`. A page has one `<h1>`, the title of its `<.header>`, which
   also holds a one-line description and at most one primary and one default action. Card
   and modal titles are `<h2>`.
+
+## Widths
+
+Every page starts at the same left edge, 32 px from the sidebar (24 px below 1024 px, 16
+below 768); nothing is centred in the space beside it. `width` is one of three:
+
+- `list` (the default): fluid, up to 1680 px, for the lists and the overviews. A list
+  page with a rail or a preview pane beside its list takes `work` and caps the list itself.
+- `work`: fluid, with no cap, for a work surface such as a run.
+- `read`: a 720 px column, for forms and settings; prose inside anything keeps 72ch.
+
+A sticky tab bar (`.q-tabs`) sticks under the top bar and bleeds to the page's gutter
+(`--q-gutter`). The classes of the shell are in `app.css`'s shell block, and they are
+`@layer qory`: a Tailwind display utility on the same element loses to them, so the shell
+hides its own parts on phones in that block.
 
 ## Components
 

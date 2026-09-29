@@ -284,9 +284,10 @@ What an edition may do, by where it is asked (`Apiary.Edition`, `ApiaryWeb.Editi
 - **Pages** (`ApiaryWeb.Edition`): its router, which calls the core's route macros
   (`ApiaryWeb.Routes`) with its own routes in the core's `live_session`s, may serve a page
   of its own at a core path (`except:`), and is the one the endpoint dispatches to
-  (`ApiaryWeb.Edition.router/0`); navigation entries and their counts (`nav_entries/1`,
-  `nav_counts/1`); the switcher's entries and the scope a place of its own gives
-  (`switcher_entries/1`, `place_scope/2`); what a page says to a person it lets in without
+  (`ApiaryWeb.Edition.router/0`); navigation entries, their groups and their counts
+  (`nav_entries/1`, `nav_sections/0`, `nav_counts/1`); the switcher's entries, the scope
+  a place of its own gives and the heading it lists such a place under
+  (`switcher_entries/1`, `place_scope/2`, `place_group/1`); what a page says to a person it lets in without
   a membership, and of a refusal of its own (`reader_sentence/2`, `refusal_sentence/1`);
   settings tabs (`settings_tabs/1`, `ApiaryWeb.SettingsComponents`); what it renders in
   the named places of the core's pages (`slot/2`, `ApiaryWeb.Extension`); the words for

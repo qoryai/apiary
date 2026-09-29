@@ -55,7 +55,7 @@ defmodule ApiaryWeb.RunLive.Show do
       memberships={@memberships}
       counts={@nav_counts}
       nav={:runs}
-      width="full"
+      width="work"
     >
       <.empty_state
         tone="neutral"
@@ -82,8 +82,17 @@ defmodule ApiaryWeb.RunLive.Show do
       memberships={@memberships}
       counts={@nav_counts}
       nav={:runs}
-      width="full"
+      width="work"
     >
+      <:crumb
+        :if={@run.target_system && @run.target_path}
+        navigate={
+          ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/runs?#{Filters.target_params(@run.target_system, @run.target_path)}"
+        }
+      >
+        <span class="truncate">{@run.target_path}</span>
+      </:crumb>
+      <:crumb>{gettext("Run %{id}", id: short_id(@run.run_id))}</:crumb>
       <div id="run-announcer" class="sr-only" aria-live="polite" aria-atomic="true">
         {@announcement}
       </div>

@@ -92,7 +92,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewWithoutSecurityTest do
       for path <- [workspace_path(scope), workspace_path(scope, "/keys")] do
         {:ok, view, _html} = live(conn, path)
 
-        for key <- ~w(overview runs connections keys members settings),
+        for key <- ~w(overview runs connections settings),
             do: assert(has_element?(view, "#nav-#{key}"))
 
         refute has_element?(view, "#nav-policy")

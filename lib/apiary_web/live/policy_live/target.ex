@@ -599,7 +599,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
       memberships={@memberships}
       counts={@nav_counts}
       nav={:policy}
-      width="full"
+      width="list"
     >
       <.page_skeleton title={"#{@holder.system}/#{@holder.path}"} />
     </Layouts.app>
@@ -614,7 +614,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
       memberships={@memberships}
       counts={@nav_counts}
       nav={:policy}
-      width="full"
+      width="list"
     >
       <.empty_state
         tone="neutral"
@@ -641,8 +641,11 @@ defmodule ApiaryWeb.PolicyLive.Target do
       memberships={@memberships}
       counts={@nav_counts}
       nav={:policy}
-      width="full"
+      width="list"
     >
+      <:crumb>
+        <span class="truncate"><span class="text-faint">{@holder.system}/</span>{@holder.path}</span>
+      </:crumb>
       <div id="policy-page" phx-hook="PolicyPage" class="grid grid-cols-[minmax(0,1fr)] gap-6">
         <div class="grid gap-3">
           <nav class="q-crumbs" aria-label={gettext("Breadcrumb")}>

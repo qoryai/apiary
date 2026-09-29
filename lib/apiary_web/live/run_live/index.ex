@@ -48,7 +48,7 @@ defmodule ApiaryWeb.RunLive.Index do
       memberships={@memberships}
       counts={@nav_counts}
       nav={:runs}
-      width="full"
+      width="list"
     >
       <.header>
         {gettext("Runs")}

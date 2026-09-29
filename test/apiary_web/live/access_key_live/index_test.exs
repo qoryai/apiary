@@ -41,7 +41,7 @@ defmodule ApiaryWeb.AccessKeyLive.IndexTest do
     test "creates a key and reveals the secret once", %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/keys")
 
-      lv |> element("a", "New access key") |> render_click()
+      lv |> element("#main a", "New access key") |> render_click()
       assert_patch(lv, ~p"/#{scope.organisation}/#{scope.workspace}/keys/new")
 
       assert lv

@@ -36,7 +36,7 @@ defmodule ApiaryWeb.ActivityLive do
       memberships={@memberships}
       counts={@nav_counts}
       nav={:activity}
-      width="wide"
+      width="list"
     >
       <.header>
         {gettext("Activity")}

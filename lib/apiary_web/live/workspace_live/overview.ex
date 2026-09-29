@@ -88,7 +88,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       memberships={@memberships}
       counts={@nav_counts}
       nav={:overview}
-      width="full"
+      width="list"
     >
       <div id="overview" phx-hook="OverviewPage" class="grid grid-cols-[minmax(0,1fr)] gap-6">
         <.header>

@@ -776,6 +776,22 @@ defmodule ApiaryWeb.UserAuth do
     end
   end
 
+  @doc """
+  Answers `401`, as JSON, a request that needs a signed-in person and has none: for what a
+  page asks of the server without leaving it, such as the palette's answers, which a
+  redirect to log in would not help.
+  """
+  def require_authenticated_json(conn, _opts) do
+    if conn.assigns.current_scope && conn.assigns.current_scope.user do
+      conn
+    else
+      conn
+      |> put_status(401)
+      |> Phoenix.Controller.json(%{error: "unauthenticated"})
+      |> halt()
+    end
+  end
+
   defp maybe_store_return_to(%{method: "GET"} = conn) do
     put_session(conn, :user_return_to, current_path(conn))
   end

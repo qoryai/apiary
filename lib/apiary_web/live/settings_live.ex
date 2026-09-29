@@ -34,7 +34,7 @@ defmodule ApiaryWeb.SettingsLive do
       memberships={@memberships}
       counts={@nav_counts}
       nav={if @page == :organisation, do: :organisation, else: :settings}
-      width="narrow"
+      width="read"
     >
       <.header :if={@page == :organisation}>
         {gettext("Organisation settings")}

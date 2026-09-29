@@ -876,6 +876,13 @@ msgid_plural "%{number} requests"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/controllers/jump_controller.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} result"
+msgid_plural "%{number} results"
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} rule"
@@ -1619,6 +1626,11 @@ msgstr ""
 msgid "A run appears here when a machine with an access key of this workspace starts one."
 msgstr ""
 
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "A run id, a page, a target or a place"
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "A run reloads at its next heartbeat."
@@ -1765,13 +1777,6 @@ msgstr ""
 msgid "Account menu, %{email}"
 msgstr ""
 
-#: lib/apiary_web/components/layouts.ex
-#: lib/apiary_web/live/user_live/organisations.ex
-#: lib/apiary_web/live/user_live/settings.ex
-#, elixir-autogen, elixir-format
-msgid "Account settings"
-msgstr ""
-
 #: lib/apiary_web/live/user_live/registration.ex
 #, elixir-autogen, elixir-format
 msgid "Accounts on this instance are created by invitation. Ask an owner or an admin of your organisation to invite you; the email they send has the link to sign up."
@@ -1785,6 +1790,7 @@ msgstr ""
 
 #: lib/apiary_web/components/core_components.ex
 #: lib/apiary_web/components/policy_components.ex
+#: lib/apiary_web/controllers/jump_controller.ex
 #, elixir-autogen, elixir-format
 msgid "Actions"
 msgstr ""
@@ -2540,6 +2546,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Closing tells the workspace to take no more events for this run. It is for a run that went quiet and will not post its exit."
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Collapse sidebar"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -3564,6 +3575,16 @@ msgstr ""
 msgid "Find a %{filter}"
 msgstr ""
 
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Find an organisation or workspace"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Find an organisation or workspace…"
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "First and last seen"
@@ -3707,6 +3728,11 @@ msgstr ""
 msgid "Give your workspace an access key, paste it into the runner file on your machines, and every run they make lands here."
 msgstr ""
 
+#: lib/apiary_web/controllers/jump_controller.ex
+#, elixir-autogen, elixir-format
+msgid "Go to"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Go to access keys"
@@ -3730,6 +3756,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Group by"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Guard"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -3994,6 +4025,11 @@ msgstr ""
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Invite member"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Invite people"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -4627,11 +4663,6 @@ msgstr ""
 msgid "Main session"
 msgstr ""
 
-#: lib/apiary_web/components/layouts.ex
-#, elixir-autogen, elixir-format
-msgid "Manage"
-msgstr ""
-
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Manage access keys"
@@ -4756,6 +4787,12 @@ msgstr ""
 msgid "Never used since it was created %{days} ago. A key nobody uses is a key to revoke."
 msgstr ""
 
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "New"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/live/access_key_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "New access key"
@@ -4968,6 +5005,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "No new version: the document did not change."
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "No organisation or workspace matches."
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -5246,6 +5288,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Nothing matches"
+msgstr ""
+
+#: lib/apiary_web/controllers/jump_controller.ex
+#, elixir-autogen, elixir-format
+msgid "Nothing matches “%{text}”."
 msgstr ""
 
 #: lib/apiary_web/live/workspace_live/overview.ex
@@ -5646,6 +5693,16 @@ msgid "Ping only"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Pinned"
+msgstr ""
+
+#: lib/apiary_web/controllers/jump_controller.ex
+#, elixir-autogen, elixir-format
+msgid "Places"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/policy_live/show.ex
 #: lib/apiary_web/live/policy_live/target.ex
@@ -5772,12 +5829,7 @@ msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
-msgid "Qory Apiary menu"
-msgstr ""
-
-#: lib/apiary_web/components/layouts.ex
-#, elixir-autogen, elixir-format
-msgid "Qory Apiary menu, version %{version}"
+msgid "Qory Apiary, home"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
@@ -5857,6 +5909,11 @@ msgstr ""
 msgid "Reason"
 msgstr ""
 
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Recent"
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Reconnecting"
@@ -5873,6 +5930,7 @@ msgstr ""
 msgid "Reconnecting. Your changes are safe."
 msgstr ""
 
+#: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Record"
@@ -6056,6 +6114,11 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Result"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Results"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -6348,6 +6411,7 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/controllers/jump_controller.ex
 #: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/policy_live/target.ex
 #: lib/apiary_web/live/run_live/index.ex
@@ -6428,6 +6492,16 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Search"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Search or jump to"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Search or jump to…"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -6571,6 +6645,11 @@ msgstr ""
 msgid "Settings"
 msgstr ""
 
+#: lib/apiary_web/controllers/jump_controller.ex
+#, elixir-autogen, elixir-format
+msgid "Settings › %{page}"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Shift"
@@ -6657,11 +6736,6 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "Shown indented for reading."
-msgstr ""
-
-#: lib/apiary_web/components/layouts.ex
-#, elixir-autogen, elixir-format
-msgid "Sidebar"
 msgstr ""
 
 #: lib/apiary_web/live/user_live/registration.ex
@@ -6827,12 +6901,17 @@ msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
-msgid "Switch organisation"
+msgid "Switch organisation or workspace"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Switch organisation, current: %{name}"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Switch workspace, current: %{name}"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -6855,6 +6934,7 @@ msgid "Target policy"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/controllers/jump_controller.ex
 #: lib/apiary_web/live/policy_live/show.ex
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
@@ -7976,7 +8056,6 @@ msgstr ""
 msgid "Version %{n}. Open the exact document."
 msgstr ""
 
-#: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/live/policy_live/show.ex
 #: lib/apiary_web/live/policy_live/target.ex
 #: lib/apiary_web/live/policy_live/views.ex
@@ -8153,6 +8232,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
 msgid "Where the two meet on a host, the target wins, unless the workspace's rule is locked."
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "Where you are"
 msgstr ""
 
 #: lib/apiary_web/live/activity_live.ex
@@ -8430,6 +8514,12 @@ msgstr ""
 msgid "Your Qory Apiary log-in link"
 msgstr ""
 
+#: lib/apiary_web/components/layouts.ex
+#: lib/apiary_web/controllers/jump_controller.ex
+#, elixir-autogen, elixir-format
+msgid "Your account"
+msgstr ""
+
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
 msgid "Your account could not be deleted. Try again."
@@ -8499,6 +8589,13 @@ msgstr ""
 #: lib/apiary_web/controllers/user_session_controller.ex
 #, elixir-autogen, elixir-format
 msgid "Your password is updated."
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#: lib/apiary_web/live/user_live/organisations.ex
+#: lib/apiary_web/live/user_live/settings.ex
+#, elixir-autogen, elixir-format
+msgid "Your settings"
 msgstr ""
 
 #: lib/apiary_web/live/user_live/settings.ex
@@ -9276,6 +9373,16 @@ msgid "to %{number} destination"
 msgid_plural "to %{number} destinations"
 msgstr[0] ""
 msgstr[1] ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "to move"
+msgstr ""
+
+#: lib/apiary_web/components/layouts.ex
+#, elixir-autogen, elixir-format
+msgid "to open"
+msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format

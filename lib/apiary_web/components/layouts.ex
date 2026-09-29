@@ -2,11 +2,17 @@ defmodule ApiaryWeb.Layouts do
   @moduledoc """
   Layouts: the application shell (`app/1`) for signed-in pages and the split
   view (`auth/1`) for log-in, registration, invitation and welcome pages. The
-  product on every surface is Qory Apiary; the shell is section f of the
-  design brief.
+  product on every surface is Qory Apiary; the shell is section 4 of the v2 design
+  brief (`docs/ui.md`).
+
+  The shell shows one scope at a time, the one the page belongs to: a workspace, an
+  organisation or the person. The top bar says where the page is and switches it (the
+  breadcrumb and its switcher), searches and jumps (the palette), and holds New and the
+  account menu; the sidebar holds that scope's pages and nothing else.
   """
   use ApiaryWeb, :html
 
+  alias Apiary.Access
   alias ApiaryWeb.Nav.Entry
 
   # Embed all files in layouts/* within this module.
@@ -15,13 +21,16 @@ defmodule ApiaryWeb.Layouts do
   # and other static content.
   embed_templates "layouts/*"
 
-  # The sidebar's two sections, the record first, because it is why people open the
-  # console: each with its heading and its navigation's accessible name. The words are
-  # marked for extraction here and translated when the sidebar renders (`nav_text/1`).
-  @sections [
-    workspace: {gettext_noop("Workspace"), gettext_noop("Main")},
-    manage: {gettext_noop("Manage"), gettext_noop("Manage")}
-  ]
+  # The sidebar's groups, in order: the scope's first entries without a heading, then each
+  # group of a workspace with its heading; an edition's groups follow
+  # (`c:ApiaryWeb.Edition.nav_sections/0`). `:settings` (the pages of the scope's Settings)
+  # and `:foot` (Settings itself) are not groups. The headings are marked for extraction
+  # here and translated when the sidebar renders (`nav_text/1`), and so is the name of the
+  # first group's navigation.
+  @sections [home: nil, record: gettext_noop("Record"), guard: gettext_noop("Guard")]
+
+  # How many pinned targets the sidebar lists.
+  @pins 7
 
   @doc """
   nav_entries/1 is the navigation of `scope`'s pages, as `ApiaryWeb.Nav.Entry` values:
@@ -36,8 +45,9 @@ defmodule ApiaryWeb.Layouts do
 
   defp core_entries do
     [
+      # A workspace's pages.
       %Entry{
-        section: :workspace,
+        section: :home,
         key: :overview,
         label: gettext("Overview"),
         icon: "hero-squares-2x2-micro",
@@ -45,7 +55,7 @@ defmodule ApiaryWeb.Layouts do
         action: :"run.read"
       },
       %Entry{
-        section: :workspace,
+        section: :record,
         key: :runs,
         label: gettext("Runs"),
         icon: "hero-play-circle-micro",
@@ -53,16 +63,16 @@ defmodule ApiaryWeb.Layouts do
         action: :"run.read"
       },
       %Entry{
-        section: :workspace,
+        section: :record,
         key: :connections,
         label: gettext("Connections"),
         icon: "hero-arrows-right-left-micro",
         path: fn organisation, workspace -> ~p"/#{organisation}/#{workspace}/connections" end,
         action: :"run.read"
       },
-      # After Connections, because the policy is what the connections are judged by.
+      # What the connections are judged by.
       %Entry{
-        section: :workspace,
+        section: :guard,
         key: :policy,
         label: gettext("Policy"),
         icon: "hero-shield-check-micro",
@@ -70,7 +80,7 @@ defmodule ApiaryWeb.Layouts do
         action: :"security_policy.read"
       },
       %Entry{
-        section: :manage,
+        section: :settings,
         key: :keys,
         label: gettext("Access keys"),
         icon: "hero-key-micro",
@@ -78,7 +88,24 @@ defmodule ApiaryWeb.Layouts do
         count: :keys
       },
       %Entry{
-        section: :manage,
+        section: :foot,
+        key: :settings,
+        label: gettext("Settings"),
+        icon: "hero-cog-6-tooth-micro",
+        path: fn organisation, workspace -> ~p"/#{organisation}/#{workspace}/settings" end
+      },
+      # An organisation's pages.
+      %Entry{
+        section: :home,
+        key: :activity,
+        label: gettext("Activity"),
+        icon: "hero-clipboard-document-list-micro",
+        path: fn organisation, _workspace -> ~p"/#{organisation}/activity" end,
+        place: :organisation,
+        action: :"audit.read"
+      },
+      %Entry{
+        section: :settings,
         key: :members,
         label: gettext("Members"),
         icon: "hero-users-micro",
@@ -87,42 +114,92 @@ defmodule ApiaryWeb.Layouts do
         count: :members
       },
       %Entry{
-        section: :manage,
-        key: :settings,
+        section: :foot,
+        key: :organisation,
         label: gettext("Settings"),
         icon: "hero-cog-6-tooth-micro",
-        path: fn organisation, workspace -> ~p"/#{organisation}/#{workspace}/settings" end
-      },
-      %Entry{
-        section: :manage,
-        key: :organisation,
-        label: gettext("Organisation"),
-        icon: "hero-building-office-2-micro",
         path: fn organisation, _workspace -> ~p"/#{organisation}/settings" end,
         place: :organisation
       },
+      # A person's own pages.
       %Entry{
-        section: :manage,
-        key: :activity,
-        label: gettext("Activity"),
-        icon: "hero-clipboard-document-list-micro",
-        path: fn organisation, _workspace -> ~p"/#{organisation}/activity" end,
-        place: :organisation,
-        action: :"audit.read"
+        section: :home,
+        key: :user_settings,
+        label: gettext("Your settings"),
+        icon: "hero-user-circle-micro",
+        path: ~p"/users/settings",
+        place: :person
+      },
+      %Entry{
+        section: :home,
+        key: :user_organisations,
+        label: gettext("Your organisations"),
+        icon: "hero-building-office-2-micro",
+        path: ~p"/users/organisations",
+        place: :person
       }
     ]
   end
 
   @doc """
-  The application shell: a sidebar that is the organisation's (its name and workspace at
-  the top, the navigation, the brand at the foot), a 52 px top bar with the
-  theme toggle and the account menu at its right end, and a main column for
-  the page. Below 768 px the sidebar is a drawer behind the bar's menu button.
-  Without a membership there is no sidebar: the bar carries the brand.
+  new_entries/1 is what New offers in `scope`, the top bar's menu and the palette's
+  actions, as `ApiaryWeb.Nav.Entry` values: only what the reader may do there.
+  """
+  @spec new_entries(Apiary.Accounts.Scope.t()) :: [Entry.t()]
+  def new_entries(%{organisation: %{} = organisation, workspace: workspace} = scope) do
+    key =
+      workspace &&
+        %Entry{
+          key: :key,
+          label: gettext("New access key"),
+          icon: "hero-key-micro",
+          path: ~p"/#{organisation}/#{workspace}/keys/new",
+          action: :"access_key.create"
+        }
 
-  An organisation's page, one with a navigation item (`nav`), opens with the edition's
-  notices (the `:notices` slot, `ApiaryWeb.Extension`): the page beneath says the rest. A
-  person's own pages, whose sidebar shows the organisation they opened last, carry none.
+    invite = %Entry{
+      key: :invite,
+      label: gettext("Invite people"),
+      icon: "hero-user-plus-micro",
+      path: ~p"/#{organisation}/members/invite",
+      place: :organisation,
+      action: :"member.invite"
+    }
+
+    for %Entry{} = entry <- [key, invite],
+        nav_open?(scope, entry.action, subject(entry, scope)),
+        do: entry
+  end
+
+  def new_entries(_scope), do: []
+
+  @doc """
+  palette_entries/1 is where the palette's Go to leads in `scope`: every entry of the
+  navigation the reader may open there, the workspace's, the organisation's and the
+  person's, as `{entry, path}`. The pages of a scope's Settings come with it.
+  """
+  @spec palette_entries(Apiary.Accounts.Scope.t()) :: [{Entry.t(), String.t()}]
+  def palette_entries(scope) do
+    for %Entry{} = entry <- nav_entries(scope),
+        shown?(entry, scope, nil),
+        do: {entry, Entry.path(entry, scope.organisation, scope.workspace)}
+  end
+
+  @doc """
+  The application shell: a 48 px top bar across the window, then the sidebar of the
+  page's scope beside the main column.
+
+  The top bar holds, from the left, the mark (home), the breadcrumb (the organisation, the
+  workspace and whatever the page adds in its `crumb` slots), whose chevrons open the
+  switcher; then Search or jump to (the palette), New and the account menu. The sidebar
+  holds the pages of the page's scope, which the entry it passes as `nav` belongs to
+  (`ApiaryWeb.Nav.Entry`'s `place`): a workspace's, an organisation's or the person's.
+  It folds to icons from 768 px, and below that it is a drawer behind the bar's menu
+  button.
+
+  An organisation's page, one with a navigation item (`nav`) of a workspace or an
+  organisation, opens with the edition's notices (the `:notices` slot,
+  `ApiaryWeb.Extension`): the page beneath says the rest. A person's own pages carry none.
 
       <Layouts.app flash={@flash} current_scope={@current_scope} nav={:keys}>
         <h1>Content</h1>
@@ -144,32 +221,48 @@ defmodule ApiaryWeb.Layouts do
   attr :notices, :boolean,
     default: nil,
     doc:
-      "whether the organisation's notices show, the edition's (the `:notices` slot): on every page of the organisation, which passes `nav`, unless given; a person's own pages carry an organisation too, and show none"
+      "whether the organisation's notices show, the edition's (the `:notices` slot): on every page of a workspace or an organisation, which passes `nav`, unless given; a person's own pages show none"
 
   attr :counts, :map,
     default: nil,
     doc:
-      "%{keys: active keys, members: members, alive: runs alive now, mode: the policy's default mode, own_modes: the modes targets set}"
+      "%{keys: active keys, members: members, alive: runs alive now, mode: the policy's default mode, own_modes: the modes targets set, pins: the pinned targets, `%{key, label, system, href}`}"
 
   attr :width, :string,
-    default: "wide",
-    values: ~w(wide narrow full),
-    doc: "960 or 640 px column; full is 1200 px, for the runs, run and connections pages"
+    default: "list",
+    values: ~w(list work read),
+    doc:
+      "list: fluid up to 1680 px; work: fluid, no cap, for a work surface or a list with a rail or a preview beside it; read: a 720 px column, for forms and prose. Every width starts at the same left edge"
+
+  slot :crumb,
+    doc: "the breadcrumb's segments after the workspace: a target, a record; the last is the page" do
+    attr :navigate, :string, doc: "where the segment leads; none for the page itself"
+  end
 
   slot :inner_block, required: true
 
   def app(assigns) do
-    organisation = scope_field(assigns.current_scope, :organisation)
-    entries = if organisation, do: nav_entries(assigns.current_scope), else: []
+    scope = assigns.current_scope
+    user = scope_field(scope, :user)
+    organisation = scope_field(scope, :organisation)
+    workspace = scope_field(scope, :workspace)
+    entries = if user, do: nav_entries(scope), else: []
+    current = Enum.find(entries, &(&1.key == assigns.nav))
+    place = place(current, organisation)
 
     assigns =
       assigns
-      |> assign(:nav_entries, entries)
-      |> assign(:nav_items, nav_items(assigns.current_scope, assigns.counts, entries))
+      |> assign(:scope, scope)
+      |> assign(:user, user)
       |> assign(:organisation, organisation)
-      |> assign(:workspace, scope_field(assigns.current_scope, :workspace))
-      |> assign(:scope, assigns.current_scope)
-      |> assign(:user, scope_field(assigns.current_scope, :user))
+      |> assign(:workspace, workspace)
+      |> assign(:place, place)
+      |> assign(:nav_entries, entries)
+      |> assign(:groups, nav_groups(scope, place, assigns.counts, entries))
+      |> assign(:foot, foot(scope, place, entries))
+      |> assign(:under_settings, current && current.section == :settings)
+      |> assign(:pins, if(place == :workspace, do: pins(assigns.counts), else: []))
+      |> assign(:show_notices, notices?(assigns.notices, current))
 
     ~H"""
     <a
@@ -179,8 +272,21 @@ defmodule ApiaryWeb.Layouts do
       {gettext("Skip to content")}
     </a>
 
-    <%= if @organisation do %>
-      <div id="shell" class="drawer md:drawer-open" phx-hook="NavDrawer">
+    <div id="shell" class="min-h-dvh min-w-0 bg-base-100" phx-hook="NavDrawer">
+      <.top_bar
+        scope={@scope}
+        user={@user}
+        organisation={@organisation}
+        workspace={@workspace}
+        memberships={@memberships}
+        place={@place}
+        nav={@nav}
+        nav_entries={@nav_entries}
+        crumb={@crumb}
+        sidebar={@user != nil}
+      />
+
+      <div :if={@user} class="drawer md:drawer-open">
         <input
           id="nav-drawer"
           type="checkbox"
@@ -190,57 +296,27 @@ defmodule ApiaryWeb.Layouts do
           aria-hidden="true"
         />
 
-        <div class="drawer-side z-40">
+        <div class="drawer-side z-50 md:top-12 md:z-20 md:h-[calc(100dvh-3rem)]">
           <label for="nav-drawer" class="drawer-overlay" aria-hidden="true"></label>
           <.sidebar
-            scope={@scope}
-            organisation={@organisation}
-            workspace={@workspace}
-            memberships={@memberships}
+            place={@place}
             nav={@nav}
-            nav_entries={@nav_entries}
-            nav_items={@nav_items}
+            groups={@groups}
+            foot={@foot}
+            under_settings={@under_settings}
+            pins={@pins}
             counts={@counts}
           />
         </div>
 
         <div
           id="shell-content"
-          class="drawer-content flex min-h-dvh min-w-0 flex-col bg-base-100"
+          class="drawer-content flex min-h-[calc(100dvh-3rem)] min-w-0 flex-col"
           phx-mounted={JS.ignore_attributes(["inert"])}
         >
-          <.top_bar>
-            <button
-              id="nav-drawer-open"
-              type="button"
-              data-drawer-open
-              class="btn btn-ghost btn-square md:hidden"
-              aria-label={gettext("Open menu")}
-              aria-controls="sidebar"
-              aria-expanded="false"
-              phx-mounted={JS.ignore_attributes(["aria-expanded"])}
-            >
-              <.icon name="hero-bars-3" class="size-5" />
-            </button>
-            <div
-              id="organisation-label"
-              class="flex min-w-0 items-center gap-2.5 px-1 md:hidden"
-              title={organisation_title(@organisation, @workspace)}
-            >
-              <.avatar name={@organisation.name} kind="organisation" />
-              <span class="grid min-w-0">
-                <span class="truncate text-[13px]/4 font-semibold">{@organisation.name}</span>
-                <span class="truncate text-[11.5px]/[14px] text-muted">{@workspace && @workspace.name}</span>
-              </span>
-            </div>
-            <:controls>
-              <.theme_menu tooltip="tooltip-bottom" />
-              <.account_menu user={@user} organisation={@organisation} scope={@scope} />
-            </:controls>
-          </.top_bar>
           <.content width={@width}>
             <.notices
-              :if={if(is_nil(@notices), do: !!@nav, else: @notices)}
+              :if={@show_notices}
               scope={@scope}
               organisation={@organisation}
               counts={@counts}
@@ -249,50 +325,636 @@ defmodule ApiaryWeb.Layouts do
           </.content>
         </div>
       </div>
-    <% else %>
-      <div id="shell" class="flex min-h-dvh min-w-0 flex-col bg-base-100">
-        <.top_bar>
-          <div class="ml-1 flex min-w-0 items-center">
-            <.brand_menu version={version()} direction="down" />
-          </div>
-          <:controls>
-            <.theme_menu tooltip="tooltip-bottom" />
-            <.account_menu
-              :if={@user}
-              user={@user}
-              organisation={@organisation}
-              scope={@scope}
-            />
-          </:controls>
-        </.top_bar>
+
+      <div :if={!@user} id="shell-content" class="flex min-w-0 flex-col">
         <.content width={@width}>{render_slot(@inner_block)}</.content>
       </div>
-    <% end %>
+
+      <.palette :if={@organisation} scope={@scope} place={@place} />
+    </div>
 
     <.flash_group flash={@flash} />
     """
   end
 
-  # The bar: 52 px, level with the sidebar's organisation row so their lower edges read as
-  # one line. The left holds what the default slot gives it (nothing from 768 px, when
-  # the sidebar is there); the controls sit at the right end at every width.
-  slot :inner_block
-  slot :controls, required: true
+  # The scope the page belongs to: its entry's, or without one the organisation's when the
+  # page has an organisation and the person's when it has none.
+  defp place(%Entry{place: place}, _organisation), do: place
+  defp place(nil, %{}), do: :organisation
+  defp place(nil, nil), do: :person
+
+  defp notices?(notices, _current) when is_boolean(notices), do: notices
+  defp notices?(nil, %Entry{place: place}), do: place in [:workspace, :organisation]
+  defp notices?(nil, nil), do: false
+
+  # The bar: 48 px, across the window, above the sidebar. Its left says where the page is,
+  # its right what the person may do from anywhere.
+  attr :scope, :any, required: true
+  attr :user, :any, required: true
+  attr :organisation, :any, required: true
+  attr :workspace, :any, required: true
+  attr :memberships, :list, required: true
+  attr :place, :atom, required: true
+  attr :nav, :atom, required: true
+  attr :nav_entries, :list, required: true
+  attr :crumb, :list, required: true
+  attr :sidebar, :boolean, required: true
 
   defp top_bar(assigns) do
+    assigns = assign(assigns, :new_entries, new_entries(assigns.scope))
+
     ~H"""
     <header
       id="top-bar"
       aria-label={gettext("Top bar")}
-      class="sticky top-0 z-30 flex h-13 flex-none items-center gap-1 border-b border-line bg-base-100/85 pl-2 pr-4 backdrop-blur md:px-4"
+      class="q-topbar"
+      phx-mounted={JS.ignore_attributes(["inert"])}
     >
-      {render_slot(@inner_block)}
-      <div class="ml-auto flex flex-none items-center gap-1">
-        {render_slot(@controls)}
+      <button
+        :if={@sidebar}
+        id="nav-drawer-open"
+        type="button"
+        data-drawer-open
+        class="btn btn-ghost btn-square btn-sm md:hidden"
+        aria-label={gettext("Open menu")}
+        aria-controls="sidebar"
+        aria-expanded="false"
+        phx-mounted={JS.ignore_attributes(["aria-expanded"])}
+      >
+        <.icon name="hero-bars-3" class="size-5" />
+      </button>
+      <.link id="top-bar-home" href={~p"/"} class="q-mark" aria-label={gettext("Qory Apiary, home")}>
+        <.logo_mark class="size-5" />
+      </.link>
+
+      <.breadcrumb
+        scope={@scope}
+        organisation={@organisation}
+        workspace={@workspace}
+        memberships={@memberships}
+        place={@place}
+        nav={@nav}
+        nav_entries={@nav_entries}
+        crumb={@crumb}
+      />
+
+      <div class="flex-1"></div>
+
+      <div class="flex flex-none items-center gap-1.5 md:gap-2">
+        <button
+          :if={@organisation}
+          id="palette-open"
+          type="button"
+          class="q-jump"
+          data-palette-open
+          aria-haspopup="dialog"
+          aria-controls="palette"
+          aria-keyshortcuts="Meta+K Control+K /"
+          aria-label={gettext("Search or jump to")}
+        >
+          <.icon name="hero-magnifying-glass-micro" class="size-4 flex-none" />
+          <span class="q-jump-text">{gettext("Search or jump to…")}</span>
+          <kbd class="q-jump-kbd" aria-hidden="true">⌘K</kbd>
+        </button>
+        <.new_menu :if={@new_entries != []} entries={@new_entries} />
+        <.account_menu :if={@user} user={@user} organisation={@organisation} scope={@scope} />
       </div>
     </header>
     """
   end
+
+  # Where the page is: the organisation and the workspace, each a link to its home, and
+  # the page's own segments. With more than one place to go (or an edition's entry after
+  # the places) the chevron beside the organisation and the workspace opens the switcher.
+  # A person's own page names itself.
+  attr :scope, :any, required: true
+  attr :organisation, :any, required: true
+  attr :workspace, :any, required: true
+  attr :memberships, :list, required: true
+  attr :place, :atom, required: true
+  attr :nav, :atom, required: true
+  attr :nav_entries, :list, required: true
+  attr :crumb, :list, required: true
+
+  defp breadcrumb(%{place: :person} = assigns) do
+    assigns =
+      assign(
+        assigns,
+        :here,
+        Enum.find(assigns.nav_entries, &(&1.place == :person and &1.key == assigns.nav))
+      )
+
+    ~H"""
+    <nav id="breadcrumb" aria-label={gettext("Where you are")} class="q-trail-nav">
+      <ol class="q-trail">
+        <li :if={@here} class="q-trail-item">
+          <span class="q-trail-link q-trail-page" aria-current="page">{@here.label}</span>
+        </li>
+      </ol>
+    </nav>
+    """
+  end
+
+  defp breadcrumb(%{organisation: nil} = assigns) do
+    ~H"""
+    <nav id="breadcrumb" aria-label={gettext("Where you are")} class="q-trail-nav"></nav>
+    """
+  end
+
+  defp breadcrumb(assigns) do
+    places = places(assigns.memberships)
+    switcher_entries = ApiaryWeb.Edition.switcher_entries(assigns.scope)
+
+    assigns =
+      assigns
+      |> assign(:switcher?, places != [] and (length(places) > 1 or switcher_entries != []))
+      |> assign(:places, places)
+      |> assign(:switcher_entries, switcher_entries)
+      |> assign(:workspace, if(assigns.place == :workspace, do: assigns.workspace))
+
+    ~H"""
+    <nav id="breadcrumb" aria-label={gettext("Where you are")} class="q-trail-nav">
+      <div
+        id={if @switcher?, do: "organisation-menu", else: "organisation-block"}
+        class="contents"
+        phx-hook={@switcher? && "Switcher"}
+        data-current={@switcher? && current_switch_id(@organisation, @workspace)}
+      >
+        <ol class="q-trail">
+          <li class={["q-trail-item", (@workspace || @crumb != []) && "q-trail-lead"]}>
+            <.link
+              navigate={~p"/#{@organisation}"}
+              class="q-trail-link"
+              title={@organisation.name}
+            >
+              <.avatar name={@organisation.name} kind="organisation" size="xs" />
+              <span class="truncate">{@organisation.name}</span>
+            </.link>
+            <.switcher_button
+              :if={@switcher?}
+              id="organisation-menu-button"
+              label={gettext("Switch organisation, current: %{name}", name: @organisation.name)}
+            />
+          </li>
+          <li :if={@workspace} class={["q-trail-item", @crumb != [] && "q-trail-lead"]}>
+            <span class="q-trail-sep max-md:hidden" aria-hidden="true">/</span>
+            <.link
+              navigate={~p"/#{@organisation}/#{@workspace}"}
+              class="q-trail-link"
+              title={@workspace.name}
+            >
+              <span class="truncate">{@workspace.name}</span>
+            </.link>
+            <.switcher_button
+              :if={@switcher?}
+              id="workspace-menu-button"
+              label={gettext("Switch workspace, current: %{name}", name: @workspace.name)}
+            />
+          </li>
+          <li
+            :for={{crumb, i} <- Enum.with_index(@crumb)}
+            class={["q-trail-item", i < length(@crumb) - 1 && "q-trail-lead"]}
+          >
+            <span class="q-trail-sep max-md:hidden" aria-hidden="true">/</span>
+            <.link :if={crumb[:navigate]} navigate={crumb.navigate} class="q-trail-link">
+              {render_slot(crumb)}
+            </.link>
+            <span
+              :if={!crumb[:navigate]}
+              class="q-trail-link q-trail-page"
+              aria-current={i == length(@crumb) - 1 && "page"}
+            >
+              {render_slot(crumb)}
+            </span>
+          </li>
+        </ol>
+
+        <.switcher
+          :if={@switcher?}
+          scope={@scope}
+          organisation={@organisation}
+          workspace={@workspace}
+          places={@places}
+          nav={@nav}
+          nav_entries={@nav_entries}
+          switcher_entries={@switcher_entries}
+        />
+      </div>
+    </nav>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :label, :string, required: true
+
+  defp switcher_button(assigns) do
+    ~H"""
+    <button
+      id={@id}
+      type="button"
+      class="q-trail-chev"
+      data-switcher-open
+      aria-haspopup="dialog"
+      aria-expanded="false"
+      aria-controls="organisation-menu-panel"
+      aria-label={@label}
+      phx-mounted={JS.ignore_attributes(["aria-expanded"])}
+    >
+      <.icon name="hero-chevron-up-down-micro" class="size-4" />
+    </button>
+    """
+  end
+
+  # The switcher: a search on top; the places opened last (the `Switcher` hook keeps
+  # them, as a reading preference); the organisations the person reaches, each with its
+  # workspaces, a link to each at the section the user is on (the path says which
+  # workspace a page shows), and to an organisation where they reach no workspace yet; the
+  # places of the edition's groups (`c:ApiaryWeb.Edition.place_group/1`) under their own
+  # headings. A link loads the page afresh, so the session remembers the workspace for
+  # `/`. Last, Your organisations and the edition's entries
+  # (`ApiaryWeb.Edition.switcher_entries/1`), such as New organisation.
+  attr :scope, :any, required: true
+  attr :organisation, :any, required: true
+  attr :workspace, :any, required: true
+  attr :places, :list, required: true
+  attr :nav, :atom, required: true
+  attr :nav_entries, :list, required: true
+  attr :switcher_entries, :list, required: true
+
+  defp switcher(assigns) do
+    assigns = assign(assigns, :groups, place_groups(assigns.places))
+
+    ~H"""
+    <div
+      id="organisation-menu-panel"
+      class="q-switcher"
+      role="dialog"
+      aria-label={gettext("Switch organisation or workspace")}
+      hidden
+      phx-mounted={JS.ignore_attributes(["hidden"])}
+    >
+      <div class="q-switcher-search">
+        <.icon name="hero-magnifying-glass-micro" class="size-4 flex-none text-faint" />
+        <input
+          id="organisation-menu-search"
+          type="text"
+          autocomplete="off"
+          spellcheck="false"
+          aria-label={gettext("Find an organisation or workspace")}
+          aria-controls="organisation-menu-places"
+          placeholder={gettext("Find an organisation or workspace…")}
+        />
+      </div>
+      <div id="organisation-menu-places" class="q-switcher-list">
+        <section
+          id="organisation-menu-recent"
+          class="q-switcher-group"
+          aria-labelledby="organisation-menu-recent-heading"
+          hidden
+        >
+          <h3 id="organisation-menu-recent-heading" class="q-switcher-heading">
+            {gettext("Recent")}
+          </h3>
+          <ul data-recent></ul>
+        </section>
+        <section
+          :for={{{heading, places}, g} <- Enum.with_index(@groups)}
+          class="q-switcher-group"
+          aria-labelledby={"organisation-menu-group-#{g}"}
+          data-group
+        >
+          <h3 id={"organisation-menu-group-#{g}"} class="q-switcher-heading">
+            {heading || gettext("Your organisations")}
+          </h3>
+          <div
+            :for={{place, workspaces} <- places}
+            class="q-switcher-org"
+            data-org
+            data-search={search_text(place.organisation)}
+          >
+            <div class="q-switcher-org-name" aria-hidden="true">
+              <.avatar name={place.organisation.name} kind="organisation" size="xs" />
+              <span class="truncate">{place.organisation.name}</span>
+            </div>
+            <ul>
+              <li :for={w <- workspaces}>
+                <.link
+                  id={switch_id({place, w})}
+                  href={switch_path(@nav, @nav_entries, place, w)}
+                  class="q-switcher-place"
+                  aria-current={current?({place, w}, @organisation, @workspace) && "true"}
+                  data-place
+                  data-search={search_text(place.organisation, w)}
+                  data-recent-label={place_label(place.organisation, w)}
+                >
+                  <span class="truncate">
+                    <span class="sr-only">{place.organisation.name} /</span>
+                    {if w, do: w.name, else: gettext("No workspace yet")}
+                  </span>
+                  <.icon
+                    :if={current?({place, w}, @organisation, @workspace)}
+                    name="hero-check-micro"
+                    class="ml-auto size-4 flex-none text-accent"
+                  />
+                </.link>
+              </li>
+            </ul>
+          </div>
+        </section>
+        <p id="organisation-menu-empty" class="q-switcher-empty" hidden>
+          {gettext("No organisation or workspace matches.")}
+        </p>
+      </div>
+      <div class="q-switcher-foot">
+        <.link
+          id="organisation-menu-organisations"
+          href={~p"/users/organisations"}
+          class="q-switcher-place"
+        >
+          <.icon name="hero-building-office-2-micro" class="size-4 text-faint" />
+          {gettext("Your organisations")}
+        </.link>
+        <.link
+          :for={entry <- @switcher_entries}
+          id={"organisation-menu-#{entry.key}"}
+          navigate={Entry.path(entry, @organisation, @workspace)}
+          class="q-switcher-place"
+        >
+          <.icon name={entry.icon} class="size-4 text-faint" />
+          {entry.label}
+        </.link>
+      </div>
+    </div>
+    """
+  end
+
+  # The places by the switcher's groups: the person's own organisations first, then each
+  # group the edition names (`c:ApiaryWeb.Edition.place_group/1`), in the order its first
+  # place came; each place with the workspaces to list, `[nil]` for one that reaches none
+  # yet.
+  defp place_groups(places) do
+    grouped =
+      places
+      |> Enum.map(&elem(&1, 0))
+      |> Enum.uniq_by(& &1.organisation_id)
+      |> Enum.map(&{ApiaryWeb.Edition.place_group(&1), &1})
+
+    headings = grouped |> Enum.map(&elem(&1, 0)) |> Enum.uniq() |> Enum.sort_by(&(!is_nil(&1)))
+
+    for heading <- headings do
+      {heading,
+       for {^heading, place} <- grouped do
+         {place, if(place.workspaces == [], do: [nil], else: place.workspaces)}
+       end}
+    end
+  end
+
+  defp search_text(organisation, workspace \\ nil) do
+    [
+      organisation.name,
+      organisation.slug,
+      workspace && workspace.name,
+      workspace && workspace.slug
+    ]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join(" ")
+    |> String.downcase()
+  end
+
+  defp place_label(organisation, nil), do: organisation.name
+  defp place_label(organisation, workspace), do: "#{organisation.name} / #{workspace.name}"
+
+  defp current_switch_id(organisation, nil), do: "switch-#{organisation.slug}"
+
+  defp current_switch_id(organisation, workspace),
+    do: "switch-#{organisation.slug}-#{workspace.slug}"
+
+  # New: what the person may start from here (`new_entries/1`).
+  attr :entries, :list, required: true
+
+  defp new_menu(assigns) do
+    ~H"""
+    <div
+      id="new-menu"
+      class="dropdown dropdown-end"
+      phx-hook="Menu"
+      phx-mounted={JS.ignore_attributes(["class"])}
+    >
+      <button
+        id="new-menu-button"
+        type="button"
+        class="q-newbtn"
+        aria-haspopup="menu"
+        aria-expanded="false"
+        aria-label={gettext("New")}
+        phx-mounted={JS.ignore_attributes(["aria-expanded"])}
+      >
+        <.icon name="hero-plus-micro" class="size-4" />
+        <span class="max-md:hidden">{gettext("New")}</span>
+        <.icon name="hero-chevron-down-micro" class="size-3.5 text-faint max-md:hidden" />
+      </button>
+      <ul
+        class="menu menu-sm dropdown-content right-0 top-full mt-1.5 w-56"
+        role="menu"
+        aria-label={gettext("New")}
+      >
+        <li :for={entry <- @entries} role="none">
+          <.link id={"new-menu-#{entry.key}"} navigate={entry.path} role="menuitem">
+            <.icon name={entry.icon} class="size-4" /> {entry.label}
+          </.link>
+        </li>
+      </ul>
+    </div>
+    """
+  end
+
+  attr :user, :any, required: true
+  attr :organisation, :any, required: true
+  attr :scope, :any, required: true
+
+  # The account menu at the right end of the top bar: who you are and your level where
+  # the page is; your settings and organisations; the theme, set once and kept; what is
+  # about Qory Apiary itself (the docs this instance serves, its changelog, the source and
+  # the version); log out.
+  defp account_menu(assigns) do
+    assigns = assign(assigns, :version, version())
+
+    ~H"""
+    <div
+      id="user-menu"
+      class="dropdown dropdown-end"
+      phx-hook="Menu"
+      phx-mounted={JS.ignore_attributes(["class"])}
+    >
+      <button
+        id="user-menu-button"
+        type="button"
+        class="btn btn-ghost btn-keep h-9 min-h-0 min-w-9 rounded-full p-0.5 aria-expanded:bg-base-300"
+        aria-haspopup="menu"
+        aria-expanded="false"
+        aria-label={gettext("Account menu, %{email}", email: @user.email)}
+        phx-mounted={JS.ignore_attributes(["aria-expanded"])}
+      >
+        <.avatar name={@user.email} kind="self" size="md" />
+      </button>
+      <ul
+        class="menu menu-sm dropdown-content right-0 top-full mt-1.5 w-64"
+        role="menu"
+        aria-label={gettext("Account")}
+      >
+        <li role="presentation">
+          <div class="grid cursor-default grid-flow-row gap-0 px-2 pb-2 pt-1.5 hover:bg-transparent">
+            <span class="truncate font-medium" title={@user.email}>{@user.email}</span>
+            <span id="user-menu-level" class="truncate text-xs/4 text-faint">
+              {level_sentence(@scope, @organisation)}
+            </span>
+          </div>
+        </li>
+        <li class="menu-divider" role="separator"></li>
+        <li role="none">
+          <.link href={~p"/users/settings"} role="menuitem" id="user-menu-settings">
+            <.icon name="hero-user-circle-micro" class="size-4" /> {gettext("Your settings")}
+          </.link>
+        </li>
+        <li role="none">
+          <.link href={~p"/users/organisations"} role="menuitem" id="user-menu-organisations">
+            <.icon name="hero-building-office-2-micro" class="size-4" /> {gettext(
+              "Your organisations"
+            )}
+          </.link>
+        </li>
+        <li class="menu-divider" role="separator"></li>
+        <li role="none" class="q-theme-row">
+          <div role="group" aria-labelledby="user-menu-theme" class="hover:bg-transparent">
+            <span id="user-menu-theme" class="flex items-center gap-2">
+              <.icon name="hero-swatch-micro" class="size-4" /> {gettext("Theme")}
+            </span>
+            <span class="q-theme-seg">
+              <button
+                :for={
+                  {theme, label} <- [
+                    {"system", gettext("Auto")},
+                    {"light", gettext("Light")},
+                    {"dark", gettext("Dark")}
+                  ]
+                }
+                id={"theme-menu-#{theme}"}
+                type="button"
+                role="menuitemradio"
+                phx-click={JS.dispatch("phx:set-theme")}
+                phx-mounted={JS.ignore_attributes(["aria-checked"])}
+                data-phx-theme={theme}
+                aria-checked="false"
+              >
+                {label}
+              </button>
+            </span>
+          </div>
+        </li>
+        <li class="menu-divider" role="separator"></li>
+        <li role="none">
+          <.link href={~p"/docs"} role="menuitem" id="user-menu-docs">
+            <.icon name="hero-book-open-micro" class="size-4" /> {gettext("Docs")}
+          </.link>
+        </li>
+        <%!-- The release notes name every feature, so only the documentation of an instance with
+             every one has them; the documentation is the instance's, and so is this check. --%>
+        <li :if={Apiary.Features.enabled() == Apiary.Features.all()} role="none">
+          <.link href={~p"/docs/changelog.html"} role="menuitem" id="user-menu-changelog">
+            <.icon name="hero-list-bullet-micro" class="size-4" /> {gettext("Changelog")}
+          </.link>
+        </li>
+        <li role="none">
+          <.link
+            href="https://github.com/qoryai/apiary"
+            target="_blank"
+            rel="noopener"
+            role="menuitem"
+            id="user-menu-source"
+          >
+            <.icon name="hero-code-bracket-micro" class="size-4" /> {gettext("Source on GitHub")}
+            <.icon name="hero-arrow-top-right-on-square-micro" class="ml-auto size-3.5 text-faint" />
+          </.link>
+        </li>
+        <li class="menu-divider" role="separator"></li>
+        <li role="none">
+          <.link href={~p"/users/log-out"} method="delete" role="menuitem" id="user-menu-log-out">
+            <.icon name="hero-arrow-right-start-on-rectangle-micro" class="size-4" /> {gettext(
+              "Log out"
+            )}
+          </.link>
+        </li>
+        <li :if={@version} role="presentation">
+          <span
+            id="user-menu-version"
+            class="flex cursor-default items-center gap-2 px-2 pb-1 pt-1.5 text-xs/4 text-faint hover:bg-transparent"
+          >
+            <.logo_mark class="size-3.5" /> Qory Apiary
+            <span class="ml-auto font-mono tabular-nums">{@version}</span>
+          </span>
+        </li>
+      </ul>
+    </div>
+    """
+  end
+
+  # Search or jump to: a dialog over the page, opened by the bar's button, ⌘K or /. The
+  # `Palette` hook asks the page's scope what matches (`ApiaryWeb.JumpController`) and
+  # lists it; every word it shows comes from the server.
+  attr :scope, :any, required: true
+  attr :place, :atom, required: true
+
+  defp palette(assigns) do
+    ~H"""
+    <dialog
+      id="palette"
+      class="q-palette"
+      phx-hook="Palette"
+      phx-update="ignore"
+      aria-label={gettext("Search or jump to")}
+      data-url={jump_path(@scope, @place)}
+    >
+      <div class="q-palette-box">
+        <div class="q-palette-search">
+          <.icon name="hero-magnifying-glass" class="size-5 flex-none text-faint" />
+          <input
+            id="palette-input"
+            type="text"
+            role="combobox"
+            autocomplete="off"
+            spellcheck="false"
+            aria-expanded="true"
+            aria-controls="palette-results"
+            aria-autocomplete="list"
+            aria-label={gettext("Search or jump to")}
+            placeholder={gettext("Search or jump to…")}
+          />
+          <kbd class="q-kbd" aria-hidden="true">esc</kbd>
+        </div>
+        <div
+          id="palette-results"
+          class="q-palette-results"
+          role="listbox"
+          aria-label={gettext("Results")}
+        >
+        </div>
+        <p id="palette-status" class="sr-only" role="status" aria-live="polite"></p>
+        <div class="q-palette-foot" aria-hidden="true">
+          <span><kbd class="q-kbd">↑</kbd> <kbd class="q-kbd">↓</kbd> {gettext("to move")}</span>
+          <span><kbd class="q-kbd">↵</kbd> {gettext("to open")}</span>
+          <span class="max-md:hidden">
+            {gettext("A run id, a page, a target or a place")}
+          </span>
+        </div>
+      </div>
+    </dialog>
+    """
+  end
+
+  defp jump_path(%{organisation: organisation, workspace: %{} = workspace}, :workspace),
+    do: ~p"/#{organisation}/#{workspace}/jump"
+
+  defp jump_path(%{organisation: organisation}, _place), do: ~p"/#{organisation}/jump"
 
   # The notices of the organisation the page is in: the edition's (`ApiaryWeb.Extension`),
   # given the navigation's counts, which the page read when it loaded, so that a notice
@@ -312,128 +974,169 @@ defmodule ApiaryWeb.Layouts do
     """
   end
 
+  # The main column. Every width starts at the same left edge, 32 px from the sidebar (24
+  # below 1024 px, 16 below 768); nothing is centred in the space beside it.
   attr :width, :string, required: true
   slot :inner_block, required: true
 
   defp content(assigns) do
     ~H"""
     <main id="main" tabindex="-1" class="min-w-0 flex-1 outline-none">
-      <div class="mx-auto w-full px-4 pb-12 pt-5 md:px-6 md:pt-8 lg:px-10">
-        <div class={["mx-auto", if(@width == "full", do: "max-w-[1200px]", else: "max-w-[960px]")]}>
-          <div class={[
-            "grid grid-cols-[minmax(0,1fr)] gap-6",
-            @width == "narrow" && "max-w-[640px]"
-          ]}>
-            {render_slot(@inner_block)}
-          </div>
+      <div class={["q-page", "q-page-#{@width}"]}>
+        <div class="grid grid-cols-[minmax(0,1fr)] gap-6">
+          {render_slot(@inner_block)}
         </div>
       </div>
     </main>
     """
   end
 
-  attr :scope, :any
-  attr :organisation, :any
-  attr :workspace, :any
-  attr :memberships, :list
-  attr :nav, :atom
-  attr :nav_entries, :list
-  attr :nav_items, :list
-  attr :counts, :any
+  # The sidebar: the pages of the page's scope, in their groups, each a `<nav>` with its
+  # own name; the targets the person pinned, on a workspace's pages; at the foot the
+  # scope's Settings and the control that folds the sidebar to icons.
+  attr :place, :atom, required: true
+  attr :nav, :atom, required: true
+  attr :groups, :list, required: true
+  attr :foot, :any, required: true
+  attr :under_settings, :boolean, required: true
+  attr :pins, :list, required: true
+  attr :counts, :any, required: true
 
   defp sidebar(assigns) do
-    assigns = assign(assigns, :version, version())
-
     ~H"""
-    <aside
-      id="sidebar"
-      aria-label={gettext("Sidebar")}
-      class="flex h-dvh w-72 flex-col border-r border-line bg-base-200 max-md:shadow-modal md:w-60"
-    >
-      <div id="organisation-row" class="flex h-13 flex-none items-center gap-1 px-2">
-        <.organisation_block
-          scope={@scope}
-          organisation={@organisation}
-          workspace={@workspace}
-          memberships={@memberships}
-          nav={@nav}
-          nav_entries={@nav_entries}
-        />
+    <aside id="sidebar" aria-label={sidebar_label(@place)} class="q-sidebar">
+      <div class="flex h-12 flex-none items-center justify-between px-3 md:hidden">
+        <.logo_mark class="size-5" />
         <button
           type="button"
           data-drawer-close
-          class="btn btn-ghost btn-square md:hidden"
+          class="btn btn-ghost btn-square"
           aria-label={gettext("Close menu")}
         >
           <.icon name="hero-x-mark" class="size-5" />
         </button>
       </div>
 
-      <div :for={{title, label, items} <- @nav_items} class="contents">
-        <p class="px-4 pb-1 pt-3 text-[11.5px]/4 font-medium text-faint">
-          {nav_text(title)}
-        </p>
-        <nav class="grid gap-px px-2" aria-label={nav_text(label)}>
-          <.link
+      <div class="q-sidebar-body">
+        <nav
+          :for={{section, heading, items} <- @groups}
+          class="q-nav-group"
+          aria-label={heading || gettext("Main")}
+          id={"nav-group-#{section}"}
+        >
+          <p :if={heading} class="q-nav-heading" aria-hidden="true">{heading}</p>
+          <.nav_item
             :for={{entry, path} <- items}
-            id={"nav-#{entry.key}"}
-            navigate={path}
-            aria-current={@nav == entry.key && "page"}
-            class={[
-              "group flex h-8 items-center gap-2.5 rounded-field px-2 text-[13px] font-medium transition-colors",
-              "-outline-offset-2 hover:bg-base-300 hover:text-base-content max-md:h-10 max-md:text-sm",
-              if(@nav == entry.key, do: "bg-base-300 text-base-content", else: "text-muted")
-            ]}
+            entry={entry}
+            path={path}
+            current={@nav == entry.key}
+            counts={@counts}
+          />
+        </nav>
+
+        <nav
+          :if={@pins != []}
+          id="nav-group-pinned"
+          class="q-nav-group"
+          aria-label={gettext("Pinned")}
+        >
+          <p class="q-nav-heading" aria-hidden="true">{gettext("Pinned")}</p>
+          <.link
+            :for={pin <- @pins}
+            id={"nav-pin-#{pin.key}"}
+            navigate={pin.href}
+            class="q-nav-item"
+            title={pin[:system] && "#{pin.system}/#{pin.label}"}
+            phx-mounted={JS.ignore_attributes(["title"])}
           >
-            <.icon
-              name={entry.icon}
-              class={[
-                "size-4 transition-colors",
-                if(@nav == entry.key, do: "text-accent", else: "text-faint")
-              ]}
-            />
-            {entry.label}
-            <span
-              :if={entry.key == :runs && alive_count(@counts) > 0}
-              id="nav-runs-alive"
-              class="ml-auto inline-flex items-center gap-1.5 font-mono text-[11.5px]/4 text-info-soft-content tabular-nums"
-              title={alive_title(alive_count(@counts))}
-            >
-              <span class="q-dot q-ripple !size-1.5" aria-hidden="true"></span>
-              {alive_count(@counts)}
-            </span>
-            <span
-              :if={entry.key == :policy && policy_mode(@counts)}
-              id="nav-policy-mode"
-              class="ml-auto font-mono text-[11.5px]/4 text-faint"
-              title={policy_mode_title(@counts)}
-            >
-              {policy_mode(@counts)}<span :if={own_modes(@counts) != []} class="opacity-75"> · {gettext(
-                "%{number} own",
-                number: Format.number(length(own_modes(@counts)))
-              )}</span>
-            </span>
-            <span
-              :if={count = nav_count(@counts, entry)}
-              class="ml-auto font-mono text-[11.5px]/4 text-faint tabular-nums"
-            >
-              {Format.number(count)}
-            </span>
+            <span class="q-nav-pin" aria-hidden="true">{pin_letter(pin.label)}</span>
+            <span class="q-nav-text">{pin.label}</span>
           </.link>
         </nav>
       </div>
 
-      <div class="flex-1" />
-
-      <div id="brand-foot" class="m-2 flex-none">
-        <.brand_menu version={@version} direction="up" />
+      <div class="q-sidebar-foot">
+        <.nav_item
+          :if={@foot}
+          entry={elem(@foot, 0)}
+          path={elem(@foot, 1)}
+          current={@nav == elem(@foot, 0).key or @under_settings}
+          counts={@counts}
+        />
+        <button
+          id="sidebar-collapse"
+          type="button"
+          class="q-nav-item q-collapse"
+          data-sidebar-collapse
+          aria-pressed="false"
+          aria-keyshortcuts="["
+          phx-mounted={JS.ignore_attributes(["aria-pressed", "title"])}
+        >
+          <.icon name="hero-chevron-double-left-micro" class="q-nav-icon q-collapse-icon size-4" />
+          <span class="q-nav-text">{gettext("Collapse sidebar")}</span>
+          <kbd class="q-kbd q-nav-count" aria-hidden="true">[</kbd>
+        </button>
       </div>
     </aside>
     """
   end
 
+  attr :entry, :any, required: true
+  attr :path, :string, required: true
+  attr :current, :boolean, required: true
+  attr :counts, :any, required: true
+
+  defp nav_item(assigns) do
+    ~H"""
+    <.link
+      id={"nav-#{@entry.key}"}
+      navigate={@path}
+      aria-current={@current && "page"}
+      class="q-nav-item"
+      phx-mounted={JS.ignore_attributes(["title"])}
+    >
+      <.icon name={@entry.icon} class="q-nav-icon size-4" />
+      <span class="q-nav-text">{@entry.label}</span>
+      <span
+        :if={@entry.key == :runs && alive_count(@counts) > 0}
+        id="nav-runs-alive"
+        class="q-nav-count text-info-soft-content"
+        title={alive_title(alive_count(@counts))}
+      >
+        <span class="q-dot q-ripple !size-1.5" aria-hidden="true"></span>
+        {Format.number(alive_count(@counts))}
+      </span>
+      <span
+        :if={@entry.key == :policy && policy_mode(@counts)}
+        id="nav-policy-mode"
+        class="q-nav-count"
+        title={policy_mode_title(@counts)}
+      >
+        {policy_mode(@counts)}<span :if={own_modes(@counts) != []} class="opacity-75"> · {gettext(
+          "%{number} own",
+          number: Format.number(length(own_modes(@counts)))
+        )}</span>
+      </span>
+      <span :if={count = nav_count(@counts, @entry)} class="q-nav-count">
+        {Format.number(count)}
+      </span>
+    </.link>
+    """
+  end
+
+  defp sidebar_label(:workspace), do: gettext("Workspace")
+  defp sidebar_label(:organisation), do: gettext("Organisation")
+  defp sidebar_label(_person), do: gettext("Your account")
+
+  defp pin_letter(label) do
+    label |> String.split("/") |> List.last() |> String.first() |> Kernel.||("?")
+  end
+
+  defp pins(%{pins: pins}) when is_list(pins), do: Enum.take(pins, @pins)
+  defp pins(_counts), do: []
+
   # The running version, from the application's spec. Nil before the spec exists
-  # (a clean compile), and then the foot shows the brand alone.
+  # (a clean compile), and then the account menu shows none.
   defp version do
     case Application.spec(:apiary, :vsn) do
       nil -> nil
@@ -443,35 +1146,68 @@ defmodule ApiaryWeb.Layouts do
 
   defp nav_text(msgid), do: Gettext.gettext(ApiaryWeb.Gettext, msgid)
 
-  # The entries the scope may open, by section, with where each leads. A feature that is
-  # off is absent, not disabled: no entry, greyed or otherwise, and so nothing beside it
-  # either (Policy's mode word goes with Policy). A section left empty goes too. Without a
-  # workspace, for a member added to none yet, only the organisation's own entries are
+  # Every group of the sidebar, in order, with its heading translated: the core's, the
+  # edition's (translated by the edition), then any other section an edition's entry
+  # names, without a heading.
+  defp sections(entries) do
+    core = for {section, heading} <- @sections, do: {section, heading && nav_text(heading)}
+    named = core ++ ApiaryWeb.Edition.nav_sections()
+    known = Keyword.keys(named) ++ [:settings, :foot, nil]
+
+    others =
+      for %Entry{section: section} <- entries,
+          section not in known,
+          uniq: true,
+          do: {section, nil}
+
+    named ++ others
+  end
+
+  # The entries of the page's scope the reader may open, by group, with where each leads.
+  # A feature that is off is absent, not disabled: no entry, greyed or otherwise, and so
+  # nothing beside it either (Policy's mode word goes with Policy). A group left empty goes
+  # too. Without a workspace, for a member added to none yet, a workspace's entries are not
   # there.
-  defp nav_items(
-         %{organisation: %{} = organisation, workspace: workspace} = scope,
-         counts,
-         entries
-       ) do
-    for {section, {title, label}} <- @sections,
+  defp nav_groups(scope, place, counts, entries) do
+    for {section, heading} <- sections(entries),
         shown =
           for(
-            %Entry{section: ^section} = entry <- entries,
-            shown?(entry, scope, workspace, counts),
-            do: {entry, Entry.path(entry, organisation, workspace)}
+            %Entry{section: ^section, place: ^place} = entry <- entries,
+            shown?(entry, scope, counts),
+            do: {entry, entry_path(entry, scope)}
           ),
         shown != [],
-        do: {title, label, shown}
+        do: {section, heading, shown}
   end
 
-  defp nav_items(_scope, _counts, _entries), do: []
+  # Settings at the sidebar's foot: the scope's.
+  defp foot(scope, place, entries) do
+    Enum.find_value(entries, fn
+      %Entry{section: :foot, place: ^place} = entry ->
+        shown?(entry, scope, nil) && {entry, entry_path(entry, scope)}
 
-  defp shown?(%Entry{place: :workspace}, _scope, nil, _counts), do: false
+      _entry ->
+        nil
+    end)
+  end
 
-  defp shown?(%Entry{} = entry, scope, workspace, counts) do
+  defp entry_path(entry, scope),
+    do: Entry.path(entry, scope_field(scope, :organisation), scope_field(scope, :workspace))
+
+  defp shown?(%Entry{place: :person} = entry, scope, counts),
+    do: is_nil(entry.filter) or entry.filter.(scope, counts)
+
+  defp shown?(%Entry{place: :workspace}, %{workspace: nil}, _counts), do: false
+  defp shown?(%Entry{}, %{organisation: nil}, _counts), do: false
+
+  defp shown?(%Entry{} = entry, scope, counts) do
     (is_nil(entry.filter) or entry.filter.(scope, counts)) and
-      nav_open?(scope, entry.action, workspace || scope.organisation)
+      nav_open?(scope, entry.action, subject(entry, scope))
   end
+
+  # What an entry's action is asked of: the workspace where there is one, else the
+  # organisation.
+  defp subject(%Entry{}, scope), do: scope.workspace || scope.organisation
 
   # Where the switcher leads: to a workspace of a membership, the section the user is on,
   # when they may open it there too, else the first entry they may open there, the
@@ -482,8 +1218,12 @@ defmodule ApiaryWeb.Layouts do
 
   defp switch_path(nav, entries, %{organisation: organisation} = place, workspace) do
     scope = place_scope(place, workspace)
-    may? = &nav_open?(scope, &1.action, workspace)
-    entry = Enum.find(entries, &(&1.key == nav and may?.(&1))) || Enum.find(entries, may?)
+    places = [:workspace, :organisation]
+    may? = &(&1.place in places and nav_open?(scope, &1.action, workspace))
+
+    entry =
+      Enum.find(entries, &(&1.key == nav and may?.(&1))) ||
+        Enum.find(entries, &(&1.place == :workspace and may?.(&1)))
 
     Entry.path(entry, organisation, workspace)
   end
@@ -501,7 +1241,7 @@ defmodule ApiaryWeb.Layouts do
   end
 
   defp nav_open?(_scope, nil, _subject), do: true
-  defp nav_open?(scope, action, subject), do: Apiary.Access.can?(scope, action, subject)
+  defp nav_open?(scope, action, subject), do: Access.can?(scope, action, subject)
 
   # One place to switch to per workspace each membership reaches, and one for a
   # membership that reaches none yet: `{membership, workspace or nil}`.
@@ -561,297 +1301,12 @@ defmodule ApiaryWeb.Layouts do
     do:
       ngettext("%{number} run alive now", "%{number} runs alive now", n, number: Format.number(n))
 
-  defp organisation_title(organisation, workspace) do
-    Enum.map_join([organisation, workspace], " / ", &(&1 && &1.name))
-  end
-
-  attr :scope, :any, default: nil
-  attr :organisation, :any, required: true
-  attr :workspace, :any, required: true
-  attr :memberships, :list, required: true
-  attr :nav, :atom, default: nil
-  attr :nav_entries, :list, default: []
-
-  # The organisation block at the top of the sidebar. Its third column is the switcher's
-  # chevron slot in both variants, so nothing moves the day a second place arrives. One
-  # workspace in one organisation, and no new organisation to create: text, the slot
-  # empty. Otherwise the switcher, a dropdown of links to each workspace the user reaches
-  # in each organisation, at the section the user is on (the path says which workspace a
-  # page shows), and to an organisation where they reach no workspace yet; a
-  # link loads the page afresh, so the session remembers the workspace for `/`. Last, the
-  # edition's entries (`ApiaryWeb.Edition.switcher_entries/1`), such as New organisation.
-  defp organisation_block(%{memberships: memberships} = assigns)
-       when is_list(memberships) and memberships != [] do
-    assigns =
-      assigns
-      |> assign(:places, places(memberships))
-      |> assign(:switcher_entries, ApiaryWeb.Edition.switcher_entries(assigns.scope))
-
-    if length(assigns.places) > 1 or assigns.switcher_entries != [],
-      do: switcher(assigns),
-      else: organisation_text(assigns)
-  end
-
-  defp organisation_block(assigns), do: organisation_text(assigns)
-
-  defp switcher(assigns) do
-    ~H"""
-    <div
-      id="organisation-menu"
-      class="dropdown block min-w-0 flex-1"
-      phx-hook="Menu"
-      phx-mounted={JS.ignore_attributes(["class"])}
-    >
-      <button
-        id="organisation-menu-button"
-        type="button"
-        class="grid w-full cursor-pointer grid-cols-[28px_1fr_auto] items-center gap-2.5 rounded-field border border-line bg-base-100 px-2 py-1.5 text-left shadow-xs transition-colors hover:border-line-strong"
-        aria-haspopup="menu"
-        aria-expanded="false"
-        aria-label={gettext("Switch organisation, current: %{name}", name: @organisation.name)}
-        phx-mounted={JS.ignore_attributes(["aria-expanded"])}
-      >
-        <.organisation_names organisation={@organisation} workspace={@workspace} />
-        <.icon name="hero-chevron-up-down-micro" class="size-4 text-faint" />
-      </button>
-      <ul
-        class="menu menu-sm dropdown-content left-0 top-full mt-1.5 w-full min-w-0"
-        role="menu"
-        aria-label={gettext("Switch organisation")}
-      >
-        <li class="menu-title" role="presentation">{gettext("Switch organisation")}</li>
-        <li :for={{m, w} = place <- @places} role="none">
-          <.link
-            id={switch_id(place)}
-            href={switch_path(@nav, @nav_entries, m, w)}
-            role="menuitem"
-            aria-current={current?(place, @organisation, @workspace) && "true"}
-            class="!h-auto min-h-[38px] py-1"
-          >
-            <.avatar name={m.organisation.name} kind="organisation" />
-            <span class="grid min-w-0 flex-1">
-              <span class="truncate font-medium">{m.organisation.name}</span>
-              <span class="truncate text-xs/4 text-faint">
-                {if w, do: w.name, else: gettext("No workspace yet")}
-              </span>
-            </span>
-            <.icon
-              :if={current?(place, @organisation, @workspace)}
-              name="hero-check-micro"
-              class="size-4 !text-base-content"
-            />
-          </.link>
-        </li>
-        <li :if={@switcher_entries != []} class="menu-divider" role="separator"></li>
-        <li :for={entry <- @switcher_entries} role="none">
-          <.link
-            id={"organisation-menu-#{entry.key}"}
-            navigate={Entry.path(entry, @organisation, @workspace)}
-            role="menuitem"
-            class="!h-auto min-h-[38px] py-1"
-          >
-            <span
-              class="grid size-6 flex-none place-items-center rounded-field border border-dashed border-line-field text-faint"
-              aria-hidden="true"
-            >
-              <.icon name={entry.icon} class="size-3.5" />
-            </span>
-            <span class="truncate font-medium">{entry.label}</span>
-          </.link>
-        </li>
-      </ul>
-    </div>
-    """
-  end
-
-  defp organisation_text(assigns) do
-    ~H"""
-    <div
-      id="organisation-block"
-      class="grid min-w-0 flex-1 grid-cols-[28px_1fr_auto] items-center gap-2.5 rounded-field border border-transparent px-2 py-1.5"
-      title={organisation_title(@organisation, @workspace)}
-    >
-      <.organisation_names organisation={@organisation} workspace={@workspace} />
-    </div>
-    """
-  end
-
-  attr :organisation, :any, required: true
-  attr :workspace, :any, required: true
-
-  defp organisation_names(assigns) do
-    ~H"""
-    <.avatar name={@organisation.name} kind="organisation" size="md" />
-    <span class="grid min-w-0">
-      <span class="truncate text-[13px]/[18px] font-semibold" title={@organisation.name}>
-        {@organisation.name}
-      </span>
-      <span class="truncate text-xs/4 text-muted" title={@workspace && @workspace.name}>
-        {@workspace && @workspace.name}
-      </span>
-    </span>
-    """
-  end
-
-  attr :user, :any, required: true
-  attr :organisation, :any, required: true
-  attr :scope, :any, required: true
-
-  # The account menu at the right end of the top bar: who you are, then settings, your
-  # organisations (where those pending deletion show) and log out. No theme row (the
-  # toggle's), no switching (the sidebar's), no docs and no version (the brand menu's).
-  defp account_menu(assigns) do
-    ~H"""
-    <div
-      id="user-menu"
-      class="dropdown dropdown-end"
-      phx-hook="Menu"
-      phx-mounted={JS.ignore_attributes(["class"])}
-    >
-      <button
-        id="user-menu-button"
-        type="button"
-        class="tooltip tooltip-bottom btn btn-ghost btn-keep h-10 min-h-0 min-w-10 gap-1 rounded-field px-2 md:h-8 md:min-w-8 md:px-1 aria-expanded:bg-base-300"
-        data-tip={gettext("Account")}
-        aria-haspopup="menu"
-        aria-expanded="false"
-        aria-label={gettext("Account menu, %{email}", email: @user.email)}
-        phx-mounted={JS.ignore_attributes(["aria-expanded"])}
-      >
-        <.avatar name={@user.email} kind="self" />
-        <.icon name="hero-chevron-down-micro" class="hidden size-4 text-faint md:inline" />
-      </button>
-      <ul
-        class="menu menu-sm dropdown-content right-0 top-full mt-1.5 w-56"
-        role="menu"
-        aria-label={gettext("Account")}
-      >
-        <li role="presentation">
-          <div class="grid cursor-default grid-flow-row gap-0 px-2 pb-2 pt-1.5 hover:bg-transparent">
-            <span class="truncate font-medium" title={@user.email}>{@user.email}</span>
-            <span id="user-menu-level" class="truncate text-xs/4 text-faint">
-              {level_sentence(@scope, @organisation)}
-            </span>
-          </div>
-        </li>
-        <li class="menu-divider" role="separator"></li>
-        <li role="none">
-          <.link href={~p"/users/settings"} role="menuitem" id="user-menu-settings">
-            <.icon name="hero-user-circle-micro" class="size-4" /> {gettext("Account settings")}
-          </.link>
-        </li>
-        <li role="none">
-          <.link href={~p"/users/organisations"} role="menuitem" id="user-menu-organisations">
-            <.icon name="hero-building-office-2-micro" class="size-4" /> {gettext(
-              "Your organisations"
-            )}
-          </.link>
-        </li>
-        <li class="menu-divider" role="separator"></li>
-        <li role="none">
-          <.link href={~p"/users/log-out"} method="delete" role="menuitem" id="user-menu-log-out">
-            <.icon name="hero-arrow-right-start-on-rectangle-micro" class="size-4" /> {gettext(
-              "Log out"
-            )}
-          </.link>
-        </li>
-      </ul>
-    </div>
-    """
-  end
-
-  attr :version, :any, required: true
-  attr :direction, :string, required: true, values: ~w(up down)
-
-  # The product's menu, on the brand: the mark and "Qory Apiary" with the version at the
-  # right, opening upward from the sidebar's foot and downward from the bar when there is
-  # no sidebar. It holds what is about Qory Apiary itself, not about the person: the
-  # docs served by this instance, its changelog, and the source.
-  defp brand_menu(assigns) do
-    ~H"""
-    <div
-      id="brand-menu"
-      class={["dropdown block", @direction == "up" && "dropdown-top w-full"]}
-      phx-hook="Menu"
-      phx-mounted={JS.ignore_attributes(["class"])}
-    >
-      <button
-        id="brand-menu-button"
-        type="button"
-        class={[
-          "flex cursor-pointer items-center gap-2 rounded-field px-2 text-left text-muted transition-colors hover:bg-base-300 hover:text-base-content aria-expanded:bg-base-300 aria-expanded:text-base-content",
-          if(@direction == "up", do: "h-9 w-full max-md:h-10", else: "h-8")
-        ]}
-        aria-haspopup="menu"
-        aria-expanded="false"
-        aria-label={
-          if @version,
-            do: gettext("Qory Apiary menu, version %{version}", version: @version),
-            else: gettext("Qory Apiary menu")
-        }
-        phx-mounted={JS.ignore_attributes(["aria-expanded"])}
-      >
-        <.logo_mark class="size-[18px]" />
-        <span class="whitespace-nowrap text-[13px]/[18px] font-medium tracking-[-0.03em]">
-          Qory Apiary
-        </span>
-        <span
-          :if={@version}
-          id="brand-version"
-          class="ml-auto font-mono text-[11.5px]/4 text-faint tabular-nums"
-          title={gettext("Version %{version}", version: @version)}
-        >
-          {@version}
-        </span>
-        <.icon
-          name={if @direction == "up", do: "hero-chevron-up-micro", else: "hero-chevron-down-micro"}
-          class={["size-4 text-faint", @direction == "down" && "-ml-0.5"]}
-        />
-      </button>
-      <ul
-        class={[
-          "menu menu-sm dropdown-content w-56",
-          if(@direction == "up", do: "left-0 bottom-full mb-1.5", else: "left-0 top-full mt-1.5")
-        ]}
-        role="menu"
-        aria-label="Qory Apiary"
-      >
-        <li role="none">
-          <.link href={~p"/docs"} role="menuitem" id="brand-menu-docs">
-            <.icon name="hero-book-open-micro" class="size-4" /> {gettext("Docs")}
-          </.link>
-        </li>
-        <%!-- The release notes name every feature, so only the documentation of an instance with
-             every one has them; the documentation is the instance's, and so is this check. --%>
-        <li :if={Apiary.Features.enabled() == Apiary.Features.all()} role="none">
-          <.link href={~p"/docs/changelog.html"} role="menuitem" id="brand-menu-changelog">
-            <.icon name="hero-list-bullet-micro" class="size-4" /> {gettext("Changelog")}
-          </.link>
-        </li>
-        <li class="menu-divider" role="separator"></li>
-        <li role="none">
-          <.link
-            href="https://github.com/qoryai/apiary"
-            target="_blank"
-            rel="noopener"
-            role="menuitem"
-            id="brand-menu-source"
-          >
-            <.icon name="hero-code-bracket-micro" class="size-4" /> {gettext("Source on GitHub")}
-            <.icon name="hero-arrow-top-right-on-square-micro" class="ml-auto size-3.5 text-faint" />
-          </.link>
-        </li>
-      </ul>
-    </div>
-    """
-  end
-
   # The level the person acts at where the page is, their membership's
   # (`Apiary.Access.level/1`); a reader, who reads the organisation through the edition's
   # reach and has no membership there, is told so, in the edition's words where it has
   # them.
   defp level_sentence(scope, %{name: name}) do
-    case {Apiary.Access.level(scope), Apiary.Access.reader(scope)} do
+    case {Access.level(scope), Access.reader(scope)} do
       {:owner, _reader} ->
         gettext("Owner of %{name}", name: name)
 

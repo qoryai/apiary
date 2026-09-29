@@ -13,10 +13,10 @@ defmodule ApiaryWeb.Routes do
       visitor_routes()
       organisation_routes()
 
-  - `pipelines/0`: `:browser`, `:api`, `:contract` (a signed request of the server
-    contract) and `:path_scope` (the reserved names, `ApiaryWeb.ReservedSlugs`), with the
-    plugs of `ApiaryWeb.UserAuth` the routes pipe through imported. First, since the
-    others pipe through them.
+  - `pipelines/0`: `:browser`, `:browser_json` (JSON for a signed-in page), `:api`,
+    `:contract` (a signed request of the server contract) and `:path_scope` (the reserved
+    names, `ApiaryWeb.ReservedSlugs`), with the plugs of `ApiaryWeb.UserAuth` the routes
+    pipe through imported. First, since the others pipe through them.
   - `public_routes/0`: the home page, `/docs`, `/health`, the server contract under
     `/.well-known` and `/v1`, and, where `:dev_routes` is set, `/dev`.
   - `account_routes/1`: a signed-in person's own pages under `/users` and an invitation's
@@ -24,10 +24,11 @@ defmodule ApiaryWeb.Routes do
   - `visitor_routes/1`: registration, log-in and an invitation, for anyone, in the
     `live_session :current_user`, with the session's controller routes.
   - `organisation_routes/1`: the organisation's pages under `/:org/…` and a workspace's
-    under `/:org/:workspace/…`, in the `live_session :workspace`, last: `/:org` and
-    `/:org/:workspace` would match every path of one or two segments before them. The
-    first segment is never one of `ApiaryWeb.ReservedSlugs.organisation/0`, the second of
-    an organisation's never one of `ApiaryWeb.ReservedSlugs.workspace/0`;
+    under `/:org/:workspace/…`, in the `live_session :workspace`, with the palette's
+    answers (`/:org/jump`, `/:org/:workspace/jump`) and a run's raw log beside them,
+    last: `/:org` and `/:org/:workspace` would match every path of one or two segments
+    before them. The first segment is never one of `ApiaryWeb.ReservedSlugs.organisation/0`,
+    the second of an organisation's never one of `ApiaryWeb.ReservedSlugs.workspace/0`;
     `test/apiary_web/reserved_slugs_test.exs` holds both lists to the router's routes.
 
   The three route macros that hold a `live_session` take a `do` block, the caller's routes
@@ -67,6 +68,7 @@ defmodule ApiaryWeb.Routes do
         only: [
           fetch_current_scope_for_user: 2,
           require_authenticated_user: 2,
+          require_authenticated_json: 2,
           fetch_path_scope: 2
         ]
 
@@ -83,6 +85,17 @@ defmodule ApiaryWeb.Routes do
 
       pipeline :api do
         plug :accepts, ["json"]
+      end
+
+      # JSON for a signed-in person's page, such as the palette's answers: the browser's
+      # session, cookie and words, without its HTML.
+      pipeline :browser_json do
+        plug :accepts, ["json"]
+        plug :fetch_session
+        plug :fetch_live_flash
+        plug :put_secure_browser_headers
+        plug :fetch_current_scope_for_user
+        plug ApiaryWeb.Lingo
       end
 
       # A request of the server contract, signed with an access key.
@@ -227,6 +240,20 @@ defmodule ApiaryWeb.Routes do
   defmacro organisation_routes(opts \\ [], block \\ []) do
     routes =
       quote do
+        # What the palette of the top bar (Search or jump to) finds: JSON, not a page.
+        # Before the pages, whose `/:org/:workspace` would take `/:org/jump`.
+        scope "/", ApiaryWeb do
+          pipe_through [
+            :path_scope,
+            :browser_json,
+            :require_authenticated_json,
+            :fetch_path_scope
+          ]
+
+          get "/:org/jump", JumpController, :show
+          get "/:org/:workspace/jump", JumpController, :show
+        end
+
         scope "/", ApiaryWeb do
           pipe_through [:path_scope, :browser, :require_authenticated_user, :fetch_path_scope]
 

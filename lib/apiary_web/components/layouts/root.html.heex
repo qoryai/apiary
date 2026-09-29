@@ -37,6 +37,12 @@
         if (!document.documentElement.hasAttribute("data-theme")) {
           setTheme(localStorage.getItem("phx:theme") || "system");
         }
+        // The sidebar folded to icons, a reading preference, before the first paint.
+        try {
+          if (localStorage.getItem("qory:sidebar") === "collapsed") {
+            document.documentElement.setAttribute("data-sidebar", "collapsed");
+          }
+        } catch (e) {}
         window.addEventListener("storage", (e) => e.key === "phx:theme" && setTheme(e.newValue || "system"));
         window.addEventListener("phx:set-theme", (e) => setTheme(e.target.closest("[data-phx-theme]").dataset.phxTheme));
 

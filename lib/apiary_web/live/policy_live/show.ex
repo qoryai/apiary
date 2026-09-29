@@ -744,7 +744,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
       memberships={@memberships}
       counts={@nav_counts}
       nav={:policy}
-      width="full"
+      width="list"
     >
       <.page_skeleton title={gettext("Policy")} />
     </Layouts.app>
@@ -759,7 +759,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
       memberships={@memberships}
       counts={@nav_counts}
       nav={:policy}
-      width="full"
+      width="list"
     >
       <div id="policy-page" phx-hook="PolicyPage" class="grid grid-cols-[minmax(0,1fr)] gap-6">
         <div :if={@live_action in [:version, :export] && @v} class="grid gap-3">

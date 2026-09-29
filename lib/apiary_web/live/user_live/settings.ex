@@ -15,10 +15,11 @@ defmodule ApiaryWeb.UserLive.Settings do
       current_scope={@current_scope}
       memberships={@memberships}
       counts={assigns[:nav_counts]}
-      width="narrow"
+      nav={:user_settings}
+      width="read"
     >
       <.header>
-        {gettext("Account settings")}
+        {gettext("Your settings")}
         <:subtitle>{gettext("Your email address, password and preferences.")}</:subtitle>
       </.header>
 
@@ -244,7 +245,7 @@ defmodule ApiaryWeb.UserLive.Settings do
 
     socket =
       socket
-      |> assign(:page_title, gettext("Account settings"))
+      |> assign(:page_title, gettext("Your settings"))
       |> assign(:current_email, user.email)
       |> assign(:email_form, to_form(email_changeset))
       |> assign(:password_form, to_form(password_changeset))

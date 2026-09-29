@@ -52,7 +52,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
       memberships={@memberships}
       counts={@nav_counts}
       nav={:connections}
-      width="full"
+      width="list"
     >
       <.header>
         {gettext("Connections")}

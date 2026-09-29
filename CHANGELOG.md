@@ -30,6 +30,11 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
 - The audit trail of every change, on the organisation's Activity page; retention of a
   run's events and log output, set per workspace; deletion of a workspace or an
   organisation, marked first and purged after a grace period.
+- The console's shell: a top bar that says where a page is and switches to any
+  organisation or workspace with a search, Search or jump to (⌘K) for pages,
+  repositories, runs and places, New, and a sidebar of the page's workspace,
+  organisation or account, which folds to icons. Pages start at one left edge and use the
+  width of the screen: lists up to 1680 px, a run's page all of it, forms 720 px.
 - The features an instance has, switched at launch (`QORY_FEATURES`), and the guides and
   module reference every instance serves at `/docs`.
 

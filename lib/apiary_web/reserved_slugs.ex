@@ -35,8 +35,9 @@ defmodule ApiaryWeb.ReservedSlugs do
     invitations live phoenix robots.txt users v1
   )
 
-  # The organisation's own pages, the second segment of `/:org/…`.
-  @organisation_pages ~w(activity members settings)
+  # The organisation's own pages, the second segment of `/:org/…`, and the palette's
+  # answers there.
+  @organisation_pages ~w(activity jump members settings)
 
   @doc """
   organisation/0 lists the names no organisation slug may be: the core's and the

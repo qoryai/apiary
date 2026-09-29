@@ -102,8 +102,8 @@ defmodule ApiaryWeb.PathScopeTest do
 
     assert has_element?(mine, "#workspace-slug", workspace_path(scope))
     assert has_element?(theirs, "#workspace-slug", workspace_path(other))
-    assert has_element?(mine, "#organisation-row", scope.organisation.name)
-    assert has_element?(theirs, "#organisation-row", other.organisation.name)
+    assert has_element?(mine, "#breadcrumb", scope.organisation.name)
+    assert has_element?(theirs, "#breadcrumb", other.organisation.name)
   end
 
   test "a reserved first segment is never an organisation: it answers as an unknown path" do
