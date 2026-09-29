@@ -284,7 +284,10 @@ defmodule ApiaryWeb.SettingsLive do
     >
       <:col :let={workspace} label={gettext("Workspace")} kind="title">
         <span class="q-nm">
-          <.link navigate={~p"/#{@current_scope.organisation}/#{workspace}"} class="q-title hover:underline">
+          <.link
+            navigate={~p"/#{@current_scope.organisation}/#{workspace}"}
+            class="q-title hover:underline"
+          >
             {workspace.name}
           </.link>
           <span class="q-side q-mono">{workspace.slug}</span>

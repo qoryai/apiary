@@ -312,7 +312,8 @@ defmodule ApiaryWeb.CoreComponents do
   Renders a button, or a link styled as one when `href`, `navigate` or `patch` is given.
 
   `loading_text` is the gerund shown with a spinner while the button's form
-  submits or its click is in flight; the button keeps its width.
+  submits or its click is in flight; the button keeps its width. A `link` button, a
+  row's text action, takes none: its words stay while it is in flight.
 
   ## Examples
 
@@ -344,8 +345,12 @@ defmodule ApiaryWeb.CoreComponents do
       """
     else
       ~H"""
-      <button class={@classes} data-busy={@loading_text && ""} {@rest}>
-        <%= if @loading_text do %>
+      <button
+        class={@classes}
+        data-busy={@loading_text && @variant != "link" && ""}
+        {@rest}
+      >
+        <%= if @loading_text && @variant != "link" do %>
           <span class="btn-label">{render_slot(@inner_block)}</span>
           <span class="btn-busy" aria-hidden="true">
             <span class="loading loading-spinner loading-xs" />{@loading_text}
@@ -1439,7 +1444,13 @@ defmodule ApiaryWeb.CoreComponents do
 
   def filter_menu(assigns) do
     ~H"""
-    <div id={@id} class="q-listmenu dropdown dropdown-end" phx-hook="Menu" data-float phx-mounted={JS.ignore_attributes(["class"])}>
+    <div
+      id={@id}
+      class="q-listmenu dropdown dropdown-end"
+      phx-hook="Menu"
+      data-float
+      phx-mounted={JS.ignore_attributes(["class"])}
+    >
       <button
         id={"#{@id}-button"}
         type="button"
@@ -1474,7 +1485,13 @@ defmodule ApiaryWeb.CoreComponents do
 
   def sort_menu(assigns) do
     ~H"""
-    <div id={@id} class="q-listmenu dropdown dropdown-end" phx-hook="Menu" data-float phx-mounted={JS.ignore_attributes(["class"])}>
+    <div
+      id={@id}
+      class="q-listmenu dropdown dropdown-end"
+      phx-hook="Menu"
+      data-float
+      phx-mounted={JS.ignore_attributes(["class"])}
+    >
       <button
         id={"#{@id}-button"}
         type="button"

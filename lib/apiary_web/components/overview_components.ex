@@ -1,8 +1,9 @@
 defmodule ApiaryWeb.OverviewComponents do
   @moduledoc """
-  The components of the workspace overview: the Needs attention list, the activity strip,
-  the alive rows, the fourteen-day chart, the last runs, the policy, access keys and
-  retention glances, and the empty workspace's checklist.
+  The components of the workspace overview, each a level of its own look (`docs/ui.md`,
+  Lists): the summary (the largest numbers on the page), then blocks, each one box with a
+  band and rows or lines and nothing boxed inside it: Needs attention, the fourteen-day
+  chart, the active targets and Guard; and the empty workspace's one box.
 
   Every number here is a count the workspace already keeps: `runs` columns the projector
   folded, `access_keys` timestamps, `retention_runs` rows, the policy's mode and version.
@@ -10,10 +11,10 @@ defmodule ApiaryWeb.OverviewComponents do
   caller, so a live update patches a row in place and never by index. Times tick in the
   browser under the `Ticker` hook, as everywhere.
 
-  The policy's parts are the `security` feature's: `policy_glance/1`, the attention items
-  of kinds `:denied` (an allow is a rule), `:behind`, `:enforce` and `:unmanaged`. None of
-  them asks for itself; the caller leaves them out where the feature is off, and what
-  remains names, links to and offers nothing of the policy.
+  The policy's parts are the `security` feature's: the policy lines of `guard/1`, the
+  attention items of kinds `:denied` (an allow is a rule), `:behind`, `:enforce` and
+  `:unmanaged`. None of them asks for itself; the caller leaves them out where the feature
+  is off, and what remains names, links to and offers nothing of the policy.
   """
   use Phoenix.Component
   use ApiaryWeb, :verified_routes
@@ -22,51 +23,198 @@ defmodule ApiaryWeb.OverviewComponents do
   import ApiaryWeb.RichText
 
   import ApiaryWeb.CoreComponents,
-    only: [badge: 1, button: 1, code_block: 1, icon: 1, listening: 1, steps: 1]
+    only: [button: 1, icon: 1, listening: 1, sparkline: 1, steps: 1]
 
   import ApiaryWeb.RunComponents,
     only: [
-      alive: 1,
       beat: 1,
-      drift: 1,
-      duration: 1,
-      elapsed: 1,
       format_seconds: 1,
-      tool_mark: 1,
       heard_at: 1,
-      quiet_for: 2,
       relative_time: 1,
-      run_state: 1,
-      short_id: 1
+      short_id: 1,
+      state_label: 1,
+      tool_mark: 1
     ]
 
-  import ApiaryWeb.PolicyComponents, only: [rule_mark: 1, sect: 1, version_pill: 1]
-
+  alias Apiary.Runs.Filters
   alias ApiaryWeb.Format
   alias Phoenix.LiveView.JS
 
-  defp lost_tip,
+  ## The summary
+
+  @doc """
+  The summary: four numbers, the largest type on the page, each a link to the list it
+  counts: alive now, runs, runs that ended badly and denied attempts over the chart's
+  days. `facts` is nil while the activity read is in flight; `quiet` is how many alive
+  runs have gone quiet; `destinations` the count of denied destinations when it could be
+  made, else nil.
+  """
+  attr :id, :string, default: "overview-strip"
+  attr :alive, :integer, required: true
+  attr :quiet, :integer, default: 0
+  attr :facts, :any, required: true, doc: "nil while loading, else the 14-day totals"
+
+  attr :scope, :map,
+    required: true,
+    doc: "the caller's scope: its organisation and workspace name the links"
+
+  attr :destinations, :any, default: nil
+  attr :days, :integer, default: 14
+
+  def summary(assigns) do
+    ~H"""
+    <section
+      id={@id}
+      class="q-sum"
+      aria-label={gettext("Summary")}
+      aria-busy={to_string(is_nil(@facts))}
+    >
+      <div class="q-sum-in">
+        <.link
+          id={"#{@id}-alive"}
+          navigate={
+            ~p"/#{@scope.organisation}/#{@scope.workspace}/runs?#{%{"state" => "pending,running"}}"
+          }
+          class="q-sum-c"
+          aria-label={
+            ngettext(
+              "%{number} run alive now: open them",
+              "%{number} runs alive now: open them",
+              @alive,
+              number: Format.number(@alive)
+            )
+          }
+        >
+          <span class="q-sum-k">{gettext("Alive now")}</span>
+          <span class="q-sum-v">{Format.number(@alive)}</span>
+          <span class="q-sum-s">{alive_sub(@alive, @quiet)}</span>
+        </.link>
+        <.summary_cell
+          id={"#{@id}-runs"}
+          label={
+            ngettext("Runs, %{number} day", "Runs, %{number} days", @days,
+              number: Format.number(@days)
+            )
+          }
+          navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs?since=30d"}
+          value={@facts && @facts.runs}
+          sub={@facts && runs_sub(@facts)}
+        />
+        <.summary_cell
+          id={"#{@id}-bad"}
+          label={
+            ngettext("Ended badly, %{number} day", "Ended badly, %{number} days", @days,
+              number: Format.number(@days)
+            )
+          }
+          navigate={
+            ~p"/#{@scope.organisation}/#{@scope.workspace}/runs?#{%{"state" => Enum.join(Apiary.Runs.Run.ended_badly_states(), ","), "since" => "30d"}}"
+          }
+          value={@facts && @facts.ended_badly}
+          sub={@facts && bad_sub(@facts)}
+        />
+        <.summary_cell
+          id={"#{@id}-denied"}
+          label={
+            ngettext("Denied attempts, %{number} day", "Denied attempts, %{number} days", @days,
+              number: Format.number(@days)
+            )
+          }
+          navigate={
+            ~p"/#{@scope.organisation}/#{@scope.workspace}/connections?#{%{"decision" => "denied", "since" => "30d"}}"
+          }
+          short={
+            ngettext("Denied, %{number} day", "Denied, %{number} days", @days,
+              number: Format.number(@days)
+            )
+          }
+          value={@facts && @facts.denied}
+          sub={@facts && denied_sub(@facts, @destinations)}
+        />
+      </div>
+    </section>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :label, :string, required: true
+  attr :short, :string, default: nil, doc: "the label where the strip is narrow"
+  attr :navigate, :string, required: true
+  attr :value, :any, required: true
+  attr :sub, :any, required: true
+
+  defp summary_cell(assigns) do
+    ~H"""
+    <.link :if={@value} id={@id} navigate={@navigate} class="q-sum-c">
+      <span class={["q-sum-k", @short && "q-sum-long"]}>{@label}</span>
+      <span :if={@short} class="q-sum-k q-sum-short">{@short}</span>
+      <span class="q-sum-v">{Format.number(@value)}</span>
+      <span class="q-sum-s">{@sub}</span>
+    </.link>
+    <div :if={is_nil(@value)} class="q-sum-c" aria-hidden="true">
+      <span class="q-sum-k">{@short || @label}</span>
+      <span class="skeleton q-skel-v"></span>
+      <span class="skeleton q-skel-line w-3/4"></span>
+    </div>
+    """
+  end
+
+  defp alive_sub(0, _quiet), do: gettext("none")
+
+  defp alive_sub(_alive, quiet) when quiet > 0,
     do:
-      gettext(
-        "Nothing was heard for three heartbeat intervals. The run may still be going; the record is not."
+      ngettext("%{number} gone quiet", "%{number} gone quiet", quiet,
+        number: Format.number(quiet)
       )
 
-  defp mode_tip,
+  defp alive_sub(_alive, _quiet), do: gettext("starting or running")
+
+  defp runs_sub(%{runs: 0}), do: gettext("none")
+
+  defp runs_sub(facts),
+    do: gettext("%{number} ended well", number: Format.number(facts.ended_well))
+
+  defp bad_sub(%{runs: 0}), do: gettext("none")
+
+  defp bad_sub(facts),
     do:
-      gettext(
-        "Enforce: a connection no rule allows is denied. Observe: it is let through and recorded. A deny rule holds in either mode."
+      gettext("%{percent}% of the runs",
+        percent: Format.number(round(facts.ended_badly / facts.runs * 100))
       )
+
+  defp denied_sub(%{denied: 0}, _destinations), do: gettext("none")
+
+  defp denied_sub(_facts, destinations) when is_integer(destinations) and destinations > 0 do
+    ngettext("to %{number} destination", "to %{number} destinations", destinations,
+      number: Format.number(destinations)
+    )
+  end
+
+  defp denied_sub(_facts, _destinations), do: ""
+
+  @doc "A sum of dollars: two decimals, four when the sum is under a cent."
+  def cost_text(%Decimal{} = cost) do
+    if Decimal.compare(cost, Decimal.new("0.01")) == :lt and Decimal.compare(cost, 0) == :gt,
+      do: "$" <> Format.number(cost, digits: 4),
+      else: "$" <> Format.number(cost, digits: 2)
+  end
+
+  def cost_text(_cost), do: gettext("n/a")
 
   ## Needs attention
 
   @doc """
-  The list of acts. `items` is ordered and bounded by the caller; an empty list renders
-  nothing at all: when there is nothing to do the section is absent.
+  The list of acts: one line an item, its mark, its subject (the only strong text), where
+  it is, the reason in a few words, when, and the one act that settles it. `items` is
+  ordered and bounded by the caller; an empty list renders nothing at all: when there is
+  nothing to do the block is absent. `shared` is the target paths on more than one
+  system, whose system is shown.
   """
   attr :id, :string, required: true
   attr :items, :list, required: true
   attr :count, :integer, required: true, doc: "the items not yet resolved, shown and beyond"
   attr :more, :map, default: nil, doc: "%{count:, navigate:, title:}"
+  attr :shared, :any, default: MapSet.new()
 
   attr :scope, :map,
     required: true,
@@ -77,28 +225,14 @@ defmodule ApiaryWeb.OverviewComponents do
 
   def attention(assigns) do
     ~H"""
-    <.sect
-      :if={@items != []}
-      id={@id}
-      title={gettext("Needs attention")}
-      count={Format.number(@count)}
-      class="q-att"
-    >
-      <:trailing>
-        <.link
-          :if={@more}
-          id={"#{@id}-more"}
-          navigate={@more.navigate}
-          class="q-link"
-          title={@more.title}
-        >
-          {ngettext("and %{number} more", "and %{number} more", @more.count,
-            number: Format.number(@more.count)
-          )}
-        </.link>
-      </:trailing>
+    <section :if={@items != []} id={@id} class="q-blk q-att" aria-labelledby={"#{@id}-h"}>
+      <div class="q-band">
+        <h2 id={"#{@id}-h"}>{gettext("Needs attention")}</h2>
+        <span id={"#{@id}-n"} class="q-band-n">{Format.number(@count)}</span>
+      </div>
       <ul
         id={"#{@id}-list"}
+        class="q-rows"
         aria-label={
           ngettext("%{number} item needs attention", "%{number} items need attention", @count,
             number: Format.number(@count)
@@ -109,19 +243,30 @@ defmodule ApiaryWeb.OverviewComponents do
           :for={item <- @items}
           scope={@scope}
           item={item}
+          shared={@shared}
           can_set_mode?={@can_set_mode?}
           now={@now}
         />
       </ul>
-    </.sect>
+      <.link
+        :if={@more}
+        id={"#{@id}-more"}
+        navigate={@more.navigate}
+        class="q-more"
+        title={@more.title}
+      >
+        {ngettext("and %{number} more", "and %{number} more", @more.count,
+          number: Format.number(@more.count)
+        )}
+        <.icon name="hero-arrow-right-micro" class="size-3.5" />
+      </.link>
+    </section>
     """
   end
 
-  attr :scope, :map,
-    required: true,
-    doc: "the caller's scope: its organisation and workspace name the links"
-
+  attr :scope, :map, required: true
   attr :item, :map, required: true
+  attr :shared, :any, required: true
   attr :can_set_mode?, :boolean, required: true
   attr :now, :any, required: true
 
@@ -129,27 +274,27 @@ defmodule ApiaryWeb.OverviewComponents do
     ~H"""
     <li
       id={@item.id}
-      class={["q-sugg-row", @item.resolved && "q-resolved", @item.arrived && "q-arrived"]}
+      class={["q-ar", @item.resolved && "q-resolved", @item.arrived && "q-arrived"]}
       data-kind={@item.kind}
     >
-      <span class="q-att-subj">
-        <.attention_mark item={@item} />
-        <.attention_subject item={@item} now={@now} />
-      </span>
-      <span class="q-sugg-what">
+      <.attention_mark item={@item} />
+      <span class="q-ar-subj"><.attention_subject scope={@scope} item={@item} /></span>
+      <span class="q-ar-where"><.attention_where item={@item} shared={@shared} /></span>
+      <span class="q-ar-why" title={reason_title(@item, @can_set_mode?)}>
         <%= if @item.resolved && @item.resolved[:what] do %>
           {@item.resolved.what}
         <% else %>
-          <.attention_sentence item={@item} can_set_mode?={@can_set_mode?} now={@now} />
+          <.attention_reason item={@item} now={@now} />
         <% end %>
       </span>
-      <span class="q-sugg-acts">
+      <span class="q-ar-when"><.attention_when item={@item} /></span>
+      <span class="q-ar-act">
         <%= if @item.resolved do %>
           <span :if={@item.resolved[:done]} class="q-done" id={"#{@item.id}-done"} tabindex="-1">
             <.icon name="hero-check-micro" class="size-3" />{@item.resolved.done}
           </span>
         <% else %>
-          <.attention_actions scope={@scope} item={@item} can_set_mode?={@can_set_mode?} />
+          <.attention_act scope={@scope} item={@item} can_set_mode?={@can_set_mode?} />
         <% end %>
       </span>
     </li>
@@ -160,106 +305,69 @@ defmodule ApiaryWeb.OverviewComponents do
 
   defp attention_mark(%{item: %{resolved: %{mark: mark}}} = assigns) when not is_nil(mark) do
     ~H"""
-    <span
-      :if={@item.resolved.mark == :allowed}
-      class="q-mark q-mark-ok"
-      title={gettext("Allowed")}
-    >
-      <.icon name="hero-check-micro" class="size-3" /><span class="sr-only">{gettext("Allowed")}</span>
+    <span :if={@item.resolved.mark == :allowed} class="q-amk q-mark-ok" title={gettext("Allowed")}>
+      <.icon name="hero-check-micro" class="size-3.5" /><span class="sr-only">{gettext("Allowed")}</span>
     </span>
-    <span
-      :if={@item.resolved.mark == :closed}
-      class="q-mark q-mark-closed"
-      title={gettext("Closed")}
-    >
-      <.icon name="hero-lock-closed-micro" class="size-3" /><span class="sr-only">{gettext("Closed")}</span>
+    <span :if={@item.resolved.mark == :closed} class="q-amk q-mark-closed" title={gettext("Closed")}>
+      <.icon name="hero-lock-closed-micro" class="size-3.5" /><span class="sr-only">{gettext("Closed")}</span>
     </span>
     <span
       :if={@item.resolved.mark == :resolved}
-      class="q-mark q-mark-plain q-mark-faint"
+      class="q-amk q-mark-faint"
       title={gettext("Resolved")}
     >
-      <.icon name="hero-check-micro" class="size-3" /><span class="sr-only">{gettext("Resolved")}</span>
+      <.icon name="hero-check-micro" class="size-3.5" /><span class="sr-only">{gettext("Resolved")}</span>
     </span>
     """
   end
 
-  defp attention_mark(%{item: %{kind: :denied, locked: locked}} = assigns)
-       when is_binary(locked) do
+  defp attention_mark(assigns) do
+    assigns = assign(assigns, mark: mark(assigns.item))
+
     ~H"""
-    <span class="q-mark q-mark-lock" title={gettext("Locked")}>
-      <.icon name="hero-lock-closed-micro" class="size-3" /><span class="sr-only">{gettext("Locked")}</span>
+    <span class={["q-amk", "q-amk-#{@mark.tone}"]} title={@mark.word}>
+      <.icon :if={@mark.icon} name={@mark.icon} class="size-3.5" />
+      <span class="sr-only">{@mark.word}</span>
     </span>
     """
   end
 
-  defp attention_mark(%{item: %{kind: :denied}} = assigns) do
-    ~H"""
-    <.rule_mark action="pending" />
-    """
-  end
+  # The one mark of a row, the only colour on it: red for a denial, amber for a run that
+  # needs a look, grey for the policy and a key.
+  defp mark(%{kind: :denied, locked: locked}) when is_binary(locked),
+    do: %{tone: "plain", icon: "hero-lock-closed-micro", word: gettext("Locked")}
 
-  defp attention_mark(%{item: %{kind: :quiet}} = assigns) do
-    ~H"""
-    <span class="q-mark q-mark-amber q-mark-dot" title={gettext("Quiet")}><span class="sr-only">{gettext(
-      "Quiet"
-    )}</span></span>
-    """
-  end
+  defp mark(%{kind: :denied}),
+    do: %{tone: "denied", icon: "hero-no-symbol-micro", word: gettext("Not allowed")}
 
-  defp attention_mark(%{item: %{kind: :lost}} = assigns) do
-    ~H"""
-    <span class="q-mark q-mark-amber" title={gettext("Lost")}>
-      <.icon name="hero-signal-slash-micro" class="size-3.5" /><span class="sr-only">{gettext("Lost")}</span>
-    </span>
-    """
-  end
+  defp mark(%{kind: :quiet}), do: %{tone: "quiet", icon: nil, word: gettext("Quiet")}
+  defp mark(%{kind: :lost}), do: %{tone: "lost", icon: nil, word: gettext("Lost")}
 
-  defp attention_mark(%{item: %{kind: :behind}} = assigns) do
-    ~H"""
-    <span class="q-mark q-mark-amber" title={gettext("Behind the policy in force")}>
-      <.icon name="hero-exclamation-triangle-micro" class="size-3.5" />
-      <span class="sr-only">{gettext("Behind the policy in force")}</span>
-    </span>
-    """
-  end
+  defp mark(%{kind: :behind}),
+    do: %{
+      tone: "warn",
+      icon: "hero-exclamation-triangle-micro",
+      word: gettext("Behind the policy in force")
+    }
 
-  defp attention_mark(%{item: %{kind: kind}} = assigns) when kind in [:enforce, :unmanaged] do
-    ~H"""
-    <span class="q-mark q-mark-plain" title={gettext("Policy")}>
-      <.icon
-        name={
-          if @item.kind == :enforce,
-            do: "hero-shield-exclamation-micro",
-            else: "hero-shield-check-micro"
-        }
-        class="size-3.5"
-      />
-      <span class="sr-only">{gettext("Policy")}</span>
-    </span>
-    """
-  end
+  defp mark(%{kind: :enforce}),
+    do: %{tone: "plain", icon: "hero-shield-exclamation-micro", word: gettext("Policy")}
 
-  defp attention_mark(%{item: %{kind: :idle_key}} = assigns) do
-    ~H"""
-    <span class="q-mark q-mark-plain q-mark-faint" title={gettext("Access key")}>
-      <.icon name="hero-key-micro" class="size-3.5" /><span class="sr-only">{gettext("Access key")}</span>
-    </span>
-    """
-  end
+  defp mark(%{kind: :unmanaged}),
+    do: %{tone: "plain", icon: "hero-shield-check-micro", word: gettext("Policy")}
 
+  defp mark(%{kind: :idle_key}),
+    do: %{tone: "faint", icon: "hero-key-micro", word: gettext("Access key")}
+
+  attr :scope, :map, required: true
   attr :item, :map, required: true
-  attr :now, :any, required: true
 
   # A denied destination of a tool's host is a denied request to that tool: it leads with
-  # the tool, then the path, then the host, beside the denial's mark, as the list of what
-  # enforce would start denying names it (`Apiary.Policy.denied_destinations/2`).
+  # the tool, then the path, then the host, as the list of what enforce would start
+  # denying names it (`Apiary.Policy.denied_destinations/2`).
   defp attention_subject(%{item: %{kind: :denied, tool: tool}} = assigns) when is_binary(tool) do
     ~H"""
-    <span
-      class="q-host q-dest-tool truncate font-mono text-[12.5px]"
-      title={destination_title(@item)}
-    >
+    <span class="q-host q-dest-tool q-ar-t q-mono" title={destination_title(@item)}>
       <.tool_mark name={@item.tool} /><span
         :if={@item.path != ""}
         class="q-path"
@@ -270,7 +378,7 @@ defmodule ApiaryWeb.OverviewComponents do
 
   defp attention_subject(%{item: %{kind: :denied}} = assigns) do
     ~H"""
-    <span class="q-host truncate font-mono text-[12.5px]" title={destination_title(@item)}>
+    <span class="q-host q-ar-t q-mono" title={destination_title(@item)}>
       {@item.host}<span class="q-port">:{@item.port}</span><span
         :if={@item.held && @item.path != ""}
         class="q-path"
@@ -281,346 +389,323 @@ defmodule ApiaryWeb.OverviewComponents do
 
   defp attention_subject(%{item: %{kind: kind}} = assigns)
        when kind in [:quiet, :lost, :behind] do
-    run = assigns.item.run
-
-    assigns =
-      assign(assigns,
-        run: run,
-        quiet: if(kind == :quiet, do: quiet_for(run, assigns.now) || beat(run) + 1)
-      )
-
     ~H"""
-    <.run_state
-      state={@run.state}
-      quiet_for={@quiet}
-      quiet_since={@quiet && heard_at(@run)}
-      interval={beat(@run)}
-      note={false}
-      class="q-state-wrap"
-    />
-    <span class="q-att-task" title={run_title(@run)}>{run_title(@run)}</span>
-    <span class="q-att-rid">{short_id(@run.run_id)}</span>
-    <.drift
-      :if={@item.kind == :behind && @item.in_force}
-      id={"#{@item.id}-drift"}
-      reported={@item.reported}
-      in_force={@item.in_force}
-    />
+    <.link
+      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@item.run.run_id}"}
+      class="q-ar-t"
+      title={run_title(@item.run)}
+    >
+      {run_title(@item.run)}
+    </.link>
+    <span class="q-ar-id">{short_id(@item.run.run_id)}</span>
     """
   end
 
   defp attention_subject(%{item: %{kind: :enforce}} = assigns) do
     ~H"""
-    <b class="q-att-lead">
+    <span class="q-ar-t">
       <.rich text={
         rich_gettext("%{observe} is the workspace's default",
           observe: {:term, gettext("Observe"), mode_tip()}
         )
       } />
-    </b>
+    </span>
     """
   end
 
   defp attention_subject(%{item: %{kind: :unmanaged}} = assigns) do
     ~H"""
-    <b class="q-att-lead">{gettext("Qory serves no policy yet")}</b>
+    <span class="q-ar-t">{gettext("Qory serves no policy yet")}</span>
     """
   end
 
   defp attention_subject(%{item: %{kind: :idle_key}} = assigns) do
     ~H"""
-    <span class="q-att-task" title={@item.key.label}>{@item.key.label}</span>
-    <span class="q-att-rid">{@item.key.key_id}</span>
+    <span class="q-ar-t q-mono" title={@item.key.label}>{@item.key.label}</span>
+    <span class="q-ar-id">{@item.key.key_id}</span>
     """
   end
 
   attr :item, :map, required: true
-  attr :can_set_mode?, :boolean, required: true
+  attr :shared, :any, required: true
+
+  defp attention_where(%{item: %{kind: :denied, targets: [target]}} = assigns) do
+    assigns = assign(assigns, :target, target)
+
+    ~H"""
+    <.target_name system={@target.system} path={@target.path} shared={@shared} />
+    """
+  end
+
+  defp attention_where(%{item: %{kind: :denied, targets: []}} = assigns) do
+    ~H"""
+    <span class="q-faint">{gettext("no target")}</span>
+    """
+  end
+
+  defp attention_where(%{item: %{kind: :denied, targets: targets}} = assigns) do
+    assigns = assign(assigns, :n, length(targets))
+
+    ~H"""
+    {ngettext("%{number} target", "%{number} targets", @n, number: Format.number(@n))}
+    """
+  end
+
+  defp attention_where(%{item: %{kind: kind, run: run}} = assigns)
+       when kind in [:quiet, :lost, :behind] do
+    assigns = assign(assigns, :run, run)
+
+    ~H"""
+    <.target_name
+      :if={@run.target_system && @run.target_path}
+      system={@run.target_system}
+      path={@run.target_path}
+      shared={@shared}
+    />
+    <span :if={!(@run.target_system && @run.target_path)} class="q-faint">
+      {gettext("no target")}
+    </span>
+    """
+  end
+
+  defp attention_where(%{item: %{kind: kind}} = assigns) when kind in [:enforce, :unmanaged] do
+    ~H"""
+    {gettext("Policy")}
+    """
+  end
+
+  defp attention_where(%{item: %{kind: :idle_key}} = assigns) do
+    ~H"""
+    {gettext("Access keys")}
+    """
+  end
+
+  @doc """
+  A target as a page writes it: its path in mono, and its system faint before it only
+  where the same path is on more than one system of the workspace (`shared`).
+  """
+  attr :system, :string, required: true
+  attr :path, :string, required: true
+  attr :shared, :any, default: MapSet.new()
+  attr :class, :any, default: nil
+
+  def target_name(assigns) do
+    ~H"""
+    <span class={["q-tname", @class]} title={"#{@system}/#{@path}"}><span
+      :if={MapSet.member?(@shared, @path)}
+      class="q-tname-sys"
+    >{@system}/</span>{@path}</span>
+    """
+  end
+
+  attr :item, :map, required: true
   attr :now, :any, required: true
 
-  defp attention_sentence(%{item: %{kind: :denied, locked: locked}} = assigns)
+  defp attention_reason(%{item: %{kind: :denied, locked: locked}} = assigns)
        when is_binary(locked) do
     ~H"""
+    {gettext("Denied by a locked rule")}
+    """
+  end
+
+  defp attention_reason(%{item: %{kind: :denied}} = assigns) do
+    ~H"""
+    {gettext("Denied %{times} in %{runs}", times: times(@item.denied), runs: runs_count(@item.runs))}
+    """
+  end
+
+  defp attention_reason(%{item: %{kind: :quiet}} = assigns) do
+    ~H"""
     <.rich text={
-      rich_gettext("A locked workspace rule denies %{rule}. Only an owner can change it.",
-        rule: {:code, @item.locked, "q-rule"}
+      rich_gettext("No heartbeat for %{since}",
+        since: since(%{__changed__: nil, at: heard_at(@item.run)})
       )
     } />
     """
   end
 
-  defp attention_sentence(%{item: %{kind: :denied}} = assigns) do
+  defp attention_reason(%{item: %{kind: :lost}} = assigns) do
     ~H"""
-    <span :if={@item.held && @item.path != ""}>
-      <b>{gettext("Host allowed, no path rule matches")}</b> <code class="q-rule">{@item.path}</code>.
-    </span>
-    <.rich text={denied_sentence(@item)} />
+    {gettext("Lost, never posted its exit")}
     """
   end
 
-  defp attention_sentence(%{item: %{kind: :quiet}} = assigns) do
-    assigns = assign(assigns, :interval, beat(assigns.item.run))
-
+  defp attention_reason(%{item: %{kind: :behind}} = assigns) do
     ~H"""
     <.rich text={
-      rich_gettext(
-        "No heartbeat for %{since}. Heartbeats are due every %{interval}; after %{silence} of silence it is marked %{lost}.",
-        since: {:b, since(%{__changed__: nil, at: heard_at(@item.run)}), "tabular-nums"},
-        interval: format_seconds(@interval),
-        silence: format_seconds(@interval * 3),
-        lost: {:term, gettext("lost"), lost_tip()}
-      )
-    } />
-    """
-  end
-
-  defp attention_sentence(%{item: %{kind: :lost, run: %{elapsed_seconds: elapsed}}} = assigns)
-       when is_integer(elapsed) do
-    ~H"""
-    <.rich text={
-      rich_gettext("Lost. Last heard %{when}, at least %{elapsed} in. The run never posted its exit.",
-        when: relative_time(%{__changed__: nil, at: heard_at(@item.run)}),
-        elapsed: format_seconds(@item.run.elapsed_seconds)
-      )
-    } />
-    """
-  end
-
-  defp attention_sentence(%{item: %{kind: :lost}} = assigns) do
-    ~H"""
-    <.rich text={
-      rich_gettext("Lost. Last heard %{when}. The run never posted its exit.",
-        when: relative_time(%{__changed__: nil, at: heard_at(@item.run)})
-      )
-    } />
-    """
-  end
-
-  defp attention_sentence(%{item: %{kind: :behind}} = assigns) do
-    ~H"""
-    <.rich text={
-      rich_gettext(
-        "Still on %{reported} after %{beats}; %{in_force} has been in force for %{since}. A run reloads at its next heartbeat.",
+      rich_gettext("On %{reported}; %{in_force} in force",
         reported: version_word(%{__changed__: nil, version: @item.reported}),
-        beats:
-          ngettext("%{number} heartbeat", "%{number} heartbeats", @item.beats,
-            number: Format.number(@item.beats)
-          ),
-        in_force: version_word(%{__changed__: nil, version: @item.in_force}),
-        since: {:b, since(%{__changed__: nil, at: @item.in_force.rendered_at}), "tabular-nums"}
+        in_force: version_word(%{__changed__: nil, version: @item.in_force})
       )
     } />
     """
   end
 
-  defp attention_sentence(%{item: %{kind: :enforce}} = assigns) do
+  defp attention_reason(%{item: %{kind: :enforce}} = assigns) do
     ~H"""
     <%= cond do %>
       <% @item.uncovered == 0 -> %>
-        {ngettext(
-          "%{number} allow rule is in force and every destination reached in the last 7 days is covered. Enforce would deny nothing today.",
-          "%{number} allow rules are in force and every destination reached in the last 7 days is covered. Enforce would deny nothing today.",
-          @item.rules,
-          number: Format.number(@item.rules)
-        )}
+        {gettext("Enforce would deny nothing today")}
       <% is_integer(@item.uncovered) -> %>
-        {ngettext("%{number} rule is in force.", "%{number} rules are in force.", @item.rules,
-          number: Format.number(@item.rules)
+        {ngettext(
+          "Enforce would deny %{number} destination",
+          "Enforce would deny %{number} destinations",
+          @item.uncovered,
+          number: Format.number(@item.uncovered)
         )}
-        <.rich text={
-          rich_ngettext(
-            "Enforce would deny %{number} destination reached in the last 7 days.",
-            "Enforce would deny %{number} destinations reached in the last 7 days.",
-            @item.uncovered,
-            number: {:b, Format.number(@item.uncovered)}
-          )
-        } />
       <% true -> %>
-        {ngettext("%{number} rule is in force.", "%{number} rules are in force.", @item.rules,
-          number: Format.number(@item.rules)
-        )}
-        {gettext(
-          "What enforce would deny could not be counted: this workspace recorded more than %{cap} connections in 7 days.",
-          cap: Format.number(Apiary.Policy.Activity.cap())
-        )}
+        {gettext("What enforce would deny is not counted")}
     <% end %>
-    <span :if={!@can_set_mode?}>{gettext("Only an owner or an admin sets a mode.")}</span>
     """
   end
 
-  defp attention_sentence(%{item: %{kind: :unmanaged}} = assigns) do
+  defp attention_reason(%{item: %{kind: :unmanaged}} = assigns) do
     ~H"""
-    <.rich text={
-      rich_gettext(
-        "%{runs} landed under the machines' own policies. The first rule you add, or a mode you set, puts them under the workspace's.",
-        runs: {:b, runs_count(@item.runs)}
+    {ngettext(
+      "%{number} run under the machines' policies",
+      "%{number} runs under the machines' policies",
+      @item.runs,
+      number: Format.number(@item.runs)
+    )}
+    """
+  end
+
+  defp attention_reason(%{item: %{kind: :idle_key}} = assigns) do
+    ~H"""
+    <%= if @item.key.last_used_at do %>
+      {gettext("Not seen for %{days}", days: days(@item.days))}
+    <% else %>
+      {gettext("Never used in %{days}", days: days(@item.days))}
+    <% end %>
+    """
+  end
+
+  # The longer sentence behind a reason, on hover: what a reader needs to decide.
+  defp reason_title(%{resolved: resolved}, _can) when not is_nil(resolved), do: nil
+
+  defp reason_title(%{kind: :denied, locked: locked}, _can) when is_binary(locked),
+    do:
+      gettext("A locked workspace rule denies %{rule}. Only an owner can change it.",
+        rule: locked
       )
-    } />
-    """
+
+  defp reason_title(%{kind: :quiet, run: run}, _can) do
+    interval = beat(run)
+
+    gettext(
+      "Heartbeats are due every %{interval}; after %{silence} of silence it is marked lost.",
+      interval: format_seconds(interval),
+      silence: format_seconds(interval * 3)
+    )
   end
 
-  defp attention_sentence(%{item: %{kind: :idle_key}} = assigns) do
+  defp reason_title(%{kind: :lost}, _can), do: lost_tip()
+
+  defp reason_title(%{kind: :behind}, _can),
+    do: gettext("A run reloads the policy at its next heartbeat.")
+
+  defp reason_title(%{kind: :enforce}, false),
+    do: gettext("Only an owner or an admin sets a mode.")
+
+  defp reason_title(%{kind: :enforce}, true), do: mode_tip()
+
+  defp reason_title(%{kind: :unmanaged}, _can),
+    do:
+      gettext(
+        "The first rule you add, or a mode you set, puts the runs under the workspace's policy."
+      )
+
+  defp reason_title(%{kind: :idle_key}, _can),
+    do: gettext("A key nobody uses is a key to revoke.")
+
+  defp reason_title(_item, _can), do: nil
+
+  attr :item, :map, required: true
+
+  defp attention_when(%{item: %{kind: :denied}} = assigns) do
     ~H"""
-    <%= cond do %>
-      <% @item.key.last_used_at && @item.key.last_runner_version -> %>
-        <.rich text={
-          rich_gettext(
-            "Not seen for %{days}; last runner %{version}. A key nobody uses is a key to revoke.",
-            days: {:b, days(@item.days)},
-            version: @item.key.last_runner_version
-          )
-        } />
-      <% @item.key.last_used_at -> %>
-        <.rich text={
-          rich_gettext("Not seen for %{days}. A key nobody uses is a key to revoke.",
-            days: {:b, days(@item.days)}
-          )
-        } />
-      <% true -> %>
-        <.rich text={
-          rich_gettext(
-            "Never used since it was created %{days} ago. A key nobody uses is a key to revoke.",
-            days: {:b, days(@item.days)}
-          )
-        } />
-    <% end %>
+    <.relative_time at={@item.last_seen_at} />
     """
   end
 
-  # Where a denied destination was reached from, each shape its own sentence.
-  defp denied_sentence(%{targets: []} = item) do
-    rich_gettext("Denied %{times} in %{runs} without a target, last %{when}.",
-      times: {:b, times(item.denied)},
-      runs: runs_count(item.runs),
-      when: relative_time(%{__changed__: nil, at: item.last_seen_at})
-    )
+  defp attention_when(%{item: %{kind: kind}} = assigns) when kind in [:quiet, :lost, :behind] do
+    ~H"""
+    <.relative_time at={@item.at || @item.run.started_at || @item.run.inserted_at} />
+    """
   end
 
-  defp denied_sentence(%{targets: [target]} = item) do
-    rich_gettext("Denied %{times} in %{runs} of %{target}, last %{when}.",
-      times: {:b, times(item.denied)},
-      runs: runs_count(item.runs),
-      target: {:m, "#{target.system}/#{target.path}", "font-mono text-[12.5px]"},
-      when: relative_time(%{__changed__: nil, at: item.last_seen_at})
-    )
+  defp attention_when(%{item: %{kind: :idle_key, key: key}} = assigns) do
+    assigns = assign(assigns, :at, key.last_used_at || key.inserted_at)
+
+    ~H"""
+    <span class="tabular-nums">{Format.day(@at)}</span>
+    """
   end
 
-  defp denied_sentence(%{targets: targets} = item) do
-    rich_ngettext(
-      "Denied %{times} in %{runs} of %{number} target, last %{when}.",
-      "Denied %{times} in %{runs} of %{number} targets, last %{when}.",
-      length(targets),
-      times: {:b, times(item.denied)},
-      runs: runs_count(item.runs),
-      when: relative_time(%{__changed__: nil, at: item.last_seen_at}),
-      number: Format.number(length(targets))
-    )
-  end
+  defp attention_when(assigns), do: ~H""
 
-  attr :scope, :map,
-    required: true,
-    doc: "the caller's scope: its organisation and workspace name the links"
-
+  attr :scope, :map, required: true
   attr :item, :map, required: true
   attr :can_set_mode?, :boolean, required: true
 
-  defp attention_actions(%{item: %{kind: :denied, locked: locked}} = assigns)
+  defp attention_act(%{item: %{kind: :denied, locked: locked}} = assigns)
        when is_binary(locked) do
     ~H"""
     <.link
       id={"#{@item.id}-rule"}
       navigate={ApiaryWeb.ConnectionLive.Rules.rule_path(@scope, nil, @item.locked)}
-      class="btn btn-xs btn-ghost"
+      class="q-act"
     >
       {gettext("Open the rule")}
     </.link>
     """
   end
 
-  defp attention_actions(%{item: %{kind: :denied, targets: [target]}} = assigns) do
+  defp attention_act(%{item: %{kind: :denied, targets: [target]}} = assigns) do
     assigns = assign(assigns, :target, target)
 
-    ~H"""
-    <span
-      id={"#{@item.id}-menu"}
-      class="q-btn-split dropdown dropdown-end"
-      phx-hook="Menu"
-      phx-mounted={JS.ignore_attributes(["class"])}
-    >
-      <button
-        id={"#{@item.id}-act"}
-        type="button"
-        class="btn btn-xs"
-        aria-label={
-          gettext("Allow %{host} for %{target}",
-            host: @item.host,
-            target: "#{@target.system}/#{@target.path}"
-          )
-        }
-        aria-haspopup="dialog"
-        aria-expanded={to_string(@item[:expanded] == true)}
-        phx-click={JS.push("rule_open", value: %{id: @item.id, level: "target"})}
-      >
-        {gettext("Allow here")}
-      </button>
-      <button
-        type="button"
-        class="btn btn-xs"
-        aria-haspopup="menu"
-        aria-expanded="false"
-        aria-label={gettext("More ways to allow %{host}", host: @item.host)}
-        phx-mounted={JS.ignore_attributes(["aria-expanded"])}
-      >
-        <.icon name="hero-chevron-down-micro" class="size-3" />
-      </button>
-      <ul class="menu menu-sm dropdown-content right-0 z-20 mt-1 w-52" role="menu">
-        <li role="none">
-          <button
-            type="button"
-            role="menuitem"
-            data-menu-close
-            phx-click={JS.push("rule_open", value: %{id: @item.id, level: "workspace"})}
-          >
-            {gettext("Allow for the workspace")}
-          </button>
-        </li>
-        <li role="none">
-          <.link
-            role="menuitem"
-            navigate={
-              ~p"/#{@scope.organisation}/#{@scope.workspace}/policy/targets/#{@target.id}?#{%{"rule" => @item.host}}"
-            }
-          >
-            {gettext("Allow with paths…")}
-          </.link>
-        </li>
-      </ul>
-    </span>
-    """
-  end
-
-  defp attention_actions(%{item: %{kind: :denied, targets: []}} = assigns) do
     ~H"""
     <button
       id={"#{@item.id}-act"}
       type="button"
-      class="btn btn-xs"
+      class="q-act"
+      aria-label={
+        gettext("Allow %{host} for %{target}",
+          host: @item.host,
+          target: "#{@target.system}/#{@target.path}"
+        )
+      }
+      aria-haspopup="dialog"
+      aria-expanded={to_string(@item[:expanded] == true)}
+      phx-click={JS.push("rule_open", value: %{id: @item.id, level: "target"})}
+    >
+      {gettext("Allow here")}
+    </button>
+    """
+  end
+
+  defp attention_act(%{item: %{kind: :denied, targets: []}} = assigns) do
+    ~H"""
+    <button
+      id={"#{@item.id}-act"}
+      type="button"
+      class="q-act"
       aria-label={gettext("Allow %{host} for the workspace", host: @item.host)}
       aria-haspopup="dialog"
       aria-expanded={to_string(@item[:expanded] == true)}
       phx-click={JS.push("rule_open", value: %{id: @item.id, level: "workspace"})}
     >
-      {gettext("Allow for the workspace")}
+      {gettext("Allow")}
     </button>
     """
   end
 
-  defp attention_actions(%{item: %{kind: :denied}} = assigns) do
+  defp attention_act(%{item: %{kind: :denied}} = assigns) do
     ~H"""
     <button
       id={"#{@item.id}-act"}
       type="button"
-      class="btn btn-xs"
+      class="q-act"
       aria-label={gettext("Allow %{host}, choose a scope", host: @item.host)}
       aria-haspopup="dialog"
       aria-expanded={to_string(@item[:expanded] == true)}
@@ -631,34 +716,23 @@ defmodule ApiaryWeb.OverviewComponents do
     """
   end
 
-  defp attention_actions(%{item: %{kind: :quiet}} = assigns) do
-    ~H"""
-    <.link
-      id={"#{@item.id}-act"}
-      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@item.run.run_id}"}
-      class="btn btn-xs"
-      aria-label={gettext("Open %{run}", run: run_title(@item.run))}
-    >
-      {gettext("Open")}
-    </.link>
-    """
-  end
-
-  defp attention_actions(%{item: %{kind: :lost}} = assigns) do
+  defp attention_act(%{item: %{kind: :lost}} = assigns) do
     ~H"""
     <button
       :if={Apiary.Access.can?(@scope, :"run.close", @item.run)}
       id={"#{@item.id}-act"}
       type="button"
-      class="btn btn-xs"
+      class="q-act"
       aria-label={gettext("Close %{run}", run: run_title(@item.run))}
       phx-click={JS.push("close_ask", value: %{id: @item.id})}
     >
       {gettext("Close")}
     </button>
     <.link
+      :if={!Apiary.Access.can?(@scope, :"run.close", @item.run)}
+      id={"#{@item.id}-act"}
       navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@item.run.run_id}"}
-      class="btn btn-xs btn-ghost"
+      class="q-act"
       aria-label={gettext("Open %{run}", run: run_title(@item.run))}
     >
       {gettext("Open")}
@@ -666,20 +740,26 @@ defmodule ApiaryWeb.OverviewComponents do
     """
   end
 
-  defp attention_actions(%{item: %{kind: :behind}} = assigns) do
+  defp attention_act(%{item: %{kind: :behind, compare: compare}} = assigns)
+       when is_binary(compare) do
     ~H"""
     <.link
-      :if={@item.compare}
       id={"#{@item.id}-act"}
       navigate={@item.compare}
-      class="btn btn-xs btn-ghost"
+      class="q-act"
       aria-label={gettext("What changed for %{run}", run: run_title(@item.run))}
     >
       {gettext("What changed")}
     </.link>
+    """
+  end
+
+  defp attention_act(%{item: %{kind: kind}} = assigns) when kind in [:quiet, :behind] do
+    ~H"""
     <.link
+      id={"#{@item.id}-act"}
       navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@item.run.run_id}"}
-      class="btn btn-xs"
+      class="q-act"
       aria-label={gettext("Open %{run}", run: run_title(@item.run))}
     >
       {gettext("Open")}
@@ -687,14 +767,14 @@ defmodule ApiaryWeb.OverviewComponents do
     """
   end
 
-  defp attention_actions(%{item: %{kind: :enforce}} = assigns) do
+  defp attention_act(%{item: %{kind: :enforce}} = assigns) do
     ~H"""
     <%= cond do %>
       <% !@can_set_mode? -> %>
         <.link
           id={"#{@item.id}-act"}
           navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/policy"}
-          class="btn btn-xs"
+          class="q-act"
         >
           {gettext("Open policy")}
         </.link>
@@ -702,40 +782,40 @@ defmodule ApiaryWeb.OverviewComponents do
         <.link
           id={"#{@item.id}-act"}
           navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/policy?confirm=enforce"}
-          class="btn btn-xs btn-primary"
+          class="q-act"
         >
-          {gettext("Set the default to enforce")}
+          {gettext("Set to enforce")}
         </.link>
       <% true -> %>
         <.link
           id={"#{@item.id}-act"}
           navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/policy"}
-          class="btn btn-xs"
+          class="q-act"
         >
-          {gettext("Review on the policy page")}
+          {gettext("Review")}
         </.link>
     <% end %>
     """
   end
 
-  defp attention_actions(%{item: %{kind: :unmanaged}} = assigns) do
+  defp attention_act(%{item: %{kind: :unmanaged}} = assigns) do
     ~H"""
     <.link
       id={"#{@item.id}-act"}
       navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/policy"}
-      class="btn btn-xs"
+      class="q-act"
     >
       {gettext("Open policy")}
     </.link>
     """
   end
 
-  defp attention_actions(%{item: %{kind: :idle_key}} = assigns) do
+  defp attention_act(%{item: %{kind: :idle_key}} = assigns) do
     ~H"""
     <.link
       id={"#{@item.id}-act"}
       navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/settings/keys/#{@item.key.id}/revoke"}
-      class="btn btn-xs q-btn-danger-ghost"
+      class="q-act"
       aria-label={gettext("Revoke %{key}", key: @item.key.label)}
     >
       {gettext("Revoke")}
@@ -785,6 +865,18 @@ defmodule ApiaryWeb.OverviewComponents do
 
   defp destination_title(%{host: host, port: port, path: path}), do: "#{host}:#{port}#{path}"
 
+  defp lost_tip,
+    do:
+      gettext(
+        "Nothing was heard for three heartbeat intervals. The run may still be going; the record is not."
+      )
+
+  defp mode_tip,
+    do:
+      gettext(
+        "Enforce: a connection no rule allows is denied. Observe: it is let through and recorded. A deny rule holds in either mode."
+      )
+
   defp times(n), do: ngettext("once", "%{number} times", n, number: Format.number(n))
 
   defp runs_count(n), do: ngettext("%{number} run", "%{number} runs", n, number: Format.number(n))
@@ -801,288 +893,152 @@ defmodule ApiaryWeb.OverviewComponents do
 
   def run_title(%{run_id: run_id}), do: short_id(run_id)
 
-  ## The activity strip
+  ## Active targets
 
   @doc """
-  The four cells over the record: alive now, runs in 14 days with the families, denied
-  attempts, cost reported. `facts` is nil while the activity read is in flight;
-  `destinations` is the count of denied destinations when it could be made, else nil.
+  The targets with the most runs over the chart's days, one line each: the target (the
+  title), its last run as a dot and when, with a word only when it is running or ended
+  badly, its runs a day as a sparkline and their count, and its denied attempts. `rows`
+  is nil while the read is in flight; `quiet_ids` are the alive runs gone quiet.
   """
-  attr :id, :string, default: "overview-strip"
-  attr :alive, :integer, required: true
-  attr :facts, :any, required: true, doc: "nil while loading, else the 14-day totals"
+  attr :id, :string, default: "overview-targets"
 
   attr :scope, :map,
     required: true,
     doc: "the caller's scope: its organisation and workspace name the links"
 
-  attr :destinations, :any, default: nil
+  attr :rows, :any, required: true, doc: "nil while loading"
+  attr :targets, :integer, default: 0, doc: "how many targets the workspace has"
+  attr :quiet_ids, :any, default: MapSet.new()
   attr :days, :integer, default: 14
 
-  def strip(assigns) do
+  def active_targets(assigns) do
     ~H"""
-    <dl id={@id} class="q-kvs q-strip" aria-busy={to_string(is_nil(@facts))}>
-      <div class="q-kv relative">
-        <dt>{gettext("Alive now")}</dt>
-        <dd>
+    <section
+      id={@id}
+      class="q-blk q-ov-rep"
+      aria-labelledby={"#{@id}-h"}
+      aria-busy={to_string(is_nil(@rows))}
+    >
+      <div class="q-band">
+        <h2 id={"#{@id}-h"}>{gettext("Active targets")}</h2>
+        <span :if={@rows} class="q-band-n">{Format.number(length(@rows))}</span>
+        <span class="q-band-hint">
+          {ngettext("the most runs in %{number} day", "the most runs in %{number} days", @days,
+            number: Format.number(@days)
+          )}
+        </span>
+      </div>
+      <ul :if={is_nil(@rows)} class="q-rows" aria-hidden="true">
+        <li :for={n <- 1..4} class="q-rr">
+          <span class={["skeleton q-skel-line", if(rem(n, 2) == 0, do: "w-40", else: "w-28")]}></span>
+          <span class="skeleton q-skel-line w-24"></span>
+          <span class="skeleton q-skel-line w-24"></span>
+          <span></span>
+        </li>
+      </ul>
+      <p :if={@rows == []} id={"#{@id}-none"} class="q-blk-none">
+        {ngettext(
+          "No run named a target in the last %{number} day.",
+          "No run named a target in the last %{number} days.",
+          @days,
+          number: Format.number(@days)
+        )}
+      </p>
+      <ul :if={@rows not in [nil, []]} id={"#{@id}-list"} class="q-rows">
+        <li :for={row <- @rows} id={"active-#{row.id}"}>
           <.link
-            id={"#{@id}-alive"}
             navigate={
-              ~p"/#{@scope.organisation}/#{@scope.workspace}/runs?#{%{"state" => "pending,running"}}"
+              ~p"/#{@scope.organisation}/#{@scope.workspace}/runs?#{Filters.target_params(row.system, row.path)}"
             }
-            class="q-rowlink"
-            aria-label={
-              ngettext(
-                "%{number} run alive now: open them",
-                "%{number} runs alive now: open them",
-                @alive,
-                number: Format.number(@alive)
-              )
-            }
-          >{@alive}</.link>
-          <small>{if @alive == 0, do: gettext("none"), else: gettext("starting or running")}</small>
-        </dd>
-      </div>
-      <div class="q-kv relative">
-        <dt>
-          {ngettext("Runs, %{number} day", "Runs, %{number} days", @days,
-            number: Format.number(@days)
-          )}
-        </dt>
-        <dd :if={@facts}>
-          <.link
-            id={"#{@id}-runs"}
-            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs?since=30d"}
-            class="q-rowlink"
-          >{Format.number(@facts.runs)}</.link>
-          <small>{families_sub(@facts)}</small>
-        </dd>
-        <dd :if={!@facts}>
-          <span class="skeleton q-skel-v"></span><small><span class="skeleton q-skel-line w-3/4"></span></small>
-        </dd>
-      </div>
-      <div class="q-kv relative">
-        <dt>
-          {ngettext("Denied attempts, %{number} day", "Denied attempts, %{number} days", @days,
-            number: Format.number(@days)
-          )}
-        </dt>
-        <dd :if={@facts} class={@facts.denied > 0 && "q-bad"}>
-          <.link
-            id={"#{@id}-denied"}
-            navigate={
-              ~p"/#{@scope.organisation}/#{@scope.workspace}/connections?#{%{"decision" => "denied", "since" => "30d"}}"
-            }
-            class="q-rowlink"
-          >{Format.number(@facts.denied)}</.link>
-          <small>{denied_sub(@facts, @destinations)}</small>
-        </dd>
-        <dd :if={!@facts}>
-          <span class="skeleton q-skel-v"></span><small><span class="skeleton q-skel-line w-3/4"></span></small>
-        </dd>
-      </div>
-      <div class="q-kv">
-        <dt>
-          {ngettext("Cost reported, %{number} day", "Cost reported, %{number} days", @days,
-            number: Format.number(@days)
-          )}
-        </dt>
-        <dd :if={@facts && @facts.costed > 0} id={"#{@id}-cost"}>
-          {cost_text(@facts.cost)}<small><.rich text={
-            rich_ngettext(
-              "by %{costed} of %{number} run",
-              "by %{costed} of %{number} runs",
-              @facts.runs,
-              costed: {:b, Format.number(@facts.costed)},
-              number: Format.number(@facts.runs)
-            )
-          } /></small>
-        </dd>
-        <dd :if={@facts && @facts.costed == 0} id={"#{@id}-cost"} class="q-na">
-          {gettext("n/a")}<small>{gettext("no run reported one")}</small>
-        </dd>
-        <dd :if={!@facts}>
-          <span class="skeleton q-skel-v"></span><small><span class="skeleton q-skel-line w-3/4"></span></small>
-        </dd>
-      </div>
-    </dl>
+            class="q-rr"
+          >
+            <span class="q-rr-p">
+              <.target_name
+                system={row.system}
+                path={row.path}
+                shared={if row.shared?, do: MapSet.new([row.path]), else: MapSet.new()}
+              />
+            </span>
+            <span class="q-rr-last">
+              <.last_run
+                :if={row.last}
+                run={row.last}
+                quiet={MapSet.member?(@quiet_ids, row.last.id)}
+              />
+            </span>
+            <span class="q-rr-sp">
+              <.sparkline values={row.days} />
+              <span class="q-rr-n">
+                {ngettext("%{number} run", "%{number} runs", row.runs,
+                  number: Format.number(row.runs)
+                )}
+              </span>
+            </span>
+            <span class="q-rr-den">
+              <span :if={row.denied > 0} class="inline-flex items-center gap-1">
+                <.icon name="hero-no-symbol-micro" class="size-3 text-error" />
+                {ngettext("%{number} denied", "%{number} denied", row.denied,
+                  number: Format.number(row.denied)
+                )}
+              </span>
+            </span>
+          </.link>
+        </li>
+      </ul>
+      <.link
+        id={"#{@id}-all"}
+        navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs"}
+        class="q-more"
+      >
+        {ngettext("All %{number} target", "All %{number} targets", @targets,
+          number: Format.number(@targets)
+        )}
+        <.icon name="hero-arrow-right-micro" class="size-3.5" />
+      </.link>
+    </section>
     """
   end
-
-  defp families_sub(%{runs: 0}), do: gettext("none")
-
-  defp families_sub(%{runs: 1, alive: 1} = facts) do
-    if facts[:targets] == 1, do: gettext("in 1 target"), else: gettext("alive")
-  end
-
-  # A list of counts, one item per family that has runs.
-  defp families_sub(facts) do
-    [
-      facts.ended_well > 0 &&
-        gettext("%{number} ended well", number: Format.number(facts.ended_well)),
-      facts.ended_badly > 0 &&
-        gettext("%{number} ended badly", number: Format.number(facts.ended_badly)),
-      facts.alive > 0 && gettext("%{number} alive", number: Format.number(facts.alive))
-    ]
-    |> Enum.filter(& &1)
-    |> Enum.join(" · ")
-  end
-
-  defp denied_sub(%{denied: 0}, _destinations), do: gettext("none")
-
-  defp denied_sub(_facts, destinations) when is_integer(destinations) and destinations > 0 do
-    ngettext("to %{number} destination", "to %{number} destinations", destinations,
-      number: Format.number(destinations)
-    )
-  end
-
-  defp denied_sub(%{with_denials: runs}, _destinations) when is_integer(runs),
-    do: ngettext("in %{number} run", "in %{number} runs", runs, number: Format.number(runs))
-
-  defp denied_sub(_facts, _destinations), do: ""
-
-  @doc "A sum of dollars: two decimals, four when the sum is under a cent."
-  def cost_text(%Decimal{} = cost) do
-    if Decimal.compare(cost, Decimal.new("0.01")) == :lt and Decimal.compare(cost, 0) == :gt,
-      do: "$" <> Format.number(cost, digits: 4),
-      else: "$" <> Format.number(cost, digits: 2)
-  end
-
-  def cost_text(_cost), do: gettext("n/a")
-
-  ## Alive rows
 
   @doc """
-  The runs alive now, most recently started first, at most five; "and n more" when the
-  workspace has more; "No run alive now." when none, never hidden.
+  A run's state as a dot, with its word only when the run needs a look (running, ended
+  badly); a run that ended well is its dot, and a screen reader hears the word. Then
+  when it started.
   """
-  attr :id, :string, required: true
-  attr :runs, :list, required: true
-
-  attr :scope, :map,
-    required: true,
-    doc: "the caller's scope: its organisation and workspace name the links"
-
-  attr :count, :integer, required: true
-  attr :now, :any, required: true
-
-  def alive_rows(assigns) do
-    ~H"""
-    <div class="q-part-h">
-      <h3 id={"#{@id}-h"}>{gettext("Alive now")}</h3>
-      <span class="q-sect-n" id={"#{@id}-n"}>{Format.number(@count)}</span>
-      <span class="grow"></span>
-      <.link
-        :if={@count > length(@runs)}
-        id={"#{@id}-more"}
-        navigate={
-          ~p"/#{@scope.organisation}/#{@scope.workspace}/runs?#{%{"state" => "pending,running"}}"
-        }
-        class="q-link"
-      >
-        {ngettext("and %{number} more", "and %{number} more", @count - length(@runs),
-          number: Format.number(@count - length(@runs))
-        )}
-      </.link>
-    </div>
-    <span :if={@runs == []} id={"#{@id}-none"} class="q-none">{gettext("No run alive now.")}</span>
-    <div :if={@runs != []} id={"#{@id}-list"} role="list" aria-labelledby={"#{@id}-h"}>
-      <.alive_row
-        :for={run <- @runs}
-        scope={@scope}
-        id={"alive-#{run.run_id}"}
-        run={run}
-        quiet_for={quiet_for(run, @now)}
-        arrived={Map.get(run, :arrived, false)}
-      />
-    </div>
-    """
-  end
-
-  attr :id, :string, required: true
   attr :run, :map, required: true
-  attr :quiet_for, :integer, default: nil
+  attr :quiet, :boolean, default: false
 
-  attr :scope, :map,
-    required: true,
-    doc: "the caller's scope: its organisation and workspace name the links"
+  def last_run(assigns) do
+    assigns =
+      assign(assigns,
+        tone: if(assigns.quiet, do: "quiet", else: assigns.run.state),
+        said?: assigns.run.state not in ["succeeded", "pending"]
+      )
 
-  attr :arrived, :boolean, default: false
-
-  def alive_row(assigns) do
     ~H"""
-    <div id={@id} class={["q-alive-row", @arrived && "q-arrived"]} role="listitem">
-      <.run_state
-        state={@run.state}
-        quiet_for={@quiet_for}
-        quiet_since={heard_at(@run)}
-        interval={beat(@run)}
-        note={false}
-        class="q-state-wrap"
-      />
-      <div class="q-run-cell">
-        <.link
-          navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@run.run_id}"}
-          class="q-rowlink truncate"
-        >
-          <b :if={@run.task}>{@run.task}</b>
-          <b
-            :if={!@run.task && @run.state == "pending" && !@run.started_at}
-            class="!font-normal text-faint"
-          >
-            {gettext("Ping only")}
-          </b>
-          <b
-            :if={!@run.task && (@run.started_at || @run.state != "pending")}
-            class="font-mono text-[12.5px] !font-normal"
-          >
-            {run_title(@run)}
-          </b>
-        </.link>
-        <span>{short_id(@run.run_id)}</span>
-      </div>
-      <span class="q-where">
-        <span class="q-target">
-          <span :if={@run.target_system && @run.target_path}>
-            <span class="q-system">{@run.target_system}/</span>{@run.target_path}
-          </span>
-          <span :if={!(@run.target_system && @run.target_path)} class="font-sans text-faint">
-            {gettext("no target")}
-          </span>
-        </span>
-        <span class="q-host">{@run.host || gettext("n/a")}</span>
-      </span>
-      <.alive
-        id={"#{@id}-alive"}
-        state={@run.state}
-        last_heartbeat_at={@run.last_heartbeat_at}
-        last_event_at={@run.last_event_at || @run.inserted_at}
-        interval={beat(@run)}
-        quiet={is_integer(@quiet_for)}
-        run={@run}
-      />
-    </div>
+    <span class={["q-rs", "q-rs-#{@tone}"]}>
+      <span class="q-rs-dot" aria-hidden="true"></span>
+      <span class={if(@said?, do: "q-rs-w", else: "sr-only")}>{state_label(@run.state)}</span>
+    </span>
+    <.relative_time at={@run.started_at || @run.inserted_at} class="q-rs-t" />
     """
   end
 
   ## The fourteen-day chart
 
-  @w 640
-  @w_narrow 320
   @slots 14
-  @col 22
-  @col_narrow 16
   @top 22
-  @h_runs 56
-  @gap 26
-  @h_den 40
-  @axis 18
+  @h_runs 104
+  @gap 30
+  @h_den 36
+  @axis 20
 
   @doc """
-  Two small multiples sharing one x axis: runs per day above, denied attempts per day
-  below, fourteen columns each, today last and in ink. `days` holds fourteen maps
-  `%{day:, runs:, alive:, ended_well:, ended_badly:, denied:}`, oldest first, zeros filled
-  in by the caller. `table?` shows the table twin instead of the SVG.
+  Two plots on one day axis: runs per day above, denied attempts per day below, fourteen
+  columns each, today last and in ink. `days` holds fourteen maps `%{day:, runs:, alive:,
+  ended_well:, ended_badly:, denied:}`, oldest first, zeros filled in by the caller.
+  `width` is the drawing's width in pixels, as the `DaysChart` hook measured it, so its
+  words are never scaled; `table?` shows the table twin instead of the drawing.
   """
   attr :id, :string, required: true
   attr :days, :list, required: true
@@ -1093,14 +1049,14 @@ defmodule ApiaryWeb.OverviewComponents do
     doc: "the caller's scope: its organisation and workspace name the links"
 
   attr :table?, :boolean, default: false
-
-  attr :narrow?, :boolean,
-    default: false,
-    doc: "the phone geometry: 16 px columns, every third label"
+  attr :width, :integer, default: 640
 
   def days_chart(assigns) do
     days = assigns.days
-    {w, col, every} = if assigns.narrow?, do: {@w_narrow, @col_narrow, 3}, else: {@w, @col, 2}
+    w = assigns.width
+    slot_w = w / @slots
+    col = min(26, Float.round(slot_w * 0.64, 1))
+    every = if w < 420, do: 4, else: if(w < 720, do: 3, else: 2)
     total = days |> Enum.map(& &1.runs) |> Enum.sum()
     denied = days |> Enum.map(& &1.denied) |> Enum.sum()
     max_runs = days |> Enum.map(& &1.runs) |> Enum.max(fn -> 0 end)
@@ -1110,17 +1066,15 @@ defmodule ApiaryWeb.OverviewComponents do
     assigns =
       assign(assigns,
         total: total,
-        denied: denied,
         max_runs: max_runs,
         max_den: max_den,
-        peak: peak,
         height: @top + @h_runs + @gap + @h_den + @axis,
         label: chart_label(total, denied, peak, max_runs, assigns.today),
         indexed: Enum.with_index(days),
         w: w,
         col: col,
         every: every,
-        slot_w: w / @slots,
+        slot_w: slot_w,
         slots: @slots,
         top: @top,
         h_runs: @h_runs,
@@ -1135,47 +1089,12 @@ defmodule ApiaryWeb.OverviewComponents do
       class={["q-chart", @total == 0 && "q-chart-empty"]}
       phx-hook="DaysChart"
       data-table={if @table?, do: "1", else: "0"}
-      data-narrow={if @narrow?, do: "1", else: "0"}
+      data-width={@w}
     >
-      <div class="q-chart-totals">
-        <span :if={@total > 0} id={"#{@id}-totals"}>
-          <.rich text={
-            rich_gettext("%{runs} · %{denied}, 14 days",
-              runs:
-                rich_ngettext("%{number} run", "%{number} runs", @total,
-                  number: {:b, Format.number(@total)}
-                ),
-              denied:
-                rich_ngettext("%{number} denied attempt", "%{number} denied attempts", @denied,
-                  number: {:b, Format.number(@denied)}
-                )
-            )
-          } />
-        </span>
-        <span :if={@total == 0} id={"#{@id}-totals"}>
-          <b>{gettext("No run in the last 14 days")}</b>
-        </span>
-        <span class="grow"></span>
-        <button
-          id={"#{@id}-toggle"}
-          type="button"
-          class="btn btn-ghost btn-xs q-tbtn"
-          aria-pressed={to_string(@table?)}
-          aria-controls={"#{@id}-plot"}
-          aria-label={gettext("Show the chart as a table")}
-          phx-click={JS.push("chart_table", value: %{on: !@table?})}
-        >
-          <.icon
-            name={if @table?, do: "hero-chart-bar-micro", else: "hero-table-cells-micro"}
-            class="size-3"
-          />
-          {if @table?, do: gettext("As a chart"), else: gettext("As a table")}
-        </button>
-      </div>
       <%= if @table? do %>
         <div
           id={"#{@id}-plot"}
-          class="overflow-x-auto rounded-box border border-line bg-base-100 q-chart-table"
+          class="q-chart-table overflow-x-auto"
           tabindex="0"
           role="region"
           aria-label={gettext("Runs and denied attempts per day")}
@@ -1191,12 +1110,10 @@ defmodule ApiaryWeb.OverviewComponents do
             </thead>
             <tbody>
               <tr :for={day <- @days} id={"#{@id}-row-#{Date.to_iso8601(day.day)}"}>
-                <td>{day_label(day.day, @today)}</td>
-                <td class="q-num q-meta">{day.runs}</td>
-                <td class="q-num q-meta">{day.ended_well}</td>
-                <td class={["q-num", if(day.denied > 0, do: "q-bad", else: "q-meta")]}>
-                  {day.denied}
-                </td>
+                <td class="q-hot">{day_label(day.day, @today)}</td>
+                <td class="q-num">{day.runs}</td>
+                <td class="q-num">{day.ended_well}</td>
+                <td class={["q-num", day.denied > 0 && "q-hot"]}>{day.denied}</td>
               </tr>
             </tbody>
           </table>
@@ -1205,6 +1122,8 @@ defmodule ApiaryWeb.OverviewComponents do
         <svg
           id={"#{@id}-plot"}
           viewBox={"0 0 #{@w} #{@height}"}
+          width={@w}
+          height={@height}
           role="group"
           aria-label={@label}
           xmlns="http://www.w3.org/2000/svg"
@@ -1263,12 +1182,13 @@ defmodule ApiaryWeb.OverviewComponents do
               />
             </.link>
             <text
-              :if={rem(i, @every) == 0 or i == @slots - 1}
+              :if={(rem(i, @every) == 0 and i <= @slots - 1 - @every) or i == @slots - 1}
               class={["q-ax", i == @slots - 1 && "q-ax-today"]}
-              x={fmt((i + 0.5) * @slot_w)}
-              y={@height - 4}
+              x={fmt(axis_x(i, @slot_w, @slots))}
+              y={@height - 5}
+              text-anchor={axis_anchor(i, @slots)}
             >
-              {axis_label(day.day, @today)}
+              {day_label(day.day, @today)}
             </text>
           <% end %>
           <line class="q-base" x1="0" x2={@w} y1={@top + @h_runs} y2={@top + @h_runs} />
@@ -1286,15 +1206,25 @@ defmodule ApiaryWeb.OverviewComponents do
     """
   end
 
+  # The first label starts at the axis's left edge and the last ends at its right, so no
+  # word is cut; the others sit under their column.
+  defp axis_x(0, _slot_w, _slots), do: 0
+  defp axis_x(i, slot_w, slots) when i == slots - 1, do: slots * slot_w
+  defp axis_x(i, slot_w, _slots), do: (i + 0.5) * slot_w
+
+  defp axis_anchor(0, _slots), do: "start"
+  defp axis_anchor(i, slots) when i == slots - 1, do: "end"
+  defp axis_anchor(_i, _slots), do: "middle"
+
   attr :cx, :float, required: true
-  attr :col, :integer, default: 22
+  attr :col, :any, default: 22
   attr :base, :integer, required: true
   attr :value, :integer, required: true
   attr :max, :integer, required: true
   attr :plot, :integer, required: true
   attr :class, :any, default: nil
 
-  # A column at most 24 px wide, rounded at the top, square at the baseline; a 2 px stub
+  # A column at most 26 px wide, rounded at the top, square at the baseline; a 2 px stub
   # for a day with nothing, so the day is visibly there and visibly empty.
   defp column(%{value: value, max: max} = assigns) when value > 0 and max > 0 do
     h = max(round(value / max * assigns.plot), 2)
@@ -1304,7 +1234,7 @@ defmodule ApiaryWeb.OverviewComponents do
     y = assigns.base - h
 
     d =
-      "M#{fmt(x)} #{assigns.base}V#{fmt(y + r)}a#{r} #{r} 0 0 1 #{r} -#{r}h#{col - 2 * r}a#{r} #{r} 0 0 1 #{r} #{r}V#{assigns.base}z"
+      "M#{fmt(x)} #{assigns.base}V#{fmt(y + r)}a#{r} #{r} 0 0 1 #{r} -#{r}h#{fmt(col - 2 * r)}a#{r} #{r} 0 0 1 #{r} #{r}V#{assigns.base}z"
 
     assigns = assign(assigns, :d, d)
 
@@ -1341,8 +1271,6 @@ defmodule ApiaryWeb.OverviewComponents do
       do: gettext("Today"),
       else: Format.short_date(day)
   end
-
-  defp axis_label(day, today), do: day_label(day, today)
 
   defp denied_count(n) do
     ngettext("%{number} denied attempt", "%{number} denied attempts", n, number: Format.number(n))
@@ -1391,318 +1319,107 @@ defmodule ApiaryWeb.OverviewComponents do
   defp peak_word(day, today),
     do: if(Date.compare(day, today) == :eq, do: gettext("today"), else: day_label(day, today))
 
-  ## Last runs
+  ## Guard
 
   @doc """
-  The five most recently started runs of the workspace, alive ones included: the runs
-  list's table without groups, with the Target column, at full width. Rows carry the runs
-  list's own ids (`run-<run_id>`) and cell classes, so they reflow as the runs list does
-  below 640 px.
+  Guard, a few lines of key and value, each with a muted detail under it and the one link
+  that opens more: the policy's mode and the version in force, the targets with rules of
+  their own, and retention. `policy` is nil while its read is in flight and absent where
+  `security` is off, which leaves the retention line alone, under its own name.
   """
-  attr :id, :string, required: true
-  attr :runs, :any, required: true, doc: "nil while loading"
-  attr :quiet_ids, :any, default: MapSet.new()
+  attr :id, :string, default: "overview-guard"
 
   attr :scope, :map,
     required: true,
     doc: "the caller's scope: its organisation and workspace name the links"
 
-  attr :new_runs, :integer, default: 0
+  attr :security?, :boolean, required: true
+  attr :policy, :any, default: nil
+  attr :policy_failed?, :boolean, default: false
+  attr :workspace, :map, required: true
+
+  attr :retention, :any,
+    required: true,
+    doc: "nil while loading, else the last retention run or none"
+
   attr :now, :any, required: true
 
-  def recent_runs(assigns) do
+  def guard(assigns) do
     ~H"""
-    <.sect id={@id} title={gettext("Last runs")}>
-      <:trailing>
-        <button
-          :if={@new_runs > 0}
-          id={"#{@id}-new"}
-          type="button"
-          class="q-link"
-          phx-click="show_new"
-        >
-          {ngettext("%{number} new run", "%{number} new runs", @new_runs,
-            number: Format.number(@new_runs)
-          )}
-        </button>
-        <.link
-          id={"#{@id}-all"}
-          navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs"}
-          class="q-link"
-        >{gettext("All runs")}</.link>
-      </:trailing>
-      <div
-        class="overflow-x-auto"
-        tabindex="0"
-        role="region"
-        aria-label={gettext("Last runs")}
-        aria-busy={to_string(is_nil(@runs))}
-      >
-        <table class="table q-runs q-last">
-          <thead>
-            <tr>
-              <th scope="col">{gettext("State")}</th>
-              <th scope="col">{gettext("Run")}</th>
-              <th scope="col">{gettext("Target")}</th>
-              <th scope="col">{gettext("Host")}</th>
-              <th scope="col">{gettext("Started")}</th>
-              <th scope="col" class="q-num">{gettext("Duration")}</th>
-              <th scope="col" class="q-num">{gettext("Denials")}</th>
-            </tr>
-          </thead>
-          <tbody :if={is_nil(@runs)} id={"#{@id}-loading"}>
-            <tr :for={n <- 1..5} class="q-skel-row" aria-hidden="true">
-              <td><span class="skeleton q-skel w-16"></span></td>
-              <td>
-                <span class={["skeleton q-skel", if(rem(n, 2) == 0, do: "w-40", else: "w-28")]}></span>
-              </td>
-              <td><span class="skeleton q-skel w-32"></span></td>
-              <td><span class="skeleton q-skel w-16"></span></td>
-              <td><span class="skeleton q-skel w-24"></span></td>
-              <td><span class="skeleton q-skel ml-auto w-14"></span></td>
-              <td><span class="skeleton q-skel ml-auto w-5"></span></td>
-            </tr>
-          </tbody>
-          <tbody :if={@runs}>
-            <tr :if={@runs == []}>
-              <td colspan="7" class="q-none">{gettext("No run has started yet.")}</td>
-            </tr>
-            <.recent_row
-              :for={run <- @runs}
-              scope={@scope}
-              run={run}
-              quiet={MapSet.member?(@quiet_ids, run.id)}
-              now={@now}
-            />
-          </tbody>
-        </table>
+    <section id={@id} class="q-blk q-ov-grd" aria-labelledby={"#{@id}-h"}>
+      <div class="q-band">
+        <h2 id={"#{@id}-h"}>{if @security?, do: gettext("Guard"), else: gettext("Retention")}</h2>
       </div>
-    </.sect>
-    """
-  end
-
-  attr :scope, :map,
-    required: true,
-    doc: "the caller's scope: its organisation and workspace name the links"
-
-  attr :run, :map, required: true
-  attr :quiet, :boolean, required: true
-  attr :now, :any, required: true
-
-  defp recent_row(assigns) do
-    {seconds, at} = elapsed(assigns.run)
-    assigns = assign(assigns, seconds: seconds, at: at)
-
-    ~H"""
-    <tr id={"run-#{@run.run_id}"} class="q-row">
-      <td class="q-c-state">
-        <.run_state
-          state={@run.state}
-          exit_code={@run.exit_code}
-          signal={@run.signal}
-          quiet_for={if @quiet, do: quiet_for(@run, @now) || 0}
-          quiet_since={heard_at(@run)}
-          interval={beat(@run)}
-          closed_at={@run.closed_at}
-        />
-      </td>
-      <td class="q-c-run">
-        <div class="q-run-cell">
-          <.link
-            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@run.run_id}"}
-            class="q-rowlink truncate"
-          >
-            <b :if={@run.task}>{@run.task}</b>
-            <b
-              :if={!@run.task && @run.state == "pending" && !@run.started_at}
-              class="!font-normal text-faint"
-            >
-              {gettext("Ping only")}
-            </b>
-            <b
-              :if={!@run.task && (@run.started_at || @run.state != "pending")}
-              class="font-mono text-[12.5px] !font-normal"
-            >
-              {run_title(@run)}
-            </b>
-          </.link>
-          <span>{short_id(@run.run_id)}{if @run.started_at && is_nil(@run.task),
-            do: " · " <> gettext("no task label")}</span>
+      <div class={["q-gl", !@security? && "q-gl-one"]}>
+        <div :if={@security?} id="overview-policy" class="q-gr">
+          <span class="q-gr-k">{gettext("Policy")}</span>
+          <%= cond do %>
+            <% @policy_failed? -> %>
+              <span class="q-gr-v q-faint">{gettext("n/a")}</span>
+              <span></span>
+              <span class="q-gr-d" id="policy-error">{not_loaded()}</span>
+            <% is_nil(@policy) -> %>
+              <span class="skeleton q-skel-line w-24"></span>
+              <span></span>
+              <span class="skeleton q-skel-line q-gr-d w-3/4"></span>
+            <% true -> %>
+              <span class="q-gr-v" id="overview-policy-version">
+                {mode_word(@policy.summary.mode)}<span :if={@policy.version}> · v{@policy.version.version}</span>
+              </span>
+              <.link
+                id="overview-policy-open"
+                navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/policy"}
+                class="q-do"
+              >
+                {gettext("Open")}
+              </.link>
+              <span class="q-gr-d" id="overview-policy-mode">{policy_detail(@policy)}</span>
+          <% end %>
         </div>
-      </td>
-      <td class="q-c-target">
-        <span :if={@run.target_system && @run.target_path}><span class="q-system">{@run.target_system}/</span>{@run.target_path}</span>
-        <span :if={!(@run.target_system && @run.target_path)} class="font-sans text-faint">
-          {gettext("no target")}
-        </span>
-      </td>
-      <td class="q-c-host q-meta">
-        <span :if={@run.host} class="font-mono text-[12.5px]">{@run.host}</span>
-        <span :if={!@run.host} class="text-faint">{gettext("n/a")}</span>
-      </td>
-      <td class="q-c-when q-meta"><.relative_time at={@run.started_at || @run.inserted_at} /></td>
-      <td class="q-c-dur q-num q-meta">
-        <%= cond do %>
-          <% @run.state in ~w(succeeded failed timed_out) -> %>
-            <.duration ms={@run.duration_ms} />
-          <% @run.state == "running" and not @quiet -> %>
-            <.duration elapsed_seconds={@seconds} elapsed_at={@at} />
-          <% @run.state == "pending" -> %>
-            <.duration />
-          <% true -> %>
-            <.duration at_least_seconds={@run.elapsed_seconds} />
-        <% end %>
-      </td>
-      <td class="q-c-den q-num">
-        <span :if={@run.denied_count == 0} class="q-zero">0</span>
-        <span :if={@run.denied_count > 0} class="q-denials">
-          <.icon name="hero-no-symbol-micro" class="size-3" />{Format.number(@run.denied_count)}
-          <span class="sr-only">{gettext("denied")}</span>
-        </span>
-      </td>
-    </tr>
-    """
-  end
-
-  ## Policy at a glance
-
-  @doc """
-  The policy card: the mode with its source and the targets that differ, the version in
-  force, the target counts and what there is to review. `policy` is nil while the read is
-  in flight; nothing on the card is a control.
-  """
-  attr :id, :string, default: "overview-policy"
-
-  attr :scope, :map,
-    required: true,
-    doc: "the caller's scope: its organisation and workspace name the links"
-
-  attr :policy, :any, required: true
-
-  def policy_glance(assigns) do
-    ~H"""
-    <.sect id={@id} title={gettext("Policy")}>
-      <:trailing>
-        <.link
-          id={"#{@id}-open"}
-          navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/policy"}
-          class="q-link"
-        >
-          {gettext("Open policy")}
-        </.link>
-      </:trailing>
-      <div :if={is_nil(@policy)} class="q-lines" aria-busy="true">
-        <span class="skeleton q-skel-line w-4/5"></span>
-        <span class="skeleton q-skel-line w-1/2"></span>
-      </div>
-      <dl :if={@policy} class="q-glance">
-        <dt>{gettext("Mode")}</dt>
-        <dd id={"#{@id}-mode"}>
-          <b>{mode_word(@policy.summary.mode)}</b>
-          <.badge :if={@policy.summary.managed?}>{gettext("Workspace default")}</.badge>
-          <.badge :if={!@policy.summary.managed?}>{gettext("Not served")}</.badge>
-          <span class="q-muted">
+        <div :if={@security? && @policy && !@policy_failed?} id="overview-own" class="q-gr">
+          <span class="q-gr-k">{gettext("Own rules")}</span>
+          <span class="q-gr-v">
+            {ngettext("%{number} target", "%{number} targets", @policy.with_rules,
+              number: Format.number(@policy.with_rules)
+            )}
+          </span>
+          <.link
+            id="overview-own-review"
+            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/policy/targets"}
+            class="q-do"
+          >
+            {gettext("Review")}
+          </.link>
+          <span class="q-gr-d">
+            <.rich text={own_detail(@scope, @policy)} />
+          </span>
+        </div>
+        <div id="overview-retention" class="q-gr">
+          <span class="q-gr-k">{gettext("Retention")}</span>
+          <span class="q-gr-v" id="overview-retention-setting">{retention_value(@workspace)}</span>
+          <.link
+            id="overview-retention-settings"
+            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/settings/retention"}
+            class="q-do"
+          >
+            {gettext("Settings")}
+          </.link>
+          <span :if={is_nil(@retention)} class="skeleton q-skel-line q-gr-d w-3/4"></span>
+          <span :if={@retention} class="q-gr-d" id="overview-retention-last">
             <%= cond do %>
-              <% !@policy.summary.managed? -> %>
-                {gettext("Machines use their own policy until the first change here.")}
-              <% @policy.own == [] -> %>
-                {gettext("Every target follows it.")}
+              <% not retention_set?(@workspace) -> %>
+                {gettext("Nothing is pruned: runs, events and log output stay.")}
+              <% @retention == [] -> %>
+                {gettext("No prune has run yet. The job runs nightly.")}
+              <% match?([%{runs_pruned: 0} | _], @retention) -> %>
+                {nothing_pruned(hd(@retention), @now)}
               <% true -> %>
-                {ngettext(
-                  "%{number} target follows it",
-                  "%{number} targets follow it",
-                  @policy.following,
-                  number: Format.number(@policy.following)
-                )} ·
-                <%= case @policy.own do %>
-                  <% [one] -> %>
-                    <.rich text={own_mode_sentence(@scope, one)} />
-                  <% many -> %>
-                    <.link
-                      navigate={
-                        ~p"/#{@scope.organisation}/#{@scope.workspace}/policy/targets?mode=own"
-                      }
-                      class="q-link"
-                    >
-                      {ngettext("%{number} sets its own", "%{number} set their own", length(many),
-                        number: Format.number(length(many))
-                      )}
-                    </.link>
-                <% end %>
+                <.rich text={pruned(hd(@retention), @now)} />
             <% end %>
           </span>
-        </dd>
-        <dt>{gettext("In force")}</dt>
-        <dd id={"#{@id}-version"}>
-          <%= if @policy.version do %>
-            <.version_pill
-              size="sm"
-              version={@policy.version.version}
-              digest={@policy.version.digest}
-              navigate={
-                ~p"/#{@scope.organisation}/#{@scope.workspace}/policy/versions/#{@policy.version.version}"
-              }
-            />
-            <span class="q-muted">
-              {gettext("since %{date}", date: short_day(@policy.version.rendered_at))}
-            </span>
-          <% else %>
-            <span class="text-faint">{gettext("No version yet")}</span>
-          <% end %>
-        </dd>
-        <dt>{gettext("Targets")}</dt>
-        <dd id={"#{@id}-targets"}>
-          <.link
-            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/policy/targets"}
-            class="q-link"
-          >
-            <.rich text={
-              rich_ngettext(
-                "%{number} has posted a run",
-                "%{number} have posted runs",
-                @policy.targets,
-                number: {:b, Format.number(@policy.targets)}
-              )
-            } />
-          </.link>
-          <span class="q-muted">·</span>
-          <.link
-            :if={@policy.with_rules > 0}
-            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/policy/targets"}
-            class="q-link"
-          >
-            <.rich text={with_rules_sentence(@policy.with_rules)} />
-          </.link>
-          <span :if={@policy.with_rules == 0} class="q-muted"><.rich text={with_rules_sentence(0)} /></span>
-        </dd>
-        <dt>{gettext("To review")}</dt>
-        <dd id={"#{@id}-review"}>
-          <%= cond do %>
-            <% is_nil(@policy.suggestions) -> %>
-              <span class="text-faint">…</span>
-            <% @policy.suggestions.hosts == 0 -> %>
-              <span class="text-faint">{gettext("Nothing declared and unallowed.")}</span>
-            <% true -> %>
-              <.link
-                navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/policy/targets"}
-                class="badge badge-info"
-              >
-                {ngettext("%{number} to review", "%{number} to review", @policy.suggestions.hosts,
-                  number: Format.number(@policy.suggestions.hosts)
-                )}
-              </.link>
-              <span class="q-muted">
-                {ngettext(
-                  "in %{number} target",
-                  "in %{number} targets",
-                  @policy.suggestions.targets,
-                  number: Format.number(@policy.suggestions.targets)
-                )}
-              </span>
-          <% end %>
-        </dd>
-      </dl>
-    </.sect>
+        </div>
+      </div>
+    </section>
     """
   end
 
@@ -1710,105 +1427,96 @@ defmodule ApiaryWeb.OverviewComponents do
   defp mode_word("observe"), do: gettext("observe")
   defp mode_word(mode), do: mode
 
-  # The one target that sets its own mode, and the mode it sets.
-  defp own_mode_sentence(scope, %{target: target, own_mode: "enforce"}),
-    do: rich_gettext("1 sets its own: %{target} enforces", target: target_link(scope, target))
+  defp policy_detail(%{summary: %{managed?: false}}),
+    do: gettext("Machines use their own policy until the first change here.")
 
-  defp own_mode_sentence(scope, %{target: target, own_mode: "observe"}),
-    do: rich_gettext("1 sets its own: %{target} observes", target: target_link(scope, target))
+  defp policy_detail(%{version: %{rendered_at: at}} = policy) do
+    [
+      gettext("In force since %{date}; %{following} of %{targets} follow it.",
+        date: Format.short_date(at),
+        following: Format.number(policy.following),
+        targets:
+          ngettext("%{number} target", "%{number} targets", policy.targets,
+            number: Format.number(policy.targets)
+          )
+      ),
+      review_detail(policy.suggestions)
+    ]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join(" ")
+  end
 
-  defp own_mode_sentence(scope, %{target: target, own_mode: mode}) do
-    rich_gettext("1 sets its own: %{target} %{mode}",
-      target: target_link(scope, target),
-      mode: mode
+  defp policy_detail(policy),
+    do:
+      gettext("%{following} of %{targets} follow it.",
+        following: Format.number(policy.following),
+        targets:
+          ngettext("%{number} target", "%{number} targets", policy.targets,
+            number: Format.number(policy.targets)
+          )
+      )
+
+  defp review_detail(%{hosts: hosts, targets: targets}) when hosts > 0 do
+    ngettext(
+      "%{number} declared host to review in %{targets}.",
+      "%{number} declared hosts to review in %{targets}.",
+      hosts,
+      number: Format.number(hosts),
+      targets:
+        ngettext("%{number} target", "%{number} targets", targets, number: Format.number(targets))
     )
   end
 
-  defp target_link(scope, target) do
+  defp review_detail(_suggestions), do: nil
+
+  # Who sets a mode of their own: none, the one by name, or how many and which modes.
+  defp own_detail(_scope, %{own: []}), do: gettext("Every target follows the workspace's mode.")
+
+  defp own_detail(scope, %{own: [%{target: target, own_mode: "observe"}]}),
+    do:
+      rich_gettext("%{target} observes; the rest follow the workspace.",
+        target: own_link(scope, target)
+      )
+
+  defp own_detail(scope, %{own: [%{target: target}]}),
+    do:
+      rich_gettext("%{target} enforces; the rest follow the workspace.",
+        target: own_link(scope, target)
+      )
+
+  defp own_detail(_scope, %{own: own}) do
+    observe = Enum.count(own, &(&1.own_mode == "observe"))
+
+    gettext("%{own} set a mode of their own: %{observe} observe, %{enforce} enforce.",
+      own:
+        ngettext("%{number} target", "%{number} targets", length(own),
+          number: Format.number(length(own))
+        ),
+      observe: Format.number(observe),
+      enforce: Format.number(length(own) - observe)
+    )
+  end
+
+  defp own_link(scope, target) do
     assigns = %{scope: scope, target: target}
 
     ~H"""
     <.link
       navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/policy/targets/#{@target.id}"}
-      class="q-link font-mono text-[12.5px]"
-    >{@target.system}/{@target.path}</.link>
+      class="q-mono hover:underline"
+    >{@target.path}</.link>
     """
   end
 
-  defp with_rules_sentence(n) do
-    rich_ngettext("%{number} with rules of its own", "%{number} with rules of their own", n,
-      number: {:b, Format.number(n)}
-    )
-  end
+  # The setting in a few words: how long log output is kept, else events, else all of it.
+  defp retention_value(%{events_retention_days: nil, log_retention_days: nil}),
+    do: gettext("Everything is kept")
 
-  defp short_day(%DateTime{} = at), do: Format.short_date(at)
-  defp short_day(_at), do: gettext("n/a")
+  defp retention_value(%{log_retention_days: log}) when is_integer(log),
+    do: gettext("%{days} of log output", days: days(log))
 
-  ## Retention
-
-  @doc """
-  The retention card: the setting in the settings page's own words, then the last prune
-  from `retention_runs`. A workspace that keeps everything has one line.
-  """
-  attr :id, :string, default: "overview-retention"
-
-  attr :scope, :map,
-    required: true,
-    doc: "the caller's scope: its organisation and workspace name the links"
-
-  attr :workspace, :map, required: true
-  attr :runs, :any, required: true, doc: "nil while loading, else the last retention run or none"
-  attr :now, :any, required: true
-
-  def retention_glance(assigns) do
-    ~H"""
-    <.sect id={@id} title={gettext("Retention")}>
-      <:trailing>
-        <.link
-          id={"#{@id}-settings"}
-          navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/settings#retention"}
-          class="q-link"
-        >
-          {gettext("Settings")}
-        </.link>
-      </:trailing>
-      <div :if={is_nil(@runs)} class="q-lines" aria-busy="true">
-        <span class="skeleton q-skel-line w-4/5"></span>
-        <span class="skeleton q-skel-line w-1/2"></span>
-      </div>
-      <div :if={@runs} class="q-lines">
-        <span id={"#{@id}-setting"}>{retention_summary(@workspace)}</span>
-        <span :if={retention_set?(@workspace)} id={"#{@id}-last"}>
-          <%= case @runs do %>
-            <% [] -> %>
-              {gettext("No prune has run yet. The job runs nightly.")}
-            <% [%{runs_pruned: 0} = run | _] -> %>
-              {nothing_pruned(run, @now)}
-            <% [run | _] -> %>
-              <.rich text={pruned(run, @now)} />{cutoffs(run)}
-          <% end %>
-        </span>
-      </div>
-    </.sect>
-    """
-  end
-
-  @doc "The setting in the settings page's own words."
-  def retention_summary(%{events_retention_days: nil, log_retention_days: nil}),
-    do: gettext("This workspace keeps everything.")
-
-  def retention_summary(%{events_retention_days: events, log_retention_days: nil}),
-    do: gettext("Events and log output are pruned after %{days}.", days: days(events))
-
-  def retention_summary(%{events_retention_days: nil, log_retention_days: log}),
-    do: gettext("Log output is pruned after %{days}; events are kept.", days: days(log))
-
-  def retention_summary(%{events_retention_days: events, log_retention_days: log}) do
-    gettext("Log output is pruned after %{log_days}, events after %{events_days}.",
-      log_days: days(log),
-      events_days: days(events)
-    )
-  end
+  defp retention_value(%{events_retention_days: events}),
+    do: gettext("%{days} of events", days: days(events))
 
   defp retention_set?(workspace),
     do: is_integer(workspace.events_retention_days) or is_integer(workspace.log_retention_days)
@@ -1827,233 +1535,42 @@ defmodule ApiaryWeb.OverviewComponents do
       else: gettext("Nothing was old enough to prune on %{date}.", date: prune_day(run))
   end
 
-  # The last prune: when, how many runs, what went, and whether it finished.
+  # The last prune: when, how many runs, and whether it finished.
   defp pruned(run, now) do
-    runs = {:b, runs_count(run.runs_pruned)}
-
-    events =
-      ngettext("%{number} event", "%{number} events", run.events_deleted,
-        number: Format.number(run.events_deleted)
-      )
-
-    bytes = Format.bytes(run.log_bytes_deleted || 0)
-
-    chunks =
-      ngettext("%{number} chunk", "%{number} chunks", run.log_chunks_deleted,
-        number: Format.number(run.log_chunks_deleted)
-      )
-
-    date = prune_day(run)
+    runs = runs_count(run.runs_pruned)
 
     case {last_night?(run, now), run.complete} do
       {true, true} ->
-        rich_gettext(
-          "Last night pruned %{runs}: %{events} and %{bytes} of log output in %{chunks}.",
-          runs: runs,
-          events: events,
-          bytes: bytes,
-          chunks: chunks
-        )
+        rich_gettext("Last night pruned %{runs}.", runs: runs)
 
       {true, _} ->
-        rich_gettext(
-          "Last night pruned %{runs}: %{events} and %{bytes} of log output in %{chunks}; not finished, the next night goes on.",
-          runs: runs,
-          events: events,
-          bytes: bytes,
-          chunks: chunks
+        rich_gettext("Last night pruned %{runs}; not finished, the next night goes on.",
+          runs: runs
         )
 
       {false, true} ->
-        rich_gettext(
-          "%{date} pruned %{runs}: %{events} and %{bytes} of log output in %{chunks}.",
-          date: date,
-          runs: runs,
-          events: events,
-          bytes: bytes,
-          chunks: chunks
-        )
+        rich_gettext("%{date} pruned %{runs}.", date: prune_day(run), runs: runs)
 
       {false, _} ->
-        rich_gettext(
-          "%{date} pruned %{runs}: %{events} and %{bytes} of log output in %{chunks}; not finished, the next night goes on.",
-          date: date,
-          runs: runs,
-          events: events,
-          bytes: bytes,
-          chunks: chunks
+        rich_gettext("%{date} pruned %{runs}; not finished, the next night goes on.",
+          date: prune_day(run),
+          runs: runs
         )
     end
   end
 
-  defp cutoffs(%{log_cutoff: nil, events_cutoff: nil}), do: ""
-
-  defp cutoffs(%{log_cutoff: log, events_cutoff: nil}),
-    do: " " <> gettext("Pruned log output from before %{date}.", date: short_day(log))
-
-  defp cutoffs(%{log_cutoff: nil, events_cutoff: events}),
-    do: " " <> gettext("Pruned events from before %{date}.", date: short_day(events))
-
-  defp cutoffs(%{log_cutoff: log, events_cutoff: events}) do
-    " " <>
-      gettext("Pruned log output from before %{log_date}, events from before %{events_date}.",
-        log_date: short_day(log),
-        events_date: short_day(events)
+  defp not_loaded,
+    do:
+      gettext(
+        "This could not be loaded. Reload the page; if it keeps happening, the server log has the reason."
       )
-  end
-
-  ## Access keys
-
-  @doc """
-  The access keys card: at most five active keys, most recently seen first, each with the
-  runner and contract version it last posted with, the hosts its runs came from in the
-  last seven days and the last run it started. A key is not a machine: one key often
-  serves many hosts (a pool of ephemeral instances shares one), so the row counts the
-  hosts and names the one host when there is only one. `last_runs` maps a key's row id to
-  its last run and `hosts` to `%{count:, host:}`; both nil while the read is in flight.
-  """
-  attr :id, :string, default: "overview-keys"
-
-  attr :scope, :map,
-    required: true,
-    doc: "the caller's scope: its organisation and workspace name the links"
-
-  attr :keys, :list, required: true, doc: "the active keys, in the order to show"
-  attr :total, :integer, required: true, doc: "how many active keys the workspace has"
-  attr :last_runs, :any, required: true
-  attr :hosts, :any, default: nil
-  attr :create?, :boolean, default: true, doc: "the link to a new key, once a run has landed"
-
-  def access_keys(assigns) do
-    ~H"""
-    <.sect id={@id} title={gettext("Access keys")} count={Format.number(@total)}>
-      <:trailing>
-        <.link
-          :if={@create?}
-          id={"#{@id}-create"}
-          navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/settings/keys/new"}
-          class="q-link"
-        >
-          {gettext("Create another access key")}
-        </.link>
-      </:trailing>
-      <div
-        class="overflow-x-auto"
-        tabindex="0"
-        role="region"
-        aria-label={gettext("Access keys")}
-        aria-busy={to_string(is_nil(@last_runs))}
-      >
-        <table class="table q-keyrows">
-          <thead>
-            <tr>
-              <th scope="col">{gettext("Key")}</th>
-              <th scope="col">{gettext("Last seen")}</th>
-              <th scope="col">{gettext("Runner")}</th>
-              <th scope="col">{gettext("Hosts, 7 days")}</th>
-              <th scope="col">{gettext("Last run")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr :for={key <- @keys} id={"key-#{key.id}"}>
-              <td class="q-c-key">
-                <div class="q-kcell">
-                  <b>
-                    {key.label}
-                    <.badge :if={Apiary.AccessKeys.AccessKey.status(key) == :rotating} color="warning">
-                      {gettext("Rotating")}
-                    </.badge>
-                  </b>
-                  <span>{key.key_id}</span>
-                </div>
-              </td>
-              <td class="q-c-seen q-meta">
-                <.relative_time :if={key.last_used_at} at={key.last_used_at} />
-                <span :if={!key.last_used_at} class="text-faint">{gettext("Never posted")}</span>
-              </td>
-              <td class="q-c-rv q-meta">
-                <span :if={key.last_runner_version} class="font-mono text-[12.5px]">
-                  {String.trim_leading(key.last_runner_version, "v")}
-                  <span
-                    :if={key.last_contract_version}
-                    class="font-mono text-[11.5px] text-faint"
-                    title={gettext("Contract version %{version}", version: key.last_contract_version)}
-                  >
-                    v{key.last_contract_version}
-                  </span>
-                </span>
-                <span :if={!key.last_runner_version} class="text-faint">{gettext("n/a")}</span>
-              </td>
-              <td class="q-c-hosts q-meta">
-                <%= cond do %>
-                  <% is_nil(@hosts) -> %>
-                    <span class="skeleton q-skel-line w-16"></span>
-                  <% is_nil(@hosts[key.id]) -> %>
-                    <span class="text-faint">{gettext("none")}</span>
-                  <% @hosts[key.id].count == 1 -> %>
-                    <span class="font-mono text-[12.5px]" title={@hosts[key.id].host}>
-                      {@hosts[key.id].host}
-                    </span>
-                  <% true -> %>
-                    <span class="tabular-nums">
-                      {ngettext("%{number} host", "%{number} hosts", @hosts[key.id].count,
-                        number: Format.number(@hosts[key.id].count)
-                      )}
-                    </span>
-                <% end %>
-              </td>
-              <td class="q-c-last">
-                <%= cond do %>
-                  <% is_nil(@last_runs) -> %>
-                    <span class="skeleton q-skel-line w-32"></span>
-                  <% run = @last_runs[key.id] -> %>
-                    <.link
-                      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{run.run_id}"}
-                      class="q-lastrun"
-                    >
-                      <.run_state
-                        state={run.state}
-                        exit_code={run.exit_code}
-                        signal={run.signal}
-                        note={false}
-                      />
-                      <span class={["q-lastrun-task", !run.task && "font-mono text-[12.5px]"]}>
-                        {run_title(run)}
-                      </span>
-                      <span class="text-faint">
-                        <.relative_time at={run.started_at || run.inserted_at} />
-                      </span>
-                    </.link>
-                  <% true -> %>
-                    <span class="text-faint">{gettext("No run yet")}</span>
-                <% end %>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <:footer :if={@total > length(@keys)}>
-        <.link
-          id={"#{@id}-more"}
-          navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/settings/keys"}
-          class="q-link"
-        >
-          {ngettext("and %{number} more", "and %{number} more", @total - length(@keys),
-            number: Format.number(@total - length(@keys))
-          )}
-        </.link>
-      </:footer>
-    </.sect>
-    """
-  end
 
   ## The empty workspace
 
   @doc """
-  The checklist card of the empty workspace, with the state of each step read from the
-  record: step 1 ticks on an active key, step 2 on a key's `last_used_at`, step 3 on the
-  first run. `landed` is the first run while the page is open; the card leaves at the next
-  navigation.
+  The empty workspace's one box, with the state of each step read from the record: step
+  1 ticks on an active key, step 2 on a key's `last_used_at`, step 3 on the first run.
+  `landed` is the first run while the page is open; the box leaves at the next navigation.
   """
   attr :id, :string, default: "onboarding"
 
@@ -2079,32 +1596,23 @@ defmodule ApiaryWeb.OverviewComponents do
         true -> 1
       end
 
-    assigns = assign(assigns, used: used, current: current, newest: List.first(assigns.keys))
+    assigns = assign(assigns, used: used, current: current, lines: yaml_lines(assigns.preview))
 
     ~H"""
-    <section
-      id={@id}
-      class="q-sect grid overflow-hidden md:grid-cols-2"
-      aria-labelledby={"#{@id}-h"}
-      data-step={@current}
-    >
-      <div class="grid content-start gap-5 p-5 md:p-7">
-        <div>
-          <h2 id={"#{@id}-h"} class="text-base/6 font-semibold tracking-[-0.01em]">
-            {gettext("Send your first run")}
-          </h2>
-          <p :if={@current == 1} class="mt-1 text-muted">
-            {gettext(
-              "Nothing has posted to this workspace yet. An access key is all a machine needs to start."
-            )}
-          </p>
-          <p :if={@current > 1} class="mt-1 text-muted">
-            {gettext(
-              "The key is made. Paste its server block into the runner file on the machine; the secret was shown once, when the key was created."
-            )}
-          </p>
-        </div>
-        <.steps current={@current}>
+    <section id={@id} class="q-onb" aria-labelledby={"#{@id}-h"} data-step={@current}>
+      <div class="q-onb-steps">
+        <h2 id={"#{@id}-h"}>{gettext("Send your first run")}</h2>
+        <p :if={@current == 1} class="q-onb-lead">
+          {gettext(
+            "Nothing has posted to this workspace yet. An access key is all a machine needs to start."
+          )}
+        </p>
+        <p :if={@current > 1} class="q-onb-lead">
+          {gettext(
+            "The key is made. Paste its server block into the runner file on the machine; the secret was shown once, when the key was created."
+          )}
+        </p>
+        <.steps current={@current} class="my-5">
           <:step title={gettext("Create an access key")}>
             {gettext("Label it after the machine or environment.")}
           </:step>
@@ -2121,79 +1629,73 @@ defmodule ApiaryWeb.OverviewComponents do
                 gettext("From the first post on, every run of that machine lands in this workspace.")}
           </:step>
         </.steps>
-        <div :if={@current == 1}>
-          <.button
-            id={"#{@id}-create"}
-            variant="primary"
-            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/settings/keys/new"}
-            class="max-[479px]:w-full"
-          >
-            <.icon name="hero-plus-micro" class="size-4" /> {gettext("Create an access key")}
-          </.button>
-        </div>
-        <div :if={@current in [2, 3]}>
-          <.button
-            id={"#{@id}-keys"}
-            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/settings/keys"}
-            class="max-[479px]:w-full"
-          >
-            {gettext("Manage access keys")}
-          </.button>
-        </div>
-        <div :if={@landed} id={"#{@id}-landed"} class="q-landed">
+        <.button
+          :if={@current == 1}
+          id={"#{@id}-create"}
+          variant="primary"
+          navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/settings/keys/new"}
+          class="max-[479px]:w-full"
+        >
+          <.icon name="hero-key-micro" class="size-4" /> {gettext("Create an access key")}
+        </.button>
+        <.button
+          :if={@current in [2, 3]}
+          id={"#{@id}-keys"}
+          navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/settings/keys"}
+          class="max-[479px]:w-full"
+        >
+          {gettext("Manage access keys")}
+        </.button>
+        <p :if={@landed} id={"#{@id}-landed"} class="q-landed">
           <.icon name="hero-check-micro" class="size-4" /> {gettext("The first run has landed.")}
           <.link
             navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{@landed.run_id}"}
             class="q-link"
           >{gettext("Open it")}</.link>
-        </div>
-      </div>
-      <div class="hidden content-start gap-3 border-l border-line bg-base-200 p-7 md:grid">
-        <p class="text-xs/4 font-medium tracking-[0.005em] text-muted">
-          {if @current >= 3, do: gettext("What you pasted"), else: gettext("What you will paste")}
         </p>
-        <.code_block code={@preview} label="~/.config/qory/runner.yaml" />
-        <.onboarding_listening :if={!@landed} used={@used} class="mt-1" />
+      </div>
+      <div class="q-onb-paste">
+        <span class="q-onb-lbl">
+          <.rich text={
+            if @current >= 3,
+              do:
+                rich_gettext("What you pasted into %{file}", file: {:m, "~/.config/qory/runner.yaml"}),
+              else:
+                rich_gettext("What you will paste into %{file}",
+                  file: {:m, "~/.config/qory/runner.yaml"}
+                )
+          } />
+        </span>
+        <pre class="q-onb-pre"><code><%= for {key, value} <- @lines do %><span :if={key} class="q-onb-k">{key}</span>{value}{"\n"}<% end %></code></pre>
+        <.listening :if={!@landed}>
+          <span :if={!@used}>{gettext("Listening for the first post from a machine.")}</span>
+          <span :if={@used}>
+            <.rich text={
+              rich_gettext("Listening for the first run. %{key} verified %{when}.",
+                key: {:m, @used.label, "font-mono text-[12.5px]"},
+                when: relative_time(%{__changed__: nil, at: @used.last_used_at})
+              )
+            } />
+          </span>
+        </.listening>
       </div>
     </section>
-    <.onboarding_listening :if={!@landed} used={@used} class="md:hidden" />
+    <p :if={!@landed} class="q-onb-after">
+      {gettext(
+        "Runs, targets and the policy fill in once the first run lands; until then there is nothing to glance at."
+      )}
+    </p>
     """
   end
 
-  attr :used, :any, required: true
-  attr :class, :any, default: nil
-
-  defp onboarding_listening(assigns) do
-    ~H"""
-    <.listening class={@class}>
-      <span :if={!@used}>{gettext("Listening for the first post from a machine.")}</span>
-      <span :if={@used}>
-        <.rich text={
-          rich_gettext("Listening for the first run. %{key} verified %{when}.",
-            key: {:m, @used.label, "font-mono text-[12.5px]"},
-            when: relative_time(%{__changed__: nil, at: @used.last_used_at})
-          )
-        } />
-      </span>
-    </.listening>
-    """
-  end
-
-  ## Skeletons
-
-  @doc "Faint lines in the shape of the rows that will come; never a spinner."
-  attr :lines, :integer, default: 3
-  attr :class, :any, default: nil
-
-  def skeleton_lines(assigns) do
-    ~H"""
-    <div class={["grid gap-2.5", @class]} aria-busy="true" aria-hidden="true">
-      <span
-        :for={n <- 1..@lines}
-        class={["skeleton q-skel-line", Enum.at(~w(w-4/5 w-3/5 w-2/3 w-1/2), rem(n, 4))]}
-      ></span>
-    </div>
-    """
+  # The server block, a line at a time: a YAML key in muted, the rest as it is.
+  defp yaml_lines(preview) do
+    for line <- preview |> String.trim_trailing() |> String.split("\n") do
+      case Regex.run(~r/^(\s*[A-Za-z_][\w.-]*:)(.*)$/, line) do
+        [_, key, value] -> {key, value}
+        _ -> {nil, line}
+      end
+    end
   end
 
   defp iso(%DateTime{} = at), do: DateTime.to_iso8601(at)

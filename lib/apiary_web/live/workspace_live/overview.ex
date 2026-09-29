@@ -39,13 +39,14 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   import ApiaryWeb.RunComponents,
     only: [rule_popover: 1, quiet_for: 2, beat: 1]
 
+  alias Apiary.Runs.Filters
+
   alias Apiary.AccessKeys
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Policy
   alias Apiary.Retention
   alias Apiary.Runs
-  alias Apiary.Runs.{Filters, Run}
-  import ApiaryWeb.PolicyComponents, only: [sect: 1]
+  alias Apiary.Runs.Run
 
   alias ApiaryWeb.ConnectionLive.Rules
   alias ApiaryWeb.PolicyLive.Common
@@ -75,8 +76,10 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
         }
   def thresholds, do: @thresholds
 
-  # How many rows a list shows; the sixth and later are "and n more".
+  # How many rows a list shows; the sixth and later are "and n more". The active targets
+  # are the eight with the most runs.
   @shown 5
+  @targets 8
   @denied_filters %Filters{kind: :connections, since: "7d", decision: "denied"}
 
   @impl true
@@ -90,7 +93,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       nav={:overview}
       width="list"
     >
-      <div id="overview" phx-hook="OverviewPage" class="grid grid-cols-[minmax(0,1fr)] gap-6">
+      <div id="overview" phx-hook="OverviewPage" class="grid grid-cols-[minmax(0,1fr)] gap-5">
         <.header>
           {@current_scope.workspace.name}
           <:subtitle>
@@ -104,20 +107,23 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
           {@announce}
         </div>
 
-        <%= if @checklist? do %>
-          <.onboarding scope={@current_scope} keys={@keys} preview={@preview} landed={@landed} />
-          <.access_keys
-            :if={@keys != [] && !@live?}
-            scope={@current_scope}
-            keys={Enum.take(@keys, @shown)}
-            total={length(@keys)}
-            last_runs={%{}}
-            hosts={%{}}
-            create?={false}
-          />
-        <% end %>
+        <.onboarding
+          :if={@checklist?}
+          scope={@current_scope}
+          keys={@keys}
+          preview={@preview}
+          landed={@landed}
+        />
 
-        <%= if @live? do %>
+        <div :if={@live?} class="q-ov">
+          <.summary
+            scope={@current_scope}
+            alive={@alive}
+            quiet={MapSet.size(@quiet_ids)}
+            facts={@facts}
+            destinations={@destinations}
+          />
+
           <.attention
             :if={@attention_items}
             scope={@current_scope}
@@ -125,105 +131,92 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
             items={Enum.take(@attention_items, @shown)}
             count={@attention_count}
             more={@attention_more}
+            shared={@shared}
             can_set_mode?={Common.may?(@current_scope, :"security_policy.set_mode")}
             now={@now}
           />
 
-          <.strip scope={@current_scope} alive={@alive} facts={@facts} destinations={@destinations} />
-
-          <div class="q-grid2">
-            <section class="q-sect" id="overview-activity" aria-labelledby="overview-activity-h">
-              <h2 class="sr-only" id="overview-activity-h">{gettext("Activity")}</h2>
-              <div class="q-part">
-                <%= cond do %>
-                  <% @failed[:activity] -> %>
-                    <.notice kind={:info}>
-                      <span id="activity-error">{not_loaded()}</span>
-                    </.notice>
-                  <% @alive_runs -> %>
-                    <.alive_rows
-                      scope={@current_scope}
-                      id="alive"
-                      runs={Enum.take(@alive_runs, @shown)}
-                      count={@alive}
-                      now={@now}
-                    />
-                  <% true -> %>
-                    <div class="q-part-h">
-                      <h3>{gettext("Alive now")}</h3>
-                    </div>
-                    <.skeleton_lines lines={3} />
-                <% end %>
-              </div>
-              <div class="q-part">
-                <.days_chart
-                  scope={@current_scope}
-                  id="days"
-                  days={@days}
-                  today={@today}
-                  table?={@table?}
-                  narrow?={@narrow?}
-                />
-              </div>
-              <div class="q-part">
-                <p class="q-foot" id="activity-foot">
-                  {gettext("Counted from the workspace's runs by the day they started, UTC.")}
-                  <span class="q-live-on">{gettext("Updated as batches land.")}</span>
-                  <span class="q-live-off">{gettext("Reconnecting.")}</span>
-                  <span :if={@connections == :unavailable} id="activity-uncounted" class="text-muted">
-                    {gettext(
-                      "Denied destinations were not counted: this workspace recorded more than %{cap} connections in 7 days. The connections page counts them by destination.",
-                      cap: Format.number(Policy.Activity.cap())
-                    )}
-                  </span>
-                </p>
-              </div>
-            </section>
-            <div class="q-stack">
-              <.sect
-                :if={@security? && @failed[:policy]}
-                id="overview-policy"
-                title={gettext("Policy")}
+          <section id="overview-activity" class="q-blk q-ov-act" aria-labelledby="overview-activity-h">
+            <div class="q-band">
+              <h2 id="overview-activity-h">{gettext("Activity")}</h2>
+              <span class="q-band-n">
+                {ngettext("%{number} day", "%{number} days", 14, number: Format.number(14))}
+              </span>
+              <span class="q-grow"></span>
+              <button
+                id="days-toggle"
+                type="button"
+                class="q-band-do"
+                aria-pressed={to_string(@table?)}
+                aria-controls="days-plot"
+                phx-click={JS.push("chart_table", value: %{on: !@table?})}
               >
-                <div class="q-lines">
-                  <.notice kind={:info}>
-                    <span id="policy-error">{not_loaded()}</span>
-                  </.notice>
-                </div>
-              </.sect>
-              <.policy_glance
-                :if={@security? && !@failed[:policy]}
-                scope={@current_scope}
-                policy={@policy}
-              />
-              <.retention_glance
-                scope={@current_scope}
-                workspace={@current_scope.workspace}
-                runs={@key_facts && @key_facts.retention}
-                now={@now}
-              />
+                {if @table?, do: gettext("As a chart"), else: gettext("As a table")}
+              </button>
             </div>
-          </div>
+            <div class="q-ov-chart">
+              <.notice :if={@failed[:activity]} kind={:info}>
+                <span id="activity-error">{not_loaded()}</span>
+              </.notice>
+              <.days_chart
+                :if={!@failed[:activity]}
+                scope={@current_scope}
+                id="days"
+                days={@days}
+                today={@today}
+                table?={@table?}
+                width={@chart_w}
+              />
+              <p class="q-cap" id="activity-foot">
+                <span :if={@facts && @facts.costed > 0} id="activity-cost">
+                  <.rich text={
+                    rich_ngettext(
+                      "Cost reported: %{cost}, by %{costed} of the %{number} run.",
+                      "Cost reported: %{cost}, by %{costed} of the %{number} runs.",
+                      @facts.runs,
+                      cost: {:b, cost_text(@facts.cost)},
+                      costed: Format.number(@facts.costed),
+                      number: Format.number(@facts.runs)
+                    )
+                  } />
+                </span>
+                {gettext("Days in UTC.")}
+                <span class="q-live-on">{gettext("Updated as batches land.")}</span>
+                <span class="q-live-off">{gettext("Reconnecting.")}</span>
+                <span :if={@connections == :unavailable} id="activity-uncounted">
+                  {gettext(
+                    "Denied destinations were not counted: this workspace recorded more than %{cap} connections in 7 days. The connections page counts them by destination.",
+                    cap: Format.number(Policy.Activity.cap())
+                  )}
+                </span>
+              </p>
+            </div>
+            <.link
+              id="activity-all"
+              navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/runs"}
+              class="q-more"
+            >
+              {gettext("All runs")}<.icon name="hero-arrow-right-micro" class="size-3.5" />
+            </.link>
+          </section>
 
-          <.recent_runs
+          <.active_targets
             scope={@current_scope}
-            id="last-runs"
-            runs={@recent}
+            rows={@targets}
+            targets={@target_count}
             quiet_ids={@quiet_ids}
-            new_runs={@new_runs}
+          />
+
+          <.guard
+            scope={@current_scope}
+            security?={@security?}
+            policy={@policy}
+            policy_failed?={!!@failed[:policy]}
+            workspace={@current_scope.workspace}
+            retention={@retention}
             now={@now}
           />
-
-          <.access_keys
-            :if={@keys != []}
-            scope={@current_scope}
-            keys={Enum.take(@keys, @shown)}
-            total={length(@keys)}
-            last_runs={@key_facts && @key_facts.last_runs}
-            hosts={@key_facts && @key_facts.hosts}
-            create?={true}
-          />
-        <% end %>
+        </div>
       </div>
 
       <.rule_popover :if={@popover} popover={@popover} />
@@ -293,7 +286,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
         today: DateTime.to_date(now),
         preview: preview(keys),
         table?: false,
-        narrow?: false,
+        chart_w: 640,
         popover: nil,
         confirm_close: nil,
         announce: nil,
@@ -301,7 +294,10 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
         failed: %{},
         # The regions, nil while their read is in flight.
         alive_runs: nil,
-        recent: nil,
+        targets: nil,
+        target_count: 0,
+        shared: MapSet.new(),
+        retention: nil,
         days: empty_days(DateTime.to_date(now)),
         facts: nil,
         drift: %{},
@@ -309,13 +305,10 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
         destinations: nil,
         lost: [],
         policy: nil,
-        key_facts: nil,
         attention_items: nil,
         attention_count: 0,
         attention_more: nil,
         quiet_ids: MapSet.new(),
-        new_runs: 0,
-        new_ids: MapSet.new(),
         seen: %{},
         run_window: :closed,
         policy_window: :closed,
@@ -333,7 +326,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     |> read(:activity)
     |> read(:attention)
     |> read(:policy)
-    |> read(:keys)
+    |> read(:targets)
   end
 
   defp read(socket, :activity) do
@@ -359,17 +352,16 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     start_async(socket, :policy, fn -> read_policy(scope, DateTime.utc_now()) end)
   end
 
-  # The keys' facts: the last run and the hosts of each key shown, and the last prune.
-  defp read(socket, :keys) do
-    scope = socket.assigns.current_scope
-    ids = socket.assigns.keys |> Enum.take(@shown) |> Enum.map(& &1.id)
+  # The active targets, the paths on more than one system (where a row names the system)
+  # and the last prune.
+  defp read(socket, :targets) do
+    %{current_scope: scope, today: today} = socket.assigns
+    from = Date.add(today, -(@thresholds.chart_days - 1))
 
-    start_async(socket, :keys, fn ->
-      since = DateTime.add(DateTime.utc_now(), -@thresholds.denied_days, :day)
-
+    start_async(socket, :targets, fn ->
       %{
-        last_runs: Runs.last_runs_by_key(scope, ids),
-        hosts: Runs.hosts_by_key(scope, ids, since),
+        active: Runs.active_targets(scope, from, @targets),
+        shared: Runs.shared_paths(scope),
         retention: Retention.list_retention_runs(scope, 1)
       }
     end)
@@ -384,7 +376,6 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     %{
       days: Runs.day_facts(scope, from),
       alive_runs: alive_runs,
-      recent: Runs.recent_runs(scope, @shown),
       drift: drift_facts(scope, alive_runs, security?),
       alive: Runs.count_alive(scope),
       today: today,
@@ -392,14 +383,13 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     }
   end
 
-  # Today's column, the alive rows and the last runs again: what a run change can move.
+  # Today's column and the alive runs again: what a run change can move.
   defp read_today(scope, today, now, security?) do
     alive_runs = Runs.list_alive(scope, @shown)
 
     %{
       today: Runs.day_facts(scope, start_of(today)),
       alive_runs: alive_runs,
-      recent: Runs.recent_runs(scope, @shown),
       drift: drift_facts(scope, alive_runs, security?),
       alive: Runs.count_alive(scope),
       lost: Runs.lost_since(scope, DateTime.add(now, -@thresholds.lost_days, :day), @shown + 1),
@@ -520,14 +510,13 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       socket
       |> assign(
         alive_runs: read.alive_runs,
-        recent: read.recent,
         drift: read.drift,
         alive: read.alive,
         today: read.today,
         failed: Map.delete(socket.assigns.failed, :activity),
         landed_reads: MapSet.put(socket.assigns.landed_reads, :activity)
       )
-      |> remember(read.alive_runs ++ read.recent)
+      |> remember(read.alive_runs)
       |> put_days(read.days, read.today)
       |> tick(read.read_at)
 
@@ -535,10 +524,10 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   end
 
   def handle_async(:today, {:ok, read}, socket) do
-    %{alive_runs: shown, recent: recent, new_ids: new_ids} = socket.assigns
+    shown = socket.assigns.alive_runs
 
-    # Alive rows: the ones on the page are patched in place, a run that ended leaves, a run
-    # that is new appends; the last runs never gain a row under the reader.
+    # The alive runs on the page are patched in place, a run that ended leaves, a run that
+    # is new appends: what the attention list and the summary read.
     alive_ids = Enum.map(shown || [], & &1.id)
     fresh = Map.new(read.alive_runs, &{&1.id, &1})
 
@@ -548,44 +537,18 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       |> Enum.filter(&(&1.state in Run.alive_states()))
 
     arrived = Enum.reject(read.alive_runs, &(&1.id in alive_ids))
-    alive_runs = kept ++ Enum.map(arrived, &Map.put(&1, :arrived, true))
-
-    # The last runs: patched in place; the fresh list whole when the reader asked for it
-    # (`show_new`) or nothing was on the page yet.
-    {recent, unseen} =
-      case recent do
-        nil ->
-          {read.recent, MapSet.new()}
-
-        shown ->
-          on_page = Enum.map(shown, & &1.id)
-          patched = Enum.map(shown, fn run -> Enum.find(read.recent, run, &(&1.id == run.id)) end)
-
-          {patched,
-           read.recent |> Enum.map(& &1.id) |> Enum.reject(&(&1 in on_page)) |> MapSet.new()}
-      end
-
-    new_ids = MapSet.union(new_ids, unseen)
 
     socket =
       socket
       |> assign(
-        alive_runs: alive_runs,
-        recent: recent,
+        alive_runs: kept ++ arrived,
         drift: read.drift,
         alive: read.alive,
-        lost: read.lost,
-        new_ids: new_ids,
-        new_runs: MapSet.size(new_ids)
+        lost: read.lost
       )
-      |> remember(read.alive_runs ++ read.recent ++ read.lost)
+      |> remember(read.alive_runs ++ read.lost)
       |> put_today(read.today)
       |> tick(read.read_at)
-
-    socket =
-      if MapSet.size(new_ids) > MapSet.size(socket.assigns.new_ids),
-        do: announce(socket, new_runs_text(MapSet.size(new_ids))),
-        else: socket
 
     {:noreply, recompute(socket)}
   end
@@ -627,18 +590,25 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     {:noreply, recompute(socket)}
   end
 
-  def handle_async(:keys, {:ok, read}, socket) do
-    {:noreply, assign(socket, key_facts: read, failed: Map.delete(socket.assigns.failed, :keys))}
+  def handle_async(:targets, {:ok, read}, socket) do
+    {:noreply,
+     assign(socket,
+       targets: read.active.rows,
+       target_count: read.active.targets,
+       shared: read.shared,
+       retention: read.retention,
+       failed: Map.delete(socket.assigns.failed, :targets)
+     )}
   end
 
   def handle_async(name, {:exit, _reason}, socket) do
     failed = Map.put(socket.assigns.failed, if(name == :today, do: :activity, else: name), true)
     socket = assign(socket, failed: failed)
 
-    # A failed read of the keys' facts still shows the keys, with nothing after them.
+    # A failed read of the targets leaves their block empty and the prune unsaid.
     socket =
-      if name == :keys,
-        do: assign(socket, key_facts: %{last_runs: %{}, hosts: %{}, retention: []}),
+      if name == :targets,
+        do: assign(socket, targets: [], retention: []),
         else: socket
 
     {:noreply, socket}
@@ -759,21 +729,36 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
   defp refresh_runs(socket), do: socket
 
-  # A run on the page is patched from the message, in place; a run that is not is a new
-  # run in words, never a row inserted under the reader.
+  # A run on the page is patched from the message, in place: an alive run, and the last
+  # run of an active target, which a newer run of it replaces. The counts wait for the
+  # next read; nothing moves under the reader.
   defp patch_run(socket, %Run{} = run) do
-    %{alive_runs: alive_runs, recent: recent} = socket.assigns
+    %{alive_runs: alive_runs, targets: targets} = socket.assigns
 
     alive_runs =
       alive_runs &&
         alive_runs
-        |> Enum.map(
-          &if(&1.id == run.id, do: Map.put(run, :arrived, Map.get(&1, :arrived, false)), else: &1)
-        )
+        |> Enum.map(&if(&1.id == run.id, do: run, else: &1))
         |> Enum.filter(&(&1.state in Run.alive_states()))
 
-    recent = recent && Enum.map(recent, &if(&1.id == run.id, do: run, else: &1))
-    socket |> assign(alive_runs: alive_runs, recent: recent) |> recompute()
+    targets =
+      targets &&
+        Enum.map(targets, fn
+          %{id: id, last: last} = row when id == run.target_id ->
+            if is_nil(last) or last.id == run.id or newer?(run, last),
+              do: %{row | last: run},
+              else: row
+
+          row ->
+            row
+        end)
+
+    socket |> assign(alive_runs: alive_runs, targets: targets) |> recompute()
+  end
+
+  defp newer?(run, than) do
+    DateTime.compare(run.started_at || run.inserted_at, than.started_at || than.inserted_at) ==
+      :gt
   end
 
   ## Events
@@ -783,22 +768,14 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     {:noreply, assign(socket, :table?, on == true or on == "true")}
   end
 
-  # The browser knows the chart's width; the phone geometry is drawn on the server (oi).
-  def handle_event("chart_size", %{"narrow" => narrow}, socket) do
-    {:noreply, assign(socket, :narrow?, narrow == true or narrow == "true")}
+  # The browser knows the chart's width; the drawing is made for it, so its words are
+  # never scaled (`DaysChart`).
+  def handle_event("chart_size", %{"width" => width}, socket) when is_integer(width) do
+    {:noreply,
+     assign(socket, :chart_w, width |> div(10) |> Kernel.*(10) |> max(280) |> min(1600))}
   end
 
-  def handle_event("show_new", _params, socket) do
-    %{current_scope: scope, today: today, security?: security?} = socket.assigns
-    now = DateTime.utc_now()
-
-    socket =
-      socket
-      |> assign(new_ids: MapSet.new(), new_runs: 0, recent: nil)
-      |> then(&start_async(&1, :today, fn -> read_today(scope, today, now, security?) end))
-
-    {:noreply, socket}
-  end
+  def handle_event("chart_size", _params, socket), do: {:noreply, socket}
 
   def handle_event("close_ask", %{"id" => id}, socket) do
     case find_item(socket, id) do
@@ -1425,7 +1402,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       |> Enum.find(&is_nil(&1.resolved))
 
     push_event(socket, "overview:focus", %{
-      id: if(next, do: "#{next.id}-act", else: "last-runs-all")
+      id: if(next, do: "#{next.id}-act", else: "activity-all")
     })
   end
 
@@ -1546,9 +1523,6 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
   # The run the close dialog names, in bold inside its sentence.
   defp close_title(run), do: {:b, run_title(run), "font-medium"}
-
-  defp new_runs_text(n),
-    do: ngettext("%{number} new run", "%{number} new runs", n, number: Format.number(n))
 
   # What became of a run that ended while it was on the list.
   defp ended("succeeded"), do: gettext("Succeeded.")
