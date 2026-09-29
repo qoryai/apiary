@@ -85,8 +85,8 @@ defmodule ApiaryWeb.LogMetadataTest do
       scope: scope
     } do
       assert LogMetadata.get() == @none
-      conn = get(conn, ~p"/#{scope.organisation}")
-      assert redirected_to(conn) == ~p"/#{scope.organisation}/#{scope.workspace}"
+      conn = get(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings")
+      assert html_response(conn, 200)
       assert LogMetadata.get() == Map.put(ids(scope), :user_id, scope.user.id)
     end
 

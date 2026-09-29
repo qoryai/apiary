@@ -4,8 +4,10 @@ defmodule Apiary.Runs do
 
   Events come in through `Apiary.Runs.Ingest`, are folded by `Apiary.Runs.Projector` and
   watched by `Apiary.Runs.Liveness`; this module is what pages call. Every function takes
-  the caller's scope first and reads only the scope's workspace; `closed?/2` is the one
-  exception, for the receiver, which has an access key's workspace and no user.
+  the caller's scope first and reads only the scope's workspace. Two read more:
+  `closed?/2`, for the receiver, which has an access key's workspace and no user, and
+  `workspace_facts/3`, for the organisation's overview, which reads the workspaces of the
+  scope's organisation it is given.
 
   Changes are announced on two topics of `Apiary.PubSub`:
 
@@ -1017,6 +1019,94 @@ defmodule Apiary.Runs do
           costed: count(r.cost_usd)
         }
     )
+  end
+
+  @doc """
+  What the organisation's overview says of each of `workspaces`, the workspaces of the
+  scope's organisation the reader reaches: `%{workspace_id => %{alive:, runs:, denied:,
+  last_at:, days:}}`, where `runs` and `denied` count the last seven UTC days (today
+  included), `days` the runs of each of the last fourteen, oldest first, and `last_at` is
+  when the workspace's last run started (nil when it has none). A workspace of another
+  organisation is left out. Three reads, whatever the number of workspaces.
+  """
+  @spec workspace_facts(Scope.t(), [Workspace.t()], DateTime.t()) :: %{
+          optional(Ecto.UUID.t()) => map
+        }
+  def workspace_facts(scope, workspaces, now \\ DateTime.utc_now())
+
+  def workspace_facts(%Scope{}, [], _now), do: %{}
+
+  def workspace_facts(%Scope{organisation: %Organisation{id: organisation_id}}, workspaces, now) do
+    ids = for %Workspace{id: id, organisation_id: ^organisation_id} <- workspaces, do: id
+    today = DateTime.to_date(now)
+    first = Date.add(today, -13)
+    from = DateTime.new!(first, ~T[00:00:00], "Etc/UTC")
+
+    per_day =
+      Repo.all(
+        from r in Run,
+          where: r.organisation_id == ^organisation_id and r.workspace_id in ^ids,
+          where: coalesce(r.started_at, r.inserted_at) >= ^from,
+          group_by: [
+            r.workspace_id,
+            fragment("(COALESCE(?, ?) AT TIME ZONE 'UTC')::date", r.started_at, r.inserted_at)
+          ],
+          select:
+            {r.workspace_id,
+             type(
+               fragment("(COALESCE(?, ?) AT TIME ZONE 'UTC')::date", r.started_at, r.inserted_at),
+               :date
+             ), count(r.id), type(coalesce(sum(r.denied_count), 0), :integer)}
+      )
+
+    alive =
+      Repo.all(
+        from r in Run,
+          where: r.organisation_id == ^organisation_id and r.workspace_id in ^ids,
+          where: r.state in ^Run.alive_states(),
+          group_by: r.workspace_id,
+          select: {r.workspace_id, count(r.id)}
+      )
+      |> Map.new()
+
+    # The last run of each, read off the index the runs list reads by, one row each.
+    last =
+      from r in Run,
+        where: r.workspace_id == parent_as(:workspace).id,
+        order_by: [desc: coalesce(r.started_at, r.inserted_at), desc: r.id],
+        limit: 1,
+        select: %{at: coalesce(r.started_at, r.inserted_at)}
+
+    last_at =
+      Repo.all(
+        from w in Workspace,
+          as: :workspace,
+          where: w.id in ^ids,
+          left_lateral_join: l in subquery(last),
+          on: true,
+          select: {w.id, l.at}
+      )
+      |> Map.new()
+
+    week = Date.add(today, -6)
+    by_workspace = Enum.group_by(per_day, &elem(&1, 0))
+
+    Map.new(ids, fn id ->
+      rows = Map.get(by_workspace, id, [])
+      counts = Map.new(rows, fn {_id, date, runs, denied} -> {date, {runs, denied}} end)
+
+      recent =
+        for {_id, date, runs, denied} <- rows, Date.compare(date, week) != :lt, do: {runs, denied}
+
+      {id,
+       %{
+         alive: Map.get(alive, id, 0),
+         runs: recent |> Enum.map(&elem(&1, 0)) |> Enum.sum(),
+         denied: recent |> Enum.map(&elem(&1, 1)) |> Enum.sum(),
+         last_at: Map.get(last_at, id),
+         days: for(d <- Date.range(first, today), do: counts |> Map.get(d, {0, 0}) |> elem(0))
+       }}
+    end)
   end
 
   @doc "The alive runs of the workspace, the most recently started first; at most `limit` (default 6)."
