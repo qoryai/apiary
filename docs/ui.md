@@ -205,15 +205,54 @@ collection `app.js` and an edition's bundle import. It holds no words (see
 which groups of the runs list are collapsed; filters, grouping and the page are query
 parameters.
 
+## The run page
+
+A run is a work surface (`ApiaryWeb.RunLive.Show`, width `work`): the column takes the
+width, and from 1440 px the **Details rail** (320 px, sticky under the top bar, scrolling
+on its own) sits beside it. The top bar's breadcrumb ends with the run's target, a link to
+the target's page, and `Run 0191f2a4`; the page has no breadcrumb of its own.
+
+- **The header is two lines**: the title (the task, or the run's short id) alone, then
+  one muted meta line that starts with the state as a dot and its word
+  (`ApiaryWeb.TargetComponents.state_mark/1`), then, each after a faint middle dot, how
+  alive the run is while it runs, the target (its page), the runtime, the host, when it
+  started, how long it took and its denials, in red, which lead to its denied
+  connections. At the right: Close run while the run may be closed, and a ⋯ menu (Copy
+  run id, Raw log, Download log). The seven cells of v1 are the rail's.
+- **The tabs**, Timeline, Terminal, Connections and, below 1440 px, Details, stick under
+  the top bar; each is a live action of the one LiveView, so a tab is a patch.
+- **The Details rail** is key and value lines under small headings (Run, Labels, Command,
+  Record, Policy in force), no card and no chip; the run's labels are its own
+  identifiers, in mono, and one that names the target leads to its page. Below 1440 px the
+  Details tab shows this same element in the column, its sections as cards
+  (`q-run-on-details`), so the two never disagree and no id is drawn twice.
+- **The timeline's open items are flat**: a rule in the item's state's colour under the
+  chevron, the content indented beside it, code with a faint label and no border, a
+  connection line with a plain glyph and no row tint, the prompt as quoted text with a
+  rule.
+
 ## The terminal
 
 `<.terminal>` in `RunPageComponents` is dark in both themes: the recorded output's colours
-are written against a dark ground. The `Terminal` hook reads the bytes from the run's log
-endpoint and hands them to xterm.js as `Uint8Array`s, never decoded strings, in slices per
-frame so a long log does not block input. The bytes never cross the LiveView socket: the
-LiveView sends the foot's numbers and a signal that the log advanced. xterm.js is vendored
-under `assets/vendor/xterm`, built as its own bundle and loaded on the hook's first mount,
-by no other page. The screen is `role="log"` with `aria-live="off"`.
+are written against a dark ground. It fills the window below the tab bar, never under
+380 px. The `Terminal` hook reads the bytes from the run's log endpoint and hands them to
+xterm.js as `Uint8Array`s, never decoded strings, in slices per frame so a long log does
+not block input. The bytes never cross the LiveView socket: the LiveView sends the foot's
+numbers and a signal that the log advanced. xterm.js is vendored under
+`assets/vendor/xterm`, built as its own bundle and loaded on the hook's first mount, by no
+other page. The screen is `role="log"` with `aria-live="off"`.
+
+- **The recorded width is kept.** A run whose record says its pseudo-terminal's size is
+  drawn at those columns and rows, centred only inside the box's own darker ground, which
+  fills the column; it scrolls inside the box when it is larger. A run on pipes is fitted
+  to the box, with Wrap.
+- **The bar**: the stream, search (`/`), follow (End), wrap, the **text size** (A−, A+,
+  11 to 18 px, and Fit, the largest size at which a recorded screen's columns fit), a
+  reading preference kept in `localStorage`; download; **Focus** (`f` outside a field;
+  Escape leaves), a class on the root that folds the shell, the header, the tabs and the
+  rail away so the box takes the window; and **Full screen**, the browser's, on the box,
+  shown only where the browser has it. A narrow box names its buttons on hover only
+  (a container query), so the bar never wraps.
 
 ## Words
 
