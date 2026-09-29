@@ -744,29 +744,34 @@ defmodule ApiaryWeb.RunPageComponents do
           <.duration :if={@item.duration_ms} ms={@item.duration_ms} precise class="q-d" />
         </.tail>
       </summary>
-      <div :if={@item.connections != []} class="q-during">
-        <small>
-          {ngettext(
-            "%{number} connection while this call was open",
-            "%{number} connections while this call was open",
-            @item.connections_count,
-            number: Format.number(@item.connections_count)
-          )}
-        </small>
-        <.connection_row
-          :for={cx <- @item.connections}
-          id={"#{@id}-cx-#{cx.sequence}"}
-          connection={cx}
-          variant="inline"
-          started_at={@started_at}
-          security={@security}
-        />
-        <small :if={@item.connections_count > length(@item.connections)}>
-          {more_counted(@item.connections_count - length(@item.connections))}
-        </small>
-      </div>
-      <div :if={@item.wells != []} class="q-io">
-        <.well :for={well <- @item.wells} well={well} seq={@item.sequence} full={@item.full} />
+      <div
+        :if={@item.connections != [] or @item.wells != []}
+        class={["q-xb", (@item.status == :failed or @item.denied_inside) && "q-xb-bad"]}
+      >
+        <div :if={@item.connections != []} class="q-during">
+          <small>
+            {ngettext(
+              "%{number} connection while this call was open",
+              "%{number} connections while this call was open",
+              @item.connections_count,
+              number: Format.number(@item.connections_count)
+            )}
+          </small>
+          <.connection_row
+            :for={cx <- @item.connections}
+            id={"#{@id}-cx-#{cx.sequence}"}
+            connection={cx}
+            variant="inline"
+            started_at={@started_at}
+            security={@security}
+          />
+          <small :if={@item.connections_count > length(@item.connections)}>
+            {more_counted(@item.connections_count - length(@item.connections))}
+          </small>
+        </div>
+        <div :if={@item.wells != []} class="q-io">
+          <.well :for={well <- @item.wells} well={well} seq={@item.sequence} full={@item.full} />
+        </div>
       </div>
     </details>
     """
@@ -815,8 +820,10 @@ defmodule ApiaryWeb.RunPageComponents do
     >
       {[@item.error, @item.message] |> Enum.reject(&is_nil/1) |> Enum.join(" · ")}
     </.head>
-    <div :if={@item.wells != []} class="q-io">
-      <.well :for={well <- @item.wells} well={well} seq={@item.sequence} full={@item.full} />
+    <div :if={@item.wells != []} class="q-xb q-xb-bad">
+      <div class="q-io">
+        <.well :for={well <- @item.wells} well={well} seq={@item.sequence} full={@item.full} />
+      </div>
     </div>
     """
   end
@@ -905,18 +912,20 @@ defmodule ApiaryWeb.RunPageComponents do
           </.rich>
         </span>
       </summary>
-      <div class="q-during">
-        <.connection_row
-          :for={cx <- @item.connections}
-          id={"#{@id}-cx-#{cx.sequence}"}
-          connection={cx}
-          variant="inline"
-          started_at={@started_at}
-          security={@security}
-        />
-        <small :if={@item.connections_count > length(@item.connections)}>
-          {more_counted(@item.connections_count - length(@item.connections))}
-        </small>
+      <div class="q-xb">
+        <div class="q-during">
+          <.connection_row
+            :for={cx <- @item.connections}
+            id={"#{@id}-cx-#{cx.sequence}"}
+            connection={cx}
+            variant="inline"
+            started_at={@started_at}
+            security={@security}
+          />
+          <small :if={@item.connections_count > length(@item.connections)}>
+            {more_counted(@item.connections_count - length(@item.connections))}
+          </small>
+        </div>
       </div>
     </details>
     """
@@ -1270,23 +1279,32 @@ defmodule ApiaryWeb.RunPageComponents do
       jumpToEnd: gettext("Jump to end"),
       found: gettext("%{index} of %{total}", index: "%{index}", total: "%{total}"),
       notLoaded: gettext("The log could not be loaded."),
-      dropped: gettext("The log stream dropped. Reconnecting.")
+      dropped: gettext("The log stream dropped. Reconnecting."),
+      size: gettext("%{size} px", size: "%{size}"),
+      fullScreen: gettext("Full screen"),
+      leaveFullScreen: gettext("Leave full screen")
     }
   end
 
   defp forms(say), do: [say.(1), say.(2)]
 
   @doc """
-  The terminal box: dark in both themes. The bar and the screen belong to the `Terminal`
-  hook (`phx-update="ignore"`); the foot is the LiveView's, which sends numbers and never
+  The terminal box: dark in both themes. It fills the window below the run page's tab bar,
+  never under 380 px; the bar and the screen belong to the `Terminal` hook
+  (`phx-update="ignore"`); the foot is the LiveView's, which sends numbers and never
   bytes. The hook reads the log from `src` and asks again when the LiveView says the log
   has advanced.
 
   `cols` and `rows` are the pseudo-terminal's size as the record last said it, or nil for
-  a run on pipes. With a size the hook
-  replays at the recorded size, each answer of `src` at the size its bytes were written
-  to, and the box grows to the rows; without one it fits the screen to the box and offers
-  to wrap.
+  a run on pipes. With a size the hook replays at the recorded size, each answer of `src`
+  at the size its bytes were written to: the recorded columns are kept, drawn inside the
+  box's own dark ground, which fills the page's width. Without one it fits the screen to
+  the box and offers to wrap.
+
+  The bar: the stream, search, follow, wrap (on pipes), the text size (A−, A+ and, at a
+  recorded size, Fit; 11 to 18 px, the reader's preference kept in `localStorage`), the
+  download, Focus (`f`: the terminal takes the window; Escape leaves) and Full screen
+  (the browser's, where it has one).
   """
   attr :id, :string, required: true
   attr :src, :string, required: true
@@ -1343,43 +1361,103 @@ defmodule ApiaryWeb.RunPageComponents do
             data-find
             spellcheck="false"
             autocomplete="off"
-            placeholder={gettext("Search")}
+            placeholder={gettext("Search the log")}
           />
           <span data-find-count aria-live="polite"></span>
         </label>
+        <span class="q-term-grow"></span>
+        <span class="q-term-hint">
+          <.rich text={rich_gettext("%{key} leaves focus", key: {:part, :key})}>
+            <:part name={:key}><kbd>{gettext("esc")}</kbd></:part>
+          </.rich>
+        </span>
+        <button
+          type="button"
+          class="q-tbtn"
+          aria-pressed={to_string(@live)}
+          title={gettext("Follow the end of the log (End)")}
+          data-follow
+        >
+          <.icon name="hero-arrow-down-micro" class="size-4" />
+          <span class="q-tbtn-lbl" data-follow-label>{if @live,
+            do: gettext("Following"),
+            else: gettext("Jump to end")}</span>
+        </button>
         <button
           :if={!@sized}
           type="button"
-          class="q-tbtn tooltip tooltip-left"
-          data-tip={gettext("Wrap long lines")}
-          aria-label={gettext("Wrap long lines")}
+          class="q-tbtn"
+          title={gettext("Wrap long lines")}
           aria-pressed="false"
           data-wrap
         >
-          <.icon name="hero-bars-arrow-down-micro" class="size-4" />
+          <.icon name="hero-arrow-uturn-left-micro" class="size-4" />
+          <span class="q-tbtn-lbl">{gettext("Wrap")}</span>
         </button>
-        <span
-          :if={@sized}
-          class="q-term-size tooltip tooltip-left"
-          data-tip={gettext("The size the runtime ran at")}
-          data-size
-        >
-          {@cols}×{@rows}
-        </span>
+        <span class="q-term-sep" aria-hidden="true"></span>
+        <div class="q-term-sizes" role="group" aria-label={gettext("Text size")}>
+          <button
+            type="button"
+            class="q-tbtn"
+            title={gettext("Smaller text")}
+            aria-label={gettext("Smaller text")}
+            data-size-step="-1"
+          >
+            {gettext("A−")}
+          </button>
+          <span class="q-term-px" data-size-label aria-live="polite"></span>
+          <button
+            type="button"
+            class="q-tbtn"
+            title={gettext("Larger text")}
+            aria-label={gettext("Larger text")}
+            data-size-step="1"
+          >
+            {gettext("A+")}
+          </button>
+          <button
+            :if={@sized}
+            type="button"
+            class="q-tbtn"
+            title={gettext("Fit the recorded columns to the width")}
+            aria-pressed="false"
+            data-size-fit
+          >
+            {gettext("Fit")}
+          </button>
+        </div>
+        <span class="q-term-sep" aria-hidden="true"></span>
         <a
-          class="q-tbtn tooltip tooltip-left"
-          data-tip={gettext("Download the raw bytes")}
+          class="q-tbtn"
+          title={gettext("Download the raw bytes")}
           aria-label={gettext("Download the raw bytes")}
           href={@src <> "?download=1"}
           download
         >
           <.icon name="hero-arrow-down-tray-micro" class="size-4" />
+          <span class="q-tbtn-lbl" aria-hidden="true">{gettext("Download")}</span>
         </a>
-        <button type="button" class="q-tbtn" aria-pressed={to_string(@live)} data-follow>
-          <.icon name="hero-arrow-down-micro" class="size-4" />
-          <span class="q-tbtn-lbl" data-follow-label>{if @live,
-            do: gettext("Following"),
-            else: gettext("Jump to end")}</span>
+        <button
+          type="button"
+          class="q-tbtn"
+          title={gettext("Focus: the terminal takes the window (f)")}
+          aria-pressed="false"
+          aria-keyshortcuts="f"
+          data-focus
+        >
+          <.icon name="hero-arrows-pointing-in-micro" class="size-4" />
+          <span class="q-tbtn-lbl">{gettext("Focus")}</span>
+        </button>
+        <button
+          type="button"
+          class="q-tbtn"
+          title={gettext("Full screen")}
+          aria-label={gettext("Full screen")}
+          aria-pressed="false"
+          data-fullscreen
+          hidden
+        >
+          <.icon name="hero-arrows-pointing-out-micro" class="size-4" />
         </button>
       </div>
       <div id={"#{@id}-screen"} class="q-term-screen" phx-update="ignore">
@@ -1402,13 +1480,21 @@ defmodule ApiaryWeb.RunPageComponents do
           {ngettext("%{number} chunk", "%{number} chunks", @chunks, number: Format.number(@chunks))}
         </span>
         <span class="q-term-opt">{gettext("through #%{sequence}", sequence: pad(@through))}</span>
+        <span
+          :if={@sized}
+          class="q-term-size"
+          title={gettext("The size the runtime ran at")}
+          data-size
+        >
+          {@cols}×{@rows}
+        </span>
       </div>
     </div>
-    <p class="mt-3 text-[12.5px] text-faint">
+    <p class="q-term-note">
       {if @sized,
         do:
           gettext(
-            "The bytes as the runtime wrote them, terminal escapes included, replayed at the size the runtime ran at. Nothing here is interpreted; the timeline is where the session is read."
+            "The bytes as the runtime wrote them, terminal escapes included, drawn at the columns they were recorded at. Nothing here is interpreted; the timeline is where the session is read."
           ),
         else:
           gettext(

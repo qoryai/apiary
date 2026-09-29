@@ -392,6 +392,11 @@ msgstr ""
 msgid "%{index} of %{total}"
 msgstr ""
 
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{key} leaves focus"
+msgstr ""
+
 #: lib/apiary_web/live/access_key_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "%{label} is already revoked."
@@ -1226,6 +1231,11 @@ msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
+msgid "%{size} px"
+msgstr ""
+
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
 msgid "%{size} · %{lines}"
 msgstr ""
 
@@ -1743,6 +1753,11 @@ msgstr ""
 msgid "A wall's own refusals (the machine's address, a path that reads two ways) hold in either mode."
 msgstr ""
 
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
+msgid "A+"
+msgstr ""
+
 #: lib/apiary_web/live/organisation_live.ex
 #, elixir-autogen, elixir-format
 msgid "About the organisation"
@@ -1759,7 +1774,6 @@ msgid "Accepted an invitation"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
-#: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Access key"
 msgstr ""
@@ -2265,6 +2279,11 @@ msgstr ""
 msgid "Auto"
 msgstr ""
 
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
+msgid "A−"
+msgstr ""
+
 #: lib/apiary_web/controllers/docs_html/not_built.html.heex
 #, elixir-autogen, elixir-format
 msgid "Back to Qory Apiary"
@@ -2313,7 +2332,6 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
 #: lib/apiary_web/live/policy_live/target.ex
-#: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Breadcrumb"
 msgstr ""
@@ -2686,6 +2704,7 @@ msgstr ""
 
 #: lib/apiary_web/components/core_components.ex
 #: lib/apiary_web/components/policy_components.ex
+#: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Copied"
 msgstr ""
@@ -2714,6 +2733,11 @@ msgstr ""
 #: lib/apiary_web/live/access_key_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Copy key id"
+msgstr ""
+
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Copy run id"
 msgstr ""
 
 #: lib/apiary_web/live/access_key_live/index.ex
@@ -3316,9 +3340,15 @@ msgstr ""
 msgid "Done:"
 msgstr ""
 
+#: lib/apiary_web/components/run_page_components.ex
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "Download"
+msgstr ""
+
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Download log"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -3654,6 +3684,31 @@ msgstr ""
 msgid "First render"
 msgstr ""
 
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
+msgid "Fit"
+msgstr ""
+
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
+msgid "Fit the recorded columns to the width"
+msgstr ""
+
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
+msgid "Focus"
+msgstr ""
+
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
+msgid "Focus: the terminal takes the window (f)"
+msgstr ""
+
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
+msgid "Follow the end of the log (End)"
+msgstr ""
+
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
@@ -3774,6 +3829,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
 msgid "From the workspace"
+msgstr ""
+
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
+msgid "Full screen"
 msgstr ""
 
 #: lib/apiary_web/components/settings_components.ex
@@ -4295,6 +4355,7 @@ msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/access_key_live/index.ex
+#: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Key"
 msgstr ""
@@ -4337,6 +4398,11 @@ msgstr ""
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
 msgid "Language"
+msgstr ""
+
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
+msgid "Larger text"
 msgstr ""
 
 #: lib/apiary/runs/filters.ex
@@ -4431,6 +4497,11 @@ msgstr ""
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Leave %{organisation}"
+msgstr ""
+
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
+msgid "Leave full screen"
 msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex
@@ -4811,7 +4882,6 @@ msgstr ""
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/live/policy_live/show.ex
 #: lib/apiary_web/live/policy_live/views.ex
-#: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Mode"
 msgstr ""
@@ -4834,6 +4904,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "Mode set to %{mode}"
+msgstr ""
+
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "More actions"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -5969,6 +6044,11 @@ msgstr ""
 msgid "Quiet"
 msgstr ""
 
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Raw log"
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Read the log as text"
@@ -6527,7 +6607,6 @@ msgstr ""
 #: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/policy_live/target.ex
 #: lib/apiary_web/live/run_live/index.ex
-#: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Runs"
 msgstr ""
@@ -6604,11 +6683,6 @@ msgstr ""
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
 msgid "Saving"
-msgstr ""
-
-#: lib/apiary_web/components/run_page_components.ex
-#, elixir-autogen, elixir-format
-msgid "Search"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -6891,6 +6965,11 @@ msgstr ""
 msgid "Slug"
 msgstr ""
 
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
+msgid "Smaller text"
+msgstr ""
+
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Something went wrong on our side."
@@ -7061,10 +7140,13 @@ msgstr ""
 msgid "Target policy"
 msgstr ""
 
+#: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/controllers/jump_controller.ex
 #: lib/apiary_web/live/policy_live/show.ex
 #: lib/apiary_web/live/policy_live/target.ex
+#: lib/apiary_web/live/target_live/index.ex
+#: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Targets"
 msgstr ""
@@ -7092,6 +7174,11 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Terminal output"
+msgstr ""
+
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
+msgid "Text size"
 msgstr ""
 
 #: lib/apiary_web/controllers/user_session_controller.ex
@@ -7137,12 +7224,12 @@ msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
-msgid "The bytes as the runtime wrote them, terminal escapes included, fitted to this box. Nothing here is interpreted; the timeline is where the session is read."
+msgid "The bytes as the runtime wrote them, terminal escapes included, drawn at the columns they were recorded at. Nothing here is interpreted; the timeline is where the session is read."
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
-msgid "The bytes as the runtime wrote them, terminal escapes included, replayed at the size the runtime ran at. Nothing here is interpreted; the timeline is where the session is read."
+msgid "The bytes as the runtime wrote them, terminal escapes included, fitted to this box. Nothing here is interpreted; the timeline is where the session is read."
 msgstr ""
 
 #: lib/apiary/policy.ex
@@ -8503,6 +8590,11 @@ msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
+msgid "Wrap"
+msgstr ""
+
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
 msgid "Wrap long lines"
 msgstr ""
 
@@ -8977,6 +9069,11 @@ msgstr ""
 msgid "error"
 msgstr ""
 
+#: lib/apiary_web/components/run_page_components.ex
+#, elixir-autogen, elixir-format
+msgid "esc"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "every %{seconds} s"
@@ -8996,6 +9093,7 @@ msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/components/run_page_components.ex
+#: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "exit %{code}"
 msgstr ""
