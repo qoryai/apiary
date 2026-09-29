@@ -132,17 +132,18 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       assert text(view, "##{dst("registry.example")} .q-outcome") == "Connected"
     end
 
-    test "tools=1 keeps the tool invocations, not the refused requests, and the chip toggles it",
+    test "tools=1 keeps the tool invocations, not the refused requests, and the Filter menu sets it",
          %{conn: conn, scope: scope} do
       view = open(conn, scope)
-      assert has_element?(view, "#connections-tools[aria-pressed=false]")
+      refute has_element?(view, "#connections-tools-form input[name=tools][checked]")
 
-      view |> element("#connections-tools") |> render_click()
+      view |> form("#connections-tools-form") |> render_change(%{"tools" => "1"})
       assert_patch(view, ~p"/#{scope.organisation}/#{scope.workspace}/connections?tools=1")
       render_async(view, 2_000)
 
-      assert has_element?(view, "#connections-tools[aria-pressed=true]")
-      assert text(view, "#connections-summary") =~ "1 destination"
+      assert has_element?(view, "#connections-tools-form input[name=tools][checked]")
+      assert text(view, "#connections-token-tools") =~ "tools: yes"
+      assert text(view, "#connections-summary") =~ "1 destination matches"
       refute has_element?(view, "##{dst("registry.example")}")
 
       refute has_element?(
@@ -155,7 +156,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
                "##{dst("files.tools.internal", 443, "/media/acme/shop/checkout.png")}"
              )
 
-      view |> element("#connections-tools") |> render_click()
+      view |> element("#connections-token-tools a") |> render_click()
       assert_patch(view, ~p"/#{scope.organisation}/#{scope.workspace}/connections")
     end
   end
@@ -184,7 +185,12 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
     test "one row per destination with its reason, denied first", %{conn: conn, scope: scope} do
       view = open(conn, scope)
 
-      assert text(view, "#connections-summary") == "2 destinations 2 denied 2 runs"
+      # The views count the destinations; a summary line is for a narrowed list only.
+      assert text(view, "#connections-view-all") == "All 2"
+      assert text(view, "#connections-view-denied") == "Denied 2"
+      assert text(view, "#connections-view-allowed") == "Allowed 1"
+      refute has_element?(view, "#connections-summary")
+      assert has_element?(view, "#connections-sort-denied[aria-checked=true]")
 
       rows =
         view
@@ -216,7 +222,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       assert registry =~ "Connected"
 
       refute render(view) =~ "secret.example"
-      assert text(view, "#connections-footer") =~ "Denied destinations come first"
+      assert text(view, "#connections-footer") == "1–2 of 2"
     end
 
     test "a row opens onto the runs that reached it", %{conn: conn, a: a, b: b, scope: scope} do
@@ -312,16 +318,22 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
 
       assert has_element?(view, "##{dst("registry.example")}")
       refute has_element?(view, "##{dst("files.cdn.example")}")
-      assert text(view, "#connections-summary") =~ "1 destination 1 denied 1 run"
+      assert text(view, "#connections-summary") =~ "1 destination matches across 1 run"
+      assert text(view, "#connections-view-all") == "All 1"
+      assert text(view, "#connections-view-denied") == "Denied 1"
+      assert has_element?(view, "#connections-view-all[aria-current=page]")
 
-      view |> element("#connections-decision button", "Allowed") |> render_click()
+      view |> element("#connections-view-allowed") |> render_click()
 
       assert_patch(
         view,
         ~p"/#{scope.organisation}/#{scope.workspace}/connections?#{%{"decision" => "allowed", "system" => "gitlab.example", "target" => "acme/shop"}}"
       )
 
-      view |> element("#filter-target-remove") |> render_click()
+      render_async(view, 2_000)
+      assert has_element?(view, "#connections-view-allowed[aria-current=page]")
+      refute has_element?(view, "#connections-token-decision")
+      view |> element("#connections-token-target a") |> render_click()
 
       assert_patch(
         view,
@@ -369,16 +381,63 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       assert text(view, "#connections-target-note") == target_note("git.example:8443/acme/shop")
     end
 
-    test "the range is bounded: the widest is 90 days, and it cannot be removed", %{
+    test "the range is bounded: the widest is 90 days, and removing one is the last seven", %{
       conn: conn,
       scope: scope
     } do
       view = open(conn, scope)
-      view |> element("#filter-since-remove") |> render_click()
+      refute has_element?(view, "#connections-token-started")
+      refute has_element?(view, "#filter-since-form input[value=all]")
+
+      view
+      |> form("#filter-since-form")
+      |> render_change(%{"since" => "90d", "_target" => ["since"]})
+
       assert_patch(view, ~p"/#{scope.organisation}/#{scope.workspace}/connections?since=90d")
       render_async(view, 2_000)
-      assert has_element?(view, "#filter-since-button", "last 90 days")
-      refute has_element?(view, "#filter-since-remove")
+      assert text(view, "#connections-token-started") =~ "seen: 90d"
+      assert text(view, "#connections-filter-value-since") == "last 90 days"
+
+      view |> element("#connections-token-started a") |> render_click()
+      assert_patch(view, ~p"/#{scope.organisation}/#{scope.workspace}/connections")
+    end
+
+    test "the query, the rail and the order are the page's controls", %{
+      conn: conn,
+      scope: scope
+    } do
+      view = open(conn, scope)
+
+      # Free text finds a host; a qualifier the page knows is a filter.
+      view |> form("#connections-query", %{"q" => "decision:denied cdn"}) |> render_submit()
+
+      assert_patch(
+        view,
+        ~p"/#{scope.organisation}/#{scope.workspace}/connections?decision=denied&q=cdn"
+      )
+
+      render_async(view, 2_000)
+      assert has_element?(view, "##{dst("files.cdn.example")}")
+      refute has_element?(view, "##{dst("registry.example")}")
+
+      # The rail counts the runs of each target that reached out, under the other filters.
+      rail = "#connections-rail-t-#{RunComponents.dom_token({"gitlab.example", "acme/shop"})}"
+      view = open(conn, scope)
+      assert text(view, "#connections-rail-all") == "All repositories 2"
+      assert text(view, rail) =~ "1"
+      view |> element(rail) |> render_click()
+
+      assert_patch(
+        view,
+        ~p"/#{scope.organisation}/#{scope.workspace}/connections?#{%{"system" => "gitlab.example", "target" => "acme/shop"}}"
+      )
+
+      view |> element("#connections-sort-runs") |> render_click()
+
+      assert_patch(
+        view,
+        ~p"/#{scope.organisation}/#{scope.workspace}/connections?#{%{"sort" => "runs", "system" => "gitlab.example", "target" => "acme/shop"}}"
+      )
     end
 
     test "a menu narrows on the server", %{conn: conn, scope: scope} do
