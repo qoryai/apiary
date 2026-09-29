@@ -38,7 +38,8 @@ defmodule ApiaryWeb.SettingsLiveTest do
 
       assert html =~ "The name of this workspace, and where its pages are."
 
-      assert has_element?(lv, "aside#sidebar[aria-label='Settings']")
+      assert has_element?(lv, "aside#sidebar[aria-label='Workspace']")
+      assert has_element?(lv, "#nav-settings[aria-current='page']")
       assert has_element?(lv, "#settings-tab-general[aria-current='page']")
       assert has_element?(lv, "#workspace-slug span", workspace_path(scope))
       assert html =~ scope.workspace.name
@@ -231,29 +232,21 @@ defmodule ApiaryWeb.SettingsLiveTest do
             workspaces: ~p"/#{org}/settings/workspaces",
             audit_log: ~p"/#{org}/activity"
           ] do
-        assert has_element?(
-                 lv,
-                 ~s(#settings-group-organisation #settings-tab-#{key}[href="#{path}"])
-               )
+        assert has_element?(lv, ~s(#settings-tabs #settings-tab-#{key}[href="#{path}"]))
       end
 
-      # The other kinds are beside it, each under its own name; no cross-link, no Elsewhere.
-      assert has_element?(
+      # Its own sections only: no other kind's, no cross-link, no Elsewhere.
+      refute has_element?(
                lv,
-               ~s(#settings-group-workspace #settings-tab-general[href="#{~p"/#{org}/#{scope.workspace}/settings"}"])
-             )
-
-      assert has_element?(
-               lv,
-               ~s(#settings-group-person #settings-tab-user_settings[href="/users/settings"])
+               "#settings-tab-general, #settings-tab-keys, #settings-tab-retention"
              )
 
       refute has_element?(lv, "#settings-tab-workspace_settings, #settings-tab-your_settings")
       refute render(lv) =~ "Elsewhere"
 
       assert has_element?(lv, "#settings-tab-organisation[aria-current=page]")
-      assert has_element?(lv, "#settings-kind", "Organisation settings · #{org.name}")
-      assert has_element?(lv, "h1#settings-section-title", "General")
+      assert has_element?(lv, "h1", "Organisation settings")
+      assert has_element?(lv, "h2#settings-section-title", "General")
 
       {:ok, lv, _html} = live(conn, ~p"/#{org}/settings/workspaces")
       assert has_element?(lv, "#settings-tab-workspaces[aria-current=page]")
@@ -275,7 +268,7 @@ defmodule ApiaryWeb.SettingsLiveTest do
       assert_patch(lv, ~p"/#{org}/settings/danger")
       assert has_element?(lv, "#delete-organisation-modal")
       assert has_element?(lv, "#settings-tab-organisation[aria-current=page]")
-      assert has_element?(lv, "h1#settings-section-title", "General")
+      assert has_element?(lv, "h2#settings-section-title", "General")
 
       {:ok, lv, _html} = live(conn, ~p"/#{org}/settings/delete")
       assert has_element?(lv, "#delete-organisation-modal")
@@ -290,22 +283,15 @@ defmodule ApiaryWeb.SettingsLiveTest do
             keys: base <> "/keys",
             retention: base <> "/retention"
           ] do
-        assert has_element?(
-                 lv,
-                 ~s(#settings-group-workspace #settings-tab-#{key}[href="#{path}"])
-               )
+        assert has_element?(lv, ~s(#settings-tabs #settings-tab-#{key}[href="#{path}"]))
       end
 
-      assert has_element?(
-               lv,
-               ~s(#settings-group-organisation #settings-tab-organisation[href="#{~p"/#{scope.organisation}/settings"}"])
-             )
-
-      refute has_element?(lv, "#settings-tab-organisation_settings")
+      # No link to the organisation's settings, which are its own place.
+      refute has_element?(lv, "#settings-tab-organisation, #settings-tab-organisation_settings")
 
       assert has_element?(lv, "#settings-tab-retention[aria-current=page]")
-      assert has_element?(lv, "#settings-kind", "Workspace settings · #{scope.workspace.name}")
-      assert has_element?(lv, "h1#settings-section-title", "Retention")
+      assert has_element?(lv, "h1", "Workspace settings")
+      assert has_element?(lv, "h2#settings-section-title", "Retention")
       assert has_element?(lv, "#retention-form")
       refute has_element?(lv, "#workspace-form")
 

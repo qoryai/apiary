@@ -2428,11 +2428,6 @@ msgstr ""
 msgid "A−"
 msgstr ""
 
-#: lib/apiary_web/components/layouts.ex
-#, elixir-autogen, elixir-format
-msgid "Back to %{name}"
-msgstr ""
-
 #: lib/apiary_web/controllers/docs_html/not_built.html.heex
 #, elixir-autogen, elixir-format
 msgid "Back to Qory Apiary"
@@ -6084,20 +6079,11 @@ msgstr ""
 msgid "Organisation renamed to %{name}."
 msgstr ""
 
+#: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/live/member_live/index.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Organisation settings"
-msgstr ""
-
-#: lib/apiary_web/components/settings_components.ex
-#, elixir-autogen, elixir-format
-msgid "Organisation settings · %{name}"
-msgstr ""
-
-#: lib/apiary_web/components/settings_components.ex
-#, elixir-autogen, elixir-format
-msgid "Organisation · %{name}"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -7278,6 +7264,7 @@ msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/live/organisation_live.ex
 #, elixir-autogen, elixir-format
 msgid "Settings"
@@ -9065,20 +9052,11 @@ msgstr ""
 msgid "Workspace renamed to %{name}."
 msgstr ""
 
+#: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/live/access_key_live/index.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Workspace settings"
-msgstr ""
-
-#: lib/apiary_web/components/settings_components.ex
-#, elixir-autogen, elixir-format
-msgid "Workspace settings · %{name}"
-msgstr ""
-
-#: lib/apiary_web/components/settings_components.ex
-#, elixir-autogen, elixir-format
-msgid "Workspace · %{name}"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
@@ -9273,7 +9251,6 @@ msgid "Your Qory Apiary log-in link"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
-#: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/controllers/jump_controller.ex
 #, elixir-autogen, elixir-format
 msgid "Your account"

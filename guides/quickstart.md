@@ -97,9 +97,9 @@ Open the link in the browser. The page reads **Welcome to Qory Apiary**; select 
 account**. You land on the overview of your workspace.
 
 Signing up created an organisation with the name you gave, one workspace in it named
-*Main*, and your membership as its owner. Both can be renamed in their settings: select
-**Settings** at the foot of the sidebar, which then lists the organisation's settings, the
-workspace's and your own side by side. As the first person to sign up on this instance you are also its **instance
+*Main*, and your membership as its owner. Both can be renamed in their **Settings**, at the
+foot of the sidebar: the workspace's on any page of the workspace, the organisation's on its
+overview, which its name in the top bar opens. As the first person to sign up on this instance you are also its **instance
 admin**: your organisation is the instance's own, and its owners are the instance's
 admins. Nobody else can sign up without an invitation
 ([Install and configure](install.md#sign-up-and-invitations)), so invite your colleagues

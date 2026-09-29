@@ -207,7 +207,7 @@ defmodule ApiaryWeb.DeletionLiveTest do
       lv |> element("a#delete-account-button") |> render_click()
       assert_patch(lv, ~p"/users/settings/delete")
       assert has_element?(lv, "#delete-account-modal")
-      assert has_element?(lv, "#settings-tab-user_settings[aria-current='page']")
+      assert has_element?(lv, "#nav-user_settings[aria-current='page']")
 
       lv |> element("#delete-account-confirm") |> render_click()
       assert_redirect(lv, ~p"/users/account-deleted")

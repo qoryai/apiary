@@ -216,86 +216,40 @@ defmodule ApiaryWeb.LayoutsTest do
       refute has_element?(view, "#sidebar .q-drawer-head svg:not(.hero-x-mark)")
     end
 
-    test "a page of settings lists every kind the reader may change, in place of the scope's pages",
+    test "a workspace's settings keep the workspace's sidebar, Settings current, and list their own sections only",
          %{conn: conn, scope: scope} do
       org = scope.organisation
       ws = scope.workspace
-      {:ok, view, html} = live(conn, ~p"/#{org}/#{ws}/settings/keys")
+      {:ok, view, _html} = live(conn, ~p"/#{org}/#{ws}/settings/keys")
 
-      assert has_element?(view, "aside#sidebar[aria-label='Settings']")
+      # The sidebar is the workspace's, its Settings the current entry; nothing replaces it.
+      assert has_element?(view, "aside#sidebar[aria-label='Workspace']")
+      assert has_element?(view, "#nav-group-record #nav-runs:not([aria-current])")
+      assert has_element?(view, ".q-sidebar-foot #nav-settings[aria-current='page']")
+      refute has_element?(view, "#nav-keys")
+      refute has_element?(view, "#settings-back")
 
-      # The way back, to the workspace the settings were opened from.
-      assert has_element?(
-               view,
-               "#sidebar a#settings-back[href='#{workspace_path(scope)}']",
-               "Back to #{ws.name}"
-             )
+      # The page: Workspace settings, the list of its sections beside the section.
+      assert has_element?(view, "#main h1", "Workspace settings")
 
-      # The organisation's, the workspace's, then the person's, each named by kind and place.
-      assert has_element?(
-               view,
-               "nav#settings-group-organisation[aria-label='Organisation · #{org.name}']"
-             )
-
-      assert has_element?(
-               view,
-               "#settings-group-organisation .q-nav-heading",
-               "Organisation · #{org.name}"
-             )
-
-      assert has_element?(
-               view,
-               "#settings-group-workspace .q-nav-heading",
-               "Workspace · #{ws.name}"
-             )
-
-      assert has_element?(view, "#settings-group-person .q-nav-heading", "Your account")
-      assert before?(html, ~s(id="settings-back"), ~s(id="settings-group-organisation"))
-
-      assert before?(
-               html,
-               ~s(id="settings-group-organisation"),
-               ~s(id="settings-group-workspace")
-             )
-
-      assert before?(html, ~s(id="settings-group-workspace"), ~s(id="settings-group-person"))
-
-      for {group, key, href} <- [
-            {:organisation, :organisation, ~p"/#{org}/settings"},
-            {:organisation, :people, ~p"/#{org}/settings/people"},
-            {:organisation, :workspaces, ~p"/#{org}/settings/workspaces"},
-            {:workspace, :general, ~p"/#{org}/#{ws}/settings"},
-            {:workspace, :keys, ~p"/#{org}/#{ws}/settings/keys"},
-            {:workspace, :retention, ~p"/#{org}/#{ws}/settings/retention"},
-            {:person, :user_settings, ~p"/users/settings"},
-            {:person, :user_preferences, ~p"/users/settings/preferences"},
-            {:person, :user_organisations, ~p"/users/organisations"}
+      for {key, href} <- [
+            general: ~p"/#{org}/#{ws}/settings",
+            keys: ~p"/#{org}/#{ws}/settings/keys",
+            retention: ~p"/#{org}/#{ws}/settings/retention"
           ] do
-        assert has_element?(
-                 view,
-                 "#settings-group-#{group} a#settings-tab-#{key}[href='#{href}']"
-               ),
+        assert has_element?(view, "#main #settings-tabs a#settings-tab-#{key}[href='#{href}']"),
                "#{key}"
       end
 
-      # The current section is the current entry; the counts beside People and Access keys.
       assert has_element?(view, "#settings-tab-keys[aria-current='page']")
-      assert has_element?(view, "#settings-tab-keys .q-nav-count")
-      assert has_element?(view, "#settings-tab-people .q-nav-count", "1")
+      assert has_element?(view, "#main h2#settings-section-title", "Access keys")
 
-      # What cannot be undone is no entry of the list: it ends its General page.
-      refute has_element?(view, "#sidebar a[href$='/settings/danger']")
-      refute has_element?(view, "#sidebar a[href='/users/settings/delete']")
-      refute has_element?(view, "#settings-tab-danger, #settings-tab-workspace_danger")
-      refute view |> element("#sidebar") |> render() =~ "Danger zone"
-
-      # No page of the scope, no Settings at the foot; the Qory Apiary menu stays.
-      for key <- ~w(overview runs connections policy settings),
-          do: refute(has_element?(view, "#nav-#{key}"), key)
-
-      refute has_element?(view, "#nav-group-home, #nav-group-record, #nav-group-pinned")
-      assert has_element?(view, ".q-sidebar-foot #brand-menu")
-      assert has_element?(view, ".q-sidebar-foot #sidebar-collapse")
+      # No other kind of settings, no cross-link, and nothing that cannot be undone.
+      refute has_element?(view, "#settings-tab-organisation, #settings-tab-people")
+      refute has_element?(view, "#settings-tabs a[href='/#{org.slug}/settings']")
+      refute has_element?(view, "#settings-tabs a[href='/users/settings']")
+      refute has_element?(view, "#settings-tabs a[href$='/danger']")
+      refute render(view) =~ "Elsewhere"
 
       # The breadcrumb: the organisation, the workspace, Settings.
       assert has_element?(view, "#breadcrumb a[href='#{workspace_path(scope)}']", ws.name)
@@ -305,35 +259,41 @@ defmodule ApiaryWeb.LayoutsTest do
                "#breadcrumb #breadcrumb-settings[aria-current='page']",
                "Settings"
              )
-
-      # The section is the page: the kind and place, then its title as the page's h1.
-      assert has_element?(view, "#main #settings-kind", "Workspace settings · #{ws.name}")
-      assert has_element?(view, "#main h1#settings-section-title", "Access keys")
-      refute has_element?(view, "#main #settings-tabs")
     end
 
-    test "an organisation's settings: its own breadcrumb, the same list", %{
-      conn: conn,
-      scope: scope
-    } do
-      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/settings/people")
+    test "an organisation's settings keep the organisation's sidebar and list their own sections",
+         %{conn: conn, scope: scope} do
+      org = scope.organisation
 
-      assert has_element?(view, "aside#sidebar[aria-label='Settings']")
-      assert has_element?(view, "#settings-tab-people[aria-current='page']")
-      assert has_element?(view, "#settings-group-workspace #settings-tab-general")
-      assert has_element?(view, "#settings-group-person #settings-tab-user_settings")
-      assert has_element?(view, "#settings-back[href='#{workspace_path(scope)}']")
+      for path <- [~p"/#{org}/settings", ~p"/#{org}/settings/people"] do
+        {:ok, view, _html} = live(conn, path)
 
-      # the breadcrumb names the organisation, no workspace, and Settings
-      assert has_element?(view, "#breadcrumb", scope.organisation.name)
-      refute has_element?(view, "#breadcrumb a[href='#{workspace_path(scope)}']")
-      assert has_element?(view, "#breadcrumb #breadcrumb-settings[aria-current='page']")
+        assert has_element?(view, "aside#sidebar[aria-label='Organisation']")
+        assert has_element?(view, "#sidebar a#nav-activity:not([aria-current])")
 
-      assert has_element?(
-               view,
-               "#settings-kind",
-               "Organisation settings · #{scope.organisation.name}"
-             )
+        assert has_element?(
+                 view,
+                 ".q-sidebar-foot a#nav-organisation[href='/#{org.slug}/settings'][aria-current='page']"
+               )
+
+        for key <- ~w(overview runs connections policy settings members),
+            do: refute(has_element?(view, "#nav-#{key}"), "#{path} #{key}")
+
+        assert has_element?(view, "#main h1", "Organisation settings")
+
+        for key <- ~w(organisation people workspaces audit_log),
+            do: assert(has_element?(view, "#settings-tabs #settings-tab-#{key}"), key)
+
+        refute has_element?(
+                 view,
+                 "#settings-tab-general, #settings-tab-keys, #settings-tab-danger"
+               )
+
+        # the breadcrumb names the organisation, no workspace, and Settings
+        assert has_element?(view, "#breadcrumb", org.name)
+        refute has_element?(view, "#breadcrumb a[href='#{workspace_path(scope)}']")
+        assert has_element?(view, "#breadcrumb #breadcrumb-settings[aria-current='page']")
+      end
     end
 
     test "an organisation's page shows the organisation's sidebar", %{conn: conn, scope: scope} do
@@ -359,7 +319,7 @@ defmodule ApiaryWeb.LayoutsTest do
         for key <- ~w(overview runs connections policy settings members),
             do: refute(has_element?(view, "#nav-#{key}"), "#{path} #{key}")
 
-        refute has_element?(view, "#settings-back, #breadcrumb-settings")
+        refute has_element?(view, "#breadcrumb-settings")
 
         # the breadcrumb names the organisation and no workspace
         assert has_element?(view, "#breadcrumb", scope.organisation.name)
@@ -367,32 +327,30 @@ defmodule ApiaryWeb.LayoutsTest do
       end
     end
 
-    test "a person's own page lists the settings, theirs with the place's they opened last",
-         %{conn: conn, scope: scope} do
+    test "a person's own page: their sidebar is their settings' list, under Your settings",
+         %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/users/settings")
 
-      assert has_element?(view, "aside#sidebar[aria-label='Settings']")
+      assert has_element?(view, "aside#sidebar[aria-label='Your account']")
+      assert has_element?(view, "nav#nav-group-account[aria-label='Your settings']")
+      assert has_element?(view, "#nav-group-account .q-nav-heading", "Your settings")
 
       assert has_element?(
                view,
-               "#settings-group-person #settings-tab-user_settings[href='/users/settings'][aria-current='page']"
+               "#nav-group-account #nav-user_settings[href='/users/settings'][aria-current='page']"
              )
 
-      assert has_element?(
-               view,
-               "#settings-tab-user_preferences[href='/users/settings/preferences']"
-             )
+      assert has_element?(view, "#nav-user_preferences[href='/users/settings/preferences']")
+      assert has_element?(view, "#nav-user_organisations[href='/users/organisations']")
 
-      assert has_element?(view, "#settings-tab-user_organisations[href='/users/organisations']")
-      assert has_element?(view, "#settings-group-organisation #settings-tab-organisation")
-      assert has_element?(view, "#settings-group-workspace #settings-tab-keys")
-      assert has_element?(view, "#settings-back[href='#{workspace_path(scope)}']")
-      refute has_element?(view, "#nav-overview, #nav-activity, #nav-settings")
+      # Only theirs: no organisation's or workspace's page or settings, no Settings at the
+      # foot, no list in the page; the section's title is the page's.
+      refute has_element?(view, "#nav-overview, #nav-activity, #nav-settings, #nav-organisation")
+      refute has_element?(view, "#settings-tabs, #settings-back")
+      assert has_element?(view, "#main h1", "Profile")
       assert has_element?(view, "#breadcrumb a[href='/users/settings']", "Your settings")
       assert has_element?(view, "#breadcrumb [aria-current='page']", "Profile")
       refute has_element?(view, "#breadcrumb-settings")
-      assert has_element?(view, "#settings-kind", "Your account")
-      assert has_element?(view, "#main h1#settings-section-title", "Profile")
     end
 
     test "one place: the breadcrumb's segments are links, with no switcher", %{
@@ -590,11 +548,8 @@ defmodule ApiaryWeb.LayoutsTest do
       conn = log_in_user(conn, user)
       {:ok, view, html} = live(conn, ~p"/users/organisations")
 
-      # Their own settings alone, and nowhere to go back to.
-      assert has_element?(view, "aside#sidebar[aria-label='Settings']")
-      assert has_element?(view, "#settings-tab-user_organisations[aria-current='page']")
-      refute has_element?(view, "#settings-group-organisation, #settings-group-workspace")
-      refute has_element?(view, "#settings-back")
+      assert has_element?(view, "aside#sidebar[aria-label='Your account']")
+      assert has_element?(view, "#nav-group-account #nav-user_organisations[aria-current='page']")
       refute has_element?(view, "#palette-open, #palette, #new-menu")
 
       assert has_element?(

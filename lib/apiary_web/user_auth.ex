@@ -256,7 +256,7 @@ defmodule ApiaryWeb.UserAuth do
 
     if scope && scope.user do
       # A person's own pages are no organisation's: their lines carry no ids, though the
-      # sidebar lists the settings of the workspace last opened, and its organisation's.
+      # scope carries the workspace last opened, where the palette and New act.
       scope = Organisations.load_home_scope(scope, session[Atom.to_string(@last_workspace)])
       {:cont, assign_organisation(socket, scope)}
     else

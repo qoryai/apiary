@@ -12,15 +12,13 @@ defmodule ApiaryWeb.UserLive.Organisations do
 
   The page offers what the organisation switcher offers after its places, the edition's
   entries (`c:ApiaryWeb.Edition.switcher_entries/1`), as its actions: beside its title,
-  or beside the way to join one for a person in none. It is a section of the person's own
-  settings, Organisations (`ApiaryWeb.SettingsComponents`), and its sidebar lists the
-  settings.
+  or beside the way to join one for a person in none. It is Organisations, a section of
+  the person's own settings, whose list is their sidebar.
   """
   use ApiaryWeb, :live_view
 
   alias Apiary.{Deletion, Organisations}
   alias ApiaryWeb.Nav.Entry
-  alias ApiaryWeb.{SettingsComponents, UserAuth}
 
   @impl true
   def render(assigns) do
@@ -32,8 +30,6 @@ defmodule ApiaryWeb.UserLive.Organisations do
       counts={assigns[:nav_counts]}
       nav={:user_organisations}
       width="read"
-      settings={@settings_nav}
-      section={:user_organisations}
     >
       <%= if @memberships == [] and @pending == [] and @suspended == [] do %>
         <.empty_state
@@ -64,12 +60,8 @@ defmodule ApiaryWeb.UserLive.Organisations do
           </:actions>
         </.empty_state>
       <% else %>
-        <SettingsComponents.layout
-          scope={@current_scope}
-          kind={:person}
-          current={:user_organisations}
-          title={gettext("Organisations")}
-        >
+        <.header>
+          {gettext("Organisations")}
           <:subtitle>
             {gettext("The organisations you are a member of, and the workspaces you reach in each.")}
           </:subtitle>
@@ -81,97 +73,97 @@ defmodule ApiaryWeb.UserLive.Organisations do
               scope={@current_scope}
             />
           </:actions>
+        </.header>
 
+        <.table
+          :if={@memberships != []}
+          id="organisations"
+          label={gettext("Your organisations")}
+          rows={@memberships}
+          row_id={&"organisation-#{&1.organisation.id}"}
+        >
+          <:col :let={membership} label={gettext("Organisation")} kind="title">
+            <span class="q-nm">
+              <.avatar name={membership.organisation.name} kind="organisation" />
+              <.link href={organisation_path(membership)} class="q-title hover:underline">
+                {membership.organisation.name}
+              </.link>
+            </span>
+          </:col>
+          <:col :let={membership} label={gettext("Workspaces")}>
+            <span class="block max-w-[40ch] truncate">
+              {Enum.map_join(membership.workspaces, ", ", & &1.name)}
+            </span>
+          </:col>
+          <:col :let={membership} label={gettext("Level")} from="sm">
+            {level_text(Map.get(membership, :level))}
+          </:col>
+        </.table>
+
+        <section :if={@suspended != []} id="suspended-memberships" class="grid gap-3">
+          <h2 class="text-[14px]/5 font-semibold">{gettext("Suspended memberships")}</h2>
+          <p class="max-w-[60ch] text-[12.5px]/[18px] text-muted">
+            {gettext(
+              "Your membership in these organisations is suspended: you cannot open them or act in them. An owner or an admin of each can activate it."
+            )}
+          </p>
           <.table
-            :if={@memberships != []}
-            id="organisations"
-            label={gettext("Your organisations")}
-            rows={@memberships}
-            row_id={&"organisation-#{&1.organisation.id}"}
+            id="suspended"
+            label={gettext("Suspended memberships")}
+            rows={@suspended}
+            row_id={&"suspended-#{&1.organisation.id}"}
+            row_class={fn _ -> "row-off" end}
           >
             <:col :let={membership} label={gettext("Organisation")} kind="title">
               <span class="q-nm">
                 <.avatar name={membership.organisation.name} kind="organisation" />
-                <.link href={organisation_path(membership)} class="q-title hover:underline">
-                  {membership.organisation.name}
-                </.link>
+                <span class="q-title">{membership.organisation.name}</span>
               </span>
             </:col>
-            <:col :let={membership} label={gettext("Workspaces")}>
-              <span class="block max-w-[40ch] truncate">
-                {Enum.map_join(membership.workspaces, ", ", & &1.name)}
-              </span>
-            </:col>
-            <:col :let={membership} label={gettext("Level")} from="sm">
-              {level_text(Map.get(membership, :level))}
+            <:col label={gettext("State")}>
+              <.state_word>{gettext("Suspended")}</.state_word>
             </:col>
           </.table>
+        </section>
 
-          <section :if={@suspended != []} id="suspended-memberships" class="grid gap-3">
-            <h2 class="text-[14px]/5 font-semibold">{gettext("Suspended memberships")}</h2>
-            <p class="max-w-[60ch] text-[12.5px]/[18px] text-muted">
-              {gettext(
-                "Your membership in these organisations is suspended: you cannot open them or act in them. An owner or an admin of each can activate it."
-              )}
-            </p>
-            <.table
-              id="suspended"
-              label={gettext("Suspended memberships")}
-              rows={@suspended}
-              row_id={&"suspended-#{&1.organisation.id}"}
-              row_class={fn _ -> "row-off" end}
-            >
-              <:col :let={membership} label={gettext("Organisation")} kind="title">
-                <span class="q-nm">
-                  <.avatar name={membership.organisation.name} kind="organisation" />
-                  <span class="q-title">{membership.organisation.name}</span>
-                </span>
-              </:col>
-              <:col label={gettext("State")}>
-                <.state_word>{gettext("Suspended")}</.state_word>
-              </:col>
-            </.table>
-          </section>
-
-          <section :if={@pending != []} id="pending-deletions" class="grid gap-3">
-            <h2 class="text-[14px]/5 font-semibold">{gettext("Deleted, waiting to be purged")}</h2>
-            <p class="max-w-[60ch] text-[12.5px]/[18px] text-muted">
-              {gettext(
-                "Nobody can open these organisations and their access keys do not work. Until the day each is purged, you can cancel its deletion, which brings everything back."
-              )}
-            </p>
-            <.table
-              id="pending"
-              label={gettext("Deleted, waiting to be purged")}
-              rows={@pending}
-              row_id={&"pending-#{&1.id}"}
-            >
-              <:col :let={organisation} label={gettext("Organisation")} kind="title">
-                <span class="q-nm">
-                  <.avatar name={organisation.name} kind="organisation" />
-                  <span class="q-title">{organisation.name}</span>
-                </span>
-              </:col>
-              <:col :let={organisation} label={gettext("Purged")} kind="hot">
-                <span class="tabular-nums">
-                  {gettext("Purged on %{date}", date: Format.date(organisation.purge_after))}
-                </span>
-              </:col>
-              <:action :let={organisation}>
-                <.button
-                  id={"restore-#{organisation.id}"}
-                  variant="link"
-                  phx-click="restore"
-                  phx-value-id={organisation.id}
-                  aria-label={gettext("Cancel the deletion of %{name}", name: organisation.name)}
-                  loading_text={gettext("Cancelling")}
-                >
-                  {gettext("Cancel deletion")}
-                </.button>
-              </:action>
-            </.table>
-          </section>
-        </SettingsComponents.layout>
+        <section :if={@pending != []} id="pending-deletions" class="grid gap-3">
+          <h2 class="text-[14px]/5 font-semibold">{gettext("Deleted, waiting to be purged")}</h2>
+          <p class="max-w-[60ch] text-[12.5px]/[18px] text-muted">
+            {gettext(
+              "Nobody can open these organisations and their access keys do not work. Until the day each is purged, you can cancel its deletion, which brings everything back."
+            )}
+          </p>
+          <.table
+            id="pending"
+            label={gettext("Deleted, waiting to be purged")}
+            rows={@pending}
+            row_id={&"pending-#{&1.id}"}
+          >
+            <:col :let={organisation} label={gettext("Organisation")} kind="title">
+              <span class="q-nm">
+                <.avatar name={organisation.name} kind="organisation" />
+                <span class="q-title">{organisation.name}</span>
+              </span>
+            </:col>
+            <:col :let={organisation} label={gettext("Purged")} kind="hot">
+              <span class="tabular-nums">
+                {gettext("Purged on %{date}", date: Format.date(organisation.purge_after))}
+              </span>
+            </:col>
+            <:action :let={organisation}>
+              <.button
+                id={"restore-#{organisation.id}"}
+                variant="link"
+                phx-click="restore"
+                phx-value-id={organisation.id}
+                aria-label={gettext("Cancel the deletion of %{name}", name: organisation.name)}
+                loading_text={gettext("Cancelling")}
+              >
+                {gettext("Cancel deletion")}
+              </.button>
+            </:action>
+          </.table>
+        </section>
       <% end %>
     </Layouts.app>
     """
@@ -204,15 +196,8 @@ defmodule ApiaryWeb.UserLive.Organisations do
     {:ok,
      socket
      |> assign(:entries, ApiaryWeb.Edition.switcher_entries(socket.assigns.current_scope))
-     |> load()
-     |> load_settings_nav()
-     |> UserAuth.on_membership_change(&(&1 |> load() |> load_settings_nav()))}
+     |> load()}
   end
-
-  # The settings the reader may change, the sidebar's list: the organisation's and the
-  # workspace's of the scope the page carries, and their own.
-  defp load_settings_nav(socket),
-    do: assign(socket, :settings_nav, SettingsComponents.nav(socket.assigns.current_scope))
 
   @impl true
   def handle_event("restore", %{"id" => id}, socket) do

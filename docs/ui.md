@@ -47,11 +47,15 @@ The shell is section 4 of the v2 design brief (the knowledge vault's
   (Policy), then the targets the person pinned (`counts.pins`, the first seven in the
   order pinned, `Apiary.Targets.list_pins/2`; on a target's page its pin is the current
   entry); an organisation's
-  Overview, Activity and the edition's groups (`ApiaryWeb.Edition.nav_sections/0`). On a
-  page of settings it lists the settings instead (Settings, below). The active item
-  carries `aria-current="page"`. A group whose feature is off is absent, not greyed.
-- **The sidebar's foot** holds the scope's Settings (not on a page of settings), then,
-  under a rule, **the Qory Apiary menu** (`#brand-menu`): the mark, the name and the
+  Overview, Activity and the edition's groups (`ApiaryWeb.Edition.nav_sections/0`); the
+  person's Profile, Preferences and Organisations under Your settings, which are their
+  settings' list. It is never replaced: a page of a scope's settings keeps the scope's
+  sidebar. The active item carries `aria-current="page"`. A group whose feature is off is
+  absent, not greyed.
+- **The sidebar's foot** holds the scope's Settings, a workspace's or an organisation's,
+  the current entry on every page of them (Settings itself, or an entry of the section
+  `:settings`, such as Access keys), then, under a rule, **the Qory Apiary menu**
+  (`#brand-menu`): the mark, the name and the
   version, opening upward to Docs, Changelog (on an instance with every feature) and
   Source on GitHub, what is about the product rather than the person; and at the right of
   it the fold.
@@ -75,54 +79,54 @@ The shell is section 4 of the v2 design brief (the knowledge vault's
 ## Settings
 
 Configuration is not navigation: what is set up once and changed rarely lives in the
-settings, one section a page (`ApiaryWeb.SettingsComponents`). There are three kinds, an
-organisation's, a workspace's and the person's own, and one is never hidden inside
-another: on a page of any of them the sidebar lists, in place of the scope's pages, a way
-back (‹ Back to the workspace, or to the organisation when the scope has no workspace),
-then every kind the reader may change, each under its kind and place ("Organisation ·
-8wonders", "Workspace · Main", "Your account"), in the breadcrumb's order and the person
-last. The list is `SettingsComponents.nav/1`, which a page reads when it mounts and
-passes to `Layouts.app/1` as `settings`, with its own section's key as `section`: a
-section the reader may not open is not in it, and its path sends them to General and says
-why. People and Access keys carry their counts. An entry's id is `settings-tab-<key>`,
-its key unique among the three kinds. Nothing that cannot be undone is an entry of the
-list, and nothing in it is red.
+settings. There are three kinds, GitHub's repository, organisation and personal settings,
+and each is a place of its own, reached from its own scope, that lists its own sections
+and no other kind's: no "Elsewhere", no link across. A navigation item never replaces the
+navigation it is in.
 
-- **An organisation's** (`/:org/settings/…`): General (name, slug, owners, and its danger
-  zone), People (`/settings/people`: members, invitations, suspensions), Workspaces
-  (owners and admins), Audit log (the Activity page, `/:org/activity`, which keeps its
-  path and the organisation's sidebar), and the edition's sections
-  (`ApiaryWeb.Edition.settings_tabs/1`).
-- **A workspace's** (`/:org/:workspace/settings/…`): General (name, slug, and its danger
-  zone), Access keys (`/settings/keys`), Retention.
+- **A workspace's** (`/:org/:workspace/settings/…`), from the workspace sidebar's
+  Settings: General (name, slug, and its danger zone), Access keys (`/settings/keys`),
+  Retention.
+- **An organisation's** (`/:org/settings/…`), from the organisation's pages (the
+  breadcrumb's organisation leads to its overview, whose sidebar has Settings): General
+  (name, slug, owners, and its danger zone), People (`/settings/people`: members,
+  invitations, suspensions), Workspaces (owners and admins), Audit log (the Activity page,
+  `/:org/activity`, which keeps its path), and the edition's sections
+  (`ApiaryWeb.Edition.settings_tabs/1`). From a workspace the palette's Go to and New ›
+  Invite people lead there too; nothing else in a workspace does.
 - **A person's** (`/users/settings`, `/users/settings/preferences`,
-  `/users/organisations`): Profile (email, password, and its danger zone), Preferences,
-  Organisations. Their pages carry the workspace they opened last, so their list shows
-  that organisation's and workspace's settings beside their own; a person with no
-  organisation sees their own alone.
+  `/users/organisations`), from the account menu's Your settings: Profile (email,
+  password, and its danger zone), Preferences, Organisations. A person has no pages but
+  these, so their sidebar is the list, under the heading Your settings, and a page's
+  `<h1>` is its section's title.
+
+A workspace's and an organisation's settings keep the scope's sidebar, its Settings the
+current entry, and are one section a page (`ApiaryWeb.SettingsComponents.layout/1`): the
+`<h1>` "Workspace settings" or "Organisation settings", at the page's left edge the list
+of the kind's sections (`#settings-tabs`, `settings-tab-<key>`; `sections/2`, which a page
+reads when it mounts), and beside it the section, its title an `<h2>`, one sentence of
+what it is for, then its content, a 720 px column for forms and 960 px for a list (People,
+Access keys). Below 1024 px the list is a row of links above the section. A section the
+reader may not open is not in the list, and its path sends them to General and says why.
+The breadcrumb ends with Settings (`8wonders / Main / Settings`, `8wonders / Settings`); a
+person's page names itself.
 
 **The danger zone** ends its scope's General page, and Profile, GitHub's way
 (`SettingsComponents.danger_zone/1`): after a rule, the heading Danger zone, the page's
 only red words, then a line for each act that cannot be undone (`danger_action/1`), its
 title, one muted sentence of what it does and what cannot be undone, and at the right a
 default button in the error colour, Delete organisation…, Delete workspace… or Delete
-account…. No box. The button opens the confirm dialog, where the red button is, at a path
-of its own over the page: `/:org/settings/danger`, `/:org/:workspace/settings/danger` and
-`/users/settings/delete` (the older `/…/settings/delete` paths open the same dialogs).
-Where the act is not there, the line says why in place of the button: the instance's own
-organisation, the organisation's only workspace. A reader who may not delete the scope
-sees no danger zone, and the dialog's path sends them to General and says why.
+account…. No box, and never an entry of a list. The button opens the confirm dialog, where
+the red button is, at a path of its own over the page: `/:org/settings/danger`,
+`/:org/:workspace/settings/danger` and `/users/settings/delete` (the older
+`/…/settings/delete` paths open the same dialogs). Where the act is not there, the line
+says why in place of the button: the instance's own organisation, the organisation's only
+workspace. A reader who may not delete the scope sees no danger zone, and the dialog's
+path sends them to General and says why.
 
-The workspace sidebar's Settings leads to the workspace's General, the organisation's to
-the organisation's General, and the account menu's Your settings to Profile: one view, one
-list, another current entry. **The section is the page** (`SettingsComponents.layout/1`):
-one faint line that names the kind and the place ("Workspace settings · Main"), the
-section's title as the page's `<h1>`, one sentence of what it is for, then its content; a
-section of forms keeps a 720 px column, one that is a list (People, Access keys) 960 px.
-The breadcrumb ends with Settings on an organisation's and a workspace's settings; a
-person's page names itself. Invite, rotate, revoke, remove, suspend and the deletions stay
-dialogs over their section, each at a path of its own. The old paths, `/:org/members/…`
-and `/:org/:workspace/keys/…`, send on to the new ones (`ApiaryWeb.MovedController`).
+Invite, rotate, revoke, remove, suspend and the deletions stay dialogs over their
+section, each at a path of its own. The old paths, `/:org/members/…` and
+`/:org/:workspace/keys/…`, send on to the new ones (`ApiaryWeb.MovedController`).
 
 An organisation's own path, `/:org`, is its overview (`ApiaryWeb.OrganisationLive`): the
 workspaces the person reaches, what each is doing, and the organisation's people. The

@@ -8,16 +8,14 @@ defmodule ApiaryWeb.Layouts do
   The shell shows one scope at a time, the one the page belongs to: a workspace, an
   organisation or the person. The top bar says where the page is and switches it (the
   breadcrumb and its switcher), searches and jumps (the palette), and holds New and the
-  account menu; the sidebar holds that scope's pages and nothing else, or, on a page of
-  settings, every kind of settings the reader may change (`ApiaryWeb.SettingsComponents`).
-  Qory Apiary itself, its mark, version, docs and source, is the menu at the sidebar's
-  foot.
+  account menu; the sidebar holds that scope's pages and nothing else, a page of its
+  settings included (`ApiaryWeb.SettingsComponents`). Qory Apiary itself, its mark,
+  version, docs and source, is the menu at the sidebar's foot.
   """
   use ApiaryWeb, :html
 
   alias Apiary.Access
   alias ApiaryWeb.Nav.Entry
-  alias ApiaryWeb.SettingsComponents
 
   # Embed all files in layouts/* within this module.
   # The default root.html.heex file contains the HTML
@@ -26,12 +24,17 @@ defmodule ApiaryWeb.Layouts do
   embed_templates "layouts/*"
 
   # The sidebar's groups, in order: the scope's first entries without a heading, then each
-  # group of a workspace with its heading; an edition's groups follow
-  # (`c:ApiaryWeb.Edition.nav_sections/0`). `:settings` (the pages of the scope's Settings)
-  # and `:foot` (Settings itself) are not groups. The headings are marked for extraction
-  # here and translated when the sidebar renders (`nav_text/1`), and so is the name of the
-  # first group's navigation.
-  @sections [home: nil, record: gettext_noop("Record"), guard: gettext_noop("Guard")]
+  # group of a workspace with its heading, and the person's settings under theirs; an
+  # edition's groups follow (`c:ApiaryWeb.Edition.nav_sections/0`). `:settings` (the pages
+  # of the scope's Settings) and `:foot` (Settings itself) are not groups. The headings are
+  # marked for extraction here and translated when the sidebar renders (`nav_text/1`), and
+  # so is the name of the first group's navigation.
+  @sections [
+    home: nil,
+    record: gettext_noop("Record"),
+    guard: gettext_noop("Guard"),
+    account: gettext_noop("Your settings")
+  ]
 
   # How many pinned targets the sidebar lists.
   @pins 7
@@ -141,9 +144,10 @@ defmodule ApiaryWeb.Layouts do
         path: fn organisation, _workspace -> ~p"/#{organisation}/settings" end,
         place: :organisation
       },
-      # A person's own pages: their settings, one section a page, and their organisations.
+      # A person's own pages: their settings, one section a page, and their organisations,
+      # under the heading Your settings, for a person has no other pages.
       %Entry{
-        section: :home,
+        section: :account,
         key: :user_settings,
         label: gettext("Profile"),
         icon: "hero-user-circle-micro",
@@ -151,7 +155,7 @@ defmodule ApiaryWeb.Layouts do
         place: :person
       },
       %Entry{
-        section: :home,
+        section: :account,
         key: :user_preferences,
         label: gettext("Preferences"),
         icon: "hero-adjustments-horizontal-micro",
@@ -159,7 +163,7 @@ defmodule ApiaryWeb.Layouts do
         place: :person
       },
       %Entry{
-        section: :home,
+        section: :account,
         key: :user_organisations,
         label: gettext("Organisations"),
         icon: "hero-building-office-2-micro",
@@ -221,12 +225,11 @@ defmodule ApiaryWeb.Layouts do
   whatever the page adds in its `crumb` slots), whose chevrons open the switcher; then
   Search or jump to (the palette), New and the account menu. The sidebar holds the pages
   of the page's scope, which the entry it passes as `nav` belongs to
-  (`ApiaryWeb.Nav.Entry`'s `place`): a workspace's, an organisation's or the person's. A
-  page of settings passes `settings` and `section`, and the sidebar lists the settings in
-  their place, with a way back to the workspace. At its foot are the scope's Settings,
-  the Qory Apiary menu and the control that folds it to icons, from 768 px; below that it
-  is a drawer behind the bar's menu button. A page without a person has no sidebar, and
-  the Qory Apiary menu opens from the bar.
+  (`ApiaryWeb.Nav.Entry`'s `place`): a workspace's, an organisation's or the person's,
+  whose pages are their settings. At its foot are the scope's Settings, the current entry
+  on every page of them, then the Qory Apiary menu and the control that folds the sidebar
+  to icons, from 768 px; below that it is a drawer behind the bar's menu button. A page
+  without a person has no sidebar, and the Qory Apiary menu opens from the bar.
 
   An organisation's page, one with a navigation item (`nav`) of a workspace or an
   organisation, opens with the edition's notices (the `:notices` slot,
@@ -270,15 +273,6 @@ defmodule ApiaryWeb.Layouts do
     doc:
       "the id of the target the page is about: its entry under Pinned, when it is pinned, is the current one"
 
-  attr :settings, :list,
-    default: nil,
-    doc:
-      "on a page of settings, what the reader may change by kind, as `ApiaryWeb.SettingsComponents.nav/1` gives it: the sidebar lists it in place of the scope's pages, and the breadcrumb ends with Settings"
-
-  attr :section, :atom,
-    default: nil,
-    doc: "on a page of settings, the key of its section: the list's current entry"
-
   slot :crumb,
     doc: "the breadcrumb's segments after the workspace: a target, a record; the last is the page" do
     attr :navigate, :string, doc: "where the segment leads; none for the page itself"
@@ -303,18 +297,12 @@ defmodule ApiaryWeb.Layouts do
       |> assign(:workspace, workspace)
       |> assign(:place, place)
       |> assign(:nav_entries, entries)
-      |> assign(
-        :groups,
-        if(assigns.settings, do: [], else: nav_groups(scope, place, assigns.counts, entries))
-      )
-      |> assign(:foot, !assigns.settings && foot(scope, place, entries))
-      |> assign(:under_settings, current && current.section == :settings)
+      |> assign(:groups, nav_groups(scope, place, assigns.counts, entries))
+      |> assign(:foot, foot(scope, place, entries))
+      |> assign(:settings_page, settings_page?(current))
       |> assign(
         :pins,
-        if(place == :workspace and !assigns.settings,
-          do: pins(assigns.counts, organisation, workspace),
-          else: []
-        )
+        if(place == :workspace, do: pins(assigns.counts, organisation, workspace), else: [])
       )
       |> assign(:show_notices, notices?(assigns.notices, current))
 
@@ -337,7 +325,7 @@ defmodule ApiaryWeb.Layouts do
         nav={@nav}
         nav_entries={@nav_entries}
         crumb={@crumb}
-        settings={@settings != nil}
+        settings={@settings_page}
         sidebar={@user != nil}
       />
 
@@ -354,14 +342,11 @@ defmodule ApiaryWeb.Layouts do
         <div class="drawer-side z-50 md:top-12 md:z-20 md:h-[calc(100dvh-3rem)]">
           <label for="nav-drawer" class="drawer-overlay" aria-hidden="true"></label>
           <.sidebar
-            scope={@scope}
             place={@place}
             nav={@nav}
             groups={@groups}
             foot={@foot}
-            under_settings={@under_settings}
-            settings={@settings}
-            section={@section}
+            settings_page={@settings_page}
             pins={@pins}
             target={@target}
             counts={@counts}
@@ -395,6 +380,11 @@ defmodule ApiaryWeb.Layouts do
     <.flash_group flash={@flash} />
     """
   end
+
+  # Whether the page is one of its scope's Settings: Settings itself, or a page of it
+  # (an entry of the section `:settings`, such as Access keys).
+  defp settings_page?(%Entry{section: section}), do: section in [:foot, :settings]
+  defp settings_page?(nil), do: false
 
   # The scope the page belongs to: its entry's, or without one the organisation's when the
   # page has an organisation and the person's when it has none.
@@ -1037,19 +1027,14 @@ defmodule ApiaryWeb.Layouts do
   end
 
   # The sidebar: the pages of the page's scope, in their groups, each a `<nav>` with its
-  # own name; the targets the person pinned, on a workspace's pages. On a page of settings
-  # it lists the settings instead: a way back to the workspace (the organisation, without
-  # one), then each kind the reader may change under its kind and place. At the foot the
-  # scope's Settings (not on a page of settings), then the Qory Apiary menu and the
-  # control that folds the sidebar to icons.
-  attr :scope, :any, required: true
+  # own name; the targets the person pinned, on a workspace's pages. At the foot the
+  # scope's Settings, the current entry on every page of them, then the Qory Apiary menu
+  # and the control that folds the sidebar to icons.
   attr :place, :atom, required: true
   attr :nav, :atom, required: true
   attr :groups, :list, required: true
   attr :foot, :any, required: true
-  attr :under_settings, :boolean, required: true
-  attr :settings, :list, required: true
-  attr :section, :atom, required: true
+  attr :settings_page, :boolean, required: true
   attr :pins, :list, required: true
   attr :target, :string, required: true
   attr :counts, :any, required: true
@@ -1058,11 +1043,7 @@ defmodule ApiaryWeb.Layouts do
     assigns = assign(assigns, :version, version())
 
     ~H"""
-    <aside
-      id="sidebar"
-      aria-label={if @settings, do: gettext("Settings"), else: sidebar_label(@place)}
-      class="q-sidebar"
-    >
+    <aside id="sidebar" aria-label={sidebar_label(@place)} class="q-sidebar">
       <div class="q-drawer-head">
         <button
           type="button"
@@ -1074,39 +1055,7 @@ defmodule ApiaryWeb.Layouts do
         </button>
       </div>
 
-      <div :if={@settings} class="q-sidebar-body">
-        <div :if={back = settings_back(@scope)} class="q-nav-group">
-          <.link
-            id="settings-back"
-            navigate={elem(back, 0)}
-            class="q-nav-item"
-            phx-mounted={JS.ignore_attributes(["title"])}
-          >
-            <.icon name="hero-chevron-left-micro" class="q-nav-icon size-4" />
-            <span class="q-nav-text">{gettext("Back to %{name}", name: elem(back, 1))}</span>
-          </.link>
-        </div>
-        <nav
-          :for={{kind, entries} <- @settings}
-          id={"settings-group-#{kind}"}
-          class="q-nav-group"
-          aria-label={SettingsComponents.heading(kind, @scope)}
-        >
-          <p class="q-nav-heading" aria-hidden="true">
-            {SettingsComponents.heading(kind, @scope)}
-          </p>
-          <.nav_item
-            :for={entry <- entries}
-            id={"settings-tab-#{entry.key}"}
-            entry={entry}
-            path={entry_path(entry, @scope)}
-            current={entry.key == @section}
-            counts={@counts}
-          />
-        </nav>
-      </div>
-
-      <div :if={!@settings} class="q-sidebar-body">
+      <div class="q-sidebar-body">
         <nav
           :for={{section, heading, items} <- @groups}
           class="q-nav-group"
@@ -1152,7 +1101,7 @@ defmodule ApiaryWeb.Layouts do
           :if={@foot}
           entry={elem(@foot, 0)}
           path={elem(@foot, 1)}
-          current={@nav == elem(@foot, 0).key or @under_settings}
+          current={@settings_page}
           counts={@counts}
         />
         <div id="brand-foot" class="q-brand-row">
@@ -1177,17 +1126,6 @@ defmodule ApiaryWeb.Layouts do
     """
   end
 
-  # Where a page of settings leads back to: the workspace of the scope, else its
-  # organisation; nothing for a person with no organisation, whose pages are theirs alone.
-  defp settings_back(%{organisation: %{} = organisation, workspace: %{} = workspace}),
-    do: {~p"/#{organisation}/#{workspace}", workspace.name}
-
-  defp settings_back(%{organisation: %{} = organisation}),
-    do: {~p"/#{organisation}", organisation.name}
-
-  defp settings_back(_scope), do: nil
-
-  attr :id, :string, default: nil, doc: "the DOM id; `nav-<key>` without one"
   attr :entry, :any, required: true
   attr :path, :string, required: true
   attr :current, :boolean, required: true
@@ -1196,7 +1134,7 @@ defmodule ApiaryWeb.Layouts do
   defp nav_item(assigns) do
     ~H"""
     <.link
-      id={@id || "nav-#{@entry.key}"}
+      id={"nav-#{@entry.key}"}
       navigate={@path}
       aria-current={@current && "page"}
       class="q-nav-item"

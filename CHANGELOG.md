@@ -34,9 +34,10 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
   switches to any organisation or workspace with a search, Search or jump to (⌘K) for
   pages, repositories, runs and places, New, and a sidebar of the page's workspace,
   organisation or account, which folds to icons, with the Qory Apiary menu (docs,
-  changelog, source, version) at its foot. Settings in one place: on any page of settings
-  the sidebar lists the organisation's, the workspace's and your own, each under its name,
-  and deleting any of them is the danger zone at the end of its General page or Profile.
+  changelog, source, version) at its foot. A workspace's settings, an organisation's and
+  your own are each a place of their own with their own sections, GitHub's way, and
+  deleting a workspace, an organisation or your account is the danger zone at the end of
+  its General page or Profile.
   Pages start at one left edge and use the width of the screen: lists up to 1680 px, a
   run's page all of it, forms 720 px.
 - The runs list as a record read by filters, not groups: views (All, Alive, Ended badly,
