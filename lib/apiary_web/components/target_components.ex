@@ -28,8 +28,13 @@ defmodule ApiaryWeb.TargetComponents do
   segment of it is never read as the tab's separator or as a step up.
   """
   @spec target_path(Scope.t(), String.t(), String.t(), [String.t()]) :: String.t()
-  def target_path(%Scope{organisation: organisation, workspace: workspace}, system, path, rest \\ []),
-    do: target_path(organisation, workspace, system, path, rest)
+  def target_path(
+        %Scope{organisation: organisation, workspace: workspace},
+        system,
+        path,
+        rest \\ []
+      ),
+      do: target_path(organisation, workspace, system, path, rest)
 
   @doc "target_path/5 is `target_path/4` with the organisation and the workspace given."
   @spec target_path(term, term, String.t(), String.t(), [String.t()]) :: String.t()
@@ -91,5 +96,201 @@ defmodule ApiaryWeb.TargetComponents do
       <i aria-hidden="true"></i><span class={@quiet && "sr-only"}>{state_label(@state)}</span>
     </span>
     """
+  end
+
+  @doc """
+  The views of a list, as tabs above it, each with its count: links, the current one
+  marked `aria-current="page"`.
+  """
+  attr :id, :string, required: true
+  attr :label, :string, required: true
+
+  slot :view, required: true do
+    attr :id, :string
+    attr :patch, :string, required: true
+    attr :current, :boolean
+    attr :count, :integer
+  end
+
+  def view_tabs(assigns) do
+    ~H"""
+    <nav id={@id} class="q-tgt-views" aria-label={@label}>
+      <.link
+        :for={view <- @view}
+        id={view[:id]}
+        patch={view.patch}
+        aria-current={view[:current] && "page"}
+      >
+        {render_slot(view)}
+        <span :if={view[:count]} class="q-tgt-views-n">{Format.number(view.count)}</span>
+      </.link>
+    </nav>
+    """
+  end
+
+  @doc """
+  Runs a day as a row of bars, today last and in ink: a shape, not a chart to read values
+  from; the number beside it says how many.
+  """
+  attr :days, :list, required: true
+  attr :width, :integer, default: 84
+  attr :height, :integer, default: 20
+  attr :class, :any, default: nil
+
+  def spark(assigns) do
+    count = max(length(assigns.days), 1)
+    max = Enum.max([1 | assigns.days])
+    bar = max(div(assigns.width, count) - 1, 1)
+
+    bars =
+      for {runs, i} <- Enum.with_index(assigns.days) do
+        height = if runs == 0, do: 1, else: max(2, round(runs / max * (assigns.height - 1)))
+        %{x: i * (bar + 1), h: height, today: i == count - 1}
+      end
+
+    assigns = assign(assigns, bars: bars, bar: bar, full: count * (bar + 1) - 1)
+
+    ~H"""
+    <svg
+      class={["q-tgt-spark", @class]}
+      width={@full}
+      height={@height}
+      viewBox={"0 0 #{@full} #{@height}"}
+      aria-hidden="true"
+    >
+      <rect
+        :for={b <- @bars}
+        x={b.x}
+        y={@height - b.h}
+        width={@bar}
+        height={b.h}
+        rx="0.5"
+        class={b.today && "q-tgt-spark-today"}
+      />
+    </svg>
+    """
+  end
+
+  @doc """
+  The star that pins a target for the reader, or takes the pin away: a toggle button that
+  sends `pin` with the target's id.
+  """
+  attr :id, :string, required: true
+  attr :target, :map, required: true
+  attr :pinned, :boolean, required: true
+  attr :label, :boolean, default: false, doc: "the word beside the star, as a header has it"
+  attr :class, :any, default: nil
+
+  def pin_button(assigns) do
+    ~H"""
+    <button
+      id={@id}
+      type="button"
+      phx-click="target_pin"
+      phx-value-id={@target.id}
+      aria-pressed={to_string(@pinned)}
+      aria-label={
+        if @label,
+          do: nil,
+          else:
+            if(@pinned,
+              do: gettext("Unpin %{target}", target: "#{@target.system}/#{@target.path}"),
+              else: gettext("Pin %{target}", target: "#{@target.system}/#{@target.path}")
+            )
+      }
+      class={[if(@label, do: "btn btn-sm q-tgt-pinbtn", else: "q-tgt-pin"), @class]}
+    >
+      <.icon
+        name={if @pinned, do: "hero-star-solid", else: "hero-star"}
+        class={if @label, do: "size-4 text-muted", else: "size-3.5"}
+      />
+      <span :if={@label}>{if @pinned, do: gettext("Pinned"), else: gettext("Pin")}</span>
+    </button>
+    """
+  end
+
+  @doc """
+  The denied attempts of a row: the glyph and the number, red, when there are any;
+  nothing otherwise.
+  """
+  attr :count, :integer, required: true
+  attr :title, :string, default: nil
+
+  def denied(assigns) do
+    ~H"""
+    <span :if={@count > 0} class="q-tgt-denied" title={@title}>
+      <.icon name="hero-no-symbol-micro" class="size-3.5" />{Format.number(@count)}
+    </span>
+    """
+  end
+
+  @doc """
+  A target's runs, one line each on the runs list's row: the state's dot, the title (the
+  task, or the run's id), the runtime and the host, faint, when it started, how long it
+  took and its denied attempts. The target is the page's, so the row leaves it out.
+  """
+  attr :id, :string, required: true
+  attr :label, :string, required: true
+  attr :runs, :list, required: true
+  attr :scope, :any, required: true
+  attr :head, :boolean, default: true, doc: "whether the columns are named"
+
+  def run_rows(assigns) do
+    ~H"""
+    <div class="q-tgt-table-wrap" tabindex="0" role="region" aria-label={@label}>
+      <table class="q-tgt-table q-tgt-runs">
+        <thead :if={@head}>
+          <tr>
+            <th scope="col">{gettext("State")}</th>
+            <th scope="col">{gettext("Run")}</th>
+            <th scope="col" class="q-tgt-k-rt">{gettext("Runtime")}</th>
+            <th scope="col" class="q-tgt-k-rt">{gettext("Host")}</th>
+            <th scope="col">{gettext("Started")}</th>
+            <th scope="col" class="q-tgt-k-dur q-tgt-r">{gettext("Duration")}</th>
+            <th scope="col" class="q-tgt-r">{gettext("Denied")}</th>
+          </tr>
+        </thead>
+        <tbody id={@id}>
+          <tr :for={run <- @runs} id={"#{@id}-#{run.id}"}>
+            <td class="q-tgt-st"><.state_mark state={run.state} /></td>
+            <td class="q-tgt-run">
+              <.link
+                navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs/#{run.run_id}"}
+                class="q-tgt-title"
+              >
+                {run.task || short_id(run.run_id)}
+              </.link>
+            </td>
+            <td class="q-tgt-k-rt q-tgt-faint whitespace-nowrap">
+              {Enum.join(Enum.reject([run.runtime, run.runtime_version], &is_nil/1), " ")}
+            </td>
+            <td class="q-tgt-k-rt q-tgt-faint whitespace-nowrap font-mono">{run.host}</td>
+            <td class="whitespace-nowrap">
+              <.relative_time at={run.started_at || run.inserted_at} />
+            </td>
+            <td class="q-tgt-k-dur q-tgt-r whitespace-nowrap">
+              <.duration :if={run.state in Apiary.Runs.Run.alive_states()} {alive_clock(run)} />
+              <.duration :if={run.state not in Apiary.Runs.Run.alive_states()} ms={run.duration_ms} />
+            </td>
+            <td class="q-tgt-r">
+              <.denied
+                count={run.denied_count}
+                title={
+                  ngettext("%{number} denied attempt", "%{number} denied attempts", run.denied_count,
+                    number: Format.number(run.denied_count)
+                  )
+                }
+              />
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    """
+  end
+
+  defp alive_clock(run) do
+    {seconds, at} = elapsed(run)
+    %{elapsed_seconds: seconds, elapsed_at: at}
   end
 end
