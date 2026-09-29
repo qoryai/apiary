@@ -45,7 +45,9 @@ defmodule Mix.Tasks.Apiary.Demo.HistoryTest do
 
     # Every event was folded, and the fold named the repositories the labels gave.
     refute Repo.exists?(from e in Event, where: is_nil(e.projected_at))
-    assert Repo.aggregate(from(t in Target, where: t.workspace_id == ^scope.workspace.id), :count) > 1
+
+    assert Repo.aggregate(from(t in Target, where: t.workspace_id == ^scope.workspace.id), :count) >
+             1
 
     states = runs |> Enum.map(& &1.state) |> Enum.uniq()
     assert "succeeded" in states
