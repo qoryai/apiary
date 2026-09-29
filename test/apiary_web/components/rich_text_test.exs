@@ -31,10 +31,12 @@ defmodule ApiaryWeb.RichTextTest do
       Gettext.with_locale(ApiaryWeb.Gettext, "en@software", fn ->
         html =
           render_rich(
-            rich_ngettext("%{number} target", "%{number} targets", 2, number: {:b, "2"})
+            rich_ngettext("%{number} target follows it", "%{number} targets follow it", 2,
+              number: {:b, "2"}
+            )
           )
 
-        assert html == "<b>2</b> repositories"
+        assert html == "<b>2</b> repositories follow it"
       end)
     end
   end

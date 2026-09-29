@@ -104,15 +104,10 @@ defmodule ApiaryWeb.PolicyLive.Target do
     |> load_record()
   end
 
-  # How many runs the Runs tab leads to: the runs list's own count, over its default range
-  # of seven days, so the number and the page agree.
+  # How many runs the Runs tab leads to: the runs list's own count, every run of the
+  # target, so the number and the page agree.
   defp run_total(scope, %{system: system, path: path}) do
-    filters = Filters.parse(Filters.target_params(system, path), :runs)
-
-    case Apiary.Runs.group_facts(scope, filters, [{system, path}]) do
-      %{{^system, ^path} => %{runs: runs}} -> runs
-      _none -> 0
-    end
+    Apiary.Runs.count_runs(scope, Filters.parse(Filters.target_params(system, path), :runs))
   end
 
   defp credentials(effective, socket) do
@@ -1033,7 +1028,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
         navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs?#{@target_query}"}
       >
         <.icon name="hero-play-circle-micro" class="size-4" />{gettext("Runs")}
-        <span :if={@runs > 0} class="q-tabs-n" title={gettext("In the last 7 days")}>{@runs}</span>
+        <span :if={@runs > 0} class="q-tabs-n">{Format.number(@runs)}</span>
       </.link>
       <.link
         id="policy-tab-connections"

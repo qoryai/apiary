@@ -5,8 +5,11 @@
 export const Menu = {
   mounted() {
     const trigger = () => this.el.querySelector("[aria-haspopup]")
+    // What is shown: a Filter menu holds its sections' controls hidden until one opens.
     const items = () =>
-      [...this.el.querySelectorAll(".dropdown-content :is(a, button):not([disabled])")]
+      [...this.el.querySelectorAll(".dropdown-content :is(a, button):not([disabled])")].filter(
+        item => item.getClientRects().length > 0
+      )
     const set = open => {
       this.el.classList.toggle("dropdown-open", open)
       trigger()?.setAttribute("aria-expanded", String(open))

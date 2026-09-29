@@ -204,8 +204,9 @@ also written to `.qory/runs/<id>/` in the directory, whatever the server does.
 Open **Runs** in the sidebar, `http://localhost:4100/<organisation>/main/runs`. The run is
 there with its state, runtime, host, start and duration; select it for its timeline,
 terminal, connections and details. The `hello` directory has no origin remote, so the run
-names no repository and is listed under **Unassigned**. A run started in a checkout with
-an origin remote is grouped under that repository.
+names no repository: the repositories beside the list count it under **Unassigned**. A
+run started in a checkout with an origin remote names that repository, and choosing the
+repository there, or typing `repo:` and its path in the filter, lists its runs alone.
 
 On **Access keys**, the key's row now shows when it was last used, its last heartbeat and
 the runner's version.

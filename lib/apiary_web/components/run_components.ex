@@ -22,6 +22,7 @@ defmodule ApiaryWeb.RunComponents do
   server's time.
   """
   use Phoenix.Component
+  use ApiaryWeb, :verified_routes
   use Gettext, backend: ApiaryWeb.Gettext
 
   import ApiaryWeb.RichText
@@ -693,7 +694,6 @@ defmodule ApiaryWeb.RunComponents do
       |> assign(:id, id)
       |> assign(:values, values)
       |> assign(:set?, values != [])
-      |> assign(:grouped?, assigns.multiple and assigns.groups != [])
       |> assign(:shown, assigns.value_label || shown_value(values, assigns.options))
 
     ~H"""
@@ -743,141 +743,207 @@ defmodule ApiaryWeb.RunComponents do
         aria-label={gettext("Filter by %{filter}", filter: String.downcase(@label))}
         class="dropdown-content q-filter-menu left-0 top-full mt-1.5"
       >
-        <form
-          :if={@query not in [nil, ""] or (@total || length(@options)) > 8}
-          id={"#{@id}-narrow"}
-          phx-change={@narrow}
-          phx-submit={@narrow}
-        >
-          <input type="hidden" name="_filter" value={@name} />
-          <input
-            id={"#{@id}-search"}
-            type="search"
-            name="q"
-            value={@query}
-            class="input input-sm q-filter-search"
-            placeholder={gettext("Find a %{filter}", filter: String.downcase(@label))}
-            aria-label={gettext("Find a %{filter}", filter: String.downcase(@label))}
-            phx-debounce="250"
-            autocomplete="off"
-          />
-        </form>
-        <p
-          :if={@total && @total > length(@options)}
-          id={"#{@id}-more"}
-          class="px-2 pb-1 text-xs text-faint"
-        >
-          {gettext("Showing %{shown} of %{total}: type to narrow",
-            shown: Format.number(length(@options)),
-            total: Format.number(@total)
-          )}
-        </p>
-        <form
-          id={"#{@id}-form"}
-          phx-change={@event}
-          phx-submit={@event}
-          phx-hook={@grouped? && "FamilyBoxes"}
-        >
-          <input type="hidden" name="_filter" value={@name} />
-          <ul :if={!@grouped?} class="q-filter-options" aria-label={@label}>
-            <li :if={@options == []} class="px-2 py-1.5 text-xs text-faint">
-              {if @query in [nil, ""],
-                do: gettext("Nothing to filter by yet"),
-                else: gettext("Nothing matches")}
-            </li>
-            <li :for={{label, value, count} <- @options}>
-              <label class="q-filter-option" data-menu-close={!@multiple}>
-                <input
-                  type={if @multiple, do: "checkbox", else: "radio"}
-                  name={if @multiple, do: "#{@name}[]", else: @name}
-                  value={value}
-                  checked={to_string(value) in @values}
-                  class={if @multiple, do: "checkbox checkbox-xs", else: "radio radio-xs"}
-                />
-                <span class="min-w-0 flex-1 truncate" title={label}>{label}</span>
-                <span :if={count} class="font-mono text-[11.5px] text-faint tabular-nums">
-                  {count}
-                </span>
-              </label>
-            </li>
-          </ul>
-          <%!-- Grouped: a heading per family, itself a checkbox over the family's values. The
+        <.filter_options
+          id={@id}
+          name={@name}
+          label={@label}
+          values={@values}
+          options={@options}
+          multiple={@multiple}
+          event={@event}
+          dates={@dates}
+          total={@total}
+          query={@query}
+          narrow={@narrow}
+          groups={@groups}
+          tips={@tips}
+        />
+      </div>
+    </div>
+    """
+  end
+
+  @doc """
+  What a filter offers, inside the chip's dialog or a section of the Filter menu: a box that
+  narrows the options on the server once there are more than eight (`narrow` is its
+  event), the options as a form of checkboxes or radios (and dates), which sends `event`
+  on a change with the filter's name in `_filter`, and "Show more" (`more`, its event,
+  with the name as `name`) while the values outnumber the options. The ids start with
+  `id`: `<id>-form`, `<id>-narrow`, `<id>-search`, `<id>-more`.
+  """
+  attr :id, :string, required: true
+  attr :name, :string, required: true
+  attr :label, :string, required: true
+  attr :values, :list, required: true, doc: "the chosen values, as strings"
+  attr :options, :list, required: true
+  attr :multiple, :boolean, default: false
+  attr :event, :string, default: "filter"
+  attr :dates, :map, default: nil
+  attr :total, :integer, default: nil
+  attr :query, :string, default: nil
+  attr :narrow, :string, default: "narrow"
+  attr :more, :string, default: nil, doc: "the event that asks for more options"
+  attr :groups, :list, default: []
+  attr :tips, :map, default: %{}
+
+  attr :search_label, :string,
+    default: nil,
+    doc: "the narrowing box's name; nil says Find a <label>"
+
+  def filter_options(assigns) do
+    assigns =
+      assigns
+      |> assign(:grouped?, assigns.multiple and assigns.groups != [])
+      |> assign(
+        :search_label,
+        assigns.search_label ||
+          gettext("Find a %{filter}", filter: String.downcase(assigns.label))
+      )
+
+    ~H"""
+    <form
+      :if={@query not in [nil, ""] or (@total || length(@options)) > 8}
+      id={"#{@id}-narrow"}
+      phx-change={@narrow}
+      phx-submit={@narrow}
+    >
+      <input type="hidden" name="_filter" value={@name} />
+      <input
+        id={"#{@id}-search"}
+        type="search"
+        name="q"
+        value={@query}
+        class="input input-sm q-filter-search"
+        placeholder={@search_label}
+        aria-label={@search_label}
+        phx-debounce="250"
+        autocomplete="off"
+      />
+    </form>
+    <p
+      :if={@total && @total > length(@options)}
+      id={"#{@id}-more"}
+      class="px-2 pb-1 text-xs text-faint"
+    >
+      {gettext("Showing %{shown} of %{total}: type to narrow",
+        shown: Format.number(length(@options)),
+        total: Format.number(@total)
+      )}
+    </p>
+    <form
+      id={"#{@id}-form"}
+      phx-change={@event}
+      phx-submit={@event}
+      phx-hook={@grouped? && "FamilyBoxes"}
+    >
+      <input type="hidden" name="_filter" value={@name} />
+      <ul :if={!@grouped?} class="q-filter-options" aria-label={@label}>
+        <li :if={@options == []} class="px-2 py-1.5 text-xs text-faint">
+          {if @query in [nil, ""],
+            do: gettext("Nothing to filter by yet"),
+            else: gettext("Nothing matches")}
+        </li>
+        <li :for={{label, value, count} <- @options}>
+          <label class="q-filter-option" data-menu-close={!@multiple}>
+            <input
+              type={if @multiple, do: "checkbox", else: "radio"}
+              name={if @multiple, do: "#{@name}[]", else: @name}
+              value={value}
+              checked={to_string(value) in @values}
+              class={if @multiple, do: "checkbox checkbox-xs", else: "radio radio-xs"}
+            />
+            <span class="min-w-0 flex-1 truncate" title={label}>{label}</span>
+            <span :if={count} class="font-mono text-[11.5px] text-faint tabular-nums">
+              {count_label(count)}
+            </span>
+          </label>
+        </li>
+      </ul>
+      <%!-- Grouped: a heading per family, itself a checkbox over the family's values. The
           checked and mixed states are rendered here; the FamilyBoxes hook mirrors mixed into
           the `indeterminate` property and ticks the family's boxes before a heading's change
           reaches the server, and Filters.change/2 reads the heading when the script did not. --%>
-          <ul :if={@grouped?} class="q-filter-options" aria-label={@label}>
-            <li :for={group <- @groups} class="q-filter-group">
-              <label class="q-filter-option q-filter-family">
+      <ul :if={@grouped?} class="q-filter-options" aria-label={@label}>
+        <li :for={group <- @groups} class="q-filter-group">
+          <label class="q-filter-option q-filter-family">
+            <input
+              type="checkbox"
+              name={"family_#{group.key}"}
+              value="1"
+              checked={family_state(group, @values) == :all}
+              aria-checked={family_state(group, @values) == :some && "mixed"}
+              aria-label={group.name}
+              class="checkbox checkbox-xs"
+              data-family={group.key}
+            />
+            <span class="min-w-0 flex-1 truncate">{group.label}</span>
+          </label>
+          <ul class="q-filter-states" aria-label={group.label}>
+            <li :for={{label, value, count} <- group_options(group, @options)}>
+              <label class="q-filter-option">
                 <input
                   type="checkbox"
-                  name={"family_#{group.key}"}
-                  value="1"
-                  checked={family_state(group, @values) == :all}
-                  aria-checked={family_state(group, @values) == :some && "mixed"}
-                  aria-label={group.name}
+                  name={"#{@name}[]"}
+                  value={value}
+                  checked={to_string(value) in @values}
                   class="checkbox checkbox-xs"
                   data-family={group.key}
+                  aria-describedby={@tips[to_string(value)] && "#{@id}-tip-#{value}"}
                 />
-                <span class="min-w-0 flex-1 truncate">{group.label}</span>
+                <span :if={!@tips[to_string(value)]} class="min-w-0 flex-1 truncate" title={label}>
+                  {label}
+                </span>
+                <span :if={@tips[to_string(value)]} class="min-w-0 flex-1 truncate">
+                  <span
+                    class="tooltip q-tip-wide"
+                    tabindex="0"
+                    data-tip={@tips[to_string(value)]}
+                  >{label}</span>
+                </span>
+                <span :if={count} class="font-mono text-[11.5px] text-faint tabular-nums">
+                  {count_label(count)}
+                </span>
               </label>
-              <ul class="q-filter-states" aria-label={group.label}>
-                <li :for={{label, value, count} <- group_options(group, @options)}>
-                  <label class="q-filter-option">
-                    <input
-                      type="checkbox"
-                      name={"#{@name}[]"}
-                      value={value}
-                      checked={to_string(value) in @values}
-                      class="checkbox checkbox-xs"
-                      data-family={group.key}
-                      aria-describedby={@tips[to_string(value)] && "#{@id}-tip-#{value}"}
-                    />
-                    <span :if={!@tips[to_string(value)]} class="min-w-0 flex-1 truncate" title={label}>
-                      {label}
-                    </span>
-                    <span :if={@tips[to_string(value)]} class="min-w-0 flex-1 truncate">
-                      <span
-                        class="tooltip q-tip-wide"
-                        tabindex="0"
-                        data-tip={@tips[to_string(value)]}
-                      >{label}</span>
-                    </span>
-                    <span :if={count} class="font-mono text-[11.5px] text-faint tabular-nums">
-                      {count}
-                    </span>
-                  </label>
-                  <span :if={@tips[to_string(value)]} id={"#{@id}-tip-#{value}"} class="sr-only">
-                    {@tips[to_string(value)]}
-                  </span>
-                </li>
-              </ul>
+              <span :if={@tips[to_string(value)]} id={"#{@id}-tip-#{value}"} class="sr-only">
+                {@tips[to_string(value)]}
+              </span>
             </li>
           </ul>
-          <div :if={@dates} class="q-filter-dates">
-            <label>
-              <span>{gettext("From")}</span>
-              <input
-                type="date"
-                name="from"
-                value={@dates[:from]}
-                class="input input-sm"
-                phx-debounce="blur"
-              />
-            </label>
-            <label>
-              <span>{gettext("To")}</span>
-              <input
-                type="date"
-                name="to"
-                value={@dates[:to]}
-                class="input input-sm"
-                phx-debounce="blur"
-              />
-            </label>
-          </div>
-        </form>
+        </li>
+      </ul>
+      <div :if={@dates} class="q-filter-dates">
+        <label>
+          <span>{gettext("From")}</span>
+          <input
+            type="date"
+            name="from"
+            value={@dates[:from]}
+            class="input input-sm"
+            phx-debounce="blur"
+          />
+        </label>
+        <label>
+          <span>{gettext("To")}</span>
+          <input
+            type="date"
+            name="to"
+            value={@dates[:to]}
+            class="input input-sm"
+            phx-debounce="blur"
+          />
+        </label>
       </div>
-    </div>
+    </form>
+    <button
+      :if={@more && @total && @total > length(@options)}
+      id={"#{@id}-show-more"}
+      type="button"
+      class="q-filter-showmore"
+      phx-click={@more}
+      phx-value-name={@name}
+    >
+      {gettext("Show more")}
+    </button>
     """
   end
 
@@ -974,6 +1040,882 @@ defmodule ApiaryWeb.RunComponents do
   # A count beside a label, grouped as the reader's language groups it.
   defp count_label(n) when is_number(n), do: Format.number(n)
   defp count_label(other), do: other
+
+  ## The controls of a list
+
+  # A list is narrowed one way (docs/ui.md, Lists): views as tabs, one query field whose
+  # filters show as removable tokens, one Filter menu, Sort; from 1280 px a rail of the
+  # targets beside the list. The same components serve the runs list and the workspace's
+  # connections.
+
+  @doc """
+  The views of a list as tabs above it, each a link that sets the filters it stands for,
+  with its count (a skeleton while `count` is nil); the current one `aria-current="page"`.
+  """
+  attr :id, :string, required: true
+  attr :label, :string, required: true
+
+  slot :view, required: true do
+    attr :id, :string
+    attr :patch, :string, required: true
+    attr :current, :boolean
+    attr :count, :any
+  end
+
+  def views(assigns) do
+    ~H"""
+    <nav id={@id} class="q-views" aria-label={@label}>
+      <.link
+        :for={view <- @view}
+        id={view[:id]}
+        patch={view.patch}
+        aria-current={view[:current] == true && "page"}
+      >
+        {render_slot(view)}
+        <span :if={is_integer(view[:count])} class="q-views-n">{Format.number(view.count)}</span>
+        <span :if={!is_integer(view[:count])} class="skeleton q-skel q-views-skel"></span>
+      </.link>
+    </nav>
+    """
+  end
+
+  @doc """
+  The query field: the filters set as tokens, each with a button that removes it (a link
+  that patches), and a text field for more, which sends `event` with `q` on Enter. The
+  page reads the words (`Apiary.Runs.Filters.apply_query/3`). The `QueryBar` hook removes
+  the last token on Backspace in the empty field, and takes the field's value from the
+  server after a submit (`query:set`).
+  """
+  attr :id, :string, required: true
+  attr :label, :string, required: true, doc: "the field's name, for a screen reader"
+  attr :placeholder, :string, required: true
+  attr :value, :string, default: nil, doc: "the free text"
+  attr :event, :string, default: "query"
+
+  attr :tokens, :list,
+    default: [],
+    doc: "`%{id:, qualifier:, value:, remove:}`, `remove` the path without the token"
+
+  def query_bar(assigns) do
+    ~H"""
+    <form id={@id} class="q-qbar-form" phx-submit={@event} phx-hook="QueryBar">
+      <label class="q-qbar">
+        <.icon name="hero-magnifying-glass-micro" class="q-qbar-i size-4" />
+        <span :for={token <- @tokens} id={token.id} class="q-tok">
+          <span class="q-tok-k">{token.qualifier}:</span><span class="q-tok-v">{token.value}</span>
+          <.link
+            patch={token.remove}
+            class="q-tok-x"
+            data-token-remove
+            aria-label={gettext("Remove %{token}", token: "#{token.qualifier}:#{token.value}")}
+          >
+            <.icon name="hero-x-mark-micro" class="size-3" />
+          </.link>
+        </span>
+        <input
+          id={"#{@id}-input"}
+          type="text"
+          name="q"
+          value={@value}
+          placeholder={@placeholder}
+          aria-label={@label}
+          autocomplete="off"
+          autocapitalize="off"
+          spellcheck="false"
+          enterkeyhint="search"
+          maxlength="512"
+        />
+      </label>
+    </form>
+    """
+  end
+
+  @doc """
+  The one Filter menu of a list: a dialog under a button, first the list of its sections,
+  then the section chosen, whose content is the slot (`filter_options/1`, usually), with a
+  way back. Moving between the two is done in the browser (`Phoenix.LiveView.JS`), so a
+  section opens at once and its form stays where it is while the page patches. A section
+  marked `rail` is the rail's, and shows only where the rail is not (below 1280 px).
+  """
+  attr :id, :string, required: true
+  attr :label, :string, default: nil, doc: "the button's word; nil says Filter"
+
+  slot :section, required: true do
+    attr :key, :string, required: true
+    attr :label, :string, required: true
+    attr :icon, :string, required: true
+    attr :qualifier, :string, doc: "the query's word for it, shown faint"
+    attr :value, :string, doc: "what it is set to, when it is"
+    attr :rail, :boolean
+  end
+
+  def filter_menu(assigns) do
+    ~H"""
+    <div
+      id={@id}
+      class="q-fm dropdown dropdown-end"
+      phx-hook="Menu"
+      phx-mounted={JS.ignore_attributes(["class"])}
+    >
+      <button
+        id={"#{@id}-button"}
+        type="button"
+        class="btn btn-sm q-ctl"
+        aria-haspopup="dialog"
+        aria-controls={"#{@id}-panel"}
+        aria-expanded="false"
+        phx-mounted={JS.ignore_attributes(["aria-expanded"])}
+        phx-click={
+          JS.show(to: "##{@id}-sections")
+          |> JS.hide(to: "##{@id}-panel .q-fm-section")
+        }
+      >
+        <.icon name="hero-funnel-micro" class="size-4" />{@label || gettext("Filter")}
+      </button>
+      <div
+        id={"#{@id}-panel"}
+        role="dialog"
+        aria-label={@label || gettext("Filter")}
+        class="dropdown-content q-fm-panel"
+        tabindex="-1"
+      >
+        <div id={"#{@id}-sections"} class="q-fm-sections">
+          <p class="q-fm-h" aria-hidden="true">{gettext("Filter by")}</p>
+          <button
+            :for={section <- @section}
+            id={"#{@id}-open-#{section.key}"}
+            type="button"
+            class={["q-fm-opt", section[:rail] && "q-norail"]}
+            aria-describedby={section[:value] && "#{@id}-value-#{section.key}"}
+            phx-click={
+              JS.show(to: "##{@id}-section-#{section.key}")
+              |> JS.focus_first(to: "##{@id}-section-#{section.key}")
+              |> JS.hide(to: "##{@id}-sections")
+            }
+          >
+            <.icon name={section.icon} class="size-4" />
+            <span class="q-fm-label">{section.label}</span>
+            <span
+              :if={section[:value]}
+              id={"#{@id}-value-#{section.key}"}
+              class="q-fm-value"
+              title={section[:value]}
+            >
+              {section[:value]}
+            </span>
+            <span :if={!section[:value] && section[:qualifier]} class="q-fm-meta" aria-hidden="true">
+              {section.qualifier}:
+            </span>
+          </button>
+        </div>
+        <div
+          :for={section <- @section}
+          id={"#{@id}-section-#{section.key}"}
+          class="q-fm-section hidden"
+          role="group"
+          aria-labelledby={"#{@id}-title-#{section.key}"}
+        >
+          <div class="q-fm-head">
+            <button
+              type="button"
+              class="q-fm-back"
+              aria-label={gettext("Back to every filter")}
+              phx-click={
+                JS.show(to: "##{@id}-sections")
+                |> JS.focus(to: "##{@id}-open-#{section.key}")
+                |> JS.hide(to: "##{@id}-section-#{section.key}")
+              }
+            >
+              <.icon name="hero-chevron-left-micro" class="size-4" />
+            </button>
+            <p id={"#{@id}-title-#{section.key}"} class="q-fm-title">{section.label}</p>
+          </div>
+          {render_slot(section)}
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  @doc """
+  A form of one checkbox, for a filter that is on or off (With denials, Tool invocations):
+  it sends `event` with `_filter` set to `name`, and the box as `name` when it is ticked.
+  """
+  attr :id, :string, required: true
+  attr :name, :string, required: true
+  attr :label, :string, required: true
+  attr :checked, :boolean, default: false
+  attr :event, :string, default: "filter"
+
+  def filter_check(assigns) do
+    ~H"""
+    <form id={"#{@id}-form"} phx-change={@event} phx-submit={@event}>
+      <input type="hidden" name="_filter" value={@name} />
+      <label class="q-filter-option">
+        <input
+          type="checkbox"
+          name={@name}
+          value="1"
+          checked={@checked}
+          class="checkbox checkbox-xs"
+        />
+        <span class="min-w-0 flex-1">{@label}</span>
+      </label>
+    </form>
+    """
+  end
+
+  @doc """
+  The Sort menu: a button that names the order in force and a menu of the orders, each a
+  link that patches (`role="menuitemradio"`).
+  """
+  attr :id, :string, required: true
+  attr :current, :string, required: true, doc: "the order in force, short: Newest"
+  attr :name, :string, required: true, doc: "the button's name: Sort: newest first"
+
+  slot :option, required: true do
+    attr :id, :string
+    attr :patch, :string, required: true
+    attr :checked, :boolean
+  end
+
+  def sort_menu(assigns) do
+    ~H"""
+    <div
+      id={@id}
+      class="q-sort dropdown dropdown-end"
+      phx-hook="Menu"
+      phx-mounted={JS.ignore_attributes(["class"])}
+    >
+      <button
+        id={"#{@id}-button"}
+        type="button"
+        class="btn btn-sm q-ctl"
+        aria-haspopup="menu"
+        aria-expanded="false"
+        aria-label={@name}
+        phx-mounted={JS.ignore_attributes(["aria-expanded"])}
+      >
+        <.icon name="hero-arrows-up-down-micro" class="size-4" />{@current}
+      </button>
+      <ul class="menu menu-sm dropdown-content right-0 top-full mt-1.5 w-52" role="menu">
+        <li class="menu-title" role="presentation">{gettext("Sort by")}</li>
+        <li :for={option <- @option} role="none">
+          <.link
+            id={option[:id]}
+            patch={option.patch}
+            role="menuitemradio"
+            aria-checked={to_string(option[:checked] == true)}
+          >
+            <span class="flex-1">{render_slot(option)}</span>
+            <.icon :if={option[:checked]} name="hero-check-micro" class="size-4 !text-accent" />
+          </.link>
+        </li>
+      </ul>
+    </div>
+    """
+  end
+
+  @doc """
+  A target in the one notation every page writes it in: its path in mono, with its system
+  faint before it only where the workspace has the same path on more than one system
+  (`dup`); the whole `system/path` is its title.
+  """
+  attr :system, :string, default: nil
+  attr :path, :string, required: true
+  attr :dup, :boolean, default: false
+  attr :class, :any, default: nil
+
+  def target_name(assigns) do
+    ~H"""
+    <span class={["q-tn", @class]} title={@system && "#{@system}/#{@path}"}><span
+      :if={@dup && @system}
+      class="q-tn-sys"
+    >{@system}<span class="q-tn-sep">/</span></span>{@path}</span>
+    """
+  end
+
+  @doc """
+  The rail of a list from 1280 px: the targets of what the list holds under every filter
+  but the target, with their counts. A search on the server at its top; every run; the
+  pinned targets (`rail.pinned`) first; then the targets with the most, `rail.more` more
+  behind a button that asks for them; the runs without a target last. Choosing one is a
+  link that sets the target (`path`, a function of the target, nil for every one). Below
+  1280 px the rail is not shown and the Filter menu's section does its work.
+  """
+  attr :id, :string, required: true
+  attr :label, :string, required: true
+  attr :rail, :map, default: nil, doc: "`Apiary.Runs.target_counts/3`; nil while it loads"
+  attr :chosen, :any, default: nil, doc: "the target the filters hold"
+  attr :dup, :any, default: nil, doc: "the paths on more than one system (a MapSet)"
+  attr :path, :any, required: true
+  attr :query, :string, default: nil
+  attr :search, :string, default: "rail_search"
+  attr :more, :string, default: "rail_more"
+
+  def target_rail(assigns) do
+    assigns = assign(assigns, :dup, assigns.dup || MapSet.new())
+
+    ~H"""
+    <nav id={@id} class="q-rail" aria-label={@label}>
+      <form id={"#{@id}-search"} class="q-rail-find" phx-change={@search} phx-submit={@search}>
+        <.icon name="hero-magnifying-glass-micro" class="size-4" />
+        <input
+          id={"#{@id}-q"}
+          type="text"
+          name="q"
+          value={@query}
+          placeholder={gettext("Find a target")}
+          aria-label={gettext("Find a target")}
+          phx-debounce="200"
+          autocomplete="off"
+          spellcheck="false"
+        />
+      </form>
+      <div :if={!@rail} class="q-rail-list" aria-busy="true">
+        <span :for={n <- 1..8} class={["skeleton q-skel q-rail-skel", rem(n, 3) == 0 && "w-2/3"]}></span>
+      </div>
+      <div :if={@rail} class="q-rail-list">
+        <.link
+          id={"#{@id}-all"}
+          patch={@path.(nil)}
+          aria-current={is_nil(@chosen) && "true"}
+        >
+          <span class="q-rail-name q-rail-plain">{gettext("All targets")}</span>
+          <span class="q-rail-n">{Format.number(@rail.all)}</span>
+        </.link>
+      </div>
+      <%= if @rail && @rail.pinned != [] do %>
+        <h3 class="q-rail-h">{gettext("Pinned")}</h3>
+        <div class="q-rail-list">
+          <.rail_target
+            :for={target <- @rail.pinned}
+            id={@id}
+            target={target}
+            chosen={@chosen}
+            dup={@dup}
+            path={@path}
+          />
+        </div>
+      <% end %>
+      <%= if @rail do %>
+        <h3 :if={@rail.targets != []} class="q-rail-h">
+          {if @query in [nil, ""], do: gettext("Most runs"), else: gettext("Matches")}
+        </h3>
+        <p :if={@rail.targets == [] && @query not in [nil, ""]} class="q-rail-none">
+          {gettext("No target matches.")}
+        </p>
+        <div class="q-rail-list">
+          <.rail_target
+            :for={target <- @rail.targets}
+            id={@id}
+            target={target}
+            chosen={@chosen}
+            dup={@dup}
+            path={@path}
+          />
+          <.link
+            :if={@rail.unassigned > 0 && @query in [nil, ""] && @rail.more == 0}
+            id={"#{@id}-none"}
+            patch={@path.(:none)}
+            aria-current={@chosen == :none && "true"}
+          >
+            <span class="q-rail-name q-rail-plain">{gettext("Unassigned")}</span>
+            <span class="q-rail-n">{Format.number(@rail.unassigned)}</span>
+          </.link>
+        </div>
+        <button
+          :if={@rail.more > 0}
+          id={"#{@id}-more"}
+          type="button"
+          class="q-rail-more"
+          phx-click={@more}
+        >
+          {ngettext("%{number} more", "%{number} more", @rail.more, number: Format.number(@rail.more))}
+        </button>
+      <% end %>
+    </nav>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :target, :map, required: true
+  attr :chosen, :any, required: true
+  attr :dup, :any, required: true
+  attr :path, :any, required: true
+
+  defp rail_target(assigns) do
+    assigns = assign(assigns, :pair, {assigns.target.system, assigns.target.path})
+
+    ~H"""
+    <.link
+      id={"#{@id}-t-#{dom_token(@pair)}"}
+      patch={@path.(@pair)}
+      aria-current={@chosen == @pair && "true"}
+      title={"#{@target.system}/#{@target.path}"}
+    >
+      <.target_name
+        class="q-rail-name"
+        system={@target.system}
+        path={@target.path}
+        dup={MapSet.member?(@dup, @target.path)}
+      />
+      <span class={["q-rail-n", @target.runs == 0 && "q-rail-n0"]}>
+        {Format.number(@target.runs)}
+      </span>
+    </.link>
+    """
+  end
+
+  @doc """
+  The foot of a paged list: where the page is ("1–50 of 3,137"), the way to the page
+  before and after (`previous` and `next`, nil at an end, named by the list's order), and
+  what else the list offers there (the slot: the page size, Jump to date).
+  """
+  attr :id, :string, required: true
+  attr :first, :integer, required: true
+  attr :last, :integer, required: true
+  attr :total, :integer, required: true
+
+  attr :previous, :any,
+    default: nil,
+    doc: "the path of the page before; nil or false at the first"
+
+  attr :next, :any, default: nil, doc: "the path of the page after; nil or false at the last"
+  attr :previous_label, :string, required: true
+  attr :next_label, :string, required: true
+  attr :prefix, :string, required: true, doc: "the start of the buttons' ids"
+  slot :inner_block
+
+  def pager(assigns) do
+    ~H"""
+    <div id={@id} class="q-pager">
+      <p id={"#{@prefix}-footer"} class="q-pager-count">
+        {gettext("%{first}–%{last} of %{total}",
+          first: Format.number(@first),
+          last: Format.number(@last),
+          total: Format.number(@total)
+        )}
+      </p>
+      {render_slot(@inner_block)}
+      <span :if={@previous || @next} class="q-pager-go">
+        <.button
+          id={"#{@prefix}-previous"}
+          size="sm"
+          patch={@previous || nil}
+          disabled={!@previous}
+        >
+          <.icon name="hero-arrow-left-micro" class="size-3.5" />{@previous_label}
+        </.button>
+        <.button id={"#{@prefix}-next"} size="sm" patch={@next || nil} disabled={!@next}>
+          {@next_label}<.icon name="hero-arrow-right-micro" class="size-3.5" />
+        </.button>
+      </span>
+    </div>
+    """
+  end
+
+  ## The runs list
+
+  @doc """
+  A run's state as a row of a list says it: a dot, and its word where the state needs a
+  look (pending, running, failed, timed out, lost, closed); a run that succeeded is its
+  dot, its word for a screen reader only, unless `word` asks for it. `quiet_for` turns a
+  running run's dot amber and adds the note, as `run_state/1` does; `code` follows the
+  word (the exit, for the preview).
+  """
+  attr :state, :string, required: true, values: Apiary.Runs.Run.states()
+  attr :quiet_for, :integer, default: nil
+  attr :quiet_since, :any, default: nil
+  attr :interval, :integer, default: nil
+  attr :closed_at, :any, default: nil
+  attr :word, :boolean, default: false
+  attr :code, :string, default: nil
+  attr :class, :any, default: nil
+
+  def run_mark(assigns) do
+    assigns =
+      assign(assigns, :quiet?, assigns.state == "running" and is_integer(assigns.quiet_for))
+
+    ~H"""
+    <span class={["q-st", "q-st-#{@state}", @quiet? && "q-st-quiet", @class]}>
+      <i aria-hidden="true"></i>
+      <span
+        :if={@state == "closed"}
+        class="q-st-w tooltip q-tip-wide"
+        tabindex="0"
+        data-tip={closed_tip(@closed_at)}
+      >{state_label(@state)}<span class="sr-only">. {closed_tip(@closed_at)}</span></span>
+      <span
+        :if={@state != "closed"}
+        class={["q-st-w", @state == "succeeded" && !@word && "sr-only"]}
+      >{state_label(@state)}</span>
+      <span :if={@code} class="q-st-code">{@code}</span>
+      <span
+        :if={@quiet?}
+        class="q-quiet tooltip q-tip-wide"
+        tabindex="0"
+        data-tip={quiet_tip(@interval)}
+      >
+        <.spliced text={gettext("No heartbeat for %{duration}", duration: hole())}>
+          <time
+            :if={@quiet_since}
+            data-tick="seconds"
+            data-since={iso(@quiet_since)}
+            data-now={iso(DateTime.utc_now())}
+            aria-live="off"
+            class="tabular-nums"
+          >{format_seconds(@quiet_for)}</time>
+          <span :if={!@quiet_since} class="tabular-nums">{format_seconds(@quiet_for)}</span>
+        </.spliced>
+        <span class="sr-only">. {quiet_tip(@interval)}</span>
+      </span>
+    </span>
+    """
+  end
+
+  @doc "A run's exit as the preview says it after the state: \"exit 1\", \"SIGKILL\"; nil otherwise."
+  def exit_note(%{state: state, signal: signal})
+      when state in ~w(succeeded failed) and is_binary(signal) and signal != "",
+      do: signal
+
+  def exit_note(%{state: state, exit_code: code})
+      when state in ~w(succeeded failed) and is_integer(code) and code != -1,
+      do: gettext("exit %{code}", code: code)
+
+  def exit_note(_run), do: nil
+
+  @doc """
+  The runs of a list, one line each: the state as a mark, the run's title (its task, else
+  its id) the only strong text, its target after it until the table is 1000 px wide and
+  then in a column of its own, the runtime and the host faint from 1300 px, when it
+  started, how long it ran from 720 px, and its denials, red when there are any. The
+  columns join by the table's own width (a container query), so a table beside a rail or a
+  preview reflows as a narrower screen would.
+
+  Every row's id is the run's (`run-<run_id>`); its title is a link to the run's page that
+  covers the row. `selected` marks the row a preview beside the list shows
+  (`aria-current`). `target={false}` leaves the target out, for a list of one target.
+  """
+  attr :id, :string, required: true
+  attr :label, :string, required: true, doc: "the accessible name of the scroll region"
+  attr :runs, :list, required: true
+
+  attr :scope, :map,
+    required: true,
+    doc: "the caller's scope: its organisation and workspace name the links"
+
+  attr :quiet_ids, :any, default: nil
+  attr :selected, :string, default: nil, doc: "the run_id of the row the preview shows"
+  attr :loading, :boolean, default: false
+  attr :dup, :any, default: nil, doc: "the paths on more than one system (a MapSet)"
+  attr :target, :boolean, default: true
+  attr :rest, :global
+
+  def runs_table(assigns) do
+    assigns =
+      assigns
+      |> assign(:dup, assigns.dup || MapSet.new())
+      |> assign(:quiet_ids, assigns.quiet_ids || MapSet.new())
+
+    ~H"""
+    <div
+      id={"#{@id}-region"}
+      class="q-rl-wrap"
+      tabindex="0"
+      role="region"
+      aria-label={@label}
+      aria-busy={to_string(@loading)}
+      {@rest}
+    >
+      <table id={@id} class="q-rl" role="table">
+        <thead role="rowgroup">
+          <tr role="row">
+            <th scope="col" role="columnheader" class="q-rl-st">{gettext("State")}</th>
+            <th scope="col" role="columnheader" class="q-rl-run">{gettext("Run")}</th>
+            <th :if={@target} scope="col" role="columnheader" class="q-rl-c3">
+              {gettext("Target")}
+            </th>
+            <th scope="col" role="columnheader" class="q-rl-c4">{gettext("Runtime")}</th>
+            <th scope="col" role="columnheader" class="q-rl-c4">{gettext("Host")}</th>
+            <th scope="col" role="columnheader">{gettext("Started")}</th>
+            <th scope="col" role="columnheader" class="q-rl-c2 q-num">{gettext("Duration")}</th>
+            <th scope="col" role="columnheader" class="q-num">{gettext("Denied")}</th>
+          </tr>
+        </thead>
+        <tbody :if={@loading} id={"#{@id}-loading"} role="rowgroup">
+          <tr :for={n <- 1..10} role="row" class="q-skel-row" aria-hidden="true">
+            <td role="cell"><span class="skeleton q-skel w-3"></span></td>
+            <td role="cell">
+              <span class={["skeleton q-skel", if(rem(n, 2) == 0, do: "w-56", else: "w-40")]}></span>
+            </td>
+            <td :if={@target} role="cell" class="q-rl-c3">
+              <span class="skeleton q-skel w-32"></span>
+            </td>
+            <td role="cell" class="q-rl-c4"><span class="skeleton q-skel w-20"></span></td>
+            <td role="cell" class="q-rl-c4"><span class="skeleton q-skel w-20"></span></td>
+            <td role="cell"><span class="skeleton q-skel w-20"></span></td>
+            <td role="cell" class="q-rl-c2"><span class="skeleton q-skel ml-auto w-14"></span></td>
+            <td role="cell"><span class="skeleton q-skel ml-auto w-5"></span></td>
+          </tr>
+        </tbody>
+        <tbody :if={!@loading} id={"#{@id}-rows"} role="rowgroup">
+          <.run_row
+            :for={run <- @runs}
+            :key={run.id}
+            scope={@scope}
+            run={run}
+            target={@target}
+            dup={@target && run.target_path && MapSet.member?(@dup, run.target_path)}
+            quiet={MapSet.member?(@quiet_ids, run.id)}
+            selected={@selected == run.run_id}
+          />
+        </tbody>
+      </table>
+    </div>
+    """
+  end
+
+  attr :scope, :map, required: true
+  attr :run, :map, required: true
+  attr :target, :boolean, required: true
+  attr :dup, :boolean, default: false
+  attr :quiet, :boolean, default: false
+  attr :selected, :boolean, default: false
+
+  defp run_row(assigns) do
+    ~H"""
+    <tr
+      id={"run-#{@run.run_id}"}
+      class="q-rl-row"
+      role="row"
+      data-run={@run.run_id}
+      aria-current={@selected && "true"}
+    >
+      <td class="q-rl-st" role="cell">
+        <.run_mark
+          state={@run.state}
+          quiet_for={if @quiet, do: quiet_for(@run) || 0}
+          quiet_since={heard_at(@run)}
+          interval={beat(@run)}
+          closed_at={@run.closed_at}
+        />
+      </td>
+      <td class="q-rl-run" role="cell">
+        <span class="q-rl-tt">
+          <.link
+            navigate={run_page(@scope, @run)}
+            class={["q-rowlink q-rl-title", !@run.task && "q-rl-id"]}
+            title={@run.task}
+          >
+            {@run.task || short_id(@run.run_id)}
+          </.link>
+          <.target_name
+            :if={@target && @run.target_system && @run.target_path}
+            class="q-rl-inl"
+            system={@run.target_system}
+            path={@run.target_path}
+            dup={@dup}
+          />
+        </span>
+      </td>
+      <td :if={@target} class="q-rl-c3" role="cell">
+        <.target_name
+          :if={@run.target_system && @run.target_path}
+          system={@run.target_system}
+          path={@run.target_path}
+          dup={@dup}
+        />
+        <span :if={!(@run.target_system && @run.target_path)} class="q-rl-faint">
+          {gettext("n/a")}
+        </span>
+      </td>
+      <td class="q-rl-c4 q-rl-faint" role="cell">
+        <span :if={@run.runtime}>{@run.runtime} {@run.runtime_version}</span>
+        <span :if={!@run.runtime}>{gettext("n/a")}</span>
+      </td>
+      <td class="q-rl-c4 q-rl-faint q-rl-host" role="cell">{@run.host || gettext("n/a")}</td>
+      <td class="q-rl-when" role="cell">
+        <.relative_time at={@run.started_at || @run.inserted_at} />
+      </td>
+      <td class="q-rl-c2 q-rl-dur q-num" role="cell">
+        <.run_length run={@run} quiet={@quiet} />
+      </td>
+      <td class="q-rl-den q-num" role="cell">
+        <span :if={@run.denied_count > 0} class="q-rl-denied">
+          <.icon name="hero-no-symbol-micro" class="size-3" />{Format.number(@run.denied_count)}
+          <span class="sr-only">{gettext("denied")}</span>
+        </span>
+      </td>
+    </tr>
+    """
+  end
+
+  attr :run, :map, required: true
+  attr :quiet, :boolean, required: true
+
+  @doc """
+  How long a run ran, as its row and its preview say it: the duration its exit gave; for a
+  running run the time since it started, ticking; for a quiet, lost or closed one "at
+  least" what it last reported; nothing for a run that has only pinged.
+  """
+  def run_length(%{run: %{state: state}} = assigns)
+      when state in ~w(succeeded failed timed_out) do
+    ~H"""
+    <.duration ms={@run.duration_ms} />
+    """
+  end
+
+  def run_length(%{run: %{state: "running"}, quiet: false} = assigns) do
+    {seconds, at} = elapsed(assigns.run)
+    assigns = assign(assigns, seconds: seconds, at: at)
+
+    ~H"""
+    <.duration elapsed_seconds={@seconds} elapsed_at={@at} />
+    """
+  end
+
+  def run_length(%{run: %{state: "pending"}} = assigns) do
+    ~H"""
+    <.duration />
+    """
+  end
+
+  def run_length(assigns) do
+    ~H"""
+    <.duration at_least_seconds={@run.elapsed_seconds} />
+    """
+  end
+
+  @doc """
+  The preview of a run beside the runs list, from 1920 px: one pane with a rule at its
+  left and no card, the run's state and its title, a line of what it ran on, when it
+  started and for how long, its denials, and the last lines of its log as plain text in the
+  terminal's dark box, the one box in it; Open run leads to its page. `preview` is nil while
+  it loads.
+  """
+  attr :id, :string, required: true
+  attr :scope, :map, required: true
+  attr :preview, :map, default: nil, doc: "%{run:, lines:, denials:, quiet:}"
+  attr :dup, :any, default: nil
+
+  def run_preview(assigns) do
+    assigns = assign(assigns, :dup, assigns.dup || MapSet.new())
+
+    ~H"""
+    <aside id={@id} class="q-pv" aria-label={gettext("Run preview")} aria-busy={to_string(!@preview)}>
+      <div :if={!@preview} class="q-pv-skel">
+        <span class="skeleton q-skel w-28"></span>
+        <span class="skeleton q-skel h-5 w-3/4"></span>
+        <span class="skeleton q-skel w-1/2"></span>
+        <span class="skeleton q-skel mt-4 h-64 w-full"></span>
+      </div>
+      <%= if @preview do %>
+        <div class="q-pv-h">
+          <.run_mark
+            state={@preview.run.state}
+            word
+            code={exit_note(@preview.run)}
+            quiet_for={if @preview.quiet, do: quiet_for(@preview.run) || 0}
+            quiet_since={heard_at(@preview.run)}
+            interval={beat(@preview.run)}
+            closed_at={@preview.run.closed_at}
+          />
+          <span class="flex-1"></span>
+          <.button
+            id={"#{@id}-open"}
+            size="sm"
+            navigate={run_page(@scope, @preview.run)}
+          >
+            {gettext("Open run")}<.icon name="hero-arrow-right-micro" class="size-3.5" />
+          </.button>
+        </div>
+        <h2 class="q-pv-t">{@preview.run.task || short_id(@preview.run.run_id)}</h2>
+        <p class="q-pv-m">
+          <.target_name
+            :if={@preview.run.target_system && @preview.run.target_path}
+            system={@preview.run.target_system}
+            path={@preview.run.target_path}
+            dup={MapSet.member?(@dup, @preview.run.target_path)}
+          />
+          <span :if={@preview.run.runtime}>
+            {@preview.run.runtime} {@preview.run.runtime_version}
+          </span>
+          <span :if={@preview.run.host} class="font-mono text-[12px]">{@preview.run.host}</span>
+          <span class="font-mono text-[12px]">{short_id(@preview.run.run_id)}</span>
+        </p>
+        <dl class="q-pv-kv">
+          <dt>{gettext("Started")}</dt>
+          <dd>
+            <.relative_time
+              :if={@preview.run.started_at || @preview.run.inserted_at}
+              at={@preview.run.started_at || @preview.run.inserted_at}
+            />
+          </dd>
+          <dt>{gettext("Duration")}</dt>
+          <dd class="tabular-nums"><.run_length run={@preview.run} quiet={@preview.quiet} /></dd>
+          <dt :if={@preview.run.denied_count > 0}>{gettext("Denied")}</dt>
+          <dd :if={@preview.run.denied_count > 0} id={"#{@id}-denials"}>
+            <span class="q-rl-denied">
+              <.icon name="hero-no-symbol-micro" class="size-3" />{Format.number(
+                @preview.run.denied_count
+              )}
+            </span>
+            <span :for={d <- @preview.denials} class="q-pv-dest">{d.host}:{d.port}</span>
+            <span :if={@preview.more_denials > 0} class="q-pv-more">
+              {ngettext("and %{number} more", "and %{number} more", @preview.more_denials,
+                number: Format.number(@preview.more_denials)
+              )}
+            </span>
+          </dd>
+          <dt :if={key_label(@preview.run)}>{gettext("Access key")}</dt>
+          <dd :if={key_label(@preview.run)} class="font-mono text-[12px]">
+            {key_label(@preview.run)}
+          </dd>
+          <dt :if={@preview.run.cost_usd}>{gettext("Cost")}</dt>
+          <dd :if={@preview.run.cost_usd} class="tabular-nums">
+            {cost_words(@preview.run.cost_usd)}
+          </dd>
+        </dl>
+        <div class="q-pv-term">
+          <div class="q-pv-bar">
+            <span class="flex-1">
+              {if @preview.run.state in Apiary.Runs.Run.alive_states(),
+                do: gettext("Terminal, live"),
+                else: gettext("Terminal, last lines")}
+            </span>
+            <.link navigate={"#{run_page(@scope, @preview.run)}/terminal"}>{gettext("Full log")}</.link>
+          </div>
+          <pre
+            :if={@preview.lines != []}
+            id={"#{@id}-log"}
+            class="q-pv-log"
+            role="log"
+            aria-live="off"
+            aria-label={gettext("The last lines of the log")}
+          >{Enum.join(@preview.lines, "\n")}</pre>
+          <p :if={@preview.lines == []} id={"#{@id}-log"} class="q-pv-nolog">
+            {if @preview.run.log_pruned_at,
+              do: gettext("The log was pruned."),
+              else: gettext("No log recorded.")}
+          </p>
+        </div>
+      <% end %>
+    </aside>
+    """
+  end
+
+  defp key_label(%{access_key: %{label: label}}), do: label
+  defp key_label(_run), do: nil
+
+  # Reported in dollars, as the overview writes it: a cent's fraction to four places.
+  defp cost_words(%Decimal{} = cost) do
+    if Decimal.compare(cost, Decimal.new("0.01")) == :lt and Decimal.compare(cost, 0) == :gt,
+      do: "$" <> Format.number(cost, digits: 4),
+      else: "$" <> Format.number(cost, digits: 2)
+  end
+
+  defp run_page(scope, run), do: ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}"
 
   ## Tabs
 

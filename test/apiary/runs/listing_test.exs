@@ -56,15 +56,18 @@ defmodule Apiary.Runs.ListingTest do
           "task" => "none",
           "since" => "90d",
           "denials" => "yes",
+          "sort" => "loudest",
+          "per" => "30",
           "page" => "-3",
           "other" => "x"
         })
 
-      assert filters.group == "target"
       assert filters.states == ["failed", "lost"]
       assert filters.target == {"github.example", "acme/shop"}
       assert filters.task == :none
-      assert filters.since == "7d"
+      assert filters.since == "all"
+      assert filters.sort == "newest"
+      assert filters.per == 50
       refute filters.denials
       assert filters.page == 1
 
@@ -76,8 +79,18 @@ defmodule Apiary.Runs.ListingTest do
              }
 
       assert Filters.to_params(parse(%{})) == %{}
-      refute Filters.any?(parse(%{"group" => "task", "page" => "2"}))
-      assert Filters.any?(parse(%{"since" => "all"}))
+      assert Filters.to_params(parse(%{"since" => "all"})) == %{}
+      refute Filters.any?(parse(%{"sort" => "oldest", "per" => "100", "page" => "2"}))
+      assert Filters.any?(parse(%{"since" => "7d"}))
+      assert Filters.any?(parse(%{"q" => "checkout"}))
+      assert Filters.any?(parse(%{"key" => "ci-fleet"}))
+
+      assert Filters.to_params(parse(%{"sort" => "longest", "per" => "100", "q" => " fix "})) ==
+               %{"sort" => "longest", "per" => "100", "q" => "fix"}
+
+      # Clearing keeps the order and the page size.
+      assert Filters.clear(parse(%{"sort" => "oldest", "per" => "25", "state" => "failed"})) ==
+               %{parse(%{}) | sort: "oldest", per: 25}
     end
 
     test "dates replace the range, are inclusive and are put in order" do
@@ -89,7 +102,8 @@ defmodule Apiary.Runs.ListingTest do
                {~U[2026-09-14 00:00:00.000000Z], ~U[2026-09-17 00:00:00.000000Z]}
 
       assert Filters.range_label(filters) == "14 Sept 2026 to 16 Sept 2026"
-      assert parse(%{"from" => "yesterday"}).since == "7d"
+      assert parse(%{"from" => "yesterday"}).since == "all"
+      assert Filters.bounds(parse(%{}), @now) == {nil, nil}
     end
 
     test "a refused value is dropped and named, so the page can say so" do
@@ -102,11 +116,13 @@ defmodule Apiary.Runs.ListingTest do
           "since" => "90d",
           "page" => "99999999999999999999",
           "from" => "2026-13-45",
+          "q" => String.duplicate("q", 257),
+          "per" => "7",
           "zzz" => "ignored"
         })
 
       assert %{filters | dropped: []} == %{parse(%{"state" => "failed"}) | dropped: []}
-      assert Enum.sort(filters.dropped) == ~w(from host page runtime since state task)
+      assert Enum.sort(filters.dropped) == ~w(from host page per q runtime since state task)
       assert parse(%{"zzz" => "1"}).dropped == []
     end
 
@@ -128,7 +144,7 @@ defmodule Apiary.Runs.ListingTest do
       assert Filters.families_of([]) == nil
     end
 
-    test "a family heading in the State menu fills its states in, and the URL never names it" do
+    test "a family heading in the State section fills its states in, and the URL never names it" do
       on = %{
         "_filter" => "state",
         "_target" => ["family_ended_badly"],
@@ -162,6 +178,21 @@ defmodule Apiary.Runs.ListingTest do
       end
     end
 
+    test "the sections that are on or off, the key and the range change the URL alone" do
+      f = parse(%{"state" => "failed", "page" => "3"})
+
+      assert Filters.to_params(Filters.change(f, %{"_filter" => "denials", "denials" => "1"})) ==
+               %{"state" => "failed", "denials" => "1"}
+
+      assert Filters.change(parse(%{"denials" => "1"}), %{"_filter" => "denials"}).denials ==
+               false
+
+      assert Filters.change(f, %{"_filter" => "key", "key" => "ci-fleet"}).key == "ci-fleet"
+
+      assert Filters.change(f, %{"_filter" => "since", "since" => "all", "_target" => ["since"]})
+             |> Filters.to_params() == %{"state" => "failed"}
+    end
+
     test "what can be stored can be filtered by: 1024 bytes, and no control characters" do
       long = String.duplicate("h", 1024)
       assert parse(%{"host" => long}).host == long
@@ -169,10 +200,11 @@ defmodule Apiary.Runs.ListingTest do
 
       for bad <- ["a\0", "a\nb", "\e[0m", "a\x7F", <<255>>] do
         assert %{task: nil, dropped: ["task"]} = parse(%{"task" => bad})
+        assert %{q: nil, dropped: ["q"]} = parse(%{"q" => bad})
       end
     end
 
-    test "a target is two parameters, so a system may hold a colon" do
+    test "a target is two parameters, so a system may hold a colon; a path alone is every system's" do
       filters = parse(%{"system" => "git.example:8443", "target" => "acme/shop:v2"})
       assert filters.target == {"git.example:8443", "acme/shop:v2"}
 
@@ -186,25 +218,36 @@ defmodule Apiary.Runs.ListingTest do
                "target" => "acme/shop"
              }
 
+      assert Filters.target_params(nil, "acme/shop") == %{"target" => "acme/shop"}
       assert Filters.target_params(nil, nil) == %{"target" => "none"}
 
       assert parse(%{"target" => "none"}).target == :none
-      assert %{target: nil, dropped: ["target"]} = parse(%{"target" => "acme/shop"})
+      assert parse(%{"target" => "acme/shop"}).target == {nil, "acme/shop"}
+      assert Filters.to_params(parse(%{"target" => "acme/shop"})) == %{"target" => "acme/shop"}
       assert %{target: nil, dropped: ["target"]} = parse(%{"system" => "git.example"})
 
-      # The menu's one value reads back to the same pair, whatever it holds.
+      # The section's one value reads back to the same pair, whatever it holds.
       value = Filters.target_value({"git.example:8443", ~s(we"ird/pa,th)})
       changed = Filters.change(parse(%{}), %{"_filter" => "target", "target" => value})
       assert changed.target == {"git.example:8443", ~s(we"ird/pa,th)}
 
       assert Filters.change(parse(%{}), %{"_filter" => "target", "target" => "none"}).target ==
                :none
+
+      every = Filters.target_value({nil, "acme/shop"})
+
+      assert Filters.change(parse(%{}), %{"_filter" => "target", "target" => every}).target ==
+               {nil, "acme/shop"}
     end
 
-    test "the workspace's connections are read over at most 90 days" do
+    test "the workspace's connections are read over at most 90 days, the last seven unless set" do
       cx = &Filters.parse(&1, :connections)
+      assert %{since: "7d", sort: "denied", dropped: []} = cx.(%{})
+      assert Filters.to_params(cx.(%{})) == %{}
       assert %{since: "7d", dropped: ["since"]} = cx.(%{"since" => "all"})
       assert cx.(%{"since" => "90d"}).since == "90d"
+      assert cx.(%{"sort" => "recent"}).sort == "recent"
+      assert %{sort: "denied", dropped: ["sort"]} = cx.(%{"sort" => "newest"})
 
       assert {~U[2026-06-22 14:00:00.000000Z], nil} =
                Filters.bounds(cx.(%{"since" => "90d"}), @now)
@@ -216,8 +259,154 @@ defmodule Apiary.Runs.ListingTest do
     end
   end
 
+  describe "the query" do
+    defp query(text, params \\ %{}, opts \\ []),
+      do: Filters.apply_query(parse(params), text, opts)
+
+    test "qualifiers set their filters, the other words are the free text" do
+      {f, []} =
+        query(
+          ~s(state:failed,lost repo:acme/shop task:"Fix the build" runtime:claude host:gpu-01 key:ci-fleet denied:yes checkout totals)
+        )
+
+      assert f.states == ~w(failed lost)
+      assert f.target == {nil, "acme/shop"}
+      assert f.task == "Fix the build"
+      assert f.runtime == "claude"
+      assert f.host == "gpu-01"
+      assert f.key == "ci-fleet"
+      assert f.denials
+      assert f.q == "checkout totals"
+      assert f.page == 1
+    end
+
+    test "a qualifier replaces its filter and keeps the others; the free text is what is typed now" do
+      {f, []} = query("state:running", %{"state" => "failed", "host" => "a", "q" => "old"})
+      assert f.states == ["running"]
+      assert f.host == "a"
+      assert f.q == nil
+
+      {f, []} = query("", %{"q" => "old", "task" => "t"})
+      assert Filters.to_params(f) == %{"task" => "t"}
+    end
+
+    test "a state may be a family, words are folded, and the URL says the states" do
+      {f, []} = query("state:ended-badly")
+      assert f.states == ~w(failed timed_out lost closed)
+
+      {f, []} = query("STATE:Timed-Out,alive")
+      assert f.states == ~w(pending running timed_out)
+      assert Filters.to_params(f) == %{"state" => "pending,running,timed_out"}
+    end
+
+    test "started: a preset, a day, from, up to, and two days" do
+      range = fn text ->
+        {f, []} = query("started:" <> text)
+        {f.since, f.from, f.to}
+      end
+
+      assert range.("7d") == {"7d", nil, nil}
+      assert range.("2026-09-01") == {nil, ~D[2026-09-01], ~D[2026-09-01]}
+      assert range.(">=2026-09-01") == {nil, ~D[2026-09-01], nil}
+      assert range.(">2026-09-01") == {nil, ~D[2026-09-02], nil}
+      assert range.("<=2026-09-01") == {nil, nil, ~D[2026-09-01]}
+      assert range.("<2026-09-01") == {nil, nil, ~D[2026-08-31]}
+      assert range.("2026-09-01..2026-09-07") == {nil, ~D[2026-09-01], ~D[2026-09-07]}
+      assert range.("2026-09-01..*") == {nil, ~D[2026-09-01], nil}
+
+      # A date replaces a preset, and the other way round.
+      {f, []} = Filters.apply_query(parse(%{"since" => "7d"}), "started:>=2026-09-01")
+      assert Filters.to_params(f) == %{"from" => "2026-09-01"}
+    end
+
+    test "a known qualifier with a value it cannot read is refused and named; an unknown one is text" do
+      {f, refused} =
+        query("state:bogus started:>tomorrow denied:perhaps host:a\u0000b foo:bar ticket:#12")
+
+      assert refused == ["state:bogus", "started:>tomorrow", "denied:perhaps", "host:a\u0000b"]
+      assert f.q == "foo:bar ticket:#12"
+      assert f.states == []
+
+      # A qualifier with nothing after it does nothing.
+      assert {%{states: []}, []} = query("state:")
+
+      # Free text too long for a query is refused as a whole.
+      {f, [refused]} = query(String.duplicate("x", 300))
+      assert f.q == nil
+      assert String.ends_with?(refused, "…")
+    end
+
+    test "repo: is resolved by the page, and none is the runs without a target" do
+      resolve = fn "shop" -> {"github.example", "acme/shop"} end
+
+      assert {%{target: {"github.example", "acme/shop"}}, []} =
+               query("repo:shop", %{}, resolve: resolve)
+
+      assert {%{target: :none}, []} = query("target:none")
+      assert {%{target: {nil, "acme/shop"}}, []} = query("repository:acme/shop")
+    end
+
+    test "the connections read their own qualifiers" do
+      cx = Filters.parse(%{}, :connections)
+
+      {f, []} =
+        Filters.apply_query(cx, "decision:denied tools:yes seen:24h host:registry.example cdn")
+
+      assert f.decision == "denied"
+      assert f.tools
+      assert f.since == "24h"
+      assert f.host == "registry.example"
+      assert f.q == "cdn"
+
+      # The runs list's qualifiers are text there, and the range is bounded.
+      {f, []} = Filters.apply_query(cx, "state:failed")
+      assert f.q == "state:failed"
+      assert {_f, ["seen:all"]} = Filters.apply_query(cx, "seen:all")
+    end
+
+    test "tokens write the filters back as the query, a view's own left out" do
+      f =
+        parse(%{
+          "state" => "failed,timed_out,lost,closed",
+          "system" => "github.example",
+          "target" => "acme/shop",
+          "task" => "Fix the build",
+          "from" => "2026-09-01",
+          "denials" => "1",
+          "q" => "free"
+        })
+
+      tokens = Filters.tokens(f)
+
+      assert Enum.map(tokens, &{&1.key, &1.value}) == [
+               {:target, "github.example/acme/shop"},
+               {:state, "ended_badly"},
+               {:task, ~s("Fix the build")},
+               {:started, ">=2026-09-01"},
+               {:denied, "yes"}
+             ]
+
+      assert Enum.all?(tokens, &(&1.without.page == 1))
+      assert hd(tokens).without.target == nil
+      assert hd(tokens).without.q == "free"
+
+      assert Filters.tokens(f, except: [:state, :denied], target_text: fn {_s, p} -> p end)
+             |> Enum.map(&{&1.key, &1.value}) == [
+               {:target, "acme/shop"},
+               {:task, ~s("Fix the build")},
+               {:started, ">=2026-09-01"}
+             ]
+
+      # What a token says reads back to the same filter.
+      for token <- tokens, token.key != :target do
+        {again, []} = Filters.apply_query(token.without, "#{token.key}:#{token.value}")
+        assert Filters.same?(again, %{f | q: nil})
+      end
+    end
+  end
+
   describe "page_runs/3 and its filters" do
-    test "reads the scope's workspace only, newest first, within the range", %{
+    test "reads the scope's workspace only, newest first, every run unless a range is set", %{
       scope: scope,
       other: other
     } do
@@ -226,10 +415,10 @@ defmodule Apiary.Runs.ListingTest do
       recent = started(scope, shop(), 120)
       _theirs = started(other, shop(), 60)
 
-      assert %{runs: runs, total: 2, page: 1} = Runs.page_runs(scope, parse(%{}), @now)
-      assert ids(runs) == [recent.id, yesterday.id]
+      assert %{runs: runs, total: 3, page: 1, per: 50} = Runs.page_runs(scope, parse(%{}), @now)
+      assert ids(runs) == [recent.id, yesterday.id, old.id]
 
-      assert %{total: 3} = Runs.page_runs(scope, parse(%{"since" => "all"}), @now)
+      assert %{total: 2} = Runs.page_runs(scope, parse(%{"since" => "7d"}), @now)
 
       assert %{runs: [only]} =
                Runs.page_runs(scope, parse(%{"from" => "2026-09-11", "to" => "2026-09-11"}), @now)
@@ -243,7 +432,10 @@ defmodule Apiary.Runs.ListingTest do
       assert run.id == pending.id
     end
 
-    test "state, target, task, runtime, host and denials", %{scope: scope} do
+    test "state, target, task, runtime, host, key and denials", %{scope: scope} do
+      %{access_key: key} =
+        Apiary.AccessKeysFixtures.access_key_fixture(scope, %{label: "ci-fleet"})
+
       a =
         started(scope, Map.put(shop(), "task", "checkout-tax"), 100,
           egress: [%{"decision" => "denied", "rule" => ""}]
@@ -260,6 +452,10 @@ defmodule Apiary.Runs.ListingTest do
           exit: %{"state" => "failed", "exit_code" => 1}
         )
 
+      Repo.update_all(from(r in Apiary.Runs.Run, where: r.id == ^a.id),
+        set: [access_key_id: key.id]
+      )
+
       by = fn params ->
         Runs.page_runs(scope, parse(params), @now).runs |> ids() |> Enum.sort()
       end
@@ -268,22 +464,105 @@ defmodule Apiary.Runs.ListingTest do
       assert by.(%{"state" => "running,failed"}) == Enum.sort([a.id, b.id, c.id])
       assert by.(%{"system" => "github.example", "target" => "acme/shop"}) == [a.id]
       assert by.(%{"system" => "gitlab.example", "target" => "acme/shop"}) == [b.id]
+      assert by.(%{"target" => "acme/shop"}) == Enum.sort([a.id, b.id])
       assert by.(%{"target" => "none"}) == [c.id]
       assert by.(%{"task" => "mirror-sync"}) == [b.id]
       assert by.(%{"task" => "none"}) == [c.id]
       assert by.(%{"runtime" => "otherrt"}) == [c.id]
       assert by.(%{"host" => "build-03"}) == [b.id]
+      assert by.(%{"key" => "ci-fleet"}) == [a.id]
+      assert by.(%{"key" => "nobody"}) == []
       assert by.(%{"denials" => "1"}) == [a.id]
       assert by.(%{"system" => "github.example", "target" => "nothing/here"}) == []
     end
 
-    test "pages of fifty keep the total, and a page past the end is the last", %{scope: scope} do
+    test "the free text finds the start of a run's id, its task and its target, as text", %{
+      scope: scope
+    } do
+      a = started(scope, Map.put(shop(), "task", "Fix checkout 100%"), 100)
+      b = started(scope, Map.put(shop("gitlab.example"), "task", "mirror-sync"), 200)
+      c = started(scope, %{"forge" => "git.example", "repository" => "data/etl"}, 300)
+
+      by = fn q ->
+        Runs.page_runs(scope, parse(%{"q" => q}), @now).runs |> ids() |> Enum.sort()
+      end
+
+      assert by.("CHECKOUT") == [a.id]
+      assert by.("100%") == [a.id]
+      assert by.("0%") == [a.id]
+      assert by.("%") == [a.id]
+      assert by.("gitlab.example/acme") == [b.id]
+      assert by.("data/etl") == [c.id]
+      assert by.(String.slice(b.run_id, 0, 8)) == [b.id]
+      assert by.(String.upcase(String.slice(c.run_id, 0, 6))) == [c.id]
+      assert by.("' OR 1=1 --") == []
+    end
+
+    test "the orders: newest, oldest, longest, most denials", %{scope: scope} do
+      short =
+        started(scope, shop(), 300,
+          exit: %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1_000}
+        )
+
+      long =
+        started(scope, shop(), 200,
+          exit: %{"state" => "failed", "exit_code" => 1, "duration_ms" => 90_000}
+        )
+
+      denied =
+        started(scope, shop(), 100,
+          egress: [
+            %{"decision" => "denied", "rule" => ""},
+            %{"decision" => "denied", "rule" => "", "host" => "b.example"}
+          ]
+        )
+
+      order = fn sort -> Runs.page_runs(scope, parse(%{"sort" => sort}), @now).runs |> ids() end
+
+      assert order.("newest") == [denied.id, long.id, short.id]
+      assert order.("oldest") == [short.id, long.id, denied.id]
+      assert order.("longest") == [long.id, short.id, denied.id]
+      assert order.("denials") == [denied.id, long.id, short.id]
+    end
+
+    test "pages of 25, 50 or 100 keep the total, and a page past the end is the last", %{
+      scope: scope
+    } do
       for _ <- 1..52, do: run_fixture(scope)
 
       assert %{runs: runs, total: 52, pages: 2, page: 1} = Runs.page_runs(scope, parse(%{}))
       assert length(runs) == 50
       assert %{runs: [_, _], page: 2} = Runs.page_runs(scope, parse(%{"page" => "2"}))
       assert %{runs: [_, _], page: 2} = Runs.page_runs(scope, parse(%{"page" => "9"}))
+      assert %{pages: 3, per: 25} = Runs.page_runs(scope, parse(%{"per" => "25"}))
+      assert %{pages: 1, runs: all} = Runs.page_runs(scope, parse(%{"per" => "100"}))
+      assert length(all) == 52
+    end
+
+    test "jump to a date: the page of the first run started on or before that day", %{
+      scope: scope
+    } do
+      # One run a day at noon, for sixty days back from @now's day.
+      for day <- 0..59 do
+        at = DateTime.new!(Date.add(~D[2026-09-20], -day), ~T[12:00:00.000000], "Etc/UTC")
+        run_fixture(scope, %{state: "succeeded", started_at: at})
+      end
+
+      newest = parse(%{"per" => "25"})
+      # 20 Sept to 14 Sept are the first seven runs: the eighth, 13 Sept, is on page 1.
+      assert Runs.jump_page(scope, newest, ~D[2026-09-13], @now) == 1
+      # 26 runs start after 25 Aug: the 27th is on page 2.
+      assert Runs.jump_page(scope, newest, ~D[2026-08-25], @now) == 2
+      assert Runs.jump_page(scope, newest, ~D[2026-10-01], @now) == 1
+      assert Runs.jump_page(scope, newest, ~D[2020-01-01], @now) == 3
+
+      oldest = parse(%{"per" => "25", "sort" => "oldest"})
+      # Oldest first, the page of the first run on or after the day: 23 Jul is the first,
+      # and 25 runs start before 17 Aug.
+      assert Runs.jump_page(scope, oldest, ~D[2026-07-22], @now) == 1
+      assert Runs.jump_page(scope, oldest, ~D[2026-08-16], @now) == 1
+      assert Runs.jump_page(scope, oldest, ~D[2026-08-17], @now) == 2
+      assert Runs.jump_page(scope, parse(%{"sort" => "longest"}), ~D[2026-08-16], @now) == 1
     end
   end
 
@@ -325,7 +604,7 @@ defmodule Apiary.Runs.ListingTest do
     end
   end
 
-  describe "groups, summary and facets" do
+  describe "views, the rail and facets" do
     setup %{scope: scope, other: other} do
       runs = %{
         shop:
@@ -340,6 +619,10 @@ defmodule Apiary.Runs.ListingTest do
             exit: %{"state" => "succeeded", "exit_code" => 0}
           ),
         gitlab: started(scope, Map.put(shop("gitlab.example"), "task", "checkout-tax"), 50),
+        api:
+          started(scope, %{"forge" => "github.example", "repository" => "acme/api"}, 70,
+            exit: %{"state" => "failed", "exit_code" => 1}
+          ),
         plain: started(scope, %{}, 10)
       }
 
@@ -347,75 +630,91 @@ defmodule Apiary.Runs.ListingTest do
       %{runs: runs}
     end
 
-    test "two systems with one path are two groups, the unassigned group is last", %{
-      scope: scope,
-      runs: runs
-    } do
-      filters = parse(%{})
-      page = Runs.page_runs(scope, filters, @now)
-      groups = Runs.group_runs(page.runs, "target")
+    test "the views count under the other filters, never the states or denials", %{scope: scope} do
+      counts = %{all: 5, alive: 3, ended_badly: 1, with_denials: 1}
+      assert Runs.view_counts(scope, parse(%{}), @now) == counts
 
-      assert Enum.map(groups, & &1.key) == [
-               {"gitlab.example", "acme/shop"},
-               {"github.example", "acme/shop"},
-               :none
+      assert Runs.view_counts(scope, parse(%{"state" => "failed", "denials" => "1"}), @now) ==
+               counts
+
+      assert Runs.view_counts(scope, parse(%{"task" => "checkout-tax"}), @now) ==
+               %{all: 2, alive: 2, ended_badly: 0, with_denials: 1}
+
+      assert Runs.count_runs(scope) == 5
+      assert Runs.count_runs(scope, parse(%{"state" => "failed"}), @now) == 1
+    end
+
+    test "the rail counts the targets under every filter but the target, pinned first", %{
+      scope: scope
+    } do
+      filters = parse(%{"system" => "github.example", "target" => "acme/shop"})
+      rail = Runs.target_counts(scope, filters, now: @now)
+
+      assert rail.all == 5
+      assert rail.unassigned == 1
+      assert rail.pinned == []
+      assert rail.more == 0
+
+      assert rail.targets == [
+               %{system: "github.example", path: "acme/shop", runs: 2},
+               %{system: "github.example", path: "acme/api", runs: 1},
+               %{system: "gitlab.example", path: "acme/shop", runs: 1}
              ]
 
-      assert Enum.map(groups, & &1.kind) == [:target, :target, :unassigned]
-      assert ids(Enum.at(groups, 1).runs) == [runs.shop.id, runs.shop_old.id]
+      pinned =
+        Runs.target_counts(scope, parse(%{"state" => "running"}),
+          now: @now,
+          pinned: [{"gitlab.example", "acme/shop"}, {"github.example", "acme/api"}],
+          limit: 1
+        )
 
-      keys = Enum.map(groups, & &1.key)
-      facts = Runs.group_facts(scope, filters, keys, @now)
+      assert pinned.pinned == [
+               %{system: "gitlab.example", path: "acme/shop", runs: 1},
+               %{system: "github.example", path: "acme/api", runs: 0}
+             ]
 
-      # Only the groups asked for are counted.
-      assert Map.keys(Runs.group_facts(scope, filters, [:none], @now)) == [:none]
-      assert Runs.group_facts(scope, filters, [], @now) == %{}
-      assert facts[{"github.example", "acme/shop"}] == %{runs: 2, alive: 1, denials: 2}
-      assert facts[{"gitlab.example", "acme/shop"}] == %{runs: 1, alive: 1, denials: 0}
-      assert facts[:none] == %{runs: 1, alive: 1, denials: 0}
+      assert pinned.targets == [%{system: "github.example", path: "acme/shop", runs: 1}]
+      assert pinned.more == 0
+
+      more = Runs.target_counts(scope, parse(%{}), now: @now, limit: 1)
+      assert [%{path: "acme/shop", runs: 2}] = more.targets
+      assert more.more == 2
+
+      # A search lists every target that holds it, pinned or not, as text.
+      found =
+        Runs.target_counts(scope, parse(%{}),
+          now: @now,
+          narrow: "GITLAB",
+          pinned: [{"gitlab.example", "acme/shop"}]
+        )
+
+      assert found.pinned == []
+      assert found.targets == [%{system: "gitlab.example", path: "acme/shop", runs: 1}]
+      assert Runs.target_counts(scope, parse(%{}), now: @now, narrow: "%").targets == []
     end
 
-    test "grouped by task, one task spans targets", %{scope: scope, runs: runs} do
-      filters = parse(%{"group" => "task"})
-      groups = Runs.group_runs(Runs.page_runs(scope, filters, @now).runs, "task")
+    test "a path on two systems is written with its system; repo: finds it", %{scope: scope} do
+      assert Runs.duplicate_paths(scope) == MapSet.new(["acme/shop"])
 
-      assert Enum.map(groups, & &1.key) == ["checkout-tax", "fix-cart", :none]
-      assert ids(hd(groups).runs) == [runs.gitlab.id, runs.shop.id]
+      assert Runs.resolve_target(scope, "acme/api") == {"github.example", "acme/api"}
+      assert Runs.resolve_target(scope, "ACME/API") == {"github.example", "acme/api"}
+      assert Runs.resolve_target(scope, "acme/shop") == {nil, "acme/shop"}
 
-      assert Runs.group_facts(scope, filters, ["checkout-tax"], @now)["checkout-tax"] == %{
-               runs: 2,
-               alive: 2,
-               denials: 2,
-               targets: 2
-             }
+      assert Runs.resolve_target(scope, "gitlab.example/acme/shop") ==
+               {"gitlab.example", "acme/shop"}
 
-      assert [%{kind: :none, runs: all}] =
-               Runs.group_runs(Runs.page_runs(scope, filters, @now).runs, "none")
-
-      assert length(all) == 4
-    end
-
-    test "the summary counts what the filters return, and what they hide", %{scope: scope} do
-      assert Runs.summarise_runs(scope, parse(%{}), @now) ==
-               %{
-                 runs: 4,
-                 targets: 2,
-                 tasks: 2,
-                 alive: 3,
-                 ended_well: 1,
-                 ended_badly: 0,
-                 with_denials: 1,
-                 workspace_runs: 4
-               }
-
-      assert %{runs: 1, workspace_runs: 4} =
-               Runs.summarise_runs(scope, parse(%{"state" => "succeeded"}), @now)
+      assert Runs.resolve_target(scope, "nothing/here") == {nil, "nothing/here"}
+      assert Runs.resolve_target(scope_fixture(), "acme/api") == {nil, "acme/api"}
     end
 
     test "facets are counted from the data, each under the other filters", %{scope: scope} do
       facets = Runs.run_facets(scope, parse(%{"state" => "running"}), now: @now)
 
-      assert facets.state.options == [{"running", "running", 3}, {"succeeded", "succeeded", 1}]
+      assert facets.state.options == [
+               {"running", "running", 3},
+               {"succeeded", "succeeded", 1},
+               {"failed", "failed", 1}
+             ]
 
       assert facets.target == %{
                options: [
@@ -431,9 +730,10 @@ defmodule Apiary.Runs.ListingTest do
       assert facets.task.options == [{"checkout-tax", "checkout-tax", 2}, {"No task", "none", 1}]
       assert facets.runtime.options == [{"claude", "claude", 3}]
       assert facets.host == %{options: [{"dev-laptop", "dev-laptop", 3}], total: 1}
+      assert facets.key == %{options: [], total: 0}
     end
 
-    test "a facet holds the fifty most frequent values and the chosen one, and narrows as text",
+    test "a facet holds the fifty most frequent values and the chosen one, more when asked, and narrows as text",
          %{scope: scope} do
       for n <- 1..55,
           do: run_fixture(scope, %{state: "running", task: "task-#{n}", started_at: @now})
@@ -445,7 +745,10 @@ defmodule Apiary.Runs.ListingTest do
       assert facets.task.total == 60
       assert length(facets.task.options) == 52
       assert {"task-55", "task-55", 1} == hd(facets.task.options)
-      assert {"No task", "none", 1} == List.last(facets.task.options)
+      assert {"No task", "none", 2} == List.last(facets.task.options)
+
+      more = Runs.run_facets(scope, parse(%{}), now: @now, limits: %{"task" => 100}).task
+      assert length(more.options) == 60
 
       narrowed = fn q ->
         Runs.run_facets(scope, parse(%{}), now: @now, narrow: %{"task" => q}).task
@@ -464,6 +767,23 @@ defmodule Apiary.Runs.ListingTest do
       assert Runs.like("50%_\\") == "%50\\%\\_\\\\%"
     end
 
+    test "the access keys are a facet by their label", %{scope: scope, runs: runs} do
+      %{access_key: key} =
+        Apiary.AccessKeysFixtures.access_key_fixture(scope, %{label: "ci-fleet"})
+
+      ids = [runs.shop.id, runs.api.id]
+
+      Repo.update_all(from(r in Apiary.Runs.Run, where: r.id in ^ids),
+        set: [access_key_id: key.id]
+      )
+
+      assert Runs.run_facets(scope, parse(%{}), now: @now).key ==
+               %{options: [{"ci-fleet", "ci-fleet", 2}], total: 1}
+
+      assert Runs.run_facets(scope, parse(%{"key" => "gone"}), now: @now).key.options ==
+               [{"gone", "gone", 0}, {"ci-fleet", "ci-fleet", 2}]
+    end
+
     test "matches?/4 tells whether a changed run belongs to the view", %{
       scope: scope,
       other: other,
@@ -473,6 +793,41 @@ defmodule Apiary.Runs.ListingTest do
       refute Runs.matches?(scope, parse(%{"task" => "fix-cart"}), runs.shop, @now)
       refute Runs.matches?(other, parse(%{}), runs.shop, @now)
     end
+  end
+
+  describe "the end of a run's log" do
+    test "the last lines as plain text, read from the end of the chunks", %{scope: scope} do
+      run = run_fixture(scope)
+
+      chunks = [
+        "\e]0;title\a\e[1;32m✓\e[0m first\r\n",
+        "progress 10%\rprogress 100%\n\e[2Kdone\n",
+        "tab\there\n\n\n"
+      ]
+
+      for {bytes, n} <- Enum.with_index(chunks, 2) do
+        event_fixture(run, n, "run.log", %{"stream" => "stdout", "bytes" => Base.encode64(bytes)})
+      end
+
+      {:ok, run} = Projector.project(run)
+
+      assert Apiary.Runs.Record.log_tail(scope, run) ==
+               ["✓ first", "progress 100%", "done", "tab\there"]
+
+      assert Apiary.Runs.Record.log_tail(scope, run, 2) == ["done", "tab\there"]
+      assert Apiary.Runs.Record.log_tail(other_scope(scope), run) == []
+      assert Apiary.Runs.Record.log_tail(scope, run_fixture(scope)) == []
+    end
+
+    test "bytes that are not text are replaced, and control characters go" do
+      assert Apiary.Runs.Record.plain_lines(<<"a", 255, "b\e[31mc\x07\x00d\n">>) == ["a�bcd"]
+      assert Apiary.Runs.Record.plain_lines("") == []
+    end
+  end
+
+  # A scope of another workspace of the same organisation.
+  defp other_scope(scope) do
+    %{scope | workspace: %{scope.workspace | id: Ecto.UUID.generate()}}
   end
 
   describe "get_run_by_run_id!/2" do

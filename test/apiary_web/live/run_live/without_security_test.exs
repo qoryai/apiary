@@ -180,22 +180,22 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
   end
 
   describe "the runs" do
-    test "a target's group links to its connections, not to a policy", %{
+    test "a run's denials are the record, and nothing links to a policy", %{
       conn: conn,
       scope: scope
     } do
-      started_run(scope, shop("github.example"),
-        egress: [%{"host" => "files.cdn.example", "decision" => "denied", "rule" => ""}]
-      )
+      run =
+        started_run(scope, shop("github.example"),
+          egress: [%{"host" => "files.cdn.example", "decision" => "denied", "rule" => ""}]
+        )
 
       {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs")
       render_async(lv, 2_000)
       html = render(lv)
       refute_policy(html)
 
-      refute has_element?(lv, ".q-g-policy")
-      assert has_element?(lv, ".q-group a", "Connections")
-      assert has_element?(lv, ".q-denials")
+      assert has_element?(lv, "#run-#{run.run_id} .q-rl-denied", "1")
+      refute has_element?(lv, "#runs-page a[href*='/policy']")
     end
   end
 
@@ -237,7 +237,7 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
       assert has_element?(view, "##{dst("169.254.169.254", 80)}.q-denied")
       refute has_element?(view, "#destinations .q-why")
       refute has_element?(view, "th", "Reason")
-      assert has_element?(view, "#connections-footer", "Denied destinations come first")
+      assert has_element?(view, "#connections-note", "The outcome is that of the last attempt")
 
       view |> element("##{cdn}-toggle") |> render_click()
       assert has_element?(view, "##{cdn}-runs", "1 run reached this destination")

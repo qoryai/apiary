@@ -35,6 +35,12 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
   repositories, runs and places, New, and a sidebar of the page's workspace,
   organisation or account, which folds to icons. Pages start at one left edge and use the
   width of the screen: lists up to 1680 px, a run's page all of it, forms 720 px.
+- The runs list as a record read by filters, not groups: views (All, Alive, Ended badly,
+  With denials) with their counts, one filter field that takes qualifiers (`repo:`,
+  `state:`, `started:>2026-09-01` and more) and free text, one Filter menu, sorting, the
+  repositories beside the list with their runs from 1280 px, pages of 25 to 100 with a
+  jump to a date, and from 1920 px a preview of the run chosen with the end of its log.
+  The workspace's connections are narrowed the same way.
 - The features an instance has, switched at launch (`QORY_FEATURES`), and the guides and
   module reference every instance serves at `/docs`.
 

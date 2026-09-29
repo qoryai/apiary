@@ -97,7 +97,8 @@ Every page starts at the same left edge, 32 px from the sidebar (24 px below 102
 below 768); nothing is centred in the space beside it. `width` is one of three:
 
 - `list` (the default): fluid, up to 1680 px, for the lists and the overviews. A list
-  page with a rail or a preview pane beside its list takes `work` and caps the list itself.
+  page with a rail or a preview pane beside its list takes `work` and caps itself at
+  1680 px (`.q-lp`); from 1920 px an open preview is the one thing that takes more.
 - `work`: fluid, with no cap, for a work surface such as a run.
 - `read`: a 720 px column, for forms and settings; prose inside anything keeps 72ch.
 
@@ -106,12 +107,61 @@ A sticky tab bar (`.q-tabs`) sticks under the top bar and bleeds to the page's g
 `@layer qory`: a Tailwind display utility on the same element loses to them, so the shell
 hides its own parts on phones in that block.
 
+## Lists
+
+A long list is narrowed one way, GitHub's (the brief's principles 4 and 12): filters that
+are written in the URL, never groups the reader has to open. The runs list
+(`ApiaryWeb.RunLive.Index`) is the pattern, and the workspace's connections follow it; the
+controls are `RunComponents`', and `Apiary.Runs.Filters` reads and writes every one of them.
+
+- **Views** are tabs above the list (`<.views>`): a few fixed ones, each a link that sets the
+  filters it stands for and keeps the others, with its count under the other filters; the
+  current one is `aria-current="page"`, and All when no other is. The runs list's are All,
+  Alive, Ended badly and With denials; the connections' are the decisions. The counts are
+  the only numbers above the list; a line under the controls says how many match only when
+  the list is narrowed ("87 runs match · Clear").
+- **One query field** (`<.query_bar>`) shows the filters set as tokens, `qualifier:value`,
+  each with its own remove button, and takes more on Enter: qualifiers (`repo:`, `state:`,
+  `task:`, `runtime:`, `host:`, `key:`, `started:>2026-09-01`, `denied:yes` on the runs list)
+  become the URL's parameters, the rest is the free text, `q`, matched as text and without
+  regard to case. A word it cannot read is said in a notice, never dropped in silence. A
+  view's own filter is not repeated as a token.
+- **One Filter menu** (`<.filter_menu>`) writes the same filters: a dialog that lists its
+  sections, then the one chosen, with a way back. A section's values are counted under
+  the other filters and searched on the server over every value there is (`narrow`), fifty
+  shown, more on asking. No row of facet buttons.
+- **Sort** (`<.sort_menu>`) is a menu of orders, each a link.
+- **The rail** (`<.target_rail>`, from 1280 px) is the targets with their counts under
+  every filter but the target: a search on the server, every target, the pinned ones
+  (`counts.pins`), then the busiest twenty and "n more". Choosing one sets the target; below
+  1280 px the Filter menu's Target section does it instead, and never both.
+- **A row is one line** (the brief's principle 9): the title, the only strong text; its
+  target after it in muted mono until the table is 1000 px wide, then in a column; the
+  other facts small and grey, the tertiary ones faint. Colour only for what needs someone:
+  a run's state is a dot, with its word for a state that needs a look (never for one that
+  ended well), and denials are red only when there are any. Columns join by the table's
+  own width (container queries), so a table beside a rail or a preview reflows as a
+  narrower screen would.
+- **A target has one notation** (`<.target_name>`): its path in mono, its system faint
+  before it only where the workspace has that path on more than one system
+  (`Apiary.Runs.duplicate_paths/1`).
+- **Pages** of 25, 50 or 100, "1–50 of 3,137", the page before and after named by the order
+  (Newer, Older), and Jump to date on the orders by time; the page is a parameter, so a
+  page is a link.
+- **The preview** of the runs list is for 1920 px and more: a pane beside the list, a
+  rule at its left and no card, of the run chosen (`?run=`; the first row until the
+  reader chooses one). The `RunList` hook tells the page the width, turns a row's click
+  into a choice there, and moves it with ↑ and ↓; Enter or a second click opens the run.
+  Below 1920 px a row is a link to its page.
+- **Nothing narrowing, nothing to show** is an empty state with no table and no pages:
+  what the filters hide, the last filter to remove and Clear filters.
+
 ## Components
 
 A page composes components; it does not write its own button, input, table, modal or
 badge. The general ones are in `ApiaryWeb.CoreComponents` (`core_components.ex`); the
-ones a group of pages shares are beside them: `RunComponents` for the runs list, the run
-page and the connections pages, `RunPageComponents` for the run page,
+ones a group of pages shares are beside them: `RunComponents` for the controls of a list,
+the runs list, the run page and the connections pages, `RunPageComponents` for the run page,
 `PolicyComponents` and `OverviewComponents` for theirs, and `ApiaryWeb.RichText` for a
 translated sentence with markup in it. A look a second page needs becomes a component,
 or an attribute of one, not a copy.
@@ -202,8 +252,7 @@ rather than the browser's. It writes in the words, locale and time zone the serv
 **Scripts.** A hook lives under `assets/js/hooks/` and is registered in `hooks.js`, the
 collection `app.js` and an edition's bundle import. It holds no words (see
 [lingo.md](lingo.md)), and keeps in `localStorage` only a reading preference, such as
-which groups of the runs list are collapsed; filters, grouping and the page are query
-parameters.
+the sidebar's fold; filters, the order, the page and a chosen row are query parameters.
 
 ## The terminal
 

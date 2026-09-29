@@ -158,7 +158,7 @@ qory run --label forge=git.example --label repository=acme/shop
 ```
 
 The labels go into the run's first event with every other `--label`, and the console
-groups runs by these two.
+files runs under the repository these two name.
 <!-- feature: security -->
 It keeps repository rules by them too.
 <!-- /feature -->

@@ -745,6 +745,89 @@ defmodule Apiary.Runs.Record do
     end
   end
 
+  # How much of the end of the log a glance reads: enough for thirty long lines.
+  @tail_bytes 32_768
+  @tail_chunks 64
+
+  @doc """
+  The last `lines` lines of the run's log as plain text, for a glance at it (the runs
+  list's preview), never as the log: the end of its last chunks, every stream in sequence
+  order, at most #{@tail_bytes} bytes of them, through `plain_lines/1`. The first line is
+  left out when the read began inside it. `[]` for a run with no log.
+  """
+  @spec log_tail(Scope.t(), Run.t(), pos_integer) :: [String.t()]
+  def log_tail(%Scope{} = scope, %Run{} = run, lines \\ 30) do
+    chunks =
+      Repo.all(
+        from l in log_chunks(scope, run),
+          order_by: [desc: l.sequence],
+          limit: @tail_chunks,
+          select:
+            {fragment("octet_length(?)", l.bytes),
+             fragment(
+               "substring(? from greatest(octet_length(?) - ?, 0) + 1)",
+               l.bytes,
+               l.bytes,
+               ^@tail_bytes
+             )}
+      )
+
+    {kept, whole?} = take_tail(chunks, [], 0, length(chunks) < @tail_chunks)
+    text = IO.iodata_to_binary(kept)
+
+    text
+    |> plain_lines()
+    |> then(fn all -> if whole? or length(all) < 2, do: all, else: tl(all) end)
+    |> Enum.take(-lines)
+  end
+
+  # The chunks, newest first, gathered oldest first until the budget is spent; whether
+  # the read holds the log from its start.
+  defp take_tail([], acc, _bytes, all?), do: {acc, all?}
+
+  defp take_tail([{size, bytes} | rest], acc, spent, all?) do
+    cond do
+      spent + byte_size(bytes) >= @tail_bytes ->
+        keep = binary_part(bytes, byte_size(bytes) - (@tail_bytes - spent), @tail_bytes - spent)
+        {[keep | acc], false}
+
+      size > byte_size(bytes) ->
+        {[bytes | acc], false}
+
+      true ->
+        take_tail(rest, [bytes | acc], spent + byte_size(bytes), all?)
+    end
+  end
+
+  @doc """
+  plain_lines/1 is a terminal's bytes as lines of plain text: what is not UTF-8 is replaced,
+  escape sequences (colours, cursor moves, titles) are taken out, a carriage return starts
+  its line over, every other control character but the tab goes, and the empty lines at
+  the end are dropped.
+  """
+  @spec plain_lines(binary) :: [String.t()]
+  def plain_lines(bytes) when is_binary(bytes) do
+    bytes
+    |> String.replace_invalid()
+    # OSC (a title, a link) to its terminator; CSI; the two-byte escapes and a charset.
+    |> String.replace(~r/\e\][^\a\e]*(?:\a|\e\\)?/u, "")
+    |> String.replace(~r/\e\[[0-?]*[ -\/]*[@-~]/u, "")
+    |> String.replace(~r/\e[()*+][0-9A-Za-z]|\e[@-_]?/u, "")
+    |> String.replace("\r\n", "\n")
+    |> String.split("\n")
+    |> Enum.map(fn line ->
+      line
+      |> String.split("\r")
+      |> Enum.reject(&(&1 == ""))
+      |> List.last("")
+      |> String.replace(~r/[\x00-\x08\x0B-\x1F\x7F]/u, "")
+      |> String.trim_trailing()
+    end)
+    |> Enum.reverse()
+    |> Enum.drop_while(&(&1 == ""))
+    |> Enum.reverse()
+  end
+
   defp log_after(scope, run, after_sequence, stream) do
     query = from l in log_chunks(scope, run), where: l.sequence > ^after_sequence
     if is_binary(stream), do: from(l in query, where: l.stream == ^stream), else: query
