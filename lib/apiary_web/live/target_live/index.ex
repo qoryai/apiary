@@ -263,11 +263,13 @@ defmodule ApiaryWeb.TargetLive.Index do
         </div>
 
         <p :if={Query.narrowed?(@query) && @listing} id="targets-summary" class="q-tgt-summary">
-          <.rich text={
-            rich_ngettext("%{number} target matches", "%{number} targets match", @listing.total,
-              number: {:b, Format.number(@listing.total)}
-            )
-          } />
+          <span>
+            <.rich text={
+              rich_ngettext("%{number} target matches", "%{number} targets match", @listing.total,
+                number: {:b, Format.number(@listing.total)}
+              )
+            } />
+          </span>
           <.link
             id="targets-clear"
             patch={index_path(@current_scope, %Query{view: @query.view, sort: @query.sort})}
@@ -321,7 +323,7 @@ defmodule ApiaryWeb.TargetLive.Index do
                   <span class="sr-only">{gettext("Pinned")}</span>
                 </th>
                 <th scope="col">{gettext("Target")}</th>
-                <th scope="col" class="q-tgt-act">{gettext("Last run")}</th>
+                <th scope="col" class="q-tgt-k1 q-tgt-act">{gettext("Last run")}</th>
                 <th scope="col" class="q-tgt-k2 q-tgt-act">{gettext("Runs, 14 days")}</th>
                 <th
                   scope="col"
@@ -358,8 +360,11 @@ defmodule ApiaryWeb.TargetLive.Index do
                   >
                     <.target_name path={row.target.path} system={row.shared && row.target.system} />
                   </.link>
+                  <span :if={row.last} class="q-tgt-sub" aria-hidden="true">
+                    <.last_run last={row.last} />
+                  </span>
                 </td>
-                <td class="q-tgt-act whitespace-nowrap">
+                <td class="q-tgt-k1 q-tgt-act whitespace-nowrap">
                   <.last_run :if={row.last} last={row.last} />
                   <span :if={!row.last} class="text-faint">{gettext("Never ran")}</span>
                 </td>
@@ -636,7 +641,7 @@ defmodule ApiaryWeb.TargetLive.Index do
             <td>
               <span class={["skeleton q-skel", if(rem(n, 2) == 0, do: "w-44", else: "w-32")]}></span>
             </td>
-            <td><span class="skeleton q-skel w-24"></span></td>
+            <td class="q-tgt-k1"><span class="skeleton q-skel w-24"></span></td>
             <td class="q-tgt-k2"><span class="skeleton q-skel w-24"></span></td>
             <td class="q-tgt-k4"><span class="skeleton q-skel ml-auto w-10"></span></td>
             <td class="q-tgt-k3"><span class="skeleton q-skel ml-auto w-6"></span></td>

@@ -135,6 +135,7 @@ defmodule ApiaryWeb.TargetComponents do
   attr :days, :list, required: true
   attr :width, :integer, default: 84
   attr :height, :integer, default: 20
+  attr :stretch, :boolean, default: false, doc: "fills the width its box gives it"
   attr :class, :any, default: nil
 
   def spark(assigns) do
@@ -156,6 +157,7 @@ defmodule ApiaryWeb.TargetComponents do
       width={@full}
       height={@height}
       viewBox={"0 0 #{@full} #{@height}"}
+      preserveAspectRatio={@stretch && "none"}
       aria-hidden="true"
     >
       <rect

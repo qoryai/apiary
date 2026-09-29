@@ -41,8 +41,10 @@ The shell is section 4 of the v2 design brief (the knowledge vault's
   level there, their settings and organisations, the theme (Auto, Light, Dark), the docs,
   the changelog, the source and the version, and Log out.
 - **The sidebar** holds the scope's pages and nothing else, in groups, each a `<nav>` with
-  its own name: a workspace's Overview, then Record (Runs, Connections) and Guard
-  (Policy), then the targets the person pinned (`counts.pins`); an organisation's
+  its own name: a workspace's Overview, then Record (Runs, Targets, Connections) and Guard
+  (Policy), then the targets the person pinned (`counts.pins`, the first seven in the
+  order pinned, `Apiary.Targets.list_pins/2`; on a target's page its pin is the current
+  entry); an organisation's
   Overview, Activity and the edition's groups (`ApiaryWeb.Edition.nav_sections/0`); the
   person's Profile, Preferences and Organisations, which are their settings' list.
   Settings is at its foot, the scope's own; a page of Settings (an entry of the section
@@ -90,6 +92,56 @@ An organisation's own path, `/:org`, is its overview (`ApiaryWeb.OrganisationLiv
 workspaces the person reaches, what each is doing, and the organisation's people. The
 breadcrumb's organisation leads there; `/` still sends a person to the workspace they
 opened last.
+
+## Targets
+
+A workspace's targets have an index and a page each, GitHub's organisation repositories
+and repository page in the target's words (`ApiaryWeb.TargetLive.Index`, `…Show`; the
+reads are `Apiary.Targets`'s, the looks `ApiaryWeb.TargetComponents`'s).
+
+- **The notation.** A target is its path in mono (`<.target_name>`); its system goes
+  before it, faint, only where the same path is in another system of the workspace
+  (`Apiary.Targets.shared_paths/2`), and always on its own header and crumb. A run's state
+  is a dot and, when the run needs a look, its word (`<.state_mark>`), never a pill.
+- **The index** (`/:org/:workspace/targets`, width `list`) is narrowed the way every list
+  is: views as tabs with the workspace's counts (All, Active this week, Never ran), one
+  search that takes qualifiers (`forge:` in the software domain, `mode:`, `activity:`,
+  `is:pinned`; `ApiaryWeb.TargetLive.Query`), one Filter menu that writes the same
+  qualifiers, shown as tokens in the search, and Sort (Last run, Name, Most runs in 14
+  days, Most denials in 7). All of it is the URL; a value the page does not know is left
+  out. A row is one line: the reader's ★, the path the only strong text, the last run as a
+  dot and a time (its word when it is running or went badly), a 14-day sparkline of runs
+  with their number, the share that ended well (in the error colour below 80 %), the
+  denied attempts of 7 days in red when there are any, and the policy mode only where the
+  target sets its own. Pages of 50. The columns come in with the table's own width; below
+  480 px the last run is a line under the path. It reads in one query bounded by the
+  fourteen days, and re-reads at most once a second as runs land, changing the rows it
+  holds in place.
+- **A target's page** is `/:org/:workspace/targets/:system/*path`, its tabs after a `-`
+  segment, GitLab's way (`target_path/4`): Overview at the bare path, then `…/-/runs`,
+  `…/-/connections` and, with `security`, `…/-/policy` with the policy's own paths after
+  it (`/history`, `/document`, `/versions/:n`, `/export`). A path with a segment that
+  would be misread (empty, `-`, `.`, `..`) is one segment, its slashes escaped. A target
+  the workspace does not have, and a tab the page does not know, are not found. The header
+  is the target in full with the reader's pin, one muted line (its runs since it was first
+  seen, its last run, and its mode only where it sets its own) and Open on the system when
+  the system is a host name; the breadcrumb's third segment is the target.
+  - **Overview**: two cards, each one list, the few with a link to the many (its last
+    runs; the destinations it was denied in 14 days), beside a plain About column (the
+    system and path, when it was first seen and by which run, the same path elsewhere,
+    its runs a day, its machines and runtimes). A run that lands is counted, never
+    inserted, and comes in when asked.
+  - **Runs**: its latest runs, one line each, and all of them in the runs list.
+  - **Connections**: the connections page's content with the target fixed
+    (`ApiaryWeb.ConnectionLive.Index.fix_target/3`): its own path, no Target filter.
+  - **Policy**: the target's view of the policy (`ApiaryWeb.PolicyLive.Target`), its
+    effective list, history and document as views under the page's tabs. Its old paths,
+    `/policy/targets/:target_id/…`, send on here (`ApiaryWeb.TargetMovedController`).
+
+  A tab is its own mount; a tab another page's module answers is handed the page's
+  parameters, events and messages while it is open.
+- **Pins** are the person's own (`target_pins`): the ★ of a row and of the header, and the
+  sidebar's Pinned group.
 
 ## Widths
 
