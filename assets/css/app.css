@@ -6076,6 +6076,35 @@
   .q-targets .q-c-version .q-mono {
     font-size: 0.75rem;
   }
+  /* The history's rows: the version a change made is grey words, and a host in its
+     sentence is mono in the text colour; nothing boxed inside the row. */
+  .q-chg .q-vpill {
+    height: auto;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    color: var(--q-muted);
+  }
+  .q-chg .q-vpill > * {
+    padding-inline: 0;
+  }
+  .q-chg .q-vpill > * + * {
+    margin-left: 8px;
+    border-left: 0;
+  }
+  .q-chg .q-vpill-v {
+    font-weight: 500;
+  }
+  .q-chg .q-vpill-dg {
+    color: var(--q-faint);
+  }
+  .q-chg-say code.q-rule {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--color-base-content);
+    font-size: 0.78125rem;
+  }
 }
 
 /* ==== The overviews: the workspace's (`OverviewComponents`) and an organisation's ==========
