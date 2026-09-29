@@ -416,7 +416,7 @@ defmodule ApiaryWeb.PolicyComponents do
     ~H"""
     <.rich text={denied_sentence(@fact)} />
     <.link
-      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/connections?decision=denied&since=7d"}
+      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/network?decision=denied&since=7d"}
       class="q-link"
     >
       {gettext("See them")}
@@ -429,7 +429,7 @@ defmodule ApiaryWeb.PolicyComponents do
     <.rich text={uncovered_sentence(@fact, @following)} />
     {gettext("Enforce would deny them.")}
     <.link
-      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/connections?since=7d"}
+      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/network?since=7d"}
       class="q-link"
     >
       {gettext("See them")}

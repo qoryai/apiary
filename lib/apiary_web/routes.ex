@@ -257,9 +257,10 @@ defmodule ApiaryWeb.Routes do
           get "/:org/:workspace/jump", JumpController, :show
         end
 
-        # The paths of pages that moved under the settings, sent on to where they are now,
-        # so a link someone kept still lands. Before the pages, whose `/:org/:workspace`
-        # would take `/:org/members`.
+        # The paths of pages that moved, under the settings or to a new name, sent on to
+        # where they are now, so a link someone kept still lands. Before the pages, whose
+        # `/:org/:workspace` would take `/:org/members`. A target's Connections tab moved
+        # too; its page's glob sends that one on (`TargetLive.Show`).
         scope "/", ApiaryWeb do
           pipe_through [:path_scope, :browser]
 
@@ -267,6 +268,8 @@ defmodule ApiaryWeb.Routes do
           get "/:org/members/*rest", MovedController, :show
           get "/:org/:workspace/keys", MovedController, :show
           get "/:org/:workspace/keys/*rest", MovedController, :show
+          get "/:org/:workspace/connections", MovedController, :show
+          get "/:org/:workspace/runs/:run_id/connections", MovedController, :show
         end
 
         scope "/", ApiaryWeb do
@@ -306,10 +309,10 @@ defmodule ApiaryWeb.Routes do
 
             scope "/:org/:workspace" do
               live "/", WorkspaceLive.Overview, :index
-              # The record: the runs of the workspace, and where they reached out to.
-              # Every filter is a query parameter.
+              # The record: the runs of the workspace, and where they reached out to (Network
+              # access). Every filter is a query parameter.
               live "/runs", RunLive.Index, :index
-              live "/connections", ConnectionLive.Index, :index
+              live "/network", ConnectionLive.Index, :index
               # The targets the workspace's runs changed, and one target's page: its path
               # is the glob, its tabs follow a `-` segment (`…/-/runs`), and a tab's own
               # paths follow the tab (`…/-/policy/history`).
@@ -319,7 +322,7 @@ defmodule ApiaryWeb.Routes do
               # run's subject, the id the runner prints, not the row's id.
               live "/runs/:run_id", RunLive.Show, :timeline
               live "/runs/:run_id/terminal", RunLive.Show, :terminal
-              live "/runs/:run_id/connections", RunLive.Show, :connections
+              live "/runs/:run_id/network", RunLive.Show, :connections
               live "/runs/:run_id/details", RunLive.Show, :details
               # The security policy: the workspace's baseline; a target's view of it is
               # the Policy tab of the target's page. Tabs, filters, the opened change, the

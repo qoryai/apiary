@@ -34,7 +34,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
     "outcome" => "refused"
   }
 
-  defp open(conn, scope, rest \\ "/connections") do
+  defp open(conn, scope, rest \\ "/network") do
     {:ok, view, _html} = live(conn, workspace_path(scope, rest))
     render_async(view, 2_000)
     view
@@ -168,7 +168,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       scope: scope
     } do
       github = target(scope, "github.example")
-      view = open(conn, scope, "/connections?system=github.example&target=acme/shop")
+      view = open(conn, scope, "/network?system=github.example&target=acme/shop")
 
       assert has_element?(
                view,
@@ -288,7 +288,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       assert text(view, "button##{dst("files.cdn.example")}-act") == "Allow"
 
       # with repo set the rows are weighed against that target's policy, and it answers
-      view = open(conn, scope, "/connections?system=github.example&target=acme/shop")
+      view = open(conn, scope, "/network?system=github.example&target=acme/shop")
       assert text(view, "##{dst("files.cdn.example")}-act") == "Allow"
       refute has_element?(view, "##{dst("files.cdn.example")}-after")
     end

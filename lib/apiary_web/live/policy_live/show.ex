@@ -1072,9 +1072,9 @@ defmodule ApiaryWeb.PolicyLive.Show do
           <.button id="policy-first-rule" variant="primary" phx-click="composer_open">
             <.icon name="hero-plus-micro" class="size-4" />{gettext("Add a host rule")}
           </.button>
-          <.button navigate={
-            ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/connections"
-          }>{gettext("Go to Network access")}</.button>
+          <.button navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/network"}>{gettext(
+            "Go to Network access"
+          )}</.button>
         </:actions>
       </.empty_state>
       <p
@@ -1497,7 +1497,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
           <%= for part <- more_words(length(@would.destinations) - 8) do %>
             <.link
               :if={part == :link}
-              navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/connections?since=7d"}
+              navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/network?since=7d"}
               class="q-link"
             >
               {gettext("Network access page")}

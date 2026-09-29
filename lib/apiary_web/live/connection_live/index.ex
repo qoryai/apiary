@@ -484,7 +484,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
        own: [],
        policy_flush_scheduled: false,
        security: security,
-       page_base: %{path: ~p"/#{scope.organisation}/#{scope.workspace}/connections", fixed: nil}
+       page_base: %{path: ~p"/#{scope.organisation}/#{scope.workspace}/network", fixed: nil}
      )}
   end
 
@@ -1309,7 +1309,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   defp loose(%Filters{} = filters, %{fixed: _fixed}), do: %{filters | target: nil}
 
   defp run_path(scope, run),
-    do: ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/connections"
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/network"
 
   defp narrowed?(%Filters{} = f),
     do: f.decision != nil or f.target != nil or f.host != nil or f.tools or f.q != nil

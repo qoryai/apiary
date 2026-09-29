@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.TargetLive.ShowTest do
   @moduledoc """
   A target's page (`ApiaryWeb.TargetLive.Show`): its header and pin, the crumb, the tabs
-  by path, Overview, Runs, Connections with the target fixed, and what is not found.
+  by path, Overview, Runs, Network access with the target fixed, and what is not found.
   """
   use ApiaryWeb.ConnCase, async: true
 
@@ -69,7 +69,7 @@ defmodule ApiaryWeb.TargetLive.ShowTest do
 
     assert has_element?(
              view,
-             "#target-tab-connections[href='#{path}/-/connections']"
+             "#target-tab-connections[href='#{path}/-/network']"
            )
 
     assert page_title(view) =~ "github.example/acme/shop"
@@ -94,7 +94,7 @@ defmodule ApiaryWeb.TargetLive.ShowTest do
 
     assert has_element?(
              view,
-             "#target-denied-connections[href='#{path}/-/connections?decision=denied']"
+             "#target-denied-connections[href='#{path}/-/network?decision=denied']"
            )
 
     assert has_element?(view, "#target-about", "github.example")
@@ -171,11 +171,20 @@ defmodule ApiaryWeb.TargetLive.ShowTest do
     assert has_element?(view, "#breadcrumb a[href='#{path}']", "acme/shop")
   end
 
-  test "Connections: the workspace's connections of the target, the target fixed", %{
+  test "the tab's old path, Connections, sends on to Network access with the query, for good",
+       %{conn: conn, path: path} do
+    conn = get(conn, path <> "/-/connections?decision=denied&since=30d")
+    assert redirected_to(conn, 301) == path <> "/-/network?decision=denied&since=30d"
+
+    assert redirected_to(get(recycle(conn), path <> "/-/connections"), 301) ==
+             path <> "/-/network"
+  end
+
+  test "Network access: the workspace's Network access of the target, the target fixed", %{
     conn: conn,
     path: path
   } do
-    view = open(conn, path <> "/-/connections")
+    view = open(conn, path <> "/-/network")
 
     assert has_element?(view, "#target-tab-connections[aria-current=page]")
     assert has_element?(view, "#destinations", "files.cdn.example")
@@ -184,7 +193,7 @@ defmodule ApiaryWeb.TargetLive.ShowTest do
     refute has_element?(view, "#connections-token-target")
 
     view |> element("#connections-view-denied") |> render_click()
-    assert_patch(view, path <> "/-/connections?decision=denied")
+    assert_patch(view, path <> "/-/network?decision=denied")
     render_async(view, 2_000)
     assert has_element?(view, "#destinations", "files.cdn.example")
   end

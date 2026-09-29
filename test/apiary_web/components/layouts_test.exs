@@ -158,7 +158,7 @@ defmodule ApiaryWeb.LayoutsTest do
             [
               overview: workspace_path(scope),
               runs: workspace_path(scope, "/runs"),
-              network: workspace_path(scope, "/connections")
+              network: workspace_path(scope, "/network")
             ] ++ List.wrap(policy) ++ [settings: workspace_path(scope, "/settings")] do
         assert has_element?(view, "#sidebar a#nav-#{key}[href='#{href}']"), "#{key}"
       end

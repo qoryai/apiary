@@ -170,20 +170,24 @@ look alike are one level too many, and nothing is boxed inside a row.
   under the bar (`<.filter_tokens>`). Every choice is in the URL. No row of facet buttons;
   a rail never repeats a menu.
 
-### The runs list and the connections
+### The runs list and Network access
 
 A long record is narrowed by filters written in the URL, never folded into groups the
 reader has to open (the brief's principle 4). The runs list (`ApiaryWeb.RunLive.Index`)
-and the workspace's connections (`ApiaryWeb.ConnectionLive.Index`) are one flat list each,
-and `Apiary.Runs.Filters` reads and writes every control of them.
+and the workspace's Network access (`ApiaryWeb.ConnectionLive.Index`,
+`/:org/:workspace/network`: every destination the runs reached, what decided it, and the
+way to allow or deny it) are one flat list each, and `Apiary.Runs.Filters` reads and
+writes every control of them. The page was Connections: `/:org/:workspace/connections`
+and a run's `/runs/:run_id/connections` send on to the new paths with their query, moved
+permanently (`ApiaryWeb.MovedController`).
 
-- **Views** are the runs list's All, Alive, Ended badly and With denials, and the
-  connections' decisions, each counted under every other filter; All is current when no
+- **Views** are the runs list's All, Alive, Ended badly and With denials, and Network
+  access's decisions, each counted under every other filter; All is current when no
   other is. A view's own filter is not repeated as a token. The number that matches is a
   line over the list, only when the list is narrowed ("87 runs match").
 - **The search is a query** (`<.list_search live={false}>`, sent on Enter): qualifiers
   (`repo:`, `state:`, `task:`, `runtime:`, `host:`, `key:`, `started:>2026-09-01`,
-  `denied:yes`; `decision:`, `tools:`, `seen:` on the connections) become the URL's
+  `denied:yes`; `decision:`, `tools:`, `seen:` on Network access) become the URL's
   parameters and show as tokens, and the other words are the free text, `q`, matched as
   text without regard to case (a run's id, task or target; a destination's host or
   path). A word it cannot read is said in a notice, never dropped in silence.
@@ -260,8 +264,9 @@ reads are `Apiary.Targets`'s, the looks `ApiaryWeb.TargetComponents`'s).
   the rows it holds in place.
 - **A target's page** is `/:org/:workspace/targets/:system/*path`, its tabs after a `-`
   segment, GitLab's way (`target_path/4`): Overview at the bare path, then `…/-/runs`,
-  `…/-/connections` and, with `security`, `…/-/policy` with the policy's own paths after
-  it (`/history`, `/document`, `/versions/:n`, `/export`). A path with a segment that
+  `…/-/network` (once `…/-/connections`, which the page sends on with its query, moved
+  permanently) and, with `security`, `…/-/policy` with the policy's own paths after it
+  (`/history`, `/document`, `/versions/:n`, `/export`). A path with a segment that
   would be misread (empty, `-`, `.`, `..`) is one segment, its slashes escaped. A target
   the workspace does not have, and a tab the page does not know, are not found. The header
   is the target in full with the reader's pin, one muted line (its runs since it was first
@@ -273,7 +278,7 @@ reads are `Apiary.Targets`'s, the looks `ApiaryWeb.TargetComponents`'s).
     its runs a day, its machines and runtimes). A run that lands is counted, never
     inserted, and comes in when asked.
   - **Runs**: its latest runs, one line each, and all of them in the runs list.
-  - **Connections**: the connections page's content with the target fixed
+  - **Network access**: the Network access page's content with the target fixed
     (`ApiaryWeb.ConnectionLive.Index.fix_target/3`): its own path, no Target section,
     token or rail, and "New activity" leading the tab.
   - **Policy**: the target's view of the policy (`ApiaryWeb.PolicyLive.Target`), its
@@ -307,7 +312,7 @@ A page composes components; it does not write its own button, input, table, moda
 badge. The general ones are in `ApiaryWeb.CoreComponents` (`core_components.ex`); the
 ones a group of pages shares are beside them: `RunComponents` for the runs list (its
 Filter menu's sections, the rail, the pager, the runs table and the preview), the run page
-and the connections pages, `RunPageComponents` for the run page,
+and Network access, `RunPageComponents` for the run page,
 `PolicyComponents` and `OverviewComponents` for theirs, and `ApiaryWeb.RichText` for a
 translated sentence with markup in it. A look a second page needs becomes a component,
 or an attribute of one, not a copy.
@@ -420,7 +425,7 @@ the target's page, and `Run 0191f2a4`; the page has no breadcrumb of its own.
   started, how long it took and its denials, in red, which lead to its denied
   connections. At the right: Close run while the run may be closed, and a ⋯ menu (Copy
   run id, Raw log, Download log). The seven cells of v1 are the rail's.
-- **The tabs**, Timeline, Terminal, Connections and, below 1440 px, Details, stick under
+- **The tabs**, Timeline, Terminal, Network access and, below 1440 px, Details, stick under
   the top bar; each is a live action of the one LiveView, so a tab is a patch.
 - **The Details rail** is key and value lines under small headings (Run, Labels, Command,
   Record, Policy in force), no card and no chip; the run's labels are its own

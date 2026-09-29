@@ -1408,7 +1408,7 @@ defmodule ApiaryWeb.RunLive.Show do
     do: ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{id}/terminal?#{query}"
 
   defp tab_path(scope, %Run{run_id: id}, :connections, query),
-    do: ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{id}/connections?#{query}"
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{id}/network?#{query}"
 
   defp tab_path(scope, %Run{run_id: id}, :details, query),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{id}/details?#{query}"

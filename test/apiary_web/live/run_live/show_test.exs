@@ -57,7 +57,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       theirs = projected(scope_fixture(), record())
 
       for id <- [theirs.run_id, theirs.id, Ecto.UUID.generate(), "0191f2a4"],
-          path <- ["", "/terminal", "/connections", "/details"] do
+          path <- ["", "/terminal", "/network", "/details"] do
         {:ok, _lv, html} = live(conn, "#{workspace_path(scope)}/runs/#{id}#{path}")
         assert html =~ "This run is not in this workspace"
         assert html =~ "Back to runs"
@@ -100,7 +100,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
       assert has_element?(
                lv,
-               ~s(#run-denied[href="#{workspace_path(scope)}/runs/#{run.run_id}/connections?decision=denied"]),
+               ~s(#run-denied[href="#{workspace_path(scope)}/runs/#{run.run_id}/network?decision=denied"]),
                "2 denied"
              )
 
@@ -245,7 +245,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       run =
         projected(scope, [{1, "ping", %{"runner_version" => "0.10.0", "contract_version" => 1}}])
 
-      for path <- ["", "/terminal", "/connections"] do
+      for path <- ["", "/terminal", "/network"] do
         {:ok, _lv, html} = live(conn, "#{workspace_path(scope)}/runs/#{run.run_id}#{path}")
         assert html =~ "Ping only"
         assert html =~ "Waiting for the run to start"
@@ -929,7 +929,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       run = demo(scope, "session-with-subagents")
 
       {:ok, lv, html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/connections")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/network")
 
       assert html =~ "attempts to"
       assert html =~ "destinations"
@@ -972,7 +972,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
       assert_patch(
         lv,
-        ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/connections?decision=denied"
+        ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/network?decision=denied"
       )
 
       html = render(lv)
@@ -982,7 +982,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       {:ok, lv, _html} =
         live(
           conn,
-          ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/connections?decision=maybe"
+          ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/network?decision=maybe"
         )
 
       assert has_element?(lv, "#decision button[aria-pressed='true']", "All")
@@ -1019,7 +1019,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       end
 
       {:ok, _lv, html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/connections")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/network")
 
       assert hosts.(html) =~ ~r/second\.example.*first\.example/s
 
@@ -1027,7 +1027,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       project_more(run, [{4, "run.egress", denied.("first.example"), time: at.(30)}])
 
       {:ok, _lv, html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/connections")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/network")
 
       assert hosts.(html) =~ ~r/second\.example.*first\.example/s
     end
@@ -1039,7 +1039,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       run = projected(scope, tool_record())
 
       {:ok, lv, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/connections")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/network")
 
       %{rows: rows} = Apiary.Runs.Record.connections(scope, run)
       call = Enum.find(rows, &(&1.path == "/media/acme/shop/checkout.png"))
@@ -1080,7 +1080,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       run = projected(scope, [{1, "run.started", started_data()}])
 
       {:ok, _lv, html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/connections")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/network")
 
       assert html =~ "No connections recorded"
       assert html =~ "No connection went through the runner&#39;s proxy."
@@ -1227,7 +1227,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
     for {tab, path} <- [
           timeline: "",
           terminal: "/terminal",
-          connections: "/connections",
+          connections: "/network",
           details: "/details"
         ] do
       test "#{tab}: twenty projections read the same whatever the size of the run", %{
@@ -1447,7 +1447,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       run = projected(scope, events)
 
       {:ok, lv, html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/connections")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/network")
 
       assert html =~ "Showing 50 of 121."
 
@@ -1463,7 +1463,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
       assert_patch(
         lv,
-        ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/connections?page=2"
+        ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/network?page=2"
       )
 
       refute has_element?(lv, "#run-connections", "denied.example")
@@ -1471,7 +1471,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       {:ok, lv, html} =
         live(
           conn,
-          ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/connections?page=3"
+          ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/network?page=3"
         )
 
       assert html =~ "Showing 21 of 121."
@@ -1481,7 +1481,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       {:ok, lv, _html} =
         live(
           conn,
-          ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/connections?page=99&decision=denied"
+          ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/network?page=99&decision=denied"
         )
 
       assert has_element?(lv, "#decision button[aria-pressed='true']", "Denied")

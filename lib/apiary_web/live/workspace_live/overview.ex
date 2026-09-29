@@ -1293,7 +1293,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
         %{
           count: count,
           navigate:
-            ~p"/#{scope.organisation}/#{scope.workspace}/connections?#{%{"decision" => "denied"}}",
+            ~p"/#{scope.organisation}/#{scope.workspace}/network?#{%{"decision" => "denied"}}",
           title:
             ngettext(
               "%{number} more item, on the Network access page",

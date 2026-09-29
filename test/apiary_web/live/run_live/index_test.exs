@@ -1097,7 +1097,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
     } do
       # A page of the workspace that does not follow the runs itself; a page of settings
       # lists the settings in the sidebar, and has no Runs entry to count beside.
-      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/connections")
+      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/network")
       refute has_element?(view, "#nav-runs-alive")
 
       run = started_run(scope, shop(), ago: 5)

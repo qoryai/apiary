@@ -121,7 +121,7 @@ defmodule ApiaryWeb.OverviewComponents do
             )
           }
           navigate={
-            ~p"/#{@scope.organisation}/#{@scope.workspace}/connections?#{%{"decision" => "denied", "since" => "30d"}}"
+            ~p"/#{@scope.organisation}/#{@scope.workspace}/network?#{%{"decision" => "denied", "since" => "30d"}}"
           }
           short={
             ngettext("Denied, %{number} day", "Denied, %{number} days", @days,

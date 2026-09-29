@@ -127,7 +127,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
 
   defp connections(conn, scope, run) do
     {:ok, view, _html} =
-      live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/connections")
+      live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/network")
 
     view
   end

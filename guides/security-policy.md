@@ -179,9 +179,10 @@ policy applied event, which the run's timeline shows as "Policy applied again" w
 hosts added and removed, and a tunnel open to a host the new policy denies is closed and
 recorded as refused.
 
-The record is not rewritten. A rule added from a connection's row, **Allow** or **Deny**
-on a run's Connections tab or on `/:org/:workspace/connections`, changes what happens
-next; what the record already says stays as it was.
+The record is not rewritten. A rule added from a destination's row, **Allow** or **Deny**
+on a run's **Network access** tab or on the workspace's Network access page,
+`/:org/:workspace/network`, changes what happens next; what the record already says stays
+as it was.
 
 ## Tool invocations
 
@@ -223,10 +224,10 @@ Wherever a connection is shown, a tool invocation reads as a call to its tool:
 - The run's policy applied item and the policy in force on its Details tab list the tools,
   each with its argument beside its name when the policy passed one, and the hosts each
   serves.
-- On `/:org/:workspace/connections`, **Tool invocations** keeps only the destinations
-  where a run's last attempt was a tool invocation, each whole: its counts are the same as
-  without the filter. A destination where every run's last attempt was refused is not
-  among them.
+- On Network access, `/:org/:workspace/network`, **Tool invocations** keeps only the
+  destinations where a run's last attempt was a tool invocation, each whole: its counts
+  are the same as without the filter. A destination where every run's last attempt was
+  refused is not among them.
 - The list of what enforce would start denying and the overview's denied destinations
   name a destination's tool, first, whenever a request to it named one, handed to the
   tool or refused by a path rule: a refused request to a tool is a denied request to

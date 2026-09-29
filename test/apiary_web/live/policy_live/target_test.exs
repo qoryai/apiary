@@ -121,7 +121,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     # The target's page holds the tab: its runs and connections are its other tabs.
     assert has_element?(view, "#target-tab-policy[aria-current=page]")
     assert has_element?(view, "#target-tab-runs[href$='/acme/shop/-/runs']")
-    assert has_element?(view, "#target-tab-connections[href$='/acme/shop/-/connections']")
+    assert has_element?(view, "#target-tab-connections[href$='/acme/shop/-/network']")
   end
 
   test "disable here, then restore: the beaten rule hangs under the rule that beat it",

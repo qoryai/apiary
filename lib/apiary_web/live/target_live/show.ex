@@ -3,10 +3,11 @@ defmodule ApiaryWeb.TargetLive.Show do
   One target's page, GitHub's repository page in the target's words:
   `/:org/:workspace/targets/:system/*path`, the path the glob, its tabs after a `-`
   segment (`ApiaryWeb.TargetComponents.target_path/4`). Overview is the bare path, then
-  Runs (`…/-/runs`), Connections (`…/-/connections`) and, where the reader may read the
+  Runs (`…/-/runs`), Network access (`…/-/network`) and, where the reader may read the
   security policy, Policy (`…/-/policy`, with its own paths after it). A target is looked
   up by its system and path in the scope's workspace; one the workspace does not have, and
-  a tab the page does not know, is not found.
+  a tab the page does not know, is not found. The tab Network access was once Connections:
+  `…/-/connections` is sent on to `…/-/network` with its query, moved permanently.
 
   The header names the target in full, `system/path`, with the reader's pin, one muted
   line (how many runs since it was first seen, its last run, and its policy mode only
@@ -17,7 +18,7 @@ defmodule ApiaryWeb.TargetLive.Show do
     days, one line each, the few with a link to the many; beside them, as plain text, what
     it is, the same path in other systems, its runs a day, its machines and runtimes.
   - **Runs**: its latest runs, one line each, and a link to all of them in the runs list.
-  - **Connections**: the workspace's connections page with the target fixed
+  - **Network access**: the workspace's Network access page with the target fixed
     (`ApiaryWeb.ConnectionLive.Index`, `fix_target/3`).
   - **Policy**: the target's view of the policy (`ApiaryWeb.PolicyLive.Target`).
 
@@ -42,8 +43,15 @@ defmodule ApiaryWeb.TargetLive.Show do
 
   @impl true
   def mount(%{"system" => system, "path" => glob}, session, socket) do
+    case parse_glob(glob) do
+      # The tab's old name: nothing is read; `handle_params/3` sends it on with its query.
+      {_path, ["connections"]} -> {:ok, assign(socket, :tab, :moved)}
+      {path, rest} -> mount_target(socket, system, path, rest, session)
+    end
+  end
+
+  defp mount_target(socket, system, path, rest, session) do
     scope = socket.assigns.current_scope
-    {path, rest} = parse_glob(glob)
 
     security =
       Features.on?(scope, :security) and
@@ -72,7 +80,7 @@ defmodule ApiaryWeb.TargetLive.Show do
   # The tab the segments after `-` name, with what it needs of them.
   defp tab([], _security), do: {:ok, {:overview}}
   defp tab(["runs"], _security), do: {:ok, {:runs}}
-  defp tab(["connections"], _security), do: {:ok, {:connections}}
+  defp tab(["network"], _security), do: {:ok, {:connections}}
   defp tab(["policy" | rest], true), do: policy_action(rest)
   defp tab(_rest, _security), do: :error
 
@@ -107,7 +115,7 @@ defmodule ApiaryWeb.TargetLive.Show do
     socket
     |> assign(:target, target)
     |> ConnectionLive.Index.fix_target(
-      target_path(scope, target.system, target.path, ["connections"]),
+      target_path(scope, target.system, target.path, ["network"]),
       {target.system, target.path}
     )
     |> assign(:page_title, gettext("Network access · %{target}", target: name(target)))
@@ -126,6 +134,12 @@ defmodule ApiaryWeb.TargetLive.Show do
   end
 
   @impl true
+  def handle_params(_params, uri, %{assigns: %{tab: :moved}} = socket) do
+    %URI{path: path, query: query} = URI.parse(uri)
+    to = String.replace_suffix(path, "/-/connections", "/-/network")
+    {:noreply, redirect(socket, to: if(query, do: to <> "?" <> query, else: to), status: 301)}
+  end
+
   def handle_params(%{"system" => system, "path" => glob}, uri, socket) do
     %{target: target, tab: current} = socket.assigns
     {path, rest} = parse_glob(glob)
@@ -317,7 +331,7 @@ defmodule ApiaryWeb.TargetLive.Show do
         </:tab>
         <:tab
           id="target-tab-connections"
-          navigate={page_path(@current_scope, @target, ["connections"])}
+          navigate={page_path(@current_scope, @target, ["network"])}
           current={@tab == :connections}
           icon="hero-arrows-right-left-micro"
         >
@@ -481,7 +495,7 @@ defmodule ApiaryWeb.TargetLive.Show do
             <span class="grow"></span>
             <.link
               id="target-denied-connections"
-              navigate={page_path(@scope, @target, ["connections"]) <> "?decision=denied"}
+              navigate={page_path(@scope, @target, ["network"]) <> "?decision=denied"}
               class="q-tgt-more"
             >
               {gettext("Network access")}<.icon name="hero-arrow-right-micro" class="size-3.5" />

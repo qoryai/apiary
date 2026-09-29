@@ -204,7 +204,7 @@ also written to `.qory/runs/<id>/` in the directory, whatever the server does.
 
 Open **Runs** in the sidebar, `http://localhost:4100/<organisation>/main/runs`. The run is
 there with its state, runtime, host, start and duration; select it for its timeline,
-terminal, connections and details. The `hello` directory has no origin remote, so the run
+terminal, network access and details. The `hello` directory has no origin remote, so the run
 names no repository: the repositories beside the list count it under **Unassigned**. A
 run started in a checkout with an origin remote names that repository, and choosing the
 repository there, or typing `repo:` and its path in the filter, lists its runs alone.

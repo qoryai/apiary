@@ -112,7 +112,7 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
       run: run
     } do
       {:ok, lv, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/connections")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/network")
 
       html = render(lv)
       refute_policy(html)
@@ -144,7 +144,7 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
 
     test "a crafted Allow or Deny writes nothing", %{conn: conn, scope: scope, run: run} do
       {:ok, lv, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/connections")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/network")
 
       %{rows: rows} = Record.connections(scope, run)
       refused = Enum.find(rows, &(&1.path == "/media/acme/other/checkout.png"))
@@ -228,7 +228,7 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
       conn: conn,
       scope: scope
     } do
-      view = open(conn, ~p"/#{scope.organisation}/#{scope.workspace}/connections")
+      view = open(conn, ~p"/#{scope.organisation}/#{scope.workspace}/network")
       refute_policy(render(view))
 
       cdn = dst("files.cdn.example")
@@ -251,7 +251,7 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
       view =
         open(
           conn,
-          ~p"/#{scope.organisation}/#{scope.workspace}/connections?#{Filters.target_params("github.example", "acme/shop")}"
+          ~p"/#{scope.organisation}/#{scope.workspace}/network?#{Filters.target_params("github.example", "acme/shop")}"
         )
 
       refute_policy(render(view))
@@ -260,7 +260,7 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
     end
 
     test "a crafted Allow or Deny writes nothing", %{conn: conn, scope: scope} do
-      view = open(conn, ~p"/#{scope.organisation}/#{scope.workspace}/connections")
+      view = open(conn, ~p"/#{scope.organisation}/#{scope.workspace}/network")
       values = %{"host" => "files.cdn.example", "port" => "443", "path" => ""}
 
       for action <- ~w(allow deny) do

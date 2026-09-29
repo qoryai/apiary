@@ -85,7 +85,7 @@ defmodule ApiaryWeb.Layouts do
         key: :network,
         label: gettext("Network access"),
         icon: "hero-globe-alt-micro",
-        path: fn organisation, workspace -> ~p"/#{organisation}/#{workspace}/connections" end,
+        path: fn organisation, workspace -> ~p"/#{organisation}/#{workspace}/network" end,
         action: :"run.read"
       },
       %Entry{

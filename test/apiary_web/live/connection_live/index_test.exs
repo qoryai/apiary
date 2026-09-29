@@ -18,7 +18,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
   }
   @registry %{"host" => "registry.example", "rule" => "registry.example"}
 
-  defp open(conn, %{workspace: _} = scope), do: open(conn, workspace_path(scope, "/connections"))
+  defp open(conn, %{workspace: _} = scope), do: open(conn, workspace_path(scope, "/network"))
 
   defp open(conn, path) do
     {:ok, view, _html} = live(conn, path)
@@ -48,7 +48,23 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
 
   test "requires sign-in", %{scope: scope} do
     assert {:error, {:redirect, %{to: "/users/log-in"}}} =
-             live(build_conn(), ~p"/#{scope.organisation}/#{scope.workspace}/connections")
+             live(build_conn(), ~p"/#{scope.organisation}/#{scope.workspace}/network")
+  end
+
+  test "the page's old paths, the workspace's and a run's, send on here with the query, for good",
+       %{conn: conn, scope: scope} do
+    org = scope.organisation
+    ws = scope.workspace
+
+    for {old, new} <- [
+          {~p"/#{org}/#{ws}/connections", ~p"/#{org}/#{ws}/network"},
+          {~p"/#{org}/#{ws}/connections?decision=denied&since=30d",
+           ~p"/#{org}/#{ws}/network?decision=denied&since=30d"},
+          {~p"/#{org}/#{ws}/runs/r-1/connections?decision=denied",
+           ~p"/#{org}/#{ws}/runs/r-1/network?decision=denied"}
+        ] do
+      assert redirected_to(get(conn, old), 301) == new
+    end
   end
 
   describe "empty and loading states" do
@@ -64,7 +80,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
     end
 
     test "the first render is the table's skeleton", %{conn: conn, scope: scope} do
-      {:ok, view, html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/connections")
+      {:ok, view, html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/network")
       assert html =~ "connections-loading"
       render_async(view, 2_000)
       refute has_element?(view, "#connections-loading")
@@ -72,10 +88,10 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
 
     test "filters that match nothing can be cleared", %{conn: conn, scope: scope} do
       started_run(scope, shop(), egress: [@registry])
-      view = open(conn, ~p"/#{scope.organisation}/#{scope.workspace}/connections?decision=denied")
+      view = open(conn, ~p"/#{scope.organisation}/#{scope.workspace}/network?decision=denied")
       assert has_element?(view, "h2", "No connections match these filters")
       view |> element("#connections-clear") |> render_click()
-      assert_patch(view, ~p"/#{scope.organisation}/#{scope.workspace}/connections")
+      assert_patch(view, ~p"/#{scope.organisation}/#{scope.workspace}/network")
     end
   end
 
@@ -138,7 +154,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       refute has_element?(view, "#connections-tools-form input[name=tools][checked]")
 
       view |> form("#connections-tools-form") |> render_change(%{"tools" => "1"})
-      assert_patch(view, ~p"/#{scope.organisation}/#{scope.workspace}/connections?tools=1")
+      assert_patch(view, ~p"/#{scope.organisation}/#{scope.workspace}/network?tools=1")
       render_async(view, 2_000)
 
       assert has_element?(view, "#connections-tools-form input[name=tools][checked]")
@@ -157,7 +173,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
              )
 
       view |> element("#connections-token-tools a") |> render_click()
-      assert_patch(view, ~p"/#{scope.organisation}/#{scope.workspace}/connections")
+      assert_patch(view, ~p"/#{scope.organisation}/#{scope.workspace}/network")
     end
   end
 
@@ -245,7 +261,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
 
       assert has_element?(
                view,
-               "##{id}-run-#{a.run_id}[href='#{workspace_path(scope)}/runs/#{a.run_id}/connections']"
+               "##{id}-run-#{a.run_id}[href='#{workspace_path(scope)}/runs/#{a.run_id}/network']"
              )
 
       view |> element("##{id}-toggle") |> render_click()
@@ -311,7 +327,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       view =
         open(
           conn,
-          ~p"/#{scope.organisation}/#{scope.workspace}/connections?system=gitlab.example&target=acme/shop"
+          ~p"/#{scope.organisation}/#{scope.workspace}/network?system=gitlab.example&target=acme/shop"
         )
 
       assert text(view, "#connections-target-note") == target_note("gitlab.example/acme/shop")
@@ -327,7 +343,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
 
       assert_patch(
         view,
-        ~p"/#{scope.organisation}/#{scope.workspace}/connections?#{%{"decision" => "allowed", "system" => "gitlab.example", "target" => "acme/shop"}}"
+        ~p"/#{scope.organisation}/#{scope.workspace}/network?#{%{"decision" => "allowed", "system" => "gitlab.example", "target" => "acme/shop"}}"
       )
 
       render_async(view, 2_000)
@@ -337,7 +353,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
 
       assert_patch(
         view,
-        ~p"/#{scope.organisation}/#{scope.workspace}/connections?decision=allowed"
+        ~p"/#{scope.organisation}/#{scope.workspace}/network?decision=allowed"
       )
 
       render_async(view, 2_000)
@@ -347,7 +363,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
 
       assert_patch(
         view,
-        ~p"/#{scope.organisation}/#{scope.workspace}/connections?decision=allowed&host=registry.example"
+        ~p"/#{scope.organisation}/#{scope.workspace}/network?decision=allowed&host=registry.example"
       )
 
       view
@@ -356,7 +372,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
 
       assert_patch(
         view,
-        ~p"/#{scope.organisation}/#{scope.workspace}/connections?decision=allowed&host=registry.example&since=1h"
+        ~p"/#{scope.organisation}/#{scope.workspace}/network?decision=allowed&host=registry.example&since=1h"
       )
     end
 
@@ -371,7 +387,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
 
       assert_patch(
         view,
-        ~p"/#{scope.organisation}/#{scope.workspace}/connections?#{%{"system" => "git.example:8443", "target" => "acme/shop"}}"
+        ~p"/#{scope.organisation}/#{scope.workspace}/network?#{%{"system" => "git.example:8443", "target" => "acme/shop"}}"
       )
 
       render_async(view, 2_000)
@@ -393,13 +409,13 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       |> form("#filter-since-form")
       |> render_change(%{"since" => "90d", "_target" => ["since"]})
 
-      assert_patch(view, ~p"/#{scope.organisation}/#{scope.workspace}/connections?since=90d")
+      assert_patch(view, ~p"/#{scope.organisation}/#{scope.workspace}/network?since=90d")
       render_async(view, 2_000)
       assert text(view, "#connections-token-started") =~ "seen: 90d"
       assert text(view, "#connections-filter-value-since") == "last 90 days"
 
       view |> element("#connections-token-started a") |> render_click()
-      assert_patch(view, ~p"/#{scope.organisation}/#{scope.workspace}/connections")
+      assert_patch(view, ~p"/#{scope.organisation}/#{scope.workspace}/network")
     end
 
     test "the query, the rail and the order are the page's controls", %{
@@ -413,7 +429,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
 
       assert_patch(
         view,
-        ~p"/#{scope.organisation}/#{scope.workspace}/connections?decision=denied&q=cdn"
+        ~p"/#{scope.organisation}/#{scope.workspace}/network?decision=denied&q=cdn"
       )
 
       render_async(view, 2_000)
@@ -429,14 +445,14 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
 
       assert_patch(
         view,
-        ~p"/#{scope.organisation}/#{scope.workspace}/connections?#{%{"system" => "gitlab.example", "target" => "acme/shop"}}"
+        ~p"/#{scope.organisation}/#{scope.workspace}/network?#{%{"system" => "gitlab.example", "target" => "acme/shop"}}"
       )
 
       view |> element("#connections-sort-runs") |> render_click()
 
       assert_patch(
         view,
-        ~p"/#{scope.organisation}/#{scope.workspace}/connections?#{%{"sort" => "runs", "system" => "gitlab.example", "target" => "acme/shop"}}"
+        ~p"/#{scope.organisation}/#{scope.workspace}/network?#{%{"sort" => "runs", "system" => "gitlab.example", "target" => "acme/shop"}}"
       )
     end
 
@@ -455,10 +471,10 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       assert {:error, {:live_redirect, %{to: to}}} =
                live(
                  conn,
-                 ~p"/#{scope.organisation}/#{scope.workspace}/connections?decision=denied&state=failed&group=task&x=1"
+                 ~p"/#{scope.organisation}/#{scope.workspace}/network?decision=denied&state=failed&group=task&x=1"
                )
 
-      assert to == ~p"/#{scope.organisation}/#{scope.workspace}/connections?decision=denied"
+      assert to == ~p"/#{scope.organisation}/#{scope.workspace}/network?decision=denied"
     end
 
     test "while batches land nothing moves; the reader asks again, and what was open stays open",
