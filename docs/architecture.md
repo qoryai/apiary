@@ -52,10 +52,10 @@ The web side is under `lib/apiary_web/`:
   `RunConfigurationController` for the run configuration. Each of them refuses a
   contract revision it does not serve through `ContractVersion`.
 - `live/`: the pages behind sign-in, one directory per area (`workspace_live`,
-  `run_live`, `target_live`, `connection_live`, `policy_live`, `member_live`, `access_key_live`,
-  `invitation_live`, and `user_live`, a person's own pages, their account and their
-  organisations), `settings_live.ex`, the organisation's settings, `activity_live.ex`,
-  the organisation's audit trail, whose words for each action are
+  `run_live`, `target_live`, `connection_live`, `policy_live`, `member_live`,
+  `access_key_live`, `invitation_live`, and `user_live`, a person's own pages, their
+  account and their organisations), `settings_live.ex`, the organisation's settings,
+  `activity_live.ex`, the organisation's audit trail, whose words for each action are
   `ApiaryWeb.Activity.Describer`'s, the edition's first, then the core's, and
   `organisation_live.ex`, the organisation's own path, which sends on to a workspace or
   says the person reaches none yet.
