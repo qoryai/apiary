@@ -588,7 +588,9 @@ defmodule ApiaryWeb.OverviewComponents do
           <.link
             role="menuitem"
             navigate={
-              ~p"/#{@scope.organisation}/#{@scope.workspace}/policy/targets/#{@target.id}?#{%{"rule" => @item.host}}"
+              ApiaryWeb.TargetComponents.target_path(@scope, @target.system, @target.path, [
+                "policy"
+              ]) <> "?" <> URI.encode_query(%{"rule" => @item.host})
             }
           >
             {gettext("Allow with paths…")}
@@ -1729,7 +1731,9 @@ defmodule ApiaryWeb.OverviewComponents do
 
     ~H"""
     <.link
-      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/policy/targets/#{@target.id}"}
+      navigate={
+        ApiaryWeb.TargetComponents.target_path(@scope, @target.system, @target.path, ["policy"])
+      }
       class="q-link font-mono text-[12.5px]"
     >{@target.system}/{@target.path}</.link>
     """

@@ -33,7 +33,6 @@ defmodule ApiaryWeb.JumpController do
   use ApiaryWeb.Features, :observability
 
   alias Apiary.{Access, Organisations, Runs}
-  alias Apiary.Runs.Filters
   alias ApiaryWeb.Layouts
   alias ApiaryWeb.Nav.Entry
 
@@ -100,12 +99,10 @@ defmodule ApiaryWeb.JumpController do
     items =
       if Access.can?(scope, :"run.read", workspace) do
         for target <- Runs.search_targets(scope, text, @per_group) do
-          query = Filters.target_params(target.system, target.path)
-
           item(
             target.path,
             target.system,
-            ~p"/#{scope.organisation}/#{workspace}/runs?#{query}",
+            ApiaryWeb.TargetComponents.target_path(scope, target.system, target.path),
             "hero-folder-micro"
           )
         end

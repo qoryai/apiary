@@ -1285,7 +1285,9 @@ defmodule ApiaryWeb.PolicyLive.Show do
             <tr :for={row <- @shown} id={"target-#{row.id}"} role="row" class="q-target-row">
               <td role="cell" class="q-c-target">
                 <.link
-                  navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/policy/targets/#{row.id}"}
+                  navigate={
+                    ApiaryWeb.TargetComponents.target_path(@scope, row.system, row.path, ["policy"])
+                  }
                   class="q-target-name q-rowlink"
                 >
                   <span class="q-target-system">{row.system}/</span><span class="q-target-path">{row.path}</span>
@@ -1352,7 +1354,11 @@ defmodule ApiaryWeb.PolicyLive.Show do
                         do:
                           ~p"/#{@scope.organisation}/#{@scope.workspace}/policy/versions/#{row.detail.version.version}",
                         else:
-                          ~p"/#{@scope.organisation}/#{@scope.workspace}/policy/targets/#{row.id}/versions/#{row.detail.version.version}"
+                          ApiaryWeb.TargetComponents.target_path(@scope, row.system, row.path, [
+                            "policy",
+                            "versions",
+                            to_string(row.detail.version.version)
+                          ])
                     }
                   />
                   <span :if={!row.detail.version} class="text-faint font-sans text-[13px]">

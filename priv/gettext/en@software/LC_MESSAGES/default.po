@@ -73,7 +73,13 @@ msgstr ""
 msgid "%{added} added, %{removed} removed; denies %{deny_added} more and %{deny_removed} fewer."
 msgstr ""
 
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "%{attempts} in %{runs}"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/show.ex
+#: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "%{attempts} to %{destinations}"
 msgstr ""
@@ -156,6 +162,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{filter}: %{value}, change"
+msgstr ""
+
+#: lib/apiary_web/live/target_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{first}–%{last} of %{total}"
 msgstr ""
 
 #: lib/apiary/runs/filters.ex
@@ -528,6 +539,7 @@ msgstr[1] ""
 #: lib/apiary_web/live/policy_live/show.ex
 #: lib/apiary_web/live/policy_live/target.ex
 #: lib/apiary_web/live/run_live/show.ex
+#: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} attempt"
 msgid_plural "%{number} attempts"
@@ -593,9 +605,18 @@ msgstr[0] ""
 msgstr[1] ""
 
 #: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/components/target_components.ex
+#: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} denied attempt"
 msgid_plural "%{number} denied attempts"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/target_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} denied attempt in the last 7 days"
+msgid_plural "%{number} denied attempts in the last 7 days"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -604,6 +625,7 @@ msgstr[1] ""
 #: lib/apiary_web/live/policy_live/show.ex
 #: lib/apiary_web/live/policy_live/target.ex
 #: lib/apiary_web/live/run_live/show.ex
+#: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} destination"
 msgid_plural "%{number} destinations"
@@ -848,6 +870,7 @@ msgstr[1] ""
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/run_live/index.ex
+#: lib/apiary_web/live/target_live/show.ex
 #: lib/apiary_web/live/workspace_live/overview.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} new run"
@@ -917,6 +940,7 @@ msgstr[1] ""
 #: lib/apiary_web/live/policy_live/target.ex
 #: lib/apiary_web/live/run_live/index.ex
 #: lib/apiary_web/live/settings_live.ex
+#: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} run"
 msgid_plural "%{number} runs"
@@ -948,6 +972,13 @@ msgstr[1] ""
 #, elixir-autogen, elixir-format
 msgid "%{number} run reached this destination"
 msgid_plural "%{number} runs reached this destination"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} run since %{date}"
+msgid_plural "%{number} runs since %{date}"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -1013,6 +1044,13 @@ msgid "%{number} target has posted runs"
 msgid_plural "%{number} targets have posted runs"
 msgstr[0] "%{number} repository has posted runs"
 msgstr[1] "%{number} repositories have posted runs"
+
+#: lib/apiary_web/live/target_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} target matches"
+msgid_plural "%{number} targets match"
+msgstr[0] "%{number} repository matches"
+msgstr[1] "%{number} repositories match"
 
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
@@ -1168,6 +1206,16 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "%{path} on %{host} is no longer allowed for this target."
 msgstr "%{path} on %{host} is no longer allowed for this repository."
+
+#: lib/apiary_web/live/target_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{percent}%"
+msgstr ""
+
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "%{percent}% ended well"
+msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
@@ -1726,6 +1774,11 @@ msgstr "A repository follows it unless an owner or an admin sets a mode of its o
 msgid "A target follows it unless an owner or an admin sets a mode of its own: none does."
 msgstr "A repository follows it unless an owner or an admin sets a mode of its own: none does."
 
+#: lib/apiary_web/live/target_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "A target is listed here once a run of this workspace names it."
+msgstr "A repository is listed here once a run of this workspace names it."
+
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "A target that sets its own mode does not change. The rules stay as they are, locked ones too: a deny holds in either mode."
@@ -1758,10 +1811,20 @@ msgstr ""
 msgid "A+"
 msgstr ""
 
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "About"
+msgstr ""
+
 #: lib/apiary_web/live/organisation_live.ex
 #, elixir-autogen, elixir-format
 msgid "About the organisation"
 msgstr ""
+
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "About this target"
+msgstr "About this repository"
 
 #: lib/apiary_web/live/invitation_live/accept.ex
 #, elixir-autogen, elixir-format
@@ -1860,8 +1923,14 @@ msgstr ""
 msgid "Active"
 msgstr ""
 
+#: lib/apiary_web/live/target_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Active this week"
+msgstr ""
+
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/live/activity_live.ex
+#: lib/apiary_web/live/target_live/index.ex
 #: lib/apiary_web/live/workspace_live/overview.ex
 #, elixir-autogen, elixir-format
 msgid "Activity"
@@ -1977,9 +2046,24 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/show.ex
 #: lib/apiary_web/live/policy_live/target.ex
 #: lib/apiary_web/live/run_live/show.ex
+#: lib/apiary_web/live/target_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "All"
 msgstr ""
+
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "All %{number} run"
+msgid_plural "All %{number} runs"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "All %{number} run in the runs list"
+msgid_plural "All %{number} runs in the runs list"
+msgstr[0] ""
+msgstr[1] ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
@@ -2290,7 +2374,6 @@ msgid "Back to Qory Apiary"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
-#: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
 msgid "Back to policy"
 msgstr ""
@@ -2331,7 +2414,6 @@ msgid "Between the two modes; Space asks to switch"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
-#: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
 msgid "Breadcrumb"
 msgstr ""
@@ -2504,6 +2586,7 @@ msgid "Choose a target"
 msgstr "Choose a repository"
 
 #: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/live/target_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Clear"
 msgstr ""
@@ -2517,6 +2600,11 @@ msgstr ""
 #: lib/apiary_web/live/activity_live.ex
 #, elixir-autogen, elixir-format
 msgid "Clear the filters to see every change."
+msgstr ""
+
+#: lib/apiary_web/live/target_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Clear the search"
 msgstr ""
 
 #: lib/apiary_web/components/core_components.ex
@@ -2670,9 +2758,9 @@ msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/live/connection_live/index.ex
-#: lib/apiary_web/live/policy_live/target.ex
 #: lib/apiary_web/live/run_live/index.ex
 #: lib/apiary_web/live/run_live/show.ex
+#: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Connections"
 msgstr ""
@@ -2695,6 +2783,11 @@ msgstr ""
 #: lib/apiary_web/live/connection_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Connections of this workspace"
+msgstr ""
+
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Connections · %{target}"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -3050,8 +3143,10 @@ msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/components/target_components.ex
 #: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/run_live/show.ex
+#: lib/apiary_web/live/target_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Denied"
 msgstr ""
@@ -3086,6 +3181,11 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Denied attempts"
+msgstr ""
+
+#: lib/apiary_web/live/target_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Denied attempts in the last 7 days"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -3143,6 +3243,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Denied hosts"
+msgstr ""
+
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Denied, 14 days"
 msgstr ""
 
 #: lib/apiary_web/live/organisation_live.ex
@@ -3357,6 +3462,7 @@ msgid "Download the raw bytes"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/components/target_components.ex
 #: lib/apiary_web/live/run_live/index.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
@@ -3433,6 +3539,7 @@ msgstr ""
 
 #: lib/apiary/runs/filters.ex
 #: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/live/target_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Ended well"
 msgstr ""
@@ -3483,6 +3590,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Enforce: a connection no rule allows is denied. Observe: it is let through and recorded. A deny rule holds in either mode."
+msgstr ""
+
+#: lib/apiary_web/live/target_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Enforces on its own"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -3585,6 +3697,11 @@ msgstr ""
 msgid "Every target follows it."
 msgstr "Every repository follows it."
 
+#: lib/apiary_web/live/target_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Every target has run"
+msgstr "Every repository has run"
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Every target of %{workspace}."
@@ -3647,6 +3764,11 @@ msgstr ""
 msgid "Failed."
 msgstr ""
 
+#: lib/apiary_web/live/target_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Filter"
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Filter by %{filter}"
@@ -3662,6 +3784,16 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Find a %{filter}"
 msgstr ""
+
+#: lib/apiary_web/live/target_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Find a target"
+msgstr "Find a repository"
+
+#: lib/apiary_web/live/target_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Find a target, e.g. %{example}"
+msgstr "Find a repository, e.g. %{example}"
 
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
@@ -3682,6 +3814,16 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "First render"
+msgstr ""
+
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "First seen"
+msgstr ""
+
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "First seen %{date}, no run in the record"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -3718,6 +3860,11 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Following"
+msgstr ""
+
+#: lib/apiary_web/live/target_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Follows the workspace"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -3961,6 +4108,7 @@ msgstr "Holds against this repository's rule"
 
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/policy_components.ex
+#: lib/apiary_web/components/target_components.ex
 #: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/run_live/index.ex
 #: lib/apiary_web/live/run_live/show.ex
@@ -4072,11 +4220,6 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "In the composer, save the rule once it reads back"
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/target.ex
-#, elixir-autogen, elixir-format
-msgid "In the last 7 days"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -4468,11 +4611,13 @@ msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/organisation_live.ex
+#: lib/apiary_web/live/target_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Last run"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Last runs"
 msgstr ""
@@ -4786,6 +4931,11 @@ msgstr ""
 msgid "Lost. Last heard %{when}. The run never posted its exit."
 msgstr ""
 
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Machines"
+msgstr ""
+
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Machines use their own policy until the first change here."
@@ -4917,8 +5067,29 @@ msgstr ""
 msgid "More ways to allow %{host}"
 msgstr ""
 
+#: lib/apiary_web/live/target_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Most denials"
+msgstr ""
+
+#: lib/apiary_web/live/target_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Most denials in 7 days"
+msgstr ""
+
+#: lib/apiary_web/live/target_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Most runs"
+msgstr ""
+
+#: lib/apiary_web/live/target_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Most runs in 14 days"
+msgstr ""
+
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/live/settings_live.ex
+#: lib/apiary_web/live/target_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Name"
 msgstr ""
@@ -4937,6 +5108,11 @@ msgstr ""
 #: lib/apiary_web/live/access_key_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Never posted"
+msgstr ""
+
+#: lib/apiary_web/live/target_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Never ran"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -4994,6 +5170,7 @@ msgstr ""
 #: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/run_live/index.ex
 #: lib/apiary_web/live/run_live/show.ex
+#: lib/apiary_web/live/target_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Next"
 msgstr ""
@@ -5254,15 +5431,41 @@ msgstr ""
 msgid "No run has tried to reach it in the last 7 days."
 msgstr ""
 
+#: lib/apiary_web/live/target_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No run in 30 days"
+msgstr ""
+
+#: lib/apiary_web/live/target_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No run in 90 days"
+msgstr ""
+
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "No run in the last 14 days"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "No run in the last 14 days."
 msgstr ""
+
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "No run of this target is in the record"
+msgstr "No run of this repository is in the record"
+
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "No run of this target is in the record."
+msgstr "No run of this repository is in the record."
+
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "No run of this target was denied anything in the last 14 days."
+msgstr "No run of this repository was denied anything in the last 14 days."
 
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/organisation_live.ex
@@ -5320,10 +5523,35 @@ msgstr ""
 msgid "No session timeline"
 msgstr ""
 
+#: lib/apiary_web/live/target_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No target active this week matches"
+msgstr "No repository active this week matches"
+
+#: lib/apiary_web/live/target_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No target matches"
+msgstr "No repository matches"
+
+#: lib/apiary_web/live/target_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No target ran this week"
+msgstr "No repository ran this week"
+
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "No target sets its own mode. Every one follows the workspace's default."
 msgstr "No repository sets its own mode. Every one follows the workspace's default."
+
+#: lib/apiary_web/live/target_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No target that never ran matches"
+msgstr "No repository that never ran matches"
+
+#: lib/apiary_web/live/target_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No target yet"
+msgstr "No repository yet"
 
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
@@ -5524,6 +5752,16 @@ msgstr ""
 msgid "Observe this target"
 msgstr "Observe this repository"
 
+#: lib/apiary_web/live/target_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Observes on its own"
+msgstr ""
+
+#: lib/apiary_web/live/target_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Of the runs that ended in the last 14 days, those that ended well"
+msgstr ""
+
 #: lib/apiary_web/live/activity_live.ex
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
@@ -5651,6 +5889,11 @@ msgstr ""
 msgid "Open menu"
 msgstr ""
 
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Open on %{system}"
+msgstr ""
+
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Open policy"
@@ -5758,6 +6001,7 @@ msgid "Overrides the workspace's rule"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
+#: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Overview"
 msgstr ""
@@ -5800,6 +6044,7 @@ msgid "Owners"
 msgstr ""
 
 #: lib/apiary_web/live/activity_live.ex
+#: lib/apiary_web/live/target_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Pages"
 msgstr ""
@@ -5823,6 +6068,11 @@ msgstr ""
 #: lib/apiary_web/live/access_key_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Paste this %{server} block into the runner file on the machine."
+msgstr ""
+
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Path"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -5863,6 +6113,16 @@ msgstr ""
 msgid "People"
 msgstr ""
 
+#: lib/apiary_web/components/target_components.ex
+#, elixir-autogen, elixir-format
+msgid "Pin"
+msgstr ""
+
+#: lib/apiary_web/components/target_components.ex
+#, elixir-autogen, elixir-format
+msgid "Pin %{target}"
+msgstr ""
+
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/run_live/index.ex
@@ -5872,8 +6132,15 @@ msgid "Ping only"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
+#: lib/apiary_web/components/target_components.ex
+#: lib/apiary_web/live/target_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Pinned"
+msgstr ""
+
+#: lib/apiary_web/live/target_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Pinned by you"
 msgstr ""
 
 #: lib/apiary_web/controllers/jump_controller.ex
@@ -5884,9 +6151,10 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/policy_live/show.ex
-#: lib/apiary_web/live/policy_live/target.ex
 #: lib/apiary_web/live/run_live/index.ex
 #: lib/apiary_web/live/run_live/show.ex
+#: lib/apiary_web/live/target_live/index.ex
+#: lib/apiary_web/live/target_live/show.ex
 #: lib/apiary_web/live/workspace_live/overview.ex
 #, elixir-autogen, elixir-format
 msgid "Policy"
@@ -5929,6 +6197,11 @@ msgstr ""
 msgid "Policy rules changed"
 msgstr ""
 
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Policy · %{target}"
+msgstr ""
+
 #: lib/apiary_web/live/user_live/confirmation.ex
 #, elixir-autogen, elixir-format
 msgid "Prefer a password? You can set one in account settings."
@@ -5948,6 +6221,7 @@ msgstr ""
 #: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/run_live/index.ex
 #: lib/apiary_web/live/run_live/show.ex
+#: lib/apiary_web/live/target_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Previous"
 msgstr ""
@@ -6156,6 +6430,11 @@ msgstr ""
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Remove %{email}"
+msgstr ""
+
+#: lib/apiary_web/live/target_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Remove %{filter}"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -6490,6 +6769,7 @@ msgid "Rules"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/components/target_components.ex
 #: lib/apiary_web/live/run_live/index.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
@@ -6605,8 +6885,8 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/controllers/jump_controller.ex
 #: lib/apiary_web/live/connection_live/index.ex
-#: lib/apiary_web/live/policy_live/target.ex
 #: lib/apiary_web/live/run_live/index.ex
+#: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Runs"
 msgstr ""
@@ -6614,6 +6894,11 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Runs and denied attempts per day"
+msgstr ""
+
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Runs of %{target}"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -6631,12 +6916,23 @@ msgstr ""
 msgid "Runs use each machine's own policy until the first change in this workspace."
 msgstr ""
 
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Runs · %{target}"
+msgstr ""
+
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Runs, %{number} day"
 msgid_plural "Runs, %{number} days"
 msgstr[0] ""
 msgstr[1] ""
+
+#: lib/apiary_web/live/target_live/index.ex
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Runs, 14 days"
+msgstr ""
 
 #: lib/apiary_web/live/organisation_live.ex
 #, elixir-autogen, elixir-format
@@ -6658,10 +6954,16 @@ msgstr ""
 msgid "Runs, not grouped"
 msgstr ""
 
+#: lib/apiary_web/components/target_components.ex
 #: lib/apiary_web/live/run_live/index.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Runtime"
+msgstr ""
+
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Runtimes"
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -6975,6 +7277,16 @@ msgstr ""
 msgid "Something went wrong on our side."
 msgstr ""
 
+#: lib/apiary_web/live/target_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Sort"
+msgstr ""
+
+#: lib/apiary_web/live/target_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Sort: %{order}"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Source"
@@ -6991,6 +7303,7 @@ msgid "Start an organisation and its first workspace. We will email you a link t
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/components/target_components.ex
 #: lib/apiary_web/live/run_live/index.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
@@ -6998,6 +7311,7 @@ msgid "Started"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/components/target_components.ex
 #: lib/apiary_web/live/run_live/index.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
@@ -7121,6 +7435,12 @@ msgstr ""
 msgid "Switch workspace, current: %{name}"
 msgstr ""
 
+#: lib/apiary_web/live/target_live/index.ex
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "System"
+msgstr "Forge"
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Takes effect in running sessions within a heartbeat, about %{seconds} s."
@@ -7131,6 +7451,8 @@ msgstr ""
 #: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/policy_live/show.ex
 #: lib/apiary_web/live/run_live/index.ex
+#: lib/apiary_web/live/target_live/index.ex
+#: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Target"
 msgstr "Repository"
@@ -7144,9 +7466,7 @@ msgstr "Repository policy"
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/controllers/jump_controller.ex
 #: lib/apiary_web/live/policy_live/show.ex
-#: lib/apiary_web/live/policy_live/target.ex
 #: lib/apiary_web/live/target_live/index.ex
-#: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Targets"
 msgstr "Repositories"
@@ -7372,21 +7692,28 @@ msgid_plural "The last %{number} runs of the nightly job. Each is also a line in
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "The last runs"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/show.ex
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
 msgid "The latest is version %{version}."
 msgstr ""
 
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "The latest run of %{total}"
+msgid_plural "The latest %{number} runs of %{total}"
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "The link may be for another workspace, or the run id is mistyped."
 msgstr ""
-
-#: lib/apiary_web/live/policy_live/target.ex
-#, elixir-autogen, elixir-format
-msgid "The link may be for another workspace, or the target has not posted a run here."
-msgstr "The link may be for another workspace, or the repository has not posted a run here."
 
 #: lib/apiary/accounts/user_notifier.ex
 #, elixir-autogen, elixir-format
@@ -7673,6 +8000,11 @@ msgctxt "plain"
 msgid "The runtime's own needs: hosts it declares in the policy applied event. Declared hosts are reported, never allowed by that."
 msgstr ""
 
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "The same path elsewhere"
+msgstr ""
+
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "The secret is shown once, in the dialog that creates it. One key can serve many hosts: a pool of ephemeral instances shares one."
@@ -7702,6 +8034,16 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "The target's rule is kept and shown as held. Only an owner can unlock."
 msgstr "The repository's rule is kept and shown as held. Only an owner can unlock."
+
+#: lib/apiary_web/live/target_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "The targets could not be read. Reload the page to try again."
+msgstr "The repositories could not be read. Reload the page to try again."
+
+#: lib/apiary_web/live/target_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "The targets this workspace's runs have changed."
+msgstr "The repositories this workspace's runs have changed."
 
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
@@ -8007,11 +8349,6 @@ msgstr "This repository has no rules of its own."
 msgid "This target has no versions of its own: it is served the workspace baseline."
 msgstr "This repository has no versions of its own: it is served the workspace baseline."
 
-#: lib/apiary_web/live/policy_live/target.ex
-#, elixir-autogen, elixir-format
-msgid "This target is not in this workspace"
-msgstr "This repository is not in this workspace"
-
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "This target observes: the locked deny still holds."
@@ -8209,6 +8546,11 @@ msgstr ""
 msgid "Unlocked a policy rule"
 msgstr ""
 
+#: lib/apiary_web/components/target_components.ex
+#, elixir-autogen, elixir-format
+msgid "Unpin %{target}"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Until the first change here, every machine of this workspace runs under its own policy, the one in its runner file. The first rule you add, or a mode you set, renders version 1, and machines take their policy from Qory from then on. You can also let a run reach out first and allow its hosts from the Connections page, one row at a time."
@@ -8292,7 +8634,6 @@ msgid "Version %{n}. Open the exact document."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
-#: lib/apiary_web/live/policy_live/target.ex
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "Version %{version}"
@@ -8331,6 +8672,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "View"
+msgstr ""
+
+#: lib/apiary_web/live/target_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Views"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -9064,6 +9410,16 @@ msgstr ""
 msgid "enforce"
 msgstr ""
 
+#: lib/apiary_web/live/target_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "enforces"
+msgstr ""
+
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "enforces on its own"
+msgstr ""
+
 #: lib/apiary/runs/record/timeline.ex
 #, elixir-autogen, elixir-format
 msgid "error"
@@ -9224,6 +9580,11 @@ msgstr ""
 msgid "lane (%{tip})"
 msgstr ""
 
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "last %{time}"
+msgstr ""
+
 #: lib/apiary/runs/filters.ex
 #, elixir-autogen, elixir-format
 msgid "last 24 hours"
@@ -9252,6 +9613,11 @@ msgstr ""
 #: lib/apiary/runs/filters.ex
 #, elixir-autogen, elixir-format
 msgid "last hour"
+msgstr ""
+
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "last run %{time}"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -9413,6 +9779,16 @@ msgstr ""
 msgid "observe"
 msgstr ""
 
+#: lib/apiary_web/live/target_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "observes"
+msgstr ""
+
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "observes on its own"
+msgstr ""
+
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
@@ -9494,6 +9870,11 @@ msgstr ""
 msgid "rules"
 msgstr ""
 
+#: lib/apiary_web/live/target_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "run %{id}"
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
@@ -9536,6 +9917,12 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "subagent"
 msgstr ""
+
+#: lib/apiary_web/live/target_live/query.ex
+#, elixir-autogen, elixir-format
+msgctxt "qualifier"
+msgid "system"
+msgstr "forge"
 
 #: lib/apiary_web/live/connection_live/rules.ex
 #, elixir-autogen, elixir-format
