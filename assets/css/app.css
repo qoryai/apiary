@@ -707,18 +707,25 @@
     color: var(--q-faint);
   }
 
-  /* ---- Table ---- */
+  /* ---- Table ----
+     The row spec (docs/ui.md, Lists): a body cell is small and muted by default; the
+     row's title, what needs someone and what is tertiary are marked (`q-td-title`,
+     `q-hot`, `q-faint`, in the list block below). */
   :where(.table) {
     width: 100%;
     border-radius: 0;
-    font-size: 0.875rem;
-    line-height: 1.25rem;
+    color: var(--q-muted);
+    font-size: 0.78125rem;
+    line-height: 1.125rem;
   }
   :where(.table) :where(th, td) {
-    padding: 0.625rem 0.625rem;
+    padding: 0.25rem 0.75rem;
     white-space: nowrap;
     vertical-align: middle;
     text-align: left;
+  }
+  :where(.table) :where(tbody td) {
+    height: 2.75rem;
   }
   :where(.table) :where(th, td):first-child {
     padding-left: 1rem;
@@ -731,13 +738,13 @@
     padding-right: 0.5rem;
   }
   :where(.table) :where(thead) :where(th) {
-    padding-block: 0.5625rem;
+    height: 2.25rem;
+    padding-block: 0;
     background-color: var(--color-base-200);
     color: var(--q-muted);
-    font-size: 0.75rem;
+    font-size: 0.78125rem;
     line-height: 1rem;
     font-weight: 500;
-    letter-spacing: 0.005em;
   }
   :where(.table) :where(thead tr, tbody tr:not(:last-child)) {
     border-bottom: 1px solid var(--q-border-subtle);
@@ -2065,6 +2072,435 @@
     .q-collapse {
       display: none;
     }
+  }
+}
+
+/* ==== Lists: the row spec and a list's controls (`CoreComponents.table/1`, `row_menu/1`,
+   `views/1`, `list_search/1`, `filter_menu/1`, `sort_menu/1`, `filter_tokens/1`,
+   `state_word/1`, `sparkline/1`). docs/ui.md, Lists. ==== */
+@layer qory {
+  /* ---- The row: the title is the only strong text; the rest small and muted ---- */
+  .q-tbl {
+    container-type: inline-size;
+  }
+  .q-td-title,
+  .q-title {
+    color: var(--color-base-content);
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    font-weight: 500;
+  }
+  .q-title-mono {
+    color: var(--color-base-content);
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+    font-weight: 500;
+  }
+  /* A secondary word beside the title: an id, a slug, "you". */
+  .q-side {
+    color: var(--q-faint);
+    font-size: 0.78125rem;
+    font-weight: 400;
+  }
+  .q-side.q-mono,
+  .q-mono.q-side {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+  }
+  .q-hot {
+    color: var(--color-base-content);
+  }
+  .q-faint {
+    color: var(--q-faint);
+  }
+  .q-muted {
+    color: var(--q-muted);
+  }
+  .q-mono {
+    font-family: var(--font-mono);
+  }
+  /* A row out of use (revoked, suspended, deleted): its title steps down to muted. */
+  .table tr.row-off .q-td-title,
+  .table tr.row-off .q-title {
+    color: var(--q-muted);
+    font-weight: 400;
+  }
+  .table tr.row-off td {
+    color: var(--q-faint);
+  }
+  /* Columns that show from a width of the table's own, not the screen's. */
+  .q-tbl :is(th, td):is(.q-from-sm, .q-from-md, .q-from-lg) {
+    display: none;
+  }
+  @container (min-width: 600px) {
+    .q-tbl :is(th, td).q-from-sm {
+      display: table-cell;
+    }
+  }
+  @container (min-width: 1000px) {
+    .q-tbl :is(th, td).q-from-md {
+      display: table-cell;
+    }
+  }
+  @container (min-width: 1300px) {
+    .q-tbl :is(th, td).q-from-lg {
+      display: table-cell;
+    }
+  }
+  /* The name cell of a person or a thing with a mark: avatar, name, faint words. */
+  .q-nm {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 0.625rem;
+  }
+  .q-nm > .q-title,
+  .q-nm > .q-title-mono {
+    flex: none;
+    max-width: min(48ch, 42cqi);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .q-nm > .q-side {
+    flex: none;
+  }
+
+  /* ---- A state in words: muted; a dot and the text colour when it needs someone ---- */
+  .q-stw {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--q-muted);
+    white-space: nowrap;
+  }
+  .q-stw-hot {
+    color: var(--color-base-content);
+  }
+  .q-stw-dot {
+    width: 8px;
+    height: 8px;
+    flex: none;
+    border-radius: 9999px;
+    background-color: var(--color-warning);
+  }
+  .q-stw-error .q-stw-dot {
+    background-color: var(--color-error);
+  }
+  .q-stw-info .q-stw-dot {
+    background-color: var(--color-info);
+  }
+
+  /* ---- The ⋯ menu of a row: faint until the row is read, a list in the top layer ---- */
+  .q-rowmenu-btn {
+    color: var(--q-faint);
+  }
+  .q-rowmenu-btn:hover,
+  .q-rowmenu-btn[aria-expanded="true"] {
+    color: var(--color-base-content);
+  }
+  .q-rowmenu-btn[aria-expanded="true"] {
+    background-color: var(--color-base-300);
+  }
+  .q-rowmenu:not(:has(li)) {
+    display: none;
+  }
+  .q-rowmenu-list {
+    min-width: 13.75rem;
+    max-width: min(22rem, calc(100vw - 16px));
+    max-height: min(28rem, calc(100dvh - 16px));
+    overflow: auto;
+    border: 0;
+    color: var(--color-base-content);
+  }
+  .q-rowmenu-list:popover-open {
+    display: flex;
+  }
+  .menu .q-mi > :is(a, button) {
+    justify-content: flex-start;
+  }
+  .menu .q-mi-hint > :is(a, button) {
+    height: auto;
+    align-items: flex-start;
+    padding-block: 0.375rem;
+  }
+  .q-mi-t {
+    display: grid;
+    min-width: 0;
+  }
+  .q-mi-t > span {
+    color: var(--q-faint);
+    font-size: 0.75rem;
+    line-height: 1rem;
+    white-space: normal;
+  }
+  .q-mi-ck {
+    display: grid;
+    width: 1rem;
+    flex: none;
+    place-items: center;
+    color: var(--color-accent);
+  }
+  .q-mi-hint .q-mi-ck {
+    margin-top: 1px;
+  }
+  .menu .q-mh {
+    display: grid;
+    gap: 0;
+    padding: 0.375rem 0.5rem 0.25rem;
+    line-height: 1.125rem;
+  }
+  /* In a menu with a choice of one, every item's words start after the check mark. */
+  .q-rowmenu-list:has([role="menuitemradio"]) .q-mi > :is(a, button) > .q-mi-t:first-child {
+    padding-left: 1.5rem;
+  }
+  .q-rowmenu-list:has([role="menuitemradio"]) .q-mh {
+    padding-left: 2rem;
+  }
+  /* daisyUI pads every child of a menu's item; a heading's words are not controls. */
+  .menu .q-mh > span {
+    display: block;
+    padding: 0;
+    border-radius: 0;
+  }
+  .q-mh-t {
+    overflow: hidden;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .q-mh-s {
+    color: var(--q-faint);
+    font-size: 0.75rem;
+    line-height: 1rem;
+  }
+
+  /* ---- A list's bar: views as tabs, a search, one Filter menu, Sort; tokens under it ---- */
+  .q-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+  .q-bar > .q-grow {
+    flex: 1;
+  }
+  .q-views {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .q-views > a {
+    display: inline-flex;
+    height: 30px;
+    align-items: center;
+    gap: 6px;
+    padding: 0 10px;
+    border-radius: var(--radius-field);
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+    white-space: nowrap;
+    transition: background-color 120ms var(--q-ease-out);
+  }
+  .q-views > a:hover {
+    background-color: var(--color-base-300);
+    color: var(--color-base-content);
+  }
+  .q-views > a[aria-current="page"] {
+    background-color: var(--color-base-300);
+    color: var(--color-base-content);
+    font-weight: 500;
+  }
+  .q-views-n {
+    color: var(--q-faint);
+    font-size: 0.75rem;
+    font-weight: 400;
+    font-variant-numeric: tabular-nums;
+  }
+  .q-find {
+    width: min(320px, 100%);
+  }
+  .q-find label {
+    position: relative;
+    display: block;
+  }
+  .q-find-i {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    translate: 0 -50%;
+    color: var(--q-faint);
+    pointer-events: none;
+  }
+  .q-find input {
+    width: 100%;
+    padding-left: 32px;
+  }
+  .q-listmenu-n {
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    background-color: var(--color-base-300);
+    color: var(--q-muted);
+    font-size: 0.75rem;
+    line-height: 18px;
+    font-variant-numeric: tabular-nums;
+  }
+  .q-tokens {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+  }
+  .q-tok {
+    display: inline-flex;
+    height: 24px;
+    align-items: center;
+    gap: 4px;
+    padding: 0 4px 0 8px;
+    border-radius: var(--radius-selector);
+    background-color: var(--color-base-300);
+    color: var(--color-base-content);
+    font-size: 0.78125rem;
+    white-space: nowrap;
+  }
+  .q-tok-x {
+    display: grid;
+    width: 18px;
+    height: 18px;
+    place-items: center;
+    border-radius: 3px;
+    color: var(--q-faint);
+  }
+  .q-tok-x:hover {
+    background-color: var(--q-border-subtle);
+    color: var(--color-base-content);
+  }
+  .q-tok-clear {
+    color: var(--color-accent);
+    font-size: 0.78125rem;
+    font-weight: 500;
+  }
+  .q-tok-clear:hover {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  @media (max-width: 767.98px) {
+    .q-find {
+      width: 100%;
+    }
+  }
+
+  /* ---- Sparkline: runs a day, today in ink ---- */
+  .q-spark {
+    display: block;
+    width: 84px;
+    height: 18px;
+    flex: none;
+  }
+  .q-spark rect {
+    fill: var(--q-series-runs);
+  }
+  .q-spark rect.q-spark-today {
+    fill: var(--q-series-runs-today);
+  }
+  .q-spark rect.q-spark-zero {
+    fill: var(--q-border-strong);
+  }
+
+  /* ---- A block: one box, a band, then rows or lines; nothing inside it has a border of
+     its own (the overviews) ---- */
+  .q-blk {
+    container-type: inline-size;
+    min-width: 0;
+    overflow: clip;
+    border: 1px solid var(--q-border-subtle);
+    border-radius: var(--radius-box);
+    background-color: var(--color-base-100);
+  }
+  .q-band {
+    display: flex;
+    min-height: 40px;
+    align-items: center;
+    gap: 10px;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--q-border-subtle);
+    background-color: var(--color-base-200);
+  }
+  .q-band h2 {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    font-weight: 600;
+  }
+  .q-band-n {
+    color: var(--q-muted);
+    font-size: 0.78125rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .q-band-hint {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--q-faint);
+    font-size: 0.78125rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .q-band > .q-grow {
+    flex: 1;
+  }
+  .q-band-do,
+  .q-do {
+    color: var(--color-accent);
+    font-size: 0.78125rem;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .q-band-do:hover,
+  .q-do:hover {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .q-more {
+    display: flex;
+    height: 38px;
+    align-items: center;
+    gap: 6px;
+    padding: 0 16px;
+    border-top: 1px solid var(--q-border-subtle);
+    color: var(--color-accent);
+    font-size: 0.8125rem;
+    transition: background-color 120ms var(--q-ease-out);
+  }
+  .q-more:hover {
+    background-color: var(--color-base-200);
+  }
+  .q-rows {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .q-rows > li + li {
+    border-top: 1px solid var(--q-border-subtle);
+  }
+  /* Key-value lines: a faint key, a value in the text colour, muted details. */
+  .q-kvl {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 8px 16px;
+    margin: 0;
+    padding: 14px 16px;
+    font-size: 0.78125rem;
+    line-height: 1.125rem;
+  }
+  .q-kvl dt {
+    color: var(--q-faint);
+  }
+  .q-kvl dd {
+    min-width: 0;
+    margin: 0;
+    color: var(--color-base-content);
   }
 }
 
