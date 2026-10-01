@@ -483,8 +483,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
             _ -> nil
           end
 
-        {run.id,
-         %{in_force: version_map(scope, in_force, holder), reported: reported_version}}
+        {run.id, %{in_force: version_map(scope, in_force, holder), reported: reported_version}}
       end
     end
   end
