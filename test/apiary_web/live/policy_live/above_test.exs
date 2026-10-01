@@ -150,6 +150,9 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
       assert struck |> LazyHTML.query(".q-pr-offw-full") |> LazyHTML.text() |> String.trim() ==
                "Not in force: Eight Wonders's paste.example denies it"
 
+      # The Locked view counts the workspace's locked rule and not the level's.
+      assert text(view, "#policy-rules-view-locked") == "Locked 1"
+
       # The Filter menu has a Source section with the level and the workspace, and the
       # token narrows to one.
       assert text(view, "#policy-rules-filter-source-0") =~ "Eight Wonders 3 rules"
@@ -159,8 +162,9 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
       assert hosts(view) == ["paste.example", "api.example", "*.wonders.example"]
       assert text(view, "#policy-rules-token-source") =~ "source: 8wonders"
 
-      # The Locked view counts the workspace's locked rule and not the level's.
-      assert text(view, "#policy-rules-view-locked") == "Locked 1"
+      # The views count under the token: the level's three, none of them locked.
+      assert text(view, "#policy-rules-view-all") == "All 3"
+      assert text(view, "#policy-rules-view-locked") == "Locked 0"
     end
 
     test "a crafted event naming a rule of the level changes nothing", %{

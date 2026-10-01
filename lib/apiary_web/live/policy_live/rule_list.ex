@@ -205,8 +205,9 @@ defmodule ApiaryWeb.PolicyLive.RuleList do
   ## The list
 
   @doc """
-  list/3 is the page of `rows` that `query` shows, with the counts of the views over every
-  row and how many match the query. `activity` is what `Apiary.Policy.rule_activity/3`
+  list/3 is the page of `rows` that `query` shows, with the counts of the views under the
+  query's other filters and its text (as the runs list counts its views), and how many
+  match the query. `activity` is what `Apiary.Policy.rule_activity/3`
   answered, `:loading` or `:unavailable`: while it loads, a query that needs it (`seen:`,
   the order by use) shows no row yet and says `loading`; when it could not be counted,
   `seen:` narrows nothing and `unseen` says so. A page past the last shows the last.
@@ -227,7 +228,8 @@ defmodule ApiaryWeb.PolicyLive.RuleList do
         loading: true
       }
     else
-      matched = matching(rows, query, activity)
+      under = narrowed(rows, query, activity)
+      matched = under |> Enum.filter(&in_view?(&1, query.view)) |> order(query.sort, activity)
       total = length(matched)
       pages = max(div(total + @page_size - 1, @page_size), 1)
       page = min(query.page, pages)
@@ -238,7 +240,7 @@ defmodule ApiaryWeb.PolicyLive.RuleList do
         rows: shown,
         total: total,
         match: if(narrowed?(query), do: total),
-        counts: counts(rows),
+        counts: counts(under),
         page: page,
         pages: pages,
         first: first,
@@ -281,7 +283,7 @@ defmodule ApiaryWeb.PolicyLive.RuleList do
 
   defp index_of(rows, host), do: Enum.find_index(rows, &(&1.host == host))
 
-  @doc "The views' counts over every row: all, allowed, denied and locked."
+  @doc "The views' counts over the rows given: all, allowed, denied and locked."
   @spec counts([map]) :: %{
           all: non_neg_integer,
           allow: non_neg_integer,
@@ -299,10 +301,16 @@ defmodule ApiaryWeb.PolicyLive.RuleList do
 
   defp matching(rows, query, activity) do
     rows
+    |> narrowed(query, activity)
     |> Enum.filter(&in_view?(&1, query.view))
+    |> order(query.sort, activity)
+  end
+
+  # The rows the query's filters and text keep, in every view: what the views count.
+  defp narrowed(rows, query, activity) do
+    rows
     |> Enum.filter(fn row -> Enum.all?(query.tokens, &keeps?(&1, row, activity)) end)
     |> Enum.filter(&found?(&1, query.text))
-    |> order(query.sort, activity)
   end
 
   defp in_view?(_row, :all), do: true

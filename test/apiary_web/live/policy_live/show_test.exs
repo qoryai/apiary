@@ -346,6 +346,16 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert text(view, "#policy-rules-pages-footer") == "1–4 of 4"
       refute has_element?(view, "#policy-rules-summary")
 
+      # The Rules tab counts what its All view counts: rules, not the credential.
+      assert has_element?(view, "#policy-tabs a[aria-current=page] .q-tabs-n", "4")
+
+      # A search narrows the views' counts too, as the runs list's do.
+      view |> render_hook("rules_search", %{"q" => "github"})
+      assert text(view, "#policy-rules-view-all") == "All 2"
+      assert text(view, "#policy-rules-view-allowed") == "Allowed 2"
+      assert text(view, "#policy-rules-view-denied") == "Denied 0"
+      view |> render_hook("rules_search", %{"q" => ""})
+
       # The section is Network access, and leads to the page of what the runs reached.
       assert has_element?(view, "#policy-hosts-h", "Network access")
 

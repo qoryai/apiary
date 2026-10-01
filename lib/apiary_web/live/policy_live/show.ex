@@ -859,7 +859,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         <.policy_tabs
           scope={@current_scope}
           live_action={@live_action}
-          rules={length(@own)}
+          rules={length(@rows)}
           targets={@target_total}
           changes={@change_total}
           document={@managed? && @version != nil}

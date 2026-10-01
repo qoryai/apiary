@@ -194,7 +194,8 @@ rule links lead to the rule there.
 The policy's lists of rules (`PolicyComponents.rule_list/1`, on the workspace's Rules tab
 and on a target's Policy tab) are on the same pattern, their query read and written by
 `ApiaryWeb.PolicyLive.RuleList`, pure over the rows the page holds: views All, Allowed,
-Denied and Locked; "Find a host" with the qualifiers `seen:`, `paths:`, `by:` and
+Denied and Locked, each counted under the search and the other filters, the Rules tab's
+count the All view's with nothing narrowed (the rules, not the credentials); "Find a host" with the qualifiers `seen:`, `paths:`, `by:` and
 `source:` as tokens, sent as the reader types and read whole on Enter; one Filter menu
 whose sections come from the rows' sources and people (an edition that adds rules of
 another holder gives them a source, and the menu, the qualifier and the order take it);
