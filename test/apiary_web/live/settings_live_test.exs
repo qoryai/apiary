@@ -88,6 +88,21 @@ defmodule ApiaryWeb.SettingsLiveTest do
       refute has_element?(lv, "#owners-note", "only owner")
     end
 
+    test "lists the workspaces with their targets", %{conn: conn, scope: scope} do
+      import Apiary.RunListFixtures
+      started_run(scope, %{"forge" => "github.example", "repository" => "acme/api"})
+      other = sign_up_fixture().scope
+      started_run(other, %{"forge" => "github.example", "repository" => "acme/api"})
+
+      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings/workspaces")
+      assert has_element?(lv, "th", "Repositories")
+      assert has_element?(lv, "#workspace-#{scope.workspace.id}-targets", "1")
+      assert Apiary.Targets.count_by_workspace(scope) == %{scope.workspace.id => 1}
+
+      %{scope: member} = member_fixture(scope, :member)
+      assert Apiary.Targets.count_by_workspace(member) == %{}
+    end
+
     test "says the only owner is held in place, to that owner alone", %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings")
       assert has_element?(lv, "#owners-note", "The only owner cannot be removed or demoted")

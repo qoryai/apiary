@@ -95,7 +95,8 @@ navigation it is in.
 - **An organisation's** (`/:org/settings/…`), from the organisation's pages (the
   breadcrumb's organisation leads to its overview, whose sidebar has Settings): General
   (name, slug, owners, and its danger zone), People (`/settings/people`: members,
-  invitations, suspensions), Workspaces (owners and admins;
+  found by their email with Find a person, `?q=`; invitations, suspensions), Workspaces
+  (owners and admins; each with its targets, `Apiary.Targets.count_by_workspace/1`;
   `SettingsComponents.workspace_list/1`, which an edition's page over the same list
   renders too, with the edition's way of adding one in the section's actions, the
   `:workspaces_heading` slot), Audit log (`/settings/audit-log`, `ApiaryWeb.ActivityLive`;

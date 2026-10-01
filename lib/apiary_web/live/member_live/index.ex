@@ -71,10 +71,32 @@ defmodule ApiaryWeb.MemberLive.Index do
           </.button>
         </:actions>
 
+        <.list_search
+          id="people-search"
+          name="q"
+          value={@q}
+          label={gettext("Find a person")}
+          placeholder={gettext("Find a person by email")}
+          change="find"
+          class="max-w-[28rem]"
+        />
+        <%!-- Always there, so a screen reader hears what the search left. --%>
+        <div id="people-status" role="status" class="q-status">
+          <p :if={@q != ""} id="people-summary" class="text-[13px] text-muted">
+            {ngettext("%{number} person matches", "%{number} people match", length(@shown),
+              number: Format.number(length(@shown))
+            )}
+          </p>
+        </div>
+
+        <p :if={@shown == []} id="people-none" class="text-[13px] text-muted">
+          {gettext("No member's email has %{text}.", text: @q)}
+        </p>
         <.table
+          :if={@shown != []}
           id="members"
           label={gettext("Members")}
-          rows={@members}
+          rows={@shown}
           row_id={&"member-#{&1.id}"}
           row_class={&(&1.suspended_at && "row-off")}
         >
@@ -400,7 +422,8 @@ defmodule ApiaryWeb.MemberLive.Index do
     {:noreply, apply_action(socket, socket.assigns.live_action, params)}
   end
 
-  defp apply_action(socket, :index, _params), do: assign(socket, :member, nil)
+  defp apply_action(socket, :index, params),
+    do: socket |> assign(:member, nil) |> find(params["q"])
 
   defp apply_action(socket, :invite, _params) do
     scope = socket.assigns.current_scope
@@ -465,6 +488,18 @@ defmodule ApiaryWeb.MemberLive.Index do
       )
 
   @impl true
+  # The search is the URL's `q`: a person is found by their email, whatever its case.
+  def handle_event("find", %{"q" => q}, socket) do
+    q = String.trim(q)
+    path = ~p"/#{socket.assigns.current_scope.organisation}/settings/people"
+
+    {:noreply,
+     push_patch(socket,
+       to: if(q == "", do: path, else: path <> "?" <> URI.encode_query(q: q)),
+       replace: true
+     )}
+  end
+
   def handle_event("validate_invite", %{"invitation" => params}, socket) do
     changeset = params |> Organisations.change_invitation() |> Map.put(:action, :validate)
     {:noreply, assign(socket, :form, to_form(changeset))}
@@ -682,6 +717,23 @@ defmodule ApiaryWeb.MemberLive.Index do
       else: {:noreply, refused(socket)}
   end
 
+  # The members the search leaves, `shown`, in the list's order.
+  defp find(socket, q) do
+    q = String.trim(q || "")
+    needle = String.downcase(q)
+
+    shown =
+      if needle == "",
+        do: socket.assigns.members,
+        else:
+          Enum.filter(
+            socket.assigns.members,
+            &String.contains?(String.downcase(&1.user.email), needle)
+          )
+
+    assign(socket, q: q, shown: shown)
+  end
+
   defp load(socket) do
     scope = socket.assigns.current_scope
 
@@ -694,6 +746,7 @@ defmodule ApiaryWeb.MemberLive.Index do
 
     socket
     |> assign(members: members, invitations: invitations)
+    |> find(socket.assigns[:q])
     |> assign(:sections, SettingsComponents.sections(scope, :organisation))
     |> assign(:nav_counts, Map.put(socket.assigns.nav_counts || %{}, :members, length(members)))
   end

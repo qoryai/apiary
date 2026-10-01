@@ -303,7 +303,8 @@ defmodule ApiaryWeb.SettingsComponents do
   @doc """
   workspace_list/1 is the Workspaces section's list: each workspace of `workspaces`, the
   organisation's in use, one row on the row spec, its name the title with its slug beside
-  it, when it was created, and its ⋯ menu, the edition's items (the `:workspace_actions`
+  it, its targets where the page counted them (`targets`), when it was created, and its ⋯
+  menu, the edition's items (the `:workspace_actions`
   slot) then Delete…, which opens the deletion's dialog at its own path, by `patch` from
   the organisation's settings and by `navigate` from an edition's page over the same
   list; then the note under the list, what a deletion does, or why the only workspace is
@@ -311,6 +312,11 @@ defmodule ApiaryWeb.SettingsComponents do
   """
   attr :scope, :any, required: true
   attr :workspaces, :list, required: true, doc: "the organisation's workspaces in use"
+
+  attr :targets, :map,
+    default: nil,
+    doc: "how many targets each workspace has, by its id (`Apiary.Targets.count_by_workspace/1`)"
+
   attr :delete, :string, default: "patch", values: ~w(patch navigate)
 
   def workspace_list(assigns) do
@@ -335,6 +341,11 @@ defmodule ApiaryWeb.SettingsComponents do
             {workspace.name}
           </.link>
           <span class="q-side q-mono">{workspace.slug}</span>
+        </span>
+      </:col>
+      <:col :let={workspace} :if={@targets} label={gettext("Targets")} kind="num" from="sm">
+        <span id={"workspace-#{workspace.id}-targets"} class="tabular-nums">
+          {Format.number(Map.get(@targets, workspace.id, 0))}
         </span>
       </:col>
       <:col :let={workspace} label={gettext("Created")} from="sm">

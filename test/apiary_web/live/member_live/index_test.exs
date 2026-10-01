@@ -29,6 +29,25 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       refute html =~ "The only owner cannot be removed"
     end
 
+    test "finds a person by their email, the search in the URL", %{conn: conn, scope: scope} do
+      %{user: other} = member_fixture(scope, :member)
+      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings/people")
+      assert has_element?(lv, "#people-search-input[type=search]")
+      assert has_element?(lv, "#people-status[role=status]")
+      refute has_element?(lv, "#people-summary")
+
+      needle = other.email |> String.split("@") |> hd() |> String.upcase()
+      lv |> form("#people-search", q: needle) |> render_change()
+      assert_patch(lv, ~p"/#{scope.organisation}/settings/people?q=#{needle}")
+      assert has_element?(lv, "#members", other.email)
+      refute has_element?(lv, "#member-#{scope.membership.id}")
+      assert has_element?(lv, "#people-summary", "1 person matches")
+
+      lv |> form("#people-search", q: "nobody-here") |> render_change()
+      assert has_element?(lv, "#people-none")
+      refute has_element?(lv, "#members")
+    end
+
     test "invites a member and can revoke the invitation", %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings/people")
 

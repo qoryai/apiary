@@ -324,7 +324,11 @@ defmodule ApiaryWeb.SettingsLive do
       </div>
     </.notice>
 
-    <SettingsComponents.workspace_list scope={@current_scope} workspaces={@workspaces} />
+    <SettingsComponents.workspace_list
+      scope={@current_scope}
+      workspaces={@workspaces}
+      targets={@workspace_targets}
+    />
     """
   end
 
@@ -914,10 +918,11 @@ defmodule ApiaryWeb.SettingsLive do
     if may?(scope, :"workspace.delete") do
       assign(socket,
         workspaces: Organisations.list_workspaces(scope),
+        workspace_targets: Apiary.Targets.count_by_workspace(scope),
         marked_workspaces: Deletion.list_marked_workspaces(scope)
       )
     else
-      assign(socket, workspaces: [], marked_workspaces: [])
+      assign(socket, workspaces: [], workspace_targets: %{}, marked_workspaces: [])
     end
   end
 
