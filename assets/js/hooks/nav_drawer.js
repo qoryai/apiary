@@ -15,6 +15,17 @@ export const NavDrawer = {
       for (const behind of this.el.querySelectorAll(".drawer-content, #top-bar")) {
         behind.toggleAttribute("inert", open)
       }
+      // Skip to content sits before the shell: inert too, or Tab leaves the drawer by it.
+      document.getElementById("skip-to-content")?.toggleAttribute("inert", open)
+      // Open, the drawer is a modal dialog, named as the sidebar is.
+      const sidebar = this.el.querySelector("#sidebar")
+      if (open) {
+        sidebar?.setAttribute("role", "dialog")
+        sidebar?.setAttribute("aria-modal", "true")
+      } else {
+        sidebar?.removeAttribute("role")
+        sidebar?.removeAttribute("aria-modal")
+      }
       document.documentElement.style.overflow = open ? "hidden" : ""
       this.el.querySelector("[data-drawer-open]")?.setAttribute("aria-expanded", String(open))
       if (focus) {

@@ -2965,7 +2965,7 @@ defmodule ApiaryWeb.RunComponents do
         data-copy={@connection.host}
         data-copied-words={gettext("Copied")}
       >
-        {gettext("Copy the host")}<span class="sr-only" aria-live="polite"></span>
+        {gettext("Copy the host")}
       </.menu_item>
     </.row_menu>
     """

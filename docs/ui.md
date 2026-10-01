@@ -70,9 +70,10 @@ The shell is section 4 of the v2 design brief (the knowledge vault's
   title. Folded, the foot is the fold over the mark alone, which still opens the menu,
   upward and to the right; the groups are split by rules, their headings gone.
 - **Below 768 px the sidebar is a drawer** behind the bar's Open menu button, its head a
-  Close menu button and its foot the same, without the fold. The `NavDrawer` hook moves
-  focus into the drawer, makes the top bar and `#shell-content` inert and stops the page
-  scrolling behind it; the scrim, Escape, the Close menu button and any navigation close
+  Close menu button and its foot the same, without the fold. Open, it is a modal dialog
+  (`role="dialog"`, `aria-modal`). The `NavDrawer` hook moves focus into the drawer, makes
+  the top bar, `#shell-content` and Skip to content inert and stops the page scrolling
+  behind it; the scrim, Escape, the Close menu button and any navigation close
   it, and focus returns to the menu button. The bar names the last segment of the
   breadcrumb only.
 - **Landmarks.** A Skip to content link is the first thing in the tab order and targets
@@ -205,7 +206,10 @@ menu's acts, the workspace's are read there and lead to the workspace's page.
 - **Views** are the runs list's All, Alive, Ended badly and With denials, and Network
   access's decisions, each counted under every other filter; All is current when no
   other is. A view's own filter is not repeated as a token. The number that matches is a
-  line over the list, only when the list is narrowed ("87 runs match").
+  line over the list, only when the list is narrowed ("87 runs match"), in the list's
+  status region (`role="status"`, `.q-status`), which is always rendered, empty and taking
+  no place otherwise, so a screen reader hears what a view, a filter or a search left; an
+  empty list says its empty state's title there too.
 - **The search is a query** (`<.list_search live={false}>`, sent on Enter): qualifiers
   (`repo:`, `state:`, `task:`, `runtime:`, `host:`, `key:`, `started:>2026-09-01`,
   `denied:yes`; `decision:`, `tools:`, `seen:` on Network access) become the URL's
@@ -536,7 +540,8 @@ and names the product Qory Apiary.
   (`#run-announcer`, `#overview-announcer`, `#policy-announce`) for the few things worth
   saying. Ticking text, a filling timeline and the terminal are `aria-live="off"`. Toasts
   are `role="status"` or `role="alert"`; an info toast leaves after 5 s, and hovering or
-  focusing it holds it. A copy is announced politely.
+  focusing it holds it. A copy is announced politely: a button by its own live span, a
+  row's copy by the shell's one `#copy-announcer`, never a live region a row.
 - **Motion.** Motion shows cause and effect for what floats; layout, rows and streamed
   inserts never animate. The only loops mean "still being written": the spinner, the
   skeleton and the alive ripple. Under `prefers-reduced-motion: reduce` the global block

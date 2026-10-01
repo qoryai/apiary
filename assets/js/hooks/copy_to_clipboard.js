@@ -1,6 +1,7 @@
 // Copies `data-copy` (or the text content of the element `data-copy-target`
 // points at) to the clipboard, flips the button into its "Copied" state for
-// 1600 ms and announces it politely.
+// 1600 ms and announces it politely: in its own live span, or, for a row's copy, which
+// has none, in the shell's one announcer (`#copy-announcer`).
 export const CopyToClipboard = {
   mounted() {
     this.el.addEventListener("click", async () => {
@@ -22,7 +23,7 @@ export const CopyToClipboard = {
         area.remove()
       }
       this.el.setAttribute("data-copied", "")
-      const live = this.el.querySelector("[aria-live]")
+      const live = this.el.querySelector("[aria-live]") || document.getElementById("copy-announcer")
       if (live) live.textContent = this.el.dataset.copiedWords || ""
       clearTimeout(this.timer)
       this.timer = setTimeout(() => {

@@ -207,6 +207,9 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       assert text(view, "#connections-view-allowed") == "Allowed 1"
       refute has_element?(view, "#connections-summary")
       assert has_element?(view, "#connections-status[role=status]")
+      # A row's copy is said by the page's one announcer, not a live region a row.
+      assert has_element?(view, "#copy-announcer[role=status]")
+      refute has_element?(view, "#connections [aria-live]")
       assert has_element?(view, "#connections-sort-denied[aria-checked=true]")
 
       rows =

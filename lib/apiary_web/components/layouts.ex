@@ -315,7 +315,9 @@ defmodule ApiaryWeb.Layouts do
 
     ~H"""
     <a
+      id="skip-to-content"
       href="#main"
+      phx-mounted={JS.ignore_attributes(["inert"])}
       class="btn btn-sm sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[70]"
     >
       {gettext("Skip to content")}
@@ -384,6 +386,8 @@ defmodule ApiaryWeb.Layouts do
       <.palette :if={@organisation} scope={@scope} place={@place} />
     </div>
 
+    <%!-- One announcer for the copies of a page's many rows, which have none of their own. --%>
+    <p id="copy-announcer" class="sr-only" role="status" phx-update="ignore"></p>
     <.flash_group flash={@flash} />
     """
   end
@@ -1072,7 +1076,12 @@ defmodule ApiaryWeb.Layouts do
     assigns = assign(assigns, :version, version())
 
     ~H"""
-    <aside id="sidebar" aria-label={sidebar_label(@place)} class="q-sidebar">
+    <aside
+      id="sidebar"
+      aria-label={sidebar_label(@place)}
+      class="q-sidebar"
+      phx-mounted={JS.ignore_attributes(["role", "aria-modal"])}
+    >
       <div class="q-drawer-head">
         <button
           type="button"
