@@ -39,19 +39,21 @@ defmodule ApiaryWeb.PolicyLive.Common do
   ## Mount
 
   @doc """
-  The assigns every policy page starts from, and the one subscription. `opts`: `writer`,
-  what the page writes rules with (`t:writer/0`), the core's policy by default.
+  The assigns every policy page starts from, and the one subscription, to the policy of
+  the scope's workspace where the scope has one. `opts`: `writer`, what the page writes
+  rules with (`t:writer/0`), the core's policy by default; `base`, the path of the page's
+  list of rules, the holder's policy page by default.
   """
   def mount(socket, holder, opts \\ []) do
     scope = socket.assigns.current_scope
-    if connected?(socket), do: Policy.subscribe(scope)
+    if connected?(socket) and scope.workspace, do: Policy.subscribe(scope)
 
     socket
     |> assign(
       holder: holder,
       writer: Keyword.get(opts, :writer, policy_writer()),
       scope_kind: if(holder, do: :target, else: :workspace),
-      base: base(scope, holder),
+      base: Keyword.get(opts, :base) || base(scope, holder),
       people: people(scope),
       fresh: %{},
       announce: nil,
@@ -71,14 +73,19 @@ defmodule ApiaryWeb.PolicyLive.Common do
   `deny/3` (the scope, the page's holder, the attributes), `remove` as
   `Apiary.Policy.remove_rule/2` (the scope, a rule or its id) and `get` as
   `Apiary.Policy.get_rule/2` (the scope, an id), each answering `{:ok, rule}` or
-  `{:error, %Apiary.Policy.Error{}}`.
+  `{:error, %Apiary.Policy.Error{}}`; and `written`, the toast of a host rule written
+  (the action, `"allow"` or `"deny"`, and the host), or none for the holder's own words
+  (`rule_written/3`).
   """
   @type writer :: %{
-          allow: (Scope.t(), term, map -> {:ok, Rule.t()} | {:error, Policy.Error.t()}),
-          deny: (Scope.t(), term, map -> {:ok, Rule.t()} | {:error, Policy.Error.t()}),
-          remove: (Scope.t(), Rule.t() | String.t() ->
-                     {:ok, Rule.t()} | {:error, Policy.Error.t()}),
-          get: (Scope.t(), String.t() -> {:ok, Rule.t()} | {:error, Policy.Error.t()})
+          required(:allow) =>
+            (Scope.t(), term, map -> {:ok, Rule.t()} | {:error, Policy.Error.t()}),
+          required(:deny) =>
+            (Scope.t(), term, map -> {:ok, Rule.t()} | {:error, Policy.Error.t()}),
+          required(:remove) =>
+            (Scope.t(), Rule.t() | String.t() -> {:ok, Rule.t()} | {:error, Policy.Error.t()}),
+          required(:get) => (Scope.t(), String.t() -> {:ok, Rule.t()} | {:error, Policy.Error.t()}),
+          optional(:written) => (String.t(), String.t() -> String.t())
         }
 
   @doc "The core's writer: the workspace's and a target's rules, through `Apiary.Policy`."
@@ -837,8 +844,13 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
   @doc """
   The toast of a host rule written on the page:
-  `123.example is allowed for the workspace.`, `… is denied for acme/shop.`
+  `123.example is allowed for the workspace.`, `… is denied for acme/shop.`, or the
+  writer's own words where it has them.
   """
+  def rule_written(%{assigns: %{writer: %{written: written}}}, action, host)
+      when is_function(written, 2),
+      do: written.(action, host)
+
   def rule_written(%{assigns: %{holder: nil}}, "allow", host),
     do: gettext("%{host} is allowed for the workspace.", host: host)
 
