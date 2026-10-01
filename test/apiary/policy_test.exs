@@ -100,7 +100,12 @@ defmodule Apiary.PolicyTest do
 
       assert Policy.get_mode(scope, nil) == "observe"
       assert Policy.get_mode(scope, :workspace) == "observe"
-      assert Policy.get_mode(scope, target) == %{mode: "observe", own: nil, workspace: "observe"}
+      assert Policy.get_mode(scope, target) == %{
+               mode: "observe",
+               own: nil,
+               workspace: "observe",
+               floor: false
+             }
       assert %{mode: "observe", mode_source: :workspace} = Policy.effective(scope, target)
 
       assert {:ok, %{mode: "enforce", own: "enforce", workspace: "observe"}} =
@@ -109,7 +114,8 @@ defmodule Apiary.PolicyTest do
       assert Policy.get_mode(scope, target) == %{
                mode: "enforce",
                own: "enforce",
-               workspace: "observe"
+               workspace: "observe",
+               floor: false
              }
 
       assert Policy.get_mode(scope) == "observe"
@@ -253,7 +259,8 @@ defmodule Apiary.PolicyTest do
       assert Policy.get_mode(other, ctx.target) == %{
                mode: "observe",
                own: nil,
-               workspace: "observe"
+               workspace: "observe",
+               floor: false
              }
 
       assert Repo.get!(Target, ctx.target.id).egress_mode == nil
@@ -280,7 +287,12 @@ defmodule Apiary.PolicyTest do
     test "is managed, the workspace's mode and the targets' own modes, in one query", %{
       scope: scope
     } do
-      assert Policy.mode_summary(scope) == %{managed?: false, mode: "observe", own_modes: []}
+      assert Policy.mode_summary(scope) == %{
+               managed?: false,
+               mode: "observe",
+               own_modes: [],
+               floor: false
+             }
 
       site = target_fixture(scope)
       docs = target_fixture(scope, "acme/docs")
@@ -311,7 +323,12 @@ defmodule Apiary.PolicyTest do
       assert Enum.sort(own) == ["enforce", "observe"]
 
       %{scope: other} = sign_up_fixture()
-      assert Policy.mode_summary(other) == %{managed?: false, mode: "observe", own_modes: []}
+      assert Policy.mode_summary(other) == %{
+               managed?: false,
+               mode: "observe",
+               own_modes: [],
+               floor: false
+             }
     end
   end
 

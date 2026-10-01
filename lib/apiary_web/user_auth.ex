@@ -373,6 +373,10 @@ defmodule ApiaryWeb.UserAuth do
   defp policy_mode(%Scope{} = scope) do
     if Apiary.Access.can?(scope, :"security_policy.read", scope.workspace) do
       case Apiary.Policy.mode_summary(scope) do
+        # Under a required mode every target enforces: the word is enforce, none its own.
+        %{managed?: true, floor: true} ->
+          %{mode: "enforce", own_modes: []}
+
         %{managed?: true, mode: mode, own_modes: own_modes} ->
           %{mode: mode, own_modes: own_modes}
 
