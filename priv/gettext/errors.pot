@@ -151,6 +151,11 @@ msgstr ""
 msgid "is not the slug"
 msgstr ""
 
+#: lib/apiary_web/live/user_live/settings.ex
+#, elixir-autogen, elixir-format
+msgid "is not your email"
+msgstr ""
+
 ## From Ecto.Changeset.validate_exclusion/3
 msgid "is reserved"
 msgstr ""
