@@ -172,9 +172,12 @@ defmodule ApiaryWeb.UserLive.Settings do
               length(@sole_owned)
             )}
           </p>
-          <ul id="sole-owned" class="mt-1.5 grid gap-0.5">
+          <ul id="sole-owned" class="mt-1.5 grid gap-1">
             <li :for={organisation <- @sole_owned} id={"sole-owned-#{organisation.id}"}>
-              <.link navigate={~p"/#{organisation}/settings"} class="link font-medium">
+              <.link
+                navigate={~p"/#{organisation}/settings"}
+                class="link inline-flex min-h-6 items-center font-medium"
+              >
                 {organisation.name}
               </.link>
             </li>

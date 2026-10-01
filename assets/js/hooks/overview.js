@@ -90,7 +90,7 @@ export const DaysChart = {
     if (!slot || !this.tip) return
     if (this.expanded && this.expanded !== slot) this.hide(this.expanded)
     this.expanded = slot
-    slot.setAttribute("aria-expanded", "true")
+    slot.setAttribute("data-on", "")
     const {label, runs, den} = slot.dataset
     this.tip.replaceChildren()
     const b = document.createElement("b")
@@ -113,7 +113,7 @@ export const DaysChart = {
   },
 
   hide(slot) {
-    if (slot) slot.setAttribute("aria-expanded", "false")
+    if (slot) slot.removeAttribute("data-on")
     if (this.expanded === slot || !slot) this.expanded = null
     if (this.tip && !this.expanded) this.tip.classList.remove("q-on")
   },

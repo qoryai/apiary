@@ -377,7 +377,7 @@ defmodule ApiaryWeb.TargetLive.Index do
           row_id={&"target-#{&1.target.id}"}
           class="q-tgt-index"
         >
-          <:col :let={row} class="q-tgt-c-pin">
+          <:col :let={row} sr_label={gettext("Pinned")} class="q-tgt-c-pin">
             <.pin_button
               id={"target-pin-#{row.target.id}"}
               target={row.target}

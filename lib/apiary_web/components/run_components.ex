@@ -1140,6 +1140,8 @@ defmodule ApiaryWeb.RunComponents do
 
     ~H"""
     <nav id={@id} class="q-rail" aria-label={@label}>
+      <%!-- The rail's own headings (Pinned, Most runs) are h3s under this one. --%>
+      <h2 class="sr-only">{@label}</h2>
       <form id={"#{@id}-search"} class="q-rail-find" phx-change={@search} phx-submit={@search}>
         <.icon name="hero-magnifying-glass-micro" class="size-4" />
         <input

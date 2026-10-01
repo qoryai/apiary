@@ -734,6 +734,8 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       view = open(conn, runs(scope, "?task=a"))
 
       assert has_element?(view, "nav#runs-rail[aria-label=Repositories]")
+      # The rail's headings sit under a heading of its own, so the outline never skips.
+      assert has_element?(view, "nav#runs-rail > h2.sr-only", "Repositories")
       assert text(view, "#runs-rail-all") == "All repositories 1"
       assert has_element?(view, "#runs-rail-all[aria-current=true]")
 

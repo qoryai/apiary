@@ -156,10 +156,11 @@ defmodule ApiaryWeb.SettingsComponents do
         </.link>
       </nav>
 
+      <%!-- Not a named region: the section's heading leads it, and a list in it is the
+           region (`<.table label>`), so no two landmarks share the section's name. --%>
       <section
         id={"settings-section-#{@current}"}
         class={["q-settings-main", "q-settings-main-#{@measure}"]}
-        aria-labelledby="settings-section-title"
       >
         <header class="q-settings-head">
           <div class="min-w-0">

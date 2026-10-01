@@ -337,13 +337,21 @@ defmodule ApiaryWeb.CoreComponents do
   def button(%{rest: rest} = assigns) do
     assigns = assign(assigns, :classes, button_classes(assigns))
 
-    if rest[:href] || rest[:navigate] || rest[:patch] do
+    # `disabled` means nothing on a link: a disabled button with a path is a real
+    # `<button disabled>`, so it is neither focusable nor announced as a link.
+    if (rest[:href] || rest[:navigate] || rest[:patch]) && !rest[:disabled] do
       ~H"""
       <.link class={@classes} {@rest}>
         {render_slot(@inner_block)}
       </.link>
       """
     else
+      assigns =
+        if rest[:disabled],
+          do:
+            update(assigns, :rest, &Map.drop(&1, [:href, :navigate, :patch, :method, :download])),
+          else: assigns
+
       ~H"""
       <button
         class={@classes}
@@ -1106,7 +1114,7 @@ defmodule ApiaryWeb.CoreComponents do
       </.table>
   """
   attr :id, :string, required: true
-  attr :label, :string, default: nil, doc: "the accessible name of the scroll region"
+  attr :label, :string, required: true, doc: "the accessible name of the scroll region"
   attr :rows, :list, required: true
   attr :row_id, :any, default: nil, doc: "the function for generating the row id"
   attr :row_click, :any, default: nil, doc: "the function for handling phx-click on each row"
@@ -1119,6 +1127,7 @@ defmodule ApiaryWeb.CoreComponents do
 
   slot :col, required: true do
     attr :label, :string
+    attr :sr_label, :string, doc: "a header for a screen reader only, for a column of icons"
     attr :class, :string
     attr :kind, :string, doc: "title, hot, faint or num"
     attr :from, :string, doc: "sm, md or lg: the table width from which the column shows"
@@ -1137,7 +1146,7 @@ defmodule ApiaryWeb.CoreComponents do
       class={["q-tbl overflow-x-auto rounded-box border border-line bg-base-100 shadow-xs", @class]}
       tabindex="0"
       role="region"
-      aria-label={@label || @id}
+      aria-label={@label}
     >
       <table class="table">
         <thead>
@@ -1147,7 +1156,7 @@ defmodule ApiaryWeb.CoreComponents do
               scope="col"
               class={[head_class(col), col[:class]]}
             >
-              {col[:label]}
+              {col[:label]}<span :if={col[:sr_label]} class="sr-only">{col[:sr_label]}</span>
             </th>
             <th :if={@action != []} scope="col" class="w-px">
               <span class="sr-only">{gettext("Actions")}</span>

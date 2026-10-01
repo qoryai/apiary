@@ -103,4 +103,55 @@ defmodule ApiaryWeb.CoreComponentsTest do
       assert LazyHTML.attribute(h1, "tabindex") == ["-1"]
     end
   end
+
+  describe "a button with a path" do
+    test "is a link while it may act" do
+      assigns = %{}
+
+      html =
+        rendered_to_string(~H"""
+        <CoreComponents.button id="older" patch="/runs?page=2">Older</CoreComponents.button>
+        """)
+
+      assert [_] = html |> LazyHTML.from_fragment() |> LazyHTML.query("a#older") |> Enum.to_list()
+    end
+
+    test "is a disabled button, not a link, when it may not" do
+      assigns = %{}
+
+      html =
+        rendered_to_string(~H"""
+        <CoreComponents.button id="newer" patch="/policy/history" disabled>Newer</CoreComponents.button>
+        """)
+
+      doc = LazyHTML.from_fragment(html)
+      assert [] = doc |> LazyHTML.query("a") |> Enum.to_list()
+      button = LazyHTML.query(doc, "button#newer[disabled]")
+      assert [_] = Enum.to_list(button)
+      assert LazyHTML.attribute(button, "data-phx-link") == []
+      assert LazyHTML.attribute(button, "href") == []
+    end
+  end
+
+  describe "a table" do
+    test "is a region named by its label, never by its id" do
+      assigns = %{rows: [%{id: 1, name: "build-01"}]}
+
+      html =
+        rendered_to_string(~H"""
+        <CoreComponents.table id="keys" label="Access keys" rows={@rows}>
+          <:col :let={row} label="Name">{row.name}</:col>
+          <:col sr_label="Pinned"></:col>
+        </CoreComponents.table>
+        """)
+
+      doc = LazyHTML.from_fragment(html)
+
+      assert LazyHTML.attribute(LazyHTML.query(doc, "[role=region]"), "aria-label") == [
+               "Access keys"
+             ]
+
+      assert doc |> LazyHTML.query("th .sr-only") |> LazyHTML.text() == "Pinned"
+    end
+  end
 end

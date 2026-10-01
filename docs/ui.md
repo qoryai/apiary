@@ -222,8 +222,9 @@ menu's acts, the workspace's are read there and lead to the workspace's page.
   (`RunComponents.filter_options/1`).
 - **The rail** (`<.target_rail>`, from 1280 px) holds the targets with their counts under
   every filter but the target: a search on the server, every target, the pinned ones
-  (`counts.pins`), then the busiest twenty and "n more". Choosing one sets the target;
-  below 1280 px the Filter menu's Target section does it, never both.
+  (`counts.pins`), then the busiest twenty and "n more", its own headings under an
+  `<h2>` for a screen reader so the outline never skips a level. Choosing one sets the
+  target; below 1280 px the Filter menu's Target section does it, never both.
 - **A run is one line** (`<.runs_table>`): its task, else its id, the only strong text; its
   target after it until the table is 1000 px wide, then in a column; its state a dot
   (`<.run_mark>`) with its word where the state needs a look, and its denials red only
@@ -361,7 +362,9 @@ or an attribute of one, not a copy.
 
 - **`<.button>`** has the variants `primary`, `default`, `ghost`, `danger`,
   `danger-ghost` and `link`, and renders a link styled as a button when given `navigate`,
-  `patch` or `href`. `primary` marks the one main action of a screen. `loading_text` is
+  `patch` or `href`, unless it is `disabled`: a disabled one is a `<button disabled>`
+  whatever its path, never a link that still focuses and patches to itself (the pager's
+  Newer on its first page). `primary` marks the one main action of a screen. `loading_text` is
   the gerund ("Saving") the button shows, with a spinner and `aria-busy`, while its form
   submits; the button keeps its width.
 - **`<.input>`** is every field; with `prefix` a text input shows, in mono before the
@@ -543,7 +546,10 @@ and names the product Qory Apiary.
   the page put it somewhere itself, so a screen reader says where the reader landed.
 - **Names.** An icon-only button has an `aria-label`. A row action names its object
   ("Revoke build-01") while its visible text stays short. A field has a visible label, and
-  its error is tied to it with `aria-invalid` and `aria-describedby`.
+  its error is tied to it with `aria-invalid` and `aria-describedby`. Each `<nav>` of the
+  sidebar has a name of its own: its heading, Main for the first group, else its first
+  entry's. No control sits inside another: a timeline item's number inside its
+  `<summary>` is text that carries its path, which `c` copies.
 - **Live regions.** A page that changes while it is read has one polite announcer
   (`#run-announcer`, `#overview-announcer`, `#policy-announce`) for the few things worth
   saying. Ticking text, a filling timeline and the terminal are `aria-live="off"`. Toasts

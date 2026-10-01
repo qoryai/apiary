@@ -735,7 +735,7 @@ defmodule ApiaryWeb.RunPageComponents do
         <.badge :if={@item.in_background} color="info" class="self-center">
           {gettext("In background")}
         </.badge>
-        <.tail item={@item} started_at={@started_at} seq_path={@seq_path}>
+        <.tail item={@item} started_at={@started_at} seq_path={@seq_path} in_summary>
           <span :if={@item.status == :failed} class="q-bad">{if @item.interrupted,
             do: gettext("Interrupted"),
             else: gettext("Failed")}</span>
@@ -1069,9 +1069,13 @@ defmodule ApiaryWeb.RunPageComponents do
   defp hosts_or_none(0), do: gettext("none")
   defp hosts_or_none(n), do: hosts_words(n)
 
+  # The item's number, its permalink. Inside a `<summary>` it is text that carries the
+  # path (`data-href`), since a link there would be a control inside a control; the
+  # timeline's `c` copies it either way.
   attr :item, :map, required: true
   attr :started_at, :any, required: true
   attr :seq_path, :any, required: true
+  attr :in_summary, :boolean, default: false
   slot :inner_block
 
   defp tail(assigns) do
@@ -1079,9 +1083,16 @@ defmodule ApiaryWeb.RunPageComponents do
     <span class="q-t">
       {render_slot(@inner_block)}
       <.offset at={@item.time} from={@started_at} class="q-t-at" />
-      <.link patch={@seq_path.(@item.sequence)} class="q-q" tabindex="-1" data-permalink>#{pad(
+      <span :if={@in_summary} class="q-q" data-permalink data-href={@seq_path.(@item.sequence)}>#{pad(
         @item.sequence
-      )}</.link>
+      )}</span>
+      <.link
+        :if={!@in_summary}
+        patch={@seq_path.(@item.sequence)}
+        class="q-q"
+        tabindex="-1"
+        data-permalink
+      >#{pad(@item.sequence)}</.link>
     </span>
     """
   end

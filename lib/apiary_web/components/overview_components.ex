@@ -1132,7 +1132,6 @@ defmodule ApiaryWeb.OverviewComponents do
               data-runs={runs_count(day.runs)}
               data-den={denied_count(day.denied)}
               aria-label={slot_label(day, @today)}
-              aria-expanded="false"
             >
               <rect
                 class="q-slot"
@@ -1181,7 +1180,8 @@ defmodule ApiaryWeb.OverviewComponents do
           />
         </svg>
       <% end %>
-      <div class="q-chart-tt" role="tooltip" phx-update="ignore" id={"#{@id}-tip"}></div>
+      <%!-- What the day's name already says, drawn; nothing for a screen reader here. --%>
+      <div class="q-chart-tt" aria-hidden="true" phx-update="ignore" id={"#{@id}-tip"}></div>
     </div>
     """
   end

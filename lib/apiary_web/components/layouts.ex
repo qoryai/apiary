@@ -1097,7 +1097,7 @@ defmodule ApiaryWeb.Layouts do
         <nav
           :for={{section, heading, items} <- @groups}
           class="q-nav-group"
-          aria-label={heading || gettext("Main")}
+          aria-label={group_name(section, heading, items)}
           id={"nav-group-#{section}"}
         >
           <p :if={heading} class="q-nav-heading" aria-hidden="true">{heading}</p>
@@ -1356,6 +1356,13 @@ defmodule ApiaryWeb.Layouts do
         shown != [],
         do: {section, heading, shown}
   end
+
+  # A group's navigation is named by its heading; the first group, which has none, is
+  # Main, and any other group without a heading takes its first entry's name, so no two
+  # navigations of the sidebar share a name.
+  defp group_name(_section, heading, _items) when is_binary(heading), do: heading
+  defp group_name(:home, nil, _items), do: gettext("Main")
+  defp group_name(_section, nil, [{entry, _path} | _]), do: entry.label
 
   # Settings at the sidebar's foot: the scope's.
   defp foot(scope, place, entries) do

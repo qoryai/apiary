@@ -165,7 +165,8 @@ export const TimelineKeys = {
     const link = li && li.querySelector("[data-permalink]")
     if (!link) return
     try {
-      await navigator.clipboard.writeText(link.href)
+      // Inside a summary the number is text with the path in `data-href`.
+      await navigator.clipboard.writeText(link.href || new URL(link.dataset.href, location.href).href)
       li.classList.add("is-target")
       setTimeout(() => li.id !== this.el.dataset.target && li.classList.remove("is-target"), 600)
     } catch (_err) {
