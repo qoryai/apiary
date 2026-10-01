@@ -360,6 +360,15 @@ defmodule ApiaryWeb.PolicyLive.Common do
   def off_words(%{source: :workspace, overridden_by: %{source: :target}}, _workspace, _above),
     do: gettext("Not in force: this target's own rule decides it")
 
+  # The rule that wins is named by its own source: a target's own deny is the target's,
+  # never the workspace's, which a reader would look for there and not find.
+  def off_words(
+        %{source: :organisation, overridden_by: %{source: :target, action: :deny} = winner},
+        _workspace,
+        _above
+      ),
+      do: gettext("Not in force here: this target's own %{host} denies it", host: winner.host)
+
   def off_words(
         %{source: :organisation, overridden_by: %{action: :deny} = winner},
         workspace,

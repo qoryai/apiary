@@ -281,6 +281,39 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
     end
   end
 
+  describe "a target's own deny of a host the level allows" do
+    setup %{scope: scope} do
+      started_run(scope, shop())
+      [%{target: target}] = Policy.list_targets(scope)
+      {:ok, _} = Policy.deny(scope, target, %{host: "api.algolia.example"})
+      above!([rule("allow", "api.algolia.example")])
+      %{path: target_path(scope, target.system, target.path, ["policy"])}
+    end
+
+    test "strikes the level's allow and names the target, not the workspace, as its winner",
+         %{conn: conn, scope: scope, path: path} do
+      view = open(conn, path)
+
+      [_own, above_row] =
+        view
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("#policy-rules tr.q-pr-row")
+        |> Enum.filter(
+          &(LazyHTML.query(&1, ".q-host") |> LazyHTML.text() |> String.trim() ==
+              "api.algolia.example")
+        )
+        |> Enum.map(&(&1 |> LazyHTML.attribute("id") |> hd()))
+
+      words = text(view, "##{above_row} .q-pr-offw-full")
+
+      assert words =~
+               ~r/^Not in force here: this (repository|target)'s own api\.algolia\.example denies it$/
+
+      refute words =~ scope.workspace.name
+    end
+  end
+
   describe "Network access" do
     setup %{scope: scope} do
       started_run(scope, shop(),

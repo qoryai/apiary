@@ -10497,3 +10497,6 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "… %{number} more"
 msgstr ""
+
+msgid "Not in force here: this target's own %{host} denies it"
+msgstr "Not in force here: this repository's own %{host} denies it"
