@@ -337,6 +337,13 @@ defmodule ApiaryWeb.OverviewComponents do
   defp mark(%{kind: :denied, locked: locked}) when is_binary(locked),
     do: %{tone: "plain", icon: "hero-lock-closed-micro", word: gettext("Locked")}
 
+  defp mark(%{kind: :denied, above: above, level: %{name: name}}) when is_binary(above),
+    do: %{
+      tone: "plain",
+      icon: "hero-lock-closed-micro",
+      word: gettext("Decided by %{name}'s policy", name: name)
+    }
+
   defp mark(%{kind: :denied}),
     do: %{tone: "denied", icon: "hero-no-symbol-micro", word: gettext("Not allowed")}
 
@@ -490,6 +497,13 @@ defmodule ApiaryWeb.OverviewComponents do
     """
   end
 
+  defp attention_reason(%{item: %{kind: :denied, above: above, level: %{}}} = assigns)
+       when is_binary(above) do
+    ~H"""
+    {gettext("Denied by %{name}'s policy", name: @item.level.name)}
+    """
+  end
+
   defp attention_reason(%{item: %{kind: :denied}} = assigns) do
     ~H"""
     {gettext("Denied %{times} in %{runs}", times: times(@item.denied), runs: runs_count(@item.runs))}
@@ -571,6 +585,17 @@ defmodule ApiaryWeb.OverviewComponents do
         rule: locked
       )
 
+  defp reason_title(%{kind: :denied, above: above, level: %{name: name}}, _can)
+       when is_binary(above),
+       do:
+         gettext("%{name}'s policy denies %{rule}; nothing in this workspace allows it.",
+           name: name,
+           rule: above
+         )
+
+  defp reason_title(%{kind: :denied, elsewhere: %{name: name}}, _can),
+    do: gettext("Only %{name}'s policy allows a host here", name: name)
+
   defp reason_title(%{kind: :quiet, run: run}, _can) do
     interval = beat(run)
 
@@ -640,6 +665,61 @@ defmodule ApiaryWeb.OverviewComponents do
     >
       {gettext("Open the rule")}
     </.link>
+    """
+  end
+
+  # A destination the level above decides, by a deny of its own or because it allows only
+  # its own hosts: no allow written here would be in force. The way to its page for one who
+  # may change it there, and a lock with the reason for the rest, as Network access does.
+  defp attention_act(%{item: %{kind: :denied, above: above, level: %{} = level}} = assigns)
+       when is_binary(above) do
+    assigns =
+      assign(assigns,
+        link: level.link,
+        tip: gettext("Decided by %{name}'s policy", name: level.name)
+      )
+
+    ~H"""
+    <.link
+      :if={@link}
+      id={"#{@item.id}-rule"}
+      navigate={@link.path <> "?" <> URI.encode_query(%{"rule" => @item.above})}
+      class="q-act"
+    >
+      {gettext("Open the rule")}
+    </.link>
+    <span :if={!@link} id={"#{@item.id}-act"} class="q-act-lock" title={@tip}>
+      <.icon name="hero-lock-closed-micro" class="size-3.5" /><span class="sr-only">{@tip}</span>
+    </span>
+    """
+  end
+
+  defp attention_act(%{item: %{kind: :denied, elsewhere: %{} = level}} = assigns) do
+    assigns =
+      assign(assigns,
+        level: level,
+        tip: gettext("Only %{name}'s policy allows a host here", name: level.name)
+      )
+
+    ~H"""
+    <.link
+      :if={@level.link && @level.link.can_change}
+      id={"#{@item.id}-act"}
+      navigate={@level.link.path <> "?" <> URI.encode_query(%{"allow" => @item.host})}
+      class="q-act"
+      title={@tip}
+      aria-label={gettext("Allow %{host} in %{name}'s policy", host: @item.host, name: @level.name)}
+    >
+      {gettext("Allow")}
+    </.link>
+    <span
+      :if={!(@level.link && @level.link.can_change)}
+      id={"#{@item.id}-act"}
+      class="q-act-lock"
+      title={@tip}
+    >
+      <.icon name="hero-lock-closed-micro" class="size-3.5" /><span class="sr-only">{@tip}</span>
+    </span>
     """
   end
 

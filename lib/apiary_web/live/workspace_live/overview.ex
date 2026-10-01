@@ -307,6 +307,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
         drift: %{},
         connections: nil,
         destinations: nil,
+        above_level: nil,
         lost: [],
         policy: nil,
         attention_items: nil,
@@ -412,10 +413,31 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
     %{
       connections: connections,
+      above_level: if(security?, do: above_level(scope)),
       lost: Runs.lost_since(scope, since, @shown + 1),
       keys: scope |> AccessKeys.list_access_keys() |> Enum.filter(&is_nil(&1.revoked_at)),
       read_at: now
     }
+  end
+
+  # The level above the workspace's policy (`Apiary.Policy.Above`), where the edition keeps
+  # one: its name, whether a workspace or a target may allow hosts of its own, and the
+  # edition's page of it (`c:ApiaryWeb.Edition.above_policy_link/1`). Where it allows only
+  # its own hosts, an allow written here would not be in force, so the list offers none:
+  # the way to its page to one who may change it, a lock and the reason to the rest, as
+  # Network access does (`ApiaryWeb.ConnectionLive.Rules.rule_option/4`).
+  defp above_level(scope) do
+    case Policy.effective(scope, nil) do
+      %{above: %Policy.Above{} = above} ->
+        %{
+          name: above.name,
+          own_allows: above.own_allows,
+          link: ApiaryWeb.Edition.above_policy_link(scope)
+        }
+
+      _ ->
+        nil
+    end
   end
 
   defp read_policy(scope, now) do
@@ -580,6 +602,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       |> assign(
         connections: unwrap(read.connections),
         destinations: destinations,
+        above_level: read.above_level,
         lost: read.lost,
         keys: sort_keys(read.keys),
         failed: Map.delete(socket.assigns.failed, :attention),
@@ -841,7 +864,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
   def handle_event("rule_open", %{"id" => id, "level" => level}, socket) do
     case find_item(socket, id) do
-      %{kind: :denied, resolved: nil, locked: nil} = item ->
+      %{kind: :denied, resolved: nil, locked: nil, above: nil, elsewhere: nil} = item ->
         {:noreply, open_popover(socket, item, level)}
 
       _ ->
@@ -1078,6 +1101,14 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
 
   ## The attention list: built from the record in assigns, merged into what is shown.
 
+  # A denied destination that only the level above could allow: no locked rule and no deny
+  # of that level holds it, and the level allows only its own hosts.
+  defp elsewhere(%{own_allows: false} = level, %{} = row) do
+    if is_nil(row[:locked]) and is_nil(row[:above]), do: level
+  end
+
+  defp elsewhere(_level, _row), do: nil
+
   # Every candidate item, in the order the list shows them. Nothing here queries.
   defp candidates(assigns) do
     now = assigns.now
@@ -1089,7 +1120,10 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
           for row <- rows do
             Map.merge(row, %{
               id: "att-denied-#{:erlang.phash2({row.host, row.port, row.path}, 4_294_967_296)}",
-              kind: :denied
+              kind: :denied,
+              above: Map.get(row, :above),
+              level: assigns.above_level,
+              elsewhere: elsewhere(assigns.above_level, row)
             })
           end
 

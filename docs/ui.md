@@ -262,7 +262,10 @@ what needs the reader, then what their agents did, and never grows with the data
   fourteen days, each a link to the list it counts.
 - **Needs attention**: one line an item, its mark, its subject, where it is, the reason
   in a few words (the longer sentence on hover), when, and the one text act that settles
-  it; five shown and "and n more". A resolved item stays, struck, until the next
+  it; five shown and "and n more". Its Allow is Network access's: where the level above
+  the workspace denies the host, or allows only its own hosts, no allow here would be in
+  force, so the item offers the way to that level's page to one who may change it there,
+  and a lock with the reason to the rest. A resolved item stays, struck, until the next
   navigation; one that arrives is announced (`#overview-announcer`), never inserted above
   what is read.
 - **Activity**: runs and denied attempts per day on one day axis, drawn for the width the
