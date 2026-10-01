@@ -19,6 +19,12 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
   after joins it by invitation, which `INVITATIONS_PER_DAY` bounds. The release commands
   `Apiary.Release.grant_instance_admin/2` and `revoke_instance_admin/1` claim a new
   instance and change its admins.
+- A workspace is created by `Apiary.Organisations.create_workspace/2`, an owner's
+  action, `workspace.create`, asked of the organisation: named, at a slug made from the
+  name or given, empty, in observe, counted against the edition's limit of workspaces
+  per organisation, which in the core is the one the organisation was made with, and
+  told to the edition (`workspace_created/3`). No page of the core offers it. An
+  organisation's pages open its oldest workspace where the person has opened none yet.
 - The record of every run, reported by the runner over the server contract (version 1,
   revision 1: discovery, events and the run configuration): the session as a timeline,
   the terminal, every connection with its decision and rule, and how the run ended.

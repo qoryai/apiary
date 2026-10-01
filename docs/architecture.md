@@ -95,7 +95,8 @@ inserting rows directly. A second organisation is a later sign-up, which
 opens one (`open: true`), so the core's tests make as many organisations as they need,
 though the core's edition creates one. The exceptions are the published key of the
 contract's fixtures, and a second workspace of an organisation (`workspace_fixture/2`),
-which no product function creates yet.
+inserted whatever the edition's limit says: `Apiary.Organisations.create_workspace/2`
+creates one the product's way, and the core's edition allows one in use.
 
 ## Organisation keys
 
@@ -265,11 +266,13 @@ What an edition may do, by where it is asked (`Apiary.Edition`, `ApiaryWeb.Editi
   use is left out (`active_accounts/2`, `active_organisations/2`), and say why an account
   may not sign in (`account_refusal/1`).
 - **Sign-up and organisations**: open a later sign-up (`sign_up_open?/0`); add steps to
-  the transaction that creates an organisation (`organisation_created/2`); name the
-  instance's own organisation (`instance_organisation_id/0`); say how many organisations
-  and workspaces may be in use (`limits/0`, one of each in the core's), the most days the
-  trail may be kept (`audit_retention_max_days/0`), and whether the pages and emails carry
-  "Powered by Qory Apiary" (`attribution?/0`).
+  the transaction that creates an organisation (`organisation_created/2`); be told, in
+  the transaction that creates a workspace, of the workspace (`workspace_created/3`);
+  name the instance's own organisation (`instance_organisation_id/0`); say how many
+  organisations and workspaces may be in use (`limits/0`, one of each in the core's: the
+  workspaces per organisation, which `Apiary.Organisations.create_workspace/2` counts),
+  the most days the trail may be kept (`audit_retention_max_days/0`), and whether the
+  pages and emails carry "Powered by Qory Apiary" (`attribution?/0`).
 - **Places**: the organisations a person reaches, for the switcher and their
   organisations page (`places/1`).
 - **Invitations and members**: give the level an invitation's person joins at, or refuse

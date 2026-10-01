@@ -28,6 +28,9 @@ defmodule Apiary.Edition.Core do
   @impl true
   def organisation_created(multi, _how), do: multi
 
+  @impl true
+  def workspace_created(_repo, _workspace, _scope), do: :ok
+
   # The oldest organisation in use: the only one the core creates, and the first sign-up's
   # on an instance that has more.
   @impl true

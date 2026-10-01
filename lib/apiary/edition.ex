@@ -24,7 +24,8 @@ defmodule Apiary.Edition do
   The callbacks, by where they are asked:
 
   - **Limits and sign-up**: `limits/0`, `sign_up_open?/0`, `organisation_created/2`,
-    `instance_organisation_id/0`, `audit_retention_max_days/0`, `attribution?/0`.
+    `workspace_created/3`, `instance_organisation_id/0`, `audit_retention_max_days/0`,
+    `attribution?/0`.
   - **Access** (`Apiary.Access`): `actions/0`, `roles/0`, `check/3`, `reach/1`, `role/1`,
     `reload/2`, `places_to_lock/1`, `every_workspace_levels/0`, `reaches_workspace?/3`,
     `reached_workspaces/2`.
@@ -76,6 +77,14 @@ defmodule Apiary.Edition do
   `:organisation_entry`, a map of `before`, `after` and `details` the entry carries.
   """
   @callback organisation_created(Ecto.Multi.t(), how :: term) :: Ecto.Multi.t()
+
+  @doc """
+  Told, inside the transaction, that `workspace` was created in its organisation
+  (`Apiary.Organisations.create_workspace/2`), once its entry is written; `scope` is
+  whoever created it. The workspace starts empty, as the core makes it: an edition writes
+  here what it keeps of a workspace from the start. An error rolls the creation back.
+  """
+  @callback workspace_created(Ecto.Repo.t(), %Workspace{}, Scope.t()) :: :ok | {:error, term}
 
   @doc "The organisation whose owners run the instance, or nil before the first sign-up."
   @callback instance_organisation_id() :: Ecto.UUID.t() | nil
@@ -275,6 +284,7 @@ defmodule Apiary.Edition do
     limits: 0,
     sign_up_open?: 0,
     organisation_created: 2,
+    workspace_created: 3,
     instance_organisation_id: 0,
     audit_retention_max_days: 0,
     attribution?: 0,

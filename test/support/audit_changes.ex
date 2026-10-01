@@ -47,6 +47,7 @@ defmodule Apiary.AuditChanges do
       :"instance_admin.grant",
       :"instance_admin.revoke",
       :"audit.prune",
+      :"workspace.create",
       :"workspace.rename",
       :"workspace.delete",
       :"workspace.restore",
@@ -172,6 +173,15 @@ defmodule Apiary.AuditChanges do
       subject: {"organisation", organisation.id},
       before: Enum.filter(before, &(&1 in entries()))
     }
+  end
+
+  # The core's edition allows one workspace in use: the organisation's first is marked
+  # for deletion, as a fixture marks it, before the owner creates another.
+  def make(:"workspace.create", %{scope: scope}) do
+    scope = mark_only_workspace(scope)
+    before = entries()
+    {:ok, workspace} = Organisations.create_workspace(scope, %{"name" => "Data"})
+    %{scope: scope, subject: {"workspace", workspace.id}, before: before}
   end
 
   def make(:"workspace.rename", %{scope: scope}) do
@@ -383,6 +393,9 @@ defmodule Apiary.AuditChanges do
   defp attempt(:"organisation.restore", scope, organisation),
     do: Deletion.restore_organisation(scope, organisation.id)
 
+  defp attempt(:"workspace.create", scope, _),
+    do: Organisations.create_workspace(scope, %{"name" => "Data"})
+
   defp attempt(:"workspace.delete", scope, workspace),
     do: Deletion.delete_workspace(scope, workspace.id, workspace.slug)
 
@@ -430,6 +443,24 @@ defmodule Apiary.AuditChanges do
 
   defp attempt(:"security_policy.lock", scope, rule), do: Policy.lock(scope, rule)
   defp attempt(:"security_policy.set_mode", scope, _), do: Policy.set_mode(scope, "enforce")
+
+  # The scope's workspace, the organisation's only one, marked for deletion directly, and
+  # the scope loaded again, with no workspace in use: the product does not delete an
+  # organisation's last workspace, and the core's edition lets another be created only in
+  # its place.
+  defp mark_only_workspace(%Scope{workspace: %Workspace{} = workspace} = scope) do
+    now = DateTime.utc_now()
+
+    workspace
+    |> Ecto.Changeset.change(
+      deletion_marked_at: now,
+      purge_after: DateTime.add(now, 30, :day),
+      purge_trigger: "grace_period"
+    )
+    |> Repo.update!()
+
+    Organisations.load_scope(Scope.for_user(scope.user), scope.organisation.id)
+  end
 
   # The instance's own organisation (`c:Apiary.Edition.instance_organisation_id/0`).
   defp instance_organisation,

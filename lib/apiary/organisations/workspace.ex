@@ -16,7 +16,8 @@ defmodule Apiary.Organisations.Workspace do
   @derive {Phoenix.Param, key: :slug}
   schema "workspaces" do
     field :name, :string
-    # Set once, at creation, by `put_slug/2`; never cast from a form.
+    # Set once, at creation, by `put_slug/2`: made from the name, or as the form that
+    # creates the workspace gives it; never changed after.
     field :slug, :string
     # The mode of the workspace's security policy; changed through
     # `Apiary.Policy.set_mode/2`.

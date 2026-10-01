@@ -245,7 +245,8 @@ defmodule ApiaryWeb.RefusalsRows do
   # release commands: run on the instance's host by whoever controls it, never offered by
   # a page (`test/apiary/instance_admin_test.exs`). A sign-up's: it creates an
   # organisation for a person who is not signed in, and asks no one's level; no page of
-  # the core offers it to a signed-in person.
+  # the core offers it to a signed-in person. An edition's: creating a workspace, which
+  # no page of the core offers, and an edition's page does, with rows of its own.
   @impl true
   def exempt do
     %{
@@ -254,7 +255,8 @@ defmodule ApiaryWeb.RefusalsRows do
       contract: [:"run.post_events", :"run_configuration.fetch"],
       token: [:"invitation.accept"],
       release: [:"instance_admin.grant", :"instance_admin.revoke"],
-      sign_up: [:"organisation.create"]
+      sign_up: [:"organisation.create"],
+      edition: [:"workspace.create"]
     }
   end
 

@@ -9,7 +9,8 @@ defmodule Apiary.Organisations do
   invitation is sent from a workspace.
 
   An organisation and a workspace each get a slug from their name when they are created
-  (`Apiary.Organisations.Slug`); a page's path names them by it, and `resolve_scope/4`
+  (`Apiary.Organisations.Slug`), a workspace's as the form that creates it says
+  (`create_workspace/2`); a page's path names them by it, and `resolve_scope/4`
   loads them for a person who reaches the organisation and the workspace only: through
   their membership there, or as the edition lets them in (`c:Apiary.Edition.reach/1`,
   `Apiary.Access`, Reach).
@@ -64,8 +65,8 @@ defmodule Apiary.Organisations do
 
   @doc """
   load_scope/2 loads the user's membership in `organisation_id` when given and held,
-  otherwise the user's earliest, into the scope: its organisation, and the first workspace
-  of it the user reaches, by name. One who reaches no workspace yet gets the organisation
+  otherwise the user's earliest, into the scope: its organisation, and the oldest workspace
+  of it the user reaches. One who reaches no workspace yet gets the organisation
   and the membership, and no workspace. A user without a membership gets the scope
   unchanged.
   """
@@ -99,8 +100,8 @@ defmodule Apiary.Organisations do
 
   Without a workspace slug, for an organisation's own page, the workspace is the one
   `last_workspace:` names, the workspace the session remembers as last opened, while the
-  user reaches it and it is in this organisation; otherwise the first they reach, by
-  name; none for one who reaches no workspace yet, who still gets `{:ok, scope}`.
+  user reaches it and it is in this organisation; otherwise the oldest they reach; none
+  for one who reaches no workspace yet, who still gets `{:ok, scope}`.
 
   `:error` when a slug names nothing and when it names an organisation the user does not
   reach or a workspace they do not reach: one answer for all, so a slug does not tell
@@ -185,7 +186,7 @@ defmodule Apiary.Organisations do
     do: {:ok, home_workspace(scope, last_workspace_id)}
 
   # The workspace of an organisation's page: the one the person opened last, while they
-  # reach it, else the first they reach; `{workspace, what the edition says}`, or nil.
+  # reach it, else the oldest they reach; `{workspace, what the edition says}`, or nil.
   defp home_workspace(scope_or_membership, last_workspace_id) do
     last =
       case Ecto.UUID.cast(last_workspace_id) do
@@ -199,11 +200,24 @@ defmodule Apiary.Organisations do
           nil
       end
 
-    case last || scope_or_membership |> reached_query() |> limit(1) |> Repo.one() do
+    case last || scope_or_membership |> reached_query() |> oldest() |> Repo.one() do
       nil -> nil
       row -> place(row)
     end
   end
+
+  # The one workspace of the query that was created first: where the person has opened
+  # none yet, an organisation's pages open its oldest, the one it was made with while it
+  # is there, whatever the names of the others.
+  defp oldest(query) do
+    query
+    |> exclude(:order_by)
+    |> order_by([workspace: w], asc: w.inserted_at, asc: w.id)
+    |> limit(1)
+  end
+
+  defp oldest_of([]), do: nil
+  defp oldest_of(workspaces), do: Enum.min_by(workspaces, &{&1.inserted_at, &1.id})
 
   defp place(row), do: {row.workspace, Map.delete(row, :workspace)}
 
@@ -275,7 +289,7 @@ defmodule Apiary.Organisations do
 
   @doc """
   load_home_scope/2 loads `home_membership/2` into the scope, with its organisation, and
-  the workspace `workspace_id` when the membership reaches it, else the first it reaches:
+  the workspace `workspace_id` when the membership reaches it, else the oldest it reaches:
   for a page of the user's own that shows the workspace beside it, and for where `/` sends
   them. A user without a membership gets the scope unchanged; one who reaches no
   workspace yet gets no workspace.
@@ -284,7 +298,7 @@ defmodule Apiary.Organisations do
   def load_home_scope(%Scope{user: %User{} = user} = scope, workspace_id) do
     case home_membership(user, workspace_id) do
       %Membership{workspaces: workspaces} = membership ->
-        workspace = Enum.find(workspaces, &(&1.id == workspace_id)) || List.first(workspaces)
+        workspace = Enum.find(workspaces, &(&1.id == workspace_id)) || oldest_of(workspaces)
 
         # What the edition says of the person there, read for a level that needs it.
         place =
@@ -1146,6 +1160,102 @@ defmodule Apiary.Organisations do
       changes ->
         with {:ok, _entry} <- Audit.record(Repo, scope, action, new, changes), do: :ok
     end
+  end
+
+  ## Creating a workspace
+
+  @doc """
+  change_new_workspace/2 is the changeset of a workspace the scope's organisation would
+  get from `attrs`, for the form that creates one (`create_workspace/2`): its name, and
+  its slug as `attrs` gives it, or made from the name where it gives none
+  (`suggest_workspace_slug/2`).
+  """
+  @spec change_new_workspace(Scope.t(), map) :: Ecto.Changeset.t()
+  def change_new_workspace(%Scope{organisation: %Organisation{} = organisation}, attrs \\ %{}),
+    do: new_workspace_changeset(organisation, attrs)
+
+  @doc """
+  suggest_workspace_slug/2 is the slug a workspace named `name` would get in the scope's
+  organisation: made from the name (`Apiary.Organisations.Slug.from_name/2`), then the
+  first of it and its numbered variants that no workspace of the organisation holds and
+  no page of the organisation takes.
+  """
+  @spec suggest_workspace_slug(Scope.t(), String.t() | nil) :: String.t()
+  def suggest_workspace_slug(%Scope{organisation: %Organisation{} = organisation}, name),
+    do: workspace_slug(organisation, name || "")
+
+  @doc """
+  create_workspace/2 creates a workspace of the scope's organisation (`workspace.create`,
+  an owner's, asked of the organisation), named `attrs["name"]`, at the slug
+  `attrs["slug"]` or one made from the name, in the default domain and with nothing in it:
+  no key, no run, its policy in observe. The organisation's row is locked while its
+  workspaces in use are counted against the edition's limit
+  (`c:Apiary.Edition.limits/0`), the entry is written in the organisation's trail, and
+  the edition is told (`c:Apiary.Edition.workspace_created/3`), all in one transaction.
+
+  `{:ok, workspace}`; `{:error, changeset}` for a name or a slug the workspace refuses,
+  one another workspace of the organisation holds included; `{:error, :limit}` where the
+  organisation has as many workspaces as the edition allows; `Apiary.Access`'s answer.
+  """
+  @spec create_workspace(Scope.t(), map) ::
+          {:ok, %Workspace{}} | {:error, Ecto.Changeset.t() | :limit | Access.reason()}
+  def create_workspace(%Scope{organisation: %Organisation{} = organisation} = scope, attrs) do
+    Repo.transact(fn ->
+      with :ok <- Access.authorize(scope, :"workspace.create", organisation),
+           :ok <- lock_allowance(organisation),
+           :ok <- ensure_within_limit(organisation),
+           {:ok, workspace} <- organisation |> new_workspace_changeset(attrs) |> Repo.insert(),
+           {:ok, _entry} <-
+             Audit.record(
+               Repo,
+               scope,
+               :"workspace.create",
+               workspace,
+               %{after: %{name: workspace.name, slug: workspace.slug}},
+               place: :organisation
+             ),
+           :ok <- Edition.workspace_created(Repo, workspace, scope) do
+        {:ok, workspace}
+      end
+    end)
+  end
+
+  # Whether the organisation may have one more workspace: as many in use as the edition
+  # allows is as many as it may have. Counted under the organisation's lock
+  # (`lock_allowance/1`), so two creations are counted one after the other.
+  defp ensure_within_limit(%Organisation{id: organisation_id}) do
+    case Edition.limits().workspaces do
+      :unlimited ->
+        :ok
+
+      limit when is_integer(limit) ->
+        in_use =
+          Repo.aggregate(
+            from(w in Workspace,
+              where: w.organisation_id == ^organisation_id and is_nil(w.deletion_marked_at)
+            ),
+            :count
+          )
+
+        if in_use < limit, do: :ok, else: {:error, :limit}
+    end
+  end
+
+  # A new workspace of the organisation: its name, as the form gives it, and its slug, the
+  # form's where it gives one, else one made from the name.
+  defp new_workspace_changeset(%Organisation{id: organisation_id} = organisation, attrs) do
+    attrs = Map.new(attrs, fn {key, value} -> {to_string(key), value} end)
+    name = attrs["name"]
+
+    slug =
+      case attrs["slug"] do
+        given when is_binary(given) and given != "" -> String.trim(given)
+        _none -> workspace_slug(organisation, if(is_binary(name), do: name, else: ""))
+      end
+
+    %Workspace{organisation_id: organisation_id}
+    |> Workspace.create_changeset(%{name: name, domain: Apiary.Lingo.Domain.default().name()})
+    |> Workspace.put_slug(slug)
   end
 
   @doc """
@@ -2050,13 +2160,14 @@ defmodule Apiary.Organisations do
   defp ensure_confirmed(%User{confirmed_at: %DateTime{}}), do: :ok
   defp ensure_confirmed(_inviter), do: {:error, :unconfirmed}
 
-  # The organisation whose allowance the invitation counts against, its row locked
-  # `FOR NO KEY UPDATE`: two invitations of one allowance are counted and written one after
-  # the other, while a row that only references it, which takes `FOR KEY SHARE`, does not
-  # wait. Out of use since it was asked (`c:Apiary.Edition.active_organisations/2`), it sends
-  # nothing, as it would have been refused: read once the lock is held, in a statement of
-  # its own, since what the edition stops it may keep in a table of its own, written under
-  # the organisation's lock.
+  # The organisation whose allowance the invitation counts against, or whose workspaces a
+  # creation counts, its row locked `FOR NO KEY UPDATE`: two invitations of one allowance,
+  # or two workspaces of one limit, are counted and written one after the other, while a
+  # row that only references it, which takes `FOR KEY SHARE`, does not wait. Out of use
+  # since it was asked (`c:Apiary.Edition.active_organisations/2`), it sends nothing, as it
+  # would have been refused: read once the lock is held, in a statement of its own, since
+  # what the edition stops it may keep in a table of its own, written under the
+  # organisation's lock.
   defp lock_allowance(%Organisation{id: id}) do
     Repo.one(from o in Organisation, where: o.id == ^id, select: o.id, lock: "FOR NO KEY UPDATE")
 

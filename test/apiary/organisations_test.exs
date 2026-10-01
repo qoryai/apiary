@@ -282,6 +282,27 @@ defmodule Apiary.OrganisationsTest do
       assert Organisations.home_membership(loner) == nil
       assert Organisations.load_home_scope(Scope.for_user(loner), nil) == Scope.for_user(loner)
     end
+
+    test "with none opened yet, the organisation's oldest workspace, whatever the names" do
+      %{user: user, organisation: organisation, workspace: main} = sign_up_fixture()
+      # Before Main by name, after it by age.
+      alpha = workspace_fixture(organisation, "Alpha")
+      assert DateTime.compare(alpha.inserted_at, main.inserted_at) == :gt
+
+      assert Organisations.load_home_scope(Scope.for_user(user), nil).workspace.id == main.id
+      assert Organisations.load_scope(Scope.for_user(user)).workspace.id == main.id
+
+      assert {:ok, scope} = Organisations.resolve_scope(Scope.for_user(user), organisation.slug)
+      assert scope.workspace.id == main.id
+
+      # The one opened last still wins while it is reached.
+      assert {:ok, scope} =
+               Organisations.resolve_scope(Scope.for_user(user), organisation.slug, nil,
+                 last_workspace: alpha.id
+               )
+
+      assert scope.workspace.id == alpha.id
+    end
   end
 
   describe "settings" do
@@ -314,6 +335,128 @@ defmodule Apiary.OrganisationsTest do
                Organisations.update_organisation(owner_scope, %{name: "Übergrößen & Söhne"})
 
       assert %Ecto.Changeset{} = Organisations.change_organisation(%Organisation{})
+    end
+  end
+
+  describe "create_workspace/2" do
+    # The core's edition allows one workspace in use, the one the organisation was made
+    # with: another is created in its place once it is marked for deletion. The scope,
+    # loaded again, then holds no workspace.
+    defp mark_only_workspace(%{workspace: workspace} = scope) do
+      now = DateTime.utc_now()
+
+      workspace
+      |> Ecto.Changeset.change(
+        deletion_marked_at: now,
+        purge_after: DateTime.add(now, 30, :day),
+        purge_trigger: "grace_period"
+      )
+      |> Repo.update!()
+
+      Organisations.load_scope(Scope.for_user(scope.user), scope.organisation.id)
+    end
+
+    test "an owner creates one, named, at a slug made from the name, empty and in observe" do
+      %{scope: scope, organisation: organisation} = sign_up_fixture()
+      scope = mark_only_workspace(scope)
+
+      assert {:ok, workspace} =
+               Organisations.create_workspace(scope, %{"name" => "Café Société, Data"})
+
+      assert %{name: "Café Société, Data", slug: "cafe-societe-data", domain: "software"} =
+               workspace
+
+      assert workspace.organisation_id == organisation.id
+      assert workspace.egress_mode == "observe"
+      assert workspace.deletion_marked_at == nil
+      assert Enum.map(Organisations.list_workspaces(scope), & &1.id) == [workspace.id]
+
+      assert %Entry{action: "workspace.create", workspace_id: nil, after: after_} =
+               Repo.one!(
+                 from e in Entry,
+                   where: e.organisation_id == ^organisation.id and e.action == "workspace.create"
+               )
+
+      assert after_ == %{"name" => "Café Société, Data", "slug" => "cafe-societe-data"}
+    end
+
+    test "the slug is the form's where it gives one, and checked as a slug" do
+      %{scope: scope} = sign_up_fixture()
+      scope = mark_only_workspace(scope)
+
+      assert {:error, changeset} =
+               Organisations.create_workspace(scope, %{name: "Data", slug: "Data Lake"})
+
+      assert %{slug: [_rule]} = errors_on(changeset)
+
+      assert {:error, changeset} =
+               Organisations.create_workspace(scope, %{name: "Data", slug: "settings"})
+
+      assert %{slug: ["is reserved for a page of Qory Apiary"]} = errors_on(changeset)
+
+      assert {:ok, %{slug: "lake"}} =
+               Organisations.create_workspace(scope, %{name: "Data", slug: " lake "})
+    end
+
+    test "a name or a slug another workspace of the organisation holds is refused" do
+      %{scope: scope, workspace: main} = sign_up_fixture()
+      scope = mark_only_workspace(scope)
+
+      # The marked one still holds its name and slug.
+      assert {:error, changeset} = Organisations.create_workspace(scope, %{name: main.name})
+      assert %{name: [_taken]} = errors_on(changeset)
+
+      assert {:error, changeset} =
+               Organisations.create_workspace(scope, %{name: "Another", slug: main.slug})
+
+      assert %{slug: [_taken]} = errors_on(changeset)
+
+      # Made from a name whose slug is taken, the next free one is picked.
+      assert Organisations.suggest_workspace_slug(scope, main.name) == "#{main.slug}-2"
+      assert Organisations.suggest_workspace_slug(scope, "Data") == "data"
+      assert Organisations.suggest_workspace_slug(scope, "") == "workspace"
+
+      assert {:ok, %{name: "Main ", slug: "main-2"}} =
+               Organisations.create_workspace(scope, %{name: "Main ", slug: ""})
+    end
+
+    test "an empty name is refused, and the form's changeset says so" do
+      %{scope: scope} = sign_up_fixture()
+      scope = mark_only_workspace(scope)
+
+      assert {:error, changeset} = Organisations.create_workspace(scope, %{"name" => ""})
+      assert %{name: ["can't be blank"]} = errors_on(changeset)
+
+      changeset = Organisations.change_new_workspace(scope, %{"name" => "Data", "slug" => ""})
+      assert Ecto.Changeset.get_field(changeset, :slug) == "data"
+      assert Ecto.Changeset.get_field(changeset, :name) == "Data"
+    end
+
+    test "the edition's limit: the core allows one workspace in use" do
+      %{scope: scope} = sign_up_fixture()
+
+      assert {:error, :limit} = Organisations.create_workspace(scope, %{"name" => "Data"})
+      assert [_main] = Organisations.list_workspaces(scope)
+      refute Repo.exists?(from e in Entry, where: e.action == "workspace.create")
+
+      scope = mark_only_workspace(scope)
+      assert {:ok, _workspace} = Organisations.create_workspace(scope, %{"name" => "Data"})
+      assert {:error, :limit} = Organisations.create_workspace(scope, %{"name" => "More"})
+    end
+
+    test "only an owner creates one" do
+      %{scope: owner} = sign_up_fixture()
+      %{scope: admin} = member_fixture(owner, :admin)
+      %{scope: member} = member_fixture(owner, :member)
+
+      assert {:error, :forbidden} = Organisations.create_workspace(admin, %{"name" => "Data"})
+      assert {:error, :forbidden} = Organisations.create_workspace(member, %{"name" => "Data"})
+      refute Repo.exists?(from e in Entry, where: e.action == "workspace.create")
+    end
+
+    test "the core's edition is told and adds nothing" do
+      %{scope: scope} = sign_up_fixture()
+      assert Apiary.Edition.Core.workspace_created(Repo, scope.workspace, scope) == :ok
     end
   end
 
