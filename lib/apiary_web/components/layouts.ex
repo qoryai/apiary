@@ -743,6 +743,16 @@ defmodule ApiaryWeb.Layouts do
         <p id="organisation-menu-empty" class="q-switcher-empty" hidden>
           {gettext("No organisation or workspace matches.")}
         </p>
+        <%!-- What the search left, said by the Switcher hook in these words. --%>
+        <p
+          id="organisation-menu-status"
+          role="status"
+          class="sr-only"
+          data-none={gettext("No organisation or workspace matches.")}
+          data-one={gettext("1 place matches.")}
+          data-other={gettext("%{count} places match.", count: "%{count}")}
+        >
+        </p>
       </div>
       <div class="q-switcher-foot">
         <.link

@@ -170,6 +170,8 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert text(view, "#runs-view-denials") == "With denials 1"
       assert text(view, "#runs-footer") == "1–1 of 1"
       refute has_element?(view, "#runs-summary")
+      # The status region is there before anything narrows the list, so what does is heard.
+      assert has_element?(view, "#runs-status[role=status]")
     end
 
     test "a run that ended well is its dot, its word for a screen reader only", %{
@@ -353,6 +355,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert token(view, "denied") == "denied:yes"
       assert has_element?(view, "#runs-token-runtime a[aria-label='Remove runtime:claude']")
       assert text(view, "#runs-summary") =~ "1 run matches"
+      assert has_element?(view, "#runs-status[role=status] #runs-summary")
 
       # The Filter menu says what each section is set to.
       assert text(view, "#runs-filter-value-state") == "Failed"

@@ -273,20 +273,26 @@ defmodule ApiaryWeb.RunLive.Index do
 
             <div class="q-with-preview">
               <div class="q-list-col">
-                <p
-                  :if={@listing && @listing.runs != [] && Filters.any?(@filters)}
-                  id="runs-summary"
-                  class="q-matchline"
-                >
-                  <.rich text={
-                    rich_ngettext(
-                      "%{number} run matches",
-                      "%{number} runs match",
-                      @listing.total,
-                      number: {:b, Format.number(@listing.total)}
-                    )
-                  } />
-                </p>
+                <%!-- Always there, so a screen reader hears what a view or a filter left. --%>
+                <div id="runs-status" role="status" class="q-status">
+                  <p
+                    :if={@listing && @listing.runs != [] && Filters.any?(@filters)}
+                    id="runs-summary"
+                    class="q-matchline"
+                  >
+                    <.rich text={
+                      rich_ngettext(
+                        "%{number} run matches",
+                        "%{number} runs match",
+                        @listing.total,
+                        number: {:b, Format.number(@listing.total)}
+                      )
+                    } />
+                  </p>
+                  <p :if={@listing && @listing.runs == []} class="sr-only">
+                    {empty_title(@filters)}
+                  </p>
+                </div>
 
                 <.runs_table
                   :if={@listing == nil || @listing.runs != []}

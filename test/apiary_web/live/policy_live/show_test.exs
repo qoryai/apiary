@@ -412,6 +412,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert text(view, "#policy-rules-summary") == "0 rules match"
       refute has_element?(view, "#policy-rules-clear")
       assert text(view, "#policy-rules") =~ "No rule matches."
+      assert text(view, "#policy-rules-status[role=status]") =~ "No rule matches."
 
       # The token's cross takes it away; Clear takes everything away.
       view |> element("#policy-rules-token-paths a") |> render_click()

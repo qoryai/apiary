@@ -322,15 +322,21 @@ defmodule ApiaryWeb.TargetLive.Index do
           </:token>
         </.filter_tokens>
 
-        <p :if={Query.narrowed?(@query) && @listing} id="targets-summary" class="q-tgt-summary">
-          <span>
-            <.rich text={
-              rich_ngettext("%{number} target matches", "%{number} targets match", @listing.total,
-                number: {:b, Format.number(@listing.total)}
-              )
-            } />
-          </span>
-        </p>
+        <%!-- Always there, so a screen reader hears what the search left. --%>
+        <div id="targets-status" role="status" class="q-status">
+          <p :if={Query.narrowed?(@query) && @listing} id="targets-summary" class="q-tgt-summary">
+            <span>
+              <.rich text={
+                rich_ngettext("%{number} target matches", "%{number} targets match", @listing.total,
+                  number: {:b, Format.number(@listing.total)}
+                )
+              } />
+            </span>
+          </p>
+          <p :if={@listing && @listing.rows == [] && Query.narrowed?(@query)} class="sr-only">
+            {empty_title(@query)}
+          </p>
+        </div>
 
         <.notice :if={@load_error} kind={:error} class="max-w-[80ch]">
           {gettext("The targets could not be read. Reload the page to try again.")}

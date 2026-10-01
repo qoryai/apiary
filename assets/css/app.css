@@ -3116,6 +3116,11 @@
       overflow-y: auto;
     }
   }
+  /* A list's status region is always there, so what a view, a filter or a search left
+     is announced; empty, it takes no place in the list's flow or gap. */
+  .q-status:not(:has(*)) {
+    position: absolute;
+  }
   .q-matchline {
     margin-bottom: 10px;
     color: var(--q-muted);

@@ -206,6 +206,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       assert text(view, "#connections-view-denied") == "Denied 2"
       assert text(view, "#connections-view-allowed") == "Allowed 1"
       refute has_element?(view, "#connections-summary")
+      assert has_element?(view, "#connections-status[role=status]")
       assert has_element?(view, "#connections-sort-denied[aria-checked=true]")
 
       rows =

@@ -416,6 +416,12 @@ defmodule ApiaryWeb.LayoutsTest do
                "#organisation-menu-panel input#organisation-menu-search[aria-label='Find an organisation or workspace']"
              )
 
+      # What the search leaves is said in a status line the Switcher hook fills.
+      assert has_element?(
+               view,
+               "#organisation-menu-panel p#organisation-menu-status[role='status'][data-none][data-one][data-other]"
+             )
+
       # plain links to each workspace's own URL, the current one marked; no form
       refute has_element?(view, "#organisation-menu form")
 

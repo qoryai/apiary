@@ -290,27 +290,33 @@ defmodule ApiaryWeb.ConnectionLive.Index do
         />
 
         <div class="q-list-col">
-          <p
-            :if={@listing && @listing.rows != [] && narrowed?(loose(@filters, @page_base))}
-            id="connections-summary"
-            class="q-matchline"
-          >
-            <.rich text={
-              rich_gettext("%{destinations} across %{runs}",
-                destinations:
-                  rich_ngettext(
-                    "%{number} destination matches",
-                    "%{number} destinations match",
-                    @listing.summary.destinations,
-                    number: {:b, Format.number(@listing.summary.destinations)}
-                  ),
-                runs:
-                  rich_ngettext("%{number} run", "%{number} runs", @listing.summary.runs,
-                    number: {:b, Format.number(@listing.summary.runs)}
-                  )
-              )
-            } />
-          </p>
+          <%!-- Always there, so a screen reader hears what a view or a filter left. --%>
+          <div id="connections-status" role="status" class="q-status">
+            <p
+              :if={@listing && @listing.rows != [] && narrowed?(loose(@filters, @page_base))}
+              id="connections-summary"
+              class="q-matchline"
+            >
+              <.rich text={
+                rich_gettext("%{destinations} across %{runs}",
+                  destinations:
+                    rich_ngettext(
+                      "%{number} destination matches",
+                      "%{number} destinations match",
+                      @listing.summary.destinations,
+                      number: {:b, Format.number(@listing.summary.destinations)}
+                    ),
+                  runs:
+                    rich_ngettext("%{number} run", "%{number} runs", @listing.summary.runs,
+                      number: {:b, Format.number(@listing.summary.runs)}
+                    )
+                )
+              } />
+            </p>
+            <p :if={@listing && @listing.rows == []} class="sr-only">
+              {empty_title(loose(@filters, @page_base))}
+            </p>
+          </div>
 
           <div
             :if={@listing == nil}

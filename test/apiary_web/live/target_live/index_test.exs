@@ -110,6 +110,7 @@ defmodule ApiaryWeb.TargetLive.IndexTest do
     assert has_element?(view, "#targets-tokens .q-tok", "github.example")
     assert has_element?(view, "#targets-search-input[value=shop]")
     assert has_element?(view, "#targets-summary", "1 repository matches")
+    assert has_element?(view, "#targets-status[role=status] #targets-summary")
 
     view |> element("#targets-tokens .q-tok a") |> render_click()
     assert_patch(view, workspace_path(scope, "/targets?q=shop"))

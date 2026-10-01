@@ -125,6 +125,16 @@ export const Switcher = {
     if (q !== "") recent.hidden = true
     else recent.hidden = recent.querySelector("[data-recent]").children.length === 0
     this.panel.querySelector("#organisation-menu-empty").hidden = any
+    // Say what the search left, in the server's words: a count, or that nothing matches.
+    const status = this.panel.querySelector("#organisation-menu-status")
+    if (status) {
+      let shown = 0
+      this.panel.querySelectorAll("a[data-place]").forEach(place => {
+        if (!place.parentElement.hidden && !place.closest("[hidden]")) shown++
+      })
+      const words = q === "" ? "" : shown === 0 ? status.dataset.none : shown === 1 ? status.dataset.one : status.dataset.other
+      status.textContent = (words || "").replace("%{count}", String(shown))
+    }
   },
 
   links() {

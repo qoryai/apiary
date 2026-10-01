@@ -1105,24 +1105,44 @@ defmodule ApiaryWeb.PolicyComponents do
 
     {render_slot(@composer)}
 
-    <p :if={@listing.match && !@listing.loading} id={"#{@id}-summary"} class="q-matchline">
-      <.rich text={
-        rich_ngettext("%{number} rule matches", "%{number} rules match", @listing.match,
-          number: {:b, Format.number(@listing.match)}
-        )
-      } />
-      <.link
-        :if={@query.tokens == []}
-        id={"#{@id}-clear"}
-        patch={@path.(RuleList.clear(@query))}
-        class="q-tok-clear"
+    <%!-- Always there, so a screen reader hears what a view or the search left. --%>
+    <div id={"#{@id}-status"} role="status" class="q-status">
+      <p :if={@listing.match && !@listing.loading} id={"#{@id}-summary"} class="q-matchline">
+        <.rich text={
+          rich_ngettext("%{number} rule matches", "%{number} rules match", @listing.match,
+            number: {:b, Format.number(@listing.match)}
+          )
+        } />
+        <.link
+          :if={@query.tokens == []}
+          id={"#{@id}-clear"}
+          patch={@path.(RuleList.clear(@query))}
+          class="q-tok-clear"
+        >
+          {gettext("Clear")}
+        </.link>
+        <span :if={@listing.unseen} id={"#{@id}-unseen"}>
+          {gettext("The use of the last 14 days could not be counted, so seen: narrows nothing.")}
+        </span>
+      </p>
+      <p
+        :if={
+          !@listing.loading && @listing.rows == [] &&
+            (RuleList.narrowed?(@query) or @query.view != :all)
+        }
+        class="sr-only"
       >
-        {gettext("Clear")}
-      </.link>
-      <span :if={@listing.unseen} id={"#{@id}-unseen"}>
-        {gettext("The use of the last 14 days could not be counted, so seen: narrows nothing.")}
-      </span>
-    </p>
+        {gettext("No rule matches.")}
+      </p>
+      <p
+        :if={!@listing.loading && !@listing.match && @listing.rows != [] && @query.view != :all}
+        class="sr-only"
+      >
+        {ngettext("%{number} rule matches", "%{number} rules match", @listing.total,
+          number: Format.number(@listing.total)
+        )}
+      </p>
+    </div>
 
     <div
       id={@id}
