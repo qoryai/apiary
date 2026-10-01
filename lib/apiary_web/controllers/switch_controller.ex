@@ -9,9 +9,11 @@ defmodule ApiaryWeb.SwitchController do
   The switcher keeps the reader's section, but a section of a feature may be absent in
   another organisation or workspace, and only the destination's scope knows: the pipeline
   resolves it for a member and answers `404` for anybody else, and
-  `ApiaryWeb.Layouts.switch_target/2` asks it.
+  `ApiaryWeb.Layouts.switch_target/2` asks it. Like the palette, it belongs to the
+  console's record, `observability`, which every instance has.
   """
   use ApiaryWeb, :controller
+  use ApiaryWeb.Features, :observability
 
   def show(conn, %{"section" => section}) do
     redirect(conn, to: ApiaryWeb.Layouts.switch_target(conn.assigns.current_scope, section))
