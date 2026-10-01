@@ -80,12 +80,9 @@ defmodule ApiaryWeb.ConnectionLive.Index do
             {if @security,
               do:
                 gettext(
-                  "Where the runs of this workspace reached out to, and what the policy made of it. One row per host, port and path, across runs."
+                  "Where the runs of this workspace reached out to, and what the policy made of it."
                 ),
-              else:
-                gettext(
-                  "Where the runs of this workspace reached out to. One row per host, port and path, across runs."
-                )}
+              else: gettext("Where the runs of this workspace reached out to.")}
             <span :if={@filters.target} id="connections-target-note">
               <.rich text={
                 rich_gettext("Showing %{target} only.",

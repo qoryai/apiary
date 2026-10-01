@@ -31,7 +31,7 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
       >
         <:subtitle>
           {gettext(
-            "A key lets the machines of this workspace post their runs. Create one per machine or environment and paste its server block into the runner file."
+            "A key lets the machines of this workspace post their runs; one key can serve many hosts."
           )}
         </:subtitle>
         <:actions :if={Access.can?(@current_scope, :"access_key.create", @current_scope.workspace)}>
