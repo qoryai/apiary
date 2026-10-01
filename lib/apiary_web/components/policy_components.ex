@@ -909,7 +909,7 @@ defmodule ApiaryWeb.PolicyComponents do
       </:view>
     </.views>
 
-    <div id={"#{@id}-bar"} class="q-bar q-rl-bar">
+    <div id={"#{@id}-bar"} class="q-bar q-pr-bar">
       <.list_search
         id={"#{@id}-query"}
         class="q-find-query"
@@ -995,16 +995,16 @@ defmodule ApiaryWeb.PolicyComponents do
 
     <div
       id={@id}
-      class="q-tbl q-rl-wrap overflow-x-auto rounded-box border border-line bg-base-100 shadow-xs"
+      class="q-tbl q-pr-wrap overflow-x-auto rounded-box border border-line bg-base-100 shadow-xs"
       tabindex="0"
       role="region"
       aria-label={@label}
       aria-busy={@listing.loading && "true"}
     >
-      <table class="table q-rl">
+      <table class="table q-pr">
         <thead>
           <tr>
-            <th scope="col" class="q-rl-mk">
+            <th scope="col" class="q-pr-mk">
               <span class="sr-only">{gettext("Allow or deny")}</span>
             </th>
             <th scope="col">{gettext("Host")}</th>
@@ -1012,12 +1012,12 @@ defmodule ApiaryWeb.PolicyComponents do
             <th :if={@source} scope="col">{gettext("Source")}</th>
             <th :if={@seen? or @off?} scope="col" class="q-from-sm">{gettext("Last 14 days")}</th>
             <th scope="col" class="q-from-md">{gettext("Added")}</th>
-            <th scope="col" class="q-rl-acts"><span class="sr-only">{gettext("Actions")}</span></th>
+            <th scope="col" class="q-pr-acts"><span class="sr-only">{gettext("Actions")}</span></th>
           </tr>
         </thead>
         <tbody>
           <tr :for={n <- if(@listing.loading, do: 1..6, else: [])}>
-            <td class="q-rl-mk"></td>
+            <td class="q-pr-mk"></td>
             <td>
               <span class={["skeleton q-skel", if(rem(n, 2) == 0, do: "w-44", else: "w-36")]}></span>
             </td>
@@ -1027,10 +1027,10 @@ defmodule ApiaryWeb.PolicyComponents do
               <span class="skeleton q-skel w-16"></span>
             </td>
             <td class="q-from-md"><span class="skeleton q-skel w-24"></span></td>
-            <td class="q-rl-acts"></td>
+            <td class="q-pr-acts"></td>
           </tr>
           <tr :if={!@listing.loading && @listing.rows == []}>
-            <td colspan="7" class="q-rl-none">
+            <td colspan="7" class="q-pr-none">
               {if RuleList.narrowed?(@query) or @query.view != :all or !@empty,
                 do: gettext("No rule matches."),
                 else: @empty}
@@ -1125,32 +1125,37 @@ defmodule ApiaryWeb.PolicyComponents do
     <tr
       id={@id}
       class={[
-        "q-rl-row",
+        "q-pr-row",
         @fresh && "q-fresh",
         @ruled && "q-ruled",
-        !@rule.in_force && "q-rl-off"
+        !@rule.in_force && "q-pr-off"
       ]}
     >
-      <td class="q-rl-mk"><.rule_mark action={@rule.action} /></td>
-      <td class="q-rl-host" title={@rule.off}>
-        <.host host={@rule.host} class="q-rl-h" />
+      <td class="q-pr-mk"><.rule_mark action={@rule.action} /></td>
+      <td class="q-pr-host" title={@rule.off}>
+        <.host host={@rule.host} class="q-pr-h" />
         <span :if={@rule.off} class="sr-only">. {@rule.off}</span>
         <span :if={@fresh} class="q-newdot">{gettext("New in v%{version}", version: @fresh)}</span>
       </td>
-      <td class="q-rl-paths"><.paths paths={@rule.paths} action={@rule.action} /></td>
-      <td :if={@source} class="q-rl-src">{@rule.source.label}</td>
-      <td :if={@use?} class="q-rl-use q-from-sm">
-        <span :if={@rule.off} class="q-rl-offw" aria-hidden="true">{@rule.off}</span>
+      <td class="q-pr-paths"><.paths paths={@rule.paths} action={@rule.action} /></td>
+      <td :if={@source} class="q-pr-src">{@rule.source.label}</td>
+      <td :if={@use?} class="q-pr-use q-from-sm">
+        <span :if={@rule.off} class="q-pr-offw q-pr-offw-full" title={@rule.off} aria-hidden="true">
+          {@rule.off}
+        </span>
+        <span :if={@rule.off} class="q-pr-offw q-pr-offw-short" title={@rule.off} aria-hidden="true">
+          {gettext("Not in force")}
+        </span>
         <.seen :if={!@rule.off && @seen} seen={@seen} />
       </td>
-      <td class="q-rl-by q-from-md">
+      <td class="q-pr-by q-from-md">
         {@rule.by}<span :if={@rule.by && @rule.at}> · </span>{@rule.at && Format.day(@rule.at)}
       </td>
-      <td class="q-rl-acts">
+      <td class="q-pr-acts">
         <span
           :if={@rule.locked}
           id={"#{@id}-lock"}
-          class="q-rl-lock tooltip tooltip-left q-tip-wide"
+          class="q-pr-lock tooltip tooltip-left q-tip-wide"
           tabindex="0"
           aria-description={@rule.locked_tip}
           data-tip={@rule.locked_tip}
@@ -1256,7 +1261,7 @@ defmodule ApiaryWeb.PolicyComponents do
 
   defp paths(assigns) do
     ~H"""
-    <span class="q-rl-pth"><code :for={path <- @paths} class="q-rule">{path}</code></span>
+    <span class="q-pr-pth"><code :for={path <- @paths} class="q-rule">{path}</code></span>
     """
   end
 
@@ -1308,49 +1313,49 @@ defmodule ApiaryWeb.PolicyComponents do
     ~H"""
     <div
       id={@id}
-      class="q-tbl q-rl-wrap overflow-x-auto rounded-box border border-line bg-base-100 shadow-xs"
+      class="q-tbl q-pr-wrap overflow-x-auto rounded-box border border-line bg-base-100 shadow-xs"
       tabindex="0"
       role="region"
       aria-label={@label}
     >
-      <table class="table q-rl">
+      <table class="table q-pr">
         <thead>
           <tr>
-            <th scope="col" class="q-rl-mk"><span class="sr-only">{gettext("Kind")}</span></th>
+            <th scope="col" class="q-pr-mk"><span class="sr-only">{gettext("Kind")}</span></th>
             <th scope="col">{gettext("Name")}</th>
             <th scope="col">{gettext("Argument")}</th>
             <th :if={@source} scope="col">{gettext("Source")}</th>
             <th :if={@seen?} scope="col" class="q-from-sm">{gettext("Last 14 days")}</th>
             <th scope="col" class="q-from-md">{gettext("Added")}</th>
-            <th scope="col" class="q-rl-acts"><span class="sr-only">{gettext("Actions")}</span></th>
+            <th scope="col" class="q-pr-acts"><span class="sr-only">{gettext("Actions")}</span></th>
           </tr>
         </thead>
         <tbody>
           <tr :if={@rows == []}>
-            <td colspan="7" class="q-rl-none">
+            <td colspan="7" class="q-pr-none">
               {gettext("No credentials. A run that needs none runs without.")}
             </td>
           </tr>
-          <tr :for={row <- @rows} id={"rule-#{row.id}"} class="q-rl-row">
-            <td class="q-rl-mk">
-              <span class="q-rl-key"><.icon name="hero-key-micro" class="size-3.5" /></span>
+          <tr :for={row <- @rows} id={"rule-#{row.id}"} class="q-pr-row">
+            <td class="q-pr-mk">
+              <span class="q-pr-key"><.icon name="hero-key-micro" class="size-3.5" /></span>
             </td>
-            <td class="q-rl-host">
-              <span class="q-host q-rl-h">{row.name}</span>
-              <span :if={row.action == "deny"} class="q-rl-word">{gettext("Denied")}</span>
+            <td class="q-pr-host">
+              <span class="q-host q-pr-h">{row.name}</span>
+              <span :if={row.action == "deny"} class="q-pr-word">{gettext("Denied")}</span>
             </td>
-            <td class="q-rl-paths">
+            <td class="q-pr-paths">
               <code :if={row.argument} class="q-rule">{row.argument}</code>
               <span :if={!row.argument} class="q-every">{gettext("no argument")}</span>
             </td>
-            <td :if={@source} class="q-rl-src">{row.source.label}</td>
-            <td :if={@seen?} class="q-rl-use q-from-sm">
+            <td :if={@source} class="q-pr-src">{row.source.label}</td>
+            <td :if={@seen?} class="q-pr-use q-from-sm">
               <.seen seen={seen_of(@activity, row)} noun={:request} />
             </td>
-            <td class="q-rl-by q-from-md">
+            <td class="q-pr-by q-from-md">
               {row.by}<span :if={row.by && row.at}> · </span>{row.at && Format.day(row.at)}
             </td>
-            <td class="q-rl-acts">
+            <td class="q-pr-acts">
               <.row_menu
                 :if={(row.own and row.can_change) or (not row.own and row.view != nil)}
                 id={"rule-#{row.id}-menu"}

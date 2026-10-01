@@ -56,7 +56,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     view
     |> render()
     |> LazyHTML.from_fragment()
-    |> LazyHTML.query("#policy-rules tr.q-rl-row")
+    |> LazyHTML.query("#policy-rules tr.q-pr-row")
     |> Enum.find(&(LazyHTML.query(&1, ".q-host") |> LazyHTML.text() |> String.trim() == host))
     |> LazyHTML.attribute("id")
     |> hd()
@@ -145,7 +145,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     # Every rule is the workspace's: its source says so, its menu leads to it there, and
     # nothing changes it here.
     registry = row(view, "registry.example")
-    assert text(view, "##{registry} .q-rl-src") == scope.workspace.name
+    assert text(view, "##{registry} .q-pr-src") == scope.workspace.name
 
     assert has_element?(
              view,
@@ -156,10 +156,10 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     refute has_element?(view, "##{registry}-menu [role=menuitem]", "Remove")
     refute has_element?(view, "##{registry}-menu [role=menuitem]", "Change to deny")
     assert text(view, "##{row(view, "*.paste.example")}-lock") == "Locked"
-    refute has_element?(view, "#policy-rules .q-rl-off")
+    refute has_element?(view, "#policy-rules .q-pr-off")
 
     credential = Enum.find(Policy.list_rules(scope, nil), &(&1.name == "model-key"))
-    assert text(view, "#rule-#{credential.id} .q-rl-src") == scope.workspace.name
+    assert text(view, "#rule-#{credential.id} .q-pr-src") == scope.workspace.name
     assert has_element?(view, "#rule-#{credential.id}-view", "View in")
     refute has_element?(view, "#rule-#{credential.id}-remove")
 
@@ -193,7 +193,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     # Its own comes first, with its source and its menu; the workspace's allow stays in
     # the list, struck, and says why.
     assert hd(hosts(view)) == "gitlab.example"
-    assert text(view, "#rule-#{rule.id} .q-rl-src") == "This repository"
+    assert text(view, "#rule-#{rule.id} .q-pr-src") == "This repository"
     assert text(view, "#rule-#{rule.id}") =~ "New in v1"
     assert has_element?(view, "#rule-#{rule.id}-menu button", "Change to allow")
     assert has_element?(view, "#rule-#{rule.id}-menu button", "Remove")
@@ -201,7 +201,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     refute has_element?(view, "#policy-no-own")
 
     beaten = workspace_rule(scope, "gitlab.example")
-    assert has_element?(view, "#rule-#{beaten.id}.q-rl-off")
+    assert has_element?(view, "#rule-#{beaten.id}.q-pr-off")
 
     assert text(view, "#rule-#{beaten.id}") =~
              "Not in force: this repository's own rule decides it"
@@ -227,7 +227,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     assert text(view, "#flash-info") =~
              "The workspace's rule for gitlab.example is restored for github.example/acme/shop."
 
-    refute has_element?(view, "#rule-#{beaten.id}.q-rl-off")
+    refute has_element?(view, "#rule-#{beaten.id}.q-pr-off")
     assert has_element?(view, "#policy-no-own")
   end
 
@@ -280,8 +280,8 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
 
     view = open(conn, path)
 
-    assert has_element?(view, "#rule-#{held.id}.q-rl-off")
-    assert text(view, "#rule-#{held.id} .q-rl-src") == "This repository"
+    assert has_element?(view, "#rule-#{held.id}.q-pr-off")
+    assert text(view, "#rule-#{held.id} .q-pr-src") == "This repository"
 
     assert text(view, "#rule-#{held.id}") =~
              "Not in force: #{scope.workspace.name}'s locked *.paste.example holds"
@@ -576,11 +576,11 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     assert own
     assert text(view, "#policy-credentials-n") == "2"
     assert hosts(view, "#policy-credential-rows .q-host") == ["forge-token", "model-key"]
-    assert text(view, "#rule-#{own.id} .q-rl-src") == "This repository"
+    assert text(view, "#rule-#{own.id} .q-pr-src") == "This repository"
     assert text(view, "#rule-#{own.id}") =~ "acme/shop"
 
     workspace = Enum.find(Policy.list_rules(scope, nil), &(&1.name == "model-key"))
-    assert text(view, "#rule-#{workspace.id} .q-rl-src") == scope.workspace.name
+    assert text(view, "#rule-#{workspace.id} .q-pr-src") == scope.workspace.name
 
     assert has_element?(
              view,

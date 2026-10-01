@@ -915,7 +915,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       {:ok, _} = Apiary.Accounts.delete_user(member)
 
       view = open(conn, scope)
-      assert text(view, "#rule-#{rule.id} .q-rl-by") =~ "Former member"
+      assert text(view, "#rule-#{rule.id} .q-pr-by") =~ "Former member"
       refute has_element?(view, "#policy-rules-filter-by-0")
 
       view = open(conn, scope, "/policy/history")

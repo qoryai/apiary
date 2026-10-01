@@ -288,10 +288,10 @@ defmodule ApiaryWeb.PolicyComponentsTest do
           row(%{id: "r3", host: "*.paste.example", action: "deny", locked: true})
         ])
 
-      assert html =~ ~s(id="rule-p1" class="q-rl-row q-rl-off")
+      assert html =~ ~s(id="rule-p1" class="q-pr-row q-pr-off")
 
       assert html =~
-               ~r{<td class="q-rl-host" title="Not in force: Main&#39;s locked \*\.paste\.example holds">}
+               ~r{<td class="q-pr-host" title="Not in force: Main&#39;s locked \*\.paste\.example holds">}
 
       assert text(html) =~ "Not in force: Main's locked *.paste.example holds"
       # Its menu holds Remove alone: nothing is edited while the lock holds.
