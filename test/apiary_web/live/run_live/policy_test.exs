@@ -267,7 +267,9 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       {:ok, view, _html} =
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
 
-      assert text(view, "#policy-unrendered") == "0f0f0f0f0f0f · not rendered here"
+      assert text(view, "#policy-unrendered") ==
+               "0f0f0f0f0f0f Not a version made in this workspace"
+
       refute has_element?(view, "#run-facts a.q-ver")
     end
 

@@ -4718,6 +4718,31 @@
     overflow: hidden;
     padding-top: 6px;
   }
+  /* How a run that ended badly ended: one line, cut, whole on hover, and the way to it. */
+  .q-run-why {
+    display: flex;
+    min-width: 0;
+    align-items: baseline;
+    gap: 8px;
+    margin-top: 6px;
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+  }
+  .q-run-why-k {
+    flex: none;
+    color: var(--q-faint);
+  }
+  .q-run-why-t {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--color-base-content);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .q-run-why .q-link {
+    flex: none;
+  }
   .q-run-meta {
     display: flex;
     flex-wrap: wrap;

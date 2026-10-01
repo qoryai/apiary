@@ -166,6 +166,24 @@ defmodule ApiaryWeb.RunLive.Show do
                     )}
                   </.link>
                 </p>
+                <p :if={@ending} id="run-why" class="q-run-why">
+                  <span class="q-run-why-k">{gettext("How it ended")}</span>
+                  <span class="q-run-why-t" title={@ending.text}>{@ending.text}</span>
+                  <.link
+                    id="run-why-jump"
+                    patch={
+                      tab_path(
+                        @current_scope,
+                        @run,
+                        :timeline,
+                        Map.put(@timeline_query, "seq", Integer.to_string(@ending.seq))
+                      )
+                    }
+                    class="q-link"
+                  >
+                    {gettext("Jump to it")}
+                  </.link>
+                </p>
               </div>
               <div class="q-run-actions">
                 <.button
@@ -1084,7 +1102,7 @@ defmodule ApiaryWeb.RunLive.Show do
       <% @reported -> %>
         <span id="policy-unrendered" tabindex="0" title={@tips.unrendered}>
           <small class="ml-1 font-mono">{short_digest(@reported)}</small>
-          <small>· {gettext("not rendered here")}</small>
+          <small class="block">{gettext("Not a version made in this workspace")}</small>
         </span>
       <% @digest -> %>
         <small class="ml-1 font-mono" title={gettext("sha256 %{digest}", digest: @digest)}>
@@ -1241,7 +1259,7 @@ defmodule ApiaryWeb.RunLive.Show do
       {:ok, run} ->
         socket =
           socket
-          |> assign(loaded_id: run_id, new_count: 0)
+          |> assign(loaded_id: run_id, new_count: 0, ending: nil)
           |> assign(
             :target_shared,
             run.target_id != nil and Targets.shared?(scope, run.target_path)
@@ -1270,6 +1288,7 @@ defmodule ApiaryWeb.RunLive.Show do
             popover: nil
           )
           |> put_index(Record.timeline(scope, run))
+          |> assign_ending()
           |> assign_policy_facts()
         else
           socket
@@ -1582,6 +1601,58 @@ defmodule ApiaryWeb.RunLive.Show do
 
     assign(socket, index: %{index | items: items, by_seq: by_seq})
   end
+
+  # Why a run that ended badly ended so, said in its header: the last of its timeline's
+  # results that was no success, failed turns and failed tools, read whole, with the way
+  # to that item. Nothing for a run that is alive or ended well, or whose timeline says
+  # no more than its state.
+  defp assign_ending(%{assigns: %{run: %Run{state: state} = run, index: index}} = socket) do
+    if state in Run.ended_badly_states() do
+      candidates =
+        index.items
+        |> Enum.filter(&(&1.kind in [:result, :turn_failed, :tool]))
+        |> Enum.take(-12)
+
+      ending =
+        if candidates != [],
+          do:
+            socket.assigns.current_scope
+            |> Record.items(run, candidates)
+            |> Enum.reverse()
+            |> Enum.find_value(&ending_of/1)
+
+      assign(socket, ending: ending)
+    else
+      assign(socket, ending: nil)
+    end
+  end
+
+  defp assign_ending(socket), do: assign(socket, ending: nil)
+
+  defp ending_of(%{kind: :result, outcome: outcome, text: text} = item)
+       when outcome != "success" and is_binary(text) and text != "",
+       do: %{seq: item.seq, text: one_line(text)}
+
+  defp ending_of(%{kind: :turn_failed} = item) do
+    case item[:error] || item[:message] do
+      text when is_binary(text) and text != "" -> %{seq: item.seq, text: one_line(text)}
+      _ -> nil
+    end
+  end
+
+  defp ending_of(%{kind: :tool, status: :failed} = item) do
+    text =
+      if is_binary(item.summary) and item.summary != "",
+        do: gettext("%{tool} failed: %{summary}", tool: item.tool, summary: item.summary),
+        else: gettext("%{tool} failed", tool: item.tool)
+
+    %{seq: item.seq, text: one_line(text)}
+  end
+
+  defp ending_of(_item), do: nil
+
+  defp one_line(text),
+    do: text |> String.replace(~r/\s+/u, " ") |> String.trim() |> String.slice(0, 400)
 
   defp assign_window_counts(socket) do
     %{index: index, win_first: first, win_last: last, run: run} = socket.assigns
@@ -2407,7 +2478,7 @@ defmodule ApiaryWeb.RunLive.Show do
           end
       end
 
-    socket = put_index(socket, index)
+    socket = socket |> put_index(index) |> assign_ending()
     security = socket.assigns.security
 
     case rows do

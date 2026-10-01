@@ -129,7 +129,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         assert has_element?(lv, "#run-facts .q-kv-policy", "enforce")
         # the run configuration it applied was not rendered by this workspace
         assert has_element?(lv, "#policy-unrendered", "a4e1d0c97b3f")
-        assert has_element?(lv, "#policy-unrendered", "not rendered here")
+        assert has_element?(lv, "#policy-unrendered", "Not a version made in this workspace")
       else
         refute has_element?(lv, "#run-facts .q-kv-policy")
         refute has_element?(lv, "#policy-unrendered")
@@ -1827,6 +1827,43 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert has_element?(lv, "#policy-credentials", "and 5 more")
       assert has_element?(lv, "#policy-tools-19")
       assert has_element?(lv, "#policy-tools", "and 1 more")
+    end
+  end
+
+  describe "how a run that ended badly ended" do
+    test "the header says the result it ended with, and leads to it", %{
+      conn: conn,
+      scope: scope
+    } do
+      run =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "session.result",
+           %{"outcome" => "error", "result" => "I could not finish:\nthe tests still fail."}},
+          {3, "run.exited", %{"state" => "failed", "exit_code" => 1, "duration_ms" => 1000}}
+        ])
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      assert has_element?(lv, "#run-why", "I could not finish: the tests still fail.")
+
+      jump = ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}?seq=2"
+      assert has_element?(lv, ~s(#run-why-jump[href="#{jump}"]), "Jump to it")
+    end
+
+    test "a run that ended well says nothing more", %{conn: conn, scope: scope} do
+      run =
+        projected(scope, [
+          {1, "run.started", started_data()},
+          {2, "session.result", %{"outcome" => "success", "result" => "done"}},
+          {3, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1000}}
+        ])
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
+
+      refute has_element?(lv, "#run-why")
     end
   end
 end

@@ -536,7 +536,10 @@ the target's page, and `Run 0191f2a4`; the page has no breadcrumb of its own.
   alive the run is while it runs, the target (its page), the runtime, the host, when it
   started, how long it took and its denials, in red, which lead to its denied
   connections. At the right: Close run while the run may be closed, and a ⋯ menu (Copy
-  run id, Raw log, Download log). The seven cells of v1 are the rail's.
+  run id, Raw log, Download log). The seven cells of v1 are the rail's. A run that ended
+  badly says how under the meta line, in one cut line whole on hover: the last result of
+  its timeline that was no success, else its last failed turn or tool, with "Jump to it",
+  the timeline at that item.
 - **The tabs**, Timeline, Terminal, Network access and, below 1440 px, Details, stick under
   the top bar; each is a live action of the one LiveView, so a tab is a patch.
 - **The Details rail** is key and value lines under small headings (Run, Labels, Command,
