@@ -278,8 +278,9 @@ the control and never inside it.
   rule changes it, and leads to the rule. Where only the level above the workspace allows
   a host, the row's reason says so in words, and Allow opens a popover that says an allow
   here would not be in force and leads to that level's policy with the host, for a reader
-  who may change it there; never a navigation on the click alone. A row opened by its chevron
-  lists the runs that reached it as lines under it, a dot for each state, no box. The
+  who may change it there, and with the way back to this page (`back`,
+  `c:ApiaryWeb.Edition.above_policy_link/1`); never a navigation on the click alone. A
+  row opened by its chevron lists the runs that reached it as lines under it, a dot for each state, no box. The
   default order, Denied first, puts the destinations whose last attempt was denied
   first, the most denied attempts first and then the most recently seen, as Needs
   attention weighs them; the rest by when they were first seen, so they hold still.

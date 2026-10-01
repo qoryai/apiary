@@ -719,7 +719,14 @@ defmodule ApiaryWeb.OverviewComponents do
     <.link
       :if={@level.link && @level.link.can_change}
       id={"#{@item.id}-act"}
-      navigate={@level.link.path <> "?" <> URI.encode_query(%{"allow" => @item.host})}
+      navigate={
+        @level.link.path <>
+          "?" <>
+          URI.encode_query(%{
+            "allow" => @item.host,
+            "back" => ~p"/#{@scope.organisation}/#{@scope.workspace}"
+          })
+      }
       class="q-act"
       title={@tip}
       aria-label={gettext("Allow %{host} in %{name}'s policy", host: @item.host, name: @level.name)}

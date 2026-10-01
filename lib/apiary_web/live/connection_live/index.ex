@@ -979,9 +979,12 @@ defmodule ApiaryWeb.ConnectionLive.Index do
         )
       )
 
-    # Where the level above the workspace is read and changed, for the rows it decides.
+    # Where the level above the workspace is read and changed, for the rows it decides;
+    # a way there to allow a host carries the way back to this page, as it is filtered.
+    link = if effective.above, do: ApiaryWeb.Edition.above_policy_link(scope)
+
     above_link =
-      if effective.above, do: ApiaryWeb.Edition.above_policy_link(scope)
+      link && Map.put(link, :back, page_path(socket.assigns.page_base, socket.assigns.filters))
 
     acts =
       for {row, rule_option} <- rule_options, into: %{} do
@@ -1067,8 +1070,13 @@ defmodule ApiaryWeb.ConnectionLive.Index do
     })
   end
 
-  defp above(%{allow_elsewhere: %{}, host: host} = act, %{path: path, can_change: true}),
-    do: Map.put(act, :allow_path, path <> "?" <> URI.encode_query(%{"allow" => host}))
+  defp above(%{allow_elsewhere: %{}, host: host} = act, %{path: path, can_change: true} = link),
+    do:
+      Map.put(
+        act,
+        :allow_path,
+        path <> "?" <> URI.encode_query(%{"allow" => host, "back" => link.back})
+      )
 
   defp above(act, _link), do: act
 

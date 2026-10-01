@@ -133,7 +133,10 @@ defmodule ApiaryWeb.Edition do
   Where the level above the workspace's policy is read and changed, for the scope's
   reader: its `path`, and `can_change`, whether the reader may change it there; nil where
   the edition keeps no such level, or the reader may not read it. The core's pages draw
-  the level's rows and lines from `Apiary.Policy.Effective`'s `above` and link here.
+  the level's rows and lines from `Apiary.Policy.Effective`'s `above` and link here. A
+  link that asks the level to allow a host carries the host as `allow` and, as `back`, the
+  path of the workspace's page it was followed from (its overview, its Network access or
+  a target's, as filtered), for the level's page to offer the way back once it is done.
   """
   @callback above_policy_link(Scope.t()) :: %{path: String.t(), can_change: boolean} | nil
 
