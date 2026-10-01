@@ -1284,6 +1284,7 @@ defmodule ApiaryWeb.CoreComponents do
       <.link
         :if={@link?}
         role={@role}
+        tabindex="-1"
         aria-checked={!is_nil(@checked) && to_string(@checked)}
         {@rest}
       >
@@ -1294,6 +1295,7 @@ defmodule ApiaryWeb.CoreComponents do
         :if={!@link?}
         type="button"
         role={@role}
+        tabindex="-1"
         aria-checked={!is_nil(@checked) && to_string(@checked)}
         data-menu-close
         {@rest}
@@ -1544,8 +1546,8 @@ defmodule ApiaryWeb.CoreComponents do
             aria-describedby={section[:value] && "#{@id}-value-#{section.key}"}
             phx-click={
               JS.show(to: "##{@id}-section-#{section.key}")
-              |> JS.focus_first(to: "##{@id}-section-#{section.key}")
               |> JS.hide(to: "##{@id}-sections")
+              |> JS.focus_first(to: "##{@id}-body-#{section.key}")
             }
           >
             <.icon name={section.icon} class="size-4" />
@@ -1585,7 +1587,7 @@ defmodule ApiaryWeb.CoreComponents do
             </button>
             <p id={"#{@id}-title-#{section.key}"} class="q-fm-title">{section.label}</p>
           </div>
-          {render_slot(section)}
+          <div id={"#{@id}-body-#{section.key}"}>{render_slot(section)}</div>
         </div>
       </div>
     </div>

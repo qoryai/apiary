@@ -838,7 +838,7 @@ defmodule ApiaryWeb.Layouts do
         aria-label={gettext("New")}
       >
         <li :for={entry <- @entries} role="none">
-          <.link id={"new-menu-#{entry.key}"} navigate={entry.path} role="menuitem">
+          <.link id={"new-menu-#{entry.key}"} navigate={entry.path} role="menuitem" tabindex="-1">
             <.icon name={entry.icon} class="size-4" /> {entry.label}
           </.link>
         </li>
@@ -888,12 +888,17 @@ defmodule ApiaryWeb.Layouts do
         </li>
         <li class="menu-divider" role="separator"></li>
         <li role="none">
-          <.link href={~p"/users/settings"} role="menuitem" id="user-menu-settings">
+          <.link href={~p"/users/settings"} role="menuitem" tabindex="-1" id="user-menu-settings">
             <.icon name="hero-user-circle-micro" class="size-4" /> {gettext("Your settings")}
           </.link>
         </li>
         <li role="none">
-          <.link href={~p"/users/organisations"} role="menuitem" id="user-menu-organisations">
+          <.link
+            href={~p"/users/organisations"}
+            role="menuitem"
+            tabindex="-1"
+            id="user-menu-organisations"
+          >
             <.icon name="hero-building-office-2-micro" class="size-4" /> {gettext(
               "Your organisations"
             )}
@@ -917,6 +922,7 @@ defmodule ApiaryWeb.Layouts do
                 id={"theme-menu-#{theme}"}
                 type="button"
                 role="menuitemradio"
+                tabindex="-1"
                 phx-click={JS.dispatch("phx:set-theme")}
                 phx-mounted={JS.ignore_attributes(["aria-checked"])}
                 data-phx-theme={theme}
@@ -929,7 +935,13 @@ defmodule ApiaryWeb.Layouts do
         </li>
         <li class="menu-divider" role="separator"></li>
         <li role="none">
-          <.link href={~p"/users/log-out"} method="delete" role="menuitem" id="user-menu-log-out">
+          <.link
+            href={~p"/users/log-out"}
+            method="delete"
+            role="menuitem"
+            tabindex="-1"
+            id="user-menu-log-out"
+          >
             <.icon name="hero-arrow-right-start-on-rectangle-micro" class="size-4" /> {gettext(
               "Log out"
             )}
@@ -1229,14 +1241,19 @@ defmodule ApiaryWeb.Layouts do
         aria-label="Qory Apiary"
       >
         <li role="none">
-          <.link href={~p"/docs"} role="menuitem" id="brand-menu-docs">
+          <.link href={~p"/docs"} role="menuitem" tabindex="-1" id="brand-menu-docs">
             <.icon name="hero-book-open-micro" class="size-4" /> {gettext("Docs")}
           </.link>
         </li>
         <%!-- The release notes name every feature, so only the documentation of an instance with
              every one has them; the documentation is the instance's, and so is this check. --%>
         <li :if={Apiary.Features.enabled() == Apiary.Features.all()} role="none">
-          <.link href={~p"/docs/changelog.html"} role="menuitem" id="brand-menu-changelog">
+          <.link
+            href={~p"/docs/changelog.html"}
+            role="menuitem"
+            tabindex="-1"
+            id="brand-menu-changelog"
+          >
             <.icon name="hero-list-bullet-micro" class="size-4" /> {gettext("Changelog")}
           </.link>
         </li>
@@ -1247,6 +1264,7 @@ defmodule ApiaryWeb.Layouts do
             target="_blank"
             rel="noopener"
             role="menuitem"
+            tabindex="-1"
             id="brand-menu-source"
           >
             <.icon name="hero-code-bracket-micro" class="size-4" /> {gettext("Source on GitHub")}
@@ -1698,6 +1716,7 @@ defmodule ApiaryWeb.Layouts do
             id={"theme-menu-#{theme}"}
             type="button"
             role="menuitemradio"
+            tabindex="-1"
             phx-click={JS.dispatch("phx:set-theme")}
             phx-mounted={JS.ignore_attributes(["aria-checked"])}
             data-phx-theme={theme}

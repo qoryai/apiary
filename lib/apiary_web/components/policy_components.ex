@@ -1622,6 +1622,7 @@ defmodule ApiaryWeb.PolicyComponents do
                 <button
                   type="button"
                   role="menuitem"
+                  tabindex="-1"
                   data-menu-close
                   phx-click={
                     JS.push("suggest_allow", value: %{host: suggestion.host, level: "workspace"})
@@ -1634,6 +1635,7 @@ defmodule ApiaryWeb.PolicyComponents do
                 <button
                   type="button"
                   role="menuitem"
+                  tabindex="-1"
                   data-menu-close
                   phx-click={JS.push("composer_use", value: %{host: suggestion.host, focus: "paths"})}
                 >

@@ -368,7 +368,10 @@ or an attribute of one, not a copy.
   without one cannot be dismissed. Focus returns to what opened it.
 - **Menus** are daisyUI dropdowns under the `Menu` hook: a click opens and leaves focus on
   the trigger; Enter, Space and ArrowDown open and focus the first item, ArrowUp the last;
-  the arrows wrap, Home and End go to the ends, Escape closes and returns focus. With
+  the arrows wrap, Home and End go to the ends, Escape closes and returns focus. The items
+  are not tab stops (`tabindex="-1"`, as `<.menu_item>` renders them): Tab closes the menu
+  and moves on from its trigger. A field inside a Filter section keeps its own keys, and
+  ArrowDown from a section's search goes to its first option. With
   `data-float` the list is a popover in the top layer, placed under its trigger, so no
   scroll region clips it (a row's menu, a list's Filter and Sort).
 - **`<.table>`** is a scroll region of its own, focusable and labelled (`label`), so a

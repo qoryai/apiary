@@ -388,6 +388,7 @@ defmodule ApiaryWeb.RunLive.Show do
             id="run-menu-copy"
             type="button"
             role="menuitem"
+            tabindex="-1"
             phx-hook="CopyToClipboard"
             data-copy={@run.run_id}
             data-copied-words={gettext("Copied")}
@@ -398,13 +399,26 @@ defmodule ApiaryWeb.RunLive.Show do
           </button>
         </li>
         <li :if={@log} role="none">
-          <a id="run-menu-raw" href={@log} target="_blank" rel="noopener" role="menuitem">
+          <a
+            id="run-menu-raw"
+            href={@log}
+            target="_blank"
+            rel="noopener"
+            role="menuitem"
+            tabindex="-1"
+          >
             <.icon name="hero-document-text-micro" class="size-4" /> {gettext("Raw log")}
             <.icon name="hero-arrow-top-right-on-square-micro" class="ml-auto size-3.5 text-faint" />
           </a>
         </li>
         <li :if={@log} role="none">
-          <a id="run-menu-download" href={@log <> "?download=1"} download role="menuitem">
+          <a
+            id="run-menu-download"
+            href={@log <> "?download=1"}
+            download
+            role="menuitem"
+            tabindex="-1"
+          >
             <.icon name="hero-arrow-down-tray-micro" class="size-4" /> {gettext("Download log")}
           </a>
         </li>
