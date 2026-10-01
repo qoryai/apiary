@@ -29,7 +29,10 @@ The shell is section 4 of the v2 design brief (the knowledge vault's
   (`ApiaryWeb.Edition.switcher_entries/1`), the chevrons beside the organisation and the
   workspace open one popover (`role="dialog"`, the `Switcher` hook): a search that filters
   as the reader types, the places opened last (kept in `localStorage`), then each
-  organisation with its workspaces, a link to each at the section the reader is on, and
+  organisation with its workspaces, a link to each at the section the reader is on where
+  that workspace has it, else its overview (a section of a feature goes through
+  `/:org/:workspace/switch/:section`, `ApiaryWeb.SwitchController`, which asks the
+  destination's own scope when it is followed), and
   the edition's groups of places under their own headings
   (`ApiaryWeb.Edition.place_group/1`). ↑ and ↓ move, Enter opens the first match, Escape
   closes and gives focus back. With one place the segments are links and nothing more.

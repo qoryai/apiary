@@ -257,6 +257,15 @@ defmodule ApiaryWeb.Routes do
           get "/:org/:workspace/jump", JumpController, :show
         end
 
+        # The switcher's link to a workspace at the section the reader is on, sent on to
+        # that section there, or to the workspace's overview where it has no such page:
+        # whether it has one is the destination's own answer, read when it is followed.
+        scope "/", ApiaryWeb do
+          pipe_through [:path_scope, :browser, :require_authenticated_user, :fetch_path_scope]
+
+          get "/:org/:workspace/switch/:section", SwitchController, :show
+        end
+
         # The paths of pages that moved, under the settings or to a new name, sent on to
         # where they are now, so a link someone kept still lands. Before the pages, whose
         # `/:org/:workspace` would take `/:org/members`. A target's Connections tab moved

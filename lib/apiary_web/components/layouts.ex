@@ -1407,7 +1407,35 @@ defmodule ApiaryWeb.Layouts do
       Enum.find(entries, &(&1.key == nav and may?.(&1))) ||
         Enum.find(entries, &(&1.place == :workspace and may?.(&1)))
 
-    Entry.path(entry, organisation, workspace)
+    # A page of a feature may be absent there: the feature is the destination's to say, so
+    # the link asks it when followed (`ApiaryWeb.SwitchController`), rather than every
+    # place's features being read for every page.
+    if of_feature?(entry),
+      do: ~p"/#{organisation}/#{workspace}/switch/#{entry.key}",
+      else: Entry.path(entry, organisation, workspace)
+  end
+
+  defp of_feature?(%Entry{action: nil}), do: false
+  # The overview is where it would fall back to anyway.
+  defp of_feature?(%Entry{key: :overview}), do: false
+  defp of_feature?(%Entry{action: action}), do: not is_nil(Access.feature(action))
+
+  @doc """
+  switch_target/2 is where the switcher's link to a workspace leads once followed, asked
+  with the scope of that workspace: the page of the navigation entry named `key` where the
+  reader may open it there, its feature on there too, else the workspace's overview.
+  """
+  @spec switch_target(Apiary.Accounts.Scope.t(), String.t()) :: String.t()
+  def switch_target(scope, key) do
+    found =
+      Enum.find(palette_entries(scope), fn {entry, _path} ->
+        entry.place in [:workspace, :organisation] and Atom.to_string(entry.key) == key
+      end)
+
+    case found do
+      {_entry, path} -> path
+      nil -> ~p"/#{scope.organisation}/#{scope.workspace}"
+    end
   end
 
   # The scope a place of the switcher gives in `workspace`, as
