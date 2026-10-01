@@ -1789,48 +1789,56 @@
     gap: 16px;
   }
   .q-settings-title {
-    font-size: 1.375rem;
+    font-size: 1.25rem;
     line-height: 1.75rem;
     font-weight: 600;
     letter-spacing: -0.01em;
   }
-  /* Below 1024 px the list is a row of links above the section. */
+  /* Below 1024 px the list is a row of underlined links above the section, as a page's
+     tabs are; it scrolls inside itself rather than wrapping. */
   .q-settings-nav {
     display: flex;
-    flex-wrap: wrap;
-    gap: 2px 4px;
-    padding-bottom: 12px;
+    gap: 4px 20px;
+    overflow-x: auto;
     border-bottom: 1px solid var(--q-border-subtle);
+    scrollbar-width: none;
+  }
+  .q-settings-nav::-webkit-scrollbar {
+    display: none;
   }
   .q-settings-link {
     display: flex;
+    flex: none;
     min-width: 0;
     height: 2.25rem;
     align-items: center;
-    gap: 10px;
-    padding-inline: 10px;
-    border-radius: var(--radius-field);
+    gap: 8px;
+    margin-bottom: -1px;
+    border-bottom: 2px solid transparent;
     color: var(--q-muted);
-    font-size: 0.875rem;
-    font-weight: 500;
+    font-size: 0.84375rem;
+    font-weight: 400;
     white-space: nowrap;
     outline-offset: -2px;
     transition: color 120ms var(--q-ease-out), background-color 120ms var(--q-ease-out);
   }
   .q-settings-link:hover {
-    background-color: var(--color-base-200);
     color: var(--color-base-content);
   }
   .q-settings-link[aria-current="page"] {
-    background-color: var(--color-base-200);
+    border-bottom-color: var(--color-primary);
     color: var(--color-base-content);
+    font-weight: 500;
   }
-  .q-settings-icon {
-    flex: none;
+  /* A section's count, where it helps (People, Access keys). */
+  .q-settings-n {
     color: var(--q-faint);
+    font-size: 0.75rem;
+    font-weight: 400;
+    font-variant-numeric: tabular-nums;
   }
-  .q-settings-link[aria-current="page"] .q-settings-icon {
-    color: var(--color-accent);
+  .q-settings-link[aria-current="page"] .q-settings-n {
+    color: var(--q-muted);
   }
   .q-settings-main {
     display: grid;
@@ -1850,8 +1858,6 @@
     flex-wrap: wrap;
     align-items: flex-start;
     gap: 12px 16px;
-    padding-bottom: 16px;
-    border-bottom: 1px solid var(--q-border-subtle);
   }
   /* The title and its sentence take the line; the actions go under them when they would
      squeeze it. */
@@ -1859,8 +1865,8 @@
     flex: 1 1 20rem;
   }
   .q-settings-head-title {
-    font-size: 1.125rem;
-    line-height: 1.625rem;
+    font-size: 1rem;
+    line-height: 1.5rem;
     font-weight: 600;
   }
   .q-settings-head-sub {
@@ -1877,11 +1883,12 @@
     align-items: center;
     gap: 8px;
   }
-  /* From 1024 px: a column of sections at the page's left edge, the section beside it. */
+  /* From 1024 px: a column of sections at the page's left edge, the section beside it; the
+     current one in the text colour on a light fill, no icon and no stripe. */
   @media (min-width: 1024px) {
     .q-settings {
-      grid-template-columns: 13.75rem minmax(0, 1fr);
-      column-gap: 32px;
+      grid-template-columns: 11.5rem minmax(0, 1fr);
+      column-gap: 40px;
       row-gap: 20px;
     }
     .q-settings-title {
@@ -1892,18 +1899,258 @@
       top: 4.5rem;
       display: grid;
       align-content: start;
-      gap: 1px;
-      padding-bottom: 0;
+      gap: 2px;
+      overflow: visible;
       border-bottom: 0;
     }
     .q-settings-link {
       height: 2rem;
-      font-size: 0.8125rem;
+      margin-bottom: 0;
+      padding-inline: 10px;
+      border-bottom: 0;
+      border-radius: var(--radius-field);
+    }
+    .q-settings-link:hover {
+      background-color: var(--color-base-200);
     }
     .q-settings-link[aria-current="page"] {
-      box-shadow: inset 2px 0 0 var(--color-primary);
+      background-color: var(--color-base-200);
+    }
+    .q-settings-n {
+      margin-left: auto;
     }
   }
+  /* A part of a settings section: its fields or its list on the page, no card. */
+  .q-part {
+    display: grid;
+    min-width: 0;
+    gap: 16px;
+    align-content: start;
+  }
+  .q-part + .q-part {
+    margin-top: 16px;
+  }
+  .q-part-h {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    font-weight: 600;
+  }
+  /* On a person's page the part's heading is an h2 over a rule (the mock's part-h). */
+  .q-part-h2 {
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--q-border-subtle);
+    font-size: 1rem;
+    line-height: 1.5rem;
+  }
+  .q-part-n {
+    color: var(--q-faint);
+    font-size: 0.78125rem;
+    font-weight: 400;
+    font-variant-numeric: tabular-nums;
+  }
+  .q-form {
+    display: grid;
+    gap: 18px;
+  }
+  .q-form-two {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+    align-items: start;
+  }
+  @media (min-width: 600px) {
+    .q-form-two {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+  }
+  /* A form's foot: its button and one muted line beside it. */
+  .q-save {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+  }
+  .q-foot-note {
+    max-width: 80ch;
+    color: var(--q-faint);
+    font-size: 0.78125rem;
+    line-height: 1.125rem;
+  }
+  /* A list on the page between rules, such as the owners. */
+  .q-plain-list {
+    border-top: 1px solid var(--q-border-subtle);
+  }
+  .q-plain-list > li {
+    display: flex;
+    flex-wrap: wrap;
+    min-height: 2.75rem;
+    align-items: center;
+    gap: 4px 10px;
+    padding-block: 6px;
+    border-bottom: 1px solid var(--q-border-subtle);
+  }
+  /* A switch (`<.switch>`): a track with a 3:1 boundary in both states, the knob moving
+     to the right and the track filling with honey when on; its label beside it and the
+     description under both. */
+  .q-toggle-line {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 4px 12px;
+  }
+  .q-toggle {
+    position: relative;
+    width: 2.25rem;
+    height: 1.25rem;
+    flex: none;
+    border: 1px solid var(--q-border-field);
+    border-radius: 999px;
+    background-color: var(--color-base-200);
+    transition: background-color 120ms var(--q-ease-out), border-color 120ms var(--q-ease-out);
+  }
+  .q-toggle::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 0.875rem;
+    height: 0.875rem;
+    border-radius: 999px;
+    background-color: var(--q-muted);
+    transition: transform 120ms var(--q-ease-out), background-color 120ms var(--q-ease-out);
+  }
+  .q-toggle[aria-checked="true"] {
+    border-color: color-mix(in oklab, var(--color-primary) 70%, var(--color-base-content));
+    background-color: var(--color-primary);
+  }
+  .q-toggle[aria-checked="true"]::after {
+    transform: translateX(1rem);
+    background-color: var(--color-primary-content);
+  }
+  .q-toggle:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+  .q-toggle-label {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .q-toggle-description {
+    grid-column: 2;
+    max-width: 72ch;
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+  }
+
+  /* Preferences' theme: three radios, each a picture of its theme in the theme's own
+     tokens and its name; the chosen one ringed in the accent. */
+  .q-themes {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+  }
+  @media (max-width: 479px) {
+    .q-themes {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+  .q-theme-opt {
+    position: relative;
+    display: grid;
+    gap: 8px;
+    padding: 8px;
+    border: 1px solid var(--q-border-subtle);
+    border-radius: var(--radius-box);
+    background-color: var(--color-base-100);
+    cursor: pointer;
+    font-size: 0.8125rem;
+  }
+  .q-theme-opt:hover {
+    border-color: var(--q-border-strong);
+  }
+  .q-theme-opt:has(.q-theme-input:checked) {
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 1px var(--color-accent);
+  }
+  .q-theme-opt:has(.q-theme-input:focus-visible) {
+    outline: 2px solid var(--q-ring);
+    outline-offset: 2px;
+  }
+  .q-theme-input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .q-theme-name {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 500;
+  }
+  .q-theme-check {
+    margin-left: auto;
+    color: var(--color-accent);
+    visibility: hidden;
+  }
+  .q-theme-opt:has(.q-theme-input:checked) .q-theme-check {
+    visibility: visible;
+  }
+  .q-swatch {
+    display: grid;
+    height: 3.5rem;
+    overflow: hidden;
+    border: 1px solid var(--q-border-subtle);
+    border-radius: 6px;
+  }
+  .q-swatch-two {
+    grid-template-columns: 1fr 1fr;
+  }
+  @media (max-width: 479px) {
+    .q-swatch {
+      height: 2.25rem;
+    }
+  }
+  .q-swatch-pane {
+    display: grid;
+    grid-template-columns: 26% 1fr;
+    background-color: var(--color-base-100);
+  }
+  .q-swatch-two .q-swatch-pane {
+    grid-template-columns: 1fr;
+  }
+  .q-swatch-pane > i {
+    background-color: var(--color-base-200);
+    border-right: 1px solid var(--q-border-subtle);
+  }
+  .q-swatch-two .q-swatch-pane > i {
+    display: none;
+  }
+  .q-swatch-pane > span {
+    display: grid;
+    align-content: start;
+    gap: 5px;
+    padding: 8px;
+  }
+  .q-swatch-pane b {
+    display: block;
+    height: 5px;
+    border-radius: 3px;
+    background-color: var(--q-border-strong);
+  }
+  .q-swatch-pane b:first-child {
+    width: 40%;
+    background-color: var(--color-primary);
+  }
+
   /* The danger zone, last on General and on Profile: a rule, a red heading, a line per
      act, and no box. */
   .q-danger {

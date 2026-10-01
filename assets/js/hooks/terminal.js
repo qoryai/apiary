@@ -25,6 +25,7 @@
 //
 // xterm.js is vendored (assets/vendor/xterm) and built as its own bundle; it is loaded
 // on the first mount of this hook and by no other page.
+import {singleKeys} from "./shortcuts"
 
 const LIMIT = 2000
 const SLICE = 256 * 1024
@@ -302,7 +303,7 @@ export const Terminal = {
     // Keys, when the screen has focus. xterm.js sees them first; none of them is input.
     this.term.attachCustomKeyEventHandler(e => {
       if (e.type !== "keydown") return true
-      const findKey = e.key === "/" || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f")
+      const findKey = (e.key === "/" && singleKeys()) || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f")
       if (findKey) {
         e.preventDefault()
         this.find.focus()
@@ -334,7 +335,7 @@ export const Terminal = {
       if (e.key === "Escape" && this.focused) {
         if (document.querySelector("dialog[open]")) return
         this.focus(false)
-      } else if (e.key === "f" && !document.querySelector("dialog[open]")) {
+      } else if (e.key === "f" && singleKeys() && !document.querySelector("dialog[open]")) {
         const target = e.target
         const own = this.term && target === this.term.textarea
         if (typing(target) && !own) return

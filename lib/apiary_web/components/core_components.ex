@@ -733,6 +733,42 @@ defmodule ApiaryWeb.CoreComponents do
   ## Layout blocks
 
   @doc """
+  switch/1 is a setting that is on or off and takes effect at once, without a Save: a
+  `role="switch"` button with `aria-checked`, its label beside it (a `<label>`, which
+  clicking also turns it), and one muted sentence under them as its description. A page
+  turns it with `phx-click`; a switch whose state a script keeps, such as a reading
+  preference of the browser, ignores `aria-checked` across patches
+  (`phx-mounted={JS.ignore_attributes(["aria-checked"])}`), as the theme menu does.
+  """
+  attr :id, :string, required: true
+  attr :label, :string, required: true
+  attr :checked, :boolean, default: false
+  attr :disabled, :boolean, default: false
+  attr :rest, :global, include: ~w(phx-click phx-mounted phx-value-id)
+  slot :inner_block, doc: "the description"
+
+  def switch(assigns) do
+    ~H"""
+    <div class="q-toggle-line">
+      <button
+        id={@id}
+        type="button"
+        role="switch"
+        class="q-toggle"
+        aria-checked={to_string(@checked)}
+        aria-describedby={@inner_block != [] && "#{@id}-description"}
+        disabled={@disabled}
+        {@rest}
+      ></button>
+      <label for={@id} class="q-toggle-label">{@label}</label>
+      <p :if={@inner_block != []} id={"#{@id}-description"} class="q-toggle-description">
+        {render_slot(@inner_block)}
+      </p>
+    </div>
+    """
+  end
+
+  @doc """
   Renders a page header: a title, an optional one-line description and at most
   one primary and one default action.
 

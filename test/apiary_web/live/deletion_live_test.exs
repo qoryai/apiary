@@ -166,9 +166,9 @@ defmodule ApiaryWeb.DeletionLiveTest do
       assert has_element?(lv, "#sole-owned-#{scope.organisation.id}", scope.organisation.name)
       assert has_element?(lv, "button#delete-account-button[disabled]")
 
-      # Asked for anyway, it is refused.
+      # Asked for anyway, with the email typed, it is refused.
       {:ok, lv, _html} = live(conn, ~p"/users/settings/delete")
-      html = lv |> element("#delete-account-confirm") |> render_click()
+      html = render_submit(lv, "delete_account", %{"confirm" => %{"email" => user.email}})
       assert html =~ "You are the only owner of an organisation."
       assert Repo.get!(User, user.id).deleted_at == nil
     end
@@ -209,7 +209,27 @@ defmodule ApiaryWeb.DeletionLiveTest do
       assert has_element?(lv, "#delete-account-modal")
       assert has_element?(lv, "#nav-user_settings[aria-current='page']")
 
-      lv |> element("#delete-account-confirm") |> render_click()
+      # The red button waits for the account's email, typed; the server asks again.
+      assert has_element?(lv, "#delete-account-confirm[disabled]")
+
+      lv
+      |> form("#delete-account-form", confirm: %{email: "someone@else.example"})
+      |> render_change()
+
+      assert has_element?(lv, "#delete-account-confirm[disabled]")
+
+      html =
+        render_submit(lv, "delete_account", %{"confirm" => %{"email" => "someone@else.example"}})
+
+      assert html =~ "is not your email"
+      assert Repo.get!(User, user.id).deleted_at == nil
+
+      lv
+      |> form("#delete-account-form", confirm: %{email: String.upcase(user.email)})
+      |> render_change()
+
+      refute has_element?(lv, "#delete-account-confirm[disabled]")
+      lv |> form("#delete-account-form", confirm: %{email: user.email}) |> render_submit()
       assert_redirect(lv, ~p"/users/account-deleted")
       assert %User{email: nil, deleted_at: %DateTime{}} = Repo.get!(User, user.id)
 

@@ -9,6 +9,7 @@
 //   o                open every tool call          x / Shift+x     next / previous denied
 //   g e              the live end                  g t             the top
 //   c                copy the focused item's link
+import {singleKeys} from "./shortcuts"
 
 const reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches
 const typing = el => el.closest("input, textarea, select, [contenteditable='true']")
@@ -98,6 +99,7 @@ export const TimelineKeys = {
 
   key(e) {
     if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || typing(e.target)) return
+    if (e.key.length === 1 && !singleKeys()) return
     const onItem = e.target.matches("li.q-ti")
 
     if (this.chord) {

@@ -104,18 +104,28 @@ navigation it is in.
   Invite people lead there too; nothing else in a workspace does.
 - **A person's** (`/users/settings`, `/users/settings/preferences`,
   `/users/organisations`), from the account menu's Your settings: Profile (email,
-  password, and its danger zone), Preferences, Organisations. A person has no pages but
-  these, so their sidebar is the list, under the heading Your settings, and a page's
-  `<h1>` is its section's title.
+  password, and its danger zone), Preferences (language and time zone, kept with the
+  account; the theme, the account menu's, and the keyboard shortcuts, reading preferences
+  of the browser), Organisations. A person has no pages but these, so their sidebar is the
+  list, under the heading Your settings, and a page's `<h1>` is its section's title, its
+  parts' headings `<h2>`s over a rule. Profile and the account's deletion ask for a recent
+  sign-in (`UserAuth`'s sudo mode); Preferences does not.
 
 A workspace's and an organisation's settings keep the scope's sidebar, its Settings the
 current entry, and are one section a page (`ApiaryWeb.SettingsComponents.layout/1`): the
 `<h1>` "Workspace settings" or "Organisation settings", at the page's left edge the list
 of the kind's sections (`#settings-tabs`, `settings-tab-<key>`; `sections/2`, which a page
-reads when it mounts), and beside it the section, its title an `<h2>`, one sentence of
-what it is for, then its content, a 720 px column for forms and 960 px for a list (People,
-Access keys). Below 1024 px the list is a row of links above the section. A section the
-reader may not open is not in the list, and its path sends them to General and says why.
+reads when it mounts), and beside it the section, its title an `<h2>` (16 px), one sentence
+of what it is for, then its content, a 720 px column for forms and 960 px for a list
+(People, Access keys). The list is labels without icons, 13.5 px and muted, the
+current one in the text colour on a light fill, with a count where it helps (People,
+Access keys; the page passes the navigation's `counts`); below 1024 px it is a row of
+underlined links above the section, as a page's tabs are. A section is flat, no card: its
+fields straight under its heading (`SettingsComponents.part/1`, an `<h3>` where it has more
+than one part, such as Owners), the fields as wide as the column, and at the foot of a form
+its one button, primary where it is the section's main action, beside one muted line
+(`SettingsComponents.save/1`). A section the reader may not open is not in the list, and
+its path sends them to General with its own sentence of why.
 The breadcrumb ends with Settings (`8wonders / Main / Settings`, `8wonders / Settings`); a
 person's page names itself.
 
@@ -523,7 +533,8 @@ rather than the browser's. It writes in the words, locale and time zone the serv
 **Scripts.** A hook lives under `assets/js/hooks/` and is registered in `hooks.js`, the
 collection `app.js` and an edition's bundle import. It holds no words (see
 [lingo.md](lingo.md)), and keeps in `localStorage` only a reading preference, such as
-the sidebar's fold; filters, the order, the page and a chosen row are query parameters.
+the theme, the sidebar's fold or the keyboard shortcuts; filters, the order, the page and
+a chosen row are query parameters.
 
 ## The run page
 
@@ -588,7 +599,8 @@ and names the product Qory Apiary.
   none on buttons, labels or headings. No exclamation marks, no "oops", no "successfully".
 - A button says what happens ("Send me a log-in link"); a toast says what happened
   ("build-01 is revoked."); a confirm states the consequence, then whether it can be
-  undone. Deleting a workspace or an organisation asks for its slug, typed, and the
+  undone. Deleting a workspace or an organisation asks for its slug, and deleting an
+  account for its email, typed, and the
   button stays disabled until it matches; a control that cannot act, such as the only
   owner's Delete account, is disabled and the page says why beside it.
 - The page says what the record says and infers nothing. A value the record lacks reads
@@ -601,6 +613,13 @@ and names the product Qory Apiary.
   `tabindex`. A failed submit puts the caret in the first invalid field. A live navigation
   gives focus to the new page's `<h1>` (`tabindex="-1"`, as `<.header>` renders it) unless
   the page put it somewhere itself, so a screen reader says where the reader landed.
+- **Keys.** A shortcut of a single key (/ for search, `[` for the fold, `a` and `?` on
+  the policy pages, `f` on the terminal, the timeline's letters) works only outside a
+  field, and only while Preferences' **Keyboard shortcuts** is on, as it is unless the
+  reader turned it off (WCAG 2.1.4): a reading preference of the browser
+  (`qory:shortcuts` in `localStorage`), written on `<html>` as `data-shortcuts="off"`
+  before the first paint, which every hook asks through `singleKeys()`
+  (`assets/js/hooks/shortcuts.js`). A shortcut with ⌘ or Ctrl, such as ⌘K, asks nothing.
 - **Names.** An icon-only button has an `aria-label`. A row action names its object
   ("Revoke build-01") while its visible text stays short. A field has a visible label, and
   its error is tied to it with `aria-invalid` and `aria-describedby`. Each `<nav>` of the

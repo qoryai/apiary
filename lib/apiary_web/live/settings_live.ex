@@ -66,6 +66,7 @@ defmodule ApiaryWeb.SettingsLive do
     >
       <SettingsComponents.layout
         scope={@current_scope}
+        counts={@nav_counts}
         kind={@page}
         sections={@sections}
         current={@section}
@@ -188,59 +189,48 @@ defmodule ApiaryWeb.SettingsLive do
       )}
     </.notice>
 
-    <.card>
-      <:title>{gettext("Organisation name")}</:title>
+    <SettingsComponents.part id="organisation-name">
       <.form
         for={@organisation_form}
         id="organisation-form"
         phx-change="validate_organisation"
         phx-submit="save_organisation"
-        class="grid max-w-[420px] gap-4"
+        class="q-form"
       >
         <.input
           field={@organisation_form[:name]}
           type="text"
           label={gettext("Name")}
+          hint={gettext("Shown in the breadcrumb, the switcher and invitations.")}
           debounce="200"
           autocomplete="off"
           disabled={!may?(@current_scope, :"organisation.rename")}
           required
         />
+        <p id="organisation-slug" class="text-[13px]/[20px] text-muted">
+          <.rich text={
+            rich_gettext("Its pages are under %{path}. Renaming the organisation keeps it.",
+              path: {:m, ~p"/#{@current_scope.organisation}"}
+            )
+          } />
+        </p>
+        <SettingsComponents.save :if={may?(@current_scope, :"organisation.rename")}>
+          <.button
+            type="submit"
+            variant="primary"
+            disabled={!@organisation_form.source.valid?}
+            loading_text={gettext("Saving")}
+          >
+            {gettext("Save")}
+          </.button>
+          <:note>{gettext("Owners and admins can change these.")}</:note>
+        </SettingsComponents.save>
       </.form>
-      <p id="organisation-slug" class="text-[13px]/[20px] text-muted">
-        <.rich text={
-          rich_gettext("Its pages are under %{path}. Renaming the organisation keeps it.",
-            path: {:m, ~p"/#{@current_scope.organisation}"}
-          )
-        } />
-      </p>
-      <:footer>
-        <span>{gettext("Shown in the breadcrumb, the switcher and invitations.")}</span>
-        <.button
-          :if={may?(@current_scope, :"organisation.rename")}
-          type="submit"
-          form="organisation-form"
-          disabled={!@organisation_form.source.valid?}
-          loading_text={gettext("Saving")}
-        >
-          {gettext("Save")}
-        </.button>
-      </:footer>
-    </.card>
+    </SettingsComponents.part>
 
-    <.card padding={false}>
-      <:title>{gettext("Owners")}</:title>
-      <:actions>
-        <.button navigate={~p"/#{@current_scope.organisation}/settings/people"}>
-          {gettext("Manage people")}
-        </.button>
-      </:actions>
-      <ul id="owners" class="divide-y divide-line">
-        <li
-          :for={owner <- @owners}
-          id={"owner-#{owner.id}"}
-          class="flex flex-wrap items-center gap-x-2.5 gap-y-1 px-5 py-2.5"
-        >
+    <SettingsComponents.part id="owners-part" title={gettext("Owners")} count={length(@owners)}>
+      <ul id="owners" class="q-plain-list">
+        <li :for={owner <- @owners} id={"owner-#{owner.id}"}>
           <.avatar
             name={owner.user.email}
             kind={if owner.user_id == @current_scope.user.id, do: "self", else: "person"}
@@ -249,15 +239,20 @@ defmodule ApiaryWeb.SettingsLive do
           <span :if={owner.user_id == @current_scope.user.id} class="text-[12.5px] text-faint">
             {gettext("you")}
           </span>
-          <span class="ml-auto text-[13px]/[18px] tabular-nums text-faint">
+          <span class="ml-auto text-[12.5px]/[18px] tabular-nums text-faint">
             {gettext("since %{date}", date: Format.date(owner.inserted_at))}
           </span>
         </li>
       </ul>
-      <:footer>
-        <span>{gettext("The last owner cannot be removed or demoted.")}</span>
-      </:footer>
-    </.card>
+      <p id="owners-note" class="q-foot-note">
+        <span :if={only_owner_held?(@current_scope, @owners)}>
+          {gettext("The only owner cannot be removed or demoted until another member is an owner.")}
+        </span>
+        <.link navigate={~p"/#{@current_scope.organisation}/settings/people"} class="link">
+          {gettext("People changes who is an owner.")}
+        </.link>
+      </p>
+    </SettingsComponents.part>
 
     <SettingsComponents.danger_zone :if={
       may?(@current_scope, :"organisation.delete") or organisation_kept?(@current_scope)
@@ -338,45 +333,44 @@ defmodule ApiaryWeb.SettingsLive do
       )}
     </.notice>
 
-    <.card>
-      <:title>{gettext("Workspace name")}</:title>
+    <SettingsComponents.part id="workspace-name">
       <.form
         for={@workspace_form}
         id="workspace-form"
         phx-change="validate_workspace"
         phx-submit="save_workspace"
-        class="grid max-w-[420px] gap-4"
+        class="q-form"
       >
         <.input
           field={@workspace_form[:name]}
           type="text"
           label={gettext("Name")}
+          hint={gettext("Shown in the breadcrumb, the switcher and as the overview title.")}
           debounce="200"
           autocomplete="off"
           disabled={!may?(@current_scope, :"workspace.rename")}
           required
         />
+        <p id="workspace-slug" class="text-[13px]/[20px] text-muted">
+          <.rich text={
+            rich_gettext("Its pages are under %{path}. Renaming the workspace keeps it.",
+              path: {:m, ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}"}
+            )
+          } />
+        </p>
+        <SettingsComponents.save :if={may?(@current_scope, :"workspace.rename")}>
+          <.button
+            type="submit"
+            variant="primary"
+            disabled={!@workspace_form.source.valid?}
+            loading_text={gettext("Saving")}
+          >
+            {gettext("Save")}
+          </.button>
+          <:note>{gettext("Owners and admins can change these.")}</:note>
+        </SettingsComponents.save>
       </.form>
-      <p id="workspace-slug" class="text-[13px]/[20px] text-muted">
-        <.rich text={
-          rich_gettext("Its pages are under %{path}. Renaming the workspace keeps it.",
-            path: {:m, ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}"}
-          )
-        } />
-      </p>
-      <:footer>
-        <span>{gettext("Shown in the breadcrumb, the switcher and as the overview title.")}</span>
-        <.button
-          :if={may?(@current_scope, :"workspace.rename")}
-          type="submit"
-          form="workspace-form"
-          disabled={!@workspace_form.source.valid?}
-          loading_text={gettext("Saving")}
-        >
-          {gettext("Save")}
-        </.button>
-      </:footer>
-    </.card>
+    </SettingsComponents.part>
 
     <SettingsComponents.danger_zone :if={may?(@current_scope, :"workspace.delete")}>
       <SettingsComponents.danger_action
@@ -410,72 +404,70 @@ defmodule ApiaryWeb.SettingsLive do
   # the nightly job last pruned.
   defp section(%{section: :retention} = assigns) do
     ~H"""
-    <.card>
-      <:title>{gettext("Keep for")}</:title>
+    <SettingsComponents.part id="retention-keep">
       <.form
         for={@retention_form}
         id="retention-form"
         phx-change="validate_retention"
         phx-submit="save_retention"
-        class="grid max-w-[420px] gap-4"
+        class="q-form"
       >
-        <.input
-          field={@retention_form[:events_retention_days]}
-          type="number"
-          label={gettext("Keep a run's events for")}
-          placeholder={gettext("Forever")}
-          min="1"
-          max="3650"
-          step="1"
-          inputmode="numeric"
-          debounce="200"
-          disabled={!may?(@current_scope, :"retention.edit")}
-        />
-        <.input
-          field={@retention_form[:log_retention_days]}
-          type="number"
-          label={gettext("Keep a run's log output for")}
-          placeholder={gettext("Forever")}
-          min="1"
-          max="3650"
-          step="1"
-          inputmode="numeric"
-          debounce="200"
-          disabled={!may?(@current_scope, :"retention.edit")}
-        />
+        <div class="q-form-two">
+          <.input
+            field={@retention_form[:events_retention_days]}
+            type="number"
+            label={gettext("Keep a run's events for")}
+            placeholder={gettext("Forever")}
+            min="1"
+            max="3650"
+            step="1"
+            inputmode="numeric"
+            debounce="200"
+            disabled={!may?(@current_scope, :"retention.edit")}
+          />
+          <.input
+            field={@retention_form[:log_retention_days]}
+            type="number"
+            label={gettext("Keep a run's log output for")}
+            placeholder={gettext("Forever")}
+            min="1"
+            max="3650"
+            step="1"
+            inputmode="numeric"
+            debounce="200"
+            disabled={!may?(@current_scope, :"retention.edit")}
+          />
+        </div>
+        <p class="max-w-[72ch] text-[13px]/[20px] text-muted">
+          {gettext(
+            "In days; empty keeps everything. A run that ended is pruned whole, counted from its last event: first its log output, then its timeline. The run stays in the list with its state, its counts and its connections, and its page says what was pruned and when. Pruned data comes back only from a backup."
+          )}
+        </p>
+        <SettingsComponents.save>
+          <.button
+            :if={may?(@current_scope, :"retention.edit")}
+            type="submit"
+            variant="primary"
+            disabled={!@retention_form.source.valid?}
+            loading_text={gettext("Saving")}
+          >
+            {gettext("Save")}
+          </.button>
+          <:note>
+            <span id="retention-summary">{retention_summary(@current_scope.workspace)}</span>
+          </:note>
+        </SettingsComponents.save>
       </.form>
-      <p class="max-w-[60ch] text-[13px]/[20px] text-muted">
-        {gettext(
-          "In days; empty keeps everything. A run that ended is pruned whole, counted from its last event: first its log output, then its timeline. The run stays in the list with its state, its counts and its connections, and its page says what was pruned and when. Pruned data comes back only from a backup."
-        )}
-      </p>
-      <:footer>
-        <span id="retention-summary">{retention_summary(@current_scope.workspace)}</span>
-        <.button
-          :if={may?(@current_scope, :"retention.edit")}
-          type="submit"
-          form="retention-form"
-          disabled={!@retention_form.source.valid?}
-          loading_text={gettext("Saving")}
-        >
-          {gettext("Save")}
-        </.button>
-      </:footer>
-    </.card>
+    </SettingsComponents.part>
 
-    <.card padding={false}>
-      <:title>{gettext("Pruned")}</:title>
-      <p :if={@retention_runs == []} id="retention-runs-empty" class="px-5 py-4 text-muted">
+    <SettingsComponents.part id="retention-pruned" title={gettext("Pruned")}>
+      <p :if={@retention_runs == []} id="retention-runs-empty" class="text-muted">
         {if retention_set?(@current_scope.workspace),
-          do: gettext("Nothing has been pruned yet. The job runs every night."),
+          do: gettext("Nothing has been pruned yet. The pruning job runs every night."),
           else: gettext("Nothing is pruned: this workspace keeps everything.")}
       </p>
-      <ul :if={@retention_runs != []} id="retention-runs" class="divide-y divide-line">
-        <li
-          :for={run <- @retention_runs}
-          id={"retention-run-#{run.id}"}
-          class="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 px-5 py-2.5"
-        >
+      <ul :if={@retention_runs != []} id="retention-runs" class="q-plain-list">
+        <li :for={run <- @retention_runs} id={"retention-run-#{run.id}"} class="items-baseline">
           <span class="font-medium tabular-nums">{Format.datetime(run.started_at, zone: true)}</span>
           <span :if={run.trigger == "manual"} class="text-[12.5px] text-muted">
             {gettext("By hand")}
@@ -486,17 +478,15 @@ defmodule ApiaryWeb.SettingsLive do
           <span class="w-full text-[13px]/[20px] text-muted">{pruned_sentence(run)}</span>
         </li>
       </ul>
-      <:footer>
-        <span>
-          {ngettext(
-            "The last run of the nightly job. It is also a line in the server's log.",
-            "The last %{number} runs of the nightly job. Each is also a line in the server's log.",
-            length(@retention_runs),
-            number: Format.number(length(@retention_runs))
-          )}
-        </span>
-      </:footer>
-    </.card>
+      <p :if={@retention_runs != []} id="retention-runs-note" class="q-foot-note">
+        {ngettext(
+          "The pruning job's last pass. It is also a line in the server's log.",
+          "The pruning job's last %{number} passes. Each is also a line in the server's log.",
+          length(@retention_runs),
+          number: Format.number(length(@retention_runs))
+        )}
+      </p>
+    </SettingsComponents.part>
     """
   end
 
@@ -840,12 +830,21 @@ defmodule ApiaryWeb.SettingsLive do
          |> load_workspaces()}
 
       {:error, :forbidden} ->
-        {:noreply, unauthorized(socket, deletion_refused())}
+        {:noreply,
+         unauthorized(
+           socket,
+           gettext("Only owners and admins cancel the deletion of a workspace.")
+         )}
 
       {:error, _reason} ->
         {:noreply, load_workspaces(socket)}
     end
   end
+
+  # Whether the organisation has one owner, whom the last-owner rule holds in place, and
+  # the reader would otherwise change that owner's level: only to them does it say anything.
+  defp only_owner_held?(scope, [owner]), do: Access.can?(scope, :"member.change_level", owner)
+  defp only_owner_held?(_scope, _owners), do: false
 
   # Whether the level of the reader's membership holds no `action`, which the notice says.
   # A reader with no membership, and a place read-only for everyone, say why in the

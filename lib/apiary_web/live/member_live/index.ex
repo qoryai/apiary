@@ -42,6 +42,7 @@ defmodule ApiaryWeb.MemberLive.Index do
     >
       <SettingsComponents.layout
         scope={@current_scope}
+        counts={@nav_counts}
         kind={:organisation}
         sections={@sections}
         current={:people}

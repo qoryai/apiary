@@ -14,6 +14,7 @@
 //
 // ChangeRow, on a change's <details>: the URL decides what is open, so the native toggle
 // is held back and the summary's click only patches.
+import {singleKeys} from "./shortcuts"
 
 const typing = el => el && el.closest("input, textarea, select, [contenteditable='true']")
 
@@ -70,7 +71,7 @@ export const PolicyPage = {
       return
     }
     if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || typing(e.target)) return
-    if (document.querySelector("dialog[open]")) return
+    if (document.querySelector("dialog[open]") || !singleKeys()) return
     if (e.key === "a") {
       const host = document.getElementById("policy-composer-host")
       const add = document.getElementById("policy-rules-add") || document.getElementById("policy-first-rule")

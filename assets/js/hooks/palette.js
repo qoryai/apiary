@@ -5,6 +5,7 @@
 // groups: ↑ and ↓ move, Enter opens, Escape and the backdrop close, and focus goes back
 // to where it was. Every word comes from the server; what a runner reported (a path, a
 // task) is written as text, never as markup.
+import {singleKeys} from "./shortcuts"
 const DEBOUNCE = 150
 
 export const Palette = {
@@ -20,7 +21,7 @@ export const Palette = {
       if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === "k") {
         e.preventDefault()
         this.el.open ? this.el.close() : this.open()
-      } else if (e.key === "/" && !typing && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      } else if (e.key === "/" && singleKeys() && !typing && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault()
         this.open()
       }

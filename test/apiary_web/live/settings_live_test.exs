@@ -15,7 +15,12 @@ defmodule ApiaryWeb.SettingsLiveTest do
       {:ok, lv, html} = live(conn, ~p"/#{scope.organisation}/settings")
 
       # The software domain's words, and no skin word: no apiary, no hive.
-      assert has_element?(lv, "h2", "Organisation name")
+      # A flat column: the section's h2 and its fields, no card of its own.
+      assert has_element?(lv, "h2#settings-section-title", "General")
+      assert has_element?(lv, "#organisation-form label", "Name")
+      refute has_element?(lv, "#settings-section-organisation .card")
+      assert has_element?(lv, "#organisation-form button[type=submit].btn-primary", "Save")
+      assert has_element?(lv, "#owners-part h3", "Owners")
       refute has_element?(lv, "#workspace-form")
       refute has_element?(lv, "#retention-form")
       assert html =~ "The name of this organisation, where its pages are, and who owns it."
@@ -32,7 +37,7 @@ defmodule ApiaryWeb.SettingsLiveTest do
 
       {:ok, lv, html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings")
 
-      assert has_element?(lv, "h2", "Workspace name")
+      assert has_element?(lv, "#workspace-form button[type=submit].btn-primary", "Save")
       refute has_element?(lv, "#organisation-form")
       refute has_element?(lv, "#owners")
 
@@ -77,6 +82,22 @@ defmodule ApiaryWeb.SettingsLiveTest do
       assert has_element?(lv, "#owners", user.email)
       assert has_element?(lv, "#owners", other_owner.email)
       refute has_element?(lv, "#owners", member.email)
+      assert has_element?(lv, "#owners-part h3 .q-part-n", "2")
+
+      # With two owners, the last-owner rule holds nobody in place, and is not said.
+      refute has_element?(lv, "#owners-note", "only owner")
+    end
+
+    test "says the only owner is held in place, to that owner alone", %{conn: conn, scope: scope} do
+      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings")
+      assert has_element?(lv, "#owners-note", "The only owner cannot be removed or demoted")
+
+      %{user: member} = member_fixture(scope, :member)
+
+      {:ok, lv, _html} =
+        live(log_in_user(build_conn(), member), ~p"/#{scope.organisation}/settings")
+
+      refute has_element?(lv, "#owners-note", "only owner")
     end
 
     test "sets the retention, within the bounds, and clears it", %{conn: conn, scope: scope} do
@@ -118,6 +139,8 @@ defmodule ApiaryWeb.SettingsLiveTest do
              )
 
       assert has_element?(lv, "#retention-runs-empty", "Nothing has been pruned yet.")
+      # No pass of the job yet: no line counting none of them.
+      refute has_element?(lv, "#retention-runs-note")
 
       workspace = Apiary.Repo.get!(Apiary.Organisations.Workspace, scope.workspace.id)
       assert {workspace.events_retention_days, workspace.log_retention_days} == {90, 14}
@@ -159,6 +182,7 @@ defmodule ApiaryWeb.SettingsLiveTest do
              )
 
       assert has_element?(lv, "#retention-run-#{mine.id}", "By hand")
+      assert has_element?(lv, "#retention-runs-note", "The pruning job's last pass.")
       assert lv |> element("#retention-runs") |> render() =~ "events from before"
       assert lv |> render() |> String.split("retention-run-") |> length() == 2
     end

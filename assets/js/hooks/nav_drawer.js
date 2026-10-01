@@ -4,6 +4,7 @@
 // a reading preference in localStorage, which the root layout applies before the first
 // paint. While it is folded each item's name is its title, and the fold button is named
 // for what it does then, in the words the server put on it (data-label, data-label-folded).
+import {singleKeys} from "./shortcuts"
 const KEY = "qory:sidebar"
 
 export const NavDrawer = {
@@ -55,6 +56,7 @@ export const NavDrawer = {
         set(false)
       } else if (
         e.key === "[" &&
+        singleKeys() &&
         wide.matches &&
         !e.metaKey && !e.ctrlKey && !e.altKey &&
         !e.target.closest?.("input, textarea, select, [contenteditable]") &&

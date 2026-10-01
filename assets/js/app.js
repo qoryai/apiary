@@ -132,6 +132,8 @@ const syncThemeButtons = () => {
       ? "system"
       : root.getAttribute("data-theme") === "qory-dark" ? "dark" : "light"
   document.querySelectorAll("[data-phx-theme]").forEach(b => {
+    // Preferences' theme is a group of radios; the account menu's, of menu radios.
+    if (b.type === "radio") return void (b.checked = b.dataset.phxTheme === current)
     const state = b.getAttribute("role") === "menuitemradio" ? "aria-checked" : "aria-pressed"
     b.setAttribute(state, String(b.dataset.phxTheme === current))
   })
@@ -140,6 +142,17 @@ window.addEventListener("DOMContentLoaded", syncThemeButtons)
 window.addEventListener("phx:set-theme", () => setTimeout(syncThemeButtons, 0))
 window.addEventListener("storage", e => e.key === "phx:theme" && setTimeout(syncThemeButtons, 0))
 window.addEventListener("phx:page-loading-stop", syncThemeButtons)
+
+// Preferences' Keyboard shortcuts switch; the root layout's script owns the preference,
+// this keeps `aria-checked` honest.
+const syncShortcuts = () => {
+  const on = document.documentElement.getAttribute("data-shortcuts") !== "off"
+  document.querySelectorAll('[data-pref="shortcuts"]').forEach(b => b.setAttribute("aria-checked", String(on)))
+}
+window.addEventListener("DOMContentLoaded", syncShortcuts)
+window.addEventListener("phx:set-shortcuts", () => setTimeout(syncShortcuts, 0))
+window.addEventListener("storage", e => e.key === "qory:shortcuts" && setTimeout(syncShortcuts, 0))
+window.addEventListener("phx:page-loading-stop", syncShortcuts)
 
 // Show progress bar on live navigation and form submits, in the theme's honey.
 const honey = () =>

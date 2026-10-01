@@ -35,6 +35,25 @@ defmodule ApiaryWeb.UserLive.SettingsTest do
 
       assert conn.resp_body =~ "You must re-authenticate to access this page."
     end
+
+    test "asks for a recent sign-in for the account's deletion, not for Preferences",
+         %{conn: conn} do
+      conn =
+        log_in_user(conn, user_fixture(),
+          token_authenticated_at: DateTime.add(DateTime.utc_now(:second), -11, :minute)
+        )
+
+      # Preferences changes how the console shows things, not the account.
+      {:ok, lv, _html} = live(conn, ~p"/users/settings/preferences")
+      assert has_element?(lv, "#preferences_form")
+
+      assert {:error, {:redirect, %{to: "/users/log-in"}}} =
+               live(conn, ~p"/users/settings/delete")
+
+      # A patch from Preferences to Profile asks too.
+      lv |> render_patch(~p"/users/settings")
+      assert_redirect(lv, ~p"/users/log-in")
+    end
   end
 
   describe "update email form" do
@@ -231,6 +250,31 @@ defmodule ApiaryWeb.UserLive.SettingsTest do
                "#preferences_time_zone option[value='America/Argentina/Buenos_Aires']",
                "Argentina/Buenos Aires"
              )
+    end
+
+    test "offers the theme and the keyboard shortcuts, the browser's own", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/users/settings/preferences")
+
+      # The theme is the account menu's: the same event, a radio for each, and the script
+      # marks the one in force.
+      for theme <- ~w(system light dark) do
+        assert has_element?(
+                 lv,
+                 "#theme-picker input[type=radio][name=theme][data-phx-theme='#{theme}']"
+               )
+      end
+
+      assert has_element?(lv, "#theme-picker legend", "Theme")
+
+      # The single-key shortcuts: a switch, on until the browser says otherwise; ⌘K is
+      # never turned off.
+      assert has_element?(
+               lv,
+               "button#shortcuts-switch[role=switch][aria-checked=true][data-pref=shortcuts]"
+             )
+
+      assert has_element?(lv, "label[for=shortcuts-switch]", "Keyboard shortcuts")
+      assert has_element?(lv, "#shortcuts-switch-description", "Ctrl+K")
     end
 
     test "with one language, shows it and offers no choice", %{conn: conn} do

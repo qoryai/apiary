@@ -4,13 +4,19 @@ defmodule ApiaryWeb.UserLive.Settings do
   pages under Your settings (`ApiaryWeb.Layouts`): Profile, `/users/settings` (`:edit`),
   their email address, their password and, last, its danger zone
   (`ApiaryWeb.SettingsComponents.danger_zone/1`), deleting their account, confirmed in a
-  modal over it, `/users/settings/delete` (`:delete`); and Preferences,
-  `/users/settings/preferences` (`:preferences`), their time zone and language. The theme
-  is the account menu's.
+  modal over it, `/users/settings/delete` (`:delete`), where they type their email to
+  confirm; and Preferences, `/users/settings/preferences` (`:preferences`), their language
+  and time zone, kept with the account, and the theme and the keyboard shortcuts, reading
+  preferences of the browser (`localStorage`), the same theme the account menu sets.
+
+  Profile and the deletion ask for a recent sign-in (`ApiaryWeb.UserAuth`'s sudo mode),
+  for they change what the account is or end it; Preferences does not.
   """
   use ApiaryWeb, :live_view
 
-  on_mount {ApiaryWeb.UserAuth, :require_sudo_mode}
+  on_mount {ApiaryWeb.UserAuth, {:require_sudo_mode, except: [:preferences]}}
+
+  import ApiaryWeb.SettingsComponents, only: [theme_picker: 1]
 
   alias Apiary.{Accounts, Organisations}
   alias Apiary.Accounts.Preferences
@@ -38,14 +44,14 @@ defmodule ApiaryWeb.UserLive.Settings do
         </:subtitle>
       </.header>
 
-      <.card :if={@live_action != :preferences}>
-        <:title>{gettext("Email")}</:title>
+      <SettingsComponents.part :if={@live_action != :preferences} id="email">
         <.form
           for={@email_form}
           id="email_form"
           phx-submit="update_email"
           phx-change="validate_email"
-          class="grid max-w-[420px] gap-4"
+          class="q-form"
+          aria-label={gettext("Email")}
         >
           <.input
             field={@email_form[:email]}
@@ -55,17 +61,16 @@ defmodule ApiaryWeb.UserLive.Settings do
             spellcheck="false"
             required
           />
+          <SettingsComponents.save>
+            <.button type="submit" loading_text={gettext("Sending")}>
+              {gettext("Change email")}
+            </.button>
+            <:note>{gettext("We send a confirmation link to the new address.")}</:note>
+          </SettingsComponents.save>
         </.form>
-        <:footer>
-          <span>{gettext("We send a confirmation link to the new address.")}</span>
-          <.button type="submit" form="email_form" loading_text={gettext("Sending")}>
-            {gettext("Change email")}
-          </.button>
-        </:footer>
-      </.card>
+      </SettingsComponents.part>
 
-      <.card :if={@live_action != :preferences}>
-        <:title>{gettext("Password")}</:title>
+      <SettingsComponents.part :if={@live_action != :preferences} id="password">
         <.form
           for={@password_form}
           id="password_form"
@@ -74,7 +79,8 @@ defmodule ApiaryWeb.UserLive.Settings do
           phx-change="validate_password"
           phx-submit="update_password"
           phx-trigger-action={@trigger_submit}
-          class="grid max-w-[420px] gap-4"
+          class="q-form"
+          aria-label={gettext("Password")}
         >
           <input
             name={@password_form[:email].name}
@@ -83,64 +89,110 @@ defmodule ApiaryWeb.UserLive.Settings do
             autocomplete="username"
             value={@current_email}
           />
-          <.input
-            field={@password_form[:password]}
-            type="password"
-            label={gettext("New password")}
-            hint={gettext("At least 12 characters.")}
-            autocomplete="new-password"
-            spellcheck="false"
-            required
-          />
-          <.input
-            field={@password_form[:password_confirmation]}
-            type="password"
-            label={gettext("Confirm new password")}
-            autocomplete="new-password"
-            spellcheck="false"
-          />
+          <div class="q-form-two">
+            <.input
+              field={@password_form[:password]}
+              type="password"
+              label={gettext("New password")}
+              hint={gettext("At least 12 characters.")}
+              autocomplete="new-password"
+              spellcheck="false"
+              required
+            />
+            <.input
+              field={@password_form[:password_confirmation]}
+              type="password"
+              label={gettext("Confirm new password")}
+              autocomplete="new-password"
+              spellcheck="false"
+            />
+          </div>
+          <SettingsComponents.save>
+            <.button type="submit" loading_text={gettext("Saving")}>
+              {gettext("Save password")}
+            </.button>
+            <:note>{gettext("Optional. Log-in links keep working either way.")}</:note>
+          </SettingsComponents.save>
         </.form>
-        <:footer>
-          <span>{gettext("Optional. Log-in links keep working either way.")}</span>
-          <.button type="submit" form="password_form" loading_text={gettext("Saving")}>
-            {gettext("Save password")}
-          </.button>
-        </:footer>
-      </.card>
+      </SettingsComponents.part>
 
-      <.card :if={@live_action == :preferences} id="preferences">
-        <:title>{gettext("Time and language")}</:title>
+      <SettingsComponents.part
+        :if={@live_action == :preferences}
+        id="preferences"
+        level={:h2}
+        title={gettext("Language and time")}
+      >
         <.form
           for={@preferences_form}
           id="preferences_form"
           phx-submit="update_preferences"
-          class="grid max-w-[420px] gap-4"
+          class="q-form"
         >
-          <.input
-            field={@preferences_form[:time_zone]}
-            type="select"
-            label={gettext("Time zone")}
-            hint={gettext("Times are shown in this zone. They are kept in UTC.")}
-            options={time_zone_options(@preferences_form[:time_zone].value)}
-          />
-          <.input
-            :if={length(@languages) > 1}
-            field={@preferences_form[:language]}
-            type="select"
-            label={gettext("Language")}
-            options={Enum.map(@languages, &{language_name(&1), &1})}
-          />
+          <div class="q-form-two">
+            <.input
+              :if={length(@languages) > 1}
+              field={@preferences_form[:language]}
+              type="select"
+              label={gettext("Language")}
+              options={Enum.map(@languages, &{language_name(&1), &1})}
+            />
+            <.input
+              field={@preferences_form[:time_zone]}
+              type="select"
+              label={gettext("Time zone")}
+              hint={gettext("Times are shown in this zone. They are kept in UTC.")}
+              options={time_zone_options(@preferences_form[:time_zone].value)}
+            />
+          </div>
+          <p
+            :if={length(@languages) <= 1}
+            id="preferences_language"
+            class="text-[13px] text-muted"
+          >
+            {gettext("Pages are in English, the one language this instance has.")}
+          </p>
+          <SettingsComponents.save>
+            <.button type="submit" variant="primary" loading_text={gettext("Saving")}>
+              {gettext("Save")}
+            </.button>
+            <:note>{gettext("Yours in every organisation you belong to.")}</:note>
+          </SettingsComponents.save>
         </.form>
-        <p :if={length(@languages) <= 1} id="preferences_language" class="text-[13px] text-muted">
-          {gettext("Pages are in English, the one language this instance has.")}
+      </SettingsComponents.part>
+
+      <SettingsComponents.part
+        :if={@live_action == :preferences}
+        id="theme"
+        level={:h2}
+        title={gettext("Theme")}
+      >
+        <.theme_picker />
+        <p class="q-foot-note">
+          {gettext(
+            "Applies at once, on this browser. Auto follows the device's light or dark setting. The terminal stays dark in every theme."
+          )}
         </p>
-        <:footer>
-          <span>{gettext("Yours in every organisation you belong to.")}</span>
-          <.button type="submit" form="preferences_form" loading_text={gettext("Saving")}>
-            {gettext("Save preferences")}
-          </.button>
-        </:footer>
-      </.card>
+      </SettingsComponents.part>
+
+      <SettingsComponents.part
+        :if={@live_action == :preferences}
+        id="keyboard"
+        level={:h2}
+        title={gettext("Keyboard")}
+      >
+        <.switch
+          id="shortcuts-switch"
+          label={gettext("Keyboard shortcuts")}
+          checked
+          data-pref="shortcuts"
+          phx-click={JS.dispatch("phx:set-shortcuts")}
+          phx-mounted={JS.ignore_attributes(["aria-checked"])}
+        >
+          {gettext(
+            "Single keys such as / to search, [ to fold the sidebar and the run timeline's letters. Off, only shortcuts with ⌘ or Ctrl work, such as ⌘K and Ctrl+K to search. Kept on this browser."
+          )}
+        </.switch>
+      </SettingsComponents.part>
 
       <SettingsComponents.danger_zone :if={@live_action != :preferences}>
         <SettingsComponents.danger_action id="delete-account" title={gettext("Delete account")}>
@@ -202,7 +254,7 @@ defmodule ApiaryWeb.UserLive.Settings do
       <.modal
         :if={@live_action == :delete}
         id="delete-account-modal"
-        title={gettext("Delete your account")}
+        title={gettext("Delete your account?")}
         on_cancel={JS.patch(~p"/users/settings")}
       >
         <p class="text-muted">
@@ -217,12 +269,30 @@ defmodule ApiaryWeb.UserLive.Settings do
             length(@marked_alone)
           )}
         </p>
+        <.form
+          for={@confirm_form}
+          id="delete-account-form"
+          phx-change="confirm"
+          phx-submit="delete_account"
+          class="grid gap-4"
+        >
+          <.input
+            field={@confirm_form[:email]}
+            type="text"
+            label={gettext("Type your email, %{email}, to confirm", email: @current_email)}
+            autocomplete="off"
+            spellcheck="false"
+            debounce="0"
+          />
+        </.form>
         <:footer>
           <.button patch={~p"/users/settings"} data-autofocus>{gettext("Cancel")}</.button>
           <.button
             id="delete-account-confirm"
             variant="danger"
-            phx-click="delete_account"
+            type="submit"
+            form="delete-account-form"
+            disabled={!email_typed?(@confirm_form[:email].value, @current_email)}
             loading_text={gettext("Deleting")}
           >
             {gettext("Delete my account")}
@@ -266,13 +336,50 @@ defmodule ApiaryWeb.UserLive.Settings do
       # than by the disconnect the other sessions get.
       |> assign(:session_token, session["user_token"])
       |> assign(sole_owned: nil, marked_alone: [])
+      |> assign_confirm()
       |> load_sole_owned()
 
     {:ok, socket}
   end
 
+  # A patch from Preferences to Profile or the deletion asks for the recent sign-in the
+  # mount asked of them.
   @impl true
-  def handle_params(_params, _uri, socket), do: {:noreply, socket}
+  def handle_params(_params, _uri, socket) do
+    socket = socket |> assign(:page_title, page_title(socket.assigns.live_action))
+
+    if socket.assigns.live_action != :preferences and
+         not Accounts.sudo_mode?(socket.assigns.current_scope.user, -10) do
+      {:noreply, reauthenticate(socket)}
+    else
+      {:noreply,
+       if(socket.assigns.live_action == :delete, do: socket, else: assign_confirm(socket))}
+    end
+  end
+
+  defp reauthenticate(socket) do
+    socket
+    |> put_flash(:error, gettext("You must re-authenticate to access this page."))
+    |> redirect(to: ~p"/users/log-in")
+  end
+
+  # The email typed to confirm the account's deletion, and whether it was refused.
+  defp assign_confirm(socket, params \\ %{}, refused \\ nil) do
+    errors =
+      case refused do
+        :mismatch -> [email: {dgettext_noop("errors", "is not your email"), []}]
+        nil -> []
+      end
+
+    assign(socket, :confirm_form, to_form(params, as: :confirm, errors: errors))
+  end
+
+  # Whether the email typed is the account's, as it is written or in another case, with
+  # the spaces around it left out.
+  defp email_typed?(typed, email) when is_binary(typed),
+    do: String.downcase(String.trim(typed)) == String.downcase(email)
+
+  defp email_typed?(_typed, _email), do: false
 
   defp page_title(:preferences), do: gettext("Preferences") <> " · " <> gettext("Your settings")
   defp page_title(_profile), do: gettext("Profile") <> " · " <> gettext("Your settings")
@@ -385,43 +492,53 @@ defmodule ApiaryWeb.UserLive.Settings do
     end
   end
 
-  def handle_event("delete_account", _params, socket) do
+  def handle_event("confirm", %{"confirm" => params}, socket),
+    do: {:noreply, assign_confirm(socket, params)}
+
+  def handle_event("delete_account", params, socket) do
     scope = socket.assigns.current_scope
+    typed = get_in(params, ["confirm", "email"])
 
-    if Accounts.sudo_mode?(scope.user) do
-      case Accounts.delete_user(scope) do
-        {:ok, {_tombstone, tokens}} ->
-          tokens
-          |> Enum.reject(&(&1.token == socket.assigns.session_token))
-          |> UserAuth.disconnect_sessions()
+    cond do
+      not Accounts.sudo_mode?(scope.user) ->
+        {:noreply, reauthenticate(socket)}
 
-          # This page's own session ends where it is sent, which disconnects it as a
-          # log-out does.
-          {:noreply, redirect(socket, to: ~p"/users/account-deleted")}
+      not email_typed?(typed, scope.user.email) ->
+        {:noreply, assign_confirm(socket, %{"email" => typed || ""}, :mismatch)}
 
-        {:error, :last_owner} ->
-          {:noreply,
-           socket
-           |> put_flash(
-             :error,
-             gettext(
-               "You are the only owner of an organisation. Make another member an owner, or delete the organisation, first."
-             )
+      true ->
+        delete_account(socket, scope)
+    end
+  end
+
+  defp delete_account(socket, scope) do
+    case Accounts.delete_user(scope) do
+      {:ok, {_tombstone, tokens}} ->
+        tokens
+        |> Enum.reject(&(&1.token == socket.assigns.session_token))
+        |> UserAuth.disconnect_sessions()
+
+        # This page's own session ends where it is sent, which disconnects it as a
+        # log-out does.
+        {:noreply, redirect(socket, to: ~p"/users/account-deleted")}
+
+      {:error, :last_owner} ->
+        {:noreply,
+         socket
+         |> put_flash(
+           :error,
+           gettext(
+             "You are the only owner of an organisation. Make another member an owner, or delete the organisation, first."
            )
-           |> load_sole_owned()
-           |> push_patch(to: ~p"/users/settings")}
+         )
+         |> load_sole_owned()
+         |> push_patch(to: ~p"/users/settings")}
 
-        {:error, _reason} ->
-          {:noreply,
-           socket
-           |> put_flash(:error, gettext("Your account could not be deleted. Try again."))
-           |> push_patch(to: ~p"/users/settings")}
-      end
-    else
-      {:noreply,
-       socket
-       |> put_flash(:error, gettext("You must re-authenticate to access this page."))
-       |> redirect(to: ~p"/users/log-in")}
+      {:error, _reason} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, gettext("Your account could not be deleted. Try again."))
+         |> push_patch(to: ~p"/users/settings")}
     end
   end
 

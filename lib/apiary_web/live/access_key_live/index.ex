@@ -22,6 +22,7 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
     >
       <SettingsComponents.layout
         scope={@current_scope}
+        counts={@nav_counts}
         kind={:workspace}
         sections={@sections}
         current={:keys}

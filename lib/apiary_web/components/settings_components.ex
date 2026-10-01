@@ -127,6 +127,11 @@ defmodule ApiaryWeb.SettingsComponents do
   attr :scope, :any, required: true
   attr :kind, :atom, required: true, values: [:organisation, :workspace]
   attr :sections, :list, required: true, doc: "the sections, as `sections/2` gives them"
+
+  attr :counts, :map,
+    default: nil,
+    doc: "the navigation's counts (`ApiaryWeb.UserAuth.nav_counts/1`), for an entry's `count`"
+
   attr :current, :atom, required: true, doc: "the key of the section of the page"
   attr :measure, :string, default: "read", values: ~w(read list)
   attr :title, :string, required: true, doc: "the section's title"
@@ -151,8 +156,10 @@ defmodule ApiaryWeb.SettingsComponents do
           aria-current={entry.key == @current && "page"}
           class="q-settings-link"
         >
-          <.icon name={entry.icon} class="q-settings-icon size-4" />
           <span class="truncate">{entry.label}</span>
+          <span :if={count = count(@counts, entry)} class="q-settings-n">
+            {Format.number(count)}
+          </span>
         </.link>
       </nav>
 
@@ -172,6 +179,124 @@ defmodule ApiaryWeb.SettingsComponents do
         {render_slot(@inner_block)}
       </section>
     </div>
+    """
+  end
+
+  # An entry's count, where the page passed the navigation's counts and the entry has one.
+  defp count(%{} = counts, %Entry{count: key}) when is_atom(key) and not is_nil(key) do
+    case Map.get(counts, key) do
+      n when is_integer(n) -> n
+      _none -> nil
+    end
+  end
+
+  defp count(_counts, _entry), do: nil
+
+  @doc """
+  part/1 is one part of a settings section, or of a person's settings page: its fields or
+  its list straight on the page, no card, under a heading when the section has more than
+  one part (an `<h3>` under the section's `<h2>`; an `<h2>` on a person's page, whose
+  title is the `<h1>`), with a count beside it where one helps.
+  """
+  attr :id, :string, default: nil
+  attr :title, :string, default: nil
+  attr :count, :integer, default: nil
+  attr :level, :atom, default: :h3, values: [:h2, :h3]
+  attr :class, :any, default: nil
+  slot :inner_block, required: true
+
+  def part(assigns) do
+    assigns = assign_new(assigns, :heading_id, fn -> assigns.id && "#{assigns.id}-title" end)
+
+    ~H"""
+    <section
+      id={@id}
+      class={["q-part", @class]}
+      aria-labelledby={@title && @heading_id}
+    >
+      <h2 :if={@title && @level == :h2} id={@heading_id} class="q-part-h q-part-h2">
+        {@title}
+        <span :if={@count} class="q-part-n">{Format.number(@count)}</span>
+      </h2>
+      <h3 :if={@title && @level == :h3} id={@heading_id} class="q-part-h">
+        {@title}
+        <span :if={@count} class="q-part-n">{Format.number(@count)}</span>
+      </h3>
+      {render_slot(@inner_block)}
+    </section>
+    """
+  end
+
+  @doc """
+  save/1 is the foot of a settings form: its button, one primary per section where the
+  section has one main action, and beside it one muted line of who may change it or what
+  happens once it is saved.
+  """
+  attr :id, :string, default: nil
+  slot :inner_block, required: true, doc: "the button"
+  slot :note, doc: "the muted line"
+
+  def save(assigns) do
+    ~H"""
+    <div id={@id} class="q-save">
+      {render_slot(@inner_block)}
+      <span :if={@note != []}>{render_slot(@note)}</span>
+    </div>
+    """
+  end
+
+  @doc """
+  theme_picker/1 is Preferences' choice of the theme: Auto, Light and Dark as three radios,
+  each drawn as a small picture of the theme (the theme's own tokens, set by `data-theme`
+  on the picture) with its name. The theme is the account menu's, a reading preference of
+  the browser that the root layout's script keeps: a choice is the same `phx:set-theme`
+  event, and the script marks the one in force.
+  """
+  def theme_picker(assigns) do
+    assigns =
+      assign(assigns, :themes, [
+        {"system", gettext("Auto")},
+        {"light", gettext("Light")},
+        {"dark", gettext("Dark")}
+      ])
+
+    ~H"""
+    <fieldset id="theme-picker" class="q-themes" phx-update="ignore">
+      <legend class="sr-only">{gettext("Theme")}</legend>
+      <label :for={{theme, label} <- @themes} id={"theme-pick-#{theme}"} class="q-theme-opt">
+        <input
+          type="radio"
+          name="theme"
+          value={theme}
+          class="q-theme-input"
+          data-phx-theme={theme}
+          phx-click={JS.dispatch("phx:set-theme")}
+        />
+        <span :if={theme != "system"} class="q-swatch" aria-hidden="true">
+          <.theme_swatch theme={if theme == "dark", do: "qory-dark", else: "qory"} />
+        </span>
+        <span :if={theme == "system"} class="q-swatch q-swatch-two" aria-hidden="true">
+          <.theme_swatch theme="qory" />
+          <.theme_swatch theme="qory-dark" />
+        </span>
+        <span class="q-theme-name">
+          {label}
+          <.icon name="hero-check-circle-micro" class="q-theme-check size-4" />
+        </span>
+      </label>
+    </fieldset>
+    """
+  end
+
+  # A picture of a theme in its own colours: the sidebar, a honey bar and two lines.
+  attr :theme, :string, required: true
+
+  defp theme_swatch(assigns) do
+    ~H"""
+    <span class="q-swatch-pane" data-theme={@theme}>
+      <i></i>
+      <span><b></b><b></b><b></b></span>
+    </span>
     """
   end
 

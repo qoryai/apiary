@@ -302,6 +302,15 @@ defmodule ApiaryWeb.UserAuth do
     end
   end
 
+  # The sudo mode for the pages of a LiveView but those of the `except` actions, which a
+  # person reaches without a recent sign-in; the LiveView asks again when it patches to
+  # one of the others.
+  def on_mount({:require_sudo_mode, except: actions}, params, session, socket) do
+    if socket.assigns[:live_action] in actions,
+      do: {:cont, mount_current_scope(socket, session)},
+      else: on_mount(:require_sudo_mode, params, session, socket)
+  end
+
   def on_mount(:require_sudo_mode, _params, session, socket) do
     socket = mount_current_scope(socket, session)
 

@@ -43,6 +43,18 @@
             document.documentElement.setAttribute("data-sidebar", "collapsed");
           }
         } catch (e) {}
+        // The single-key shortcuts, on unless Preferences turned them off on this browser.
+        const setShortcuts = (on) => {
+          if (on) document.documentElement.removeAttribute("data-shortcuts");
+          else document.documentElement.setAttribute("data-shortcuts", "off");
+        };
+        try { setShortcuts(localStorage.getItem("qory:shortcuts") !== "off"); } catch (e) {}
+        window.addEventListener("storage", (e) => e.key === "qory:shortcuts" && setShortcuts(e.newValue !== "off"));
+        window.addEventListener("phx:set-shortcuts", () => {
+          const on = document.documentElement.getAttribute("data-shortcuts") === "off";
+          setShortcuts(on);
+          try { on ? localStorage.removeItem("qory:shortcuts") : localStorage.setItem("qory:shortcuts", "off"); } catch (e) {}
+        });
         window.addEventListener("storage", (e) => e.key === "phx:theme" && setTheme(e.newValue || "system"));
         window.addEventListener("phx:set-theme", (e) => setTheme(e.target.closest("[data-phx-theme]").dataset.phxTheme));
 
