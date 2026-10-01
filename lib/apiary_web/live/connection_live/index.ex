@@ -644,6 +644,8 @@ defmodule ApiaryWeb.ConnectionLive.Index do
       {%{rule_option: locked}, _} when locked in [:locked_deny, :locked_allow] ->
         {:noreply, open_refusal(socket, row, act)}
 
+      # A row the level above denies, or one only the level above allows: its menu says
+      # so and leads there; nothing opens here.
       _ ->
         {:noreply, socket}
     end
@@ -946,6 +948,10 @@ defmodule ApiaryWeb.ConnectionLive.Index do
         )
       )
 
+    # Where the level above the workspace is read and changed, for the rows it decides.
+    above_link =
+      if effective.above, do: ApiaryWeb.Edition.above_policy_link(scope)
+
     acts =
       for {row, rule_option} <- rule_options, into: %{} do
         id = destination_id(row)
@@ -955,7 +961,8 @@ defmodule ApiaryWeb.ConnectionLive.Index do
          row
          |> act(rule_option, changes, socket)
          |> Map.merge(%{expanded: expanded, expanded_action: expanded && action})
-         |> locked(locks, scope)}
+         |> locked(locks, scope)
+         |> above(above_link)}
       end
 
     assign(socket, acts: acts)
@@ -1018,6 +1025,21 @@ defmodule ApiaryWeb.ConnectionLive.Index do
        do: Map.merge(act, %{rule_path: Rules.rule_path(scope, nil, host), locked: locks[host]})
 
   defp locked(act, _locks, _scope), do: act
+
+  # A row the level above decides links to its rule there, and a row that could be
+  # allowed only there links to its page with the host, where the reader may change it.
+  defp above(%{above: %{}, entry: %{host: host}} = act, %{path: path} = link) do
+    Map.merge(act, %{
+      rule_path: path <> "?" <> URI.encode_query(%{"rule" => host}),
+      above_linked: true,
+      above_can_change: link.can_change
+    })
+  end
+
+  defp above(%{allow_elsewhere: %{}, host: host} = act, %{path: path, can_change: true}),
+    do: Map.put(act, :allow_path, path <> "?" <> URI.encode_query(%{"allow" => host}))
+
+  defp above(act, _link), do: act
 
   defp row_values(row),
     do: %{"host" => row.host, "port" => Integer.to_string(row.port), "path" => row.path || ""}

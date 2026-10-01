@@ -62,17 +62,20 @@ defmodule ApiaryWeb.PolicyLive.Target do
       own: own,
       effective: effective,
       mode: Policy.get_mode(scope, target),
+      # The denies that hold in the target whatever its own rules: the level above's and
+      # the workspace's locked.
       locked_denies:
         for(
           %{
             kind: :host,
-            source: :workspace,
-            locked: true,
+            source: source,
+            locked: locked,
             action: :deny,
             in_force: true,
             host: host
           } <-
             effective.entries,
+          source == :organisation or (source == :workspace and locked),
           do: host
         ),
       # Who locked what is read only where a lock is in the list to be asked about.
@@ -248,7 +251,14 @@ defmodule ApiaryWeb.PolicyLive.Target do
 
   ## Events
 
+  # The rows' menu is the tab's own here: its own rules are weighed against the
+  # workspace's, and a rule of another holder is a link, never an event.
+  @own_events ~w(edit_paths change_action remove)
+
   @doc "handle_event/3 is the tab's answer to an event of its content."
+  def handle_event(event, params, socket) when event in @own_events,
+    do: {:noreply, event(event, params, socket)}
+
   def handle_event(event, params, socket) do
     case Common.handle_event(event, params, socket) do
       {:halt, socket} -> {:noreply, socket}
@@ -263,6 +273,9 @@ defmodule ApiaryWeb.PolicyLive.Target do
     now = if mode.own, do: mode.own, else: "follow"
 
     cond do
+      mode.floor ->
+        socket
+
       not Common.may?(socket, :"security_policy.set_mode") ->
         assign(socket, :write_error, gettext("Only an owner or an admin sets a mode."))
 
@@ -949,6 +962,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
       workspace={@workspace}
       set={@mode_set}
       can_edit={Common.may?(@current_scope, :"security_policy.set_mode")}
+      floor={@mode.floor && %{name: @effective.above.name}}
     />
 
     <.notice :if={@own == [] && is_nil(@mode.own)} kind={:info} class="max-w-[90ch]">
@@ -971,6 +985,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
       suggestions={@suggestions}
       covered={@covered}
       allowed={@allowed}
+      above={@effective.above && @effective.above.name}
     />
 
     <section id="policy-hosts" class="q-psec" aria-labelledby="policy-hosts-h">
@@ -1025,10 +1040,18 @@ defmodule ApiaryWeb.PolicyLive.Target do
         </:composer>
       </.rule_list>
       <p id="policy-hosts-note" class="q-psec-note">
-        {gettext(
-          "Its own rules come first and are changed here; %{workspace}'s follow and are changed on %{workspace}'s policy page. %{workspace}'s locked rules hold in every target, in either mode.",
-          workspace: @workspace
-        )}
+        {if @effective.above,
+          do:
+            gettext(
+              "Its own rules come first; %{name}'s and %{workspace}'s follow and are changed where they live. %{name}'s rules hold in every workspace and target, in either mode.",
+              name: @effective.above.name,
+              workspace: @workspace
+            ),
+          else:
+            gettext(
+              "Its own rules come first and are changed here; %{workspace}'s follow and are changed on %{workspace}'s policy page. %{workspace}'s locked rules hold in every target, in either mode.",
+              workspace: @workspace
+            )}
       </p>
     </section>
 

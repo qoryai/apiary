@@ -1948,7 +1948,13 @@ defmodule ApiaryWeb.RunComponents do
         <.split allowed={@c.allowed} denied={@c.denied} share={@share} />
       </td>
       <td :if={@security} class="q-why q-from-sm">
-        <span class="q-why-l" title={reason_title(@c, @mixed)}>
+        <span :if={@act && @act[:above]} class="q-why-l q-above-why" id={"#{@id}-above"}>
+          <span class="q-tile" aria-hidden="true">{String.first(@act.above.name)}</span>
+          {@act.above.name} · {if @act.above.action == :deny,
+            do: gettext("denied"),
+            else: gettext("allowed")}
+        </span>
+        <span :if={!(@act && @act[:above])} class="q-why-l" title={reason_title(@c, @mixed)}>
           <.reason c={@c} variant="workspace" /><span
             :if={@mixed}
             class="text-faint"
@@ -2617,7 +2623,10 @@ defmodule ApiaryWeb.RunComponents do
       entry_host: act[:entry_host],
       expanded: act[:expanded] == true,
       expanded_action: act[:expanded_action],
-      deny: act[:deny] == true
+      deny: act[:deny] == true,
+      above: act[:above],
+      allow_elsewhere: act[:allow_elsewhere],
+      allow_path: act[:allow_path]
     }
   end
 
@@ -2645,6 +2654,64 @@ defmodule ApiaryWeb.RunComponents do
   attr :expanded, :boolean, default: false
   attr :expanded_action, :atom, default: nil, doc: "which of two actions the open popover is of"
   attr :deny, :boolean, default: false, doc: "a `:can_allow` row no rule decides: Deny too"
+
+  attr :above, :any,
+    default: nil,
+    doc: "`%{name:, action:}` where a rule of the level above the workspace decides the row"
+
+  attr :allow_elsewhere, :any,
+    default: nil,
+    doc: "`%{name:}` where only the level above the workspace allows a host"
+
+  attr :allow_path, :string,
+    default: nil,
+    doc: "the level above's page with the host, to allow it there"
+
+  # Where the level above the workspace allows only its own hosts, Allow is a link to its
+  # page, with the host, for a reader who may change it there, and a lock for the rest;
+  # Deny stays where no rule decides the host.
+  def rule_action(%{rule_option: :can_allow, allow_elsewhere: %{}} = assigns) do
+    assigns =
+      assign(assigns,
+        tip:
+          gettext("Only %{name}'s policy allows a host here", name: assigns.allow_elsewhere.name)
+      )
+
+    ~H"""
+    <span id={"#{@id}-both"} class="q-acts-pair">
+      <button
+        :if={@deny}
+        type="button"
+        id={"#{@id}-deny"}
+        class="q-act-t q-hov"
+        data-action="deny"
+        phx-click={JS.push("rule_open", value: Map.put(@values, "action", "deny"))}
+        aria-haspopup="dialog"
+        aria-expanded={to_string(@expanded and @expanded_action == :deny)}
+        aria-label={gettext("Deny %{host}", host: @connection.host)}
+      >
+        {gettext("Deny")}
+      </button>
+      <.link
+        :if={@allow_path}
+        id={@id}
+        navigate={@allow_path}
+        class="q-act-t q-hov"
+        aria-label={
+          gettext("Allow %{host} in %{name}'s policy",
+            host: @connection.host,
+            name: @allow_elsewhere.name
+          )
+        }
+      >
+        {gettext("Allow")}
+      </.link>
+      <span :if={!@allow_path} id={@id} class="q-act-lock" title={@tip}>
+        <.icon name="hero-lock-closed-micro" class="size-3.5" /><span class="sr-only">{@tip}</span>
+      </span>
+    </span>
+    """
+  end
 
   def rule_action(%{rule_option: :can_allow, deny: true} = assigns) do
     ~H"""
@@ -2745,6 +2812,21 @@ defmodule ApiaryWeb.RunComponents do
     """
   end
 
+  def rule_action(%{rule_option: :above_deny} = assigns) do
+    assigns =
+      assign(
+        assigns,
+        :tip,
+        gettext("Decided by %{name}'s policy", name: (assigns.above && assigns.above.name) || "?")
+      )
+
+    ~H"""
+    <span id={@id} class="q-act-lock" title={@tip}>
+      <.icon name="hero-lock-closed-micro" class="size-3.5" /><span class="sr-only">{@tip}</span>
+    </span>
+    """
+  end
+
   def rule_action(%{rule_option: :wall} = assigns) do
     ~H"""
     <span id={@id} class="q-act-lock" title={gettext("No rule changes this")}>
@@ -2793,7 +2875,12 @@ defmodule ApiaryWeb.RunComponents do
         rule_path: act[:rule_path],
         locked: act[:locked],
         both: option == :can_allow and act[:deny] == true,
-        entry_host: act[:entry_host] || assigns.connection.host
+        entry_host: act[:entry_host] || assigns.connection.host,
+        above: act[:above],
+        above_linked: act[:above_linked] == true,
+        above_can_change: act[:above_can_change] == true,
+        allow_elsewhere: act[:allow_elsewhere],
+        allow_path: act[:allow_path]
       )
 
     ~H"""
@@ -2803,6 +2890,19 @@ defmodule ApiaryWeb.RunComponents do
       label={gettext("Actions for %{label}", label: @connection.host)}
     >
       <%= case @kind do %>
+        <% :above -> %>
+          <.menu_heading
+            title={gettext("%{name}'s policy denies %{host}", name: @above.name, host: @entry_host)}
+            sub={gettext("No workspace or target rule can allow it.")}
+          />
+          <.menu_item :if={@rule_path} id={"#{@id}-rule"} navigate={@rule_path}>
+            {cond do
+              @above_can_change -> gettext("Change in %{name}'s policy", name: @above.name)
+              @above_linked -> gettext("View in %{name}'s policy", name: @above.name)
+              true -> gettext("Show the rule")
+            end}
+          </.menu_item>
+          <.menu_divider />
         <% :locked -> %>
           <.menu_heading title={locked_words(@locked)} sub={locked_holds(@option)} />
           <.menu_item :if={@rule_path} id={"#{@id}-rule"} navigate={@rule_path}>
@@ -2824,8 +2924,16 @@ defmodule ApiaryWeb.RunComponents do
           </.menu_item>
           <.menu_divider :if={@rule_path} />
         <% :open -> %>
+          <.menu_heading
+            :if={@allow_elsewhere}
+            title={gettext("%{name} allows only its own hosts", name: @allow_elsewhere.name)}
+            sub={gettext("An allow of the workspace or of a target would not be in force.")}
+          />
+          <.menu_item :if={@allow_elsewhere && @allow_path} id={"#{@id}-allow"} navigate={@allow_path}>
+            {gettext("Allow in %{name}'s policy", name: @allow_elsewhere.name)}
+          </.menu_item>
           <.menu_item
-            :if={@option == :can_allow}
+            :if={@option == :can_allow && !@allow_elsewhere}
             id={"#{@id}-allow"}
             phx-click={JS.push("rule_open", value: Map.put(@values, "action", "allow"))}
             aria-haspopup="dialog"
@@ -2841,7 +2949,9 @@ defmodule ApiaryWeb.RunComponents do
             {gettext("Deny…")}
           </.menu_item>
           <.menu_item :if={@rule_path} id={"#{@id}-rule"} navigate={@rule_path}>
-            {gettext("Show the rule")}
+            {if @above && @above_linked,
+              do: gettext("Show the rule in %{name}'s policy", name: @above.name),
+              else: gettext("Show the rule")}
           </.menu_item>
           <.menu_divider />
         <% nil -> %>
@@ -2861,6 +2971,7 @@ defmodule ApiaryWeb.RunComponents do
     """
   end
 
+  defp menu_kind(:above_deny), do: :above
   defp menu_kind(option) when option in [:locked_deny, :locked_allow], do: :locked
   defp menu_kind(option) when option in [:can_allow, :can_deny], do: :open
   defp menu_kind({:rule_added, _action}), do: :rule

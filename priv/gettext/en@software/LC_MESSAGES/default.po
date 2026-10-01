@@ -20,6 +20,31 @@ msgstr[1] ""
 
 #: lib/apiary/policy/resolution.ex
 #, elixir-autogen, elixir-format
+msgid "%{above} in %{name}'s policy is held to paths, and %{below} below it has a rule of its own in %{name}'s policy."
+msgstr ""
+
+#: lib/apiary/policy/resolution.ex
+#, elixir-autogen, elixir-format
+msgid "%{above} in %{name}'s policy is held to paths, and %{below} below it has a rule of its own in the target."
+msgstr "%{above} in %{name}'s policy is held to paths, and %{below} below it has a rule of its own in the repository."
+
+#: lib/apiary/policy/resolution.ex
+#, elixir-autogen, elixir-format
+msgid "%{above} in %{name}'s policy is held to paths, and %{below} below it has a rule of its own in the workspace (locked)."
+msgstr ""
+
+#: lib/apiary/policy/resolution.ex
+#, elixir-autogen, elixir-format
+msgid "%{above} in %{name}'s policy is held to paths, and %{below} below it has a rule of its own in the workspace."
+msgstr ""
+
+#: lib/apiary/policy/resolution.ex
+#, elixir-autogen, elixir-format
+msgid "%{above} in the target is held to paths, and %{below} below it has a rule of its own in %{name}'s policy."
+msgstr "%{above} in the repository is held to paths, and %{below} below it has a rule of its own in %{name}'s policy."
+
+#: lib/apiary/policy/resolution.ex
+#, elixir-autogen, elixir-format
 msgid "%{above} in the target is held to paths, and %{below} below it has a rule of its own in the target."
 msgstr "%{above} in the repository is held to paths, and %{below} below it has a rule of its own in the repository."
 
@@ -35,6 +60,11 @@ msgstr "%{above} in the repository is held to paths, and %{below} below it has a
 
 #: lib/apiary/policy/resolution.ex
 #, elixir-autogen, elixir-format
+msgid "%{above} in the workspace (locked) is held to paths, and %{below} below it has a rule of its own in %{name}'s policy."
+msgstr ""
+
+#: lib/apiary/policy/resolution.ex
+#, elixir-autogen, elixir-format
 msgid "%{above} in the workspace (locked) is held to paths, and %{below} below it has a rule of its own in the target."
 msgstr "%{above} in the workspace (locked) is held to paths, and %{below} below it has a rule of its own in the repository."
 
@@ -46,6 +76,11 @@ msgstr ""
 #: lib/apiary/policy/resolution.ex
 #, elixir-autogen, elixir-format
 msgid "%{above} in the workspace (locked) is held to paths, and %{below} below it has a rule of its own in the workspace."
+msgstr ""
+
+#: lib/apiary/policy/resolution.ex
+#, elixir-autogen, elixir-format
+msgid "%{above} in the workspace is held to paths, and %{below} below it has a rule of its own in %{name}'s policy."
 msgstr ""
 
 #: lib/apiary/policy/resolution.ex
@@ -199,6 +234,16 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{holder}'s v%{n}"
+msgstr ""
+
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{host} by %{name}"
+msgstr ""
+
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{host} by %{name}'s %{rule}"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -464,6 +509,11 @@ msgstr ""
 msgid "%{ms} ms"
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} allows only its own hosts"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
 msgid "%{name} is already named here."
@@ -483,6 +533,44 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "%{name} is named here already. Adding it replaces its argument."
 msgstr ""
+
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} requires enforce in every workspace and target."
+msgstr "%{name} requires enforce in every workspace and repository."
+
+#: lib/apiary_web/live/policy_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "%{name}'s first"
+msgstr ""
+
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgctxt "plain"
+msgid "%{name}'s policy applies here: %{number} rule"
+msgid_plural "%{name}'s policy applies here: %{number} rules"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{name}'s policy denies %{host}"
+msgstr ""
+
+#: lib/apiary/policy.ex
+#, elixir-autogen, elixir-format
+msgid "%{name}'s rule for %{host} decides it here, so its paths are not changed in this workspace. It is changed in %{name}'s policy."
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/common.ex
+#, elixir-autogen, elixir-format
+msgid "%{name}'s rule: it holds in every workspace."
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "%{name}'s rules come first and hold in every workspace and target; %{workspace}'s own may only narrow them. A deny holds in either mode."
+msgstr "%{name}'s rules come first and hold in every workspace and repository; %{workspace}'s own may only narrow them. A deny holds in either mode."
 
 #: lib/apiary_web/format.ex
 #, elixir-autogen, elixir-format
@@ -1149,6 +1237,11 @@ msgstr ""
 msgid "%{observe} is the workspace's default"
 msgstr ""
 
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{own} is not in force."
+msgstr ""
+
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{own} set a mode of their own: %{observe} observe, %{enforce} enforce."
@@ -1382,6 +1475,11 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
+msgid "%{who} changed %{name}'s policy"
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/common.ex
+#, elixir-autogen, elixir-format
 msgid "%{who} changed %{subject}"
 msgstr ""
 
@@ -1398,6 +1496,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "%{who} changed the policy"
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/common.ex
+#, elixir-autogen, elixir-format
+msgid "%{who} changed the policy above this workspace"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
@@ -2145,6 +2248,11 @@ msgstr ""
 msgid "Allow %{host} for the workspace"
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Allow %{host} in %{name}'s policy"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "Allow %{host}, %{paths}"
@@ -2199,6 +2307,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
 msgid "Allow here"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Allow in %{name}'s policy"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -2306,6 +2419,11 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "An address is written like a host, digits and dots only: %{address}. The wall refuses the machine's own address whatever the policy says."
 msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "An allow of the workspace or of a target would not be in force."
+msgstr "An allow of the workspace or of a repository would not be in force."
 
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
@@ -2537,6 +2655,11 @@ msgstr ""
 msgid "Change email"
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Change in %{name}'s policy"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
 msgid "Change paths"
@@ -2565,6 +2688,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Changed a policy rule"
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/common.ex
+#, elixir-autogen, elixir-format
+msgid "Changed above the workspace"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/views.ex
@@ -3060,6 +3188,11 @@ msgstr ""
 msgid "Days in UTC."
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Decided by %{name}'s policy"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Decision"
@@ -3543,6 +3676,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
 msgid "Enforce %{target}"
+msgstr ""
+
+#: lib/apiary/policy.ex
+#, elixir-autogen, elixir-format
+msgid "Enforce is required by %{name}: the mode is not set here."
 msgstr ""
 
 #: lib/apiary_web/live/workspace_live/overview.ex
@@ -4428,10 +4566,25 @@ msgstr ""
 msgid "Its own from now on. The workspace's default is the same, so the document did not change."
 msgstr ""
 
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgid "Its own observe is not in force: %{name} requires enforce."
+msgstr ""
+
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgid "Its own observe, set by %{by} %{when}, is not in force: %{name} requires enforce."
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
 msgid "Its own rules come first and are changed here; %{workspace}'s follow and are changed on %{workspace}'s policy page. %{workspace}'s locked rules hold in every target, in either mode."
 msgstr "Its own rules come first and are changed here; %{workspace}'s follow and are changed on %{workspace}'s policy page. %{workspace}'s locked rules hold in every repository, in either mode."
+
+#: lib/apiary_web/live/policy_live/target.ex
+#, elixir-autogen, elixir-format
+msgid "Its own rules come first; %{name}'s and %{workspace}'s follow and are changed where they live. %{name}'s rules hold in every workspace and target, in either mode."
+msgstr "Its own rules come first; %{name}'s and %{workspace}'s follow and are changed where they live. %{name}'s rules hold in every workspace and repository, in either mode."
 
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
@@ -5626,6 +5779,16 @@ msgstr ""
 msgid "No version yet"
 msgstr ""
 
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgid "No workspace or target may observe: %{name} requires enforce."
+msgstr "No workspace or repository may observe: %{name} requires enforce."
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "No workspace or target rule can allow it."
+msgstr "No workspace or repository rule can allow it."
+
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/live/organisation_live.ex
 #: lib/apiary_web/live/user_live/organisations.ex
@@ -5689,12 +5852,32 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
+msgid "Not in force here: %{workspace}'s %{host} denies it"
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/common.ex
+#, elixir-autogen, elixir-format
 msgid "Not in force: %{host} decides it"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "Not in force: %{host} denies it"
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/common.ex
+#, elixir-autogen, elixir-format
+msgid "Not in force: %{name} allows only its own hosts"
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/common.ex
+#, elixir-autogen, elixir-format
+msgid "Not in force: %{name}'s %{host} denies it"
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/common.ex
+#, elixir-autogen, elixir-format
+msgid "Not in force: %{name}'s %{host} holds"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
@@ -5864,6 +6047,11 @@ msgstr "One repository"
 #: lib/apiary_web/live/connection_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Only"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Only %{name}'s policy allows a host here"
 msgstr ""
 
 #: lib/apiary/policy.ex
@@ -6664,6 +6852,11 @@ msgstr ""
 msgid "Replaces this target's allow rule."
 msgstr "Replaces this repository's allow rule."
 
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgid "Required by %{name}"
+msgstr ""
+
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Resolved"
@@ -6832,6 +7025,7 @@ msgstr ""
 msgid "Rule added."
 msgstr ""
 
+#: lib/apiary_web/live/policy_live/common.ex
 #: lib/apiary_web/live/policy_live/show.ex
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
@@ -6843,6 +7037,7 @@ msgstr ""
 msgid "Rule locked."
 msgstr ""
 
+#: lib/apiary_web/live/policy_live/common.ex
 #: lib/apiary_web/live/policy_live/show.ex
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
@@ -7290,6 +7485,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Show the rule"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "Show the rule in %{name}'s policy"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/views.ex
@@ -7942,6 +8142,13 @@ msgstr ""
 msgid "The outcome is that of the last attempt across the runs shown."
 msgstr ""
 
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgid "The own observe of 1 of %{number} targets"
+msgid_plural "The own observe of %{n} of %{number} targets"
+msgstr[0] "The own observe of 1 of %{number} repositories"
+msgstr[1] "The own observe of %{n} of %{number} repositories"
+
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "The page of the first run started on or after that day, in UTC."
@@ -8003,6 +8210,7 @@ msgstr ""
 msgid "The request holds a change the policy does not know."
 msgstr ""
 
+#: lib/apiary_web/live/policy_live/common.ex
 #: lib/apiary_web/live/policy_live/show.ex
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
@@ -8785,9 +8993,20 @@ msgstr ""
 msgid "View"
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/live/policy_live/common.ex
+#, elixir-autogen, elixir-format
+msgid "View in %{name}'s policy"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "View in %{workspace}'s policy"
+msgstr ""
+
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgid "View it"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -9350,6 +9569,11 @@ msgid_plural "allow every host below %{suffix} on %{number} paths"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "allowed"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "and %{more} more on the %{link}"
@@ -9511,6 +9735,11 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "enforce"
+msgstr ""
+
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgid "enforce required"
 msgstr ""
 
 #: lib/apiary_web/live/target_live/index.ex
@@ -9929,6 +10158,11 @@ msgid_plural "%{number} times"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/components/policy_components.ex
+#, elixir-autogen, elixir-format
+msgid "only its own hosts allowed"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "only what a deny rule names is denied"
@@ -9967,6 +10201,11 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "reloaded"
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/views.ex
+#, elixir-autogen, elixir-format
+msgid "required by %{name}"
 msgstr ""
 
 #: lib/apiary/runs/record/timeline.ex

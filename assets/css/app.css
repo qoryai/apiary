@@ -8903,3 +8903,62 @@
     }
   }
 }
+
+/* ==== The level above a workspace's policy ======================================
+   Its tile (a square with its initial, as the breadcrumb draws an organisation), the line
+   under a policy page's title, the required-mode mark beside a target's mode line, and
+   the reason a row of Network access says when the level's rule decided it. */
+@layer qory {
+  .q-tile {
+    display: inline-grid;
+    place-items: center;
+    width: 16px;
+    height: 16px;
+    flex: none;
+    border-radius: var(--radius-selector);
+    background-color: var(--color-base-300);
+    box-shadow: inset 0 0 0 1px var(--q-border-subtle);
+    color: var(--q-muted);
+    font-family: var(--font-sans);
+    font-size: 0.625rem;
+    font-weight: 600;
+    line-height: 1;
+    vertical-align: -3px;
+  }
+  .q-above {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+  }
+  .q-above-link {
+    color: var(--color-accent);
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .q-above-link:hover {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .q-pr td.q-pr-src .q-tile {
+    margin-right: 6px;
+  }
+  .q-modeline-req {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--q-faint);
+    font-size: 0.78125rem;
+  }
+  .q-mode[data-floor="true"] .q-mode-card {
+    cursor: default;
+  }
+  .q-above-why {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+}

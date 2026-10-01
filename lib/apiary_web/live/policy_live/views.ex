@@ -188,9 +188,11 @@ defmodule ApiaryWeb.PolicyLive.Views do
           {@v.mode}
           <:sub :if={@v.mode_source}>
             <span class="font-sans">
-              {if @v.mode_source == :target,
-                do: gettext("this target's own"),
-                else: gettext("the workspace's default")}
+              {case @v.mode_source do
+                :organisation -> gettext("required by %{name}", name: @v.mode_required_by || "?")
+                :target -> gettext("this target's own")
+                _workspace -> gettext("the workspace's default")
+              end}
             </span>
           </:sub>
         </.kv>

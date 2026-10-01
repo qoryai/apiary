@@ -20,6 +20,7 @@ defmodule ApiaryWeb.EditionTest do
     assert core.settings_tabs(nil) == []
     assert core.slot(:notices, %{}) == nil
     assert core.activity_describer() == nil
+    assert core.above_policy_link(nil) == nil
     assert core.reserved_slugs() == %{}
     assert core.gettext_backend() == nil
   end

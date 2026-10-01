@@ -264,7 +264,16 @@ defmodule ApiaryWeb.PolicyComponents do
     default: nil,
     doc: ":loading, nil, %{denied:, destinations:} or %{uncovered:, destinations:} or :none"
 
+  attr :floor, :any,
+    default: nil,
+    doc: "`%{name:}` where the level above the workspace requires enforce: the switch is fixed"
+
   def mode_switch(assigns) do
+    assigns =
+      if assigns.floor,
+        do: assign(assigns, mode: "enforce", can_edit: false, fact: nil),
+        else: assigns
+
     ~H"""
     <section class="grid gap-2.5" aria-labelledby={"#{@id}-h"}>
       <h2 id={"#{@id}-h"} class="sr-only">{gettext("Mode")}</h2>
@@ -274,6 +283,7 @@ defmodule ApiaryWeb.PolicyComponents do
         role="radiogroup"
         aria-labelledby={"#{@id}-h"}
         aria-disabled={!@can_edit && "true"}
+        data-floor={@floor && "true"}
         data-roving
       >
         <button
@@ -312,7 +322,15 @@ defmodule ApiaryWeb.PolicyComponents do
           <span class="q-mode-dot" aria-hidden="true"></span>
           <span class="q-mode-h">
             <.icon name={icon} class="size-4 text-faint" />{name}
-            <.badge :if={@mode == mode}>{gettext("Workspace default")}</.badge>
+            <.badge :if={@mode == mode && !@floor}>{gettext("Workspace default")}</.badge>
+            <span :if={@mode == mode && @floor} id={"#{@id}-required"} class="contents">
+              <.badge>
+                <.icon name="hero-lock-closed-micro" class="size-3" />{gettext(
+                  "Required by %{name}",
+                  name: @floor.name
+                )}
+              </.badge>
+            </span>
           </span>
           <span id={"#{@id}-#{mode}-p"} class="q-mode-p">{sentence}</span>
           <span :if={@mode == mode && (@fact || !@served)} id={"#{@id}-fact"} class="q-mode-fact">
@@ -324,7 +342,14 @@ defmodule ApiaryWeb.PolicyComponents do
           </span>
         </button>
       </div>
-      <p id={"#{@id}-under"} class="text-[12.5px]/[18px] text-faint">
+      <p :if={@floor} id={"#{@id}-under"} class="text-[12.5px]/[18px] text-faint">
+        {gettext("No workspace or target may observe: %{name} requires enforce.", name: @floor.name)}
+        <.rich text={floor_own_sentence(@scope, @own, @following)} />
+        {gettext(
+          "A wall's own refusals (the machine's address, a path that reads two ways) hold in either mode."
+        )}
+      </p>
+      <p :if={!@floor} id={"#{@id}-under"} class="text-[12.5px]/[18px] text-faint">
         {gettext("This is the workspace's default.")}
         <.rich text={own_sentence(@scope, @own, @following)} />
         {gettext(
@@ -333,6 +358,71 @@ defmodule ApiaryWeb.PolicyComponents do
         <span :if={!@can_edit} id={"#{@id}-owners"}>{gettext("Only an owner or an admin sets a mode.")}</span>
       </p>
     </section>
+    """
+  end
+
+  # Under a required mode, the targets that set observe for themselves are said to be
+  # out of force, with the link to them.
+  defp floor_own_sentence(scope, own, following) do
+    case Enum.count(own, &(&1 == "observe")) do
+      0 ->
+        []
+
+      n ->
+        rich_gettext("%{own} is not in force.",
+          own:
+            {:link, ~p"/#{scope.organisation}/#{scope.workspace}/policy/targets?mode=own",
+             ngettext(
+               "The own observe of 1 of %{number} targets",
+               "The own observe of %{n} of %{number} targets",
+               n,
+               n: Format.number(n),
+               number: Format.number(following + length(own))
+             )}
+        )
+    end
+  end
+
+  @doc """
+  The line under a policy page's title where a level above the workspace holds
+  (`Apiary.Policy.Above`): its tile and name, how many rules it has, whether it requires
+  enforce and whether it allows only its own hosts, and the way to it where the edition
+  gives one (`link`, `c:ApiaryWeb.Edition.above_policy_link/1`). Nothing without a level.
+  """
+  attr :id, :string, default: "policy-above"
+  attr :above, :any, required: true, doc: "the `Apiary.Policy.Above`, or nil"
+  attr :link, :any, default: nil, doc: "`%{path:, can_change:}` or nil"
+
+  def above_line(%{above: nil} = assigns), do: ~H""
+
+  def above_line(assigns) do
+    assigns =
+      assign(assigns,
+        rules: Enum.count(assigns.above.rules, &(&1.kind == "host")),
+        tile: String.first(assigns.above.name || "?")
+      )
+
+    ~H"""
+    <p id={@id} class="q-above">
+      <span class="q-tile" aria-hidden="true">{@tile}</span>
+      <span>
+        {pngettext(
+          "plain",
+          "%{name}'s policy applies here: %{number} rule",
+          "%{name}'s policy applies here: %{number} rules",
+          @rules,
+          name: @above.name,
+          number: Format.number(@rules)
+        )}<span :if={@above.floor}>, {gettext("enforce required")}</span><span :if={
+          !@above.own_allows
+        }>, {gettext(
+            "only its own hosts allowed"
+          )}</span>.
+      </span>
+      <.link :if={@link} id={"#{@id}-view"} navigate={@link.path} class="q-above-link">
+        {gettext("View it")}
+      </.link>
+    </p>
     """
   end
 
@@ -510,9 +600,18 @@ defmodule ApiaryWeb.PolicyComponents do
     default: false,
     doc: "whether the reader may set the mode (`security_policy.set_mode`)"
 
+  attr :floor, :any,
+    default: nil,
+    doc: "`%{name:}` where the level above the workspace requires enforce: the radios are fixed"
+
   def target_mode(assigns) do
+    assigns =
+      if assigns.floor,
+        do: assign(assigns, own: assigns.setting, setting: "enforce", can_edit: false),
+        else: assign(assigns, own: nil)
+
     ~H"""
-    <section id={@id} class="q-modeline" aria-labelledby={"#{@id}-h"}>
+    <section id={@id} class="q-modeline" aria-labelledby={"#{@id}-h"} data-floor={@floor && "true"}>
       <h2 id={"#{@id}-h"} class="q-modeline-h">{gettext("Mode")}</h2>
       <div
         id={"#{@id}-radios"}
@@ -545,7 +644,15 @@ defmodule ApiaryWeb.PolicyComponents do
           <.icon name={icon} class="size-3.5" />{label}
         </button>
       </div>
-      <p id={"#{@id}-effect"} class="q-modeline-p">
+      <span :if={@floor} id={"#{@id}-required"} class="q-modeline-req">
+        <.icon name="hero-lock-closed-micro" class="size-3" />{gettext("Required by %{name}",
+          name: @floor.name
+        )}
+      </span>
+      <p :if={@floor} id={"#{@id}-effect"} class="q-modeline-p">
+        <.rich text={floor_sentence(@own, @set, @floor.name)} />
+      </p>
+      <p :if={!@floor} id={"#{@id}-effect"} class="q-modeline-p">
         <.rich text={whose_sentence(@setting, @workspace_default, @workspace, @set)} />
         {effect_sentence(@effective, @workspace)}
         <span :if={!@can_edit} id={"#{@id}-owners"}>{gettext("Only an owner or an admin sets a mode.")}</span>
@@ -553,6 +660,23 @@ defmodule ApiaryWeb.PolicyComponents do
     </section>
     """
   end
+
+  # Under a required mode: a target's own observe is kept and said to be out of force;
+  # its own enforce, or following the workspace, is what holds anyway.
+  defp floor_sentence("observe", %{by: by, at: %DateTime{} = at}, name) when is_binary(by),
+    do:
+      rich_gettext(
+        "Its own observe, set by %{by} %{when}, is not in force: %{name} requires enforce.",
+        by: {:b, by},
+        when: when_words(at),
+        name: name
+      )
+
+  defp floor_sentence("observe", _set, name),
+    do: [gettext("Its own observe is not in force: %{name} requires enforce.", name: name)]
+
+  defp floor_sentence(_setting, _set, name),
+    do: [gettext("%{name} requires enforce in every workspace and target.", name: name)]
 
   # Whose the mode is: the workspace's, or the target's own with who set it and when; a
   # whole sentence per case, the workspace's mode a verb of its own.
@@ -884,6 +1008,12 @@ defmodule ApiaryWeb.PolicyComponents do
   attr :fresh, :any, default: %{}, doc: "%{rule id => version}: new in the version in force"
   attr :ruled_host, :string, default: nil, doc: "the host `?rule=` points at"
   attr :empty, :string, default: nil, doc: "the line of a list with no rule at all"
+
+  attr :views, :list,
+    default: [:all, :allow, :deny, :locked],
+    doc: "the views shown, of `:all`, `:allow`, `:deny` and `:locked`"
+
+  attr :use_label, :string, default: nil, doc: "the use column's heading; the last 14 days"
   slot :composer
 
   def rule_list(assigns) do
@@ -893,13 +1023,14 @@ defmodule ApiaryWeb.PolicyComponents do
       assign(assigns,
         seen?: is_map(assigns.activity),
         off?: Enum.any?(listing.rows, & &1.off),
-        used?: assigns.activity != :unavailable
+        used?: assigns.activity != :unavailable,
+        use_label: assigns.use_label || gettext("Last 14 days")
       )
 
     ~H"""
     <.views id={"#{@id}-views"} label={gettext("Views")}>
       <:view
-        :for={{view, word, label, count} <- rule_views(@listing.counts)}
+        :for={{view, word, label, count} <- rule_views(@listing.counts, @views)}
         id={"#{@id}-view-#{word}"}
         patch={@path.(%{@query | view: view, page: 1})}
         current={@query.view == view}
@@ -1010,7 +1141,7 @@ defmodule ApiaryWeb.PolicyComponents do
             <th scope="col">{gettext("Host")}</th>
             <th scope="col">{gettext("Paths")}</th>
             <th :if={@source} scope="col">{gettext("Source")}</th>
-            <th :if={@seen? or @off?} scope="col" class="q-from-sm">{gettext("Last 14 days")}</th>
+            <th :if={@seen? or @off?} scope="col" class="q-from-sm">{@use_label}</th>
             <th scope="col" class="q-from-md">{gettext("Added")}</th>
             <th scope="col" class="q-pr-acts"><span class="sr-only">{gettext("Actions")}</span></th>
           </tr>
@@ -1066,14 +1197,17 @@ defmodule ApiaryWeb.PolicyComponents do
     """
   end
 
-  # The views, each with the word the URL writes it with.
-  defp rule_views(counts) do
-    [
-      {:all, "all", gettext("All"), counts.all},
-      {:allow, "allowed", gettext("Allowed"), counts.allow},
-      {:deny, "denied", gettext("Denied"), counts.deny},
-      {:locked, "locked", gettext("Locked"), counts.locked}
-    ]
+  # The views, each with the word the URL writes it with, those the list shows.
+  defp rule_views(counts, views) do
+    Enum.filter(
+      [
+        {:all, "all", gettext("All"), counts.all},
+        {:allow, "allowed", gettext("Allowed"), counts.allow},
+        {:deny, "denied", gettext("Denied"), counts.deny},
+        {:locked, "locked", gettext("Locked"), counts.locked}
+      ],
+      fn {view, _word, _label, _count} -> view in views end
+    )
   end
 
   defp sort_words(:default, default), do: default
@@ -1095,8 +1229,10 @@ defmodule ApiaryWeb.PolicyComponents do
   where its use would be.
 
   `rule` is a map (`ApiaryWeb.PolicyLive.Common`): `id`, `action`, `host`, `paths`,
-  `locked`, `source` (`%{key:, label:, rank:}`), `own` (written where the page is: it is
-  changed here), `in_force`, `off` (why it is not in force, or nil), `by`, `at`,
+  `locked`, `source` (`%{key:, label:, rank:}`, with `tile`, a letter drawn before the
+  label, for the level above the workspace), `own` (written where the page is: it is
+  changed here), `above` (a rule of the level above the workspace: the lock glyph with
+  `locked_tip`'s words), `in_force`, `off` (why it is not in force, or nil), `by`, `at`,
   `locked_tip` (what the lock says), `can_change` (the reader may change it here), `act`
   (what Remove does: `:remove`, or `:restore` where a target's own rule gives the
   workspace's back) and `view` (`{label, path}`: where a rule written elsewhere is changed,
@@ -1118,7 +1254,9 @@ defmodule ApiaryWeb.PolicyComponents do
     assigns =
       assign(assigns,
         menu?: (rule.own and rule.can_change) or (not rule.own and rule.view != nil),
-        lockable?: assigns.can_lock and rule.own and rule.in_force
+        lockable?: assigns.can_lock and rule.own and rule.in_force,
+        glyph?: rule.locked or rule[:above] == true,
+        tile: rule.source[:tile]
       )
 
     ~H"""
@@ -1138,7 +1276,9 @@ defmodule ApiaryWeb.PolicyComponents do
         <span :if={@fresh} class="q-newdot">{gettext("New in v%{version}", version: @fresh)}</span>
       </td>
       <td class="q-pr-paths"><.paths paths={@rule.paths} action={@rule.action} /></td>
-      <td :if={@source} class="q-pr-src">{@rule.source.label}</td>
+      <td :if={@source} class="q-pr-src">
+        <span :if={@tile} class="q-tile" aria-hidden="true">{@tile}</span>{@rule.source.label}
+      </td>
       <td :if={@use?} class="q-pr-use q-from-sm">
         <span :if={@rule.off} class="q-pr-offw q-pr-offw-full" title={@rule.off} aria-hidden="true">
           {@rule.off}
@@ -1153,7 +1293,7 @@ defmodule ApiaryWeb.PolicyComponents do
       </td>
       <td class="q-pr-acts">
         <span
-          :if={@rule.locked}
+          :if={@glyph?}
           id={"#{@id}-lock"}
           class="q-pr-lock tooltip tooltip-left q-tip-wide"
           tabindex="0"
@@ -1399,6 +1539,8 @@ defmodule ApiaryWeb.PolicyComponents do
     default: false,
     doc: "the target observes: a host no rule names is let through"
 
+  attr :above, :string, default: nil, doc: "the name of the level above the workspace, or nil"
+
   def suggestions(assigns) do
     open = Enum.reject(assigns.suggestions, &Map.has_key?(assigns.allowed, &1.host))
     assigns = assign(assigns, :open, open)
@@ -1508,7 +1650,7 @@ defmodule ApiaryWeb.PolicyComponents do
         </span>
       </div>
       <:footer :if={@covered != []}>
-        <span id={"#{@id}-covered"}><.rich text={covered_sentence(@covered)} /></span>
+        <span id={"#{@id}-covered"}><.rich text={covered_sentence(@covered, @above)} /></span>
       </:footer>
     </.sect>
     """
@@ -1548,15 +1690,28 @@ defmodule ApiaryWeb.PolicyComponents do
     do: ngettext("%{number} time", "%{number} times", n, number: Format.number(n))
 
   # The declared hosts already allowed, each with what allows it, in one sentence.
-  defp covered_sentence(covered) do
+  defp covered_sentence(covered, above) do
     rich_ngettext(
       "%{number} more declared host is already allowed: %{hosts}.",
       "%{number} more declared hosts are already allowed: %{hosts}.",
       length(covered),
-      hosts: covered |> Enum.map(&covered_by/1) |> Enum.intersperse(", "),
+      hosts: covered |> Enum.map(&covered_by(&1, above)) |> Enum.intersperse(", "),
       number: Format.number(length(covered))
     )
   end
+
+  defp covered_by(%{host: host, by: host, source: :organisation}, above),
+    do: rich_gettext("%{host} by %{name}", host: {:code, host}, name: above || "?")
+
+  defp covered_by(%{host: host, by: by, source: :organisation}, above),
+    do:
+      rich_gettext("%{host} by %{name}'s %{rule}",
+        host: {:code, host},
+        rule: by,
+        name: above || "?"
+      )
+
+  defp covered_by(covered, _above), do: covered_by(covered)
 
   defp covered_by(%{host: host, by: host, source: :workspace}),
     do: rich_gettext("%{host} by the workspace", host: {:code, host})

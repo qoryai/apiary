@@ -14,6 +14,11 @@ defmodule ApiaryWeb.PolicyLive.Show do
 
   A workspace nobody has changed yet is not served a policy by Qory: its machines use
   their own until the first change here, and the page says so.
+
+  Where the edition keeps a level above the workspace's policy (`Apiary.Policy.Above`,
+  the `above` of the effective policy), the page says so under its title, lists the
+  level's rules first with their source and a lock glyph, read here and changed where
+  the level is, and shows the mode fixed when the level requires enforce.
   """
   use ApiaryWeb, :live_view
   use ApiaryWeb.Features, :security
@@ -63,12 +68,15 @@ defmodule ApiaryWeb.PolicyLive.Show do
         nil -> nil
       end
 
+    effective = Policy.effective(scope, nil)
+
     socket
     |> assign(
       managed?: managed?,
       mode: Policy.get_mode(scope),
       own: own,
-      effective: Policy.effective(scope, nil),
+      effective: effective,
+      above_link: effective.above && ApiaryWeb.Edition.above_policy_link(scope),
       locks: locks,
       version: version,
       change_total: changes.total,
@@ -81,12 +89,16 @@ defmodule ApiaryWeb.PolicyLive.Show do
     )
     |> then(fn socket ->
       assign(socket,
-        rows: Common.workspace_rules(own, socket, locks),
+        rows: Common.above_rows(effective, socket) ++ Common.workspace_rules(own, socket, locks),
         credentials: Common.credential_rows(own, socket)
       )
     end)
     |> load_record()
   end
+
+  # What the level above the workspace fixes: the mode, when it requires enforce.
+  defp required_mode(%{above: %{floor: true, name: name}}), do: %{name: name}
+  defp required_mode(_effective), do: nil
 
   # What the recorded connections say: the mode card's fact, over 7 days, and the rules'
   # use, over 14. Bounded reads that may answer :unavailable; then the fact and the column
@@ -387,7 +399,14 @@ defmodule ApiaryWeb.PolicyLive.Show do
       else: socket
   end
 
+  # The rows' menu is the page's own here: the workspace's rules come with a lock and a
+  # confirm, and a rule of the level above is a link, never an event.
+  @own_events ~w(edit_paths change_action remove)
+
   @impl true
+  def handle_event(event, params, socket) when event in @own_events,
+    do: {:noreply, event(event, params, socket)}
+
   def handle_event(event, params, socket) do
     case Common.handle_event(event, params, socket) do
       {:halt, socket} -> {:noreply, socket}
@@ -397,6 +416,9 @@ defmodule ApiaryWeb.PolicyLive.Show do
 
   defp event("mode_ask", %{"mode" => mode}, socket) when mode in ~w(observe enforce) do
     cond do
+      required_mode(socket.assigns.effective) != nil ->
+        socket
+
       not Common.may?(socket, :"security_policy.set_mode") ->
         assign(socket, :write_error, gettext("Only an owner or an admin sets a mode."))
 
@@ -800,6 +822,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
             {gettext(
               "What no rule names is denied under enforce, and let through and recorded under observe; a deny rule holds in either mode."
             )}
+            <.above_line :if={@loaded} above={@effective.above} link={@above_link} />
           </:subtitle>
           <:actions>
             <div :if={@managed? && @version} class="q-head-side">
@@ -1039,10 +1062,16 @@ defmodule ApiaryWeb.PolicyLive.Show do
   defp rules_tab(assigns) do
     edit? = Common.may?(assigns.current_scope, :"security_policy.edit")
 
+    above = assigns.effective.above
+
     assigns =
       assigns
       |> assign(:edit?, edit?)
-      |> assign(:empty?, assigns.own == [] and not (assigns.composer_open and edit?))
+      |> assign(:above, above)
+      |> assign(
+        :empty?,
+        assigns.own == [] and is_nil(above) and not (assigns.composer_open and edit?)
+      )
       |> assign(:activity_now, async_value(assigns.activity, :loading))
       |> assign(:listing, Common.listing(assigns))
 
@@ -1055,6 +1084,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
       following={@following}
       own={@own_modes}
       fact={with :unavailable <- async_value(@fact, :loading), do: nil}
+      floor={required_mode(@effective)}
     />
 
     <div :if={@empty?} id="policy-empty" class="grid gap-4">
@@ -1132,8 +1162,13 @@ defmodule ApiaryWeb.PolicyLive.Show do
         query={@list_query}
         path={&Common.list_path(@base, &1)}
         sections={RuleList.sections(@rows, @activity_now)}
-        default_sort={gettext("Locked first")}
+        default_sort={
+          if @above,
+            do: gettext("%{name}'s first", name: @above.name),
+            else: gettext("Locked first")
+        }
         activity={@activity_now}
+        source={@above != nil}
         can_add={@edit?}
         adding={@composer_open}
         can_lock={Common.may?(@current_scope, :"security_policy.lock")}
@@ -1154,9 +1189,17 @@ defmodule ApiaryWeb.PolicyLive.Show do
         </:composer>
       </.rule_list>
       <p id="policy-hosts-note" class="q-psec-note">
-        {gettext(
-          "Locked rules come first, then deny, then allow, each by host read from the right, so a suffix sits beside the hosts below it. A locked rule holds in every target; a deny holds in either mode."
-        )}
+        {if @above,
+          do:
+            gettext(
+              "%{name}'s rules come first and hold in every workspace and target; %{workspace}'s own may only narrow them. A deny holds in either mode.",
+              name: @above.name,
+              workspace: @current_scope.workspace.name
+            ),
+          else:
+            gettext(
+              "Locked rules come first, then deny, then allow, each by host read from the right, so a suffix sits beside the hosts below it. A locked rule holds in every target; a deny holds in either mode."
+            )}
       </p>
     </section>
 

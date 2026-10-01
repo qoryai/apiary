@@ -253,6 +253,53 @@ defmodule ApiaryWeb.PolicyComponentsTest do
       refute render_list([row(%{})], source: false) =~ "Source"
     end
 
+    defp narrowed_list(assigns) do
+      ~H"""
+      <PolicyComponents.rule_list
+        id="policy-rules"
+        label="Rules"
+        listing={@listing}
+        query={%RuleList{}}
+        path={fn _query -> "/x" end}
+        sections={[]}
+        default_sort="Denies first"
+        activity={%{}}
+        views={[:all, :allow, :deny]}
+        use_label="Last 14 days, every workspace"
+      />
+      """
+    end
+
+    test "the views and the use column's heading are the caller's" do
+      html =
+        rendered_to_string(narrowed_list(%{listing: RuleList.list([row(%{})], %RuleList{}, %{})}))
+
+      assert text(html) =~ "All 1 Allowed 1 Denied 0"
+      refute html =~ "policy-rules-view-locked"
+      assert html =~ "Last 14 days, every workspace"
+    end
+
+    test "a rule of the level above the workspace has its tile, the lock glyph with its words, and the way to it" do
+      above = %{key: "8wonders", label: "Eight Wonders", rank: 1, tile: "E"}
+
+      html =
+        render_list([
+          row(%{
+            source: above,
+            above: true,
+            locked_tip: "Eight Wonders's rule: it holds in every workspace.",
+            view: {"View in Eight Wonders's policy", "/8wonders/policy?rule=registry.example"}
+          })
+        ])
+
+      assert html =~ ~s(<span class="q-tile" aria-hidden="true">E</span>Eight Wonders)
+      assert html =~ ~s(id="rule-r1-lock")
+      assert html =~ ~s(data-tip="Eight Wonders&#39;s rule: it holds in every workspace.")
+      assert html =~ ~s(href="/8wonders/policy?rule=registry.example")
+      assert text(html) =~ "View in Eight Wonders's policy"
+      refute html =~ "rule-r1-remove"
+    end
+
     test "a rule written elsewhere names its source and leads to it; the page's own has its acts" do
       html = render_list([row(%{})])
       assert text(html) =~ "Allow registry.example every path Main dana · 9 Sept"

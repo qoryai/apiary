@@ -100,12 +100,14 @@ defmodule Apiary.PolicyTest do
 
       assert Policy.get_mode(scope, nil) == "observe"
       assert Policy.get_mode(scope, :workspace) == "observe"
+
       assert Policy.get_mode(scope, target) == %{
                mode: "observe",
                own: nil,
                workspace: "observe",
                floor: false
              }
+
       assert %{mode: "observe", mode_source: :workspace} = Policy.effective(scope, target)
 
       assert {:ok, %{mode: "enforce", own: "enforce", workspace: "observe"}} =
@@ -323,6 +325,7 @@ defmodule Apiary.PolicyTest do
       assert Enum.sort(own) == ["enforce", "observe"]
 
       %{scope: other} = sign_up_fixture()
+
       assert Policy.mode_summary(other) == %{
                managed?: false,
                mode: "observe",

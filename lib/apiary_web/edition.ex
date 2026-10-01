@@ -37,7 +37,9 @@ defmodule ApiaryWeb.Edition do
   - **Pages**: `c:settings_tabs/1`, the sections the organisation's settings add;
     `c:slot/2`, what the edition renders in a named place of a core page
     (`ApiaryWeb.Extension`); `c:activity_describer/0`, the module that says the
-    edition's actions in words on the Activity page.
+    edition's actions in words on the Activity page; `c:above_policy_link/1`, where the
+    level above a workspace's policy (`c:Apiary.Edition.above_workspace/1`) is read and
+    changed, for the policy pages' "View in …" and Network access's "Change in …".
   - **Paths**: `c:reserved_slugs/0`, the names the edition's own paths take beyond the
     core's (`ApiaryWeb.ReservedSlugs`).
   - **Words**: `c:gettext_backend/0`, the Gettext backend of the edition's own sentences,
@@ -128,6 +130,14 @@ defmodule ApiaryWeb.Edition do
   @callback activity_describer() :: module | nil
 
   @doc """
+  Where the level above the workspace's policy is read and changed, for the scope's
+  reader: its `path`, and `can_change`, whether the reader may change it there; nil where
+  the edition keeps no such level, or the reader may not read it. The core's pages draw
+  the level's rows and lines from `Apiary.Policy.Effective`'s `above` and link here.
+  """
+  @callback above_policy_link(Scope.t()) :: %{path: String.t(), can_change: boolean} | nil
+
+  @doc """
   The names the edition's own paths take beyond the core's: first segments of the
   instance's paths (`instance`) and pages of an organisation (`organisation`).
   """
@@ -159,6 +169,7 @@ defmodule ApiaryWeb.Edition do
     settings_tabs: 1,
     slot: 2,
     activity_describer: 0,
+    above_policy_link: 1,
     reserved_slugs: 0,
     gettext_backend: 0
   ]

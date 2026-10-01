@@ -22,7 +22,7 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   use Gettext, backend: ApiaryWeb.Gettext
 
   alias Apiary.Policy
-  alias Apiary.Policy.{Effective, Entry, Grammar}
+  alias Apiary.Policy.{Above, Effective, Entry, Grammar}
   alias ApiaryWeb.TargetComponents
 
   ## Paths of the policy pages
@@ -151,13 +151,17 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   @doc """
   The rule the row may ask the policy for, or why it may ask for none, which is what the
   row's slot holds: `%{rule_option:, host:, entry:}` with `rule_option` one of
-  `:can_allow`, `:can_deny`, `:locked_deny`, `:locked_allow`, `:wall`, `:unnameable`,
-  `{:rule_added, :allow | :deny}`. `entry` is the rule in force that decides the host,
-  when one does. A `:can_allow` row carries `deny: true` when no rule decides its host:
-  a host let through under observe, or denied by default under enforce, can be denied
-  outright as well, so the policy is written while the record is read. `page` is `:run` or
-  `:workspace`: on the workspace's page a row allowed by a rule the baseline does not hold
-  (a target's own) can still be denied.
+  `:can_allow`, `:can_deny`, `:above_deny` (a deny of the level above the workspace
+  covers the host: no rule of the workspace or of a target allows it), `:locked_deny`,
+  `:locked_allow`, `:wall`, `:unnameable`, `{:rule_added, :allow | :deny}`. `entry` is
+  the rule in force that decides the host, when one does; where it is the level above's,
+  `above` (`%{name:, action:}`) says so. A `:can_allow` row carries `deny: true` when no
+  rule decides its host: a host let through under observe, or denied by default under
+  enforce, can be denied outright as well, so the policy is written while the record is
+  read; and `allow_elsewhere` (`%{name:}`) where the level above allows only its own
+  hosts, so an allow of the workspace or of a target would not be in force. `page` is
+  `:run` or `:workspace`: on the workspace's page a row allowed by a rule the baseline
+  does not hold (a target's own) can still be denied.
 
   `own` matters on the workspace's page, where the rows are weighed against the baseline
   alone: the hosts targets have rules of their own for (`own_hosts/1`), or `:unknown`.
@@ -171,28 +175,55 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
     c = read(row)
     host = host(c.host)
 
-    cond do
-      wall?(c) ->
-        %{rule_option: :wall, host: host, entry: nil}
+    option =
+      cond do
+        wall?(c) ->
+          %{rule_option: :wall, host: host, entry: nil}
 
-      is_nil(host) ->
-        %{rule_option: :unnameable, host: nil, entry: nil}
+        is_nil(host) ->
+          %{rule_option: :unnameable, host: nil, entry: nil}
 
-      needs_allow?(c) ->
-        wants_allow(effective, host, c.path, own_touches?(own, host, page))
+        needs_allow?(c) ->
+          wants_allow(effective, host, c.path, own_touches?(own, host, page))
 
-      true ->
-        wants_deny(effective, host, c.path, page, own_touches?(own, host, page))
-    end
+        true ->
+          wants_deny(effective, host, c.path, page, own_touches?(own, host, page))
+      end
+
+    above(option, effective)
   end
 
   def rule_option(_row, _effective, _page, _own),
     do: %{rule_option: :unnameable, host: nil, entry: nil}
 
+  # What the level above the workspace says of the row (`Apiary.Policy.Above`): `above`,
+  # `%{name:, action:}`, where its rule decides the host, so the row says so instead of
+  # the rule's name; and `allow_elsewhere`, `%{name:}`, on a row that could be allowed
+  # where the level allows only its own hosts: an allow here would not be in force.
+  defp above(option, %Effective{above: %Above{} = above}) do
+    option =
+      case option do
+        %{entry: %Entry{source: :organisation, action: action}} ->
+          Map.put(option, :above, %{name: above.name, action: action})
+
+        _ ->
+          option
+      end
+
+    if option.rule_option == :can_allow and not above.own_allows,
+      do: Map.put(option, :allow_elsewhere, %{name: above.name}),
+      else: option
+  end
+
+  defp above(option, _effective), do: option
+
   defp wants_allow(effective, host, path, own?) do
     cond do
       allowed_now?(effective, host, path) and not own? ->
         %{rule_option: {:rule_added, :allow}, host: host, entry: allow_entry(effective, host)}
+
+      entry = above_deny(effective, host) ->
+        %{rule_option: :above_deny, host: host, entry: entry}
 
       entry = locked(effective, host, :deny) ->
         %{rule_option: :locked_deny, host: host, entry: entry}
@@ -450,6 +481,15 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
       hosts(effective),
       &(&1.locked and &1.source == :workspace and &1.action == action and
           Grammar.covers?(&1.host, host))
+    )
+  end
+
+  # The deny of the level above the workspace that covers the host: nothing here allows
+  # it, whatever the holder.
+  defp above_deny(effective, host) do
+    Enum.find(
+      hosts(effective),
+      &(&1.source == :organisation and &1.action == :deny and Grammar.covers?(&1.host, host))
     )
   end
 

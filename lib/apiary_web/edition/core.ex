@@ -4,8 +4,8 @@ defmodule ApiaryWeb.Edition.Core do
   the core has them, with nothing added. No navigation entry, group, count, entry of New,
   switcher entry, group of places or place, or settings tab beyond the core's, every slot
   empty, no words for a reader, a
-  refusal or actions beyond the core's, no reserved name beyond the core's, and no Gettext
-  backend beside the core's own.
+  refusal or actions beyond the core's, no level above a workspace's policy to link to,
+  no reserved name beyond the core's, and no Gettext backend beside the core's own.
 
   An edition that `use`s `ApiaryWeb.Edition` answers as this module does for every
   callback it does not override.
@@ -48,6 +48,9 @@ defmodule ApiaryWeb.Edition.Core do
 
   @impl true
   def activity_describer, do: nil
+
+  @impl true
+  def above_policy_link(_scope), do: nil
 
   @impl true
   def reserved_slugs, do: %{}
