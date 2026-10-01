@@ -1963,7 +1963,22 @@ defmodule ApiaryWeb.RunComponents do
             do: gettext("denied"),
             else: gettext("allowed")}
         </span>
-        <span :if={!(@act && @act[:above])} class="q-why-l" title={reason_title(@c, @mixed)}>
+        <%!-- What holds is the level above's: only it allows a host here, which the row says
+             where it can be read, not in a tooltip alone; the record's reason is the title. --%>
+        <span
+          :if={!(@act && @act[:above]) && elsewhere?(@act)}
+          class="q-why-l q-above-why"
+          id={"#{@id}-elsewhere"}
+          title={reason_title(@c, @mixed)}
+        >
+          <span class="q-tile" aria-hidden="true">{String.first(@act.allow_elsewhere.name)}</span>
+          {gettext("%{name} allows only its own hosts", name: @act.allow_elsewhere.name)}
+        </span>
+        <span
+          :if={!(@act && @act[:above]) && !elsewhere?(@act)}
+          class="q-why-l"
+          title={reason_title(@c, @mixed)}
+        >
           <.reason c={@c} variant="workspace" /><span
             :if={@mixed}
             class="text-faint"
@@ -2053,6 +2068,10 @@ defmodule ApiaryWeb.RunComponents do
     </tr>
     """
   end
+
+  # A row only the level above can allow: the reason a reader needs is that level's.
+  defp elsewhere?(%{rule_option: :can_allow, allow_elsewhere: %{}}), do: true
+  defp elsewhere?(_act), do: false
 
   # Both spellings of a connection, as one map with every key present.
   defp normalise(connection) do
@@ -2643,8 +2662,8 @@ defmodule ApiaryWeb.RunComponents do
   A row's text action: what its rule option lets the reader ask of the policy, shown on
   hover, on focus inside the row and while its popover or menu is open, never a bordered
   button on every row (docs/ui.md, Lists). `:can_allow` is Allow and `:can_deny` Deny, each
-  opening the popover; a `:can_allow` row with `deny`, which no rule decides yet, holds
-  Deny before Allow. A locked rule of the workspace (`:locked_deny`, `:locked_allow`) is a
+  opening the popover, one action a row: Allow on a denied destination, Deny on an allowed
+  one; a `:can_allow` row with `deny`, which no rule decides yet, has Deny… in its menu. A locked rule of the workspace (`:locked_deny`, `:locked_allow`) is a
   faint lock, always shown, that opens the refusal; the wall's refusals (`:wall`) are a
   faint lock that says no rule changes this; a host no rule can name (`:unnameable`) says
   so to a screen reader alone; a rule that answers the row (`{:rule_added, _}`) links to
@@ -2676,9 +2695,9 @@ defmodule ApiaryWeb.RunComponents do
     default: nil,
     doc: "the level above's page with the host, to allow it there"
 
-  # Where the level above the workspace allows only its own hosts, Allow is a link to its
-  # page, with the host, for a reader who may change it there, and a lock for the rest;
-  # Deny stays where no rule decides the host.
+  # Where the level above the workspace allows only its own hosts, Allow opens a popover
+  # that says so and leads to its page, with the host, for a reader who may change it
+  # there; the rest see a lock. Deny, where no rule decides the host, is in the menu.
   def rule_action(%{rule_option: :can_allow, allow_elsewhere: %{}} = assigns) do
     assigns =
       assign(assigns,
@@ -2687,75 +2706,35 @@ defmodule ApiaryWeb.RunComponents do
       )
 
     ~H"""
-    <span id={"#{@id}-both"} class="q-acts-pair">
-      <button
-        :if={@deny}
-        type="button"
-        id={"#{@id}-deny"}
-        class="q-act-t q-hov"
-        data-action="deny"
-        phx-click={JS.push("rule_open", value: Map.put(@values, "action", "deny"))}
-        aria-haspopup="dialog"
-        aria-expanded={to_string(@expanded and @expanded_action == :deny)}
-        aria-label={gettext("Deny %{host}", host: @connection.host)}
-      >
-        {gettext("Deny")}
-      </button>
-      <.link
-        :if={@allow_path}
-        id={@id}
-        navigate={@allow_path}
-        class="q-act-t q-hov"
-        aria-label={
-          gettext("Allow %{host} in %{name}'s policy",
-            host: @connection.host,
-            name: @allow_elsewhere.name
-          )
-        }
-      >
-        {gettext("Allow")}
-      </.link>
-      <span :if={!@allow_path} id={@id} class="q-act-lock" title={@tip}>
-        <.icon name="hero-lock-closed-micro" class="size-3.5" /><span class="sr-only">{@tip}</span>
-      </span>
-    </span>
-    """
-  end
-
-  def rule_action(%{rule_option: :can_allow, deny: true} = assigns) do
-    ~H"""
-    <span id={"#{@id}-both"} class="q-acts-pair">
-      <button
-        type="button"
-        id={"#{@id}-deny"}
-        class="q-act-t q-hov"
-        data-action="deny"
-        phx-click={JS.push("rule_open", value: Map.put(@values, "action", "deny"))}
-        aria-haspopup="dialog"
-        aria-expanded={to_string(@expanded and @expanded_action == :deny)}
-        aria-label={gettext("Deny %{host}", host: @connection.host)}
-      >
-        {gettext("Deny")}
-      </button>
-      <button
-        type="button"
-        id={@id}
-        class="q-act-t q-hov"
-        data-action="allow"
-        phx-click={JS.push("rule_open", value: Map.put(@values, "action", "allow"))}
-        aria-haspopup="dialog"
-        aria-expanded={to_string(@expanded and @expanded_action != :deny)}
-        aria-label={gettext("Allow %{host}", host: @connection.host)}
-      >
-        {gettext("Allow")}
-      </button>
+    <button
+      :if={@allow_path}
+      type="button"
+      id={@id}
+      class="q-act-t q-hov"
+      data-action="allow"
+      phx-click={JS.push("rule_open", value: Map.put(@values, "action", "allow"))}
+      aria-haspopup="dialog"
+      aria-expanded={to_string(@expanded)}
+      aria-label={gettext("Allow %{host}", host: @connection.host)}
+    >
+      {gettext("Allow")}
+    </button>
+    <span :if={!@allow_path} id={@id} class="q-act-lock" title={@tip}>
+      <.icon name="hero-lock-closed-micro" class="size-3.5" /><span class="sr-only">{@tip}</span>
     </span>
     """
   end
 
   def rule_action(%{rule_option: rule_option} = assigns)
       when rule_option in [:can_allow, :can_deny] do
-    assigns = assign(assigns, :action, if(rule_option == :can_allow, do: "allow", else: "deny"))
+    action = if rule_option == :can_allow, do: :allow, else: :deny
+
+    assigns =
+      assign(assigns,
+        action: Atom.to_string(action),
+        # Expanded while its own popover is open, not a Deny… the menu opened.
+        open: assigns.expanded and assigns.expanded_action in [nil, false, action]
+      )
 
     ~H"""
     <button
@@ -2765,7 +2744,7 @@ defmodule ApiaryWeb.RunComponents do
       data-action={@action}
       phx-click={JS.push("rule_open", value: Map.put(@values, "action", @action))}
       aria-haspopup="dialog"
-      aria-expanded={to_string(@expanded)}
+      aria-expanded={to_string(@open)}
       aria-label={
         if @action == "deny",
           do: gettext("Deny %{host}", host: @connection.host),
@@ -3091,6 +3070,48 @@ defmodule ApiaryWeb.RunComponents do
   """
   attr :id, :string, default: "rule-popover"
   attr :popover, :map, required: true
+
+  def rule_popover(%{popover: %{elsewhere: %{}}} = assigns) do
+    ~H"""
+    <div
+      id={@id}
+      class="q-pop"
+      popover="auto"
+      phx-hook="RulePopover"
+      data-anchor={@popover.anchor}
+      role="dialog"
+      aria-labelledby={"#{@id}-title"}
+      aria-describedby={"#{@id}-elsewhere"}
+    >
+      <header>
+        <h3 id={"#{@id}-title"}>
+          <.spliced text={gettext("Allow %{host}", host: hole())}>
+            <span class="q-pop-host">{middle(@popover.host, 40)}</span>
+          </.spliced>
+        </h3>
+      </header>
+      <div class="q-pop-body">
+        <p id={"#{@id}-elsewhere"}>
+          {gettext(
+            "%{name} allows only its own hosts, so an allow of this workspace would not be in force. Add it to %{name}'s policy, for every workspace?",
+            name: @popover.elsewhere.name
+          )}
+        </p>
+      </div>
+      <footer>
+        <.button id={"#{@id}-close"} phx-click="rule_cancel">{gettext("Cancel")}</.button>
+        <.button
+          id={"#{@id}-elsewhere-open"}
+          variant="primary"
+          navigate={@popover.elsewhere.path}
+          data-autofocus
+        >
+          {gettext("Open %{name}'s policy", name: @popover.elsewhere.name)}
+        </.button>
+      </footer>
+    </div>
+    """
+  end
 
   def rule_popover(%{popover: %{refusal: %{}}} = assigns) do
     ~H"""

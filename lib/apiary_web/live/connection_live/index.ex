@@ -645,6 +645,15 @@ defmodule ApiaryWeb.ConnectionLive.Index do
     act = row && socket.assigns.acts && socket.assigns.acts[destination_id(row)]
 
     case {act, action} do
+      # Only the level above allows a host here: an allow of the workspace would not be in
+      # force. The popover says so and leads there, for one who may change it there.
+      {%{rule_option: :can_allow, allow_elsewhere: %{}, allow_path: path}, "allow"}
+      when is_binary(path) ->
+        {:noreply, open_elsewhere(socket, row, act)}
+
+      {%{rule_option: :can_allow, allow_elsewhere: %{}}, "allow"} ->
+        {:noreply, socket}
+
       {%{rule_option: :can_allow}, "allow"} ->
         {:noreply, open_popover(socket, row, act, :allow)}
 
@@ -1138,6 +1147,21 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           owner: Access.can?(scope, :"security_policy.lock", scope.workspace),
           rule_path: Rules.rule_path(scope, nil, act.entry.host)
         }
+      }
+    )
+    |> assign_acts()
+  end
+
+  # The popover of an Allow only the level above can grant: what holds, and the way to the
+  # level's page with the host. Nothing is written here.
+  defp open_elsewhere(socket, row, act) do
+    assign(socket,
+      popover: %{
+        anchor: "#{destination_id(row)}-act",
+        host: act.host,
+        action: :allow,
+        refusal: :elsewhere,
+        elsewhere: %{name: act.allow_elsewhere.name, path: act.allow_path}
       }
     )
     |> assign_acts()

@@ -724,7 +724,7 @@ defmodule ApiaryWeb.OverviewComponents do
       title={@tip}
       aria-label={gettext("Allow %{host} in %{name}'s policy", host: @item.host, name: @level.name)}
     >
-      {gettext("Allow")}
+      {gettext("Allow in %{name}'s policy", name: @level.name)}
     </.link>
     <span
       :if={!(@level.link && @level.link.can_change)}

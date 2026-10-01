@@ -385,7 +385,8 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
                "##{new}-act.q-act-lock[title=\"Only Eight Wonders's policy allows a host here\"]"
              )
 
-      assert has_element?(view, "##{new}-act-deny")
+      # The row says what holds, where it can be read, and Deny is in its menu.
+      assert text(view, "##{new}-elsewhere") =~ "Eight Wonders allows only its own hosts"
       assert text(view, "##{new}-menu") =~ "Eight Wonders allows only its own hosts"
       refute has_element?(view, "##{new}-menu-allow")
       assert has_element?(view, "##{new}-menu-deny")
@@ -451,6 +452,46 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
       )
 
     assert html =~ "Allow in Eight Wonders&#39;s policy"
+    assert html =~ "/8wonders/policy?allow=new.example"
+  end
+
+  test "where only the level allows a host, Allow opens a popover that says so and leads there" do
+    act = %{
+      rule_option: :can_allow,
+      deny: true,
+      allow_elsewhere: %{name: "Eight Wonders"},
+      allow_path: "/8wonders/policy?allow=new.example"
+    }
+
+    # The row's one text action asks; it does not navigate on its own.
+    html =
+      render_component(&RunComponents.rule_action/1,
+        id: "a",
+        connection: %{host: "new.example"},
+        rule_option: act.rule_option,
+        deny: true,
+        allow_elsewhere: act.allow_elsewhere,
+        allow_path: act.allow_path
+      )
+
+    assert html =~ ~s(data-action="allow")
+    assert html =~ "rule_open"
+    refute html =~ "/8wonders/policy?allow=new.example"
+    refute html =~ ~s(id="a-deny")
+
+    html =
+      render_component(&RunComponents.rule_popover/1,
+        popover: %{
+          anchor: "a",
+          host: "new.example",
+          action: :allow,
+          refusal: :elsewhere,
+          elsewhere: %{name: "Eight Wonders", path: "/8wonders/policy?allow=new.example"}
+        }
+      )
+
+    assert html =~ "Eight Wonders allows only its own hosts"
+    assert html =~ "Open Eight Wonders&#39;s policy"
     assert html =~ "/8wonders/policy?allow=new.example"
   end
 end

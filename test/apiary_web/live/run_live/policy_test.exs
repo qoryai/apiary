@@ -509,9 +509,9 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       id = &"#cx-#{connection_id(run, &1)}-act"
 
       assert text(view, "button" <> id.("files.cdn.example")) == "Allow"
-      # no rule decides it, so it can be denied outright too: a text action like the Allow
-      assert text(view, "button" <> id.("files.cdn.example") <> "-deny.q-act-t[data-action=deny]") ==
-               "Deny"
+      # no rule decides it, so it can be denied outright too, from its menu: one text
+      # action a row, Allow on a denied destination
+      refute has_element?(view, "button" <> id.("files.cdn.example") <> "-deny")
 
       assert text(view, "button" <> id.("registry.example")) == "Deny"
       refute has_element?(view, "button" <> id.("registry.example") <> "-deny")
@@ -795,10 +795,9 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       view = connections(conn, scope, run)
       id = connection_id(run, "files.cdn.example")
       assert has_element?(view, "button#cx-#{id}-act[data-action=allow]", "Allow")
-      view |> element("#cx-#{id}-act-deny") |> render_click()
+      view |> element("#cx-#{id}-menu-deny") |> render_click()
 
       assert text(view, "#rule-popover-title") == "Deny files.cdn.example"
-      assert has_element?(view, ~s(#cx-#{id}-act-deny[aria-expanded=true]))
       assert has_element?(view, ~s(#cx-#{id}-act[aria-expanded=false]))
       assert text(view, "#rule-popover-submit") == "Deny for this repository"
 

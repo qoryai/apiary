@@ -413,12 +413,13 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
     } do
       view = open(conn, scope)
       id = dst("files.cdn.example")
-      assert has_element?(view, "button##{id}-act-deny[data-action=deny]", "Deny")
+      # One text action a row, Allow on a denied destination; Deny… is in its menu.
+      refute has_element?(view, "##{id}-act-deny")
       assert has_element?(view, "button##{id}-act", "Allow")
+      assert has_element?(view, "##{id}-menu-deny", "Deny…")
 
-      view |> element("##{id}-act-deny") |> render_click()
+      view |> element("##{id}-menu-deny") |> render_click()
       assert text(view, "#rule-popover-title") == "Deny files.cdn.example"
-      assert has_element?(view, ~s(##{id}-act-deny[aria-expanded=true]))
       assert has_element?(view, ~s(##{id}-act[aria-expanded=false]))
 
       view |> form("#rule-popover-form", %{"for" => "workspace"}) |> render_change()
@@ -431,7 +432,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       # the rule agrees with the record, so the row gains no line: Allow stays, Deny goes
       refute has_element?(view, "##{id}-after")
       assert text(view, "button##{id}-act") == "Allow"
-      refute has_element?(view, "##{id}-act-deny")
+      refute has_element?(view, "##{id}-menu-deny")
 
       # a host a deny rule already decides is only offered Allow
       {:ok, _} = Policy.deny(scope, nil, %{host: "ads.example"})
@@ -458,7 +459,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
 
       view = open(conn, scope)
       id = dst("flags.example")
-      view |> element("##{id}-act-deny") |> render_click()
+      view |> element("##{id}-menu-deny") |> render_click()
       view |> form("#rule-popover-form", %{"for" => "workspace"}) |> render_change()
       view |> form("#rule-popover-form") |> render_submit()
 

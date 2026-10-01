@@ -248,11 +248,15 @@ the control and never inside it.
   the destination below 600 px of table. No tint and no decision mark (a run's tab keeps
   its marks). Columns join as the table widens, so nothing is cut at the right: the reason
   from 600 px, the last seen from 780, the runs from 840, the attempts and the outcome from
-  1300. Allow and Deny are text shown on hover, on focus inside the row and while the
-  row's popover or menu is open (always on a touch screen, in the menu alone below 600 px
-  of table); the ⋯ menu (`rule_menu/1`) holds Allow…, Deny…, Only this host and Copy the
-  host. A locked rule, and the wall, are a faint lock: the menu says who locked it and
-  when, or why no rule changes it, and leads to the rule. A row opened by its chevron
+  1300. A row's one text action, Allow on a destination that needs allowing and Deny on
+  an allowed one, shows on hover, on focus inside the row and while the row's popover or
+  menu is open (always on a touch screen, in the menu alone below 600 px of table); the ⋯
+  menu (`rule_menu/1`) holds Allow…, Deny…, Only this host and Copy the host. A locked
+  rule, and the wall, are a faint lock: the menu says who locked it and when, or why no
+  rule changes it, and leads to the rule. Where only the level above the workspace allows
+  a host, the row's reason says so in words, and Allow opens a popover that says an allow
+  here would not be in force and leads to that level's policy with the host, for a reader
+  who may change it there; never a navigation on the click alone. A row opened by its chevron
   lists the runs that reached it as lines under it, a dot for each state, no box. The
   default order, Denied first, puts the destinations whose last attempt was denied
   first, the most denied attempts first and then the most recently seen, as Needs
