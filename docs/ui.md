@@ -47,7 +47,8 @@ The shell is section 4 of the v2 design brief (the knowledge vault's
   out; nothing about Qory Apiary itself.
 - **The sidebar** holds the scope's pages and nothing else, in groups, each a `<nav>` with
   its own name: a workspace's Overview, then Record (Runs, Targets) and Guard (Network
-  access, then Policy; without `security` Network access alone, the record of it), then
+  access, then Policy, which carries the policy's mode word alone, how many targets set
+  their own in its title; without `security` Network access alone, the record of it), then
   the targets the person pinned (`counts.pins`, the first seven in the
   order pinned, `Apiary.Targets.list_pins/2`; on a target's page its pin is the current
   entry); an organisation's
@@ -408,7 +409,11 @@ below 768); nothing is centred in the space beside it. `width` is one of three:
 - `read`: a 720 px column, for forms and settings; prose inside anything keeps 72ch.
 
 A sticky tab bar (`.q-tabs`) sticks under the top bar and bleeds to the page's gutter
-(`--q-gutter`). The classes of the shell are in `app.css`'s shell block, and they are
+(`--q-gutter`). The frame is set in the content's sizes, never smaller: a sidebar item and
+a tab 14 px and regular, the current one medium (and a tab's underline honey, the current
+step); a count 12 px in the sans face, a tab's in a filled pill and a tab's denials red
+words without one; a pinned target 12.5 px mono; an entry of the settings list 13.5 px.
+The classes of the shell are in `app.css`'s shell block, and they are
 `@layer qory`: a Tailwind display utility on the same element loses to them, so the shell
 hides its own parts on phones in that block.
 

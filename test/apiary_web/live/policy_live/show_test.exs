@@ -839,7 +839,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
                "#policy-mode-under a[href='#{workspace_path(scope, "/policy/targets?mode=own")}']"
              )
 
-      assert text(view, "#nav-policy-mode") == "observe · 1 own"
+      assert text(view, "#nav-policy-mode") == "observe"
 
       assert has_element?(
                view,

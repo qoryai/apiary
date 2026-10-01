@@ -1195,10 +1195,7 @@ defmodule ApiaryWeb.Layouts do
         class="q-nav-count"
         title={policy_mode_title(@counts)}
       >
-        {policy_mode(@counts)}<span :if={own_modes(@counts) != []}> · {gettext(
-          "%{number} own",
-          number: Format.number(length(own_modes(@counts)))
-        )}</span>
+        {policy_mode(@counts)}
       </span>
       <span :if={count = nav_count(@counts, @entry)} class="q-nav-count">
         {Format.number(count)}
