@@ -943,9 +943,10 @@ defmodule ApiaryWeb.CoreComponents do
   end
 
   @doc """
-  An empty state: what is missing and the one next step.
+  An empty state: what is missing and the one next step. A list whose filters hide every
+  row says so in words alone, with no tile (`icon={nil}`): the filters are the subject.
   """
-  attr :icon, :string, default: "hero-key"
+  attr :icon, :any, default: "hero-key", doc: "the tile's icon, a string; nil for none"
   attr :title, :string, required: true
   attr :tone, :string, default: "honey", values: ~w(honey neutral)
   attr :heading, :string, default: "h2", values: ~w(h1 h2), doc: "h1 when it titles the page"
@@ -959,7 +960,7 @@ defmodule ApiaryWeb.CoreComponents do
       "grid justify-items-center gap-1.5 rounded-box border border-dashed border-line-strong px-6 py-10 text-center",
       @class
     ]}>
-      <.hex_tile icon={@icon} tone={@tone} class="mb-2.5" />
+      <.hex_tile :if={@icon} icon={@icon} tone={@tone} class="mb-2.5" />
       <.dynamic_tag tag_name={@heading} class="text-[15px]/[22px] font-semibold tracking-[-0.006em]">
         {@title}
       </.dynamic_tag>

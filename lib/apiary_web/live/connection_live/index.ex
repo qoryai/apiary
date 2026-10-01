@@ -390,7 +390,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
 
           <.empty_state
             :if={@listing && @listing.rows == []}
-            icon="hero-arrows-right-left"
+            icon={if !narrowed?(loose(@filters, @page_base)), do: "hero-arrows-right-left"}
             tone="neutral"
             title={empty_title(loose(@filters, @page_base))}
           >
@@ -403,6 +403,13 @@ defmodule ApiaryWeb.ConnectionLive.Index do
                   )}
             </span>
             <:actions>
+              <.button
+                :if={token = last_token(@page_base, @filters, @shared)}
+                id="connections-remove-last"
+                patch={token.remove}
+              >
+                {gettext("Remove %{token}", token: "#{token.qualifier}:#{token.value}")}
+              </.button>
               <.button
                 :if={narrowed?(loose(@filters, @page_base))}
                 id="connections-clear"
@@ -1359,6 +1366,15 @@ defmodule ApiaryWeb.ConnectionLive.Index do
         remove: token.without && page_path(base, token.without)
       }
     end)
+  end
+
+  # The filter the empty state offers to remove: the last the reader set, never the
+  # default window.
+  defp last_token(base, filters, shared) do
+    base
+    |> tokens(filters, shared)
+    |> Enum.filter(&(&1.remove && &1.id != "connections-token-started"))
+    |> List.last()
   end
 
   # How many filters the Filter menu says are on: the tokens, but the default window,

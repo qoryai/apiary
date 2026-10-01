@@ -313,7 +313,7 @@ defmodule ApiaryWeb.RunLive.Index do
 
                 <.empty_state
                   :if={@listing && @listing.runs == []}
-                  icon="hero-funnel"
+                  icon={nil}
                   tone="neutral"
                   title={empty_title(@filters)}
                 >

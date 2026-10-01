@@ -355,7 +355,7 @@ defmodule ApiaryWeb.TargetLive.Index do
           </.empty_state>
           <.empty_state
             :if={Query.narrowed?(@query) or @query.view != :all}
-            icon="hero-magnifying-glass"
+            icon={nil}
             tone="neutral"
             title={empty_title(@query)}
           >

@@ -93,6 +93,19 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       view |> element("#connections-clear") |> render_click()
       assert_patch(view, ~p"/#{scope.organisation}/#{scope.workspace}/network")
     end
+
+    test "filters that match nothing say so in words, and offer the last one to remove",
+         %{conn: conn, scope: scope} do
+      started_run(scope, shop(), egress: [@registry])
+
+      view =
+        open(conn, ~p"/#{scope.organisation}/#{scope.workspace}/network?host=nowhere.example")
+
+      refute has_element?(view, ".hex-tile")
+      assert text(view, "#connections-remove-last") == "Remove host:nowhere.example"
+      view |> element("#connections-remove-last") |> render_click()
+      assert_patch(view, ~p"/#{scope.organisation}/#{scope.workspace}/network")
+    end
   end
 
   describe "tool invocations" do

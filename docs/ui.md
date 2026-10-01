@@ -290,8 +290,9 @@ the control and never inside it.
   last lines of its log as plain text. The `RunList` hook tells the page the width, turns
   a row's click into a choice there, and moves it with ↑ and ↓; Enter or a second click
   opens the run. Below 1920 px a row is a link to its page.
-- **Nothing to show** is an empty state with no table and no pages: what the filters hide,
-  the last filter to remove and Clear filters.
+- **Nothing to show** is an empty state with no table and no pages, in words and without
+  a tile (`<.empty_state icon={nil}>`): what the filters hide, the last filter to remove
+  ("Remove host:gpu-01") and Clear filters.
 
 ### Counts and their windows
 
