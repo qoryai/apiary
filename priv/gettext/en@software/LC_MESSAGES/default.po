@@ -578,6 +578,7 @@ msgstr[1] ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/live/settings_live.ex
 #: lib/apiary_web/live/workspace_live/overview.ex
 #, elixir-autogen, elixir-format
@@ -1535,7 +1536,7 @@ msgstr ""
 msgid "A deleted workspace"
 msgstr ""
 
-#: lib/apiary_web/live/settings_live.ex
+#: lib/apiary_web/components/settings_components.ex
 #, elixir-autogen, elixir-format
 msgid "A deleted workspace is purged after %{days}; until then an owner or an admin can cancel the deletion here."
 msgstr ""
@@ -1925,7 +1926,7 @@ msgstr ""
 msgid "Actions for the invitation to %{email}"
 msgstr ""
 
-#: lib/apiary_web/live/settings_live.ex
+#: lib/apiary_web/components/settings_components.ex
 #, elixir-autogen, elixir-format
 msgid "Actions for the workspace %{name}"
 msgstr ""
@@ -2964,8 +2965,8 @@ msgstr ""
 msgid "Create your account"
 msgstr ""
 
+#: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/live/organisation_live.ex
-#: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Created"
 msgstr ""
@@ -2978,6 +2979,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Created the organisation"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Created the workspace"
 msgstr ""
 
 #: lib/apiary_web/live/access_key_live/index.ex
@@ -3099,7 +3105,7 @@ msgstr ""
 msgid "Delete organisation…"
 msgstr ""
 
-#: lib/apiary_web/live/settings_live.ex
+#: lib/apiary_web/components/settings_components.ex
 #, elixir-autogen, elixir-format
 msgid "Delete the workspace %{name}"
 msgstr ""
@@ -3159,7 +3165,7 @@ msgstr ""
 msgid "Deleted, waiting to be purged"
 msgstr ""
 
-#: lib/apiary_web/live/settings_live.ex
+#: lib/apiary_web/components/settings_components.ex
 #, elixir-autogen, elixir-format
 msgid "Delete…"
 msgstr ""
@@ -7910,6 +7916,7 @@ msgstr ""
 msgid "The name of this workspace, and where its pages are."
 msgstr ""
 
+#: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "The organisation's only workspace is not deleted on its own: delete the organisation instead."
@@ -8969,9 +8976,9 @@ msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/policy_components.ex
+#: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/live/activity_live.ex
 #: lib/apiary_web/live/member_live/index.ex
-#: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Workspace"
 msgstr ""
@@ -8979,6 +8986,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Workspace baseline"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Workspace created"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
