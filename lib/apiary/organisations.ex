@@ -1242,7 +1242,8 @@ defmodule Apiary.Organisations do
   end
 
   # A new workspace of the organisation: its name, as the form gives it, and its slug, the
-  # form's where it gives one, else one made from the name.
+  # form's where it gives one, else one made from the name. The slug goes through the
+  # params too, so the form knows the field was used and shows what is wrong with it.
   defp new_workspace_changeset(%Organisation{id: organisation_id} = organisation, attrs) do
     attrs = Map.new(attrs, fn {key, value} -> {to_string(key), value} end)
     name = attrs["name"]
@@ -1254,7 +1255,11 @@ defmodule Apiary.Organisations do
       end
 
     %Workspace{organisation_id: organisation_id}
-    |> Workspace.create_changeset(%{name: name, domain: Apiary.Lingo.Domain.default().name()})
+    |> Workspace.create_changeset(%{
+      name: name,
+      slug: slug,
+      domain: Apiary.Lingo.Domain.default().name()
+    })
     |> Workspace.put_slug(slug)
   end
 
