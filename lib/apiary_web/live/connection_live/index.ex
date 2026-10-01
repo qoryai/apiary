@@ -282,6 +282,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           :if={!@page_base.fixed}
           id="connections-rail"
           label={gettext("Targets")}
+          heading={gettext("Most destinations")}
           rail={@rail}
           chosen={@filters.target}
           shared={@shared}
@@ -898,7 +899,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
     [
       narrow: socket.assigns.rail_query,
       limit: socket.assigns.rail_limit,
-      pinned: for(%{system: system, label: path} <- pins, is_binary(system), do: {system, path})
+      pinned: for(%{system: system, path: path} <- pins, is_binary(system), do: {system, path})
     ]
   end
 

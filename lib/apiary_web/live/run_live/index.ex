@@ -899,7 +899,7 @@ defmodule ApiaryWeb.RunLive.Index do
     [
       narrow: socket.assigns.rail_query,
       limit: socket.assigns.rail_limit,
-      pinned: for(%{system: system, label: path} <- pins, is_binary(system), do: {system, path})
+      pinned: for(%{system: system, path: path} <- pins, is_binary(system), do: {system, path})
     ]
   end
 

@@ -1119,7 +1119,8 @@ defmodule ApiaryWeb.RunComponents do
 
   @doc """
   The rail of a list from 1280 px: the targets of what the list holds under every filter
-  but the target, with their counts. A search on the server at its top; every run; the
+  but the target, with their counts in the list's unit (runs, or destinations, which
+  `heading` names). A search on the server at its top; every run; the
   pinned targets (`rail.pinned`) first; then the targets with the most, `rail.more` more
   behind a button that asks for them; the runs without a target last. Choosing one is a
   link that sets the target (`path`, a function of the target, nil for every one). Below
@@ -1135,8 +1136,15 @@ defmodule ApiaryWeb.RunComponents do
   attr :search, :string, default: "rail_search"
   attr :more, :string, default: "rail_more"
 
+  attr :heading, :string,
+    default: nil,
+    doc: "the heading of the busiest targets, by what is counted; \"Most runs\" by default"
+
   def target_rail(assigns) do
-    assigns = assign(assigns, :shared, assigns.shared || MapSet.new())
+    assigns =
+      assigns
+      |> assign(:shared, assigns.shared || MapSet.new())
+      |> assign(:heading, assigns.heading || gettext("Most runs"))
 
     ~H"""
     <nav id={@id} class="q-rail" aria-label={@label}>
@@ -1184,7 +1192,7 @@ defmodule ApiaryWeb.RunComponents do
       <% end %>
       <%= if @rail do %>
         <h3 :if={@rail.targets != []} class="q-rail-h">
-          {if @query in [nil, ""], do: gettext("Most runs"), else: gettext("Matches")}
+          {if @query in [nil, ""], do: @heading, else: gettext("Matches")}
         </h3>
         <p :if={@rail.targets == [] && @query not in [nil, ""]} class="q-rail-none">
           {gettext("No target matches.")}

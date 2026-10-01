@@ -756,6 +756,32 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert text(view, "#runs-rail-all") == "All repositories 4"
     end
 
+    test "the pinned targets lead the rail, under Pinned; the rest are the most runs", %{
+      conn: conn,
+      scope: scope
+    } do
+      started_run(scope, shop())
+      started_run(scope, %{"forge" => "github.example", "repository" => "acme/api"})
+      :ok = Apiary.Targets.pin(scope, Apiary.Targets.get(scope, "github.example", "acme/api"))
+
+      view = open(conn, scope)
+      render_async(view)
+
+      api = "#runs-rail-t-#{RunComponents.dom_token({"github.example", "acme/api"})}"
+      assert has_element?(view, "#runs-rail h3", "Pinned")
+      assert has_element?(view, "#runs-rail h3", "Most runs")
+      assert text(view, api) == "acme/api 1"
+
+      [first_heading | _] =
+        view
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("#runs-rail h3")
+        |> Enum.map(&LazyHTML.text/1)
+
+      assert String.trim(first_heading) == "Pinned"
+    end
+
     test "the rail searches on the server and shows twenty, then more", %{
       conn: conn,
       scope: scope

@@ -229,10 +229,13 @@ the control and never inside it.
   fifty shown and more on asking, each counted under the other filters
   (`RunComponents.filter_options/1`).
 - **The rail** (`<.target_rail>`, from 1280 px) holds the targets with their counts under
-  every filter but the target: a search on the server, every target, the pinned ones
-  (`counts.pins`), then the busiest twenty and "n more", its own headings under an
-  `<h2>` for a screen reader so the outline never skips a level. Choosing one sets the
-  target; below 1280 px the Filter menu's Target section does it, never both.
+  every filter but the target, in the list's unit: runs on the runs list ("Most runs"),
+  destinations on Network access ("Most destinations"), as its views and its Filter
+  menu's Target section count them. A search on the server, every target, the pinned ones
+  first under Pinned (`counts.pins`), then the busiest twenty and "n more", its own
+  headings under an `<h2>` for a screen reader so the outline never skips a level.
+  Choosing one sets the target; below 1280 px the Filter menu's Target section does it,
+  never both.
 - **A run is one line** (`<.runs_table>`): its task, else its id, the only strong text; its
   target after it until the table is 1000 px wide, then in a column; its state a dot
   (`<.run_mark>`) with its word where the state needs a look, and its denials red only
@@ -250,7 +253,10 @@ the control and never inside it.
   of table); the ⋯ menu (`rule_menu/1`) holds Allow…, Deny…, Only this host and Copy the
   host. A locked rule, and the wall, are a faint lock: the menu says who locked it and
   when, or why no rule changes it, and leads to the rule. A row opened by its chevron
-  lists the runs that reached it as lines under it, a dot for each state, no box.
+  lists the runs that reached it as lines under it, a dot for each state, no box. The
+  default order, Denied first, puts the destinations whose last attempt was denied
+  first, the most denied attempts first and then the most recently seen, as Needs
+  attention weighs them; the rest by when they were first seen, so they hold still.
 - **Pages** of 25, 50 or 100 (`<.pager>`), "1–50 of 3,137", the page before and after named
   by the order (Newer, Older), and Jump to date on the orders by time.
 - **The preview** is for 1920 px and more: a pane beside the list, a rule at its left and no

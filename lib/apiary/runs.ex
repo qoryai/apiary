@@ -283,14 +283,15 @@ defmodule Apiary.Runs do
     rail(filtered(scope, %{filters | target: nil}, now), opts)
   end
 
-  # `base` is a query with the run bound as `:run`; what is counted per target is its
-  # distinct runs: the runs of the list, the runs that reached out on the connections page.
-  defp rail(base, opts) do
+  # `base` is a query with the run bound as `:run`; what is counted per target is `count`,
+  # a dynamic aggregate over `base`: the distinct runs on the runs list, the distinct
+  # destinations on the connections page.
+  defp rail(base, opts, count \\ dynamic([run: r], count(r.id, :distinct))) do
     limit = opts |> Keyword.get(:limit, @rail_size) |> max(1) |> min(@max_limit * 5)
     narrow = like(Keyword.get(opts, :narrow))
     pinned = if narrow, do: [], else: Enum.uniq(Keyword.get(opts, :pinned, []))
 
-    {rows, total} = count_targets(base, narrow, limit, pinned)
+    {rows, total} = count_targets(base, narrow, limit, pinned, count)
 
     pinned_counts =
       case pinned do
@@ -307,19 +308,13 @@ defmodule Apiary.Runs do
             from [run: r] in base,
               where: ^condition,
               group_by: [r.target_system, r.target_path],
-              select: {{r.target_system, r.target_path}, count(r.id, :distinct)}
+              select: ^target_count_fields(count)
           )
-          |> Map.new()
+          |> Map.new(&{{&1.system, &1.path}, &1.n})
       end
 
-    %{all: all, unassigned: unassigned} =
-      Repo.one(
-        from [run: r] in base,
-          select: %{
-            all: count(r.id, :distinct),
-            unassigned: filter(count(r.id, :distinct), is_nil(r.target_id))
-          }
-      )
+    all = Repo.one(from q in base, select: ^count)
+    unassigned = Repo.one(from [run: r] in base, where: is_nil(r.target_id), select: ^count)
 
     %{
       all: all,
@@ -334,9 +329,18 @@ defmodule Apiary.Runs do
     }
   end
 
+  # A target and its count, as a select of the rail's: `%{system:, path:, n:}`.
+  defp target_count_fields(count) do
+    %{
+      system: dynamic([run: r], r.target_system),
+      path: dynamic([run: r], r.target_path),
+      n: count
+    }
+  end
+
   # The targets under `base` with the most runs, `limit` of them, without the pairs of
   # `except`, and how many there are without those; narrowed to a `like/1` pattern.
-  defp count_targets(base, pattern, limit, except) do
+  defp count_targets(base, pattern, limit, except, count) do
     grouped =
       from [run: r] in base,
         where: not is_nil(r.target_id),
@@ -360,10 +364,12 @@ defmodule Apiary.Runs do
     rows =
       Repo.all(
         from [run: r] in grouped,
-          order_by: [desc: count(r.id, :distinct), asc: r.target_path, asc: r.target_system],
+          order_by: ^[desc: count],
+          order_by: [asc: r.target_path, asc: r.target_system],
           limit: ^(limit + 1),
-          select: {r.target_system, r.target_path, count(r.id, :distinct)}
+          select: ^target_count_fields(count)
       )
+      |> Enum.map(&{&1.system, &1.path, &1.n})
 
     total =
       if length(rows) > limit,
@@ -464,10 +470,11 @@ defmodule Apiary.Runs do
     %{options: options, total: length(options)}
   end
 
-  # `base` is a query with the run bound as `:run`, counted in distinct runs.
-  defp target_facet(base, chosen, narrow, limit) do
+  # `base` is a query with the run bound as `:run`, counted by `count` (distinct runs by
+  # default), as the rail counts.
+  defp target_facet(base, chosen, narrow, limit, count \\ dynamic([run: r], count(r.id, :distinct))) do
     pattern = like(narrow)
-    {rows, total} = count_targets(base, pattern, limit, [])
+    {rows, total} = count_targets(base, pattern, limit, [], count)
 
     options =
       for {system, path, n} <- rows,
@@ -477,14 +484,13 @@ defmodule Apiary.Runs do
       with {_system, path} <- chosen,
            value = Filters.target_value(chosen),
            false <- Enum.any?(options, &(elem(&1, 1) == value)) do
-        n = Repo.one(from [run: r] in where_target(base, chosen), select: count(r.id, :distinct))
+        n = Repo.one(from q in where_target(base, chosen), select: ^count)
         [{target_text(chosen, path), value, n} | options]
       else
         _ -> options
       end
 
-    unassigned =
-      Repo.one(from [run: r] in base, where: is_nil(r.target_id), select: count(r.id, :distinct))
+    unassigned = Repo.one(from [run: r] in base, where: is_nil(r.target_id), select: ^count)
 
     options =
       if unassigned > 0 and is_nil(pattern),
@@ -724,8 +730,8 @@ defmodule Apiary.Runs do
   whole, so its counts are those without the filter) and the range, which is over when a
   run last reached the destination and never wider than
   `Apiary.Runs.Filters.max_window_days/0` days, so the aggregate is over a bounded set.
-  The order is `sort`: denied destinations first, then by when they were first seen,
-  newest first (the default); the most recently seen first; the most runs first; the most
+  The order is `sort`: denied destinations first, the most denied attempts first, then
+  the rest by when they were first seen, newest first (the default); the most recently seen first; the most runs first; the most
   attempts first.
   """
   def page_destinations(%Scope{} = scope, %Filters{} = filters, now \\ DateTime.utc_now()) do
@@ -785,15 +791,32 @@ defmodule Apiary.Runs do
     }
   end
 
-  # Denied first, then by first seen, newest first, so a row the page holds does not move
-  # when it is seen again (see Record.connections/3); or the order the reader chose.
+  # Denied first: the destinations whose last attempt was denied, the most denied attempts
+  # first and then the most recently seen, as Needs attention weighs them; the rest by
+  # first seen, newest first, so such a row does not move when it is seen again (see
+  # Record.connections/3). Or the order the reader chose.
   defp destination_order(sort) do
     lead =
       case sort do
-        "recent" -> [desc: dynamic([d], d.last_seen_at)]
-        "runs" -> [desc: dynamic([d], d.runs), desc: dynamic([d], d.last_seen_at)]
-        "attempts" -> [desc: dynamic([d], d.attempts), desc: dynamic([d], d.last_seen_at)]
-        _denied -> [desc: dynamic([d], d.last_decision == "denied")]
+        "recent" ->
+          [desc: dynamic([d], d.last_seen_at)]
+
+        "runs" ->
+          [desc: dynamic([d], d.runs), desc: dynamic([d], d.last_seen_at)]
+
+        "attempts" ->
+          [desc: dynamic([d], d.attempts), desc: dynamic([d], d.last_seen_at)]
+
+        _denied ->
+          [
+            desc: dynamic([d], d.last_decision == "denied"),
+            desc: dynamic([d], fragment("CASE WHEN ? = 'denied' THEN ? END", d.last_decision, d.denied)),
+            desc:
+              dynamic(
+                [d],
+                fragment("CASE WHEN ? = 'denied' THEN ? END", d.last_decision, d.last_seen_at)
+              )
+          ]
       end
 
     lead ++
@@ -828,13 +851,20 @@ defmodule Apiary.Runs do
 
   @doc """
   The rail of the workspace's connections: the targets of the runs that reached out under
-  the filters without their target, counted in those runs, as `target_counts/3` counts the
-  runs list's, with the same options.
+  the filters without their target, each counted in the destinations its runs reached (a
+  host, port and path once however many runs reached it), as the page's views count, with
+  the options of `target_counts/3`; `runs` in the result is that count, and `all` the
+  destinations of every target.
   """
   def destination_target_counts(%Scope{} = scope, %Filters{} = filters, opts \\ []) do
     now = Keyword.get(opts, :now, DateTime.utc_now())
-    rail(connections_in(scope, %{filters | target: nil}, now), opts)
+
+    rail(connections_in(scope, %{filters | target: nil}, now), opts, destination_count())
   end
+
+  # The destinations among connection rows: a host, port and path once.
+  defp destination_count,
+    do: dynamic([c], fragment("count(DISTINCT (?, ?, ?))", c.host, c.port, c.path))
 
   @doc """
   The runs that reached a destination, the most recent first, under the same filters:
@@ -948,7 +978,8 @@ defmodule Apiary.Runs do
 
   @doc """
   The options of the connections page's filters, `%{target:, host:}`, each
-  `%{options: [{label, value, count}], total: n}` like `run_facets/3`, counted in runs;
+  `%{options: [{label, value, count}], total: n}` like `run_facets/3`: a target counted in
+  destinations, as the rail counts it (`destination_target_counts/3`), a host in runs;
   `narrow:` as there.
   """
   def destination_facets(%Scope{} = scope, %Filters{} = filters, opts \\ []) do
@@ -962,7 +993,8 @@ defmodule Apiary.Runs do
           connections_in(scope, %{filters | target: nil}, now),
           filters.target,
           narrow["target"],
-          facet_limit(limits["target"])
+          facet_limit(limits["target"]),
+          destination_count()
         ),
       host:
         destination_host_facet(scope, filters, now, narrow["host"], facet_limit(limits["host"]))
