@@ -141,7 +141,9 @@ defmodule ApiaryWeb.JumpController do
   defp settings_key(key), do: key
 
   # Entries of the same name in two scopes say whose they are: a workspace's Overview,
-  # Settings and Policy, an organisation's; a page of Settings names the Settings it is in.
+  # Settings and Policy, an organisation's, and an edition's entry by its `long_label`; a
+  # page of Settings names the Settings it is in.
+  defp go_to_label(%Entry{long_label: label}) when is_binary(label), do: label
   defp go_to_label(%Entry{key: :overview}), do: gettext("Workspace overview")
   defp go_to_label(%Entry{key: :organisation_overview}), do: gettext("Organisation overview")
   defp go_to_label(%Entry{key: :policy, place: :workspace}), do: gettext("Workspace policy")

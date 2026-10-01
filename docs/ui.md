@@ -41,7 +41,7 @@ The shell is section 4 of the v2 design brief (the knowledge vault's
   `/:org/jump`) what matches, 150 ms after the reader stops typing: the pages of the
   navigation, the sections of each Settings and Preferences' theme and shortcuts, each
   named by whose it is where two scopes share a name (Workspace overview, Organisation
-  settings › People) and found by its other words too (members, audit, dark), targets,
+  settings › People; an edition's entry by its `long_label`) and found by its other words too (members, audit, dark), targets,
   runs by id or task, places, what New offers and, for what is typed, the deletions the
   reader may take. Every word of it comes from the server; a runner's words are written
   as text.
