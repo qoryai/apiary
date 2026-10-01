@@ -279,7 +279,7 @@ defmodule ApiaryWeb.PolicyComponentsTest do
       assert html =~ "Last 14 days, every workspace"
     end
 
-    test "a rule of the level above the workspace has its tile, the lock glyph with its words, and the way to it" do
+    test "a rule of the level above the workspace has its tile with its words, no lock, and the way to it" do
       above = %{key: "8wonders", label: "Eight Wonders", rank: 1, tile: "E"}
 
       html =
@@ -292,9 +292,18 @@ defmodule ApiaryWeb.PolicyComponentsTest do
           })
         ])
 
-      assert html =~ ~s(<span class="q-tile" aria-hidden="true">E</span>Eight Wonders)
-      assert html =~ ~s(id="rule-r1-lock")
-      assert html =~ ~s(data-tip="Eight Wonders&#39;s rule: it holds in every workspace.")
+      # The tile says whose rule it is; the lock is the workspace's locked rules' alone.
+      doc = LazyHTML.from_fragment(html)
+      [tile] = doc |> LazyHTML.query(".q-pr-src .q-tile") |> Enum.to_list()
+      assert LazyHTML.attribute(tile, "id") == ["rule-r1-lock"]
+      assert LazyHTML.text(tile) == "E"
+
+      assert LazyHTML.attribute(tile, "data-tip") == [
+               "Eight Wonders's rule: it holds in every workspace."
+             ]
+
+      assert LazyHTML.attribute(tile, "aria-label") == LazyHTML.attribute(tile, "data-tip")
+      refute html =~ "hero-lock-closed-micro"
       assert html =~ ~s(href="/8wonders/policy?rule=registry.example")
       assert text(html) =~ "View in Eight Wonders's policy"
       refute html =~ "rule-r1-remove"

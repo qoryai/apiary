@@ -1226,8 +1226,9 @@ defmodule ApiaryWeb.PolicyComponents do
   `rule` is a map (`ApiaryWeb.PolicyLive.Common`): `id`, `action`, `host`, `paths`,
   `locked`, `source` (`%{key:, label:, rank:}`, with `tile`, a letter drawn before the
   label, for the level above the workspace), `own` (written where the page is: it is
-  changed here), `above` (a rule of the level above the workspace: the lock glyph with
-  `locked_tip`'s words), `in_force`, `off` (why it is not in force, or nil), `by`, `at`,
+  changed here), `above` (a rule of the level above the workspace: its tile in the
+  Source column says `locked_tip`'s words; the lock is for a locked rule of the workspace
+  alone, what the Locked view counts), `in_force`, `off` (why it is not in force, or nil), `by`, `at`,
   `locked_tip` (what the lock says), `can_change` (the reader may change it here), `act`
   (what Remove does: `:remove`, or `:restore` where a target's own rule gives the
   workspace's back) and `view` (`{label, path}`: where a rule written elsewhere is changed,
@@ -1250,7 +1251,7 @@ defmodule ApiaryWeb.PolicyComponents do
       assign(assigns,
         menu?: (rule.own and rule.can_change) or (not rule.own and rule.view != nil),
         lockable?: assigns.can_lock and rule.own and rule.in_force,
-        glyph?: rule.locked or rule[:above] == true,
+        glyph?: rule.locked,
         tile: rule.source[:tile]
       )
 
@@ -1272,7 +1273,14 @@ defmodule ApiaryWeb.PolicyComponents do
       </td>
       <td class="q-pr-paths"><.paths paths={@rule.paths} action={@rule.action} /></td>
       <td :if={@source} class="q-pr-src">
-        <span :if={@tile} class="q-tile" aria-hidden="true">{@tile}</span>{@rule.source.label}
+        <span :if={@tile && !@rule[:above]} class="q-tile" aria-hidden="true">{@tile}</span><span
+          :if={@tile && @rule[:above]}
+          id={"#{@id}-lock"}
+          class="q-tile tooltip tooltip-right q-tip-wide"
+          role="img"
+          aria-label={@rule.locked_tip}
+          data-tip={@rule.locked_tip}
+        >{@tile}</span>{@rule.source.label}
       </td>
       <td :if={@use?} class="q-pr-use q-from-sm">
         <span :if={@rule.off} class="q-pr-offw q-pr-offw-full" title={@rule.off} aria-hidden="true">

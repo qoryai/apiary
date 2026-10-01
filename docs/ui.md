@@ -202,7 +202,9 @@ another holder gives them a source, and the menu, the qualifier and the order ta
 Sort (the list's own order, Host, Most used, Recently added); pages of 50; and `?rule=`,
 which Network access links with, landing on the page that holds the rule and marking it.
 A target's Policy tab shows each rule's Source; its own rules come first and have the ⋯
-menu's acts, the workspace's are read there and lead to the workspace's page.
+menu's acts, the workspace's are read there and lead to the workspace's page. A rule of
+the level above the workspace has that level's tile in its Source, which says whose it is;
+the faint lock is a locked rule of the workspace's alone, what the Locked view counts.
 Above the rules, the workspace's mode is one line, as a target's is
 (`PolicyComponents.mode_switch/1`, `target_mode/1`): Mode, Observe | Enforce as a
 segmented radio group, a required mode's lock and whose it is, then one sentence of what
