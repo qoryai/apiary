@@ -168,7 +168,8 @@ defmodule ApiaryWeb.UserLive.Settings do
       >
         <.theme_picker />
         <p class="q-foot-note">
-          {gettext(
+          {pgettext(
+            "plain",
             "Applies at once, on this browser. Auto follows the device's light or dark setting. The terminal stays dark in every theme."
           )}
         </p>
