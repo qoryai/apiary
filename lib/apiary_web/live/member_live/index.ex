@@ -50,9 +50,15 @@ defmodule ApiaryWeb.MemberLive.Index do
         title={gettext("People")}
       >
         <:subtitle>
-          {gettext(
-            "The people in this organisation. Owners and admins manage members and settings; members manage keys and see the runs."
-          )}
+          {if members_edit_rules?(@current_scope),
+            do:
+              gettext(
+                "The people in this organisation. Owners and admins manage members and settings; members manage access keys, see the runs and change the policy's rules that are not locked."
+              ),
+            else:
+              gettext(
+                "The people in this organisation. Owners and admins manage members and settings; members manage access keys and see the runs."
+              )}
           <ApiaryWeb.Extension.slot name={:members_heading} scope={@current_scope} />
         </:subtitle>
         <:actions :if={Access.can?(@current_scope, :"member.invite", @current_scope.workspace)}>
@@ -100,7 +106,7 @@ defmodule ApiaryWeb.MemberLive.Index do
               <%= if Access.can?(@current_scope, :"member.change_level", m) do %>
                 <.menu_heading title={m.user.email} sub={gettext("Level")} />
                 <.menu_item
-                  :for={{level, hint} <- level_hints()}
+                  :for={{level, hint} <- level_hints(@current_scope)}
                   id={"member-#{m.id}-level-#{level}"}
                   checked={m.level == level}
                   hint={hint}
@@ -210,9 +216,12 @@ defmodule ApiaryWeb.MemberLive.Index do
             </:action>
           </.table>
           <p class="text-[12.5px]/[18px] text-faint">
-            {gettext(
-              "An invitation expires after seven days. The last owner cannot be removed or demoted."
-            )}
+            {gettext("An invitation expires after seven days.")}
+            <span :if={only_owner_held?(@current_scope, @members)}>
+              {gettext(
+                "The only owner cannot be removed or demoted until another member is an owner."
+              )}
+            </span>
           </p>
         </section>
       </SettingsComponents.layout>
@@ -339,13 +348,37 @@ defmodule ApiaryWeb.MemberLive.Index do
   defp level_text(:member), do: gettext("Member")
 
   # The levels a person may be given here, each with what it may do.
-  defp level_hints do
-    for level <- Membership.levels(), do: {level, level_hint(level)}
+  defp level_hints(scope) do
+    for level <- Membership.levels(), do: {level, level_hint(level, scope)}
   end
 
-  defp level_hint(:owner), do: gettext("Changes everything, including who owns the organisation")
-  defp level_hint(:admin), do: gettext("Manages members, workspaces and settings")
-  defp level_hint(:member), do: gettext("Manages keys and sees the runs")
+  defp level_hint(:owner, _scope),
+    do: gettext("Changes everything, including who owns the organisation")
+
+  defp level_hint(:admin, _scope), do: gettext("Manages members, workspaces and settings")
+
+  defp level_hint(:member, scope) do
+    if members_edit_rules?(scope),
+      do: gettext("Manages access keys, sees the runs and changes the policy's unlocked rules"),
+      else: gettext("Manages access keys and sees the runs")
+  end
+
+  # Whether a member changes the policy's rules that are not locked: asked of the roles
+  # (`Apiary.Access`) and of the features where the page is, never of a level written here.
+  defp members_edit_rules?(scope),
+    do:
+      :"security_policy.edit" in Map.get(Access.roles(), :member, []) and
+        Apiary.Features.on?(scope, :security)
+
+  # Whether the organisation has one owner, whom the last-owner rule holds in place, and
+  # the reader is one who would otherwise change that owner's level: only to them does the
+  # rule say anything.
+  defp only_owner_held?(scope, members) do
+    case Enum.filter(members, &(&1.level == :owner)) do
+      [owner] -> Access.can?(scope, :"member.change_level", owner)
+      _none_or_several -> false
+    end
+  end
 
   # An invitation that runs out within a day is the one fact of its row to act on.
   defp expires_soon?(invitation),

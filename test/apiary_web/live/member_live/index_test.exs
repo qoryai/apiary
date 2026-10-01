@@ -17,9 +17,16 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       assert html =~ "Invite people"
 
       assert html =~
-               "The people in this organisation. Owners and admins manage members and settings; members manage keys and see the runs."
+               "The people in this organisation. Owners and admins manage members and settings; members manage access keys, see the runs and change the policy&#39;s rules that are not locked."
 
       assert has_element?(lv, "#member-#{scope.membership.id}")
+      # The only owner, reading: the last-owner rule is theirs to hear.
+      assert html =~
+               "The only owner cannot be removed or demoted until another member is an owner."
+
+      member_fixture(scope, :owner)
+      {:ok, _lv, html} = live(conn, ~p"/#{scope.organisation}/settings/people")
+      refute html =~ "The only owner cannot be removed"
     end
 
     test "invites a member and can revoke the invitation", %{conn: conn, scope: scope} do

@@ -123,19 +123,17 @@ defmodule ApiaryWeb.DeletionLiveTest do
 
       settings = ~p"/#{organisation}/settings"
 
-      for section <- ["/workspaces", "/danger", "/delete"] do
+      # Each section says its own refusal, never another's.
+      for {section, sentence} <- [
+            {"/workspaces", "Only owners and admins open the list of workspaces."},
+            {"/danger", "Only owners delete the organisation."},
+            {"/delete", "Only owners delete the organisation."}
+          ] do
         assert {:error, {:live_redirect, %{to: ^settings, flash: flash}}} =
                  live(conn, ~p"/#{organisation}/settings" <> section)
 
-        assert flash["error"] ==
-                 "Only owners and admins delete a workspace, and only owners the organisation."
+        assert flash["error"] == sentence
       end
-
-      assert {:error, {:live_redirect, %{to: ^settings, flash: flash}}} =
-               live(conn, ~p"/#{organisation}/settings/delete")
-
-      assert flash["error"] ==
-               "Only owners and admins delete a workspace, and only owners the organisation."
 
       # A crafted event is refused all the same.
       html =

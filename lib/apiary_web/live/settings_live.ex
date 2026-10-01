@@ -83,14 +83,18 @@ defmodule ApiaryWeb.SettingsLive do
       <.modal
         :if={@live_action in [:danger, :delete_organisation]}
         id="delete-organisation-modal"
-        title={gettext("Delete %{name}", name: @current_scope.organisation.name)}
+        title={gettext("Delete %{name}?", name: @current_scope.organisation.name)}
         on_cancel={JS.patch(~p"/#{@current_scope.organisation}/settings")}
       >
         <p class="text-muted">
-          {gettext(
-            "The organisation, its workspaces and everything in them disappear for every member at once, and its access keys stop working. It is purged after %{days}; until then you can cancel the deletion from your organisations page.",
-            days: days(Deletion.grace_days())
-          )}
+          <.rich text={
+            rich_gettext(
+              "The organisation, its workspaces and everything in them disappear for every member at once, and its access keys stop working. It is purged after %{days}; until then you can cancel the deletion from %{organisations}.",
+              days: days(Deletion.grace_days()),
+              organisations:
+                {:link, ~p"/users/organisations", gettext("your organisations page"), "link"}
+            )
+          } />
         </p>
         <.form
           for={@confirm_form}
@@ -135,7 +139,7 @@ defmodule ApiaryWeb.SettingsLive do
             @deleting
         }
         id="delete-workspace-modal"
-        title={gettext("Delete %{name}", name: @deleting.name)}
+        title={gettext("Delete %{name}?", name: @deleting.name)}
         on_cancel={JS.patch(section_path(@current_scope, @live_action))}
       >
         <p class="text-muted">
@@ -598,9 +602,12 @@ defmodule ApiaryWeb.SettingsLive do
 
     # The instance's organisation is deleted by nobody, which its danger zone says too.
     sentence =
-      if action in @delete_organisation and organisation_kept?(scope),
-        do: organisation_kept(),
-        else: deletion_refused()
+      cond do
+        action in @delete_organisation and organisation_kept?(scope) -> organisation_kept()
+        action in @delete_organisation -> gettext("Only owners delete the organisation.")
+        action == :workspaces -> gettext("Only owners and admins open the list of workspaces.")
+        true -> gettext("Only owners and admins delete a workspace.")
+      end
 
     socket
     |> put_flash(:error, sentence)
@@ -617,9 +624,6 @@ defmodule ApiaryWeb.SettingsLive do
       {:workspace, _section} -> ~p"/#{scope.organisation}/#{scope.workspace}/settings"
     end
   end
-
-  defp deletion_refused,
-    do: gettext("Only owners and admins delete a workspace, and only owners the organisation.")
 
   # An organisation no level may delete, the instance's own, whose danger zone says why to
   # whoever may rename it.
@@ -744,7 +748,7 @@ defmodule ApiaryWeb.SettingsLive do
         {:noreply, assign_confirm(socket, %{"slug" => slug}, :mismatch)}
 
       {:error, :forbidden} ->
-        {:noreply, unauthorized(socket, deletion_refused())}
+        {:noreply, unauthorized(socket, gettext("Only owners delete the organisation."))}
 
       # A refusal of the edition's is said in its words, where it has some.
       {:error, reason} ->
@@ -798,7 +802,7 @@ defmodule ApiaryWeb.SettingsLive do
          |> push_patch(to: section_path(scope, socket.assigns.live_action))}
 
       {:error, :forbidden} ->
-        {:noreply, unauthorized(socket, deletion_refused())}
+        {:noreply, unauthorized(socket, gettext("Only owners and admins delete a workspace."))}
 
       _not_found ->
         {:noreply, gone(socket)}
