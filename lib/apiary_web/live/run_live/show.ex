@@ -486,10 +486,10 @@ defmodule ApiaryWeb.RunLive.Show do
             JS.patch(tab_path(@current_scope, @run, :timeline, cx_query(@timeline_query, @cx)))
           }
           aria-pressed={to_string(@cx)}
-          class={["q-chip", @cx && "q-chip-on q-chip-plain"]}
+          class="btn btn-ghost btn-sm q-cx-toggle"
         >
-          <.icon name="hero-arrows-right-left-micro" class="size-4" />{gettext("Connections")}
-          <b>{if @cx, do: gettext("inline"), else: gettext("hidden")}</b>
+          <span class="q-toggle" data-on={@cx} aria-hidden="true"></span>
+          {gettext("Connections inline")}
         </button>
       </div>
 

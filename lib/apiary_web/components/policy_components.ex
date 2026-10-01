@@ -311,7 +311,12 @@ defmodule ApiaryWeb.PolicyComponents do
           tabindex={if @mode == mode, do: "0", else: "-1"}
           phx-click={@can_edit && @mode != mode && JS.push("mode_ask", value: %{mode: mode})}
         >
-          <.icon name={icon} class="size-3.5" />{name}
+          <%!-- Under the level above's floor the mode it forbids carries its lock, so it
+               reads as out of reach, not as merely unchosen. --%>
+          <.icon
+            name={if @floor && @mode != mode, do: "hero-lock-closed-micro", else: icon}
+            class="size-3.5"
+          />{name}
         </button>
       </div>
       <span :if={@can_edit} id={"#{@id}-keys"} class="sr-only">

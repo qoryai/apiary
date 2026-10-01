@@ -451,6 +451,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert has_element?(lv, "button.q-lanekey.q-lane-a[aria-pressed='true']")
       assert has_element?(lv, "button.q-lanekey.q-lane-b[aria-pressed='false']")
 
+      assert has_element?(lv, "#toggle-connections[aria-pressed='true'] .q-toggle[data-on]")
       lv |> element("#toggle-connections") |> render_click()
 
       assert_patch(
@@ -459,6 +460,11 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       )
 
       assert has_element?(lv, "ol#timeline[data-cx='0']")
+
+      assert has_element?(
+               lv,
+               "#toggle-connections[aria-pressed='false'] .q-toggle:not([data-on])"
+             )
 
       lv |> element("button.q-lanekey.q-lane-a") |> render_click()
       assert_patch(lv, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}?cx=0")

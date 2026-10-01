@@ -193,6 +193,13 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
       assert text(view, "#policy-above") =~ "applies here: 0 rules , enforce required"
       assert has_element?(view, "#policy-mode[data-floor=true][aria-disabled=true]")
       assert has_element?(view, "#policy-mode-enforce[aria-checked=true]")
+      # the mode it forbids carries the lock, not its own glyph
+      assert has_element?(
+               view,
+               "#policy-mode-observe[aria-disabled=true] .hero-lock-closed-micro"
+             )
+
+      refute has_element?(view, "#policy-mode-enforce .hero-lock-closed-micro")
       assert text(view, "#policy-mode-required") == "Required by Eight Wonders"
       refute text(view, "#policy-mode-enforce") =~ "Workspace default"
 

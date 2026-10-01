@@ -2035,6 +2035,31 @@
     transform: translateX(1rem);
     background-color: var(--color-primary-content);
   }
+  /* A ghost button whose small switch says whether it is on (the timeline's Connections
+     inline): no border, no fill, the button's aria-pressed the state. */
+  .q-cx-toggle {
+    gap: 8px;
+    color: var(--q-muted);
+    font-weight: 400;
+  }
+  .q-cx-toggle .q-toggle {
+    width: 1.625rem;
+    height: 1rem;
+  }
+  .q-cx-toggle .q-toggle::after {
+    top: 1px;
+    left: 1px;
+    width: 0.75rem;
+    height: 0.75rem;
+  }
+  .q-cx-toggle .q-toggle[data-on] {
+    border-color: color-mix(in oklab, var(--color-primary) 70%, var(--color-base-content));
+    background-color: var(--color-primary);
+  }
+  .q-cx-toggle .q-toggle[data-on]::after {
+    transform: translateX(0.625rem);
+    background-color: var(--color-primary-content);
+  }
   .q-toggle:disabled {
     opacity: 0.6;
     cursor: not-allowed;
@@ -7825,6 +7850,11 @@
   .q-modeline-seg > button[aria-disabled="true"] {
     color: var(--q-faint);
     cursor: not-allowed;
+  }
+  /* Under the floor the forbidden mode is struck through beside its lock. */
+  .q-modeline-seg[data-floor] > button[aria-disabled="true"] {
+    text-decoration: line-through;
+    text-decoration-color: var(--q-border-field);
   }
   .q-modeline-p {
     flex: 1 1 30rem;
