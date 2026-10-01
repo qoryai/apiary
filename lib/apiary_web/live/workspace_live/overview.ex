@@ -97,14 +97,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       width="list"
     >
       <div id="overview" phx-hook="OverviewPage" class="grid grid-cols-[minmax(0,1fr)] gap-5">
-        <.header>
-          {@current_scope.workspace.name}
-          <:subtitle>
-            {gettext("The workspace of the %{organisation} organisation.",
-              organisation: @current_scope.organisation.name
-            )}
-          </:subtitle>
-        </.header>
+        <.header>{@current_scope.workspace.name}</.header>
 
         <div id="overview-announcer" class="sr-only" aria-live="polite" aria-atomic="true">
           {@announce}

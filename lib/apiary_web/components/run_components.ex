@@ -1379,7 +1379,7 @@ defmodule ApiaryWeb.RunComponents do
   @doc """
   The runs of a list, one line each: the state as a mark, the run's title (its task, else
   its id) the only strong text, its target after it until the table is 1000 px wide and
-  then in a column of its own, the runtime and the host faint from 1300 px, when it
+  then in a column of its own, the runtime and the host faint from 1150 px, when it
   started, how long it ran from 720 px, and its denials, red when there are any. The
   columns join by the table's own width (a container query), so a table beside a rail or a
   preview reflows as a narrower screen would.
@@ -2158,6 +2158,7 @@ defmodule ApiaryWeb.RunComponents do
   end
 
   attr :c, :map, required: true
+  attr :line, :boolean, default: false, doc: "a run's row: the request line after the host"
 
   # The destination as a row's title: the host in mono, the port faint, the path muted and
   # cut in the middle. A tool invocation leads with its tool, as everywhere.
@@ -2169,7 +2170,7 @@ defmodule ApiaryWeb.RunComponents do
     assigns =
       assign(assigns,
         trail:
-          if(assigns[:line],
+          if(assigns.line,
             do: request_line(assigns.c),
             else: if(assigns.c.path != "", do: assigns.c.path)
           )

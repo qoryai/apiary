@@ -591,7 +591,8 @@ defmodule ApiaryWeb.RunLive.IndexTest do
     } do
       view = open(conn, scope)
 
-      assert has_element?(view, "#runs-sort-button[aria-label='Sort: newest first']", "Sort")
+      # The button names the order in force; its label says it in full.
+      assert has_element?(view, "#runs-sort-button[aria-label='Sort: newest first']", "Newest")
       assert has_element?(view, "#runs-sort-newest[role=menuitemradio][aria-checked=true]")
 
       view |> element("#runs-sort-oldest") |> render_click()

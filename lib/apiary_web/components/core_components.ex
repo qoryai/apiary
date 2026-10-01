@@ -1638,10 +1638,12 @@ defmodule ApiaryWeb.CoreComponents do
 
   @doc """
   A list's Sort: the orders it can be read in, as `menu_item/1`s with `checked`; the
-  trigger names the order in force for a screen reader.
+  trigger names the order in force, in words short enough for a button (`label`, else
+  `current`), and in full for a screen reader.
   """
   attr :id, :string, required: true
   attr :current, :string, required: true, doc: "the order in force, in words"
+  attr :label, :string, default: nil, doc: "the order in force as the button says it"
   slot :inner_block, required: true
 
   def sort_menu(assigns) do
@@ -1662,7 +1664,7 @@ defmodule ApiaryWeb.CoreComponents do
         aria-label={gettext("Sort: %{order}", order: @current)}
         phx-mounted={JS.ignore_attributes(["aria-expanded"])}
       >
-        <.icon name="hero-arrows-up-down-micro" class="size-4 text-faint" />{gettext("Sort")}
+        <.icon name="hero-arrows-up-down-micro" class="size-4 text-faint" />{@label || @current}
       </button>
       <ul
         class="q-rowmenu-list q-listmenu-list menu menu-sm dropdown-content"

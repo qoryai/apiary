@@ -173,7 +173,8 @@ look alike are one level too many, and nothing is boxed inside a row.
   same path is on more than one system (`<.target_name>`, `Apiary.Runs.shared_paths/2`).
 - **One way to narrow a list**: views as tabs with their counts (`<.views>`), one search
   (`<.list_search>`), one Filter menu whose sections write the filters
-  (`<.filter_menu>`), Sort (`<.sort_menu>`), and the filters in force as removable tokens
+  (`<.filter_menu>`), Sort (`<.sort_menu>`, its button naming the order in force:
+  Newest, Denied first), the query field in mono, and the filters in force as removable tokens
   under the bar (`<.filter_tokens>`). Every choice is in the URL. No row of facet buttons;
   a rail never repeats a menu.
 
@@ -307,7 +308,8 @@ what needs the reader, then what their agents did, and never grows with the data
 
 - **The summary**: alive now, runs, runs that ended badly and denied attempts over
   fourteen days, each a link to the list it counts over the same days.
-- **Needs attention**: one line an item, its mark, its subject, where it is, the reason
+- **Needs attention**: one line an item, on columns the list holds (each row a subgrid,
+  so they line up whatever an act says), its mark, its subject, where it is, the reason
   in a few words (the longer sentence on hover), when, and the one text act that settles
   it; five shown and "and n more". Its Allow is Network access's: where the level above
   the workspace denies the host, or allows only its own hosts, no allow here would be in

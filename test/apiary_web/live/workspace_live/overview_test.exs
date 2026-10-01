@@ -92,7 +92,8 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       assert html =~
                ~r{<title[^>]*>\s*#{Regex.escape(scope.workspace.name)} · #{Regex.escape(scope.organisation.name)} · Qory Apiary\s*</title>}
 
-      assert html =~ "The workspace of the #{scope.organisation.name} organisation."
+      # No filler under the title: the name says which workspace it is.
+      refute html =~ "The workspace of the #{scope.organisation.name} organisation."
       refute html =~ ~r/<abbr[^>]*>(hive|apiary)<\/abbr>/
 
       assert has_element?(view, "#onboarding[data-step='1'] h2", "Send your first run")

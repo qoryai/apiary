@@ -233,7 +233,11 @@ defmodule ApiaryWeb.RunLive.Index do
                 />
               </:section>
             </.filter_menu>
-            <.sort_menu id="runs-sort" current={sort_name(@filters.sort)}>
+            <.sort_menu
+              id="runs-sort"
+              current={sort_name(@filters.sort)}
+              label={sort_label(@filters.sort)}
+            >
               <.menu_item
                 :for={sort <- Filters.sorts(:runs)}
                 id={"runs-sort-#{sort}"}

@@ -255,7 +255,11 @@ defmodule ApiaryWeb.ConnectionLive.Index do
             />
           </:section>
         </.filter_menu>
-        <.sort_menu id="connections-sort" current={sort_name(@filters.sort)}>
+        <.sort_menu
+          id="connections-sort"
+          current={sort_name(@filters.sort)}
+          label={sort_label(@filters.sort)}
+        >
           <.menu_item
             :for={sort <- Filters.sorts(:connections)}
             id={"connections-sort-#{sort}"}

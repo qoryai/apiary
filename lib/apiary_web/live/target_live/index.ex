@@ -240,7 +240,7 @@ defmodule ApiaryWeb.TargetLive.Index do
             value={@query.text}
             label={gettext("Find a target")}
             placeholder={placeholder(@systems)}
-            class="grow"
+            class="q-find-query"
           />
           <.filter_menu id="targets-filter" count={length(@query.tokens)}>
             <.menu_heading :if={@systems != []} title={gettext("System")} />
