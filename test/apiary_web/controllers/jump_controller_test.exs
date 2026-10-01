@@ -98,7 +98,9 @@ defmodule ApiaryWeb.JumpControllerTest do
 
     refute "Runs" in labels(group(answer, "Go to"))
     assert "Activity" in labels(group(answer, "Go to"))
-    assert labels(group(answer, "Actions")) == ["Invite people"]
+    # the organisation's own actions, and an edition's; no key of a workspace
+    assert "Invite people" in labels(group(answer, "Actions"))
+    refute "New access key" in labels(group(answer, "Actions"))
     refute group(jump(conn, ~p"/#{scope.organisation}/jump", "shop"), "Repositories")
   end
 

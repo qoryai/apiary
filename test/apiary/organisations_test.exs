@@ -432,16 +432,24 @@ defmodule Apiary.OrganisationsTest do
       assert Ecto.Changeset.get_field(changeset, :name) == "Data"
     end
 
-    test "the edition's limit: the core allows one workspace in use" do
+    test "the edition's limit of workspaces in use: one in the core's edition" do
       %{scope: scope} = sign_up_fixture()
 
-      assert {:error, :limit} = Organisations.create_workspace(scope, %{"name" => "Data"})
-      assert [_main] = Organisations.list_workspaces(scope)
-      refute Repo.exists?(from e in Entry, where: e.action == "workspace.create")
+      case Apiary.Edition.limits().workspaces do
+        1 ->
+          assert {:error, :limit} = Organisations.create_workspace(scope, %{"name" => "Data"})
+          assert [_main] = Organisations.list_workspaces(scope)
+          refute Repo.exists?(from e in Entry, where: e.action == "workspace.create")
 
-      scope = mark_only_workspace(scope)
-      assert {:ok, _workspace} = Organisations.create_workspace(scope, %{"name" => "Data"})
-      assert {:error, :limit} = Organisations.create_workspace(scope, %{"name" => "More"})
+          scope = mark_only_workspace(scope)
+          assert {:ok, _workspace} = Organisations.create_workspace(scope, %{"name" => "Data"})
+          assert {:error, :limit} = Organisations.create_workspace(scope, %{"name" => "More"})
+
+        :unlimited ->
+          assert {:ok, _workspace} = Organisations.create_workspace(scope, %{"name" => "Data"})
+          assert {:ok, _workspace} = Organisations.create_workspace(scope, %{"name" => "More"})
+          assert length(Organisations.list_workspaces(scope)) == 3
+      end
     end
 
     test "only an owner creates one" do
