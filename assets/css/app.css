@@ -114,7 +114,7 @@
   --q-border-strong: oklch(84% 0.01 80);
   --q-border-field: oklch(66% 0.01 80);
   --q-muted: oklch(47% 0.012 65);
-  --q-faint: oklch(55% 0.01 65);
+  --q-faint: oklch(54% 0.01 65);
   --q-ring: oklch(62% 0.15 70);
   --q-code-bg: oklch(96.8% 0.006 85);
   --q-primary-soft: oklch(95.5% 0.04 85);
@@ -142,7 +142,7 @@
   --q-term-bg: oklch(20% 0.008 70);
   --q-term-edge: oklch(30% 0.008 70);
   --q-term-fg: oklch(90% 0.008 80);
-  --q-term-dim: oklch(66% 0.012 75);
+  --q-term-dim: oklch(71% 0.012 75);
   --q-term-red: oklch(74% 0.16 25);
   --q-term-green: oklch(80% 0.15 152);
   --q-term-yellow: oklch(84% 0.13 85);
@@ -2334,6 +2334,17 @@
     font-weight: 400;
     font-variant-numeric: tabular-nums;
   }
+  /* Faint text is under 4.5:1 on a filled pill or a honey row: there, what is faint is
+     drawn muted. The token is redefined on the fill, so every faint word inside follows. */
+  .q-views > a:is(:hover, [aria-current="page"]),
+  .q-rail-list a:is(:hover, [aria-current="true"]),
+  .q-vlist > a[aria-current],
+  tr.q-ruled {
+    --q-faint: var(--q-muted);
+  }
+  .q-views > a[aria-current="page"] .q-views-n {
+    font-weight: 500;
+  }
   .q-find {
     width: min(320px, 100%);
   }
@@ -3063,7 +3074,7 @@
     font-variant-numeric: tabular-nums;
   }
   .q-rail-n0 {
-    color: var(--q-border-field);
+    color: var(--q-faint);
   }
   .q-rail-h {
     padding: 12px 8px 4px;
@@ -5682,6 +5693,12 @@
     overflow-y: hidden;
     outline: none;
     scrollbar-color: var(--q-term-edge) transparent;
+  }
+  /* Dim text (SGR 2) in the default colour: xterm.js draws it as the foreground at half
+     opacity, 4.2:1 on the box; the terminal's own dim token reaches 4.5:1 (WCAG 1.4.3).
+     xterm.js writes its colours in a style sheet outside the layers, hence !important. */
+  .q-term-screen .xterm .xterm-rows .xterm-dim:not([class*="xterm-fg-"]) {
+    color: var(--q-term-dim) !important;
   }
   .q-term-screen .xterm {
     height: 100%;

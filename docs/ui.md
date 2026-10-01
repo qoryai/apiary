@@ -415,7 +415,10 @@ inverted.
   A template names a token, never a literal colour. A new token is defined
   in all three places: `[data-theme="qory"]`, `[data-theme="qory-dark"]`, and the
   `prefers-color-scheme: dark` block for a page without the script. With tokens a
-  `dark:` variant is rarely needed.
+  `dark:` variant is rarely needed. Faint text reaches 4.5:1 on the page and the
+  sidebar, not on a fill: the current view's pill, a rail's current target, the current
+  version and a row marked by `?rule=` redefine `--q-faint` as `--q-muted`, so every faint
+  word on them is drawn muted.
 - **Honey is for one thing.** `primary` marks the main action of a screen, a checked box,
   the current step and the mark. It is too light to be text on the light theme: links and
   the active navigation icon use `accent`.
