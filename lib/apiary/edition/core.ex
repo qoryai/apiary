@@ -45,6 +45,9 @@ defmodule Apiary.Edition.Core do
   end
 
   @impl true
+  def above_workspace(_workspace), do: nil
+
+  @impl true
   def audit_retention_max_days, do: 90
 
   @impl true

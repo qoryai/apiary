@@ -6,7 +6,7 @@ defmodule Apiary.Policy.ResolutionTest do
   """
   use ExUnit.Case, async: true
 
-  alias Apiary.Policy.{Render, Resolution, Rule, Schema}
+  alias Apiary.Policy.{Above, Render, Resolution, Rule, Schema}
 
   defp allow(host, opts \\ []), do: host_rule("allow", host, opts)
   defp deny(host, opts \\ []), do: host_rule("deny", host, opts)
@@ -165,6 +165,220 @@ defmodule Apiary.Policy.ResolutionTest do
                )
 
       assert message =~ unquote(Macro.escape(sentence))
+    end
+  end
+
+  describe "the level above" do
+    defp above(rules, opts \\ []) do
+      %Above{
+        id: Ecto.UUID.generate(),
+        name: "Eight Wonders",
+        slug: "8wonders",
+        rules: Enum.map(rules(rules), &%{&1 | id: Ecto.UUID.generate()}),
+        floor: Keyword.get(opts, :floor, false),
+        own_allows: Keyword.get(opts, :own_allows, true)
+      }
+    end
+
+    # {name, the level above's rules, its options, workspace rules, target rules,
+    #  allow, deny, paths, the hosts struck below it}
+    @above_resolved [
+      {"its deny over a workspace allow holds, in deny", [{:deny, "paste.example"}], [],
+       [{:allow, "paste.example"}], [], [], ["paste.example"], %{}, ["paste.example"]},
+      {"its deny over a target allow holds", [{:deny, "paste.example"}], [], [],
+       [{:allow, "paste.example"}], [], ["paste.example"], %{}, ["paste.example"]},
+      {"its deny over a locked workspace allow holds", [{:deny, "paste.example"}], [],
+       [{:allow, "paste.example", locked: true}], [], [], ["paste.example"], %{},
+       ["paste.example"]},
+      {"its *. deny covers a target allow and a locked one of the workspace",
+       [{:deny, "*.ads.example"}], [], [{:allow, "a.ads.example", locked: true}],
+       [{:allow, "b.ads.example"}, {:allow, "api.example"}], ["api.example"], ["*.ads.example"],
+       %{}, ["a.ads.example", "b.ads.example"]},
+      {"its allow reaches the workspace", [{:allow, "api.example"}], [], [], [], ["api.example"],
+       [], %{}, []},
+      {"its allow is narrowed by a workspace deny on the same host, which is written",
+       [{:allow, "tracker.example"}], [], [{:deny, "tracker.example"}], [], [],
+       ["tracker.example"], %{}, []},
+      {"its allow is narrowed by a target deny on the same host", [{:allow, "tracker.example"}],
+       [], [], [{:deny, "tracker.example"}], [], ["tracker.example"], %{}, []},
+      {"its name allow is covered by a workspace *. deny", [{:allow, "a.s.example"}], [], [],
+       [{:deny, "*.s.example"}], [], ["*.s.example"], %{}, []},
+      {"its *. allow stands beside a workspace deny below it, which is written",
+       [{:allow, "*.example"}], [], [{:deny, "tracker.example"}], [], ["*.example"],
+       ["tracker.example"], %{}, []},
+      {"its allow holds over a workspace allow on the same host, paths included",
+       [{:allow, "api.example", paths: ["/v1/*"]}], [], [{:allow, "api.example"}], [],
+       ["api.example"], [], %{"api.example" => ["/v1/*"]}, ["api.example"]},
+      {"its allow holds over a locked allow and a target allow on the same host",
+       [{:allow, "api.example"}], [], [{:allow, "api.example", paths: ["/a"], locked: true}],
+       [{:allow, "api.example", paths: ["/b"]}], ["api.example"], [], %{},
+       ["api.example", "api.example"]},
+      {"its *. allow held to paths overrides a workspace name allow below it",
+       [{:allow, "*.git.example", paths: ["/acme/*"]}], [], [{:allow, "a.git.example"}], [],
+       ["*.git.example"], [], %{"*.git.example" => ["/acme/*"]}, ["a.git.example"]},
+      {"its *. allow held to paths overrides a locked allow and a target allow below it",
+       [{:allow, "*.git.example", paths: ["/acme/*"]}], [],
+       [{:allow, "a.git.example", paths: ["/x"], locked: true}],
+       [{:allow, "b.git.example", paths: ["/y"]}], ["*.git.example"], [],
+       %{"*.git.example" => ["/acme/*"]}, ["a.git.example", "b.git.example"]},
+      {"a workspace name held to paths under its free *. allow narrows it",
+       [{:allow, "*.example"}], [], [{:allow, "git.example", paths: ["/a"]}], [],
+       ["git.example", "*.example"], [], %{"git.example" => ["/a"]}, []},
+      {"the switch off strikes the workspace's and the target's allows, keeps denies and credentials",
+       [{:allow, "api.example"}], [own_allows: false],
+       [{:allow, "cdn.example"}, {:deny, "ads.example"}, {:credential, "allow", "model"}],
+       [{:allow, "mcp.example"}, {:deny, "api.example"}], [], ["ads.example", "api.example"], %{},
+       ["cdn.example", "mcp.example"]},
+      {"the switch off: only its own allows grant, with their paths",
+       [{:allow, "api.example", paths: ["/v1"]}, {:allow, "*.cdn.example"}], [own_allows: false],
+       [{:allow, "api.example"}, {:allow, "a.cdn.example"}], [], ["api.example", "*.cdn.example"],
+       [], %{"api.example" => ["/v1"]}, ["a.cdn.example", "api.example"]},
+      {"the switch off: a struck allow does not meet anything", [{:allow, "*.example"}],
+       [own_allows: false], [{:allow, "*.example", paths: ["/a"]}], [], ["*.example"], [], %{},
+       ["*.example"]},
+      {"nothing above resolves as before", [], [], [{:allow, "api.example"}],
+       [{:deny, "api.example"}], [], ["api.example"], %{}, ["api.example"]}
+    ]
+
+    for {name, above, opts, workspace, target, allow, deny, paths, struck} <- @above_resolved,
+        mode <- ~w(observe enforce) do
+      test "#{name} (#{mode})" do
+        above = above(unquote(Macro.escape(above)), unquote(opts))
+
+        assert {:ok, effective} =
+                 Resolution.resolve(
+                   unquote(mode),
+                   rules(unquote(Macro.escape(workspace))),
+                   rules(unquote(Macro.escape(target))),
+                   nil,
+                   above
+                 )
+
+        assert effective.mode == unquote(mode)
+        assert effective.above == above
+        assert effective.allow == unquote(allow)
+        assert effective.deny == unquote(deny)
+        assert effective.paths == unquote(Macro.escape(paths))
+
+        struck =
+          for %{kind: :host, in_force: false, source: source} = entry <- effective.entries,
+              source != :organisation,
+              do: entry.host
+
+        assert Enum.sort(struck) == unquote(struck)
+
+        document = Render.document(effective)
+        assert :ok = Schema.validate(document)
+        policy = Jason.decode!(document)["security_policy"]
+        assert policy["egress"]["allow"] == unquote(allow)
+        assert policy["egress"]["deny"] == if(unquote(deny) == [], do: nil, else: unquote(deny))
+      end
+    end
+
+    test "its entries say their source, and are never locked" do
+      above = above([{:deny, "paste.example"}, {:allow, "api.example"}])
+
+      {:ok, effective} =
+        Resolution.resolve(
+          "enforce",
+          [allow("paste.example", locked: true), allow("api.example")],
+          [],
+          nil,
+          above
+        )
+
+      by = fn host, source ->
+        Enum.find(effective.entries, &(&1.host == host and &1.source == source))
+      end
+
+      assert %{in_force: true, locked: false, overrides: [%{source: :workspace, locked: true}]} =
+               by.("paste.example", :organisation)
+
+      assert %{
+               in_force: false,
+               reason: nil,
+               overridden_by: %{source: :organisation, action: :deny}
+             } =
+               by.("paste.example", :workspace)
+
+      assert %{in_force: false, overridden_by: %{source: :organisation, action: :allow}} =
+               by.("api.example", :workspace)
+
+      # The level above's entry comes first on its subject.
+      assert [:organisation, :workspace] =
+               effective.entries
+               |> Enum.filter(&(&1.host == "api.example"))
+               |> Enum.map(& &1.source)
+    end
+
+    test "a struck allow under the switch names its reason and no winner" do
+      above = above([], own_allows: false)
+
+      {:ok, effective} =
+        Resolution.resolve("observe", [allow("cdn.example")], [deny("ads.example")], nil, above)
+
+      assert %{in_force: false, reason: :only_above_allows, overridden_by: nil} =
+               Enum.find(effective.entries, &(&1.host == "cdn.example"))
+
+      assert %{in_force: true, reason: nil} =
+               Enum.find(effective.entries, &(&1.host == "ads.example"))
+    end
+
+    test "its allow narrowed by a workspace deny names the deny" do
+      above = above([{:allow, "tracker.example"}])
+
+      {:ok, effective} =
+        Resolution.resolve("observe", [deny("tracker.example")], [], nil, above)
+
+      assert %{in_force: false, overridden_by: %{source: :workspace, action: :deny}} =
+               Enum.find(effective.entries, &(&1.source == :organisation))
+    end
+
+    test "a lower suffix held to paths above its name allow is refused, naming it" do
+      above = above([{:allow, "git.example"}])
+
+      assert {:error, %Apiary.Policy.Error{reason: :conflict, message: message}} =
+               Resolution.resolve(
+                 "enforce",
+                 [allow("*.example", paths: ["/a"])],
+                 [],
+                 nil,
+                 above
+               )
+
+      assert message =~ "*.example in the workspace is held to paths"
+      assert message =~ "git.example below it has a rule of its own in Eight Wonders's policy"
+    end
+
+    test "its own suffix held to paths above its own name allow is refused, naming it twice" do
+      above = above([{:allow, "*.example", paths: ["/a"]}, {:allow, "git.example"}])
+
+      assert {:error, %Apiary.Policy.Error{reason: :conflict, message: message}} =
+               Resolution.resolve("enforce", [], [], nil, above)
+
+      assert message =~ "*.example in Eight Wonders's policy is held to paths"
+      assert message =~ "in Eight Wonders's policy."
+    end
+
+    test "the floor sets the mode, whatever the workspace and the target set" do
+      above = above([], floor: true)
+      id = Ecto.UUID.generate()
+
+      assert {:ok, %{mode: "enforce", mode_source: :organisation}} =
+               Resolution.resolve_for("observe", nil, [], [], nil, above)
+
+      assert {:ok, %{mode: "enforce", mode_source: :organisation}} =
+               Resolution.resolve_for("observe", "observe", [], [], id, above)
+
+      assert {:ok, %{mode: "observe", mode_source: :target}} =
+               Resolution.resolve_for("enforce", "observe", [], [], id, above([]))
+    end
+
+    test "credential rules of the level above are not read" do
+      above = above([{:credential, "allow", "model"}])
+      {:ok, effective} = Resolution.resolve("enforce", [], [], nil, above)
+      assert effective.credentials == []
+      assert effective.entries == []
     end
   end
 
