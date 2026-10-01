@@ -90,7 +90,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       assert html =~ scope.workspace.name
 
       assert html =~
-               ~r{<title[^>]*>\s*#{Regex.escape(scope.workspace.name)} · Qory Apiary\s*</title>}
+               ~r{<title[^>]*>\s*#{Regex.escape(scope.workspace.name)} · #{Regex.escape(scope.organisation.name)} · Qory Apiary\s*</title>}
 
       assert html =~ "The workspace of the #{scope.organisation.name} organisation."
       refute html =~ ~r/<abbr[^>]*>(hive|apiary)<\/abbr>/

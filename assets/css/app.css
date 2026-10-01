@@ -955,10 +955,9 @@
     transition: opacity 160ms var(--q-ease-in), visibility 160ms allow-discrete,
       background-color 160ms var(--q-ease-in);
   }
+  /* A plain scrim, no blur: what the dialog acts on stays legible behind it. */
   :where(.modal)[open] {
     background-color: var(--q-overlay);
-    -webkit-backdrop-filter: blur(2px);
-    backdrop-filter: blur(2px);
     transition-duration: 240ms;
     transition-timing-function: var(--q-ease-out);
   }
@@ -1004,6 +1003,14 @@
   @media (min-width: 640px) {
     :where(.modal-action) {
       flex-direction: row;
+    }
+    /* From 640 px a dialog sits near the top, as the v2 mocks draw it, not mid-screen. */
+    dialog.modal {
+      place-items: start center;
+      padding: 12vh 1rem 5vh;
+    }
+    dialog.modal .modal-box {
+      max-height: calc(100dvh - 17vh);
     }
   }
   @media (max-width: 639.98px) {

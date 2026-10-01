@@ -372,7 +372,9 @@ or an attribute of one, not a copy.
   a workspace's slug.
 - **`<.modal>`** is a native `<dialog>` under the `Modal` hook. Escape and the backdrop
   run its `data-cancel` command, usually a patch back to the page beneath; a dialog
-  without one cannot be dismissed. Focus returns to what opened it.
+  without one cannot be dismissed. Focus returns to what opened it. From 640 px it sits
+  near the top over a plain scrim, never a blur, so what it acts on stays legible behind
+  it; while it is open the window's title names it before the page's.
 - **Menus** are daisyUI dropdowns under the `Menu` hook: a click opens and leaves focus on
   the trigger; Enter, Space and ArrowDown open and focus the first item, ArrowUp the last;
   the arrows wrap, Home and End go to the ends, Escape closes and returns focus. The items

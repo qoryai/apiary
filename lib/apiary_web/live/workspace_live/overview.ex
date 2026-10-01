@@ -276,7 +276,8 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     socket =
       socket
       |> assign(
-        page_title: scope.workspace.name,
+        # Two organisations may each have a Main: the window names the organisation too.
+        page_title: scope.workspace.name <> " · " <> scope.organisation.name,
         shown: @shown,
         keys: sort_keys(keys),
         alive: alive,

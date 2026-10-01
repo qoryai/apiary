@@ -1213,8 +1213,9 @@ defmodule ApiaryWeb.RunLive.Show do
     refuse_terminal(socket)
 
     case socket.assigns do
-      %{run: %Run{}, loaded: true} ->
-        {:noreply, apply_params(socket, Map.drop(params, ["org", "workspace", "run_id"]))}
+      %{run: %Run{} = run, loaded: true} ->
+        socket = apply_params(socket, Map.drop(params, ["org", "workspace", "run_id"]))
+        {:noreply, assign(socket, :page_title, run_title(run, socket.assigns.live_action))}
 
       _ ->
         {:noreply, socket}
@@ -1286,11 +1287,24 @@ defmodule ApiaryWeb.RunLive.Show do
       run: run,
       quiet_for: quiet_for(run),
       closable: run.state in Runs.closable_states() and Access.can?(scope, :"run.close", run),
-      page_title:
-        gettext("%{title} · Runs",
-          title: run.task || gettext("Run %{id}", id: short_id(run.run_id))
-        )
+      page_title: run_title(run, socket.assigns.live_action)
     )
+  end
+
+  # The window's title: the run, and the tab when it is not the timeline, so a reader with
+  # several tabs of one run open tells them apart.
+  defp run_title(run, tab) do
+    title =
+      gettext("%{title} · Runs",
+        title: run.task || gettext("Run %{id}", id: short_id(run.run_id))
+      )
+
+    case tab do
+      :terminal -> gettext("Terminal") <> " · " <> title
+      :connections -> gettext("Network access") <> " · " <> title
+      :details -> gettext("Details") <> " · " <> title
+      _timeline -> title
+    end
   end
 
   # Every parameter is validated against the record; what is not valid is dropped and the
