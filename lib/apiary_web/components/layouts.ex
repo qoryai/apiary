@@ -176,13 +176,18 @@ defmodule ApiaryWeb.Layouts do
   end
 
   @doc """
-  new_entries/1 is what New offers in `scope`, the top bar's menu and the palette's
-  actions, as `ApiaryWeb.Nav.Entry` values: only what the reader may do there.
+  new_entries/2 is what New offers in `scope` at `place`, a workspace's page, an
+  organisation's own or the person's, for the top bar's menu and the palette's actions, as
+  `ApiaryWeb.Nav.Entry` values: the edition's first (`c:ApiaryWeb.Edition.new_entries/2`),
+  then the core's, a new access key on a workspace's page and an invitation on an
+  organisation's too; of them, only what the reader may do there, each entry's action
+  asked of the workspace or the organisation as its `place` says.
   """
-  @spec new_entries(Apiary.Accounts.Scope.t()) :: [Entry.t()]
-  def new_entries(%{organisation: %{} = organisation, workspace: workspace} = scope) do
+  @spec new_entries(Apiary.Accounts.Scope.t(), :workspace | :organisation | :person) ::
+          [Entry.t()]
+  def new_entries(%{organisation: %{} = organisation, workspace: workspace} = scope, place) do
     key =
-      workspace &&
+      place == :workspace && workspace &&
         %Entry{
           key: :key,
           label: gettext("New access key"),
@@ -200,12 +205,12 @@ defmodule ApiaryWeb.Layouts do
       action: :"member.invite"
     }
 
-    for %Entry{} = entry <- [key, invite],
+    for %Entry{} = entry <- ApiaryWeb.Edition.new_entries(scope, place) ++ [key, invite],
         nav_open?(scope, entry.action, subject(entry, scope)),
         do: entry
   end
 
-  def new_entries(_scope), do: []
+  def new_entries(_scope, _place), do: []
 
   @doc """
   palette_entries/1 is where the palette's Go to leads in `scope`: every entry of the
@@ -414,7 +419,7 @@ defmodule ApiaryWeb.Layouts do
   attr :sidebar, :boolean, required: true
 
   defp top_bar(assigns) do
-    assigns = assign(assigns, :new_entries, new_entries(assigns.scope))
+    assigns = assign(assigns, :new_entries, new_entries(assigns.scope, assigns.place))
 
     ~H"""
     <header
@@ -803,7 +808,7 @@ defmodule ApiaryWeb.Layouts do
   defp current_switch_id(organisation, workspace),
     do: "switch-#{organisation.slug}-#{workspace.slug}"
 
-  # New: what the person may start from here (`new_entries/1`).
+  # New: what the person may start from here (`new_entries/2`).
   attr :entries, :list, required: true
 
   defp new_menu(assigns) do
@@ -1340,8 +1345,9 @@ defmodule ApiaryWeb.Layouts do
       nav_open?(scope, entry.action, subject(entry, scope))
   end
 
-  # What an entry's action is asked of: the workspace where there is one, else the
-  # organisation.
+  # What an entry's action is asked of: the organisation, for an entry of the
+  # organisation's; else the workspace where there is one, else the organisation.
+  defp subject(%Entry{place: :organisation}, scope), do: scope.organisation
   defp subject(%Entry{}, scope), do: scope.workspace || scope.organisation
 
   # Where the switcher leads: to a workspace of a membership, the section the user is on,

@@ -38,7 +38,8 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
   organisation, marked first and purged after a grace period.
 - The console's shell: a top bar that says where a page is, the organisation first, and
   switches to any organisation or workspace with a search, Search or jump to (⌘K) for
-  pages, repositories, runs and places, New, and a sidebar of the page's workspace,
+  pages, repositories, runs and places, New, which offers a workspace's page a new
+  access key and an organisation's an invitation, and a sidebar of the page's workspace,
   organisation or account, which folds to icons, with the Qory Apiary menu (docs,
   changelog, source, version) at its foot. A workspace's settings, an organisation's and
   your own are each a place of their own with their own sections, GitHub's way, and

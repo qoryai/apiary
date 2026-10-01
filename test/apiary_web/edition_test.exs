@@ -12,6 +12,7 @@ defmodule ApiaryWeb.EditionTest do
 
     assert core.nav_entries(nil) == []
     assert core.nav_counts(nil) == %{}
+    assert core.new_entries(nil, :organisation) == []
     assert core.switcher_entries(nil) == []
     assert core.place_scope(%Apiary.Organisations.Membership{}, %Workspace{}) == nil
     assert core.reader_sentence(:level, nil) == nil

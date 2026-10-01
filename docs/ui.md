@@ -39,7 +39,10 @@ The shell is section 4 of the v2 design brief (the knowledge vault's
   navigation, targets, runs by id or task, places, and what New offers. Every word of it
   comes from the server; a runner's words are written as text.
 - **New** offers only what the reader may do where the page is
-  (`ApiaryWeb.Layouts.new_entries/1`). **The account menu** holds who they are and their
+  (`ApiaryWeb.Layouts.new_entries/2`): on a workspace's page a new access key and an
+  invitation, on an organisation's own the invitation, and before the core's whatever
+  the edition offers there (`ApiaryWeb.Edition.new_entries/2`), each entry asked of the
+  workspace or the organisation as its place says. **The account menu** holds who they are and their
   level there, their settings and organisations, the theme (Auto, Light, Dark), and Log
   out; nothing about Qory Apiary itself.
 - **The sidebar** holds the scope's pages and nothing else, in groups, each a `<nav>` with

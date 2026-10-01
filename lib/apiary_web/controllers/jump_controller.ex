@@ -19,7 +19,8 @@ defmodule ApiaryWeb.JumpController do
   - **Runs**: by the start of their id, a whole id or a run page's address, or by task
     (`Apiary.Runs.search_runs/3`).
   - **Places**: the organisations and workspaces the reader reaches, by name and slug.
-  - **Actions**: what New offers here (`ApiaryWeb.Layouts.new_entries/1`).
+  - **Actions**: what New offers here (`ApiaryWeb.Layouts.new_entries/2`), on a
+    workspace's page or an organisation's.
 
   Scoped like the pages: the pipeline resolves the organisation and workspace of the path
   for a member and answers `404` for anybody else. On an organisation's path the answer is
@@ -169,8 +170,10 @@ defmodule ApiaryWeb.JumpController do
     do: "#{organisation.name} #{organisation.slug} #{workspace.name} #{workspace.slug}"
 
   defp actions(scope, text) do
+    place = if scope.workspace, do: :workspace, else: :organisation
+
     items =
-      for %Entry{} = entry <- Layouts.new_entries(scope),
+      for %Entry{} = entry <- Layouts.new_entries(scope, place),
           matches?(entry.label, text),
           do: item(entry.label, nil, entry.path, entry.icon)
 

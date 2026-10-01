@@ -93,6 +93,12 @@ defmodule ApiaryWeb.LayoutsTest do
       {:ok, view, _html} = live(log_in_user(build_conn(), member), workspace_path(scope))
       assert has_element?(view, "#new-menu-key")
       refute has_element?(view, "#new-menu-invite")
+
+      # an organisation's own page offers what the organisation holds: no key of a
+      # workspace the page is not on
+      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/settings")
+      assert has_element?(view, "#new-menu-invite")
+      refute has_element?(view, "#new-menu-key")
     end
 
     test "the account menu: who you are, your settings and organisations, the theme, log out",

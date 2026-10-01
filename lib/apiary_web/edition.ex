@@ -23,7 +23,8 @@ defmodule ApiaryWeb.Edition do
   The callbacks, by where they are asked:
 
   - **Navigation** (`ApiaryWeb.Layouts`): `c:nav_entries/1`, the sidebar's entries after
-    the core's, and `c:switcher_entries/1`, the switcher's after its places, each an
+    the core's, `c:new_entries/2`, what New offers before the core's, and
+    `c:switcher_entries/1`, the switcher's after its places, each an
     `ApiaryWeb.Nav.Entry`; `c:nav_sections/0`, the headings of the edition's own groups of
     the sidebar; `c:nav_counts/1`, the numbers beside them, merged into
     `ApiaryWeb.UserAuth.nav_counts/1`; `c:place_scope/2`, the scope a place of the
@@ -58,6 +59,15 @@ defmodule ApiaryWeb.Edition do
   the core's for a scope with an organisation.
   """
   @callback nav_counts(Scope.t()) :: %{atom => term}
+
+  @doc """
+  The edition's entries of New, the top bar's menu and the palette's actions, before the
+  core's (`ApiaryWeb.Layouts.new_entries/2`), in the scope of the page and its place: a
+  workspace's page, an organisation's own, or the person's. Each entry's `action` is
+  asked, of the workspace or the organisation as the entry's `place` says, before it is
+  offered.
+  """
+  @callback new_entries(Scope.t(), place :: :workspace | :organisation | :person) :: [Entry.t()]
 
   @doc "The organisation switcher's entries after the places it switches to."
   @callback switcher_entries(Scope.t()) :: [Entry.t()]
@@ -139,6 +149,7 @@ defmodule ApiaryWeb.Edition do
   @callbacks [
     nav_entries: 1,
     nav_counts: 1,
+    new_entries: 2,
     switcher_entries: 1,
     nav_sections: 0,
     place_group: 1,
