@@ -34,7 +34,9 @@ The shell is section 4 of the v2 design brief (the knowledge vault's
   `/:org/:workspace/switch/:section`, `ApiaryWeb.SwitchController`, which asks the
   destination's own scope when it is followed), and
   the edition's groups of places under their own headings
-  (`ApiaryWeb.Edition.place_group/1`). ↑ and ↓ move, Enter opens the first match, Escape
+  (`ApiaryWeb.Edition.place_group/1`), each folded behind its heading, a button with the
+  group's count, unless the reader's place is in it; a search opens every group it finds a
+  place in. ↑ and ↓ move, Enter opens the first match, Escape
   closes and gives focus back. With one place the segments are links and nothing more.
 - **Search or jump to** (⌘K, Ctrl+K, and / outside a field) is a `<dialog>` under the
   `Palette` hook, which asks `ApiaryWeb.JumpController` (`/:org/:workspace/jump`,

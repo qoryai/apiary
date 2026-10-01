@@ -1372,6 +1372,37 @@
   .q-switcher-org {
     padding-bottom: 4px;
   }
+  /* An edition's group of places, folded behind its heading: the heading is the button,
+     its count beside it, the chevron turned while it is open. */
+  .q-switcher-fold {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    align-items: center;
+    gap: 6px;
+    margin: -4px -6px;
+    padding: 4px 6px;
+    border-radius: var(--radius-field);
+    color: inherit;
+    font: inherit;
+    text-align: left;
+  }
+  .q-switcher-fold:hover {
+    background-color: var(--color-base-200);
+    color: var(--q-muted);
+  }
+  .q-switcher-fold-i {
+    flex: none;
+    transition: transform 120ms var(--q-ease-out);
+  }
+  .q-switcher-fold[aria-expanded="true"] .q-switcher-fold-i {
+    transform: rotate(90deg);
+  }
+  .q-switcher-n {
+    margin-left: auto;
+    font-variant-numeric: tabular-nums;
+    font-weight: 400;
+  }
   .q-switcher-org-name {
     display: flex;
     min-width: 0;

@@ -653,7 +653,8 @@ defmodule ApiaryWeb.Layouts do
   # workspaces, a link to each at the section the user is on (the path says which
   # workspace a page shows), and to an organisation where they reach no workspace yet; the
   # places of the edition's groups (`c:ApiaryWeb.Edition.place_group/1`) under their own
-  # headings. A link loads the page afresh, so the session remembers the workspace for
+  # headings, each folded behind its heading and its count unless the page's place is in
+  # it, and opened by a search that finds a place in it. A link loads the page afresh, so the session remembers the workspace for
   # `/`. Last, Your organisations and the edition's entries
   # (`ApiaryWeb.Edition.switcher_entries/1`), such as New organisation.
   attr :scope, :any, required: true
@@ -707,41 +708,63 @@ defmodule ApiaryWeb.Layouts do
           data-group
         >
           <h3 id={"organisation-menu-group-#{g}"} class="q-switcher-heading">
-            {heading || gettext("Your organisations")}
+            <%= if heading do %>
+              <button
+                type="button"
+                class="q-switcher-fold"
+                aria-expanded={to_string(group_open?(places, @organisation, @workspace))}
+                aria-controls={"organisation-menu-group-#{g}-places"}
+                phx-mounted={JS.ignore_attributes(["aria-expanded"])}
+                data-fold
+              >
+                <.icon name="hero-chevron-right-micro" class="q-switcher-fold-i size-3.5" />
+                <span class="truncate">{heading}</span>
+                <span class="q-switcher-n">{Format.number(length(places))}</span>
+              </button>
+            <% else %>
+              {gettext("Your organisations")}
+            <% end %>
           </h3>
           <div
-            :for={{place, workspaces} <- places}
-            class="q-switcher-org"
-            data-org
-            data-search={search_text(place.organisation)}
+            id={"organisation-menu-group-#{g}-places"}
+            hidden={heading && !group_open?(places, @organisation, @workspace)}
+            phx-mounted={JS.ignore_attributes(["hidden"])}
+            data-fold-list={heading && "true"}
           >
-            <div class="q-switcher-org-name" aria-hidden="true">
-              <.avatar name={place.organisation.name} kind="organisation" size="xs" />
-              <span class="truncate">{place.organisation.name}</span>
+            <div
+              :for={{place, workspaces} <- places}
+              class="q-switcher-org"
+              data-org
+              data-search={search_text(place.organisation)}
+            >
+              <div class="q-switcher-org-name" aria-hidden="true">
+                <.avatar name={place.organisation.name} kind="organisation" size="xs" />
+                <span class="truncate">{place.organisation.name}</span>
+              </div>
+              <ul>
+                <li :for={w <- workspaces}>
+                  <.link
+                    id={switch_id({place, w})}
+                    href={switch_path(@nav, @nav_entries, place, w)}
+                    class="q-switcher-place"
+                    aria-current={current?({place, w}, @organisation, @workspace) && "true"}
+                    data-place
+                    data-search={search_text(place.organisation, w)}
+                    data-recent-label={place_label(place.organisation, w)}
+                  >
+                    <span class="truncate">
+                      <span class="sr-only">{place.organisation.name} /</span>
+                      {if w, do: w.name, else: gettext("No workspace yet")}
+                    </span>
+                    <.icon
+                      :if={current?({place, w}, @organisation, @workspace)}
+                      name="hero-check-micro"
+                      class="ml-auto size-4 flex-none text-accent"
+                    />
+                  </.link>
+                </li>
+              </ul>
             </div>
-            <ul>
-              <li :for={w <- workspaces}>
-                <.link
-                  id={switch_id({place, w})}
-                  href={switch_path(@nav, @nav_entries, place, w)}
-                  class="q-switcher-place"
-                  aria-current={current?({place, w}, @organisation, @workspace) && "true"}
-                  data-place
-                  data-search={search_text(place.organisation, w)}
-                  data-recent-label={place_label(place.organisation, w)}
-                >
-                  <span class="truncate">
-                    <span class="sr-only">{place.organisation.name} /</span>
-                    {if w, do: w.name, else: gettext("No workspace yet")}
-                  </span>
-                  <.icon
-                    :if={current?({place, w}, @organisation, @workspace)}
-                    name="hero-check-micro"
-                    class="ml-auto size-4 flex-none text-accent"
-                  />
-                </.link>
-              </li>
-            </ul>
           </div>
         </section>
         <p id="organisation-menu-empty" class="q-switcher-empty" hidden>
@@ -801,6 +824,13 @@ defmodule ApiaryWeb.Layouts do
        end}
     end
   end
+
+  # An edition's group opens folded, unless the page's place is in it.
+  defp group_open?(places, organisation, workspace),
+    do:
+      Enum.any?(places, fn {place, workspaces} ->
+        Enum.any?(workspaces, &current?({place, &1}, organisation, workspace))
+      end)
 
   defp search_text(organisation, workspace \\ nil) do
     [

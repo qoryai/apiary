@@ -4,6 +4,8 @@
 // kept in localStorage as a reading preference (their switch ids, nothing else). The arrow
 // keys move between the search and the places, Enter opens the first match, Escape closes
 // and gives focus back to the chevron that opened it; focus or a pointer leaving closes.
+// An edition's group is folded behind its heading, a button that opens it; a search opens
+// every group it finds a place in, and an empty search folds them back as they were.
 // Every word is in the markup.
 const KEY = "qory:recent-places"
 const RECENT = 5
@@ -32,6 +34,13 @@ export const Switcher = {
     remember(this.el.dataset.current)
 
     this.el.addEventListener("click", e => {
+      const fold = e.target.closest("button[data-fold]")
+      if (fold) {
+        e.preventDefault()
+        fold.setAttribute("aria-expanded", String(fold.getAttribute("aria-expanded") !== "true"))
+        this.filter()
+        return
+      }
       const trigger = e.target.closest("[data-switcher-open]")
       if (trigger) {
         e.preventDefault()
@@ -119,6 +128,10 @@ export const Switcher = {
         groupAny ||= orgAny
       })
       group.hidden = !groupAny
+      // A folded group shows its places while a search finds one in it.
+      const list = group.querySelector("[data-fold-list]")
+      const fold = group.querySelector("button[data-fold]")
+      if (list && fold) list.hidden = q === "" ? fold.getAttribute("aria-expanded") !== "true" : false
       any ||= groupAny
     })
     const recent = this.panel.querySelector("#organisation-menu-recent")
@@ -138,7 +151,9 @@ export const Switcher = {
   },
 
   links() {
-    return [...this.panel.querySelectorAll("a")].filter(a => a.offsetParent !== null)
+    return [...this.panel.querySelectorAll("a, button[data-fold]")].filter(
+      a => a.offsetParent !== null,
+    )
   },
 
   onKey(e) {
