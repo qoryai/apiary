@@ -108,7 +108,9 @@ defmodule ApiaryWeb.JumpController do
     for %Entry{} = section <- SettingsComponents.sections(scope, place),
         section.key not in [:general, :organisation],
         not MapSet.member?(keys, {place, settings_key(section.key)}),
-        do: {%{section | section: :settings, place: place}, section.path}
+        do:
+          {%{section | section: :settings, place: place},
+           Entry.path(section, scope.organisation, scope.workspace)}
   end
 
   defp after_entry(%Entry{key: :user_preferences}, _scope, _keys) do
