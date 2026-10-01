@@ -451,7 +451,7 @@ defmodule ApiaryWeb.PolicyComponentsTest do
     refute own =~ "aria-disabled"
   end
 
-  test "a mode card is described by its sentence, its fact and the owners' line" do
+  test "the workspace's mode is one line: the radios, then its sentence, the fact and the owners' line" do
     assigns = %{scope: @scope}
 
     html =
@@ -459,10 +459,35 @@ defmodule ApiaryWeb.PolicyComponentsTest do
       <PolicyComponents.mode_switch scope={@scope} mode="observe" can_edit={false} served={false} />
       """)
 
-    assert html =~
-             ~s(aria-describedby="policy-mode-observe-p policy-mode-fact policy-mode-owners")
+    doc = LazyHTML.from_fragment(html)
 
-    assert html =~ ~s(aria-describedby="policy-mode-enforce-p policy-mode-owners")
-    assert html =~ "Not served yet: it applies from the first change here."
+    # The group is described by the line under it; no link or sentence inside a radio.
+    assert [group] = LazyHTML.query(doc, "#policy-mode[role=radiogroup]") |> Enum.to_list()
+    assert LazyHTML.attribute(group, "aria-describedby") == ["policy-mode-under"]
+    assert LazyHTML.query(doc, "[role=radio] a") |> Enum.empty?()
+    assert LazyHTML.query(doc, "[role=radio] p") |> Enum.empty?()
+
+    # A member's other mode is drawn and named disabled; the chosen one is not.
+    assert html =~ ~r/id="policy-mode-enforce"[^>]*aria-disabled="true"/
+    refute html =~ ~r/id="policy-mode-observe"[^>]*aria-disabled="true"/
+
+    under = doc |> LazyHTML.query("#policy-mode-under") |> LazyHTML.text()
+    assert under =~ "What no rule names is let through and recorded; a deny rule holds."
+    assert under =~ "Not served yet: it applies from the first change here."
+    assert under =~ "Only an owner or an admin sets a mode."
+  end
+
+  test "for one who may set it, the group also says what the arrow keys do" do
+    assigns = %{scope: @scope}
+
+    html =
+      rendered_to_string(~H"""
+      <PolicyComponents.mode_switch scope={@scope} mode="enforce" can_edit={true} following={3} />
+      """)
+
+    assert html =~ ~s(aria-describedby="policy-mode-keys policy-mode-under")
+    assert html =~ "A connection no rule allows is denied."
+    assert html =~ "All 3 repositories follow it."
+    assert html =~ ~r/id="policy-mode-observe"[^>]*phx-click/
   end
 end

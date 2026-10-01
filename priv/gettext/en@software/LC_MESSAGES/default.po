@@ -10500,3 +10500,13 @@ msgstr ""
 
 msgid "Not in force here: this target's own %{host} denies it"
 msgstr "Not in force here: this repository's own %{host} denies it"
+
+msgid "Its %{number} target follows it."
+msgid_plural "All %{number} targets follow it."
+msgstr[0] "Its %{number} repository follows it."
+msgstr[1] "All %{number} repositories follow it."
+
+msgid "Followed by %{number} of %{total} target; %{own}."
+msgid_plural "Followed by %{number} of %{total} targets; %{own}."
+msgstr[0] "Followed by %{number} of %{total} repository; %{own}."
+msgstr[1] "Followed by %{number} of %{total} repositories; %{own}."

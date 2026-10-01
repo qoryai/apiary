@@ -202,6 +202,11 @@ Sort (the list's own order, Host, Most used, Recently added); pages of 50; and `
 which Network access links with, landing on the page that holds the rule and marking it.
 A target's Policy tab shows each rule's Source; its own rules come first and have the ⋯
 menu's acts, the workspace's are read there and lead to the workspace's page.
+Above the rules, the workspace's mode is one line, as a target's is
+(`PolicyComponents.mode_switch/1`, `target_mode/1`): Mode, Observe | Enforce as a
+segmented radio group, a required mode's lock and whose it is, then one sentence of what
+the mode does and who follows it, and the record of the last 7 days with its link, beside
+the control and never inside it.
 
 - **Views** are the runs list's All, Alive, Ended badly and With denials, and Network
   access's decisions, each counted under every other filter; All is current when no

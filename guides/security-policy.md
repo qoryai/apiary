@@ -139,7 +139,8 @@ Members edit rules. Only an owner locks, unlocks, changes or removes a locked ru
 
 ## Observe and enforce
 
-The workspace has a mode, shown as two cards at the top of `/:org/:workspace/policy`.
+The workspace has a mode, one line at the top of `/:org/:workspace/policy`: Observe or
+Enforce, then a sentence of what it does and how many repositories follow it.
 
 - **Observe** records every connection and denies only what a deny rule names. A host no
   rule names is let through, and the record says so. A deny holds in observe as in enforce,
@@ -150,8 +151,8 @@ The workspace has a mode, shown as two cards at the top of `/:org/:workspace/pol
 A workspace starts in observe. Only an owner or an admin changes the mode, in either
 direction, and each change is confirmed. A wall's own refusals, the machine's own address
 say, hold in either mode. Where the level above the workspace requires enforce, the mode
-is enforce in the workspace and in every repository, the cards and the repositories'
-radios are fixed and say who requires it, and a repository's own observe is kept but not
+is enforce in the workspace and in every repository, the workspace's and the
+repositories' choices are fixed and say who requires it, and a repository's own observe is kept but not
 in force.
 
 The workspace's mode is a default. A repository follows it until an owner or an admin

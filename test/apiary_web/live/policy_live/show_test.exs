@@ -94,7 +94,10 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert text(view, "#policy-mode-fact") ==
                "Not served yet: it applies from the first change here."
 
-      assert text(view, "#policy-mode-observe") =~ "Workspace default"
+      # One line, the mode a segmented control and its sentence beside it, never inside it.
+      assert has_element?(view, "#policy-mode-line.q-modeline #policy-mode[role=radiogroup]")
+      refute has_element?(view, "#policy-mode a")
+      assert has_element?(view, "#policy-mode-under #policy-mode-fact")
     end
 
     test "the first rule starts the policy: a version, the pill, the mode word", %{
@@ -819,7 +822,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       view = open(conn, scope)
 
       assert text(view, "#policy-mode-under") =~
-               "A repository follows it unless an owner or an admin sets a mode of its own: 1 of 2 repositories does , and enforces."
+               "Followed by 1 of 2 repositories; 1 sets its own and enforces"
 
       assert has_element?(
                view,

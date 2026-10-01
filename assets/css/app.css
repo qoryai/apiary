@@ -6448,100 +6448,6 @@
     background-repeat: no-repeat;
   }
 
-  /* ---- Mode: two radio cards ---- */
-  .q-mode {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-  }
-  .q-mode-card {
-    position: relative;
-    display: grid;
-    grid-template-columns: 16px minmax(0, 1fr);
-    align-content: start;
-    gap: 2px 10px;
-    padding: 14px 16px;
-    border: 1px solid var(--q-border-subtle);
-    border-radius: var(--radius-box);
-    background-color: var(--color-base-200);
-    color: var(--q-muted);
-    font: inherit;
-    text-align: left;
-    cursor: pointer;
-    transition:
-      border-color 120ms var(--q-ease-out),
-      background-color 120ms var(--q-ease-out);
-  }
-  .q-mode-card:hover {
-    border-color: var(--q-border-field);
-  }
-  .q-mode-card[aria-disabled="true"] {
-    cursor: default;
-  }
-  .q-mode-card[aria-disabled="true"][aria-checked="false"]:hover {
-    border-color: var(--q-border-subtle);
-  }
-
-  /* ---- Repository mode: whose mode, in one compact card ---- */
-  .q-mode-dot {
-    display: grid;
-    width: 16px;
-    height: 16px;
-    margin-top: 2px;
-    place-items: center;
-    border: 1px solid var(--q-border-field);
-    border-radius: 9999px;
-    background-color: var(--color-base-100);
-  }
-  .q-mode-card[aria-checked="true"] {
-    border-color: var(--q-border-field);
-    background-color: var(--color-base-100);
-    box-shadow: var(--q-shadow-xs);
-    color: var(--color-base-content);
-    cursor: default;
-  }
-  .q-mode-card[aria-checked="true"] .q-mode-dot {
-    border-color: color-mix(in oklab, var(--color-primary) 78%, black);
-    background-color: var(--color-primary);
-  }
-  .q-mode-card[aria-checked="true"] .q-mode-dot::after {
-    content: "";
-    width: 6px;
-    height: 6px;
-    border-radius: 9999px;
-    background-color: var(--color-primary-content);
-  }
-  .q-mode-h {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    color: var(--color-base-content);
-    font-size: 0.875rem;
-    font-weight: 600;
-    line-height: 1.25rem;
-  }
-  .q-mode-p {
-    grid-column: 2;
-    max-width: 52ch;
-    color: var(--q-muted);
-    font-size: 0.8125rem;
-    line-height: 19px;
-  }
-  .q-mode-fact {
-    grid-column: 2;
-    margin-top: 8px;
-    padding-top: 8px;
-    border-top: 1px solid var(--q-border-subtle);
-    color: var(--q-muted);
-    font-size: 0.78125rem;
-    line-height: 18px;
-  }
-  .q-mode-fact b {
-    color: var(--color-base-content);
-    font-weight: 500;
-    font-variant-numeric: tabular-nums;
-  }
-
   /* ---- Section card with a composer on top of a table ---- */
   .q-sect {
     min-width: 0;
@@ -7159,9 +7065,6 @@
     }
     .q-head-side .q-vpill-dg {
       flex: 1;
-    }
-    .q-mode {
-      grid-template-columns: 1fr;
     }
     .q-sect > header .q-seg {
       max-width: 100%;
@@ -9012,9 +8915,6 @@
     gap: 5px;
     color: var(--q-faint);
     font-size: 0.78125rem;
-  }
-  .q-mode[data-floor="true"] .q-mode-card {
-    cursor: default;
   }
   .q-above-why {
     display: inline-flex;

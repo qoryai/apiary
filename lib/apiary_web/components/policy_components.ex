@@ -19,7 +19,6 @@ defmodule ApiaryWeb.PolicyComponents do
   import ApiaryWeb.CoreComponents,
     only: [
       avatar: 1,
-      badge: 1,
       button: 1,
       filter_menu: 1,
       filter_tokens: 1,
@@ -239,11 +238,14 @@ defmodule ApiaryWeb.PolicyComponents do
   ## Mode switch
 
   @doc """
-  The workspace's default mode as two radio cards. Choosing the other card never switches
-  at once: it sends `mode_ask`, and the page opens the confirm. Arrow keys move between
-  the cards (the `PolicyPage` hook); Space or Enter asks. A mode is an owner's or an admin's
-  to set: for a member the group is `aria-disabled`, keeps its look and its words, and
-  does nothing.
+  The workspace's default mode, one line, as a target's is (`target_mode/1`): Observe |
+  Enforce, then one sentence of what the mode does and who follows it, and the record of
+  the last 7 days with the way to it, beside the control and never inside it. Choosing the
+  other mode never switches at once: it sends `mode_ask`, and the page opens the confirm.
+  The arrow keys move between the two without choosing (the `PolicyPage` hook); Space or
+  Enter asks. A mode is an owner's or an admin's to set: for a member the other mode is
+  `aria-disabled`, drawn faint, and does nothing. Where the level above requires enforce
+  (`floor`), Observe is disabled and drawn so, and the line says who requires it.
   """
   attr :id, :string, default: "policy-mode"
   attr :mode, :string, required: true, values: ~w(observe enforce), doc: "the workspace's default"
@@ -275,91 +277,75 @@ defmodule ApiaryWeb.PolicyComponents do
         else: assigns
 
     ~H"""
-    <section class="grid gap-2.5" aria-labelledby={"#{@id}-h"}>
-      <h2 id={"#{@id}-h"} class="sr-only">{gettext("Mode")}</h2>
+    <section
+      id={"#{@id}-line"}
+      class="q-modeline q-modeline-ws"
+      aria-labelledby={"#{@id}-h"}
+      data-floor={@floor && "true"}
+    >
+      <h2 id={"#{@id}-h"} class="q-modeline-h">{gettext("Mode")}</h2>
       <div
         id={@id}
-        class="q-mode"
+        class="q-seg q-modeline-seg"
         role="radiogroup"
         aria-labelledby={"#{@id}-h"}
+        aria-describedby={
+          Enum.join(Enum.filter([@can_edit && "#{@id}-keys", "#{@id}-under"], &is_binary/1), " ")
+        }
         aria-disabled={!@can_edit && "true"}
         data-floor={@floor && "true"}
         data-roving
       >
         <button
           :for={
-            {mode, name, icon, sentence} <- [
-              {"observe", gettext("Observe"), "hero-eye-micro",
-               gettext(
-                 "Records every connection and denies only what a deny rule names. A host no rule names is let through, and the record says so."
-               )},
-              {"enforce", gettext("Enforce"), "hero-shield-exclamation-micro",
-               gettext(
-                 "Denies a connection no rule allows, and records the denial. With no allow rule, a run reaches nothing."
-               )}
+            {mode, name, icon} <- [
+              {"observe", gettext("Observe"), "hero-eye-micro"},
+              {"enforce", gettext("Enforce"), "hero-shield-exclamation-micro"}
             ]
           }
           id={"#{@id}-#{mode}"}
           type="button"
-          class="q-mode-card"
           role="radio"
           aria-checked={to_string(@mode == mode)}
-          aria-disabled={!@can_edit && "true"}
-          aria-describedby={
-            Enum.join(
-              [
-                "#{@id}-#{mode}-p",
-                @mode == mode && (@fact || !@served) && "#{@id}-fact",
-                !@can_edit && "#{@id}-owners"
-              ]
-              |> Enum.filter(&is_binary/1),
-              " "
-            )
-          }
+          aria-disabled={!@can_edit && @mode != mode && "true"}
           tabindex={if @mode == mode, do: "0", else: "-1"}
           phx-click={@can_edit && @mode != mode && JS.push("mode_ask", value: %{mode: mode})}
         >
-          <span class="q-mode-dot" aria-hidden="true"></span>
-          <span class="q-mode-h">
-            <.icon name={icon} class="size-4 text-faint" />{name}
-            <.badge :if={@mode == mode && !@floor}>{gettext("Workspace default")}</.badge>
-            <span :if={@mode == mode && @floor} id={"#{@id}-required"} class="contents">
-              <.badge>
-                <.icon name="hero-lock-closed-micro" class="size-3" />{gettext(
-                  "Required by %{name}",
-                  name: @floor.name
-                )}
-              </.badge>
-            </span>
-          </span>
-          <span id={"#{@id}-#{mode}-p"} class="q-mode-p">{sentence}</span>
-          <span :if={@mode == mode && (@fact || !@served)} id={"#{@id}-fact"} class="q-mode-fact">
-            <.mode_fact
-              scope={@scope}
-              fact={if @served, do: @fact, else: :unserved}
-              following={if @own != [], do: @following}
-            />
-          </span>
+          <.icon name={icon} class="size-3.5" />{name}
         </button>
       </div>
-      <p :if={@floor} id={"#{@id}-under"} class="text-[12.5px]/[18px] text-faint">
+      <span :if={@can_edit} id={"#{@id}-keys"} class="sr-only">
+        {gettext("The arrow keys move between the modes without choosing one; Space or Enter asks.")}
+      </span>
+      <span :if={@floor} id={"#{@id}-required"} class="q-modeline-req">
+        <.icon name="hero-lock-closed-micro" class="size-3" />{gettext("Required by %{name}",
+          name: @floor.name
+        )}
+      </span>
+      <p :if={@floor} id={"#{@id}-under"} class="q-modeline-p">
         {gettext("No workspace or target may observe: %{name} requires enforce.", name: @floor.name)}
         <.rich text={floor_own_sentence(@scope, @own, @following)} />
-        {gettext(
-          "A wall's own refusals (the machine's address, a path that reads two ways) hold in either mode."
-        )}
       </p>
-      <p :if={!@floor} id={"#{@id}-under"} class="text-[12.5px]/[18px] text-faint">
-        {gettext("This is the workspace's default.")}
+      <p :if={!@floor} id={"#{@id}-under"} class="q-modeline-p">
+        {workspace_effect(@mode)}
         <.rich text={own_sentence(@scope, @own, @following)} />
-        {gettext(
-          "A wall's own refusals (the machine's address, a path that reads two ways) hold in either mode."
-        )}
+        <span :if={@fact || !@served} id={"#{@id}-fact"}>
+          <.mode_fact
+            scope={@scope}
+            fact={if @served, do: @fact, else: :unserved}
+            following={if @own != [], do: @following}
+          />
+        </span>
         <span :if={!@can_edit} id={"#{@id}-owners"}>{gettext("Only an owner or an admin sets a mode.")}</span>
       </p>
     </section>
     """
   end
+
+  defp workspace_effect("observe"),
+    do: gettext("What no rule names is let through and recorded; a deny rule holds.")
+
+  defp workspace_effect(_enforce), do: gettext("A connection no rule allows is denied.")
 
   # Under a required mode, the targets that set observe for themselves are said to be
   # out of force, with the link to them.
@@ -428,64 +414,53 @@ defmodule ApiaryWeb.PolicyComponents do
 
   # Whether the targets follow the default: a whole sentence per case, the count a link to
   # the targets that set their own.
-  defp own_sentence(_scope, [], _following),
+  # Who follows the workspace's mode, one sentence: every target, or how many of them, and
+  # the ones that set their own, a link to them, with what they set.
+  defp own_sentence(_scope, [], 0), do: []
+
+  defp own_sentence(_scope, [], following),
     do: [
-      gettext(
-        "A target follows it unless an owner or an admin sets a mode of its own: none does."
+      ngettext("Its %{number} target follows it.", "All %{number} targets follow it.", following,
+        number: Format.number(following)
       )
     ]
 
-  defp own_sentence(scope, [mode], following) do
-    own =
-      {:link, ~p"/#{scope.organisation}/#{scope.workspace}/policy/targets?mode=own",
-       ngettext("1 of %{number} target does", "1 of %{number} targets does", following + 1,
-         number: Format.number(following + 1)
-       )}
+  defp own_sentence(scope, modes, following) do
+    total = following + length(modes)
 
-    if mode == "observe",
-      do:
-        rich_gettext(
-          "A target follows it unless an owner or an admin sets a mode of its own: %{own}, and observes.",
-          own: own
-        ),
-      else:
-        rich_gettext(
-          "A target follows it unless an owner or an admin sets a mode of its own: %{own}, and enforces.",
-          own: own
-        )
+    rich_ngettext(
+      "Followed by %{number} of %{total} target; %{own}.",
+      "Followed by %{number} of %{total} targets; %{own}.",
+      total,
+      number: Format.number(following),
+      total: Format.number(total),
+      own:
+        {:link, ~p"/#{scope.organisation}/#{scope.workspace}/policy/targets?mode=own",
+         own_words(modes)}
+    )
   end
 
-  defp own_sentence(scope, modes, following) do
+  defp own_words([mode]) do
+    if mode == "observe",
+      do: gettext("1 sets its own and observes"),
+      else: gettext("1 sets its own and enforces")
+  end
+
+  defp own_words(modes) do
     observe = Enum.count(modes, &(&1 == "observe"))
     enforce = length(modes) - observe
-
-    own =
-      {:link, ~p"/#{scope.organisation}/#{scope.workspace}/policy/targets?mode=own",
-       ngettext(
-         "%{number} of %{total} target do",
-         "%{number} of %{total} targets do",
-         following + length(modes),
-         number: Format.number(length(modes)),
-         total: Format.number(following + length(modes))
-       )}
+    number = Format.number(length(modes))
 
     cond do
       enforce == 0 ->
-        rich_gettext(
-          "A target follows it unless an owner or an admin sets a mode of its own: %{own}, and observe.",
-          own: own
-        )
+        gettext("%{number} set their own and observe", number: number)
 
       observe == 0 ->
-        rich_gettext(
-          "A target follows it unless an owner or an admin sets a mode of its own: %{own}, and enforce.",
-          own: own
-        )
+        gettext("%{number} set their own and enforce", number: number)
 
       true ->
-        rich_gettext(
-          "A target follows it unless an owner or an admin sets a mode of its own: %{own}: %{observe}, %{enforce}.",
-          own: own,
+        gettext("%{number} set their own: %{observe}, %{enforce}",
+          number: number,
           observe:
             ngettext("%{number} observes", "%{number} observe", observe,
               number: Format.number(observe)
