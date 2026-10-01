@@ -388,7 +388,7 @@ defmodule ApiaryWeb.TargetLive.Show do
     ~H"""
     <header id="target-header" class="q-tgt-head">
       <div class="min-w-0 flex-1">
-        <h1 class="q-tgt-h1">
+        <h1 class="q-tgt-h1 outline-none" tabindex="-1">
           <.icon name="hero-folder" class="size-5 flex-none text-muted" />
           <.target_name path={@target.path} system={@target.system} class="min-w-0 truncate" />
         </h1>

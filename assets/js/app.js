@@ -134,6 +134,18 @@ window.addEventListener("phx:page-loading-start", _info => {
 })
 window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
 
+// A live navigation replaces the page under the reader: give focus to its title, so a
+// screen reader says where they are and the keyboard goes on from there, unless the
+// new page put focus somewhere itself (a dialog's first field, say).
+window.addEventListener("phx:page-loading-stop", ({detail}) => {
+  if (detail?.kind !== "redirect") return
+  setTimeout(() => {
+    const now = document.activeElement
+    if (now && now !== document.body && now.isConnected) return
+    document.querySelector("main h1[tabindex]")?.focus({preventScroll: true})
+  }, 0)
+})
+
 // connect if there are any LiveViews on the page
 liveSocket.connect()
 

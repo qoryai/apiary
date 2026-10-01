@@ -137,7 +137,7 @@ defmodule ApiaryWeb.SettingsComponents do
   def layout(assigns) do
     ~H"""
     <div class="q-settings">
-      <h1 class="q-settings-title">
+      <h1 class="q-settings-title outline-none" tabindex="-1">
         {if @kind == :organisation,
           do: gettext("Organisation settings"),
           else: gettext("Workspace settings")}

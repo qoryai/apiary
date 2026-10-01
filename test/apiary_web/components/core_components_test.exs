@@ -79,11 +79,28 @@ defmodule ApiaryWeb.CoreComponentsTest do
         """)
 
       doc = LazyHTML.from_fragment(html)
-      assert [_] = doc |> LazyHTML.query("#f-section-host > #f-body-host > input") |> Enum.to_list()
+
+      assert [_] =
+               doc |> LazyHTML.query("#f-section-host > #f-body-host > input") |> Enum.to_list()
+
       [click] = doc |> LazyHTML.query("#f-open-host") |> LazyHTML.attribute("phx-click")
       assert click =~ ~s("to":"#f-body-host")
       [show, hide, focus] = click |> Jason.decode!() |> Enum.map(&hd/1)
       assert {show, hide, focus} == {"show", "hide", "focus_first"}
+    end
+  end
+
+  describe "a page's header" do
+    test "has a title that takes focus after a navigation, without a ring" do
+      assigns = %{}
+
+      html =
+        rendered_to_string(~H"""
+        <CoreComponents.header>Runs</CoreComponents.header>
+        """)
+
+      h1 = html |> LazyHTML.from_fragment() |> LazyHTML.query("h1")
+      assert LazyHTML.attribute(h1, "tabindex") == ["-1"]
     end
   end
 end

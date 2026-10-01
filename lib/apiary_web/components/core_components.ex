@@ -743,7 +743,7 @@ defmodule ApiaryWeb.CoreComponents do
     ~H"""
     <header class={["flex flex-wrap items-start justify-between gap-4", @class]}>
       <div class="min-w-0 flex-1 basis-72">
-        <h1 class="text-xl/7 font-semibold tracking-[-0.017em]">
+        <h1 class="text-xl/7 font-semibold tracking-[-0.017em] outline-none" tabindex="-1">
           {render_slot(@inner_block)}
         </h1>
         <p :if={@subtitle != []} class="mt-0.5 max-w-[62ch] text-sm/5 text-muted">

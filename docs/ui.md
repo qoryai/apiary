@@ -526,7 +526,9 @@ and names the product Qory Apiary.
 
 - **Focus.** One global `:focus-visible` ring in `--q-ring`; a control never loses its
   focus style without a replacement. The tab order is the visual order, with no positive
-  `tabindex`. A failed submit puts the caret in the first invalid field.
+  `tabindex`. A failed submit puts the caret in the first invalid field. A live navigation
+  gives focus to the new page's `<h1>` (`tabindex="-1"`, as `<.header>` renders it) unless
+  the page put it somewhere itself, so a screen reader says where the reader landed.
 - **Names.** An icon-only button has an `aria-label`. A row action names its object
   ("Revoke build-01") while its visible text stays short. A field has a visible label, and
   its error is tied to it with `aria-invalid` and `aria-describedby`.
