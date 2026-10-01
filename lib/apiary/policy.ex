@@ -1926,23 +1926,25 @@ defmodule Apiary.Policy do
     end
   end
 
-  @doc false
-  # rerender_in/3 renders every holder of `workspace` again through today's resolution and
-  # what holds above it, inside the caller's transaction, on a workspace the caller has
-  # locked `FOR NO KEY UPDATE` (`lock_workspaces/2`, or `rerender/1`'s own): each holder
-  # whose bytes change gets a new version and a change of its own, no change of the rules
-  # (`before` equals `after`), by the scope's person (nil for the instance's); unchanged
-  # bytes write nothing. `{:ok, changes}`, the baseline's first, `[]` when nothing was
-  # written, for `announce/1` once the caller has committed; or the first refusal (a
-  # render the resolution or the schema refuses, said with the holder as `elsewhere/4`
-  # says it), which the caller rolls back.
-  #
-  # `opts`: `action`, `"rerendered"` (the default: `mix apiary.policy.rerender`) or
-  # `"above_changed"` (the level above the workspace changed); `cause`, the id of the
-  # entry that caused it, kept in the change's `details.cause`; `all`, whether to render
-  # an unmanaged workspace too (false by default: `rerender/1` leaves it alone). With
-  # `all: true` an unmanaged workspace gets its version 1, and is managed from then on:
-  # what a deny of the level above holding everywhere means.
+  @doc """
+  rerender_in/3 renders every holder of `workspace` again through today's resolution and
+  what holds above it, inside the caller's transaction, on a workspace the caller has
+  locked `FOR NO KEY UPDATE` (`lock_workspaces/2`, or `rerender/1`'s own): each holder
+  whose bytes change gets a new version and a change of its own, no change of the rules
+  (`before` equals `after`), by the scope's person (nil for the instance's); unchanged
+  bytes write nothing. `{:ok, changes}`, the baseline's first, `[]` when nothing was
+  written, for `announce/1` once the caller has committed; or the first refusal (a
+  render the resolution or the schema refuses, said with the holder it came from), which
+  the caller rolls back.
+
+  `opts`: `action`, `"rerendered"` (the default: `mix apiary.policy.rerender`) or
+  `"above_changed"` (the level above the workspace changed, `Apiary.Policy.Above`);
+  `cause`, the id of the entry that caused it, kept in the change's `details.cause` and
+  `Apiary.Policy.Change`'s `cause`; `all`, whether to render an unmanaged workspace too
+  (false by default: `rerender/1` leaves it alone). With `all: true` an unmanaged
+  workspace gets its version 1, and is managed from then on: what a deny of the level
+  above holding everywhere means.
+  """
   @spec rerender_in(%Workspace{}, Scope.t(), keyword) :: {:ok, [Change.t()]} | refusal
   def rerender_in(%Workspace{} = workspace, %Scope{user: user}, opts \\ []) do
     action = Keyword.get(opts, :action, "rerendered")

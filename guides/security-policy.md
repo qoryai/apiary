@@ -85,12 +85,19 @@ own, then the workspace's, each with its source.
 Rules meet on the same host string, or the same credential name, and the one that wins
 decides the host whole, its action and its paths.
 
-1. A **locked** rule of the workspace wins over everything.
+0. A rule of the level above the workspace, where the edition keeps one (the core keeps
+   none): its denies hold everywhere, so no rule of the workspace or of a repository
+   allows the host; its allows reach every workspace and can be narrowed by a deny below
+   them, never widened. Against a lower allow on the same host, its allow holds, paths
+   included.
+1. A **locked** rule of the workspace wins over everything else.
 2. Then the repository's rule.
 3. Then an unlocked rule of the workspace.
 
 So where the two meet on a host, the repository wins, unless the workspace's rule is
-locked.
+locked. Where the level above the workspace allows only its own hosts, an allow of the
+workspace or of a repository is listed, struck, and not in force; denies and credentials
+still apply.
 
 A deny of a `*.` suffix also removes every allow entry it covers, `*.example` covers
 `api.example` and `*.eu.example`, unless the allow has the higher precedence. A deny below
@@ -142,7 +149,10 @@ The workspace has a mode, shown as two cards at the top of `/:org/:workspace/pol
 
 A workspace starts in observe. Only an owner or an admin changes the mode, in either
 direction, and each change is confirmed. A wall's own refusals, the machine's own address
-say, hold in either mode.
+say, hold in either mode. Where the level above the workspace requires enforce, the mode
+is enforce in the workspace and in every repository, the cards and the repositories'
+radios are fixed and say who requires it, and a repository's own observe is kept but not
+in force.
 
 The workspace's mode is a default. A repository follows it until an owner or an admin
 gives the repository a mode of its own, on the repository's Policy tab: **Follow** the workspace, by its name, **Observe** or **Enforce**,
