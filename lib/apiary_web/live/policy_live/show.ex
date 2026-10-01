@@ -24,16 +24,14 @@ defmodule ApiaryWeb.PolicyLive.Show do
 
   alias Apiary.Policy
   alias Apiary.Policy.Grammar
-  alias ApiaryWeb.PolicyLive.Common
-
-  @shows ~w(allow deny locked)
+  alias ApiaryWeb.PolicyLive.{Common, RuleList}
 
   @impl true
   def mount(_params, _session, socket) do
     socket =
       socket
       |> Common.mount(nil)
-      |> assign(reload: &load/1, show: nil, ruled_host: nil, targets: nil)
+      |> assign(reload: &load/1, list_query: %RuleList{}, ruled_host: nil, targets: nil)
       |> assign(history: nil, open_change: nil, diff: nil, v: nil, export: nil, missing: nil)
       |> assign(would: nil, composer_open: false, own_only: false, params: %{})
       |> assign(target_list: [], summary: nil)
@@ -83,15 +81,16 @@ defmodule ApiaryWeb.PolicyLive.Show do
     )
     |> then(fn socket ->
       assign(socket,
-        rows: Common.workspace_rows(own, socket, locks),
+        rows: Common.workspace_rules(own, socket, locks),
         credentials: Common.credential_rows(own, socket)
       )
     end)
     |> load_record()
   end
 
-  # What the recorded connections say: the mode card's fact and the Last 7 days column.
-  # Bounded reads that may answer :unavailable; then the fact and the column are left out.
+  # What the recorded connections say: the mode card's fact, over 7 days, and the rules'
+  # use, over 14. Bounded reads that may answer :unavailable; then the fact and the column
+  # are left out.
   defp load_record(socket) do
     if connected?(socket) do
       scope = socket.assigns.current_scope
@@ -99,7 +98,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
 
       socket
       |> assign_async(:activity, fn ->
-        {:ok, %{activity: unwrap(Policy.rule_activity(scope, nil, Common.since()))}}
+        {:ok, %{activity: unwrap(Policy.rule_activity(scope, nil, Common.use_since()))}}
       end)
       |> assign_async(:fact, fn -> {:ok, %{fact: fact(scope, mode)}} end)
     else
@@ -149,14 +148,30 @@ defmodule ApiaryWeb.PolicyLive.Show do
     {:noreply, apply_action(socket, socket.assigns.live_action, params)}
   end
 
+  # The list's query is the URL's (`RuleList`), written back without what it does not
+  # know; `?rule=` lands on the page of the list that holds the rule.
   defp apply_action(socket, :rules, params) do
-    show = if params["show"] in @shows, do: params["show"]
-    ruled_host = Common.rule_param(params["rule"])
+    if RuleList.canonical?(params) do
+      ruled_host = Common.rule_param(params["rule"])
 
-    socket
-    |> assign(show: show, ruled_host: ruled_host, page_title: gettext("Policy"))
-    |> then(&if(ruled_host, do: push_event(&1, "policy:rule", %{host: ruled_host}), else: &1))
-    |> then(&if(params["confirm"] == "enforce", do: confirm_enforce(&1), else: &1))
+      query =
+        RuleList.landing(
+          RuleList.parse(params),
+          socket.assigns.rows,
+          Common.async_value(socket.assigns.activity),
+          ruled_host
+        )
+
+      socket
+      |> assign(list_query: query, ruled_host: ruled_host, page_title: gettext("Policy"))
+      |> then(&if(ruled_host, do: push_event(&1, "policy:rule", %{host: ruled_host}), else: &1))
+      |> then(&if(params["confirm"] == "enforce", do: confirm_enforce(&1), else: &1))
+    else
+      push_patch(socket,
+        to: Common.list_path(socket, RuleList.parse(params), Map.take(params, ~w(rule confirm))),
+        replace: true
+      )
+    end
   end
 
   defp apply_action(socket, :targets, params) do
@@ -378,10 +393,6 @@ defmodule ApiaryWeb.PolicyLive.Show do
       {:halt, socket} -> {:noreply, socket}
       :cont -> {:noreply, event(event, params, socket)}
     end
-  end
-
-  defp event("composer_open", _params, socket) do
-    socket |> assign(:composer_open, true) |> Common.focus("policy-composer-host")
   end
 
   defp event("mode_ask", %{"mode" => mode}, socket) when mode in ~w(observe enforce) do
@@ -637,7 +648,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
   defp changed(socket, {:error, error}, _host, _action), do: Common.refused(socket, error)
 
   defp remove(socket, rule) do
-    rows = socket.assigns.rows
+    rows = Common.listing(socket.assigns).rows
     index = Enum.find_index(rows, &(&1.id == rule.id))
     next = index && (Enum.at(rows, index + 1) || (index > 0 && Enum.at(rows, index - 1)))
 
@@ -764,7 +775,11 @@ defmodule ApiaryWeb.PolicyLive.Show do
       nav={:policy}
       width="list"
     >
-      <div id="policy-page" phx-hook="PolicyPage" class="grid grid-cols-[minmax(0,1fr)] gap-6">
+      <div
+        id="policy-page"
+        phx-hook="PolicyPage"
+        class="q-policy grid grid-cols-[minmax(0,1fr)] gap-6"
+      >
         <div :if={@live_action in [:version, :export] && @v} class="grid gap-3">
           <nav class="q-crumbs" aria-label={gettext("Breadcrumb")}>
             <.link navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy"}>{gettext(
@@ -1022,25 +1037,14 @@ defmodule ApiaryWeb.PolicyLive.Show do
   end
 
   defp rules_tab(assigns) do
-    hosts = assigns.rows
-
-    shown =
-      case assigns.show do
-        "allow" -> Enum.filter(hosts, &(&1.action == "allow"))
-        "deny" -> Enum.filter(hosts, &(&1.action == "deny"))
-        "locked" -> Enum.filter(hosts, & &1.locked)
-        nil -> hosts
-      end
+    edit? = Common.may?(assigns.current_scope, :"security_policy.edit")
 
     assigns =
       assigns
-      |> assign(:shown, shown)
-      |> assign(:empty?, assigns.own == [] and not assigns.composer_open)
-      |> assign(:counts, %{
-        allow: Enum.count(hosts, &(&1.action == "allow")),
-        deny: Enum.count(hosts, &(&1.action == "deny")),
-        locked: Enum.count(hosts, & &1.locked)
-      })
+      |> assign(:edit?, edit?)
+      |> assign(:empty?, assigns.own == [] and not (assigns.composer_open and edit?))
+      |> assign(:activity_now, async_value(assigns.activity, :loading))
+      |> assign(:listing, Common.listing(assigns))
 
     ~H"""
     <.mode_switch
@@ -1072,7 +1076,12 @@ defmodule ApiaryWeb.PolicyLive.Show do
           )}
         </span>
         <:actions>
-          <.button id="policy-first-rule" variant="primary" phx-click="composer_open">
+          <.button
+            :if={@edit?}
+            id="policy-first-rule"
+            variant="primary"
+            phx-click="composer_open"
+          >
             <.icon name="hero-plus-micro" class="size-4" />{gettext("Add a host rule")}
           </.button>
           <.button navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/network"}>{gettext(
@@ -1101,8 +1110,10 @@ defmodule ApiaryWeb.PolicyLive.Show do
       </p>
     </div>
 
-    <.sect :if={!@empty?} id="policy-hosts" title={gettext("Network access")} count={length(@rows)}>
-      <:trailing>
+    <section :if={!@empty?} id="policy-hosts" class="q-psec" aria-labelledby="policy-hosts-h">
+      <div class="q-psec-h">
+        <h2 id="policy-hosts-h">{gettext("Network access")}</h2>
+        <span class="grow"></span>
         <.link
           id="policy-hosts-network"
           navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/network"}
@@ -1113,90 +1124,73 @@ defmodule ApiaryWeb.PolicyLive.Show do
             class="size-3.5"
           />
         </.link>
-        <.segments id="policy-show" label={gettext("Show")}>
-          <:segment
-            patch={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy"}
-            pressed={@show == nil}
-          >
-            {gettext("All")}
-          </:segment>
-          <:segment
-            patch={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy?show=allow"}
-            pressed={@show == "allow"}
-            count={@counts.allow}
-          >
-            {gettext("Allow")}
-          </:segment>
-          <:segment
-            patch={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy?show=deny"}
-            pressed={@show == "deny"}
-            count={@counts.deny}
-          >
-            {gettext("Deny")}
-          </:segment>
-          <:segment
-            patch={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy?show=locked"}
-            pressed={@show == "locked"}
-            count={@counts.locked}
-          >
-            {gettext("Locked")}
-          </:segment>
-        </.segments>
-      </:trailing>
-      <.rule_composer
-        id="policy-composer"
-        form={@composer}
-        scope={:workspace}
-        reading={@reading}
-        queued={length(@queue)}
-      />
-      <.rules_table
+      </div>
+      <.rule_list
         id="policy-rules"
         label={gettext("Network access rules of the workspace")}
-        rows={@shown}
-        scope={:workspace}
-        current_scope={@current_scope}
+        listing={@listing}
+        query={@list_query}
+        path={&Common.list_path(@base, &1)}
+        sections={RuleList.sections(@rows, @activity_now)}
+        default_sort={gettext("Locked first")}
+        activity={@activity_now}
+        can_add={@edit?}
+        adding={@composer_open}
         can_lock={Common.may?(@current_scope, :"security_policy.lock")}
-        activity={async_value(@activity, :loading)}
         fresh={@fresh}
         ruled_host={@ruled_host}
-        empty={empty_words(@show, @rows)}
-      />
-      <:footer>
+        empty={gettext("No host rules yet. Add the first above.")}
+      >
+        <:composer>
+          <.rule_composer
+            :if={@composer_open && @edit?}
+            id="policy-composer"
+            class="q-composer-line"
+            form={@composer}
+            scope={:workspace}
+            reading={@reading}
+            queued={length(@queue)}
+          />
+        </:composer>
+      </.rule_list>
+      <p id="policy-hosts-note" class="q-psec-note">
         {gettext(
-          "Locked rules come first, then deny, then allow, each by host read from the right, so a suffix sits beside the hosts below it. A deny is written to the document's deny list, which a runner decides first and in either mode, and takes the allowed hosts it covers out of its allow list."
+          "Locked rules come first, then deny, then allow, each by host read from the right, so a suffix sits beside the hosts below it. A locked rule holds in every target; a deny holds in either mode."
         )}
-      </:footer>
-    </.sect>
+      </p>
+    </section>
 
-    <.sect
+    <section
       :if={!@empty?}
       id="policy-credentials"
-      title={gettext("Credentials")}
-      count={length(@credentials)}
+      class="q-psec"
+      aria-labelledby="policy-credentials-h"
     >
-      <:description>
+      <div class="q-psec-h">
+        <h2 id="policy-credentials-h">{gettext("Credentials")}</h2>
+        <span id="policy-credentials-n" class="q-psec-n">{Format.number(length(@credentials))}</span>
+      </div>
+      <p class="q-psec-p">
         {gettext(
           "Credentials a run may use, by name. The policy names one; it never holds one. Each machine defines its credentials in its runner file, and a name a machine does not define is no run."
         )}
-      </:description>
-      <.credential_composer id="policy-credential" form={@credential} reading={@credential_reading} />
+      </p>
+      <.credential_composer
+        :if={@edit?}
+        id="policy-credential"
+        class="q-composer-line"
+        form={@credential}
+        reading={@credential_reading}
+      />
       <.credentials_table
         id="policy-credential-rows"
         label={gettext("Credentials of the workspace")}
         rows={@credentials}
-        scope={:workspace}
-        activity={async_value(@activity, :loading)}
+        activity={@activity_now}
       />
-    </.sect>
+    </section>
     """
   end
-
-  defp empty_words(_show, []), do: gettext("No host rules yet. Add the first above.")
-  defp empty_words("locked", _rows), do: gettext("No locked rules.")
-  defp empty_words("deny", _rows), do: gettext("No deny rules.")
-  defp empty_words("allow", _rows), do: gettext("No allow rules.")
-  defp empty_words(_show, _rows), do: nil
 
   defp async_value(%Phoenix.LiveView.AsyncResult{ok?: true, result: result}, _loading), do: result
   defp async_value(%Phoenix.LiveView.AsyncResult{loading: nil}, _loading), do: :unavailable

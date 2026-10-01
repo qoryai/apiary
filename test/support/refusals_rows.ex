@@ -161,8 +161,11 @@ defmodule ApiaryWeb.RefusalsRows do
       {:"security_policy.edit", :other_owner, "/:other_org/:other_ws/policy", "change_action",
        %{"id" => :rule_open}, answer: :not_found},
       {:"security_policy.edit", :other_owner,
-       "/:other_org/:other_ws/targets/:target_page/-/policy", "row_act",
-       %{"id" => :rule_open, "act" => "disable"}, answer: :not_found},
+       "/:other_org/:other_ws/targets/:target_page/-/policy", "remove", %{"id" => :rule_open},
+       answer: :not_found},
+      {:"security_policy.edit", :other_owner,
+       "/:other_org/:other_ws/targets/:target_page/-/policy", "change_action",
+       %{"id" => :rule_open}, answer: :not_found},
       {:"security_policy.lock", :member, "/:org/:workspace/policy", "lock_toggle",
        %{"id" => :rule_open}},
       # An admin locking a rule, unlocking one, and changing a locked one.
@@ -187,8 +190,19 @@ defmodule ApiaryWeb.RefusalsRows do
          {"composer_change", %{"rule" => %{"host" => "open.example", "paths" => ""}}}
        ],
        meanwhile: {:locked, :rule_open}},
+      # A member's allow for a target under the workspace's locked deny: the composer
+      # reads the lock and saves nothing. The workspace's rules have no act on a target's
+      # page: an event naming one there is dropped.
       {:"security_policy.lock", :member, "/:org/:workspace/targets/:target_page/-/policy",
-       "row_act", %{"id" => :rule_locked, "act" => "allow_here"}},
+       "composer_save", %{},
+       prelude: [
+         {"composer_change", %{"rule" => %{"host" => "locked.example", "paths" => ""}}}
+       ],
+       answer: :ignored},
+      {:"security_policy.lock", :member, "/:org/:workspace/targets/:target_page/-/policy",
+       "change_action", %{"id" => :rule_locked}, answer: :ignored},
+      {:"security_policy.lock", :member, "/:org/:workspace/targets/:target_page/-/policy",
+       "remove", %{"id" => :rule_locked}, answer: :ignored},
 
       # The access keys.
       {:"access_key.create", :removed_member, "/:org/:workspace/settings/keys/new", "create",

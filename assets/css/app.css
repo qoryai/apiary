@@ -7542,6 +7542,273 @@
   }
 }
 
+/* ==== A policy's list of rules on the list pattern (docs/ui.md, Lists;
+   `PolicyComponents.rule_list/1`): a section is a heading and its lines, not a card; the
+   views, the search with Filter, Sort and Add rule, the composer line, then the table, the
+   one box. A rule is one line: the host is the only strong text; paths, source, use and who
+   are small grey words; a lock is a faint glyph; the ⋯ menu shows on hover. A rule not in
+   force is struck and says why where its use would be. A policy is read like a document:
+   its page is 1200 px at most. ==== */
+@layer qory {
+  .q-policy {
+    max-width: 75rem;
+  }
+  .q-psec {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    min-width: 0;
+    gap: 12px;
+  }
+  .q-psec + .q-psec {
+    margin-top: 16px;
+  }
+  .q-psec-h {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+  .q-psec-h h2 {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    line-height: 22px;
+    letter-spacing: -0.006em;
+  }
+  .q-psec-n {
+    color: var(--q-faint);
+    font-size: 0.78125rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .q-psec-p {
+    max-width: 80ch;
+    margin-top: -8px;
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+  }
+  .q-psec-note {
+    max-width: 90ch;
+    color: var(--q-faint);
+    font-size: 0.78125rem;
+    line-height: 18px;
+  }
+  .q-psec > .q-views {
+    margin-top: -4px;
+  }
+  .q-psec > .q-bar {
+    flex-wrap: nowrap;
+  }
+  .q-psec > .q-bar > .q-find-query {
+    flex: 1 1 auto;
+  }
+  .q-psec .q-matchline {
+    margin-bottom: 0;
+  }
+  .q-psec .q-pager {
+    padding-top: 0;
+  }
+
+  /* The composer, a line over the list: no band, no border. */
+  .q-composer.q-composer-line {
+    padding: 0;
+    border: 0;
+    background: none;
+  }
+  .q-composer-go {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .q-composer-go > .btn {
+    --size: 32px;
+    height: 32px;
+  }
+
+  /* ---- One line a rule ---- */
+  .q-rl td {
+    height: 44px;
+    padding-block: 6px;
+  }
+  .q-rl tbody tr:last-child td {
+    border-bottom: 0;
+  }
+  .q-rl :is(th, td).q-rl-mk {
+    width: 1%;
+    padding-right: 0;
+  }
+  .q-rl td.q-rl-host {
+    width: 36%;
+    white-space: nowrap;
+  }
+  .q-rl .q-mark {
+    background: none;
+  }
+  .q-rl .q-mark-ok {
+    color: var(--q-faint);
+  }
+  .q-rl .q-mark-no {
+    color: var(--q-muted);
+  }
+  .q-rl-key {
+    display: inline-grid;
+    width: 18px;
+    height: 18px;
+    place-items: center;
+    color: var(--q-faint);
+  }
+  .q-rl .q-host.q-rl-h {
+    color: var(--color-base-content);
+    font: 500 13px/20px var(--font-mono);
+    white-space: nowrap;
+  }
+  .q-rl .q-newdot {
+    margin-left: 8px;
+    padding: 0;
+    background: none;
+    color: var(--q-info-soft-content);
+    font-size: 0.75rem;
+  }
+  .q-rl-word {
+    margin-left: 8px;
+    color: var(--q-muted);
+    font-size: 0.75rem;
+  }
+  .q-rl td.q-rl-paths,
+  .q-rl td.q-rl-src,
+  .q-rl td.q-rl-use {
+    color: var(--q-muted);
+    font-size: 0.78125rem;
+    white-space: nowrap;
+  }
+  .q-rl-pth {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 2px 10px;
+  }
+  .q-rl code.q-rule {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--q-muted);
+    font-size: 0.75rem;
+  }
+  .q-rl .q-every,
+  .q-rl .q-zero {
+    color: var(--q-faint);
+    font-size: 0.78125rem;
+    white-space: nowrap;
+  }
+  .q-rl td.q-rl-by {
+    color: var(--q-faint);
+    font-size: 0.78125rem;
+    white-space: nowrap;
+  }
+  .q-rl :is(th, td).q-rl-acts {
+    width: 1%;
+    padding-inline: 4px 10px;
+    text-align: right;
+    white-space: nowrap;
+  }
+  .q-rl-acts > * {
+    vertical-align: middle;
+  }
+  .q-rl-lock {
+    display: inline-grid;
+    width: 24px;
+    height: 24px;
+    place-items: center;
+    color: var(--q-faint);
+  }
+  .q-rl td.q-rl-none {
+    height: auto;
+    padding-block: 14px;
+    color: var(--q-faint);
+    font-size: 0.8125rem;
+    white-space: normal;
+  }
+  @media (hover: hover) {
+    .q-rl .q-hov {
+      opacity: 0;
+      transition: opacity 120ms var(--q-ease-out);
+    }
+    .q-rl tr:is(:hover, :focus-within) .q-hov,
+    .q-rl tr:has(.q-rowmenu-btn[aria-expanded="true"]) .q-hov {
+      opacity: 1;
+    }
+  }
+  .q-rl tr:has(.q-rowmenu-btn[aria-expanded="true"]) > td {
+    background-color: color-mix(in oklab, var(--color-base-300) 55%, transparent);
+  }
+  /* A rule not in force: struck, and said so where its use would be. */
+  .q-rl tr.q-rl-off .q-host.q-rl-h {
+    color: var(--q-muted);
+    font-weight: 400;
+    text-decoration: line-through;
+    text-decoration-color: var(--q-faint);
+  }
+  .q-rl tr.q-rl-off .q-mark {
+    color: var(--q-border-strong);
+  }
+  .q-rl-offw {
+    color: var(--color-base-content);
+  }
+
+  /* ---- A target's mode, one line ---- */
+  .q-modeline {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 16px;
+  }
+  .q-modeline-h {
+    width: 64px;
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+  .q-modeline-seg > button {
+    height: 28px;
+    padding-inline: 10px;
+    font-size: 0.8125rem;
+  }
+  .q-modeline-seg > button[aria-disabled="true"] {
+    color: var(--q-faint);
+    cursor: not-allowed;
+  }
+  .q-modeline-p {
+    flex: 1 1 30rem;
+    max-width: 80ch;
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+  }
+  .q-modeline-p b {
+    color: var(--color-base-content);
+    font-weight: 500;
+  }
+
+  @media (max-width: 767.98px) {
+    .q-psec > .q-bar {
+      flex-wrap: wrap;
+    }
+    .q-psec > .q-bar > .q-find-query {
+      flex-basis: 100%;
+    }
+    .q-composer-go {
+      justify-self: stretch;
+    }
+    .q-composer-go > .btn {
+      --size: 40px;
+      flex: 1;
+      height: 40px;
+    }
+    .q-modeline-h {
+      width: auto;
+    }
+    .q-modeline-seg {
+      max-width: 100%;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+  }
+}
+
 /* ==== The overviews: the workspace's (`OverviewComponents`) and an organisation's ==========
    One look per level: the summary is the largest type on the page; a block is one box with a
    band and its rows or lines, nothing boxed inside it; a row is one line whose subject is the

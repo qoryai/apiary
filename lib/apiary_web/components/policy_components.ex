@@ -17,13 +17,29 @@ defmodule ApiaryWeb.PolicyComponents do
   use Gettext, backend: ApiaryWeb.Gettext
 
   import ApiaryWeb.CoreComponents,
-    only: [avatar: 1, badge: 1, button: 1, icon: 1, notice: 1]
+    only: [
+      avatar: 1,
+      badge: 1,
+      button: 1,
+      filter_menu: 1,
+      filter_tokens: 1,
+      icon: 1,
+      list_search: 1,
+      menu_divider: 1,
+      menu_heading: 1,
+      menu_item: 1,
+      notice: 1,
+      row_menu: 1,
+      sort_menu: 1,
+      views: 1
+    ]
 
   import ApiaryWeb.RichText
 
   # `RunComponents` uses the shared components of this module, so nothing of it is imported
   # here: its functions are called by their full name, which is no compile-time dependency.
   alias ApiaryWeb.Format
+  alias ApiaryWeb.PolicyLive.RuleList
   alias ApiaryWeb.RunComponents
 
   alias Phoenix.LiveView.JS
@@ -475,112 +491,132 @@ defmodule ApiaryWeb.PolicyComponents do
   ## Target mode
 
   @doc """
-  A target's mode: follow the workspace, observe or enforce, with what is in effect and
-  where it comes from. Compact on purpose: the workspace's page explains the two modes
-  once; here the choice is whose mode. A radio sends `target_mode_ask`. While the target
-  observes and its list holds locked denies of the workspace, a notice says that they hold
-  here all the same: a deny is denied in either mode.
+  A target's mode, one line: the choice of following the workspace (by its name), observe
+  or enforce, then whose the mode is (its own, who set it and when, and what the workspace
+  does; or the workspace's) and what the mode in effect does. A radio sends
+  `target_mode_ask`; for a reader who may not set a mode the others are `aria-disabled`.
   """
   attr :id, :string, required: true
   attr :setting, :string, required: true, values: ~w(follow observe enforce)
   attr :effective, :string, required: true, values: ~w(observe enforce)
   attr :workspace_default, :string, required: true, values: ~w(observe enforce)
+  attr :workspace, :string, required: true, doc: "the workspace's name"
+
+  attr :set, :any,
+    default: nil,
+    doc: "who set the target's own mode and when, `%{by:, at:}`, or nil when unknown"
 
   attr :can_edit, :boolean,
     default: false,
     doc: "whether the reader may set the mode (`security_policy.set_mode`)"
 
-  attr :locked_denies, :list, default: [], doc: "the hosts of locked workspace denies in the list"
-
   def target_mode(assigns) do
     ~H"""
-    <section id={@id} class="q-sect q-rmode-sect" aria-labelledby={"#{@id}-h"}>
-      <div class="q-rmode">
-        <h2 id={"#{@id}-h"}>{gettext("Mode")}</h2>
-        <div
-          id={"#{@id}-radios"}
-          class="q-seg q-rmode-seg"
-          role="radiogroup"
-          aria-labelledby={"#{@id}-h"}
-          aria-describedby={"#{@id}-effect"}
-          data-roving
+    <section id={@id} class="q-modeline" aria-labelledby={"#{@id}-h"}>
+      <h2 id={"#{@id}-h"} class="q-modeline-h">{gettext("Mode")}</h2>
+      <div
+        id={"#{@id}-radios"}
+        class="q-seg q-modeline-seg"
+        role="radiogroup"
+        aria-labelledby={"#{@id}-h"}
+        aria-describedby={"#{@id}-effect"}
+        data-roving
+      >
+        <button
+          :for={
+            {setting, label, icon} <- [
+              {"follow", gettext("Follow %{workspace}", workspace: @workspace),
+               "hero-arrow-uturn-left-micro"},
+              {"observe", gettext("Observe"), "hero-eye-micro"},
+              {"enforce", gettext("Enforce"), "hero-shield-exclamation-micro"}
+            ]
+          }
+          id={"#{@id}-#{setting}"}
+          type="button"
+          role="radio"
+          aria-checked={to_string(@setting == setting)}
+          aria-pressed={to_string(@setting == setting)}
+          aria-disabled={!@can_edit && @setting != setting && "true"}
+          tabindex={if @setting == setting, do: "0", else: "-1"}
+          phx-click={
+            @can_edit && @setting != setting &&
+              JS.push("target_mode_ask", value: %{setting: setting})
+          }
         >
-          <button
-            :for={
-              {setting, label} <- [
-                {"follow", gettext("Follow the workspace")},
-                {"observe", gettext("Observe")},
-                {"enforce", gettext("Enforce")}
-              ]
-            }
-            id={"#{@id}-#{setting}"}
-            type="button"
-            role="radio"
-            aria-checked={to_string(@setting == setting)}
-            aria-disabled={!@can_edit && @setting != setting && "true"}
-            tabindex={if @setting == setting, do: "0", else: "-1"}
-            phx-click={
-              @can_edit && @setting != setting &&
-                JS.push("target_mode_ask", value: %{setting: setting})
-            }
-          >
-            {label}
-          </button>
-        </div>
-        <p id={"#{@id}-effect"} class="q-rmode-effect">
-          <.rich text={in_effect_sentence(@setting, @effective, @workspace_default)} />
-          <span :if={!@can_edit} id={"#{@id}-owners"}>{gettext(
-            "Only an owner or an admin sets a mode."
-          )}</span>
-        </p>
+          <.icon name={icon} class="size-3.5" />{label}
+        </button>
       </div>
-      <div :if={@effective == "observe" && @locked_denies != []} class="px-4 pb-3">
-        <.notice kind={:info}>
-          <span id={"#{@id}-locked-note"}>
-            <b>{gettext("This target observes: the locked deny still holds.")}</b>
-            <.rich text={locked_deny_sentence(@locked_denies)} />
-            {gettext("It holds whatever mode this target is in.")}
-          </span>
-        </.notice>
-      </div>
+      <p id={"#{@id}-effect"} class="q-modeline-p">
+        <.rich text={whose_sentence(@setting, @workspace_default, @workspace, @set)} />
+        {effect_sentence(@effective, @workspace)}
+        <span :if={!@can_edit} id={"#{@id}-owners"}>{gettext("Only an owner or an admin sets a mode.")}</span>
+      </p>
     </section>
     """
   end
 
-  defp in_effect_sentence("follow", effective, _workspace_default),
-    do:
-      rich_gettext(
-        "In effect: %{mode}, the workspace's default. It changes when the workspace's does.",
-        mode: {:b, effective}
-      )
+  # Whose the mode is: the workspace's, or the target's own with who set it and when; a
+  # whole sentence per case, the workspace's mode a verb of its own.
+  defp whose_sentence("follow", "enforce", workspace, _set),
+    do: [gettext("It follows %{workspace}, which enforces.", workspace: workspace)]
 
-  defp in_effect_sentence(_setting, effective, workspace_default),
-    do:
-      rich_gettext(
-        "In effect: %{mode}, this target's own. The workspace's default is %{default}.",
-        mode: {:b, effective},
-        default: workspace_default
-      )
+  defp whose_sentence("follow", _observe, workspace, _set),
+    do: [gettext("It follows %{workspace}, which observes.", workspace: workspace)]
 
-  defp locked_deny_sentence(hosts) do
-    rich_gettext(
-      "The locked deny %{hosts} is denied in either mode, and under observe it is the only thing denied here: every other host is let through and recorded.",
-      hosts: hosts |> Enum.map(&{:code, &1}) |> Enum.intersperse(" ")
-    )
+  defp whose_sentence(_own, default, workspace, %{by: by, at: %DateTime{} = at})
+       when is_binary(by) do
+    if default == "enforce",
+      do:
+        rich_gettext("Its own, set by %{by} %{when}; %{workspace} enforces.",
+          by: {:b, by},
+          when: when_words(at),
+          workspace: workspace
+        ),
+      else:
+        rich_gettext("Its own, set by %{by} %{when}; %{workspace} observes.",
+          by: {:b, by},
+          when: when_words(at),
+          workspace: workspace
+        )
   end
+
+  defp whose_sentence(_own, "enforce", workspace, _set),
+    do: [gettext("Its own; %{workspace} enforces.", workspace: workspace)]
+
+  defp whose_sentence(_own, _observe, workspace, _set),
+    do: [gettext("Its own; %{workspace} observes.", workspace: workspace)]
+
+  defp when_words(at) do
+    case Format.days_back(at, DateTime.utc_now()) do
+      0 -> gettext("today")
+      1 -> gettext("yesterday")
+      _ -> gettext("on %{date}", date: Format.day(at))
+    end
+  end
+
+  defp effect_sentence("observe", workspace),
+    do:
+      gettext(
+        "What no rule names is let through and recorded; a deny rule holds, and so do %{workspace}'s locked rules.",
+        workspace: workspace
+      )
+
+  defp effect_sentence(_enforce, _workspace),
+    do: gettext("A connection no rule allows is denied.")
 
   ## Rule composer
 
   @doc """
-  The composer of a host rule: a row between the card's header and its table, never a
+  The composer of a host rule: a line over the list of rules, opened by Add rule, never a
   modal. The reading line under the fields reads the rule back; the button is off until
-  the reading is `:ok` or `:note`.
+  the reading is `:ok` or `:note`. Cancel sends `composer_close`.
   """
   attr :id, :string, required: true
   attr :form, :any, required: true, doc: "action, host, paths, every"
   attr :scope, :atom, required: true, values: [:workspace, :target]
   attr :reading, :map, default: nil
   attr :queued, :integer, default: 0, doc: "pasted hosts still to add"
+  attr :class, :any, default: nil
 
   attr :host_placeholder, :string,
     default: nil,
@@ -603,7 +639,7 @@ defmodule ApiaryWeb.PolicyComponents do
     <.form
       for={@form}
       id={@id}
-      class="q-composer"
+      class={["q-composer", @class]}
       aria-label={
         if @scope == :workspace,
           do: gettext("Add a host rule"),
@@ -678,10 +714,15 @@ defmodule ApiaryWeb.PolicyComponents do
           aria-describedby={"#{@id}-reads"}
         />
       </label>
-      <.button type="submit" variant="primary" id={"#{@id}-add"} disabled={!@ready?}>
-        {@reading.button ||
-          if(@scope == :workspace, do: gettext("Add rule"), else: gettext("Add for this target"))}
-      </.button>
+      <span class="q-composer-go">
+        <.button id={"#{@id}-cancel"} type="button" phx-click="composer_close">
+          {gettext("Cancel")}
+        </.button>
+        <.button type="submit" variant="primary" id={"#{@id}-add"} disabled={!@ready?}>
+          {@reading.button ||
+            if(@scope == :workspace, do: gettext("Add rule"), else: gettext("Add for this target"))}
+        </.button>
+      </span>
       <.reading_line id={"#{@id}-reads"} reading={@reading} queued={@queued} />
     </.form>
     """
@@ -815,216 +856,355 @@ defmodule ApiaryWeb.PolicyComponents do
   defp reading_icon(:error), do: "hero-exclamation-triangle-micro"
   defp reading_icon(_hint_or_note), do: "hero-information-circle-micro"
 
-  ## Rules table and rule row
+  ## The list of rules
 
   @doc """
-  The rules of the workspace, or the effective policy of a target: one list, every entry
-  saying where it came from. A row is a map the page builds (see `rule_row/1`).
-  `activity` is `:loading`, `:unavailable` (the column is dropped, never faked) or the
-  map of `Apiary.Policy.rule_activity/3`.
+  A list of host rules on the list pattern (docs/ui.md, Lists), the Network access section
+  of the workspace's policy page and of a target's Policy tab: the views with their counts,
+  the search with the Filter menu, Sort and Add rule, the filters in force as tokens and how
+  many rules match, the composer when it is open (the slot), one line a rule
+  (`rule_line/1`) and the pages. The query is `ApiaryWeb.PolicyLive.RuleList`'s, and every
+  control is a patch of the URL `path` gives a query; the search sends `rules_search`.
+
+  `listing` is what `ApiaryWeb.PolicyLive.RuleList.list/3` answered; `activity` is
+  `:loading`, `:unavailable` (the use is not shown, never faked) or the map of
+  `Apiary.Policy.rule_activity/3`.
   """
-  attr :id, :string, required: true
-  attr :label, :string, required: true
-  attr :rows, :list, required: true
-  attr :scope, :atom, required: true, values: [:workspace, :target]
-
-  attr :current_scope, :map,
-    required: true,
-    doc: "the caller's scope: its organisation and workspace name the links"
-
-  attr :can_lock, :boolean, default: false
+  attr :id, :string, required: true, doc: "the table's region; the controls' ids start with it"
+  attr :label, :string, required: true, doc: "the table's accessible name"
+  attr :listing, :map, required: true
+  attr :query, :any, required: true
+  attr :path, :any, required: true, doc: "the URL of a query"
+  attr :sections, :list, required: true, doc: "the Filter menu's, `RuleList.sections/2`"
+  attr :default_sort, :string, required: true, doc: "the list's own order, in words"
   attr :activity, :any, default: :unavailable
+  attr :source, :boolean, default: false, doc: "show where each rule is written"
+  attr :can_add, :boolean, default: false, doc: "the reader may add a rule: Add rule shows"
+  attr :adding, :boolean, default: false, doc: "the composer is open"
+  attr :can_lock, :boolean, default: false
   attr :fresh, :any, default: %{}, doc: "%{rule id => version}: new in the version in force"
   attr :ruled_host, :string, default: nil, doc: "the host `?rule=` points at"
-  attr :empty, :string, default: nil, doc: "the one faint line of a filter that matches nothing"
+  attr :empty, :string, default: nil, doc: "the line of a list with no rule at all"
+  slot :composer
 
-  def rules_table(assigns) do
-    assigns = assign(assigns, :seen?, assigns.activity != :unavailable)
+  def rule_list(assigns) do
+    listing = assigns.listing
+
+    assigns =
+      assign(assigns,
+        seen?: is_map(assigns.activity),
+        off?: Enum.any?(listing.rows, & &1.off),
+        used?: assigns.activity != :unavailable
+      )
 
     ~H"""
-    <div id={@id} class="q-rules-wrap" role="region" aria-label={@label}>
-      <table class="table q-rules" role="table">
+    <.views id={"#{@id}-views"} label={gettext("Views")}>
+      <:view
+        :for={{view, word, label, count} <- rule_views(@listing.counts)}
+        id={"#{@id}-view-#{word}"}
+        patch={@path.(%{@query | view: view, page: 1})}
+        current={@query.view == view}
+        count={Format.number(count)}
+      >
+        {label}
+      </:view>
+    </.views>
+
+    <div id={"#{@id}-bar"} class="q-bar q-rl-bar">
+      <.list_search
+        id={"#{@id}-query"}
+        class="q-find-query"
+        label={gettext("Find a host")}
+        placeholder={gettext("Find a host, e.g. *.github.example seen:no")}
+        value={@query.text}
+        change="rules_search"
+      />
+      <.filter_menu id={"#{@id}-filter"} count={length(@query.tokens)}>
+        <%= for section <- @sections do %>
+          <.menu_heading title={section.title} />
+          <.menu_item
+            :for={{item, n} <- Enum.with_index(section.items)}
+            id={"#{@id}-filter-#{section.key}-#{n}"}
+            patch={@path.(RuleList.toggle(@query, item.token))}
+            checked={item.token in @query.tokens}
+            hint={
+              ngettext("%{number} rule", "%{number} rules", item.count,
+                number: Format.number(item.count)
+              )
+            }
+          >
+            <span class={section.key == "by" && "font-mono"}>{item.label}</span>
+          </.menu_item>
+        <% end %>
+      </.filter_menu>
+      <.sort_menu id={"#{@id}-sort"} current={sort_words(@query.sort, @default_sort)}>
+        <.menu_item
+          :for={sort <- RuleList.sorts()}
+          :if={sort != :used or @used?}
+          id={"#{@id}-sort-#{sort}"}
+          patch={@path.(%{@query | sort: sort, page: 1})}
+          checked={@query.sort == sort}
+        >
+          {sort_words(sort, @default_sort)}
+        </.menu_item>
+      </.sort_menu>
+      <.button
+        :if={@can_add}
+        id={"#{@id}-add"}
+        phx-click="composer_open"
+        aria-expanded={to_string(@adding)}
+      >
+        <.icon name="hero-plus-micro" class="size-4 text-faint" />{gettext("Add rule")}
+      </.button>
+    </div>
+
+    <.filter_tokens
+      id={"#{@id}-tokens"}
+      clear={RuleList.narrowed?(@query) && @path.(RuleList.clear(@query))}
+    >
+      <:token
+        :for={token <- @query.tokens}
+        id={"#{@id}-token-#{elem(token, 0)}"}
+        class="q-tok-q"
+        patch={@path.(RuleList.toggle(@query, token))}
+        label={gettext("Remove %{token}", token: RuleList.token_text(token))}
+      >
+        <span class="q-tok-k">{token_key(token)}:</span>{token_value(token)}
+      </:token>
+    </.filter_tokens>
+
+    {render_slot(@composer)}
+
+    <p :if={@listing.match && !@listing.loading} id={"#{@id}-summary"} class="q-matchline">
+      <.rich text={
+        rich_ngettext("%{number} rule matches", "%{number} rules match", @listing.match,
+          number: {:b, Format.number(@listing.match)}
+        )
+      } />
+      <.link
+        :if={@query.tokens == []}
+        id={"#{@id}-clear"}
+        patch={@path.(RuleList.clear(@query))}
+        class="q-tok-clear"
+      >
+        {gettext("Clear")}
+      </.link>
+      <span :if={@listing.unseen} id={"#{@id}-unseen"}>
+        {gettext("The use of the last 14 days could not be counted, so seen: narrows nothing.")}
+      </span>
+    </p>
+
+    <div
+      id={@id}
+      class="q-tbl q-rl-wrap overflow-x-auto rounded-box border border-line bg-base-100 shadow-xs"
+      tabindex="0"
+      role="region"
+      aria-label={@label}
+      aria-busy={@listing.loading && "true"}
+    >
+      <table class="table q-rl">
         <thead>
-          <tr role="row">
-            <th role="columnheader">{gettext("Rule")}</th>
-            <th role="columnheader">{gettext("Paths")}</th>
-            <th :if={@scope == :target} role="columnheader">{gettext("Comes from")}</th>
-            <th :if={@seen?} role="columnheader" class="q-num">{gettext("Last 7 days")}</th>
-            <th :if={@scope == :workspace} role="columnheader">{gettext("Added")}</th>
-            <th role="columnheader">
-              <span class="sr-only">
-                {if @scope == :workspace, do: gettext("Lock and actions"), else: gettext("Actions")}
-              </span>
+          <tr>
+            <th scope="col" class="q-rl-mk">
+              <span class="sr-only">{gettext("Allow or deny")}</span>
             </th>
+            <th scope="col">{gettext("Host")}</th>
+            <th scope="col">{gettext("Paths")}</th>
+            <th :if={@source} scope="col">{gettext("Source")}</th>
+            <th :if={@seen? or @off?} scope="col" class="q-from-sm">{gettext("Last 14 days")}</th>
+            <th scope="col" class="q-from-md">{gettext("Added")}</th>
+            <th scope="col" class="q-rl-acts"><span class="sr-only">{gettext("Actions")}</span></th>
           </tr>
         </thead>
         <tbody>
-          <tr :if={@rows == [] && @empty} role="row">
-            <td role="cell" colspan="6" class="!whitespace-normal text-[13px] text-faint">
-              {@empty}
+          <tr :for={n <- if(@listing.loading, do: 1..6, else: [])}>
+            <td class="q-rl-mk"></td>
+            <td>
+              <span class={["skeleton q-skel", if(rem(n, 2) == 0, do: "w-44", else: "w-36")]}></span>
+            </td>
+            <td><span class="skeleton q-skel w-16"></span></td>
+            <td :if={@source}><span class="skeleton q-skel w-20"></span></td>
+            <td :if={@seen? or @off?} class="q-from-sm">
+              <span class="skeleton q-skel w-16"></span>
+            </td>
+            <td class="q-from-md"><span class="skeleton q-skel w-24"></span></td>
+            <td class="q-rl-acts"></td>
+          </tr>
+          <tr :if={!@listing.loading && @listing.rows == []}>
+            <td colspan="7" class="q-rl-none">
+              {if RuleList.narrowed?(@query) or @query.view != :all or !@empty,
+                do: gettext("No rule matches."),
+                else: @empty}
             </td>
           </tr>
-          <.rule_row
-            :for={row <- @rows}
+          <.rule_line
+            :for={row <- @listing.rows}
             id={"rule-#{row.id}"}
             rule={row}
-            scope={@scope}
-            current_scope={@current_scope}
+            source={@source}
+            use?={@seen? or @off?}
+            seen={@seen? && seen_of(@activity, row)}
             can_lock={@can_lock}
-            seen={@seen? && seen(@activity, row)}
-            seen?={@seen?}
             fresh={Map.get(@fresh, row.id)}
             ruled={@ruled_host != nil && @ruled_host == row.host}
           />
         </tbody>
       </table>
     </div>
+
+    <RunComponents.pager
+      :if={!@listing.loading && @listing.total > 0}
+      id={"#{@id}-pages"}
+      prefix={"#{@id}-pages"}
+      first={@listing.first}
+      last={@listing.last}
+      total={@listing.total}
+      previous={@listing.page > 1 && @path.(%{@query | page: @listing.page - 1})}
+      next={@listing.page < @listing.pages && @path.(%{@query | page: @listing.page + 1})}
+      previous_label={gettext("Previous")}
+      next_label={gettext("Next")}
+    />
     """
   end
 
-  defp seen(:loading, _row), do: :loading
-  defp seen(%{} = activity, row), do: Map.get(activity, row.id, %{allowed: 0, denied: 0})
+  # The views, each with the word the URL writes it with.
+  defp rule_views(counts) do
+    [
+      {:all, "all", gettext("All"), counts.all},
+      {:allow, "allowed", gettext("Allowed"), counts.allow},
+      {:deny, "denied", gettext("Denied"), counts.deny},
+      {:locked, "locked", gettext("Locked"), counts.locked}
+    ]
+  end
+
+  defp sort_words(:default, default), do: default
+  defp sort_words(:host, _default), do: gettext("Host")
+  defp sort_words(:used, _default), do: gettext("Most used")
+  defp sort_words(:recent, _default), do: gettext("Recently added")
+
+  defp token_key(token), do: token |> RuleList.token_text() |> String.split(":", parts: 2) |> hd()
+
+  defp token_value(token),
+    do: token |> RuleList.token_text() |> String.split(":", parts: 2) |> List.last()
+
+  defp seen_of(activity, row), do: Map.get(activity, row.id, %{allowed: 0, denied: 0})
 
   @doc """
-  One rule. `rule` is a map: `id`, `action` (`"allow"`, `"deny"`), `host`, `paths`,
-  `locked`, `source` (`:workspace`, `:target`, `:workspace_locked`), `by` (the local part
-  of the author's email), `at`, `locked_tip` (what a member reads on the padlock), `act`
-  (the one act of a target row: `:disable`, `:allow_here`, `:remove`, `:restore`,
-  `:open`), `beaten` (the rules it holds against: maps with `id`, `action`, `host`, `kind`
-  (`:override`, `:lock`, `:cover`), `by`, `at`), `can_change` (false for a member on a
-  locked rule).
+  One rule, one line (docs/ui.md, Lists): its mark, the host in mono (the title), its paths,
+  where it is written (`source`), its use in the last 14 days, who added it and when, a
+  faint lock when it is locked, and its ⋯ menu. A rule not in force is struck, and says why
+  where its use would be.
+
+  `rule` is a map (`ApiaryWeb.PolicyLive.Common`): `id`, `action`, `host`, `paths`,
+  `locked`, `source` (`%{key:, label:, rank:}`), `own` (written where the page is: it is
+  changed here), `in_force`, `off` (why it is not in force, or nil), `by`, `at`,
+  `locked_tip` (what the lock says), `can_change` (the reader may change it here), `act`
+  (what Remove does: `:remove`, or `:restore` where a target's own rule gives the
+  workspace's back) and `view` (`{label, path}`: where a rule written elsewhere is changed,
+  or nil). The menu of the page's own rule: Edit paths, the other action, Lock or Unlock
+  for an owner on the workspace's page, Remove; of a rule written elsewhere, the way to it.
   """
   attr :id, :string, required: true
   attr :rule, :map, required: true
-  attr :scope, :atom, required: true
-
-  attr :current_scope, :map,
-    required: true,
-    doc: "the caller's scope: its organisation and workspace name the links"
-
+  attr :source, :boolean, default: false
+  attr :use?, :boolean, default: false, doc: "the use column is shown"
+  attr :seen, :any, default: nil, doc: "`%{allowed:, denied:}`, or nil when not counted"
   attr :can_lock, :boolean, default: false
-  attr :seen, :any, default: nil
-  attr :seen?, :boolean, default: false
   attr :fresh, :any, default: nil
   attr :ruled, :boolean, default: false
 
-  def rule_row(assigns) do
+  def rule_line(assigns) do
+    rule = assigns.rule
+
+    assigns =
+      assign(assigns,
+        menu?: (rule.own and rule.can_change) or (not rule.own and rule.view != nil),
+        lockable?: assigns.can_lock and rule.own and rule.in_force
+      )
+
     ~H"""
     <tr
       id={@id}
-      role="row"
       class={[
-        "q-rule-row",
+        "q-rl-row",
         @fresh && "q-fresh",
         @ruled && "q-ruled",
-        @rule.beaten != [] && "q-has-over"
+        !@rule.in_force && "q-rl-off"
       ]}
     >
-      <td role="cell" class="q-c-rule">
-        <div class="q-rcell">
-          <.rule_mark action={@rule.action} />
-          <.host host={@rule.host} />
-          <span :if={@fresh} class="q-newdot">{gettext("New in v%{version}", version: @fresh)}</span>
-        </div>
+      <td class="q-rl-mk"><.rule_mark action={@rule.action} /></td>
+      <td class="q-rl-host" title={@rule.off}>
+        <.host host={@rule.host} class="q-rl-h" />
+        <span :if={@rule.off} class="sr-only">. {@rule.off}</span>
+        <span :if={@fresh} class="q-newdot">{gettext("New in v%{version}", version: @fresh)}</span>
       </td>
-      <td role="cell" class="q-c-paths"><.paths paths={@rule.paths} action={@rule.action} /></td>
-      <td :if={@scope == :target} role="cell" class="q-c-src">
-        <.source_chip source={@rule.source} />
+      <td class="q-rl-paths"><.paths paths={@rule.paths} action={@rule.action} /></td>
+      <td :if={@source} class="q-rl-src">{@rule.source.label}</td>
+      <td :if={@use?} class="q-rl-use q-from-sm">
+        <span :if={@rule.off} class="q-rl-offw" aria-hidden="true">{@rule.off}</span>
+        <.seen :if={!@rule.off && @seen} seen={@seen} />
       </td>
-      <td :if={@seen?} role="cell" class="q-c-seen q-num">
-        <.seen seen={@seen} />
+      <td class="q-rl-by q-from-md">
+        {@rule.by}<span :if={@rule.by && @rule.at}> · </span>{@rule.at && Format.day(@rule.at)}
       </td>
-      <td :if={@scope == :workspace} role="cell" class="q-c-by">
-        <.who_when by={@rule.by} at={@rule.at} />
-      </td>
-      <td role="cell" class="q-c-acts">
-        <span :if={@scope == :workspace} class="q-rowacts">
-          <.lock rule={@rule} can_lock={@can_lock} id={@id} />
-          <.rule_menu :if={@rule.can_change} id={"#{@id}-menu"} rule={@rule} can_lock={@can_lock} />
-        </span>
-        <.target_act
-          :if={@scope == :target}
-          rule={@rule}
-          id={@id}
-          current_scope={@current_scope}
-        />
-      </td>
-    </tr>
-    <tr
-      :for={beaten <- @rule.beaten}
-      id={"#{@id}-over-#{beaten.id}"}
-      role="row"
-      class={["q-over", @fresh && "q-fresh"]}
-    >
-      <td role="cell" colspan="6">
-        <div class="q-overline">
-          <.icon :if={beaten.kind == :lock} name="hero-lock-closed-micro" class="size-3" />
-          <b>{beaten_lead(beaten)}</b>
-          <s>
-            <span class="sr-only">{gettext("not in force:")} </span>{beaten.action} {beaten.host}
-          </s>
-          <span>{beaten_tail(beaten)}</span>
-          <button
-            :if={beaten.kind == :lock}
-            type="button"
-            class="q-link"
-            phx-click={JS.push("row_act", value: %{id: beaten.id, act: "remove"})}
-            aria-label={gettext("Remove this target's rule for %{host}", host: beaten.host)}
-          >
-            {gettext("Remove it")}
-          </button>
-        </div>
+      <td class="q-rl-acts">
+        <span
+          :if={@rule.locked}
+          id={"#{@id}-lock"}
+          class="q-rl-lock tooltip tooltip-left q-tip-wide"
+          tabindex="0"
+          aria-description={@rule.locked_tip}
+          data-tip={@rule.locked_tip}
+        ><.icon name="hero-lock-closed-micro" class="size-3" /><span class="sr-only">{gettext(
+          "Locked"
+        )}</span></span>
+        <.row_menu
+          :if={@menu?}
+          id={"#{@id}-menu"}
+          class="q-hov"
+          label={gettext("Actions for %{host}", host: @rule.host)}
+        >
+          <%= if @rule.own do %>
+            <.menu_item
+              :if={@rule.action == "allow" && @rule.in_force}
+              id={"#{@id}-paths"}
+              phx-click={JS.push("edit_paths", value: %{id: @rule.id})}
+            >
+              {gettext("Edit paths")}
+            </.menu_item>
+            <.menu_item
+              :if={@rule.in_force}
+              id={"#{@id}-change"}
+              phx-click={JS.push("change_action", value: %{id: @rule.id})}
+            >
+              {if @rule.action == "allow",
+                do: gettext("Change to deny"),
+                else: gettext("Change to allow")}
+            </.menu_item>
+            <.menu_item
+              :if={@lockable?}
+              id={"#{@id}-lock-toggle"}
+              phx-click={JS.push("lock_toggle", value: %{id: @rule.id})}
+            >
+              {if @rule.locked, do: gettext("Unlock"), else: gettext("Lock")}
+            </.menu_item>
+            <.menu_divider :if={@rule.in_force} />
+            <.menu_item
+              id={"#{@id}-remove"}
+              phx-click={JS.push("remove", value: %{id: @rule.id})}
+            >
+              {gettext("Remove")}
+            </.menu_item>
+          <% else %>
+            <.menu_item id={"#{@id}-view"} navigate={elem(@rule.view, 1)}>
+              {elem(@rule.view, 0)}
+            </.menu_item>
+          <% end %>
+        </.row_menu>
       </td>
     </tr>
     """
   end
-
-  defp beaten_lead(%{kind: :lock}), do: gettext("Holds against this target's rule")
-  defp beaten_lead(%{kind: :override}), do: gettext("Overrides the workspace's rule")
-
-  defp beaten_lead(%{kind: :cover, source: :workspace}),
-    do: gettext("Covers the workspace's rule")
-
-  defp beaten_lead(%{kind: :cover}), do: gettext("Covers this target's rule")
-
-  defp beaten_tail(%{kind: :lock, by: by, at: %DateTime{} = at}) when is_binary(by),
-    do: gettext("%{by} · %{date}. It is not in force.", by: by, date: Format.day(at))
-
-  defp beaten_tail(%{kind: :lock, at: %DateTime{} = at}),
-    do: gettext("%{date}. It is not in force.", date: Format.day(at))
-
-  defp beaten_tail(%{kind: :lock}), do: gettext("It is not in force.")
-
-  defp beaten_tail(%{kind: :override, action: "allow"} = beaten) do
-    case beaten do
-      %{winner_by: by, winner_at: %DateTime{} = at} when is_binary(by) ->
-        gettext("Disabled here by %{by} · %{date}. Other targets keep it.",
-          by: by,
-          date: Format.day(at)
-        )
-
-      %{winner_at: %DateTime{} = at} ->
-        gettext("Disabled here · %{date}. Other targets keep it.", date: Format.day(at))
-
-      _beaten ->
-        gettext("Disabled here. Other targets keep it.")
-    end
-  end
-
-  defp beaten_tail(%{kind: :override} = beaten) do
-    case beaten do
-      %{winner_by: by, winner_at: %DateTime{} = at} when is_binary(by) ->
-        gettext("Allowed here by %{by} · %{date}.", by: by, date: Format.day(at))
-
-      %{winner_at: %DateTime{} = at} ->
-        gettext("Allowed here · %{date}.", date: Format.day(at))
-
-      _beaten ->
-        gettext("Allowed here.")
-    end
-  end
-
-  defp beaten_tail(%{kind: :cover}), do: gettext("It changes nothing while this rule stands.")
 
   @doc "A host in mono; the leading `*.` of a suffix in accent, with what it means on hover."
   attr :host, :string, required: true
@@ -1077,291 +1257,119 @@ defmodule ApiaryWeb.PolicyComponents do
 
   defp paths(assigns) do
     ~H"""
-    <span class="q-chips"><code :for={path <- @paths} class="q-rule">{path}</code></span>
+    <span class="q-rl-pth"><code :for={path <- @paths} class="q-rule">{path}</code></span>
     """
   end
 
   attr :seen, :any, required: true
   attr :noun, :atom, default: nil, values: [nil, :request]
 
-  defp seen(%{seen: :loading} = assigns) do
-    ~H|<span class="skeleton q-skel inline-block w-16 align-middle" aria-hidden="true"></span>|
-  end
-
   defp seen(%{seen: %{allowed: 0, denied: 0}} = assigns) do
-    ~H|<span class="q-zero">{gettext("not seen")}</span>|
+    ~H|<span class="q-zero">{if @noun == :request, do: gettext("not used"), else: gettext("not seen")}</span>|
   end
 
   defp seen(%{noun: :request} = assigns) do
     ~H"""
-    <span class="text-muted">{requests(@seen.allowed + @seen.denied)}</span>
+    <span>{requests(@seen.allowed + @seen.denied)}</span>
     """
   end
 
   defp seen(assigns) do
     ~H"""
-    <span :if={@seen.allowed > 0} class="text-muted">
+    <span :if={@seen.allowed > 0}>
       {gettext("%{number} allowed", number: Format.number(@seen.allowed))}
     </span>
-    <span :if={@seen.allowed > 0 && @seen.denied > 0} class="text-muted"> · </span>
-    <span :if={@seen.denied > 0} class="q-bad">
+    <span :if={@seen.allowed > 0 && @seen.denied > 0}> · </span>
+    <span :if={@seen.denied > 0}>
       {gettext("%{number} denied", number: Format.number(@seen.denied))}
     </span>
-    <span class="sr-only">{gettext("in the last 7 days")}</span>
+    <span class="sr-only">{gettext("in the last 14 days")}</span>
     """
   end
 
   defp requests(n),
     do: ngettext("%{number} request", "%{number} requests", n, number: Format.number(n))
 
-  attr :by, :string, default: nil
-  attr :at, :any, default: nil
-
-  defp who_when(assigns) do
-    ~H"""
-    <span class="q-who-when">
-      {@by}
-      <small :if={@at}>{if @by, do: "· "}{Format.day(@at)}</small>
-    </span>
-    """
-  end
-
-  attr :id, :string, required: true
-  attr :rule, :map, required: true
-  attr :can_lock, :boolean, required: true
-
-  defp lock(%{can_lock: true} = assigns) do
-    ~H"""
-    <button
-      id={"#{@id}-lock"}
-      type="button"
-      class="q-lockbtn tooltip tooltip-left q-tip-wide"
-      aria-pressed={to_string(@rule.locked)}
-      aria-label={gettext("Lock %{host}", host: @rule.host)}
-      data-tip={
-        if @rule.locked,
-          do: gettext("Locked: no target can override it. Select to unlock."),
-          else: gettext("Lock: hold this rule against every target")
-      }
-      phx-click={JS.push("lock_toggle", value: %{id: @rule.id})}
-    >
-      <.icon
-        name={if @rule.locked, do: "hero-lock-closed-micro", else: "hero-lock-open-micro"}
-        class="size-3"
-      />
-      <span :if={@rule.locked}>{gettext("Locked")}</span>
-    </button>
-    """
-  end
-
-  defp lock(%{rule: %{locked: true}} = assigns) do
-    ~H"""
-    <span
-      id={"#{@id}-lock"}
-      class="q-locked tooltip tooltip-left q-tip-wide"
-      tabindex="0"
-      aria-description={@rule.locked_tip || gettext("Locked. Only an owner can change or unlock it.")}
-      data-tip={@rule.locked_tip || gettext("Locked. Only an owner can change or unlock it.")}
-    >
-      <.icon name="hero-lock-closed-micro" class="size-3 text-muted" />{gettext("Locked")}
-    </span>
-    """
-  end
-
-  defp lock(assigns), do: ~H""
-
-  attr :id, :string, required: true
-  attr :rule, :map, required: true
-  attr :can_lock, :boolean, required: true
-
-  defp rule_menu(assigns) do
-    ~H"""
-    <div
-      id={@id}
-      class="dropdown dropdown-end"
-      phx-hook="Menu"
-      phx-mounted={JS.ignore_attributes(["class"])}
-    >
-      <button
-        id={"#{@id}-button"}
-        type="button"
-        class="btn btn-ghost btn-xs btn-square"
-        aria-haspopup="menu"
-        aria-expanded="false"
-        aria-label={gettext("Actions for %{host}", host: @rule.host)}
-        phx-mounted={JS.ignore_attributes(["aria-expanded"])}
-      >
-        <.icon name="hero-ellipsis-horizontal-micro" class="size-4" />
-      </button>
-      <ul class="menu menu-sm dropdown-content right-0 z-20 mt-1 w-44" role="menu">
-        <li :if={@rule.action == "allow"} role="none">
-          <button
-            type="button"
-            role="menuitem"
-            data-menu-close
-            phx-click={JS.push("edit_paths", value: %{id: @rule.id})}
-          >
-            <.icon name="hero-pencil-square-micro" class="size-4" /> {gettext("Edit paths")}
-          </button>
-        </li>
-        <li role="none">
-          <button
-            type="button"
-            role="menuitem"
-            data-menu-close
-            phx-click={JS.push("change_action", value: %{id: @rule.id})}
-          >
-            <.icon
-              name={if @rule.action == "allow", do: "hero-no-symbol-micro", else: "hero-check-micro"}
-              class="size-4"
-            />
-            {if @rule.action == "allow",
-              do: gettext("Change to deny"),
-              else: gettext("Change to allow")}
-          </button>
-        </li>
-        <li :if={@can_lock} role="none">
-          <button
-            type="button"
-            role="menuitem"
-            data-menu-close
-            phx-click={JS.push("lock_toggle", value: %{id: @rule.id})}
-          >
-            <.icon
-              name={if @rule.locked, do: "hero-lock-open-micro", else: "hero-lock-closed-micro"}
-              class="size-4"
-            />
-            {if @rule.locked, do: gettext("Unlock"), else: gettext("Lock")}
-          </button>
-        </li>
-        <li class="menu-divider" role="separator"></li>
-        <li role="none">
-          <button
-            type="button"
-            role="menuitem"
-            class="text-error-soft-content"
-            data-menu-close
-            phx-click={JS.push("remove", value: %{id: @rule.id})}
-          >
-            <.icon name="hero-trash-micro" class="size-4" /> {gettext("Remove")}
-          </button>
-        </li>
-      </ul>
-    </div>
-    """
-  end
-
-  attr :id, :string, required: true
-  attr :rule, :map, required: true
-  attr :current_scope, :map, required: true
-
-  defp target_act(%{rule: %{act: :open}} = assigns) do
-    ~H"""
-    <span
-      class="tooltip tooltip-left q-tip-wide"
-      data-tip={
-        gettext("A locked workspace rule. It is changed on the workspace's policy page, by an owner.")
-      }
-    >
-      <.link
-        id={"#{@id}-act"}
-        navigate={
-          ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy?#{%{"rule" => @rule.host}}"
-        }
-        class="q-link q-link-xs pr-2"
-        aria-label={gettext("Open the workspace's locked rule for %{host}", host: @rule.host)}
-      >
-        {gettext("Open")}
-      </.link>
-    </span>
-    """
-  end
-
-  defp target_act(assigns) do
-    ~H"""
-    <button
-      id={"#{@id}-act"}
-      type="button"
-      class="btn btn-ghost btn-xs"
-      aria-label={act_label(@rule.act, @rule.host)}
-      phx-click={JS.push("row_act", value: %{id: @rule.id, act: to_string(@rule.act)})}
-    >
-      {act_word(@rule.act)}
-    </button>
-    """
-  end
-
-  defp act_word(:disable), do: gettext("Disable here")
-  defp act_word(:allow_here), do: gettext("Allow here")
-  defp act_word(:remove), do: gettext("Remove")
-  defp act_word(:restore), do: gettext("Restore")
-
-  defp act_label(:disable, host), do: gettext("Disable %{host} for this target", host: host)
-  defp act_label(:allow_here, host), do: gettext("Allow %{host} for this target", host: host)
-  defp act_label(:remove, host), do: gettext("Remove this target's rule for %{host}", host: host)
-
-  defp act_label(:restore, host),
-    do: gettext("Restore the workspace's rule for %{host} in this target", host: host)
-
-  @doc "The credentials of a scope as a table. Rows: `id`, `name`, `argument`, `source`, `by`, `at`, `can_change`."
+  @doc """
+  The credentials of a scope, one line each on the list's look: the name (the title), its
+  argument, where it is written (`source`), its use in the last 14 days, who added it and
+  when, and its ⋯ menu: Remove for the page's own, the way to it for one written elsewhere.
+  Rows: `id`, `name`, `argument`, `action`, `source` (`%{label:}`), `own`, `view`, `by`,
+  `at`, `can_change`.
+  """
   attr :id, :string, required: true
   attr :label, :string, required: true
   attr :rows, :list, required: true
-  attr :scope, :atom, required: true
+  attr :source, :boolean, default: false
   attr :activity, :any, default: :unavailable
 
   def credentials_table(assigns) do
-    assigns = assign(assigns, :seen?, assigns.activity != :unavailable)
+    assigns = assign(assigns, :seen?, is_map(assigns.activity))
 
     ~H"""
-    <div id={@id} class="q-rules-wrap" role="region" aria-label={@label}>
-      <table class="table q-rules" role="table">
+    <div
+      id={@id}
+      class="q-tbl q-rl-wrap overflow-x-auto rounded-box border border-line bg-base-100 shadow-xs"
+      tabindex="0"
+      role="region"
+      aria-label={@label}
+    >
+      <table class="table q-rl">
         <thead>
-          <tr role="row">
-            <th role="columnheader">{gettext("Name")}</th>
-            <th role="columnheader">{gettext("Argument")}</th>
-            <th :if={@scope == :target} role="columnheader">{gettext("Comes from")}</th>
-            <th :if={@seen?} role="columnheader" class="q-num">{gettext("Last 7 days")}</th>
-            <th role="columnheader">{gettext("Added")}</th>
-            <th role="columnheader"><span class="sr-only">{gettext("Actions")}</span></th>
+          <tr>
+            <th scope="col" class="q-rl-mk"><span class="sr-only">{gettext("Kind")}</span></th>
+            <th scope="col">{gettext("Name")}</th>
+            <th scope="col">{gettext("Argument")}</th>
+            <th :if={@source} scope="col">{gettext("Source")}</th>
+            <th :if={@seen?} scope="col" class="q-from-sm">{gettext("Last 14 days")}</th>
+            <th scope="col" class="q-from-md">{gettext("Added")}</th>
+            <th scope="col" class="q-rl-acts"><span class="sr-only">{gettext("Actions")}</span></th>
           </tr>
         </thead>
         <tbody>
-          <tr :if={@rows == []} role="row">
-            <td role="cell" colspan="6" class="!whitespace-normal text-[13px] text-faint">
+          <tr :if={@rows == []}>
+            <td colspan="7" class="q-rl-none">
               {gettext("No credentials. A run that needs none runs without.")}
             </td>
           </tr>
-          <tr :for={row <- @rows} id={"rule-#{row.id}"} role="row" class="q-rule-row">
-            <td role="cell" class="q-c-rule">
-              <div class="q-rcell">
-                <.icon name="hero-key-micro" class="size-4 text-faint" />
-                <span class="q-host">{row.name}</span>
-                <.badge :if={row.action == "deny"} color="error">{gettext("Denied")}</.badge>
-              </div>
+          <tr :for={row <- @rows} id={"rule-#{row.id}"} class="q-rl-row">
+            <td class="q-rl-mk">
+              <span class="q-rl-key"><.icon name="hero-key-micro" class="size-3.5" /></span>
             </td>
-            <td role="cell" class="q-c-paths">
+            <td class="q-rl-host">
+              <span class="q-host q-rl-h">{row.name}</span>
+              <span :if={row.action == "deny"} class="q-rl-word">{gettext("Denied")}</span>
+            </td>
+            <td class="q-rl-paths">
               <code :if={row.argument} class="q-rule">{row.argument}</code>
               <span :if={!row.argument} class="q-every">{gettext("no argument")}</span>
             </td>
-            <td :if={@scope == :target} role="cell" class="q-c-src">
-              <.source_chip source={row.source} />
+            <td :if={@source} class="q-rl-src">{row.source.label}</td>
+            <td :if={@seen?} class="q-rl-use q-from-sm">
+              <.seen seen={seen_of(@activity, row)} noun={:request} />
             </td>
-            <td :if={@seen?} role="cell" class="q-c-seen q-num">
-              <.seen seen={seen(@activity, row)} noun={:request} />
+            <td class="q-rl-by q-from-md">
+              {row.by}<span :if={row.by && row.at}> · </span>{row.at && Format.day(row.at)}
             </td>
-            <td role="cell" class="q-c-by"><.who_when by={row.by} at={row.at} /></td>
-            <td role="cell" class="q-c-acts">
-              <button
-                :if={row.can_change}
-                id={"rule-#{row.id}-remove"}
-                type="button"
-                class="btn btn-ghost btn-xs"
-                aria-label={gettext("Remove the credential %{name}", name: row.name)}
-                phx-click={JS.push("remove", value: %{id: row.id})}
+            <td class="q-rl-acts">
+              <.row_menu
+                :if={(row.own and row.can_change) or (not row.own and row.view != nil)}
+                id={"rule-#{row.id}-menu"}
+                class="q-hov"
+                label={gettext("Actions for %{name}", name: row.name)}
               >
-                {gettext("Remove")}
-              </button>
+                <.menu_item
+                  :if={row.own}
+                  id={"rule-#{row.id}-remove"}
+                  phx-click={JS.push("remove", value: %{id: row.id})}
+                  aria-label={gettext("Remove the credential %{name}", name: row.name)}
+                >
+                  {gettext("Remove")}
+                </.menu_item>
+                <.menu_item :if={!row.own} id={"rule-#{row.id}-view"} navigate={elem(row.view, 1)}>
+                  {elem(row.view, 0)}
+                </.menu_item>
+              </.row_menu>
             </td>
           </tr>
         </tbody>

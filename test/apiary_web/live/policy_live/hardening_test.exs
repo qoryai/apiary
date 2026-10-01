@@ -73,6 +73,8 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
       render_hook(view, "remove_confirm", %{})
       assert rule(scope, "*.paste.example")
 
+      view |> element("#policy-rules-add") |> render_click()
+
       view
       |> form("#policy-composer", rule: %{host: "*.paste.example", paths: ""})
       |> render_change()
@@ -83,13 +85,27 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
   end
 
   describe "a member's crafted events on a target's page" do
-    test "a locked workspace rule is not disabled, and allowing for the workspace stays a member's right",
-         %{member_conn: conn, scope: scope, target: target, path: path, locked: locked} do
+    test "the workspace's rules are not changed from here, and allowing for the workspace stays a member's right",
+         %{
+           member_conn: conn,
+           scope: scope,
+           target: target,
+           path: path,
+           locked: locked,
+           plain: plain
+         } do
       view = open(conn, path)
 
-      render_hook(view, "row_act", %{"id" => locked.id, "act" => "allow_here"})
+      # The workspace's rules are changed where they live: an event naming one here
+      # changes nothing, locked or not.
+      for id <- [locked.id, plain.id], event <- ~w(change_action remove edit_paths) do
+        render_hook(view, event, %{"id" => id})
+      end
+
       assert rules(scope, target) == []
-      assert render(view) =~ "is locked"
+      assert rule(scope, "*.paste.example").locked
+      assert rule(scope, "github.example").action == "allow"
+      refute has_element?(view, "#policy-composer")
 
       render_hook(view, "target_mode_ask", %{"setting" => "enforce"})
       render_hook(view, "target_mode_confirm", %{})
@@ -145,7 +161,7 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
       {:ok, _} = Policy.deny(scope, target, %{host: "github.example"})
       view = open(conn, workspace_path(scope, "/policy"))
 
-      view |> element("#rule-#{plain.id}-lock") |> render_click()
+      view |> element("#rule-#{plain.id}-menu button", "Lock") |> render_click()
       assert has_element?(view, "#lock-confirm")
       {:ok, _} = Policy.remove_rule(scope, plain)
       view |> element("#lock-confirm-button") |> render_click()
@@ -158,23 +174,28 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
       assert rule(scope, "*.paste.example").id == again.id
     end
 
-    test "a row's act is matched against the rule as it is now",
-         %{conn: conn, scope: scope, target: target, path: path, denied: denied} do
+    test "a target's rule that is gone is not acted on",
+         %{conn: conn, scope: scope, target: target, path: path} do
+      {:ok, own} = Policy.allow(scope, target, %{host: "mcp.acme.example"})
       view = open(conn, path)
+      assert has_element?(view, "#rule-#{own.id}-menu")
 
-      # The workspace's deny became an allow held
-      # to paths: "Allow here" must not open them.
-      {:ok, _} = Policy.allow(scope, nil, %{host: "telemetry.example", paths: ["/v1/*"]})
-      render_hook(view, "row_act", %{"id" => denied.id, "act" => "allow_here"})
+      {:ok, _} = Policy.remove_rule(scope, own)
+
+      for event <- ~w(change_action remove edit_paths) do
+        render_hook(view, event, %{"id" => own.id})
+      end
 
       assert rules(scope, target) == []
-      assert render(view) =~ "changed while you were deciding"
+      refute has_element?(view, "#rule-#{own.id}")
+      assert Process.alive?(view.pid)
     end
   end
 
   describe "payloads no form sends" do
     test "leave the composer as it was and the page up", %{conn: conn, scope: scope} do
       view = open(conn, workspace_path(scope, "/policy"))
+      view |> element("#policy-rules-add") |> render_click()
 
       for payload <- [
             %{"rule" => "text"},
@@ -204,6 +225,11 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
       render_hook(view, "mode_ask", %{"mode" => ["enforce"]})
       render_hook(view, "show_rule", %{"host" => 1})
       render_hook(view, "compare", %{"compare" => %{}})
+      render_hook(view, "rules_search", %{"q" => ["x"]})
+      render_hook(view, "rules_search", %{"q" => %{"a" => 1}})
+      render_hook(view, "rules_search", %{})
+      render_hook(view, "remove", %{"id" => %{}})
+      render_hook(view, "change_action", %{"id" => ["x"]})
 
       render_hook(view, "composer_change", %{
         "rule" => %{"host" => "a\0b.example" <> String.duplicate("x", 10_000), "paths" => ""}
@@ -230,6 +256,11 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
             workspace_path(scope, "/policy/versions/1?compare=-3&view=%00"),
             workspace_path(scope, "/policy/versions/1?compare[]=1&view[]=served"),
             path <> "?show=%00&rule[]=x",
+            path <> "?view[]=allowed&q[]=x&sort=%00&page=abc",
+            workspace_path(
+              scope,
+              "/policy?page=99999999999999999999&q=" <> String.duplicate("a", 5_000)
+            ),
             path <> "/history?page=0&change=1"
           ] do
         view = open(conn, query)

@@ -38,8 +38,26 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
     |> String.trim()
   end
 
+  # The composer opens from Add rule: a test that types into it opens it first.
+  defp compose(view) do
+    if has_element?(view, "#policy-rules-add[aria-expanded=false]") do
+      view |> element("#policy-rules-add") |> render_click()
+    end
+
+    view
+  end
+
   defp type(view, params) do
+    compose(view)
     view |> form("#policy-composer", rule: params) |> render_change()
+  end
+
+  defp hosts(view) do
+    view
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.query("#policy-rules .q-host")
+    |> Enum.map(&(LazyHTML.text(&1) |> String.trim()))
   end
 
   defp rule(scope, host), do: Enum.find(Policy.list_rules(scope, nil), &(&1.host == host))
@@ -103,12 +121,20 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
   end
 
   describe "the composer" do
-    test "starts with the hint and the button off", %{conn: conn, scope: scope} do
+    test "opens from Add rule with the hint and the button off, and Cancel shuts it",
+         %{conn: conn, scope: scope} do
       {:ok, _} = Policy.allow(scope, nil, %{host: "registry.example"})
       view = open(conn, scope)
 
+      refute has_element?(view, "#policy-composer")
+      view |> element("#policy-rules-add[aria-expanded=false]") |> render_click()
+      assert has_element?(view, "#policy-rules-add[aria-expanded=true]")
+
       assert text(view, "#policy-composer-reads") =~ "A host name in lower case"
       assert has_element?(view, "#policy-composer-add[disabled]")
+
+      view |> element("#policy-composer-cancel") |> render_click()
+      refute has_element?(view, "#policy-composer")
     end
 
     test "reads a host, a suffix and paths back before saving", %{conn: conn, scope: scope} do
@@ -137,7 +163,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       {:ok, _} = Policy.allow(scope, nil, %{host: "registry.example"})
       view = open(conn, scope)
 
-      view |> element("#policy-composer button", "Deny") |> render_click()
+      view |> compose() |> element("#policy-composer button", "Deny") |> render_click()
       type(view, %{host: "telemetry.example"})
 
       assert text(view, "#policy-composer-reads") =~ "Reads as: deny telemetry.example ."
@@ -204,7 +230,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       {:ok, _} = Policy.allow(scope, nil, %{host: "gitlab.example"})
       view = open(conn, scope)
 
-      view |> element("#policy-composer button", "Deny") |> render_click()
+      view |> compose() |> element("#policy-composer button", "Deny") |> render_click()
       type(view, %{host: "gitlab.example"})
 
       assert text(view, "#policy-composer-reads") =~
@@ -245,7 +271,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       {:ok, _} = Policy.allow(scope, nil, %{host: "*.cdn.example"})
       view = open(conn, scope)
 
-      view |> element("#policy-composer button", "Deny") |> render_click()
+      view |> compose() |> element("#policy-composer button", "Deny") |> render_click()
       type(view, %{host: "files.cdn.example"})
 
       refute has_element?(view, "#policy-composer-reads[role=alert]")
@@ -264,7 +290,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
     test "a pasted list fills the composer with the first and queues the rest",
          %{conn: conn, scope: scope} do
       {:ok, _} = Policy.allow(scope, nil, %{host: "registry.example"})
-      view = open(conn, scope)
+      view = compose(open(conn, scope))
 
       render_hook(view, "composer_paste", %{"hosts" => ["a.example", "b.example", "c.example"]})
       assert text(view, "#policy-composer-reads-queued") == "2 more to add"
@@ -301,15 +327,21 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
          %{conn: conn, scope: scope} do
       view = open(conn, scope)
 
-      hosts =
-        view
-        |> render()
-        |> LazyHTML.from_fragment()
-        |> LazyHTML.query("#policy-rules .q-host")
-        |> Enum.map(&(LazyHTML.text(&1) |> String.trim()))
+      assert hosts(view) == [
+               "*.paste.example",
+               "api.example",
+               "github.example",
+               "*.github.example"
+             ]
 
-      assert hosts == ["*.paste.example", "api.example", "github.example", "*.github.example"]
-      assert text(view, "#policy-hosts-n") == "4"
+      # The views count every rule; All is current when no other is.
+      assert text(view, "#policy-rules-view-all") == "All 4"
+      assert text(view, "#policy-rules-view-allowed") == "Allowed 3"
+      assert text(view, "#policy-rules-view-denied") == "Denied 1"
+      assert text(view, "#policy-rules-view-locked") == "Locked 1"
+      assert has_element?(view, "#policy-rules-view-all[aria-current=page]")
+      assert text(view, "#policy-rules-pages-footer") == "1–4 of 4"
+      refute has_element?(view, "#policy-rules-summary")
 
       # The section is Network access, and leads to the page of what the runs reached.
       assert has_element?(view, "#policy-hosts-h", "Network access")
@@ -330,19 +362,177 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert text(view, "#policy-credential-rows") =~ "no argument"
     end
 
-    test "the filter is in the URL, and one that matches nothing says so", %{
+    test "the view is in the URL, and one the list does not know is every rule", %{
       conn: conn,
       scope: scope
     } do
-      view = open(conn, scope, "/policy?show=deny")
-      assert has_element?(view, "#policy-rules .q-host", "paste.example")
-      refute has_element?(view, "#policy-rules .q-host", "api.example")
+      view = open(conn, scope, "/policy?view=denied")
+      assert has_element?(view, "#policy-rules-view-denied[aria-current=page]")
+      assert hosts(view) == ["*.paste.example"]
 
-      view |> element("#policy-show button", "Locked") |> render_click()
-      assert_patch(view, workspace_path(scope, "/policy?show=locked"))
+      view |> element("#policy-rules-view-locked") |> render_click()
+      assert_patch(view, workspace_path(scope, "/policy?view=locked"))
+      assert hosts(view) == ["*.paste.example"]
 
-      view = open(conn, scope, "/policy?show=bogus")
-      assert has_element?(view, "#policy-rules .q-host", "api.example")
+      view |> element("#policy-rules-view-allowed") |> render_click()
+      assert_patch(view, workspace_path(scope, "/policy?view=allowed"))
+      assert hosts(view) == ["api.example", "github.example", "*.github.example"]
+
+      view = open(conn, scope, "/policy?view=bogus&sort=nope&page=0")
+      assert has_element?(view, "#policy-rules-view-all[aria-current=page]")
+      assert has_element?(view, "#policy-rules-sort-button[aria-label='Sort: Locked first']")
+      assert length(hosts(view)) == 4
+    end
+
+    test "the search finds a host, and a qualifier it reads becomes a token", %{
+      conn: conn,
+      scope: scope
+    } do
+      view = open(conn, scope)
+
+      # As the reader types, the text narrows the list; a qualifier half typed does not.
+      view
+      |> form("#policy-rules-query", q: "github paths:h")
+      |> render_change(%{"_target" => ["q"]})
+
+      assert_patch(view, workspace_path(scope, "/policy?q=github"))
+      assert hosts(view) == ["github.example", "*.github.example"]
+      assert text(view, "#policy-rules-summary") == "2 rules match Clear"
+      refute has_element?(view, "#policy-rules-tokens")
+
+      # On Enter the qualifier is a token, and the text stays.
+      view |> form("#policy-rules-query", q: "paths:every github") |> render_submit()
+      assert_patch(view, workspace_path(scope, "/policy?q=paths%3Aevery+github"))
+      assert has_element?(view, "#policy-rules-token-paths", "every")
+      assert has_element?(view, "#policy-rules-query-input[value='github']")
+      assert hosts(view) == ["github.example", "*.github.example"]
+
+      view |> form("#policy-rules-query", q: "api") |> render_submit()
+      assert_patch(view, workspace_path(scope, "/policy?q=paths%3Aevery+api"))
+      assert text(view, "#policy-rules-summary") == "0 rules match"
+      refute has_element?(view, "#policy-rules-clear")
+      assert text(view, "#policy-rules") =~ "No rule matches."
+
+      # The token's cross takes it away; Clear takes everything away.
+      view |> element("#policy-rules-token-paths a") |> render_click()
+      assert_patch(view, workspace_path(scope, "/policy?q=api"))
+      assert hosts(view) == ["api.example"]
+
+      view |> element("#policy-rules-clear") |> render_click()
+      assert_patch(view, workspace_path(scope, "/policy"))
+      assert length(hosts(view)) == 4
+
+      # A word the list does not read as a qualifier is text.
+      view |> form("#policy-rules-query", q: "seen:maybe") |> render_submit()
+      assert_patch(view, workspace_path(scope, "/policy?q=seen%3Amaybe"))
+      assert hosts(view) == []
+    end
+
+    test "the Filter menu writes the same tokens, each counted; Sort is in the URL too", %{
+      conn: conn,
+      scope: scope
+    } do
+      view = open(conn, scope)
+      me = ApiaryWeb.People.short(scope.user.email)
+
+      # Paths, Seen in 14 days and Added by; Source only where there is more than one.
+      refute has_element?(view, "#policy-rules-filter-source-0")
+      assert text(view, "#policy-rules-filter-paths-0") == "Held to paths 1 rule"
+      assert text(view, "#policy-rules-filter-paths-1") == "Every path 3 rules"
+      assert text(view, "#policy-rules-filter-seen-1") == "Not seen 4 rules"
+      assert text(view, "#policy-rules-filter-by-0") == "#{me} 4 rules"
+
+      view |> element("#policy-rules-filter-paths-0") |> render_click()
+      assert_patch(view, workspace_path(scope, "/policy?q=paths%3Aheld"))
+      assert has_element?(view, "#policy-rules-filter-paths-0[aria-checked=true]")
+      assert text(view, "#policy-rules-filter-button") == "Filter 1"
+      assert hosts(view) == ["api.example"]
+      assert text(view, "#policy-rules-summary") == "1 rule matches"
+
+      # One of a kind: the other value replaces it.
+      view |> element("#policy-rules-filter-paths-1") |> render_click()
+      assert_patch(view, workspace_path(scope, "/policy?q=paths%3Aevery"))
+      assert length(hosts(view)) == 3
+
+      view |> element("#policy-rules-filter-seen-0") |> render_click()
+      assert_patch(view, workspace_path(scope, "/policy?q=paths%3Aevery+seen%3Ayes"))
+      assert hosts(view) == []
+
+      view |> element("#policy-rules-filter-by-0") |> render_click()
+      assert_patch(view, workspace_path(scope, "/policy?q=paths%3Aevery+seen%3Ayes+by%3A#{me}"))
+
+      view = open(conn, scope)
+      assert has_element?(view, "#policy-rules-sort-button[aria-label='Sort: Locked first']")
+      view |> element("#policy-rules-sort-host") |> render_click()
+      assert_patch(view, workspace_path(scope, "/policy?sort=host"))
+
+      assert hosts(view) == [
+               "api.example",
+               "github.example",
+               "*.github.example",
+               "*.paste.example"
+             ]
+
+      assert has_element?(view, "#policy-rules-sort-button[aria-label='Sort: Host']")
+
+      view |> element("#policy-rules-sort-recent") |> render_click()
+      assert_patch(view, workspace_path(scope, "/policy?sort=recent"))
+
+      assert hosts(view) == [
+               "api.example",
+               "*.github.example",
+               "github.example",
+               "*.paste.example"
+             ]
+    end
+
+    test "pages of 50, and ?rule= opens the page that holds the rule", %{
+      conn: conn,
+      scope: scope
+    } do
+      for n <- 1..60 do
+        {:ok, _} =
+          Policy.allow(scope, nil, %{host: "n#{String.pad_leading("#{n}", 2, "0")}.example"})
+      end
+
+      view = open(conn, scope)
+      assert text(view, "#policy-rules-view-all") == "All 64"
+      assert text(view, "#policy-rules-pages-footer") == "1–50 of 64"
+      assert length(hosts(view)) == 50
+      assert has_element?(view, "#policy-rules-pages-previous[disabled]")
+      assert List.last(hosts(view)) == "n46.example"
+
+      view |> element("#policy-rules-pages-next") |> render_click()
+      assert_patch(view, workspace_path(scope, "/policy?page=2"))
+      assert text(view, "#policy-rules-pages-footer") == "51–64 of 64"
+      assert hosts(view) |> hd() == "n47.example"
+      assert has_element?(view, "#policy-rules-pages-next[disabled]")
+
+      # A view keeps its own pages; the page is left out of the URL when it is the first.
+      view |> element("#policy-rules-view-denied") |> render_click()
+      assert_patch(view, workspace_path(scope, "/policy?view=denied"))
+      refute has_element?(view, "#policy-rules-pages-next")
+
+      # The rule Network access links to is on the second page: the list opens there.
+      view = open(conn, scope, "/policy?rule=n50.example")
+      assert has_element?(view, "tr.q-ruled", "n50.example")
+      assert text(view, "#policy-rules-pages-footer") == "51–64 of 64"
+
+      # Under a filter that leaves the rule out, the filter gives way to it.
+      view = open(conn, scope, "/policy?view=denied&rule=n50.example")
+      assert has_element?(view, "tr.q-ruled", "n50.example")
+      assert has_element?(view, "#policy-rules-view-all[aria-current=page]")
+    end
+
+    test "a change made elsewhere arrives into the filtered list", %{conn: conn, scope: scope} do
+      view = open(conn, scope, "/policy?view=denied")
+      assert hosts(view) == ["*.paste.example"]
+      {:ok, _} = Policy.deny(scope, nil, %{host: "late.example"})
+
+      _ = render(view)
+      assert hosts(view) == ["*.paste.example", "late.example"]
+      assert text(view, "#policy-rules-view-denied") == "Denied 2"
+      assert has_element?(view, "#policy-rules-view-denied[aria-current=page]")
     end
 
     test "an owner locks and unlocks from the row; the toast says what it means",
@@ -350,22 +540,21 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       view = open(conn, scope)
       id = rule(scope, "github.example").id
 
-      assert has_element?(
-               view,
-               "#rule-#{id}-lock[aria-pressed=false][aria-label='Lock github.example']"
-             )
+      refute has_element?(view, "#rule-#{id}-lock")
+      view |> element("#rule-#{id}-menu button", "Lock") |> render_click()
 
-      view |> element("#rule-#{id}-lock") |> render_click()
-
-      assert has_element?(view, "#rule-#{id}-lock[aria-pressed=true]", "Locked")
+      assert text(view, "#rule-#{id}-lock") == "Locked"
+      assert has_element?(view, "#rule-#{id}-menu button", "Unlock")
 
       assert text(view, "#flash-info") =~
                "github.example is locked. No repository can override it."
 
       assert rule(scope, "github.example").locked
+      assert hosts(view) |> Enum.take(2) == ["github.example", "*.paste.example"]
 
-      view |> element("#rule-#{id}-lock") |> render_click()
+      view |> element("#rule-#{id}-menu button", "Unlock") |> render_click()
       refute rule(scope, "github.example").locked
+      refute has_element?(view, "#rule-#{id}-lock")
     end
 
     test "a lock that puts a target's rule out of force asks first",
@@ -376,7 +565,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
 
       view = open(conn, scope)
       id = rule(scope, "github.example").id
-      view |> element("#rule-#{id}-lock") |> render_click()
+      view |> element("#rule-#{id}-menu button", "Lock") |> render_click()
 
       assert text(view, "#lock-confirm") =~ "1 repository rule stops being in force"
       assert text(view, "#lock-confirm") =~ "github.example/acme/shop"
@@ -726,7 +915,8 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       {:ok, _} = Apiary.Accounts.delete_user(member)
 
       view = open(conn, scope)
-      assert text(view, "#rule-#{rule.id} .q-c-by") =~ "Former member"
+      assert text(view, "#rule-#{rule.id} .q-rl-by") =~ "Former member"
+      refute has_element?(view, "#policy-rules-filter-by-0")
 
       view = open(conn, scope, "/policy/history")
       assert text(view, "#history-list") =~ "Former member allowed registry.example"
