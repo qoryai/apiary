@@ -13,8 +13,13 @@ defmodule ApiaryWeb.JumpController do
   nothing matches.
 
   - **Go to**: the pages of the navigation the reader may open (`ApiaryWeb.Layouts.
-    palette_entries/1`), the pages of each Settings among them, whose label holds the text;
-    all of them for no text.
+    palette_entries/1`), every section of each Settings they open
+    (`ApiaryWeb.SettingsComponents.sections/2`) and Preferences' theme and shortcuts,
+    whose label or other words (members for People) hold the text; all of them for no
+    text. A label says whose the page is where a workspace's and an organisation's share a
+    name: Workspace overview, Organisation settings › People.
+  - **Actions** also hold, for what is typed, the deletions the reader may take, each at
+    its confirm's path.
   - **Targets**: the workspace's targets by `system/path` (`Apiary.Runs.search_targets/3`).
   - **Runs**: by the start of their id, a whole id or a run page's address, or by task
     (`Apiary.Runs.search_runs/3`).
@@ -34,7 +39,7 @@ defmodule ApiaryWeb.JumpController do
   use ApiaryWeb.Features, :observability
 
   alias Apiary.{Access, Organisations, Runs}
-  alias ApiaryWeb.Layouts
+  alias ApiaryWeb.{Layouts, SettingsComponents}
   alias ApiaryWeb.Nav.Entry
 
   @per_group 8
@@ -78,19 +83,94 @@ defmodule ApiaryWeb.JumpController do
 
   defp go_to(scope, text) do
     items =
-      for {%Entry{} = entry, path} <- Layouts.palette_entries(scope),
+      for {%Entry{} = entry, path} <- destinations(scope),
           label = go_to_label(entry),
-          matches?(label, text),
+          matches?(label <> " " <> also(entry), text),
           do: item(label, where(entry, scope), path, entry.icon)
 
     group(gettext("Go to"), items)
   end
 
-  # A page of Settings says whose Settings it is part of.
+  # The pages of the navigation, each Settings followed by its sections the navigation
+  # does not list (Retention, Workspaces) and Preferences by its own parts, each once. A
+  # scope's General is its Settings.
+  defp destinations(scope) do
+    entries = Layouts.palette_entries(scope)
+    keys = MapSet.new(entries, fn {entry, _path} -> {entry.place, entry.key} end)
+
+    Enum.flat_map(entries, fn {entry, _path} = pair ->
+      [pair | after_entry(entry, scope, keys)]
+    end)
+  end
+
+  defp after_entry(%Entry{section: :foot, place: place}, scope, keys)
+       when place in [:workspace, :organisation] do
+    for %Entry{} = section <- SettingsComponents.sections(scope, place),
+        section.key not in [:general, :organisation],
+        not MapSet.member?(keys, {place, settings_key(section.key)}),
+        do: {%{section | section: :settings, place: place}, section.path}
+  end
+
+  defp after_entry(%Entry{key: :user_preferences}, _scope, _keys) do
+    [
+      {%Entry{
+         key: :theme,
+         label: gettext("Theme"),
+         icon: "hero-swatch-micro",
+         path: nil,
+         place: :person,
+         section: :preferences
+       }, ~p"/users/settings/preferences#theme"},
+      {%Entry{
+         key: :shortcuts,
+         label: gettext("Keyboard shortcuts"),
+         icon: "hero-command-line-micro",
+         path: nil,
+         place: :person,
+         section: :preferences
+       }, ~p"/users/settings/preferences#keyboard"}
+    ]
+  end
+
+  defp after_entry(_entry, _scope, _keys), do: []
+
+  # The settings' People is the navigation's members.
+  defp settings_key(:people), do: :members
+  defp settings_key(key), do: key
+
+  # Entries of the same name in two scopes say whose they are: a workspace's Overview,
+  # Settings and Policy, an organisation's; a page of Settings names the Settings it is in.
+  defp go_to_label(%Entry{key: :overview}), do: gettext("Workspace overview")
+  defp go_to_label(%Entry{key: :organisation_overview}), do: gettext("Organisation overview")
+  defp go_to_label(%Entry{key: :policy, place: :workspace}), do: gettext("Workspace policy")
+  defp go_to_label(%Entry{section: :foot, place: :workspace}), do: gettext("Workspace settings")
+
+  defp go_to_label(%Entry{section: :foot, place: :organisation}),
+    do: gettext("Organisation settings")
+
+  defp go_to_label(%Entry{section: :settings, place: :workspace, label: label}),
+    do: gettext("Workspace settings › %{page}", page: label)
+
+  defp go_to_label(%Entry{section: :settings, place: :organisation, label: label}),
+    do: gettext("Organisation settings › %{page}", page: label)
+
   defp go_to_label(%Entry{section: :settings, label: label}),
     do: gettext("Settings › %{page}", page: label)
 
+  defp go_to_label(%Entry{section: :preferences, label: label}),
+    do: gettext("Preferences › %{page}", page: label)
+
   defp go_to_label(%Entry{label: label}), do: label
+
+  # The other words a reader may look for a page by.
+  defp also(%Entry{key: key}) when key in [:members, :people],
+    do: gettext("members users invitations")
+
+  defp also(%Entry{key: :audit_log}), do: gettext("activity history")
+  defp also(%Entry{key: :retention}), do: gettext("prune keep")
+  defp also(%Entry{key: :theme}), do: gettext("dark light appearance")
+  defp also(%Entry{section: :foot}), do: gettext("general name slug")
+  defp also(%Entry{}), do: ""
 
   defp where(%Entry{place: :workspace}, scope), do: scope.workspace.name
   defp where(%Entry{place: :organisation}, scope), do: scope.organisation.name
@@ -173,11 +253,44 @@ defmodule ApiaryWeb.JumpController do
     place = if scope.workspace, do: :workspace, else: :organisation
 
     items =
-      for %Entry{} = entry <- Layouts.new_entries(scope, place),
+      for %Entry{} = entry <- Layouts.new_entries(scope, place) ++ danger(scope, text),
           matches?(entry.label, text),
           do: item(entry.label, nil, entry.path, entry.icon)
 
     group(gettext("Actions"), items)
+  end
+
+  # The deletions, only for what is typed: each opens its confirm over its danger zone,
+  # for a reader who may take it.
+  defp danger(_scope, ""), do: []
+
+  defp danger(scope, _text) do
+    workspace =
+      scope.workspace && Access.can?(scope, :"workspace.delete", scope.workspace) &&
+        %Entry{
+          key: :delete_workspace,
+          label: gettext("Delete workspace %{name}…", name: scope.workspace.name),
+          icon: "hero-trash-micro",
+          path: ~p"/#{scope.organisation}/#{scope.workspace}/settings/danger"
+        }
+
+    organisation =
+      Access.can?(scope, :"organisation.delete", scope.organisation) &&
+        %Entry{
+          key: :delete_organisation,
+          label: gettext("Delete organisation %{name}…", name: scope.organisation.name),
+          icon: "hero-trash-micro",
+          path: ~p"/#{scope.organisation}/settings/danger"
+        }
+
+    account = %Entry{
+      key: :delete_account,
+      label: gettext("Delete your account…"),
+      icon: "hero-trash-micro",
+      path: ~p"/users/settings/delete"
+    }
+
+    Enum.filter([workspace, organisation, account], & &1)
   end
 
   defp matches?(_words, ""), do: true

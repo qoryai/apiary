@@ -25,8 +25,9 @@ defmodule ApiaryWeb.JumpControllerTest do
     go_to = group(answer, "Go to")
 
     assert "Runs" in labels(go_to)
-    assert "Settings › Access keys" in labels(go_to)
-    assert "Settings › People" in labels(go_to)
+    assert "Workspace settings › Access keys" in labels(go_to)
+    assert "Workspace settings › Retention" in labels(go_to)
+    assert "Organisation settings › People" in labels(go_to)
     assert "Profile" in labels(go_to)
 
     runs = Enum.find(go_to["items"], &(&1["label"] == "Runs"))
@@ -40,12 +41,59 @@ defmodule ApiaryWeb.JumpControllerTest do
 
   test "what is typed narrows the pages, in the domain's words", %{conn: conn, scope: scope} do
     answer = jump(conn, workspace_path(scope, "/jump"), "keys")
-    assert labels(group(answer, "Go to")) == ["Settings › Access keys"]
+    assert labels(group(answer, "Go to")) == ["Workspace settings › Access keys"]
     assert answer["status"] == "1 result"
 
     answer = jump(conn, workspace_path(scope, "/jump"), "no such page")
     assert answer["groups"] == []
     assert answer["empty"] == "Nothing matches “no such page”."
+  end
+
+  test "entries of the same name say whose they are, and none is listed twice",
+       %{conn: conn, scope: scope} do
+    labels = labels(group(jump(conn, workspace_path(scope, "/jump")), "Go to"))
+
+    for label <- [
+          "Workspace overview",
+          "Organisation overview",
+          "Workspace settings",
+          "Organisation settings",
+          "Workspace policy"
+        ] do
+      assert label in labels, label
+    end
+
+    refute "Overview" in labels
+    refute "Settings" in labels
+    assert labels == Enum.uniq(labels)
+  end
+
+  test "the settings' sections, Preferences' parts and a page's other words are found",
+       %{conn: conn, scope: scope} do
+    found = fn q -> labels(group(jump(conn, workspace_path(scope, "/jump"), q), "Go to")) end
+
+    assert found.("retention") == ["Workspace settings › Retention"]
+    assert found.("audit") == ["Organisation settings › Audit log"]
+    assert found.("members") == ["Organisation settings › People"]
+    assert found.("workspaces") == ["Organisation settings › Workspaces"]
+    assert "Organisation settings" in found.("organisation settings")
+    assert found.("theme") == ["Preferences › Theme"]
+    assert found.("dark") == ["Preferences › Theme"]
+    assert "Preferences › Keyboard shortcuts" in found.("shortcuts")
+
+    [theme] = group(jump(conn, workspace_path(scope, "/jump"), "theme"), "Go to")["items"]
+    assert theme["href"] == "/users/settings/preferences#theme"
+  end
+
+  test "a deletion is an action for what is typed, for whoever may take it",
+       %{conn: conn, scope: scope} do
+    refute "Delete your account…" in labels(
+             group(jump(conn, workspace_path(scope, "/jump")), "Actions")
+           )
+
+    actions = labels(group(jump(conn, workspace_path(scope, "/jump"), "delete"), "Actions"))
+    assert "Delete organisation #{scope.organisation.name}…" in actions
+    assert "Delete your account…" in actions
   end
 
   test "a target by its path, and runs by their id or task", %{conn: conn, scope: scope} do
@@ -97,7 +145,7 @@ defmodule ApiaryWeb.JumpControllerTest do
     answer = jump(conn, ~p"/#{scope.organisation}/jump")
 
     refute "Runs" in labels(group(answer, "Go to"))
-    assert "Settings › Audit log" in labels(group(answer, "Go to"))
+    assert "Organisation settings › Audit log" in labels(group(answer, "Go to"))
     # the organisation's own actions, and an edition's; no key of a workspace
     assert "Invite people" in labels(group(answer, "Actions"))
     refute "New access key" in labels(group(answer, "Actions"))

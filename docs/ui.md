@@ -39,8 +39,12 @@ The shell is section 4 of the v2 design brief (the knowledge vault's
 - **Search or jump to** (⌘K, Ctrl+K, and / outside a field) is a `<dialog>` under the
   `Palette` hook, which asks `ApiaryWeb.JumpController` (`/:org/:workspace/jump`,
   `/:org/jump`) what matches, 150 ms after the reader stops typing: the pages of the
-  navigation, targets, runs by id or task, places, and what New offers. Every word of it
-  comes from the server; a runner's words are written as text.
+  navigation, the sections of each Settings and Preferences' theme and shortcuts, each
+  named by whose it is where two scopes share a name (Workspace overview, Organisation
+  settings › People) and found by its other words too (members, audit, dark), targets,
+  runs by id or task, places, what New offers and, for what is typed, the deletions the
+  reader may take. Every word of it comes from the server; a runner's words are written
+  as text.
 - **New** offers only what the reader may do where the page is
   (`ApiaryWeb.Layouts.new_entries/2`): on a workspace's page a new access key and an
   invitation, on an organisation's own the invitation, and before the core's whatever
