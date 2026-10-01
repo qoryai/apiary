@@ -78,13 +78,14 @@ defmodule ApiaryWeb.PolicyLive.Common do
   (`rule_written/3`).
   """
   @type writer :: %{
-          required(:allow) =>
-            (Scope.t(), term, map -> {:ok, Rule.t()} | {:error, Policy.Error.t()}),
-          required(:deny) =>
-            (Scope.t(), term, map -> {:ok, Rule.t()} | {:error, Policy.Error.t()}),
-          required(:remove) =>
-            (Scope.t(), Rule.t() | String.t() -> {:ok, Rule.t()} | {:error, Policy.Error.t()}),
-          required(:get) => (Scope.t(), String.t() -> {:ok, Rule.t()} | {:error, Policy.Error.t()}),
+          required(:allow) => (Scope.t(), term, map ->
+                                 {:ok, Rule.t()} | {:error, Policy.Error.t()}),
+          required(:deny) => (Scope.t(), term, map ->
+                                {:ok, Rule.t()} | {:error, Policy.Error.t()}),
+          required(:remove) => (Scope.t(), Rule.t() | String.t() ->
+                                  {:ok, Rule.t()} | {:error, Policy.Error.t()}),
+          required(:get) => (Scope.t(), String.t() ->
+                               {:ok, Rule.t()} | {:error, Policy.Error.t()}),
           optional(:written) => (String.t(), String.t() -> String.t())
         }
 

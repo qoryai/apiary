@@ -306,11 +306,14 @@ defmodule Apiary.PolicyTest do
       handler = "mode-summary-#{System.unique_integer()}"
       parent = self()
 
+      # The core's one query, of the workspace and its targets; what the edition reads of
+      # the level above the workspace (`Apiary.Policy.Above`) is its own.
       :telemetry.attach(
         handler,
         [:apiary, :repo, :query],
-        fn _event, _measurements, _meta, _config ->
-          if self() == parent, do: send(parent, :query)
+        fn _event, _measurements, meta, _config ->
+          if self() == parent and meta.source in ["workspaces", "targets"],
+            do: send(parent, :query)
         end,
         nil
       )
