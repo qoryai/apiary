@@ -8,7 +8,7 @@ defmodule ApiaryWeb.SettingsComponents do
 
   - An organisation's (`/:org/settings/…`): General (its name and owners, and deleting
     it), People (its members, invitations and suspended memberships), Workspaces, Audit log
-    (the Activity page, which keeps its own path), then the edition's sections
+    (`ApiaryWeb.ActivityLive`), then the edition's sections
     (`c:ApiaryWeb.Edition.settings_tabs/1`), each a page of the edition's own.
   - A workspace's (`/:org/:workspace/settings/…`): General (its name, and deleting it),
     Access keys, Retention.
@@ -71,7 +71,7 @@ defmodule ApiaryWeb.SettingsComponents do
           key: :audit_log,
           label: gettext("Audit log"),
           icon: "hero-clipboard-document-list-micro",
-          path: ~p"/#{organisation}/activity",
+          path: ~p"/#{organisation}/settings/audit-log",
           place: :organisation
         }
     ]

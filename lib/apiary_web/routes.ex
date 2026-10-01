@@ -264,6 +264,7 @@ defmodule ApiaryWeb.Routes do
         scope "/", ApiaryWeb do
           pipe_through [:path_scope, :browser]
 
+          get "/:org/activity", MovedController, :show
           get "/:org/members", MovedController, :show
           get "/:org/members/*rest", MovedController, :show
           get "/:org/:workspace/keys", MovedController, :show
@@ -301,8 +302,9 @@ defmodule ApiaryWeb.Routes do
               # danger zone opens it; the second path opens the same.
               live "/settings/danger", SettingsLive, :danger
               live "/settings/delete", SettingsLive, :delete_organisation
-              # The organisation's audit trail, for the readers `audit.read` allows.
-              live "/activity", ActivityLive, :index
+              # The organisation's audit trail, a section of its settings, for the readers
+              # `audit.read` allows.
+              live "/settings/audit-log", ActivityLive, :index
             end
 
             unquote(@block)

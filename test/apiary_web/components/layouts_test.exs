@@ -283,7 +283,7 @@ defmodule ApiaryWeb.LayoutsTest do
         {:ok, view, _html} = live(conn, path)
 
         assert has_element?(view, "aside#sidebar[aria-label='Organisation']")
-        assert has_element?(view, "#sidebar a#nav-activity:not([aria-current])")
+        refute has_element?(view, "#sidebar #nav-activity")
 
         assert has_element?(
                  view,
@@ -313,27 +313,23 @@ defmodule ApiaryWeb.LayoutsTest do
     test "an organisation's page shows the organisation's sidebar", %{conn: conn, scope: scope} do
       for {path, current} <- [
             {~p"/#{scope.organisation}", "nav-organisation_overview"},
-            {~p"/#{scope.organisation}/activity", "nav-activity"}
+            {~p"/#{scope.organisation}/settings/audit-log", "nav-organisation"}
           ] do
         {:ok, view, _html} = live(conn, path)
 
         assert has_element?(view, "aside#sidebar[aria-label='Organisation']")
         assert has_element?(view, "##{current}[aria-current='page']")
 
-        assert has_element?(
-                 view,
-                 "#sidebar a#nav-activity[href='/#{scope.organisation.slug}/activity']"
-               )
+        # The audit log is a section of the settings, not an entry of the sidebar.
+        refute has_element?(view, "#sidebar #nav-activity")
 
         assert has_element?(
                  view,
-                 ".q-sidebar-foot a#nav-organisation[href='/#{scope.organisation.slug}/settings']:not([aria-current])"
+                 ".q-sidebar-foot a#nav-organisation[href='/#{scope.organisation.slug}/settings']"
                )
 
         for key <- ~w(overview runs network policy settings members),
             do: refute(has_element?(view, "#nav-#{key}"), "#{path} #{key}")
-
-        refute has_element?(view, "#breadcrumb-settings")
 
         # the breadcrumb names the organisation and no workspace
         assert has_element?(view, "#breadcrumb", scope.organisation.name)
@@ -497,7 +493,7 @@ defmodule ApiaryWeb.LayoutsTest do
 
       assert has_element?(view, "#palette #palette-results[role='listbox']")
 
-      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/activity")
+      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/settings/audit-log")
       assert has_element?(view, "dialog#palette[data-url='/#{scope.organisation.slug}/jump']")
     end
 

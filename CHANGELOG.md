@@ -40,7 +40,7 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
   workspace's history).
 - Access keys, created, rotated and revoked in the console; members at the levels owner,
   admin and member, and the suspension of a member.
-- The audit trail of every change, on the organisation's Activity page; retention of a
+- The audit trail of every change, in the organisation's settings, under Audit log; retention of a
   run's events and log output, set per workspace; deletion of a workspace or an
   organisation, marked first and purged after a grace period.
 - The console's shell: a top bar that says where a page is, the organisation first, and

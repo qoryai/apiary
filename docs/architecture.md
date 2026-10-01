@@ -308,7 +308,7 @@ What an edition may do, by where it is asked (`Apiary.Edition`, `ApiaryWeb.Editi
   a membership, and of a refusal of its own (`reader_sentence/2`, `refusal_sentence/1`);
   settings sections (`settings_tabs/1`, `ApiaryWeb.SettingsComponents`); what it renders in
   the named places of the core's pages (`slot/2`, `ApiaryWeb.Extension`); the words for
-  its actions on the Activity page (`activity_describer/0`); and the names its own paths
+  its actions in the audit log (`activity_describer/0`); and the names its own paths
   take (`reserved_slugs/0`).
 
 A core page never names a module of an edition: it links to the edition's pages only
@@ -370,7 +370,7 @@ events a runner posts are the record and leave no entry.
   entry only where it ends a membership. An edition's actions are audited the same way,
   each in the trail of the organisation it changes. Every action of `Apiary.Access` is
   audited unless `Audit.not_audited/0` says why not (reads, and the server contract's
-  calls); `Audit.audited?/1` is the one answer, which the Activity page's filter asks
+  calls); `Audit.audited?/1` is the one answer, which the audit log's filter asks
   too. `Apiary.AuditCase` makes each audited change and finds exactly one entry, and
   finds none when it is refused: the core's in `test/apiary/audit_test.exs`, and an
   edition's, with the core's, in its own.
@@ -395,7 +395,7 @@ events a runner posts are the record and leave no entry.
 - **Organisation-keyed** like every table: `organisation_id` always, `workspace_id` for a
   workspace's changes, with the composite key, empty for the organisation's own, a
   membership's among them. The owners and the admins read it on the organisation's
-  Activity page (`audit.read`), and so does whoever an edition lets in with a role that
+  audit log (`audit.read`), and so does whoever an edition lets in with a role that
   holds it.
 
 ## Deletion

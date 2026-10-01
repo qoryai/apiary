@@ -51,7 +51,7 @@ The shell is section 4 of the v2 design brief (the knowledge vault's
   the targets the person pinned (`counts.pins`, the first seven in the
   order pinned, `Apiary.Targets.list_pins/2`; on a target's page its pin is the current
   entry); an organisation's
-  Overview, Activity and the edition's groups (`ApiaryWeb.Edition.nav_sections/0`); the
+  Overview and the edition's groups (`ApiaryWeb.Edition.nav_sections/0`); the
   person's Profile, Preferences and Organisations under Your settings, which are their
   settings' list. It is never replaced: a page of a scope's settings keeps the scope's
   sidebar. The active item carries `aria-current="page"`. A group whose feature is off is
@@ -98,8 +98,8 @@ navigation it is in.
   invitations, suspensions), Workspaces (owners and admins;
   `SettingsComponents.workspace_list/1`, which an edition's page over the same list
   renders too, with the edition's way of adding one in the section's actions, the
-  `:workspaces_heading` slot), Audit log (the Activity page,
-  `/:org/activity`, which keeps its path), and the edition's sections
+  `:workspaces_heading` slot), Audit log (`/settings/audit-log`, `ApiaryWeb.ActivityLive`;
+  `/:org/activity`, its path before, sends on with its query), and the edition's sections
   (`ApiaryWeb.Edition.settings_tabs/1`). From a workspace the palette's Go to and New ›
   Invite people lead there too; nothing else in a workspace does.
 - **A person's** (`/users/settings`, `/users/settings/preferences`,
@@ -117,7 +117,7 @@ current entry, and are one section a page (`ApiaryWeb.SettingsComponents.layout/
 of the kind's sections (`#settings-tabs`, `settings-tab-<key>`; `sections/2`, which a page
 reads when it mounts), and beside it the section, its title an `<h2>` (16 px), one sentence
 of what it is for, then its content, a 720 px column for forms and 960 px for a list
-(People, Access keys). The list is labels without icons, 13.5 px and muted, the
+(People, Access keys, Audit log). The list is labels without icons, 13.5 px and muted, the
 current one in the text colour on a light fill, with a count where it helps (People,
 Access keys; the page passes the navigation's `counts`); below 1024 px it is a row of
 underlined links above the section, as a page's tabs are. A section is flat, no card: its

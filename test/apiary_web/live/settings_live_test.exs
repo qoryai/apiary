@@ -254,7 +254,7 @@ defmodule ApiaryWeb.SettingsLiveTest do
             organisation: ~p"/#{org}/settings",
             people: ~p"/#{org}/settings/people",
             workspaces: ~p"/#{org}/settings/workspaces",
-            audit_log: ~p"/#{org}/activity"
+            audit_log: ~p"/#{org}/settings/audit-log"
           ] do
         assert has_element?(lv, ~s(#settings-tabs #settings-tab-#{key}[href="#{path}"]))
       end

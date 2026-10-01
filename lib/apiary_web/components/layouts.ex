@@ -121,11 +121,11 @@ defmodule ApiaryWeb.Layouts do
         place: :organisation
       },
       %Entry{
-        section: :home,
-        key: :activity,
-        label: gettext("Activity"),
+        section: :settings,
+        key: :audit_log,
+        label: gettext("Audit log"),
         icon: "hero-clipboard-document-list-micro",
-        path: fn organisation, _workspace -> ~p"/#{organisation}/activity" end,
+        path: fn organisation, _workspace -> ~p"/#{organisation}/settings/audit-log" end,
         place: :organisation,
         action: :"audit.read"
       },
