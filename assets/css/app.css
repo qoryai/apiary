@@ -7768,6 +7768,11 @@
     padding-inline: 10px;
     font-size: 0.8125rem;
   }
+  .q-modeline-seg > button[aria-checked="true"] {
+    background-color: var(--color-base-100);
+    box-shadow: var(--q-shadow-xs);
+    color: var(--color-base-content);
+  }
   .q-modeline-seg > button[aria-disabled="true"] {
     color: var(--q-faint);
     cursor: not-allowed;

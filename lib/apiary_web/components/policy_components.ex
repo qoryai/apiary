@@ -535,7 +535,6 @@ defmodule ApiaryWeb.PolicyComponents do
           type="button"
           role="radio"
           aria-checked={to_string(@setting == setting)}
-          aria-pressed={to_string(@setting == setting)}
           aria-disabled={!@can_edit && @setting != setting && "true"}
           tabindex={if @setting == setting, do: "0", else: "-1"}
           phx-click={
