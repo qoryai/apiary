@@ -819,9 +819,6 @@ defmodule ApiaryWeb.PolicyLive.Show do
           {gettext("Policy")}
           <:subtitle>
             {gettext("What the runs of this workspace may reach through the runner's proxy.")}
-            {gettext(
-              "What no rule names is denied under enforce, and let through and recorded under observe; a deny rule holds in either mode."
-            )}
             <.above_line :if={@loaded} above={@effective.above} link={@above_link} />
           </:subtitle>
           <:actions>
@@ -1366,7 +1363,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
                 <span :if={row.own > 0}>{gettext("Own rules")}</span>
                 <span :if={row.own == 0 && row.own_mode}>{gettext("Own mode")}</span>
                 <span :if={row.own == 0 && !row.own_mode} class="q-faint">
-                  {gettext("Workspace baseline")}
+                  {gettext("Follows the workspace")}
                 </span>
               </td>
               <td role="cell" class={["q-num q-opt", row.own == 0 && "q-zero"]}>{row.own}</td>
@@ -1405,7 +1402,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
                       <span class="sr-only">{gettext("Version")} </span>v{row.detail.version.version}
                     </.link>
                     <span :if={is_nil(row.detail.version.target_id)} class="q-faint">
-                      {gettext("of the workspace baseline")}
+                      {gettext("of the workspace's policy")}
                     </span>
                   </span>
                   <span :if={!row.detail.version} class="q-faint">

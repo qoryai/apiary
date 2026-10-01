@@ -889,14 +889,30 @@ defmodule ApiaryWeb.PolicyLive.Common do
   """
   def wrote(socket, rule, sentence, announce) do
     before = socket.assigns[:version] && socket.assigns.version.version
+    before_holder = socket.assigns[:version] && socket.assigns.version.target_id
     socket = socket.assigns.reload.(socket)
     version = socket.assigns[:version] && socket.assigns.version.version
+    holder = socket.assigns[:version] && socket.assigns.version.target_id
 
     tail =
       cond do
-        is_nil(version) -> ""
-        version == before -> " " <> gettext("No new version: the document did not change.")
-        true -> " " <> gettext("Version %{version}.", version: version)
+        is_nil(version) ->
+          ""
+
+        version == before and holder == before_holder ->
+          " " <> gettext("No new version: the document did not change.")
+
+        # A target's first version of its own: numbered from 1, not a reset of the
+        # workspace's numbering it was served until now.
+        is_nil(before_holder) and is_binary(holder) and not is_nil(before) ->
+          " " <>
+            gettext(
+              "Version %{version} of this target's own policy; until now it was served the workspace's.",
+              version: version
+            )
+
+        true ->
+          " " <> gettext("Version %{version}.", version: version)
       end
 
     fresh =

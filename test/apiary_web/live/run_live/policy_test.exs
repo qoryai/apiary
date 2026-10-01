@@ -209,7 +209,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
                ~s(#run-facts a.q-ver[href="#{workspace_path(scope)}/policy/versions/#{configuration.version}"])
              )
 
-      assert text(view, "#run-facts") =~ "v#{configuration.version} · of workspace baseline"
+      assert text(view, "#run-facts") =~ "v#{configuration.version} · of the workspace's policy"
     end
 
     test "behind a target's version while on the baseline's: both numberings are named", %{
@@ -226,7 +226,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       {:ok, view, _html} =
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
 
-      assert text(view, "#run-facts") =~ "v#{baseline.version} · of workspace baseline"
+      assert text(view, "#run-facts") =~ "v#{baseline.version} · of the workspace's policy"
 
       # the target's first rule gives it a numbering of its own, at v1
       {:ok, _} = Policy.allow(scope, target, %{host: "files.cdn.example"})
@@ -236,7 +236,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
 
       assert text(view, "#run-drift") == "Behind v1 · github.example/acme/shop"
       notice = text(view, "#run-behind")
-      assert notice =~ "It last reported the workspace baseline's v#{baseline.version}"
+      assert notice =~ "It last reported v#{baseline.version} of the workspace's policy"
       assert notice =~ "github.example/acme/shop's v1"
       assert notice =~ "is in force"
       # the two numberings do not compare: the link opens the version in force
@@ -252,7 +252,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       {:ok, view, _html} =
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/details")
 
-      assert text(view, "#policy-version") =~ "v#{baseline.version} · of workspace baseline"
+      assert text(view, "#policy-version") =~ "v#{baseline.version} · of the workspace's policy"
       assert text(view, "#policy-in-force") =~ "v1 · of github.example/acme/shop"
     end
 
@@ -389,9 +389,9 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       assert text(view, "#e-30-reload") =~ "#0003 : 1 host added, none removed."
 
       assert text(view, "#e-30-reload") =~
-               "Connections before this item were decided by the workspace baseline's v#{v1.version}."
+               "Connections before this item were decided by v#{v1.version} of the workspace's policy."
 
-      assert text(view, "#e-30 .q-pv") == "v#{v2.version} · of workspace baseline"
+      assert text(view, "#e-30 .q-pv") == "v#{v2.version} · of the workspace's policy"
     end
 
     test "a reload that names the digest it had is not called new", %{conn: conn, scope: scope} do

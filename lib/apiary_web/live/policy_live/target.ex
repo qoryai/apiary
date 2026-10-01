@@ -656,7 +656,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
             />
             <small :if={@baseline?} id="policy-baseline" class="text-xs text-faint">
               <.term
-                word={gettext("workspace baseline")}
+                word={gettext("workspace's policy")}
                 standard={baseline_tip()}
                 class="q-tip-wide tooltip-left"
               />
@@ -704,7 +704,9 @@ defmodule ApiaryWeb.PolicyLive.Target do
           {gettext("The latest is version %{version}.", version: @missing.latest.version)}
         </span>
         <span :if={!@missing.latest}>
-          {gettext("This target has no versions of its own: it is served the workspace baseline.")}
+          {gettext("This target has no versions of its own: it is served %{workspace}'s policy.",
+            workspace: @current_scope.workspace.name
+          )}
         </span>
         <:actions>
           <.button :if={@missing.latest} navigate={"#{@base}/versions/#{@missing.latest.version}"}>
@@ -965,20 +967,23 @@ defmodule ApiaryWeb.PolicyLive.Target do
       floor={@mode.floor && %{name: @effective.above.name}}
     />
 
-    <.notice :if={@own == [] && is_nil(@mode.own)} kind={:info} class="max-w-[90ch]">
+    <p :if={@own == [] && is_nil(@mode.own)} class="q-modeline-p max-w-[90ch]">
       <span id="policy-no-own">
         {gettext("This target has no rules of its own.")}
         <span :if={@version}>
-          {gettext("It is served the workspace baseline, version %{version}.",
+          {gettext("It is served %{workspace}'s policy, version %{version}.",
+            workspace: @current_scope.workspace.name,
             version: @version.version
           )}
         </span>
         <span :if={!@managed?}>
           {gettext("Runs use each machine's own policy until the first change in this workspace.")}
         </span>
-        {gettext("The first rule added here, or a mode of its own, gives it versions of its own.")}
+        {gettext(
+          "The first rule added here, or a mode of its own, gives it a policy of its own, numbered from version 1."
+        )}
       </span>
-    </.notice>
+    </p>
 
     <.suggestions
       id="policy-suggestions"

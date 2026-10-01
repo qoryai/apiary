@@ -6393,6 +6393,46 @@
     align-items: center;
     gap: 8px;
   }
+  /* The version in a policy page's head is plain muted text, as the mock draws it: the
+     version, the digest and its copy, no box. */
+  .q-head-side .q-vpill {
+    height: auto;
+    gap: 8px;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    color: var(--q-faint);
+  }
+  .q-head-side .q-vpill > * {
+    padding-inline: 0;
+  }
+  .q-head-side .q-vpill > * + * {
+    border-left: 0;
+  }
+  .q-head-side .q-vpill-v {
+    color: var(--q-muted);
+    font-weight: 500;
+  }
+  .q-head-side a.q-vpill-v:hover {
+    background: none;
+    color: var(--color-base-content);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .q-head-side .q-vpill-dg {
+    color: var(--q-faint);
+  }
+  .q-head-side .q-vpill-dg > i {
+    display: none;
+  }
+  .q-head-side .q-vpill-copy {
+    padding: 4px;
+    border-left: 0;
+    border-radius: var(--radius-selector);
+  }
+  .q-head-side .q-vpill-copy:hover {
+    background-color: var(--color-base-200);
+  }
   .q-here {
     color: var(--color-base-content);
   }
@@ -7049,22 +7089,11 @@
   @media (max-width: 767.98px) {
     .q-head-side {
       width: 100%;
+      justify-content: space-between;
     }
     .q-head-side > .btn {
       --size: 40px;
-      flex: 1;
       height: 40px;
-    }
-    .q-head-side > span:has(> .q-vpill),
-    .q-head-side > .q-vpill {
-      flex-basis: 100%;
-    }
-    .q-head-side .q-vpill {
-      width: 100%;
-      height: 32px;
-    }
-    .q-head-side .q-vpill-dg {
-      flex: 1;
     }
     .q-sect > header .q-seg {
       max-width: 100%;

@@ -131,7 +131,7 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   end
 
   @doc "The words that say whose numbering a version is in."
-  def version_label(nil, _target), do: gettext("workspace baseline")
+  def version_label(nil, _target), do: gettext("the workspace's policy")
   def version_label(id, %{id: id, system: system, path: path}), do: "#{system}/#{path}"
   def version_label(_id, _target), do: gettext("target")
 

@@ -126,8 +126,11 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
 
     assert has_element?(view, "h1", "acme/shop")
     assert text(view, "#policy-no-own") =~ "This repository has no rules of its own."
-    assert text(view, "#policy-no-own") =~ "It is served the workspace baseline, version"
-    assert text(view, "#policy-baseline") == "workspace baseline"
+
+    assert text(view, "#policy-no-own") =~
+             "It is served #{scope.workspace.name}'s policy, version"
+
+    assert text(view, "#policy-baseline") == "workspace's policy"
     assert text(view, "#policy-rules-view-all") == "All 4"
     assert text(view, "#policy-rules-view-allowed") == "Allowed 2"
     assert text(view, "#policy-rules-view-denied") == "Denied 2"
@@ -188,7 +191,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     assert rule.action == "deny"
 
     assert text(view, "#flash-info") =~
-             "gitlab.example is denied for github.example/acme/shop. Version 1."
+             "gitlab.example is denied for github.example/acme/shop. Version 1 of this repository's own policy; until now it was served the workspace's."
 
     # Its own comes first, with its source and its menu; the workspace's allow stays in
     # the list, struck, and says why.

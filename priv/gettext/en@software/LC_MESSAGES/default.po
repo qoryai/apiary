@@ -10510,3 +10510,9 @@ msgid "Followed by %{number} of %{total} target; %{own}."
 msgid_plural "Followed by %{number} of %{total} targets; %{own}."
 msgstr[0] "Followed by %{number} of %{total} repository; %{own}."
 msgstr[1] "Followed by %{number} of %{total} repositories; %{own}."
+
+msgid "This target has no versions of its own: it is served %{workspace}'s policy."
+msgstr "This repository has no versions of its own: it is served %{workspace}'s policy."
+
+msgid "Version %{version} of this target's own policy; until now it was served the workspace's."
+msgstr "Version %{version} of this repository's own policy; until now it was served the workspace's."

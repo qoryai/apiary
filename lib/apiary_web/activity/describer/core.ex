@@ -183,7 +183,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
              :"security_policy.set_mode"
            ] ->
         text(
-          gettext("Baseline of %{workspace}",
+          gettext("%{workspace}'s policy",
             workspace: names.workspaces[id] || gettext("n/a")
           )
         )

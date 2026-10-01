@@ -188,7 +188,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       assert line =~ "Rule added"
 
       assert line =~
-               "Allowed for the workspace in v#{configuration.version} · of workspace baseline by you"
+               "Allowed for the workspace in v#{configuration.version} · of the workspace's policy by you"
 
       refute line =~ "run"
 
@@ -262,7 +262,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       assert has_element?(view, ~s(tr##{cdn}[data-decision=allowed]))
 
       assert text(view, "##{cdn}-after") =~
-               "Allowed for the workspace in v2 · of workspace baseline"
+               "Allowed for the workspace in v2 · of the workspace's policy"
 
       assert text(view, "a##{cdn}-act") == "Rule"
     end

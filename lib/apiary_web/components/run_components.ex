@@ -3375,14 +3375,14 @@ defmodule ApiaryWeb.RunComponents do
   end
 
   defp version_title(%{n: n, label: label}) when is_binary(label),
-    do: gettext("Version %{n} of the %{holder}. Open the exact document.", n: n, holder: label)
+    do: gettext("Version %{n} of %{holder}. Open the exact document.", n: n, holder: label)
 
   defp version_title(%{n: n}), do: gettext("Version %{n}. Open the exact document.", n: n)
 
   @doc "A version in a sentence: \"the workspace baseline's v3\", \"acme/shop's v1\"."
   def version_words(%{n: n, label: label}) when is_binary(label) do
     if baseline?(label),
-      do: gettext("the workspace baseline's v%{n}", n: n),
+      do: gettext("v%{n} of the workspace's policy", n: n),
       else: gettext("%{holder}'s v%{n}", holder: middle(label, 40), n: n)
   end
 
@@ -3390,7 +3390,9 @@ defmodule ApiaryWeb.RunComponents do
   def version_words(_version), do: gettext("another configuration")
 
   # The baseline's label is made elsewhere, in engine words or already in the domain's.
-  defp baseline?(label), do: label in ["workspace baseline", gettext("workspace baseline")]
+  defp baseline?(label),
+    do:
+      label in ["workspace baseline", "the workspace's policy", gettext("the workspace's policy")]
 
   ## The drift mark
 

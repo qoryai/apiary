@@ -95,7 +95,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
         id="history-list"
         label={
           if @scope == :workspace,
-            do: gettext("Changes to the workspace baseline, newest first"),
+            do: gettext("Changes to the workspace's policy, newest first"),
             else: gettext("Changes to this target's rules, newest first")
         }
         changes={@history.rows}
