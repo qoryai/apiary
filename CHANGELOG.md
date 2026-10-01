@@ -51,6 +51,14 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
   rows are one line each, the denied number the one red, with the actions on hover and
   in a ⋯ menu. The policy's host rules are its Network access section, which links back
   to it. The page was called Connections; its old paths send on to the new ones.
+- The policy's rules on the same list pattern, however long the list grows: views (All,
+  Allowed, Denied, Locked) with their counts, "Find a host" with `seen:`, `paths:` and
+  `by:` as tokens, one Filter menu, Sort, Add rule opening the composer over the list, and
+  pages of 50, every choice in the address. A repository's Policy tab is its effective
+  policy on that list, each rule with its source: its own first, changed there; the
+  workspace's read there and changed on the workspace's page, which their menu leads to;
+  what is not in force struck through, saying why. Its mode is one line: Follow the
+  workspace, Observe or Enforce, and whose the mode is.
 - The features an instance has, switched at launch (`QORY_FEATURES`), and the guides and
   module reference every instance serves at `/docs`.
 

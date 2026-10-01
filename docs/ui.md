@@ -184,6 +184,18 @@ a destination and the connections made to it. The Policy page's hosts and paths 
 Network access section, which links to the page ("See what the runs reached"); the page's
 rule links lead to the rule there.
 
+The policy's lists of rules (`PolicyComponents.rule_list/1`, on the workspace's Rules tab
+and on a target's Policy tab) are on the same pattern, their query read and written by
+`ApiaryWeb.PolicyLive.RuleList`, pure over the rows the page holds: views All, Allowed,
+Denied and Locked; "Find a host" with the qualifiers `seen:`, `paths:`, `by:` and
+`source:` as tokens, sent as the reader types and read whole on Enter; one Filter menu
+whose sections come from the rows' sources and people (an edition that adds rules of
+another holder gives them a source, and the menu, the qualifier and the order take it);
+Sort (the list's own order, Host, Most used, Recently added); pages of 50; and `?rule=`,
+which Network access links with, landing on the page that holds the rule and marking it.
+A target's Policy tab shows each rule's Source; its own rules come first and have the ⋯
+menu's acts, the workspace's are read there and lead to the workspace's page.
+
 - **Views** are the runs list's All, Alive, Ended badly and With denials, and Network
   access's decisions, each counted under every other filter; All is current when no
   other is. A view's own filter is not repeated as a token. The number that matches is a
@@ -298,9 +310,12 @@ reads are `Apiary.Targets`'s, the looks `ApiaryWeb.TargetComponents`'s).
   - **Network access**: the Network access page's content with the target fixed
     (`ApiaryWeb.ConnectionLive.Index.fix_target/3`): its own path, no Target section,
     token or rail, and "New activity" leading the tab.
-  - **Policy**: the target's view of the policy (`ApiaryWeb.PolicyLive.Target`), its
-    effective list, history and document as views under the page's tabs. Its old paths,
-    `/policy/targets/:target_id/…`, send on here (`ApiaryWeb.TargetMovedController`).
+  - **Policy**: the target's view of the policy (`ApiaryWeb.PolicyLive.Target`): its
+    mode on one line (Follow the workspace, by its name, Observe or Enforce, and whose
+    the mode is), the rules in force for it on the list pattern with their Source, its
+    credentials with theirs, and its history and document as views under the page's
+    tabs. Its old paths, `/policy/targets/:target_id/…`, send on here
+    (`ApiaryWeb.TargetMovedController`).
 
   A tab is its own mount; a tab another page's module answers is handed the page's
   parameters, events and messages while it is open.

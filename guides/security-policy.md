@@ -59,10 +59,26 @@ checkout's origin remote ([The runner file's `server` section](runner-file.md)).
 A repository without rules of its own is served the workspace baseline, and so is a run
 that names no repository.
 
-A repository's page shows its effective policy as one list, every rule with where it came
-from: **Workspace**, **This repository**, or **Workspace, locked**. A rule that lost is
-struck through under the rule that beat it. The row actions are **Disable here**, **Allow
-here**, **Remove** and **Restore**.
+Every list of rules is read the same way, however long it grows: views **All**,
+**Allowed**, **Denied** and **Locked** with their counts; a field that finds a host and
+holds the chosen filters as words (`seen:no`, `paths:held`, `by:dana`; on a repository's
+tab `source:repo` or the workspace's slug); one **Filter** menu (Source where there is more
+than one, Paths, Seen in 14 days, Added by); **Sort** (the list's own order, Host, Most
+used, Recently added); **Add rule**, which opens the composer line over the list; and
+pages of 50. Every choice is in the address, so a filtered view can be linked. A rule is
+one line: allow or deny, the host, its paths, its use in the last 14 days, who added it
+and when, a lock when it is locked, and a ⋯ menu (Edit paths, Change to deny or allow,
+Lock or Unlock for an owner, Remove).
+
+A repository's Policy tab is its effective policy on the same list, every rule with its
+**Source**: **This repository** or the workspace, by its name. Its own rules come first
+and are changed there; the workspace's are read there and changed on the workspace's
+policy page, which their menu leads to (**View in Main's policy**). A rule that is not in
+force, the repository's own under a locked rule of the workspace, or the workspace's that
+the repository's own decides, stays in the list, struck through, and says why. A
+repository overrides the workspace's rule for a host by adding its own rule for it, the
+other way round; removing that rule gives the workspace's back. Its credentials are its
+own, then the workspace's, each with its source.
 
 ## How rules resolve
 
@@ -129,7 +145,7 @@ direction, and each change is confirmed. A wall's own refusals, the machine's ow
 say, hold in either mode.
 
 The workspace's mode is a default. A repository follows it until an owner or an admin
-gives the repository a mode of its own, on the repository's Policy tab: **Follow the workspace**, **Observe** or **Enforce**,
+gives the repository a mode of its own, on the repository's Policy tab: **Follow** the workspace, by its name, **Observe** or **Enforce**,
 with what is in effect and where it comes from. A change of the workspace's mode reaches
 the repositories that follow it and leaves the others as they are. The mode and the rules
 are apart: a repository in enforce under a workspace in observe is held to its effective
