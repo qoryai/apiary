@@ -175,6 +175,82 @@ defmodule ApiaryWeb.SettingsComponents do
   end
 
   @doc """
+  workspace_list/1 is the Workspaces section's list: each workspace of `workspaces`, the
+  organisation's in use, one row on the row spec, its name the title with its slug beside
+  it, when it was created, and its ⋯ menu, the edition's items (the `:workspace_actions`
+  slot) then Delete…, which opens the deletion's dialog at its own path, by `patch` from
+  the organisation's settings and by `navigate` from an edition's page over the same
+  list; then the note under the list, what a deletion does, or why the only workspace is
+  not deleted on its own.
+  """
+  attr :scope, :any, required: true
+  attr :workspaces, :list, required: true, doc: "the organisation's workspaces in use"
+  attr :delete, :string, default: "patch", values: ~w(patch navigate)
+
+  def workspace_list(assigns) do
+    days = Apiary.Deletion.grace_days()
+
+    assigns =
+      assign(assigns,
+        days: ngettext("%{number} day", "%{number} days", days, number: Format.number(days)),
+        path: &delete_path(assigns.scope, &1)
+      )
+
+    ~H"""
+    <.table
+      id="workspaces"
+      label={gettext("Workspaces")}
+      rows={@workspaces}
+      row_id={&"workspace-#{&1.id}"}
+    >
+      <:col :let={workspace} label={gettext("Workspace")} kind="title">
+        <span class="q-nm">
+          <.link navigate={~p"/#{@scope.organisation}/#{workspace}"} class="q-title hover:underline">
+            {workspace.name}
+          </.link>
+          <span class="q-side q-mono">{workspace.slug}</span>
+        </span>
+      </:col>
+      <:col :let={workspace} label={gettext("Created")} from="sm">
+        <span class="tabular-nums">{Format.day(workspace.inserted_at)}</span>
+      </:col>
+      <:action :let={workspace}>
+        <.row_menu
+          id={"workspace-#{workspace.id}-menu"}
+          label={gettext("Actions for the workspace %{name}", name: workspace.name)}
+        >
+          <ApiaryWeb.Extension.slot name={:workspace_actions} scope={@scope} workspace={workspace} />
+          <.menu_item
+            :if={length(@workspaces) > 1}
+            id={"workspace-#{workspace.id}-delete"}
+            patch={if(@delete == "patch", do: @path.(workspace))}
+            navigate={if(@delete == "navigate", do: @path.(workspace))}
+            aria-label={gettext("Delete the workspace %{name}", name: workspace.name)}
+          >
+            {gettext("Delete…")}
+          </.menu_item>
+        </.row_menu>
+      </:action>
+    </.table>
+    <p id="workspaces-note" class="text-[12.5px]/[18px] text-faint">
+      {if length(@workspaces) > 1,
+        do:
+          gettext(
+            "A deleted workspace is purged after %{days}; until then an owner or an admin can cancel the deletion here.",
+            days: @days
+          ),
+        else:
+          gettext(
+            "The organisation's only workspace is not deleted on its own: delete the organisation instead."
+          )}
+    </p>
+    """
+  end
+
+  defp delete_path(scope, workspace),
+    do: ~p"/#{scope.organisation}/settings/workspaces/#{workspace.id}/delete"
+
+  @doc """
   danger_zone/1 is the last part of a scope's General page, and of Profile: after a rule,
   the heading Danger zone, the page's only red words, and one line for each act that
   cannot be undone (`danger_action/1`), with whatever the page says of it under its line.

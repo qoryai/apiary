@@ -16,6 +16,7 @@ defmodule ApiaryWeb.Extension do
   | `:members_heading` | the members page, in its header, under its description | |
   | `:member_access` | each row of the members page, beside the member's name: one line of muted text | `member` |
   | `:member_actions` | each row of the members page, in its ⋯ menu before the page's own items: `CoreComponents.menu_item/1`s | `member` |
+  | `:workspaces_heading` | the Workspaces section of the organisation's settings, in its header's actions: a button to the edition's page | |
   | `:workspace_actions` | each workspace of the organisation's settings, in its ⋯ menu before the page's own items: `CoreComponents.menu_item/1`s | `workspace` |
   | `:policy_notices` | the workspace's policy page, above its tabs' content | `changes`, the number of the policy's changes: it renders the slot again as the policy changes |
   | `:activity_toolbar` | the Activity page, right under its header (reserved) | |
@@ -33,6 +34,7 @@ defmodule ApiaryWeb.Extension do
     :members_heading,
     :member_access,
     :member_actions,
+    :workspaces_heading,
     :workspace_actions,
     :policy_notices,
     :activity_toolbar,
@@ -45,6 +47,7 @@ defmodule ApiaryWeb.Extension do
           | :members_heading
           | :member_access
           | :member_actions
+          | :workspaces_heading
           | :workspace_actions
           | :policy_notices
           | :activity_toolbar

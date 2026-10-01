@@ -69,9 +69,13 @@ defmodule ApiaryWeb.SettingsLive do
         kind={@page}
         sections={@sections}
         current={@section}
+        measure={if @section == :workspaces, do: "list", else: "read"}
         title={section_title(@section)}
       >
         <:subtitle>{section_subtitle(@page, @section)}</:subtitle>
+        <:actions :if={@section == :workspaces}>
+          <ApiaryWeb.Extension.slot name={:workspaces_heading} scope={@current_scope} />
+        </:actions>
         {section(assigns)}
       </SettingsComponents.layout>
 
@@ -287,8 +291,10 @@ defmodule ApiaryWeb.SettingsLive do
     """
   end
 
-  # The organisation's Workspaces: each with the edition's actions and its deletion, and
-  # the ones marked for deletion, whose deletion an owner or an admin cancels.
+  # The organisation's Workspaces (`SettingsComponents.workspace_list/1`): each with the
+  # edition's actions and its deletion, and the ones marked for deletion, whose deletion
+  # an owner or an admin cancels. The edition's way of adding one is in the header's
+  # actions (the `:workspaces_heading` slot).
   defp section(%{section: :workspaces} = assigns) do
     ~H"""
     <.notice :for={workspace <- @marked_workspaces} kind={:warning}>
@@ -319,59 +325,7 @@ defmodule ApiaryWeb.SettingsLive do
       </div>
     </.notice>
 
-    <.table
-      id="workspaces"
-      label={gettext("Workspaces")}
-      rows={@workspaces}
-      row_id={&"workspace-#{&1.id}"}
-    >
-      <:col :let={workspace} label={gettext("Workspace")} kind="title">
-        <span class="q-nm">
-          <.link
-            navigate={~p"/#{@current_scope.organisation}/#{workspace}"}
-            class="q-title hover:underline"
-          >
-            {workspace.name}
-          </.link>
-          <span class="q-side q-mono">{workspace.slug}</span>
-        </span>
-      </:col>
-      <:col :let={workspace} label={gettext("Created")} from="sm">
-        <span class="tabular-nums">{Format.day(workspace.inserted_at)}</span>
-      </:col>
-      <:action :let={workspace}>
-        <.row_menu
-          id={"workspace-#{workspace.id}-menu"}
-          label={gettext("Actions for the workspace %{name}", name: workspace.name)}
-        >
-          <ApiaryWeb.Extension.slot
-            name={:workspace_actions}
-            scope={@current_scope}
-            workspace={workspace}
-          />
-          <.menu_item
-            :if={length(@workspaces) > 1}
-            id={"workspace-#{workspace.id}-delete"}
-            patch={~p"/#{@current_scope.organisation}/settings/workspaces/#{workspace.id}/delete"}
-            aria-label={gettext("Delete the workspace %{name}", name: workspace.name)}
-          >
-            {gettext("Delete…")}
-          </.menu_item>
-        </.row_menu>
-      </:action>
-    </.table>
-    <p id="workspaces-note" class="text-[12.5px]/[18px] text-faint">
-      {if length(@workspaces) > 1,
-        do:
-          gettext(
-            "A deleted workspace is purged after %{days}; until then an owner or an admin can cancel the deletion here.",
-            days: days(Deletion.grace_days())
-          ),
-        else:
-          gettext(
-            "The organisation's only workspace is not deleted on its own: delete the organisation instead."
-          )}
-    </p>
+    <SettingsComponents.workspace_list scope={@current_scope} workspaces={@workspaces} />
     """
   end
 

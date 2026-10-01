@@ -457,15 +457,22 @@ defmodule ApiaryWeb.CoreComponents do
       <.input field={@form[:email]} type="email" label="Email" />
       <.input field={@form[:level]} type="select" options={[Owner: "owner"]} />
       <.input field={@form[:kind]} type="radio" label="Create" options={[{"An organisation", "organisation"}]} />
+      <.input field={@form[:slug]} type="text" label="Address" prefix="qory.example/acme/" />
 
   A `radio` input is a group: its label is the group's legend, and each of `options`, a
-  `{label, value}`, one choice.
+  `{label, value}`, one choice. A text input with a `prefix` shows it in mono before the
+  value, as one field: the path a slug completes.
   """
   attr :id, :any, default: nil
   attr :name, :any
   attr :label, :string, default: nil
   attr :optional, :boolean, default: false, doc: "appends (optional) to the label"
   attr :hint, :string, default: nil, doc: "a short helper line under the input"
+
+  attr :prefix, :string,
+    default: nil,
+    doc: "what the value follows, in mono before a text input: the path a slug completes"
+
   attr :value, :any
   attr :size, :string, default: "sm", values: ~w(sm md), doc: "md (40 px) on auth pages"
   attr :debounce, :string, default: "blur", doc: "errors show after blur, not while typing"
@@ -610,6 +617,37 @@ defmodule ApiaryWeb.CoreComponents do
         aria-describedby={describedby(@id, @errors, @hint)}
         {@rest}
       >{Phoenix.HTML.Form.normalize_value("textarea", @value)}</textarea>
+      <.hint :if={@hint && @errors == []} id={"#{@id}-hint"}>{@hint}</.hint>
+      <.error :for={msg <- @errors} id={"#{@id}-error"}>{msg}</.error>
+    </fieldset>
+    """
+  end
+
+  # A text input with a prefix: the prefix in mono before it, as one field, the prefix
+  # read with the value by whoever hears the field.
+  def input(%{prefix: prefix} = assigns) when is_binary(prefix) do
+    ~H"""
+    <fieldset class="fieldset">
+      <.label :if={@label} for={@id} optional={@optional}>{@label}</.label>
+      <div class="q-input-prefix">
+        <span id={"#{@id}-prefix"}>{@prefix}</span>
+        <input
+          type={@type}
+          name={@name}
+          id={@id}
+          value={Phoenix.HTML.Form.normalize_value(@type, @value)}
+          class={["input", "input-#{@size}", @errors != [] && "input-error", @class]}
+          phx-debounce={@debounce}
+          aria-invalid={@errors != [] && "true"}
+          aria-describedby={
+            Enum.join(
+              ["#{@id}-prefix", describedby(@id, @errors, @hint)] |> Enum.reject(&is_nil/1),
+              " "
+            )
+          }
+          {@rest}
+        />
+      </div>
       <.hint :if={@hint && @errors == []} id={"#{@id}-hint"}>{@hint}</.hint>
       <.error :for={msg <- @errors} id={"#{@id}-error"}>{msg}</.error>
     </fieldset>

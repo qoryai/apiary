@@ -94,7 +94,10 @@ navigation it is in.
 - **An organisation's** (`/:org/settings/…`), from the organisation's pages (the
   breadcrumb's organisation leads to its overview, whose sidebar has Settings): General
   (name, slug, owners, and its danger zone), People (`/settings/people`: members,
-  invitations, suspensions), Workspaces (owners and admins), Audit log (the Activity page,
+  invitations, suspensions), Workspaces (owners and admins;
+  `SettingsComponents.workspace_list/1`, which an edition's page over the same list
+  renders too, with the edition's way of adding one in the section's actions, the
+  `:workspaces_heading` slot), Audit log (the Activity page,
   `/:org/activity`, which keeps its path), and the edition's sections
   (`ApiaryWeb.Edition.settings_tabs/1`). From a workspace the palette's Go to and New ›
   Invite people lead there too; nothing else in a workspace does.
@@ -357,6 +360,9 @@ or an attribute of one, not a copy.
   `patch` or `href`. `primary` marks the one main action of a screen. `loading_text` is
   the gerund ("Saving") the button shows, with a spinner and `aria-busy`, while its form
   submits; the button keeps its width.
+- **`<.input>`** is every field; with `prefix` a text input shows, in mono before the
+  value and as one field, what the value completes: the path of the organisation before
+  a workspace's slug.
 - **`<.modal>`** is a native `<dialog>` under the `Modal` hook. Escape and the backdrop
   run its `data-cancel` command, usually a patch back to the page beneath; a dialog
   without one cannot be dismissed. Focus returns to what opened it.

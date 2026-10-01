@@ -43,6 +43,7 @@ defmodule ApiaryWeb.EditionTest do
 
     test "is one of the core's names" do
       assert :notices in ApiaryWeb.Extension.names()
+      assert :workspaces_heading in ApiaryWeb.Extension.names()
 
       assert_raise ArgumentError, ~r/no slot :nowhere/, fn ->
         render_component(&ApiaryWeb.Extension.slot/1, name: :nowhere, scope: nil)

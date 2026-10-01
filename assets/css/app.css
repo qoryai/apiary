@@ -2104,6 +2104,32 @@
   .q-mono {
     font-family: var(--font-mono);
   }
+  /* A text input with a prefix (`<.input prefix>`): the prefix in mono, muted, on the
+     field's own border, and the input completing it as one field. */
+  .q-input-prefix {
+    display: flex;
+    align-items: stretch;
+    min-width: 0;
+  }
+  .q-input-prefix > span {
+    display: flex;
+    flex: none;
+    align-items: center;
+    padding-inline: 0.625rem;
+    border: 1px solid var(--q-border-field);
+    border-right: 0;
+    border-radius: var(--radius-field) 0 0 var(--radius-field);
+    background-color: var(--color-base-200);
+    color: var(--q-muted);
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    white-space: nowrap;
+  }
+  .q-input-prefix > .input {
+    border-radius: 0 var(--radius-field) var(--radius-field) 0;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+  }
   /* A row out of use (revoked, suspended, deleted): its title steps down to muted. */
   .table tr.row-off .q-td-title,
   .table tr.row-off .q-title {
