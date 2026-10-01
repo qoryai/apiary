@@ -378,9 +378,14 @@ or an attribute of one, not a copy.
   ArrowDown from a section's search goes to its first option. With
   `data-float` the list is a popover in the top layer, placed under its trigger, so no
   scroll region clips it (a row's menu, a list's Filter and Sort).
-- **`<.table>`** is a scroll region of its own, focusable and labelled (`label`), so a
-  wide table scrolls inside the page and never the page sideways; its rows follow the
-  row spec (Lists, above).
+- **`<.table>`** is a scroll region of its own, focusable and named by its `label`, which
+  is required, so a wide table scrolls inside the page and never the page sideways; its
+  rows follow the row spec (Lists, above). A column of icons has a header for a screen
+  reader (`sr_label`). A settings section is not a named region of its own, so its list
+  is the one landmark with the section's name.
+- **Tooltips** (`.tooltip` with `data-tip`) take no box while hidden, so a right-hand one
+  never widens a phone's page; shown, they wrap at 36ch or the window. Escape hides the
+  one under the pointer or focus until the pointer leaves or focus moves (`app.js`).
 - **`<.row_menu>`** is a row's ⋯ menu; `<.views>`, `<.list_search>`, `<.filter_menu>`,
   `<.sort_menu>` and `<.filter_tokens>` are a list's controls; `<.state_word>` says a
   row's state in words; `<.sparkline>` draws runs a day.

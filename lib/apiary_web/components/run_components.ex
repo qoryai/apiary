@@ -1325,7 +1325,6 @@ defmodule ApiaryWeb.RunComponents do
       <span
         :if={@state == "closed"}
         class="q-st-w tooltip q-tip-wide"
-        tabindex="0"
         data-tip={closed_tip(@closed_at)}
       >{state_label(@state)}<span class="sr-only">. {closed_tip(@closed_at)}</span></span>
       <span

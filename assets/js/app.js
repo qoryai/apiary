@@ -106,6 +106,23 @@ document.addEventListener("click", e => {
   setTimeout(() => watch.observe(button, {attributes: true, attributeFilter: ["class"]}), 0)
 })
 
+// A tooltip is dismissible (WCAG 1.4.13): Escape hides the one under the pointer or
+// focus until the pointer leaves it or focus moves on. Escape still does its own work.
+document.addEventListener("keydown", e => {
+  if (e.key !== "Escape") return
+  document.querySelectorAll(".tooltip[data-tip]").forEach(tip => {
+    if (!tip.matches(":hover, :focus-visible, :has(:focus-visible)")) return
+    tip.setAttribute("data-tip-hidden", "")
+    const show = () => {
+      tip.removeAttribute("data-tip-hidden")
+      tip.removeEventListener("mouseleave", show)
+      tip.removeEventListener("focusout", show)
+    }
+    tip.addEventListener("mouseleave", show)
+    tip.addEventListener("focusout", show)
+  })
+})
+
 // The theme control is a group of three buttons; the script in the root
 // layout owns the theme, this keeps `aria-pressed` honest.
 const syncThemeButtons = () => {
