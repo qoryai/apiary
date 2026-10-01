@@ -1868,8 +1868,17 @@ defmodule ApiaryWeb.RunComponents do
     """
   end
 
+  # A run's row is the workspace's row spec without the runs: the destination the title,
+  # the attempts, the split, the reason, the outcome and when, inside the run, it was
+  # seen; no mark and no tint.
   def connection_row(%{variant: "table"} = assigns) do
-    assigns = assign(assigns, :c, normalise(assigns.connection))
+    c = normalise(assigns.connection)
+
+    assigns =
+      assigns
+      |> assign(:c, c)
+      |> assign(:share, share(c.allowed, c.denied))
+      |> assign(:mixed, c.allowed > 0 and c.denied > 0)
 
     ~H"""
     <tr
@@ -1878,26 +1887,34 @@ defmodule ApiaryWeb.RunComponents do
       data-decision={@c.decision}
     >
       <td class="q-cx-d">
-        <div class="q-dcell"><.decision_mark decision={@c.decision} /><.destination c={@c} /></div>
-        <span :if={@security} class="q-cx-fold q-cx-fold-marked">
-          <.reason c={@c} variant="table" />
+        <.destination_title c={@c} line />
+        <span :if={@security} class="q-cx-fold">
+          <.reason c={@c} variant="workspace" />
         </span>
       </td>
-      <td class="q-num q-from-sm">{Format.number(@c.attempts)}</td>
-      <td class={["q-num q-from-md", @c.allowed == 0 && "q-zero"]}>{Format.number(@c.allowed)}</td>
-      <td class={["q-num", if(@c.denied == 0, do: "q-zero", else: "q-cx-bad")]}>
-        {Format.number(@c.denied)}
+      <td class="q-num q-from-lg">{Format.number(@c.attempts)}</td>
+      <td class="q-cx-nw">
+        <.split allowed={@c.allowed} denied={@c.denied} share={@share} />
       </td>
       <td :if={@security} class="q-why q-from-sm">
-        <.reason c={@c} variant="table" />
+        <span :if={!elsewhere?(@act)} class="q-why-l" title={reason_title(@c, @mixed)}>
+          <.reason c={@c} variant="workspace" />
+        </span>
+        <span
+          :if={elsewhere?(@act)}
+          class="q-why-l q-above-why"
+          id={"#{@id}-elsewhere"}
+          title={reason_title(@c, @mixed)}
+        >
+          <span class="q-tile" aria-hidden="true">{String.first(@act.allow_elsewhere.name)}</span>
+          {gettext("%{name} allows only its own hosts", name: @act.allow_elsewhere.name)}
+        </span>
         <.after_line :if={@act && @act[:after]} id={"#{@id}-after"} line={@act.after} />
       </td>
-      <td class="q-from-sm">
+      <td class="q-cx-nw q-from-lg">
         <.outcome value={@c.outcome} invocation={@c.invocation} status={@c.status} />
       </td>
-      <td class="q-meta q-cx-nw q-from-md">
-        <.seen c={@c} started_at={@started_at} />
-      </td>
+      <td class="q-meta q-cx-nw q-cx-seen"><.seen c={@c} started_at={@started_at} /></td>
       <td :if={@security} class="q-cx-acts">
         <.rule_action :if={@act} id={"#{@id}-act"} connection={@c} {rule_action_attrs(@act)} />
         <.rule_menu
@@ -2146,7 +2163,18 @@ defmodule ApiaryWeb.RunComponents do
   # cut in the middle. A tool invocation leads with its tool, as everywhere.
   defp destination_title(%{c: %{invocation: true}} = assigns), do: destination(assigns)
 
+  # `line`: a run's row, one request, says its request line (the method and the path)
+  # where the workspace's says the path.
   defp destination_title(assigns) do
+    assigns =
+      assign(assigns,
+        trail:
+          if(assigns[:line],
+            do: request_line(assigns.c),
+            else: if(assigns.c.path != "", do: assigns.c.path)
+          )
+      )
+
     ~H"""
     <span
       class="q-dest q-cx-t"
@@ -2154,7 +2182,7 @@ defmodule ApiaryWeb.RunComponents do
       data-request-id={@c.request_id}
     >
       <span class="q-cx-h">{@c.host}<span class="q-cx-p">:{@c.port}</span></span>
-      <span :if={@c.path != ""} class="q-cx-path">{middle(@c.path, 96)}</span>
+      <span :if={@trail} class="q-cx-path">{middle(@trail, 96)}</span>
     </span>
     """
   end
@@ -2507,13 +2535,13 @@ defmodule ApiaryWeb.RunComponents do
   are connections as `<.connection_row>` reads them; `row_id` gives each its DOM id
   (`"cx-<id>"` for a projection row, `"dst-<hash>"` for a destination).
 
-  Both are on the row spec, with no tint, and fit their width: columns join as the table's
-  own width grows (a container query, as `CoreComponents.table/1`'s `from`), so nothing is
-  cut at the right. The workspace's: the reason from 600 px (below it, a line under the
+  Both are one row spec, with no tint and no mark, and fit their width: columns join as the
+  table's own width grows (a container query, as `CoreComponents.table/1`'s `from`), so
+  nothing is cut at the right. The reason from 600 px (below it, a line under the
   destination), the last seen from 780, the runs from 840, the attempts and the outcome
-  from 1300; the destination and its split never go. A run's: the attempts, the reason and
-  the outcome from 600, the allowed and the times from 1000; the destination and the
-  denied never go.
+  from 1300; the destination and its split never go, and the host is never cut, its path
+  going under it where the line is short. A run's is the same without the runs, its times
+  the offsets inside the run.
   """
   attr :id, :string, required: true
   attr :label, :string, required: true, doc: "the accessible name of the scroll region"
@@ -2556,22 +2584,24 @@ defmodule ApiaryWeb.RunComponents do
       role="region"
       aria-label={@label}
     >
-      <table class={["table q-cxt", if(@variant == "workspace", do: "q-cxt-ws", else: "q-cxt-run")]}>
+      <table class={[
+        "table q-cxt q-cxt-ws",
+        @variant == "table" && "q-cxt-run"
+      ]}>
         <thead>
           <tr :if={@variant == "table"}>
             <th scope="col">{gettext("Destination")}</th>
-            <th scope="col" class="q-num q-from-sm">{gettext("Attempts")}</th>
-            <th scope="col" class="q-num q-from-md">{gettext("Allowed")}</th>
-            <th scope="col" class="q-num">{gettext("Denied")}</th>
+            <th scope="col" class="q-num q-from-lg">{gettext("Attempts")}</th>
+            <th scope="col">{gettext("Allowed / denied")}</th>
             <th :if={@security} scope="col" class="q-from-sm">{gettext("Reason")}</th>
-            <th scope="col" class="q-from-sm">
+            <th scope="col" class="q-from-lg">
               <.term
                 word={gettext("Outcome")}
                 standard={@outcome_tip}
                 class="q-tip-wide tooltip-bottom"
               />
             </th>
-            <th scope="col" class="q-from-md">{gettext("First and last seen")}</th>
+            <th scope="col" class="q-cx-seen">{gettext("First and last seen")}</th>
             <th :if={@security} scope="col" class="q-cx-acts">
               <span class="sr-only">{gettext("Rule actions")}</span>
             </th>

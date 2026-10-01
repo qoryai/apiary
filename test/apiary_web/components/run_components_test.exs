@@ -281,8 +281,9 @@ defmodule ApiaryWeb.RunComponentsTest do
       html = row(%{last_decision: "denied", last_rule: ""})
       assert text(html) =~ "No rule matches. Enforce mode denies it."
       assert html =~ "q-denied"
-      assert html =~ "q-mark-no"
-      assert text(html) =~ "Denied"
+      # No mark: the denied number of the split, and its words, say it.
+      refute html =~ "q-mark-no"
+      assert text(html) =~ "0 allowed, 3 denied"
       assert text(html) =~ "Refused"
     end
 
@@ -339,7 +340,7 @@ defmodule ApiaryWeb.RunComponentsTest do
 
       assert text(html) =~ "Rule api.example, path /v1/*, credential model-key"
       assert text(html) =~ "api.example:443 POST /v1/messages"
-      assert html =~ "q-mark-ok"
+      refute html =~ "q-mark-ok"
       refute html =~ "q-denied"
     end
 
@@ -476,8 +477,8 @@ defmodule ApiaryWeb.RunComponentsTest do
         assert text(html) =~ "Answered 200"
         refute text(html) =~ "Connected"
 
-        # A run's row keeps the decision's mark; the workspace's rows have none.
-        assert html =~ "q-mark-ok" == (variant == "table")
+        # Neither a run's row nor the workspace's has a decision's mark.
+        refute html =~ "q-mark-ok"
       end
 
       # A tool that answered with an error is told apart; one with no path rule says none.

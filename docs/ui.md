@@ -245,10 +245,12 @@ the control and never inside it.
   attempts muted numbers; allowed and denied a thin split with its two numbers, the denied
   one red only when there is one, and the words for a screen reader; the reason of the last
   attempt one muted line, the rule in mono and nothing bold, whole on hover, a line under
-  the destination below 600 px of table. No tint and no decision mark (a run's tab keeps
-  its marks). Columns join as the table widens, so nothing is cut at the right: the reason
-  from 600 px, the last seen from 780, the runs from 840, the attempts and the outcome from
-  1300. A row's one text action, Allow on a destination that needs allowing and Deny on
+  the destination below 600 px of table. No tint and no decision mark. The host is never
+  cut: where the line is short the path goes under it. Columns join as the table widens,
+  so nothing is cut at the right: the reason from 600 px, the last seen from 780, the runs
+  from 840, the attempts and the outcome from 1300. A run's Network access tab draws the
+  same row without the runs, its title the request line, its times the offsets inside the
+  run; only the timeline's inline connections keep a glyph. A row's one text action, Allow on a destination that needs allowing and Deny on
   an allowed one, shows on hover, on focus inside the row and while the row's popover or
   menu is open (always on a touch screen, in the menu alone below 600 px of table); the ⋯
   menu (`rule_menu/1`) holds Allow…, Deny…, Only this host and Copy the host. A locked
@@ -481,8 +483,8 @@ inverted.
   the current step and the mark. It is too light to be text on the light theme: links and
   the active navigation icon use `accent`.
 - **Colour marks a state, never a mood,** and is never the only carrier: a badge has its
-  word, an error its icon and sentence, an allowed or denied connection of a run its glyph
-  and word, a destination's denied number the words of its split.
+  word, an error its icon and sentence, a connection in the timeline its glyph and word,
+  a destination's denied number the words of its split.
 - **Borders on the page, shadows in the air.** What rests on the page has a 1 px border
   and at most `shadow-xs`; only what floats (menus, toasts, tooltips, modals, the drawer)
   has a real shadow.

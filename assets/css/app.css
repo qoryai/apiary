@@ -3953,6 +3953,19 @@
     width: 40%;
     max-width: 0;
   }
+  /* Narrow, the reason is under the destination and the split is its numbers alone: the
+     destination takes the room. */
+  @container (max-width: 599px) {
+    .q-cxt-ws td.q-cx-d {
+      width: 75%;
+    }
+    .q-cxt-ws .q-split {
+      display: none;
+    }
+    .q-cxt-ws thead th {
+      white-space: normal;
+    }
+  }
   .q-cxt-ws td.q-why {
     width: 30%;
     min-width: 0;
@@ -3969,22 +3982,6 @@
     white-space: nowrap;
     text-align: right;
   }
-  /* A run's: the destination cut, the reason wrapped in its own width. */
-  .q-cxt-run td.q-cx-d {
-    width: 36%;
-    max-width: 0;
-  }
-  .q-cxt-run .q-dcell {
-    max-width: none;
-  }
-  .q-cxt-run .q-dest {
-    color: var(--color-base-content);
-    font-size: 0.8125rem;
-  }
-  .q-cxt-run td.q-why {
-    min-width: 10rem;
-    max-width: 28rem;
-  }
   .q-cxt-ws :is(th, td):is(.q-cx-seen, .q-cx-runs) {
     display: none;
   }
@@ -3998,33 +3995,38 @@
       display: table-cell;
     }
   }
-  /* The title: the host in mono, the port faint, the path muted; each cut, never wrapped. */
+  /* The title: the host in mono, the port faint, the path muted. The host is never cut:
+     where the line is short the path goes under it, cut, and a host longer than the
+     column breaks. */
   .q-cxt-ws .q-cx-t {
     display: flex;
     min-width: 0;
+    flex-wrap: wrap;
     align-items: baseline;
-    gap: 8px;
+    column-gap: 8px;
     font-size: inherit;
   }
   .q-cx-h {
     min-width: 0;
+    max-width: 100%;
     flex: 0 1 auto;
-    overflow: hidden;
+    white-space: normal;
     color: var(--color-base-content);
     font-family: var(--font-mono);
     font-size: 0.8125rem;
     line-height: 1.25rem;
     font-weight: 500;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
   }
   .q-cx-p {
     color: var(--q-faint);
     font-weight: 400;
+    white-space: nowrap;
   }
   .q-cx-path {
-    min-width: 0;
-    flex: 0 10 auto;
+    min-width: 6ch;
+    max-width: 100%;
+    flex: 1 1 0;
     overflow: hidden;
     color: var(--q-muted);
     font-family: var(--font-mono);
@@ -4058,10 +4060,6 @@
     .q-cx-fold {
       display: none;
     }
-  }
-  .q-cx-fold-marked {
-    margin-left: 28px;
-    white-space: normal;
   }
   .q-cxt tr.q-cxr :is(.q-why, .q-cx-fold) b {
     color: inherit;
