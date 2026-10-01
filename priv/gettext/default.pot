@@ -5675,6 +5675,7 @@ msgstr ""
 msgid "Not found."
 msgstr ""
 
+#: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "Not in force"
