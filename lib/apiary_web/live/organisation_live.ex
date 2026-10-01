@@ -64,6 +64,9 @@ defmodule ApiaryWeb.OrganisationLive do
           <.header>
             {@current_scope.organisation.name}
             <:subtitle>{gettext("The organisation's workspaces and its people.")}</:subtitle>
+            <:actions>
+              <ApiaryWeb.Extension.slot name={:organisation_heading} scope={@current_scope} />
+            </:actions>
           </.header>
         </div>
 

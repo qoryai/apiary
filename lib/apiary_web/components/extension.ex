@@ -13,6 +13,7 @@ defmodule ApiaryWeb.Extension do
   | Slot | Where | Assigns beside `scope` |
   |---|---|---|
   | `:notices` | every page of an organisation, under the top bar, before the page | `organisation`, `counts` (the navigation's, `ApiaryWeb.UserAuth.nav_counts/1`, or nil) |
+  | `:organisation_heading` | the organisation's overview, in its header's actions: a button to the edition's page | |
   | `:members_heading` | the members page, in its header, under its description | |
   | `:member_access` | each row of the members page, beside the member's name: one line of muted text | `member` |
   | `:member_actions` | each row of the members page, in its ⋯ menu before the page's own items: `CoreComponents.menu_item/1`s | `member` |
@@ -31,6 +32,7 @@ defmodule ApiaryWeb.Extension do
 
   @names [
     :notices,
+    :organisation_heading,
     :members_heading,
     :member_access,
     :member_actions,
@@ -44,6 +46,7 @@ defmodule ApiaryWeb.Extension do
   @typedoc "The name of a slot of a core page."
   @type name ::
           :notices
+          | :organisation_heading
           | :members_heading
           | :member_access
           | :member_actions

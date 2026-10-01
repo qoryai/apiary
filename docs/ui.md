@@ -156,8 +156,9 @@ section, each at a path of its own. The old paths, `/:org/members/…` and
 `/:org/:workspace/keys/…`, send on to the new ones (`ApiaryWeb.MovedController`).
 
 An organisation's own path, `/:org`, is its overview (`ApiaryWeb.OrganisationLive`): the
-workspaces the person reaches, what each is doing, and the organisation's people. The
-breadcrumb's organisation leads there; `/` still sends a person to the workspace they
+workspaces the person reaches, what each is doing, and the organisation's people; its
+header's actions are the edition's (the `:organisation_heading` slot), such as a way to add
+a workspace. The breadcrumb's organisation leads there; `/` still sends a person to the workspace they
 opened last.
 
 ## Lists
