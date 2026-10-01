@@ -240,7 +240,7 @@ defmodule ApiaryWeb.PolicyComponents do
   @doc """
   The workspace's default mode, one line, as a target's is (`target_mode/1`): Observe |
   Enforce, then one sentence of what the mode does and who follows it, and the record of
-  the last 7 days with the way to it, beside the control and never inside it. Choosing the
+  the last 14 days with the way to it, beside the control and never inside it. Choosing the
   other mode never switches at once: it sends `mode_ask`, and the page opens the confirm.
   The arrow keys move between the two without choosing (the `PolicyPage` hook); Space or
   Enter asks. A mode is an owner's or an admin's to set: for a member the other mode is
@@ -489,7 +489,7 @@ defmodule ApiaryWeb.PolicyComponents do
 
   defp mode_fact(%{fact: :none} = assigns) do
     ~H"""
-    {gettext("No run has reached out in the last 7 days.")}
+    {gettext("No run has reached out in the last 14 days.")}
     """
   end
 
@@ -497,7 +497,7 @@ defmodule ApiaryWeb.PolicyComponents do
     ~H"""
     <.rich text={denied_sentence(@fact)} />
     <.link
-      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/network?decision=denied&since=7d"}
+      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/network?decision=denied"}
       class="q-link"
     >
       {gettext("See them")}
@@ -510,7 +510,7 @@ defmodule ApiaryWeb.PolicyComponents do
     <.rich text={uncovered_sentence(@fact, @following)} />
     {gettext("Enforce would deny them.")}
     <.link
-      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/network?since=7d"}
+      navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/network"}
       class="q-link"
     >
       {gettext("See them")}
@@ -519,14 +519,14 @@ defmodule ApiaryWeb.PolicyComponents do
   end
 
   defp denied_sentence(fact) do
-    rich_gettext("In the last 7 days it denied %{attempts} to %{destinations}.",
+    rich_gettext("In the last 14 days it denied %{attempts} to %{destinations}.",
       attempts: attempts(fact.denied),
       destinations: destinations(fact.destinations)
     )
   end
 
   defp uncovered_sentence(fact, nil) do
-    rich_gettext("In the last 7 days %{attempts} to %{destinations} had no rule.",
+    rich_gettext("In the last 14 days %{attempts} to %{destinations} had no rule.",
       attempts: attempts(fact.uncovered),
       destinations: destinations(fact.destinations)
     )
@@ -534,8 +534,8 @@ defmodule ApiaryWeb.PolicyComponents do
 
   defp uncovered_sentence(fact, following) do
     rich_ngettext(
-      "In the last 7 days %{attempts} to %{destinations} had no rule, in the %{number} target that follows it.",
-      "In the last 7 days %{attempts} to %{destinations} had no rule, in the %{number} targets that follow it.",
+      "In the last 14 days %{attempts} to %{destinations} had no rule, in the %{number} target that follows it.",
+      "In the last 14 days %{attempts} to %{destinations} had no rule, in the %{number} targets that follow it.",
       following,
       attempts: attempts(fact.uncovered),
       destinations: destinations(fact.destinations),

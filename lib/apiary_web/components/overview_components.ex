@@ -61,7 +61,20 @@ defmodule ApiaryWeb.OverviewComponents do
   attr :destinations, :any, default: nil
   attr :days, :integer, default: 14
 
+  attr :from, Date,
+    default: nil,
+    doc: "the first of the days counted, so a number leads to the list of what it counts"
+
   def summary(assigns) do
+    assigns =
+      assign(assigns,
+        range:
+          if(assigns.from,
+            do: %{"from" => Date.to_iso8601(assigns.from)},
+            else: %{"since" => "14d"}
+          )
+      )
+
     ~H"""
     <section
       id={@id}
@@ -96,7 +109,7 @@ defmodule ApiaryWeb.OverviewComponents do
               number: Format.number(@days)
             )
           }
-          navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs?since=30d"}
+          navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/runs?#{@range}"}
           value={@facts && @facts.runs}
           sub={@facts && runs_sub(@facts)}
         />
@@ -108,7 +121,7 @@ defmodule ApiaryWeb.OverviewComponents do
             )
           }
           navigate={
-            ~p"/#{@scope.organisation}/#{@scope.workspace}/runs?#{%{"state" => Enum.join(Apiary.Runs.Run.ended_badly_states(), ","), "since" => "30d"}}"
+            ~p"/#{@scope.organisation}/#{@scope.workspace}/runs?#{Map.put(@range, "state", Enum.join(Apiary.Runs.Run.ended_badly_states(), ","))}"
           }
           value={@facts && @facts.ended_badly}
           sub={@facts && bad_sub(@facts)}
@@ -121,7 +134,7 @@ defmodule ApiaryWeb.OverviewComponents do
             )
           }
           navigate={
-            ~p"/#{@scope.organisation}/#{@scope.workspace}/network?#{%{"decision" => "denied", "since" => "30d"}}"
+            ~p"/#{@scope.organisation}/#{@scope.workspace}/network?#{%{"decision" => "denied"}}"
           }
           short={
             ngettext("Denied, %{number} day", "Denied, %{number} days", @days,
@@ -213,7 +226,7 @@ defmodule ApiaryWeb.OverviewComponents do
   attr :id, :string, required: true
   attr :items, :list, required: true
   attr :count, :integer, required: true, doc: "the items not yet resolved, shown and beyond"
-  attr :more, :map, default: nil, doc: "%{count:, navigate:, title:}"
+  attr :more, :map, default: nil, doc: "%{count:, navigate:, title:}, and `label:`, what it says"
   attr :shared, :any, default: MapSet.new()
 
   attr :scope, :map,
@@ -255,9 +268,10 @@ defmodule ApiaryWeb.OverviewComponents do
         class="q-more"
         title={@more.title}
       >
-        {ngettext("and %{number} more", "and %{number} more", @more.count,
-          number: Format.number(@more.count)
-        )}
+        {@more[:label] ||
+          ngettext("and %{number} more", "and %{number} more", @more.count,
+            number: Format.number(@more.count)
+          )}
         <.icon name="hero-arrow-right-micro" class="size-3.5" />
       </.link>
     </section>

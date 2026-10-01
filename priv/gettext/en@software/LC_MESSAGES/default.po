@@ -3775,8 +3775,8 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
-msgid "Every destination this target's runs reached in the last 7 days is covered by a rule."
-msgstr "Every destination this repository's runs reached in the last 7 days is covered by a rule."
+msgid "Every destination this target's runs reached in the last 14 days is covered by a rule."
+msgstr "Every destination this repository's runs reached in the last 14 days is covered by a rule."
 
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
@@ -4872,8 +4872,8 @@ msgstr "Let through in the last 7 days with no rule matching, in those repositor
 
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
-msgid "Let through in this target's runs, last 7 days, with no rule matching"
-msgstr "Let through in this repository's runs, last 7 days, with no rule matching"
+msgid "Let through in this target's runs, last 14 days, with no rule matching"
+msgstr "Let through in this repository's runs, last 14 days, with no rule matching"
 
 #: lib/apiary_web/live/member_live/index.ex
 #: lib/apiary_web/live/user_live/organisations.ex
@@ -10516,3 +10516,9 @@ msgstr "This repository has no versions of its own: it is served %{workspace}'s 
 
 msgid "Version %{version} of this target's own policy; until now it was served the workspace's."
 msgstr "Version %{version} of this repository's own policy; until now it was served the workspace's."
+
+msgid "Let through in this target's runs, last 7 days, with no rule matching"
+msgstr "Let through in this repository's runs, last 7 days, with no rule matching"
+
+msgid "Every destination this target's runs reached in the last 7 days is covered by a rule."
+msgstr "Every destination this repository's runs reached in the last 7 days is covered by a rule."

@@ -2371,6 +2371,12 @@
   .q-views > a[aria-current="page"] .q-views-n {
     font-weight: 500;
   }
+  /* A line under the views that says how they count, where it is not plain. */
+  .q-views-note {
+    margin-top: -4px;
+    color: var(--q-muted);
+    font-size: 0.78125rem;
+  }
   .q-find {
     width: min(320px, 100%);
   }

@@ -472,7 +472,13 @@ defmodule Apiary.Runs do
 
   # `base` is a query with the run bound as `:run`, counted by `count` (distinct runs by
   # default), as the rail counts.
-  defp target_facet(base, chosen, narrow, limit, count \\ dynamic([run: r], count(r.id, :distinct))) do
+  defp target_facet(
+         base,
+         chosen,
+         narrow,
+         limit,
+         count \\ dynamic([run: r], count(r.id, :distinct))
+       ) do
     pattern = like(narrow)
     {rows, total} = count_targets(base, pattern, limit, [], count)
 
@@ -810,7 +816,11 @@ defmodule Apiary.Runs do
         _denied ->
           [
             desc: dynamic([d], d.last_decision == "denied"),
-            desc: dynamic([d], fragment("CASE WHEN ? = 'denied' THEN ? END", d.last_decision, d.denied)),
+            desc:
+              dynamic(
+                [d],
+                fragment("CASE WHEN ? = 'denied' THEN ? END", d.last_decision, d.denied)
+              ),
             desc:
               dynamic(
                 [d],

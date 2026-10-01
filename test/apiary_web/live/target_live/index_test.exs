@@ -69,7 +69,9 @@ defmodule ApiaryWeb.TargetLive.IndexTest do
     assert has_element?(view, "#{row} .q-tgt-lw", "Failed")
     assert has_element?(view, "#{row} .q-tgt-denied", "1")
     assert has_element?(view, "#{row} .q-spark")
-    assert has_element?(view, "#{row} .text-error", "0%")
+    # Below 80 % the share is lifted to the text colour; red is for denials only.
+    assert has_element?(view, "#{row} .q-hot", "0%")
+    refute has_element?(view, "#{row} .text-error", "0%")
     assert has_element?(view, "#targets-pager", "1–3 of 3")
   end
 

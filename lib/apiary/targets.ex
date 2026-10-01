@@ -50,7 +50,7 @@ defmodule Apiary.Targets do
   and the policy `modes` (`:follows`, `:observes`, `:enforces`, the target's own) to keep,
   `activity` (`:quiet_30`, `:quiet_90`: ran, but not in that many days), `pinned` (the
   person's pins only), the `sort` (`:last_run`, `:name`, `:runs`, most runs in fourteen
-  days, `:denials`, most denied attempts in seven) and the `page`.
+  days, `:denials`, most denied attempts in fourteen) and the `page`.
   """
   @type query :: %{
           optional(:view) => :all | :active | :never,
@@ -66,7 +66,7 @@ defmodule Apiary.Targets do
   @typedoc """
   A row of the index: the target, its last run (`state`, `at`, `run_id`) or nil, its runs
   a day over fourteen days (oldest first, today last), how many of those ended well and
-  badly, its denied attempts in seven days, and whether its path is in another system too.
+  badly, its denied attempts in those fourteen days, and whether its path is in another system too.
   """
   @type row :: %{
           target: Target.t(),
@@ -138,7 +138,7 @@ defmodule Apiary.Targets do
     base =
       from t in in_scope(scope),
         as: :target,
-        left_join: s in subquery(window_stats(scope, from, day0, week)),
+        left_join: s in subquery(window_stats(scope, from, day0)),
         as: :stats,
         on: s.target_id == t.id,
         left_lateral_join: l in subquery(last_run()),
@@ -264,11 +264,11 @@ defmodule Apiary.Targets do
     {DateTime.new!(day0, ~T[00:00:00.000000], "Etc/UTC"), day0}
   end
 
-  # The window's runs of each target: in all, ended well and badly, the denied attempts
-  # of the last seven days, and the runs of each day as `[day, runs]` pairs, day 0 the
+  # The window's runs of each target: in all, ended well and badly, their denied attempts
+  # (over the same fourteen days, so the columns count one window), and the runs of each day as `[day, runs]` pairs, day 0 the
   # window's first. Two levels, by target and day and then by target, over the range of
   # the runs list's index the window is.
-  defp window_stats(scope, from, day0, week) do
+  defp window_stats(scope, from, day0) do
     by_day =
       from r in Run,
         where: r.organisation_id == ^scope.organisation.id,
@@ -286,7 +286,7 @@ defmodule Apiary.Targets do
           runs: count(r.id),
           ended_well: filter(count(r.id), r.state in ^Run.ended_well_states()),
           ended_badly: filter(count(r.id), r.state in ^Run.ended_badly_states()),
-          denied: filter(sum(r.denied_count), coalesce(r.started_at, r.inserted_at) >= ^week)
+          denied: sum(r.denied_count)
         }
 
     from d in subquery(by_day),
@@ -486,9 +486,11 @@ defmodule Apiary.Targets do
 
   @doc """
   denied_destinations/4 is the destinations the target's runs were denied since `since`,
-  one per host and port, the most attempts first, at most `limit`: `%{host:, port:,
-  attempts:, runs:, last_at:}`, and in all, `%{destinations:, attempts:}`. Read from the
-  workspace's connections last seen in that time, so the window bounds it.
+  one per host, port and path as Network access counts them, the most attempts first, at
+  most `limit`: `%{host:, port:, path:, attempts:, runs:, last_at:}`, and in all,
+  `%{destinations:, attempts:}`, the number the target's Network access tab shows under
+  Denied for the same window. Read from the workspace's connections last seen in that
+  time, so the window bounds it.
   """
   @spec denied_destinations(Scope.t(), Target.t(), DateTime.t(), pos_integer) :: %{
           rows: [map],
@@ -504,10 +506,11 @@ defmodule Apiary.Targets do
         where: c.workspace_id == ^scope.workspace.id,
         where: c.last_seen_at >= ^since and c.denied > 0,
         where: r.target_id == ^target.id,
-        group_by: [c.host, c.port],
+        group_by: [c.host, c.port, c.path],
         select: %{
           host: c.host,
           port: c.port,
+          path: c.path,
           attempts: type(sum(c.denied), :integer),
           runs: count(c.run_id, :distinct),
           last_at: max(c.last_seen_at)
@@ -516,11 +519,12 @@ defmodule Apiary.Targets do
     rows =
       Repo.all(
         from d in subquery(grouped),
-          order_by: [desc: d.attempts, desc: d.last_at, asc: d.host, asc: d.port],
+          order_by: [desc: d.attempts, desc: d.last_at, asc: d.host, asc: d.port, asc: d.path],
           limit: ^limit,
           select: %{
             host: d.host,
             port: d.port,
+            path: d.path,
             attempts: d.attempts,
             runs: d.runs,
             last_at: d.last_at,

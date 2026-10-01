@@ -3,7 +3,7 @@ defmodule ApiaryWeb.TargetLive.Index do
   The workspace's targets: the index GitHub gives an organisation's repositories. One
   row per target, its path the only strong text: the reader's pin, its last run as a dot
   and a time (a word only when it is running or went badly), its runs a day over fourteen
-  days, how many of them ended well, its denied attempts in seven days, and its policy
+  days, how many of them ended well, its denied attempts in those days, and its policy
   mode only where it sets its own. Pages of 50.
 
   Narrowed the way every list is (`docs/ui.md`): views as tabs (All, Active this week,
@@ -426,14 +426,14 @@ defmodule ApiaryWeb.TargetLive.Index do
             kind="num"
             from="md"
           >
-            <span :if={rate = rate(row)} class={rate < 80 && "text-error"}>
+            <span :if={rate = rate(row)} class={rate < 80 && "q-hot"}>
               {gettext("%{percent}%", percent: rate)}
             </span>
           </:col>
           <:col
             :let={row}
             :if={@query.view != :never}
-            label={gettext("Denied")}
+            label={gettext("Denied, 14 days")}
             kind="num"
             from="md"
           >
@@ -441,8 +441,8 @@ defmodule ApiaryWeb.TargetLive.Index do
               count={row.denied}
               title={
                 ngettext(
-                  "%{number} denied attempt in the last 7 days",
-                  "%{number} denied attempts in the last 7 days",
+                  "%{number} denied attempt in the last 14 days",
+                  "%{number} denied attempts in the last 14 days",
                   row.denied,
                   number: Format.number(row.denied)
                 )
@@ -580,7 +580,7 @@ defmodule ApiaryWeb.TargetLive.Index do
   defp sort_label(:last_run), do: gettext("Last run")
   defp sort_label(:name), do: gettext("Name")
   defp sort_label(:runs), do: gettext("Most runs in 14 days")
-  defp sort_label(:denials), do: gettext("Most denials in 7 days")
+  defp sort_label(:denials), do: gettext("Most denials in 14 days")
 
   defp empty_title(%Query{view: :never} = query) do
     if Query.narrowed?(query),

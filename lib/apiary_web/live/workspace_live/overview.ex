@@ -58,7 +58,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   @thresholds %{
     idle_key_days: 30,
     lost_days: 7,
-    denied_days: 7,
+    denied_days: 14,
     chart_days: 14,
     behind_intervals: 2
   }
@@ -83,7 +83,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
   # are the eight with the most runs.
   @shown 5
   @targets 8
-  @denied_filters %Filters{kind: :connections, since: "7d", decision: "denied"}
+  @denied_filters %Filters{kind: :connections, since: "14d", decision: "denied"}
 
   @impl true
   def render(assigns) do
@@ -125,6 +125,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
             quiet={MapSet.size(@quiet_ids)}
             facts={@facts}
             destinations={@destinations}
+            from={chart_from(@today)}
           />
 
           <.attention
@@ -188,7 +189,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
                 <span class="q-live-off">{gettext("Reconnecting.")}</span>
                 <span :if={@connections == :unavailable} id="activity-uncounted">
                   {gettext(
-                    "Denied destinations were not counted: this workspace recorded more than %{cap} connections in 7 days. The Network access page counts them by destination.",
+                    "Denied destinations were not counted: this workspace recorded more than %{cap} connections in 14 days. The Network access page counts them by destination.",
                     cap: Format.number(Policy.Activity.cap())
                   )}
                 </span>
@@ -372,6 +373,9 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     end)
   end
 
+  # The first of the chart's days, which the summary counts from.
+  defp chart_from(today), do: Date.add(today, 1 - @thresholds.chart_days)
+
   ## The reads. Each runs in its own task; nothing here touches the socket.
 
   defp read_activity(scope, today, now, security?) do
@@ -414,7 +418,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     %{
       connections: connections,
       above_level: if(security?, do: above_level(scope)),
-      lost: Runs.lost_since(scope, since, @shown + 1),
+      lost: Runs.lost_since(scope, DateTime.add(now, -@thresholds.lost_days, :day), @shown + 1),
       keys: scope |> AccessKeys.list_access_keys() |> Enum.filter(&is_nil(&1.revoked_at)),
       read_at: now
     }
@@ -1335,9 +1339,18 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     count = length(hidden)
 
     case first.kind do
+      # What Needs attention counts: the destinations denied in the fourteen days that no
+      # rule has allowed since. Network access's Denied counts every one denied then.
       :denied ->
         %{
           count: count,
+          label:
+            ngettext(
+              "and %{number} more destination still denied",
+              "and %{number} more destinations still denied",
+              count,
+              number: Format.number(count)
+            ),
           navigate:
             ~p"/#{scope.organisation}/#{scope.workspace}/network?#{%{"decision" => "denied"}}",
           title:

@@ -70,7 +70,7 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
   describe "empty and loading states" do
     test "nothing in range: widen it, with the limit of what is seen", %{conn: conn, scope: scope} do
       view = open(conn, scope)
-      assert has_element?(view, "h2", "No connections in the last 7 days")
+      assert has_element?(view, "h2", "No connections in the last 14 days")
 
       assert text(view, "#connections-empty") =~
                "Widen the range, or wait for a run to reach out."
@@ -405,25 +405,37 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
       assert text(view, "#connections-target-note") == target_note("git.example:8443/acme/shop")
     end
 
-    test "the range is bounded: the widest is 90 days, and removing one is the last seven", %{
+    test "the window is a token, seen:14d by default; the widest is 90 days, and stays", %{
       conn: conn,
       scope: scope
     } do
       view = open(conn, scope)
-      refute has_element?(view, "#connections-token-started")
+      render_async(view, 2_000)
+      assert text(view, "#connections-token-started") =~ "seen: 14d"
+      # The default window is said, and is no filter the reader set.
+      refute has_element?(view, "#connections-filter .q-listmenu-n")
       refute has_element?(view, "#filter-since-form input[value=all]")
 
-      view
-      |> form("#filter-since-form")
-      |> render_change(%{"since" => "90d", "_target" => ["since"]})
-
+      # Taking it away leaves the widest window, said and no longer removable.
+      view |> element("#connections-token-started a") |> render_click()
       assert_patch(view, ~p"/#{scope.organisation}/#{scope.workspace}/network?since=90d")
       render_async(view, 2_000)
       assert text(view, "#connections-token-started") =~ "seen: 90d"
       assert text(view, "#connections-filter-value-since") == "last 90 days"
+      refute has_element?(view, "#connections-token-started a")
+
+      # A window the reader chose is a filter, and taking it away is the widest again.
+      view
+      |> form("#filter-since-form")
+      |> render_change(%{"since" => "7d", "_target" => ["since"]})
+
+      assert_patch(view, ~p"/#{scope.organisation}/#{scope.workspace}/network?since=7d")
+      render_async(view, 2_000)
+      assert text(view, "#connections-token-started") =~ "seen: 7d"
+      assert has_element?(view, "#connections-filter .q-listmenu-n", "1")
 
       view |> element("#connections-token-started a") |> render_click()
-      assert_patch(view, ~p"/#{scope.organisation}/#{scope.workspace}/network")
+      assert_patch(view, ~p"/#{scope.organisation}/#{scope.workspace}/network?since=90d")
     end
 
     test "the query, the rail and the order are the page's controls", %{
@@ -462,6 +474,24 @@ defmodule ApiaryWeb.ConnectionLive.IndexTest do
         view,
         ~p"/#{scope.organisation}/#{scope.workspace}/network?#{%{"sort" => "runs", "system" => "gitlab.example", "target" => "acme/shop"}}"
       )
+    end
+
+    test "the rail counts destinations, the pinned targets first", %{conn: conn, scope: scope} do
+      :ok = Apiary.Targets.pin(scope, Apiary.Targets.get(scope, "gitlab.example", "acme/shop"))
+      view = open(conn, scope)
+      render_async(view, 2_000)
+
+      pinned = "#connections-rail-t-#{RunComponents.dom_token({"gitlab.example", "acme/shop"})}"
+      shop = "#connections-rail-t-#{RunComponents.dom_token({"github.example", "acme/shop"})}"
+
+      assert has_element?(view, "#connections-rail h3", "Pinned")
+      assert has_element?(view, "#connections-rail h3", "Most destinations")
+      refute has_element?(view, "#connections-rail h3", "Most runs")
+      # github.example/acme/shop's one run reached two destinations.
+      assert text(view, shop) =~ ~r{acme/shop 2$}
+      assert text(view, pinned) =~ "1"
+      # The views overlap, and the page says how they count.
+      assert text(view, "#connections-views-note") =~ "counts in each"
     end
 
     test "a menu narrows on the server", %{conn: conn, scope: scope} do

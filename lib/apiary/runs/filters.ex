@@ -12,9 +12,10 @@ defmodule Apiary.Runs.Filters do
   The defaults are left out of the URL (`new/1`). The runs list has no time range unless
   the reader sets one (`since` is `all`), sorts newest first and shows 50 runs a page. The
   workspace's connections are an aggregate over every connection in range, so their range is
-  bounded: the last seven days unless set, `since=90d` the widest, and dates cover at most
-  90 days, counted back from `to` (or on from `from` when only it is given); they sort the
-  denied destinations first. The connections take `tools=1` for tool invocations only:
+  bounded: the last fourteen days unless set, which is said as a token (`seen:14d`) like
+  any other range, `since=90d` the widest, which taking the range away sets, and dates
+  cover at most 90 days, counted back from `to` (or on from `from` when only it is given);
+  they sort the denied destinations first. The connections take `tools=1` for tool invocations only:
   requests that name a tool and were allowed (`Apiary.Runs.tool_invocation?/2`), never one
   a path rule refused.
 
@@ -53,8 +54,10 @@ defmodule Apiary.Runs.Filters do
     %{key: "ended_badly", label: gettext_noop("Ended badly"), states: Run.ended_badly_states()}
   ]
   @family_keys Enum.map(@families, & &1.key)
-  @ranges %{runs: ~w(1h 24h 7d 30d all), connections: ~w(1h 24h 7d 30d 90d)}
-  @default_since %{runs: "all", connections: "7d"}
+  @ranges %{runs: ~w(1h 24h 7d 14d 30d all), connections: ~w(1h 24h 7d 14d 30d 90d)}
+  @default_since %{runs: "all", connections: "14d"}
+  # The widest window of the connections: taking their range away sets it.
+  @widest_since "90d"
   @sorts %{runs: ~w(newest oldest longest denials), connections: ~w(denied recent runs attempts)}
   @pers [25, 50, 100]
   @default_per 50
@@ -191,6 +194,7 @@ defmodule Apiary.Runs.Filters do
       {gettext("Last hour"), "1h"},
       {gettext("Last 24 hours"), "24h"},
       {gettext("Last 7 days"), "7d"},
+      {gettext("Last 14 days"), "14d"},
       {gettext("Last 30 days"), "30d"}
     ]
 
@@ -308,6 +312,11 @@ defmodule Apiary.Runs.Filters do
       f.key != nil or f.q != nil or f.since != @default_since[kind] or f.denials or
       f.decision != nil or f.tools
   end
+
+  @doc "Whether the range is one the reader set: not the page's default window."
+  @spec any_range?(t()) :: boolean
+  def any_range?(%__MODULE__{kind: kind} = f),
+    do: f.from != nil or f.to != nil or f.since != @default_since[kind]
 
   @doc "The filters with no filter set: the order and the page size stay, the page and the rest go."
   def clear(%__MODULE__{kind: kind, sort: sort, per: per}),
@@ -589,14 +598,15 @@ defmodule Apiary.Runs.Filters do
   defp path_everywhere(value), do: {nil, value}
 
   @typedoc "One filter as the query writes it, and the filters without it."
-  @type token :: %{key: atom(), value: String.t(), without: t()}
+  @type token :: %{key: atom(), value: String.t(), without: t() | nil}
 
   @doc """
   The filters as the query writes them, one token each, in the order the page shows them:
   `%{key:, value:, without:}`, `key` the qualifier (`:target`, `:state`, `:task`,
   `:runtime`, `:host`, `:key`, `:started`, `:denied`, `:decision`, `:tools`), `value` what
-  follows it (quoted when it holds a space), `without` the filters with it removed. The
-  free text is not a token, nor is a default. `target_text:` writes a target (by default
+  follows it (quoted when it holds a space), `without` the filters with it removed, nil
+  for the connections' widest window, which cannot be. The free text is not a token, nor
+  is a default but the connections' window, which is always said. `target_text:` writes a target (by default
   its path, after its system when it has one); `except:` leaves out the tokens of these
   qualifiers, which a view already says.
   """
@@ -613,15 +623,26 @@ defmodule Apiary.Runs.Filters do
       {:host, f.host, [host: nil]},
       {:key, f.key, [key: nil]},
       {:decision, f.decision, [decision: nil]},
-      {:started, range_text(f), [since: @default_since[f.kind], from: nil, to: nil]},
+      {:started, range_text(f), range_without(f)},
       {:denied, f.denials && "yes", [denials: false]},
       {:tools, f.tools && "yes", [tools: false]}
     ]
     |> Enum.filter(fn {key, value, _changes} -> is_binary(value) and key not in except end)
     |> Enum.map(fn {key, value, changes} ->
-      %{key: key, value: quote_value(value), without: put(f, changes)}
+      %{key: key, value: quote_value(value), without: changes && put(f, changes)}
     end)
   end
+
+  # What taking the range away leaves: the runs list's every run; the connections' widest
+  # window, whose own token cannot be taken away (nil), since their aggregate is bounded.
+  defp range_without(%__MODULE__{kind: :connections, from: nil, to: nil, since: @widest_since}),
+    do: nil
+
+  defp range_without(%__MODULE__{kind: :connections}),
+    do: [since: @widest_since, from: nil, to: nil]
+
+  defp range_without(%__MODULE__{kind: kind}),
+    do: [since: @default_since[kind], from: nil, to: nil]
 
   defp default_target_text(:none), do: "none"
   defp default_target_text({nil, path}), do: path
@@ -633,6 +654,10 @@ defmodule Apiary.Runs.Filters do
       keys -> Enum.join(keys, ",")
     end
   end
+
+  # The connections' window is always said, their default too (`seen:14d`); the runs
+  # list's default, every run, is not a range.
+  defp range_text(%__MODULE__{from: nil, to: nil, since: since, kind: :connections}), do: since
 
   defp range_text(%__MODULE__{from: nil, to: nil, since: since, kind: kind}),
     do: if(since != @default_since[kind], do: since)
@@ -665,6 +690,7 @@ defmodule Apiary.Runs.Filters do
         "1h" -> 3600
         "24h" -> 86_400
         "7d" -> 7 * 86_400
+        "14d" -> 14 * 86_400
         "30d" -> 30 * 86_400
         "90d" -> 90 * 86_400
         _all -> nil
@@ -682,6 +708,7 @@ defmodule Apiary.Runs.Filters do
       "1h" -> gettext("last hour")
       "24h" -> gettext("last 24 hours")
       "7d" -> gettext("last 7 days")
+      "14d" -> gettext("last 14 days")
       "30d" -> gettext("last 30 days")
       "90d" -> gettext("last 90 days")
       _all -> nil
@@ -704,6 +731,7 @@ defmodule Apiary.Runs.Filters do
       "1h" -> gettext("in the last hour")
       "24h" -> gettext("in the last 24 hours")
       "7d" -> gettext("in the last 7 days")
+      "14d" -> gettext("in the last 14 days")
       "30d" -> gettext("in the last 30 days")
       "90d" -> gettext("in the last 90 days")
       _all -> nil

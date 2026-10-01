@@ -267,13 +267,40 @@ the control and never inside it.
 - **Nothing to show** is an empty state with no table and no pages: what the filters hide,
   the last filter to remove and Clear filters.
 
+### Counts and their windows
+
+A number the reader can compare across pages says its window, and the same number comes
+from the same query wherever it is shown; where two pages count different things, their
+words say so. The workspace's window is **fourteen days**:
+
+- **Network access** reads `seen:14d` unless the reader sets a range, and says it as a
+  token like any other (`Apiary.Runs.Filters`); taking it away leaves the widest window,
+  `seen:90d`, which is said too and cannot be taken away, since the aggregate is bounded.
+  The default window is no filter: the Filter menu does not count it. Its views count
+  destinations, and a destination with attempts of both kinds counts in each, which a
+  line under the views says when it happens.
+- **The overview's summary** counts the chart's fourteen UTC days, and each number leads
+  to its list over the same days (`?from=` the first of them; the denied attempts to
+  Network access, whose Denied view counts the destinations the summary names). **Needs
+  attention** weighs the same fourteen days but lists only what is still denied, no rule
+  having allowed it since, and its "and n more" says so.
+- **The Policy page's** fact beside the mode and the enforce preview read fourteen days,
+  so "See them" lands on the same numbers; a rule's use is its last fourteen days.
+- **The targets index** counts runs, the share that ended well and denied attempts over
+  the same fourteen days, each column saying so; a **target's page** counts its denied
+  destinations as Network access does (host, port and path), so its card and its Network
+  access tab agree.
+
+Elsewhere a window is said where it is used: the runs list has none unless set, a lost
+run is listed for seven days, a key is idle after thirty.
+
 ## The overviews
 
 The workspace overview (`ApiaryWeb.WorkspaceLive.Overview`, `OverviewComponents`) answers
 what needs the reader, then what their agents did, and never grows with the data:
 
 - **The summary**: alive now, runs, runs that ended badly and denied attempts over
-  fourteen days, each a link to the list it counts.
+  fourteen days, each a link to the list it counts over the same days.
 - **Needs attention**: one line an item, its mark, its subject, where it is, the reason
   in a few words (the longer sentence on hover), when, and the one text act that settles
   it; five shown and "and n more". Its Allow is Network access's: where the level above
@@ -307,15 +334,15 @@ reads are `Apiary.Targets`'s, the looks `ApiaryWeb.TargetComponents`'s).
 - **The index** (`/:org/:workspace/targets`, width `list`) is narrowed the way every list
   is (Lists, above): views with the workspace's counts (All, Active this week, Never ran),
   one search, one Filter menu (System, Activity, Policy, Pinned) and Sort (Last run, Name,
-  Most runs in 14 days, Most denials in 7), with the filters in force as tokens under the
+  Most runs in 14 days, Most denials in 14 days), with the filters in force as tokens under the
   bar. A filter is a qualifier of the search (`forge:` in the software domain, `mode:`,
   `activity:`, `is:pinned`; `ApiaryWeb.TargetLive.Query`): the menu writes it, and one
   the reader types becomes a token on Enter, never half typed. All of it is the URL; a
   value the page does not know is left out. A row is one line on the row spec: the
   reader's ★, the path the title, the last run as a dot and a time (its word when it is
   running or went badly), a 14-day sparkline of runs with their number, the share that
-  ended well (in the error colour below 80 %), the denied attempts of 7 days in red when
-  there are any, and the policy mode only where the target sets its own. Pages of 50.
+  ended well (lifted to the text colour below 80 %; red is for denials only), the denied
+  attempts of the same fourteen days in red when there are any, and the policy mode only where the target sets its own. Pages of 50.
   Below 600 px of table the last run is a line under the path. It reads in one query
   bounded by the fourteen days, and re-reads at most once a second as runs land, changing
   the rows it holds in place.

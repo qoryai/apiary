@@ -153,20 +153,27 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           {label}
         </:view>
       </.views>
+      <p
+        :if={@views && @views.allowed + @views.denied > @views.all}
+        id="connections-views-note"
+        class="q-views-note"
+      >
+        {gettext("A destination with both allowed and denied attempts counts in each.")}
+      </p>
 
       <div id="connections-filters" class="q-bar">
         <.list_search
           id="connections-query"
           class="q-find-query"
           label={gettext("Filter destinations")}
-          placeholder={gettext("Filter destinations, e.g. host:registry.example seen:24h")}
+          placeholder={gettext("Filter destinations, e.g. host:registry.example")}
           value={@filters.q}
           change="query"
           live={false}
         />
         <.filter_menu
           id="connections-filter"
-          count={length(Filters.tokens(loose(@filters, @page_base), except: [:decision]))}
+          count={filter_count(loose(@filters, @page_base))}
         >
           <:section
             :if={!@page_base.fixed}
@@ -1324,9 +1331,17 @@ defmodule ApiaryWeb.ConnectionLive.Index do
         id: "connections-token-#{token.key}",
         qualifier: qualifier(token.key),
         value: token.value,
-        remove: page_path(base, token.without)
+        remove: token.without && page_path(base, token.without)
       }
     end)
+  end
+
+  # How many filters the Filter menu says are on: the tokens, but the default window,
+  # which is said as a token and is no filter the reader set.
+  defp filter_count(filters) do
+    filters
+    |> Filters.tokens(except: [:decision])
+    |> Enum.count(&(&1.key != :started or Filters.any_range?(filters)))
   end
 
   defp qualifier(:target), do: pgettext("qualifier", "target")
@@ -1389,6 +1404,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
       "1h" -> gettext("No connections in the last hour")
       "24h" -> gettext("No connections in the last 24 hours")
       "7d" -> gettext("No connections in the last 7 days")
+      "14d" -> gettext("No connections in the last 14 days")
       "30d" -> gettext("No connections in the last 30 days")
       "90d" -> gettext("No connections in the last 90 days")
       _all -> gettext("No connections recorded")

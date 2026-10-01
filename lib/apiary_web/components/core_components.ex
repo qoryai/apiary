@@ -1686,7 +1686,7 @@ defmodule ApiaryWeb.CoreComponents do
 
   slot :token do
     attr :id, :string
-    attr :patch, :string, required: true
+    attr :patch, :any, required: true, doc: "nil for a token that cannot be taken away"
     attr :label, :string, required: true, doc: "what taking it away says, for a screen reader"
     attr :class, :string, doc: "q-tok-q for a query's word, `qualifier:value`"
   end
@@ -1698,7 +1698,7 @@ defmodule ApiaryWeb.CoreComponents do
     <div :if={@token != []} id={@id} class="q-tokens">
       <span :for={token <- @token} id={token[:id]} class={["q-tok", token[:class]]}>
         {render_slot(token)}
-        <.link patch={token.patch} aria-label={token.label} class="q-tok-x">
+        <.link :if={token.patch} patch={token.patch} aria-label={token.label} class="q-tok-x">
           <.icon name="hero-x-mark-micro" class="size-3.5" />
         </.link>
       </span>

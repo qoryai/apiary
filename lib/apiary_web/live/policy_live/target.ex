@@ -765,7 +765,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
       <div :if={@would && @would.destinations != []} id="mode-would" class="q-would">
         <div>
           <span>
-            {gettext("Let through in this target's runs, last 7 days, with no rule matching")}
+            {gettext("Let through in this target's runs, last 14 days, with no rule matching")}
           </span>
           <span id="mode-would-n" class="tabular-nums">
             {if @left == 0,
@@ -836,7 +836,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
       </p>
       <p :if={@would && @would.destinations == []} id="mode-would-none" class="text-muted">
         {gettext(
-          "Every destination this target's runs reached in the last 7 days is covered by a rule."
+          "Every destination this target's runs reached in the last 14 days is covered by a rule."
         )}
       </p>
       <p :if={@would && @would.destinations != []} class="text-[12.5px]/[18px] text-muted">

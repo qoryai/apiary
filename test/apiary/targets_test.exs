@@ -273,11 +273,12 @@ defmodule Apiary.TargetsTest do
 
       since = DateTime.add(DateTime.utc_now(), -14 * @day, :second)
 
-      assert %{
-               rows: [%{host: "files.cdn.example", port: 443, attempts: 2, runs: 1}],
-               destinations: 1,
-               attempts: 2
-             } = Targets.denied_destinations(scope, shop, since)
+      # A destination is its host, port and path, as Network access counts it.
+      assert %{rows: rows, destinations: 2, attempts: 2} =
+               Targets.denied_destinations(scope, shop, since)
+
+      assert rows |> Enum.map(&{&1.host, &1.port, &1.path, &1.attempts, &1.runs}) |> Enum.sort() ==
+               [{"files.cdn.example", 443, "", 1, 1}, {"files.cdn.example", 443, "/x", 1, 1}]
 
       assert Targets.machines(scope, shop) == [{"ci-01", 2}, {"ci-02", 1}]
       assert Targets.runtimes(scope, shop) == [{"claude 2.1.0", 3}]

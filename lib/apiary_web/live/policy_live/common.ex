@@ -32,7 +32,6 @@ defmodule ApiaryWeb.PolicyLive.Common do
   alias ApiaryWeb.{Format, People}
   alias ApiaryWeb.PolicyLive.{Reading, RuleList}
 
-  @week 7 * 24 * 3600
   @fortnight 14 * 24 * 3600
   @coalesce 250
 
@@ -115,7 +114,12 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
   def may?(scope, action), do: Access.can?(scope, action, scope.workspace)
 
-  def since, do: DateTime.add(DateTime.utc_now(), -@week, :second)
+  @doc """
+  The start of the window the record is read over for the mode's fact and the enforce
+  preview: the last 14 days, Network access's default window, so "See them" lands on the
+  same numbers.
+  """
+  def since, do: DateTime.add(DateTime.utc_now(), -@fortnight, :second)
 
   @doc "The start of the window a list of rules counts their use in: the last 14 days."
   def use_since, do: DateTime.add(DateTime.utc_now(), -@fortnight, :second)

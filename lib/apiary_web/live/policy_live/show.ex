@@ -100,8 +100,8 @@ defmodule ApiaryWeb.PolicyLive.Show do
   defp required_mode(%{above: %{floor: true, name: name}}), do: %{name: name}
   defp required_mode(_effective), do: nil
 
-  # What the recorded connections say: the mode card's fact, over 7 days, and the rules'
-  # use, over 14. Bounded reads that may answer :unavailable; then the fact and the column
+  # What the recorded connections say: the mode's fact and the rules' use, both over 14
+  # days. Bounded reads that may answer :unavailable; then the fact and the column
   # are left out.
   defp load_record(socket) do
     if connected?(socket) do
@@ -1492,7 +1492,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
       <div :if={@would && @would.destinations != []} id="mode-would" class="q-would">
         <div>
           <span>
-            {gettext("Let through in the last 7 days with no rule matching, in those targets")}
+            {gettext("Let through in the last 14 days with no rule matching, in those targets")}
           </span>
           <span id="mode-would-n" class="tabular-nums">
             {if @left == 0,
@@ -1544,7 +1544,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
           <%= for part <- more_words(length(@would.destinations) - 8) do %>
             <.link
               :if={part == :link}
-              navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/network?since=7d"}
+              navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/network"}
               class="q-link"
             >
               {gettext("Network access page")}
@@ -1558,7 +1558,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         {@would[:error]}
       </p>
       <p :if={@would && @would.destinations == []} id="mode-would-none" class="text-muted">
-        {gettext("Every destination your runs reached in the last 7 days is covered by a rule.")}
+        {gettext("Every destination your runs reached in the last 14 days is covered by a rule.")}
       </p>
       <p :if={@would && @would.destinations != []} class="text-[12.5px]/[18px] text-muted">
         {gettext(

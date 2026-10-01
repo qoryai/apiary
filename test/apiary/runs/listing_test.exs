@@ -240,11 +240,11 @@ defmodule Apiary.Runs.ListingTest do
                {nil, "acme/shop"}
     end
 
-    test "the workspace's connections are read over at most 90 days, the last seven unless set" do
+    test "the workspace's connections are read over at most 90 days, the last fourteen unless set" do
       cx = &Filters.parse(&1, :connections)
-      assert %{since: "7d", sort: "denied", dropped: []} = cx.(%{})
+      assert %{since: "14d", sort: "denied", dropped: []} = cx.(%{})
       assert Filters.to_params(cx.(%{})) == %{}
-      assert %{since: "7d", dropped: ["since"]} = cx.(%{"since" => "all"})
+      assert %{since: "14d", dropped: ["since"]} = cx.(%{"since" => "all"})
       assert cx.(%{"since" => "90d"}).since == "90d"
       assert cx.(%{"sort" => "recent"}).sort == "recent"
       assert %{sort: "denied", dropped: ["sort"]} = cx.(%{"sort" => "newest"})
@@ -1076,12 +1076,60 @@ defmodule Apiary.Runs.ListingTest do
                Runs.destination_runs(other, cx(%{}), {"registry.example", 443, ""}, now: @now)
     end
 
+    test "the window is a token, seen:14d by default; taking it away leaves the widest" do
+      default = cx(%{})
+      assert [%{key: :started, value: "14d", without: wide}] = Filters.tokens(default)
+      assert wide.since == "90d"
+      assert Filters.to_params(wide) == %{"since" => "90d"}
+      refute Filters.any_range?(default)
+      assert Filters.any_range?(wide)
+
+      # The widest window is said, and cannot be taken away.
+      assert [%{key: :started, value: "90d", without: nil}] = Filters.tokens(wide)
+
+      # The runs list's every run is no token.
+      assert Filters.tokens(parse(%{})) == []
+    end
+
+    test "Denied first: the most denied attempts first, then the most recently seen", %{
+      scope: scope
+    } do
+      denied = &%{"host" => &1, "decision" => "denied", "rule" => "", "outcome" => "refused"}
+      # One attempt, seen last; five attempts, seen earlier; three, seen in between.
+      started(scope, shop(), 50, egress: [denied.("once.example")])
+      started(scope, shop(), 900, egress: List.duplicate(denied.("noisy.example"), 5))
+      started(scope, shop(), 400, egress: List.duplicate(denied.("middle.example"), 3))
+
+      hosts = Runs.page_destinations(scope, cx(%{}), @now).rows |> Enum.map(& &1.host)
+
+      assert hosts == [
+               "noisy.example",
+               "middle.example",
+               "files.cdn.example",
+               "once.example",
+               "registry.example"
+             ]
+    end
+
+    test "the rail counts each target's destinations, as the views count", %{scope: scope} do
+      rail =
+        Runs.destination_target_counts(scope, cx(%{}),
+          now: @now,
+          pinned: [{"gitlab.example", "acme/shop"}]
+        )
+
+      assert rail.all == 2
+      assert rail.pinned == [%{system: "gitlab.example", path: "acme/shop", runs: 1}]
+      assert rail.targets == [%{system: "github.example", path: "acme/shop", runs: 2}]
+    end
+
     test "facets of the page", %{scope: scope} do
       facets = Runs.destination_facets(scope, cx(%{}), now: @now)
       assert {"registry.example", "registry.example", 2} in facets.host.options
 
+      # A target counts the destinations its runs reached, as the rail does.
       assert {"github.example/acme/shop", Filters.target_value({"github.example", "acme/shop"}),
-              1} in facets.target.options
+              2} in facets.target.options
 
       narrowed =
         Runs.destination_facets(scope, cx(%{}),
