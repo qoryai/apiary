@@ -1509,6 +1509,7 @@ defmodule ApiaryWeb.CoreComponents do
       role="search"
       phx-change={@live && @change}
       phx-submit={@change}
+      novalidate
     >
       <label>
         <.icon name="hero-magnifying-glass-micro" class="q-find-i size-4" />
@@ -1826,7 +1827,7 @@ defmodule ApiaryWeb.CoreComponents do
           {render_slot(@footer)}
         </div>
       </div>
-      <form :if={@dismissable} method="dialog" class="modal-backdrop">
+      <form :if={@dismissable} method="dialog" class="modal-backdrop" novalidate>
         <button tabindex="-1" aria-hidden="true">{gettext("Close")}</button>
       </form>
     </dialog>

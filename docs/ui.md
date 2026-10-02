@@ -450,6 +450,14 @@ or an attribute of one, not a copy.
 - **`<.input>`** is every field; with `prefix` a text input shows, in mono before the
   value and as one field, what the value completes: the path of the organisation before
   a workspace's slug.
+- **Forms** are `novalidate`, every one, plain `<form>` and `<.form>` alike: the browser
+  neither checks a field nor shows its own bubble, and the server answers a field that is
+  wrong with an error under it (`<.input>`'s, tied to it by `aria-describedby`), in the
+  page's words. A field keeps what helps a person, `required`, `type="email"`, `inputmode`,
+  `autocomplete`, for assistive technology and a phone's keyboard; so a check the browser
+  made is the server's too. A whole number is a text field with `inputmode="numeric"`,
+  not `type="number"`, whose value the browser empties when it is not a number.
+  `test/apiary_web/novalidate_test.exs` fails for a form without the attribute.
 - **`<.modal>`** is a native `<dialog>` under the `Modal` hook. Escape and the backdrop
   run its `data-cancel` command, usually a patch back to the page beneath; a dialog
   without one cannot be dismissed. Focus returns to what opened it. From 640 px it sits
@@ -462,7 +470,9 @@ or an attribute of one, not a copy.
   and moves on from its trigger. A field inside a Filter section keeps its own keys, and
   ArrowDown from a section's search goes to its first option. With
   `data-float` the list is a popover in the top layer, placed under its trigger, so no
-  scroll region clips it (a row's menu, a list's Filter and Sort).
+  scroll region clips it (a row's menu, a list's Filter and Sort). A menu that holds a
+  form, such as the runs list's Jump to date, stays open while the page answers it, and
+  the page closes it once the form did what it asked: `push_event("menu:close", %{id: id})`.
 - **`<.table>`** is a scroll region of its own, focusable and named by its `label`, which
   is required, so a wide table scrolls inside the page and never the page sideways; its
   rows follow the row spec (Lists, above). A column of icons has a header for a screen

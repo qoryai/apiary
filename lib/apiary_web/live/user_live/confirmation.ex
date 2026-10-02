@@ -40,6 +40,7 @@ defmodule ApiaryWeb.UserLive.Confirmation do
         }
         phx-trigger-action={@trigger_submit}
         class="grid gap-4"
+        novalidate
       >
         <input type="hidden" name={@form[:token].name} value={@form[:token].value} />
         <.input

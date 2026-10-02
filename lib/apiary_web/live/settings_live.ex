@@ -102,6 +102,7 @@ defmodule ApiaryWeb.SettingsLive do
           phx-change="confirm"
           phx-submit="delete_organisation"
           class="grid gap-4"
+          novalidate
         >
           <.input
             field={@confirm_form[:slug]}
@@ -154,6 +155,7 @@ defmodule ApiaryWeb.SettingsLive do
           phx-change="confirm"
           phx-submit="delete_workspace"
           class="grid gap-4"
+          novalidate
         >
           <.input
             field={@confirm_form[:slug]}
@@ -200,6 +202,7 @@ defmodule ApiaryWeb.SettingsLive do
         phx-change="validate_organisation"
         phx-submit="save_organisation"
         class="q-form"
+        novalidate
       >
         <.input
           field={@organisation_form[:name]}
@@ -348,6 +351,7 @@ defmodule ApiaryWeb.SettingsLive do
         phx-change="validate_workspace"
         phx-submit="save_workspace"
         class="q-form"
+        novalidate
       >
         <.input
           field={@workspace_form[:name]}
@@ -419,6 +423,7 @@ defmodule ApiaryWeb.SettingsLive do
         phx-change="validate_retention"
         phx-submit="save_retention"
         class="q-form"
+        novalidate
       >
         <div class="q-form-two">
           <.input

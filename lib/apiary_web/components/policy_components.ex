@@ -752,6 +752,7 @@ defmodule ApiaryWeb.PolicyComponents do
       phx-submit="composer_save"
       phx-hook="RuleComposer"
       autocomplete="off"
+      novalidate
     >
       <input type="hidden" name={@form[:action].name} value={@form[:action].value} />
       <input type="hidden" name={@form[:every].name} value={@form[:every].value} />
@@ -852,6 +853,7 @@ defmodule ApiaryWeb.PolicyComponents do
       phx-change="credential_change"
       phx-submit="credential_save"
       autocomplete="off"
+      novalidate
     >
       <label>
         <span class="sr-only">{gettext("Name")}</span>

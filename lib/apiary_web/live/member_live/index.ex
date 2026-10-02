@@ -266,6 +266,7 @@ defmodule ApiaryWeb.MemberLive.Index do
           phx-change="validate_invite"
           phx-submit="invite"
           class="grid gap-4"
+          novalidate
         >
           <.input
             field={@form[:email]}

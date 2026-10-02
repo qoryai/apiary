@@ -821,6 +821,7 @@ defmodule ApiaryWeb.RunComponents do
       id={"#{@id}-narrow"}
       phx-change={@narrow}
       phx-submit={@narrow}
+      novalidate
     >
       <input type="hidden" name="_filter" value={@name} />
       <input
@@ -850,6 +851,7 @@ defmodule ApiaryWeb.RunComponents do
       phx-change={@event}
       phx-submit={@event}
       phx-hook={@grouped? && "FamilyBoxes"}
+      novalidate
     >
       <input type="hidden" name="_filter" value={@name} />
       <ul :if={!@grouped?} class="q-filter-options" aria-label={@label}>
@@ -1075,7 +1077,7 @@ defmodule ApiaryWeb.RunComponents do
 
   def filter_check(assigns) do
     ~H"""
-    <form id={"#{@id}-form"} phx-change={@event} phx-submit={@event}>
+    <form id={"#{@id}-form"} phx-change={@event} phx-submit={@event} novalidate>
       <input type="hidden" name="_filter" value={@name} />
       <label class="q-filter-option">
         <input
@@ -1150,7 +1152,13 @@ defmodule ApiaryWeb.RunComponents do
     <nav id={@id} class="q-rail" aria-label={@label}>
       <%!-- The rail's own headings (Pinned, Most runs) are h3s under this one. --%>
       <h2 class="sr-only">{@label}</h2>
-      <form id={"#{@id}-search"} class="q-rail-find" phx-change={@search} phx-submit={@search}>
+      <form
+        id={"#{@id}-search"}
+        class="q-rail-find"
+        phx-change={@search}
+        phx-submit={@search}
+        novalidate
+      >
         <.icon name="hero-magnifying-glass-micro" class="size-4" />
         <input
           id={"#{@id}-q"}
@@ -3228,7 +3236,7 @@ defmodule ApiaryWeb.RunComponents do
       role="dialog"
       aria-labelledby={"#{@id}-title"}
     >
-      <form id={"#{@id}-form"} phx-change="rule_change" phx-submit="rule_submit">
+      <form id={"#{@id}-form"} phx-change="rule_change" phx-submit="rule_submit" novalidate>
         <header>
           <PolicyComponents.rule_mark action={if @deny, do: "deny", else: "allow"} />
           <h3 id={"#{@id}-title"}>

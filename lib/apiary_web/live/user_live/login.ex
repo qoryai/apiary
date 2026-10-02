@@ -45,6 +45,7 @@ defmodule ApiaryWeb.UserLive.Login do
           phx-submit="submit"
           phx-trigger-action={@trigger_submit}
           class="grid gap-4"
+          novalidate
         >
           <.input
             readonly={!!@current_scope}

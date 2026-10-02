@@ -150,6 +150,7 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
           phx-change="validate"
           phx-submit="create"
           class="grid gap-4"
+          novalidate
         >
           <.input
             field={@form[:label]}

@@ -52,6 +52,7 @@ defmodule ApiaryWeb.UserLive.Settings do
           phx-change="validate_email"
           class="q-form"
           aria-label={gettext("Email")}
+          novalidate
         >
           <.input
             field={@email_form[:email]}
@@ -81,6 +82,7 @@ defmodule ApiaryWeb.UserLive.Settings do
           phx-trigger-action={@trigger_submit}
           class="q-form"
           aria-label={gettext("Password")}
+          novalidate
         >
           <input
             name={@password_form[:email].name}
@@ -127,6 +129,7 @@ defmodule ApiaryWeb.UserLive.Settings do
           id="preferences_form"
           phx-submit="update_preferences"
           class="q-form"
+          novalidate
         >
           <div class="q-form-two">
             <.input
@@ -276,6 +279,7 @@ defmodule ApiaryWeb.UserLive.Settings do
           phx-change="confirm"
           phx-submit="delete_account"
           class="grid gap-4"
+          novalidate
         >
           <.input
             field={@confirm_form[:email]}

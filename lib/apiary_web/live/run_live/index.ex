@@ -398,6 +398,7 @@ defmodule ApiaryWeb.RunLive.Index do
                         id="runs-jump-form"
                         phx-change="jump_change"
                         phx-submit="jump"
+                        novalidate
                       >
                         <label for="runs-jump-date">{gettext("Day")}</label>
                         <input

@@ -238,6 +238,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
               id="version-compare"
               phx-change="compare"
               class="flex items-center gap-2 text-[13px] text-muted"
+              novalidate
             >
               <label for="version-compare-select">{gettext("Compare with")}</label>
               <select id="version-compare-select" name="compare" class="q-input q-input-m q-select">
@@ -457,11 +458,11 @@ defmodule ApiaryWeb.PolicyLive.Views do
           <dt><kbd class="kbd kbd-sm">?</kbd></dt>
           <dd>{gettext("This list")}</dd>
         </dl>
-        <form method="dialog" class="modal-action flex-none">
+        <form method="dialog" class="modal-action flex-none" novalidate>
           <button class="btn btn-sm" data-autofocus>{gettext("Close")}</button>
         </form>
       </div>
-      <form method="dialog" class="modal-backdrop">
+      <form method="dialog" class="modal-backdrop" novalidate>
         <button tabindex="-1" aria-hidden="true">{gettext("Close")}</button>
       </form>
     </dialog>
