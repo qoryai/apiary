@@ -47,6 +47,26 @@ defmodule ApiaryWeb.CoreComponentsTest do
     end
   end
 
+  describe "an input with more than one error" do
+    test "shows each, with an id of its own, and is described by all of them" do
+      form =
+        Phoenix.Component.to_form(%{"email" => "dana"},
+          as: :user,
+          errors: [email: {"is too long", []}, email: {"must have the @ sign", []}],
+          action: :validate
+        )
+
+      html = render_component(&CoreComponents.input/1, field: form[:email], type: "email")
+      doc = LazyHTML.from_fragment(html)
+
+      assert ["user_email-error", "user_email-error-2"] =
+               doc |> LazyHTML.query("p[id^=user_email-error]") |> LazyHTML.attribute("id")
+
+      assert LazyHTML.attribute(LazyHTML.query(doc, "input#user_email"), "aria-describedby") ==
+               ["user_email-error user_email-error-2"]
+    end
+  end
+
   describe "a menu's items" do
     test "are not tab stops, as a link or as a button" do
       assigns = %{}

@@ -554,7 +554,7 @@ defmodule ApiaryWeb.CoreComponents do
         />
         {@label}
       </label>
-      <.error :for={msg <- @errors} id={"#{@id}-error"}>{msg}</.error>
+      <.error :for={{msg, i} <- Enum.with_index(@errors)} id={error_id(@id, i)}>{msg}</.error>
     </div>
     """
   end
@@ -576,7 +576,7 @@ defmodule ApiaryWeb.CoreComponents do
         {Phoenix.HTML.Form.options_for_select(@options, @value)}
       </select>
       <.hint :if={@hint && @errors == []} id={"#{@id}-hint"}>{@hint}</.hint>
-      <.error :for={msg <- @errors} id={"#{@id}-error"}>{msg}</.error>
+      <.error :for={{msg, i} <- Enum.with_index(@errors)} id={error_id(@id, i)}>{msg}</.error>
     </fieldset>
     """
   end
@@ -607,7 +607,7 @@ defmodule ApiaryWeb.CoreComponents do
         {label}
       </label>
       <.hint :if={@hint && @errors == []} id={"#{@id}-hint"}>{@hint}</.hint>
-      <.error :for={msg <- @errors} id={"#{@id}-error"}>{msg}</.error>
+      <.error :for={{msg, i} <- Enum.with_index(@errors)} id={error_id(@id, i)}>{msg}</.error>
     </fieldset>
     """
   end
@@ -626,7 +626,7 @@ defmodule ApiaryWeb.CoreComponents do
         {@rest}
       >{Phoenix.HTML.Form.normalize_value("textarea", @value)}</textarea>
       <.hint :if={@hint && @errors == []} id={"#{@id}-hint"}>{@hint}</.hint>
-      <.error :for={msg <- @errors} id={"#{@id}-error"}>{msg}</.error>
+      <.error :for={{msg, i} <- Enum.with_index(@errors)} id={error_id(@id, i)}>{msg}</.error>
     </fieldset>
     """
   end
@@ -657,7 +657,7 @@ defmodule ApiaryWeb.CoreComponents do
         />
       </div>
       <.hint :if={@hint && @errors == []} id={"#{@id}-hint"}>{@hint}</.hint>
-      <.error :for={msg <- @errors} id={"#{@id}-error"}>{msg}</.error>
+      <.error :for={{msg, i} <- Enum.with_index(@errors)} id={error_id(@id, i)}>{msg}</.error>
     </fieldset>
     """
   end
@@ -679,7 +679,7 @@ defmodule ApiaryWeb.CoreComponents do
         {@rest}
       />
       <.hint :if={@hint && @errors == []} id={"#{@id}-hint"}>{@hint}</.hint>
-      <.error :for={msg <- @errors} id={"#{@id}-error"}>{msg}</.error>
+      <.error :for={{msg, i} <- Enum.with_index(@errors)} id={error_id(@id, i)}>{msg}</.error>
     </fieldset>
     """
   end
@@ -691,9 +691,16 @@ defmodule ApiaryWeb.CoreComponents do
 
   defp submitted_group?(_assigns, _field), do: false
 
-  defp describedby(id, [_ | _], _hint), do: "#{id}-error"
+  defp describedby(id, [_ | _] = errors, _hint),
+    do: errors |> Enum.with_index() |> Enum.map_join(" ", fn {_, i} -> error_id(id, i) end)
+
   defp describedby(id, [], hint) when is_binary(hint), do: "#{id}-hint"
   defp describedby(_id, _errors, _hint), do: nil
+
+  # A field may have more than one error, each of them a line of its own with an id of its
+  # own: the first is the field's `-error`, as a test or a script looks for it.
+  defp error_id(id, 0), do: "#{id}-error"
+  defp error_id(id, i), do: "#{id}-error-#{i + 1}"
 
   attr :for, :string, default: nil
   attr :optional, :boolean, default: false
