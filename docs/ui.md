@@ -499,6 +499,42 @@ A component does not ask `Apiary.Features` what the instance serves: the page as
 its scope and passes the answer, as the connection row's `security` attribute does. What a
 runner reported is untrusted: a component interpolates it and never passes it to `raw/1`.
 
+### Storybook
+
+In development the components have a storybook, at `/dev/storybook` of the dev server
+(<http://localhost:4100/dev/storybook> under `mix phx.server`): `phoenix_storybook`, a
+dependency in dev and test only, whose backend is `ApiaryWeb.Storybook`
+(`storybook/storybook.ex`). The core's router mounts it where `:dev_routes` is set and the
+library is there (`ApiaryWeb.Routes.storybook_routes/0`); a release, and an edition's
+router, have none of it.
+
+A story is drawn with the app's own components and stylesheet:
+`assets/css/storybook.css` imports `app.css` and adds `storybook/` as a source, so a class
+only a story uses (an outline icon, a layout utility) is generated there and never in the
+app's stylesheet. The `storybook` Tailwind profile builds it, and the dev server watches it
+(`config/dev.exs`). The header's theme menu draws the stories in `qory` or `qory-dark`, set
+as `data-theme` on each story's container. The storybook loads none of `app.js`, so a hook
+(`Menu`, `CopyToClipboard`) does not run there: a menu draws its trigger but does not open.
+
+To add a story, write `storybook/<folder>/<name>.story.exs`, a module
+`ApiaryWeb.Storybook.<Folder>.<Name>`:
+
+- `use PhoenixStorybook.Story, :component`, with `function/0` (the component, such as
+  `&ApiaryWeb.PolicyComponents.rule_mark/1`) and `variations/0`, `%Variation{}`s and
+  `%VariationGroup{}`s; `template/0` wraps each in the markup it needs, a table's row
+  in a table;
+- or `use PhoenixStorybook.Story, :page` with `use Phoenix.Component` and `render/1`, for
+  a composition such as Foundations / Icons.
+
+It renders the real component with neutral sample data, `ApiaryWeb.Storybook.Sample`
+(`acme/shop`, hosts under `example.com`), and an attribute a page computes is computed as
+the page computes it (`RuleList.list/3`, `Common.list_path/2`). A story's words are plain
+English, not Gettext: stories are compiled outside the extraction and ship in no release.
+In test every story is compiled with the backend, and `test/apiary_web/storybook_test.exs`
+renders every variation and every page in both themes, so a story that a change to a
+component breaks fails the suite. The dev server compiles a story when it is opened, and
+reloads the page when one changes.
+
 ## Colour and themes
 
 `app.css` defines two daisyUI themes, `qory` (light, the default) and `qory-dark`. The
