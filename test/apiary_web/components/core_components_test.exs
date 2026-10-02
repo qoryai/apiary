@@ -92,7 +92,7 @@ defmodule ApiaryWeb.CoreComponentsTest do
       html =
         rendered_to_string(~H"""
         <CoreComponents.filter_menu id="f" count={0}>
-          <:section key="host" label="Host" icon="hero-globe-alt-micro">
+          <:section key="host" label="Host" icon="hero-globe-alt">
             <input id="f-host-search" type="search" aria-label="Find a host" />
           </:section>
         </CoreComponents.filter_menu>

@@ -176,7 +176,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
             :if={!@page_base.fixed}
             key="target"
             label={gettext("Target")}
-            icon="hero-folder-micro"
+            icon="hero-folder"
             qualifier={pgettext("qualifier", "target")}
             value={@filters.target && target_text(@filters.target, @shared)}
             rail
@@ -201,7 +201,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           <:section
             key="host"
             label={gettext("Host")}
-            icon="hero-globe-alt-micro"
+            icon="hero-globe-alt"
             qualifier="host"
             value={@filters.host}
           >
@@ -219,7 +219,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           <:section
             key="since"
             label={gettext("Seen")}
-            icon="hero-calendar-micro"
+            icon="hero-calendar"
             qualifier="seen"
             value={Filters.range_label(@filters)}
           >
@@ -240,7 +240,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           <:section
             key="tools"
             label={gettext("Tool invocations")}
-            icon="hero-wrench-screwdriver-micro"
+            icon="hero-wrench-screwdriver"
             qualifier="tools"
             value={@filters.tools && gettext("Only")}
           >

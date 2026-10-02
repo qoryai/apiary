@@ -671,7 +671,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
                 else: "#{@base}/versions/#{@version.version}/export"
             }
           >
-            <.icon name="hero-arrow-up-tray-micro" class="size-4" />{gettext("Export")}
+            <.icon name="hero-arrow-up-tray" class="size-4" />{gettext("Export")}
           </.button>
         </div>
       </div>

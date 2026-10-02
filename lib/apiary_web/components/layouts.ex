@@ -57,7 +57,7 @@ defmodule ApiaryWeb.Layouts do
         section: :home,
         key: :overview,
         label: gettext("Overview"),
-        icon: "hero-squares-2x2-micro",
+        icon: "hero-squares-2x2",
         path: fn organisation, workspace -> ~p"/#{organisation}/#{workspace}" end,
         action: :"run.read"
       },
@@ -65,7 +65,7 @@ defmodule ApiaryWeb.Layouts do
         section: :record,
         key: :runs,
         label: gettext("Runs"),
-        icon: "hero-play-circle-micro",
+        icon: "hero-play-circle",
         path: fn organisation, workspace -> ~p"/#{organisation}/#{workspace}/runs" end,
         action: :"run.read"
       },
@@ -73,7 +73,7 @@ defmodule ApiaryWeb.Layouts do
         section: :record,
         key: :targets,
         label: gettext("Targets"),
-        icon: "hero-folder-micro",
+        icon: "hero-folder",
         path: fn organisation, workspace -> ~p"/#{organisation}/#{workspace}/targets" end,
         action: :"run.read"
       },
@@ -84,7 +84,7 @@ defmodule ApiaryWeb.Layouts do
         section: :guard,
         key: :network,
         label: gettext("Network access"),
-        icon: "hero-globe-alt-micro",
+        icon: "hero-globe-alt",
         path: fn organisation, workspace -> ~p"/#{organisation}/#{workspace}/network" end,
         action: :"run.read"
       },
@@ -92,7 +92,7 @@ defmodule ApiaryWeb.Layouts do
         section: :guard,
         key: :policy,
         label: gettext("Policy"),
-        icon: "hero-shield-check-micro",
+        icon: "hero-shield-check",
         path: fn organisation, workspace -> ~p"/#{organisation}/#{workspace}/policy" end,
         action: :"security_policy.read"
       },
@@ -100,7 +100,7 @@ defmodule ApiaryWeb.Layouts do
         section: :settings,
         key: :keys,
         label: gettext("Access keys"),
-        icon: "hero-key-micro",
+        icon: "hero-key",
         path: fn organisation, workspace -> ~p"/#{organisation}/#{workspace}/settings/keys" end,
         count: :keys
       },
@@ -108,7 +108,7 @@ defmodule ApiaryWeb.Layouts do
         section: :foot,
         key: :settings,
         label: gettext("Settings"),
-        icon: "hero-cog-6-tooth-micro",
+        icon: "hero-cog-6-tooth",
         path: fn organisation, workspace -> ~p"/#{organisation}/#{workspace}/settings" end
       },
       # An organisation's pages.
@@ -116,7 +116,7 @@ defmodule ApiaryWeb.Layouts do
         section: :home,
         key: :organisation_overview,
         label: gettext("Overview"),
-        icon: "hero-squares-2x2-micro",
+        icon: "hero-squares-2x2",
         path: fn organisation, _workspace -> ~p"/#{organisation}" end,
         place: :organisation
       },
@@ -124,7 +124,7 @@ defmodule ApiaryWeb.Layouts do
         section: :settings,
         key: :audit_log,
         label: gettext("Audit log"),
-        icon: "hero-clipboard-document-list-micro",
+        icon: "hero-clipboard-document-list",
         path: fn organisation, _workspace -> ~p"/#{organisation}/settings/audit-log" end,
         place: :organisation,
         action: :"audit.read"
@@ -133,7 +133,7 @@ defmodule ApiaryWeb.Layouts do
         section: :settings,
         key: :members,
         label: gettext("People"),
-        icon: "hero-users-micro",
+        icon: "hero-users",
         path: fn organisation, _workspace -> ~p"/#{organisation}/settings/people" end,
         place: :organisation,
         count: :members
@@ -142,7 +142,7 @@ defmodule ApiaryWeb.Layouts do
         section: :foot,
         key: :organisation,
         label: gettext("Settings"),
-        icon: "hero-cog-6-tooth-micro",
+        icon: "hero-cog-6-tooth",
         path: fn organisation, _workspace -> ~p"/#{organisation}/settings" end,
         place: :organisation
       },
@@ -152,7 +152,7 @@ defmodule ApiaryWeb.Layouts do
         section: :account,
         key: :user_settings,
         label: gettext("Profile"),
-        icon: "hero-user-circle-micro",
+        icon: "hero-user-circle",
         path: ~p"/users/settings",
         place: :person
       },
@@ -160,7 +160,7 @@ defmodule ApiaryWeb.Layouts do
         section: :account,
         key: :user_preferences,
         label: gettext("Preferences"),
-        icon: "hero-adjustments-horizontal-micro",
+        icon: "hero-adjustments-horizontal",
         path: ~p"/users/settings/preferences",
         place: :person
       },
@@ -168,7 +168,7 @@ defmodule ApiaryWeb.Layouts do
         section: :account,
         key: :user_organisations,
         label: gettext("Organisations"),
-        icon: "hero-building-office-2-micro",
+        icon: "hero-building-office-2",
         path: ~p"/users/organisations",
         place: :person
       }
@@ -191,7 +191,7 @@ defmodule ApiaryWeb.Layouts do
         %Entry{
           key: :key,
           label: gettext("New access key"),
-          icon: "hero-key-micro",
+          icon: "hero-key",
           path: ~p"/#{organisation}/#{workspace}/settings/keys/new",
           action: :"access_key.create"
         }
@@ -199,7 +199,7 @@ defmodule ApiaryWeb.Layouts do
     invite = %Entry{
       key: :invite,
       label: gettext("Invite people"),
-      icon: "hero-user-plus-micro",
+      icon: "hero-user-plus",
       path: ~p"/#{organisation}/settings/people/invite",
       place: :organisation,
       action: :"member.invite"
@@ -474,7 +474,7 @@ defmodule ApiaryWeb.Layouts do
           aria-keyshortcuts="Meta+K Control+K /"
           aria-label={gettext("Search or jump to")}
         >
-          <.icon name="hero-magnifying-glass-micro" class="size-4 flex-none" />
+          <.icon name="hero-magnifying-glass" class="size-4 flex-none" />
           <span class="q-jump-text">{gettext("Search or jump to…")}</span>
           <kbd class="q-jump-kbd" aria-hidden="true">⌘K</kbd>
         </button>
@@ -678,7 +678,7 @@ defmodule ApiaryWeb.Layouts do
       phx-mounted={JS.ignore_attributes(["hidden"])}
     >
       <div class="q-switcher-search">
-        <.icon name="hero-magnifying-glass-micro" class="size-4 flex-none text-faint" />
+        <.icon name="hero-magnifying-glass" class="size-4 flex-none text-faint" />
         <input
           id="organisation-menu-search"
           type="text"
@@ -787,7 +787,7 @@ defmodule ApiaryWeb.Layouts do
           href={~p"/users/organisations"}
           class="q-switcher-place"
         >
-          <.icon name="hero-building-office-2-micro" class="size-4 text-faint" />
+          <.icon name="hero-building-office-2" class="size-4 text-faint" />
           {gettext("Your organisations")}
         </.link>
         <.link
@@ -933,7 +933,7 @@ defmodule ApiaryWeb.Layouts do
         <li class="menu-divider" role="separator"></li>
         <li role="none">
           <.link href={~p"/users/settings"} role="menuitem" tabindex="-1" id="user-menu-settings">
-            <.icon name="hero-user-circle-micro" class="size-4" /> {gettext("Your settings")}
+            <.icon name="hero-user-circle" class="size-4" /> {gettext("Your settings")}
           </.link>
         </li>
         <li role="none">
@@ -943,16 +943,14 @@ defmodule ApiaryWeb.Layouts do
             tabindex="-1"
             id="user-menu-organisations"
           >
-            <.icon name="hero-building-office-2-micro" class="size-4" /> {gettext(
-              "Your organisations"
-            )}
+            <.icon name="hero-building-office-2" class="size-4" /> {gettext("Your organisations")}
           </.link>
         </li>
         <li class="menu-divider" role="separator"></li>
         <li role="none" class="q-theme-row">
           <div role="group" aria-labelledby="user-menu-theme" class="hover:bg-transparent">
             <span id="user-menu-theme" class="flex items-center gap-2">
-              <.icon name="hero-swatch-micro" class="size-4" /> {gettext("Theme")}
+              <.icon name="hero-swatch" class="size-4" /> {gettext("Theme")}
             </span>
             <span class="q-theme-seg">
               <button
@@ -986,9 +984,7 @@ defmodule ApiaryWeb.Layouts do
             tabindex="-1"
             id="user-menu-log-out"
           >
-            <.icon name="hero-arrow-right-start-on-rectangle-micro" class="size-4" /> {gettext(
-              "Log out"
-            )}
+            <.icon name="hero-arrow-right-start-on-rectangle" class="size-4" /> {gettext("Log out")}
           </.link>
         </li>
       </ul>
@@ -1156,7 +1152,7 @@ defmodule ApiaryWeb.Layouts do
             title={"#{pin.system}/#{pin.path}"}
             phx-mounted={JS.ignore_attributes(["title"])}
           >
-            <.icon name="hero-folder-micro" class="q-nav-icon size-4" />
+            <.icon name="hero-folder" class="q-nav-icon size-[18px]" />
             <span class="q-nav-text q-nav-pin">
               <span :if={pin.shared} class="q-nav-pin-sys">{pin.system}/</span>{pin.path}
             </span>
@@ -1208,7 +1204,7 @@ defmodule ApiaryWeb.Layouts do
       class="q-nav-item"
       phx-mounted={JS.ignore_attributes(["title"])}
     >
-      <.icon name={@entry.icon} class="q-nav-icon size-4" />
+      <.icon name={@entry.icon} class="q-nav-icon size-[18px]" />
       <span class="q-nav-text">{@entry.label}</span>
       <span
         :if={@entry.key == :runs && alive_count(@counts) > 0}
@@ -1288,7 +1284,7 @@ defmodule ApiaryWeb.Layouts do
       >
         <li role="none">
           <.link href={~p"/docs"} role="menuitem" tabindex="-1" id="brand-menu-docs">
-            <.icon name="hero-book-open-micro" class="size-4" /> {gettext("Docs")}
+            <.icon name="hero-book-open" class="size-4" /> {gettext("Docs")}
           </.link>
         </li>
         <%!-- The release notes name every feature, so only the documentation of an instance with
@@ -1300,7 +1296,7 @@ defmodule ApiaryWeb.Layouts do
             tabindex="-1"
             id="brand-menu-changelog"
           >
-            <.icon name="hero-list-bullet-micro" class="size-4" /> {gettext("Changelog")}
+            <.icon name="hero-list-bullet" class="size-4" /> {gettext("Changelog")}
           </.link>
         </li>
         <li class="menu-divider" role="separator"></li>
@@ -1775,8 +1771,8 @@ defmodule ApiaryWeb.Layouts do
         aria-expanded="false"
         phx-mounted={JS.ignore_attributes(["aria-expanded"])}
       >
-        <.icon name="hero-sun-micro" class="size-4 dark:hidden" />
-        <.icon name="hero-moon-micro" class="hidden size-4 dark:inline-block" />
+        <.icon name="hero-sun" class="size-4 dark:hidden" />
+        <.icon name="hero-moon" class="hidden size-4 dark:inline-block" />
       </button>
       <ul
         class="menu menu-sm dropdown-content mt-1.5 w-40 min-w-0"
@@ -1786,9 +1782,9 @@ defmodule ApiaryWeb.Layouts do
         <li
           :for={
             {theme, icon, label} <- [
-              {"system", "hero-computer-desktop-micro", gettext("Auto")},
-              {"light", "hero-sun-micro", gettext("Light")},
-              {"dark", "hero-moon-micro", gettext("Dark")}
+              {"system", "hero-computer-desktop", gettext("Auto")},
+              {"light", "hero-sun", gettext("Light")},
+              {"dark", "hero-moon", gettext("Dark")}
             ]
           }
           role="none"

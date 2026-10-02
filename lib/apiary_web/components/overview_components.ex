@@ -1719,7 +1719,7 @@ defmodule ApiaryWeb.OverviewComponents do
           navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/settings/keys/new"}
           class="max-[479px]:w-full"
         >
-          <.icon name="hero-key-micro" class="size-4" /> {gettext("Create an access key")}
+          <.icon name="hero-key" class="size-4" /> {gettext("Create an access key")}
         </.button>
         <.button
           :if={@current in [2, 3]}

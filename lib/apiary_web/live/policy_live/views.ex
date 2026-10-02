@@ -394,7 +394,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
             href={"data:text/yaml;charset=utf-8," <> URI.encode(@export.policy_file, &URI.char_unreserved?/1)}
             download={@export.file_name}
           >
-            <.icon name="hero-arrow-down-tray-micro" class="size-4" />{gettext("Download")}
+            <.icon name="hero-arrow-down-tray" class="size-4" />{gettext("Download")}
           </a>
           <.copy_button id="export-policy-copy" text={@export.policy_file} label={gettext("Copy")} />
         </:actions>

@@ -43,7 +43,7 @@ defmodule ApiaryWeb.SettingsComponents do
         section: :main,
         key: :organisation,
         label: gettext("General"),
-        icon: "hero-adjustments-horizontal-micro",
+        icon: "hero-adjustments-horizontal",
         path: ~p"/#{organisation}/settings",
         place: :organisation
       },
@@ -51,7 +51,7 @@ defmodule ApiaryWeb.SettingsComponents do
         section: :main,
         key: :people,
         label: gettext("People"),
-        icon: "hero-users-micro",
+        icon: "hero-users",
         path: ~p"/#{organisation}/settings/people",
         place: :organisation,
         count: :members
@@ -61,7 +61,7 @@ defmodule ApiaryWeb.SettingsComponents do
           section: :main,
           key: :workspaces,
           label: gettext("Workspaces"),
-          icon: "hero-squares-2x2-micro",
+          icon: "hero-squares-2x2",
           path: ~p"/#{organisation}/settings/workspaces",
           place: :organisation
         },
@@ -70,7 +70,7 @@ defmodule ApiaryWeb.SettingsComponents do
           section: :main,
           key: :audit_log,
           label: gettext("Audit log"),
-          icon: "hero-clipboard-document-list-micro",
+          icon: "hero-clipboard-document-list",
           path: ~p"/#{organisation}/settings/audit-log",
           place: :organisation
         }
@@ -88,14 +88,14 @@ defmodule ApiaryWeb.SettingsComponents do
         section: :main,
         key: :general,
         label: gettext("General"),
-        icon: "hero-adjustments-horizontal-micro",
+        icon: "hero-adjustments-horizontal",
         path: ~p"/#{organisation}/#{workspace}/settings"
       },
       %Entry{
         section: :main,
         key: :keys,
         label: gettext("Access keys"),
-        icon: "hero-key-micro",
+        icon: "hero-key",
         path: ~p"/#{organisation}/#{workspace}/settings/keys",
         count: :keys
       },
@@ -103,7 +103,7 @@ defmodule ApiaryWeb.SettingsComponents do
         section: :main,
         key: :retention,
         label: gettext("Retention"),
-        icon: "hero-archive-box-micro",
+        icon: "hero-archive-box",
         path: ~p"/#{organisation}/#{workspace}/settings/retention"
       }
     ]

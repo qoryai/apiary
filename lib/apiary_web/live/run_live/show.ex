@@ -260,7 +260,7 @@ defmodule ApiaryWeb.RunLive.Show do
             <:tab
               id="run-tab-timeline"
               patch={tab_path(@current_scope, @run, :timeline, @timeline_query)}
-              icon="hero-queue-list-micro"
+              icon="hero-queue-list"
               current={@live_action == :timeline}
               count={@index.session_items > 0 && Format.number(@index.session_items)}
             >
@@ -270,7 +270,7 @@ defmodule ApiaryWeb.RunLive.Show do
               :if={Access.can?(@current_scope, :"run.read_log", @run)}
               id="run-tab-terminal"
               patch={tab_path(@current_scope, @run, :terminal)}
-              icon="hero-command-line-micro"
+              icon="hero-command-line"
               current={@live_action == :terminal}
             >
               {gettext("Terminal")}
@@ -278,7 +278,7 @@ defmodule ApiaryWeb.RunLive.Show do
             <:tab
               id="run-tab-connections"
               patch={tab_path(@current_scope, @run, :connections)}
-              icon="hero-globe-alt-micro"
+              icon="hero-globe-alt"
               current={@live_action == :connections}
               count={connections_count(@counts)}
               tone={@counts.denied > 0 && "error"}
@@ -288,7 +288,7 @@ defmodule ApiaryWeb.RunLive.Show do
             <:tab
               id="run-tab-details"
               patch={tab_path(@current_scope, @run, :details)}
-              icon="hero-clipboard-document-list-micro"
+              icon="hero-clipboard-document-list"
               current={@live_action == :details}
             >
               {gettext("Details")}
@@ -412,7 +412,7 @@ defmodule ApiaryWeb.RunLive.Show do
             data-copied-words={gettext("Copied")}
             data-menu-close
           >
-            <.icon name="hero-link-micro" class="size-4" /> {gettext("Copy run id")}
+            <.icon name="hero-link" class="size-4" /> {gettext("Copy run id")}
             <span class="sr-only" aria-live="polite"></span>
           </button>
         </li>
@@ -425,7 +425,7 @@ defmodule ApiaryWeb.RunLive.Show do
             role="menuitem"
             tabindex="-1"
           >
-            <.icon name="hero-document-text-micro" class="size-4" /> {gettext("Raw log")}
+            <.icon name="hero-document-text" class="size-4" /> {gettext("Raw log")}
             <.icon name="hero-arrow-top-right-on-square-micro" class="ml-auto size-3.5 text-faint" />
           </a>
         </li>
@@ -437,7 +437,7 @@ defmodule ApiaryWeb.RunLive.Show do
             role="menuitem"
             tabindex="-1"
           >
-            <.icon name="hero-arrow-down-tray-micro" class="size-4" /> {gettext("Download log")}
+            <.icon name="hero-arrow-down-tray" class="size-4" /> {gettext("Download log")}
           </a>
         </li>
       </ul>
@@ -554,7 +554,7 @@ defmodule ApiaryWeb.RunLive.Show do
         class="btn btn-ghost btn-xs btn-square"
         aria-label={gettext("Keyboard shortcuts of the timeline")}
       >
-        <.icon name="hero-question-mark-circle-micro" class="size-4" />
+        <.icon name="hero-question-mark-circle" class="size-4" />
       </button>
       <div tabindex="0" class="dropdown-content q-keys" role="note">
         <p class="font-medium">{gettext("With focus in the timeline")}</p>

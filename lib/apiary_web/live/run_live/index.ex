@@ -129,7 +129,7 @@ defmodule ApiaryWeb.RunLive.Index do
               <:section
                 key="target"
                 label={gettext("Target")}
-                icon="hero-folder-micro"
+                icon="hero-folder"
                 qualifier={pgettext("qualifier", "target")}
                 value={@filters.target && target_text(@filters.target, @shared)}
                 rail
@@ -154,7 +154,7 @@ defmodule ApiaryWeb.RunLive.Index do
               <:section
                 key="state"
                 label={gettext("State")}
-                icon="hero-check-circle-micro"
+                icon="hero-check-circle"
                 qualifier="state"
                 value={
                   @filters.states != [] &&
@@ -200,7 +200,7 @@ defmodule ApiaryWeb.RunLive.Index do
               <:section
                 key="since"
                 label={gettext("Started")}
-                icon="hero-calendar-micro"
+                icon="hero-calendar"
                 qualifier="started"
                 value={Filters.range_label(@filters)}
               >
@@ -384,7 +384,7 @@ defmodule ApiaryWeb.RunLive.Index do
                       aria-expanded="false"
                       phx-mounted={JS.ignore_attributes(["aria-expanded"])}
                     >
-                      <.icon name="hero-calendar-micro" class="size-4" />{gettext("Jump to date")}
+                      <.icon name="hero-calendar" class="size-4" />{gettext("Jump to date")}
                     </button>
                     <div
                       id="runs-jump-panel"
@@ -1164,10 +1164,10 @@ defmodule ApiaryWeb.RunLive.Index do
 
   defp text_sections do
     [
-      {"task", gettext("Task"), "hero-command-line-micro"},
-      {"runtime", gettext("Runtime"), "hero-cpu-chip-micro"},
-      {"host", gettext("Host"), "hero-server-stack-micro"},
-      {"key", gettext("Access key"), "hero-key-micro"}
+      {"task", gettext("Task"), "hero-command-line"},
+      {"runtime", gettext("Runtime"), "hero-cpu-chip"},
+      {"host", gettext("Host"), "hero-server-stack"},
+      {"key", gettext("Access key"), "hero-key"}
     ]
   end
 

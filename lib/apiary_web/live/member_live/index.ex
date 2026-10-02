@@ -67,7 +67,7 @@ defmodule ApiaryWeb.MemberLive.Index do
             variant="primary"
             patch={~p"/#{@current_scope.organisation}/settings/people/invite"}
           >
-            <.icon name="hero-user-plus-micro" class="size-4" /> {gettext("Invite people")}
+            <.icon name="hero-user-plus" class="size-4" /> {gettext("Invite people")}
           </.button>
         </:actions>
 

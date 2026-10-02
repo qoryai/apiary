@@ -94,7 +94,7 @@ defmodule ApiaryWeb.PolicyComponents do
         data-tip={gettext("Copy the digest")}
         aria-label={gettext("Copy the digest")}
       >
-        <span class="copy-idle"><.icon name="hero-clipboard-document-micro" class="size-3" /></span>
+        <span class="copy-idle"><.icon name="hero-clipboard-document" class="size-3" /></span>
         <span class="copy-done"><.icon name="hero-check-micro" class="size-3" /></span>
         <span class="sr-only" aria-live="polite"></span>
       </button>
@@ -301,8 +301,8 @@ defmodule ApiaryWeb.PolicyComponents do
         <button
           :for={
             {mode, name, icon} <- [
-              {"observe", gettext("Observe"), "hero-eye-micro"},
-              {"enforce", gettext("Enforce"), "hero-shield-exclamation-micro"}
+              {"observe", gettext("Observe"), "hero-eye"},
+              {"enforce", gettext("Enforce"), "hero-shield-exclamation"}
             ]
           }
           id={"#{@id}-#{mode}"}
@@ -317,7 +317,7 @@ defmodule ApiaryWeb.PolicyComponents do
                reads as out of reach, not as merely unchosen. --%>
           <.icon
             name={if @floor && @mode != mode, do: "hero-lock-closed-micro", else: icon}
-            class="size-3.5"
+            class="size-4"
           />{name}
         </button>
       </div>
@@ -607,9 +607,9 @@ defmodule ApiaryWeb.PolicyComponents do
           :for={
             {setting, label, icon} <- [
               {"follow", gettext("Follow %{workspace}", workspace: @workspace),
-               "hero-arrow-uturn-left-micro"},
-              {"observe", gettext("Observe"), "hero-eye-micro"},
-              {"enforce", gettext("Enforce"), "hero-shield-exclamation-micro"}
+               "hero-arrow-uturn-left"},
+              {"observe", gettext("Observe"), "hero-eye"},
+              {"enforce", gettext("Enforce"), "hero-shield-exclamation"}
             ]
           }
           id={"#{@id}-#{setting}"}
@@ -623,7 +623,7 @@ defmodule ApiaryWeb.PolicyComponents do
               JS.push("target_mode_ask", value: %{setting: setting})
           }
         >
-          <.icon name={icon} class="size-3.5" />{label}
+          <.icon name={icon} class="size-4" />{label}
         </button>
       </div>
       <span :if={@floor} id={"#{@id}-required"} class="q-modeline-req">

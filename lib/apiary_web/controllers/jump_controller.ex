@@ -118,7 +118,7 @@ defmodule ApiaryWeb.JumpController do
       {%Entry{
          key: :theme,
          label: gettext("Theme"),
-         icon: "hero-swatch-micro",
+         icon: "hero-swatch",
          path: nil,
          place: :person,
          section: :preferences
@@ -126,7 +126,7 @@ defmodule ApiaryWeb.JumpController do
       {%Entry{
          key: :shortcuts,
          label: gettext("Keyboard shortcuts"),
-         icon: "hero-command-line-micro",
+         icon: "hero-command-line",
          path: nil,
          place: :person,
          section: :preferences
@@ -188,7 +188,7 @@ defmodule ApiaryWeb.JumpController do
             target.path,
             target.system,
             ApiaryWeb.TargetComponents.target_path(scope, target.system, target.path),
-            "hero-folder-micro"
+            "hero-folder"
           )
         end
       else
@@ -208,7 +208,7 @@ defmodule ApiaryWeb.JumpController do
             run_label(run),
             run.target_path || ApiaryWeb.RunComponents.state_label(run.state),
             ~p"/#{scope.organisation}/#{workspace}/runs/#{run.run_id}",
-            "hero-play-circle-micro"
+            "hero-play-circle"
           )
         end
       else
@@ -238,9 +238,9 @@ defmodule ApiaryWeb.JumpController do
               "#{organisation.name} / #{workspace.name}",
               nil,
               ~p"/#{organisation}/#{workspace}",
-              "hero-squares-2x2-micro"
+              "hero-squares-2x2"
             ),
-          else: item(organisation.name, nil, ~p"/#{organisation}", "hero-building-office-2-micro")
+          else: item(organisation.name, nil, ~p"/#{organisation}", "hero-building-office-2")
       end
 
     group(gettext("Places"), Enum.take(items, @per_group))
@@ -274,7 +274,7 @@ defmodule ApiaryWeb.JumpController do
         %Entry{
           key: :delete_workspace,
           label: gettext("Delete workspace %{name}…", name: scope.workspace.name),
-          icon: "hero-trash-micro",
+          icon: "hero-trash",
           path: ~p"/#{scope.organisation}/#{scope.workspace}/settings/danger"
         }
 
@@ -283,14 +283,14 @@ defmodule ApiaryWeb.JumpController do
         %Entry{
           key: :delete_organisation,
           label: gettext("Delete organisation %{name}…", name: scope.organisation.name),
-          icon: "hero-trash-micro",
+          icon: "hero-trash",
           path: ~p"/#{scope.organisation}/settings/danger"
         }
 
     account = %Entry{
       key: :delete_account,
       label: gettext("Delete your account…"),
-      icon: "hero-trash-micro",
+      icon: "hero-trash",
       path: ~p"/users/settings/delete"
     }
 

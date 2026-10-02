@@ -75,7 +75,7 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
                 text={key.key_id}
                 label={gettext("Copy key id")}
                 placement="right"
-                class="row-reveal [&>button]:[--size:1.25rem] [&_.hero-clipboard-document-micro]:size-3.5"
+                class="row-reveal [&>button]:[--size:1.25rem] [&_.hero-clipboard-document]:size-3.5"
                 icon_only
               />
             </span>

@@ -316,7 +316,7 @@ defmodule ApiaryWeb.TargetLive.Show do
           id="target-tab-overview"
           navigate={page_path(@current_scope, @target, [])}
           current={@tab == :overview}
-          icon="hero-book-open-micro"
+          icon="hero-book-open"
         >
           {gettext("Overview")}
         </:tab>
@@ -324,7 +324,7 @@ defmodule ApiaryWeb.TargetLive.Show do
           id="target-tab-runs"
           navigate={page_path(@current_scope, @target, ["runs"])}
           current={@tab == :runs}
-          icon="hero-play-circle-micro"
+          icon="hero-play-circle"
           count={@facts && @facts.runs}
         >
           {gettext("Runs")}
@@ -333,7 +333,7 @@ defmodule ApiaryWeb.TargetLive.Show do
           id="target-tab-connections"
           navigate={page_path(@current_scope, @target, ["network"])}
           current={@tab == :connections}
-          icon="hero-globe-alt-micro"
+          icon="hero-globe-alt"
         >
           {gettext("Network access")}
         </:tab>
@@ -342,7 +342,7 @@ defmodule ApiaryWeb.TargetLive.Show do
           id="target-tab-policy"
           navigate={page_path(@current_scope, @target, ["policy"])}
           current={@tab == :policy}
-          icon="hero-shield-check-micro"
+          icon="hero-shield-check"
         >
           {gettext("Policy")}
         </:tab>

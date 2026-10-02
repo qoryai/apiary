@@ -1159,7 +1159,7 @@ defmodule ApiaryWeb.RunComponents do
         phx-submit={@search}
         novalidate
       >
-        <.icon name="hero-magnifying-glass-micro" class="size-4" />
+        <.icon name="hero-magnifying-glass" class="size-4" />
         <input
           id={"#{@id}-q"}
           type="text"

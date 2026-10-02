@@ -838,7 +838,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
                   ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy/versions/#{@version.version}/export"
                 }
               >
-                <.icon name="hero-arrow-up-tray-micro" class="size-4" />{gettext("Export")}
+                <.icon name="hero-arrow-up-tray" class="size-4" />{gettext("Export")}
               </.button>
             </div>
             <div :if={!(@managed? && @version)} class="q-head-side">
@@ -849,7 +849,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
                 class="q-tip-wide"
               >
                 <.button id="policy-export-button" disabled aria-disabled="true">
-                  <.icon name="hero-arrow-up-tray-micro" class="size-4" />{gettext("Export")}
+                  <.icon name="hero-arrow-up-tray" class="size-4" />{gettext("Export")}
                 </.button>
               </.tooltip>
             </div>
@@ -987,7 +987,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
       </div>
       <div class="q-head-side">
         <.button id="version-export" patch={"#{@base}/versions/#{@v.latest}/export"}>
-          <.icon name="hero-arrow-up-tray-micro" class="size-4" />{if @v.current?,
+          <.icon name="hero-arrow-up-tray" class="size-4" />{if @v.current?,
             do: gettext("Export"),
             else: gettext("Export the version in force")}
         </.button>
@@ -1022,7 +1022,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
     <.tabs id="policy-tabs" label={gettext("Policy")}>
       <:tab
         patch={~p"/#{@scope.organisation}/#{@scope.workspace}/policy"}
-        icon="hero-shield-check-micro"
+        icon="hero-shield-check"
         current={@live_action == :rules}
         count={@rules > 0 && @rules}
       >
@@ -1030,7 +1030,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
       </:tab>
       <:tab
         patch={~p"/#{@scope.organisation}/#{@scope.workspace}/policy/targets"}
-        icon="hero-book-open-micro"
+        icon="hero-book-open"
         current={@live_action == :targets}
         count={@targets > 0 && @targets}
       >
@@ -1038,7 +1038,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
       </:tab>
       <:tab
         patch={~p"/#{@scope.organisation}/#{@scope.workspace}/policy/history"}
-        icon="hero-clock-micro"
+        icon="hero-clock"
         current={@live_action == :history}
         count={@changes > 0 && @changes}
       >
@@ -1047,7 +1047,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
       <:tab
         :if={@document}
         patch={~p"/#{@scope.organisation}/#{@scope.workspace}/policy/document"}
-        icon="hero-document-text-micro"
+        icon="hero-document-text"
         current={@live_action in [:version, :export, :document]}
       >
         {gettext("Document")}

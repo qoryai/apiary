@@ -217,11 +217,11 @@ defmodule ApiaryWeb.ActivityLive do
         <% :gone -> %>
           <span class="q-faint truncate">{@actor.text}</span>
         <% :access_key -> %>
-          <.icon name="hero-key-micro" class="size-3.5 flex-none text-faint" />
+          <.icon name="hero-key" class="size-3.5 flex-none text-faint" />
           <span :if={@actor.text} class="truncate">{@actor.text}</span>
           <span class="q-faint q-mono">{@actor.detail}</span>
         <% :instance -> %>
-          <.icon name="hero-cpu-chip-micro" class="size-3.5 flex-none text-faint" />
+          <.icon name="hero-cpu-chip" class="size-3.5 flex-none text-faint" />
           <span>{@actor.text}</span>
       <% end %>
     </span>

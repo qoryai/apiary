@@ -423,7 +423,7 @@ defmodule ApiaryWeb.CoreComponents do
         class="copy-btn btn btn-ghost btn-xs btn-square"
         aria-label={@label}
       >
-        <span class="copy-idle"><.icon name="hero-clipboard-document-micro" class="size-4" /></span>
+        <span class="copy-idle"><.icon name="hero-clipboard-document" class="size-4" /></span>
         <span class="copy-done"><.icon name="hero-check-micro" class="size-4" /></span>
         <span class="sr-only" aria-live="polite"></span>
       </button>
@@ -443,7 +443,7 @@ defmodule ApiaryWeb.CoreComponents do
       class={["copy-btn btn btn-ghost btn-xs btn-keep font-sans", @class]}
     >
       <span class="copy-idle">
-        <.icon name="hero-clipboard-document-micro" class="size-4" />{@label}
+        <.icon name="hero-clipboard-document" class="size-4" />{@label}
       </span>
       <span class="copy-done"><.icon name="hero-check-micro" class="size-4" />{gettext("Copied")}</span>
       <span class="sr-only" aria-live="polite"></span>
@@ -1044,7 +1044,7 @@ defmodule ApiaryWeb.CoreComponents do
           "rounded-full border border-dashed border-line-field bg-transparent text-faint"
       ]}>
         <%= if @kind == "pending" do %>
-          <.icon name="hero-envelope-micro" class="size-3.5" />
+          <.icon name="hero-envelope" class="size-3.5" />
         <% else %>
           {String.first(@name || "?")}
         <% end %>
@@ -1512,7 +1512,7 @@ defmodule ApiaryWeb.CoreComponents do
       novalidate
     >
       <label>
-        <.icon name="hero-magnifying-glass-micro" class="q-find-i size-4" />
+        <.icon name="hero-magnifying-glass" class="q-find-i size-4" />
         <span class="sr-only">{@label}</span>
         <input
           id={"#{@id}-input"}
@@ -1580,7 +1580,7 @@ defmodule ApiaryWeb.CoreComponents do
           |> JS.hide(to: "##{@id}-panel .q-fm-section")
         }
       >
-        <.icon name="hero-funnel-micro" class="size-4 text-faint" />{gettext("Filter")}
+        <.icon name="hero-funnel" class="size-4 text-faint" />{gettext("Filter")}
         <span :if={@count > 0} class="q-listmenu-n">{@count}</span>
       </button>
       <div
@@ -1604,7 +1604,7 @@ defmodule ApiaryWeb.CoreComponents do
               |> JS.focus_first(to: "##{@id}-body-#{section.key}")
             }
           >
-            <.icon name={section.icon} class="size-4" />
+            <.icon name={section.icon} class="size-3.5" />
             <span class="q-fm-label">{section.label}</span>
             <span
               :if={section[:value]}
@@ -1665,7 +1665,7 @@ defmodule ApiaryWeb.CoreComponents do
         aria-expanded="false"
         phx-mounted={JS.ignore_attributes(["aria-expanded"])}
       >
-        <.icon name="hero-funnel-micro" class="size-4 text-faint" />{gettext("Filter")}
+        <.icon name="hero-funnel" class="size-4 text-faint" />{gettext("Filter")}
         <span :if={@count > 0} class="q-listmenu-n">{@count}</span>
       </button>
       <ul
@@ -1709,7 +1709,7 @@ defmodule ApiaryWeb.CoreComponents do
         aria-label={gettext("Sort: %{order}", order: @current)}
         phx-mounted={JS.ignore_attributes(["aria-expanded"])}
       >
-        <.icon name="hero-arrows-up-down-micro" class="size-4 text-faint" />{@label || @current}
+        <.icon name="hero-arrows-up-down" class="size-4 text-faint" />{@label || @current}
       </button>
       <ul
         class="q-rowmenu-list q-listmenu-list menu menu-sm dropdown-content"
