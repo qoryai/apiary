@@ -7707,14 +7707,15 @@
     width: 36%;
     white-space: nowrap;
   }
-  .q-pr .q-mark {
-    background: none;
-  }
+  /* A rule's mark keeps a decision's colours, both on a soft tile: a column of solid red
+     tiles would shout down the hosts beside it. */
   .q-pr .q-mark-ok {
-    color: var(--q-faint);
+    background-color: var(--q-success-soft);
+    color: var(--color-success);
   }
   .q-pr .q-mark-no {
-    color: var(--q-muted);
+    background-color: var(--q-denied-tint);
+    color: var(--color-error);
   }
   .q-pr-key {
     display: inline-grid;
@@ -7814,6 +7815,7 @@
     text-decoration-color: var(--q-faint);
   }
   .q-pr tr.q-pr-off .q-mark {
+    background: none;
     color: var(--q-border-strong);
   }
   /* Where the table is narrow, the host gives up its share and a long path breaks. */

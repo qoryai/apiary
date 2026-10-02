@@ -133,7 +133,9 @@ defmodule ApiaryWeb.PolicyComponents do
   @doc """
   The 18 px mark of a rule, in the vocabulary of a connection's decision mark: allow is
   the soft green check, deny the solid red barred circle, `pending` the dashed red outline
-  of a host nothing has decided yet (a suggestion, a destination enforce would deny).
+  of a host nothing has decided yet (a suggestion, a destination enforce would deny). In
+  the table of rules deny is the soft red tile, so a column of them does not shout, and a
+  rule not in force is a bare grey glyph.
   """
   attr :action, :string, required: true, values: ~w(allow deny pending)
   attr :class, :any, default: nil
