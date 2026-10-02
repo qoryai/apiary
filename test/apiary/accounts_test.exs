@@ -111,6 +111,12 @@ defmodule Apiary.AccountsTest do
       assert %Ecto.Changeset{} = changeset = Accounts.change_user_email(%User{})
       assert changeset.required == [:email]
     end
+
+    test "says an empty address is missing, not that it did not change" do
+      changeset = Accounts.change_user_email(%User{email: "dana@example.com"}, %{"email" => ""})
+
+      assert errors_on(changeset) == %{email: ["can't be blank"]}
+    end
   end
 
   describe "deliver_user_update_email_instructions/3" do
