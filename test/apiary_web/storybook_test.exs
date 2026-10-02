@@ -58,14 +58,14 @@ defmodule ApiaryWeb.StorybookTest do
     end
   end
 
-  test "the Icons story draws the solid and the outline split" do
+  test "the Icons story draws the outline split beside the solid micro of before" do
     {_path, story} = Enum.find(stories(), &(elem(&1, 0) == "foundations/icons"))
     html = %{__changed__: %{}, tab: nil, theme: :qory} |> story.render() |> rendered_to_string()
 
-    # Solid: the nav as the shell draws it. Outline: 24 px outline at 18 px, glyphs micro.
-    assert html =~ ~r/hero-squares-2x2-micro[^"]*size-4/
-
+    # Current: the nav as the shell draws it, 24 px outline at 18 px, glyphs micro.
+    # Previous: every icon solid micro at 16 px.
     assert html =~ ~r/hero-squares-2x2 [^"]*size-\[18px\]/
+    assert html =~ ~r/hero-squares-2x2-micro[^"]*size-4/
     assert html =~ "hero-magnifying-glass "
     assert html =~ "hero-no-symbol-micro"
     assert html =~ "hero-lock-closed-micro"

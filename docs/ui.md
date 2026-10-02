@@ -485,6 +485,16 @@ or an attribute of one, not a copy.
   `<.sort_menu>` and `<.filter_tokens>` are a list's controls; `<.state_word>` says a
   row's state in words; `<.sparkline>` draws runs a day.
 - **`<.empty_state>`** says what is missing and offers the one next step.
+- **Icons** are Heroicons through `<.icon>`, in two styles (the v2 mocks' split). Nav and
+  object icons are the 24 px outline, `hero-<name>`: the sidebar's entries and pins, the
+  top bar, menu items, tabs, toolbar buttons (Filter, Sort, Export), find fields, a Filter
+  menu's sections, empty states, and an icon that stands for a thing (a target, a run, an
+  access key, a workspace). They are drawn at 18 px in the sidebar, 14 px in a Filter
+  menu's sections and 16 px elsewhere. Small glyphs are the solid micro,
+  `hero-<name>-micro`, at 12 to 16 px: check, x, chevrons, arrows, the deny mark, lock,
+  warning, plus, and a row's mark, a badge's or a timeline node's. The current navigation
+  item changes its background, weight and ring and its icon takes `accent`; the icon never
+  turns solid. A name is written out whole in the source, so Tailwind generates its class.
 
 The styles are in `assets/css/app.css`. Overrides of daisyUI are in `@layer utilities`,
 wrapped in `:where()` so a Tailwind utility on the element still wins; the classes a group
@@ -510,11 +520,12 @@ router, have none of it.
 
 A story is drawn with the app's own components and stylesheet:
 `assets/css/storybook.css` imports `app.css` and adds `storybook/` as a source, so a class
-only a story uses (an outline icon, a layout utility) is generated there and never in the
-app's stylesheet. The `storybook` Tailwind profile builds it, and the dev server watches it
-(`config/dev.exs`). The header's theme menu draws the stories in `qory` or `qory-dark`, set
-as `data-theme` on each story's container. The storybook loads none of `app.js`, so a hook
-(`Menu`, `CopyToClipboard`) does not run there: a menu draws its trigger but does not open.
+only a story uses (an icon the app does not draw, a layout utility) is generated there and
+never in the app's stylesheet. The `storybook` Tailwind profile builds it, and the dev
+server watches it (`config/dev.exs`). The header's theme menu draws the stories in `qory`
+or `qory-dark`, set as `data-theme` on each story's container. The storybook loads none of
+`app.js`, so a hook (`Menu`, `CopyToClipboard`) does not run there: a menu draws its
+trigger but does not open.
 
 To add a story, write `storybook/<folder>/<name>.story.exs`, a module
 `ApiaryWeb.Storybook.<Folder>.<Name>`:

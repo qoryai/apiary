@@ -45,7 +45,7 @@ defmodule ApiaryWeb.Storybook.Core.Button do
           %Variation{
             id: :new_key,
             attributes: %{variant: "primary"},
-            slots: [~s|<.icon name="hero-key-micro" class="size-4" />New access key|]
+            slots: [~s|<.icon name="hero-key" class="size-4" />New access key|]
           }
         ]
       },
