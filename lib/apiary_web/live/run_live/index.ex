@@ -392,21 +392,32 @@ defmodule ApiaryWeb.RunLive.Index do
                       aria-label={gettext("Jump to date")}
                       class="dropdown-content q-jumpdate"
                     >
+                      <%!-- The page closes the menu once the day is one to go to; a day it
+                           cannot go to is answered under the field. --%>
                       <form
                         id="runs-jump-form"
-                        phx-submit={
-                          JS.push("jump") |> JS.remove_class("dropdown-open", to: "#runs-jump")
-                        }
+                        phx-change="jump_change"
+                        phx-submit="jump"
                       >
                         <label for="runs-jump-date">{gettext("Day")}</label>
                         <input
                           id="runs-jump-date"
                           type="date"
                           name="date"
-                          class="input input-sm"
+                          class={["input input-sm", @jump_error && "input-error"]}
                           required
+                          aria-invalid={@jump_error && "true"}
+                          aria-describedby={@jump_error && "runs-jump-date-error"}
                         />
                         <.button type="submit" size="sm">{gettext("Go")}</.button>
+                        <p
+                          :if={@jump_error}
+                          id="runs-jump-date-error"
+                          class="col-span-full flex items-center gap-1.5 text-[12.5px]/[18px] text-error"
+                        >
+                          <.icon name="hero-exclamation-circle-micro" class="size-4 flex-none" />
+                          {@jump_error}
+                        </p>
                         <p class="q-jumpdate-note">
                           {if @filters.sort == "newest",
                             do:
@@ -514,6 +525,7 @@ defmodule ApiaryWeb.RunLive.Index do
        wide: false,
        preview_on: false,
        preview_id: nil,
+       jump_error: nil,
        preview: nil,
        has_keys: AccessKeys.list_access_keys(scope) != []
      )}
@@ -614,12 +626,25 @@ defmodule ApiaryWeb.RunLive.Index do
     case Date.from_iso8601(date) do
       {:ok, %Date{year: year} = day} when year in 2000..2999 ->
         page = Runs.jump_page(scope, filters, day)
-        {:noreply, push_patch(socket, to: page_path(scope, %{filters | page: page}))}
 
+        {:noreply,
+         socket
+         |> assign(:jump_error, nil)
+         |> push_event("menu:close", %{id: "runs-jump"})
+         |> push_patch(to: page_path(scope, %{filters | page: page}))}
+
+      {:ok, _day} ->
+        {:noreply,
+         assign(socket, :jump_error, gettext("Choose a day from the year 2000 to 2999."))}
+
+      # Empty, or a day not filled in to the end: the field sends nothing.
       _other ->
-        {:noreply, socket}
+        {:noreply, assign(socket, :jump_error, gettext("Choose a day to jump to."))}
     end
   end
+
+  def handle_event("jump_change", _params, socket),
+    do: {:noreply, assign(socket, :jump_error, nil)}
 
   def handle_event("jump", _params, socket), do: {:noreply, socket}
 

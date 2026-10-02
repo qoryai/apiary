@@ -115,6 +115,8 @@ export const Menu = {
     this.outside = e => {
       if (!this.el.contains(e.target)) set(false)
     }
+    // The page closes a menu whose form it answered: `push_event("menu:close", %{id: id})`.
+    this.handleEvent("menu:close", ({id}) => id === this.el.id && close(true))
     document.addEventListener("pointerdown", this.outside)
     this.reflow = () => {
       if (this.el.classList.contains("dropdown-open")) this.position()

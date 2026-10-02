@@ -1015,6 +1015,28 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert has_element?(open(conn, scope), "#runs-jump")
       refute has_element?(open(conn, runs(scope, "?sort=longest")), "#runs-jump")
     end
+
+    test "Jump to date answers a day it cannot go to under the field, and stays open",
+         %{conn: conn, scope: scope} do
+      run_fixture(scope)
+      view = open(conn, scope)
+
+      view |> form("#runs-jump-form", %{"date" => ""}) |> render_submit()
+      assert has_element?(view, "#runs-jump-date-error", "Choose a day to jump to.")
+      assert has_element?(view, ~s|#runs-jump-date[aria-invalid="true"]|)
+      refute_push_event(view, "menu:close", _)
+
+      view |> form("#runs-jump-form", %{"date" => "1999-12-31"}) |> render_submit()
+      assert has_element?(view, "#runs-jump-date-error", "from the year 2000 to 2999")
+
+      # Changing the day takes the error away.
+      view |> form("#runs-jump-form", %{"date" => "2026-01-02"}) |> render_change()
+      refute has_element?(view, "#runs-jump-date-error")
+
+      view |> form("#runs-jump-form", %{"date" => "2026-01-02"}) |> render_submit()
+      assert_push_event(view, "menu:close", %{id: "runs-jump"})
+      refute has_element?(view, "#runs-jump-date-error")
+    end
   end
 
   describe "live" do
