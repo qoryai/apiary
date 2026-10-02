@@ -423,24 +423,18 @@ defmodule ApiaryWeb.SettingsLive do
         <div class="q-form-two">
           <.input
             field={@retention_form[:events_retention_days]}
-            type="number"
+            type="text"
             label={gettext("Keep a run's events for")}
             placeholder={gettext("Forever")}
-            min="1"
-            max="3650"
-            step="1"
             inputmode="numeric"
             debounce="200"
             disabled={!may?(@current_scope, :"retention.edit")}
           />
           <.input
             field={@retention_form[:log_retention_days]}
-            type="number"
+            type="text"
             label={gettext("Keep a run's log output for")}
             placeholder={gettext("Forever")}
-            min="1"
-            max="3650"
-            step="1"
             inputmode="numeric"
             debounce="200"
             disabled={!may?(@current_scope, :"retention.edit")}

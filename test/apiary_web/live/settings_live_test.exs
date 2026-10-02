@@ -168,6 +168,43 @@ defmodule ApiaryWeb.SettingsLiveTest do
       assert {workspace.events_retention_days, workspace.log_retention_days} == {nil, nil}
     end
 
+    test "a retention that is not a whole number is answered in its field, and kept from saving",
+         %{conn: conn, scope: scope} do
+      {:ok, _} = Apiary.Retention.update_retention(scope, %{events_retention_days: 30})
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/retention")
+
+      # A text field, so what was typed reaches the server as it is: a number field sends
+      # an empty value for letters, which would read as keeping everything.
+      assert has_element?(lv, ~s|#retention_events_retention_days[type=text][inputmode=numeric]|)
+
+      for typed <- ["abc", "1.5", "30 days"] do
+        lv
+        |> form("#retention-form", retention: %{events_retention_days: typed})
+        |> render_submit()
+
+        assert has_element?(
+                 lv,
+                 "#retention_events_retention_days-error",
+                 "must be between 1 and 3650 days, or empty to keep everything"
+               )
+
+        workspace = Apiary.Repo.get!(Apiary.Organisations.Workspace, scope.workspace.id)
+        assert workspace.events_retention_days == 30
+      end
+
+      html =
+        lv
+        |> form("#retention-form", retention: %{events_retention_days: " 60 "})
+        |> render_submit()
+
+      assert html =~ "Retention saved."
+
+      workspace = Apiary.Repo.get!(Apiary.Organisations.Workspace, scope.workspace.id)
+      assert workspace.events_retention_days == 60
+    end
+
     test "says what the job pruned, for this workspace only", %{conn: conn, scope: scope} do
       import Apiary.RunEventsFixtures
 
