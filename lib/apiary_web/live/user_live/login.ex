@@ -2,6 +2,11 @@ defmodule ApiaryWeb.UserLive.Login do
   use ApiaryWeb, :live_view
 
   alias Apiary.Accounts
+  alias Apiary.Accounts.User
+
+  # Shown for an address that cannot be one, before anything is looked up: it says
+  # nothing about whether an account exists.
+  @email_error dgettext_noop("errors", "Enter an email address, such as dana@example.com.")
 
   @impl true
   def render(assigns) do
@@ -53,18 +58,42 @@ defmodule ApiaryWeb.UserLive.Login do
             phx-mounted={@mode == :magic && JS.focus()}
           />
           <div :if={@mode == :password} id="login_password" class="grid gap-4">
-            <%!-- Never patched: the typed password is not echoed back by the server. --%>
-            <div id="login_password_field" phx-update="ignore">
-              <.input
-                field={f[:password]}
-                type="password"
-                label={gettext("Password")}
-                size="md"
-                autocomplete="current-password"
-                spellcheck="false"
-                required
-                phx-mounted={JS.focus()}
-              />
+            <div class="grid gap-1.5">
+              <%!-- Never patched: the typed password is not echoed back by the server. --%>
+              <div id="login_password_field" phx-update="ignore">
+                <.input
+                  field={f[:password]}
+                  type="password"
+                  label={gettext("Password")}
+                  size="md"
+                  autocomplete="current-password"
+                  spellcheck="false"
+                  required
+                  phx-mounted={JS.focus()}
+                />
+              </div>
+              <%!-- Outside the field, which is never patched: the error marks the field
+                   as it comes and goes. --%>
+              <p
+                :if={@password_missing}
+                id="login_form_password-error"
+                class="flex items-center gap-1.5 text-[12.5px]/[18px] text-error"
+                phx-mounted={
+                  JS.set_attribute({"aria-invalid", "true"}, to: "#login_form_password")
+                  |> JS.set_attribute({"aria-describedby", "login_form_password-error"},
+                    to: "#login_form_password"
+                  )
+                  |> JS.add_class("input-error", to: "#login_form_password")
+                }
+                phx-remove={
+                  JS.remove_attribute("aria-invalid", to: "#login_form_password")
+                  |> JS.remove_attribute("aria-describedby", to: "#login_form_password")
+                  |> JS.remove_class("input-error", to: "#login_form_password")
+                }
+              >
+                <.icon name="hero-exclamation-circle-micro" class="size-4 flex-none" />
+                {gettext("Enter your password.")}
+              </p>
             </div>
             <.input
               :if={!@current_scope}
@@ -128,6 +157,7 @@ defmodule ApiaryWeb.UserLive.Login do
      assign(socket,
        form: to_form(%{"email" => email}, as: "user"),
        mode: if(flash_email, do: :password, else: :magic),
+       password_missing: false,
        remember_me: true,
        sent_to: nil,
        trigger_submit: false,
@@ -140,37 +170,68 @@ defmodule ApiaryWeb.UserLive.Login do
 
   @impl true
   def handle_event("change", %{"user" => params}, socket) do
+    # Once a submit has shown an error, it goes as soon as the field is right.
+    checked? = socket.assigns.form.errors != []
+
     {:noreply,
      socket
-     |> assign(:form, to_form(Map.take(params, ["email"]), as: "user"))
+     |> assign(:form, email_form(params, checked?))
+     |> assign(:password_missing, socket.assigns.password_missing and blank?(params["password"]))
      |> assign(:remember_me, Map.get(params, "remember_me", "true") == "true")}
   end
 
   def handle_event("toggle_mode", _params, socket) do
     mode = if socket.assigns.mode == :magic, do: :password, else: :magic
-    {:noreply, assign(socket, :mode, mode)}
+    {:noreply, assign(socket, mode: mode, password_missing: false)}
   end
 
   def handle_event("submit", %{"user" => params}, %{assigns: %{mode: :password}} = socket) do
+    form = email_form(params, true)
+    password_missing = blank?(params["password"])
+
     {:noreply,
      socket
-     |> assign(:form, to_form(Map.take(params, ["email"]), as: "user"))
-     |> assign(:trigger_submit, true)}
+     |> assign(form: form, password_missing: password_missing)
+     |> assign(:trigger_submit, form.errors == [] and not password_missing)}
   end
 
-  def handle_event("submit", %{"user" => %{"email" => email}}, socket) do
-    if user = Accounts.get_user_by_email(email) do
-      Accounts.deliver_login_instructions(
-        user,
-        &url(~p"/users/log-in/#{&1}")
-      )
-    end
+  def handle_event("submit", %{"user" => params}, socket) do
+    case email_form(params, true) do
+      %{errors: []} ->
+        email = params["email"]
 
-    # The same answer whether or not the address has an account.
-    {:noreply, assign(socket, :sent_to, email)}
+        if user = Accounts.get_user_by_email(email) do
+          Accounts.deliver_login_instructions(
+            user,
+            &url(~p"/users/log-in/#{&1}")
+          )
+        end
+
+        # The same answer whether or not the address has an account.
+        {:noreply, assign(socket, :sent_to, email)}
+
+      form ->
+        {:noreply, assign(socket, :form, form)}
+    end
   end
 
   def handle_event("use_different_email", _params, socket) do
     {:noreply, assign(socket, sent_to: nil, form: to_form(%{"email" => nil}, as: "user"))}
   end
+
+  # The form of the email alone, the password never echoed back; checked, it carries the
+  # error of an address that cannot be one: empty, without an @, with a space, too long.
+  defp email_form(params, checked?) do
+    params = %{"email" => Map.get(params, "email", "")}
+
+    errors =
+      if checked? and
+           not Accounts.change_user_email(%User{}, params, validate_unique: false).valid?,
+         do: [email: {@email_error, []}],
+         else: []
+
+    to_form(params, as: "user", errors: errors, action: if(errors != [], do: :validate))
+  end
+
+  defp blank?(value), do: not is_binary(value) or String.trim(value) == ""
 end

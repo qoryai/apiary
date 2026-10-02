@@ -3785,6 +3785,11 @@ msgstr ""
 msgid "Enter the password you set in account settings."
 msgstr ""
 
+#: lib/apiary_web/live/user_live/login.ex
+#, elixir-autogen, elixir-format
+msgid "Enter your password."
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
