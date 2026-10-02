@@ -1,0 +1,17 @@
+/* The component storybook's stylesheet, in development only (docs/ui.md, Storybook): the
+   app's own, with the classes the stories use besides, so a story looks as the page does.
+   Built by the `storybook` Tailwind profile (config/dev.exs); a release has none. */
+
+@import "./app.css";
+@source "../../storybook";
+
+/* What the page's html and body give the page, for a story's container. */
+.psb-sandbox {
+  background-color: var(--color-base-100);
+  color: var(--color-base-content);
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}

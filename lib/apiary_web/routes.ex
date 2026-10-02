@@ -19,6 +19,10 @@ defmodule ApiaryWeb.Routes do
     pipe through imported. First, since the others pipe through them.
   - `public_routes/0`: the home page, `/docs`, `/health`, the server contract under
     `/.well-known` and `/v1`, and, where `:dev_routes` is set, `/dev`.
+  - `storybook_routes/0`: the component storybook at `/dev/storybook` (`docs/ui.md`,
+    Storybook), where `:dev_routes` is set and the storybook's dependency, a development
+    one, is there. `ApiaryWeb.Router` calls it; an edition's router does not, since the
+    stories are this checkout's.
   - `account_routes/1`: a signed-in person's own pages under `/users` and an invitation's
     continuation, behind sign-in, in the `live_session :require_authenticated_user`.
   - `visitor_routes/1`: registration, log-in and an invitation, for anyone, in the
@@ -158,6 +162,35 @@ defmodule ApiaryWeb.Routes do
 
           live_dashboard "/dashboard", metrics: ApiaryWeb.Telemetry
           forward "/mailbox", Plug.Swoosh.MailboxPreview
+        end
+      end
+    end
+  end
+
+  @doc """
+  storybook_routes/0 defines the component storybook, `/dev/storybook`, and its assets,
+  where `:dev_routes` is set and `phoenix_storybook` is there: a dependency of this
+  checkout's in development and test only, so a release, and a project that has the core
+  as its dependency, has neither the routes nor any reference to the library.
+  """
+  defmacro storybook_routes do
+    # Decided where the macro expands: in a project without the library, the routes and
+    # their import are not there to compile.
+    if Code.ensure_loaded?(PhoenixStorybook.Router) do
+      quote do
+        if Application.compile_env(:apiary, :dev_routes) do
+          import PhoenixStorybook.Router
+
+          scope "/" do
+            storybook_assets("/dev/storybook/assets")
+          end
+
+          scope "/" do
+            live_storybook("/dev/storybook",
+              backend_module: ApiaryWeb.Storybook,
+              assets_path: "/dev/storybook/assets"
+            )
+          end
         end
       end
     end

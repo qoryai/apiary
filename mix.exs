@@ -36,8 +36,11 @@ defmodule Apiary.MixProject do
     ]
   end
 
-  # Specifies which paths to compile per environment.
-  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  # Specifies which paths to compile per environment. The component storybook's backend
+  # (storybook/storybook.ex, docs/ui.md) is development tooling, compiled in dev and test
+  # only, as its dependency is there.
+  defp elixirc_paths(:test), do: ["lib", "test/support", "storybook"]
+  defp elixirc_paths(:dev), do: ["lib", "storybook"]
   defp elixirc_paths(_), do: ["lib"]
 
   # Specifies your project dependencies.
@@ -58,6 +61,9 @@ defmodule Apiary.MixProject do
       {:phoenix_live_view, "~> 1.2.0"},
       {:lazy_html, ">= 0.1.0", only: :test},
       {:stream_data, "~> 1.0", only: [:dev, :test]},
+      # The component storybook at /dev/storybook (docs/ui.md), in development; in test
+      # too, where every story is rendered. Never in a release.
+      {:phoenix_storybook, "~> 1.5", only: [:dev, :test]},
       {:jsv, "~> 0.23"},
       {:phoenix_live_dashboard, "~> 0.9.1"},
       {:esbuild, "~> 0.10", runtime: Mix.env() == :dev},
