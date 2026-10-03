@@ -73,6 +73,8 @@ defmodule Apiary.AccessRows do
       {:"secret.read", yes: @owners ++ [:member, :admin]},
       {:"secret.write", yes: @owners ++ [:admin]},
       {:"secret.use", yes: @owners ++ [:admin]},
+      {:"variable.read", yes: @owners ++ [:member, :admin]},
+      {:"variable.edit", yes: @owners ++ [:admin]},
       {:"run.post_events", yes: [:access_key]},
       {:"run_configuration.fetch", yes: [:access_key]}
     ]

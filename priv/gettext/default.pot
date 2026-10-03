@@ -1938,6 +1938,11 @@ msgstr ""
 msgid "A target's own rule for this host still decides there."
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "A variable"
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "A+"
@@ -2724,6 +2729,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Changed a stored secret"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Changed a variable"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
@@ -5098,6 +5108,11 @@ msgstr ""
 msgid "Locked a policy rule"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Locked a variable"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
 msgid "Locked by %{by} on %{at}."
@@ -6973,6 +6988,11 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
+msgid "Removed a variable"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
 msgid "Removed an expired invitation, sending a new one"
 msgstr ""
 
@@ -7597,6 +7617,11 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Session timeline, oldest first"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Set a variable"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
@@ -9088,6 +9113,11 @@ msgstr ""
 msgid "Unlocked a policy rule"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Unlocked a variable"
+msgstr ""
+
 #: lib/apiary_web/components/target_components.ex
 #, elixir-autogen, elixir-format
 msgid "Unpin %{target}"
@@ -9136,6 +9166,11 @@ msgstr ""
 #: lib/apiary_web/live/user_live/registration.ex
 #, elixir-autogen, elixir-format
 msgid "Usually your company's name. Owners can change it later in the organisation's settings."
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Variable changed"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex

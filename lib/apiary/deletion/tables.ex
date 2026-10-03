@@ -42,6 +42,7 @@ defmodule Apiary.Deletion.Tables do
     {"runs", :workspace},
     {"retention_runs", :workspace},
     {"policy_rules", :workspace},
+    {"variables", :workspace},
     {"secret_values", :workspace},
     {"secrets", :workspace},
     {"workspace_data_keys", :workspace},

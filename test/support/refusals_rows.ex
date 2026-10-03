@@ -247,8 +247,9 @@ defmodule ApiaryWeb.RefusalsRows do
   # organisation for a person who is not signed in, and asks no one's level; no page of
   # the core offers it to a signed-in person. An edition's: creating a workspace, which
   # no page of the core offers, and an edition's page does, with rows of its own. Stored
-  # secrets: no page offers them yet, and the context's tests refuse them
-  # (`test/apiary/secrets_test.exs`); their page brings its rows.
+  # secrets and variables: no page offers them yet, and their contexts' tests refuse
+  # them (`test/apiary/secrets_test.exs`, `test/apiary/variables_test.exs`); their page
+  # brings its rows.
   @impl true
   def exempt do
     %{
@@ -262,7 +263,9 @@ defmodule ApiaryWeb.RefusalsRows do
       no_page_yet: [
         :"secret.read",
         :"secret.write",
-        :"secret.use"
+        :"secret.use",
+        :"variable.read",
+        :"variable.edit"
       ]
     }
   end

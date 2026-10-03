@@ -24,7 +24,8 @@ defmodule Apiary.AuditChanges do
     Repo,
     Retention,
     Runs,
-    Secrets
+    Secrets,
+    Variables
   }
 
   alias Apiary.Accounts.Scope
@@ -61,7 +62,8 @@ defmodule Apiary.AuditChanges do
       :"security_policy.edit",
       :"security_policy.lock",
       :"security_policy.set_mode",
-      :"secret.write"
+      :"secret.write",
+      :"variable.edit"
     ]
   end
 
@@ -249,6 +251,16 @@ defmodule Apiary.AuditChanges do
     value = "s3cr3t-audit-value"
     {:ok, secret} = Secrets.create_secret(scope, %{name: "API_TOKEN", value: value})
     %{scope: scope, subject: {"secret", secret.id}, before: before, secret: value}
+  end
+
+  def make(:"variable.edit", %{scope: scope}) do
+    before = entries()
+    value = "plain-audit-value"
+
+    {:ok, variable} =
+      Variables.create_variable(scope, :workspace, %{name: "NODE_ENV", value: value})
+
+    %{scope: scope, subject: {"variable", variable.id}, before: before, secret: value}
   end
 
   def make(:"organisation.delete", %{scope: scope}) do
@@ -446,6 +458,9 @@ defmodule Apiary.AuditChanges do
 
   defp attempt(:"secret.write", scope, _),
     do: Secrets.create_secret(scope, %{name: "API_TOKEN", value: "s3cr3t-audit-value"})
+
+  defp attempt(:"variable.edit", scope, _),
+    do: Variables.create_variable(scope, :workspace, %{name: "NODE_ENV", value: "test"})
 
   defp attempt(:"retention.edit", scope, _),
     do: Retention.update_retention(scope, %{events_retention_days: 30})
