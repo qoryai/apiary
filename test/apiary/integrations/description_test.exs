@@ -17,13 +17,13 @@ defmodule Apiary.Integrations.DescriptionTest do
       end
     end
 
-    test "every refused fixture is refused, but the one without a publisher" do
-      for file <- Path.wildcard(Path.join(@fixtures, "invalid/*.json")) do
-        result = file |> File.read!() |> Description.parse()
+    test "every refused fixture is refused, the one without a publisher among them" do
+      files = Path.wildcard(Path.join(@fixtures, "invalid/*.json"))
+      assert Enum.any?(files, &(Path.basename(&1) == "description-no-publisher.json"))
 
-        if Path.basename(file) == "description-no-publisher.json",
-          do: assert({:ok, %Description{publisher: nil}} = result),
-          else: assert({:error, {:description_invalid, _}} = result, Path.basename(file))
+      for file <- files do
+        assert {:error, {:description_invalid, _}} = file |> File.read!() |> Description.parse(),
+               Path.basename(file)
       end
     end
   end
@@ -48,9 +48,14 @@ defmodule Apiary.Integrations.DescriptionTest do
       assert tracker.ways == ["credential", "tool"]
     end
 
-    test "is read without a publisher, which is shown and never required" do
-      assert {:ok, %Description{publisher: nil}} =
+    test "is refused without a publisher, or with one the contract refuses" do
+      assert {:error, {:description_invalid, _}} =
                github_description() |> Map.delete("publisher") |> encode() |> Description.parse()
+
+      assert {:error, {:description_invalid, _}} =
+               parse(github_description(%{"publisher" => %{"name" => " "}}))
+
+      assert {:ok, %Description{publisher: %{"name" => "Acme"}}} = parse(tracker_description())
 
       assert {:error, {:description_invalid, _}} =
                parse(

@@ -9,7 +9,8 @@ defmodule Apiary.Repo.Migrations.CreateConnections do
   # `integration_releases`: a release of an integration the workspace asked for, by its
   # `source` (a forge path with `forge_kind`, or an https URL of a description.json) and
   # version, and what the fetch found: the release's description.json, byte for byte, its
-  # SHA-256 in lowercase hex, and the integration's name and version as it says. `state`
+  # SHA-256 in lowercase hex, the integration's name and version as it says, and its
+  # publisher's name and URL, as the description names them, unverified. `state`
   # is `pending` until the fetch ends, then `ready`, or `failed` with `failure`, a code.
   #
   # `service_definitions`: a workspace's own service definitions, beside the built-in ones
@@ -55,6 +56,8 @@ defmodule Apiary.Repo.Migrations.CreateConnections do
       add :failure, :text
       add :name, :text
       add :version, :text
+      add :publisher_name, :text
+      add :publisher_url, :text
       add :description, :text
       add :description_sha256, :text
       add :fetched_at, :utc_datetime_usec
@@ -77,7 +80,7 @@ defmodule Apiary.Repo.Migrations.CreateConnections do
     create constraint(:integration_releases, :integration_releases_ready_check,
              check:
                "state <> 'ready' OR (description IS NOT NULL AND description_sha256 IS NOT NULL " <>
-                 "AND name IS NOT NULL AND version IS NOT NULL)"
+                 "AND name IS NOT NULL AND version IS NOT NULL AND publisher_name IS NOT NULL)"
            )
 
     create constraint(:integration_releases, :integration_releases_sha256_check,

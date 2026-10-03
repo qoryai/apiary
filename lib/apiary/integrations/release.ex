@@ -6,7 +6,9 @@ defmodule Apiary.Integrations.Release do
 
   `state` is `pending` until the fetch ends, then `ready`, with the release's
   `description.json` byte for byte (`description`), its SHA-256 (`description_sha256`),
-  and the integration's `name` and `version` as it says, or `failed`, with `failure`, a
+  the integration's `name` and `version` as it says, and its publisher's name and URL
+  (`publisher_name`, `publisher_url`, the URL nil when it names none), shown beside the
+  source's owner and never verified, or `failed`, with `failure`, a
   code: `fetch_failed`, `description_invalid`, `placeholder_conflict` or
   `integration_source_mismatch`.
 
@@ -32,6 +34,8 @@ defmodule Apiary.Integrations.Release do
     field :failure, :string
     field :name, :string
     field :version, :string
+    field :publisher_name, :string
+    field :publisher_url, :string
     field :description, :string, redact: true
     field :description_sha256, :string
     field :fetched_at, :utc_datetime_usec
@@ -72,6 +76,8 @@ defmodule Apiary.Integrations.Release do
       failure: release.failure,
       name: release.name,
       version: release.version,
+      publisher_name: release.publisher_name,
+      publisher_url: release.publisher_url,
       description_sha256: release.description_sha256
     ]
   end

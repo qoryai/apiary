@@ -400,8 +400,11 @@ them. Two connections that would give a repository the same runtime, the same in
 or a value on the same host (one host pattern covering another) are refused on save. A
 connection holds no secret: the links to stored secrets are the linking piece's.
 
-**The kinds.** Runtimes come from the runner contract's `runtimes.json`
-(`priv/contract/runtimes.json`, `Apiary.Kinds.Runtimes`). Services come from a service
+**The kinds.** Runtimes come from the runner contract's `contracts/runner/v1/runtimes.json`,
+vendored at the same name as `priv/contract/runtimes.json` (`Apiary.Kinds.Runtimes`). The
+runner generates it from its built-in descriptors; until the pin moves to the release that
+ships it, the file is an interim copy written from the contract's text in the same shape,
+which the runner's file replaces as it is. Services come from a service
 definition, the one source of a service's hosts, paths, auth and declared secrets: built
 in (`priv/services/*.json`, `Apiary.Kinds.Services`, each checked in the test suite) or
 the workspace's own (`service_definitions`); a service connection names its definition and
@@ -419,8 +422,11 @@ settings as canonical JSON, checked against the description: a secret, or a secr
 `<name>_file`, is never a setting. A description is validated with JSV against the
 integrations contract's `description.schema.json` (vendored under
 `priv/contract/integration/`, at the commit in `.integration-contract-ref`), and by the rules
-the schema cannot say; its `publisher` is read and shown beside the source's owner, and
-never required. The contracts' patterns are compiled with `:dollar_endonly`, and a schema
+the schema cannot say. Its `publisher`, required, a `name` and a `url` that may be absent,
+is kept on the release and shown beside the source's owner, never instead of it, since
+nothing verifies it; for a URL source it is the one name a page has. The vendored schema is
+pinned to a commit of the integrations contract's branch that defines ways; the pin moves to
+that contract's main branch once the branch is merged there, and then to its 0.3.0 tag. The contracts' patterns are compiled with `:dollar_endonly`, and a schema
 given to JSV has each `$` anchor written `\z` (`Apiary.Kinds.Pattern`), so a value with a
 trailing newline never passes.
 

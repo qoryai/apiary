@@ -428,7 +428,9 @@ defmodule Apiary.Integrations do
                   description: bytes,
                   description_sha256: sha,
                   name: description.name,
-                  version: description.program_version
+                  version: description.program_version,
+                  publisher_name: description.publisher["name"],
+                  publisher_url: description.publisher["url"]
                 ]
 
               {:failed, code} ->

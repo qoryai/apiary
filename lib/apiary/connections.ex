@@ -155,7 +155,8 @@ defmodule Apiary.Connections do
 
   @doc """
   description/1 is the description an integration connection was added from, read:
-  `{:ok, description}`, or `{:error, :not_ready}`.
+  `{:ok, description}`, its `publisher` among it, the name to show beside the source's
+  owner, and for a URL source the one name a page has; or `{:error, :not_ready}`.
   """
   @spec description(Connection.t()) :: {:ok, Description.t()} | {:error, :not_ready}
   def description(%Connection{kind: "integration", release: %Release{} = release}),

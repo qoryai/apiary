@@ -54,6 +54,7 @@ defmodule Apiary.DescriptionFixtures do
         "version" => 1,
         "name" => "acme-tracker",
         "title" => "Acme tracker",
+        "publisher" => %{"name" => "Acme"},
         "program_version" => "0.3.0",
         "settings" => %{
           "type" => "object",

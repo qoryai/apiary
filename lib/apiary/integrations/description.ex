@@ -24,11 +24,10 @@ defmodule Apiary.Integrations.Description do
   A refusal is `{:error, {:description_invalid, problems}}` or
   `{:error, {:placeholder_conflict, names}}`.
 
-  **Publisher.** The contract's draft requires `publisher`; whether it does is still
-  open with the integrations contract. Apiary reads it when present, checked as the schema
-  says, shows it beside the source's owner (`Apiary.Integrations.Source.owner/1`) and
-  never instead of it, and refuses no description for lacking one: the schema's
-  `required` is read without it.
+  **Publisher.** `publisher` is required, as the contract defines it: a `name`, and a
+  `url` that may be absent. Nothing verifies it: a page shows it beside the source's
+  owner (`Apiary.Integrations.Source.owner/1`), and never instead of it. For a URL source
+  it is the one name the page has beside the host.
 
   The description also bounds what a workspace stores for its connection:
   `check_settings/2` for the plain settings, and `check_argument/2` for the argument.
@@ -51,7 +50,7 @@ defmodule Apiary.Integrations.Description do
 
   @typedoc """
   A description, read: the integration's `name`, `title`, `about` (its `description`),
-  `publisher` (a map with `name` and maybe `url`, or nil), `domains`, `program_version`,
+  `publisher` (a map with `name` and maybe `url`), `domains`, `program_version`,
   every role it names, the `ways` it offers (`credential` and `tool`, the roles the runner
   starts), its secrets (each `name`, `title` and `secret_name`, its `x-secret-name`), the
   names of its plain settings, and the decoded document.
@@ -60,7 +59,7 @@ defmodule Apiary.Integrations.Description do
           name: String.t(),
           title: String.t(),
           about: String.t() | nil,
-          publisher: map | nil,
+          publisher: %{required(String.t()) => String.t()},
           domains: [String.t()] | nil,
           program_version: String.t(),
           roles: [String.t()],
@@ -118,9 +117,7 @@ defmodule Apiary.Integrations.Description do
 
   @doc false
   def root do
-    Schema.file!(["contract", "integration", "description.schema.json"], fn schema ->
-      Map.update!(schema, "required", &List.delete(&1, "publisher"))
-    end)
+    Schema.file!(["contract", "integration", "description.schema.json"])
   end
 
   defp properties(document), do: get_in(document, ["settings", "properties"]) || %{}

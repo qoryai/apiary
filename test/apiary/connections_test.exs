@@ -119,7 +119,9 @@ defmodule Apiary.ConnectionsTest do
       assert Connection.settings_map(connection) == %{"app_id" => "123456"}
       assert connection.argument == "acme/shop"
       assert connection.intact
-      assert {:ok, %{name: "github"}} = Connections.description(connection)
+
+      assert {:ok, %{name: "github", publisher: %{"name" => "Qory"}}} =
+               Connections.description(connection)
     end
 
     test "never stores a secret, a secret's _file, or what its roles do not list as a setting",

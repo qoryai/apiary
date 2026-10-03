@@ -104,6 +104,8 @@ defmodule Apiary.IntegrationsTest do
       assert release.description == bytes
       assert release.name == "github"
       assert release.version == "0.1.0"
+      assert release.publisher_name == "Qory"
+      assert release.publisher_url == "https://qory.dev"
 
       assert release.description_sha256 ==
                :crypto.hash(:sha256, bytes) |> Base.encode16(case: :lower)
@@ -177,6 +179,21 @@ defmodule Apiary.IntegrationsTest do
         assert %Release{state: "failed", failure: "integration_source_mismatch"} =
                  fetch!(scope, second)
       end)
+    end
+
+    test "is description_invalid for a description without a publisher", %{scope: scope} do
+      serve_release(Map.delete(github_description(), "publisher"))
+      {:ok, release} = Integrations.request_release(scope, @github)
+
+      capture_log(fn ->
+        assert %Release{failure: "description_invalid"} = fetch!(scope, release)
+      end)
+    end
+
+    test "records a publisher without a URL as nil", %{scope: scope} do
+      serve_release(github_description(%{"publisher" => %{"name" => "Acme"}}))
+      {:ok, release} = Integrations.request_release(scope, @github)
+      assert %Release{publisher_name: "Acme", publisher_url: nil} = fetch!(scope, release)
     end
 
     test "is description_invalid, or placeholder_conflict, as the description says", %{
