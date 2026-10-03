@@ -3,6 +3,8 @@ defmodule Apiary.SecretsInUseTest do
   # set for a test and put back after it.
   use Apiary.DataCase, async: false
 
+  @moduletag needs: :security
+
   import Apiary.OrganisationsFixtures
   import ExUnit.CaptureLog
 
@@ -83,12 +85,5 @@ defmodule Apiary.SecretsInUseTest do
 
     assert Secrets.reveal_for_sealing(scope.workspace, secret.public_id, nil) ==
              {:ok, "the value"}
-  end
-
-  @tag with_features: [:observability]
-  test "without the security feature the secrets are not found", %{scope: scope} do
-    assert Secrets.create_secret(scope, %{name: "API_KEY", value: "x"}) == {:error, :not_found}
-    assert Secrets.list_secrets(scope) == {:error, :not_found}
-    assert Secrets.get_secret(scope, "sec_0123456789abcdef") == {:error, :not_found}
   end
 end

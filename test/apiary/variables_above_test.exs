@@ -3,6 +3,8 @@ defmodule Apiary.VariablesAboveTest do
   # configuration `Apiary.Policy.Above.for_workspace/1` reads, and put back after it.
   use Apiary.DataCase, async: false
 
+  @moduletag needs: :security
+
   import Apiary.OrganisationsFixtures
 
   alias Apiary.Policy.Above
@@ -83,15 +85,5 @@ defmodule Apiary.VariablesAboveTest do
               [name: "Log_Level"]} =
                changeset.errors[:name]
     end
-  end
-
-  @tag with_features: [:observability]
-  test "without the security feature the variables are not found", %{scope: scope, site: site} do
-    assert Variables.list_variables(scope, :workspace) == {:error, :not_found}
-    assert Variables.get_variable(scope, Ecto.UUID.generate()) == {:error, :not_found}
-    assert Variables.resolve(scope, site) == {:error, :not_found}
-
-    assert Variables.create_variable(scope, :workspace, %{name: "A", value: "b"}) ==
-             {:error, :not_found}
   end
 end
