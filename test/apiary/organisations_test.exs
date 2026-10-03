@@ -484,6 +484,31 @@ defmodule Apiary.OrganisationsTest do
                scope |> Organisations.list_members() |> Enum.map(& &1.user.id)
     end
 
+    test "list_workspace_members/1 is who reaches the scope's workspace and acts in it" do
+      %{scope: scope, user: owner} = sign_up_fixture()
+      %{user: member} = member_fixture(scope, :member)
+      %{user: admin} = member_fixture(scope, :admin)
+      %{membership: suspended} = member_fixture(scope, :member)
+      {:ok, _suspended} = Organisations.suspend_member(scope, suspended.id)
+
+      # In the core every level reaches every workspace; a suspended membership none.
+      assert [owner.id, admin.id, member.id] ==
+               scope |> Organisations.list_workspace_members() |> Enum.map(& &1.user.id)
+
+      platform = workspace_fixture(scope.organisation, "Platform")
+
+      assert [owner.id, admin.id, member.id] ==
+               %{scope | workspace: platform}
+               |> Organisations.list_workspace_members()
+               |> Enum.map(& &1.user.id)
+
+      # Another organisation's people are not reached through its workspace.
+      %{scope: other} = sign_up_fixture()
+      refute Enum.any?(Organisations.list_workspace_members(other), &(&1.user_id == owner.id))
+
+      assert Organisations.list_workspace_members(%{scope | workspace: nil}) == []
+    end
+
     test "set_member_level/3 promotes and demotes, owners only, never the last owner" do
       %{scope: scope, membership: owner_membership} = sign_up_fixture()
       %{scope: member_scope, membership: membership} = member_fixture(scope, :member)

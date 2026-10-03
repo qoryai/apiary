@@ -1313,6 +1313,22 @@ defmodule Apiary.Organisations do
     end
   end
 
+  @doc """
+  list_workspace_members/1 is the memberships that reach the scope's workspace and act in
+  it, in `list_members/1`'s order and as it gives them: each at a level that reaches every
+  workspace, or one the edition lets into this one (`c:Apiary.Edition.reached_workspaces/2`);
+  a suspended membership acts nowhere, and is not one. None without a workspace.
+  """
+  @spec list_workspace_members(Scope.t()) :: [%Membership{}]
+  def list_workspace_members(%Scope{workspace: %Workspace{id: workspace_id}} = scope) do
+    for member <- list_members(scope),
+        is_nil(member.suspended_at),
+        Enum.any?(member.workspaces, &(&1.id == workspace_id)),
+        do: member
+  end
+
+  def list_workspace_members(%Scope{}), do: []
+
   # The workspaces the scope's person reaches: nil, every one, as the edition lets them in
   # or at a level that reaches them all; else those of the membership among `members` that
   # is theirs; none without a membership.
