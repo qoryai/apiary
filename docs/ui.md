@@ -551,9 +551,15 @@ stories of whole screens drawn to be clicked through, a proposal before any rout
 exists: 1. Sidebar and shell, the sidebar one list without group headings (Overview, Runs,
 Targets, Nodes, Network access, Policy; Settings at its foot); 2. Settings (General, People,
 Runs, Integrations, Secrets and variables; Runs is Retention renamed, and Access keys is
-gone); 3. Integrations, by role, with the ways each connects (API, MCP), the tools under
-Services; 4. An integration (Overview, Secrets and Settings, which ask for each setting it
-declares, secret or plain); 5. Add integration; 6. A target's run setup, which chooses the
+gone; a secret holds one value or several, each under a value ID, and a variable is set for
+the workspace or for one repository); 3. Integrations, by role, with the ways each connects
+(API, MCP), the tools under Services, and each one's source: Built in for the LLM providers
+and services that ship inside Apiary, else the publisher's repository and version of its
+release; 4. An integration (Overview, Secrets and Settings, which ask for each setting it
+declares, secret or plain, a secret one linked to a workspace secret and, where it holds
+several values, to one by its value ID); 5. Add integration, built in or from a release on
+GitHub, GitLab or Forgejo/Gitea or at a URL, a preview of its `description.json` with its
+publisher, and Qory's own suggested; 6. A target's run setup, which chooses the
 ways its runs use each output and service; 7. Nodes, each node or node pool Running or last
 seen, a pool's running instances beneath it; 8. A node or pool (Overview, Runs, Access
 key, Settings), its key approved, awaiting approval or revoked, a new one by enrolment code
