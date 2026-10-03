@@ -90,13 +90,13 @@ defmodule ApiaryWeb.ConnectionLive.Index do
                 )
               } />
               <.link
-                :if={@security && @target}
+                :if={@security && @policy_target}
                 id="connections-target-policy"
                 navigate={
                   ApiaryWeb.TargetComponents.target_path(
                     @current_scope,
-                    @target.system,
-                    @target.path,
+                    @policy_target.system,
+                    @policy_target.path,
                     ["policy"]
                   )
                 }
@@ -507,7 +507,9 @@ defmodule ApiaryWeb.ConnectionLive.Index do
        refused: [],
        narrow: %{},
        limits: %{},
-       target: nil,
+       # The target the filters name, read for its policy: `policy_target`, as a target's
+       # page, which renders this one in its tab, holds its own `target`.
+       policy_target: nil,
        effective: nil,
        acts: nil,
        popover: nil,
@@ -784,7 +786,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
          shared: loaded.shared,
          facets: loaded.facets,
          open: loaded.open,
-         target: loaded.target,
+         policy_target: loaded.policy_target,
          effective: loaded.effective,
          own: loaded.own,
          stale: false,
@@ -879,7 +881,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           shared: Runs.shared_paths(scope),
           facets: Runs.destination_facets(scope, filters, [now: now] ++ facets_opts),
           open: open,
-          target: target,
+          policy_target: target,
           effective: if(security, do: Policy.effective(scope, target)),
           own: if(security and is_nil(target), do: Rules.own_hosts(scope), else: [])
         }
@@ -937,7 +939,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   defp target_of(_scope, _target), do: nil
 
   defp refresh_policy(%{assigns: %{security: true, listing: %{}}} = socket) do
-    %{current_scope: scope, target: target} = socket.assigns
+    %{current_scope: scope, policy_target: target} = socket.assigns
 
     socket
     |> assign(
@@ -953,7 +955,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
          %{assigns: %{effective: %Policy.Effective{} = effective, listing: %{rows: rows}}} =
            socket
        ) do
-    %{current_scope: scope, target: target} = socket.assigns
+    %{current_scope: scope, policy_target: target} = socket.assigns
     page = if target, do: :run, else: :workspace
 
     rule_options =
@@ -1011,7 +1013,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
          socket
        )
        when not is_nil(entry) do
-    %{current_scope: scope, target: target} = socket.assigns
+    %{current_scope: scope, policy_target: target} = socket.assigns
     holder = if entry.source == :target and target, do: target
     change = Rules.change_for(entry, changes)
 
@@ -1040,7 +1042,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
 
   # A row a rule decides links to that rule, in the Network access section of its policy.
   defp act(row, rule_option, _changes, socket) do
-    %{current_scope: scope, target: target} = socket.assigns
+    %{current_scope: scope, policy_target: target} = socket.assigns
     entry = rule_option.entry
 
     Map.merge(rule_option, %{
@@ -1088,7 +1090,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   defp who(_change, _scope), do: nil
 
   defp open_popover(socket, row, act, action) do
-    %{current_scope: scope, filters: filters, effective: effective, target: filtered} =
+    %{current_scope: scope, filters: filters, effective: effective, policy_target: filtered} =
       socket.assigns
 
     reached = Runs.destination_targets(scope, filters, {row.host, row.port, row.path || ""})
@@ -1226,7 +1228,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   defp chosen_effective(_socket, nil), do: nil
 
   defp chosen_effective(socket, id) do
-    %{current_scope: scope, target: filtered, effective: effective} = socket.assigns
+    %{current_scope: scope, policy_target: filtered, effective: effective} = socket.assigns
 
     cond do
       filtered && filtered.id == id ->
@@ -1277,7 +1279,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   end
 
   defp still(socket, popover) do
-    %{current_scope: scope, target: filtered, listing: %{rows: rows}} = socket.assigns
+    %{current_scope: scope, policy_target: filtered, listing: %{rows: rows}} = socket.assigns
     effective = Policy.effective(scope, filtered)
     baseline = if filtered, do: Policy.effective(scope, nil), else: effective
     own = if filtered, do: [], else: Rules.own_hosts(scope)

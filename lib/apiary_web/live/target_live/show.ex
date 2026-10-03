@@ -111,9 +111,7 @@ defmodule ApiaryWeb.TargetLive.Show do
     %{current_scope: scope, target: target} = socket.assigns
     {:ok, socket} = ConnectionLive.Index.mount(%{}, session, socket)
 
-    # The connections page names the target its filter holds `target` too: the same one.
     socket
-    |> assign(:target, target)
     |> ConnectionLive.Index.fix_target(
       target_path(scope, target.system, target.path, ["network"]),
       {target.system, target.path}
