@@ -76,6 +76,10 @@ defmodule Apiary.AccessKeys.EnrolmentCode do
   characters in either case and in groups, `I` and `L` read as `1`, `O` as `0`, hyphens
   dropped. `{:ok, code}` in the form `generate/0` makes, or `:error` for anything else,
   `U` included.
+
+  It is for a page, where a person types a code. The enrolment endpoint does not use it:
+  `qory` sends the code normalised, and the wire refuses a code in any other form, by the
+  contract's pattern, so what a proof signed is the code as sent.
   """
   @spec normalise(term) :: {:ok, String.t()} | :error
   def normalise(value) when is_binary(value) do

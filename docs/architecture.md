@@ -501,7 +501,10 @@ but a person's account, which leaves a tombstone.
   workspaces in use, its URLs answer not found, `Apiary.Access` answers not found to
   anything asked of it but cancelling and the purge, a page opened before the marking
   included, its access keys answer the contract as a revoked key does, its invitations
-  accept no one, and retention leaves it alone; nothing is removed. The organisation's
+  accept no one, and retention leaves it alone; nothing is removed. Its nodes' keys are
+  hidden so, not revoked, and come back with a cancelled deletion; the purge makes their
+  public keys tombstones in the ledger, `workspace_deleted` for an organisation's purge
+  too, before it deletes them. The organisation's
   last workspace in use is not deleted on its own, `{:error, :last_workspace}`: the
   organisation is. A workspace's members stay in the organisation; only their access to
   it goes, with the workspace. An owner or an admin cancels a workspace's deletion on the

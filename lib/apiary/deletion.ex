@@ -24,6 +24,13 @@ defmodule Apiary.Deletion do
   it was, the access keys included. Once the grace period is over, or a purge has
   claimed it, a deletion can no longer be cancelled, `{:error, :purge_started}`.
 
+  A marking revokes no access key, the keys of its nodes included: it hides them, as a
+  revoked key is refused, so a cancelled deletion finds them as they were. The purge
+  makes their public keys tombstones in the ledger before it deletes them
+  (`Apiary.AccessKeys.retire_public_keys/2`), for the purge of an organisation as for a
+  workspace's with the reason `workspace_deleted`, since its workspaces go with it: the
+  contract names no reason, and the ledger needs none finer.
+
   ## Purged
 
   A daily sweep (`Apiary.Deletion.PurgeSweep`) enqueues one purge job for every marked
