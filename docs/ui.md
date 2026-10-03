@@ -548,15 +548,22 @@ reloads the page when one changes.
 
 **Screen mock-ups** (`storybook/screens/`, in the order of `_screens.index.exs`) are page
 stories of whole screens drawn to be clicked through, a proposal before any route or context
-exists: 1. Sidebar and shell, 2. Settings (General, Secrets and variables, Members),
-3. Integrations, 4. An integration (Overview, Secrets, Settings), 5. Add integration,
-6. A target's run setup, 7. Access keys, 8. Machines. They are drawn in a shell built from
-`Layouts.app/1`'s own classes (`ApiaryWeb.Storybook.Mockup.shell/1`), since the real one
-holds the app's entries and links; inside it they use the real components
-(`SettingsComponents.layout/1`, `<.table>`, `<.views>`, `RunComponents.tabs/1`). With no
-`app.js` there, every move is a plain link to a story and its tab (`?tab=`, carrying
-`?theme=`), built by `Mockup.path/3`, and the storybook test checks that each leads to a
-story and a tab it has.
+exists: 1. Sidebar and shell, the sidebar one list without group headings (Overview, Runs,
+Targets, Nodes, Network access, Policy; Settings at its foot); 2. Settings (General, People,
+Runs, Integrations, Secrets and variables; Runs is Retention renamed, and Access keys is
+gone); 3. Integrations, by role, with the ways each connects (API, MCP), the tools under
+Services; 4. An integration (Overview, Secrets and Settings, which ask for each setting it
+declares, secret or plain); 5. Add integration; 6. A target's run setup, which chooses the
+ways its runs use each output and service; 7. Nodes, each node or node pool Running or last
+seen, a pool's running instances beneath it; 8. A node or pool (Overview, Runs, Access
+key, Settings), its key approved, awaiting approval or revoked, a new one by enrolment code
+or a pasted public key, a replacement beside the current key, and a member's view without
+the actions. They are drawn in a shell built from `Layouts.app/1`'s own classes
+(`ApiaryWeb.Storybook.Mockup.shell/1`), since the real one holds the app's entries and
+links; inside it they use the real components (`SettingsComponents.layout/1`,
+`<.table>`, `<.views>`, `RunComponents.tabs/1`). With no `app.js` there, every move is a
+plain link to a story and its tab (`?tab=`, carrying `?theme=`), built by `Mockup.path/3`,
+and the storybook test checks that each leads to a story and a tab it has.
 
 ## Colour and themes
 
