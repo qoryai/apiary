@@ -1480,7 +1480,7 @@ defmodule ApiaryWeb.OverviewComponents do
           <span class="q-gr-v" id="overview-retention-setting">{retention_value(@workspace)}</span>
           <.link
             id="overview-retention-settings"
-            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/settings/retention"}
+            navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/settings/runs"}
             class="q-do"
           >
             {gettext("Settings")}

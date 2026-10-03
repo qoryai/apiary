@@ -9,9 +9,10 @@ defmodule ApiaryWeb.SettingsLive do
     `/:org/settings/workspaces` (`:workspaces`), for an owner or an admin, with the
     deletion of one and the cancelling of a deletion.
   - The workspace's: General, `/:org/:workspace/settings` (`:workspace`), its name, its
-    slug and, last, its danger zone, its deletion while it is one of several; Retention,
-    `/:org/:workspace/settings/retention` (`:retention`), how long the workspace keeps a
-    run's events and log output, and what the nightly job last pruned.
+    slug and, last, its danger zone, its deletion while it is one of several; Runs,
+    `/:org/:workspace/settings/runs` (`:runs`), how long the workspace keeps runs, their
+    events and their logs, and what the nightly job last pruned. Its path before,
+    `/settings/retention`, sends on (`ApiaryWeb.MovedController`).
 
   A slug is shown, not edited: renaming one is not decided yet. Deleting asks to type the
   slug, in a modal over its section: the organisation's over General at
@@ -44,7 +45,7 @@ defmodule ApiaryWeb.SettingsLive do
     danger: {:organisation, :organisation},
     delete_organisation: {:organisation, :organisation},
     workspace: {:workspace, :general},
-    retention: {:workspace, :retention},
+    runs: {:workspace, :runs},
     workspace_danger: {:workspace, :general},
     delete_this_workspace: {:workspace, :general}
   }
@@ -412,9 +413,9 @@ defmodule ApiaryWeb.SettingsLive do
     """
   end
 
-  # The workspace's Retention: how long a run's events and log output are kept, and what
-  # the nightly job last pruned.
-  defp section(%{section: :retention} = assigns) do
+  # The workspace's Runs: how long a run's events and log output are kept, its retention,
+  # and what the nightly job last pruned.
+  defp section(%{section: :runs} = assigns) do
     ~H"""
     <SettingsComponents.part id="retention-keep">
       <.form
@@ -500,7 +501,7 @@ defmodule ApiaryWeb.SettingsLive do
   defp section_title(:organisation), do: gettext("General")
   defp section_title(:general), do: gettext("General")
   defp section_title(:workspaces), do: gettext("Workspaces")
-  defp section_title(:retention), do: gettext("Retention")
+  defp section_title(:runs), do: gettext("Runs")
 
   defp section_subtitle(:organisation, :organisation),
     do: gettext("The name of this organisation, where its pages are, and who owns it.")
@@ -511,8 +512,8 @@ defmodule ApiaryWeb.SettingsLive do
   defp section_subtitle(:workspace, :general),
     do: gettext("The name of this workspace, and where its pages are.")
 
-  defp section_subtitle(:workspace, :retention),
-    do: gettext("How long this workspace keeps a run's events and log output.")
+  defp section_subtitle(:workspace, :runs),
+    do: gettext("How long this workspace keeps runs, their events and their logs.")
 
   @impl true
   def mount(_params, _session, socket) do

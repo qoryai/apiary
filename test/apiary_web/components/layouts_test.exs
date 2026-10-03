@@ -248,8 +248,9 @@ defmodule ApiaryWeb.LayoutsTest do
 
       for {key, href} <- [
             general: ~p"/#{org}/#{ws}/settings",
+            people: ~p"/#{org}/#{ws}/settings/people",
             keys: ~p"/#{org}/#{ws}/settings/keys",
-            retention: ~p"/#{org}/#{ws}/settings/retention"
+            runs: ~p"/#{org}/#{ws}/settings/runs"
           ] do
         assert has_element?(view, "#main #settings-tabs a#settings-tab-#{key}[href='#{href}']"),
                "#{key}"
@@ -258,8 +259,10 @@ defmodule ApiaryWeb.LayoutsTest do
       assert has_element?(view, "#settings-tab-keys[aria-current='page']")
       assert has_element?(view, "#main h2#settings-section-title", "Access keys")
 
-      # No other kind of settings, no cross-link, and nothing that cannot be undone.
-      refute has_element?(view, "#settings-tab-organisation, #settings-tab-people")
+      # No other kind of settings, no cross-link, and nothing that cannot be undone: the
+      # workspace's People is its own, the organisation's is not in the list.
+      refute has_element?(view, "#settings-tab-organisation, #settings-tab-audit_log")
+      refute has_element?(view, "#settings-tabs a[href='/#{org.slug}/settings/people']")
       refute has_element?(view, "#settings-tabs a[href='/#{org.slug}/settings']")
       refute has_element?(view, "#settings-tabs a[href='/users/settings']")
       refute has_element?(view, "#settings-tabs a[href$='/danger']")

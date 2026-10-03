@@ -32,6 +32,7 @@ defmodule ApiaryWeb.RoutesFeaturesCase do
     ApiaryWeb.Contract.ConfigurationController,
     ApiaryWeb.AccessKeyLive.Index,
     ApiaryWeb.MemberLive.Index,
+    ApiaryWeb.MemberLive.Workspace,
     ApiaryWeb.SettingsLive,
     ApiaryWeb.ActivityLive,
     ApiaryWeb.UserLive.Organisations,

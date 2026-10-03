@@ -1003,6 +1003,7 @@ msgstr[0] ""
 msgstr[1] ""
 
 #: lib/apiary_web/live/member_live/index.ex
+#: lib/apiary_web/live/member_live/workspace.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} person matches"
 msgid_plural "%{number} people match"
@@ -2158,6 +2159,7 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #: lib/apiary_web/live/member_live/index.ex
+#: lib/apiary_web/live/member_live/workspace.ex
 #: lib/apiary_web/live/user_live/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "Admin"
@@ -4017,11 +4019,13 @@ msgid "Find a host, e.g. *.github.example seen:no"
 msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex
+#: lib/apiary_web/live/member_live/workspace.ex
 #, elixir-autogen, elixir-format
 msgid "Find a person"
 msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex
+#: lib/apiary_web/live/member_live/workspace.ex
 #, elixir-autogen, elixir-format
 msgid "Find a person by email"
 msgstr ""
@@ -4383,7 +4387,7 @@ msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
-msgid "How long this workspace keeps a run's events and log output."
+msgid "How long this workspace keeps runs, their events and their logs."
 msgstr ""
 
 #: lib/apiary_web/live/user_live/settings.ex
@@ -4720,6 +4724,7 @@ msgid "Join %{name}"
 msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex
+#: lib/apiary_web/live/member_live/workspace.ex
 #, elixir-autogen, elixir-format
 msgid "Joined"
 msgstr ""
@@ -4976,6 +4981,7 @@ msgid "Let through in this target's runs, last 14 days, with no rule matching"
 msgstr "Let through in this repository's runs, last 14 days, with no rule matching"
 
 #: lib/apiary_web/live/member_live/index.ex
+#: lib/apiary_web/live/member_live/workspace.ex
 #: lib/apiary_web/live/user_live/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "Level"
@@ -5255,6 +5261,11 @@ msgstr ""
 msgid "Manage access keys"
 msgstr ""
 
+#: lib/apiary_web/live/member_live/workspace.ex
+#, elixir-autogen, elixir-format
+msgid "Manage people"
+msgstr ""
+
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Manages access keys and sees the runs"
@@ -5282,6 +5293,7 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #: lib/apiary_web/live/member_live/index.ex
+#: lib/apiary_web/live/member_live/workspace.ex
 #: lib/apiary_web/live/user_live/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "Member"
@@ -5318,6 +5330,7 @@ msgid "Member's level changed"
 msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex
+#: lib/apiary_web/live/member_live/workspace.ex
 #, elixir-autogen, elixir-format
 msgid "Members"
 msgstr ""
@@ -5681,6 +5694,7 @@ msgid "No machine has posted a run to this workspace yet."
 msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex
+#: lib/apiary_web/live/member_live/workspace.ex
 #, elixir-autogen, elixir-format
 msgid "No member's email has %{text}."
 msgstr ""
@@ -5925,6 +5939,11 @@ msgstr ""
 #: lib/apiary/policy.ex
 #, elixir-autogen, elixir-format
 msgid "Nobody has made this workspace's policy yet: its machines run under their own, and there is no version until the first change here."
+msgstr ""
+
+#: lib/apiary_web/live/member_live/workspace.ex
+#, elixir-autogen, elixir-format
+msgid "Nobody reaches this workspace yet."
 msgstr ""
 
 #: lib/apiary_web/live/user_live/settings.ex
@@ -6454,6 +6473,7 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #: lib/apiary_web/live/member_live/index.ex
+#: lib/apiary_web/live/member_live/workspace.ex
 #: lib/apiary_web/live/user_live/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "Owner"
@@ -6551,6 +6571,7 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/live/member_live/index.ex
+#: lib/apiary_web/live/member_live/workspace.ex
 #: lib/apiary_web/live/organisation_live.ex
 #, elixir-autogen, elixir-format
 msgid "People"
@@ -7041,8 +7062,6 @@ msgid "Results"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
-#: lib/apiary_web/components/settings_components.ex
-#: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Retention"
 msgstr ""
@@ -7340,9 +7359,11 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/controllers/jump_controller.ex
 #: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/run_live/index.ex
+#: lib/apiary_web/live/settings_live.ex
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Runs"
@@ -8341,6 +8362,11 @@ msgstr ""
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "The people in this organisation. Owners and admins manage members and settings; members manage access keys, see the runs and change the policy's rules that are not locked."
+msgstr ""
+
+#: lib/apiary_web/live/member_live/workspace.ex
+#, elixir-autogen, elixir-format
+msgid "The people who reach this workspace, and at what level; membership is managed in the organisation's People."
 msgstr ""
 
 #: lib/apiary_web/live/workspace_live/overview.ex
@@ -9419,6 +9445,7 @@ msgstr ""
 #: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/controllers/jump_controller.ex
 #: lib/apiary_web/live/access_key_live/index.ex
+#: lib/apiary_web/live/member_live/workspace.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Workspace settings"
@@ -10391,11 +10418,6 @@ msgstr ""
 msgid "policy"
 msgstr ""
 
-#: lib/apiary_web/controllers/jump_controller.ex
-#, elixir-autogen, elixir-format
-msgid "prune keep"
-msgstr ""
-
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "reads requests to %{hosts}"
@@ -10414,6 +10436,11 @@ msgstr ""
 #: lib/apiary/runs/record/timeline.ex
 #, elixir-autogen, elixir-format
 msgid "response"
+msgstr ""
+
+#: lib/apiary_web/controllers/jump_controller.ex
+#, elixir-autogen, elixir-format
+msgid "retention prune keep"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -10694,6 +10721,7 @@ msgstr ""
 #: lib/apiary_web/live/activity_live.ex
 #: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/member_live/index.ex
+#: lib/apiary_web/live/member_live/workspace.ex
 #: lib/apiary_web/live/run_live/show.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format

@@ -410,7 +410,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
 
       assert has_element?(
                view,
-               "#overview-retention-settings[href='#{workspace_path(scope, "/settings/retention")}']"
+               "#overview-retention-settings[href='#{workspace_path(scope, "/settings/runs")}']"
              )
 
       {:ok, _} =

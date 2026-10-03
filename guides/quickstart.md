@@ -112,7 +112,9 @@ are at `/acme/main/runs`. Renaming keeps a slug. A link to a page names its work
 a colleague in the organisation opens the same page, and anyone else gets *Not Found*.
 
 The people of the organisation are under **Settings › People**, `/<organisation>/settings/people`, each
-at one of three levels, and every one of them reaches the workspace. An invitation is an
+at one of three levels, and every one of them reaches the workspace; the workspace's own
+**Settings › People**, `/<organisation>/<workspace>/settings/people`, lists who reaches it,
+and leads owners and admins to the organisation's. An invitation is an
 email address and nothing else: the person joins as a member, and an owner changes their
 level afterwards. An **owner** and an **admin** manage the organisation's members and
 settings; only an owner changes a person's level or locks a rule of the security policy,

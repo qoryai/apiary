@@ -9,8 +9,9 @@ address and the client each came from ([Install and configure](install.md)).
 
 ## The two settings
 
-On the workspace's **Settings**, `/:org/:workspace/settings`, under **Retention**. Only
-owners and admins change them; members read them.
+On the workspace's **Settings**, under **Runs**, `/:org/:workspace/settings/runs`
+(`/:org/:workspace/settings/retention`, its path before, still leads there). Only owners and
+admins change them; members read them.
 
 | Setting | What it limits | Default |
 |---|---|---|
