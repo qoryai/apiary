@@ -172,6 +172,7 @@ defmodule ApiaryWeb.JumpController do
 
   defp also(%Entry{key: :audit_log}), do: gettext("activity history")
   defp also(%Entry{key: :retention}), do: gettext("prune keep")
+  defp also(%Entry{key: :secrets}), do: gettext("secret variable environment token value")
   defp also(%Entry{key: :theme}), do: gettext("dark light appearance")
   defp also(%Entry{section: :foot}), do: gettext("general name slug")
   defp also(%Entry{}), do: ""

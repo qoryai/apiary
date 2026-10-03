@@ -384,6 +384,31 @@ defmodule ApiaryWeb.Routes do
               live "/settings/keys/:id/rotate", AccessKeyLive.Index, :rotate
               live "/settings/keys/:id/revoke", AccessKeyLive.Index, :revoke
               live "/settings/retention", SettingsLive, :retention
+              # The stored secrets and the variables, one section of two views, with the
+              # `security` feature; each dialog over its view at a path of its own. A
+              # secret is named by its public id (`sec_…`), a value by its value id; the
+              # one value without a value id is the secret's `change-value`.
+              live "/settings/secrets", SecretLive.Index, :secrets
+              live "/settings/secrets/new", SecretLive.Index, :new_secret
+              live "/settings/secrets/:id/add-value", SecretLive.Index, :add_value
+              live "/settings/secrets/:id/change-value", SecretLive.Index, :change_value
+              live "/settings/secrets/:id/values/:value_id/change", SecretLive.Index,
+                   :change_value
+
+              live "/settings/secrets/:id/values/:value_id/rename", SecretLive.Index,
+                   :rename_value
+
+              live "/settings/secrets/:id/values/:value_id/delete", SecretLive.Index,
+                   :delete_value
+
+              live "/settings/secrets/:id/delete", SecretLive.Index, :delete_secret
+              live "/settings/variables", SecretLive.Index, :variables
+              live "/settings/variables/new", SecretLive.Index, :new_variable
+              live "/settings/variables/:id/change", SecretLive.Index, :change_variable
+              live "/settings/variables/:id/lock", SecretLive.Index, :lock_variable
+              live "/settings/variables/:id/unlock", SecretLive.Index, :unlock_variable
+              live "/settings/variables/:id/delete", SecretLive.Index, :delete_variable
+              live "/settings/variables/:id/targets", SecretLive.Index, :variable_targets
               # The confirmation of deleting this workspace, a modal over General, whose
               # danger zone opens it; the second path opens the same.
               live "/settings/danger", SettingsLive, :workspace_danger

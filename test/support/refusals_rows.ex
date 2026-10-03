@@ -19,8 +19,8 @@ defmodule ApiaryWeb.RefusalsRows do
 
   The world: an organisation with an owner, a second owner, an admin and two members; a
   second workspace, and a third marked for deletion; in the first workspace a rule, a
-  locked rule, a target, an access key, a run that has not ended, and a pending
-  invitation; and another organisation, with its owner.
+  locked rule, a stored secret, a variable, a target, an access key, a run that has not
+  ended, and a pending invitation; and another organisation, with its owner.
   """
 
   @behaviour ApiaryWeb.RefusalsCase
@@ -30,7 +30,7 @@ defmodule ApiaryWeb.RefusalsRows do
   import Apiary.OrganisationsFixtures
   import Apiary.RunListFixtures
 
-  alias Apiary.{Deletion, Policy, Repo}
+  alias Apiary.{Deletion, Policy, Repo, Secrets, Variables}
   alias Apiary.Organisations.Membership
   alias Apiary.Runs.Target
   alias ApiaryWeb.RefusalsCase
@@ -229,6 +229,42 @@ defmodule ApiaryWeb.RefusalsRows do
       {:"access_key.revoke", :other_owner, "/:other_org/:other_ws/settings/keys/:key/revoke",
        "revoke", %{}, answer: :not_found_at_mount},
 
+      # Stored secrets and variables, the workspace's settings' Secrets and variables. A
+      # member's page has no dialog to open, so the event reaches the context function, or
+      # the page refuses it for their role; a demoted admin's dialog was open.
+      {:"secret.write", :member, "/:org/:workspace/settings/secrets", "create_secret",
+       %{"secret" => %{"name" => "SNEAKY", "value" => "not-to-be-saved"}}},
+      {:"secret.write", :member, "/:org/:workspace/settings/secrets", "delete_secret", %{}},
+      {:"secret.write", :removed_member, "/:org/:workspace/settings/secrets", "create_secret",
+       %{"secret" => %{"name" => "SNEAKY", "value" => "not-to-be-saved"}}},
+      {:"secret.write", :demoted_admin, "/:org/:workspace/settings/secrets/new", "create_secret",
+       %{"secret" => %{"name" => "SNEAKY", "value" => "not-to-be-saved"}}},
+      {:"secret.write", :demoted_admin, "/:org/:workspace/settings/secrets/:secret/change-value",
+       "set_value", %{"secret_value" => %{"value" => "not-to-be-saved"}}},
+      {:"secret.write", :demoted_admin, "/:org/:workspace/settings/secrets/:secret/add-value",
+       "add_value",
+       %{"secret_value" => %{"first_value_id" => "a", "value_id" => "b", "value" => "c"}}},
+      {:"secret.write", :demoted_admin, "/:org/:workspace/settings/secrets/:secret/delete",
+       "delete_secret", %{}},
+      # This organisation's secret, in a dialog of another organisation's path: the dialog
+      # does not open, and the page says the secret is not there.
+      {:"secret.write", :other_owner, "/:other_org/:other_ws/settings/secrets/:secret/delete",
+       "delete_secret", %{}, answer: :refused_at_mount},
+      {:"variable.edit", :member, "/:org/:workspace/settings/variables", "create_variable",
+       %{"variable" => %{"name" => "SNEAKY", "value" => "x"}}},
+      {:"variable.edit", :member, "/:org/:workspace/settings/variables", "lock_variable", %{}},
+      {:"variable.edit", :removed_member, "/:org/:workspace/settings/variables",
+       "create_variable", %{"variable" => %{"name" => "SNEAKY", "value" => "x"}}},
+      {:"variable.edit", :demoted_admin, "/:org/:workspace/settings/variables/:variable/change",
+       "change_variable", %{"variable" => %{"value" => "changed"}}},
+      {:"variable.edit", :demoted_admin, "/:org/:workspace/settings/variables/:variable/lock",
+       "lock_variable", %{}},
+      {:"variable.edit", :demoted_admin, "/:org/:workspace/settings/variables/:variable/delete",
+       "delete_variable", %{}},
+      {:"variable.edit", :other_owner,
+       "/:other_org/:other_ws/settings/variables/:variable/delete", "delete_variable", %{},
+       answer: :refused_at_mount},
+
       # A run.
       {:"run.close", :removed_member, "/:org/:workspace/runs/:run", "close_confirm", %{},
        prelude: [{"close", %{}}]},
@@ -246,27 +282,27 @@ defmodule ApiaryWeb.RefusalsRows do
   # a page (`test/apiary/instance_admin_test.exs`). A sign-up's: it creates an
   # organisation for a person who is not signed in, and asks no one's level; no page of
   # the core offers it to a signed-in person. An edition's: creating a workspace, which
-  # no page of the core offers, and an edition's page does, with rows of its own. Stored
-  # secrets and variables: no page offers them yet, and their contexts' tests refuse
-  # them (`test/apiary/secrets_test.exs`, `test/apiary/variables_test.exs`); their page
-  # brings its rows.
+  # no page of the core offers, and an edition's page does, with rows of its own. Linking
+  # a stored secret to what uses it: no page links one yet, and the context's tests
+  # refuse it.
   @impl true
   def exempt do
     %{
-      reads: [:"run.read", :"run.read_log", :"security_policy.read", :"audit.read"],
+      reads: [
+        :"run.read",
+        :"run.read_log",
+        :"security_policy.read",
+        :"audit.read",
+        :"secret.read",
+        :"variable.read"
+      ],
       jobs: [:"organisation.purge", :"workspace.purge", :"audit.prune"],
       contract: [:"run.post_events", :"run_configuration.fetch"],
       token: [:"invitation.accept"],
       release: [:"instance_admin.grant", :"instance_admin.revoke"],
       sign_up: [:"organisation.create"],
       edition: [:"workspace.create"],
-      no_page_yet: [
-        :"secret.read",
-        :"secret.write",
-        :"secret.use",
-        :"variable.read",
-        :"variable.edit"
-      ]
+      no_page_yet: [:"secret.use"]
     }
   end
 
@@ -278,13 +314,18 @@ defmodule ApiaryWeb.RefusalsRows do
     {:ok, _} = Deletion.delete_workspace(owner, workspace_c.id, workspace_c.slug)
 
     # The rules are the security policy's, which an instance without it does not have.
-    {rule_open, rule_locked} =
+    {rule_open, rule_locked, secret, variable} =
       if :security in Apiary.Features.enabled() do
         {:ok, open} = Policy.allow(owner, nil, %{host: "open.example"})
         {:ok, locked} = Policy.deny(owner, nil, %{host: "locked.example", locked: true})
-        {open, locked}
+        {:ok, secret} = Secrets.create_secret(owner, %{name: "FORGE_TOKEN", value: "x"})
+
+        {:ok, variable} =
+          Variables.create_variable(owner, :workspace, %{name: "NODE_ENV", value: "production"})
+
+        {open, locked, secret, variable}
       else
-        {nil, nil}
+        {nil, nil, nil, nil}
       end
 
     target =
@@ -332,6 +373,8 @@ defmodule ApiaryWeb.RefusalsRows do
       other_workspace: other.workspace,
       rule_open: rule_open,
       rule_locked: rule_locked,
+      secret: secret,
+      variable: variable,
       target: target,
       key: key,
       run: run,
@@ -354,6 +397,8 @@ defmodule ApiaryWeb.RefusalsRows do
   def value(:workspace_c_id, world), do: {:id, world.workspace_c.id}
   def value(:rule_open, world), do: {:id, world.rule_open.id}
   def value(:rule_locked, world), do: {:id, world.rule_locked.id}
+  def value(:secret, world), do: world.secret.public_id
+  def value(:variable, world), do: {:id, world.variable.id}
   def value(:target, world), do: {:id, world.target.id}
   def value(:target_page, world), do: "#{world.target.system}/#{world.target.path}"
   def value(:key, world), do: {:id, world.key.id}

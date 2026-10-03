@@ -524,9 +524,19 @@ msgstr ""
 msgid "%{name} allows only its own hosts, so an allow of this workspace would not be in force. Add it to %{name}'s policy, for every workspace?"
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} has one value, which goes only with the secret: delete the secret instead."
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
 msgid "%{name} is already named here."
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} is changed."
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -539,9 +549,34 @@ msgstr ""
 msgid "%{name} is deleted and is purged on %{date}. Until then you can cancel the deletion on this page."
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} is deleted."
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} is locked."
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
 msgid "%{name} is named here already. Adding it replaces its argument."
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} is saved."
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} is unlocked."
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} is used by %{uses}: unlink it there first."
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -1101,6 +1136,13 @@ msgid_plural "%{number} runs under the machines' policies"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} secret matches"
+msgid_plural "%{number} secrets match"
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} selected"
@@ -1181,10 +1223,38 @@ msgid_plural "%{number} target rules stop being in force"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} target set aside by the lock"
+msgid_plural "%{number} targets set aside by the lock"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} target set its own: its runs are given it again."
+msgid_plural "%{number} targets set their own: their runs are given them again."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} target sets its own"
+msgid_plural "%{number} targets set their own"
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} target sets its own mode and does not change."
 msgid_plural "%{number} targets set their own mode and do not change."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} target sets its own now: while the lock holds, its runs are given the workspace's value."
+msgid_plural "%{number} targets set their own now: while the lock holds, their runs are given the workspace's value."
 msgstr[0] ""
 msgstr[1] ""
 
@@ -1228,6 +1298,20 @@ msgstr[1] ""
 #, elixir-autogen, elixir-format
 msgid "%{number} turn"
 msgid_plural "%{number} turns"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} value"
+msgid_plural "%{number} values"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} variable matches"
+msgid_plural "%{number} variables match"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -1463,6 +1547,11 @@ msgstr ""
 msgid "%{time} %{zone}"
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{time} by %{person}"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "%{time} by a member"
@@ -1481,6 +1570,26 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "%{tool} failed: %{summary}"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{value_id} is added to %{name}."
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{value_id} is deleted from %{name}."
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{value_id} of %{name} is changed."
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{value_id} of %{name} is now %{new}."
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -1804,6 +1913,11 @@ msgstr ""
 msgid "A name is 1 to 64 lower-case letters, digits, dots, dashes or underscores, and starts with a letter or digit."
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "A node cannot change a variable set here; it can only add its own."
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
 msgid "A path starts with / and may end in one *; no other wildcard and no query, such as %{example}."
@@ -1885,10 +1999,35 @@ msgstr ""
 msgid "A run reloads the policy at its next heartbeat."
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "A run without a wall receives these only on nodes whose runner file turns that on."
+msgstr ""
+
 #: lib/apiary/policy/resolution.ex
 #, elixir-autogen, elixir-format
 msgctxt "plain"
 msgid "A runner holds a host to one list of paths and cannot tell which of the two applies."
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "A secret holds a value the runs are given, such as a token for a system. Once it is saved, nobody sees it again."
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "A secret holds at most %{number} values."
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "A secret is never shown again once it is saved; a variable is plain text."
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "A secret with several values names each one with a value ID, and what uses the secret chooses one of them."
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -1916,6 +2055,11 @@ msgstr ""
 msgid "A target is listed here once a run of this workspace names it."
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "A target may set its own value of %{name} again."
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "A target that sets its own mode does not change. The rules stay as they are, locked ones too: a deny holds in either mode."
@@ -1941,6 +2085,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "A variable"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "A variable is a plain value a run's process is given, such as the address of a package registry."
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -2048,8 +2197,14 @@ msgid "Actions for %{label}"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
+#: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Actions for %{name}"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Actions for %{value_id} of %{name}"
 msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex
@@ -2125,6 +2280,11 @@ msgstr ""
 msgid "Add a rule: the composer's host field"
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Add a value to %{name}"
+msgstr ""
+
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Add credential"
@@ -2143,6 +2303,16 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Add the hosts your runs need here, or let a run reach out first and allow its hosts from the Network access page, one row at a time."
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Add value"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Add value…"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -2645,6 +2815,7 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/show.ex
 #: lib/apiary_web/live/policy_live/target.ex
 #: lib/apiary_web/live/run_live/show.ex
+#: lib/apiary_web/live/secret_live/index.ex
 #: lib/apiary_web/live/settings_live.ex
 #: lib/apiary_web/live/user_live/settings.ex
 #: lib/apiary_web/live/workspace_live/overview.ex
@@ -2686,6 +2857,11 @@ msgstr ""
 msgid "Change"
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Change %{value_id} of %{name}"
+msgstr ""
+
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
 msgid "Change email"
@@ -2701,6 +2877,11 @@ msgstr ""
 msgid "Change paths"
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Change the value of %{name}"
+msgstr ""
+
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Change to allow"
@@ -2711,7 +2892,18 @@ msgstr ""
 msgid "Change to deny"
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Change value"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Change value…"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/common.ex
+#: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Changed"
 msgstr ""
@@ -2849,6 +3041,7 @@ msgstr ""
 msgid "Clear the filters to see every change."
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
 #: lib/apiary_web/live/target_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Clear the search"
@@ -2858,6 +3051,7 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/policy_live/views.ex
+#: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Close"
 msgstr ""
@@ -3271,9 +3465,19 @@ msgstr ""
 msgid "Declared by the harness"
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Delete %{name}"
+msgstr ""
+
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Delete %{name}?"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Delete %{value_id} of %{name}"
 msgstr ""
 
 #: lib/apiary_web/live/user_live/settings.ex
@@ -3306,6 +3510,16 @@ msgstr ""
 msgid "Delete organisation…"
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Delete secret"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Delete secret…"
+msgstr ""
+
 #: lib/apiary_web/components/settings_components.ex
 #, elixir-autogen, elixir-format
 msgid "Delete the workspace %{name}"
@@ -3319,6 +3533,26 @@ msgstr ""
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Delete this workspace"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Delete value"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Delete value…"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Delete variable"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Delete variable…"
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -3391,6 +3625,7 @@ msgstr ""
 msgid "Delete…"
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
 #: lib/apiary_web/live/settings_live.ex
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
@@ -4066,7 +4301,18 @@ msgstr ""
 msgid "Find a person by email"
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Find a secret"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Find a secret by name or value ID"
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/live/secret_live/index.ex
 #: lib/apiary_web/live/target_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Find a target"
@@ -4075,6 +4321,16 @@ msgstr ""
 #: lib/apiary_web/live/target_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Find a target, e.g. %{example}"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Find a variable"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Find a variable by name or value"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -4709,6 +4965,11 @@ msgstr ""
 msgid "Its own rules come first; %{name}'s and %{workspace}'s follow and are changed where they live. %{name}'s rules hold in every workspace and target, in either mode."
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Its own value"
+msgstr ""
+
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Its own, set by %{by} %{when}; %{workspace} enforces."
@@ -4747,6 +5008,11 @@ msgstr ""
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Its runs, policy and access keys go with it, and its keys stop working; its members stay in the organisation. After the purge, %{days} later, nothing brings it back."
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Its value set aside by the lock"
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -4995,6 +5261,11 @@ msgstr ""
 msgid "Leaving"
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Left out by the runner"
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Left the organisation"
@@ -5013,6 +5284,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
 msgid "Let through in this target's runs, last 14 days, with no rule matching"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Letters, digits and _, starting with a letter or _."
 msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex
@@ -5073,8 +5349,14 @@ msgid "Loading the activity"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
+#: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Lock"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Lock %{name}"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
@@ -5092,8 +5374,14 @@ msgstr ""
 msgid "Lock the rule"
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Lock variable"
+msgstr ""
+
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/policy_components.ex
+#: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Locked"
 msgstr ""
@@ -5161,6 +5449,21 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "Locked. Only an owner can change or unlock it."
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Locked: a target may not set its own value"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Locking"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Lock…"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -5258,6 +5561,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Lost. Last heard %{time}"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Lowercase letters, digits, ., _ and -."
 msgstr ""
 
 #: lib/apiary_web/live/target_live/show.ex
@@ -5431,6 +5739,7 @@ msgid "Most used"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
+#: lib/apiary_web/live/secret_live/index.ex
 #: lib/apiary_web/live/settings_live.ex
 #: lib/apiary_web/live/target_live/index.ex
 #, elixir-autogen, elixir-format
@@ -5543,6 +5852,11 @@ msgstr ""
 msgid "New password"
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "New secret"
+msgstr ""
+
 #: lib/apiary_web/live/access_key_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "New secret for %{label}"
@@ -5551,6 +5865,16 @@ msgstr ""
 #: lib/apiary_web/live/user_live/login.ex
 #, elixir-autogen, elixir-format
 msgid "New to Qory Apiary?"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "New value"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "New variable"
 msgstr ""
 
 #: lib/apiary_web/live/activity_live.ex
@@ -5879,6 +6203,16 @@ msgstr ""
 msgid "No runs yet"
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No secret matches"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No secrets yet"
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "No session events arrived. They come from the runtime's hooks over a local socket; when the socket is not working the run still has its terminal and connections."
@@ -5914,6 +6248,11 @@ msgstr ""
 msgid "No target sets its own mode. Every one follows the workspace's default."
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No target sets its own value."
+msgstr ""
+
 #: lib/apiary_web/live/target_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "No target that never ran matches"
@@ -5933,6 +6272,16 @@ msgstr ""
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "No task"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No variable matches"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No variables yet"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -5982,6 +6331,11 @@ msgstr[1] ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "None"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "None of their own"
 msgstr ""
 
 #: lib/apiary_web/controllers/error_html.ex
@@ -6061,9 +6415,19 @@ msgstr ""
 msgid "Not in force: this target's own rule decides it"
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Not locked"
+msgstr ""
+
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Not part of an organisation yet"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Not saved: %{reason}"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/rule_list.ex
@@ -6080,6 +6444,11 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgctxt "plain"
 msgid "Not served yet: it applies from the first change here."
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Not used yet"
 msgstr ""
 
 #: lib/apiary_web/live/invitation_live/accept.ex
@@ -6215,6 +6584,11 @@ msgstr ""
 msgid "One target"
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "One value"
+msgstr ""
+
 #: lib/apiary_web/live/connection_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Only"
@@ -6271,6 +6645,11 @@ msgstr ""
 msgid "Only an owner or an admin sets a mode."
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Only for a secret that will hold several values: a lowercase name for this one."
+msgstr ""
+
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Only owners and admins can change these settings."
@@ -6284,6 +6663,11 @@ msgstr ""
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Only owners and admins cancel the deletion of a workspace."
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Only owners and admins change this."
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -6640,6 +7024,11 @@ msgstr ""
 msgid "Places"
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Plain text on one line, shown to every member."
+msgstr ""
+
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/policy_live/show.ex
@@ -6882,6 +7271,11 @@ msgstr ""
 msgid "Recently added"
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Recently changed"
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Reconnecting"
@@ -6966,6 +7360,11 @@ msgstr ""
 msgid "Remove the deny rule %{host}"
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Remove the filter %{filter}"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Remove the rule"
@@ -7010,6 +7409,21 @@ msgstr ""
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Removing"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Rename %{value_id} of %{name}"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Rename value"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Rename value…"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -7418,6 +7832,16 @@ msgstr ""
 msgid "Runs and denied attempts per day"
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Runs are no longer given the workspace's value of %{name}. A target that sets its own keeps it. This cannot be undone."
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Runs are not given %{name}: the runner leaves the names on its deny list out of what a run is given."
+msgstr ""
+
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Runs of %{target}"
@@ -7485,6 +7909,17 @@ msgstr ""
 msgid "Save password"
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Save secret"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Save variable"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
 #: lib/apiary_web/live/settings_live.ex
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
@@ -7509,6 +7944,17 @@ msgstr ""
 #: lib/apiary_web/live/access_key_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Secret"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Secrets"
+msgstr ""
+
+#: lib/apiary_web/components/settings_components.ex
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Secrets and variables"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -7624,6 +8070,16 @@ msgstr ""
 msgid "Set a variable"
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Set aside: locked above the workspace"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Set by a target too"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Set the default to enforce"
@@ -7671,6 +8127,11 @@ msgstr ""
 #: lib/apiary_web/controllers/jump_controller.ex
 #, elixir-autogen, elixir-format
 msgid "Settings › %{page}"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Several values"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -7854,6 +8315,11 @@ msgstr ""
 msgid "Stopped by the workspace: a member closed it after it went quiet."
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Stored encrypted. Nobody sees it again once it is saved."
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Stored secret changed"
@@ -8003,6 +8469,7 @@ msgstr ""
 #: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/policy_live/show.ex
 #: lib/apiary_web/live/run_live/index.ex
+#: lib/apiary_web/live/secret_live/index.ex
 #: lib/apiary_web/live/target_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Targets"
@@ -8011,6 +8478,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Targets and their policy"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Targets that set %{name}"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
@@ -8072,6 +8544,21 @@ msgstr ""
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "That member is no longer in the organisation."
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "That secret is no longer in this workspace."
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "That value is no longer in %{name}."
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "That variable is no longer in this workspace."
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -8585,6 +9072,13 @@ msgstr ""
 msgid "The same path elsewhere"
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "The secret and its value are deleted. This cannot be undone."
+msgid_plural "The secret and its %{number} values are deleted. This cannot be undone."
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "The secret is shown once, in the dialog that creates it. One key can serve many hosts: a pool of ephemeral instances shares one."
@@ -8633,6 +9127,31 @@ msgstr ""
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "The use of the last 14 days could not be counted, so seen: narrows nothing."
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "The value is deleted, and the secret keeps its other values. This cannot be undone."
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "The value it holds now is not shown. Runs are given the new one from their next start."
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "The value of %{name} is changed."
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "The value stays as it is; only its value ID changes."
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "The values of this workspace cannot be read: the instance's encryption secret is not the one they were stored under."
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -9103,6 +9622,16 @@ msgstr ""
 msgid "Unlock"
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Unlock %{name}"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Unlock variable"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "Unlocked %{subject}"
@@ -9116,6 +9645,16 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Unlocked a variable"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Unlocking"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Unlock…"
 msgstr ""
 
 #: lib/apiary_web/components/target_components.ex
@@ -9163,14 +9702,54 @@ msgstr ""
 msgid "Used again."
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Used by"
+msgstr ""
+
 #: lib/apiary_web/live/user_live/registration.ex
 #, elixir-autogen, elixir-format
 msgid "Usually your company's name. Owners can change it later in the organisation's settings."
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Value"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Value ID"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Value ID of the new value"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Value ID of the value it holds now"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Values"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Values the runs of this workspace are given."
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Variable changed"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Variables"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -9357,6 +9936,11 @@ msgstr ""
 msgid "What enforce would deny is not counted"
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "What it is for"
+msgstr ""
+
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "What no rule names is let through and recorded; a deny rule holds, and so do %{workspace}'s locked rules."
@@ -9415,6 +9999,11 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Where you are"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "While %{name} is locked, a target may not set its own value."
 msgstr ""
 
 #: lib/apiary_web/live/activity_live.ex
@@ -9499,6 +10088,7 @@ msgstr ""
 #: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/controllers/jump_controller.ex
 #: lib/apiary_web/live/access_key_live/index.ex
+#: lib/apiary_web/live/secret_live/index.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Workspace settings"
@@ -9595,6 +10185,7 @@ msgstr ""
 
 #: lib/apiary_web/live/access_key_live/index.ex
 #: lib/apiary_web/live/run_live/show.ex
+#: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "You are no longer a member of this workspace."
 msgstr ""
@@ -10515,6 +11106,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "runner.yaml · the egress section"
+msgstr ""
+
+#: lib/apiary_web/controllers/jump_controller.ex
+#, elixir-autogen, elixir-format
+msgid "secret variable environment token value"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
