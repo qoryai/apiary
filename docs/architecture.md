@@ -36,7 +36,11 @@ beside it:
 - `Apiary.Nodes`: a workspace's nodes and node pools (`nodes`), the places its runs run:
   a node is one permanent machine, a pool a fleet of short-lived instances up to its
   instance limit or none; the kind is fixed when one is made, and a deleted one is gone
-  from every read but keeps its row until its workspace is purged.
+  from every read but keeps its row until its workspace is purged. Its instances
+  (`node_instances`) are claims a runner makes under the node's key, recorded by
+  `Apiary.Nodes.seen/3` behind an ETS throttle (`Apiary.Nodes.Throttle`); running means a
+  run alive by `Apiary.Runs.Liveness.alive/2`, and the instance limit is checked under
+  the node's row lock (`check_instance_limit/3`, `admit/4`).
 - `Apiary.Targets`: the workspace's targets as the pages read them, the index in one query
   bounded by fourteen days and a target's page, and the targets a person pinned
   (`target_pins`), their own reading preference, which leaves no audit entry.
