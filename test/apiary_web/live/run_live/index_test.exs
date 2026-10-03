@@ -627,44 +627,48 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       end
     end
 
-    test "no value of any parameter breaks the page, and it ends on the canonical URL", %{
-      conn: conn,
-      scope: scope
-    } do
-      started_run(scope, shop())
+    # One test a parameter, each mounting the page thirteen times: the whole of it in one test
+    # came near the timeout on a loaded machine.
+    for name <-
+          ~w(group state system target task runtime host key q since from to denials sort per page run) do
+      @name name
 
-      bad = [
-        <<0>>,
-        "a" <> <<0>> <> "b",
-        "\e[31m",
-        String.duplicate("x", 5000),
-        "99999999999999999999999999",
-        "-1",
-        "2026-02-31",
-        "none,none",
-        "%",
-        "' OR 1=1 --"
-      ]
+      test "no value of #{name} breaks the page, and it ends on the canonical URL", %{
+        conn: conn,
+        scope: scope
+      } do
+        started_run(scope, shop())
 
-      names =
-        ~w(group state system target task runtime host key q since from to denials sort per page run)
+        bad = [
+          <<0>>,
+          "a" <> <<0>> <> "b",
+          "\e[31m",
+          String.duplicate("x", 5000),
+          "99999999999999999999999999",
+          "-1",
+          "2026-02-31",
+          "none,none",
+          "%",
+          "' OR 1=1 --"
+        ]
 
-      for name <- names, value <- bad do
-        {view, to} =
-          follow(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs?#{%{name => value}}")
+        for value <- bad do
+          {view, to} =
+            follow(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs?#{%{@name => value}}")
 
-        render_async(view)
-        assert has_element?(view, "#runs-filters"), "#{name}=#{inspect(value)} broke the page"
-        refute has_element?(view, "#runs-error")
-        assert URI.parse(to).path == "#{workspace_path(scope)}/runs"
-      end
+          render_async(view)
+          assert has_element?(view, "#runs-filters"), "#{@name}=#{inspect(value)} broke the page"
+          refute has_element?(view, "#runs-error")
+          assert URI.parse(to).path == "#{workspace_path(scope)}/runs"
+        end
 
-      # Lists and maps where a string is expected.
-      for name <- names, shape <- ["#{name}[]=x", "#{name}[a]=x", "#{name}[a][]=x"] do
-        {view, to} = follow(conn, "#{workspace_path(scope)}/runs?" <> shape)
-        render_async(view)
-        assert has_element?(view, "#runs-filters"), "#{shape} broke the page"
-        assert to == "#{workspace_path(scope)}/runs"
+        # Lists and maps where a string is expected.
+        for shape <- ["#{@name}[]=x", "#{@name}[a]=x", "#{@name}[a][]=x"] do
+          {view, to} = follow(conn, "#{workspace_path(scope)}/runs?" <> shape)
+          render_async(view)
+          assert has_element?(view, "#runs-filters"), "#{shape} broke the page"
+          assert to == "#{workspace_path(scope)}/runs"
+        end
       end
     end
 
