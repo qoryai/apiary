@@ -77,12 +77,17 @@ defmodule Apiary.Nodes do
   end
 
   @doc """
-  get_node/2 is the workspace's node in use whose public id is `public_id`, or nil for one
-  that is deleted, of another workspace, or none.
+  get_node/2 is the workspace's node in use whose public id is `public_id`, with the
+  account that made it (`created_by`), or nil for one that is deleted, of another
+  workspace, or none.
   """
   @spec get_node(Scope.t(), String.t()) :: Node.t() | nil
   def get_node(%Scope{} = scope, public_id) when is_binary(public_id) do
-    scope |> live_query() |> where([n], n.public_id == ^public_id) |> Repo.one()
+    scope
+    |> live_query()
+    |> where([n], n.public_id == ^public_id)
+    |> preload(:created_by)
+    |> Repo.one()
   end
 
   def get_node(%Scope{}, _public_id), do: nil

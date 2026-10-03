@@ -38,6 +38,13 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
   (`c:ApiaryWeb.Edition.above_policy_link/1`), and a change of it renders every
   workspace again (`Apiary.Policy.rerender_in/3`, an `above_changed` change in each
   workspace's history).
+- Nodes and node pools, the places a workspace's runs run: a node is one permanent
+  machine that runs one instance at a time, a node pool a fleet of short-lived instances
+  up to its instance limit, or any number without one; the kind is fixed when one is
+  made. Owners and admins add them, rename them, change a pool's limit and delete them
+  (`node.create`, `node.edit`, `node.delete`, each in the audit trail); everyone in the
+  workspace reads them (`node.read`). The list is at `/:org/:workspace/nodes`, with New
+  node and New node pool, and each node has a page with Overview and Settings.
 - Access keys, created, rotated and revoked in the console; members at the levels owner,
   admin and member, and the suspension of a member.
 - The audit trail of every change, in the organisation's settings, under Audit log; retention of a

@@ -524,6 +524,11 @@ msgstr ""
 msgid "%{name} allows only its own hosts, so an allow of this workspace would not be in force. Add it to %{name}'s policy, for every workspace?"
 msgstr ""
 
+#: lib/apiary_web/live/node_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} is added."
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
 msgid "%{name} is already named here."
@@ -539,9 +544,24 @@ msgstr ""
 msgid "%{name} is deleted and is purged on %{date}. Until then you can cancel the deletion on this page."
 msgstr ""
 
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} is deleted."
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
 msgid "%{name} is named here already. Adding it replaces its argument."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} is saved."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} leaves this workspace's nodes at once, and its name is free again. Its runs stay in the record. This cannot be undone."
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -978,6 +998,20 @@ msgstr[1] ""
 #, elixir-autogen, elixir-format
 msgid "%{number} new run"
 msgid_plural "%{number} new runs"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/node_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} node"
+msgid_plural "%{number} nodes"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/node_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} node matches"
+msgid_plural "%{number} nodes match"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -1652,6 +1686,16 @@ msgstr "1 repository sets its own and enforces."
 msgid "1 target sets its own and observes."
 msgstr "1 repository sets its own and observes."
 
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "1, one instance at a time"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "1. A node runs one instance at a time."
+msgstr ""
+
 #: lib/apiary_web/live/organisation_live.ex
 #, elixir-autogen, elixir-format
 msgid "14 days"
@@ -1943,6 +1987,7 @@ msgstr "A repository's own rule for this host still decides there."
 msgid "A+"
 msgstr ""
 
+#: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "About"
@@ -2110,6 +2155,11 @@ msgstr ""
 msgid "Add a host rule"
 msgstr ""
 
+#: lib/apiary_web/live/node_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Add a node for a machine that is always there, or a node pool for instances that come and go."
+msgstr ""
+
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Add a rule for this target"
@@ -2129,6 +2179,16 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Add for this target"
 msgstr "Add for this repository"
+
+#: lib/apiary_web/live/node_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Add node"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Add node pool"
+msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
@@ -2159,6 +2219,11 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Added:"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Adding"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -2462,6 +2527,11 @@ msgstr ""
 msgid "An invitation expires after seven days."
 msgstr ""
 
+#: lib/apiary_web/live/node_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "An owner or admin adds nodes."
+msgstr ""
+
 #: lib/apiary_web/live/organisation_live.ex
 #, elixir-autogen, elixir-format
 msgid "An owner or an admin of the organisation added you to %{workspace}."
@@ -2632,6 +2702,8 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/access_key_live/index.ex
 #: lib/apiary_web/live/member_live/index.ex
+#: lib/apiary_web/live/node_live/index.ex
+#: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/policy_live/show.ex
 #: lib/apiary_web/live/policy_live/target.ex
 #: lib/apiary_web/live/run_live/show.ex
@@ -2824,6 +2896,7 @@ msgid "Clear"
 msgstr ""
 
 #: lib/apiary_web/live/connection_live/index.ex
+#: lib/apiary_web/live/node_live/index.ex
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Clear filters"
@@ -3256,6 +3329,7 @@ msgstr ""
 msgid "Declared by the harness"
 msgstr ""
 
+#: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Delete %{name}?"
@@ -3276,6 +3350,26 @@ msgstr ""
 msgid "Delete my account"
 msgstr ""
 
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Delete node"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Delete node pool"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Delete node pool…"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Delete node…"
+msgstr ""
+
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Delete organisation"
@@ -3294,6 +3388,16 @@ msgstr ""
 #: lib/apiary_web/components/settings_components.ex
 #, elixir-autogen, elixir-format
 msgid "Delete the workspace %{name}"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Delete this node"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Delete this node pool"
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -3371,6 +3475,7 @@ msgstr ""
 msgid "Delete…"
 msgstr ""
 
+#: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/settings_live.ex
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
@@ -3699,6 +3804,11 @@ msgstr ""
 #: lib/apiary_web/live/user_live/login.ex
 #, elixir-autogen, elixir-format
 msgid "Email me a link instead"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Empty means no limit. Lowering it stops nothing running now; new instances wait until fewer run."
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -4036,6 +4146,16 @@ msgstr ""
 msgid "Find a host, e.g. *.github.example seen:no"
 msgstr ""
 
+#: lib/apiary_web/live/node_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Find a node"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Find a node by its name or id"
+msgstr ""
+
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Find a person"
@@ -4096,6 +4216,11 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Fit the recorded columns to the width"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Fixed when it was made."
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -4258,6 +4383,7 @@ msgid "Full screen"
 msgstr ""
 
 #: lib/apiary_web/components/settings_components.ex
+#: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "General"
@@ -4406,6 +4532,11 @@ msgstr ""
 msgid "How long this workspace keeps a run's events and log output."
 msgstr ""
 
+#: lib/apiary_web/live/node_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "How many instances may run at once, up to %{max}. Empty means no limit."
+msgstr ""
+
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
 msgid "How the console shows things to you, in every organisation you belong to."
@@ -4414,6 +4545,11 @@ msgstr ""
 #: lib/apiary_web/live/access_key_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "I have copied the secret"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Id"
 msgstr ""
 
 #: lib/apiary_web/live/user_live/login.ex
@@ -4498,7 +4634,14 @@ msgstr "In the repository %{target}, which has rules of its own: %{refusal}"
 msgid "In the workspace's baseline: %{refusal}"
 msgstr ""
 
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Instance"
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
+#: lib/apiary_web/live/node_live/index.ex
+#: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Instance limit"
 msgstr ""
@@ -4562,6 +4705,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Invited a member"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "It can't be changed."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/reading.ex
@@ -4630,6 +4778,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "It last reported %{reported}; %{in_force} is in force (%{since})."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "It leaves this workspace's nodes, and its name is free again. Its runs stay in the record."
 msgstr ""
 
 #: lib/apiary_web/live/invitation_live/accept.ex
@@ -4829,6 +4982,8 @@ msgid "Keys"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
+#: lib/apiary_web/live/node_live/index.ex
+#: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Kind"
 msgstr ""
@@ -5250,6 +5405,11 @@ msgstr ""
 msgid "Machines use their own policy until the first change here."
 msgstr ""
 
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Made"
+msgstr ""
+
 #: lib/apiary_web/live/activity_live.ex
 #, elixir-autogen, elixir-format
 msgid "Made a change"
@@ -5412,6 +5572,8 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #: lib/apiary_web/components/policy_components.ex
+#: lib/apiary_web/live/node_live/index.ex
+#: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/settings_live.ex
 #: lib/apiary_web/live/target_live/index.ex
 #, elixir-autogen, elixir-format
@@ -5483,6 +5645,12 @@ msgstr ""
 msgid "Never ran"
 msgstr ""
 
+#: lib/apiary_web/live/node_live/index.ex
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Never seen"
+msgstr ""
+
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Never used in %{days}"
@@ -5517,6 +5685,16 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "New lines"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "New node"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "New node pool"
 msgstr ""
 
 #: lib/apiary_web/live/user_live/settings.ex
@@ -5691,7 +5869,18 @@ msgstr ""
 msgid "No host rules yet. Add the first above."
 msgstr ""
 
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "No instance of this node has reported yet. It shows here once it runs, running or when it was last seen."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "No instance of this pool has reported yet. An instance shows here while it runs."
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
+#: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "No limit"
 msgstr ""
@@ -5719,6 +5908,16 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "No new version: the document did not change."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No node matches"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No nodes yet"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -5804,6 +6003,11 @@ msgid "No run named a target in the last %{number} day."
 msgid_plural "No run named a target in the last %{number} days."
 msgstr[0] "No run named a repository in the last %{number} day."
 msgstr[1] "No run named a repository in the last %{number} days."
+
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "No run of this node is in the record yet."
+msgstr ""
 
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
@@ -5966,6 +6170,8 @@ msgstr[0] ""
 msgstr[1] ""
 
 #: lib/apiary_web/activity/describer/core.ex
+#: lib/apiary_web/live/node_live/index.ex
+#: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Node"
 msgstr ""
@@ -5986,8 +6192,26 @@ msgid "Node deleted"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
+#: lib/apiary_web/live/node_live/index.ex
+#: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Node pool"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Node pool: short-lived instances that share one access key."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Node: one permanent machine."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/index.ex
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Nodes"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -6108,6 +6332,11 @@ msgstr ""
 msgid "Nothing has posted to this workspace yet. An access key is all a machine needs to start."
 msgstr ""
 
+#: lib/apiary_web/live/node_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Nothing here has that name, id or kind."
+msgstr ""
+
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Nothing is pruned: runs, events and log output stay."
@@ -6221,6 +6450,11 @@ msgstr ""
 msgid "One agent's events: the main session, or a subagent from its start to its finish."
 msgstr ""
 
+#: lib/apiary_web/live/node_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "One permanent machine. It runs one instance at a time."
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "One target"
@@ -6282,6 +6516,11 @@ msgstr ""
 msgid "Only an owner or an admin sets a mode."
 msgstr ""
 
+#: lib/apiary_web/live/node_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Only owners and admins add nodes."
+msgstr ""
+
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Only owners and admins can change these settings."
@@ -6297,9 +6536,24 @@ msgstr ""
 msgid "Only owners and admins cancel the deletion of a workspace."
 msgstr ""
 
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Only owners and admins change nodes."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Only owners and admins change these settings."
+msgstr ""
+
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Only owners and admins delete a workspace."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Only owners and admins delete nodes."
 msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex
@@ -6492,6 +6746,7 @@ msgid "Overrides"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
+#: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Overview"
@@ -6536,6 +6791,7 @@ msgstr ""
 msgid "Owners"
 msgstr ""
 
+#: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Owners and admins can change these."
@@ -6696,6 +6952,11 @@ msgstr ""
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Policy · %{target}"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Pool"
 msgstr ""
 
 #: lib/apiary_web/live/user_live/confirmation.ex
@@ -6888,6 +7149,11 @@ msgstr ""
 msgid "Recent"
 msgstr ""
 
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Recent runs"
+msgstr ""
+
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Recently added"
@@ -6940,6 +7206,7 @@ msgstr ""
 msgid "Remove %{email}"
 msgstr ""
 
+#: lib/apiary_web/live/node_live/index.ex
 #: lib/apiary_web/live/target_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Remove %{filter}"
@@ -7387,6 +7654,11 @@ msgstr ""
 msgid "Running"
 msgstr ""
 
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Running instances"
+msgstr ""
+
 #: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
@@ -7470,6 +7742,7 @@ msgstr ""
 msgid "Runtimes"
 msgstr ""
 
+#: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/settings_live.ex
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
@@ -7481,6 +7754,7 @@ msgstr ""
 msgid "Save password"
 msgstr ""
 
+#: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/settings_live.ex
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
@@ -7654,9 +7928,15 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/settings_components.ex
+#: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/organisation_live.ex
 #, elixir-autogen, elixir-format
 msgid "Settings"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Settings · %{name}"
 msgstr ""
 
 #: lib/apiary_web/controllers/jump_controller.ex
@@ -7667,6 +7947,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Shift"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Short-lived instances that share one access key."
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -7833,6 +8118,7 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/components/target_components.ex
 #: lib/apiary_web/live/access_key_live/index.ex
+#: lib/apiary_web/live/node_live/index.ex
 #: lib/apiary_web/live/run_live/index.ex
 #: lib/apiary_web/live/run_live/show.ex
 #: lib/apiary_web/live/user_live/organisations.ex
@@ -8335,6 +8621,11 @@ msgstr ""
 msgid "The name of this workspace, and where its pages are."
 msgstr ""
 
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "The node's name, its kind and how many instances may run at once."
+msgstr ""
+
 #: lib/apiary_web/live/member_live/index.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
@@ -8780,6 +9071,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "This list"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "This node is gone: it was deleted."
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -9388,6 +9684,11 @@ msgstr ""
 msgid "Where the runs of this workspace reached out to."
 msgstr ""
 
+#: lib/apiary_web/live/node_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Where the runs of this workspace run. A node is one permanent machine; a node pool is a fleet of short-lived instances that share one access key."
+msgstr ""
+
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Where you are"
@@ -9570,6 +9871,8 @@ msgid "You are logged out."
 msgstr ""
 
 #: lib/apiary_web/live/access_key_live/index.ex
+#: lib/apiary_web/live/node_live/index.ex
+#: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "You are no longer a member of this workspace."
@@ -9628,6 +9931,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "You can switch back at any time."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "You can't change the kind later."
 msgstr ""
 
 #: lib/apiary_web/live/organisation_live.ex
@@ -9891,6 +10199,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "by %{name}"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "by %{person}, %{date}"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
@@ -10204,6 +10517,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "longest first"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "made by %{person}, %{date}"
 msgstr ""
 
 #: lib/apiary_web/components/core_components.ex
