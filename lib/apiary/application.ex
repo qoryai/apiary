@@ -29,6 +29,7 @@ defmodule Apiary.Application do
     Apiary.Deletion.Tables.boot!()
     Apiary.Instance.boot!()
     ApiaryWeb.Origin.boot!()
+    Apiary.Integrations.Fetch.boot!()
     ApiaryWeb.Features.boot!()
     # Then the edition's own settings, once the core's are known to be right.
     :ok = Apiary.Edition.boot!()

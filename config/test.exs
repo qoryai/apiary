@@ -65,3 +65,10 @@ config :apiary, Apiary.Retention.Scheduler, enabled: false
 # Jobs are inserted and not run: a test performs one itself with `Oban.Testing`, and no
 # queue, peer or plugin starts.
 config :apiary, Oban, testing: :manual
+
+# An integration's release is never fetched over the network in a test: the requests go
+# to the `Req.Test` stub of `Apiary.Integrations.Fetch`, and names resolve by the test
+# resolver's rule (`Apiary.FetchStub`), which a test may override with its own.
+config :apiary, Apiary.Integrations.Fetch,
+  resolver: Apiary.FetchStub,
+  req_options: [plug: {Req.Test, Apiary.Integrations.Fetch}]
