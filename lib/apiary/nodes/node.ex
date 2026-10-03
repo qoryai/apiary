@@ -8,7 +8,7 @@ defmodule Apiary.Nodes.Node do
 
   `public_id` is the node's name in a URL, `/:org/:workspace/nodes/:public_id`: `nd_` for
   a node or `np_` for a pool, then sixteen lowercase Crockford base32 characters, made
-  once with the node (`generate_public_id/1`). A path built with
+  once with the node (`Apiary.PublicId`). A path built with
   `~p"/\#{organisation}/\#{workspace}/nodes/\#{node}"` uses it.
 
   A node is deleted softly: `deleted_at` and `deleted_by_id` are set
@@ -28,7 +28,7 @@ defmodule Apiary.Nodes.Node do
 
   @kinds [:node, :pool]
   @max_limit 10_000
-  @prefixes %{node: "nd_", pool: "np_"}
+  @prefixes %{node: "nd", pool: "np"}
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
@@ -116,25 +116,11 @@ defmodule Apiary.Nodes.Node do
 
   defp put_public_id(changeset) do
     case get_field(changeset, :kind) do
-      kind when kind in @kinds -> put_change(changeset, :public_id, generate_public_id(kind))
-      nil -> changeset
+      kind when kind in @kinds ->
+        put_change(changeset, :public_id, Apiary.PublicId.generate(Map.fetch!(@prefixes, kind)))
+
+      nil ->
+        changeset
     end
-  end
-
-  # Crockford base32 without the letters that read as others: i, l, o and u.
-  @crockford ~c"0123456789abcdefghjkmnpqrstvwxyz"
-
-  @doc """
-  generate_public_id/1 is a fresh public id of `kind`: `nd_` or `np_`, then sixteen
-  lowercase Crockford base32 characters, 80 random bits.
-  """
-  @spec generate_public_id(kind) :: String.t()
-  def generate_public_id(kind) when kind in @kinds do
-    random =
-      for <<chunk::5 <- :crypto.strong_rand_bytes(10)>>,
-        into: "",
-        do: <<Enum.at(@crockford, chunk)>>
-
-    Map.fetch!(@prefixes, kind) <> random
   end
 end
