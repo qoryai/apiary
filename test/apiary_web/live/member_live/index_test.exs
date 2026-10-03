@@ -16,8 +16,16 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       assert html =~ "You"
       assert html =~ "Invite people"
 
-      assert html =~
-               "The people in this organisation. Owners and admins manage members and settings; members manage access keys, see the runs and change the policy&#39;s rules that are not locked."
+      # A member changes the policy's rules only where there is a policy: with `security`.
+      if Apiary.Features.on?(:security) do
+        assert html =~
+                 "The people in this organisation. Owners and admins manage members and settings; members manage access keys, see the runs and change the policy&#39;s rules that are not locked."
+      else
+        assert html =~
+                 "The people in this organisation. Owners and admins manage members and settings; members manage access keys and see the runs."
+
+        refute html =~ "policy"
+      end
 
       assert has_element?(lv, "#member-#{scope.membership.id}")
       # The only owner, reading: the last-owner rule is theirs to hear.

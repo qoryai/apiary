@@ -57,11 +57,13 @@ defmodule ApiaryWeb.JumpControllerTest do
           "Workspace overview",
           "Organisation overview",
           "Workspace settings",
-          "Organisation settings",
-          "Workspace policy"
+          "Organisation settings"
         ] do
       assert label in labels, label
     end
+
+    # The policy is a page only where there is one: with `security`.
+    assert "Workspace policy" in labels == Apiary.Features.on?(:security)
 
     refute "Overview" in labels
     refute "Settings" in labels
