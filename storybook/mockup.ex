@@ -2,7 +2,8 @@ defmodule ApiaryWeb.Storybook.Mockup do
   @moduledoc """
   What the screen mock-ups of the storybook share (`storybook/screens/`, docs/ui.md,
   Storybook): the paths between them, the application shell they are drawn in, the
-  workspace settings' sections, and the integrations' role chips.
+  workspace settings' sections, the integrations' role chips, and the nodes' list and
+  the words of their states.
 
   The mock-ups are a proposal to click through, not pages: no route, context or
   migration stands behind them, and they draw `ApiaryWeb.Storybook.Sample`. A story gets
@@ -11,7 +12,7 @@ defmodule ApiaryWeb.Storybook.Mockup do
 
   The shell is `ApiaryWeb.Layouts.app/1` drawn from its own classes (`q-topbar`,
   `q-sidebar`, `q-nav-item`…), since the real one cannot draw here: its entries are the
-  app's (`ApiaryWeb.Layouts.nav_entries/1`), with no Machines yet, its links lead to the
+  app's (`ApiaryWeb.Layouts.nav_entries/1`), with no Nodes yet, its links lead to the
   app's routes and not to the stories, and it asks `Apiary.Access` of a signed-in scope.
   Its drawer opens below 768 px on the checkbox alone, as daisyUI's does without the
   `NavDrawer` hook.
@@ -20,26 +21,25 @@ defmodule ApiaryWeb.Storybook.Mockup do
 
   import ApiaryWeb.CoreComponents
 
+  alias ApiaryWeb.Format
   alias ApiaryWeb.Nav.Entry
+  alias ApiaryWeb.Storybook.Sample
 
   @root "/dev/storybook/screens"
 
-  # The sidebar of the workspace: its groups, then the targets pinned. An entry's story is
-  # the mock-up it leads to, `nil` where the mock-ups have none.
-  @groups [
-    {:home, nil, [{:overview, "Overview", "hero-squares-2x2", {"shell", :overview}}]},
-    {:record, "Record",
-     [
-       {:runs, "Runs", "hero-play-circle", nil},
-       {:targets, "Targets", "hero-folder", {"run_setup", nil}},
-       {:machines, "Machines", "hero-server-stack", {"machines", :all}}
-     ]},
-    {:guard, "Guard",
-     [
-       {:network, "Network access", "hero-globe-alt", nil},
-       {:policy, "Policy", "hero-shield-check", nil}
-     ]}
+  # The sidebar of the workspace: one list without headings, then the targets pinned. An
+  # entry's story is the mock-up it leads to, `nil` where the mock-ups have none.
+  @entries [
+    {:overview, "Overview", "hero-squares-2x2", {"shell", :overview}},
+    {:runs, "Runs", "hero-play-circle", nil},
+    {:targets, "Targets", "hero-folder", {"run_setup", nil}},
+    {:nodes, "Nodes", "hero-server-stack", {"nodes", :all}},
+    {:network, "Network access", "hero-globe-alt", nil},
+    {:policy, "Policy", "hero-shield-check", nil}
   ]
+
+  # What a member reads where an owner or an admin has the actions of nodes and keys.
+  @members_note "Only owners and admins manage nodes and their keys."
 
   @doc """
   path/3 is the path of the mock-up `story` (its file's name under `storybook/screens/`)
@@ -56,14 +56,16 @@ defmodule ApiaryWeb.Storybook.Mockup do
   @doc """
   shell/1 is the application shell a mock-up is drawn in, as `ApiaryWeb.Layouts.app/1`
   draws a workspace's page: the top bar with the breadcrumb (`acme / shop` and the page's
-  `crumb`s), Search or jump to, New and the account menu; the workspace's sidebar, `nav`
-  its current entry, Settings at its foot; and the page's column at `width`. `folded`
+  `crumb`s), Search or jump to, New and the menu of `account`; the workspace's sidebar,
+  one list without the headings of today's groups, `nav` its current entry, Settings at
+  its foot; and the page's column at `width`. `folded`
   draws the sidebar folded to icons, as its fold leaves it, and `fold` is where the fold
   leads.
   """
   attr :theme, :any, required: true, doc: "the story's theme, carried by every link"
   attr :nav, :atom, required: true, doc: "the current entry: an entry's key, or :settings"
   attr :width, :string, default: "list", values: ~w(list work read)
+  attr :account, :string, default: "dana@example.com", doc: "who reads the page"
   attr :folded, :boolean, default: false
 
   attr :fold, :string,
@@ -79,7 +81,7 @@ defmodule ApiaryWeb.Storybook.Mockup do
   def shell(assigns) do
     assigns =
       assign(assigns,
-        groups: groups(assigns.theme),
+        entries: entries(assigns.theme),
         settings_path: path("settings", :general, assigns.theme),
         home_path: path("shell", :overview, assigns.theme),
         pins: [
@@ -157,9 +159,9 @@ defmodule ApiaryWeb.Storybook.Mockup do
           <button
             type="button"
             class="btn btn-ghost btn-keep h-9 min-h-0 min-w-9 rounded-full p-0.5"
-            aria-label="Account menu, dana@example.com"
+            aria-label={"Account menu, #{@account}"}
           >
-            <.avatar name="dana@example.com" kind="self" size="md" />
+            <.avatar name={@account} kind="self" size="md" />
           </button>
         </div>
       </header>
@@ -183,14 +185,8 @@ defmodule ApiaryWeb.Storybook.Mockup do
             </div>
 
             <div class="q-sidebar-body">
-              <nav
-                :for={{section, heading, items} <- @groups}
-                class="q-nav-group"
-                aria-label={heading || "Main"}
-                id={"mock-nav-group-#{section}"}
-              >
-                <p :if={heading} class="q-nav-heading" aria-hidden="true">{heading}</p>
-                <.nav_item :for={item <- items} item={item} current={@nav == item.key} />
+              <nav class="q-nav-group" aria-label="Main" id="mock-nav-group-main">
+                <.nav_item :for={item <- @entries} item={item} current={@nav == item.key} />
               </nav>
 
               <nav id="mock-nav-group-pinned" class="q-nav-group" aria-label="Pinned">
@@ -273,31 +269,34 @@ defmodule ApiaryWeb.Storybook.Mockup do
       >
         <span class="q-dot q-ripple !size-1.5" aria-hidden="true"></span> 2
       </span>
-      <span :if={@item.key == :machines} class="q-nav-count" title="8 machines online">8</span>
+      <span :if={@item.key == :nodes} class="q-nav-count" title={"#{running()} running"}>
+        {running()}
+      </span>
       <span :if={@item.key == :policy} class="q-nav-count">enforce</span>
     </a>
     """
   end
 
-  defp groups(theme) do
-    for {section, heading, items} <- @groups do
-      {section, heading,
-       for {key, label, icon, to} <- items do
-         href =
-           case to do
-             {story, tab} -> path(story, tab, theme)
-             nil -> nil
-           end
+  defp entries(theme) do
+    for {key, label, icon, to} <- @entries do
+      href =
+        case to do
+          {story, tab} -> path(story, tab, theme)
+          nil -> nil
+        end
 
-         %{key: key, label: label, icon: icon, href: href}
-       end}
+      %{key: key, label: label, icon: icon, href: href}
     end
   end
+
+  # How many of the nodes run now, as the sidebar counts them.
+  defp running, do: Enum.count(Sample.nodes(), &running?/1)
 
   @doc """
   settings_sections/1 is the sections of the workspace's settings as the mock-ups propose
   them, as `ApiaryWeb.SettingsComponents.layout/1` takes them: General, Integrations,
-  Secrets and variables, Access keys and Members, each leading to its mock-up in `theme`.
+  Secrets and variables and Members, each leading to its mock-up in `theme`. Access keys
+  is not among them: a key belongs to its node (`nodes/1`).
   """
   @spec settings_sections(atom() | String.t() | nil) :: [Entry.t()]
   def settings_sections(theme) do
@@ -305,7 +304,6 @@ defmodule ApiaryWeb.Storybook.Mockup do
           {:general, "General", "settings", :general, nil},
           {:integrations, "Integrations", "integrations", :all, :integrations},
           {:secrets, "Secrets and variables", "settings", :secrets, nil},
-          {:keys, "Access keys", "access_keys", :all, :keys},
           {:members, "Members", "settings", :members, :members}
         ],
         do: %Entry{
@@ -320,7 +318,7 @@ defmodule ApiaryWeb.Storybook.Mockup do
   @doc "settings_counts/0 is the counts the settings' list shows beside its sections."
   @spec settings_counts() :: map()
   def settings_counts,
-    do: %{integrations: length(ApiaryWeb.Storybook.Sample.integrations()), keys: 4, members: 3}
+    do: %{integrations: length(Sample.integrations()), members: 3}
 
   @doc "role_label/1 is the words of an integration's role, as a chip says it."
   @spec role_label(atom()) :: String.t()
@@ -377,99 +375,312 @@ defmodule ApiaryWeb.Storybook.Mockup do
     """
   end
 
+  @doc "running?/1 is whether a node or a pool has an instance running now."
+  @spec running?(map()) :: boolean()
+  def running?(node), do: node.instances != []
+
+  @doc "kind_label/1 is the words of a node's kind: Node or Node pool."
+  @spec kind_label(:node | :pool) :: String.t()
+  def kind_label(:node), do: "Node"
+  def kind_label(:pool), do: "Node pool"
+
   @doc """
-  machines/1 is Record › Machines as the mock-ups propose it: the machines that post to
-  the workspace, by the instance id the runner reports, with Online and Offline as views
-  with their counts (`view`), and per machine its state, its runs of 14 days, the access
-  key it uses (a link to Settings › Access keys), its Qory version and when it was last
-  seen.
+  limit_rule/1 is a node's limit as the rule it is, enforced when a run starts: one
+  instance at a time for a node, at most its limit for a pool, or none.
+  """
+  @spec limit_rule(map()) :: String.t()
+  def limit_rule(%{kind: :node}), do: "One instance at a time; a second is refused at run start."
+  def limit_rule(%{kind: :pool, limit: nil}), do: "No limit: every instance that starts may run."
+
+  def limit_rule(%{kind: :pool, limit: limit}),
+    do: "At most #{limit} at once; an #{ordinal(limit + 1)} is refused at run start."
+
+  defp ordinal(n) when rem(n, 100) in 11..13, do: "#{n}th"
+  defp ordinal(n) when rem(n, 10) == 1, do: "#{n}st"
+  defp ordinal(n) when rem(n, 10) == 2, do: "#{n}nd"
+  defp ordinal(n) when rem(n, 10) == 3, do: "#{n}rd"
+  defp ordinal(n), do: "#{n}th"
+
+  @doc """
+  node_state/1 is a node's or a pool's state, as a row says it: Running with its dot, a
+  pool's count of running instances ("3/10 running", "5 running" without a limit), or
+  when it was last seen. There is no Online or Offline.
+  """
+  attr :node, :map, required: true
+  attr :id, :string, default: nil
+
+  def node_state(assigns) do
+    ~H"""
+    <span :if={running?(@node)} id={@id} class="inline-flex items-center gap-1.5">
+      <span class="q-dot text-success" aria-hidden="true"></span>
+      <span :if={@node.kind == :node}>Running</span>
+      <span :if={@node.kind == :pool && @node.limit} class="tabular-nums">
+        {length(@node.instances)}/{@node.limit} running
+      </span>
+      <span :if={@node.kind == :pool && !@node.limit} class="tabular-nums">
+        {length(@node.instances)} running
+      </span>
+    </span>
+    <.seen :if={!running?(@node)} id={@id} at={@node.seen} />
+    """
+  end
+
+  @doc "seen/1 is \"Last seen\" and when, in muted words, the full time in its title."
+  attr :at, :any, required: true
+  attr :id, :string, default: nil
+
+  def seen(assigns) do
+    assigns = assign(assigns, ago: lower_first(Format.time_ago(assigns.at)))
+
+    ~H"""
+    <span id={@id} class="q-stw">
+      Last seen
+      <time datetime={DateTime.to_iso8601(@at)} title={Format.datetime(@at, zone: true)}>{@ago}</time>
+    </span>
+    """
+  end
+
+  @doc "since/1 is \"Running since\" and the time of day an instance started."
+  attr :at, :any, required: true
+
+  def since(assigns) do
+    ~H"""
+    <span class="inline-flex items-center gap-1.5">
+      <span class="q-dot text-success" aria-hidden="true"></span>
+      <span>
+        Running since
+        <time datetime={DateTime.to_iso8601(@at)} title={Format.datetime(@at, zone: true)}>
+          {Format.time(@at)}
+        </time>
+      </span>
+    </span>
+    """
+  end
+
+  defp lower_first(<<first::utf8, rest::binary>>), do: String.downcase(<<first::utf8>>) <> rest
+
+  @doc """
+  key_state/1 is an access key's state in words: Approved, muted; Awaiting approval,
+  lifted, the state that needs an owner or an admin; or Revoked.
+  """
+  attr :key, :map, required: true
+  attr :id, :string, default: nil
+
+  def key_state(assigns) do
+    ~H"""
+    <.state_word :if={@key.state == :approved} id={@id}>Approved</.state_word>
+    <.state_word :if={@key.state == :pending} id={@id} hot>Awaiting approval</.state_word>
+    <.state_word :if={@key.state == :revoked} id={@id} hot tone="error">Revoked</.state_word>
+    """
+  end
+
+  @doc """
+  members_note/1 is the muted line a member reads where an owner or an admin has the
+  actions of nodes and their keys, worded as the settings word what only they may do.
+  """
+  attr :id, :string, default: nil
+
+  def members_note(assigns) do
+    assigns = assign(assigns, :note, @members_note)
+
+    ~H"""
+    <p id={@id} class="text-[12.5px]/[18px] text-muted">{@note}</p>
+    """
+  end
+
+  @doc """
+  node_path/3 is the path of `node`'s page at `page` (`nil` for its Overview, else a
+  suffix such as `"key"`), in `theme`: the mock-up `node` at the tab named for both.
+  """
+  @spec node_path(map(), String.t() | nil, atom() | String.t() | nil) :: String.t()
+  def node_path(node, nil, theme), do: path("node", String.to_atom(node.id), theme)
+  def node_path(node, page, theme), do: path("node", String.to_atom("#{node.id}_#{page}"), theme)
+
+  @doc """
+  nodes/1 is Nodes as the mock-ups propose it, a page of the sidebar's: every node and
+  node pool of the workspace with its kind, its state, its runs of 14 days, its access key
+  and its Qory version, Running and Not running as views with their counts (`view`). A
+  pool's running instances are rows beneath it, each by its instance id; they appear only
+  while they run. `member` draws it as a member reads it: no New, no Approve, and the line
+  that says who manages them.
   """
   attr :theme, :any, required: true
-  attr :view, :atom, default: :all, values: [:all, :online, :offline]
+  attr :view, :atom, default: :all, values: [:all, :running, :not_running]
+  attr :member, :boolean, default: false
 
-  def machines(assigns) do
-    machines = ApiaryWeb.Storybook.Sample.machines()
-    keys = Map.new(ApiaryWeb.Storybook.Sample.access_keys(), &{&1.id, &1})
+  def nodes(assigns) do
+    nodes = Sample.nodes()
+
+    shown =
+      Enum.filter(nodes, fn node ->
+        case assigns.view do
+          :all -> true
+          :running -> running?(node)
+          :not_running -> not running?(node)
+        end
+      end)
 
     assigns =
       assign(assigns,
-        keys: keys,
-        all: length(machines),
-        online: Enum.count(machines, &(&1.status == :online)),
-        offline: Enum.count(machines, &(&1.status == :offline)),
-        rows: Enum.filter(machines, &(assigns.view == :all or &1.status == assigns.view))
+        all: length(nodes),
+        running: Enum.count(nodes, &running?/1),
+        not_running: Enum.count(nodes, &(not running?(&1))),
+        rows:
+          Enum.flat_map(shown, fn
+            %{kind: :pool} = node ->
+              [{:node, node} | for(i <- node.instances, do: {:instance, i})]
+
+            node ->
+              [{:node, node}]
+          end)
       )
 
     ~H"""
     <.header>
-      Machines
+      Nodes
       <:subtitle>
-        The machines that post runs to this workspace, each by the instance id its runner
-        reports and the access key it uses. A machine is online while its heartbeat comes in.
+        Where the runs of this workspace run. A node is permanent and runs one instance at a
+        time; a node pool's instances come and go, share its key and run up to its limit.
       </:subtitle>
+      <:actions :if={!@member}>
+        <.button id="new-node-pool" href={path("nodes", :new_pool, @theme)}>
+          <.icon name="hero-plus-micro" class="size-4" />New node pool
+        </.button>
+        <.button id="new-node" variant="primary" href={path("nodes", :new_node, @theme)}>
+          <.icon name="hero-plus-micro" class="size-4" />New node
+        </.button>
+      </:actions>
     </.header>
 
     <div class="grid gap-3">
-      <.views id="machine-views" label="Views">
-        <:view navigate={path("machines", :all, @theme)} count={@all} current={@view == :all}>
+      <.members_note :if={@member} id="nodes-members-note" />
+
+      <.views id="node-views" label="Views">
+        <:view
+          id="node-view-all"
+          navigate={path("nodes", if(@member, do: :member, else: :all), @theme)}
+          count={@all}
+          current={@view == :all}
+        >
           All
         </:view>
         <:view
-          navigate={path("machines", :online, @theme)}
-          count={@online}
-          current={@view == :online}
+          id="node-view-running"
+          navigate={path("nodes", :running, @theme)}
+          count={@running}
+          current={@view == :running}
         >
-          Online
+          Running
         </:view>
         <:view
-          navigate={path("machines", :offline, @theme)}
-          count={@offline}
-          current={@view == :offline}
+          id="node-view-not-running"
+          navigate={path("nodes", :not_running, @theme)}
+          count={@not_running}
+          current={@view == :not_running}
         >
-          Offline
+          Not running
         </:view>
       </.views>
 
       <div class="q-bar">
         <.list_search
-          id="machines-search"
-          label="Find a machine"
-          placeholder="Find a machine, e.g. build-03 key:build-fleet"
+          id="nodes-search"
+          label="Find a node"
+          placeholder="Find a node or an instance, e.g. build-01 or m_4F7K"
           live={false}
         />
       </div>
 
-      <.table id="machines" label="Machines" rows={@rows} row_id={&"machine-#{&1.id}"}>
-        <:col :let={machine} label="Instance" kind="title">
-          <span class="q-nm">
-            <span class="q-title-mono">{machine.id}</span>
-            <span class="q-side">{machine.host}</span>
-          </span>
+      <.table id="nodes" label="Nodes" rows={@rows} row_id={&row_id/1}>
+        <:col :let={row} label="Name" kind="title">
+          <.node_name row={row} theme={@theme} />
         </:col>
-        <:col :let={machine} label="State">
-          <span :if={machine.status == :online} class="inline-flex items-center gap-1.5">
-            <span class="q-dot text-success" aria-hidden="true"></span>Online
-          </span>
-          <.state_word :if={machine.status == :offline}>Offline</.state_word>
+        <:col :let={row} label="Kind" from="sm">
+          <span :if={elem(row, 0) == :node}>{kind_label(elem(row, 1).kind)}</span>
+          <span :if={elem(row, 0) == :instance} class="q-faint">Instance</span>
         </:col>
-        <:col :let={machine} label="Runs, 14 days" kind="num" from="sm">{machine.runs}</:col>
-        <:col :let={machine} label="Access key" from="sm">
-          <a href={path("access_keys", :all, @theme)} class="hover:underline">
-            {@keys[machine.key].label}
-          </a>
+        <:col :let={row} label="State">
+          <.node_state :if={elem(row, 0) == :node} node={elem(row, 1)} />
+          <.since :if={elem(row, 0) == :instance} at={elem(row, 1).since} />
         </:col>
-        <:col :let={machine} label="Qory" kind="faint" from="md">
-          <span class="q-mono">{machine.version}</span>
+        <:col :let={row} label="Runs, 14 days" kind="num" from="sm">{elem(row, 1).runs}</:col>
+        <:col :let={row} label="Access key" from="sm">
+          <.key_cell :if={elem(row, 0) == :node} node={elem(row, 1)} theme={@theme} />
         </:col>
-        <:col :let={machine} label="Last seen" from="md">
-          <.time_ago at={machine.last_seen} class="tabular-nums" />
+        <:col :let={row} label="Qory" kind="faint" from="md">
+          <span :if={version(row)} class="q-mono">{version(row)}</span>
         </:col>
+        <:action :let={row}>
+          <.button
+            :if={!@member && pending?(row)}
+            variant="link"
+            href={node_path(elem(row, 1), "key", @theme)}
+            aria-label={"Review the key of #{elem(row, 1).name}"}
+          >
+            Review key
+          </.button>
+        </:action>
       </.table>
       <p class="text-[12.5px]/[18px] text-faint">
-        Ten machines share build-fleet: a key serves as many machines as use it, and each
-        is told apart by its instance id.
+        A pool's instances are listed beneath it while they run, each by the instance id its
+        runner reports; one that stops leaves the list. The limit is checked when a run starts.
       </p>
     </div>
+    """
+  end
+
+  defp row_id({:node, node}), do: "node-#{node.id}"
+  defp row_id({:instance, instance}), do: "instance-#{instance.id}"
+
+  defp version({:instance, instance}), do: instance.version
+
+  defp version({:node, %{kind: :node} = node}),
+    do: (List.first(node.instances) || node.last).version
+
+  defp version({:node, _pool}), do: nil
+
+  defp pending?({:node, node}), do: Enum.any?(node.keys, &(&1.state == :pending))
+  defp pending?(_row), do: false
+
+  attr :row, :any, required: true
+  attr :theme, :any, required: true
+
+  defp node_name(%{row: {:node, node}} = assigns) do
+    assigns = assign(assigns, :node, node)
+
+    ~H"""
+    <span class="q-nm">
+      <a href={node_path(@node, nil, @theme)} class="q-title hover:underline">{@node.name}</a>
+      <span :if={@node.kind == :node} class="q-side q-mono">
+        {(List.first(@node.instances) || @node.last).id}
+      </span>
+    </span>
+    """
+  end
+
+  defp node_name(%{row: {:instance, instance}} = assigns) do
+    assigns = assign(assigns, :instance, instance)
+
+    ~H"""
+    <span class="inline-flex items-center gap-1.5 pl-4 font-normal">
+      <.icon name="hero-arrow-turn-down-right-micro" class="size-3.5 text-faint" />
+      <span class="q-mono text-[12.5px]">{@instance.id}</span>
+    </span>
+    """
+  end
+
+  attr :node, :map, required: true
+  attr :theme, :any, required: true
+
+  # The key a node uses now: its id, or the state of one that is not approved.
+  defp key_cell(assigns) do
+    assigns = assign(assigns, :key, List.last(assigns.node.keys))
+
+    ~H"""
+    <a href={node_path(@node, "key", @theme)} class="hover:underline">
+      <span :if={@key.state == :approved} class="q-mono">{@key.id}</span>
+      <.key_state :if={@key.state != :approved} key={@key} />
+    </a>
     """
   end
 end

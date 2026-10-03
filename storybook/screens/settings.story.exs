@@ -11,7 +11,7 @@ defmodule ApiaryWeb.Storybook.Screens.Settings do
   def doc,
     do:
       "The workspace's settings as the mock-ups propose them: General, Integrations, " <>
-        "Secrets and variables, Access keys and Members, each leading to its screen."
+        "Secrets and variables and Members, each leading to its screen."
 
   def navigation,
     do: [{:general, "General"}, {:secrets, "Secrets and variables"}, {:members, "Members"}]

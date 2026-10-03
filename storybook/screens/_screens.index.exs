@@ -3,7 +3,7 @@ defmodule ApiaryWeb.Storybook.Screens do
   use PhoenixStorybook.Index
 
   # The screen mock-ups, in the order a reader clicks through them: the shell first, then
-  # the settings and the integrations, then the record (docs/ui.md, Storybook).
+  # the settings and the integrations, then the nodes (docs/ui.md, Storybook).
   def folder_name, do: "Screens"
   def folder_open?, do: true
 
@@ -13,6 +13,6 @@ defmodule ApiaryWeb.Storybook.Screens do
   def entry("integration"), do: [name: "4. An integration", index: 4]
   def entry("add_integration"), do: [name: "5. Add integration", index: 5]
   def entry("run_setup"), do: [name: "6. A target's run setup", index: 6]
-  def entry("access_keys"), do: [name: "7. Access keys", index: 7]
-  def entry("machines"), do: [name: "8. Machines", index: 8]
+  def entry("nodes"), do: [name: "7. Nodes", index: 7]
+  def entry("node"), do: [name: "8. A node or pool", index: 8]
 end

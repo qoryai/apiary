@@ -405,101 +405,166 @@ defmodule ApiaryWeb.Storybook.Sample do
   end
 
   @doc """
-  The workspace's access keys, as the mock-up of Settings › Access keys lists them: one
-  that ten machines share, and one a machine asked for that waits for approval.
+  The workspace's nodes, as the mock-ups of Nodes draw them (`storybook/screens/`): a
+  proposal, so no context builds them yet. Each is a node, permanent with one instance at a
+  time, or a node pool, whose ephemeral instances share its key, at most `limit` at once
+  (`nil` for no limit); its kind is fixed when it is made. `instances` are those running
+  now, by the instance id the runner reports: a pool's appear only while they run, and a
+  node's one is kept as `last` once it stops. `keys` are its access keys, `seen` when it
+  last posted and `runs` its runs of 14 days. Its times are this minute's.
+
+    * build-01, running, its key approved;
+    * build-02, last seen 2 hours ago, its first key awaiting approval;
+    * mac-mini, last seen 3 days ago, its key revoked;
+    * ci-runners, a pool of at most 10 with 3 running;
+    * preview-envs, a pool without a limit with 5 running;
+    * nightly-checks, a pool of at most 4 with none running.
   """
-  @spec access_keys() :: [map()]
-  def access_keys do
+  @spec nodes() :: [map()]
+  def nodes do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    ago = &DateTime.add(now, -&1)
+
     [
-      %{
-        id: "k1",
-        label: "build-fleet",
-        key_id: "ak_7Q2M9F4CXKD8B1AH",
-        stored_secrets: true,
-        machines: 10,
-        approved_by: "dana",
-        state: :active
-      },
-      %{
-        id: "k2",
-        label: "ci-runner",
-        key_id: "ak_3XKD8B1AP4N6W2ZE",
-        stored_secrets: true,
-        machines: 1,
-        approved_by: "lee",
-        state: :active
-      },
-      %{
-        id: "k3",
-        label: "laptop-sam",
-        key_id: "ak_P4N6W2ZEH8R5T1QJ",
-        stored_secrets: false,
-        machines: 1,
-        approved_by: "dana",
-        state: :active
-      },
-      %{
-        id: "k4",
-        label: "nightly",
-        key_id: "ak_H8R5T1QJ7Q2M9F4C",
-        stored_secrets: false,
-        machines: 0,
-        approved_by: nil,
-        requested_by: "sam",
-        state: :pending
-      }
+      node("build_01", "build-01", :node,
+        instances: [instance("m_4F7KQ2ZD9XW1", 37, "0.6.1", ago.(5 * 3600 + 1_260))],
+        keys: [
+          key(
+            "ak_7Q2M9F4CXKD8B1AH",
+            :approved,
+            "SHA256:Xq3vR8kT1mZp6LwN2bYc9HdJ4sFa7Ue0GiOt5QrKx2M",
+            stored_secrets: true,
+            by: "dana",
+            on: "2 Sept 2026"
+          )
+        ],
+        seen: ago.(4),
+        runs: 214,
+        created: "dana, 2 Sept 2026"
+      ),
+      node("build_02", "build-02", :node,
+        last: instance("m_8C1MV5TR2HJ6", 0, "0.6.1", ago.(2 * 3600)),
+        keys: [
+          key(
+            "ak_3XKD8B1AP4N6W2ZE",
+            :pending,
+            "SHA256:Lm7Tq2Wv9Xc4Bn8Kd1Rf6Hs3Jp0Za5Ye2Gu7Io4Qt9N",
+            stored_secrets: true,
+            by: "dana",
+            on: "today",
+            asked: ago.(2 * 3600)
+          )
+        ],
+        seen: ago.(2 * 3600),
+        runs: 0,
+        created: "dana, today"
+      ),
+      node("mac_mini", "mac-mini", :node,
+        last: instance("m_6X1ZH4NM9BR3", 41, "0.6.0", ago.(3 * 86_400)),
+        keys: [
+          key(
+            "ak_P4N6W2ZEH8R5T1QJ",
+            :revoked,
+            "SHA256:Bd4Fh8Jk2Lm6Np0Qr4St8Uv2Wx6Yz0Ac4Eg8Ik2Mo6Q",
+            stored_secrets: false,
+            by: "lee",
+            on: "30 Sept 2026"
+          )
+        ],
+        seen: ago.(3 * 86_400),
+        runs: 41,
+        created: "lee, 9 Sept 2026"
+      ),
+      node("ci_runners", "ci-runners", :pool,
+        limit: 10,
+        instances: [
+          instance("m_2T5KW8DQ1HX7", 2, "0.6.1", ago.(1_140)),
+          instance("m_9K5XR2JC6VD8", 1, "0.6.1", ago.(420)),
+          instance("m_1N7BW4QG3TZ2", 1, "0.6.1", ago.(95))
+        ],
+        keys: [
+          key(
+            "ak_H8R5T1QJ7Q2M9F4C",
+            :approved,
+            "SHA256:Qa1Ws2Ed3Rf4Tg5Yh6Uj7Ik8Ol9Pz0Xc1Vb2Nm3Lk4J",
+            stored_secrets: true,
+            by: "dana",
+            on: "3 Sept 2026"
+          )
+        ],
+        seen: ago.(2),
+        runs: 388,
+        created: "dana, 3 Sept 2026"
+      ),
+      node("preview_envs", "preview-envs", :pool,
+        limit: nil,
+        instances: [
+          instance("m_5R2HM8KD1XC9", 3, "0.6.1", ago.(2 * 3600 + 600)),
+          instance("m_3V6JT9WB5QN4", 2, "0.6.1", ago.(3_300)),
+          instance("m_7D4QX1HZ6MK2", 1, "0.6.1", ago.(1_500)),
+          instance("m_0B8NC3RV7JW5", 1, "0.6.0", ago.(600)),
+          instance("m_6H3TZ1PF8RM5", 1, "0.6.1", ago.(140))
+        ],
+        keys: [
+          key(
+            "ak_2Q9WD7NB4KX3V6JT",
+            :approved,
+            "SHA256:Mn8Bv7Cx6Za5Sd4Fg3Hj2Kl1Qw0Er9Ty8Ui7Op6As5D",
+            stored_secrets: false,
+            by: "lee",
+            on: "14 Sept 2026"
+          )
+        ],
+        seen: ago.(9),
+        runs: 126,
+        created: "lee, 14 Sept 2026"
+      ),
+      node("nightly_checks", "nightly-checks", :pool,
+        limit: 4,
+        keys: [
+          key(
+            "ak_9F4CXKD8B1AH7Q2M",
+            :approved,
+            "SHA256:Zx9Cv8Bn7Mq6Wp5Ol4Ik3Uj2Yh1Tg0Rf9Ed8Ws7Qa6Z",
+            stored_secrets: true,
+            by: "sam",
+            on: "21 Sept 2026"
+          )
+        ],
+        seen: ago.(20 * 3600),
+        runs: 28,
+        created: "sam, 21 Sept 2026"
+      )
     ]
   end
 
   @doc """
-  The machines that posted to the workspace with its keys, as the mock-up of Record ›
-  Machines lists them: ten share `build-fleet`, and four are offline. Their last-seen
-  times are this minute's.
+  The key a node enrols to replace its own, as the mock-up of a replacement draws it: it
+  arrived with an enrolment code a minute ago and awaits approval.
   """
-  @spec machines() :: [map()]
-  def machines do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
-
-    fleet =
-      for {n, id, runs, status, ago} <- [
-            {1, "m_4F7KQ2ZD9XW1", 214, :online, 4},
-            {2, "m_8C1MV5TR2HJ6", 198, :online, 9},
-            {3, "m_2Q9WD7NB4KX3", 187, :online, 12},
-            {4, "m_6H3TZ1PF8RM5", 176, :online, 20},
-            {5, "m_9K5XR2JC6VD8", 163, :online, 31},
-            {6, "m_1N7BW4QG3TZ2", 151, :online, 45},
-            {7, "m_5R2HM8KD1XC9", 140, :online, 58},
-            {8, "m_3V6JT9WB5QN4", 92, :offline, 3 * 3600},
-            {9, "m_7D4QX1HZ6MK2", 61, :offline, 26 * 3600},
-            {10, "m_0B8NC3RV7JW5", 12, :offline, 9 * 86_400}
-          ] do
-        machine(
-          id,
-          "build-#{String.pad_leading("#{n}", 2, "0")}",
-          "k1",
-          runs,
-          status,
-          DateTime.add(now, -ago),
-          if(n == 10, do: "0.5.4", else: "0.6.1")
-        )
-      end
-
-    fleet ++
-      [
-        machine("m_2T5KW8DQ1HX7", "ci-01", "k2", 388, :online, DateTime.add(now, -2), "0.6.1"),
-        machine(
-          "m_6X1ZH4NM9BR3",
-          "sam-laptop",
-          "k3",
-          27,
-          :offline,
-          DateTime.add(now, -2 * 86_400),
-          "0.6.0"
-        )
-      ]
+  @spec replacement_key() :: map()
+  def replacement_key do
+    key("ak_W2ZE3XKD8B1AP4N6", :pending, "SHA256:Ty5Rn3Vb8Xk1Mq7Lp2Wd9Hs4Jc6Fa0Ze3Gu8Io1Qt5K",
+      stored_secrets: true,
+      by: "dana",
+      on: "today",
+      asked: DateTime.add(DateTime.utc_now(), -60)
+    )
   end
 
-  defp machine(id, host, key, runs, status, seen, version) do
-    %{id: id, host: host, key: key, runs: runs, status: status, last_seen: seen, version: version}
+  defp node(id, name, kind, opts) do
+    Map.merge(
+      %{id: id, name: name, kind: kind, limit: nil, instances: [], last: nil},
+      Map.new(opts)
+    )
+  end
+
+  defp instance(id, runs, version, since),
+    do: %{id: id, runs: runs, version: version, since: since}
+
+  # `by` and `on` are who approved the key and when, who revoked it for a revoked one, and
+  # who made its enrolment code for one awaiting approval, which arrived `asked`.
+  defp key(id, state, fingerprint, opts) do
+    Map.merge(%{id: id, state: state, fingerprint: fingerprint, asked: nil}, Map.new(opts))
   end
 end

@@ -9,11 +9,12 @@ defmodule ApiaryWeb.Storybook.Screens.Shell do
 
   def doc,
     do:
-      "The shell as the mock-ups propose it: Machines joins Record, and Settings at the " <>
-        "sidebar's foot holds Integrations. Every link that has a screen leads to it."
+      "The shell as the mock-ups propose it: one list without headings, Overview, Runs, " <>
+        "Targets, Nodes, Network access and Policy, and Settings at the sidebar's foot " <>
+        "holds Integrations. Every link that has a screen leads to it."
 
   def navigation do
-    [{:overview, "Overview"}, {:machines, "Machines current"}, {:folded, "Folded"}]
+    [{:overview, "Overview"}, {:nodes, "Nodes current"}, {:folded, "Folded"}]
   end
 
   # The screens of the mock-ups, for the overview's list.
@@ -26,15 +27,16 @@ defmodule ApiaryWeb.Storybook.Screens.Shell do
     {"add_integration", :built_in, "Add integration", "Built in, from GitHub, or private."},
     {"run_setup", nil, "A target's run setup",
      "acme/shop's task source, LLM provider, outputs and services."},
-    {"access_keys", :all, "Settings › Access keys",
-     "One key shared by ten machines, one pending."},
-    {"machines", :all, "Record › Machines", "Online and offline, by instance id and key."}
+    {"nodes", :all, "Nodes",
+     "Nodes and node pools, Running or last seen, a pool's instances beneath it."},
+    {"node", :build_01, "A node or pool",
+     "Overview, Runs, Access key and Settings; a key awaiting approval, revoked, replaced."}
   ]
 
-  def render(%{tab: :machines} = assigns) do
+  def render(%{tab: :nodes} = assigns) do
     ~H"""
-    <Mockup.shell theme={@theme} nav={:machines}>
-      <Mockup.machines theme={@theme} />
+    <Mockup.shell theme={@theme} nav={:nodes}>
+      <Mockup.nodes theme={@theme} />
     </Mockup.shell>
     """
   end
@@ -55,7 +57,7 @@ defmodule ApiaryWeb.Storybook.Screens.Shell do
       </.header>
 
       <.notice>
-        These are mock-ups: the sidebar adds Machines to Record, and Settings holds
+        These are mock-ups: the sidebar is one list with Nodes in it, and Settings holds
         Integrations. Each link below, and each in the sidebar that has a screen, opens it.
       </.notice>
 
