@@ -444,7 +444,7 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       variable!(scope, shop, "NODE_ENV", "staging")
 
       {:ok, lv, _html} = live(conn, variables_path(scope))
-      assert has_element?(lv, "#variable-#{variable.id}-targets", "2 targets set their own")
+      assert has_element?(lv, "#variable-#{variable.id}-targets", "2 repositories set their own")
 
       lv |> element("#variable-#{variable.id}-change") |> render_click()
       assert_patch(lv, variables_path(scope, "/#{variable.id}/change"))
@@ -454,7 +454,7 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
 
       lv |> element("#variable-#{variable.id}-lock-item") |> render_click()
       assert_patch(lv, variables_path(scope, "/#{variable.id}/lock"))
-      assert has_element?(lv, "#lock-targets", "2 targets set their own now")
+      assert has_element?(lv, "#lock-targets", "2 repositories set their own now")
       lv |> element("#variable-dialog button", "Lock variable") |> render_click()
       assert render(lv) =~ "NODE_ENV is locked."
       assert has_element?(lv, "#variable-#{variable.id}-lock", "Locked")
@@ -462,7 +462,7 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       assert has_element?(
                lv,
                "#variable-#{variable.id}-targets",
-               "2 targets set aside by the lock"
+               "2 repositories set aside by the lock"
              )
 
       # Locked already: its lock path has nothing to confirm.
@@ -472,7 +472,7 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       assert to == variables_path(scope)
 
       lv |> element("#variable-#{variable.id}-unlock-item") |> render_click()
-      assert has_element?(lv, "#unlock-targets", "2 targets set their own")
+      assert has_element?(lv, "#unlock-targets", "2 repositories set their own")
       lv |> element("#variable-dialog button", "Unlock variable") |> render_click()
       assert render(lv) =~ "NODE_ENV is unlocked."
       refute Repo.reload!(variable).locked
