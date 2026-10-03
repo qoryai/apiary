@@ -68,26 +68,31 @@ defmodule Apiary.Variables do
 
   @doc """
   list_variables/2 is the variables `holder` sets itself, by name without case: the
-  workspace's, or the repository's own.
+  workspace's, or the repository's own. `{:ok, variables}`, for a reader who may
+  `variable.read`; else `{:error, reason}`, `:not_found` where the `security` feature is
+  off or for a repository the workspace does not have.
   """
-  @spec list_variables(Scope.t(), holder) :: [Variable.t()]
+  @spec list_variables(Scope.t(), holder) :: {:ok, [Variable.t()]} | {:error, Access.reason()}
   def list_variables(%Scope{} = scope, holder) do
-    Repo.all(
-      from v in level(variables(scope), holder),
-        order_by: [asc: fragment("lower(?)", v.name), asc: v.id]
-    )
+    with :ok <- may_read(scope),
+         {:ok, target} <- target(scope, holder) do
+      {:ok, own_variables(scope, target || :workspace)}
+    end
   end
 
   @doc """
   get_variable/2 is the scope's workspace's variable with the row id `id`, of the
-  workspace or of a repository: `{:ok, variable}`, or `{:error, :not_found}`.
+  workspace or of a repository: `{:ok, variable}`, for a reader who may `variable.read`;
+  else `{:error, reason}`, `:not_found` for a variable the workspace does not have.
   """
-  @spec get_variable(Scope.t(), term) :: {:ok, Variable.t()} | {:error, :not_found}
+  @spec get_variable(Scope.t(), term) :: {:ok, Variable.t()} | {:error, Access.reason()}
   def get_variable(%Scope{} = scope, id) do
-    with {:ok, id} <- Ecto.UUID.cast(id),
+    with :ok <- may_read(scope),
+         {:ok, id} <- Ecto.UUID.cast(id),
          %Variable{} = variable <- Repo.one(from v in variables(scope), where: v.id == ^id) do
       {:ok, variable}
     else
+      {:error, reason} when reason in [:forbidden, :not_found] -> {:error, reason}
       _ -> {:error, :not_found}
     end
   end
@@ -95,11 +100,28 @@ defmodule Apiary.Variables do
   @doc """
   resolve/2 is `holder`'s resolution (`Apiary.Variables.Resolution`): the values its runs
   are given, with which level set and which locked each, for the pages; its `values/1`
-  for the run configuration.
+  for the run configuration. `{:ok, resolution}`, for a reader who may `variable.read`;
+  else `{:error, reason}`.
   """
-  @spec resolve(Scope.t(), holder) :: Resolution.t()
-  def resolve(%Scope{workspace: %Workspace{} = workspace} = scope, holder) do
-    Resolution.resolve(chain(scope, workspace, holder))
+  @spec resolve(Scope.t(), holder) :: {:ok, Resolution.t()} | {:error, Access.reason()}
+  def resolve(%Scope{} = scope, holder) do
+    with :ok <- may_read(scope),
+         {:ok, target} <- target(scope, holder) do
+      {:ok, Resolution.resolve(chain(scope, scope.workspace, target || :workspace))}
+    end
+  end
+
+  defp may_read(%Scope{workspace: %Workspace{} = workspace} = scope),
+    do: Access.authorize(scope, :"variable.read", workspace)
+
+  defp may_read(_scope), do: {:error, :not_found}
+
+  # The variables `holder` sets itself, unasked: for the writes, which have asked.
+  defp own_variables(scope, holder) do
+    Repo.all(
+      from v in level(variables(scope), holder),
+        order_by: [asc: fragment("lower(?)", v.name), asc: v.id]
+    )
   end
 
   @doc "change_variable/2 is the changeset of a variable, for a form."
@@ -130,11 +152,11 @@ defmodule Apiary.Variables do
 
     own =
       case holder do
-        %Target{} = target -> [{:target, list_variables(scope, target)}]
+        %Target{} = target -> [{:target, own_variables(scope, target)}]
         _workspace -> []
       end
 
-    above ++ [{:workspace, list_variables(scope, :workspace)}] ++ own
+    above ++ [{:workspace, own_variables(scope, :workspace)}] ++ own
   end
 
   ## Writing
@@ -158,6 +180,7 @@ defmodule Apiary.Variables do
             updated_by_id: scope.user.id
           }
           |> Variable.changeset(attrs)
+          |> lock_is_the_workspaces(target, attrs)
 
         with {:ok, changeset} <- check(scope, workspace, changeset),
              {:ok, variable} <- Repo.insert(changeset),
@@ -232,11 +255,22 @@ defmodule Apiary.Variables do
     end)
   end
 
-  # A repository's variable is never locked: the changeset casts no lock for it, so a
-  # lock asked of one is said, not dropped.
-  defp lock_is_the_workspaces(changeset, %Variable{target_id: nil}, _attrs), do: changeset
+  # A repository's variable is never locked: the changeset casts no lock for it, and a lock
+  # asked of one, new (its target given) or existing, is refused on `locked`, never
+  # dropped without a word.
+  defp lock_is_the_workspaces(changeset, holder, attrs) do
+    if repository?(holder) and lock_asked?(attrs), do: refuse_lock(changeset), else: changeset
+  end
 
-  defp lock_is_the_workspaces(changeset, %Variable{}, %{"locked" => true}) do
+  defp repository?(%Target{}), do: true
+  defp repository?(%Variable{target_id: target_id}), do: not is_nil(target_id)
+  defp repository?(_workspace), do: false
+
+  defp lock_asked?(attrs) do
+    Enum.any?(attrs, fn {key, value} -> to_string(key) == "locked" and value in [true, "true"] end)
+  end
+
+  defp refuse_lock(changeset) do
     Ecto.Changeset.add_error(
       changeset,
       :locked,
@@ -246,8 +280,6 @@ defmodule Apiary.Variables do
       )
     )
   end
-
-  defp lock_is_the_workspaces(changeset, %Variable{}, _attrs), do: changeset
 
   @doc "delete_variable/2 removes a variable (`variable.edit`): `{:ok, variable}`, as it was."
   @spec delete_variable(Scope.t(), Variable.t()) :: {:ok, Variable.t()} | {:error, refusal}
@@ -375,21 +407,23 @@ defmodule Apiary.Variables do
   # After the write, in its transaction: every holder the variable reaches is within the
   # limits, or the write rolls back. A workspace's variable reaches the workspace and every
   # repository with variables of its own; a repository's, that repository.
+  #
+  # The workspace's chain is resolved once; each repository's size is that one's plus
+  # what its own variables add, from one grouped query over their names and value sizes
+  # (no value is read), so the check is two queries however many repositories there are.
   defp within_limits(scope, workspace, %Variable{target_id: target_id}, changeset) do
-    holders =
-      case target_id do
-        nil ->
-          [
-            :workspace
-            | Repo.all(from t in Target, where: t.id in subquery(targets_with_variables(scope)))
-          ]
+    base = Resolution.resolve(chain(scope, workspace, :workspace))
+    base_size = Resolution.size(base)
 
-        id ->
-          [Repo.get!(Target, id)]
+    sizes =
+      for {_target_id, added, delta} <- repository_growth(scope, base, target_id) do
+        %{names: base_size.names + added, bytes: base_size.bytes + delta}
       end
 
-    Enum.reduce_while(holders, :ok, fn holder, :ok ->
-      case Resolution.check_limits(Resolution.resolve(chain(scope, workspace, holder))) do
+    sizes = if is_nil(target_id), do: [base_size | sizes], else: sizes
+
+    Enum.reduce_while(sizes, :ok, fn size, :ok ->
+      case Resolution.check_size(size) do
         :ok ->
           {:cont, :ok}
 
@@ -413,12 +447,52 @@ defmodule Apiary.Variables do
     end)
   end
 
-  defp targets_with_variables(scope) do
-    from v in variables(scope),
-      where: not is_nil(v.target_id),
-      distinct: true,
-      select: v.target_id
+  # For each repository with variables of its own (or the one `target_id` names), what
+  # they add to the workspace's resolution `base`: `{target_id, names, bytes}`. A name the
+  # workspace's chain does not set adds itself and its value; one it sets replaces the
+  # value's bytes; one it locks adds nothing. Names are ASCII, so another spelling of a
+  # name is as long as it.
+  defp repository_growth(scope, %Resolution{entries: entries}, target_id) do
+    keys = Enum.map(entries, &String.downcase(&1.name))
+    sizes = Enum.map(entries, &byte_size(&1.value))
+    locked = Enum.map(entries, &(not is_nil(&1.locked_by)))
+
+    query =
+      from v in variables(scope),
+        left_join:
+          b in fragment(
+            "SELECT * FROM unnest(?::text[], ?::int[], ?::boolean[]) AS b(key, size, locked)",
+            ^keys,
+            ^sizes,
+            ^locked
+          ),
+        on: field(b, :key) == fragment("lower(?)", v.name),
+        where: not is_nil(v.target_id),
+        group_by: v.target_id,
+        select:
+          {v.target_id, filter(count(v.id), is_nil(field(b, :key))),
+           coalesce(
+             sum(
+               fragment(
+                 "CASE WHEN ? IS NULL THEN octet_length(?) + octet_length(?) WHEN ? THEN 0 ELSE octet_length(?) - ? END",
+                 field(b, :key),
+                 v.name,
+                 v.value,
+                 field(b, :locked),
+                 v.value,
+                 field(b, :size)
+               )
+             ),
+             0
+           )}
+
+    query = if target_id, do: where(query, [v], v.target_id == ^target_id), else: query
+
+    for {id, added, delta} <- Repo.all(query), do: {id, added, to_integer(delta)}
   end
+
+  defp to_integer(%Decimal{} = decimal), do: Decimal.to_integer(decimal)
+  defp to_integer(integer) when is_integer(integer), do: integer
 
   ## The write
 

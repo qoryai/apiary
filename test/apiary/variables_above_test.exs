@@ -50,7 +50,9 @@ defmodule Apiary.VariablesAboveTest do
 
   test "the level above is resolved first, its locks hold, and its QORY_ names are left out",
        %{scope: scope, site: site} do
-    assert Resolution.values(Variables.resolve(scope, :workspace)) == %{
+    {:ok, resolution} = Variables.resolve(scope, :workspace)
+
+    assert Resolution.values(resolution) == %{
              "REGION" => "eu-west-1",
              "Log_Level" => "info"
            }
@@ -58,7 +60,7 @@ defmodule Apiary.VariablesAboveTest do
     {:ok, _} = Variables.create_variable(scope, :workspace, %{name: "Log_Level", value: "debug"})
     {:ok, _} = Variables.create_variable(scope, site, %{name: "Log_Level", value: "trace"})
 
-    resolution = Variables.resolve(scope, site)
+    {:ok, resolution} = Variables.resolve(scope, site)
     assert Resolution.values(resolution) == %{"REGION" => "eu-west-1", "Log_Level" => "trace"}
     assert %{set_by: :above, locked_by: :above} = Resolution.entry(resolution, "region")
   end
@@ -81,5 +83,15 @@ defmodule Apiary.VariablesAboveTest do
               [name: "Log_Level"]} =
                changeset.errors[:name]
     end
+  end
+
+  @tag with_features: [:observability]
+  test "without the security feature the variables are not found", %{scope: scope, site: site} do
+    assert Variables.list_variables(scope, :workspace) == {:error, :not_found}
+    assert Variables.get_variable(scope, Ecto.UUID.generate()) == {:error, :not_found}
+    assert Variables.resolve(scope, site) == {:error, :not_found}
+
+    assert Variables.create_variable(scope, :workspace, %{name: "A", value: "b"}) ==
+             {:error, :not_found}
   end
 end

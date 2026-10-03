@@ -131,11 +131,16 @@ defmodule Apiary.Variables.Resolution do
   #{@max_bytes} bytes of names and values.
   """
   @spec check_limits(t) :: :ok | {:error, :too_many_names | :too_large}
-  def check_limits(%__MODULE__{} = resolution) do
-    case size(resolution) do
-      %{names: names} when names > @max_names -> {:error, :too_many_names}
-      %{bytes: bytes} when bytes > @max_bytes -> {:error, :too_large}
-      _within -> :ok
+  def check_limits(%__MODULE__{} = resolution), do: check_size(size(resolution))
+
+  @doc "check_size/1 is `check_limits/1` of a size as `size/1` gives it."
+  @spec check_size(%{names: non_neg_integer, bytes: non_neg_integer}) ::
+          :ok | {:error, :too_many_names | :too_large}
+  def check_size(%{names: names, bytes: bytes}) do
+    cond do
+      names > @max_names -> {:error, :too_many_names}
+      bytes > @max_bytes -> {:error, :too_large}
+      true -> :ok
     end
   end
 end

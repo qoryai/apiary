@@ -30,7 +30,17 @@ defmodule Apiary.VariablesTest do
     variable
   end
 
-  defp values(scope, holder), do: scope |> Variables.resolve(holder) |> Resolution.values()
+  defp resolve!(scope, holder) do
+    {:ok, resolution} = Variables.resolve(scope, holder)
+    resolution
+  end
+
+  defp list!(scope, holder) do
+    {:ok, variables} = Variables.list_variables(scope, holder)
+    variables
+  end
+
+  defp values(scope, holder), do: scope |> resolve!(holder) |> Resolution.values()
 
   defp error(changeset, field) do
     {message, keys} = changeset.errors[field]
@@ -66,7 +76,7 @@ defmodule Apiary.VariablesTest do
       set!(scope, :workspace, "LOG_LEVEL", "info", %{locked: true})
       set!(scope, site, "NODE_ENV", "test")
 
-      resolution = Variables.resolve(scope, site)
+      resolution = resolve!(scope, site)
 
       assert Resolution.entry(resolution, "node_env") == %{
                name: "NODE_ENV",
@@ -79,10 +89,10 @@ defmodule Apiary.VariablesTest do
       assert %{set_by: :workspace, locked_by: :workspace} =
                Resolution.entry(resolution, "LOG_LEVEL")
 
-      assert [%Variable{name: "NODE_ENV"}] = Variables.list_variables(scope, site)
+      assert [%Variable{name: "NODE_ENV"}] = list!(scope, site)
 
       assert ["LOG_LEVEL", "NODE_ENV"] =
-               Enum.map(Variables.list_variables(scope, :workspace), & &1.name)
+               Enum.map(list!(scope, :workspace), & &1.name)
     end
 
     test "a value may be empty, and is one line of at most 4096 bytes", %{scope: scope} do
@@ -204,7 +214,7 @@ defmodule Apiary.VariablesTest do
       assert values(scope, site)["LOG_LEVEL"] == "info"
 
       assert %{set_by: :workspace, locked_by: :workspace, ignored: [:target]} =
-               Resolution.entry(Variables.resolve(scope, site), "LOG_LEVEL")
+               Resolution.entry(resolve!(scope, site), "LOG_LEVEL")
 
       # The repository's own value may be removed, not changed, while the lock holds.
       assert {:error, changeset} = Variables.update_variable(scope, own, %{value: "trace"})
@@ -217,7 +227,18 @@ defmodule Apiary.VariablesTest do
     end
 
     test "only a workspace's variable is locked", %{scope: scope, site: site} do
-      own = set!(scope, site, "SITE", "x", %{locked: true})
+      for locked <- [true, "true"] do
+        assert {:error, changeset} =
+                 Variables.create_variable(scope, site, %{
+                   name: "SITE",
+                   value: "x",
+                   locked: locked
+                 })
+
+        assert error(changeset, :locked) =~ "only a workspace's variable can be locked"
+      end
+
+      own = set!(scope, site, "SITE", "x", %{locked: false})
       assert own.locked == false
 
       assert {:error, changeset} = Variables.lock_variable(scope, own)
@@ -244,7 +265,7 @@ defmodule Apiary.VariablesTest do
 
       # Overriding a name adds none.
       assert {:ok, _} = Variables.create_variable(scope, site, %{name: "W1", value: "own"})
-      assert Resolution.size(Variables.resolve(scope, site)).names == 128
+      assert Resolution.size(resolve!(scope, site)).names == 128
       assert Repo.aggregate(from(v in Variable, where: v.name == "W121"), :count) == 0
     end
 
@@ -259,7 +280,7 @@ defmodule Apiary.VariablesTest do
                  value: String.duplicate("v", 4032)
                })
 
-      assert Resolution.size(Variables.resolve(scope, site)).bytes == 65_536
+      assert Resolution.size(resolve!(scope, site)).bytes == 65_536
 
       assert {:error, changeset} =
                Variables.update_variable(scope, last, %{value: String.duplicate("v", 4033)})
@@ -271,12 +292,75 @@ defmodule Apiary.VariablesTest do
     end
   end
 
+  describe "limits across repositories" do
+    test "a workspace save is checked against every repository, each its own size",
+         %{scope: scope, site: site} do
+      # 15 × (4 + 4096) = 61500 bytes in the workspace.
+      for i <- 10..24, do: set!(scope, :workspace, "V_#{i}", String.duplicate("v", 4096))
+
+      repositories = for i <- 1..20, do: target!(scope, "example/repo-#{i}")
+      for repository <- repositories, do: set!(scope, repository, "SMALL", "x")
+
+      # One repository grows to 6 bytes below the limit, through its own variables.
+      set!(scope, site, "BIG", String.duplicate("b", 4027))
+      assert Resolution.size(resolve!(scope, site)).bytes == 65_536 - 6
+
+      # 7 more bytes in the workspace take that one repository over; the others are fine.
+      assert {:error, changeset} =
+               Variables.create_variable(scope, :workspace, %{name: "A", value: "123456"})
+
+      assert error(changeset, :value) == "would give a run more than 64 KiB of variables"
+      assert {:ok, _} = Variables.create_variable(scope, :workspace, %{name: "A", value: "12345"})
+    end
+
+    test "a repository's value replaces the workspace's bytes, and a locked name adds none",
+         %{scope: scope, site: site} do
+      for i <- 10..24, do: set!(scope, :workspace, "V_#{i}", String.duplicate("v", 4096))
+      set!(scope, :workspace, "LOCKED", String.duplicate("l", 4000), %{locked: true})
+      before = Resolution.size(resolve!(scope, site)).bytes
+
+      # The repository's own value of a workspace name replaces it: 4096 bytes become 1.
+      assert {:ok, _} = Variables.create_variable(scope, site, %{name: "V_10", value: "s"})
+      assert Resolution.size(resolve!(scope, site)).bytes == before - 4095
+
+      # Room for a 4000-byte value of its own, which it would not have had.
+      assert {:ok, _} =
+               Variables.create_variable(scope, site, %{
+                 name: "OWN",
+                 value: String.duplicate("o", 4000)
+               })
+    end
+  end
+
+  describe "reading" do
+    test "every member reads; a person no longer a member reads nothing", %{
+      scope: scope,
+      site: site
+    } do
+      variable = set!(scope, :workspace, "NODE_ENV", "production")
+
+      for level <- [:member, :admin] do
+        %{scope: reader} = member_fixture(scope, level)
+        assert {:ok, [%Variable{}]} = Variables.list_variables(reader, :workspace)
+        assert {:ok, ^variable} = Variables.get_variable(reader, variable.id)
+        assert {:ok, %Resolution{}} = Variables.resolve(reader, site)
+      end
+
+      %{scope: gone, membership: membership} = member_fixture(scope)
+      {:ok, _} = Apiary.Organisations.remove_member(scope, membership.id)
+
+      assert Variables.list_variables(gone, :workspace) == {:error, :forbidden}
+      assert Variables.get_variable(gone, variable.id) == {:error, :forbidden}
+      assert Variables.resolve(gone, site) == {:error, :forbidden}
+    end
+  end
+
   describe "who, where and the trail" do
     test "a member reads the variables and changes none", %{scope: scope, site: site} do
       variable = set!(scope, :workspace, "NODE_ENV", "production")
       %{scope: member} = member_fixture(scope)
 
-      assert [%Variable{}] = Variables.list_variables(member, :workspace)
+      assert [%Variable{}] = list!(member, :workspace)
       assert values(member, site) == %{"NODE_ENV" => "production"}
 
       assert Variables.create_variable(member, :workspace, %{name: "A", value: "b"}) ==
@@ -304,7 +388,9 @@ defmodule Apiary.VariablesTest do
       variable = set!(scope, :workspace, "NODE_ENV", "production")
       other = sign_up_fixture().scope
 
-      assert Variables.list_variables(other, :workspace) == []
+      assert list!(other, :workspace) == []
+      assert Variables.list_variables(other, site) == {:error, :not_found}
+      assert Variables.resolve(other, site) == {:error, :not_found}
       assert Variables.get_variable(other, variable.id) == {:error, :not_found}
       assert Variables.update_variable(other, variable, %{value: "x"}) == {:error, :not_found}
       assert Variables.delete_variable(other, variable) == {:error, :not_found}
