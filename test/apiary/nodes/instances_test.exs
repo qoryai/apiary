@@ -502,4 +502,34 @@ defmodule Apiary.Nodes.InstancesTest do
       assert activity[never.id] == %{running: [], last: nil}
     end
   end
+
+  describe "pruning" do
+    test "a pool's instances unseen for a day, and a node's older ones after thirty days", %{
+      scope: scope
+    } do
+      pool = pool_fixture(scope)
+      node = node_fixture(scope)
+      now = DateTime.utc_now()
+
+      instance_fixture(pool, instance_id: "p_old", seen_at: ago(86_401, now))
+      instance_fixture(pool, instance_id: "p_new", seen_at: ago(86_399, now))
+      instance_fixture(node, instance_id: "n_oldest", seen_at: ago(40 * 86_400, now))
+      instance_fixture(node, instance_id: "n_older", seen_at: ago(31 * 86_400, now))
+      instance_fixture(node, instance_id: "n_recent", seen_at: ago(29 * 86_400, now))
+      lonely = node_fixture(scope)
+      instance_fixture(lonely, instance_id: "l_only", seen_at: ago(90 * 86_400, now))
+
+      assert Nodes.prune_instances(now) >= 3
+
+      kept =
+        Repo.all(
+          from i in Instance,
+            where: i.node_id in ^[pool.id, node.id, lonely.id],
+            select: i.instance_id,
+            order_by: i.instance_id
+        )
+
+      assert kept == ~w(l_only n_recent p_new)
+    end
+  end
 end

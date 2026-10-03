@@ -10,7 +10,8 @@ defmodule Apiary.Nodes do
   workspace is not found. A node is named by its public id (`nd_…` or `np_…`), the id its
   page's path carries. A deleted node is gone from every read here. The receiving side's
   functions (`seen/3`, `placement/2`, `check_instance_limit/3`, `admit/4`) take the node
-  a verified access key names instead.
+  a verified access key names instead, and the retention job's (`prune_instances/1`)
+  none.
 
   Making, changing and deleting a node, and clearing an instance, are owners' and admins'
   (`node.create`, `node.edit`, `node.delete`, `node.clear_instance`); everyone in the
@@ -27,7 +28,8 @@ defmodule Apiary.Nodes do
   means "not yet lost", and a node runs while any of its instances does (`activity/3`).
   `check_instance_limit/3` and `admit/4` hold a node to its instance limit when a ping
   would create a run, under the node's row lock; `clear_instance/3` marks an instance's
-  open runs lost, for one that stopped without saying so.
+  open runs lost, for one that stopped without saying so; `prune_instances/1` deletes the
+  rows the pages no longer show.
   """
 
   import Ecto.Query, warn: false
@@ -252,6 +254,9 @@ defmodule Apiary.Nodes do
   # At most this many new instances of a node are recorded in a window of a day.
   @bound 256
   @day 86_400
+  # A Node keeps its instances other than its latest this many days after they were last
+  # seen; a pool keeps one a day after.
+  @node_keeps_days 30
   @max_version 255
 
   @typedoc """
@@ -717,5 +722,45 @@ defmodule Apiary.Nodes do
        }) do
     from i in Instance,
       where: i.organisation_id == ^organisation_id and i.workspace_id == ^workspace_id
+  end
+
+  ## Pruning
+
+  @doc """
+  prune_instances/1 deletes, on every workspace, the instance rows that are no longer
+  shown: a pool's instances not seen for a day before `now`, and a Node's instances other
+  than its latest not seen for #{@node_keeps_days} days. Runs and deliveries keep the
+  instance id they claimed. Returns how many rows went. The retention job calls it
+  (`Apiary.Retention.prune_all/1`).
+  """
+  @spec prune_instances(DateTime.t()) :: non_neg_integer
+  def prune_instances(%DateTime{} = now \\ DateTime.utc_now()) do
+    day = DateTime.add(now, -@day, :second)
+    month = DateTime.add(now, -@node_keeps_days * @day, :second)
+
+    {pools, _} =
+      Repo.delete_all(
+        from i in Instance,
+          join: n in Node,
+          on: n.id == i.node_id,
+          where: n.kind == :pool and i.last_seen_at < ^day
+      )
+
+    later =
+      from l in Instance,
+        where:
+          l.node_id == parent_as(:instance).node_id and
+            l.last_seen_at > parent_as(:instance).last_seen_at
+
+    {nodes, _} =
+      Repo.delete_all(
+        from i in Instance,
+          as: :instance,
+          join: n in Node,
+          on: n.id == i.node_id,
+          where: n.kind == :node and i.last_seen_at < ^month and exists(later)
+      )
+
+    pools + nodes
   end
 end
