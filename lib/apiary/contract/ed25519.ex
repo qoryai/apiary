@@ -136,13 +136,26 @@ defmodule Apiary.Contract.Ed25519 do
   was checked when it was received.
   """
   @spec verify(binary, binary, binary) :: boolean
-  def verify(message, <<r::binary-size(32), s::binary-size(32)>> = signature, public_key)
+  def verify(message, <<_::binary-size(64)>> = signature, public_key)
       when is_binary(message) and byte_size(public_key) == 32 do
-    canonical_r?(r) and :binary.decode_unsigned(s, :little) < @l and
+    canonical_signature?(signature) and
       :crypto.verify(:eddsa, :none, message, signature, [public_key, :ed25519])
   end
 
   def verify(_message, _signature, _public_key), do: false
+
+  @doc """
+  canonical_signature?/1 says whether a 64-byte signature is in canonical form, which
+  `verify/3` asks before the curve: its R a canonical encoding, y below p and no sign bit
+  on x = 0, and its S below ℓ. `:crypto` compares R's bytes with the canonical encoding of
+  the point it computes, so it refuses a non-canonical R too; this check does not depend
+  on it, whatever the OpenSSL build.
+  """
+  @spec canonical_signature?(binary) :: boolean
+  def canonical_signature?(<<r::binary-size(32), s::binary-size(32)>>),
+    do: canonical_r?(r) and :binary.decode_unsigned(s, :little) < @l
+
+  def canonical_signature?(_signature), do: false
 
   @doc """
   fixture_keys/0 is the contract's published fixture public keys, which every key check

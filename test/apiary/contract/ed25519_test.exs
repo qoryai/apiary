@@ -7,6 +7,30 @@ defmodule Apiary.Contract.Ed25519Test do
   @fixture_access_key "ebVWLo_mVPlAeLES6KmLp5AfhTrmlb7X4OORC60ElmQ"
   @fixture_signing_key "rcFAEfgtHFbZVqpPnXPYhYNhpgYEhSXg0Ixjjcdd2Mc"
   @torsion_key "KH9r2npX9PKHPzv_Xl6pwmCmpjQ73zfHq800btWQTBE"
+  @fixture_next_signing_key "C0eCPnEJXdWb54rCccV27zifh7ZFYasHz5pOvNAtIEE"
+
+  # The contract's enrolment known answer: the proof, under the fixture access key, of the
+  # five lines of the example body.
+  @enrol_lines Enum.join(
+                 [
+                   "qory-enrol-ed25519-v1",
+                   "qec_F1XT0RE0000000000000000000.uoES-kuj1vk0sq0qoGlmAg",
+                   "ebVWLo_mVPlAeLES6KmLp5AfhTrmlb7X4OORC60ElmQ",
+                   "build-01",
+                   "1700000000"
+                 ],
+                 "\n"
+               )
+  @enrol_proof "stcDcwasYMSLUxHX7A9AH-LXGRsRfpbHpMwGKd5ND6LI1WRsH10Rt4dhp8VmIYEau2sj31kCJSUzsDkSlCV8AQ"
+
+  # A signature valid under cofactored verification only, made for this test: under the
+  # key of `@cofactored_seed`, of "qory-request-ed25519-v1", with R = rB + T for T the
+  # first order-8 point of `@small_order` and S = r + k·a, k over that R. [8]SB = [8]R +
+  # [8]kA holds, since [8]T is the identity; SB = R + kA does not. Its R and S are
+  # canonical, so only the equation refuses it.
+  @cofactored_seed "oPCGmRNKrFJWrE0Rdmuck9VqC0AERWd_VEdSujf7gOo"
+  @cofactored_key "S642ktckYAc7Wep8ytaOCdAdZ9HmoYbsOAOPaXuHT2s"
+  @cofactored_signature "AwlfcomEgdC0aDiY3AOy4bW2pycOhG0Me_wFCxE1chy3r9Jk_wpTUHm0RAURjXV6KWZIdUEmnOKyHJNjaOj8BQ"
 
   # The eight points of small order, canonical, and the six non-canonical encodings a
   # lenient decoder accepts.
@@ -114,6 +138,22 @@ defmodule Apiary.Contract.Ed25519Test do
       assert Ed25519.decode(String.slice(encoded, 0..-2//1) <> dirty, 32) == :error
     end
 
+    test "whitespace anywhere is refused" do
+      {public, _secret} = key_pair()
+      encoded = Ed25519.encode(public)
+
+      for spaced <- [
+            " " <> encoded,
+            encoded <> "\n",
+            String.slice(encoded, 0, 20) <> " " <> String.slice(encoded, 20..-1//1),
+            String.slice(encoded, 0, 20) <> "\r\n" <> String.slice(encoded, 20..-1//1),
+            String.slice(encoded, 0, 20) <> "\t" <> String.slice(encoded, 20..-1//1)
+          ] do
+        assert Ed25519.decode(spaced, 32) == :error, inspect(spaced)
+        assert Ed25519.decode_public_key(spaced) == {:error, :length}
+      end
+    end
+
     test "the fixture access key decodes to its 32 bytes" do
       assert {:ok, key} = Ed25519.decode(@fixture_access_key, 32)
       assert byte_size(key) == 32
@@ -127,6 +167,16 @@ defmodule Apiary.Contract.Ed25519Test do
 
       assert Ed25519.fingerprint(access_key) == "ZbYGc9btiEvwHCwiLYKtoA"
       assert Ed25519.fingerprint(signing_key) == "uoES-kuj1vk0sq0qoGlmAg"
+    end
+
+    test "the next fixture signing key matches its published key and fingerprint" do
+      seed = :binary.list_to_bin(Enum.to_list(161..192))
+      {public, _secret} = :crypto.generate_key(:eddsa, :ed25519, seed)
+
+      assert Ed25519.encode(public) == @fixture_next_signing_key
+      assert Ed25519.fingerprint(public) == "52vzzF--Ic7qH_eZWi5K2A"
+      assert public in Ed25519.fixture_keys()
+      assert Ed25519.decode_public_key(@fixture_next_signing_key) == {:error, :fixture}
     end
 
     test "is 22 characters of SHA-256's first 16 bytes" do
@@ -167,12 +217,55 @@ defmodule Apiary.Contract.Ed25519Test do
     test "refuses a non-canonical R" do
       {public, secret} = key_pair()
 
-      <<_r::binary-size(32), s::binary-size(32)>> =
+      <<r::binary-size(32), s::binary-size(32)>> =
         :crypto.sign(:eddsa, :none, "m", [secret, :ed25519])
 
       {:ok, non_canonical} = Ed25519.decode(hd(@non_canonical), 32)
 
+      # The form alone refuses it, before the curve is asked: the check `verify/3` makes
+      # whatever `:crypto` would answer.
+      assert Ed25519.canonical_signature?(r <> s)
+
+      for encoded <- @non_canonical do
+        {:ok, bad_r} = Ed25519.decode(encoded, 32)
+        refute Ed25519.canonical_signature?(bad_r <> s), encoded
+      end
+
       refute Ed25519.verify("m", non_canonical <> s, public)
+    end
+
+    test "refuses an S not below ℓ by its form, before the curve" do
+      {_public, secret} = key_pair()
+
+      <<r::binary-size(32), s::binary-size(32)>> =
+        :crypto.sign(:eddsa, :none, "m", [secret, :ed25519])
+
+      s_plus_l = :binary.decode_unsigned(s, :little) + @l
+      refute Ed25519.canonical_signature?(r <> <<s_plus_l::little-size(256)>>)
+      refute Ed25519.canonical_signature?(r)
+    end
+
+    test "verifies the contract's enrolment proof" do
+      {:ok, key} = Ed25519.decode(@fixture_access_key, 32)
+      {:ok, proof} = Ed25519.decode(@enrol_proof, 64)
+
+      assert byte_size(@enrol_lines) == 139
+      assert Ed25519.verify(@enrol_lines, proof, key)
+      refute Ed25519.verify(@enrol_lines <> "\n", proof, key)
+    end
+
+    test "refuses a signature that verifies only cofactored" do
+      {:ok, seed} = Ed25519.decode(@cofactored_seed, 32)
+      {:ok, key} = Ed25519.decode(@cofactored_key, 32)
+      {:ok, signature} = Ed25519.decode(@cofactored_signature, 64)
+
+      # The vector's key is the seed's, and a signature the seed makes verifies.
+      assert {^key, secret} = :crypto.generate_key(:eddsa, :ed25519, seed)
+      honest = :crypto.sign(:eddsa, :none, "qory-request-ed25519-v1", [secret, :ed25519])
+      assert Ed25519.verify("qory-request-ed25519-v1", honest, key)
+
+      assert Ed25519.canonical_signature?(signature)
+      refute Ed25519.verify("qory-request-ed25519-v1", signature, key)
     end
   end
 end
