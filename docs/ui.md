@@ -546,6 +546,18 @@ renders every variation and every page in both themes, so a story that a change 
 component breaks fails the suite. The dev server compiles a story when it is opened, and
 reloads the page when one changes.
 
+**Screen mock-ups** (`storybook/screens/`, in the order of `_screens.index.exs`) are page
+stories of whole screens drawn to be clicked through, a proposal before any route or context
+exists: 1. Sidebar and shell, 2. Settings (General, Secrets and variables, Members),
+3. Integrations, 4. An integration (Overview, Secrets, Settings), 5. Add integration,
+6. A target's run setup, 7. Access keys, 8. Machines. They are drawn in a shell built from
+`Layouts.app/1`'s own classes (`ApiaryWeb.Storybook.Mockup.shell/1`), since the real one
+holds the app's entries and links; inside it they use the real components
+(`SettingsComponents.layout/1`, `<.table>`, `<.views>`, `RunComponents.tabs/1`). With no
+`app.js` there, every move is a plain link to a story and its tab (`?tab=`, carrying
+`?theme=`), built by `Mockup.path/3`, and the storybook test checks that each leads to a
+story and a tab it has.
+
 ## Colour and themes
 
 `app.css` defines two daisyUI themes, `qory` (light, the default) and `qory-dark`. The
