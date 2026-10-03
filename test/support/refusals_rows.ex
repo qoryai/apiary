@@ -19,8 +19,8 @@ defmodule ApiaryWeb.RefusalsRows do
 
   The world: an organisation with an owner, a second owner, an admin and two members; a
   second workspace, and a third marked for deletion; in the first workspace a rule, a
-  locked rule, a target, an access key, a node, a run that has not ended, and a pending
-  invitation; and another organisation, with its owner.
+  locked rule, a target, an access key, a node with a running instance, a run that has
+  not ended, and a pending invitation; and another organisation, with its owner.
   """
 
   @behaviour ApiaryWeb.RefusalsCase
@@ -252,6 +252,14 @@ defmodule ApiaryWeb.RefusalsRows do
        %{"node" => %{"name" => "renamed"}}, answer: :not_found_at_mount},
       {:"node.delete", :other_owner, "/:other_org/:other_ws/nodes/:node/settings/delete",
        "delete", %{}, answer: :not_found_at_mount},
+      {:"node.clear_instance", :member, "/:org/:workspace/nodes/:node", "clear_instance", %{}},
+      {:"node.clear_instance", :demoted_admin,
+       "/:org/:workspace/nodes/:node/instances/:instance/clear", "clear_instance", %{}},
+      {:"node.clear_instance", :removed_member, "/:org/:workspace/nodes/:node", "clear_instance",
+       %{}},
+      {:"node.clear_instance", :other_owner,
+       "/:other_org/:other_ws/nodes/:node/instances/:instance/clear", "clear_instance", %{},
+       answer: :not_found_at_mount},
 
       # A run.
       {:"run.close", :removed_member, "/:org/:workspace/runs/:run", "close_confirm", %{},
@@ -280,8 +288,7 @@ defmodule ApiaryWeb.RefusalsRows do
       token: [:"invitation.accept"],
       release: [:"instance_admin.grant", :"instance_admin.revoke"],
       sign_up: [:"organisation.create"],
-      edition: [:"workspace.create"],
-      no_page_yet: [:"node.clear_instance"]
+      edition: [:"workspace.create"]
     }
   end
 
@@ -313,6 +320,8 @@ defmodule ApiaryWeb.RefusalsRows do
 
     %{access_key: key} = access_key_fixture(owner)
     node = node_fixture(owner, name: "build-01")
+    instance = instance_fixture(node, instance_id: "i_1")
+    node_run_fixture(node, instance.instance_id)
     run = started_run(owner)
     %{invitation: invitation} = invitation_fixture(owner)
     admin = RefusalsCase.person(owner, :admin)
@@ -351,6 +360,7 @@ defmodule ApiaryWeb.RefusalsRows do
       target: target,
       key: key,
       node: node,
+      instance: instance,
       run: run,
       invitation: invitation
     }
@@ -376,6 +386,7 @@ defmodule ApiaryWeb.RefusalsRows do
   def value(:key, world), do: {:id, world.key.id}
   def value(:run, world), do: {:id, world.run.run_id}
   def value(:node, world), do: {:id, world.node.public_id}
+  def value(:instance, world), do: world.instance.instance_id
   def value(_name, _world), do: nil
 
   # The organisation, the other one, whose pages its owner sends this one's ids from, and

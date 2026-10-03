@@ -182,4 +182,99 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
       assert Nodes.list_nodes(scope) == []
     end
   end
+
+  describe "what the nodes are doing" do
+    setup :register_and_log_in_user
+
+    defp ago(seconds), do: DateTime.add(DateTime.utc_now(), -seconds, :second)
+
+    test "each node's state, and a pool's running instances under it", %{
+      conn: conn,
+      scope: scope
+    } do
+      running = node_fixture(scope, name: "build-01")
+      idle = node_fixture(scope, name: "build-02")
+      never = node_fixture(scope, name: "build-03")
+      pool = pool_fixture(scope, name: "spot-runners", instance_limit: 20)
+      node_run_fixture(running, "i_1")
+      instance_fixture(idle, instance_id: "i_2", seen_at: ago(7200))
+      instance_fixture(pool, instance_id: "p_1", name: "spot-1")
+      for n <- 1..12, do: node_run_fixture(pool, "p_#{n}")
+
+      {:ok, lv, _html} = live(conn, nodes_path(scope))
+
+      assert has_element?(lv, "#node-#{running.public_id}-state", "Running")
+      assert has_element?(lv, "#node-#{idle.public_id}-state", "Last seen")
+      assert has_element?(lv, "#node-#{never.public_id}-state", "Never seen")
+      assert has_element?(lv, "#node-#{pool.public_id}-state", "12 of 20 running")
+
+      # Ten instances under the pool, then the rest as a count that leads to its page.
+      assert has_element?(lv, "#nodes tr[id^='node-#{pool.public_id}-instance-']", "spot-1")
+
+      assert lv
+             |> render()
+             |> LazyHTML.from_fragment()
+             |> LazyHTML.query("#nodes tr[id^='node-#{pool.public_id}-instance-']")
+             |> Enum.count() == 10
+
+      assert has_element?(lv, "#node-#{pool.public_id}-more-link", "and 2 more")
+      refute has_element?(lv, "#nodes tr[id^='node-#{running.public_id}-instance-']")
+    end
+
+    test "the views count and keep the running and the rest", %{conn: conn, scope: scope} do
+      running = node_fixture(scope, name: "build-01")
+      idle = node_fixture(scope, name: "build-02")
+      node_run_fixture(running, "i_1")
+
+      {:ok, lv, _html} = live(conn, nodes_path(scope))
+      assert has_element?(lv, ~s{#nodes-view-all[aria-current="page"]}, "2")
+      assert has_element?(lv, "#nodes-view-running", "1")
+      assert has_element?(lv, "#nodes-view-idle", "1")
+
+      lv |> element("#nodes-view-running") |> render_click()
+      assert_patch(lv, nodes_path(scope, "?view=running"))
+      assert has_element?(lv, "#node-#{running.public_id}")
+      refute has_element?(lv, "#node-#{idle.public_id}")
+
+      {:ok, lv, _html} = live(conn, nodes_path(scope, "?view=idle"))
+      refute has_element?(lv, "#node-#{running.public_id}")
+      assert has_element?(lv, "#node-#{idle.public_id}")
+    end
+
+    test "sorts by name, or by last seen", %{conn: conn, scope: scope} do
+      a = node_fixture(scope, name: "a-never")
+      b = node_fixture(scope, name: "b-seen")
+      c = node_fixture(scope, name: "c-running")
+      instance_fixture(b, seen_at: ago(60))
+      node_run_fixture(c, "i_1")
+
+      order = fn lv ->
+        lv
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("#nodes > tr")
+        |> LazyHTML.attribute("id")
+      end
+
+      {:ok, lv, _html} = live(conn, nodes_path(scope))
+      assert order.(lv) == Enum.map([a, b, c], &"node-#{&1.public_id}")
+
+      lv |> element("#nodes-sort-seen") |> render_click()
+      assert_patch(lv, nodes_path(scope, "?sort=seen"))
+      assert order.(lv) == Enum.map([c, b, a], &"node-#{&1.public_id}")
+    end
+
+    test "reads the nodes again as they change, and on its tick", %{conn: conn, scope: scope} do
+      node = node_fixture(scope)
+      {:ok, lv, _html} = live(conn, nodes_path(scope))
+      assert has_element?(lv, "#node-#{node.public_id}-state", "Never seen")
+
+      subscribers = fn topic -> for {pid, _} <- Registry.lookup(Apiary.PubSub, topic), do: pid end
+      assert lv.pid in subscribers.(Nodes.topic(scope.workspace.id))
+
+      node_run_fixture(node, "i_1")
+      send(lv.pid, :tick)
+      assert has_element?(lv, "#node-#{node.public_id}-state", "Running")
+    end
+  end
 end
