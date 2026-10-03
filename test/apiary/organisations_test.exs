@@ -4,11 +4,12 @@ defmodule Apiary.OrganisationsTest do
 
   import Apiary.AccountsFixtures
   import Apiary.OrganisationsFixtures
+  import Ecto.Query, only: [from: 2]
 
   alias Apiary.Organisations
   alias Apiary.Accounts.Scope
   alias Apiary.Audit.Entry
-  alias Apiary.Organisations.{Invitation, Membership, Organisation}
+  alias Apiary.Organisations.{Invitation, Membership, Organisation, Workspace}
 
   describe "sign_up_user/2" do
     test "creates the user, the organisation it names, a Main workspace and an owner membership" do
@@ -287,7 +288,11 @@ defmodule Apiary.OrganisationsTest do
       %{user: user, organisation: organisation, workspace: main} = sign_up_fixture()
       # Before Main by name, after it by age.
       alpha = workspace_fixture(organisation, "Alpha")
-      assert DateTime.compare(alpha.inserted_at, main.inserted_at) == :gt
+
+      # A second apart, the younger with the fewer microseconds: a term comparison of the two
+      # DateTime structs would call it the older.
+      set_inserted_at(main, ~U[2026-01-01 10:00:00.900000Z])
+      set_inserted_at(alpha, ~U[2026-01-01 10:00:01.100000Z])
 
       assert Organisations.load_home_scope(Scope.for_user(user), nil).workspace.id == main.id
       assert Organisations.load_scope(Scope.for_user(user)).workspace.id == main.id
@@ -1031,5 +1036,12 @@ defmodule Apiary.OrganisationsTest do
       changeset = Organisations.change_invitation(%Invitation{}, %{"email" => "A@B.example"})
       assert get_change(changeset, :email) == "a@b.example"
     end
+  end
+
+  defp set_inserted_at(workspace, at) do
+    Apiary.Repo.update_all(
+      from(w in Workspace, where: w.id == ^workspace.id),
+      set: [inserted_at: at]
+    )
   end
 end

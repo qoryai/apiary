@@ -217,7 +217,10 @@ defmodule Apiary.Organisations do
   end
 
   defp oldest_of([]), do: nil
-  defp oldest_of(workspaces), do: Enum.min_by(workspaces, &{&1.inserted_at, &1.id})
+  # By the instant, not the struct: terms compare a DateTime field by field, the
+  # microseconds before the seconds.
+  defp oldest_of(workspaces),
+    do: Enum.min_by(workspaces, &{DateTime.to_unix(&1.inserted_at, :microsecond), &1.id})
 
   defp place(row), do: {row.workspace, Map.delete(row, :workspace)}
 
