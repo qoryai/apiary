@@ -5,7 +5,7 @@ defmodule Apiary.RuntimeConfigTest do
   @base %{
     "DATABASE_URL" => "ecto://apiary:apiary@localhost/apiary",
     "SECRET_KEY_BASE" => String.duplicate("s", 64),
-    "CLOAK_KEY" => Base.encode64(String.duplicate("k", 32)),
+    "APIARY_ENCRYPTION_SECRET" => Base.encode64(String.duplicate("k", 32)),
     "PUBLIC_URL" => "https://qory.example"
   }
   @mail ~w(SMTP_RELAY SMTP_PORT SMTP_USERNAME SMTP_PASSWORD SMTP_TLS MAIL_TO_LOG MAIL_FROM)

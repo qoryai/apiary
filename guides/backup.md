@@ -5,12 +5,12 @@ not rebuild, and nothing is written to a disk outside the database. A backup is 
 three things:
 
 1. a dump of the database;
-2. `CLOAK_KEY`;
+2. `APIARY_ENCRYPTION_SECRET`;
 3. `SECRET_KEY_BASE`.
 
 Keep the two values beside the dumps and not inside them, in a password manager or a secret
-store: a dump without `CLOAK_KEY` restores everything except the access key secrets, and a
-dump stored with `CLOAK_KEY` protects nothing of them.
+store: a dump without `APIARY_ENCRYPTION_SECRET` restores everything except the access key
+secrets, and a dump stored with `APIARY_ENCRYPTION_SECRET` protects nothing of them.
 
 ## Back up
 
@@ -59,8 +59,8 @@ a dump restores under the release it was taken under or under a later one.
 
 ### The compose installation
 
-On a new machine, with the repository checked out and `.env` holding the same `CLOAK_KEY`
-and `SECRET_KEY_BASE`:
+On a new machine, with the repository checked out and `.env` holding the same
+`APIARY_ENCRYPTION_SECRET` and `SECRET_KEY_BASE`:
 
 ```sh
 docker compose up -d postgres
@@ -99,34 +99,35 @@ curl http://localhost:4100/health
 
 answers `200` with `"database":"ok"`. Sign in, open **Runs**, and start a run on a machine
 that has one of the workspace's access keys: if it appears, the access key secrets were
-restored readable, which means `CLOAK_KEY` is the right one.
+restored readable, which means `APIARY_ENCRYPTION_SECRET` is the right one.
 
 ## What each key is for
 
-### `CLOAK_KEY`
+### `APIARY_ENCRYPTION_SECRET`
 
 It encrypts the secrets of access keys at rest: the columns `secret_primary` and
 `secret_secondary` of the table `access_keys`. Nothing else in the database is encrypted
 with it.
 
-Without the `CLOAK_KEY` the dump was taken under, those secrets cannot be read. What that
-looks like, so it is recognised:
+Without the `APIARY_ENCRYPTION_SECRET` the dump was taken under, those secrets cannot be read.
+What that looks like, so it is recognised:
 
 - Every signed request of a runner holding such a key, the configuration document and every
   batch of events among them, is answered `503` with
   `{"error":"unavailable"}`, never `401`: the instance is at fault, not the machine. The
   runner fails closed, so no machine starts a run against this server and no events
   arrive. For each request the log has `access key secret cannot be decrypted
-  key_id=ak_…: CLOAK_KEY is not the key the secret was encrypted with`.
+  key_id=ak_…: APIARY_ENCRYPTION_SECRET is not the key the secret was encrypted with`.
 - The console still shows every key on **Access keys** with its label, key id and last
   use, since the page never reads a secret. It cannot show a secret again, by design.
 - **Rotate** on such a key issues a new secret, shown once, in place of the ones nobody can
   read, which are dropped; **Revoke** revokes as ever.
 
 The way out is therefore a new secret for every machine: rotate each key under the new
-`CLOAK_KEY`, or create a new key, and paste the `server` block into each machine's runner
-file ([The runner file's `server` section](runner-file.md)). When the right `CLOAK_KEY`
-turns up, put it back before rotating and every existing secret reads again.
+`APIARY_ENCRYPTION_SECRET`, or create a new key, and paste the `server` block into each
+machine's runner file ([The runner file's `server` section](runner-file.md)). When the right
+`APIARY_ENCRYPTION_SECRET` turns up, put it back before rotating and every existing secret
+reads again.
 
 Everything else survives: accounts, organisations, workspaces and memberships, runs,
 events, logs, connections, and the access keys' own rows with their labels and key ids.
@@ -134,8 +135,8 @@ events, logs, connections, and the access keys' own rows with their labels and k
 So does the security policy, with its versions and history.
 <!-- /feature -->
 
-For the same reason `CLOAK_KEY` must never change on a running installation once an access
-key exists.
+For the same reason `APIARY_ENCRYPTION_SECRET` must never change on a running installation
+once an access key exists.
 
 ### `SECRET_KEY_BASE`
 
@@ -152,8 +153,8 @@ A backup that has never been restored is a hope. Once, and after any change to h
 are taken, restore the newest dump on another machine:
 
 1. Check the repository out at the tag the installation runs.
-2. Write a `.env` with the installation's `CLOAK_KEY` and `SECRET_KEY_BASE`, a new database
-   password in `POSTGRES_PASSWORD` and `DATABASE_URL`, `PUBLIC_URL=http://localhost:4100`
+2. Write a `.env` with the installation's `APIARY_ENCRYPTION_SECRET` and `SECRET_KEY_BASE`, a
+   new database password in `POSTGRES_PASSWORD` and `DATABASE_URL`, `PUBLIC_URL=http://localhost:4100`
    and `MAIL_TO_LOG=true`. The drill sends no mail, and nobody else signs in to it.
 3. Restore as under "The compose installation" above.
 4. `curl http://localhost:4100/health` answers `200`.
@@ -165,8 +166,8 @@ are taken, restore the newest dump on another machine:
 6. Prove the access key secrets are readable. On the same machine, with the `qory` command,
    point a runner file's `server` section at `http://localhost:4100` with the access key and
    secret of a key that existed when the dump was taken, and start a run. A run that starts
-   and appears under **Runs** proves the dump and `CLOAK_KEY` belong together. A run that
-   does not start because the server refuses its requests means they do not.
+   and appears under **Runs** proves the dump and `APIARY_ENCRYPTION_SECRET` belong together. A
+   run that does not start because the server refuses its requests means they do not.
 7. Delete the drill: `docker compose down --volumes`, then the `.env` and the dump's copy.
 
 Write down how long the restore took. It is how long an outage with a lost database lasts.

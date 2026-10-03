@@ -78,8 +78,8 @@ export PUBLIC_URL="http://127.0.0.1:$E2E_PORT"
 export PHX_SERVER=true
 export MAIL_TO_LOG=true
 SECRET_KEY_BASE="$(openssl rand -base64 48)"
-CLOAK_KEY="$(openssl rand -base64 32)"
-export SECRET_KEY_BASE CLOAK_KEY
+APIARY_ENCRYPTION_SECRET="$(openssl rand -base64 32)"
+export SECRET_KEY_BASE APIARY_ENCRYPTION_SECRET
 
 say "compiling the test instance"
 "${mix[@]}" compile
