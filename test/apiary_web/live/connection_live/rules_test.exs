@@ -617,7 +617,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       end
     end
 
-    test "the change of a credential named like a host says nothing of the host's rule", %{
+    test "a past change of a credential named like a host says nothing of the host's rule", %{
       effective: effective
     } do
       entry = Enum.find(effective.entries, &(&1.host == "registry.example"))

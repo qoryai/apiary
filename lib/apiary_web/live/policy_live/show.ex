@@ -2,8 +2,8 @@ defmodule ApiaryWeb.PolicyLive.Show do
   @moduledoc """
   The workspace's security policy: the mode with its two confirms, Network access (the
   hosts and paths allowed and denied, with the composer that reads a rule back before it
-  is saved, and a link to the Network access page, what the runs reached), the
-  credentials, the targets and their policy, the history with diffs, one version with its
+  is saved, and a link to the Network access page, what the runs reached), the targets
+  and their policy, the history with diffs, one version with its
   document, and the export. The Network access page's rule links (`?rule=`) lead to the
   rule in that section.
 
@@ -89,8 +89,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
     )
     |> then(fn socket ->
       assign(socket,
-        rows: Common.above_rows(effective, socket) ++ Common.workspace_rules(own, socket, locks),
-        credentials: Common.credential_rows(own, socket)
+        rows: Common.above_rows(effective, socket) ++ Common.workspace_rules(own, socket, locks)
       )
     end)
     |> load_record()
@@ -642,9 +641,8 @@ defmodule ApiaryWeb.PolicyLive.Show do
       {:ok, rule} ->
         sentence =
           if locked,
-            do: gettext("%{rule} is locked. No target can override it.", rule: subject(rule)),
-            else:
-              gettext("%{rule} is unlocked. A target can override it again.", rule: subject(rule))
+            do: gettext("%{rule} is locked. No target can override it.", rule: rule.host),
+            else: gettext("%{rule} is unlocked. A target can override it again.", rule: rule.host)
 
         announce = if locked, do: gettext("Rule locked."), else: gettext("Rule unlocked.")
 
@@ -676,22 +674,18 @@ defmodule ApiaryWeb.PolicyLive.Show do
 
     case Policy.remove_rule(socket.assigns.current_scope, rule) do
       {:ok, rule} ->
-        words =
-          if rule.kind == "credential",
-            do: gettext("The credential %{name} is removed.", name: rule.name),
-            else: gettext("The rule %{host} is removed.", host: rule.host)
-
         socket
-        |> Common.wrote(nil, words, gettext("Rule removed."))
+        |> Common.wrote(
+          nil,
+          gettext("The rule %{host} is removed.", host: rule.host),
+          gettext("Rule removed.")
+        )
         |> Common.focus(if(next, do: "rule-#{next.id}-menu-button", else: "policy-composer-host"))
 
       {:error, error} ->
         Common.refused(socket, error)
     end
   end
-
-  defp subject(%{kind: "credential", name: name}), do: name
-  defp subject(%{host: host}), do: host
 
   defp default_sentence("enforce"), do: gettext("The workspace's default is enforce.")
   defp default_sentence(_observe), do: gettext("The workspace's default is observe.")
@@ -1198,36 +1192,6 @@ defmodule ApiaryWeb.PolicyLive.Show do
               "Locked rules come first, then deny, then allow, each by host read from the right, so a suffix sits beside the hosts below it. A locked rule holds in every target; a deny holds in either mode."
             )}
       </p>
-    </section>
-
-    <section
-      :if={!@empty?}
-      id="policy-credentials"
-      class="q-psec"
-      aria-labelledby="policy-credentials-h"
-    >
-      <div class="q-psec-h">
-        <h2 id="policy-credentials-h">{gettext("Credentials")}</h2>
-        <span id="policy-credentials-n" class="q-psec-n">{Format.number(length(@credentials))}</span>
-      </div>
-      <p class="q-psec-p">
-        {gettext(
-          "Credentials a run may use, by name. The policy names one; it never holds one. Each machine defines its credentials in its runner file, and a name a machine does not define is no run."
-        )}
-      </p>
-      <.credential_composer
-        :if={@edit?}
-        id="policy-credential"
-        class="q-composer-line"
-        form={@credential}
-        reading={@credential_reading}
-      />
-      <.credentials_table
-        id="policy-credential-rows"
-        label={gettext("Credentials of the workspace")}
-        rows={@credentials}
-        activity={@activity_now}
-      />
     </section>
     """
   end

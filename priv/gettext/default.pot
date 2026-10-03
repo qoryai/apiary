@@ -524,11 +524,6 @@ msgstr ""
 msgid "%{name} allows only its own hosts, so an allow of this workspace would not be in force. Add it to %{name}'s policy, for every workspace?"
 msgstr ""
 
-#: lib/apiary_web/live/policy_live/reading.ex
-#, elixir-autogen, elixir-format
-msgid "%{name} is already named here."
-msgstr ""
-
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "%{name} is deleted and is purged on %{date}."
@@ -537,11 +532,6 @@ msgstr ""
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "%{name} is deleted and is purged on %{date}. Until then you can cancel the deletion on this page."
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/reading.ex
-#, elixir-autogen, elixir-format
-msgid "%{name} is named here already. Adding it replaces its argument."
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -1009,13 +999,6 @@ msgid_plural "%{number} people match"
 msgstr[0] ""
 msgstr[1] ""
 
-#: lib/apiary_web/components/policy_components.ex
-#, elixir-autogen, elixir-format
-msgid "%{number} request"
-msgid_plural "%{number} requests"
-msgstr[0] ""
-msgstr[1] ""
-
 #: lib/apiary_web/controllers/jump_controller.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} result"
@@ -1394,7 +1377,7 @@ msgstr ""
 
 #: lib/apiary/policy.ex
 #, elixir-autogen, elixir-format
-msgid "%{subject} is named twice: a request changes each host and credential once."
+msgid "%{subject} is named twice: a request changes each host once."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/reading.ex
@@ -1672,11 +1655,6 @@ msgstr ""
 msgid "A connection no rule allows is denied."
 msgstr ""
 
-#: lib/apiary/policy/export.ex
-#, elixir-autogen, elixir-format
-msgid "A credential is named here and defined on the machine, in the credentials section of its runner file."
-msgstr ""
-
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "A declaration allows nothing by itself."
@@ -1797,11 +1775,6 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "A locked workspace rule denies %{rule}. Only an owner can change it."
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/reading.ex
-#, elixir-autogen, elixir-format
-msgid "A name is 1 to 64 lower-case letters, digits, dots, dashes or underscores, and starts with a letter or digit."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/reading.ex
@@ -2037,11 +2010,6 @@ msgstr ""
 msgid "Actions for %{label}"
 msgstr ""
 
-#: lib/apiary_web/components/policy_components.ex
-#, elixir-autogen, elixir-format
-msgid "Actions for %{name}"
-msgstr ""
-
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Actions for the invitation to %{email}"
@@ -2095,11 +2063,6 @@ msgid "Activity pruned"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
-#, elixir-autogen, elixir-format
-msgid "Add a credential"
-msgstr ""
-
-#: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Add a host rule"
@@ -2113,11 +2076,6 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "Add a rule: the composer's host field"
-msgstr ""
-
-#: lib/apiary_web/components/policy_components.ex
-#, elixir-autogen, elixir-format
-msgid "Add credential"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -2442,11 +2400,6 @@ msgstr ""
 msgid "An allow of the workspace or of a target would not be in force."
 msgstr ""
 
-#: lib/apiary_web/live/policy_live/reading.ex
-#, elixir-autogen, elixir-format
-msgid "An argument is at most 256 characters."
-msgstr ""
-
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "An invitation"
@@ -2482,21 +2435,6 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgctxt "plain"
 msgid "Applies at once, on this browser. Auto follows the device's light or dark setting. The terminal stays dark in every theme."
-msgstr ""
-
-#: lib/apiary_web/components/policy_components.ex
-#, elixir-autogen, elixir-format
-msgid "Argument"
-msgstr ""
-
-#: lib/apiary_web/components/policy_components.ex
-#, elixir-autogen, elixir-format
-msgid "Argument (optional), such as acme/shop"
-msgstr ""
-
-#: lib/apiary_web/components/policy_components.ex
-#, elixir-autogen, elixir-format
-msgid "Argument, optional"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -3166,36 +3104,9 @@ msgstr ""
 msgid "Credential %{name}"
 msgstr ""
 
-#: lib/apiary_web/live/policy_live/common.ex
-#, elixir-autogen, elixir-format
-msgid "Credential added."
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/target.ex
-#, elixir-autogen, elixir-format
-msgid "Credential removed."
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/show.ex
-#: lib/apiary_web/live/policy_live/target.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Credentials"
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Credentials a run may use, by name. The policy names one; it never holds one. Each machine defines its credentials in its runner file, and a name a machine does not define is no run."
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/target.ex
-#, elixir-autogen, elixir-format
-msgid "Credentials of %{target}"
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Credentials of the workspace"
 msgstr ""
 
 #: lib/apiary_web/components/settings_components.ex
@@ -4803,11 +4714,6 @@ msgstr ""
 msgid "Keys"
 msgstr ""
 
-#: lib/apiary_web/components/policy_components.ex
-#, elixir-autogen, elixir-format
-msgid "Kind"
-msgstr ""
-
 #: lib/apiary_web/live/access_key_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Label"
@@ -5385,21 +5291,10 @@ msgstr ""
 msgid "Most used"
 msgstr ""
 
-#: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/live/settings_live.ex
 #: lib/apiary_web/live/target_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Name"
-msgstr ""
-
-#: lib/apiary_web/components/policy_components.ex
-#, elixir-autogen, elixir-format
-msgid "Name, such as system-token"
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/target.ex
-#, elixir-autogen, elixir-format
-msgid "Names its runs may use: its own, then %{workspace}'s."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -5623,11 +5518,6 @@ msgstr ""
 #: lib/apiary_web/live/connection_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "No connections up to %{date}"
-msgstr ""
-
-#: lib/apiary_web/components/policy_components.ex
-#, elixir-autogen, elixir-format
-msgid "No credentials. A run that needs none runs without."
 msgstr ""
 
 #: lib/apiary_web/live/connection_live/index.ex
@@ -6525,7 +6415,7 @@ msgstr ""
 
 #: lib/apiary/policy/export.ex
 #, elixir-autogen, elixir-format
-msgid "Paths and credentials need a wall: without one the runner refuses to start the run."
+msgid "Paths need a wall: without one the runner refuses to start the run."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
@@ -6911,11 +6801,6 @@ msgstr ""
 msgid "Remove the allow rule %{host}"
 msgstr ""
 
-#: lib/apiary_web/components/policy_components.ex
-#, elixir-autogen, elixir-format
-msgid "Remove the credential %{name}"
-msgstr ""
-
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Remove the deny rule %{host}"
@@ -6980,11 +6865,6 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Rendered the run configurations again"
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/reading.ex
-#, elixir-autogen, elixir-format
-msgid "Replace credential"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/reading.ex
@@ -8054,22 +7934,6 @@ msgstr ""
 msgid "The connections could not be loaded. Reload the page; if it keeps happening, the server log has the reason."
 msgstr ""
 
-#: lib/apiary_web/live/policy_live/common.ex
-#, elixir-autogen, elixir-format
-msgid "The credential %{name} is named for %{target}."
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/common.ex
-#, elixir-autogen, elixir-format
-msgid "The credential %{name} is named for the workspace."
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/show.ex
-#: lib/apiary_web/live/policy_live/target.ex
-#, elixir-autogen, elixir-format
-msgid "The credential %{name} is removed."
-msgstr ""
-
 #: lib/apiary_web/live/settings_live.ex
 #: lib/apiary_web/live/user_live/organisations.ex
 #, elixir-autogen, elixir-format
@@ -8486,7 +8350,7 @@ msgstr ""
 
 #: lib/apiary/policy/export.ex
 #, elixir-autogen, elixir-format
-msgid "The runner file's egress section says a mode and hosts only. The paths and the credentials are in the policy file, given to a run with --policy; it narrows the runner file's section."
+msgid "The runner file's egress section says a mode and hosts only. The paths are in the policy file, given to a run with --policy; it narrows the runner file's section."
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -10214,11 +10078,6 @@ msgstr ""
 msgid "next and previous item"
 msgstr ""
 
-#: lib/apiary_web/components/policy_components.ex
-#, elixir-autogen, elixir-format
-msgid "no argument"
-msgstr ""
-
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "no day"
@@ -10299,11 +10158,6 @@ msgstr ""
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "not seen"
-msgstr ""
-
-#: lib/apiary_web/components/policy_components.ex
-#, elixir-autogen, elixir-format
-msgid "not used"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex

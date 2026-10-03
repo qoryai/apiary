@@ -2,8 +2,8 @@ defmodule Apiary.Policy.Entry do
   @moduledoc """
   One rule as it stands in an effective policy.
 
-    * `rule`: the `Apiary.Policy.Rule` itself; `kind`, `action`, `host`, `paths`, `name`,
-      `argument` and `locked` repeat it for a page's convenience;
+    * `rule`: the `Apiary.Policy.Rule` itself; `kind`, `action`, `host`, `paths` and
+      `locked` repeat it for a page's convenience;
     * `source`: where the rule was written: `:workspace`, `:target`, or `:organisation`
       for a rule of the level above the workspace (`Apiary.Policy.Above`), which is never
       `locked`: its glyph is its source's;
@@ -25,8 +25,6 @@ defmodule Apiary.Policy.Entry do
     :action,
     :host,
     :paths,
-    :name,
-    :argument,
     :source,
     locked: false,
     in_force: true,

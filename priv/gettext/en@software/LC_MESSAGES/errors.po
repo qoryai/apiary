@@ -18,11 +18,6 @@ msgstr ""
 
 #: lib/apiary/policy/rule.ex
 #, elixir-autogen, elixir-format
-msgid "A credential's name is lower-case letters, digits, dots, dashes and underscores, at most 64, and starts with a letter or a digit."
-msgstr ""
-
-#: lib/apiary/policy/rule.ex
-#, elixir-autogen, elixir-format
 msgid "A host is a lower-case name such as api.example, or *.example for every host below example. No port, no path, no scheme."
 msgstr ""
 
@@ -33,17 +28,12 @@ msgstr ""
 
 #: lib/apiary/policy/rule.ex
 #, elixir-autogen, elixir-format
-msgid "An argument is 1 to %{max} characters on one line."
+msgid "A rule allows or denies a host."
 msgstr ""
 
 #: lib/apiary_web/live/user_live/login.ex
 #, elixir-autogen, elixir-format
 msgid "Enter an email address, such as dana@example.com."
-msgstr ""
-
-#: lib/apiary/policy/rule.ex
-#, elixir-autogen, elixir-format
-msgid "Name the credential."
 msgstr ""
 
 #: lib/apiary/policy/rule.ex

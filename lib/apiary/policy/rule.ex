@@ -5,9 +5,7 @@ defmodule Apiary.Policy.Rule do
 
   A `host` rule allows a host (the contract's grammar: a lower-case name or a `*.` suffix)
   on every path (`paths` nil) or on the paths listed (an empty list is no path at all), or
-  denies it. A `credential` rule lets the run use a credential of the machine's by `name`,
-  with an `argument` when its adapter takes one, or denies it. A rule names a credential
-  and never holds one.
+  denies it. `host` is the one kind of rule there is.
 
   A deny is written to the document's `egress.deny`, which a runner decides first and in
   either mode, and takes the allow entries it covers out of what is rendered. Only a rule
@@ -20,7 +18,7 @@ defmodule Apiary.Policy.Rule do
 
   alias Apiary.Policy.Grammar
 
-  @kinds ~w(host credential)
+  @kinds ~w(host)
   @actions ~w(allow deny)
 
   @type t :: %__MODULE__{}
@@ -32,8 +30,6 @@ defmodule Apiary.Policy.Rule do
     field :action, :string
     field :host, :string
     field :paths, {:array, :string}
-    field :name, :string
-    field :argument, :string
     field :locked, :boolean, default: false
 
     belongs_to :organisation, Apiary.Organisations.Organisation
@@ -47,18 +43,21 @@ defmodule Apiary.Policy.Rule do
   def kinds, do: @kinds
   def actions, do: @actions
 
-  @doc "The host or the credential's name: what the rule is about."
-  def subject(%__MODULE__{kind: "credential", name: name}), do: name
+  @doc "The host: what the rule is about."
   def subject(%__MODULE__{host: host}), do: host
 
   @doc false
   def changeset(rule, attrs) do
     rule
-    |> cast(attrs, [:kind, :action, :host, :paths, :name, :argument, :locked])
+    |> cast(attrs, [:kind, :action, :host, :paths, :locked])
     |> validate_required([:kind, :action])
-    |> validate_inclusion(:kind, @kinds)
+    |> validate_inclusion(:kind, @kinds,
+      message: dgettext_noop("errors", "A rule allows or denies a host.")
+    )
     |> validate_inclusion(:action, @actions)
     |> validate_subject()
+    # The kind's sentence first: a rule of another kind is no host rule with a host missing.
+    |> kind_first()
     |> unique_constraint(:host,
       name: :policy_rules_subject_index,
       message: dgettext_noop("errors", "already has a rule here")
@@ -66,59 +65,34 @@ defmodule Apiary.Policy.Rule do
   end
 
   defp validate_subject(changeset) do
-    case get_field(changeset, :kind) do
-      "credential" ->
-        changeset
-        |> put_change(:host, nil)
-        |> put_change(:paths, nil)
-        |> validate_required([:name], message: dgettext_noop("errors", "Name the credential."))
-        |> validate_change(:name, fn :name, name ->
-          if Grammar.credential_name?(name),
-            do: [],
-            else: [
-              name:
-                dgettext_noop(
-                  "errors",
-                  "A credential's name is lower-case letters, digits, dots, dashes and underscores, at most 64, and starts with a letter or a digit."
-                )
-            ]
-        end)
-        |> drop_on_deny(:argument)
-        |> validate_change(:argument, fn :argument, argument ->
-          if Grammar.argument?(argument),
-            do: [],
-            else: [
-              argument:
-                {dgettext_noop("errors", "An argument is 1 to %{max} characters on one line."),
-                 max: Grammar.argument_max()}
-            ]
-        end)
+    changeset
+    |> validate_required([:host], message: dgettext_noop("errors", "Name the host."))
+    |> validate_change(:host, fn :host, host ->
+      if Grammar.host?(host),
+        do: [],
+        else: [
+          host:
+            dgettext_noop(
+              "errors",
+              "A host is a lower-case name such as api.example, or *.example for every host below example. No port, no path, no scheme."
+            )
+        ]
+    end)
+    |> drop_paths_on_deny()
+    |> validate_change(:paths, &validate_paths/2)
+  end
 
-      _host ->
-        changeset
-        |> put_change(:name, nil)
-        |> put_change(:argument, nil)
-        |> validate_required([:host], message: dgettext_noop("errors", "Name the host."))
-        |> validate_change(:host, fn :host, host ->
-          if Grammar.host?(host),
-            do: [],
-            else: [
-              host:
-                dgettext_noop(
-                  "errors",
-                  "A host is a lower-case name such as api.example, or *.example for every host below example. No port, no path, no scheme."
-                )
-            ]
-        end)
-        |> drop_on_deny(:paths)
-        |> validate_change(:paths, &validate_paths/2)
+  defp kind_first(%Ecto.Changeset{errors: errors} = changeset) do
+    case List.keytake(errors, :kind, 0) do
+      {kind, rest} -> %{changeset | errors: [kind | rest]}
+      nil -> changeset
     end
   end
 
-  # A deny removes the whole host or credential: it has no paths and no argument.
-  defp drop_on_deny(changeset, field) do
+  # A deny removes the whole host: it has no paths.
+  defp drop_paths_on_deny(changeset) do
     if get_field(changeset, :action) == "deny",
-      do: put_change(changeset, field, nil),
+      do: put_change(changeset, :paths, nil),
       else: changeset
   end
 

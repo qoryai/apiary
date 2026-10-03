@@ -27,7 +27,7 @@ defmodule Mix.Tasks.Apiary.Demo do
 
   Once the runs are in, a workspace that has no security policy yet is given one, through
   `Apiary.Policy` as a page would and in the name of the workspace's first owner: enforce,
-  a baseline of hosts, one held to paths, a locked deny, a credential, and in the target
+  a baseline of hosts, one held to paths, a locked deny, and in the target
   `git.example.com/acme/shop` an added host, a disabled one, an allow the lock
   overrides and a mode of its own (observe, under a workspace that enforces); written rule
   by rule, so there are versions and a history to look at, and the workspace is a managed
@@ -135,7 +135,6 @@ defmodule Mix.Tasks.Apiary.Demo do
             paths: ["/acme/shop.git/info/refs", "/acme/shop.git/git-upload-pack"]
           }),
           &Policy.deny(&1, nil, %{host: "telemetry.llm.example", locked: true}),
-          &Policy.allow(&1, nil, %{kind: "credential", name: "model"}),
           &Policy.set_mode(&1, "enforce"),
           &remove(&1, "metrics.example")
         ] ++
@@ -144,11 +143,6 @@ defmodule Mix.Tasks.Apiary.Demo do
               &Policy.allow(&1, shop, %{host: "api.example"}),
               &Policy.deny(&1, shop, %{host: "registry.example"}),
               &Policy.allow(&1, shop, %{host: "telemetry.llm.example"}),
-              &Policy.allow(&1, shop, %{
-                kind: "credential",
-                name: "product",
-                argument: "acme/shop"
-              }),
               # The workspace enforces; this target is still being watched.
               &Policy.set_mode(&1, shop, "observe")
             ]

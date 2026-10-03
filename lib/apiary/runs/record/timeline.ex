@@ -71,7 +71,7 @@ defmodule Apiary.Runs.Record.Timeline do
   @max_open_lanes 1_000
   @max_delta 3
   @max_allow 200
-  @max_argument Apiary.Policy.Grammar.argument_max()
+  @max_argument 256
   # The code points of a tool's argument its item's summary line shows; the rest is in the
   # argument's title.
   @shown_argument 64
@@ -93,9 +93,8 @@ defmodule Apiary.Runs.Record.Timeline do
   def max_allow, do: @max_allow
 
   @doc """
-  How many code points of a tool's argument the timeline reads, at most: the longest
-  argument the policy editor writes (`Apiary.Policy.Grammar.argument_max/0`). A longer one
-  is cut there and ends in `…`.
+  How many code points of a tool's argument the timeline reads, at most. A longer one is
+  cut there and ends in `…`.
   """
   def max_argument, do: @max_argument
 

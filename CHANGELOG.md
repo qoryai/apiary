@@ -30,7 +30,8 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
   the terminal, every connection with its decision and rule, and how the run ended.
 - The security policy of a workspace: a baseline and rules per repository, observe or
   enforce, locked rules, a history with a diff, and an export for a machine without a
-  server. An edition may keep a level above it (`c:Apiary.Edition.above_workspace/1`,
+  server. Its rules are hosts and paths; credentials are not part of it, and the run
+  configuration selects none of a machine's. An edition may keep a level above it (`c:Apiary.Edition.above_workspace/1`,
   an `Apiary.Policy.Above`; the core keeps none): its denies hold everywhere, its allows
   reach every workspace and can be narrowed, never widened, it may require enforce
   (then `Apiary.Policy.set_mode/3` refuses with `:fixed`) and may allow only its own

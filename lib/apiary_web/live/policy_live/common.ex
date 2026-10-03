@@ -64,7 +64,6 @@ defmodule ApiaryWeb.PolicyLive.Common do
       now: DateTime.utc_now()
     )
     |> reset_composer()
-    |> reset_credential()
   end
 
   @typedoc """
@@ -392,65 +391,6 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
   def off_words(_entry, _workspace, _above), do: gettext("Not in force")
 
-  @doc """
-  The credentials of the workspace's page, one row each (`ApiaryWeb.PolicyComponents.credentials_table/1`),
-  every one its own.
-  """
-  def credential_rows(rules, socket) do
-    scope = socket.assigns.current_scope
-    source = workspace_source(scope)
-    edit? = may?(scope, :"security_policy.edit")
-    lock? = may?(scope, :"security_policy.lock")
-
-    for rule <- rules, rule.kind == "credential" do
-      %{
-        id: rule.id,
-        action: rule.action,
-        name: rule.name,
-        argument: rule.argument,
-        locked: rule.locked,
-        source: source,
-        own: true,
-        view: nil,
-        by: person(socket.assigns.people, rule.created_by_id),
-        at: rule.inserted_at,
-        can_change: edit? and (not rule.locked or lock?)
-      }
-    end
-  end
-
-  @doc """
-  The credentials a target's runs may use, on its Policy tab: its own, then the
-  workspace's, each with where it is written; the workspace's are read here and changed
-  on the workspace's page.
-  """
-  def target_credentials(%Policy.Effective{entries: entries}, socket) do
-    scope = socket.assigns.current_scope
-    edit? = may?(scope, :"security_policy.edit")
-    view = gettext("View in %{workspace}'s policy", workspace: scope.workspace.name)
-    path = ~p"/#{scope.organisation}/#{scope.workspace}/policy"
-
-    for %{kind: :credential} = entry <- entries do
-      own? = entry.source == :target
-
-      %{
-        id: entry.rule.id,
-        action: to_string(entry.action),
-        name: entry.name,
-        argument: entry.argument,
-        locked: entry.locked,
-        in_force: entry.in_force,
-        source: if(own?, do: target_source(), else: workspace_source(scope)),
-        own: own?,
-        view: if(own?, do: nil, else: {view, path}),
-        by: person(socket.assigns.people, entry.rule.created_by_id),
-        at: entry.rule.inserted_at,
-        can_change: own? and edit?
-      }
-    end
-    |> Enum.sort_by(&{not &1.own, &1.name})
-  end
-
   # What Remove does to a target's own rule: gives the workspace's back where the target's
   # overrode it, else removes it.
   defp act(%{action: :deny, overrides: overrides}) do
@@ -524,16 +464,6 @@ defmodule ApiaryWeb.PolicyLive.Common do
     )
   end
 
-  def reset_credential(socket) do
-    params = %{"name" => "", "argument" => ""}
-
-    assign(socket,
-      credential: to_form(params, as: :credential),
-      credential_params: params,
-      credential_reading: nil
-    )
-  end
-
   @doc "Reads the composer again against the rules on the page. `own` and `entries` are the page's."
   def read(socket, params) do
     params =
@@ -563,8 +493,6 @@ defmodule ApiaryWeb.PolicyLive.Common do
         kind: rule.kind,
         action: rule.action,
         host: rule.host,
-        name: rule.name,
-        argument: rule.argument,
         paths: rule.paths,
         locked: rule.locked,
         by: person(people, rule.created_by_id),
@@ -673,46 +601,6 @@ defmodule ApiaryWeb.PolicyLive.Common do
      push_navigate(socket,
        to: ~p"/#{scope.organisation}/#{scope.workspace}/policy?#{%{"rule" => host}}"
      )}
-  end
-
-  def handle_event("credential_change", params, socket) when is_map(params) do
-    params =
-      Map.merge(
-        %{"name" => "", "argument" => ""},
-        fields(params["credential"], ~w(name argument))
-      )
-
-    reading = Reading.credential(params, socket.assigns.own)
-
-    {:halt,
-     assign(socket,
-       credential: to_form(params, as: :credential),
-       credential_params: params,
-       credential_reading: reading
-     )}
-  end
-
-  def handle_event("credential_save", _params, socket) do
-    params = socket.assigns.credential_params
-    reading = Reading.credential(params, socket.assigns.own)
-
-    if reading.kind in [:ok, :note] do
-      attrs = %{kind: "credential", name: params["name"], argument: params["argument"]}
-
-      case Policy.allow(socket.assigns.current_scope, socket.assigns.holder, attrs) do
-        {:ok, rule} ->
-          {:halt,
-           socket
-           |> reset_credential()
-           |> wrote(rule, credential_named(socket, rule.name), gettext("Credential added."))
-           |> focus("policy-credential-name")}
-
-        {:error, error} ->
-          {:halt, refused(socket, error)}
-      end
-    else
-      {:halt, assign(socket, :credential_reading, reading)}
-    end
   end
 
   def handle_event("dialog_cancel", _params, socket), do: {:halt, assign(socket, :dialog, nil)}
@@ -877,16 +765,6 @@ defmodule ApiaryWeb.PolicyLive.Common do
   def rule_written(socket, "deny", host),
     do: gettext("%{host} is denied for %{target}.", host: host, target: holder_name(socket))
 
-  defp credential_named(%{assigns: %{holder: nil}}, name),
-    do: gettext("The credential %{name} is named for the workspace.", name: name)
-
-  defp credential_named(socket, name),
-    do:
-      gettext("The credential %{name} is named for %{target}.",
-        name: name,
-        target: holder_name(socket)
-      )
-
   @doc """
   After a write: the page is read again, the new rule is marked fresh, the toast and the
   polite region name the version the change made, or say that it made none.
@@ -951,15 +829,12 @@ defmodule ApiaryWeb.PolicyLive.Common do
   """
   def set_fields(socket) do
     composer = socket.assigns.composer_params
-    credential = socket.assigns.credential_params
 
     push_event(socket, "policy:fields", %{
       fields: %{
         "policy-composer-host" => composer["host"],
         "policy-composer-paths" =>
-          if(composer["action"] == "deny", do: "", else: composer["paths"]),
-        "policy-credential-name" => credential["name"],
-        "policy-credential-argument" => credential["argument"]
+          if(composer["action"] == "deny", do: "", else: composer["paths"])
       }
     })
   end
@@ -1021,6 +896,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
       {"mode_changed", _} ->
         rich_gettext("%{who} set the mode", who: who)
 
+      # The policy no longer names credentials; a change made while it did reads as it was.
       {"rule_added", %{added: [%{"kind" => "credential"} = rule | _]}} ->
         rich_gettext("%{who} added the credential %{credential}",
           who: who,
@@ -1138,6 +1014,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
         host: {:code, new["host"]}
       )
 
+  # A credential rule of a change made while the policy still named credentials.
   defp credential_chips(%{"name" => name, "argument" => argument}) when is_binary(argument),
     do: [{:code, name}, " ", {:code, argument}]
 
@@ -1241,8 +1118,9 @@ defmodule ApiaryWeb.PolicyLive.Common do
   def mode_line(mode), do: rich_gettext("Mode %{mode}", mode: {:b, to_string(mode)})
 
   @doc """
-  rule_words/1 says a rule of the policy as a line of a diff says it: a credential, an
-  allow with its paths, or a deny, each marked when it is locked.
+  rule_words/1 says a rule of the policy as a line of a diff says it: an allow with its
+  paths, or a deny, each marked when it is locked. A credential, of a change made while
+  the policy still named credentials, is said by its name and argument.
   """
   @spec rule_words(map) :: term
   def rule_words(%{"kind" => "credential"} = rule) do
@@ -1282,8 +1160,9 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
   @doc """
   A served document indented for reading, its keys in the order served: the document,
-  `security_policy` and `egress` a key per line, `allow`, `paths` and `credentials` an
-  entry per line, everything below on its line. A document that is not JSON is shown as
+  `security_policy` and `egress` a key per line, `allow` and `paths` an entry per line
+  (and `credentials`, in a version rendered while the policy still named them),
+  everything below on its line. A document that is not JSON is shown as
   it is.
   """
   def pretty(document) when is_binary(document) do
