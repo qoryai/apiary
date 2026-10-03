@@ -179,7 +179,7 @@ defmodule Apiary.MixProject do
       groups_for_modules: [
         "Accounts and organisations": [~r/^Apiary\.Accounts/, ~r/^Apiary\.Organisations/],
         "Access keys": [~r/^Apiary\.AccessKeys/, ~r/^Apiary\.Encrypted/, Apiary.Vault],
-        "Keys and integrity": [Apiary.KeyDerivation, Apiary.Integrity],
+        "Keys and integrity": [Apiary.KeyDerivation, Apiary.Integrity, Apiary.PublicId],
         "Runs and the record": [~r/^Apiary\.Runs/],
         Domains: [~r/^Apiary\.Lingo\.Domain/],
         "Security policy": [~r/^Apiary\.Policy/],
