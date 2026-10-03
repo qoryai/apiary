@@ -4096,6 +4096,10 @@
   .q-tabs > a[aria-current] [class*="hero-"] {
     color: var(--color-accent);
   }
+  /* A page's Settings, the last tab, set apart at the bar's right end. */
+  .q-tabs > a.q-tabs-end {
+    margin-left: auto;
+  }
   /* A tab's count, in a filled pill. */
   .q-tabs-n {
     display: inline-grid;
