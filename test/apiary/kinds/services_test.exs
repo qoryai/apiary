@@ -132,7 +132,7 @@ defmodule Apiary.Kinds.ServicesTest do
     test "the catalogue lists Claude Code with its declarations and its required group" do
       assert {:ok, runtime} = Runtimes.fetch("claude")
       assert runtime.title == "Claude Code"
-      assert Enum.map(runtime.declares, & &1["id"]) == ["api_key", "oauth_token"]
+      assert Enum.map(runtime.declarations, & &1["id"]) == ["api_key", "oauth_token"]
       assert [%{"id" => "model_key", "required" => true}] = runtime.one_of
       assert Runtimes.hosts(runtime) == ["api.anthropic.com"]
       assert Runtimes.fetch("nothing") == :error

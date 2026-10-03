@@ -7,7 +7,7 @@ defmodule Apiary.Kinds.Runtime do
   @enforce_keys [:name, :title]
   defstruct name: nil,
             title: nil,
-            declares: [],
+            declarations: [],
             one_of: [],
             reserves: [],
             denies: [],
@@ -17,7 +17,7 @@ defmodule Apiary.Kinds.Runtime do
   @type t :: %__MODULE__{
           name: String.t(),
           title: String.t(),
-          declares: [map],
+          declarations: [map],
           one_of: [map],
           reserves: [String.t()],
           denies: [String.t()],

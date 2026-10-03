@@ -4,7 +4,7 @@
     {
       "name": "claude",
       "title": "Claude Code",
-      "declares": [
+      "declarations": [
         {
           "id": "api_key",
           "title": "Anthropic API key",
