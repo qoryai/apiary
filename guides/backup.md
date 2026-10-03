@@ -10,7 +10,8 @@ three things:
 
 Keep the two values beside the dumps and not inside them, in a password manager or a secret
 store: a dump without `APIARY_ENCRYPTION_SECRET` restores everything except the access key
-secrets, and a dump stored with `APIARY_ENCRYPTION_SECRET` protects nothing of them.
+secrets and the stored secret values, and a dump stored with `APIARY_ENCRYPTION_SECRET`
+protects nothing of them.
 
 ## Back up
 
@@ -105,12 +106,23 @@ restored readable, which means `APIARY_ENCRYPTION_SECRET` is the right one.
 
 ### `APIARY_ENCRYPTION_SECRET`
 
-It encrypts the secrets of access keys at rest: the columns `secret_primary` and
-`secret_secondary` of the table `access_keys`. Nothing else in the database is encrypted
-with it.
+It encrypts what the database holds secret:
 
-Without the `APIARY_ENCRYPTION_SECRET` the dump was taken under, those secrets cannot be read.
-What that looks like, so it is recognised:
+- the secrets of access keys, the columns `secret_primary` and `secret_secondary` of the
+  table `access_keys`;
+- the values of the workspaces' stored secrets, the table `secret_values`, each encrypted
+  under its workspace's data key, which is kept in `workspace_data_keys` encrypted under a
+  key derived from `APIARY_ENCRYPTION_SECRET`.
+
+Nothing else in the database is encrypted with it. The integrity codes some rows carry
+are keyed by it too: a row changed outside the application no longer matches its code.
+
+**Losing `APIARY_ENCRYPTION_SECRET` loses every stored secret value.** There is no other
+copy and no way to recover them: each value has to be entered again, in the workspace's
+secrets, from wherever it came from.
+
+Without the `APIARY_ENCRYPTION_SECRET` the dump was taken under, the access key secrets
+cannot be read either. What that looks like, so it is recognised:
 
 - Every signed request of a runner holding such a key, the configuration document and every
   batch of events among them, is answered `503` with
@@ -136,7 +148,7 @@ So does the security policy, with its versions and history.
 <!-- /feature -->
 
 For the same reason `APIARY_ENCRYPTION_SECRET` must never change on a running installation
-once an access key exists.
+once an access key or a stored secret exists.
 
 ### `SECRET_KEY_BASE`
 

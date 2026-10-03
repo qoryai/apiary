@@ -136,7 +136,7 @@ For example: ecto://USER:PASS@HOST/DATABASE
 | Variable | Required or default | Meaning and accepted values |
 |---|---|---|
 | `SECRET_KEY_BASE` | required | Signs the session cookie and the "Keep me signed in" cookie. At least 64 bytes. Generate one with `openssl rand -base64 48`, or with `mix phx.gen.secret` where there is Mix. |
-| `APIARY_ENCRYPTION_SECRET` | required | Encrypts access key secrets at rest. Exactly 32 bytes in base64, 44 characters: `openssl rand -base64 32`. It must never change once an access key exists, or every stored secret becomes unreadable. Keep it with the database backups, not in them ([Backup and restore](backup.md)). |
+| `APIARY_ENCRYPTION_SECRET` | required | Encrypts what the database holds secret: the access key secrets, and the values of the workspaces' stored secrets, under keys derived from it. Exactly 32 bytes in base64, 44 characters: `openssl rand -base64 32`. It must never change once an access key or a stored secret exists, or every one of them becomes unreadable: losing it loses every stored value, for good. Keep it with the database backups, not in them ([Backup and restore](backup.md)). |
 
 ```text
 environment variable SECRET_KEY_BASE is missing.

@@ -33,6 +33,16 @@ beside it:
   edition's, then the core's.
 - `Apiary.AccessKeys`: a workspace's access keys, their secrets encrypted at rest through
   `Apiary.Vault`, rotation and revocation, and the lookup a signed request verifies against.
+- `Apiary.Secrets`: a workspace's stored secrets, each with one value or several, each
+  with its value id, encrypted at rest and never shown again; `Apiary.Secrets.Usage`
+  says what uses one, so it is not deleted while it is (Secrets at rest and integrity
+  codes, below).
+- `Apiary.Variables`: a workspace's variables and its repositories' own, with the
+  workspace's locks, resolved per holder down the chain from the level above the
+  workspace (`Apiary.Variables.Resolution`), and the runner's names it refuses or warns
+  about (`Apiary.Variables.Denied`).
+- `Apiary.KeyDerivation` and `Apiary.Integrity`: the keys derived from
+  `APIARY_ENCRYPTION_SECRET`, one per purpose, and the integrity codes of stored rows.
 - `Apiary.Targets`: the workspace's targets as the pages read them, the index in one query
   bounded by fourteen days and a target's page, and the targets a person pinned
   (`target_pins`), their own reading preference, which leaves no audit entry.
@@ -338,6 +348,43 @@ features are listed after the core's (`c:Apiary.Edition.features/0`), and
 - **Read again under the locks.** `Apiary.Access.reload/2` reads the features after its
   locks, so what an edition changes of them under the organisation's or the workspace's
   lock is waited for by a change that asked, or seen by it.
+
+## Secrets at rest and integrity codes
+
+`APIARY_ENCRYPTION_SECRET`, 32 random bytes, is the one key the instance holds. Nothing is
+encrypted under it directly but the access key secrets, through `Apiary.Vault` (Cloak),
+until access keys stop holding secrets. Every other key is derived from it with
+HKDF-SHA256 (`Apiary.KeyDerivation`), salt `apiary/kdf/v1`, one info string per purpose:
+`apiary values v1` for stored values, `apiary integrity v1` for integrity codes,
+`apiary envelope signing v1` for the key that signs answers to runners. Each derived key
+has a key id, a truncated SHA-256 of a label and the key, stored beside what it made, so a
+rotation of the secret can keep the previous one to read with and tell the two apart.
+
+**Stored values** use envelope encryption. Each workspace has a data key, 32 random bytes
+made with its first secret, kept only wrapped (`workspace_data_keys`): AES-256-GCM under
+the values key, with associated data that names its organisation and workspace, and with
+the values key's id. Each value is AES-256-GCM under the data key (`:crypto`, not Cloak,
+whose associated data is fixed), with a fresh 96-bit nonce and the associated data
+
+    lp("qory-secret-v1") ‖ lp(workspace id) ‖ lp(secret id) ‖ lp(value id, or "")
+
+where `lp` is a big-endian 16-bit length, then the bytes (`Apiary.Secrets.Cipher`). A
+row copied to another workspace, secret or value id does not decrypt there, and a
+renamed value id is encrypted again. A value is write-only: a listing never loads the
+ciphertext, the schemas redact it from `inspect` and leave it out of JSON, the audit
+trail names secrets and value ids, and `Apiary.Secrets.reveal_for_sealing/3` is the one
+function that returns a plaintext, for sealing to a runner. A value that does not decrypt
+is `unavailable`, with a log line that names the secret, never wrong.
+
+**Integrity codes** (`Apiary.Integrity`) find a row changed outside the application by
+someone who can write to the database but does not hold the secret: an HMAC-SHA256 under
+the integrity key over a canonical encoding of a kind, a version and the fields the caller
+chooses, each length-prefixed and typed, stored with the key id beside it, and verified in
+constant time. A caller codes what routes a secret or grants access, the access key rows,
+what links a stored secret to the runs, and the enrolment codes, and checks the code where
+it trusts the row;
+the per-request columns stay outside it. Variables and policy rules carry no code: they
+route no stored value, and the runner bounds what a variable can do.
 
 ## The audit trail
 
