@@ -11,13 +11,25 @@ defmodule ApiaryWeb.Storybook.Screens.RunSetup do
   def doc,
     do:
       "A target's Run setup tab: what a run of acme/shop starts with, each an integration " <>
-        "of the workspace of that role."
+        "of the workspace of that role, and for each output and service chosen the ways " <>
+        "its runs use it, API or MCP, of those it offers."
 
   # What acme/shop has chosen.
   @task_source "github"
   @llm_provider "anthropic"
   @outputs ~w(github webhook)
-  @services ~w(github internal_api registry)
+  @services ~w(github internal_api registry docs_search)
+
+  # The ways acme/shop's runs use each output and service it chose.
+  @ways %{
+    "outputs" => %{"github" => [:api], "webhook" => [:api]},
+    "services" => %{
+      "github" => [:api, :mcp],
+      "internal_api" => [:api],
+      "registry" => [:api],
+      "docs_search" => [:mcp]
+    }
+  }
 
   def render(assigns) do
     integrations = Sample.integrations()
@@ -28,11 +40,13 @@ defmodule ApiaryWeb.Storybook.Screens.RunSetup do
         task_sources: of.(:task_source),
         llm_providers: of.(:llm_provider),
         outputs: of.(:output),
-        services: of.(:service),
+        services:
+          Enum.filter(integrations, &Enum.any?(&1.roles, fn r -> r in [:service, :tool] end)),
         task_source: @task_source,
         llm_provider: @llm_provider,
         chosen_outputs: @outputs,
-        chosen_services: @services
+        chosen_services: @services,
+        ways: @ways
       )
 
     ~H"""
@@ -114,15 +128,17 @@ defmodule ApiaryWeb.Storybook.Screens.RunSetup do
           hint="Each receives what a run did when it ends."
           integrations={@outputs}
           chosen={@chosen_outputs}
+          ways={@ways["outputs"]}
           theme={@theme}
         />
 
         <.choices
           id="run-setup-services"
           legend="Services"
-          hint="What a run may reach while it works; it never sees their credentials."
+          hint="What a run may reach while it works, the tools among them; it never sees their credentials."
           integrations={@services}
           chosen={@chosen_services}
+          ways={@ways["services"]}
           theme={@theme}
         />
 
@@ -140,10 +156,12 @@ defmodule ApiaryWeb.Storybook.Screens.RunSetup do
   attr :hint, :string, required: true
   attr :integrations, :list, required: true
   attr :chosen, :list, required: true
+  attr :ways, :map, required: true, doc: "the ways the target uses each one chosen"
   attr :theme, :any, required: true
 
-  # A role whose integrations a target may take several of: a checkbox each, and the state
-  # of one that needs a secret beside it, with the way to its secrets.
+  # A role whose integrations a target may take several of: a checkbox each; beside one
+  # chosen, a checkbox for each way it offers, checked for those the runs use, the only one
+  # fixed; and the state of one that needs a secret, with the way to its secrets.
   defp choices(assigns) do
     ~H"""
     <fieldset id={@id} class="fieldset gap-2" aria-describedby={"#{@id}-hint"}>
@@ -156,6 +174,22 @@ defmodule ApiaryWeb.Storybook.Screens.RunSetup do
           label={integration.name}
           checked={integration.id in @chosen}
         />
+        <span
+          :if={integration.id in @chosen}
+          role="group"
+          aria-label={"Ways the runs use #{integration.name}"}
+          class="inline-flex items-center gap-3 border-l border-line pl-3"
+        >
+          <.input
+            :for={way <- integration.ways}
+            id={"#{@id}-#{integration.id}-#{way}"}
+            name={"#{@id}[#{integration.id}_ways][#{way}]"}
+            type="checkbox"
+            label={Mockup.way_label(way)}
+            checked={way in Map.get(@ways, integration.id, [])}
+            disabled={length(integration.ways) == 1}
+          />
+        </span>
         <a
           :if={Mockup.needs_secret?(integration)}
           href={Mockup.path("integration", String.to_atom("#{integration.id}_secrets"), @theme)}
@@ -164,7 +198,9 @@ defmodule ApiaryWeb.Storybook.Screens.RunSetup do
           <.state_word hot>Needs a secret</.state_word>
         </a>
       </div>
-      <p id={"#{@id}-hint"} class="text-[12.5px]/[18px] text-muted">{@hint}</p>
+      <p id={"#{@id}-hint"} class="text-[12.5px]/[18px] text-muted">
+        {@hint} Beside each chosen, the ways its runs use it: API, MCP, or both where it offers both.
+      </p>
     </fieldset>
     """
   end

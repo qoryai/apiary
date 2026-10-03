@@ -10,8 +10,9 @@ defmodule ApiaryWeb.Storybook.Screens.Integration do
 
   def doc,
     do:
-      "An integration's page, under Settings › Integrations: its source, version and roles, " <>
-        "then Overview, Secrets and Settings. Each integration of the list has one; Slack " <>
+      "An integration's page, under Settings › Integrations: its source, version, roles and " <>
+        "the ways it connects, then Overview, Secrets and Settings, which ask for each " <>
+        "setting it declares, secret or plain. Each integration of the list has one; Slack " <>
         "shows a secret linked to none."
 
   # Three tabs an integration: its Overview at its id, then its Secrets and its Settings.
@@ -25,7 +26,13 @@ defmodule ApiaryWeb.Storybook.Screens.Integration do
     task_source: "Gives a run its task.",
     llm_provider: "Serves the models a run's runtime asks for.",
     output: "Receives what a run did when it ends.",
-    service: "Reached by a run while it works, with credentials the run never sees."
+    service: "Reached by a run while it works, with credentials the run never sees.",
+    tool: "Called by the agent of a run while it works; listed under Services."
+  ]
+
+  @ways [
+    api: "A run reaches it through Qory's API, with credentials the run never sees.",
+    mcp: "The agent of a run calls it as an MCP server."
   ]
 
   def render(assigns) do
@@ -38,7 +45,10 @@ defmodule ApiaryWeb.Storybook.Screens.Integration do
         tab_path:
           &Mockup.path("integration", String.to_atom(integration.id <> &1), assigns.theme),
         roles: @roles,
-        unlinked: Enum.count(integration.secrets, &is_nil(&1.secret))
+        ways: @ways,
+        secrets: Mockup.secrets(integration),
+        plain: Mockup.plain_settings(integration),
+        unlinked: Enum.count(Mockup.secrets(integration), &is_nil(&1.linked))
       )
 
     ~H"""
@@ -64,7 +74,12 @@ defmodule ApiaryWeb.Storybook.Screens.Integration do
           </span>
         </:subtitle>
 
-        <Mockup.roles roles={@integration.roles} />
+        <span class="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
+          <Mockup.roles roles={@integration.roles} />
+          <span class="inline-flex items-baseline gap-1.5 text-[12.5px]/[18px] text-muted">
+            Connects by <Mockup.ways ways={@integration.ways} class="text-base-content" />
+          </span>
+        </span>
 
         <div class="[--q-gutter:0px]">
           <RunComponents.tabs id="integration-tabs" label={@integration.name}>
@@ -81,7 +96,7 @@ defmodule ApiaryWeb.Storybook.Screens.Integration do
               navigate={@tab_path.("_secrets")}
               current={@page == :secrets}
               icon="hero-key"
-              count={length(@integration.secrets)}
+              count={length(@secrets)}
             >
               Secrets
             </:tab>
@@ -90,6 +105,7 @@ defmodule ApiaryWeb.Storybook.Screens.Integration do
               navigate={@tab_path.("_settings")}
               current={@page == :settings}
               icon="hero-adjustments-horizontal"
+              count={length(@plain)}
             >
               Settings
             </:tab>
@@ -123,6 +139,18 @@ defmodule ApiaryWeb.Storybook.Screens.Integration do
       </dl>
     </SettingsComponents.part>
 
+    <SettingsComponents.part id="integration-ways" title="How it connects">
+      <dl class="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-2 text-[13px]/5">
+        <%= for way <- @integration.ways do %>
+          <dt class="q-mono font-medium">{Mockup.way_label(way)}</dt>
+          <dd class="text-muted">{@ways[way]}</dd>
+        <% end %>
+      </dl>
+      <p class="text-[12.5px]/[18px] text-faint">
+        A target's run setup chooses which of them its runs use.
+      </p>
+    </SettingsComponents.part>
+
     <SettingsComponents.part id="integration-about" title="About">
       <dl class="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-2 text-[13px]/5">
         <dt class="text-faint">Source</dt>
@@ -142,47 +170,51 @@ defmodule ApiaryWeb.Storybook.Screens.Integration do
   defp secrets(assigns) do
     ~H"""
     <p class="max-w-[72ch] text-[13px]/[18px] text-muted">
-      Each secret the integration declares is linked to a secret of the workspace, by its name
-      and environment. The integration reads it when a run needs it; the run never sees it.
+      Each secret setting the integration declares is linked to a secret of the workspace, by
+      its name and environment. The integration reads it when a run needs it; the run never
+      sees it. Its plain settings are under <a
+        href={@tab_path.("_settings")}
+        class="text-accent hover:underline"
+      >Settings</a>.
     </p>
 
     <.table
       id="integration-secrets"
       label={"Secrets of #{@integration.name}"}
-      rows={@integration.secrets}
-      row_id={&"secret-#{&1.name}"}
+      rows={@secrets}
+      row_id={&"secret-#{&1.id}"}
     >
-      <:col :let={secret} label="Declared" kind="title">
+      <:col :let={secret} label="Secret setting" kind="title">
         <span class="grid">
-          <span class="q-title-mono">{secret.name}</span>
+          <span class="q-title-mono">{secret.id}</span>
           <span class="text-[12.5px]/[18px] font-normal text-muted">{secret.about}</span>
         </span>
       </:col>
       <:col :let={secret} label="Workspace secret">
-        <span :if={secret.secret} class="inline-flex flex-wrap items-baseline gap-1.5">
+        <span :if={secret.linked} class="inline-flex flex-wrap items-baseline gap-1.5">
           <.icon name="hero-arrow-right-micro" class="size-3.5 self-center text-faint" />
-          <span class="q-mono text-base-content">{secret.secret}</span>
+          <span class="q-mono text-base-content">{secret.linked}</span>
           <span class="text-faint" aria-hidden="true">·</span>
           <span>{secret.environment}</span>
         </span>
-        <.state_word :if={!secret.secret} id={"secret-#{secret.name}-state"} hot>
+        <.state_word :if={!secret.linked} id={"secret-#{secret.id}-state"} hot>
           Needs a secret
         </.state_word>
       </:col>
       <:action :let={secret}>
         <.button
-          :if={secret.secret}
+          :if={secret.linked}
           variant="link"
           href={Mockup.path("settings", :secrets, @theme)}
-          aria-label={"Change the secret linked to #{secret.name}"}
+          aria-label={"Change the secret linked to #{secret.id}"}
         >
           Change
         </.button>
         <.button
-          :if={!secret.secret}
+          :if={!secret.linked}
           variant="link"
           href={Mockup.path("settings", :secrets, @theme)}
-          aria-label={"Choose a secret for #{secret.name}"}
+          aria-label={"Choose a secret for #{secret.id}"}
         >
           Choose a secret
         </.button>
@@ -201,6 +233,11 @@ defmodule ApiaryWeb.Storybook.Screens.Integration do
 
   defp settings(assigns) do
     ~H"""
+    <p class="max-w-[72ch] text-[13px]/[18px] text-muted">
+      Each plain setting the integration declares, with its value. Its secret settings are
+      linked under <a href={@tab_path.("_secrets")} class="text-accent hover:underline">Secrets</a>.
+    </p>
+
     <form id="integration-settings" class="grid gap-4" novalidate>
       <.input
         :if={@integration.source}
@@ -221,7 +258,7 @@ defmodule ApiaryWeb.Storybook.Screens.Integration do
         value={@integration.source.version}
         hint="A tag of the repository. Qory reads its description.json again when you change it."
       />
-      <%= for setting <- @integration.settings do %>
+      <%= for setting <- @plain do %>
         <.input
           :if={setting.type == "checkbox"}
           id={"setting-#{setting.id}"}

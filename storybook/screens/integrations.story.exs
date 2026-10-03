@@ -10,31 +10,32 @@ defmodule ApiaryWeb.Storybook.Screens.Integrations do
 
   def doc,
     do:
-      "Settings › Integrations: what the workspace's runs connect to, by role. One " <>
-        "integration can have several roles; its row leads to its page."
+      "Settings › Integrations: what the workspace's runs connect to, by role, and the " <>
+        "ways each connects, API, MCP or both. One integration can have several roles, " <>
+        "and Services holds the tools too; its row leads to its page."
 
+  # Each view and the roles it holds: Services holds the tools as well.
   @views [
     {:all, "All", nil},
-    {:task_sources, "Task sources", :task_source},
-    {:llm_providers, "LLM providers", :llm_provider},
-    {:outputs, "Outputs", :output},
-    {:services, "Services", :service}
+    {:task_sources, "Task sources", [:task_source]},
+    {:llm_providers, "LLM providers", [:llm_provider]},
+    {:outputs, "Outputs", [:output]},
+    {:services, "Services", [:service, :tool]}
   ]
 
   def navigation, do: for({tab, label, _role} <- @views, do: {tab, label})
 
   def render(assigns) do
     integrations = Sample.integrations()
-    role = Enum.find_value(@views, fn {tab, _label, role} -> tab == assigns.tab && role end)
+    roles = Enum.find_value(@views, fn {tab, _label, roles} -> tab == assigns.tab && roles end)
 
     assigns =
       assign(assigns,
         views:
-          for {tab, label, role} <- @views do
-            count = Enum.count(integrations, &(is_nil(role) or role in &1.roles))
-            %{tab: tab, label: label, count: count}
+          for {tab, label, roles} <- @views do
+            %{tab: tab, label: label, count: Enum.count(integrations, &in_view?(&1, roles))}
           end,
-        rows: Enum.filter(integrations, &(is_nil(role) or role in &1.roles)),
+        rows: Enum.filter(integrations, &in_view?(&1, roles)),
         current: assigns.tab || :all
       )
 
@@ -94,11 +95,14 @@ defmodule ApiaryWeb.Storybook.Screens.Integrations do
                 {integration.name}
               </a>
             </:col>
-            <:col :let={integration} label="Source" from="sm">
+            <:col :let={integration} label="Source" from="md">
               <Mockup.source source={integration.source} />
             </:col>
             <:col :let={integration} label="Roles">
               <Mockup.roles roles={integration.roles} />
+            </:col>
+            <:col :let={integration} label="Connects" from="sm">
+              <Mockup.ways ways={integration.ways} />
             </:col>
             <:col :let={integration} label="Targets" kind="num" from="md">
               {integration.targets}
@@ -137,11 +141,16 @@ defmodule ApiaryWeb.Storybook.Screens.Integrations do
 
           <p class="text-[12.5px]/[18px] text-faint">
             An integration with several roles is counted under each: GitHub is a task source,
-            an output and a service. Targets counts the targets whose run setup uses it.
+            an output and a service. Services holds the tools too, such as Docs search.
+            Connects says how a run reaches it: through Qory's API, as an MCP server, or both.
+            Targets counts the targets whose run setup uses it.
           </p>
         </div>
       </SettingsComponents.layout>
     </Mockup.shell>
     """
   end
+
+  defp in_view?(_integration, nil), do: true
+  defp in_view?(integration, roles), do: Enum.any?(integration.roles, &(&1 in roles))
 end

@@ -2,7 +2,7 @@ defmodule ApiaryWeb.Storybook.Mockup do
   @moduledoc """
   What the screen mock-ups of the storybook share (`storybook/screens/`, docs/ui.md,
   Storybook): the paths between them, the application shell they are drawn in, the
-  workspace settings' sections, the integrations' role chips, and the nodes' list and
+  workspace settings' sections, the integrations' role chips and ways, and the nodes' list and
   the words of their states.
 
   The mock-ups are a proposal to click through, not pages: no route, context or
@@ -328,6 +328,35 @@ defmodule ApiaryWeb.Storybook.Mockup do
   def role_label(:llm_provider), do: "LLM provider"
   def role_label(:output), do: "Output"
   def role_label(:service), do: "Service"
+  def role_label(:tool), do: "Tool"
+
+  @doc "way_label/1 is the words of a way an integration connects: API or MCP."
+  @spec way_label(atom()) :: String.t()
+  def way_label(:api), do: "API"
+  def way_label(:mcp), do: "MCP"
+
+  @doc "ways/1 is the ways an integration connects, as mono tags: \"API · MCP\"."
+  attr :ways, :list, required: true
+  attr :class, :any, default: nil
+
+  def ways(assigns) do
+    ~H"""
+    <span class={["inline-flex items-baseline gap-1.5 whitespace-nowrap", @class]}>
+      <%= for {way, i} <- Enum.with_index(@ways) do %>
+        <span :if={i > 0} class="text-faint" aria-hidden="true">·</span>
+        <span class="q-mono text-[12px]">{way_label(way)}</span>
+      <% end %>
+    </span>
+    """
+  end
+
+  @doc "secrets/1 is the secret settings an integration declares, in its order."
+  @spec secrets(map()) :: [map()]
+  def secrets(integration), do: Enum.filter(integration.settings, &(&1.kind == :secret))
+
+  @doc "plain_settings/1 is the plain settings an integration declares, in its order."
+  @spec plain_settings(map()) :: [map()]
+  def plain_settings(integration), do: Enum.filter(integration.settings, &(&1.kind == :plain))
 
   @doc "roles/1 is an integration's roles as label chips (`<.badge>`), in its order."
   attr :roles, :list, required: true
@@ -359,9 +388,9 @@ defmodule ApiaryWeb.Storybook.Mockup do
     """
   end
 
-  @doc "needs_secret?/1 is whether one of an integration's secrets is linked to none."
+  @doc "needs_secret?/1 is whether one of an integration's secret settings is linked to none."
   @spec needs_secret?(map()) :: boolean()
-  def needs_secret?(integration), do: Enum.any?(integration.secrets, &is_nil(&1.secret))
+  def needs_secret?(integration), do: Enum.any?(secrets(integration), &is_nil(&1.linked))
 
   @doc """
   status/1 is an integration's state, as a row says it: "Ready" in muted words, or "Needs

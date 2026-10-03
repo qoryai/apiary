@@ -90,6 +90,7 @@ defmodule ApiaryWeb.Storybook.Screens.AddIntegration do
     >
       <:col :let={item} label="Integration" kind="title">{item.name}</:col>
       <:col :let={item} label="Roles"><Mockup.roles roles={item.roles} /></:col>
+      <:col :let={item} label="Connects" from="sm"><Mockup.ways ways={item.ways} /></:col>
       <:action :let={item}>
         <.state_word :if={item.added}>Added</.state_word>
         <.button
@@ -129,8 +130,8 @@ defmodule ApiaryWeb.Storybook.Screens.AddIntegration do
       />
       <.notice>
         Qory reads the repository's <code class="font-mono">description.json</code>
-        at that version: the integration's name, its roles, the secrets it declares and its
-        settings. Nothing else of the repository runs here.
+        at that version: the integration's name, its roles, the ways it connects and the
+        settings it declares, each secret or plain. Nothing else of the repository runs here.
       </.notice>
 
       <SettingsComponents.part id="add-found" title="Found in description.json">
@@ -141,9 +142,11 @@ defmodule ApiaryWeb.Storybook.Screens.AddIntegration do
           <dd><Mockup.roles roles={@found.roles} /></dd>
           <dt class="text-faint">About</dt>
           <dd>{@found.about}</dd>
-          <dt class="text-faint">Secrets</dt>
+          <dt class="text-faint">Connects</dt>
+          <dd><Mockup.ways ways={@found.ways} /></dd>
+          <dt class="text-faint">Secret settings</dt>
           <dd class="q-mono">{Enum.join(@found.secrets, ", ")}</dd>
-          <dt class="text-faint">Settings</dt>
+          <dt class="text-faint">Plain settings</dt>
           <dd>{Enum.join(@found.settings, ", ")}</dd>
         </dl>
         <.code_block code={@found.json} label="description.json" />
@@ -153,7 +156,7 @@ defmodule ApiaryWeb.Storybook.Screens.AddIntegration do
         <.button variant="primary" href={Mockup.path("integrations", :all, @theme)}>
           Add {@found.name}
         </.button>
-        <:note>Its secret, api_token, is linked next.</:note>
+        <:note>Its secret setting, api_token, is linked next.</:note>
       </SettingsComponents.save>
     </form>
     """

@@ -137,26 +137,27 @@ defmodule ApiaryWeb.Storybook.Sample do
   The integrations of the workspace, as the mock-ups of Settings › Integrations draw them
   (`storybook/screens/`): a proposal, so no context builds them yet. Each has its source
   (`nil` for one built in, else the GitHub repository and the version it was added at), its
-  roles, the secrets it declares, each linked to a workspace secret by name and
-  environment or `nil` while it needs one, and its settings.
+  roles, the ways it connects (`:api`, `:mcp` or both), and the settings it declares, each
+  plain, with its value, or secret, linked to a workspace secret by name and environment or
+  `nil` while it needs one.
   """
   @spec integrations() :: [map()]
   def integrations do
     [
-      integration("github", "GitHub", nil, [:task_source, :output, :service],
+      integration("github", "GitHub", nil, [:task_source, :output, :service], [:api, :mcp],
         about:
           "Reads issues as tasks, opens a change request with what a run did, and gives each run a token for the repositories it works on.",
-        secrets: [
+        settings: [
+          setting("app_id", "App ID", "104231"),
+          setting("base_url", "API base URL", "https://api.github.com",
+            hint: "Another for GitHub Enterprise Server."
+          ),
           secret("private_key", "The GitHub App's private key.", "GITHUB_APP_KEY"),
           secret(
             "webhook_secret",
             "Checks that an event came from GitHub.",
             "GITHUB_WEBHOOK_SECRET"
-          )
-        ],
-        settings: [
-          setting("app_id", "App ID", "104231"),
-          setting("installation", "Installation", "acme"),
+          ),
           setting("branch_prefix", "Branch prefix", "qory/",
             hint: "A run's branch starts with it."
           ),
@@ -165,20 +166,20 @@ defmodule ApiaryWeb.Storybook.Sample do
         targets: 12,
         added: "dana, 2 Sept 2026"
       ),
-      integration("anthropic", "Anthropic", nil, [:llm_provider],
+      integration("anthropic", "Anthropic", nil, [:llm_provider], [:api],
         about: "Claude models, for the runs whose runtime asks for them.",
-        secrets: [secret("api_key", "An API key of the Anthropic console.", "ANTHROPIC_API_KEY")],
         settings: [
+          secret("api_key", "An API key of the Anthropic console.", "ANTHROPIC_API_KEY"),
           setting("base_url", "API base URL", "https://api.anthropic.com"),
           setting("budget", "Tokens a run may use", "2,000,000")
         ],
         targets: 9,
         added: "dana, 2 Sept 2026"
       ),
-      integration("openai", "OpenAI", nil, [:llm_provider],
+      integration("openai", "OpenAI", nil, [:llm_provider], [:api],
         about: "OpenAI's models, for the runs whose runtime asks for them.",
-        secrets: [secret("api_key", "A project API key.", "OPENAI_API_KEY")],
         settings: [
+          secret("api_key", "A project API key.", "OPENAI_API_KEY"),
           setting("base_url", "API base URL", "https://api.openai.com/v1"),
           setting("project", "Project", "proj_shop")
         ],
@@ -190,21 +191,27 @@ defmodule ApiaryWeb.Storybook.Sample do
         "Model gateway",
         %{repo: "acme/qory-model-gateway", version: "0.4.0"},
         [:llm_provider, :service],
+        [:api],
         about:
           "The workspace's own gateway to self-hosted models, and the cache runs read its weights from.",
-        secrets: [secret("gateway_key", "The gateway's client key.", "GATEWAY_KEY")],
         settings: [
+          secret("gateway_key", "The gateway's client key.", "GATEWAY_KEY"),
           setting("base_url", "Gateway URL", "https://models.example.com/v1"),
           setting("model", "Default model", "gateway-default")
         ],
         targets: 2,
         added: "sam, 21 Sept 2026"
       ),
-      integration("jira", "Jira", %{repo: "acme/qory-jira", version: "1.4.0"}, [:task_source],
+      integration(
+        "jira",
+        "Jira",
+        %{repo: "acme/qory-jira", version: "1.4.0"},
+        [:task_source],
+        [:api],
         about:
           "Takes the issues of a project, by a filter, as tasks, and comments on each when its run ends.",
-        secrets: [secret("api_token", "An API token of a Jira account.", "JIRA_API_TOKEN")],
         settings: [
+          secret("api_token", "An API token of a Jira account.", "JIRA_API_TOKEN"),
           setting("site", "Site URL", "https://acme.example.com"),
           setting("project", "Project key", "SHOP"),
           setting("filter", "Filter", "labels = qory AND status = \"To do\"",
@@ -214,30 +221,33 @@ defmodule ApiaryWeb.Storybook.Sample do
         targets: 4,
         added: "lee, 14 Sept 2026"
       ),
-      integration("slack", "Slack", %{repo: "acme/qory-slack", version: "0.9.2"}, [:output],
+      integration(
+        "slack",
+        "Slack",
+        %{repo: "acme/qory-slack", version: "0.9.2"},
+        [:output],
+        [:api],
         about:
           "Posts a line to a channel when a run ends, with its state and its change request.",
-        secrets: [
+        settings: [
           secret(
             "signing_secret",
             "Checks that a button press came from Slack.",
             "SLACK_SIGNING_SECRET"
           ),
-          secret("bot_token", "The bot token of the workspace's Slack app.", nil)
-        ],
-        settings: [
+          secret("bot_token", "The bot token of the workspace's Slack app.", nil),
           setting("channel", "Channel", "#shop-builds"),
           setting("only_bad", "Only runs that ended badly", false, type: "checkbox")
         ],
         targets: 0,
         added: "sam, 30 Sept 2026"
       ),
-      integration("webhook", "Webhook", nil, [:output],
+      integration("webhook", "Webhook", nil, [:output], [:api],
         about: "Posts each run's summary as JSON to a URL, signed with a shared secret.",
-        secrets: [
-          secret("signing_secret", "Signs each request's body.", "WEBHOOK_SIGNING_SECRET")
+        settings: [
+          secret("signing_secret", "Signs each request's body.", "WEBHOOK_SIGNING_SECRET"),
+          setting("url", "URL", "https://hooks.example.com/qory")
         ],
-        settings: [setting("url", "URL", "https://hooks.example.com/qory")],
         targets: 5,
         added: "dana, 3 Sept 2026"
       ),
@@ -246,40 +256,64 @@ defmodule ApiaryWeb.Storybook.Sample do
         "Internal API",
         %{repo: "acme/qory-internal-api", version: "2.1.0"},
         [:service],
+        [:api, :mcp],
         about: "Gives a run a short-lived token for the shop's internal API, scoped to read.",
-        secrets: [secret("client_secret", "The API's client secret.", "INTERNAL_API_SECRET")],
         settings: [
+          secret("client_secret", "The API's client secret.", "INTERNAL_API_SECRET"),
           setting("base_url", "Base URL", "https://internal.example.com/api"),
           setting("scope", "Scope", "orders:read stock:read")
         ],
         targets: 6,
         added: "lee, 18 Sept 2026"
       ),
-      integration("registry", "Package registry", nil, [:service],
+      integration("registry", "Package registry", nil, [:service], [:api],
         about: "Lets a run install the workspace's private packages, read only.",
-        secrets: [secret("token", "A read token of the registry.", "REGISTRY_TOKEN")],
         settings: [
+          secret("token", "A read token of the registry.", "REGISTRY_TOKEN"),
           setting("url", "Registry URL", "https://registry.example.com"),
           setting("scope", "Package scope", "@acme")
         ],
         targets: 11,
         added: "dana, 2 Sept 2026"
+      ),
+      integration(
+        "docs_search",
+        "Docs search",
+        %{repo: "acme/qory-docs-search", version: "0.3.1"},
+        [:tool],
+        [:mcp],
+        about:
+          "Searches the shop's own documentation, a tool the agent of a run calls as it works.",
+        settings: [
+          secret("api_token", "A read token of the documentation's index.", "DOCS_SEARCH_TOKEN"),
+          setting("index_url", "Index URL", "https://docs.example.com/search"),
+          setting("results", "Results per search", "8")
+        ],
+        targets: 7,
+        added: "sam, 24 Sept 2026"
       )
     ]
   end
 
-  defp integration(id, name, source, roles, opts) do
-    Map.merge(%{id: id, name: name, source: source, roles: roles}, Map.new(opts))
+  defp integration(id, name, source, roles, ways, opts) do
+    Map.merge(%{id: id, name: name, source: source, roles: roles, ways: ways}, Map.new(opts))
   end
 
-  defp secret(name, about, nil), do: %{name: name, about: about, secret: nil, environment: nil}
-
-  defp secret(name, about, secret),
-    do: %{name: name, about: about, secret: secret, environment: "production"}
+  # A secret setting, linked to the workspace secret `linked` in production, or to none.
+  defp secret(id, about, linked) do
+    %{
+      id: id,
+      kind: :secret,
+      about: about,
+      linked: linked,
+      environment: if(linked, do: "production")
+    }
+  end
 
   defp setting(id, label, value, opts \\ []) do
     %{
       id: id,
+      kind: :plain,
       label: label,
       value: value,
       type: Keyword.get(opts, :type, "text"),
@@ -289,24 +323,28 @@ defmodule ApiaryWeb.Storybook.Sample do
 
   @doc """
   What can be added from Add integration › Built in: each integration Qory ships, with its
-  roles and whether the workspace has it already.
+  roles, the ways it connects and whether the workspace has it already.
   """
   @spec built_in() :: [map()]
   def built_in do
     [
-      %{id: "github", name: "GitHub", roles: [:task_source, :output, :service], added: true},
-      %{id: "gitlab", name: "GitLab", roles: [:task_source, :output, :service], added: false},
-      %{id: "anthropic", name: "Anthropic", roles: [:llm_provider], added: true},
-      %{id: "openai", name: "OpenAI", roles: [:llm_provider], added: true},
-      %{id: "webhook", name: "Webhook", roles: [:output], added: true},
-      %{id: "email", name: "Email", roles: [:output], added: false},
-      %{id: "registry", name: "Package registry", roles: [:service], added: true}
+      built_in("github", "GitHub", [:task_source, :output, :service], [:api, :mcp], true),
+      built_in("gitlab", "GitLab", [:task_source, :output, :service], [:api, :mcp], false),
+      built_in("anthropic", "Anthropic", [:llm_provider], [:api], true),
+      built_in("openai", "OpenAI", [:llm_provider], [:api], true),
+      built_in("webhook", "Webhook", [:output], [:api], true),
+      built_in("email", "Email", [:output], [:api], false),
+      built_in("registry", "Package registry", [:service], [:api], true)
     ]
   end
 
+  defp built_in(id, name, roles, ways, added),
+    do: %{id: id, name: name, roles: roles, ways: ways, added: added}
+
   @doc """
   What Add integration › From GitHub found in a repository's `description.json`: the
-  integration it describes, the secrets it declares and its settings, and the file itself.
+  integration it describes, the ways it connects, the settings it declares, secret and
+  plain, and the file itself.
   """
   @spec described() :: map()
   def described do
@@ -315,6 +353,7 @@ defmodule ApiaryWeb.Storybook.Sample do
       version: "0.6.0",
       name: "Ticket desk",
       roles: [:task_source, :output],
+      ways: [:api, :mcp],
       about: "Takes the tickets of a queue as tasks, and replies on each with what its run did.",
       secrets: ["api_token"],
       settings: ["Base URL", "Queue"],
@@ -323,8 +362,9 @@ defmodule ApiaryWeb.Storybook.Sample do
         "name": "Ticket desk",
         "version": "0.6.0",
         "roles": ["task_source", "output"],
-        "secrets": [{"name": "api_token", "required": true}],
+        "connects": ["api", "mcp"],
         "settings": [
+          {"name": "api_token", "label": "API token", "secret": true, "required": true},
           {"name": "base_url", "label": "Base URL", "type": "url"},
           {"name": "queue", "label": "Queue", "type": "string"}
         ]
@@ -348,6 +388,12 @@ defmodule ApiaryWeb.Storybook.Sample do
           updated: "2 Sept 2026"
         },
         %{name: "GITHUB_APP_KEY", environment: "staging", used_by: [], updated: "2 Sept 2026"},
+        %{
+          name: "GITHUB_WEBHOOK_SECRET",
+          environment: "production",
+          used_by: ["github"],
+          updated: "2 Sept 2026"
+        },
         %{
           name: "ANTHROPIC_API_KEY",
           environment: "production",
@@ -389,6 +435,12 @@ defmodule ApiaryWeb.Storybook.Sample do
           environment: "production",
           used_by: ["registry"],
           updated: "2 Sept 2026"
+        },
+        %{
+          name: "DOCS_SEARCH_TOKEN",
+          environment: "production",
+          used_by: ["docs_search"],
+          updated: "24 Sept 2026"
         }
       ],
       variables: [
