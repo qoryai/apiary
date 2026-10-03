@@ -120,6 +120,17 @@ and an admin manages members only, not owners or other admins. A **member** work
 workspace and manages neither the members nor the settings. `http://localhost:4100/` and
 the log-in take you to the workspace.
 
+<!-- feature: security -->
+The values runs are given are under the workspace's **Settings › Secrets and variables**,
+`/<organisation>/<workspace>/settings/secrets`, in two views. A **secret**, such as a
+token for a forge, holds one value or several, each named by a **value ID**; once saved, a
+value is never shown again, to anyone, and the page lists only names, value IDs, who
+changed each value and when, and what uses it. A **variable** is a plain value, such as
+the address of a package registry, which a repository may set its own value of unless the
+variable is **locked**. Every member reads both views; owners and admins change them. A
+name beginning `QORY_` is the runner's own and is refused.
+<!-- /feature -->
+
 Your own preferences are under **Your settings › Preferences**, in the menu of your account: the
 time zone the pages show times in (UTC until you choose one; every time is stored in UTC)
 and, once the instance has more than one, the language. They are yours, not the
