@@ -509,7 +509,7 @@ defmodule Apiary.SecretsTest do
       secret = create!(scope, %{name: "API_KEY"})
 
       Repo.query!(
-        "UPDATE workspace_data_keys SET wrapped_key = overlay(wrapped_key placing '\\x00'::bytea from 20 for 1) WHERE workspace_id = $1",
+        "UPDATE workspace_data_keys SET wrapped_key = set_byte(wrapped_key, 19, get_byte(wrapped_key, 19) # 255) WHERE workspace_id = $1",
         [Ecto.UUID.dump!(workspace.id)]
       )
 
