@@ -63,7 +63,8 @@ defmodule Apiary.AuditChanges do
       :"security_policy.lock",
       :"security_policy.set_mode",
       :"secret.write",
-      :"variable.edit"
+      :"variable.edit",
+      :"connection.write"
     ]
   end
 
@@ -261,6 +262,12 @@ defmodule Apiary.AuditChanges do
       Variables.create_variable(scope, :workspace, %{name: "NODE_ENV", value: value})
 
     %{scope: scope, subject: {"variable", variable.id}, before: before, secret: value}
+  end
+
+  def make(:"connection.write", %{scope: scope}) do
+    before = entries()
+    {:ok, connection} = Apiary.Connections.create_service(scope, %{service: "sentry"})
+    %{scope: scope, subject: {"connection", connection.id}, before: before}
   end
 
   def make(:"organisation.delete", %{scope: scope}) do
@@ -461,6 +468,9 @@ defmodule Apiary.AuditChanges do
 
   defp attempt(:"variable.edit", scope, _),
     do: Variables.create_variable(scope, :workspace, %{name: "NODE_ENV", value: "test"})
+
+  defp attempt(:"connection.write", scope, _),
+    do: Apiary.Connections.create_service(scope, %{service: "sentry"})
 
   defp attempt(:"retention.edit", scope, _),
     do: Retention.update_retention(scope, %{events_retention_days: 30})

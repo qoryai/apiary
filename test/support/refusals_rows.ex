@@ -249,7 +249,7 @@ defmodule ApiaryWeb.RefusalsRows do
   # no page of the core offers, and an edition's page does, with rows of its own. Stored
   # secrets and variables: no page offers them yet, and their contexts' tests refuse
   # them (`test/apiary/secrets_test.exs`, `test/apiary/variables_test.exs`); their page
-  # brings its rows.
+  # brings its rows. So do the connections (`test/apiary/connections_test.exs`).
   @impl true
   def exempt do
     %{
@@ -265,7 +265,9 @@ defmodule ApiaryWeb.RefusalsRows do
         :"secret.write",
         :"secret.use",
         :"variable.read",
-        :"variable.edit"
+        :"variable.edit",
+        :"connection.read",
+        :"connection.write"
       ]
     }
   end
