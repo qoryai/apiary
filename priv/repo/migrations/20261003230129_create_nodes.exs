@@ -6,7 +6,9 @@ defmodule Apiary.Repo.Migrations.CreateNodes do
   # (kind `pool`, up to its instance limit, or any number when the limit is NULL).
   #
   # The workspace is the node's by the composite key, so no row can name a workspace of
-  # another organisation. `public_id` is the node's name in URLs: `nd_` for a node or
+  # another organisation; `(id, workspace_id)` is unique, so a row that names a node, as an
+  # access key or a run will, names one of its own workspace by the composite key, as a
+  # target's rows do. `public_id` is the node's name in URLs: `nd_` for a node or
   # `np_` for a pool, then sixteen lowercase Crockford base32 characters, unique on the
   # instance, as an access key's key id is. The kind is chosen when the node is made and
   # never changes: the check holds the prefix to it, and the trigger refuses an UPDATE
@@ -51,6 +53,7 @@ defmodule Apiary.Repo.Migrations.CreateNodes do
     end
 
     create unique_index(:nodes, [:public_id])
+    create unique_index(:nodes, [:id, :workspace_id])
 
     create unique_index(:nodes, [:organisation_id, :workspace_id, :name],
              where: "deleted_at IS NULL",
