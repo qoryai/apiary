@@ -11,7 +11,7 @@ defmodule ApiaryWeb.Storybook.Screens.AddIntegration do
   def doc,
     do:
       "Add integration, three ways: one built in, one from a GitHub repository whose " <>
-        "description.json says what it is, or a private one, which is Pro's."
+        "description.json says what it is, or a private one, which an edition may add."
 
   def navigation,
     do: [{:built_in, "Built in"}, {:from_github, "From GitHub"}, {:private, "Private"}]
@@ -59,7 +59,7 @@ defmodule ApiaryWeb.Storybook.Screens.AddIntegration do
               icon="hero-lock-closed"
             >
               Private
-              <.badge color="warning">Pro</.badge>
+              <.badge>Not in this edition</.badge>
             </:tab>
           </RunComponents.tabs>
         </div>
@@ -162,7 +162,7 @@ defmodule ApiaryWeb.Storybook.Screens.AddIntegration do
   defp private(assigns) do
     ~H"""
     <.notice>
-      <strong>Private integrations come with Qory Apiary Pro.</strong>
+      <strong>Private integrations are not in this edition.</strong>
       Add one from a private repository or a registry of your own, read with a token you give.
     </.notice>
     <form id="add-private" class="grid gap-4" novalidate>
