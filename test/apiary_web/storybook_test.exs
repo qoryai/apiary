@@ -27,7 +27,9 @@ if Mix.Project.config()[:app] == :apiary do
       paths = Enum.map(stories(), &elem(&1, 0))
 
       for path <- ~w(foundations/icons core/button lists/list_pattern policy/rule_mark
-                     policy/rule_line policy/rule_list),
+                     policy/rule_line policy/rule_list screens/shell screens/settings
+                     screens/integrations screens/integration screens/add_integration
+                     screens/run_setup screens/access_keys screens/machines),
           do: assert(path in paths, "#{path} is not in the storybook")
     end
 
@@ -46,18 +48,43 @@ if Mix.Project.config()[:app] == :apiary do
 
     test "every page story renders, in each theme and on each tab" do
       for {path, story} <- stories(), story.storybook_type() == :page do
-        tabs =
-          case story.navigation() do
-            [] -> [nil]
-            navigation -> Enum.map(navigation, &elem(&1, 0))
-          end
-
-        for tab <- tabs, theme <- @themes do
+        for tab <- tabs(story), theme <- @themes do
           html =
             %{__changed__: %{}, tab: tab, theme: theme} |> story.render() |> rendered_to_string()
 
           assert html =~ ~r/\S/, "#{path} renders nothing"
         end
+      end
+    end
+
+    test "every link between the screen mock-ups leads to a story and a tab it has" do
+      stories = Map.new(stories())
+
+      for {"screens/" <> _ = path, story} <- stories,
+          tab <- tabs(story),
+          theme <- @themes do
+        html =
+          %{__changed__: %{}, tab: tab, theme: theme} |> story.render() |> rendered_to_string()
+
+        links = Regex.scan(~r{href="/dev/storybook/([^"?]+)(?:\?([^"]*))?"}, html)
+        assert links != [], "#{path}, #{tab} links to no other screen"
+
+        for [_link, to | query] <- links do
+          params = query |> List.first("") |> String.replace("&amp;", "&") |> URI.decode_query()
+          assert {:ok, target} = Map.fetch(stories, to), "#{path}, #{tab} links to #{to}"
+
+          assert is_nil(params["tab"]) or params["tab"] in Enum.map(tabs(target), &to_string/1),
+                 "#{path}, #{tab} links to #{to}, tab #{params["tab"]}"
+
+          assert params["theme"] == to_string(theme), "#{path}, #{tab} drops the theme"
+        end
+      end
+    end
+
+    defp tabs(story) do
+      case story.navigation() do
+        [] -> [nil]
+        navigation -> Enum.map(navigation, &elem(&1, 0))
       end
     end
 
