@@ -239,7 +239,7 @@ defmodule ApiaryWeb.Storybook.Screens.Node do
     ids =
       case assigns.node do
         %{instances: [], last: %{id: id}} -> [id]
-        %{instances: []} -> ["m_5R2HM8KD1XC9"]
+        %{instances: []} -> ["i_5R2HM8KD1XC99cx1dk8mh2"]
         node -> Enum.map(node.instances, & &1.id)
       end
 

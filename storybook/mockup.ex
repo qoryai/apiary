@@ -617,7 +617,7 @@ defmodule ApiaryWeb.Storybook.Mockup do
         <.list_search
           id="nodes-search"
           label="Find a node"
-          placeholder="Find a node or an instance, e.g. build-01 or m_4F7K"
+          placeholder="Find a node or an instance, e.g. build-01 or i_4F7K"
           live={false}
         />
       </div>

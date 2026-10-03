@@ -479,12 +479,12 @@ defmodule ApiaryWeb.Storybook.Sample do
 
     [
       node("build_01", "build-01", :node,
-        instances: [instance("m_4F7KQ2ZD9XW1", 37, "0.6.1", ago.(5 * 3600 + 1_260))],
+        instances: [instance("i_4F7KQ2ZD9XW11wx9dz2qk7", 37, "0.6.1", ago.(5 * 3600 + 1_260))],
         keys: [
           key(
-            "ak_7Q2M9F4CXKD8B1AH",
+            "ak_7q2m9f4cxkd8b1ah",
             :approved,
-            "SHA256:Xq3vR8kT1mZp6LwN2bYc9HdJ4sFa7Ue0GiOt5QrKx2M",
+            "Xq3vR8kT1mZp6LwN2bYc9H",
             stored_secrets: true,
             by: "dana",
             on: "2 Sept 2026"
@@ -495,12 +495,12 @@ defmodule ApiaryWeb.Storybook.Sample do
         created: "dana, 2 Sept 2026"
       ),
       node("build_02", "build-02", :node,
-        last: instance("m_8C1MV5TR2HJ6", 0, "0.6.1", ago.(2 * 3600)),
+        last: instance("i_8C1MV5TR2HJ66jh2rt5vm1", 0, "0.6.1", ago.(2 * 3600)),
         keys: [
           key(
-            "ak_3XKD8B1AP4N6W2ZE",
+            "ak_3xkd8b1ap4n6w2ze",
             :pending,
-            "SHA256:Lm7Tq2Wv9Xc4Bn8Kd1Rf6Hs3Jp0Za5Ye2Gu7Io4Qt9N",
+            "Lm7Tq2Wv9Xc4Bn8Kd1Rf6H",
             stored_secrets: true,
             by: "dana",
             on: "today",
@@ -512,12 +512,12 @@ defmodule ApiaryWeb.Storybook.Sample do
         created: "dana, today"
       ),
       node("mac_mini", "mac-mini", :node,
-        last: instance("m_6X1ZH4NM9BR3", 41, "0.6.0", ago.(3 * 86_400)),
+        last: instance("i_6X1ZH4NM9BR33rb9mn4hz1", 41, "0.6.0", ago.(3 * 86_400)),
         keys: [
           key(
-            "ak_P4N6W2ZEH8R5T1QJ",
+            "ak_p4n6w2zeh8r5t1qj",
             :revoked,
-            "SHA256:Bd4Fh8Jk2Lm6Np0Qr4St8Uv2Wx6Yz0Ac4Eg8Ik2Mo6Q",
+            "Bd4Fh8Jk2Lm6Np0Qr4St8U",
             stored_secrets: false,
             by: "lee",
             on: "30 Sept 2026"
@@ -530,15 +530,15 @@ defmodule ApiaryWeb.Storybook.Sample do
       node("ci_runners", "ci-runners", :pool,
         limit: 10,
         instances: [
-          instance("m_2T5KW8DQ1HX7", 2, "0.6.1", ago.(1_140)),
-          instance("m_9K5XR2JC6VD8", 1, "0.6.1", ago.(420)),
-          instance("m_1N7BW4QG3TZ2", 1, "0.6.1", ago.(95))
+          instance("i_2T5KW8DQ1HX77xh1qd8wk5", 2, "0.6.1", ago.(1_140)),
+          instance("i_9K5XR2JC6VD88dv6cj2rx5", 1, "0.6.1", ago.(420)),
+          instance("i_1N7BW4QG3TZ22zt3gq4wb7", 1, "0.6.1", ago.(95))
         ],
         keys: [
           key(
-            "ak_H8R5T1QJ7Q2M9F4C",
+            "ak_h8r5t1qj7q2m9f4c",
             :approved,
-            "SHA256:Qa1Ws2Ed3Rf4Tg5Yh6Uj7Ik8Ol9Pz0Xc1Vb2Nm3Lk4J",
+            "Qa1Ws2Ed3Rf4Tg5Yh6Uj7I",
             stored_secrets: true,
             by: "dana",
             on: "3 Sept 2026"
@@ -551,17 +551,17 @@ defmodule ApiaryWeb.Storybook.Sample do
       node("preview_envs", "preview-envs", :pool,
         limit: nil,
         instances: [
-          instance("m_5R2HM8KD1XC9", 3, "0.6.1", ago.(2 * 3600 + 600)),
-          instance("m_3V6JT9WB5QN4", 2, "0.6.1", ago.(3_300)),
-          instance("m_7D4QX1HZ6MK2", 1, "0.6.1", ago.(1_500)),
-          instance("m_0B8NC3RV7JW5", 1, "0.6.0", ago.(600)),
-          instance("m_6H3TZ1PF8RM5", 1, "0.6.1", ago.(140))
+          instance("i_5R2HM8KD1XC99cx1dk8mh2", 3, "0.6.1", ago.(2 * 3600 + 600)),
+          instance("i_3V6JT9WB5QN44nq5bw9tj6", 2, "0.6.1", ago.(3_300)),
+          instance("i_7D4QX1HZ6MK22km6zh1xq4", 1, "0.6.1", ago.(1_500)),
+          instance("i_0B8NC3RV7JW55wj7vr3cn8", 1, "0.6.0", ago.(600)),
+          instance("i_6H3TZ1PF8RM55mr8fp1zt3", 1, "0.6.1", ago.(140))
         ],
         keys: [
           key(
-            "ak_2Q9WD7NB4KX3V6JT",
+            "ak_2q9wd7nb4kx3v6jt",
             :approved,
-            "SHA256:Mn8Bv7Cx6Za5Sd4Fg3Hj2Kl1Qw0Er9Ty8Ui7Op6As5D",
+            "Mn8Bv7Cx6Za5Sd4Fg3Hj2K",
             stored_secrets: false,
             by: "lee",
             on: "14 Sept 2026"
@@ -575,9 +575,9 @@ defmodule ApiaryWeb.Storybook.Sample do
         limit: 4,
         keys: [
           key(
-            "ak_9F4CXKD8B1AH7Q2M",
+            "ak_9f4cxkd8b1ah7q2m",
             :approved,
-            "SHA256:Zx9Cv8Bn7Mq6Wp5Ol4Ik3Uj2Yh1Tg0Rf9Ed8Ws7Qa6Z",
+            "Zx9Cv8Bn7Mq6Wp5Ol4Ik3U",
             stored_secrets: true,
             by: "sam",
             on: "21 Sept 2026"
@@ -596,7 +596,7 @@ defmodule ApiaryWeb.Storybook.Sample do
   """
   @spec replacement_key() :: map()
   def replacement_key do
-    key("ak_W2ZE3XKD8B1AP4N6", :pending, "SHA256:Ty5Rn3Vb8Xk1Mq7Lp2Wd9Hs4Jc6Fa0Ze3Gu8Io1Qt5K",
+    key("ak_w2ze3xkd8b1ap4n6", :pending, "Ty5Rn3Vb8Xk1Mq7Lp2Wd9H",
       stored_secrets: true,
       by: "dana",
       on: "today",
