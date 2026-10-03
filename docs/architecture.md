@@ -31,8 +31,16 @@ beside it:
   purge after the grace period (Deletion, below). `Apiary.Deletion.Tables` lists every
   table that holds an organisation's rows, in the order a purge deletes them: the
   edition's, then the core's.
-- `Apiary.AccessKeys`: a workspace's access keys, their secrets encrypted at rest through
-  `Apiary.Vault`, rotation and revocation, and the lookup a signed request verifies against.
+- `Apiary.AccessKeys`: a workspace's access keys, and the lookup a signed request verifies
+  against. Today's keys have secrets the server made, encrypted at rest through
+  `Apiary.Vault`, rotation and revocation, and no node. A node's keys each have one
+  Ed25519 public key and belong to one node or node pool: enrolment codes
+  (`access_key_enrolment_codes`, kept as their SHA-256), a pasted key approved at once,
+  approval, rejection and revocation, at most two approved keys and one awaiting approval
+  per node, and the ledger of public keys (`access_key_public_keys`), one public key for
+  one access key, ever, whose tombstones outlive the purge. `Apiary.Contract.Ed25519`
+  holds the checks every public key received passes, the fingerprint and cofactorless
+  verification.
 - `Apiary.Nodes`: a workspace's nodes and node pools (`nodes`), the places its runs run:
   a node is one permanent machine, a pool a fleet of short-lived instances up to its
   instance limit or none; the kind is fixed when one is made, and a deleted one is gone
@@ -117,7 +125,8 @@ creates one the product's way, and the core's edition allows one in use.
 Each organisation's data is kept apart by the schema, not by the pages:
 
 - Every table except the account tables (`users`, `users_tokens`) and the instance's own
-  (`purged_organisations`, `instance_settings`, Oban's) carries `organisation_id`, and
+  (`purged_organisations`, `instance_settings`, the ledger of access keys' public keys
+  `access_key_public_keys`, Oban's) carries `organisation_id`, and
   every table that belongs to a workspace carries `workspace_id` beside it with the
   composite foreign key `(organisation_id, workspace_id)` against `workspaces`, so no row
   can name a workspace of another organisation. Both come in the table's first migration;
@@ -128,8 +137,9 @@ Each organisation's data is kept apart by the schema, not by the pages:
   fails until it is there.
 - A unique constraint is scoped by the organisation: `(organisation_id, name)` on
   workspaces, `(organisation_id, user_id)` on memberships, `(organisation_id, email)` on
-  pending invitations, `(organisation_id, workspace_id, label)` on active access keys. A
-  name is unique inside an organisation, never across them.
+  pending invitations, `(organisation_id, workspace_id, label)` on today's active access
+  keys, `(node_id, label)` on a node's keys in use. A name is unique inside an
+  organisation, never across them; a public key is unique on the instance, by the ledger.
 - Every context function that reads or writes an organisation's data takes an
   `Apiary.Accounts.Scope` as its first argument and filters by its organisation and
   workspace, and by nothing else the caller passes. The exceptions are the entry points
@@ -385,9 +395,11 @@ is `unavailable`, with a log line that names the secret, never wrong.
 someone who can write to the database but does not hold the secret: an HMAC-SHA256 under
 the integrity key over a canonical encoding of a kind, a version and the fields the caller
 chooses, each length-prefixed and typed, stored with the key id beside it, and verified in
-constant time. A caller codes what routes a secret or grants access, the access key rows,
-what links a stored secret to the runs, and the enrolment codes, and checks the code where
-it trusts the row;
+constant time. A caller codes what routes a secret or grants access, a node's access key
+rows (their node, public key, stored-secrets flag, arrival, approval and revocation), what
+links a stored secret to the runs, and the enrolment codes, and checks the code where it
+trusts the row: `Apiary.AccessKeys.fetch_for_verification/1` refuses a node's key whose row
+does not match, before any signature is checked;
 the per-request columns stay outside it. Variables and policy rules carry no code: they
 route no stored value, and the runner bounds what a variable can do.
 

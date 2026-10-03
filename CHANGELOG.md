@@ -45,6 +45,15 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
   (`node.create`, `node.edit`, `node.delete`, each in the audit trail); everyone in the
   workspace reads them (`node.read`). The list is at `/:org/:workspace/nodes`, with New
   node and New node pool, and each node has a page with Overview and Settings.
+- Access keys of nodes, beside today's keys: each holds one Ed25519 public key and belongs
+  to one node or node pool, with its stored-secrets flag fixed when it is made. Owners and
+  admins make single-use enrolment codes, valid for 15 minutes, add a pasted key, approved
+  at once, approve or reject a key that awaits approval, and revoke one, each in the audit
+  trail; a node holds at most two approved keys and one awaiting approval, and deleting a
+  node revokes its keys. Every public key received passes the contract's key checks, and
+  a public key serves one access key, ever, on the instance. Each key's row carries an
+  integrity code, checked before the key is trusted. Revoking today's keys is now the
+  action `access_key.revoke_secret_key`; nothing else about them changes.
 - Access keys, created, rotated and revoked in the console; members at the levels owner,
   admin and member, and the suspension of a member.
 - The audit trail of every change, in the organisation's settings, under Audit log; retention of a
@@ -111,6 +120,14 @@ The baseline, on an empty database: the accounts and their tokens (`users`,
 
 `nodes`: a workspace's nodes and node pools, with the trigger `nodes_kind_fixed`, which
 refuses a change of a node's kind.
+
+`access_keys` gains a node's key's columns (`node_id`, `public_key`, `received_at`,
+`approved_at`, `approved_by_id`, `allow_secrets`, `rate`, `burst`, `arrived_by`,
+`enrolment_code_id`, `revoked_by_id`, `integrity_code`, `integrity_key_id`,
+`last_pending_at`), its secret becomes nullable for a node's key, and the trigger
+`access_keys_fixed_at_insert` refuses a change of a key's node, public key, stored-secrets
+flag or arrival. New: `access_key_enrolment_codes`, a node's enrolment codes, and
+`access_key_public_keys`, the instance's ledger of public keys.
 
 ### Upgrading
 

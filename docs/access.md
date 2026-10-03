@@ -194,6 +194,20 @@ deletion leave the organisation without them
 revoked; granting one (`Apiary.Release.grant_instance_admin/2`) is the recovery when none
 may act.
 
+## Access keys
+
+Two kinds of access key live side by side until the server contract that signs with
+Ed25519 is in. Today's keys, with a secret the server made and no node, are every
+member's to create, rotate and revoke (`access_key.create`, `access_key.rotate`,
+`access_key.revoke_secret_key`), from the workspace's settings. A node's keys are owners'
+and admins' alone: making and cancelling an enrolment code (`access_key.create_code`,
+`access_key.cancel_code`), adding a pasted key (`access_key.add`), approving and
+rejecting a key that awaits approval (`access_key.approve`, `access_key.reject`) and
+revoking one (`access_key.revoke`). Each is asked of the node, the code or the key, and
+leaves its audit entry. Deleting a node (`node.delete`, owners and admins) revokes its
+keys in the same transaction, each with its entry of `access_key.revoke`. Everyone in the
+workspace reads the nodes (`node.read`), and a page shows a node's keys under it.
+
 ## Leaving
 
 Anyone with a membership may remove their own, whatever their level: leaving the
@@ -312,6 +326,11 @@ The modes keep a row that only names another out of it:
   as a change of a level, a removal and a suspension do, holds the organisation rows
   `FOR SHARE` too, then locks the organisation's own owners' memberships `FOR UPDATE`
   (`Apiary.Organisations.lock_owners/1`).
+- A change of a node's access keys or enrolment codes (`Apiary.AccessKeys`) locks the
+  node's row `FOR UPDATE`, then the key's or the code's: the keys of one node take turns,
+  so the limit of two approved keys and one awaiting approval counts every change before
+  it. Deleting a node (`Apiary.Nodes.delete_node/2`) holds the same row, and revokes its
+  keys under it.
 - A write of the security policy, of a stored secret (`Apiary.Secrets`) or of a variable
   (`Apiary.Variables`) holds the organisation `FOR SHARE` (`Apiary.Access.lock_places/1`),
   then locks its workspace's row `FOR NO KEY UPDATE`, then reads the membership again
