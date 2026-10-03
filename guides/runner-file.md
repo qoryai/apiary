@@ -125,10 +125,9 @@ what to do before that first change.
 With a server configured, `qory run --policy <file>` is refused unless `--local` is given
 too: the server's run configuration is the policy.
 
-Two sections of the runner file still matter under a workspace's policy. `credentials`
-defines what the machine has; the workspace's policy selects credentials by name and
-defines none, and a name the machine does not define is no run. `wall` starts the runtime
-in a container; a policy with paths or credentials needs one.
+One section of the runner file still matters under a workspace's policy: `wall` starts the
+runtime in a container, and a policy with paths needs one. The workspace's policy selects
+none of the machine's `credentials`, so a run under it uses none.
 <!-- /feature -->
 
 ## The `forge` and `repository` labels

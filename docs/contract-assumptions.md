@@ -213,10 +213,11 @@ and nothing is read.
 
 Rendering is canonical: members in a fixed order (`mode`, `allow`, `deny`, `paths`), no
 whitespace, `allow` and `deny` sorted with names before `*.` suffixes (so the rule a runner
-reports for a connection is the most exact one), `paths` by host with each list sorted,
-`credentials` by name; `allow` is always present, `deny`, `paths` and `credentials` only when
-they hold something, so a policy without a deny renders the bytes it always did. The same rules give the same bytes
-and the same digest, a change that renders the same bytes makes no new version, and every
+reports for a connection is the most exact one), `paths` by host with each list sorted;
+`allow` is always present, `deny` and `paths` only when they hold something, so a policy
+without a deny renders the bytes it always did. The document never has `credentials`: the
+contract's policy may select credentials of the machine's, and this one selects none. The
+same rules give the same bytes and the same digest, a change that renders the same bytes makes no new version, and every
 document is validated against the contract's `run-configuration.schema.json` and
 `policy.schema.json` (vendored under `priv/contract/`) before it is stored: a change whose
 render the schema refuses is not made, and neither is one whose render is over 1 MiB, the
@@ -386,9 +387,8 @@ The contract has not fixed these; Apiary chose, and the runner should match:
   `credentials`: twenty at most, each with ten hosts at most. A credential use and a tool
   may contain `argument`, the argument the policy passed to it (up to 4096 code points in
   the contract). The policy in force on a run's Details tab reads it whole, cut only past
-  4096 code points; the timeline's policy applied item reads a tool's cut at 256, the
-  longest argument the policy editor writes (`Apiary.Policy.Grammar.argument_max/0`), and
-  its one-line summary shows the first 64 of them, with the 256 in the argument's title. A
+  4096 code points; the timeline's policy applied item reads a tool's cut at 256
+  (`Apiary.Runs.Record.Timeline.max_argument/0`), and its one-line summary shows the first 64 of them, with the 256 in the argument's title. A
   cut argument ends in `…`. Lengths are code points, as the schemas' `maxLength` and the
   database's `left` count them, in the query and in `Timeline.slim/1` alike. The event
   lists each use of a credential, all with the same name and argument; the Details tab
@@ -429,6 +429,5 @@ The contract has not fixed these; Apiary chose, and the runner should match:
   - A policy with `paths` or `credentials` needs a wall: without one the runner refuses to
     start the run, in either mode, and on a reload it takes the hosts held to paths out of
     `allow` and refuses a configuration that selects credentials. The apiary renders what
-    the rules say; the page and the export say that paths and credentials need a wall.
-  - A credential the machine does not define is no run. The apiary names credentials and
-    cannot know what a machine defines.
+    the rules say and selects no credential; the page and the export say that paths need
+    a wall.
