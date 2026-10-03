@@ -11,8 +11,9 @@ defmodule ApiaryWeb.MovedController do
   Those answer 302, found. A page that took a new name, for good: the workspace's
   connections, `/:org/:workspace/connections`, are its Network access,
   `/:org/:workspace/network`, and a run's Connections tab, `/runs/:run_id/connections`, is
-  `/runs/:run_id/network`; those answer 301, moved permanently. A bookmark, a link in an old message and a page of a browser's history still
-  land; the router answers the new paths only.
+  `/runs/:run_id/network`; those answer 301, moved permanently. A bookmark, a link in an
+  old message and a page of a browser's history still land; the router answers the new
+  paths only.
   """
   use ApiaryWeb, :controller
 
