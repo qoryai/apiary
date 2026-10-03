@@ -9,6 +9,7 @@ defmodule Apiary.KeyDerivation do
   | `:values` | `"apiary values v1"` | wraps each workspace's data key, which encrypts the workspace's stored secret values (`Apiary.Secrets`) |
   | `:integrity` | `"apiary integrity v1"` | keys the integrity codes of stored rows (`Apiary.Integrity`) |
   | `:envelope_signing` | `"apiary envelope signing v1"` | the seed of the instance's signing key for answers to runners, where nothing overrides it |
+  | `:access_keys` | `"apiary access keys v1"` | encrypts the access key secrets at rest (`Apiary.Vault`) |
 
   Each derived key has a **key id**: the first 8 bytes of SHA-256 over
   `"apiary key id v1"` and the key, as 16 lowercase hexadecimal characters. It names the
@@ -19,7 +20,8 @@ defmodule Apiary.KeyDerivation do
 
   The secret is read from `config :apiary, Apiary.KeyDerivation, secret: <32 bytes>`:
   `config/runtime.exs` sets it from `APIARY_ENCRYPTION_SECRET` in production, and
-  `config/dev.exs` and `config/test.exs` set a fixed one. The keys are derived on each
+  `config/dev.exs` and `config/test.exs` set a fixed one. The secret's own bytes key
+  nothing: they are only ever the input to the derivation. The keys are derived on each
   call, which costs two HMACs, so nothing caches a key in a process's state.
 
   Losing `APIARY_ENCRYPTION_SECRET` loses every key derived from it, and with them every
@@ -30,13 +32,14 @@ defmodule Apiary.KeyDerivation do
   @infos %{
     values: "apiary values v1",
     integrity: "apiary integrity v1",
-    envelope_signing: "apiary envelope signing v1"
+    envelope_signing: "apiary envelope signing v1",
+    access_keys: "apiary access keys v1"
   }
   @key_id_label "apiary key id v1"
   @hash_len 32
 
   @typedoc "A purpose a key is derived for."
-  @type purpose :: :values | :integrity | :envelope_signing
+  @type purpose :: :values | :integrity | :envelope_signing | :access_keys
 
   @typedoc "A key id: 16 lowercase hexadecimal characters."
   @type key_id :: String.t()

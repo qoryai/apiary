@@ -351,12 +351,13 @@ features are listed after the core's (`c:Apiary.Edition.features/0`), and
 
 ## Secrets at rest and integrity codes
 
-`APIARY_ENCRYPTION_SECRET`, 32 random bytes, is the one key the instance holds. Nothing is
-encrypted under it directly but the access key secrets, through `Apiary.Vault` (Cloak),
-until access keys stop holding secrets. Every other key is derived from it with
+`APIARY_ENCRYPTION_SECRET`, 32 random bytes, is the one key the instance holds, and
+nothing is encrypted or keyed under its own bytes: every key is derived from it with
 HKDF-SHA256 (`Apiary.KeyDerivation`), salt `apiary/kdf/v1`, one info string per purpose:
 `apiary values v1` for stored values, `apiary integrity v1` for integrity codes,
-`apiary envelope signing v1` for the key that signs answers to runners. Each derived key
+`apiary envelope signing v1` for the key that signs answers to runners, and
+`apiary access keys v1` for the access key secrets, which `Apiary.Vault` (Cloak) takes
+when it starts, until access keys stop holding secrets. Each derived key
 has a key id, a truncated SHA-256 of a label and the key, stored beside what it made, so a
 rotation of the secret can keep the previous one to read with and tell the two apart.
 

@@ -50,15 +50,10 @@ config :phoenix_live_view,
 config :phoenix,
   sort_verified_routes_query_params: true
 
-# APIARY_ENCRYPTION_SECRET in test: it encrypts the access key secrets (Apiary.Vault) and
-# is what the keys for stored values and integrity codes are derived from
-# (Apiary.KeyDerivation). Not a secret: local databases only.
-encryption_secret = Base.decode64!("dGVzdDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=")
-
-config :apiary, Apiary.Vault,
-  ciphers: [default: {Cloak.Ciphers.AES.GCM, tag: "AES.GCM.V1", key: encryption_secret}]
-
-config :apiary, Apiary.KeyDerivation, secret: encryption_secret
+# APIARY_ENCRYPTION_SECRET in test: every key the instance uses is derived from it
+# (Apiary.KeyDerivation), the access key secrets' (Apiary.Vault) among them. Not a
+# secret: local databases only.
+config :apiary, Apiary.KeyDerivation, secret: Base.decode64!("dGVzdDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=")
 
 # Projections run in the caller's process, inside its sandbox connection, and the
 # lost-run check runs only when a test calls it.

@@ -14,7 +14,9 @@ defmodule Apiary.KeyDerivationTest do
     integrity:
       {"00c237515a3185d8", "d1ab9a54546e72272622c028ba38845262ea3a0732b383b1dc888841c8519bbf"},
     envelope_signing:
-      {"263a8e3cde68784b", "152f1493707535f6910c20635b1d92f0e5163efe832bc1545e224c0b5504e65f"}
+      {"263a8e3cde68784b", "152f1493707535f6910c20635b1d92f0e5163efe832bc1545e224c0b5504e65f"},
+    access_keys:
+      {"a1cdd4cbfb998b28", "452e721b7f0254d9d2a58a741b8a4ad96b3cf33f3bea95e75d594ed78a56df68"}
   }
 
   setup do
@@ -30,6 +32,10 @@ defmodule Apiary.KeyDerivationTest do
 
     assert Base.encode16(KeyDerivation.hkdf(ikm, salt, info, 42), case: :lower) ==
              "3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf34007208d5b887185865"
+  end
+
+  test "every purpose has a known answer" do
+    assert Enum.sort(Map.keys(@known)) == Enum.sort(Map.keys(KeyDerivation.purposes()))
   end
 
   test "each purpose's key and key id are the known answers" do

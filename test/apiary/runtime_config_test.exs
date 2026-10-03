@@ -64,16 +64,14 @@ defmodule Apiary.RuntimeConfigTest do
       System.put_env("MAIL_TO_LOG", "true")
     end
 
-    test "its 32 bytes are the access key cipher's key and what the other keys derive from" do
+    test "its 32 bytes are what every key derives from, and key nothing themselves" do
       config = prod_config()
-      secret = String.duplicate("k", 32)
 
-      assert get_in(config, [:apiary, Apiary.KeyDerivation, :secret]) == secret
+      assert get_in(config, [:apiary, Apiary.KeyDerivation, :secret]) ==
+               String.duplicate("k", 32)
 
-      assert [default: {Cloak.Ciphers.AES.GCM, cipher}] =
-               get_in(config, [:apiary, Apiary.Vault, :ciphers])
-
-      assert cipher[:key] == secret
+      # The access key cipher takes its derived key when the vault starts.
+      assert get_in(config, [:apiary, Apiary.Vault, :ciphers]) == nil
     end
 
     test "missing, or not 32 bytes in base64, it stops the boot, naming the variable" do
