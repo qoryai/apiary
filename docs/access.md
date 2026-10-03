@@ -312,6 +312,13 @@ The modes keep a row that only names another out of it:
   as a change of a level, a removal and a suspension do, holds the organisation rows
   `FOR SHARE` too, then locks the organisation's own owners' memberships `FOR UPDATE`
   (`Apiary.Organisations.lock_owners/1`).
+- A write of the security policy, of a stored secret (`Apiary.Secrets`) or of a variable
+  (`Apiary.Variables`) holds the organisation `FOR SHARE` (`Apiary.Access.lock_places/1`),
+  then locks its workspace's row `FOR NO KEY UPDATE`, then reads the membership again
+  under `FOR SHARE` (`reload/2` with `lock: :share`): writes to one workspace take turns,
+  so the checks that span its rows, a secret's data key made once, a variable's names and
+  limits across the workspace and its repositories, see every write before them. A change
+  to one secret or variable then locks its row `FOR UPDATE`.
 - A marking for deletion locks the organisation's row `FOR NO KEY UPDATE`, and a
   workspace's marking locks every workspace of the organisation in use: they wait for a
   write in flight, and one asked after them waits and then sees them. What an edition
