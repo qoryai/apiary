@@ -53,7 +53,8 @@ config :phoenix,
 # APIARY_ENCRYPTION_SECRET in test: every key the instance uses is derived from it
 # (Apiary.KeyDerivation), the access key secrets' (Apiary.Vault) among them. Not a
 # secret: local databases only.
-config :apiary, Apiary.KeyDerivation, secret: Base.decode64!("dGVzdDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=")
+config :apiary, Apiary.KeyDerivation,
+  secret: Base.decode64!("dGVzdDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=")
 
 # Projections run in the caller's process, inside its sandbox connection, and the
 # lost-run check runs only when a test calls it.

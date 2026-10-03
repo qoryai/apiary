@@ -104,4 +104,5 @@ config :swoosh, :api_client, false
 # APIARY_ENCRYPTION_SECRET in dev: every key the instance uses is derived from it
 # (Apiary.KeyDerivation), the access key secrets' (Apiary.Vault) among them. Not a
 # secret: local databases only.
-config :apiary, Apiary.KeyDerivation, secret: Base.decode64!("MWlkMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=")
+config :apiary, Apiary.KeyDerivation,
+  secret: Base.decode64!("MWlkMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=")

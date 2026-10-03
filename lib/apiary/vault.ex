@@ -13,8 +13,6 @@ defmodule Apiary.Vault do
     {_key_id, key} = Apiary.KeyDerivation.key(:access_keys)
 
     {:ok,
-     Keyword.put(config, :ciphers,
-       default: {Cloak.Ciphers.AES.GCM, tag: "AES.GCM.V1", key: key}
-     )}
+     Keyword.put(config, :ciphers, default: {Cloak.Ciphers.AES.GCM, tag: "AES.GCM.V1", key: key})}
   end
 end

@@ -82,7 +82,9 @@ defmodule Apiary.Variables.Variable do
             add_error(
               changeset,
               :value,
-              dgettext_noop("errors", "must be at most %{count} bytes"), count: @value_max)
+              dgettext_noop("errors", "must be at most %{count} bytes"),
+              count: @value_max
+            )
 
           not String.valid?(value) ->
             add_error(changeset, :value, dgettext_noop("errors", "must be UTF-8 text"))
