@@ -142,8 +142,10 @@ defmodule ApiaryWeb.Storybook.Screens.Integrations do
           <p class="text-[12.5px]/[18px] text-faint">
             An integration with several roles is counted under each: GitHub is a task source,
             an output and a service. Services holds the tools too, such as Docs search.
-            Connects says how a run reaches it: through Qory's API, as an MCP server, or both.
-            Targets counts the targets whose run setup uses it.
+            Source is Built in for an LLM provider or a service that ships inside Apiary, and
+            otherwise the publisher's repository and the release it was added at. Connects says
+            how a run reaches it: through Qory's API, as an MCP server, or both. Targets counts
+            the targets whose run setup uses it.
           </p>
         </div>
       </SettingsComponents.layout>

@@ -371,8 +371,9 @@ defmodule ApiaryWeb.Storybook.Mockup do
   end
 
   @doc """
-  source/1 is where an integration comes from: "Built in", or its GitHub repository in mono
-  with the version it was added at, faint.
+  source/1 is where an integration comes from: "Built in", for an LLM provider or a service
+  that ships inside Apiary, or the publisher's repository of its release in mono
+  (`acme/qory-jira`) with the version it was added at, faint.
   """
   attr :source, :any, required: true
   attr :class, :any, default: nil
@@ -387,6 +388,16 @@ defmodule ApiaryWeb.Storybook.Mockup do
     </span>
     """
   end
+
+  @doc """
+  forge_label/1 is the words of where a release is published: GitHub, GitLab, Forgejo/Gitea,
+  or a URL of its `description.json`.
+  """
+  @spec forge_label(atom()) :: String.t()
+  def forge_label(:github), do: "GitHub"
+  def forge_label(:gitlab), do: "GitLab"
+  def forge_label(:forgejo), do: "Forgejo/Gitea"
+  def forge_label(:url), do: "URL"
 
   @doc "needs_secret?/1 is whether one of an integration's secret settings is linked to none."
   @spec needs_secret?(map()) :: boolean()

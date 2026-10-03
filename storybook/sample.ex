@@ -136,15 +136,21 @@ defmodule ApiaryWeb.Storybook.Sample do
   @doc """
   The integrations of the workspace, as the mock-ups of Settings › Integrations draw them
   (`storybook/screens/`): a proposal, so no context builds them yet. Each has its source
-  (`nil` for one built in, else the GitHub repository and the version it was added at), its
-  roles, the ways it connects (`:api`, `:mcp` or both), and the settings it declares, each
+  (`nil` for one built in, an LLM provider or a service that ships inside Apiary; else the
+  release it was added from: the forge, the publisher's repository, the version it was added
+  at and the latest), its roles, the ways it connects (`:api`, `:mcp` or both), and the settings it declares, each
   plain, with its value, or secret, linked to a workspace secret by name and environment or
   `nil` while it needs one.
   """
   @spec integrations() :: [map()]
   def integrations do
     [
-      integration("github", "GitHub", nil, [:task_source, :output, :service], [:api, :mcp],
+      integration(
+        "github",
+        "GitHub",
+        release(:github, "qoryai/qory-github", "0.1.0", latest: "0.1.0"),
+        [:task_source, :output, :service],
+        [:api, :mcp],
         about:
           "Reads issues as tasks, opens a change request with what a run did, and gives each run a token for the repositories it works on.",
         settings: [
@@ -189,7 +195,7 @@ defmodule ApiaryWeb.Storybook.Sample do
       integration(
         "model_gateway",
         "Model gateway",
-        %{repo: "acme/qory-model-gateway", version: "0.4.0"},
+        release(:github, "acme/qory-model-gateway", "0.4.0"),
         [:llm_provider, :service],
         [:api],
         about:
@@ -205,7 +211,7 @@ defmodule ApiaryWeb.Storybook.Sample do
       integration(
         "jira",
         "Jira",
-        %{repo: "acme/qory-jira", version: "1.4.0"},
+        release(:github, "acme/qory-jira", "1.4.0"),
         [:task_source],
         [:api],
         about:
@@ -224,7 +230,7 @@ defmodule ApiaryWeb.Storybook.Sample do
       integration(
         "slack",
         "Slack",
-        %{repo: "acme/qory-slack", version: "0.9.2"},
+        release(:github, "acme/qory-slack", "0.9.2"),
         [:output],
         [:api],
         about:
@@ -242,7 +248,12 @@ defmodule ApiaryWeb.Storybook.Sample do
         targets: 0,
         added: "sam, 30 Sept 2026"
       ),
-      integration("webhook", "Webhook", nil, [:output], [:api],
+      integration(
+        "webhook",
+        "Webhook",
+        release(:gitlab, "acme/tools/qory-webhook", "1.1.0"),
+        [:output],
+        [:api],
         about: "Posts each run's summary as JSON to a URL, signed with a shared secret.",
         settings: [
           secret("signing_secret", "Signs each request's body.", "WEBHOOK_SIGNING_SECRET"),
@@ -254,7 +265,7 @@ defmodule ApiaryWeb.Storybook.Sample do
       integration(
         "internal_api",
         "Internal API",
-        %{repo: "acme/qory-internal-api", version: "2.1.0"},
+        release(:forgejo, "acme/qory-internal-api", "2.1.0", host: "git.example.com"),
         [:service],
         [:api, :mcp],
         about: "Gives a run a short-lived token for the shop's internal API, scoped to read.",
@@ -279,7 +290,7 @@ defmodule ApiaryWeb.Storybook.Sample do
       integration(
         "docs_search",
         "Docs search",
-        %{repo: "acme/qory-docs-search", version: "0.3.1"},
+        release(:github, "acme/qory-docs-search", "0.3.1"),
         [:tool],
         [:mcp],
         about:
@@ -297,6 +308,23 @@ defmodule ApiaryWeb.Storybook.Sample do
 
   defp integration(id, name, source, roles, ways, opts) do
     Map.merge(%{id: id, name: name, source: source, roles: roles, ways: ways}, Map.new(opts))
+  end
+
+  # A release on `forge` (`:github`, `:gitlab` or `:forgejo`, whose server is `host`) of the
+  # repository `repo`, its publisher the owner, added at `version`. Its latest is the next
+  # minor unless `latest` says otherwise.
+  defp release(forge, repo, version, opts \\ []) do
+    [publisher | _] = String.split(repo, "/")
+    [major, minor | _] = String.split(version, ".")
+
+    %{
+      forge: forge,
+      host: Keyword.get(opts, :host),
+      publisher: publisher,
+      repo: repo,
+      version: version,
+      latest: Keyword.get(opts, :latest, "#{major}.#{String.to_integer(minor) + 1}.0")
+    }
   end
 
   # A secret setting, linked to the workspace secret `linked` in production, or to none.
@@ -322,19 +350,17 @@ defmodule ApiaryWeb.Storybook.Sample do
   end
 
   @doc """
-  What can be added from Add integration › Built in: each integration Qory ships, with its
-  roles, the ways it connects and whether the workspace has it already.
+  What can be added from Add integration › Built in: what ships inside Apiary, LLM providers
+  and services, each with its roles, the ways it connects and whether the workspace has it
+  already. Everything else comes from a release.
   """
   @spec built_in() :: [map()]
   def built_in do
     [
-      built_in("github", "GitHub", [:task_source, :output, :service], [:api, :mcp], true),
-      built_in("gitlab", "GitLab", [:task_source, :output, :service], [:api, :mcp], false),
       built_in("anthropic", "Anthropic", [:llm_provider], [:api], true),
       built_in("openai", "OpenAI", [:llm_provider], [:api], true),
-      built_in("webhook", "Webhook", [:output], [:api], true),
-      built_in("email", "Email", [:output], [:api], false),
-      built_in("registry", "Package registry", [:service], [:api], true)
+      built_in("registry", "Package registry", [:service], [:api], true),
+      built_in("api_service", "API service", [:service], [:api], false)
     ]
   end
 

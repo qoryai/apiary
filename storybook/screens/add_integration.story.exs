@@ -79,8 +79,8 @@ defmodule ApiaryWeb.Storybook.Screens.AddIntegration do
 
     ~H"""
     <p class="text-[13px]/[18px] text-muted">
-      The integrations Qory ships with. Each is added once, and serves every target of the
-      workspace that chooses it.
+      What ships inside Apiary: LLM providers and services. Each is added once, and serves
+      every target of the workspace that chooses it. Everything else comes from a release.
     </p>
     <.table
       id="built-in"

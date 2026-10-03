@@ -68,7 +68,7 @@ defmodule ApiaryWeb.Storybook.Screens.Integration do
           <span class="inline-flex flex-wrap items-baseline gap-x-2 gap-y-1">
             <Mockup.source source={@integration.source} />
             <span :if={@integration.source} class="text-faint" aria-hidden="true">·</span>
-            <span :if={@integration.source}>from GitHub</span>
+            <span :if={@integration.source}>from a {Mockup.forge_label(@integration.source.forge)} release</span>
             <span class="text-faint" aria-hidden="true">·</span>
             <span>added by {@integration.added}</span>
           </span>
@@ -155,6 +155,15 @@ defmodule ApiaryWeb.Storybook.Screens.Integration do
       <dl class="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-2 text-[13px]/5">
         <dt class="text-faint">Source</dt>
         <dd><Mockup.source source={@integration.source} /></dd>
+        <dt :if={@integration.source} class="text-faint">Release</dt>
+        <dd :if={@integration.source}>
+          {Mockup.forge_label(@integration.source.forge)}<span
+            :if={@integration.source.host}
+            class="text-muted"
+          >, at <span class="q-mono">{@integration.source.host}</span></span>
+        </dd>
+        <dt :if={@integration.source} class="text-faint">Publisher</dt>
+        <dd :if={@integration.source} class="q-mono">{@integration.source.publisher}</dd>
         <dt class="text-faint">Used by</dt>
         <dd :if={@integration.targets > 0}>
           <a href={Mockup.path("run_setup", nil, @theme)} class="text-accent hover:underline">{@integration.targets} targets</a><span class="text-muted">, in their run setup</span>
@@ -163,6 +172,9 @@ defmodule ApiaryWeb.Storybook.Screens.Integration do
         <dt class="text-faint">Added</dt>
         <dd>{@integration.added}</dd>
       </dl>
+      <p :if={@integration.source} class="text-[12.5px]/[18px] text-faint">
+        This program runs on your nodes with the secrets you link to it.
+      </p>
     </SettingsComponents.part>
     """
   end
@@ -243,8 +255,8 @@ defmodule ApiaryWeb.Storybook.Screens.Integration do
         :if={@integration.source}
         id="integration-repository"
         name="repository"
-        label="Repository"
-        prefix="github.com/"
+        label={if @integration.source.forge == :gitlab, do: "Project path", else: "Repository"}
+        prefix={host(@integration.source) <> "/"}
         value={@integration.source.repo}
         readonly
       />
@@ -254,9 +266,9 @@ defmodule ApiaryWeb.Storybook.Screens.Integration do
         name="version"
         type="select"
         label="Version"
-        options={[@integration.source.version, "#{bump(@integration.source.version)} (latest)"]}
+        options={versions(@integration.source)}
         value={@integration.source.version}
-        hint="A tag of the repository. Qory reads its description.json again when you change it."
+        hint="A release of the repository. Qory reads its description.json again when you change it."
       />
       <%= for setting <- @plain do %>
         <.input
@@ -302,9 +314,14 @@ defmodule ApiaryWeb.Storybook.Screens.Integration do
     end
   end
 
-  # The version after `version`, as the repository's latest tag.
-  defp bump(version) do
-    [major, minor | _] = String.split(version, ".")
-    "#{major}.#{String.to_integer(minor) + 1}.0"
-  end
+  # The versions a release can be moved to: the one it is at, and the latest if newer.
+  defp versions(%{version: latest, latest: latest}), do: [{"#{latest} (latest)", latest}]
+
+  defp versions(%{version: version, latest: latest}),
+    do: [version, {"#{latest} (latest)", latest}]
+
+  # The server of a release's forge.
+  defp host(%{forge: :github}), do: "github.com"
+  defp host(%{forge: :gitlab}), do: "gitlab.com"
+  defp host(%{forge: :forgejo, host: host}), do: host
 end
