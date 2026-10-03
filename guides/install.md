@@ -300,6 +300,24 @@ since an address is not kept longer than its entry. The values are read at boot,
 change takes a restart. A shorter period deletes or clears what it no longer keeps at the
 next day's job; setting it longer again does not bring it back.
 
+<!-- feature: security -->
+### Integrations
+
+| Variable | Required or default | Meaning and accepted values |
+|---|---|---|
+| `INTEGRATION_PRIVATE_HOSTS` | none | The hosts an integration's release may be fetched from although they resolve to private addresses, such as a forge on your own network: host names, separated by commas. Not set, or empty, allows none. An entry that is not a host name, or is `localhost` or under `.local`, `.internal` or `.home.arpa`, stops the boot. |
+
+When a workspace adds an integration from a release, Qory reads the release's
+`description.json` and `checksums.txt` from the forge or the address it names. It connects
+only to public addresses: it resolves the host, refuses the fetch when any address is
+private, loopback, link-local or a cloud metadata address, and connects to the address it
+checked, each redirect checked again, at most five, within 15 seconds and 1 MiB. A forge
+of your own on a private network is reached only when its host is listed in
+`INTEGRATION_PRIVATE_HOSTS`; loopback, link-local and metadata addresses stay refused for
+every host. A fetch that fails says only that it failed; the reason is in the log, with
+the address it was fetching.
+<!-- /feature -->
+
 ### Sign-up and invitations
 
 | Variable | Required or default | Meaning and accepted values |

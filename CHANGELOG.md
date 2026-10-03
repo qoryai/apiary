@@ -91,6 +91,18 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
   access key secrets, and each workspace's stored values under a data key of its own,
   with AES-256-GCM, wrapped by a key derived from it. Losing it loses every stored
   value. Integrity codes for stored rows are keyed from it as well.
+- Runtimes, integrations and services for the runs, without a page yet
+  (`Apiary.Connections`, `Apiary.Integrations`): a runtime of the runner contract's
+  catalogue; an integration added from a release on GitHub, GitLab or Forgejo, or at an
+  https address of its `description.json`, which a job fetches and checks against the
+  release's `checksums.txt` and the integrations contract; a service from a built-in
+  definition or one the workspace writes. Each applies to every repository or to chosen
+  ones, an integration in the ways chosen per repository, and two that would collide on a
+  repository are refused. The fetch connects only to public addresses, checked again on
+  every redirect, within size and time limits, with no token sent to a self-hosted host;
+  `INTEGRATION_PRIVATE_HOSTS` names the hosts that may resolve to private addresses. Who
+  may read and change them are the actions `connection.read` and `connection.write`, every
+  change is in the audit trail, and each row carries an integrity code.
 
 ### Migrations
 
@@ -99,7 +111,8 @@ The baseline, on an empty database: the accounts and their tokens (`users`,
 `access_keys`, `targets`, `runs`, the record (`events`, `log_chunks`, `connections`,
 `deliveries`), the security policy (`policy_rules`, `run_configurations`),
 `retention_runs`, `audit_entries`, the stored secrets (`workspace_data_keys`, `secrets`,
-`secret_values`), `variables`, the instance's own tables (`purged_organisations`,
+`secret_values`), `variables`, the connections (`integration_releases`,
+`service_definitions`, `workspace_connections`, `connection_targets`), the instance's own tables (`purged_organisations`,
 `instance_settings`) and Oban's.
 
 ### Upgrading
