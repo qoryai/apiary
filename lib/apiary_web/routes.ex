@@ -380,6 +380,8 @@ defmodule ApiaryWeb.Routes do
               live "/policy/versions/:n/export", PolicyLive.Show, :export
               # Its settings, one section a page, as the organisation's.
               live "/settings", SettingsLive, :workspace
+              # Who reaches the workspace, read only: membership is the organisation's.
+              live "/settings/people", MemberLive.Workspace, :index
               live "/settings/runs", SettingsLive, :runs
               live "/settings/keys", AccessKeyLive.Index, :index
               live "/settings/keys/new", AccessKeyLive.Index, :new

@@ -27,9 +27,12 @@ defmodule ApiaryWeb.JumpControllerTest do
     assert "Runs" in labels(go_to)
     assert "Workspace settings › Access keys" in labels(go_to)
     assert "Workspace settings › Runs" in labels(go_to)
+    assert "Workspace settings › People" in labels(go_to)
     assert "Organisation settings › People" in labels(go_to)
     refute "Workspace settings › Retention" in labels(go_to)
 
+    people = Enum.find(go_to["items"], &(&1["label"] == "Workspace settings › People"))
+    assert people["href"] == workspace_path(scope, "/settings/people")
     settings_runs = Enum.find(go_to["items"], &(&1["label"] == "Workspace settings › Runs"))
     assert settings_runs["href"] == workspace_path(scope, "/settings/runs")
     assert "Profile" in labels(go_to)
@@ -82,7 +85,7 @@ defmodule ApiaryWeb.JumpControllerTest do
     assert found.("prune") == ["Workspace settings › Runs"]
     assert found.("runs") == ["Runs", "Workspace settings › Runs"]
     assert found.("audit") == ["Organisation settings › Audit log"]
-    assert found.("members") == ["Organisation settings › People"]
+    assert found.("members") == ["Workspace settings › People", "Organisation settings › People"]
     assert found.("workspaces") == ["Organisation settings › Workspaces"]
     assert "Organisation settings" in found.("organisation settings")
     assert found.("theme") == ["Preferences › Theme"]

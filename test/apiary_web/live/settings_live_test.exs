@@ -356,6 +356,7 @@ defmodule ApiaryWeb.SettingsLiveTest do
 
       sections = [
         general: base,
+        people: base <> "/people",
         keys: base <> "/keys",
         runs: base <> "/runs"
       ]
@@ -364,7 +365,7 @@ defmodule ApiaryWeb.SettingsLiveTest do
         assert has_element?(lv, ~s(#settings-tabs #settings-tab-#{key}[href="#{path}"]))
       end
 
-      # In that order: General, Access keys, Runs.
+      # In that order: General, People, Access keys, Runs.
       assert lv
              |> element("#settings-tabs")
              |> render()
@@ -444,6 +445,7 @@ defmodule ApiaryWeb.SettingsLiveTest do
 
       # nor the workspace's
       {:ok, lv, _html} = live(conn, ~p"/#{owner.organisation}/#{owner.workspace}/settings")
+      assert has_element?(lv, "#settings-tab-people")
       assert has_element?(lv, "#settings-tab-runs")
       refute has_element?(lv, "#danger-zone")
     end

@@ -100,9 +100,13 @@ and no other kind's: no "Elsewhere", no link across. A navigation item never rep
 navigation it is in.
 
 - **A workspace's** (`/:org/:workspace/settings/…`), from the workspace sidebar's
-  Settings: General (name, slug, and its danger zone), Access keys (`/settings/keys`),
-  Runs (`/settings/runs`: how long the workspace keeps runs, their events and their logs;
-  `/settings/retention`, its path before, sends on with its query).
+  Settings: General (name, slug, and its danger zone), People (`/settings/people`,
+  `ApiaryWeb.MemberLive.Workspace`: who reaches the workspace and at what level, read
+  only, on the row spec of the organisation's People, the edition's `:member_access`
+  beside each name; no suspended membership, which reaches nothing), Access keys
+  (`/settings/keys`), Runs (`/settings/runs`: how long the workspace keeps runs, their
+  events and their logs; `/settings/retention`, its path before, sends on with its
+  query).
 - **An organisation's** (`/:org/settings/…`), from the organisation's pages (the
   breadcrumb's organisation leads to its overview, whose sidebar has Settings): General
   (name, slug, owners, and its danger zone), People (`/settings/people`: members,
@@ -112,8 +116,10 @@ navigation it is in.
   renders too, with the edition's way of adding one in the section's actions, the
   `:workspaces_heading` slot), Audit log (`/settings/audit-log`, `ApiaryWeb.ActivityLive`;
   `/:org/activity`, its path before, sends on with its query), and the edition's sections
-  (`ApiaryWeb.Edition.settings_tabs/1`). From a workspace the palette's Go to and New ›
-  Invite people lead there too; nothing else in a workspace does.
+  (`ApiaryWeb.Edition.settings_tabs/1`). From a workspace the palette's Go to, New ›
+  Invite people and, for whoever manages members, the workspace People's Manage people
+  lead there too, since membership is the organisation's; nothing else in a workspace
+  does.
 - **A person's** (`/users/settings`, `/users/settings/preferences`,
   `/users/organisations`), from the account menu's Your settings: Profile (email,
   password, and its danger zone), Preferences (language and time zone, kept with the
@@ -129,9 +135,10 @@ current entry, and are one section a page (`ApiaryWeb.SettingsComponents.layout/
 of the kind's sections (`#settings-tabs`, `settings-tab-<key>`; `sections/2`, which a page
 reads when it mounts), and beside it the section, its title an `<h2>` (16 px), one sentence
 of what it is for, then its content, a 720 px column for forms and 960 px for a list
-(People, Access keys, Audit log). The list is labels without icons, 13.5 px and muted, the
-current one in the text colour on a light fill, with a count where it helps (People,
-Access keys; the page passes the navigation's `counts`); below 1024 px it is a row of
+(People, a workspace's and an organisation's, Access keys, Audit log). The list is labels
+without icons, 13.5 px and muted, the current one in the text colour on a light fill, with
+a count where it helps (an organisation's People, Access keys; the page passes the
+navigation's `counts`); below 1024 px it is a row of
 underlined links above the section, as a page's tabs are. A section is flat, no card: its
 fields straight under its heading (`SettingsComponents.part/1`, an `<h3>` where it has more
 than one part, such as Owners), the fields as wide as the column, and at the foot of a form

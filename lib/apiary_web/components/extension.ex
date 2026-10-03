@@ -15,7 +15,7 @@ defmodule ApiaryWeb.Extension do
   | `:notices` | every page of an organisation, under the top bar, before the page | `organisation`, `counts` (the navigation's, `ApiaryWeb.UserAuth.nav_counts/1`, or nil) |
   | `:organisation_heading` | the organisation's overview, in its header's actions: a button to the edition's page | |
   | `:members_heading` | the members page, in its header, under its description | |
-  | `:member_access` | each row of the members page, beside the member's name: one line of muted text | `member` |
+  | `:member_access` | each row of the members page, and of a workspace's People (`ApiaryWeb.MemberLive.Workspace`), beside the member's name: one line of muted text | `member`; on a workspace's People, `workspace` too |
   | `:member_actions` | each row of the members page, in its ⋯ menu before the page's own items: `CoreComponents.menu_item/1`s | `member` |
   | `:workspaces_heading` | the Workspaces section of the organisation's settings, in its header's actions: a button to the edition's page | |
   | `:workspace_actions` | each workspace of the organisation's settings, in its ⋯ menu before the page's own items: `CoreComponents.menu_item/1`s | `workspace` |

@@ -39,7 +39,9 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
   workspace again (`Apiary.Policy.rerender_in/3`, an `above_changed` change in each
   workspace's history).
 - Access keys, created, rotated and revoked in the console; members at the levels owner,
-  admin and member, and the suspension of a member.
+  admin and member, and the suspension of a member. A workspace's settings list who
+  reaches it and at what level under People, read there and managed in the
+  organisation's People.
 - The audit trail of every change, in the organisation's settings, under Audit log; retention of a
   run's events and log output, set per workspace in its settings under Runs
   (`/settings/retention` sends on there); deletion of a workspace or an

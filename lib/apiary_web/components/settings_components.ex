@@ -11,7 +11,8 @@ defmodule ApiaryWeb.SettingsComponents do
     (`ApiaryWeb.ActivityLive`), then the edition's sections
     (`c:ApiaryWeb.Edition.settings_tabs/1`), each a page of the edition's own.
   - A workspace's (`/:org/:workspace/settings/…`): General (its name, and deleting it),
-    Access keys, Runs (how long it keeps runs, their events and their logs).
+    People (who reaches it, and at what level: read here, managed in the organisation's
+    People), Access keys, Runs (how long it keeps runs, their events and their logs).
 
   A person's own settings are the person's pages, and their sidebar is their list
   (`ApiaryWeb.Layouts`). A list holds its kind's sections only: no other kind's, no link
@@ -90,6 +91,13 @@ defmodule ApiaryWeb.SettingsComponents do
         label: gettext("General"),
         icon: "hero-adjustments-horizontal",
         path: ~p"/#{organisation}/#{workspace}/settings"
+      },
+      %Entry{
+        section: :main,
+        key: :people,
+        label: gettext("People"),
+        icon: "hero-users",
+        path: ~p"/#{organisation}/#{workspace}/settings/people"
       },
       %Entry{
         section: :main,
