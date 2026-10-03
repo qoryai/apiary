@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qory.dev/contracts/integration/v1/description.schema.json",
+  "title": "Integration description",
+  "description": "What <program> describe prints on its standard output, once, as one JSON document, and exits 0: the integration's name, who publishes it, the domains it serves, the settings it takes and the roles it plays. It takes no settings and reaches no network. A program that fails prints nothing on standard output, one line on standard error describing what failed, and exits non-zero. A reader checks any declared integration against this document alone.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "name", "title", "publisher", "program_version", "settings", "roles"],
+  "properties": {
+    "version": {"description": "The contract's version.", "const": 1},
+    "name": {
+      "description": "The integration's name: the key a machine's configuration declares it under, unless the machine chooses another, and so the name of what it defines there. The key is the name of the runner's credential and of the program qory-<key> of this repository's, so the name is the credential's grammar without the dot.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+    },
+    "title": {"description": "A human name, for a form or a listing.", "type": "string", "minLength": 1},
+    "description": {"description": "A sentence or two on what the integration does, for a form or a listing.", "type": "string"},
+    "publisher": {
+      "description": "Who publishes the program, as the program names it: a name, and a URL that may be absent. A reader shows it beside the source's verifiable owner and never instead of it: for a forge source the forge namespace, <host>/<owner>, on GitLab the group path, and for a URL source the URL's host. A publisher that differs from the owner is allowed and shown as given.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": {"description": "The publisher's name, 1 to 100 characters, not only white space.", "type": "string", "maxLength": 100, "pattern": "\\S"},
+        "url": {"description": "The publisher's https URL.", "type": "string", "pattern": "^https://[^\\s/?#]+([/?#]\\S*)?$"}
+      }
+    },
+    "domains": {
+      "description": "The domains the integration serves, each a domain name, such as software. A control plane offers a workspace the integrations whose domains include the workspace's domain name exactly, the same string, and those whose description has no domains in every domain: the field is absent, never an empty list. A declared integration expands the same whatever its domains: they decide what is offered, not what runs.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"}
+    },
+    "program_version": {"description": "The program's own version, as it was built.", "type": "string", "minLength": 1},
+    "settings": {
+      "description": "A JSON Schema, draft 2020-12, of the settings document: an object. Each role's standard input holds the settings the role lists, a subset of them, and is valid against it. So the top level carries only keywords no subset can break: type, properties, patternProperties, additionalProperties, unevaluatedProperties, propertyNames, title, description, $comment, $schema, $id and $defs. A rule across settings belongs in a role's required or in the program. A property marked writeOnly is a secret: a form shows it as one, written and never read back, and a log leaves it out. A secret is a property of the settings object itself, never a nested one, its title, a string that is not only white space, is its label, and a secret <name> has a setting <name>_file, the path of a file that contains it, for a secret kept on disk. A secret may carry x-secret-name, ^[A-Z][A-Z0-9_]{0,127}$, the conventional name of the secret, such as GITHUB_APP_PRIVATE_KEY, which a control plane fills in as the name to store the secret under; no other setting carries one, and no two secrets carry the same. The settings are checked against JSON Schema's own meta-schema, and refused with any other keyword at the top. The meta-schema cannot express the rules on secrets: the conformance package checks them.",
+      "allOf": [
+        {"$ref": "https://json-schema.org/draft/2020-12/schema"},
+        {"type": "object", "required": ["type"], "additionalProperties": false, "properties": {
+          "type": {"const": "object"}, "properties": true, "patternProperties": true, "additionalProperties": true,
+          "unevaluatedProperties": true, "propertyNames": true, "title": true, "description": true,
+          "$comment": true, "$schema": true, "$id": true, "$defs": true}}
+      ]
+    },
+    "roles": {
+      "description": "The roles the program plays, by name: the ways it offers. A run's connection names in its ways the roles it uses, and the runner starts those alone. A reader expands the roles it knows and leaves the others as they are. credential and tool are defined here; work_source and output are reserved, each for a contract of its own.",
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {"pattern": "^[a-z][a-z_]{0,63}$"},
+      "properties": {
+        "credential": {
+          "description": "The runner's credential adapter: the API way. The program is started as <program> credential -- <argument>, with the settings the role lists on standard input, and prints the runner's credential document.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["argument", "hosts", "settings"],
+          "properties": {
+            "argument": {"description": "A regular expression, RE2, the run's argument must match whole.", "type": "string", "minLength": 1},
+            "hosts": {
+              "description": "The hosts the program answers for, at least one, the most an answer may claim. None is a host the tool role serves.",
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {"$ref": "#/$defs/host"}
+            },
+            "settings": {"$ref": "#/$defs/role_settings"},
+            "required": {"$ref": "#/$defs/role_required"}
+          }
+        },
+        "tool": {
+          "description": "The runner's tool: the MCP way, an MCP server reached over HTTP behind the runner's wall. The program is started as <program> tool -- <argument>, with the settings the role lists on standard input, listens on the Unix socket QORY_TOOL_LISTEN names, and answers the requests the runner allows for the hosts it serves, as HTTP/1.1.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["serves", "settings"],
+          "properties": {
+            "argument": {"description": "A regular expression, RE2, the run's argument must match whole. Absent means the role ignores the run's argument: the program is started with an empty argument, and the runner matches the run's argument only against the roles that have one.", "type": "string", "minLength": 1},
+            "serves": {
+              "description": "The hosts whose requests the runner sends to the tool, at least one. None is a host the credential role answers for.",
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {"$ref": "#/$defs/host"}
+            },
+            "mcp": {"description": "The https URL of the MCP server the tool serves, with no userinfo, port or fragment, its host one of serves. qory registers it with the agent's MCP client.", "type": "string", "pattern": "^https://"},
+            "placeholders": {
+              "description": "The variables the enclosure gets with the placeholder value, as a credential's.",
+              "type": "array",
+              "uniqueItems": true,
+              "items": {"type": "string", "pattern": "^[A-Z_][A-Z0-9_]{0,127}$"}
+            },
+            "settings": {"$ref": "#/$defs/role_settings"},
+            "required": {"$ref": "#/$defs/role_required"}
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "host": {
+      "description": "A lower-case host name, or *. followed by one for every host below it.",
+      "type": "string",
+      "pattern": "^(\\*\\.)?([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"
+    },
+    "role_settings": {
+      "description": "The top-level settings the role may receive, plain and secret alike, each by its name, possibly none. A secret is listed as <name>, never as <name>_file. Two roles may list the same setting. The role's standard input holds these settings and nothing else.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string"}
+    },
+    "role_required": {
+      "description": "The settings of the role's settings the role needs, each by its name; may be absent. A secret is listed as <name>, and either <name> or <name>_file in the document satisfies it. A setting the role lists and does not require is optional: the program handles it being absent.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string"}
+    }
+  }
+}

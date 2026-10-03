@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qory.dev/apiary/service-definition.schema.json",
+  "title": "Service definition",
+  "description": "A static-key API a run may call with a stored secret: its hosts, the paths a value is set on, how the value is sent, and the secrets it needs. A service connection names its definition and links each declared secret; the run configuration's service item is rendered from the definition. Built-in definitions ship in priv/services; a workspace may write its own.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "key", "title", "hosts", "auth", "declares"],
+  "properties": {
+    "version": {"const": 1},
+    "key": {
+      "description": "The definition's key, unique among the built-in definitions, and among a workspace's own.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,63}$"
+    },
+    "title": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "\\S"},
+    "description": {"type": "string", "maxLength": 500},
+    "hosts": {
+      "description": "Exact DNS names, no wildcard, no IP literal: where the value is set.",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/exact_host"}
+    },
+    "paths": {
+      "description": "The paths a value is set on, in the policy's path grammar; absent sets it on every path of the hosts.",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": {"type": "string", "maxLength": 512, "pattern": "^/[^*?#\\s]*\\*?$"}
+    },
+    "auth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scheme", "secret"],
+      "properties": {
+        "scheme": {"enum": ["bearer", "header", "basic"]},
+        "header": {"type": "string", "maxLength": 64, "pattern": "^[!#$%&'*+.^_`|~0-9A-Za-z-]+$"},
+        "username": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[^:\\s]+$"},
+        "username_secret": {"$ref": "#/$defs/declared"},
+        "secret": {"$ref": "#/$defs/declared"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"scheme": {"const": "header"}}},
+          "then": {"required": ["header"]},
+          "else": {"not": {"required": ["header"]}}
+        },
+        {
+          "if": {"properties": {"scheme": {"const": "basic"}}},
+          "then": {"oneOf": [{"required": ["username"]}, {"required": ["username_secret"]}]},
+          "else": {"not": {"anyOf": [{"required": ["username"]}, {"required": ["username_secret"]}]}}
+        }
+      ]
+    },
+    "declares": {
+      "description": "The secrets the service needs, each by an id the auth names, with a title for a form and, optionally, the variable that gets the placeholder.",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "title"],
+        "properties": {
+          "id": {"$ref": "#/$defs/declared"},
+          "title": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "\\S"},
+          "name": {"type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,127}$"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "declared": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$"},
+    "exact_host": {
+      "type": "string",
+      "maxLength": 253,
+      "pattern": "^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]([a-z0-9-]{0,61}[a-z0-9])?$"
+    }
+  }
+}
