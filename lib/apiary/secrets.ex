@@ -119,6 +119,26 @@ defmodule Apiary.Secrets do
     end
   end
 
+  @doc """
+  list_uses/2 is what uses each of `secrets`, the scope's workspace's as `list_secrets/1`
+  gave them (`Apiary.Secrets.Usage`), by the secret's row id: `{:ok, uses}`, for a reader
+  who may `secret.read`; else `{:error, reason}`. A secret of another workspace is used
+  by nothing here.
+  """
+  @spec list_uses(Scope.t(), [Secret.t()]) ::
+          {:ok, %{Ecto.UUID.t() => [Usage.use()]}} | {:error, Access.reason()}
+  def list_uses(%Scope{} = scope, secrets) when is_list(secrets) do
+    with :ok <- may_read(scope) do
+      workspace_id = scope.workspace.id
+
+      {:ok,
+       Map.new(secrets, fn
+         %Secret{workspace_id: ^workspace_id} = secret -> {secret.id, Usage.uses(Repo, secret)}
+         %Secret{} = secret -> {secret.id, []}
+       end)}
+    end
+  end
+
   defp may_read(%Scope{workspace: %Workspace{} = workspace} = scope),
     do: Access.authorize(scope, :"secret.read", workspace)
 
