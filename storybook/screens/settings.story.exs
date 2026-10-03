@@ -10,11 +10,16 @@ defmodule ApiaryWeb.Storybook.Screens.Settings do
 
   def doc,
     do:
-      "The workspace's settings as the mock-ups propose them: General, Integrations, " <>
-        "Secrets and variables and Members, each leading to its screen."
+      "The workspace's settings as the mock-ups propose them: General, People, Runs, " <>
+        "Integrations, and Secrets and variables, each leading to its screen."
 
   def navigation,
-    do: [{:general, "General"}, {:secrets, "Secrets and variables"}, {:members, "Members"}]
+    do: [
+      {:general, "General"},
+      {:people, "People"},
+      {:runs, "Runs"},
+      {:secrets, "Secrets and variables"}
+    ]
 
   def render(assigns) do
     assigns = assign(assigns, :current, assigns.tab || :general)
@@ -27,7 +32,7 @@ defmodule ApiaryWeb.Storybook.Screens.Settings do
         sections={Mockup.settings_sections(@theme)}
         counts={Mockup.settings_counts()}
         current={@current}
-        measure={if @current == :general, do: "read", else: "list"}
+        measure={if @current in [:general, :runs], do: "read", else: "list"}
         title={title(@current)}
       >
         <:subtitle>{subtitle(@current)}</:subtitle>
@@ -39,7 +44,8 @@ defmodule ApiaryWeb.Storybook.Screens.Settings do
 
         <.general :if={@current == :general} />
         <.secrets :if={@current == :secrets} theme={@theme} />
-        <.members :if={@current == :members} />
+        <.people :if={@current == :people} />
+        <.runs :if={@current == :runs} />
       </SettingsComponents.layout>
     </Mockup.shell>
     """
@@ -47,7 +53,8 @@ defmodule ApiaryWeb.Storybook.Screens.Settings do
 
   defp title(:general), do: "General"
   defp title(:secrets), do: "Secrets and variables"
-  defp title(:members), do: "Members"
+  defp title(:people), do: "People"
+  defp title(:runs), do: "Runs"
 
   defp subtitle(:general), do: "The workspace's name and its path."
 
@@ -56,7 +63,8 @@ defmodule ApiaryWeb.Storybook.Screens.Settings do
       "A secret is given to the integrations that link it, never shown again; a variable is a " <>
         "plain value every run reads. Each is set per environment."
 
-  defp subtitle(:members), do: "The people of Acme who reach this workspace, and their level."
+  defp subtitle(:people), do: "The people of Acme who reach this workspace, and their level."
+  defp subtitle(:runs), do: "How long the workspace keeps what its runs recorded."
 
   defp general(assigns) do
     ~H"""
@@ -134,7 +142,7 @@ defmodule ApiaryWeb.Storybook.Screens.Settings do
     """
   end
 
-  defp members(assigns) do
+  defp people(assigns) do
     assigns =
       assign(assigns, :people, [
         %{email: "dana@example.com", level: "Owner", since: "2 Sept 2026"},
@@ -143,7 +151,7 @@ defmodule ApiaryWeb.Storybook.Screens.Settings do
       ])
 
     ~H"""
-    <.table id="members" label="Members" rows={@people} row_id={&"member-#{&1.email}"}>
+    <.table id="people" label="People" rows={@people} row_id={&"person-#{&1.email}"}>
       <:col :let={person} label="Person" kind="title">
         <span class="inline-flex items-center gap-2">
           <.avatar name={person.email} size="sm" />{person.email}
@@ -155,6 +163,41 @@ defmodule ApiaryWeb.Storybook.Screens.Settings do
     <p class="text-[12.5px]/[18px] text-faint">
       A placeholder in these mock-ups: who reaches the workspace, as the organisation's People
       says today.
+    </p>
+    """
+  end
+
+  # Today's Retention, renamed: how long a run's events and its log output are kept.
+  defp runs(assigns) do
+    ~H"""
+    <form id="workspace-runs" class="grid gap-4" novalidate>
+      <div class="q-form-two">
+        <.input
+          id="runs-events"
+          name="events_retention_days"
+          label="Keep a run's events for"
+          value="90"
+          hint="In days; empty keeps everything."
+        />
+        <.input
+          id="runs-log"
+          name="log_retention_days"
+          label="Keep a run's log output for"
+          value="30"
+          hint="In days; empty keeps everything."
+        />
+      </div>
+      <p class="max-w-[72ch] text-[13px]/[20px] text-muted">
+        A run that ended is pruned whole, counted from its last event: first its log output,
+        then its timeline. The run stays in the list with its state and its counts.
+      </p>
+      <SettingsComponents.save>
+        <.button variant="primary" type="button">Save</.button>
+        <:note>Keeps a run's events for 90 days, its log output for 30.</:note>
+      </SettingsComponents.save>
+    </form>
+    <p class="text-[12.5px]/[18px] text-faint">
+      A placeholder in these mock-ups: Runs is today's Retention, renamed.
     </p>
     """
   end

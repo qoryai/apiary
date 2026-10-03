@@ -20,7 +20,7 @@ defmodule ApiaryWeb.Storybook.Screens.Shell do
   # The screens of the mock-ups, for the overview's list.
   @screens [
     {"settings", :general, "Settings",
-     "General, Integrations, Secrets and variables, Access keys, Members."},
+     "General, People, Runs, Integrations, and Secrets and variables."},
     {"integrations", :all, "Settings › Integrations",
      "Every integration with its source, roles and state, by role."},
     {"integration", :github, "An integration", "GitHub: Overview, Secrets and Settings."},

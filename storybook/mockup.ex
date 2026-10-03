@@ -294,17 +294,19 @@ defmodule ApiaryWeb.Storybook.Mockup do
 
   @doc """
   settings_sections/1 is the sections of the workspace's settings as the mock-ups propose
-  them, as `ApiaryWeb.SettingsComponents.layout/1` takes them: General, Integrations,
-  Secrets and variables and Members, each leading to its mock-up in `theme`. Access keys
-  is not among them: a key belongs to its node (`nodes/1`).
+  them, as `ApiaryWeb.SettingsComponents.layout/1` takes them: General, People, Runs
+  (today's Retention), Integrations, and Secrets and variables, each leading to its
+  mock-up in `theme`. Access keys is not among them: a key belongs to its node
+  (`nodes/1`).
   """
   @spec settings_sections(atom() | String.t() | nil) :: [Entry.t()]
   def settings_sections(theme) do
     for {key, label, story, tab, count} <- [
           {:general, "General", "settings", :general, nil},
+          {:people, "People", "settings", :people, :people},
+          {:runs, "Runs", "settings", :runs, nil},
           {:integrations, "Integrations", "integrations", :all, :integrations},
-          {:secrets, "Secrets and variables", "settings", :secrets, nil},
-          {:members, "Members", "settings", :members, :members}
+          {:secrets, "Secrets and variables", "settings", :secrets, nil}
         ],
         do: %Entry{
           section: :main,
@@ -318,7 +320,7 @@ defmodule ApiaryWeb.Storybook.Mockup do
   @doc "settings_counts/0 is the counts the settings' list shows beside its sections."
   @spec settings_counts() :: map()
   def settings_counts,
-    do: %{integrations: length(Sample.integrations()), members: 3}
+    do: %{integrations: length(Sample.integrations()), people: 3}
 
   @doc "role_label/1 is the words of an integration's role, as a chip says it."
   @spec role_label(atom()) :: String.t()
