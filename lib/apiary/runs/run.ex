@@ -76,6 +76,10 @@ defmodule Apiary.Runs.Run do
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace
     belongs_to :access_key, Apiary.AccessKeys.AccessKey
+    # The node of the key the run's ping came with, and the instance id that ping claimed:
+    # copied when the run is created and never moved, both nil for a key that names no node.
+    belongs_to :node, Apiary.Nodes.Node
+    field :instance_id, :string
     belongs_to :target, Apiary.Runs.Target
     belongs_to :closed_by, Apiary.Accounts.User
 
