@@ -322,7 +322,6 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       {:ok, _} = Policy.allow(scope, nil, %{host: "github.example"})
       {:ok, _} = Policy.allow(scope, nil, %{host: "*.github.example"})
       {:ok, _} = Policy.allow(scope, nil, %{host: "api.example", paths: ["/v1/*"]})
-      {:ok, _} = Policy.allow(scope, nil, %{kind: "credential", name: "model-key"})
       :ok
     end
 
@@ -346,7 +345,7 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
       assert text(view, "#policy-rules-pages-footer") == "1–4 of 4"
       refute has_element?(view, "#policy-rules-summary")
 
-      # The Rules tab counts what its All view counts: rules, not the credential.
+      # The Rules tab counts what its All view counts.
       assert has_element?(view, "#policy-tabs a[aria-current=page] .q-tabs-n", "4")
 
       # A search narrows the views' counts too, as the runs list's do.
@@ -371,8 +370,9 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
 
       assert has_element?(view, "#policy-rules code.q-rule", "/v1/*")
       assert has_element?(view, "#policy-rules .q-every", "every path")
-      assert text(view, "#policy-credential-rows") =~ "model-key"
-      assert text(view, "#policy-credential-rows") =~ "no argument"
+      # The policy names hosts and paths, and no credential.
+      refute has_element?(view, "#policy-credentials")
+      refute has_element?(view, "#policy-credential")
     end
 
     test "the view is in the URL, and one the list does not know is every rule", %{
@@ -637,26 +637,6 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
 
       assert rule(scope, "api.example").action == "allow"
       assert text(view, "#flash-info") =~ "api.example is allowed for the workspace. Version"
-    end
-
-    test "a credential is added by name and removed", %{conn: conn, scope: scope} do
-      view = open(conn, scope)
-
-      view |> form("#policy-credential", credential: %{name: "Forge Token"}) |> render_change()
-      assert text(view, "#policy-credential-reads") =~ "A name is 1 to 64 lower-case letters"
-
-      view
-      |> form("#policy-credential", credential: %{name: "forge-token", argument: "acme/shop"})
-      |> render_change()
-
-      view |> form("#policy-credential") |> render_submit()
-
-      credential = Enum.find(Policy.list_rules(scope, nil), &(&1.name == "forge-token"))
-      assert credential.argument == "acme/shop"
-      assert text(view, "#policy-credential-rows") =~ "acme/shop"
-
-      view |> element("#rule-#{credential.id}-remove") |> render_click()
-      refute Enum.find(Policy.list_rules(scope, nil), &(&1.name == "forge-token"))
     end
 
     test "a change made elsewhere arrives without a reload", %{conn: conn, scope: scope} do
@@ -1082,14 +1062,14 @@ defmodule ApiaryWeb.PolicyLive.ShowTest do
 
     test "export is a modal at its own URL, with both texts and the caveats",
          %{conn: conn, scope: scope} do
-      {:ok, _} = Policy.allow(scope, nil, %{kind: "credential", name: "model-key"})
+      {:ok, _} = Policy.allow(scope, nil, %{host: "git.example", paths: ["/acme/shop.git/*"]})
       view = open(conn, scope, "/policy/versions/3/export")
       {:ok, configuration} = Policy.get_configuration(scope, nil, 3)
 
       assert has_element?(view, "#policy-export")
       assert text(view, "#export-lead") =~ "as of version 3"
       assert text(view, "#export-policy-text") =~ "# #{configuration.digest}"
-      assert text(view, "#export-policy-text") =~ "model-key"
+      assert text(view, "#export-policy-text") =~ "/acme/shop.git/*"
       assert text(view, "#export-runner-text") =~ "~/.config/qory/runner.yaml egress"
 
       assert has_element?(

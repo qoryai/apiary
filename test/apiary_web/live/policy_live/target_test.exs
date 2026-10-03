@@ -30,7 +30,6 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     {:ok, _} = Policy.allow(scope, nil, %{host: "gitlab.example"})
     {:ok, _} = Policy.deny(scope, nil, %{host: "telemetry.example"})
     {:ok, _} = Policy.allow(scope, nil, %{host: "registry.example"})
-    {:ok, _} = Policy.allow(scope, nil, %{kind: "credential", name: "model-key"})
 
     %{target: target, path: target_path(scope, target.system, target.path, ["policy"])}
   end
@@ -161,10 +160,8 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     assert text(view, "##{row(view, "*.paste.example")}-lock") == "Locked"
     refute has_element?(view, "#policy-rules .q-pr-off")
 
-    credential = Enum.find(Policy.list_rules(scope, nil), &(&1.name == "model-key"))
-    assert text(view, "#rule-#{credential.id} .q-pr-src") == scope.workspace.name
-    assert has_element?(view, "#rule-#{credential.id}-view", "View in")
-    refute has_element?(view, "#rule-#{credential.id}-remove")
+    # The policy names hosts and paths, and no credential.
+    refute has_element?(view, "#policy-credentials")
 
     assert text(view, "#policy-hosts-note") =~
              "Its own rules come first and are changed here; #{scope.workspace.name}'s follow"
@@ -564,42 +561,10 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     end
   end
 
-  test "credentials are its own, then the workspace's, each with its source",
-       %{conn: conn, scope: scope, target: target, path: path} do
-    view = open(conn, path)
-    assert text(view, "#policy-credentials-n") == "1"
-
-    view
-    |> form("#policy-credential", credential: %{name: "forge-token", argument: "acme/shop"})
-    |> render_change()
-
-    view |> form("#policy-credential") |> render_submit()
-
-    own = Enum.find(Policy.list_rules(scope, target), &(&1.name == "forge-token"))
-    assert own
-    assert text(view, "#policy-credentials-n") == "2"
-    assert hosts(view, "#policy-credential-rows .q-host") == ["forge-token", "model-key"]
-    assert text(view, "#rule-#{own.id} .q-pr-src") == "This repository"
-    assert text(view, "#rule-#{own.id}") =~ "acme/shop"
-
-    workspace = Enum.find(Policy.list_rules(scope, nil), &(&1.name == "model-key"))
-    assert text(view, "#rule-#{workspace.id} .q-pr-src") == scope.workspace.name
-
-    assert has_element?(
-             view,
-             "#rule-#{workspace.id}-view[href='#{workspace_path(scope, "/policy")}']",
-             "View in #{scope.workspace.name}'s policy"
-           )
-
-    refute has_element?(view, "#rule-#{workspace.id}-remove")
-
-    view |> element("#rule-#{own.id}-remove") |> render_click()
-    refute Enum.find(Policy.list_rules(scope, target), &(&1.name == "forge-token"))
-    assert text(view, "#flash-info") =~ "The credential forge-token is removed."
-  end
-
   test "history, versions and export are the target's own",
        %{conn: conn, scope: scope, target: target, path: path} do
+    # Paths in force, so the export has a policy file to download.
+    {:ok, _} = Policy.allow(scope, nil, %{host: "git.example", paths: ["/acme/*"]})
     {:ok, _} = Policy.deny(scope, target, %{host: "gitlab.example"})
     [change] = Policy.list_changes(scope, target, 1).items
 

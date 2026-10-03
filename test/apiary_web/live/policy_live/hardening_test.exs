@@ -215,10 +215,6 @@ defmodule ApiaryWeb.PolicyLive.HardeningTest do
         render_hook(view, "composer_use", payload)
       end
 
-      for payload <- [%{"credential" => "x"}, %{"credential" => %{"name" => %{}}}, %{}] do
-        render_hook(view, "credential_change", payload)
-      end
-
       render_hook(view, "composer_paste", %{"hosts" => [1, %{}, "ok.example"]})
       render_hook(view, "composer_paste", %{"hosts" => "nope"})
       render_hook(view, "would_allow", %{"key" => %{}})

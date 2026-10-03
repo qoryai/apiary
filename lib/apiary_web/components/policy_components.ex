@@ -834,77 +834,6 @@ defmodule ApiaryWeb.PolicyComponents do
     """
   end
 
-  @doc "The composer of a credential: a name and an optional argument, a default button."
-  attr :id, :string, required: true
-  attr :form, :any, required: true, doc: "name, argument"
-  attr :reading, :map, default: nil
-  attr :class, :any, default: nil
-
-  def credential_composer(assigns) do
-    reading =
-      assigns.reading || %{kind: :hint, text: [], fix: nil, acts: [], invalid: [], button: nil}
-
-    assigns = assign(assigns, reading: reading, ready?: reading.kind in [:ok, :note])
-
-    ~H"""
-    <.form
-      for={@form}
-      id={@id}
-      class={["q-composer q-composer-cred", @class]}
-      aria-label={gettext("Add a credential")}
-      phx-change="credential_change"
-      phx-submit="credential_save"
-      autocomplete="off"
-      novalidate
-    >
-      <label>
-        <span class="sr-only">{gettext("Name")}</span>
-        <input
-          type="text"
-          id={"#{@id}-name"}
-          name={@form[:name].name}
-          value={@form[:name].value}
-          class="q-input q-input-m"
-          placeholder={gettext("Name, such as system-token")}
-          spellcheck="false"
-          autocomplete="off"
-          autocapitalize="off"
-          maxlength="80"
-          phx-debounce="150"
-          aria-invalid={:name in @reading.invalid && "true"}
-          aria-describedby={"#{@id}-reads"}
-        />
-      </label>
-      <label>
-        <span class="sr-only">{gettext("Argument, optional")}</span>
-        <input
-          type="text"
-          id={"#{@id}-argument"}
-          name={@form[:argument].name}
-          value={@form[:argument].value}
-          class="q-input q-input-m"
-          placeholder={gettext("Argument (optional), such as acme/shop")}
-          spellcheck="false"
-          autocomplete="off"
-          autocapitalize="off"
-          maxlength="300"
-          phx-debounce="150"
-          aria-invalid={:argument in @reading.invalid && "true"}
-          aria-describedby={"#{@id}-reads"}
-        />
-      </label>
-      <.button type="submit" id={"#{@id}-add"} disabled={!@ready?}>
-        {@reading.button || gettext("Add credential")}
-      </.button>
-      <.reading_line
-        :if={@reading.kind in [:error, :note, :refusal]}
-        id={"#{@id}-reads"}
-        reading={@reading}
-      />
-    </.form>
-    """
-  end
-
   attr :id, :string, required: true
   attr :reading, :map, required: true
   attr :queued, :integer, default: 0
@@ -1418,16 +1347,9 @@ defmodule ApiaryWeb.PolicyComponents do
   end
 
   attr :seen, :any, required: true
-  attr :noun, :atom, default: nil, values: [nil, :request]
 
   defp seen(%{seen: %{allowed: 0, denied: 0}} = assigns) do
-    ~H|<span class="q-zero">{if @noun == :request, do: gettext("not used"), else: gettext("not seen")}</span>|
-  end
-
-  defp seen(%{noun: :request} = assigns) do
-    ~H"""
-    <span>{requests(@seen.allowed + @seen.denied)}</span>
-    """
+    ~H|<span class="q-zero">{gettext("not seen")}</span>|
   end
 
   defp seen(assigns) do
@@ -1440,97 +1362,6 @@ defmodule ApiaryWeb.PolicyComponents do
       {gettext("%{number} denied", number: Format.number(@seen.denied))}
     </span>
     <span class="sr-only">{gettext("in the last 14 days")}</span>
-    """
-  end
-
-  defp requests(n),
-    do: ngettext("%{number} request", "%{number} requests", n, number: Format.number(n))
-
-  @doc """
-  The credentials of a scope, one line each on the list's look: the name (the title), its
-  argument, where it is written (`source`), its use in the last 14 days, who added it and
-  when, and its ⋯ menu: Remove for the page's own, the way to it for one written elsewhere.
-  Rows: `id`, `name`, `argument`, `action`, `source` (`%{label:}`), `own`, `view`, `by`,
-  `at`, `can_change`.
-  """
-  attr :id, :string, required: true
-  attr :label, :string, required: true
-  attr :rows, :list, required: true
-  attr :source, :boolean, default: false
-  attr :activity, :any, default: :unavailable
-
-  def credentials_table(assigns) do
-    assigns = assign(assigns, :seen?, is_map(assigns.activity))
-
-    ~H"""
-    <div
-      id={@id}
-      class="q-tbl q-pr-wrap overflow-x-auto rounded-box border border-line bg-base-100 shadow-xs"
-      tabindex="0"
-      role="region"
-      aria-label={@label}
-    >
-      <table class="table q-pr">
-        <thead>
-          <tr>
-            <th scope="col" class="q-pr-mk"><span class="sr-only">{gettext("Kind")}</span></th>
-            <th scope="col">{gettext("Name")}</th>
-            <th scope="col">{gettext("Argument")}</th>
-            <th :if={@source} scope="col">{gettext("Source")}</th>
-            <th :if={@seen?} scope="col" class="q-from-sm">{gettext("Last 14 days")}</th>
-            <th scope="col" class="q-from-md">{gettext("Added")}</th>
-            <th scope="col" class="q-pr-acts"><span class="sr-only">{gettext("Actions")}</span></th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr :if={@rows == []}>
-            <td colspan="7" class="q-pr-none">
-              {gettext("No credentials. A run that needs none runs without.")}
-            </td>
-          </tr>
-          <tr :for={row <- @rows} id={"rule-#{row.id}"} class="q-pr-row">
-            <td class="q-pr-mk">
-              <span class="q-pr-key"><.icon name="hero-key-micro" class="size-3.5" /></span>
-            </td>
-            <td class="q-pr-host">
-              <span class="q-host q-pr-h">{row.name}</span>
-              <span :if={row.action == "deny"} class="q-pr-word">{gettext("Denied")}</span>
-            </td>
-            <td class="q-pr-paths">
-              <code :if={row.argument} class="q-rule">{row.argument}</code>
-              <span :if={!row.argument} class="q-every">{gettext("no argument")}</span>
-            </td>
-            <td :if={@source} class="q-pr-src">{row.source.label}</td>
-            <td :if={@seen?} class="q-pr-use q-from-sm">
-              <.seen seen={seen_of(@activity, row)} noun={:request} />
-            </td>
-            <td class="q-pr-by q-from-md">
-              {row.by}<span :if={row.by && row.at}> · </span>{row.at && Format.day(row.at)}
-            </td>
-            <td class="q-pr-acts">
-              <.row_menu
-                :if={(row.own and row.can_change) or (not row.own and row.view != nil)}
-                id={"rule-#{row.id}-menu"}
-                class="q-hov"
-                label={gettext("Actions for %{name}", name: row.name)}
-              >
-                <.menu_item
-                  :if={row.own}
-                  id={"rule-#{row.id}-remove"}
-                  phx-click={JS.push("remove", value: %{id: row.id})}
-                  aria-label={gettext("Remove the credential %{name}", name: row.name)}
-                >
-                  {gettext("Remove")}
-                </.menu_item>
-                <.menu_item :if={!row.own} id={"rule-#{row.id}-view"} navigate={elem(row.view, 1)}>
-                  {elem(row.view, 0)}
-                </.menu_item>
-              </.row_menu>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
     """
   end
 
