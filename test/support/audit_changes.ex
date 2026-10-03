@@ -60,6 +60,7 @@ defmodule Apiary.AuditChanges do
       :"node.create",
       :"node.edit",
       :"node.delete",
+      :"node.clear_instance",
       :"run.close",
       :"retention.edit",
       :"security_policy.edit",
@@ -235,6 +236,15 @@ defmodule Apiary.AuditChanges do
     %{scope: scope, subject: {"node", node.id}, before: before}
   end
 
+  def make(:"node.clear_instance", %{scope: scope}) do
+    node = node_fixture(scope)
+    instance = instance_fixture(node, name: "build-01.example.com")
+    node_run_fixture(node, instance.instance_id)
+    before = entries()
+    {:ok, _} = Nodes.clear_instance(scope, node, instance.instance_id)
+    %{scope: scope, subject: {"node", node.id}, before: before}
+  end
+
   def make(:"run.close", %{scope: scope}) do
     run = run_fixture(scope)
     before = entries()
@@ -391,6 +401,11 @@ defmodule Apiary.AuditChanges do
   defp prepare(:"node.edit", %{scope: scope}), do: node_fixture(scope)
   defp prepare(:"node.delete", %{scope: scope}), do: node_fixture(scope)
 
+  defp prepare(:"node.clear_instance", %{scope: scope}) do
+    node = node_fixture(scope)
+    {node, instance_fixture(node).instance_id}
+  end
+
   defp prepare(:"organisation.restore", %{scope: scope}) do
     {:ok, organisation} = Deletion.delete_organisation(scope, scope.organisation.slug)
     organisation
@@ -466,6 +481,10 @@ defmodule Apiary.AuditChanges do
 
   defp attempt(:"node.edit", scope, node), do: Nodes.update_node(scope, node, %{name: "build-02"})
   defp attempt(:"node.delete", scope, node), do: Nodes.delete_node(scope, node)
+
+  defp attempt(:"node.clear_instance", scope, {node, instance_id}),
+    do: Nodes.clear_instance(scope, node, instance_id)
+
   defp attempt(:"run.close", scope, run), do: Runs.close_run(scope, run)
 
   defp attempt(:"retention.edit", scope, _),

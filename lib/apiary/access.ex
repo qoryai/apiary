@@ -144,6 +144,11 @@ defmodule Apiary.Access do
       roles: @admins
     ),
     Action.new(:"node.delete", "delete a node or a node pool", roles: @admins),
+    Action.new(
+      :"node.clear_instance",
+      "clear an instance of a node that stopped without saying so: its open runs are marked lost, and another instance can start",
+      roles: @admins
+    ),
     # The record.
     Action.new(:"run.read", "read the runs, their outcomes and the connections",
       feature: :observability,

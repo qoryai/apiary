@@ -377,6 +377,93 @@ defmodule Apiary.Nodes.InstancesTest do
     end
   end
 
+  describe "Clear instance" do
+    test "marks the instance's open runs lost, so another can start at once", %{scope: scope} do
+      node = node_fixture(scope)
+      instance = instance_fixture(node, instance_id: "i_1", name: "build-01.example.com")
+      open = node_run_fixture(node, "i_1", %{state: "running", started_at: ago(30)})
+      pending = node_run_fixture(node, "i_1")
+      ended = node_run_fixture(node, "i_1", %{state: "succeeded"})
+      other = node_run_fixture(node, "i_2")
+      Runs.subscribe(scope)
+      Nodes.subscribe(scope)
+      workspace_id = scope.workspace.id
+
+      assert {:ok, %{instance_id: "i_1", instance: cleared, runs: runs}} =
+               Nodes.clear_instance(scope, node, "i_1")
+
+      assert Enum.sort(Enum.map(runs, & &1.id)) == Enum.sort([open.id, pending.id])
+      assert Enum.map([open, pending, ended, other], &state/1) == ~w(lost lost succeeded pending)
+      assert cleared.id == instance.id
+      assert cleared.cleared_by_id == scope.user.id
+      assert %DateTime{} = cleared.cleared_at
+
+      assert_receive {:run_changed, %Run{state: "lost"}}
+      assert_receive {:nodes_touched, ^workspace_id}
+
+      assert [%Entry{action: "node.clear_instance", details: details}] =
+               Repo.all(
+                 from e in Entry,
+                   where: e.subject_id == ^node.id and e.action == "node.clear_instance"
+               )
+
+      assert details == %{"instance_id" => "i_1", "name" => "build-01.example.com", "runs" => 2}
+
+      # The node's one slot is i_2's until it is cleared too.
+      assert {:ok, {:error, :instance_limit}} =
+               Repo.transact(fn ->
+                 {:ok, Nodes.check_instance_limit(node, "i_3", DateTime.utc_now())}
+               end)
+
+      assert {:ok, %{instance: nil}} = Nodes.clear_instance(scope, node, "i_2")
+
+      assert {:ok, :ok} =
+               Repo.transact(fn ->
+                 {:ok, Nodes.check_instance_limit(node, "i_3", DateTime.utc_now())}
+               end)
+    end
+
+    test "clears an instance that has open runs and no row", %{scope: scope} do
+      node = node_fixture(scope)
+      run = node_run_fixture(node, "i_1")
+
+      assert {:ok, %{instance: nil, runs: [%Run{id: id}]}} =
+               Nodes.clear_instance(scope, node, "i_1")
+
+      assert id == run.id
+    end
+
+    test "is not found for an instance the node never had", %{scope: scope} do
+      node = node_fixture(scope)
+      other = node_fixture(scope)
+      instance_fixture(other, instance_id: "i_1")
+
+      assert Nodes.clear_instance(scope, node, "i_1") == {:error, :not_found}
+      assert Nodes.clear_instance(scope, node, "") == {:error, :not_found}
+    end
+
+    test "is owners' and admins'", %{scope: owner} do
+      node = node_fixture(owner)
+      instance_fixture(node, instance_id: "i_1")
+      run = node_run_fixture(node, "i_1")
+      %{scope: member} = member_fixture(owner, :member)
+      %{scope: admin} = member_fixture(owner, :admin)
+
+      assert Nodes.clear_instance(member, node, "i_1") == {:error, :forbidden}
+      assert state(run) == "pending"
+      assert {:ok, _} = Nodes.clear_instance(admin, node, "i_1")
+      assert state(run) == "lost"
+    end
+
+    test "of another organisation's node is not found", %{scope: scope} do
+      node = node_fixture(scope)
+      instance_fixture(node, instance_id: "i_1")
+      %{scope: stranger} = sign_up_fixture()
+
+      assert Nodes.clear_instance(stranger, node, "i_1") == {:error, :not_found}
+    end
+  end
+
   describe "activity/3" do
     test "a node's running instances, oldest first, and the one seen last", %{scope: scope} do
       pool = pool_fixture(scope, instance_limit: 10)

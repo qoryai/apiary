@@ -44,6 +44,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"node.create"), do: gettext("Node created")
   def label(:"node.edit"), do: gettext("Node changed")
   def label(:"node.delete"), do: gettext("Node deleted")
+  def label(:"node.clear_instance"), do: gettext("Instance cleared")
   def label(:"run.close"), do: gettext("Run closed")
   def label(:"retention.edit"), do: gettext("Retention changed")
   def label(:"security_policy.edit"), do: gettext("Policy rules changed")
@@ -145,6 +146,10 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp said(:"node.create", _details, _actor), do: gettext("Created a node")
   defp said(:"node.edit", _details, _actor), do: gettext("Changed a node")
   defp said(:"node.delete", _details, _actor), do: gettext("Deleted a node")
+
+  defp said(:"node.clear_instance", _details, _actor),
+    do: gettext("Cleared an instance of a node")
+
   defp said(:"run.close", _details, _actor), do: gettext("Closed a run")
 
   defp said(:"retention.edit", _details, _actor),
@@ -291,6 +296,18 @@ defmodule ApiaryWeb.Activity.Describer.Core do
         to: limit_or_name(field, after_[field])
       )
     end
+  end
+
+  def change(:"node.clear_instance", _before, _after, %{"instance_id" => id} = details)
+      when is_binary(id) do
+    runs = if is_integer(details["runs"]), do: details["runs"], else: 0
+
+    [
+      [{:m, id}],
+      rich_ngettext("%{number} open run marked lost", "%{number} open runs marked lost", runs,
+        number: Format.number(runs)
+      )
+    ]
   end
 
   def change(:"run.close", before, after_, _details),

@@ -280,7 +280,8 @@ defmodule ApiaryWeb.RefusalsRows do
       token: [:"invitation.accept"],
       release: [:"instance_admin.grant", :"instance_admin.revoke"],
       sign_up: [:"organisation.create"],
-      edition: [:"workspace.create"]
+      edition: [:"workspace.create"],
+      no_page_yet: [:"node.clear_instance"]
     }
   end
 

@@ -12,11 +12,12 @@ defmodule Apiary.Nodes do
   functions (`seen/3`, `placement/2`, `check_instance_limit/3`, `admit/4`) take the node
   a verified access key names instead.
 
-  Making, changing and deleting a node are owners' and admins' (`node.create`,
-  `node.edit`, `node.delete`); everyone in the workspace reads them (`node.read`, asked by
-  the pages). Each change asks `Apiary.Access.authorize/3` first and leaves its audit
-  entry (`Apiary.Audit`) in its transaction: the name, kind, public id and limit of a new
-  node, the name and limit an edit changed, a deletion's time.
+  Making, changing and deleting a node, and clearing an instance, are owners' and admins'
+  (`node.create`, `node.edit`, `node.delete`, `node.clear_instance`); everyone in the
+  workspace reads them (`node.read`, asked by the pages). Each change asks
+  `Apiary.Access.authorize/3` first and leaves its audit entry (`Apiary.Audit`) in its
+  transaction: the name, kind, public id and limit of a new node, the name and limit an
+  edit changed, a deletion's time, the instance a clearing cleared.
 
   **Instances.** An instance is what a runner using a node's access key reports itself as
   (`Apiary.Nodes.Instance`): a claim, for display, the audit and the instance limit, never
@@ -25,14 +26,15 @@ defmodule Apiary.Nodes do
   run alive by the lost-run check's rule (`Apiary.Runs.Liveness.alive/2`), so running
   means "not yet lost", and a node runs while any of its instances does (`activity/3`).
   `check_instance_limit/3` and `admit/4` hold a node to its instance limit when a ping
-  would create a run, under the node's row lock.
+  would create a run, under the node's row lock; `clear_instance/3` marks an instance's
+  open runs lost, for one that stopped without saying so.
   """
 
   import Ecto.Query, warn: false
 
   require Logger
 
-  alias Apiary.{Access, Audit, Repo}
+  alias Apiary.{Access, Audit, Repo, Runs}
   alias Apiary.Accounts.Scope
   alias Apiary.Nodes.{Instance, Node, Throttle}
   alias Apiary.Organisations.{Organisation, Workspace}
@@ -520,6 +522,69 @@ defmodule Apiary.Nodes do
 
       result
     end
+  end
+
+  ## Clear instance
+
+  @doc """
+  clear_instance/3 clears the instance `instance_id` of `node` (`node.clear_instance`,
+  owners and admins), for one that stopped without saying so: its open runs on the node,
+  pending or running, are marked lost through the lost-run check's own update
+  (`Apiary.Runs.Liveness.mark/2`), so they no longer count against the instance limit and
+  another instance can start at once; its row, when there is one, records who cleared it
+  and when; and the change is audited, with how many runs it marked. Once committed, each
+  run is broadcast as changed, and the workspace's nodes as touched.
+
+  `lost` is not final: if the instance was in fact alive, its next heartbeat brings its
+  run back, and it counts again from then on. `{:ok, %{instance_id:, instance:, runs:}}`,
+  `instance` nil for an instance with runs and no row; `{:error, :not_found}` for an
+  instance id the node has neither a row nor an open run of, or a node that is deleted or
+  not the workspace's; `{:error, :forbidden}`.
+  """
+  @spec clear_instance(Scope.t(), Node.t(), String.t()) ::
+          {:ok, %{instance_id: String.t(), instance: Instance.t() | nil, runs: [Run.t()]}}
+          | {:error, Access.reason()}
+  def clear_instance(%Scope{user: user} = scope, %Node{} = node, instance_id) do
+    now = DateTime.utc_now()
+
+    result =
+      mutate(scope, :"node.clear_instance", node, fn current ->
+        with true <- Instance.instance_id?(instance_id) || {:error, :not_found},
+             runs = Liveness.mark(open_runs(current, instance_id), now),
+             {_count, cleared} =
+               Repo.update_all(
+                 from(i in Instance,
+                   where: i.node_id == ^current.id and i.instance_id == ^instance_id,
+                   select: i
+                 ),
+                 set: [cleared_at: now, cleared_by_id: user.id]
+               ),
+             instance = List.first(cleared),
+             true <- (runs != [] or not is_nil(instance)) || {:error, :not_found},
+             {:ok, _entry} <-
+               Audit.record(Repo, scope, :"node.clear_instance", current, %{
+                 details: %{
+                   instance_id: instance_id,
+                   name: instance && instance.name,
+                   runs: length(runs)
+                 }
+               }) do
+          {:ok, %{instance_id: instance_id, instance: instance, runs: runs}}
+        end
+      end)
+
+    with {:ok, %{runs: runs}} <- result do
+      Enum.each(runs, &Runs.broadcast_changed/1)
+      broadcast_touched(node.workspace_id)
+    end
+
+    result
+  end
+
+  defp open_runs(%Node{id: id, workspace_id: workspace_id}, instance_id) do
+    from r in Run,
+      where: r.node_id == ^id and r.workspace_id == ^workspace_id,
+      where: r.instance_id == ^instance_id and r.state in ["pending", "running"]
   end
 
   ## Reading instances
