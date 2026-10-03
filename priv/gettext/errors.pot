@@ -51,11 +51,12 @@ msgstr ""
 ## `msgid`s here are often extracted from source code.
 ## Add new translations manually only if they're dynamic
 ## translations that can't be statically extracted.
-##
 ## Run `mix gettext.extract` to bring this file up to
 ## date. Leave `msgstr`s empty as changing them here has no
 ## effect: edit them in PO (`.po`) files instead.
 ## From Ecto.Changeset.cast/4
+#: lib/apiary/secrets/value.ex
+#, elixir-autogen
 msgid "can't be blank"
 msgstr ""
 
@@ -111,9 +112,19 @@ msgstr ""
 msgid "is already a member of this organisation"
 msgstr ""
 
+#: lib/apiary/secrets/value.ex
+#, elixir-autogen, elixir-format
+msgid "is already a value ID of this secret"
+msgstr ""
+
 #: lib/apiary/access_keys/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "is already the label of an active key in this workspace"
+msgstr ""
+
+#: lib/apiary/secrets/secret.ex
+#, elixir-autogen, elixir-format
+msgid "is already the name of a secret in this workspace, compared without case"
 msgstr ""
 
 #: lib/apiary/organisations/workspace.ex
@@ -174,13 +185,28 @@ msgstr ""
 msgid "is still associated with this entry"
 msgstr ""
 
+#: lib/apiary/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "is the value ID the first value takes"
+msgstr ""
+
 #: lib/apiary/organisations/slug.ex
 #, elixir-autogen, elixir-format
 msgid "may hold lowercase letters, digits and hyphens, and starts and ends with a letter or a digit"
 msgstr ""
 
+#: lib/apiary/secrets/value.ex
+#, elixir-autogen, elixir-format
+msgid "must be UTF-8 text"
+msgstr ""
+
 ## From Ecto.Changeset.validate_acceptance/3
 msgid "must be accepted"
+msgstr ""
+
+#: lib/apiary/secrets/value.ex
+#, elixir-autogen, elixir-format
+msgid "must be at most %{count} bytes"
 msgstr ""
 
 #: lib/apiary/organisations/workspace.ex
@@ -204,10 +230,20 @@ msgstr ""
 msgid "must be less than or equal to %{number}"
 msgstr ""
 
+#: lib/apiary/secrets/value.ex
+#, elixir-autogen, elixir-format
+msgid "must be lowercase letters, digits, ., _ and -, starting with a letter or digit, at most 64"
+msgstr ""
+
 #: lib/apiary/accounts/user.ex
 #: lib/apiary/organisations/invitation.ex
 #, elixir-autogen, elixir-format
 msgid "must have the @ sign and no spaces"
+msgstr ""
+
+#: lib/apiary/secrets/value.ex
+#, elixir-autogen, elixir-format
+msgid "must not contain a NUL byte"
 msgstr ""
 
 #: lib/apiary/organisations/organisation.ex
@@ -218,6 +254,7 @@ msgstr ""
 #: lib/apiary/access_keys/access_key.ex
 #: lib/apiary/organisations/organisation.ex
 #: lib/apiary/organisations/workspace.ex
+#: lib/apiary/secrets/secret.ex
 #, elixir-autogen, elixir-format
 msgid "must not contain control characters"
 msgstr ""
@@ -235,6 +272,11 @@ msgstr ""
 #: lib/apiary/organisations/organisation.ex
 #, elixir-autogen, elixir-format
 msgid "must not start or end with a joining character"
+msgstr ""
+
+#: lib/apiary/secrets/secret.ex
+#, elixir-autogen, elixir-format
+msgid "must start with a letter or _ and hold only letters, digits and _, at most 128"
 msgstr ""
 
 msgid "should be %{count} byte(s)"

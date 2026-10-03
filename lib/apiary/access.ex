@@ -171,6 +171,28 @@ defmodule Apiary.Access do
       feature: :security,
       roles: @admins
     ),
+    # Stored secrets, which the runs are given.
+    Action.new(
+      :"secret.read",
+      "read the stored secrets: their names, notes and value IDs, never a value",
+      feature: :security,
+      roles: @members,
+      audited: {:not, @read}
+    ),
+    Action.new(
+      :"secret.write",
+      "create a stored secret, change its name, note and values, and delete it",
+      feature: :security,
+      roles: @admins
+    ),
+    Action.new(
+      :"secret.use",
+      "link a stored secret to what uses it, so runs are given its value",
+      feature: :security,
+      roles: @admins,
+      audited:
+        {:not, "a link is part of the change to what uses the secret, which leaves its own entry"}
+    ),
     # The server contract.
     Action.new(:"run.post_events", "post a run's events",
       feature: :observability,

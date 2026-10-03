@@ -70,6 +70,9 @@ defmodule Apiary.AccessRows do
       {:"security_policy.edit", yes: @owners ++ [:member, :admin]},
       {:"security_policy.lock", yes: @owners},
       {:"security_policy.set_mode", yes: @owners ++ [:admin]},
+      {:"secret.read", yes: @owners ++ [:member, :admin]},
+      {:"secret.write", yes: @owners ++ [:admin]},
+      {:"secret.use", yes: @owners ++ [:admin]},
       {:"run.post_events", yes: [:access_key]},
       {:"run_configuration.fetch", yes: [:access_key]}
     ]

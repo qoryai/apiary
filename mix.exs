@@ -180,6 +180,7 @@ defmodule Apiary.MixProject do
         "Accounts and organisations": [~r/^Apiary\.Accounts/, ~r/^Apiary\.Organisations/],
         "Access keys": [~r/^Apiary\.AccessKeys/, ~r/^Apiary\.Encrypted/, Apiary.Vault],
         "Keys and integrity": [Apiary.KeyDerivation, Apiary.Integrity, Apiary.PublicId],
+        "Secrets and variables": [~r/^Apiary\.Secrets/],
         "Runs and the record": [~r/^Apiary\.Runs/],
         Domains: [~r/^Apiary\.Lingo\.Domain/],
         "Security policy": [~r/^Apiary\.Policy/],
@@ -206,6 +207,7 @@ defmodule Apiary.MixProject do
           extras: ["guides/security-policy.md"],
           modules: [
             ~r/^Apiary\.Policy/,
+            ~r/^Apiary\.Secrets/,
             ~r/^ApiaryWeb\.Policy/,
             ApiaryWeb.ConnectionLive.Rules,
             Mix.Tasks.Apiary.Policy.Rerender

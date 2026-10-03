@@ -28,7 +28,8 @@ defmodule Apiary.Audit do
   the instance (`Apiary.Accounts.Scope.for_instance/2`), for a job no person enqueued.
   **The action** is one of `Apiary.Access.actions/0`. **The subject** is the row acted
   on, of a kind the trail knows (`subject_kinds/0`): an organisation, a workspace, a
-  membership, an invitation, an access key, a run, a target or a rule, and the rows of
+  membership, an invitation, an access key, a run, a target, a rule or a stored secret,
+  and the rows of
   the edition's own kinds (`c:Apiary.Edition.subject_kinds/0`). It gives
   the entry its organisation and workspace: none for what the organisation itself owns, a
   membership among it. **From
@@ -91,6 +92,7 @@ defmodule Apiary.Audit do
   alias Apiary.Organisations.{Invitation, Membership, Organisation, Workspace}
   alias Apiary.Policy.Rule
   alias Apiary.Runs.{Run, Target}
+  alias Apiary.Secrets.Secret
 
   @subject_kinds %{
     Organisation => "organisation",
@@ -100,7 +102,8 @@ defmodule Apiary.Audit do
     AccessKey => "access_key",
     Run => "run",
     Target => "target",
-    Rule => "rule"
+    Rule => "rule",
+    Secret => "secret"
   }
 
   @default_retention_days 90

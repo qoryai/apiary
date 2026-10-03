@@ -23,7 +23,8 @@ defmodule Apiary.AuditChanges do
     Policy,
     Repo,
     Retention,
-    Runs
+    Runs,
+    Secrets
   }
 
   alias Apiary.Accounts.Scope
@@ -59,7 +60,8 @@ defmodule Apiary.AuditChanges do
       :"retention.edit",
       :"security_policy.edit",
       :"security_policy.lock",
-      :"security_policy.set_mode"
+      :"security_policy.set_mode",
+      :"secret.write"
     ]
   end
 
@@ -240,6 +242,13 @@ defmodule Apiary.AuditChanges do
     before = entries()
     {:ok, _} = Policy.set_mode(scope, "enforce")
     %{scope: scope, subject: {"workspace", scope.workspace.id}, before: before}
+  end
+
+  def make(:"secret.write", %{scope: scope}) do
+    before = entries()
+    value = "s3cr3t-audit-value"
+    {:ok, secret} = Secrets.create_secret(scope, %{name: "API_TOKEN", value: value})
+    %{scope: scope, subject: {"secret", secret.id}, before: before, secret: value}
   end
 
   def make(:"organisation.delete", %{scope: scope}) do
@@ -434,6 +443,9 @@ defmodule Apiary.AuditChanges do
   defp attempt(:"access_key.rotate", scope, key), do: AccessKeys.rotate_access_key(scope, key)
   defp attempt(:"access_key.revoke", scope, key), do: AccessKeys.revoke_access_key(scope, key)
   defp attempt(:"run.close", scope, run), do: Runs.close_run(scope, run)
+
+  defp attempt(:"secret.write", scope, _),
+    do: Secrets.create_secret(scope, %{name: "API_TOKEN", value: "s3cr3t-audit-value"})
 
   defp attempt(:"retention.edit", scope, _),
     do: Retention.update_retention(scope, %{events_retention_days: 30})
