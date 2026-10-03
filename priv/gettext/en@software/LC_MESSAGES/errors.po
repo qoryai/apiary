@@ -135,6 +135,11 @@ msgstr ""
 
 #: lib/apiary/access_keys/access_key.ex
 #, elixir-autogen, elixir-format
+msgid "is already the label of a key of this node"
+msgstr ""
+
+#: lib/apiary/access_keys/access_key.ex
+#, elixir-autogen, elixir-format
 msgid "is already the label of an active key in this workspace"
 msgstr ""
 
@@ -374,6 +379,11 @@ msgid "should have at most %{count} item(s)"
 msgid_plural "should have at most %{count} item(s)"
 msgstr[0] ""
 msgstr[1] ""
+
+#: lib/apiary/access_keys/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "this key cannot be used"
+msgstr ""
 
 #: lib/apiary/organisations.ex
 #, elixir-autogen, elixir-format

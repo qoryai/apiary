@@ -40,6 +40,12 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"workspace.purge"), do: gettext("Workspace purged")
   def label(:"access_key.create"), do: gettext("Access key created")
   def label(:"access_key.rotate"), do: gettext("Access key rotated")
+  def label(:"access_key.revoke_secret_key"), do: gettext("Access key revoked in settings")
+  def label(:"access_key.create_code"), do: gettext("Enrolment code created")
+  def label(:"access_key.cancel_code"), do: gettext("Enrolment code cancelled")
+  def label(:"access_key.add"), do: gettext("Access key added")
+  def label(:"access_key.approve"), do: gettext("Access key approved")
+  def label(:"access_key.reject"), do: gettext("Access key rejected")
   def label(:"access_key.revoke"), do: gettext("Access key revoked")
   def label(:"node.create"), do: gettext("Node created")
   def label(:"node.edit"), do: gettext("Node changed")
@@ -143,6 +149,23 @@ defmodule ApiaryWeb.Activity.Describer.Core do
     do: gettext("Retired an access key's previous secret")
 
   defp said(:"access_key.rotate", _details, _actor), do: gettext("Rotated an access key")
+
+  defp said(:"access_key.revoke_secret_key", _details, _actor),
+    do: gettext("Revoked an access key")
+
+  defp said(:"access_key.create_code", _details, _actor),
+    do: gettext("Created an enrolment code for a node")
+
+  defp said(:"access_key.cancel_code", _details, _actor),
+    do: gettext("Cancelled a node's enrolment code")
+
+  defp said(:"access_key.add", _details, _actor), do: gettext("Added an access key to a node")
+  defp said(:"access_key.approve", _details, _actor), do: gettext("Approved an access key")
+  defp said(:"access_key.reject", _details, _actor), do: gettext("Rejected an access key")
+
+  defp said(:"access_key.revoke", %{"reason" => "node_deleted"}, _actor),
+    do: gettext("Revoked an access key with its deleted node")
+
   defp said(:"access_key.revoke", _details, _actor), do: gettext("Revoked an access key")
   defp said(:"node.create", _details, _actor), do: gettext("Created a node")
   defp said(:"node.edit", _details, _actor), do: gettext("Changed a node")
@@ -303,8 +326,9 @@ defmodule ApiaryWeb.Activity.Describer.Core do
 
   def change(:"member.remove", %{"level" => level}, _after, _details), do: as_level(level)
 
-  def change(:"access_key.create", _before, %{"key_id" => key_id}, _details),
-    do: [{:m, key_id}]
+  def change(action, _before, %{"key_id" => key_id}, _details)
+      when action in [:"access_key.create", :"access_key.add"],
+      do: [{:m, key_id}]
 
   def change(:"node.create", _before, %{"kind" => kind, "public_id" => id}, _details),
     do: [[kind_word(kind), " ", {:m, id}]]

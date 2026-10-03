@@ -70,7 +70,7 @@ defmodule Apiary.Deletion do
 
   require Logger
 
-  alias Apiary.{Access, Audit, Organisations, Repo}
+  alias Apiary.{Access, AccessKeys, Audit, Organisations, Repo}
   alias Apiary.Accounts.{Scope, User}
   alias Apiary.Deletion.{PurgedOrganisation, Tables}
   alias Apiary.Organisations.{Membership, Organisation, Workspace}
@@ -344,7 +344,9 @@ defmodule Apiary.Deletion do
   period (`workspace.purge`, the instance's): it claims the workspace first, so its
   deletion can no longer be cancelled, then deletes every row of it, table by table in
   the order of `Apiary.Deletion.Tables.workspace_tables/0`, a batch at a time, the access
-  to it among them and nobody's membership, then the workspace's row, with the entry of
+  to it among them and nobody's membership, after the public keys of its nodes' access
+  keys are made tombstones in the ledger, which outlives it
+  (`Apiary.AccessKeys.retire_public_keys/2`), then the workspace's row, with the entry of
   `workspace.purge` in its organisation's trail in the same transaction. `{:ok,
   :purged}`; `{:ok, :not_due}`, touching nothing, for a workspace that is not marked
   (restored meanwhile) or not yet due; `{:ok, :gone}` for one that is gone already; the
@@ -361,6 +363,7 @@ defmodule Apiary.Deletion do
     with :ok <- Access.authorize(scope, :"workspace.purge", workspace),
          :ok <- refuse(:purge, workspace),
          :claimed <- claim(Workspace, workspace_id) do
+      _retired = AccessKeys.retire_public_keys(organisation_id, workspace_id)
       deleted = delete_rows(Tables.workspace_tables(), organisation_id, workspace_id)
 
       Repo.transact(fn ->
@@ -405,7 +408,8 @@ defmodule Apiary.Deletion do
   grace period (`organisation.purge`, the instance's): it claims the organisation first,
   so its deletion can no longer be cancelled, then deletes every row of it, table by
   table in the order of `Apiary.Deletion.Tables.tables/0`, a batch at a time, its
-  workspaces and its audit trail among them, then the organisation's row, with the instance's line of
+  workspaces and its audit trail among them, after the public keys of its nodes' access
+  keys are made tombstones in the ledger, then the organisation's row, with the instance's line of
   it (`Apiary.Deletion.PurgedOrganisation`) written in the same transaction from what the
   row says: when it was marked, by whom, and why. `{:ok, :purged}`; `{:ok, :not_due}`,
   touching nothing, for an organisation not marked or not yet due; `{:ok, :gone}` for one
@@ -418,6 +422,7 @@ defmodule Apiary.Deletion do
     with :ok <- Access.authorize(scope, :"organisation.purge", organisation),
          :ok <- refuse(:purge, organisation),
          :claimed <- claim(Organisation, id) do
+      _retired = AccessKeys.retire_public_keys(id, nil)
       deleted = delete_rows(Tables.tables(), id, nil)
 
       Repo.transact(fn ->

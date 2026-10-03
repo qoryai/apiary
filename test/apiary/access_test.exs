@@ -6,6 +6,7 @@ defmodule Apiary.AccessTest do
   use Apiary.AccessCase, rows: [Apiary.AccessRows], covers: :core
 
   import Apiary.AccessKeysFixtures
+  import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.RunEventsFixtures
 
@@ -153,7 +154,10 @@ defmodule Apiary.AccessTest do
     @rows [
       {:run, [:"run.read", :"run.read_log", :"run.close"]},
       {:rule, [:"security_policy.edit", :"security_policy.lock"]},
-      {:access_key, [:"access_key.rotate", :"access_key.revoke"]},
+      {:access_key, [:"access_key.rotate", :"access_key.revoke_secret_key"]},
+      {:node, [:"access_key.create_code", :"access_key.add"]},
+      {:node_key, [:"access_key.approve", :"access_key.reject", :"access_key.revoke"]},
+      {:code, [:"access_key.cancel_code"]},
       {:membership, [:"member.change_level", :"member.remove"]},
       {:invitation, [:"invitation.revoke"]}
     ]
@@ -162,6 +166,8 @@ defmodule Apiary.AccessTest do
       %{scope: owner} = sign_up_fixture()
       %{scope: other} = sign_up_fixture()
       {:ok, rule} = Apiary.Policy.allow(other, nil, %{host: "api.example"})
+      node = node_fixture(other)
+      {:ok, code, _} = Apiary.AccessKeys.create_enrolment_code(other, node, %{})
 
       %{
         owner: owner,
@@ -170,6 +176,9 @@ defmodule Apiary.AccessTest do
           run: run_fixture(other),
           rule: rule,
           access_key: access_key_fixture(other).access_key,
+          node: node,
+          node_key: pending_key_fixture(other, node).access_key,
+          code: code,
           membership: member_fixture(other).membership,
           invitation: invitation_fixture(other).invitation
         }

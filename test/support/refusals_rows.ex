@@ -218,17 +218,18 @@ defmodule ApiaryWeb.RefusalsRows do
        answer: :ignored},
       {:"access_key.rotate", :member, "/:org/:workspace/settings/keys", "retire_confirm", %{},
        answer: :ignored},
-      {:"access_key.revoke", :member, "/:org/:workspace/settings/keys", "revoke", %{},
+      {:"access_key.revoke_secret_key", :member, "/:org/:workspace/settings/keys", "revoke", %{},
        answer: :ignored},
-      {:"access_key.revoke", :removed_member, "/:org/:workspace/settings/keys/:key/revoke",
-       "revoke", %{}},
+      {:"access_key.revoke_secret_key", :removed_member,
+       "/:org/:workspace/settings/keys/:key/revoke", "revoke", %{}},
       # The key's modal is a path: another organisation's key is a 404 as the page opens.
       {:"access_key.rotate", :other_owner, "/:other_org/:other_ws/settings/keys/:key/rotate",
        "rotate", %{}, answer: :not_found_at_mount},
       {:"access_key.rotate", :other_owner, "/:other_org/:other_ws/settings/keys", "retire",
        %{"id" => :key}, answer: :not_found},
-      {:"access_key.revoke", :other_owner, "/:other_org/:other_ws/settings/keys/:key/revoke",
-       "revoke", %{}, answer: :not_found_at_mount},
+      {:"access_key.revoke_secret_key", :other_owner,
+       "/:other_org/:other_ws/settings/keys/:key/revoke", "revoke", %{},
+       answer: :not_found_at_mount},
 
       # The nodes. Without the dialog open, from a member: refused, as the page offers
       # them no button.
@@ -273,7 +274,8 @@ defmodule ApiaryWeb.RefusalsRows do
   # no page of the core offers, and an edition's page does, with rows of its own. Stored
   # secrets and variables: no page offers them yet, and their contexts' tests refuse
   # them (`test/apiary/secrets_test.exs`, `test/apiary/variables_test.exs`); their page
-  # brings its rows.
+  # brings its rows. So do a node's access keys and enrolment codes
+  # (`test/apiary/node_access_keys_test.exs`).
   @impl true
   def exempt do
     %{
@@ -289,7 +291,13 @@ defmodule ApiaryWeb.RefusalsRows do
         :"secret.write",
         :"secret.use",
         :"variable.read",
-        :"variable.edit"
+        :"variable.edit",
+        :"access_key.create_code",
+        :"access_key.cancel_code",
+        :"access_key.add",
+        :"access_key.approve",
+        :"access_key.reject",
+        :"access_key.revoke"
       ]
     }
   end

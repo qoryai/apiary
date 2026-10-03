@@ -12,14 +12,14 @@ defmodule Apiary.Nodes do
 
   Making, changing and deleting a node are owners' and admins' (`node.create`,
   `node.edit`, `node.delete`); everyone in the workspace reads them (`node.read`, asked by
-  the pages). Each change asks `Apiary.Access.authorize/3` first and leaves its audit
+  the pages). A node's access keys are `Apiary.AccessKeys`'s; deleting a node revokes them. Each change asks `Apiary.Access.authorize/3` first and leaves its audit
   entry (`Apiary.Audit`) in its transaction: the name, kind, public id and limit of a new
   node, the name and limit an edit changed, a deletion's time.
   """
 
   import Ecto.Query, warn: false
 
-  alias Apiary.{Access, Audit, Repo}
+  alias Apiary.{Access, AccessKeys, Audit, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Organisation, Workspace}
@@ -180,13 +180,17 @@ defmodule Apiary.Nodes do
   @doc """
   delete_node/2 deletes `node` (`node.delete`, owners and admins): it leaves every page,
   its name is free again, and its row stays for what names it until its workspace is
-  purged. `{:ok, node}`, `{:error, :forbidden}`, or `{:error, :not_found}` for a node
-  that is deleted already or not the workspace's.
+  purged. In the same transaction it revokes every key of the node in use, a key awaiting
+  approval among them, each with its entry of `access_key.revoke` and its public key a
+  tombstone for `node_deleted`, and cancels its outstanding enrolment codes
+  (`Apiary.AccessKeys.revoke_node_keys/3`). `{:ok, node}`, `{:error, :forbidden}`, or
+  `{:error, :not_found}` for a node that is deleted already or not the workspace's.
   """
   @spec delete_node(Scope.t(), Node.t()) :: {:ok, Node.t()} | {:error, Access.reason()}
   def delete_node(%Scope{user: user} = scope, %Node{} = node) do
     mutate(scope, :"node.delete", node, fn current ->
-      with {:ok, deleted} <-
+      with {:ok, key_ids} <- AccessKeys.revoke_node_keys(scope, current, :node_deleted),
+           {:ok, deleted} <-
              current
              |> Ecto.Changeset.change(deleted_at: DateTime.utc_now(), deleted_by_id: user.id)
              |> Repo.update(),
@@ -194,7 +198,10 @@ defmodule Apiary.Nodes do
              Audit.record(Repo, scope, :"node.delete", deleted, %{
                before: %{deleted_at: nil},
                after: %{deleted_at: deleted.deleted_at},
-               details: Map.take(deleted, [:name, :kind, :public_id])
+               details:
+                 deleted
+                 |> Map.take([:name, :kind, :public_id])
+                 |> Map.put(:revoked_key_ids, key_ids)
              }) do
         {:ok, deleted}
       end

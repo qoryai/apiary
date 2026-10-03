@@ -58,6 +58,12 @@ defmodule Apiary.AuditChanges do
       :"workspace.purge",
       :"access_key.create",
       :"access_key.rotate",
+      :"access_key.revoke_secret_key",
+      :"access_key.create_code",
+      :"access_key.cancel_code",
+      :"access_key.add",
+      :"access_key.approve",
+      :"access_key.reject",
       :"access_key.revoke",
       :"node.create",
       :"node.edit",
@@ -212,8 +218,51 @@ defmodule Apiary.AuditChanges do
     %{scope: scope, subject: {"access_key", key.id}, secret: secret, before: before}
   end
 
-  def make(:"access_key.revoke", %{scope: scope}) do
+  def make(:"access_key.revoke_secret_key", %{scope: scope}) do
     %{access_key: key} = access_key_fixture(scope)
+    before = entries()
+    {:ok, _} = AccessKeys.revoke_access_key(scope, key)
+    %{scope: scope, subject: {"access_key", key.id}, before: before}
+  end
+
+  def make(:"access_key.create_code", %{scope: scope}) do
+    node = node_fixture(scope)
+    before = entries()
+    {:ok, _row, code} = AccessKeys.create_enrolment_code(scope, node, %{allow_secrets: true})
+    %{scope: scope, subject: {"node", node.id}, secret: code, before: before}
+  end
+
+  def make(:"access_key.cancel_code", %{scope: scope}) do
+    node = node_fixture(scope)
+    {:ok, row, _code} = AccessKeys.create_enrolment_code(scope, node, %{})
+    before = entries()
+    {:ok, _} = AccessKeys.cancel_code(scope, row)
+    %{scope: scope, subject: {"node", node.id}, before: before}
+  end
+
+  def make(:"access_key.add", %{scope: scope}) do
+    node = node_fixture(scope)
+    before = entries()
+    %{access_key: key} = node_key_fixture(scope, node)
+    %{scope: scope, subject: {"access_key", key.id}, before: before}
+  end
+
+  def make(:"access_key.approve", %{scope: scope}) do
+    %{access_key: key} = pending_key_fixture(scope, node_fixture(scope))
+    before = entries()
+    {:ok, _} = AccessKeys.approve(scope, key)
+    %{scope: scope, subject: {"access_key", key.id}, before: before}
+  end
+
+  def make(:"access_key.reject", %{scope: scope}) do
+    %{access_key: key} = pending_key_fixture(scope, node_fixture(scope))
+    before = entries()
+    {:ok, _} = AccessKeys.reject(scope, key)
+    %{scope: scope, subject: {"access_key", key.id}, before: before}
+  end
+
+  def make(:"access_key.revoke", %{scope: scope}) do
+    %{access_key: key} = node_key_fixture(scope, node_fixture(scope))
     before = entries()
     {:ok, _} = AccessKeys.revoke_access_key(scope, key)
     %{scope: scope, subject: {"access_key", key.id}, before: before}
@@ -407,7 +456,26 @@ defmodule Apiary.AuditChanges do
   end
 
   defp prepare(:"access_key.rotate", %{scope: scope}), do: access_key_fixture(scope).access_key
-  defp prepare(:"access_key.revoke", %{scope: scope}), do: access_key_fixture(scope).access_key
+
+  defp prepare(:"access_key.revoke_secret_key", %{scope: scope}),
+    do: access_key_fixture(scope).access_key
+
+  defp prepare(:"access_key.create_code", %{scope: scope}), do: node_fixture(scope)
+
+  defp prepare(:"access_key.cancel_code", %{scope: scope}) do
+    {:ok, row, _code} = AccessKeys.create_enrolment_code(scope, node_fixture(scope), %{})
+    row
+  end
+
+  defp prepare(:"access_key.add", %{scope: scope}), do: node_fixture(scope)
+
+  defp prepare(action, %{scope: scope})
+       when action in [:"access_key.approve", :"access_key.reject"],
+       do: pending_key_fixture(scope, node_fixture(scope)).access_key
+
+  defp prepare(:"access_key.revoke", %{scope: scope}),
+    do: node_key_fixture(scope, node_fixture(scope)).access_key
+
   defp prepare(:"run.close", %{scope: scope}), do: run_fixture(scope)
   defp prepare(:"node.edit", %{scope: scope}), do: node_fixture(scope)
   defp prepare(:"node.delete", %{scope: scope}), do: node_fixture(scope)
@@ -480,7 +548,25 @@ defmodule Apiary.AuditChanges do
     do: AccessKeys.create_access_key(scope, %{label: "build-01"})
 
   defp attempt(:"access_key.rotate", scope, key), do: AccessKeys.rotate_access_key(scope, key)
-  defp attempt(:"access_key.revoke", scope, key), do: AccessKeys.revoke_access_key(scope, key)
+
+  defp attempt(action, scope, key)
+       when action in [:"access_key.revoke_secret_key", :"access_key.revoke"],
+       do: AccessKeys.revoke_access_key(scope, key)
+
+  defp attempt(:"access_key.create_code", scope, node),
+    do: AccessKeys.create_enrolment_code(scope, node, %{})
+
+  defp attempt(:"access_key.cancel_code", scope, code), do: AccessKeys.cancel_code(scope, code)
+
+  defp attempt(:"access_key.add", scope, node),
+    do:
+      AccessKeys.add_access_key(scope, node, %{
+        label: "build-01",
+        public_key: ed25519_key_pair().encoded
+      })
+
+  defp attempt(:"access_key.approve", scope, key), do: AccessKeys.approve(scope, key)
+  defp attempt(:"access_key.reject", scope, key), do: AccessKeys.reject(scope, key)
 
   defp attempt(:"node.create", scope, _),
     do: Nodes.create_node(scope, %{kind: "node", name: "build-01"})
