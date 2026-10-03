@@ -65,6 +65,7 @@ defmodule Apiary.AccessKeys do
   alias Apiary.Organisations.{Workspace, Organisation}
 
   @default_code_ttl_minutes 15
+  @max_code_ttl_minutes 15
   @approved_limit 2
   @pending_limit 1
 
@@ -420,19 +421,24 @@ defmodule Apiary.AccessKeys do
 
   @doc """
   code_ttl_minutes/0 is how long an enrolment code may be used once made: the
-  `:code_ttl_minutes` of `Apiary.AccessKeys` in the configuration, #{@default_code_ttl_minutes}
-  when unset.
+  `:code_ttl_minutes` of `Apiary.AccessKeys` in the configuration, held to 1 to
+  #{@max_code_ttl_minutes}, the most the contract allows, and #{@default_code_ttl_minutes}
+  when unset or not a whole number.
   """
   @spec code_ttl_minutes() :: pos_integer
   def code_ttl_minutes do
-    :apiary
-    |> Application.get_env(__MODULE__, [])
-    |> Keyword.get(:code_ttl_minutes, @default_code_ttl_minutes)
+    case Keyword.get(Application.get_env(:apiary, __MODULE__, []), :code_ttl_minutes) do
+      minutes when is_integer(minutes) -> minutes |> max(1) |> min(@max_code_ttl_minutes)
+      _unset -> @default_code_ttl_minutes
+    end
   end
 
   @doc """
   key_limits/0 is how many keys a node holds at most: `approved`, approved and not
-  revoked, and `pending`, awaiting approval.
+  revoked, and `pending`, awaiting approval. A paste and an approval count them under the
+  node's lock here; nothing here makes a pending key but the enrolment, which counts the
+  pending limit under the same lock when it is built (the enrolment endpoint and the
+  signed requests that follow).
   """
   @spec key_limits() :: %{approved: pos_integer, pending: pos_integer}
   def key_limits, do: %{approved: @approved_limit, pending: @pending_limit}
@@ -687,7 +693,7 @@ defmodule Apiary.AccessKeys do
                |> Ecto.Changeset.change(approved_at: now, approved_by_id: user.id)
                |> AccessKey.put_integrity()
                |> Repo.update(),
-             :ok <- move_in_ledger(approved, %{state: :current}),
+             :ok <- approve_in_ledger(approved),
              {:ok, _entry} <-
                Audit.record(Repo, scope, :"access_key.approve", approved, %{
                  before: %{approved_at: nil},
@@ -796,8 +802,7 @@ defmodule Apiary.AccessKeys do
            |> Ecto.Changeset.change(revoked_at: now, revoked_by_id: user && user.id)
            |> AccessKey.put_integrity()
            |> Repo.update(),
-         :ok <-
-           move_in_ledger(retired, %{state: :tombstone, retired_at: now, retired_reason: reason}),
+         :ok <- tombstone_in_ledger(retired, reason, now),
          {:ok, _entry} <-
            Audit.record(Repo, scope, action, retired, %{
              before: %{revoked_at: nil},
@@ -812,14 +817,40 @@ defmodule Apiary.AccessKeys do
     end
   end
 
-  # The key's row of the ledger follows it, written in its transaction.
-  defp move_in_ledger(%AccessKey{public_key: public_key, key_id: key_id}, changes) do
-    set = Map.to_list(Map.put(changes, :updated_at, DateTime.utc_now()))
+  # An approval moves the key's own row of the ledger, pending, to current, in its
+  # transaction. A row missing, of another key or not pending is a ledger changed outside
+  # the application, and the approval does not trust it.
+  defp approve_in_ledger(%AccessKey{public_key: public_key, key_id: key_id} = key) do
+    query =
+      from p in PublicKey,
+        where: p.public_key == ^public_key and p.key_id == ^key_id and p.state == :pending
+
+    case Repo.update_all(query, set: [state: :current, updated_at: DateTime.utc_now()]) do
+      {1, _} -> :ok
+      {0, _} -> tampered(key.key_id, LogMetadata.metadata(key.organisation_id, key.workspace_id))
+    end
+  end
+
+  # A retirement makes the public key a tombstone whatever the ledger holds for it: a row
+  # missing, or naming another key, must never stop a key, perhaps a leaked one, from
+  # being revoked. The row is written if it is missing, and its state, time and reason
+  # replaced if it is there, under the key id it already names.
+  defp tombstone_in_ledger(%AccessKey{} = key, reason, now) do
+    entry = %{
+      public_key: key.public_key,
+      key_id: key.key_id,
+      state: :tombstone,
+      received_at: key.received_at || now,
+      retired_at: now,
+      retired_reason: reason,
+      inserted_at: now,
+      updated_at: now
+    }
 
     {1, _} =
-      Repo.update_all(
-        from(p in PublicKey, where: p.public_key == ^public_key and p.key_id == ^key_id),
-        set: set
+      Repo.insert_all(PublicKey, [entry],
+        on_conflict: {:replace, [:state, :retired_at, :retired_reason, :updated_at]},
+        conflict_target: :public_key
       )
 
     :ok

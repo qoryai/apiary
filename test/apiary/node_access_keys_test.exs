@@ -100,6 +100,87 @@ defmodule Apiary.NodeAccessKeysTest do
     end
   end
 
+  describe "a ledger changed outside the application" do
+    test "a key whose row is missing is revoked, rejected and deleted with its node all the same",
+         ctx do
+      %{scope: scope, node: node} = ctx
+      {:ok, approved} = paste(scope, node)
+      %{access_key: pending} = pending_key_fixture(scope, node)
+      {:ok, other} = paste(scope, node_fixture(scope))
+
+      Repo.delete_all(
+        from p in PublicKey,
+          where: p.public_key in ^[approved.public_key, pending.public_key, other.public_key]
+      )
+
+      assert {:ok, _} = AccessKeys.revoke_access_key(scope, approved)
+      assert {:ok, _} = AccessKeys.reject(scope, pending)
+
+      assert %PublicKey{state: :tombstone, retired_reason: :revoked, key_id: key_id} =
+               ledger(approved.public_key)
+
+      assert key_id == approved.key_id
+      assert %PublicKey{state: :tombstone, retired_reason: :rejected} = ledger(pending.public_key)
+
+      other_node = Repo.get!(Apiary.Nodes.Node, other.node_id)
+      assert {:ok, _} = Nodes.delete_node(scope, other_node)
+
+      assert %PublicKey{state: :tombstone, retired_reason: :node_deleted} =
+               ledger(other.public_key)
+    end
+
+    test "a key whose row names another key id is revoked, and its public key stays a tombstone",
+         ctx do
+      %{scope: scope, node: node} = ctx
+      {:ok, key} = paste(scope, node)
+      %{access_key: pending} = pending_key_fixture(scope, node)
+
+      Repo.update_all(from(p in PublicKey, where: p.public_key == ^key.public_key),
+        set: [key_id: "ak_0000000000000000"]
+      )
+
+      Repo.update_all(from(p in PublicKey, where: p.public_key == ^pending.public_key),
+        set: [key_id: "ak_1111111111111111"]
+      )
+
+      assert {:ok, revoked} = AccessKeys.revoke_access_key(scope, key)
+      assert AccessKey.status(revoked) == :revoked
+
+      assert %PublicKey{
+               state: :tombstone,
+               retired_reason: :revoked,
+               key_id: "ak_0000000000000000"
+             } =
+               ledger(key.public_key)
+
+      assert {:ok, _deleted} = Nodes.delete_node(scope, node)
+
+      assert %PublicKey{state: :tombstone, retired_reason: :node_deleted} =
+               ledger(pending.public_key)
+    end
+
+    test "an approval does not trust a key whose row is missing or not its own", ctx do
+      %{scope: scope, node: node} = ctx
+      %{access_key: missing} = pending_key_fixture(scope, node)
+      Repo.delete_all(from p in PublicKey, where: p.public_key == ^missing.public_key)
+
+      {result, log} = ExUnit.CaptureLog.with_log(fn -> AccessKeys.approve(scope, missing) end)
+      assert result == {:error, :integrity}
+      assert log =~ missing.key_id
+      assert AccessKey.status(Repo.get!(AccessKey, missing.id)) == :pending
+
+      {:ok, _} = AccessKeys.reject(scope, missing)
+      %{access_key: foreign} = pending_key_fixture(scope, node)
+
+      Repo.update_all(from(p in PublicKey, where: p.public_key == ^foreign.public_key),
+        set: [key_id: "ak_0000000000000000"]
+      )
+
+      {result, _log} = ExUnit.CaptureLog.with_log(fn -> AccessKeys.approve(scope, foreign) end)
+      assert result == {:error, :integrity}
+    end
+  end
+
   describe "the ledger" do
     test "refuses a key used by another key, on any node of any organisation", ctx do
       %{scope: scope, node: node} = ctx
@@ -246,6 +327,23 @@ defmodule Apiary.NodeAccessKeysTest do
         Repo.update_all(from(k in AccessKey, where: k.id == ^key.id),
           set: [node_id: node_fixture(scope).id]
         )
+      end
+    end
+
+    test "so are the public key, the arrival and the code it arrived by", ctx do
+      %{scope: scope, node: node} = ctx
+      %{access_key: key} = pending_key_fixture(scope, node)
+      %{code: other_code} = pending_key_fixture(scope, node_fixture(scope))
+
+      for set <- [
+            [public_key: ed25519_key_pair().public_key],
+            [arrived_by: :paste],
+            [enrolment_code_id: other_code.id],
+            [enrolment_code_id: nil]
+          ] do
+        assert_raise Postgrex.Error, ~r/access_keys_fixed_at_insert/, fn ->
+          Repo.update_all(from(k in AccessKey, where: k.id == ^key.id), set: set)
+        end
       end
     end
 
