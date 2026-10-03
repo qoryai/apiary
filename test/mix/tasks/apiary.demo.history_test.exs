@@ -1,5 +1,6 @@
 defmodule Mix.Tasks.Apiary.Demo.HistoryTest do
-  # The task writes from several processes at once: the sandbox is shared.
+  # The task writes from processes of its own: the sandbox is shared. One writer at a time, so
+  # none waits on the shared connection long enough to time out on a slow machine.
   use Apiary.DataCase, async: false
 
   import Apiary.OrganisationsFixtures
@@ -29,7 +30,9 @@ defmodule Mix.Tasks.Apiary.Demo.HistoryTest do
         "--repositories",
         "12",
         "--days",
-        "20"
+        "20",
+        "--concurrency",
+        "1"
       ] ++ extra
     )
   end
