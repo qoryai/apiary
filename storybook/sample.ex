@@ -139,8 +139,8 @@ defmodule ApiaryWeb.Storybook.Sample do
   (`nil` for one built in, an LLM provider or a service that ships inside Apiary; else the
   release it was added from: the forge, the publisher's repository, the version it was added
   at and the latest), its roles, the ways it connects (`:api`, `:mcp` or both), and the settings it declares, each
-  plain, with its value, or secret, linked to a workspace secret by name and environment or
-  `nil` while it needs one.
+  plain, with its value, or secret, linked to a workspace secret by its name, and by a value
+  ID when that secret holds several values, or `nil` while it needs one.
   """
   @spec integrations() :: [map()]
   def integrations do
@@ -158,7 +158,7 @@ defmodule ApiaryWeb.Storybook.Sample do
           setting("base_url", "API base URL", "https://api.github.com",
             hint: "Another for GitHub Enterprise Server."
           ),
-          secret("private_key", "The GitHub App's private key.", "GITHUB_APP_KEY"),
+          secret("private_key", "The GitHub App's private key.", "GITHUB_APP_KEY", "main-app"),
           secret(
             "webhook_secret",
             "Checks that an event came from GitHub.",
@@ -327,16 +327,10 @@ defmodule ApiaryWeb.Storybook.Sample do
     }
   end
 
-  # A secret setting, linked to the workspace secret `linked` in production, or to none.
-  defp secret(id, about, linked) do
-    %{
-      id: id,
-      kind: :secret,
-      about: about,
-      linked: linked,
-      environment: if(linked, do: "production")
-    }
-  end
+  # A secret setting, linked to the workspace secret `linked`, to its value `value_id` when
+  # it holds several, or to none.
+  defp secret(id, about, linked, value_id \\ nil),
+    do: %{id: id, kind: :secret, about: about, linked: linked, value_id: value_id}
 
   defp setting(id, label, value, opts \\ []) do
     %{
@@ -446,87 +440,40 @@ defmodule ApiaryWeb.Storybook.Sample do
   end
 
   @doc """
-  The workspace's secrets, each a name in an environment, and what uses it; and its
-  variables, which are not secret, as Settings › Secrets and variables lists them.
+  The workspace's secrets and variables, as Settings › Secrets and variables lists them. A
+  secret is a name and one value, or several values, each under a value ID its maker named
+  (`values`, `nil` for one), with the integrations that link it and, for one of several
+  values, which. A variable is a name and a plain value at a level: the workspace, or one
+  repository, whose value wins for that repository.
   """
   @spec workspace_secrets() :: %{secrets: [map()], variables: [map()]}
   def workspace_secrets do
     %{
       secrets: [
-        %{
-          name: "GITHUB_APP_KEY",
-          environment: "production",
-          used_by: ["github"],
-          updated: "2 Sept 2026"
-        },
-        %{name: "GITHUB_APP_KEY", environment: "staging", used_by: [], updated: "2 Sept 2026"},
-        %{
-          name: "GITHUB_WEBHOOK_SECRET",
-          environment: "production",
-          used_by: ["github"],
-          updated: "2 Sept 2026"
-        },
-        %{
-          name: "ANTHROPIC_API_KEY",
-          environment: "production",
-          used_by: ["anthropic"],
-          updated: "28 Sept 2026"
-        },
-        %{
-          name: "OPENAI_API_KEY",
-          environment: "production",
-          used_by: ["openai"],
-          updated: "9 Sept 2026"
-        },
-        %{
-          name: "GATEWAY_KEY",
-          environment: "production",
-          used_by: ["model_gateway"],
-          updated: "21 Sept 2026"
-        },
-        %{
-          name: "JIRA_API_TOKEN",
-          environment: "production",
-          used_by: ["jira"],
-          updated: "14 Sept 2026"
-        },
-        %{
-          name: "WEBHOOK_SIGNING_SECRET",
-          environment: "production",
-          used_by: ["webhook"],
-          updated: "3 Sept 2026"
-        },
-        %{
-          name: "INTERNAL_API_SECRET",
-          environment: "production",
-          used_by: ["internal_api"],
-          updated: "18 Sept 2026"
-        },
-        %{
-          name: "REGISTRY_TOKEN",
-          environment: "production",
-          used_by: ["registry"],
-          updated: "2 Sept 2026"
-        },
-        %{
-          name: "DOCS_SEARCH_TOKEN",
-          environment: "production",
-          used_by: ["docs_search"],
-          updated: "24 Sept 2026"
-        }
+        secret_of("GITHUB_APP_KEY", [{"github", "main-app"}], "2 Sept 2026",
+          values: ["main-app", "bot-app"]
+        ),
+        secret_of("GITHUB_WEBHOOK_SECRET", [{"github", nil}], "2 Sept 2026"),
+        secret_of("ANTHROPIC_API_KEY", [{"anthropic", nil}], "28 Sept 2026"),
+        secret_of("OPENAI_API_KEY", [{"openai", nil}], "9 Sept 2026"),
+        secret_of("GATEWAY_KEY", [{"model_gateway", nil}], "21 Sept 2026"),
+        secret_of("JIRA_API_TOKEN", [{"jira", nil}], "14 Sept 2026"),
+        secret_of("WEBHOOK_SIGNING_SECRET", [{"webhook", nil}], "3 Sept 2026"),
+        secret_of("INTERNAL_API_SECRET", [{"internal_api", nil}], "18 Sept 2026"),
+        secret_of("REGISTRY_TOKEN", [{"registry", nil}], "2 Sept 2026"),
+        secret_of("DOCS_SEARCH_TOKEN", [{"docs_search", nil}], "24 Sept 2026")
       ],
       variables: [
-        %{name: "DEFAULT_BRANCH", value: "main", environment: "every environment"},
-        %{name: "NODE_ENV", value: "production", environment: "production"},
-        %{name: "NODE_ENV", value: "staging", environment: "staging"},
-        %{
-          name: "SHOP_API_URL",
-          value: "https://internal.example.com/api",
-          environment: "production"
-        }
+        %{name: "DEFAULT_BRANCH", value: "main", repository: nil},
+        %{name: "SHOP_API_URL", value: "https://internal.example.com/api", repository: nil},
+        %{name: "TEST_COMMAND", value: "make test", repository: nil},
+        %{name: "TEST_COMMAND", value: "npm test", repository: "acme/shared-ui"}
       ]
     }
   end
+
+  defp secret_of(name, used_by, updated, opts \\ []),
+    do: %{name: name, values: opts[:values], used_by: used_by, updated: updated}
 
   @doc """
   The workspace's nodes, as the mock-ups of Nodes draw them (`storybook/screens/`): a
@@ -541,7 +488,7 @@ defmodule ApiaryWeb.Storybook.Sample do
     * build-02, last seen 2 hours ago, its first key awaiting approval;
     * mac-mini, last seen 3 days ago, its key revoked;
     * ci-runners, a pool of at most 10 with 3 running;
-    * preview-envs, a pool without a limit with 5 running;
+    * spot-runners, a pool without a limit with 5 running;
     * nightly-checks, a pool of at most 4 with none running.
   """
   @spec nodes() :: [map()]
@@ -620,7 +567,7 @@ defmodule ApiaryWeb.Storybook.Sample do
         runs: 388,
         created: "dana, 3 Sept 2026"
       ),
-      node("preview_envs", "preview-envs", :pool,
+      node("spot_runners", "spot-runners", :pool,
         limit: nil,
         instances: [
           instance("i_5R2HM8KD1XC99cx1dk8mh2", 3, "0.6.1", ago.(2 * 3600 + 600)),

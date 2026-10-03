@@ -182,8 +182,8 @@ defmodule ApiaryWeb.Storybook.Screens.Integration do
   defp secrets(assigns) do
     ~H"""
     <p class="max-w-[72ch] text-[13px]/[18px] text-muted">
-      Each secret setting the integration declares is linked to a secret of the workspace, by
-      its name and environment. The integration reads it when a run needs it; the run never
+      Each secret setting the integration declares is linked to a secret of the workspace, and
+      to one of its values by value ID when it holds several. The integration reads it when a run needs it; the run never
       sees it. Its plain settings are under <a
         href={@tab_path.("_settings")}
         class="text-accent hover:underline"
@@ -206,8 +206,8 @@ defmodule ApiaryWeb.Storybook.Screens.Integration do
         <span :if={secret.linked} class="inline-flex flex-wrap items-baseline gap-1.5">
           <.icon name="hero-arrow-right-micro" class="size-3.5 self-center text-faint" />
           <span class="q-mono text-base-content">{secret.linked}</span>
-          <span class="text-faint" aria-hidden="true">·</span>
-          <span>{secret.environment}</span>
+          <span :if={secret.value_id} class="text-faint" aria-hidden="true">·</span>
+          <span :if={secret.value_id} class="q-mono">{secret.value_id}</span>
         </span>
         <.state_word :if={!secret.linked} id={"secret-#{secret.id}-state"} hot>
           Needs a secret

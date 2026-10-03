@@ -60,8 +60,9 @@ defmodule ApiaryWeb.Storybook.Screens.Settings do
 
   defp subtitle(:secrets),
     do:
-      "A secret is given to the integrations that link it, never shown again; a variable is a " <>
-        "plain value every run reads. Each is set per environment."
+      "A secret is given to the integrations that link it and never shown again: one value, " <>
+        "or several, each under a value ID you name. A variable is a plain value runs read, " <>
+        "set for the workspace or for one repository."
 
   defp subtitle(:people), do: "The people of Acme who reach this workspace, and their level."
   defp subtitle(:runs), do: "How long the workspace keeps what its runs recorded."
@@ -103,15 +104,18 @@ defmodule ApiaryWeb.Storybook.Screens.Settings do
         <:col :let={{secret, _i}} label="Name" kind="title">
           <span class="q-title-mono">{secret.name}</span>
         </:col>
-        <:col :let={{secret, _i}} label="Environment">{secret.environment}</:col>
+        <:col :let={{secret, _i}} label="Values">
+          <span :if={!secret.values} class="text-muted">One value</span>
+          <span :if={secret.values} class="q-mono">{Enum.join(secret.values, ", ")}</span>
+        </:col>
         <:col :let={{secret, _i}} label="Used by">
           <span :if={secret.used_by == []} class="q-faint">Not linked</span>
           <a
-            :for={id <- secret.used_by}
+            :for={{id, value_id} <- secret.used_by}
             href={Mockup.path("integration", String.to_atom("#{id}_secrets"), @theme)}
             class="hover:underline"
           >
-            {@names[id]}
+            {@names[id]}<span :if={value_id} class="q-mono text-muted"> · {value_id}</span>
           </a>
         </:col>
         <:col :let={{secret, _i}} label="Updated" from="sm">{secret.updated}</:col>
@@ -136,8 +140,17 @@ defmodule ApiaryWeb.Storybook.Screens.Settings do
           <span class="q-title-mono">{variable.name}</span>
         </:col>
         <:col :let={{variable, _i}} label="Value"><span class="q-mono">{variable.value}</span></:col>
-        <:col :let={{variable, _i}} label="Environment">{variable.environment}</:col>
+        <:col :let={{variable, _i}} label="Level">
+          <span :if={!variable.repository}>Workspace</span>
+          <span :if={variable.repository} class="inline-flex items-baseline gap-1.5">
+            Repository <span class="q-mono">{variable.repository}</span>
+          </span>
+        </:col>
       </.table>
+      <p class="text-[12.5px]/[18px] text-faint">
+        A variable set for a repository wins over the workspace's for that repository's runs:
+        acme/shared-ui runs npm test, every other repository make test.
+      </p>
     </SettingsComponents.part>
     """
   end
