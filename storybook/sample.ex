@@ -368,14 +368,20 @@ defmodule ApiaryWeb.Storybook.Sample do
     do: %{id: id, name: name, roles: roles, ways: ways, added: added}
 
   @doc """
-  What Add integration › From GitHub found in a repository's `description.json`: the
-  integration it describes, the ways it connects, the settings it declares, secret and
-  plain, and the file itself.
+  What Add integration › From a release found in a release's `description.json`, as its
+  preview shows it: the integration it describes, its version and publisher, the ways it
+  connects, the settings it declares, secret and plain, and the file itself. The release is
+  the same one wherever it is published: on GitHub as `repo`, on GitLab as `project`, on the
+  Forgejo or Gitea server `host` as `repo`, or at `url`.
   """
   @spec described() :: map()
   def described do
     %{
+      publisher: "acme",
       repo: "acme/qory-ticket-desk",
+      project: "acme/tools/qory-ticket-desk",
+      host: "git.example.com",
+      url: "https://downloads.example.com/qory-ticket-desk/0.6.0/description.json",
       version: "0.6.0",
       name: "Ticket desk",
       roles: [:task_source, :output],
@@ -397,6 +403,46 @@ defmodule ApiaryWeb.Storybook.Sample do
       }
       """
     }
+  end
+
+  @doc """
+  The integrations Add integration › From a release suggests: Qory's own, each on GitHub at
+  its latest version, with what its `description.json` holds, in the shape of `described/0`.
+  Choosing one fills its repository and version.
+  """
+  @spec suggested() :: [map()]
+  def suggested do
+    [
+      %{
+        id: "qory_github",
+        publisher: "qoryai",
+        repo: "qoryai/qory-github",
+        version: "0.1.0",
+        name: "GitHub",
+        roles: [:task_source, :output, :service],
+        ways: [:api, :mcp],
+        about:
+          "Reads issues as tasks, opens a change request with what a run did, and gives each run a token for the repositories it works on.",
+        secrets: ["private_key", "webhook_secret"],
+        settings: ["App ID", "API base URL", "Branch prefix", "Open change requests as drafts"],
+        json: """
+        {
+          "name": "GitHub",
+          "version": "0.1.0",
+          "roles": ["task_source", "output", "service"],
+          "connects": ["api", "mcp"],
+          "settings": [
+            {"name": "app_id", "label": "App ID", "type": "string", "required": true},
+            {"name": "base_url", "label": "API base URL", "type": "url"},
+            {"name": "private_key", "label": "Private key", "secret": true, "required": true},
+            {"name": "webhook_secret", "label": "Webhook secret", "secret": true},
+            {"name": "branch_prefix", "label": "Branch prefix", "type": "string"},
+            {"name": "drafts", "label": "Open change requests as drafts", "type": "boolean"}
+          ]
+        }
+        """
+      }
+    ]
   end
 
   @doc """
