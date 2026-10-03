@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.Activity.Describer.Core do
   @moduledoc """
   The core's words for the Activity page (`ApiaryWeb.Activity.Describer`): the actions of
-  the organisation, its members and invitations, its workspaces, their access keys, runs,
+  the organisation, its members and invitations, its workspaces, their access keys, nodes, runs,
   retention and security policy, the trail's own pruning and the instance's commands.
   The page asks it after the edition's describer, and it says nil for an action it does
   not know, as it does for the edition's.
@@ -41,6 +41,9 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"access_key.create"), do: gettext("Access key created")
   def label(:"access_key.rotate"), do: gettext("Access key rotated")
   def label(:"access_key.revoke"), do: gettext("Access key revoked")
+  def label(:"node.create"), do: gettext("Node created")
+  def label(:"node.edit"), do: gettext("Node changed")
+  def label(:"node.delete"), do: gettext("Node deleted")
   def label(:"run.close"), do: gettext("Run closed")
   def label(:"retention.edit"), do: gettext("Retention changed")
   def label(:"security_policy.edit"), do: gettext("Policy rules changed")
@@ -139,6 +142,9 @@ defmodule ApiaryWeb.Activity.Describer.Core do
 
   defp said(:"access_key.rotate", _details, _actor), do: gettext("Rotated an access key")
   defp said(:"access_key.revoke", _details, _actor), do: gettext("Revoked an access key")
+  defp said(:"node.create", _details, _actor), do: gettext("Created a node")
+  defp said(:"node.edit", _details, _actor), do: gettext("Changed a node")
+  defp said(:"node.delete", _details, _actor), do: gettext("Deleted a node")
   defp said(:"run.close", _details, _actor), do: gettext("Closed a run")
 
   defp said(:"retention.edit", _details, _actor),
@@ -207,6 +213,9 @@ defmodule ApiaryWeb.Activity.Describer.Core do
           nil -> text(gettext("An access key"))
         end
 
+      "node" ->
+        text(names.nodes[id] || gettext("A node"))
+
       "run" ->
         case names.runs[id] do
           nil ->
@@ -267,6 +276,23 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def change(:"access_key.create", _before, %{"key_id" => key_id}, _details),
     do: [{:m, key_id}]
 
+  def change(:"node.create", _before, %{"kind" => kind, "public_id" => id}, _details),
+    do: [[kind_word(kind), " ", {:m, id}]]
+
+  def change(:"node.edit", before, after_, _details) do
+    for {field, label} <- [
+          {"name", gettext("Name")},
+          {"instance_limit", gettext("Instance limit")}
+        ],
+        Map.has_key?(after_, field) do
+      rich_gettext("%{what}: %{from} → %{to}",
+        what: label,
+        from: limit_or_name(field, before[field]),
+        to: limit_or_name(field, after_[field])
+      )
+    end
+  end
+
   def change(:"run.close", before, after_, _details),
     do: from_to(state(before["state"]), state(after_["state"]))
 
@@ -320,6 +346,13 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp level("admin"), do: gettext("Admin")
   defp level("member"), do: gettext("Member")
   defp level(other), do: other
+
+  defp kind_word("pool"), do: gettext("Node pool")
+  defp kind_word(_node), do: gettext("Node")
+
+  defp limit_or_name("instance_limit", nil), do: gettext("No limit")
+  defp limit_or_name("instance_limit", n) when is_integer(n), do: Format.number(n)
+  defp limit_or_name(_field, value), do: to_string(value)
 
   defp state(nil), do: nil
   defp state(state), do: RunComponents.state_label(state)

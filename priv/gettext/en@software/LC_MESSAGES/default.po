@@ -1804,6 +1804,11 @@ msgstr ""
 msgid "A name is 1 to 64 lower-case letters, digits, dots, dashes or underscores, and starts with a letter or digit."
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "A node"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
 msgid "A path starts with / and may end in one *; no other wildcard and no query, such as %{example}."
@@ -2708,6 +2713,11 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
+msgid "Changed a node"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
 msgid "Changed a policy rule"
 msgstr ""
 
@@ -3132,6 +3142,11 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
+msgid "Created a node"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
 msgid "Created an access key"
 msgstr ""
 
@@ -3314,6 +3329,11 @@ msgstr ""
 #: lib/apiary_web/controllers/jump_controller.ex
 #, elixir-autogen, elixir-format
 msgid "Delete your account…"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Deleted a node"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -4478,6 +4498,11 @@ msgstr "In the repository %{target}, which has rules of its own: %{refusal}"
 msgid "In the workspace's baseline: %{refusal}"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Instance limit"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Interactive"
@@ -5385,6 +5410,7 @@ msgstr ""
 msgid "Most used"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/live/settings_live.ex
 #: lib/apiary_web/live/target_live/index.ex
@@ -5665,6 +5691,11 @@ msgstr ""
 msgid "No host rules yet. Add the first above."
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "No limit"
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "No log recorded."
@@ -5933,6 +5964,31 @@ msgid "Nobody will be left who can cancel the deletion of the organisation you a
 msgid_plural "Nobody will be left who can cancel the deletion of the organisations you are the only owner of: they are purged when their grace period is over."
 msgstr[0] ""
 msgstr[1] ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Node"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Node changed"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Node created"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Node deleted"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Node pool"
+msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format

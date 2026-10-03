@@ -88,6 +88,9 @@ The baseline, on an empty database: the accounts and their tokens (`users`,
 `retention_runs`, `audit_entries`, the instance's own tables (`purged_organisations`,
 `instance_settings`) and Oban's.
 
+`nodes`: a workspace's nodes and node pools, with the trigger `nodes_kind_fixed`, which
+refuses a change of a node's kind.
+
 ### Upgrading
 
 Nothing to upgrade from: this is the first release. Install it on an empty database.

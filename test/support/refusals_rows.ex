@@ -250,13 +250,14 @@ defmodule ApiaryWeb.RefusalsRows do
   @impl true
   def exempt do
     %{
-      reads: [:"run.read", :"run.read_log", :"security_policy.read", :"audit.read"],
+      reads: [:"run.read", :"run.read_log", :"security_policy.read", :"audit.read", :"node.read"],
       jobs: [:"organisation.purge", :"workspace.purge", :"audit.prune"],
       contract: [:"run.post_events", :"run_configuration.fetch"],
       token: [:"invitation.accept"],
       release: [:"instance_admin.grant", :"instance_admin.revoke"],
       sign_up: [:"organisation.create"],
-      edition: [:"workspace.create"]
+      edition: [:"workspace.create"],
+      no_page_yet: [:"node.create", :"node.edit", :"node.delete"]
     }
   end
 

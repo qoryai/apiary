@@ -116,6 +116,11 @@ msgstr ""
 msgid "is already the label of an active key in this workspace"
 msgstr ""
 
+#: lib/apiary/nodes/node.ex
+#, elixir-autogen, elixir-format
+msgid "is already the name of a node in this workspace"
+msgstr ""
+
 #: lib/apiary/organisations/workspace.ex
 #, elixir-autogen, elixir-format
 msgid "is already the name of a workspace in this organisation"
@@ -216,6 +221,7 @@ msgid "must not contain a web address; a name like acme.io is fine"
 msgstr ""
 
 #: lib/apiary/access_keys/access_key.ex
+#: lib/apiary/nodes/node.ex
 #: lib/apiary/organisations/organisation.ex
 #: lib/apiary/organisations/workspace.ex
 #, elixir-autogen, elixir-format

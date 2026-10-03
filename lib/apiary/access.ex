@@ -130,6 +130,20 @@ defmodule Apiary.Access do
       roles: @members
     ),
     Action.new(:"access_key.revoke", "revoke an access key", roles: @members),
+    # The workspace's nodes and node pools, the places its runs run.
+    Action.new(:"node.read", "read the workspace's nodes and node pools, and each one's page",
+      roles: @members,
+      audited: {:not, @read}
+    ),
+    Action.new(
+      :"node.create",
+      "make a node or a node pool, whose kind is fixed from then on",
+      roles: @admins
+    ),
+    Action.new(:"node.edit", "rename a node, and change a node pool's instance limit",
+      roles: @admins
+    ),
+    Action.new(:"node.delete", "delete a node or a node pool", roles: @admins),
     # The record.
     Action.new(:"run.read", "read the runs, their outcomes and the connections",
       feature: :observability,
@@ -249,7 +263,7 @@ defmodule Apiary.Access do
     once, checked, and kept for the node: an action named twice, a role or a feature
     nobody knows, stops it. An action that is in neither raises `ArgumentError`.
   - **`subject`** is the thing acted on: an organisation, a workspace, or a row of one, such
-    as a run, a rule, an access key, an invitation or a membership, which carries
+    as a run, a rule, an access key, a node, an invitation or a membership, which carries
     `organisation_id`, and `workspace_id` when it belongs to a workspace. Deleting a
     workspace and cancelling its deletion are asked of the organisation: an owner or an
     admin deletes any workspace of it, from the organisation's settings.
