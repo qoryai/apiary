@@ -355,6 +355,41 @@ defmodule Apiary.VariablesTest do
     end
   end
 
+  describe "repository overrides" do
+    test "name the repositories that set a workspace's name, and those a lock sets aside",
+         %{scope: scope, site: site} do
+      shop = target!(scope, "example/shop")
+      set!(scope, :workspace, "NODE_ENV", "production")
+      set!(scope, :workspace, "REGION", "eu-west-1")
+      set!(scope, site, "NODE_ENV", "test")
+      set!(scope, site, "SITE_ONLY", "yes")
+      set!(scope, shop, "REGION", "us-east-1")
+      log = set!(scope, :workspace, "LOG_LEVEL", "info")
+      set!(scope, shop, "LOG_LEVEL", "debug")
+      {:ok, _} = Variables.lock_variable(scope, log)
+
+      %{scope: member} = member_fixture(scope)
+      assert {:ok, overrides} = Variables.repository_overrides(member)
+
+      assert Map.keys(overrides) |> Enum.sort() == ["log_level", "node_env", "region"]
+      assert [%{target: %Target{path: "example/site"}, state: :own}] = overrides["node_env"]
+      assert [%{target: %Target{path: "example/shop"}, state: :own}] = overrides["region"]
+      assert [%{target: %Target{path: "example/shop"}, state: :ignored}] = overrides["log_level"]
+    end
+
+    test "are out of reach of another organisation and a person no longer a member",
+         %{scope: scope, site: site} do
+      set!(scope, :workspace, "NODE_ENV", "production")
+      set!(scope, site, "NODE_ENV", "test")
+
+      assert Variables.repository_overrides(sign_up_fixture().scope) == {:ok, %{}}
+
+      %{scope: gone, membership: membership} = member_fixture(scope)
+      {:ok, _} = Apiary.Organisations.remove_member(scope, membership.id)
+      assert Variables.repository_overrides(gone) == {:error, :forbidden}
+    end
+  end
+
   describe "who, where and the trail" do
     test "a member reads the variables and changes none", %{scope: scope, site: site} do
       variable = set!(scope, :workspace, "NODE_ENV", "production")
