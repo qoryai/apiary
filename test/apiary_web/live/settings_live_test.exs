@@ -117,7 +117,7 @@ defmodule ApiaryWeb.SettingsLiveTest do
 
     test "sets the retention, within the bounds, and clears it", %{conn: conn, scope: scope} do
       {:ok, lv, html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/retention")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/runs")
 
       assert html =~ "This workspace keeps everything."
       assert html =~ "Nothing is pruned: this workspace keeps everything."
@@ -173,7 +173,7 @@ defmodule ApiaryWeb.SettingsLiveTest do
       {:ok, _} = Apiary.Retention.update_retention(scope, %{events_retention_days: 30})
 
       {:ok, lv, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/retention")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/runs")
 
       # A text field, so what was typed reaches the server as it is: a number field sends
       # an empty value for letters, which would read as keeping everything.
@@ -223,7 +223,7 @@ defmodule ApiaryWeb.SettingsLiveTest do
       assert %{runs_pruned: 0} = Apiary.Retention.prune_workspace(other_workspace, now: now)
 
       {:ok, lv, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/retention")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/runs")
 
       assert [mine] = Apiary.Retention.list_retention_runs(%{scope | workspace: workspace})
 
@@ -261,7 +261,7 @@ defmodule ApiaryWeb.SettingsLiveTest do
       refute has_element?(lv, "button", "Save")
 
       {:ok, lv, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/retention")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/runs")
 
       assert has_element?(lv, "input#retention_events_retention_days[disabled]")
       assert has_element?(lv, "input#retention_log_retention_days[disabled]")
@@ -314,7 +314,7 @@ defmodule ApiaryWeb.SettingsLiveTest do
       # Its own sections only: no other kind's, no cross-link, no Elsewhere.
       refute has_element?(
                lv,
-               "#settings-tab-general, #settings-tab-keys, #settings-tab-retention"
+               "#settings-tab-general, #settings-tab-keys, #settings-tab-runs"
              )
 
       refute has_element?(lv, "#settings-tab-workspace_settings, #settings-tab-your_settings")
@@ -352,22 +352,41 @@ defmodule ApiaryWeb.SettingsLiveTest do
 
     test "the workspace's list, and a section a page", %{conn: conn, scope: scope} do
       base = ~p"/#{scope.organisation}/#{scope.workspace}/settings"
-      {:ok, lv, _html} = live(conn, base <> "/retention")
+      {:ok, lv, _html} = live(conn, base <> "/runs")
 
-      for {key, path} <- [
-            general: base,
-            keys: base <> "/keys",
-            retention: base <> "/retention"
-          ] do
+      sections = [
+        general: base,
+        keys: base <> "/keys",
+        runs: base <> "/runs"
+      ]
+
+      for {key, path} <- sections do
         assert has_element?(lv, ~s(#settings-tabs #settings-tab-#{key}[href="#{path}"]))
       end
+
+      # In that order: General, Access keys, Runs.
+      assert lv
+             |> element("#settings-tabs")
+             |> render()
+             |> LazyHTML.from_fragment()
+             |> LazyHTML.query("a")
+             |> LazyHTML.attribute("id") ==
+               Enum.map(sections, fn {key, _path} -> "settings-tab-#{key}" end)
 
       # No link to the organisation's settings, which are its own place.
       refute has_element?(lv, "#settings-tab-organisation, #settings-tab-organisation_settings")
 
-      assert has_element?(lv, "#settings-tab-retention[aria-current=page]")
+      assert has_element?(lv, "#settings-tab-runs[aria-current=page]", "Runs")
       assert has_element?(lv, "h1", "Workspace settings")
-      assert has_element?(lv, "h2#settings-section-title", "Retention")
+      assert has_element?(lv, "h2#settings-section-title", "Runs")
+
+      assert has_element?(
+               lv,
+               "#settings-section-runs .q-settings-head-sub",
+               "How long this workspace keeps runs, their events and their logs."
+             )
+
+      assert page_title(lv) =~ "Runs · Workspace settings"
       assert has_element?(lv, "#retention-form")
       refute has_element?(lv, "#workspace-form")
 
@@ -425,7 +444,7 @@ defmodule ApiaryWeb.SettingsLiveTest do
 
       # nor the workspace's
       {:ok, lv, _html} = live(conn, ~p"/#{owner.organisation}/#{owner.workspace}/settings")
-      assert has_element?(lv, "#settings-tab-retention")
+      assert has_element?(lv, "#settings-tab-runs")
       refute has_element?(lv, "#danger-zone")
     end
   end
@@ -443,10 +462,21 @@ defmodule ApiaryWeb.SettingsLiveTest do
             {~p"/#{org}/members/invite", ~p"/#{org}/settings/people/invite"},
             {~p"/#{org}/#{ws}/keys", ~p"/#{org}/#{ws}/settings/keys"},
             {~p"/#{org}/#{ws}/keys/new", ~p"/#{org}/#{ws}/settings/keys/new"},
-            {~p"/#{org}/#{ws}/keys?open=1", ~p"/#{org}/#{ws}/settings/keys?open=1"}
+            {~p"/#{org}/#{ws}/keys?open=1", ~p"/#{org}/#{ws}/settings/keys?open=1"},
+            {~p"/#{org}/#{ws}/settings/retention", ~p"/#{org}/#{ws}/settings/runs"},
+            {~p"/#{org}/#{ws}/settings/retention?from=mail",
+             ~p"/#{org}/#{ws}/settings/runs?from=mail"}
           ] do
         assert redirected_to(get(conn, old)) == new
       end
+    end
+
+    test "a workspace's Retention, renamed Runs, is found there, not moved for good",
+         %{conn: conn, scope: scope} do
+      conn = get(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/retention")
+
+      assert redirected_to(conn, 302) ==
+               ~p"/#{scope.organisation}/#{scope.workspace}/settings/runs"
     end
   end
 end

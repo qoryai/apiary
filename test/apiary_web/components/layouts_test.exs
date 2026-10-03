@@ -249,7 +249,7 @@ defmodule ApiaryWeb.LayoutsTest do
       for {key, href} <- [
             general: ~p"/#{org}/#{ws}/settings",
             keys: ~p"/#{org}/#{ws}/settings/keys",
-            retention: ~p"/#{org}/#{ws}/settings/retention"
+            runs: ~p"/#{org}/#{ws}/settings/runs"
           ] do
         assert has_element?(view, "#main #settings-tabs a#settings-tab-#{key}[href='#{href}']"),
                "#{key}"

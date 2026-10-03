@@ -4383,7 +4383,7 @@ msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
-msgid "How long this workspace keeps a run's events and log output."
+msgid "How long this workspace keeps runs, their events and their logs."
 msgstr ""
 
 #: lib/apiary_web/live/user_live/settings.ex
@@ -7041,8 +7041,6 @@ msgid "Results"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
-#: lib/apiary_web/components/settings_components.ex
-#: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Retention"
 msgstr ""
@@ -7340,9 +7338,11 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/controllers/jump_controller.ex
 #: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/run_live/index.ex
+#: lib/apiary_web/live/settings_live.ex
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Runs"
@@ -10391,11 +10391,6 @@ msgstr ""
 msgid "policy"
 msgstr ""
 
-#: lib/apiary_web/controllers/jump_controller.ex
-#, elixir-autogen, elixir-format
-msgid "prune keep"
-msgstr ""
-
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "reads requests to %{hosts}"
@@ -10414,6 +10409,11 @@ msgstr ""
 #: lib/apiary/runs/record/timeline.ex
 #, elixir-autogen, elixir-format
 msgid "response"
+msgstr ""
+
+#: lib/apiary_web/controllers/jump_controller.ex
+#, elixir-autogen, elixir-format
+msgid "retention prune keep"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex

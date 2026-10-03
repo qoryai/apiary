@@ -101,7 +101,8 @@ navigation it is in.
 
 - **A workspace's** (`/:org/:workspace/settings/…`), from the workspace sidebar's
   Settings: General (name, slug, and its danger zone), Access keys (`/settings/keys`),
-  Retention.
+  Runs (`/settings/runs`: how long the workspace keeps runs, their events and their logs;
+  `/settings/retention`, its path before, sends on with its query).
 - **An organisation's** (`/:org/settings/…`), from the organisation's pages (the
   breadcrumb's organisation leads to its overview, whose sidebar has Settings): General
   (name, slug, owners, and its danger zone), People (`/settings/people`: members,
@@ -154,8 +155,9 @@ workspace. A reader who may not delete the scope sees no danger zone, and the di
 path sends them to General and says why.
 
 Invite, rotate, revoke, remove, suspend and the deletions stay dialogs over their
-section, each at a path of its own. The old paths, `/:org/members/…` and
-`/:org/:workspace/keys/…`, send on to the new ones (`ApiaryWeb.MovedController`).
+section, each at a path of its own. The old paths, `/:org/members/…`,
+`/:org/:workspace/keys/…` and `/:org/:workspace/settings/retention`, send on to the new
+ones (`ApiaryWeb.MovedController`).
 
 An organisation's own path, `/:org`, is its overview (`ApiaryWeb.OrganisationLive`): the
 workspaces the person reaches, what each is doing, and the organisation's people; its

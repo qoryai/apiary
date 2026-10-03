@@ -5,11 +5,13 @@ defmodule ApiaryWeb.MovedController do
   (`ApiaryWeb.SettingsComponents`): an organisation's members, `/:org/members/…`, are its
   people, `/:org/settings/people/…`, and a workspace's access keys,
   `/:org/:workspace/keys/…`, are `/:org/:workspace/settings/keys/…`, and its Activity,
-  `/:org/activity`, is the Audit log of its settings, `/:org/settings/audit-log`. A page that took a new
-  name, for good: the workspace's connections, `/:org/:workspace/connections`, are its
-  Network access, `/:org/:workspace/network`, and a run's Connections tab,
-  `/runs/:run_id/connections`, is `/runs/:run_id/network`; those answer 301, moved
-  permanently. A bookmark, a link in an old message and a page of a browser's history still
+  `/:org/activity`, is the Audit log of its settings, `/:org/settings/audit-log`. A section
+  of the settings that took a new name: a workspace's Retention,
+  `/:org/:workspace/settings/retention`, is its Runs, `/:org/:workspace/settings/runs`.
+  Those answer 302, found. A page that took a new name, for good: the workspace's
+  connections, `/:org/:workspace/connections`, are its Network access,
+  `/:org/:workspace/network`, and a run's Connections tab, `/runs/:run_id/connections`, is
+  `/runs/:run_id/network`; those answer 301, moved permanently. A bookmark, a link in an old message and a page of a browser's history still
   land; the router answers the new paths only.
   """
   use ApiaryWeb, :controller
@@ -25,6 +27,9 @@ defmodule ApiaryWeb.MovedController do
 
         [organisation, workspace, "keys" | rest] ->
           {:found, [organisation, workspace, "settings", "keys" | rest]}
+
+        [organisation, workspace, "settings", "retention"] ->
+          {:found, [organisation, workspace, "settings", "runs"]}
 
         [organisation, workspace, "connections"] ->
           {:moved_permanently, [organisation, workspace, "network"]}
