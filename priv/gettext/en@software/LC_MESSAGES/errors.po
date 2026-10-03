@@ -211,6 +211,11 @@ msgstr ""
 msgid "is the value ID the first value takes"
 msgstr ""
 
+#: lib/apiary/secrets/secret.ex
+#, elixir-autogen, elixir-format
+msgid "is too long"
+msgstr ""
+
 #: lib/apiary/organisations/slug.ex
 #, elixir-autogen, elixir-format
 msgid "may hold lowercase letters, digits and hyphens, and starts and ends with a letter or a digit"

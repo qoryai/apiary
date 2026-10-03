@@ -58,9 +58,14 @@ defmodule Apiary.Secrets.Secret do
           "must start with a letter or _ and hold only letters, digits and _, at most 128"
         )
     )
-    |> validate_length(:note, max: @note_max)
+    # Counted as the database counts it (`char_length`), in code points.
+    |> validate_length(:note, max: @note_max, count: :codepoints)
     |> validate_format(:note, ~r/\A[^[:cntrl:]]*\z/u,
       message: dgettext_noop("errors", "must not contain control characters")
+    )
+    |> check_constraint(:note,
+      name: :secrets_note_length,
+      message: dgettext_noop("errors", "is too long")
     )
     |> unique_constraint(:name,
       name: :secrets_name_index,

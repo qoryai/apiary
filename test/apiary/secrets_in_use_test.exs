@@ -88,5 +88,7 @@ defmodule Apiary.SecretsInUseTest do
   @tag with_features: [:observability]
   test "without the security feature the secrets are not found", %{scope: scope} do
     assert Secrets.create_secret(scope, %{name: "API_KEY", value: "x"}) == {:error, :not_found}
+    assert Secrets.list_secrets(scope) == {:error, :not_found}
+    assert Secrets.get_secret(scope, "sec_0123456789abcdef") == {:error, :not_found}
   end
 end

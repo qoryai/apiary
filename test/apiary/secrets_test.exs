@@ -216,6 +216,22 @@ defmodule Apiary.SecretsTest do
       assert {:ok, %Secret{name: "two"}} = Secrets.update_secret(scope, two, %{name: "two"})
     end
 
+    test "a note's 500 characters are counted as the database counts them", %{scope: scope} do
+      secret = create!(scope, %{name: "API_KEY"})
+      precomposed = "\u00e9"
+      decomposed = "e\u0301"
+
+      assert {:ok, %{note: note}} =
+               Secrets.update_secret(scope, secret, %{note: String.duplicate(precomposed, 500)})
+
+      assert String.length(note) == 500
+
+      for note <- [String.duplicate(precomposed, 501), String.duplicate(decomposed, 500)] do
+        assert {:error, changeset} = Secrets.update_secret(scope, secret, %{note: note})
+        assert changeset.errors[:note]
+      end
+    end
+
     test "a note is optional, one line, at most 500 characters", %{scope: scope} do
       secret = create!(scope, %{name: "API_KEY", note: "  "})
       assert secret.note == nil
@@ -336,6 +352,23 @@ defmodule Apiary.SecretsTest do
       assert Secrets.rename_value(scope, secret, "main", "other") == {:error, :not_found}
       assert {:error, changeset} = Secrets.rename_value(scope, secret, "primary", "Not A Slug")
       assert changeset.errors[:value_id]
+    end
+
+    test "a new value id is stored as given, trimmed, and bound as stored", %{scope: scope} do
+      secret = create!(scope, %{name: "KEYS", value_id: "main"})
+
+      # A blank around the same id is no rename, and leaves no entry.
+      assert {:ok, _} = Secrets.rename_value(scope, secret, "main", " main ")
+      assert length(trail(secret)) == 1
+
+      assert {:ok, secret} = Secrets.rename_value(scope, secret, "main", " primary ")
+      assert Enum.map(secret.values, & &1.value_id) == ["primary"]
+      assert reveal(scope, secret, "primary") == {:ok, @value}
+      assert List.last(trail(secret)).after == %{"value_id" => "primary"}
+
+      assert {:error, changeset} = Secrets.rename_value(scope, secret, "primary", "   ")
+      assert changeset.errors[:value_id]
+      assert reveal(scope, secret, "primary") == {:ok, @value}
     end
 
     test "delete_value/3 deletes a value, never the last", %{scope: scope} do
@@ -489,12 +522,67 @@ defmodule Apiary.SecretsTest do
     end
   end
 
+  describe "no changeset handed back keeps a value" do
+    defp refute_value(changeset, value) do
+      refute Map.has_key?(changeset.params || %{}, "value")
+      refute Map.has_key?(changeset.params || %{}, :value)
+      refute Map.has_key?(changeset.changes, :value)
+      refute inspect(changeset, limit: :infinity, structs: false) =~ value
+    end
+
+    test "not on a refused create, a refused set, nor a refused insert", %{scope: scope} do
+      value = "plaintext-that-must-not-stay"
+
+      for attrs <- [%{name: "bad name", value: value}, %{"name" => "bad name", "value" => value}] do
+        assert {:error, changeset} = Secrets.create_secret(scope, attrs)
+        refute_value(changeset, value)
+      end
+
+      # Refused by the database: a name already taken.
+      secret = create!(scope, %{name: "TAKEN", value_id: "main"})
+      assert {:error, changeset} = Secrets.create_secret(scope, %{name: "taken", value: value})
+      assert changeset.errors[:name]
+      refute_value(changeset, value)
+
+      assert {:error, changeset} = Secrets.set_value(scope, secret, "main", value <> <<0>>)
+      refute_value(changeset, value)
+
+      # Refused by the database: a value id the secret has.
+      assert {:error, changeset} =
+               Secrets.add_value(scope, secret, %{value_id: "main", value: value})
+
+      assert changeset.errors[:value_id]
+      refute_value(changeset, value)
+
+      changeset = Secrets.change_secret(secret, %{"name" => "X", "value" => value})
+      refute_value(changeset, value)
+    end
+  end
+
+  describe "reading" do
+    test "every member reads; a person no longer a member reads nothing", %{scope: scope} do
+      secret = create!(scope, %{name: "API_KEY"})
+
+      for level <- [:member, :admin] do
+        %{scope: reader} = member_fixture(scope, level)
+        assert {:ok, [%Secret{name: "API_KEY"}]} = Secrets.list_secrets(reader)
+        assert {:ok, %Secret{}} = Secrets.get_secret(reader, secret.public_id)
+      end
+
+      %{scope: gone, membership: membership} = member_fixture(scope)
+      {:ok, _} = Apiary.Organisations.remove_member(scope, membership.id)
+
+      assert Secrets.list_secrets(gone) == {:error, :forbidden}
+      assert Secrets.get_secret(gone, secret.public_id) == {:error, :forbidden}
+    end
+  end
+
   describe "who, where and the trail" do
     test "a member reads the secrets and changes none", %{scope: scope} do
       secret = create!(scope, %{name: "API_KEY"})
       %{scope: member} = member_fixture(scope)
 
-      assert [%Secret{name: "API_KEY"}] = Secrets.list_secrets(member)
+      assert {:ok, [%Secret{name: "API_KEY"}]} = Secrets.list_secrets(member)
       assert Secrets.create_secret(member, %{name: "MINE", value: "x"}) == {:error, :forbidden}
       assert Secrets.update_secret(member, secret, %{name: "RENAMED"}) == {:error, :forbidden}
       assert Secrets.set_value(member, secret, nil, "x") == {:error, :forbidden}
@@ -517,7 +605,7 @@ defmodule Apiary.SecretsTest do
       theirs = create!(scope, %{name: "THEIRS"})
       other = sign_up_fixture().scope
 
-      assert Secrets.list_secrets(other) == []
+      assert Secrets.list_secrets(other) == {:ok, []}
       assert Secrets.get_secret(other, theirs.public_id) == {:error, :not_found}
       assert Secrets.update_secret(other, theirs, %{name: "MINE"}) == {:error, :not_found}
       assert Secrets.delete_secret(other, theirs) == {:error, :not_found}

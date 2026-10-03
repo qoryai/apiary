@@ -80,24 +80,32 @@ defmodule Apiary.Secrets do
 
   @doc """
   list_secrets/1 is the scope's workspace's secrets, by name whatever its case, each with
-  its values, their value ids and when they were set, never their ciphertext.
+  its values, their value ids and when they were set, never their ciphertext:
+  `{:ok, secrets}`, for a reader who may `secret.read`; else `{:error, reason}`,
+  `:not_found` where the `security` feature is off.
   """
-  @spec list_secrets(Scope.t()) :: [Secret.t()]
+  @spec list_secrets(Scope.t()) :: {:ok, [Secret.t()]} | {:error, Access.reason()}
   def list_secrets(%Scope{} = scope) do
-    Repo.all(
-      from s in secrets(scope),
-        order_by: [asc: fragment("lower(?)", s.name), asc: s.id],
-        preload: [values: ^values_query()]
-    )
+    with :ok <- may_read(scope) do
+      {:ok,
+       Repo.all(
+         from s in secrets(scope),
+           order_by: [asc: fragment("lower(?)", s.name), asc: s.id],
+           preload: [values: ^values_query()]
+       )}
+    end
   end
 
   @doc """
   get_secret/2 is the scope's workspace's secret with the public id `public_id`, with its
-  values as `list_secrets/1` loads them: `{:ok, secret}`, or `{:error, :not_found}`.
+  values as `list_secrets/1` loads them: `{:ok, secret}`, for a reader who may
+  `secret.read`; else `{:error, reason}`, `:not_found` for a secret the workspace does
+  not have.
   """
-  @spec get_secret(Scope.t(), term) :: {:ok, Secret.t()} | {:error, :not_found}
+  @spec get_secret(Scope.t(), term) :: {:ok, Secret.t()} | {:error, Access.reason()}
   def get_secret(%Scope{} = scope, public_id) do
-    with true <- PublicId.valid?("sec", public_id),
+    with :ok <- may_read(scope),
+         true <- PublicId.valid?("sec", public_id),
          %Secret{} = secret <-
            Repo.one(
              from s in secrets(scope),
@@ -106,13 +114,23 @@ defmodule Apiary.Secrets do
            ) do
       {:ok, secret}
     else
+      {:error, reason} -> {:error, reason}
       _ -> {:error, :not_found}
     end
   end
 
-  @doc "change_secret/2 is the changeset of a secret's name and note, for a form."
+  defp may_read(%Scope{workspace: %Workspace{} = workspace} = scope),
+    do: Access.authorize(scope, :"secret.read", workspace)
+
+  defp may_read(_scope), do: {:error, :not_found}
+
+  @doc """
+  change_secret/2 is the changeset of a secret's name and note, for a form, without any
+  `value` among its params.
+  """
   @spec change_secret(Secret.t(), map) :: Ecto.Changeset.t()
-  def change_secret(%Secret{} = secret, attrs \\ %{}), do: Secret.changeset(secret, attrs)
+  def change_secret(%Secret{} = secret, attrs \\ %{}),
+    do: secret |> Secret.changeset(attrs) |> scrub()
 
   defp secrets(%Scope{
          organisation: %Organisation{id: organisation_id},
@@ -322,6 +340,10 @@ defmodule Apiary.Secrets do
   @spec rename_value(Scope.t(), Secret.t(), String.t() | nil, String.t()) ::
           {:ok, Secret.t()} | {:error, refusal}
   def rename_value(%Scope{} = scope, %Secret{} = secret, value_id, new_value_id) do
+    # The value id as it will be stored: what the no-op compare, the associated data and
+    # the audit entry all take.
+    new_value_id = Value.normalise_value_id(new_value_id)
+
     write_secret(scope, secret, fn scope, current ->
       case fetch_value(current, value_id) do
         {:ok, %Value{value_id: ^new_value_id}} ->
@@ -401,7 +423,11 @@ defmodule Apiary.Secrets do
         {:ok, %{deleted | values: current.values}}
       end
     end)
+    |> reload_deleted()
   end
+
+  defp reload_deleted({:error, %Ecto.Changeset{} = changeset}), do: {:error, scrub(changeset)}
+  defp reload_deleted(other), do: other
 
   defp not_in_use([]), do: :ok
   defp not_in_use(uses), do: {:error, {:in_use, uses}}
@@ -420,8 +446,10 @@ defmodule Apiary.Secrets do
   written (moved to another secret, workspace or value id, or changed), with a line in
   the log that names the secret and the value id, never the value.
 
-  It asks nothing of `Apiary.Access`: the caller has verified the runner's request and
-  decided what it may receive. The plaintext goes into the seal and nowhere else: not
+  It asks nothing of `Apiary.Access`, and is the one function of this module that does
+  not: it is the server's own sealing path, called by the secrets endpoint once it has
+  verified the runner's signed request and decided what that runner may receive, with no
+  person's scope to ask about. The plaintext goes into the seal and nowhere else: not
   into a log, an assign, a process's state or an error.
   """
   @spec reveal_for_sealing(%Workspace{}, String.t(), String.t() | nil) ::
@@ -452,11 +480,13 @@ defmodule Apiary.Secrets do
       {%Value{} = row, %DataKey{} = data_key} ->
         aad = Cipher.value_aad(workspace_id, secret_id, value_id)
 
+        # An unwrap that fails has said so in the log already.
         with {:ok, key} <- unwrap(data_key),
              {:ok, plaintext} <- Cipher.decrypt(key, aad, row.nonce, row.ciphertext) do
           {:ok, plaintext}
         else
-          _ -> unavailable(organisation_id, workspace_id, secret_id, value_id)
+          {:error, :key_unavailable} -> {:error, :unavailable}
+          :error -> unavailable(organisation_id, workspace_id, secret_id, value_id)
         end
 
       nil ->
@@ -535,7 +565,15 @@ defmodule Apiary.Secrets do
     {:ok, Repo.one!(from s in Secret, where: s.id == ^id, preload: [values: ^values_query()])}
   end
 
+  defp reload({:error, %Ecto.Changeset{} = changeset}), do: {:error, scrub(changeset)}
   defp reload(other), do: other
+
+  # A changeset handed back to a caller keeps no plaintext: not in its params, under a
+  # string or an atom key, nor in its changes.
+  defp scrub(%Ecto.Changeset{} = changeset) do
+    params = changeset.params && Map.drop(changeset.params, ["value", :value])
+    %{changeset | params: params, changes: Map.delete(changeset.changes, :value)}
+  end
 
   defp fetch_value(%Secret{values: values}, value_id) do
     case Enum.find(values, &(&1.value_id == value_id)) do
@@ -625,7 +663,14 @@ defmodule Apiary.Secrets do
          {:ok, key} <- unwrap(data_key),
          {:ok, plaintext} <-
            decrypt_row(key, workspace, secret, row) do
-      aad = Cipher.value_aad(workspace.id, secret.public_id, value_id)
+      # Bound to the value id the row will be stored with, as the changeset has it.
+      aad =
+        Cipher.value_aad(
+          workspace.id,
+          secret.public_id,
+          Ecto.Changeset.get_field(changeset, :value_id)
+        )
+
       {nonce, ciphertext} = Cipher.encrypt(key, aad, plaintext)
 
       changeset

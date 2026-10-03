@@ -77,7 +77,7 @@ defmodule Apiary.Secrets.Value do
 
   def value_id_changeset(%Ecto.Changeset{} = changeset, rule) do
     changeset
-    |> update_change(:value_id, &blank_to_nil/1)
+    |> update_change(:value_id, &normalise_value_id/1)
     |> value_id_rule(rule)
     |> validate_format(:value_id, @value_id,
       message:
@@ -112,7 +112,9 @@ defmodule Apiary.Secrets.Value do
             add_error(
               changeset,
               :value,
-              dgettext_noop("errors", "must be at most %{count} bytes"), count: @value_max)
+              dgettext_noop("errors", "must be at most %{count} bytes"),
+              count: @value_max
+            )
 
           not String.valid?(value) ->
             add_error(changeset, :value, dgettext_noop("errors", "must be UTF-8 text"))
@@ -129,12 +131,17 @@ defmodule Apiary.Secrets.Value do
     end
   end
 
-  defp blank_to_nil(value) when is_binary(value) do
+  @doc """
+  normalise_value_id/1 is a value id as the changeset stores it: trimmed, and nil for a
+  blank one.
+  """
+  @spec normalise_value_id(term) :: term
+  def normalise_value_id(value) when is_binary(value) do
     case String.trim(value) do
       "" -> nil
       trimmed -> trimmed
     end
   end
 
-  defp blank_to_nil(value), do: value
+  def normalise_value_id(value), do: value
 end
