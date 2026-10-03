@@ -612,6 +612,18 @@ defmodule Apiary.Nodes do
   def get_instance(%Scope{}, _node_id, _instance_id), do: nil
 
   @doc """
+  instance_of/2 is the row of the instance `run`, a run of the scope's workspace, ran as:
+  nil for a run that names no node or no instance, and for an instance whose row was
+  pruned or never recorded.
+  """
+  @spec instance_of(Scope.t(), Run.t()) :: Instance.t() | nil
+  def instance_of(%Scope{} = scope, %Run{node_id: node_id, instance_id: instance_id})
+      when is_binary(node_id) and is_binary(instance_id),
+      do: get_instance(scope, node_id, instance_id)
+
+  def instance_of(%Scope{}, %Run{}), do: nil
+
+  @doc """
   activity/3 is what each of `nodes`, nodes of the scope's workspace, is doing at `now`
   (`t:activity/0`), by node id: its instances running now, those with a run alive by the
   lost-run check's rule (`Apiary.Runs.Liveness.alive/2`), oldest first; and the instance

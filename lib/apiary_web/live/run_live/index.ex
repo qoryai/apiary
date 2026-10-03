@@ -8,7 +8,9 @@ defmodule ApiaryWeb.RunLive.Index do
   runtime, host, access key, when it started, denials), and Sort (newest, oldest, longest,
   most denials). From 1280 px a rail beside the list holds the targets with their runs,
   pinned first; choosing one is the target filter. The list has no time range until the
-  reader sets one. Pages of 25, 50 or 100, "1–50 of 3,137", and Jump to date.
+  reader sets one. Pages of 25, 50 or 100, "1–50 of 3,137", and Jump to date. The query's
+  `node:` (a node's public id, or the name of one in use) keeps a node's runs, which a
+  node's page links to; where the workspace has nodes, a Node column joins from 1300 px.
 
   Every filter, the order, the page size and the page are query parameters, read through
   `Apiary.Runs.Filters`: a value it does not know is dropped and the URL rewritten. What the
@@ -37,6 +39,7 @@ defmodule ApiaryWeb.RunLive.Index do
   on_mount {ApiaryWeb.Access, :"run.read"}
 
   alias Apiary.AccessKeys
+  alias Apiary.Nodes
   alias Apiary.Runs
   alias Apiary.Runs.Filters
   alias Apiary.Runs.Record
@@ -308,6 +311,7 @@ defmodule ApiaryWeb.RunLive.Index do
                   selected={@preview_on && @preview_id}
                   loading={@listing == nil}
                   shared={@shared}
+                  nodes={@nodes}
                   phx-hook="RunList"
                 />
 
@@ -513,6 +517,7 @@ defmodule ApiaryWeb.RunLive.Index do
        narrow: %{},
        limits: %{},
        shared: MapSet.new(),
+       nodes: nil,
        workspace_runs: nil,
        new_ids: MapSet.new(),
        quiet_ids: MapSet.new(),
@@ -703,6 +708,7 @@ defmodule ApiaryWeb.RunLive.Index do
          rail: loaded.rail,
          facets: loaded.facets,
          shared: loaded.shared,
+         nodes: loaded.nodes,
          workspace_runs: loaded.workspace_runs,
          loaded_at: loaded.at,
          new_ids: MapSet.new(),
@@ -884,6 +890,7 @@ defmodule ApiaryWeb.RunLive.Index do
             rail: Runs.target_counts(scope, filters, [now: now] ++ rail_opts),
             facets: Runs.run_facets(scope, filters, [now: now] ++ facets_opts),
             shared: Runs.shared_paths(scope),
+            nodes: nodes_of(scope, listing.runs),
             workspace_runs: if(listing.total == 0, do: Runs.count_runs(scope))
           }
         end)
@@ -891,6 +898,14 @@ defmodule ApiaryWeb.RunLive.Index do
     else
       socket
     end
+  end
+
+  # The nodes the page's runs ran on, for the Node column: none, and no column, for a
+  # workspace that has no node and a page none of whose runs names one.
+  defp nodes_of(scope, runs) do
+    ids = for %{node_id: id} <- runs, id, uniq: true, do: id
+    %{node: n, pool: p} = Nodes.count_nodes(scope)
+    if ids != [] or n + p > 0, do: Nodes.names(scope, ids)
   end
 
   defp load_facets(socket) do

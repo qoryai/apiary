@@ -1395,6 +1395,8 @@ defmodule ApiaryWeb.RunComponents do
   Every row's id is the run's (`run-<run_id>`); its title is a link to the run's page that
   covers the row. `selected` marks the row a preview beside the list shows
   (`aria-current`). `target={false}` leaves the target out, for a list of one target.
+  `nodes`, the nodes the runs ran on by id (`Apiary.Nodes.names/2`), adds the Node column
+  from 1300 px; without it there is none, as for a workspace that has no node.
   """
   attr :id, :string, required: true
   attr :label, :string, required: true, doc: "the accessible name of the scroll region"
@@ -1409,6 +1411,7 @@ defmodule ApiaryWeb.RunComponents do
   attr :loading, :boolean, default: false
   attr :shared, :any, default: nil, doc: "the paths on more than one system (a MapSet)"
   attr :target, :boolean, default: true
+  attr :nodes, :map, default: nil, doc: "the runs' nodes by id, for the Node column"
   attr :rest, :global
 
   def runs_table(assigns) do
@@ -1437,6 +1440,9 @@ defmodule ApiaryWeb.RunComponents do
             </th>
             <th scope="col" role="columnheader" class="q-rl-c4">{gettext("Runtime")}</th>
             <th scope="col" role="columnheader" class="q-rl-c4">{gettext("Host")}</th>
+            <th :if={@nodes} scope="col" role="columnheader" class="q-rl-c5">
+              {gettext("Node")}
+            </th>
             <th scope="col" role="columnheader">{gettext("Started")}</th>
             <th scope="col" role="columnheader" class="q-rl-c2 q-num">{gettext("Duration")}</th>
             <th scope="col" role="columnheader" class="q-num">{gettext("Denied")}</th>
@@ -1453,6 +1459,9 @@ defmodule ApiaryWeb.RunComponents do
             </td>
             <td role="cell" class="q-rl-c4"><span class="skeleton q-skel w-20"></span></td>
             <td role="cell" class="q-rl-c4"><span class="skeleton q-skel w-20"></span></td>
+            <td :if={@nodes} role="cell" class="q-rl-c5">
+              <span class="skeleton q-skel w-20"></span>
+            </td>
             <td role="cell"><span class="skeleton q-skel w-20"></span></td>
             <td role="cell" class="q-rl-c2"><span class="skeleton q-skel ml-auto w-14"></span></td>
             <td role="cell"><span class="skeleton q-skel ml-auto w-5"></span></td>
@@ -1466,6 +1475,7 @@ defmodule ApiaryWeb.RunComponents do
             run={run}
             target={@target}
             shared={@shared}
+            nodes={@nodes}
             quiet={MapSet.member?(@quiet_ids, run.id)}
             selected={@selected == run.run_id}
           />
@@ -1479,6 +1489,7 @@ defmodule ApiaryWeb.RunComponents do
   attr :run, :map, required: true
   attr :target, :boolean, required: true
   attr :shared, :any, required: true
+  attr :nodes, :map, default: nil
   attr :quiet, :boolean, default: false
   attr :selected, :boolean, default: false
 
@@ -1534,6 +1545,10 @@ defmodule ApiaryWeb.RunComponents do
         <span :if={!@run.runtime}>{gettext("n/a")}</span>
       </td>
       <td class="q-rl-c4 q-rl-faint q-rl-host" role="cell">{@run.host || gettext("n/a")}</td>
+      <td :if={@nodes} class="q-rl-c5 q-rl-faint" role="cell">
+        <.node_name :if={@run.node_id} scope={@scope} node={Map.get(@nodes, @run.node_id)} />
+        <span :if={!@run.node_id}>{gettext("n/a")}</span>
+      </td>
       <td class="q-rl-when" role="cell">
         <.relative_time at={@run.started_at || @run.inserted_at} />
       </td>
@@ -1671,6 +1686,17 @@ defmodule ApiaryWeb.RunComponents do
           <dd :if={key_label(@preview.run)} class="font-mono text-[12px]">
             {key_label(@preview.run)}
           </dd>
+          <dt :if={@preview.run.node_id}>{gettext("Node")}</dt>
+          <dd :if={@preview.run.node_id} id={"#{@id}-node"}>
+            <.node_name
+              scope={@scope}
+              node={Ecto.assoc_loaded?(@preview.run.node) && @preview.run.node}
+            />
+          </dd>
+          <dt :if={@preview.run.instance_id}>{gettext("Instance")}</dt>
+          <dd :if={@preview.run.instance_id} id={"#{@id}-instance"} class="font-mono text-[12px]">
+            {@preview.run.instance_id}
+          </dd>
           <dt :if={@preview.run.cost_usd}>{gettext("Cost")}</dt>
           <dd :if={@preview.run.cost_usd} class="tabular-nums">
             {cost_words(@preview.run.cost_usd)}
@@ -1706,6 +1732,28 @@ defmodule ApiaryWeb.RunComponents do
 
   defp key_label(%{access_key: %{label: label}}), do: label
   defp key_label(_run), do: nil
+
+  @doc """
+  The node a run ran on, by name: a link to its page while it is in use, its name and
+  "(deleted)" once it is deleted, n/a when the run's node was not read.
+  """
+  attr :scope, :map, required: true
+  attr :node, :any, required: true, doc: "the run's node, or nil or false when not read"
+
+  def node_name(assigns) do
+    ~H"""
+    <%= cond do %>
+      <% @node && is_nil(@node.deleted_at) -> %>
+        <.link navigate={~p"/#{@scope.organisation}/#{@scope.workspace}/nodes/#{@node}"}>
+          {@node.name}
+        </.link>
+      <% @node -> %>
+        {gettext("%{name} (deleted)", name: @node.name)}
+      <% true -> %>
+        <span class="text-faint">{gettext("n/a")}</span>
+    <% end %>
+    """
+  end
 
   # Reported in dollars, as the overview writes it: a cent's fraction to four places.
   defp cost_words(%Decimal{} = cost) do

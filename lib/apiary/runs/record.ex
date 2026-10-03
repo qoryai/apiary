@@ -147,12 +147,13 @@ defmodule Apiary.Runs.Record do
   ## The run
 
   @doc """
-  The run of the scope's workspace whose subject is `run_id`, the id the runner prints.
-  `:error` for a subject the workspace has not seen and for anything that is not a UUID.
+  The run of the scope's workspace whose subject is `run_id`, the id the runner prints,
+  with its access key and its node (a deleted node's too). `:error` for a subject the
+  workspace has not seen and for anything that is not a UUID.
   """
   def fetch_run(%Scope{} = scope, run_id) do
     with {:ok, run_id} <- cast_uuid(run_id) do
-      {:ok, scope |> Runs.get_run_by_run_id!(run_id) |> Repo.preload(:access_key)}
+      {:ok, scope |> Runs.get_run_by_run_id!(run_id) |> Repo.preload([:access_key, :node])}
     end
   rescue
     Ecto.NoResultsError -> :error
@@ -162,10 +163,13 @@ defmodule Apiary.Runs.Record do
   defp cast_uuid(<<_::binary-size(36)>> = id), do: Ecto.UUID.cast(id)
   defp cast_uuid(_other), do: :error
 
-  @doc "The run again, as the database has it now; nil when it is gone."
+  @doc """
+  The run again, as the database has it now, with what `fetch_run/2` reads beside it; nil
+  when it is gone.
+  """
   def reload(%Scope{} = scope, %Run{id: id}) do
     case Repo.one(from r in runs(scope), where: r.id == ^id) do
-      %Run{} = run -> Repo.preload(run, :access_key)
+      %Run{} = run -> Repo.preload(run, [:access_key, :node])
       nil -> nil
     end
   end

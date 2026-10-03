@@ -3598,7 +3598,8 @@
   }
   .q-rl-c2,
   .q-rl-c3,
-  .q-rl-c4 {
+  .q-rl-c4,
+  .q-rl-c5 {
     display: none;
   }
   @container (min-width: 720px) {
@@ -3618,6 +3619,12 @@
      1150 px of table, which the list has at 2560 px with the rail and the preview. */
   @container (min-width: 1150px) {
     .q-rl .q-rl-c4 {
+      display: table-cell;
+    }
+  }
+  /* The node a run ran on joins at the width of a list's `lg` column. */
+  @container (min-width: 1300px) {
+    .q-rl .q-rl-c5 {
       display: table-cell;
     }
   }
@@ -4870,7 +4877,8 @@
     }
     .q-rl tbody tr td.q-rl-den:not(:has(.q-rl-denied)),
     .q-rl tbody tr td.q-rl-c3,
-    .q-rl tbody tr td.q-rl-c4 {
+    .q-rl tbody tr td.q-rl-c4,
+    .q-rl tbody tr td.q-rl-c5 {
       display: none;
     }
   }
