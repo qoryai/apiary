@@ -9,8 +9,8 @@ one. The words on them are in [lingo.md](lingo.md); where the code lives is in
 Every page behind sign-in renders inside `ApiaryWeb.Layouts.app/1`, which takes the
 page's active navigation item (`nav`), the counts the sidebar shows (`counts`), the width
 of its column (`width`) and, in `crumb` slots, the page's own segments of the breadcrumb.
-The shell is section 4 of the v2 design brief (the knowledge vault's
-`product/design/apiary/v2/`): it shows one scope at a time, the one the page belongs to.
+The shell is section 4 of the v2 design brief: it shows one scope at a time, the one the page
+belongs to.
 
 - **A page belongs to one scope**: a workspace, an organisation or the person. The
   navigation is data, `ApiaryWeb.Nav.Entry` values, and the entry a page passes as `nav`

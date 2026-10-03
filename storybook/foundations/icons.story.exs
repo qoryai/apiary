@@ -9,10 +9,10 @@ defmodule ApiaryWeb.Storybook.Foundations.Icons do
   alias ApiaryWeb.PolicyLive.{Common, RuleList}
   alias ApiaryWeb.Storybook.Sample
 
-  # The app draws the v2 mocks' split (knowledge-vault product/design/apiary/v2, kit.js and
-  # icons.js): nav and object icons 24 px outline, the small glyphs solid micro. Before, it
-  # drew every one solid micro; this is the outline name of each icon it switched, beside
-  # the micro one it drew before. Written out whole, so Tailwind generates each class here.
+  # The app draws the v2 mocks' split: nav and object icons 24 px outline, the small glyphs
+  # solid micro. Before, it drew every one solid micro; this is the outline name of each icon
+  # it switched, beside the micro one it drew before. Written out whole, so Tailwind generates
+  # each class here.
   @previous %{
     "hero-adjustments-horizontal" => "hero-adjustments-horizontal-micro",
     "hero-archive-box" => "hero-archive-box-micro",
