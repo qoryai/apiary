@@ -18,6 +18,7 @@ export const Modal = {
     // Chrome lets a second Escape through: the server decides when it closes.
     this.el.addEventListener("close", () => this.el.isConnected && this.el.showModal())
     if (!this.el.open) this.el.showModal()
+    this.nameWindow()
     this.focusFirst()
     // The dialog may still be becoming visible on a fresh page load.
     setTimeout(() => this.el.contains(document.activeElement) && document.activeElement !== this.el || this.focusFirst(), 80)
@@ -33,11 +34,22 @@ export const Modal = {
   updated() {
     if (!this.el.open) this.el.showModal()
   },
+  // The dialog has a path of its own, so the window's title names it before the page's
+  // ("New access key · Access keys · …"), and gets the page's back when it closes.
+  nameWindow() {
+    const heading = document.getElementById(this.el.getAttribute("aria-labelledby"))
+    const name = heading?.textContent.trim()
+    if (!name) return
+    this.pageTitle = document.title
+    this.ownTitle = `${name} · ${document.title}`
+    document.title = this.ownTitle
+  },
   cancel() {
     const js = this.el.dataset.cancel
     if (js) this.liveSocket.execJS(this.el, js)
   },
   destroyed() {
+    if (this.ownTitle && document.title === this.ownTitle) document.title = this.pageTitle
     if (this.trigger?.isConnected) this.trigger.focus({preventScroll: true})
   },
 }

@@ -15,7 +15,7 @@ defmodule ApiaryWeb.DeletionLiveTest do
     setup :register_and_log_in_user
 
     test "the only workspace is not deleted on its own", %{conn: conn, scope: scope} do
-      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings")
+      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings/workspaces")
 
       assert has_element?(lv, "#workspace-#{scope.workspace.id}", scope.workspace.name)
       refute has_element?(lv, "#workspaces a", "Delete")
@@ -23,7 +23,7 @@ defmodule ApiaryWeb.DeletionLiveTest do
 
       # A crafted path to its modal says so, and deletes nothing.
       path = ~p"/#{scope.organisation}/settings/workspaces/#{scope.workspace.id}/delete"
-      settings = ~p"/#{scope.organisation}/settings"
+      settings = ~p"/#{scope.organisation}/settings/workspaces"
 
       assert {:error, {:live_redirect, %{to: ^settings, flash: flash}}} = live(conn, path)
       assert flash["error"] == "That workspace cannot be deleted here."
@@ -35,7 +35,7 @@ defmodule ApiaryWeb.DeletionLiveTest do
       scope: scope
     } do
       workspace = workspace_fixture(scope.organisation, "Staging")
-      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings")
+      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings/workspaces")
 
       lv |> element("#workspace-#{workspace.id} a", "Delete") |> render_click()
       assert_patch(lv, ~p"/#{scope.organisation}/settings/workspaces/#{workspace.id}/delete")
@@ -77,7 +77,7 @@ defmodule ApiaryWeb.DeletionLiveTest do
       {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings")
 
       lv |> element("#delete-organisation-button") |> render_click()
-      assert_patch(lv, ~p"/#{scope.organisation}/settings/delete")
+      assert_patch(lv, ~p"/#{scope.organisation}/settings/danger")
       assert has_element?(lv, "#delete-organisation-modal")
 
       slug = scope.organisation.slug
@@ -118,15 +118,22 @@ defmodule ApiaryWeb.DeletionLiveTest do
       organisation = owner.scope.organisation
       {:ok, lv, _html} = live(conn, ~p"/#{organisation}/settings")
       refute has_element?(lv, "#workspaces")
+      refute has_element?(lv, "#danger-zone")
       refute has_element?(lv, "#delete-organisation")
 
       settings = ~p"/#{organisation}/settings"
 
-      assert {:error, {:live_redirect, %{to: ^settings, flash: flash}}} =
-               live(conn, ~p"/#{organisation}/settings/delete")
+      # Each section says its own refusal, never another's.
+      for {section, sentence} <- [
+            {"/workspaces", "Only owners and admins open the list of workspaces."},
+            {"/danger", "Only owners delete the organisation."},
+            {"/delete", "Only owners delete the organisation."}
+          ] do
+        assert {:error, {:live_redirect, %{to: ^settings, flash: flash}}} =
+                 live(conn, ~p"/#{organisation}/settings" <> section)
 
-      assert flash["error"] ==
-               "Only owners and admins delete a workspace, and only owners the organisation."
+        assert flash["error"] == sentence
+      end
 
       # A crafted event is refused all the same.
       html =
@@ -157,9 +164,9 @@ defmodule ApiaryWeb.DeletionLiveTest do
       assert has_element?(lv, "#sole-owned-#{scope.organisation.id}", scope.organisation.name)
       assert has_element?(lv, "button#delete-account-button[disabled]")
 
-      # Asked for anyway, it is refused.
+      # Asked for anyway, with the email typed, it is refused.
       {:ok, lv, _html} = live(conn, ~p"/users/settings/delete")
-      html = lv |> element("#delete-account-confirm") |> render_click()
+      html = render_submit(lv, "delete_account", %{"confirm" => %{"email" => user.email}})
       assert html =~ "You are the only owner of an organisation."
       assert Repo.get!(User, user.id).deleted_at == nil
     end
@@ -192,11 +199,35 @@ defmodule ApiaryWeb.DeletionLiveTest do
 
       render_async(lv)
       refute has_element?(lv, "#delete-account-blocked")
+      # Deleting the account is the danger zone that ends Profile, and no entry of the list.
+      assert has_element?(lv, "#danger-zone #delete-account", "Delete account")
+      refute has_element?(lv, "#sidebar a[href='/users/settings/delete']")
       lv |> element("a#delete-account-button") |> render_click()
       assert_patch(lv, ~p"/users/settings/delete")
       assert has_element?(lv, "#delete-account-modal")
+      assert has_element?(lv, "#nav-user_settings[aria-current='page']")
 
-      lv |> element("#delete-account-confirm") |> render_click()
+      # The red button waits for the account's email, typed; the server asks again.
+      assert has_element?(lv, "#delete-account-confirm[disabled]")
+
+      lv
+      |> form("#delete-account-form", confirm: %{email: "someone@else.example"})
+      |> render_change()
+
+      assert has_element?(lv, "#delete-account-confirm[disabled]")
+
+      html =
+        render_submit(lv, "delete_account", %{"confirm" => %{"email" => "someone@else.example"}})
+
+      assert html =~ "is not your email"
+      assert Repo.get!(User, user.id).deleted_at == nil
+
+      lv
+      |> form("#delete-account-form", confirm: %{email: String.upcase(user.email)})
+      |> render_change()
+
+      refute has_element?(lv, "#delete-account-confirm[disabled]")
+      lv |> form("#delete-account-form", confirm: %{email: user.email}) |> render_submit()
       assert_redirect(lv, ~p"/users/account-deleted")
       assert %User{email: nil, deleted_at: %DateTime{}} = Repo.get!(User, user.id)
 

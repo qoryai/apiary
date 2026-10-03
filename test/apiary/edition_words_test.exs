@@ -17,6 +17,7 @@ defmodule Apiary.EditionWordsTest do
     "docs/**/*.md",
     "guides/**/*.md",
     "lib/**/*",
+    "storybook/**/*",
     "assets/**/*",
     "e2e/**/*",
     "rel/**/*",

@@ -10,6 +10,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
   alias Apiary.Repo
   alias Apiary.Runs
   alias Apiary.Runs.{Liveness, Projector}
+  alias ApiaryWeb.RunComponents
 
   setup :register_and_log_in_user
 
@@ -21,15 +22,21 @@ defmodule ApiaryWeb.RunLive.IndexTest do
     view
   end
 
+  defp runs(scope, query \\ ""), do: workspace_path(scope, "/runs") <> query
+
   defp row(run), do: "#run-#{run.run_id}"
 
   defp text(view, selector), do: view |> element(selector) |> render() |> plain()
+
+  # A token as the query writes it: the qualifier, a colon and the value, one word.
+  defp token(view, key), do: view |> text("#runs-token-#{key}") |> String.replace(": ", ":")
 
   # The words of a fragment, a space between any two elements.
   defp plain(html) do
     html
     |> String.replace(~r/<[^>]+>/, " ")
     |> String.replace("&#39;", "'")
+    |> String.replace("&quot;", "\"")
     |> String.replace(~r/\s+/, " ")
     |> String.trim()
   end
@@ -43,8 +50,14 @@ defmodule ApiaryWeb.RunLive.IndexTest do
     test "no runs and no keys: create a key", %{conn: conn, scope: scope} do
       view = open(conn, scope)
       assert has_element?(view, "h2", "No runs yet")
-      assert has_element?(view, "#runs-create-key[href='#{workspace_path(scope)}/keys/new']")
+
+      assert has_element?(
+               view,
+               "#runs-create-key[href='#{workspace_path(scope)}/settings/keys/new']"
+             )
+
       refute has_element?(view, "#runs")
+      refute has_element?(view, "#runs-views")
       assert has_element?(view, "#nav-runs[aria-current=page]")
       refute has_element?(view, "#nav-runs-alive")
     end
@@ -52,7 +65,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
     test "no runs, keys exist: go to the keys, and listen", %{conn: conn, scope: scope} do
       access_key_fixture(scope)
       view = open(conn, scope)
-      assert has_element?(view, "#runs-go-to-keys[href='#{workspace_path(scope)}/keys']")
+      assert has_element?(view, "#runs-go-to-keys[href='#{workspace_path(scope)}/settings/keys']")
       assert render(view) =~ "Listening for the first run."
     end
 
@@ -69,69 +82,60 @@ defmodule ApiaryWeb.RunLive.IndexTest do
          %{conn: conn, scope: scope} do
       started_run(scope, shop())
 
-      view =
-        open(
-          conn,
-          ~p"/#{scope.organisation}/#{scope.workspace}/runs?state=failed,timed_out,lost,closed"
-        )
-
-      assert has_element?(view, "h2", "No runs ended badly in the last 7 days.")
+      view = open(conn, runs(scope, "?state=failed,timed_out,lost,closed"))
+      assert has_element?(view, "h2", "No runs ended badly.")
       assert has_element?(view, "#runs-hidden", "1 run is hidden by them.")
 
-      view =
-        open(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs?state=succeeded&since=all")
+      view = open(conn, runs(scope, "?state=failed,timed_out,lost,closed&since=7d"))
+      assert has_element?(view, "h2", "No runs ended badly in the last 7 days.")
 
-      assert has_element?(view, "h2", "No runs ended well.")
-
-      view =
-        open(
-          conn,
-          ~p"/#{scope.organisation}/#{scope.workspace}/runs?state=succeeded&from=2026-09-01&to=2026-09-02"
-        )
-
+      view = open(conn, runs(scope, "?state=succeeded&from=2026-09-01&to=2026-09-02"))
       assert has_element?(view, "h2", "No runs ended well from 1 Sept 2026 to 2 Sept 2026.")
 
       # A part of a family, or two families, is not one family's sentence.
-      view = open(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs?state=failed")
+      view = open(conn, runs(scope, "?state=failed"))
       assert has_element?(view, "h2", "No runs match these filters")
 
-      view =
-        open(
-          conn,
-          ~p"/#{scope.organisation}/#{scope.workspace}/runs?state=succeeded,failed,timed_out,lost,closed"
-        )
-
+      view = open(conn, runs(scope, "?state=succeeded,failed,timed_out,lost,closed"))
       assert has_element?(view, "h2", "No runs match these filters")
     end
 
-    test "filters that match nothing say how many runs they hide", %{conn: conn, scope: scope} do
+    test "filters that match nothing say how many runs they hide, with no table and no pages",
+         %{conn: conn, scope: scope} do
       started_run(scope, shop())
       started_run(scope, shop())
-      view = open(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs?state=failed")
+      view = open(conn, runs(scope, "?state=failed&host=gpu-01"))
 
       assert has_element?(view, "h2", "No runs match these filters")
       assert text(view, "#runs-hidden") == "2 runs are hidden by them."
+      refute has_element?(view, "#runs")
+      refute has_element?(view, "#runs-pager")
+
+      # The last filter can go on its own, or every filter at once.
+      assert text(view, "#runs-remove-last") == "Remove host:gpu-01"
+      view |> element("#runs-remove-last") |> render_click()
+      assert_patch(view, runs(scope, "?state=failed"))
 
       view |> element("#runs-clear") |> render_click()
-      assert_patch(view, ~p"/#{scope.organisation}/#{scope.workspace}/runs")
+      assert_patch(view, runs(scope))
       render_async(view)
-      assert has_element?(view, "#runs tr.q-row")
+      assert has_element?(view, "#runs tr.q-rl-row")
     end
 
-    test "runs older than the default range are one click away", %{conn: conn, scope: scope} do
-      started_run(scope, shop(), ago: 9 * 86_400)
+    test "there is no default range: a run of any age is in the list", %{
+      conn: conn,
+      scope: scope
+    } do
+      old = started_run(scope, shop(), ago: 90 * 86_400)
       view = open(conn, scope)
-      assert text(view, "#runs-hidden") == "1 run is hidden by them."
-      view |> element("#runs-all-time") |> render_click()
-      assert_patch(view, ~p"/#{scope.organisation}/#{scope.workspace}/runs?since=all")
+      assert has_element?(view, row(old))
+      refute has_element?(view, "#runs-token-started")
     end
   end
 
   describe "the list (U1, U5)" do
-    test "a row per run with state, run, runtime, host, started, duration and denials", %{
-      conn: conn,
-      scope: scope
-    } do
+    test "one line per run: its state, its title, its target, runtime, host, started, duration and denials",
+         %{conn: conn, scope: scope} do
       run =
         started_run(scope, Map.put(shop(), "task", "checkout-tax"),
           ago: 125,
@@ -142,24 +146,46 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       view = open(conn, scope)
       cells = text(view, row(run))
 
-      assert cells =~ "Failed exit 1"
-      assert cells =~ "checkout-tax #{String.slice(run.run_id, 0, 8)}"
+      assert cells =~ "Failed"
+      refute cells =~ "exit 1"
+      assert cells =~ "checkout-tax acme/shop"
       assert cells =~ "claude 2.1.0"
       assert cells =~ "dev-laptop"
       assert cells =~ "2 minutes ago"
       assert cells =~ "6 m 51 s"
-      assert has_element?(view, "#{row(run)} .q-denials", "1")
+      assert has_element?(view, "#{row(run)} .q-st-failed .q-st-w:not(.sr-only)", "Failed")
+      assert has_element?(view, "#{row(run)} .q-rl-denied", "1")
 
       assert has_element?(
                view,
-               "#{row(run)} a.q-rowlink[href='#{workspace_path(scope)}/runs/#{run.run_id}']"
+               "#{row(run)} a.q-rowlink[href='#{workspace_path(scope)}/runs/#{run.run_id}']",
+               "checkout-tax"
              )
 
-      assert text(view, "#runs-summary") =~ "1 run in 1 repository 1 ended badly 1 with denials"
-      assert text(view, "#runs-footer") =~ "Showing 1 of 1."
+      # One notation: a path the workspace has on one system reads as the path alone.
+      refute has_element?(view, "#{row(run)} .q-tname-sys")
+
+      assert text(view, "#runs-view-all") == "All 1"
+      assert text(view, "#runs-view-ended-badly") == "Ended badly 1"
+      assert text(view, "#runs-view-denials") == "With denials 1"
+      assert text(view, "#runs-footer") == "1–1 of 1"
+      refute has_element?(view, "#runs-summary")
+      # The status region is there before anything narrows the list, so what does is heard.
+      assert has_element?(view, "#runs-status[role=status]")
     end
 
-    test "a run without a task shows its command; a pinged run shows only that", %{
+    test "a run that ended well is its dot, its word for a screen reader only", %{
+      conn: conn,
+      scope: scope
+    } do
+      run = started_run(scope, shop(), exit: %{"state" => "succeeded", "exit_code" => 0})
+      view = open(conn, scope)
+
+      assert has_element?(view, "#{row(run)} .q-st-succeeded .q-st-w.sr-only", "Succeeded")
+      refute has_element?(view, "#{row(run)} .q-rl-denied")
+    end
+
+    test "a run without a task is its id; a pinged run is pending", %{
       conn: conn,
       scope: scope
     } do
@@ -167,14 +193,27 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       pending = run_fixture(scope)
       view = open(conn, scope)
 
-      assert text(view, row(plain)) =~ "claude -p fix the build"
-      assert text(view, row(plain)) =~ "· no task label"
+      assert text(view, "#{row(plain)} .q-rowlink") == String.slice(plain.run_id, 0, 8)
+      assert has_element?(view, "#{row(plain)} .q-rl-c3", "n/a")
 
       cells = text(view, row(pending))
       assert cells =~ "Pending"
-      assert cells =~ "Ping only"
+      assert cells =~ String.slice(pending.run_id, 0, 8)
       assert cells =~ "n/a n/a"
-      refute cells =~ "no task label"
+    end
+
+    test "a path on more than one system is written with its system", %{
+      conn: conn,
+      scope: scope
+    } do
+      github = started_run(scope, shop("github.example"))
+      gitlab = started_run(scope, shop("gitlab.example"))
+      api = started_run(scope, %{"forge" => "github.example", "repository" => "acme/api"})
+      view = open(conn, scope)
+
+      assert text(view, "#{row(github)} .q-rl-c3") == "github.example / acme/shop"
+      assert text(view, "#{row(gitlab)} .q-rl-inl") == "gitlab.example / acme/shop"
+      assert text(view, "#{row(api)} .q-rl-c3") == "acme/api"
     end
 
     test "a running run counts up; a quiet one is amber and says at least", %{
@@ -185,7 +224,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       quiet = started_run(scope, shop("gitlab.example"), ago: 600, heartbeat: {47, 510, 30})
       view = open(conn, scope)
 
-      assert has_element?(view, "#{row(live_run)} .q-state-running")
+      assert has_element?(view, "#{row(live_run)} .q-st-running:not(.q-st-quiet)")
       assert has_element?(view, "#{row(live_run)} time[data-tick=duration]")
       refute has_element?(view, "#{row(live_run)} .q-quiet")
 
@@ -198,7 +237,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
                "#{row(live_run)} time[data-tick=duration][data-base='90'][data-now]"
              )
 
-      refute has_element?(view, "#{row(quiet)} .q-state-running")
+      assert has_element?(view, "#{row(quiet)} .q-st-quiet")
 
       assert text(view, "#{row(quiet)} .q-quiet") =~
                ~r/^No heartbeat for \d\d s \. Heartbeats are due every 30 s\./
@@ -247,74 +286,11 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
       assert has_element?(view, row(mine))
       refute has_element?(view, row(theirs))
-      assert text(view, "#runs-summary") =~ "1 run in"
+      assert text(view, "#runs-view-all") == "All 1"
     end
   end
 
-  describe "grouping (U2, U3)" do
-    setup %{scope: scope} do
-      %{
-        github: started_run(scope, Map.put(shop(), "task", "checkout-tax"), ago: 300),
-        gitlab:
-          started_run(scope, Map.put(shop("gitlab.example"), "task", "checkout-tax"), ago: 200),
-        plain: started_run(scope, %{}, ago: 100)
-      }
-    end
-
-    test "by target: two systems with one path are two groups, unassigned is last", %{
-      conn: conn,
-      scope: scope
-    } do
-      view = open(conn, scope)
-      groups = view |> render() |> LazyHTML.from_fragment() |> LazyHTML.query("tr.q-group button")
-      labels = for button <- groups, do: button |> LazyHTML.attribute("aria-label") |> hd()
-
-      assert labels == [
-               "gitlab.example acme/shop, 1 run, 1 alive",
-               "github.example acme/shop, 1 run, 1 alive",
-               "Unassigned, 1 run, 1 alive"
-             ]
-
-      assert render(view) =~ "no forge or repository label"
-
-      assert has_element?(
-               view,
-               "tr.q-group a[href='#{workspace_path(scope)}/connections?system=github.example&target=acme%2Fshop']"
-             )
-
-      assert has_element?(view, "#runs-group button[aria-pressed=true]", "Repository")
-    end
-
-    test "by task: one task spans targets, each row leads with its target", %{
-      conn: conn,
-      github: github,
-      scope: scope
-    } do
-      view = open(conn, scope)
-      view |> element("#runs-group button", "Task") |> render_click()
-      assert_patch(view, ~p"/#{scope.organisation}/#{scope.workspace}/runs?group=task")
-      render_async(view)
-
-      assert has_element?(view, "tr.q-group button[aria-label='checkout-tax, 2 runs, 2 alive']")
-      assert render(view) =~ "2 runs in 2 repositories"
-      assert render(view) =~ "no task label"
-      assert text(view, "#{row(github)} .q-rowlink") == "github.example/ acme/shop"
-      assert text(view, "#runs-summary") =~ "3 runs in 1 task"
-    end
-
-    test "not grouped: no headers, and a target column", %{
-      conn: conn,
-      github: github,
-      scope: scope
-    } do
-      view = open(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs?group=none")
-      refute has_element?(view, "tr.q-group")
-      assert has_element?(view, "th", "Repository")
-      assert text(view, "#{row(github)} .q-c-target") == "github.example/ acme/shop"
-    end
-  end
-
-  describe "filters are the URL (U4)" do
+  describe "views, the query and the Filter menu (U4)" do
     setup %{scope: scope} do
       %{
         failed:
@@ -329,7 +305,31 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       }
     end
 
-    test "a copied URL reproduces the view", %{
+    test "the views are tabs with their counts, each a link that keeps the other filters", %{
+      conn: conn,
+      scope: scope
+    } do
+      view = open(conn, runs(scope, "?host=build-02"))
+
+      assert has_element?(view, "#runs-views[aria-label=Views]")
+      assert has_element?(view, "#runs-view-all[aria-current=page]", "All")
+      assert text(view, "#runs-view-all") == "All 1"
+      assert text(view, "#runs-view-alive") == "Alive 0"
+      assert text(view, "#runs-view-ended-badly") == "Ended badly 1"
+
+      view |> element("#runs-view-alive") |> render_click()
+      assert_patch(view, runs(scope, "?host=build-02&state=pending%2Crunning"))
+      render_async(view)
+      assert has_element?(view, "#runs-view-alive[aria-current=page]")
+      refute has_element?(view, "#runs-view-all[aria-current]")
+      # The view says the states: no token repeats them.
+      refute has_element?(view, "#runs-token-state")
+
+      view |> element("#runs-view-denials") |> render_click()
+      assert_patch(view, runs(scope, "?denials=1&host=build-02"))
+    end
+
+    test "a copied URL reproduces the view, its filters as tokens", %{
       conn: conn,
       failed: failed,
       running: running,
@@ -338,71 +338,132 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       view =
         open(
           conn,
-          ~p"/#{scope.organisation}/#{scope.workspace}/runs?state=failed&system=github.example&target=acme/shop&task=fix-cart&runtime=claude&host=build-02&denials=1&since=24h"
+          runs(
+            scope,
+            "?state=failed&system=github.example&target=acme/shop&task=fix-cart&runtime=claude&host=build-02&denials=1&since=24h"
+          )
         )
 
       assert has_element?(view, row(failed))
       refute has_element?(view, row(running))
-      assert has_element?(view, "#filter-state-button[aria-label='State: Failed, change']")
-      assert has_element?(view, "#filter-target-button", "github.example/acme/shop")
-      assert has_element?(view, "#filter-since-button", "last 24 hours")
-      assert has_element?(view, "#filter-denials[aria-pressed=true]")
 
-      assert has_element?(
-               view,
-               "#filter-runtime-remove[aria-label='Remove filter: runtime claude']"
-             )
+      # acme/shop is on two systems here: its token names the system.
+      assert token(view, "target") == "repo:github.example/acme/shop"
+      assert token(view, "state") == "state:failed"
+      assert token(view, "task") == "task:fix-cart"
+      assert token(view, "started") == "started:24h"
+      assert token(view, "denied") == "denied:yes"
+      assert has_element?(view, "#runs-token-runtime a[aria-label='Remove runtime:claude']")
+      assert text(view, "#runs-summary") =~ "1 run matches"
+      assert has_element?(view, "#runs-status[role=status] #runs-summary")
+
+      # The Filter menu says what each section is set to.
+      assert text(view, "#runs-filter-value-state") == "Failed"
+      assert text(view, "#runs-filter-value-since") == "last 24 hours"
+      assert text(view, "#runs-filter-value-denials") == "With denials"
+
+      view |> element("#runs-tokens-clear") |> render_click()
+      assert_patch(view, runs(scope))
     end
 
-    test "unknown values are dropped and the URL is rewritten", %{conn: conn, scope: scope} do
-      assert {:error, {:live_redirect, %{to: to}}} =
-               live(
-                 conn,
-                 ~p"/#{scope.organisation}/#{scope.workspace}/runs?state=failed,bogus&group=colour&since=90d&zzz=1"
-               )
-
-      assert to == "#{workspace_path(scope)}/runs?state=failed"
-    end
-
-    test "the menus are counted from the data and patch the URL", %{
+    test "the query: qualifiers become the URL's filters, the rest is the free text", %{
       conn: conn,
+      failed: failed,
       running: running,
       scope: scope
     } do
       view = open(conn, scope)
+
+      view
+      |> form("#runs-query", %{"q" => "state:failed repo:acme/shop fix"})
+      |> render_submit()
+
+      # acme/shop is on two systems: the path alone is every system's.
+      assert_patch(view, runs(scope, "?q=fix&state=failed&target=acme%2Fshop"))
+      render_async(view)
+      assert has_element?(view, row(failed))
+      refute has_element?(view, row(running))
+      assert has_element?(view, "#runs-query-input[value=fix]")
+
+      # A token goes with its button, and the rest stays.
+      view |> element("#runs-token-state a") |> render_click()
+      assert_patch(view, runs(scope, "?q=fix&target=acme%2Fshop"))
+
+      # The free text alone: a run's task, id or target.
+      view |> form("#runs-query", %{"q" => "mirror"}) |> render_submit()
+      assert_patch(view, runs(scope, "?q=mirror&target=acme%2Fshop"))
+      render_async(view)
+      assert has_element?(view, row(running))
+      refute has_element?(view, row(failed))
+
+      view
+      |> form("#runs-query", %{"q" => String.slice(failed.run_id, 0, 8)})
+      |> render_submit()
+
+      render_async(view)
+      assert has_element?(view, row(failed))
+      refute has_element?(view, row(running))
+    end
+
+    test "a query word that cannot be read is said, and nothing else changes", %{
+      conn: conn,
+      scope: scope
+    } do
+      view = open(conn, runs(scope, "?host=build-02"))
+      view |> form("#runs-query", %{"q" => "state:bogus"}) |> render_submit()
+      assert_patch(view, runs(scope, "?host=build-02"))
+      render_async(view)
+      assert text(view, "#runs-dropped") == "state:bogus could not be read, so it is not applied."
+
+      # The reader's next change takes the notice away.
+      view |> element("#runs-view-alive") |> render_click()
+      refute has_element?(view, "#runs-dropped")
+    end
+
+    test "the Filter menu: one dialog of sections, each counted from the data, patching the URL",
+         %{conn: conn, running: running, scope: scope} do
+      view = open(conn, scope)
+
+      assert has_element?(
+               view,
+               "#runs-filter-button[aria-haspopup=dialog][aria-controls=runs-filter-panel]",
+               "Filter"
+             )
+
+      assert has_element?(view, "#runs-filter-panel[role=dialog]")
+
+      for key <- ~w(target state task runtime host key since denials) do
+        assert has_element?(view, "#runs-filter-open-#{key}")
+        assert has_element?(view, "#runs-filter-section-#{key}[role=group]")
+      end
+
+      # The rail does the Target section's work from 1280 px.
+      assert has_element?(view, "#runs-filter-open-target.q-norail")
+      assert has_element?(view, "#runs-filter-open-state .q-fm-meta", "state:")
 
       assert text(view, "#filter-state-form") =~ "Running 1"
       assert text(view, "#filter-state-form") =~ "Failed 1"
       assert text(view, "#filter-host-form") =~ "build-02 1"
 
       view |> form("#filter-state-form") |> render_change(%{"state" => ["running"]})
-      assert_patch(view, ~p"/#{scope.organisation}/#{scope.workspace}/runs?state=running")
+      assert_patch(view, runs(scope, "?state=running"))
       render_async(view)
       assert has_element?(view, row(running))
-      assert text(view, "#runs-summary") =~ "1 run in"
 
       view |> form("#filter-task-form") |> render_change(%{"task" => "mirror-sync"})
+      assert_patch(view, runs(scope, "?state=running&task=mirror-sync"))
 
-      assert_patch(
-        view,
-        ~p"/#{scope.organisation}/#{scope.workspace}/runs?state=running&task=mirror-sync"
-      )
+      view |> form("#filter-denials-form") |> render_change(%{"denials" => "1"})
+      assert_patch(view, runs(scope, "?denials=1&state=running&task=mirror-sync"))
 
-      view |> element("#filter-state-remove") |> render_click()
-      assert_patch(view, ~p"/#{scope.organisation}/#{scope.workspace}/runs?task=mirror-sync")
-
-      view |> element("#filter-denials") |> render_click()
-
-      assert_patch(
-        view,
-        ~p"/#{scope.organisation}/#{scope.workspace}/runs?denials=1&task=mirror-sync"
-      )
-
-      view |> element("#runs-filters-clear") |> render_click()
-      assert_patch(view, ~p"/#{scope.organisation}/#{scope.workspace}/runs")
+      # Nothing matches: the empty state clears them, and the line that counts is not there.
+      render_async(view)
+      refute has_element?(view, "#runs-summary")
+      view |> element("#runs-clear") |> render_click()
+      assert_patch(view, runs(scope))
     end
 
-    test "the State menu reads as three families, each heading a checkbox over its states",
+    test "the State section reads as three families, each heading a checkbox over its states",
          %{conn: conn, scope: scope} do
       view = open(conn, scope)
       form = "#filter-state-form"
@@ -434,7 +495,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       refute has_element?(view, "#{form} input[name=family_alive][aria-checked]")
     end
 
-    test "ticking a family fills its states into the URL, and the chip reads the family",
+    test "ticking a family fills its states into the URL, and the view is that family's",
          %{conn: conn, failed: failed, running: running, scope: scope} do
       view = open(conn, scope)
 
@@ -449,13 +510,8 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       render_async(view)
       assert has_element?(view, row(failed))
       refute has_element?(view, row(running))
-      assert has_element?(view, "#filter-state-button[aria-label='State: ended badly, change']")
-
-      assert has_element?(
-               view,
-               "#filter-state-remove[aria-label='Remove filter: state ended badly']"
-             )
-
+      assert has_element?(view, "#runs-view-ended-badly[aria-current=page]")
+      assert text(view, "#runs-filter-value-state") == "ended badly"
       assert has_element?(view, "#filter-state-form input[name=family_ended_badly][checked]")
       refute has_element?(view, "#filter-state-form input[name=family_ended_badly][aria-checked]")
 
@@ -472,11 +528,8 @@ defmodule ApiaryWeb.RunLive.IndexTest do
                "#{workspace_path(scope)}/runs?state=pending,running,failed,timed_out,lost,closed"
 
       render_async(view)
-
-      assert has_element?(
-               view,
-               "#filter-state-button[aria-label='State: alive, ended badly, change']"
-             )
+      assert text(view, "#runs-filter-value-state") == "alive, ended badly"
+      assert token(view, "state") == "state:alive,ended_badly"
 
       # Unticking a heading takes its states out. A browser leaves an unticked box out of
       # the form it sends, which the test client would merge back in from the DOM: the
@@ -491,9 +544,9 @@ defmodule ApiaryWeb.RunLive.IndexTest do
                "#{workspace_path(scope)}/runs?state=pending,running"
     end
 
-    test "a family with some of its states chosen is mixed, and the chip reads the states",
+    test "a family with some of its states chosen is mixed, and the token reads the states",
          %{conn: conn, scope: scope} do
-      view = open(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs?state=failed")
+      view = open(conn, runs(scope, "?state=failed"))
 
       assert has_element?(
                view,
@@ -502,50 +555,62 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
       refute has_element?(view, "#filter-state-form input[name=family_ended_badly][checked]")
       refute has_element?(view, "#filter-state-form input[name=family_alive][aria-checked]")
-      assert has_element?(view, "#filter-state-button[aria-label='State: Failed, change']")
-      assert has_element?(view, "#filter-state-remove[aria-label='Remove filter: state Failed']")
+      assert token(view, "state") == "state:failed"
+      assert has_element?(view, "#runs-view-all[aria-current=page]")
     end
 
-    test "the summary line counts the families, a family at zero left out",
-         %{conn: conn, scope: scope} do
-      started_run(scope, shop(), ago: 200, exit: %{"state" => "succeeded", "exit_code" => 0})
+    test "the Started section: every run, a preset, dates", %{conn: conn, scope: scope} do
       view = open(conn, scope)
-
-      assert text(view, "#runs-summary") =~
-               "3 runs in 2 repositories 1 alive 1 ended well 1 ended badly 1 with denials"
-
-      view = open(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs?state=running")
-      summary = text(view, "#runs-summary")
-      assert summary =~ "1 run in 1 repository 1 alive"
-      refute summary =~ "ended"
-    end
-
-    test "the time range: a preset, dates, and none", %{conn: conn, scope: scope} do
-      view = open(conn, scope)
-      assert has_element?(view, "#filter-since-button", "last 7 days")
+      assert has_element?(view, "#filter-since-form input[name=since][value=all][checked]")
+      refute has_element?(view, "#runs-filter-value-since")
 
       view
       |> form("#filter-since-form")
       |> render_change(%{"since" => "30d", "_target" => ["since"]})
 
-      assert_patch(view, ~p"/#{scope.organisation}/#{scope.workspace}/runs?since=30d")
+      assert_patch(view, runs(scope, "?since=30d"))
 
       view
       |> form("#filter-since-form")
       |> render_change(%{"from" => "2026-09-14", "to" => "2026-09-16", "_target" => ["to"]})
 
-      assert_patch(
-        view,
-        ~p"/#{scope.organisation}/#{scope.workspace}/runs?from=2026-09-14&to=2026-09-16"
-      )
-
+      assert_patch(view, runs(scope, "?from=2026-09-14&to=2026-09-16"))
       render_async(view)
-      assert has_element?(view, "#filter-since-button", "14 Sept 2026 to 16 Sept 2026")
+      assert token(view, "started") == "started:2026-09-14..2026-09-16"
+      assert text(view, "#runs-filter-value-since") == "14 Sept 2026 to 16 Sept 2026"
 
-      view |> element("#filter-since-remove") |> render_click()
-      assert_patch(view, ~p"/#{scope.organisation}/#{scope.workspace}/runs?since=all")
+      view |> element("#runs-token-started a") |> render_click()
+      assert_patch(view, runs(scope))
+    end
+
+    test "Sort: newest, oldest, longest, most denials", %{
+      conn: conn,
+      failed: failed,
+      running: running,
+      scope: scope
+    } do
+      view = open(conn, scope)
+
+      # The button names the order in force; its label says it in full.
+      assert has_element?(view, "#runs-sort-button[aria-label='Sort: newest first']", "Newest")
+      assert has_element?(view, "#runs-sort-newest[role=menuitemradio][aria-checked=true]")
+
+      view |> element("#runs-sort-oldest") |> render_click()
+      assert_patch(view, runs(scope, "?sort=oldest"))
       render_async(view)
-      refute has_element?(view, "#filter-since-remove")
+
+      ids =
+        view
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("#runs tr[data-run]")
+        |> Enum.flat_map(&LazyHTML.attribute(&1, "data-run"))
+
+      assert ids == [failed.run_id, running.run_id]
+      assert has_element?(view, "#runs-sort-oldest[aria-checked=true]", "Oldest")
+
+      view |> element("#runs-sort-denials") |> render_click()
+      assert_patch(view, runs(scope, "?sort=denials"))
     end
   end
 
@@ -562,44 +627,59 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       end
     end
 
-    test "no value of any parameter breaks the page, and it ends on the canonical URL", %{
+    # One test a parameter, each mounting the page thirteen times: the whole of it in one test
+    # came near the timeout on a loaded machine.
+    for name <-
+          ~w(group state system target task runtime host key q since from to denials sort per page run) do
+      @name name
+
+      test "no value of #{name} breaks the page, and it ends on the canonical URL", %{
+        conn: conn,
+        scope: scope
+      } do
+        started_run(scope, shop())
+
+        bad = [
+          <<0>>,
+          "a" <> <<0>> <> "b",
+          "\e[31m",
+          String.duplicate("x", 5000),
+          "99999999999999999999999999",
+          "-1",
+          "2026-02-31",
+          "none,none",
+          "%",
+          "' OR 1=1 --"
+        ]
+
+        for value <- bad do
+          {view, to} =
+            follow(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs?#{%{@name => value}}")
+
+          render_async(view)
+          assert has_element?(view, "#runs-filters"), "#{@name}=#{inspect(value)} broke the page"
+          refute has_element?(view, "#runs-error")
+          assert URI.parse(to).path == "#{workspace_path(scope)}/runs"
+        end
+
+        # Lists and maps where a string is expected.
+        for shape <- ["#{@name}[]=x", "#{@name}[a]=x", "#{@name}[a][]=x"] do
+          {view, to} = follow(conn, "#{workspace_path(scope)}/runs?" <> shape)
+          render_async(view)
+          assert has_element?(view, "#runs-filters"), "#{shape} broke the page"
+          assert to == "#{workspace_path(scope)}/runs"
+        end
+      end
+    end
+
+    test "an old link's grouping and default range are dropped quietly", %{
       conn: conn,
       scope: scope
     } do
-      started_run(scope, shop())
+      assert {:error, {:live_redirect, %{to: to}}} =
+               live(conn, runs(scope, "?group=task&since=all&state=failed"))
 
-      bad = [
-        <<0>>,
-        "a" <> <<0>> <> "b",
-        "\e[31m",
-        String.duplicate("x", 5000),
-        "99999999999999999999999999",
-        "-1",
-        "2026-02-31",
-        "none,none",
-        "%",
-        "' OR 1=1 --"
-      ]
-
-      names = ~w(group state forge repo task runtime host since from to denials page)
-
-      for name <- names, value <- bad do
-        {view, to} =
-          follow(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs?#{%{name => value}}")
-
-        render_async(view)
-        assert has_element?(view, "#runs-filters"), "#{name}=#{inspect(value)} broke the page"
-        refute has_element?(view, "#runs-error")
-        assert URI.parse(to).path == "#{workspace_path(scope)}/runs"
-      end
-
-      # Lists and maps where a string is expected.
-      for name <- names, shape <- ["#{name}[]=x", "#{name}[a]=x", "#{name}[a][]=x"] do
-        {view, to} = follow(conn, "#{workspace_path(scope)}/runs?" <> shape)
-        render_async(view)
-        assert has_element?(view, "#runs-filters"), "#{shape} broke the page"
-        assert to == "#{workspace_path(scope)}/runs"
-      end
+      assert to == runs(scope, "?state=failed")
     end
 
     test "a refused value is said, never silently an unfiltered list", %{conn: conn, scope: scope} do
@@ -614,9 +694,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert to == ~p"/#{scope.organisation}/#{scope.workspace}/runs"
 
       # The rewrite is a patch of the same view in a browser: the notice rides along.
-      {:ok, view, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs?state=running")
-
+      {:ok, view, _html} = live(conn, runs(scope, "?state=running"))
       render_async(view)
       refute has_element?(view, "#runs-dropped")
 
@@ -632,7 +710,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
                "The link's host, since filters could not be read, so they are not applied."
 
       # The reader's next change takes the notice away.
-      view |> element("#filter-denials") |> render_click()
+      view |> element("#runs-view-denials") |> render_click()
       refute has_element?(view, "#runs-dropped")
     end
 
@@ -651,16 +729,105 @@ defmodule ApiaryWeb.RunLive.IndexTest do
     end
   end
 
-  describe "targets and menus at any size" do
-    test "a system with a colon groups, links and filters", %{conn: conn, scope: scope} do
+  describe "the rail, and targets and sections at any size" do
+    test "the rail lists the targets with their runs under the other filters; one is a link that sets it",
+         %{conn: conn, scope: scope} do
+      shop_run = started_run(scope, Map.put(shop(), "task", "a"))
+      started_run(scope, Map.put(shop(), "task", "b"))
+      api = started_run(scope, %{"forge" => "github.example", "repository" => "acme/api"})
+      started_run(scope, %{})
+      view = open(conn, runs(scope, "?task=a"))
+
+      assert has_element?(view, "nav#runs-rail[aria-label=Repositories]")
+      # The rail's headings sit under a heading of its own, so the outline never skips.
+      assert has_element?(view, "nav#runs-rail > h2.sr-only", "Repositories")
+      assert text(view, "#runs-rail-all") == "All repositories 1"
+      assert has_element?(view, "#runs-rail-all[aria-current=true]")
+
+      view = open(conn, scope)
+      assert text(view, "#runs-rail-all") == "All repositories 4"
+      assert text(view, "#runs-rail-none") == "Unassigned 1"
+
+      shop_link = "#runs-rail-t-#{RunComponents.dom_token({"github.example", "acme/shop"})}"
+      assert text(view, shop_link) == "acme/shop 2"
+
+      view |> element(shop_link) |> render_click()
+      assert_patch(view, runs(scope, "?system=github.example&target=acme%2Fshop"))
+      render_async(view)
+      assert has_element?(view, row(shop_run))
+      refute has_element?(view, row(api))
+      assert has_element?(view, "#{shop_link}[aria-current=true]")
+      # The rail counts under every filter but the target: the others are still there.
+      assert text(view, "#runs-rail-all") == "All repositories 4"
+    end
+
+    test "the pinned targets lead the rail, under Pinned; the rest are the most runs", %{
+      conn: conn,
+      scope: scope
+    } do
+      started_run(scope, shop())
+      started_run(scope, %{"forge" => "github.example", "repository" => "acme/api"})
+      :ok = Apiary.Targets.pin(scope, Apiary.Targets.get(scope, "github.example", "acme/api"))
+
+      view = open(conn, scope)
+      render_async(view)
+
+      api = "#runs-rail-t-#{RunComponents.dom_token({"github.example", "acme/api"})}"
+      assert has_element?(view, "#runs-rail h3", "Pinned")
+      assert has_element?(view, "#runs-rail h3", "Most runs")
+      assert text(view, api) == "acme/api 1"
+
+      [first_heading | _] =
+        view
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("#runs-rail h3")
+        |> Enum.map(&LazyHTML.text/1)
+
+      assert String.trim(first_heading) == "Pinned"
+    end
+
+    test "the rail searches on the server and shows twenty, then more", %{
+      conn: conn,
+      scope: scope
+    } do
+      for n <- 1..23 do
+        started_run(scope, %{"forge" => "github.example", "repository" => "acme/r#{n}"})
+      end
+
+      view = open(conn, scope)
+
+      rows = fn ->
+        view
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("#runs-rail a[id^='runs-rail-t-']")
+        |> Enum.count()
+      end
+
+      assert rows.() == 20
+      assert text(view, "#runs-rail-more") == "3 more"
+
+      view |> element("#runs-rail-more") |> render_click()
+      render_async(view)
+      assert rows.() == 23
+      refute has_element?(view, "#runs-rail-more")
+
+      view |> form("#runs-rail-search", %{"q" => "R2"}) |> render_change()
+      render_async(view)
+      # acme/r2, r20 to r23.
+      assert rows.() == 5
+      assert has_element?(view, "#runs-rail", "Matches")
+
+      view |> form("#runs-rail-search", %{"q" => "nothing"}) |> render_change()
+      render_async(view)
+      assert has_element?(view, "#runs-rail", "No repository matches.")
+    end
+
+    test "a system with a colon filters and reads back", %{conn: conn, scope: scope} do
       run = started_run(scope, %{"forge" => "git.example:8443", "repository" => "acme/shop"})
       other = started_run(scope, shop())
       view = open(conn, scope)
-
-      connections =
-        ~p"/#{scope.organisation}/#{scope.workspace}/connections?#{Apiary.Runs.Filters.target_params("git.example:8443", "acme/shop")}"
-
-      assert has_element?(view, "tr.q-group a[href='#{connections}']")
 
       value = Apiary.Runs.Filters.target_value({"git.example:8443", "acme/shop"})
       view |> form("#filter-target-form") |> render_change(%{"target" => value})
@@ -674,10 +841,10 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
       assert has_element?(view, row(run))
       refute has_element?(view, row(other))
-      assert has_element?(view, "#filter-target-button", "git.example:8443/acme/shop")
+      assert token(view, "target") == "repo:git.example:8443/acme/shop"
     end
 
-    test "a long menu shows fifty values, says so, and narrows on the server", %{
+    test "a long section shows fifty values, says so, shows more and narrows on the server", %{
       conn: conn,
       scope: scope
     } do
@@ -685,95 +852,194 @@ defmodule ApiaryWeb.RunLive.IndexTest do
         run_fixture(scope, %{state: "running", task: "task-#{n}", started_at: DateTime.utc_now()})
       end
 
-      view = open(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs?group=none")
+      view = open(conn, scope)
       assert text(view, "#filter-task-more") == "Showing 50 of 60: type to narrow"
+
+      view |> element("#filter-task-show-more") |> render_click()
+      render_async(view)
+      refute has_element?(view, "#filter-task-more")
+      refute has_element?(view, "#filter-task-show-more")
 
       view |> form("#filter-task-narrow") |> render_change(%{"q" => "task-6"})
       render_async(view)
       assert text(view, "#filter-task-form") == "task-6 1 task-60 1"
-      refute has_element?(view, "#filter-task-more")
 
       view |> form("#filter-task-narrow") |> render_change(%{"q" => "%"})
       render_async(view)
       assert text(view, "#filter-task-form") == "Nothing matches"
     end
+  end
 
-    test "two group labels that collide under a short hash are two groups", %{
+  describe "the preview from 1920 px" do
+    setup %{scope: scope} do
+      %{
+        older:
+          started_run(scope, Map.put(shop(), "task", "older"),
+            ago: 300,
+            egress: [%{"decision" => "denied", "rule" => "", "host" => "files.cdn.example"}],
+            exit: %{"state" => "failed", "exit_code" => 1, "duration_ms" => 12_000}
+          ),
+        newer: started_run(scope, Map.put(shop(), "task", "newer"), ago: 100)
+      }
+    end
+
+    test "below 1920 px there is none, and a row is its link", %{conn: conn, scope: scope} do
+      view = open(conn, scope)
+      refute has_element?(view, "#runs-preview")
+      render_hook(view, "viewport", %{"wide" => false})
+      refute has_element?(view, "#runs-preview")
+      refute has_element?(view, "#runs tr[aria-current]")
+    end
+
+    test "the first row is chosen until the reader chooses one; the choice is the URL", %{
       conn: conn,
+      newer: newer,
+      older: older,
       scope: scope
     } do
-      started_run(scope, Map.put(shop(), "task", "a"))
-      started_run(scope, Map.put(shop("gitlab.example"), "task", "a"))
+      log = %{"stream" => "stdout", "bytes" => Base.encode64("\e[32m✓\e[0m tests pass\nbye\n")}
+      event_fixture(older, 60, "run.log", log)
+      {:ok, _} = Projector.project(older)
+
       view = open(conn, scope)
+      render_hook(view, "viewport", %{"wide" => true})
+      render_async(view)
 
-      ids =
-        view
-        |> render()
-        |> LazyHTML.from_fragment()
-        |> LazyHTML.query("#runs > tbody[data-group]")
-        |> Enum.flat_map(&LazyHTML.attribute(&1, "id"))
+      assert has_element?(view, "#{row(newer)}[aria-current=true]")
+      assert has_element?(view, "#runs-preview h2", "newer")
+      assert has_element?(view, "#runs-preview-log", "No log recorded.")
 
-      assert length(ids) == 2
-      assert Enum.all?(ids, &(&1 =~ ~r/^runs-group-[a-z2-7]{16}$/))
-      assert ids == Enum.uniq(ids)
+      render_hook(view, "select", %{"id" => older.run_id})
+      assert_patch(view, runs(scope, "?run=#{older.run_id}"))
+      render_async(view)
+
+      assert has_element?(view, "#{row(older)}[aria-current=true]")
+      refute has_element?(view, "#{row(newer)}[aria-current]")
+      assert has_element?(view, "#runs-preview .q-st-failed", "Failed")
+      assert has_element?(view, "#runs-preview .q-st-code", "exit 1")
+      assert text(view, "#runs-preview-log") == "✓ tests pass bye"
+      assert text(view, "#runs-preview-denials") =~ "1 files.cdn.example:443"
+
+      assert has_element?(
+               view,
+               "#runs-preview-open[href='#{workspace_path(scope)}/runs/#{older.run_id}']"
+             )
+
+      # Enter, or a second click, opens the run.
+      render_hook(view, "open", %{"id" => older.run_id})
+      assert_redirect(view, "#{workspace_path(scope)}/runs/#{older.run_id}")
+    end
+
+    test "a link with a run shows it; a run of another workspace or no run at all is not shown",
+         %{conn: conn, older: older, scope: scope} do
+      view = open(conn, runs(scope, "?run=#{older.run_id}"))
+      render_hook(view, "viewport", %{"wide" => true})
+      render_async(view)
+      assert has_element?(view, "#runs-preview h2", "older")
+
+      theirs = started_run(scope_fixture(), shop())
+      view = open(conn, runs(scope, "?run=#{theirs.run_id}"))
+      render_hook(view, "viewport", %{"wide" => true})
+      render_async(view)
+      refute has_element?(view, "#runs-preview h2")
+
+      # A run of another page cannot be chosen from this one.
+      render_hook(view, "select", %{"id" => theirs.run_id})
+      refute_patched(view)
+
+      assert {:error, {:live_redirect, %{to: to}}} = live(conn, runs(scope, "?run=nope"))
+      assert to == runs(scope)
     end
   end
 
   describe "accessibility" do
-    test "toggles and segments are buttons, the filter opens a named dialog, tips are text", %{
+    test "the controls are buttons and named dialogs, tips are text", %{
       conn: conn,
       scope: scope
     } do
       quiet = started_run(scope, shop(), ago: 600, heartbeat: {47, 510, 30})
       view = open(conn, scope)
 
-      assert has_element?(view, "button#filter-denials[type=button][aria-pressed=false]")
-
-      assert has_element?(
-               view,
-               "#runs-group button[type=button][aria-pressed=true]",
-               "Repository"
-             )
-
-      refute has_element?(view, "#runs-filters [role=button]")
-
-      assert has_element?(
-               view,
-               "#filter-state-button[aria-haspopup=dialog][aria-controls=filter-state-panel]"
-             )
-
-      assert has_element?(view, "#filter-state-panel[role=dialog][aria-label='Filter by state']")
+      assert has_element?(view, "#runs-query[role=search] label", "Filter runs")
+      assert has_element?(view, "#runs-query-input[name=q]")
+      assert has_element?(view, "#runs-filter-panel[role=dialog][aria-label=Filter]")
+      assert has_element?(view, "#runs-sort-button[aria-haspopup=menu]")
+      assert has_element?(view, "#runs-per button[type=button][aria-pressed=true]", "50")
 
       # What a sighted reader gets from the tooltip is in the text for everyone else.
       assert has_element?(view, "#{row(quiet)} .q-quiet[tabindex='0'] .sr-only", "After 1 m 30 s")
-      assert has_element?(view, "#{row(quiet)} .q-c-dur [tabindex='0'] .sr-only", "clock stops")
+      assert has_element?(view, "#{row(quiet)} .q-rl-dur [tabindex='0'] .sr-only", "clock stops")
     end
 
     test "the table keeps its roles whole, headers included", %{conn: conn, scope: scope} do
       run = started_run(scope, shop())
       view = open(conn, scope)
 
+      assert has_element?(view, "#runs-region[role=region][tabindex='0'][aria-label=Runs]")
       assert has_element?(view, "table#runs[role=table] > thead[role=rowgroup] > tr[role=row]")
-      assert has_element?(view, "#runs th[role=columnheader][scope=col]", "Denials")
+      assert has_element?(view, "#runs th[role=columnheader][scope=col]", "Denied")
       assert has_element?(view, "#runs > tbody[role=rowgroup] > #{row(run)}[role=row]")
       refute has_element?(view, "#runs th:not([role=columnheader])")
       refute has_element?(view, "#{row(run)} td:not([role=cell])")
     end
   end
 
-  describe "pagination keeps the URL" do
-    test "fifty a page, previous and next", %{conn: conn, scope: scope} do
+  describe "pages keep the URL" do
+    test "fifty a page, newer and older, the page size and a jump to a day", %{
+      conn: conn,
+      scope: scope
+    } do
       for _ <- 1..51, do: run_fixture(scope)
-      view = open(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs?group=none")
+      view = open(conn, scope)
 
-      assert text(view, "#runs-footer") =~ "Showing 50 of 51."
-      assert has_element?(view, "#runs-previous[disabled]")
+      assert text(view, "#runs-footer") == "1–50 of 51"
+      assert has_element?(view, "#runs-previous[disabled]", "Newer")
 
-      view |> element("#runs-next") |> render_click()
-      assert_patch(view, ~p"/#{scope.organisation}/#{scope.workspace}/runs?group=none&page=2")
+      view |> element("#runs-next", "Older") |> render_click()
+      assert_patch(view, runs(scope, "?page=2"))
       render_async(view)
-      assert text(view, "#runs-footer") =~ "Showing 1 of 51."
+      assert text(view, "#runs-footer") == "51–51 of 51"
       assert has_element?(view, "#runs-next[disabled]")
+
+      view |> element("#runs-per button", "25") |> render_click()
+      assert_patch(view, runs(scope, "?per=25"))
+      render_async(view)
+      assert text(view, "#runs-footer") == "1–25 of 51"
+
+      # Every run was pinged today: a day before it is past the last of them.
+      view
+      |> form("#runs-jump-form", %{"date" => Date.to_iso8601(Date.add(Date.utc_today(), -1))})
+      |> render_submit()
+
+      assert_patch(view, runs(scope, "?page=3&per=25"))
+    end
+
+    test "Jump to date is for the orders by time only", %{conn: conn, scope: scope} do
+      run_fixture(scope)
+      assert has_element?(open(conn, scope), "#runs-jump")
+      refute has_element?(open(conn, runs(scope, "?sort=longest")), "#runs-jump")
+    end
+
+    test "Jump to date answers a day it cannot go to under the field, and stays open",
+         %{conn: conn, scope: scope} do
+      run_fixture(scope)
+      view = open(conn, scope)
+
+      view |> form("#runs-jump-form", %{"date" => ""}) |> render_submit()
+      assert has_element?(view, "#runs-jump-date-error", "Choose a day to jump to.")
+      assert has_element?(view, ~s|#runs-jump-date[aria-invalid="true"]|)
+      refute_push_event(view, "menu:close", _)
+
+      view |> form("#runs-jump-form", %{"date" => "1999-12-31"}) |> render_submit()
+      assert has_element?(view, "#runs-jump-date-error", "from the year 2000 to 2999")
+
+      # Changing the day takes the error away.
+      view |> form("#runs-jump-form", %{"date" => "2026-01-02"}) |> render_change()
+      refute has_element?(view, "#runs-jump-date-error")
+
+      view |> form("#runs-jump-form", %{"date" => "2026-01-02"}) |> render_submit()
+      assert_push_event(view, "menu:close", %{id: "runs-jump"})
+      refute has_element?(view, "#runs-jump-date-error")
     end
   end
 
@@ -782,6 +1048,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       run = started_run(scope, shop(), ago: 30)
       view = open(conn, scope)
       assert text(view, row(run)) =~ "Running"
+      assert text(view, "#runs-view-alive") == "Alive 1"
 
       event_fixture(run, 60, "run.exited", %{
         "state" => "succeeded",
@@ -794,7 +1061,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       assert text(view, row(run)) =~ "Succeeded"
       assert text(view, row(run)) =~ "30 s"
       render_async(view)
-      refute text(view, "#runs-summary") =~ "alive"
+      assert text(view, "#runs-view-alive") == "Alive 0"
     end
 
     test "changes inside a window are collected and applied together, without a query per message",
@@ -851,7 +1118,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
     test "a new run the filters do not return is not announced", %{conn: conn, scope: scope} do
       started_run(scope, Map.put(shop(), "task", "a"), ago: 30)
-      view = open(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs?task=a")
+      view = open(conn, runs(scope, "?task=a"))
       started_run(scope, Map.put(shop(), "task", "b"), ago: 1)
       refute has_element?(view, "#runs-new")
     end
@@ -886,7 +1153,9 @@ defmodule ApiaryWeb.RunLive.IndexTest do
       conn: conn,
       scope: scope
     } do
-      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/keys")
+      # A page of the workspace that does not follow the runs itself; a page of settings
+      # lists the settings in the sidebar, and has no Runs entry to count beside.
+      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/network")
       refute has_element?(view, "#nav-runs-alive")
 
       run = started_run(scope, shop(), ago: 5)

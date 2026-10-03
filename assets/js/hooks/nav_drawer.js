@@ -1,13 +1,32 @@
-// The sidebar as a drawer below 768 px: focus moves in and back out, the page
-// behind is inert and does not scroll, Escape and navigation close it.
+// The sidebar. Below 768 px it is a drawer: focus moves in and back out, the top bar and
+// the page behind are inert and do not scroll, Escape and navigation close it. From 768 px
+// it folds to icons and back, by its fold button or the [ key outside a field; the fold is
+// a reading preference in localStorage, which the root layout applies before the first
+// paint. While it is folded each item's name is its title, and the fold button is named
+// for what it does then, in the words the server put on it (data-label, data-label-folded).
+import {singleKeys} from "./shortcuts"
+const KEY = "qory:sidebar"
+
 export const NavDrawer = {
   mounted() {
     const toggle = this.el.querySelector(".drawer-toggle")
     const wide = matchMedia("(min-width: 768px)")
     const sync = focus => {
       const open = toggle.checked && !wide.matches
-      const main = this.el.querySelector(".drawer-content")
-      main.toggleAttribute("inert", open)
+      for (const behind of this.el.querySelectorAll(".drawer-content, #top-bar")) {
+        behind.toggleAttribute("inert", open)
+      }
+      // Skip to content sits before the shell: inert too, or Tab leaves the drawer by it.
+      document.getElementById("skip-to-content")?.toggleAttribute("inert", open)
+      // Open, the drawer is a modal dialog, named as the sidebar is.
+      const sidebar = this.el.querySelector("#sidebar")
+      if (open) {
+        sidebar?.setAttribute("role", "dialog")
+        sidebar?.setAttribute("aria-modal", "true")
+      } else {
+        sidebar?.removeAttribute("role")
+        sidebar?.removeAttribute("aria-modal")
+      }
       document.documentElement.style.overflow = open ? "hidden" : ""
       this.el.querySelector("[data-drawer-open]")?.setAttribute("aria-expanded", String(open))
       if (focus) {
@@ -22,17 +41,29 @@ export const NavDrawer = {
       }
     }
     const set = (open, focus = true) => {
-      if (toggle.checked === open) return
+      if (!toggle || toggle.checked === open) return
       toggle.checked = open
       sync(focus)
     }
     this.el.addEventListener("click", e => {
       if (e.target.closest("[data-drawer-open]")) set(true)
       else if (e.target.closest("[data-drawer-close]")) set(false)
+      else if (e.target.closest("[data-sidebar-collapse]")) this.fold(!this.folded())
     })
-    toggle.addEventListener("change", () => sync(true))
+    toggle?.addEventListener("change", () => sync(true))
     this.onKey = e => {
-      if (e.key === "Escape" && toggle.checked && !wide.matches && !e.defaultPrevented) set(false)
+      if (e.key === "Escape" && toggle?.checked && !wide.matches && !e.defaultPrevented) {
+        set(false)
+      } else if (
+        e.key === "[" &&
+        singleKeys() &&
+        wide.matches &&
+        !e.metaKey && !e.ctrlKey && !e.altKey &&
+        !e.target.closest?.("input, textarea, select, [contenteditable]") &&
+        this.el.querySelector("[data-sidebar-collapse]")
+      ) {
+        this.fold(!this.folded())
+      }
     }
     document.addEventListener("keydown", this.onKey)
     this.onNav = () => set(false, false)
@@ -40,11 +71,46 @@ export const NavDrawer = {
     this.onWide = () => wide.matches && set(false, false)
     wide.addEventListener("change", this.onWide)
     this.wide = wide
+    this.titles()
   },
+
+  updated() {
+    this.titles()
+  },
+
   destroyed() {
     window.removeEventListener("phx:page-loading-stop", this.onNav)
     document.removeEventListener("keydown", this.onKey)
     this.wide.removeEventListener("change", this.onWide)
     document.documentElement.style.overflow = ""
+  },
+
+  folded() {
+    return document.documentElement.dataset.sidebar === "collapsed"
+  },
+
+  fold(folded) {
+    if (folded) document.documentElement.dataset.sidebar = "collapsed"
+    else delete document.documentElement.dataset.sidebar
+    try {
+      folded ? localStorage.setItem(KEY, "collapsed") : localStorage.removeItem(KEY)
+    } catch (_e) {}
+    this.titles()
+  },
+
+  // While folded, an item shows no words: its name is its title.
+  titles() {
+    const folded = this.folded()
+    for (const item of this.el.querySelectorAll("#sidebar .q-nav-item")) {
+      const text = item.querySelector(".q-nav-text")?.textContent.trim()
+      if (folded && text) item.setAttribute("title", text)
+      else if (!item.id.startsWith("nav-pin-")) item.removeAttribute("title")
+    }
+    const fold = this.el.querySelector("[data-sidebar-collapse]")
+    const label = fold?.dataset[folded ? "labelFolded" : "label"]
+    if (label) {
+      fold.setAttribute("aria-label", label)
+      fold.dataset.tip = label
+    }
   },
 }

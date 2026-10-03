@@ -3,22 +3,33 @@ defmodule ApiaryWeb.Nav.Entry do
   An entry of the console's navigation, as data: a link of the sidebar, which the core and
   the edition (`c:ApiaryWeb.Edition.nav_entries/1`) each give, one of the organisation
   switcher's below the places it switches to (`c:ApiaryWeb.Edition.switcher_entries/1`),
-  or a tab of the organisation's settings (`c:ApiaryWeb.Edition.settings_tabs/1`).
+  or a section of the settings (`ApiaryWeb.SettingsComponents`, and the edition's of the
+  organisation's, `c:ApiaryWeb.Edition.settings_tabs/1`).
   `ApiaryWeb.Layouts` decides from these which to show and where they lead, and nothing
   else does.
 
-  - `section`: the sidebar's group, `:workspace` (the record) or `:manage`; an edition's
-    entry goes after the core's of its section. Nil outside the sidebar.
+  - `section`: where the entry goes in its scope's sidebar: `:home` (the scope's first
+    entries, without a heading), `:record` or `:guard` (a workspace's groups), a section of
+    the edition's (`c:ApiaryWeb.Edition.nav_sections/0`), `:foot` (Settings, at the
+    sidebar's foot) or `:settings` (a page of the scope's Settings, not in the sidebar: its
+    page marks Settings as the current entry). An edition's entry goes after the
+    core's of its section. A section of the settings is in `:main` or `:edition`. Nil
+    outside the sidebar.
   - `key`: names the entry. A page passes it as its `nav` to be marked the current one,
     and it gives the DOM id: `nav-<key>` in the sidebar, `organisation-menu-<key>` in the
-    switcher.
+    switcher, `settings-tab-<key>` in the list of a page of settings.
   - `label`: its words, translated by whoever gives the entry.
+  - `long_label`: its words where nothing around it says whose page it is, as the
+    palette's Go to lists it beside the pages of every scope ("Organisation policy" where
+    the sidebar says Policy); nil for the label.
   - `icon`: a heroicon's name, as `<.icon>` takes it.
   - `path`: where it leads: a path, or a function of the organisation and the workspace
     that returns one; the workspace is nil for an organisation's entry where the reader
     reaches none yet.
-  - `place`: `:workspace` for a page of a workspace, which has no entry while the reader
-    reaches none; `:organisation` for a page of the organisation, which opens without one.
+  - `place`: the scope the page belongs to, which decides the sidebar it shows:
+    `:workspace` for a page of a workspace, which has no entry while the reader reaches
+    none; `:organisation` for a page of the organisation, which opens without one;
+    `:person` for a person's own page (`/users/…`).
   - `action`: the `Apiary.Access` action the page is for, asked with `can?/3` of the
     workspace, or of the organisation without one; nil for an entry every member has. A
     feature that is off takes its actions with it, and so its entries.
@@ -35,6 +46,7 @@ defmodule ApiaryWeb.Nav.Entry do
   defstruct section: nil,
             key: nil,
             label: nil,
+            long_label: nil,
             icon: nil,
             path: nil,
             place: :workspace,
@@ -45,12 +57,13 @@ defmodule ApiaryWeb.Nav.Entry do
   @type path :: String.t() | (%Organisation{}, %Workspace{} | nil -> String.t())
 
   @type t :: %__MODULE__{
-          section: :workspace | :manage | nil,
+          section: atom | nil,
           key: atom,
           label: String.t(),
+          long_label: String.t() | nil,
           icon: String.t() | nil,
           path: path,
-          place: :workspace | :organisation,
+          place: :workspace | :organisation | :person,
           action: atom | nil,
           count: atom | nil,
           filter: (Scope.t(), map | nil -> boolean) | nil

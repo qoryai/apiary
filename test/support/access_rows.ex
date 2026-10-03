@@ -16,10 +16,11 @@ defmodule Apiary.AccessRows do
   Accepting an invitation is taken on the strength of the token, which no role is, and
   granting and revoking an instance admin on the strength of a release command run on the
   instance's machine: nobody's row says yes. Creating an organisation is a sign-up's, which
-  asks nothing, in the core; an edition may let a signed-in person create one. Deleting and
-  restoring a workspace are asked of the organisation, as an owner or an admin deletes any
-  workspace of it; purging is the instance's, once a deletion's grace period is over. The
-  actions over people are asked of the workspace, as a page asks whether to show them.
+  asks nothing, in the core; an edition may let a signed-in person create one. Creating,
+  deleting and restoring a workspace are asked of the organisation: an owner creates one,
+  an owner or an admin deletes any workspace of it; purging is the instance's, once a
+  deletion's grace period is over. The actions over people are asked of the workspace, as
+  a page asks whether to show them.
   """
 
   import Apiary.AccessKeysFixtures
@@ -53,6 +54,7 @@ defmodule Apiary.AccessRows do
       {:"instance_admin.revoke", yes: []},
       {:"audit.read", yes: @owners ++ [:admin, :feature_off]},
       {:"audit.prune", yes: [:instance, :feature_off]},
+      {:"workspace.create", yes: @owners ++ [:feature_off]},
       {:"workspace.rename", yes: @owners ++ [:admin, :feature_off]},
       {:"workspace.delete", yes: @owners ++ [:admin, :feature_off]},
       {:"workspace.restore", yes: @owners ++ [:admin, :feature_off]},

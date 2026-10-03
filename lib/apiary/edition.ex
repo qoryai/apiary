@@ -24,7 +24,10 @@ defmodule Apiary.Edition do
   The callbacks, by where they are asked:
 
   - **Limits and sign-up**: `limits/0`, `sign_up_open?/0`, `organisation_created/2`,
-    `instance_organisation_id/0`, `audit_retention_max_days/0`, `attribution?/0`.
+    `workspace_created/3`, `instance_organisation_id/0`, `audit_retention_max_days/0`,
+    `attribution?/0`.
+  - **Policy** (`Apiary.Policy`): `above_workspace/1`, what holds above a workspace's
+    security policy.
   - **Access** (`Apiary.Access`): `actions/0`, `roles/0`, `check/3`, `reach/1`, `role/1`,
     `reload/2`, `places_to_lock/1`, `every_workspace_levels/0`, `reaches_workspace?/3`,
     `reached_workspaces/2`.
@@ -77,8 +80,25 @@ defmodule Apiary.Edition do
   """
   @callback organisation_created(Ecto.Multi.t(), how :: term) :: Ecto.Multi.t()
 
+  @doc """
+  Told, inside the transaction, that `workspace` was created in its organisation
+  (`Apiary.Organisations.create_workspace/2`), once its entry is written; `scope` is
+  whoever created it. The workspace starts empty, as the core makes it: an edition writes
+  here what it keeps of a workspace from the start. An error rolls the creation back.
+  """
+  @callback workspace_created(Ecto.Repo.t(), %Workspace{}, Scope.t()) :: :ok | {:error, term}
+
   @doc "The organisation whose owners run the instance, or nil before the first sign-up."
   @callback instance_organisation_id() :: Ecto.UUID.t() | nil
+
+  @doc """
+  What holds above `workspace`'s security policy, from the level the edition keeps above
+  its workspaces (`Apiary.Policy.Above`: host rules, a required mode, whether the
+  workspace may allow hosts of its own), or nil: the core has none. Asked once per
+  operation of `Apiary.Policy`, and resolved, rendered and shown by the core, which says
+  the level's `name` and nothing of its own about it.
+  """
+  @callback above_workspace(%Workspace{}) :: Apiary.Policy.Above.t() | nil
 
   @doc "The most days `AUDIT_RETENTION_DAYS` may say."
   @callback audit_retention_max_days() :: pos_integer
@@ -275,7 +295,9 @@ defmodule Apiary.Edition do
     limits: 0,
     sign_up_open?: 0,
     organisation_created: 2,
+    workspace_created: 3,
     instance_organisation_id: 0,
+    above_workspace: 1,
     audit_retention_max_days: 0,
     attribution?: 0,
     actions: 0,

@@ -2,7 +2,8 @@ defmodule Apiary.OrganisationsFixtures do
   @moduledoc """
   Test helpers for organisations, workspaces, memberships and invitations, created the way the product creates them: through
   `Apiary.Organisations.sign_up_user/2` and the context's functions. The one exception is
-  a second workspace (`workspace_fixture/2`), which nothing in the product creates yet.
+  a second workspace (`workspace_fixture/2`), inserted whatever the edition's limit says,
+  since the core's allows one.
 
   The suite's instance has had its first sign-up before any test runs
   (`ensure_instance_organisation!/0`, from `test/test_helper.exs`), so a sign-up in a test
@@ -108,9 +109,10 @@ defmodule Apiary.OrganisationsFixtures do
   end
 
   @doc """
-  Another workspace of `organisation`, named `name`, inserted directly: nothing in the
-  product creates a second workspace yet. Its owners and admins reach it, as they reach
-  every workspace of their organisation.
+  Another workspace of `organisation`, named `name`, inserted directly: the product
+  creates one through `Apiary.Organisations.create_workspace/2`, as many as the edition's
+  limit allows, which in the core's edition is the one the organisation was made with. Its
+  owners and admins reach it, as they reach every workspace of their organisation.
   """
   def workspace_fixture(%Organisation{} = organisation, name \\ nil) do
     name = name || "Workspace #{System.unique_integer([:positive])}"

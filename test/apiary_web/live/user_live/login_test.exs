@@ -84,6 +84,76 @@ defmodule ApiaryWeb.UserLive.LoginTest do
     end
   end
 
+  describe "an address that cannot be one" do
+    test "the link form answers in the field, and sends nothing", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/users/log-in")
+
+      for email <- ["dana", "dana @example.com", ""] do
+        html = lv |> form("#login_form", user: %{email: email}) |> render_submit()
+
+        assert has_element?(
+                 lv,
+                 "#login_form_email-error",
+                 "Enter an email address, such as dana@example.com."
+               )
+
+        assert has_element?(lv, ~s|#login_form_email[aria-invalid="true"]|)
+        refute html =~ "Check your email"
+        refute html =~ "a log-in link is on its way"
+      end
+
+      assert Apiary.Repo.aggregate(Apiary.Accounts.UserToken, :count) == 0
+
+      # The error goes as soon as the address is one.
+      lv |> form("#login_form", user: %{email: "dana@example.com"}) |> render_change()
+      refute has_element?(lv, "#login_form_email-error")
+    end
+
+    test "an unknown address and a known one get the same answer", %{conn: conn} do
+      user = user_fixture()
+
+      for email <- [user.email, "nobody@example.com"] do
+        {:ok, lv, _html} = live(conn, ~p"/users/log-in")
+        html = lv |> form("#login_form", user: %{email: email}) |> render_submit()
+
+        refute has_element?(lv, "#login_form_email-error")
+        assert html =~ "a log-in link is on its way"
+      end
+    end
+
+    test "the password form answers in the field, and does not log in", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/users/log-in")
+      password_mode(lv)
+
+      lv
+      |> form("#login_form", user: %{email: "dana", password: valid_user_password()})
+      |> render_submit()
+
+      assert has_element?(lv, "#login_form_email-error", "Enter an email address")
+      refute has_element?(lv, "#login_form_password-error")
+      refute has_element?(lv, "#login_form[phx-trigger-action]")
+    end
+
+    test "the password form asks for the password", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/users/log-in")
+      password_mode(lv)
+
+      lv
+      |> form("#login_form", user: %{email: "dana@example.com", password: ""})
+      |> render_submit()
+
+      assert has_element?(lv, "#login_form_password-error", "Enter your password.")
+      refute has_element?(lv, "#login_form_email-error")
+      refute has_element?(lv, "#login_form[phx-trigger-action]")
+
+      lv
+      |> form("#login_form", user: %{email: "dana@example.com", password: "something"})
+      |> render_change()
+
+      refute has_element?(lv, "#login_form_password-error")
+    end
+  end
+
   describe "user login - password" do
     test "logs in with valid credentials and sets the remember-me cookie", %{conn: conn} do
       user = user_fixture() |> set_password()

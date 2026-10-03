@@ -90,4 +90,21 @@ defmodule ApiaryWeb.RichTextTest do
       assert render_rich(["x ", {:safe, "<wbr>"}]) == "x <wbr>"
     end
   end
+
+  describe "plain_text/2" do
+    test "is the words without the markup, a part's from what is given" do
+      text =
+        rich_gettext("Handed to %{tool} by rule %{rule}, path %{path}",
+          tool: {:b, "files"},
+          rule: {:part, :rule},
+          path: {:code, "/v1/*", "q-rule"}
+        )
+
+      assert plain_text(text, %{rule: "files.example"}) ==
+               "Handed to files by rule files.example, path /v1/*"
+
+      assert plain_text([{:link, "/x", {:m, "a.example"}}, " ", {:part, :none}, {:safe, "<b>"}]) ==
+               "a.example "
+    end
+  end
 end

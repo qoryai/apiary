@@ -62,8 +62,10 @@ defmodule Apiary.Accounts.User do
     end
   end
 
+  # An address already wrong, such as an empty one, is not also said to be unchanged.
   defp validate_email_changed(changeset) do
-    if get_field(changeset, :email) && get_change(changeset, :email) == nil do
+    if get_field(changeset, :email) && get_change(changeset, :email) == nil &&
+         not Keyword.has_key?(changeset.errors, :email) do
       add_error(changeset, :email, dgettext_noop("errors", "did not change"))
     else
       changeset

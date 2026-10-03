@@ -6,6 +6,16 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
   A holder is `nil` for the workspace's baseline or an `Apiary.Runs.Target`. Everything is
   read through `Apiary.Policy`; nothing here touches a schema's table.
+
+  The rules of the level above the workspace (`Apiary.Policy.Above`, the `above` of the
+  effective policy) are rows too (`above_rows/2`), read here and changed where the
+  edition keeps them (`c:ApiaryWeb.Edition.above_policy_link/1`); their words say the
+  level's name and nothing else of it.
+
+  A page that lists rules of another holder than the workspace's or a target's gives
+  `mount/3` a `writer`, the functions its composer and its rows' menu write with
+  (`policy_writer/0` is the core's, `Apiary.Policy`'s), and leaves the events
+  `edit_paths`, `change_action` and `remove` to `handle_event/3` here.
   """
   use ApiaryWeb, :verified_routes
   use Gettext, backend: ApiaryWeb.Gettext
@@ -16,26 +26,33 @@ defmodule ApiaryWeb.PolicyLive.Common do
   use ApiaryWeb.Async
 
   alias Apiary.{Access, Organisations}
+  alias Apiary.Accounts.Scope
   alias Apiary.Policy
-  alias Apiary.Policy.Grammar
+  alias Apiary.Policy.{Above, Grammar, Rule}
   alias ApiaryWeb.{Format, People}
-  alias ApiaryWeb.PolicyLive.Reading
+  alias ApiaryWeb.PolicyLive.{Reading, RuleList}
 
-  @week 7 * 24 * 3600
+  @fortnight 14 * 24 * 3600
   @coalesce 250
 
   ## Mount
 
-  @doc "The assigns every policy page starts from, and the one subscription."
-  def mount(socket, holder) do
+  @doc """
+  The assigns every policy page starts from, and the one subscription, to the policy of
+  the scope's workspace where the scope has one. `opts`: `writer`, what the page writes
+  rules with (`t:writer/0`), the core's policy by default; `base`, the path of the page's
+  list of rules, the holder's policy page by default.
+  """
+  def mount(socket, holder, opts \\ []) do
     scope = socket.assigns.current_scope
-    if connected?(socket), do: Policy.subscribe(scope)
+    if connected?(socket) and scope.workspace, do: Policy.subscribe(scope)
 
     socket
     |> assign(
       holder: holder,
+      writer: Keyword.get(opts, :writer, policy_writer()),
       scope_kind: if(holder, do: :target, else: :workspace),
-      base: base(scope, holder),
+      base: Keyword.get(opts, :base) || base(scope, holder),
       people: people(scope),
       fresh: %{},
       announce: nil,
@@ -50,11 +67,43 @@ defmodule ApiaryWeb.PolicyLive.Common do
     |> reset_credential()
   end
 
+  @typedoc """
+  What a page writes rules with: `allow` and `deny` as `Apiary.Policy.allow/3` and
+  `deny/3` (the scope, the page's holder, the attributes), `remove` as
+  `Apiary.Policy.remove_rule/2` (the scope, a rule or its id) and `get` as
+  `Apiary.Policy.get_rule/2` (the scope, an id), each answering `{:ok, rule}` or
+  `{:error, %Apiary.Policy.Error{}}`; and `written`, the toast of a host rule written
+  (the action, `"allow"` or `"deny"`, and the host), or none for the holder's own words
+  (`rule_written/3`).
+  """
+  @type writer :: %{
+          required(:allow) => (Scope.t(), term, map ->
+                                 {:ok, Rule.t()} | {:error, Policy.Error.t()}),
+          required(:deny) => (Scope.t(), term, map ->
+                                {:ok, Rule.t()} | {:error, Policy.Error.t()}),
+          required(:remove) => (Scope.t(), Rule.t() | String.t() ->
+                                  {:ok, Rule.t()} | {:error, Policy.Error.t()}),
+          required(:get) => (Scope.t(), String.t() ->
+                               {:ok, Rule.t()} | {:error, Policy.Error.t()}),
+          optional(:written) => (String.t(), String.t() -> String.t())
+        }
+
+  @doc "The core's writer: the workspace's and a target's rules, through `Apiary.Policy`."
+  @spec policy_writer() :: writer
+  def policy_writer do
+    %{
+      allow: &Policy.allow/3,
+      deny: &Policy.deny/3,
+      remove: &Policy.remove_rule/2,
+      get: &Policy.get_rule/2
+    }
+  end
+
   @doc "The path of the holder's policy page in `scope`'s workspace."
   def base(scope, nil), do: ~p"/#{scope.organisation}/#{scope.workspace}/policy"
 
-  def base(scope, %{id: id}),
-    do: ~p"/#{scope.organisation}/#{scope.workspace}/policy/targets/#{id}"
+  def base(scope, %{system: system, path: path}),
+    do: ApiaryWeb.TargetComponents.target_path(scope, system, path, ["policy"])
 
   @doc """
   Whether the reader of a policy page may take `action` on the workspace's security
@@ -65,7 +114,15 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
   def may?(scope, action), do: Access.can?(scope, action, scope.workspace)
 
-  def since, do: DateTime.add(DateTime.utc_now(), -@week, :second)
+  @doc """
+  The start of the window the record is read over for the mode's fact and the enforce
+  preview: the last 14 days, Network access's default window, so "See them" lands on the
+  same numbers.
+  """
+  def since, do: DateTime.add(DateTime.utc_now(), -@fortnight, :second)
+
+  @doc "The start of the window a list of rules counts their use in: the last 14 days."
+  def use_since, do: DateTime.add(DateTime.utc_now(), -@fortnight, :second)
 
   # user id => email, of the people of the workspace: who added a rule.
   defp people(scope) do
@@ -121,29 +178,230 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
   ## Rows
 
-  @doc "The host rules of the workspace's page, in the order the card's footer says."
-  def workspace_rows(rules, socket, locks) do
+  @doc """
+  Where a rule of the workspace's baseline is written, as a list of rules names it
+  (`ApiaryWeb.PolicyLive.RuleList`): the workspace, by its name, its slug the `source:`
+  qualifier's value, after a target's own rules in the list's order.
+  """
+  def workspace_source(scope),
+    do: %{key: scope.workspace.slug, label: scope.workspace.name, rank: 2}
+
+  @doc """
+  Where a target's own rule is written, on its Policy tab: this target, first in the
+  list's order, `source:` and the word the search takes for a target.
+  """
+  def target_source,
+    do: %{key: pgettext("qualifier", "target"), label: gettext("This target"), rank: 0}
+
+  @doc """
+  Where a rule of the level above the workspace is written (`Apiary.Policy.Above`): the
+  level by its name, with its tile, its slug the `source:` qualifier's value, between a
+  target's own rules and the workspace's in the list's order.
+  """
+  def above_source(%Above{name: name, slug: slug}),
+    do: %{key: slug, label: name, rank: 1, tile: String.first(name || "?")}
+
+  @doc """
+  The host rules of the level above the workspace, one row each, on the workspace's page
+  and on a target's tab: read here, never changed here (`can_change` false, `act` nil),
+  the lock glyph with the level's words (`above` true), and the way to the level
+  (`view`) where the edition gives one (`c:ApiaryWeb.Edition.above_policy_link/1`). One
+  the holder does not hold in force (its allow a lower deny narrows) says why. Nothing
+  where the effective policy has no level above it.
+  """
+  def above_rows(%Policy.Effective{above: %Above{} = above} = effective, socket) do
+    scope = socket.assigns.current_scope
+    source = above_source(above)
+    link = ApiaryWeb.Edition.above_policy_link(scope)
+    view = gettext("View in %{name}'s policy", name: above.name)
+
+    for %{kind: :host, source: :organisation} = entry <- effective.entries do
+      %{
+        id: entry.rule.id,
+        action: to_string(entry.action),
+        host: entry.host,
+        paths: entry.paths,
+        locked: false,
+        above: true,
+        source: source,
+        own: false,
+        in_force: entry.in_force,
+        off: off_words(entry, scope.workspace.name, above.name),
+        by: person(socket.assigns.people, entry.rule.created_by_id),
+        at: entry.rule.inserted_at,
+        locked_tip: above_tip(above),
+        can_change: false,
+        act: nil,
+        view: link && {view, link.path <> "?" <> URI.encode_query(%{"rule" => entry.host})}
+      }
+    end
+  end
+
+  def above_rows(_effective, _socket), do: []
+
+  @doc "What the lock glyph of a rule of the level above says."
+  def above_tip(%Above{name: name}),
+    do: gettext("%{name}'s rule: it holds in every workspace.", name: name)
+
+  @doc """
+  The host rules of the workspace's page, one row each (`ApiaryWeb.PolicyComponents.rule_line/1`):
+  every one the workspace's own, changed here; one the baseline does not hold in force
+  (an allow a `*.` deny covers) says why. `locks` is `locks/1`'s.
+  """
+  def workspace_rules(rules, socket, locks) do
+    scope = socket.assigns.current_scope
+    source = workspace_source(scope)
+    edit? = may?(scope, :"security_policy.edit")
+    lock? = may?(scope, :"security_policy.lock")
+    entries = entries_by_rule(socket.assigns[:effective])
+    above = above_name(socket.assigns[:effective])
+
     for rule <- rules, rule.kind == "host" do
+      entry = entries[rule.id]
+
       %{
         id: rule.id,
         action: rule.action,
         host: rule.host,
         paths: rule.paths,
         locked: rule.locked,
-        source: if(rule.locked, do: :workspace_locked, else: :workspace),
+        source: source,
+        own: true,
+        in_force: entry == nil or entry.in_force,
+        off: entry && off_words(entry, scope.workspace.name, above),
         by: person(socket.assigns.people, rule.created_by_id),
         at: rule.inserted_at,
         locked_tip: locked_tip(locks[rule.host]),
-        can_change: not rule.locked or may?(socket, :"security_policy.lock"),
-        act: nil,
-        beaten: []
+        can_change: edit? and (not rule.locked or lock?),
+        act: :remove,
+        view: nil
       }
     end
-    |> sort_rows()
   end
 
-  @doc "The credentials of a rules list, as the credentials table takes them."
-  def credential_rows(rules, socket, source \\ :workspace) do
+  defp entries_by_rule(%Policy.Effective{entries: entries}),
+    do: Map.new(entries, &{&1.rule.id, &1})
+
+  defp entries_by_rule(_effective), do: %{}
+
+  defp above_name(%Policy.Effective{above: %Above{name: name}}), do: name
+  defp above_name(_effective), do: nil
+
+  @doc """
+  The host rules in force for a target, on its Policy tab, one row each: its own, changed
+  here, and the workspace's, read here and changed on the workspace's page (the row's
+  `view`). A rule that is not in force for the target (its own, held by a locked rule of
+  the workspace; the workspace's, which the target's own decides) is kept, and says why.
+  """
+  def target_rules(%Policy.Effective{entries: entries} = effective, socket) do
+    scope = socket.assigns.current_scope
+    workspace = scope.workspace.name
+    edit? = may?(scope, :"security_policy.edit")
+    locks = socket.assigns[:locks] || %{}
+    own_source = target_source()
+    workspace_source = workspace_source(scope)
+    above = above_name(effective)
+
+    view =
+      gettext("View in %{workspace}'s policy", workspace: workspace)
+
+    for %{kind: :host, source: source} = entry <- entries, source != :organisation do
+      own? = entry.source == :target
+
+      %{
+        id: entry.rule.id,
+        action: to_string(entry.action),
+        host: entry.host,
+        paths: entry.paths,
+        locked: entry.locked,
+        source: if(own?, do: own_source, else: workspace_source),
+        own: own?,
+        in_force: entry.in_force,
+        off: off_words(entry, workspace, above),
+        by: person(socket.assigns.people, entry.rule.created_by_id),
+        at: entry.rule.inserted_at,
+        locked_tip: entry.locked && locked_tip(locks[entry.host]),
+        can_change: own? and edit?,
+        act: if(own?, do: act(entry), else: nil),
+        view:
+          if(own?,
+            do: nil,
+            else: {view, ApiaryWeb.ConnectionLive.Rules.rule_path(scope, nil, entry.host)}
+          )
+      }
+    end ++ above_rows(effective, socket)
+  end
+
+  @doc """
+  Why a rule is not in force, where its use would be; nil for one that is. `workspace`
+  is the workspace's name, `above` the name of the level above it, or nil.
+  """
+  def off_words(entry, workspace, above \\ nil)
+
+  def off_words(%{in_force: true}, _workspace, _above), do: nil
+
+  def off_words(%{reason: :only_above_allows}, _workspace, above),
+    do: gettext("Not in force: %{name} allows only its own hosts", name: above || "?")
+
+  def off_words(%{overridden_by: %{source: :organisation, action: :deny} = winner}, _ws, above),
+    do:
+      gettext("Not in force: %{name}'s %{host} denies it", name: above || "?", host: winner.host)
+
+  def off_words(%{overridden_by: %{source: :organisation} = winner}, _workspace, above),
+    do: gettext("Not in force: %{name}'s %{host} holds", name: above || "?", host: winner.host)
+
+  def off_words(
+        %{overridden_by: %{source: :workspace, locked: true} = winner},
+        workspace,
+        _above
+      ),
+      do:
+        gettext("Not in force: %{workspace}'s locked %{host} holds",
+          workspace: workspace,
+          host: winner.host
+        )
+
+  def off_words(%{source: :workspace, overridden_by: %{source: :target}}, _workspace, _above),
+    do: gettext("Not in force: this target's own rule decides it")
+
+  # The rule that wins is named by its own source: a target's own deny is the target's,
+  # never the workspace's, which a reader would look for there and not find.
+  def off_words(
+        %{source: :organisation, overridden_by: %{source: :target, action: :deny} = winner},
+        _workspace,
+        _above
+      ),
+      do: gettext("Not in force here: this target's own %{host} denies it", host: winner.host)
+
+  def off_words(
+        %{source: :organisation, overridden_by: %{action: :deny} = winner},
+        workspace,
+        _above
+      ),
+      do:
+        gettext("Not in force here: %{workspace}'s %{host} denies it",
+          workspace: workspace,
+          host: winner.host
+        )
+
+  def off_words(%{overridden_by: %{action: :deny} = winner}, _workspace, _above),
+    do: gettext("Not in force: %{host} denies it", host: winner.host)
+
+  def off_words(%{overridden_by: %{} = winner}, _workspace, _above),
+    do: gettext("Not in force: %{host} decides it", host: winner.host)
+
+  def off_words(_entry, _workspace, _above), do: gettext("Not in force")
+
+  @doc """
+  The credentials of the workspace's page, one row each (`ApiaryWeb.PolicyComponents.credentials_table/1`),
+  every one its own.
+  """
+  def credential_rows(rules, socket) do
+    scope = socket.assigns.current_scope
+    source = workspace_source(scope)
+    edit? = may?(scope, :"security_policy.edit")
+    lock? = may?(scope, :"security_policy.lock")
+
     for rule <- rules, rule.kind == "credential" do
       %{
         id: rule.id,
@@ -152,91 +410,82 @@ defmodule ApiaryWeb.PolicyLive.Common do
         argument: rule.argument,
         locked: rule.locked,
         source: source,
+        own: true,
+        view: nil,
         by: person(socket.assigns.people, rule.created_by_id),
         at: rule.inserted_at,
-        can_change: not rule.locked or may?(socket, :"security_policy.lock")
+        can_change: edit? and (not rule.locked or lock?)
       }
     end
   end
 
   @doc """
-  The effective policy of a target as rows: one per host rule in force, the rules it
-  beat hung under it.
+  The credentials a target's runs may use, on its Policy tab: its own, then the
+  workspace's, each with where it is written; the workspace's are read here and changed
+  on the workspace's page.
   """
-  def effective_rows(%Policy.Effective{entries: entries}, socket) do
-    people = socket.assigns.people
+  def target_credentials(%Policy.Effective{entries: entries}, socket) do
+    scope = socket.assigns.current_scope
+    edit? = may?(scope, :"security_policy.edit")
+    view = gettext("View in %{workspace}'s policy", workspace: scope.workspace.name)
+    path = ~p"/#{scope.organisation}/#{scope.workspace}/policy"
 
-    for %{kind: :host, in_force: true} = entry <- entries do
+    for %{kind: :credential} = entry <- entries do
+      own? = entry.source == :target
+
       %{
         id: entry.rule.id,
         action: to_string(entry.action),
-        host: entry.host,
-        paths: entry.paths,
+        name: entry.name,
+        argument: entry.argument,
         locked: entry.locked,
-        source: source(entry),
-        by: person(people, entry.rule.created_by_id),
+        in_force: entry.in_force,
+        source: if(own?, do: target_source(), else: workspace_source(scope)),
+        own: own?,
+        view: if(own?, do: nil, else: {view, path}),
+        by: person(socket.assigns.people, entry.rule.created_by_id),
         at: entry.rule.inserted_at,
-        locked_tip: nil,
-        can_change: true,
-        act: act(entry),
-        beaten: Enum.map(entry.overrides, &beaten(&1, entry, people))
+        can_change: own? and edit?
       }
     end
-    |> sort_rows()
+    |> Enum.sort_by(&{not &1.own, &1.name})
   end
 
-  defp source(%{source: :workspace, locked: true}), do: :workspace_locked
-  defp source(%{source: source}), do: source
-
-  defp act(%{source: :workspace, locked: true}), do: :open
-  defp act(%{source: :workspace, action: :allow}), do: :disable
-  defp act(%{source: :workspace, action: :deny}), do: :allow_here
-
-  defp act(%{source: :target, action: :deny, overrides: overrides}) do
+  # What Remove does to a target's own rule: gives the workspace's back where the target's
+  # overrode it, else removes it.
+  defp act(%{action: :deny, overrides: overrides}) do
     if Enum.any?(overrides, &(&1.source == :workspace)), do: :restore, else: :remove
   end
 
-  defp act(%{source: :target}), do: :remove
+  defp act(_entry), do: :remove
 
-  defp beaten(loser, winner, people) do
-    kind =
-      cond do
-        winner.locked and loser.source == :target ->
-          :lock
+  @doc """
+  The path of the holder's list of rules with `query` (`ApiaryWeb.PolicyLive.RuleList`),
+  and the parameters of `extra` beside it: on the page of the socket, or on `base`.
+  """
+  def list_path(socket_or_base, query, extra \\ %{})
 
-        winner.source == :target and loser.source == :workspace and loser.host == winner.host ->
-          :override
+  def list_path(%{assigns: %{base: base}}, query, extra), do: list_path(base, query, extra)
 
-        true ->
-          :cover
-      end
-
-    %{
-      id: loser.rule.id,
-      action: to_string(loser.action),
-      host: loser.host,
-      source: loser.source,
-      kind: kind,
-      by: person(people, loser.rule.created_by_id),
-      at: loser.rule.inserted_at,
-      winner_by: person(people, winner.rule.created_by_id),
-      winner_at: winner.rule.inserted_at
-    }
+  def list_path(base, query, extra) when is_binary(base) do
+    case Map.merge(RuleList.to_params(query), extra) do
+      params when params == %{} -> base
+      params -> base <> "?" <> URI.encode_query(params)
+    end
   end
 
-  # Locked rules first, then deny, then allow; inside each by the host's labels read from
-  # the right, so a suffix sits beside the hosts below it.
-  defp sort_rows(rows) do
-    Enum.sort_by(rows, fn row ->
-      {not row.locked, row.action != "deny", from_the_right(row.host)}
-    end)
+  @doc """
+  The page of the holder's list the reader sees: `ApiaryWeb.PolicyLive.RuleList.list/3`
+  of the page's rows and query, with the use counted so far.
+  """
+  def listing(assigns) do
+    RuleList.list(assigns.rows, assigns.list_query, async_value(assigns.activity))
   end
 
-  # A name before the suffix above it, the suffix before the hosts below it.
-  defp from_the_right(host) do
-    labels = host |> String.trim_leading("*.") |> String.split(".") |> Enum.reverse()
-    if Grammar.wildcard?(host), do: labels ++ ["*"], else: labels
-  end
+  @doc "An async assign's value: its result, `:unavailable` when it failed, `:loading` until then."
+  def async_value(%Phoenix.LiveView.AsyncResult{ok?: true, result: result}), do: result
+  def async_value(%Phoenix.LiveView.AsyncResult{loading: nil}), do: :unavailable
+  def async_value(_async), do: :loading
 
   defp locked_tip(%{by: by, at: at}) when is_binary(by),
     do:
@@ -368,7 +617,8 @@ defmodule ApiaryWeb.PolicyLive.Common do
     field =
       if params["focus"] == "paths", do: "policy-composer-paths", else: "policy-composer-host"
 
-    {:halt, socket |> read(values) |> set_fields() |> focus(field)}
+    {:halt,
+     socket |> assign(:composer_open, true) |> read(values) |> set_fields() |> focus(field)}
   end
 
   def handle_event("composer_every", _params, socket) do
@@ -467,6 +717,96 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
   def handle_event("dialog_cancel", _params, socket), do: {:halt, assign(socket, :dialog, nil)}
 
+  # The list's search, sent as the reader types and on Enter: a qualifier they typed
+  # becomes a token on Enter only, so one half typed is never applied; until then it is
+  # left out of the text.
+  def handle_event("rules_search", %{"q" => typed} = params, socket) when is_binary(typed) do
+    {tokens, text} =
+      if Map.has_key?(params, "_target"),
+        do: {[], RuleList.pending(typed)},
+        else: RuleList.parse_search(typed)
+
+    query = RuleList.typed(socket.assigns.list_query, tokens, text)
+    {:halt, push_patch(socket, to: list_path(socket, query))}
+  end
+
+  def handle_event("composer_open", _params, socket) do
+    {:halt, socket |> assign(:composer_open, true) |> focus("policy-composer-host")}
+  end
+
+  def handle_event("composer_close", _params, socket) do
+    {:halt,
+     socket
+     |> assign(composer_open: false, queue: [])
+     |> reset_composer()
+     |> set_fields()
+     |> focus("policy-rules-add")}
+  end
+
+  # The rows' menu of a page whose rules are the writer's alone: a page that lists more
+  # than one holder's rules answers these before asking here.
+  def handle_event("edit_paths", %{"id" => id}, socket) do
+    case socket.assigns.writer.get.(socket.assigns.current_scope, id) do
+      {:ok, %{kind: "host", action: "allow"} = rule} ->
+        {:halt,
+         socket
+         |> assign(:composer_open, true)
+         |> read(%{
+           "action" => "allow",
+           "host" => rule.host,
+           "paths" => Enum.join(rule.paths || [], " "),
+           "every" => "false"
+         })
+         |> set_fields()
+         |> focus("policy-composer-paths")}
+
+      _ ->
+        {:halt, socket}
+    end
+  end
+
+  def handle_event("change_action", %{"id" => id}, socket) do
+    scope = socket.assigns.current_scope
+    %{writer: writer, holder: holder} = socket.assigns
+
+    case writer.get.(scope, id) do
+      {:ok, %{kind: "host", action: action} = rule} ->
+        {write, to} =
+          if action == "allow", do: {writer.deny, "deny"}, else: {writer.allow, "allow"}
+
+        case write.(scope, holder, %{host: rule.host}) do
+          {:ok, written} ->
+            {:halt,
+             wrote(socket, written, rule_written(socket, to, rule.host), gettext("Rule changed."))}
+
+          {:error, error} ->
+            {:halt, refused(socket, error)}
+        end
+
+      _ ->
+        {:halt, socket.assigns.reload.(socket)}
+    end
+  end
+
+  def handle_event("remove", %{"id" => id}, socket) do
+    scope = socket.assigns.current_scope
+    writer = socket.assigns.writer
+
+    with {:ok, rule} <- writer.get.(scope, id),
+         {:ok, rule} <- writer.remove.(scope, rule) do
+      {:halt,
+       socket
+       |> wrote(
+         nil,
+         gettext("The rule %{host} is removed.", host: Rule.subject(rule)),
+         gettext("Rule removed.")
+       )
+       |> focus("policy-composer-host")}
+    else
+      {:error, error} -> {:halt, refused(socket, error)}
+    end
+  end
+
   def handle_event(_event, _params, _socket), do: :cont
 
   defp save_rule(socket) do
@@ -486,10 +826,12 @@ defmodule ApiaryWeb.PolicyLive.Common do
         true -> %{host: host}
       end
 
+    writer = socket.assigns.writer
+
     result =
       if action == "deny",
-        do: Policy.deny(scope, holder, attrs),
-        else: Policy.allow(scope, holder, attrs)
+        do: writer.deny.(scope, holder, attrs),
+        else: writer.allow.(scope, holder, attrs)
 
     case result do
       {:ok, rule} ->
@@ -516,8 +858,13 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
   @doc """
   The toast of a host rule written on the page:
-  `123.example is allowed for the workspace.`, `… is denied for acme/shop.`
+  `123.example is allowed for the workspace.`, `… is denied for acme/shop.`, or the
+  writer's own words where it has them.
   """
+  def rule_written(%{assigns: %{writer: %{written: written}}}, action, host)
+      when is_function(written, 2),
+      do: written.(action, host)
+
   def rule_written(%{assigns: %{holder: nil}}, "allow", host),
     do: gettext("%{host} is allowed for the workspace.", host: host)
 
@@ -546,14 +893,30 @@ defmodule ApiaryWeb.PolicyLive.Common do
   """
   def wrote(socket, rule, sentence, announce) do
     before = socket.assigns[:version] && socket.assigns.version.version
+    before_holder = socket.assigns[:version] && socket.assigns.version.target_id
     socket = socket.assigns.reload.(socket)
     version = socket.assigns[:version] && socket.assigns.version.version
+    holder = socket.assigns[:version] && socket.assigns.version.target_id
 
     tail =
       cond do
-        is_nil(version) -> ""
-        version == before -> " " <> gettext("No new version: the document did not change.")
-        true -> " " <> gettext("Version %{version}.", version: version)
+        is_nil(version) ->
+          ""
+
+        version == before and holder == before_holder ->
+          " " <> gettext("No new version: the document did not change.")
+
+        # A target's first version of its own: numbered from 1, not a reset of the
+        # workspace's numbering it was served until now.
+        is_nil(before_holder) and is_binary(holder) and not is_nil(before) ->
+          " " <>
+            gettext(
+              "Version %{version} of this target's own policy; until now it was served the workspace's.",
+              version: version
+            )
+
+        true ->
+          " " <> gettext("Version %{version}.", version: version)
       end
 
     fresh =
@@ -631,9 +994,10 @@ defmodule ApiaryWeb.PolicyLive.Common do
   @doc """
   The sentence of a change, its author first: rich text. `who` is the author's email,
   "Former member" once their account is deleted (`ApiaryWeb.People`), or nil for a change
-  nobody made, such as a render again after an upgrade, which Qory made.
+  nobody made, such as a render again after an upgrade, which Qory made. `above` is the
+  name of the level above the workspace, for a change of it (`above_changed`), or nil.
   """
-  def change_sentence(change, who) do
+  def change_sentence(change, who, above \\ nil) do
     who = {:b, who || gettext("Qory")}
     diff = Policy.diff(change)
 
@@ -692,6 +1056,12 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
       {"rule_unlocked", _} ->
         rich_gettext("%{who} unlocked %{host}", who: who, host: {:code, change.subject})
+
+      {"above_changed", _} when is_binary(above) ->
+        rich_gettext("%{who} changed %{name}'s policy", who: who, name: {:b, above})
+
+      {"above_changed", _} ->
+        rich_gettext("%{who} changed the policy above this workspace", who: who)
 
       _ when is_binary(change.subject) ->
         rich_gettext("%{who} changed %{subject}", who: who, subject: {:code, change.subject})
@@ -814,6 +1184,9 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
       {"rule_unlocked", _} ->
         gettext("Unlocked %{subject}", subject: change.subject)
+
+      {"above_changed", _} ->
+        gettext("Changed above the workspace")
 
       _ ->
         gettext("Changed")
@@ -1037,6 +1410,8 @@ defmodule ApiaryWeb.PolicyLive.Common do
     # One read for the page: the versions its changes made, without their documents.
     versions = Policy.configurations_for_changes(scope, Enum.map(changes.items, & &1.id))
 
+    above = above_name(socket.assigns[:effective])
+
     rows =
       for change <- changes.items do
         made = made_version(versions, holder, change)
@@ -1044,7 +1419,7 @@ defmodule ApiaryWeb.PolicyLive.Common do
 
         %{
           id: change.id,
-          sentence: change_sentence(change, People.email(change.changed_by)),
+          sentence: change_sentence(change, People.email(change.changed_by), above),
           origin: origin(change, made),
           who: People.email(change.changed_by),
           at: change.inserted_at,
@@ -1227,6 +1602,8 @@ defmodule ApiaryWeb.PolicyLive.Common do
            if(latest.version == configuration.version,
              do: Policy.effective(scope, holder).mode_source
            ),
+         mode_required_by:
+           if(latest.version == configuration.version, do: above_name(socket.assigns[:effective])),
          change_words: change && change_words(change),
          view: view,
          compare: compare,

@@ -36,6 +36,7 @@ defmodule ApiaryWeb.RoutesFeaturesCase do
     ApiaryWeb.ActivityLive,
     ApiaryWeb.UserLive.Organisations,
     ApiaryWeb.OrganisationLive,
+    ApiaryWeb.MovedController,
     ApiaryWeb.InvitationController,
     ApiaryWeb.UserSessionController,
     ApiaryWeb.UserLive.Settings,

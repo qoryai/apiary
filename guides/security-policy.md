@@ -44,31 +44,60 @@ disables a host the workspace allows.
 
 ## The workspace's baseline and a repository's rules
 
-The workspace has a baseline of rules, on `/:org/:workspace/policy`. A repository has
-rules of its own on top, on `/:org/:workspace/policy/targets/:target_id`; the list of
-repositories is `/:org/:workspace/policy/targets`. A repository appears there once a run
-names it, by the `forge` and `repository` labels the runner takes from the checkout's
-origin remote ([The runner file's `server` section](runner-file.md)).
+The workspace has a baseline of rules, on `/:org/:workspace/policy`: the hosts and paths
+in its **Network access** section, the credentials in **Credentials**. What the runs
+reached, and what decided it, is the **Network access** page beside **Policy** in the
+sidebar, `/:org/:workspace/network`, where each row can allow or deny its host; the
+section links to it, and its rules link back. A repository has rules of its own on top,
+on the **Policy** tab of the repository's page,
+`/:org/:workspace/targets/:forge/:path/-/policy` (the old address,
+`/:org/:workspace/policy/targets/:id` and what followed it, sends on there); the list of
+repositories and their policy is `/:org/:workspace/policy/targets`. A repository appears
+there once a run names it, by the `forge` and `repository` labels the runner takes from the
+checkout's origin remote ([The runner file's `server` section](runner-file.md)).
 
 A repository without rules of its own is served the workspace baseline, and so is a run
 that names no repository.
 
-A repository's page shows its effective policy as one list, every rule with where it came
-from: **Workspace**, **This repository**, or **Workspace, locked**. A rule that lost is
-struck through under the rule that beat it. The row actions are **Disable here**, **Allow
-here**, **Remove** and **Restore**.
+Every list of rules is read the same way, however long it grows: views **All**,
+**Allowed**, **Denied** and **Locked** with their counts; a field that finds a host and
+holds the chosen filters as words (`seen:no`, `paths:held`, `by:dana`; on a repository's
+tab `source:repo` or the workspace's slug); one **Filter** menu (Source where there is more
+than one, Paths, Seen in 14 days, Added by); **Sort** (the list's own order, Host, Most
+used, Recently added); **Add rule**, which opens the composer line over the list; and
+pages of 50. Every choice is in the address, so a filtered view can be linked. A rule is
+one line: allow or deny, the host, its paths, its use in the last 14 days, who added it
+and when, a lock when it is locked, and a ⋯ menu (Edit paths, Change to deny or allow,
+Lock or Unlock for an owner, Remove).
+
+A repository's Policy tab is its effective policy on the same list, every rule with its
+**Source**: **This repository** or the workspace, by its name. Its own rules come first
+and are changed there; the workspace's are read there and changed on the workspace's
+policy page, which their menu leads to (**View in Main's policy**). A rule that is not in
+force, the repository's own under a locked rule of the workspace, or the workspace's that
+the repository's own decides, stays in the list, struck through, and says why. A
+repository overrides the workspace's rule for a host by adding its own rule for it, the
+other way round; removing that rule gives the workspace's back. Its credentials are its
+own, then the workspace's, each with its source.
 
 ## How rules resolve
 
 Rules meet on the same host string, or the same credential name, and the one that wins
 decides the host whole, its action and its paths.
 
-1. A **locked** rule of the workspace wins over everything.
+0. A rule of the level above the workspace, where the edition keeps one (the core keeps
+   none): its denies hold everywhere, so no rule of the workspace or of a repository
+   allows the host; its allows reach every workspace and can be narrowed by a deny below
+   them, never widened. Against a lower allow on the same host, its allow holds, paths
+   included.
+1. A **locked** rule of the workspace wins over everything else.
 2. Then the repository's rule.
 3. Then an unlocked rule of the workspace.
 
 So where the two meet on a host, the repository wins, unless the workspace's rule is
-locked.
+locked. Where the level above the workspace allows only its own hosts, an allow of the
+workspace or of a repository is listed, struck, and not in force; denies and credentials
+still apply.
 
 A deny of a `*.` suffix also removes every allow entry it covers, `*.example` covers
 `api.example` and `*.eu.example`, unless the allow has the higher precedence. A deny below
@@ -110,7 +139,8 @@ Members edit rules. Only an owner locks, unlocks, changes or removes a locked ru
 
 ## Observe and enforce
 
-The workspace has a mode, shown as two cards at the top of `/:org/:workspace/policy`.
+The workspace has a mode, one line at the top of `/:org/:workspace/policy`: Observe or
+Enforce, then a sentence of what it does and how many repositories follow it.
 
 - **Observe** records every connection and denies only what a deny rule names. A host no
   rule names is let through, and the record says so. A deny holds in observe as in enforce,
@@ -120,11 +150,13 @@ The workspace has a mode, shown as two cards at the top of `/:org/:workspace/pol
 
 A workspace starts in observe. Only an owner or an admin changes the mode, in either
 direction, and each change is confirmed. A wall's own refusals, the machine's own address
-say, hold in either mode.
+say, hold in either mode. Where the level above the workspace requires enforce, the mode
+is enforce in the workspace and in every repository, the workspace's and the
+repositories' choices are fixed and say who requires it, and a repository's own observe is kept but not
+in force.
 
 The workspace's mode is a default. A repository follows it until an owner or an admin
-gives the repository a mode of its own, on the repository's page under
-`/:org/:workspace/policy/targets`: **Follow the workspace**, **Observe** or **Enforce**,
+gives the repository a mode of its own, on the repository's Policy tab: **Follow** the workspace, by its name, **Observe** or **Enforce**,
 with what is in effect and where it comes from. A change of the workspace's mode reaches
 the repositories that follow it and leaves the others as they are. The mode and the rules
 are apart: a repository in enforce under a workspace in observe is held to its effective
@@ -152,7 +184,7 @@ it is stored.
   version**. The change is still in the history. A lock often does this: it holds against
   repositories and leaves the workspace's document as it was.
 - **History**, `/:org/:workspace/policy/history` and
-  `/:org/:workspace/policy/targets/:target_id/history`, has every change with who made it,
+  `/:org/:workspace/targets/:forge/:path/-/policy/history`, has every change with who made it,
   when, the rules before and after, the version it made or that it made none, and its diff
   in rules and in document lines. Changes to a repository's own rules are in that
   repository's history. The history is the policy's part of the organisation's audit
@@ -160,7 +192,7 @@ it is stored.
   (`AUDIT_RETENTION_DAYS`, [Install and configure](install.md)). The versions are kept
   whatever their age.
 - **A version's page**, `/:org/:workspace/policy/versions/:n` and
-  `/:org/:workspace/policy/targets/:target_id/versions/:n`, has the changes from any
+  `/:org/:workspace/targets/:forge/:path/-/policy/versions/:n`, has the changes from any
   earlier version, the document indented for reading, and the bytes as served.
   `/:org/:workspace/policy/document` is the document in force.
 
@@ -179,9 +211,10 @@ policy applied event, which the run's timeline shows as "Policy applied again" w
 hosts added and removed, and a tunnel open to a host the new policy denies is closed and
 recorded as refused.
 
-The record is not rewritten. A rule added from a connection's row, **Allow** or **Deny**
-on a run's Connections tab or on `/:org/:workspace/connections`, changes what happens
-next; what the record already says stays as it was.
+The record is not rewritten. A rule added from a destination's row, **Allow** or **Deny**
+on a run's **Network access** tab or on the workspace's Network access page,
+`/:org/:workspace/network`, changes what happens next; what the record already says stays
+as it was.
 
 ## Tool invocations
 
@@ -223,10 +256,10 @@ Wherever a connection is shown, a tool invocation reads as a call to its tool:
 - The run's policy applied item and the policy in force on its Details tab list the tools,
   each with its argument beside its name when the policy passed one, and the hosts each
   serves.
-- On `/:org/:workspace/connections`, **Tool invocations** keeps only the destinations
-  where a run's last attempt was a tool invocation, each whole: its counts are the same as
-  without the filter. A destination where every run's last attempt was refused is not
-  among them.
+- On Network access, `/:org/:workspace/network`, **Tool invocations** keeps only the
+  destinations where a run's last attempt was a tool invocation, each whole: its counts
+  are the same as without the filter. A destination where every run's last attempt was
+  refused is not among them.
 - The list of what enforce would start denying and the overview's denied destinations
   name a destination's tool, first, whenever a request to it named one, handed to the
   tool or refused by a path rule: a refused request to a tool is a denied request to
@@ -239,7 +272,7 @@ row: the rules decide what reaches a tool, and the tool decides what the request
 
 A machine that reports to no server can be given the same policy as files. **Export**, on
 the policy page and on a version's page, `/:org/:workspace/policy/versions/:n/export` and
-`/:org/:workspace/policy/targets/:target_id/versions/:n/export`, gives the effective
+`/:org/:workspace/targets/:forge/:path/-/policy/versions/:n/export`, gives the effective
 policy of that version as text, with **Download**:
 
 - the `egress` section for the machine's runner file, which says a mode, the hosts

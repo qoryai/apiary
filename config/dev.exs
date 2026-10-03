@@ -57,8 +57,25 @@ config :apiary, ApiaryWeb.Endpoint,
 # configured to run both http and https servers on
 # different ports.
 
-# Enable dev routes for dashboard and mailbox
+# Enable dev routes for dashboard, mailbox and the component storybook
 config :apiary, dev_routes: true
+
+# The component storybook's stylesheet (docs/ui.md, Storybook), built and watched in this
+# checkout only: an edition imports this file, and has no storybook.
+if Mix.Project.config()[:app] == :apiary do
+  config :tailwind,
+    storybook: [
+      args: ~w(
+        --input=assets/css/storybook.css
+        --output=priv/static/assets/css/storybook.css
+      ),
+      cd: Path.expand("..", __DIR__),
+      env: %{"NODE_PATH" => [Path.expand("../deps", __DIR__), Mix.Project.build_path()]}
+    ]
+
+  config :apiary, ApiaryWeb.Endpoint,
+    watchers: [storybook: {Tailwind, :install_and_run, [:storybook, ~w(--watch)]}]
+end
 
 # No timestamps in development logs, and of the metadata only the organisation,
 # workspace and person ids, where a line has them.

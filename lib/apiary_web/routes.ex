@@ -13,21 +13,26 @@ defmodule ApiaryWeb.Routes do
       visitor_routes()
       organisation_routes()
 
-  - `pipelines/0`: `:browser`, `:api`, `:contract` (a signed request of the server
-    contract) and `:path_scope` (the reserved names, `ApiaryWeb.ReservedSlugs`), with the
-    plugs of `ApiaryWeb.UserAuth` the routes pipe through imported. First, since the
-    others pipe through them.
+  - `pipelines/0`: `:browser`, `:browser_json` (JSON for a signed-in page), `:api`,
+    `:contract` (a signed request of the server contract) and `:path_scope` (the reserved
+    names, `ApiaryWeb.ReservedSlugs`), with the plugs of `ApiaryWeb.UserAuth` the routes
+    pipe through imported. First, since the others pipe through them.
   - `public_routes/0`: the home page, `/docs`, `/health`, the server contract under
     `/.well-known` and `/v1`, and, where `:dev_routes` is set, `/dev`.
+  - `storybook_routes/0`: the component storybook at `/dev/storybook` (`docs/ui.md`,
+    Storybook), where `:dev_routes` is set and the storybook's dependency, a development
+    one, is there. `ApiaryWeb.Router` calls it; an edition's router does not, since the
+    stories are this checkout's.
   - `account_routes/1`: a signed-in person's own pages under `/users` and an invitation's
     continuation, behind sign-in, in the `live_session :require_authenticated_user`.
   - `visitor_routes/1`: registration, log-in and an invitation, for anyone, in the
     `live_session :current_user`, with the session's controller routes.
   - `organisation_routes/1`: the organisation's pages under `/:org/…` and a workspace's
-    under `/:org/:workspace/…`, in the `live_session :workspace`, last: `/:org` and
-    `/:org/:workspace` would match every path of one or two segments before them. The
-    first segment is never one of `ApiaryWeb.ReservedSlugs.organisation/0`, the second of
-    an organisation's never one of `ApiaryWeb.ReservedSlugs.workspace/0`;
+    under `/:org/:workspace/…`, in the `live_session :workspace`, with the palette's
+    answers (`/:org/jump`, `/:org/:workspace/jump`) and a run's raw log beside them,
+    last: `/:org` and `/:org/:workspace` would match every path of one or two segments
+    before them. The first segment is never one of `ApiaryWeb.ReservedSlugs.organisation/0`,
+    the second of an organisation's never one of `ApiaryWeb.ReservedSlugs.workspace/0`;
     `test/apiary_web/reserved_slugs_test.exs` holds both lists to the router's routes.
 
   The three route macros that hold a `live_session` take a `do` block, the caller's routes
@@ -67,6 +72,7 @@ defmodule ApiaryWeb.Routes do
         only: [
           fetch_current_scope_for_user: 2,
           require_authenticated_user: 2,
+          require_authenticated_json: 2,
           fetch_path_scope: 2
         ]
 
@@ -83,6 +89,17 @@ defmodule ApiaryWeb.Routes do
 
       pipeline :api do
         plug :accepts, ["json"]
+      end
+
+      # JSON for a signed-in person's page, such as the palette's answers: the browser's
+      # session, cookie and words, without its HTML.
+      pipeline :browser_json do
+        plug :accepts, ["json"]
+        plug :fetch_session
+        plug :fetch_live_flash
+        plug :put_secure_browser_headers
+        plug :fetch_current_scope_for_user
+        plug ApiaryWeb.Lingo
       end
 
       # A request of the server contract, signed with an access key.
@@ -151,6 +168,35 @@ defmodule ApiaryWeb.Routes do
   end
 
   @doc """
+  storybook_routes/0 defines the component storybook, `/dev/storybook`, and its assets,
+  where `:dev_routes` is set and `phoenix_storybook` is there: a dependency of this
+  checkout's in development and test only, so a release, and a project that has the core
+  as its dependency, has neither the routes nor any reference to the library.
+  """
+  defmacro storybook_routes do
+    # Decided where the macro expands: in a project without the library, the routes and
+    # their import are not there to compile.
+    if Code.ensure_loaded?(PhoenixStorybook.Router) do
+      quote do
+        if Application.compile_env(:apiary, :dev_routes) do
+          import PhoenixStorybook.Router
+
+          scope "/" do
+            storybook_assets("/dev/storybook/assets")
+          end
+
+          scope "/" do
+            live_storybook("/dev/storybook",
+              backend_module: ApiaryWeb.Storybook,
+              assets_path: "/dev/storybook/assets"
+            )
+          end
+        end
+      end
+    end
+  end
+
+  @doc """
   account_routes/1 defines a signed-in person's own pages and an invitation's
   continuation, behind sign-in; the block's routes go into the
   `live_session :require_authenticated_user`, after the core's.
@@ -172,8 +218,11 @@ defmodule ApiaryWeb.Routes do
               {ApiaryWeb.UserAuth, :require_authenticated},
               {ApiaryWeb.UserAuth, :load_organisation}
             ] do
+            # A person's settings, one section a page: Profile (email, password, deleting the
+            # account) and Preferences.
             live "/users/settings", UserLive.Settings, :edit
-            # The confirmation of deleting one's own account, a modal over the settings.
+            live "/users/settings/preferences", UserLive.Settings, :preferences
+            # The confirmation of deleting one's own account, a modal over Profile.
             live "/users/settings/delete", UserLive.Settings, :delete
             live "/users/settings/confirm-email/:token", UserLive.Settings, :confirm_email
             # A user's organisations: each in use, and those marked for deletion that they
@@ -227,6 +276,45 @@ defmodule ApiaryWeb.Routes do
   defmacro organisation_routes(opts \\ [], block \\ []) do
     routes =
       quote do
+        # What the palette of the top bar (Search or jump to) finds: JSON, not a page.
+        # Before the pages, whose `/:org/:workspace` would take `/:org/jump`.
+        scope "/", ApiaryWeb do
+          pipe_through [
+            :path_scope,
+            :browser_json,
+            :require_authenticated_json,
+            :fetch_path_scope
+          ]
+
+          get "/:org/jump", JumpController, :show
+          get "/:org/:workspace/jump", JumpController, :show
+        end
+
+        # The switcher's link to a workspace at the section the reader is on, sent on to
+        # that section there, or to the workspace's overview where it has no such page:
+        # whether it has one is the destination's own answer, read when it is followed.
+        scope "/", ApiaryWeb do
+          pipe_through [:path_scope, :browser, :require_authenticated_user, :fetch_path_scope]
+
+          get "/:org/:workspace/switch/:section", SwitchController, :show
+        end
+
+        # The paths of pages that moved, under the settings or to a new name, sent on to
+        # where they are now, so a link someone kept still lands. Before the pages, whose
+        # `/:org/:workspace` would take `/:org/members`. A target's Connections tab moved
+        # too; its page's glob sends that one on (`TargetLive.Show`).
+        scope "/", ApiaryWeb do
+          pipe_through [:path_scope, :browser]
+
+          get "/:org/activity", MovedController, :show
+          get "/:org/members", MovedController, :show
+          get "/:org/members/*rest", MovedController, :show
+          get "/:org/:workspace/keys", MovedController, :show
+          get "/:org/:workspace/keys/*rest", MovedController, :show
+          get "/:org/:workspace/connections", MovedController, :show
+          get "/:org/:workspace/runs/:run_id/connections", MovedController, :show
+        end
+
         scope "/", ApiaryWeb do
           pipe_through [:path_scope, :browser, :require_authenticated_user, :fetch_path_scope]
 
@@ -239,62 +327,77 @@ defmodule ApiaryWeb.Routes do
             # opened last, while they reach it, else the first they reach; none for a
             # member who reaches no workspace yet.
             scope "/:org" do
-              # The organisation alone: it sends on to that workspace, or says that the
-              # member reaches none yet.
+              # The organisation's overview: its workspaces and its people.
               live "/", OrganisationLive, :index
-              live "/members", MemberLive.Index, :index
-              live "/members/invite", MemberLive.Index, :invite
-              live "/members/:id/remove", MemberLive.Index, :remove
-              # The confirmation of suspending a membership, a modal over the members.
-              live "/members/:id/suspend", MemberLive.Index, :suspend
+              # Its settings, one section a page, the list of them beside it
+              # (`ApiaryWeb.SettingsComponents`). General is the settings' own path.
               live "/settings", SettingsLive, :organisation
-              # The confirmations of deleting the organisation and one of its workspaces,
-              # modals over its settings.
-              live "/settings/delete", SettingsLive, :delete_organisation
+              live "/settings/people", MemberLive.Index, :index
+              live "/settings/people/invite", MemberLive.Index, :invite
+              live "/settings/people/:id/remove", MemberLive.Index, :remove
+              # The confirmation of suspending a membership, a modal over the people.
+              live "/settings/people/:id/suspend", MemberLive.Index, :suspend
+              live "/settings/workspaces", SettingsLive, :workspaces
+              # The confirmation of deleting a workspace, a modal over the workspaces.
               live "/settings/workspaces/:workspace_id/delete", SettingsLive, :delete_workspace
-              # The organisation's audit trail, for the readers `audit.read` allows.
-              live "/activity", ActivityLive, :index
+              # The confirmation of deleting the organisation, a modal over General, whose
+              # danger zone opens it; the second path opens the same.
+              live "/settings/danger", SettingsLive, :danger
+              live "/settings/delete", SettingsLive, :delete_organisation
+              # The organisation's audit trail, a section of its settings, for the readers
+              # `audit.read` allows.
+              live "/settings/audit-log", ActivityLive, :index
             end
 
             unquote(@block)
 
             scope "/:org/:workspace" do
               live "/", WorkspaceLive.Overview, :index
-              # The record: the runs of the workspace, and where they reached out to.
-              # Every filter is a query parameter.
+              # The record: the runs of the workspace, and where they reached out to (Network
+              # access). Every filter is a query parameter.
               live "/runs", RunLive.Index, :index
-              live "/connections", ConnectionLive.Index, :index
+              live "/network", ConnectionLive.Index, :index
+              # The targets the workspace's runs changed, and one target's page: its path
+              # is the glob, its tabs follow a `-` segment (`…/-/runs`), and a tab's own
+              # paths follow the tab (`…/-/policy/history`).
+              live "/targets", TargetLive.Index, :index
+              live "/targets/:system/*path", TargetLive.Show, :show
               # One run: four tabs of one LiveView, so a tab is a patch. `:run_id` is the
               # run's subject, the id the runner prints, not the row's id.
               live "/runs/:run_id", RunLive.Show, :timeline
               live "/runs/:run_id/terminal", RunLive.Show, :terminal
-              live "/runs/:run_id/connections", RunLive.Show, :connections
+              live "/runs/:run_id/network", RunLive.Show, :connections
               live "/runs/:run_id/details", RunLive.Show, :details
-              # The security policy: the workspace's baseline and a target's view of it,
-              # one object with two scopes. Tabs, filters, the opened change, the compared
-              # version and the export modal are in the URL. `:target_id` is the target
-              # row's id, because a system and a path hold slashes.
+              # The security policy: the workspace's baseline; a target's view of it is
+              # the Policy tab of the target's page. Tabs, filters, the opened change, the
+              # compared version and the export modal are in the URL.
               live "/policy", PolicyLive.Show, :rules
               live "/policy/targets", PolicyLive.Show, :targets
               live "/policy/history", PolicyLive.Show, :history
               live "/policy/document", PolicyLive.Show, :document
               live "/policy/versions/:n", PolicyLive.Show, :version
               live "/policy/versions/:n/export", PolicyLive.Show, :export
-              live "/policy/targets/:target_id", PolicyLive.Target, :rules
-              live "/policy/targets/:target_id/history", PolicyLive.Target, :history
-              live "/policy/targets/:target_id/document", PolicyLive.Target, :document
-              live "/policy/targets/:target_id/versions/:n", PolicyLive.Target, :version
-              live "/policy/targets/:target_id/versions/:n/export", PolicyLive.Target, :export
-              live "/keys", AccessKeyLive.Index, :index
-              live "/keys/new", AccessKeyLive.Index, :new
-              live "/keys/:id/rotate", AccessKeyLive.Index, :rotate
-              live "/keys/:id/revoke", AccessKeyLive.Index, :revoke
+              # Its settings, one section a page, as the organisation's.
               live "/settings", SettingsLive, :workspace
+              live "/settings/keys", AccessKeyLive.Index, :index
+              live "/settings/keys/new", AccessKeyLive.Index, :new
+              live "/settings/keys/:id/rotate", AccessKeyLive.Index, :rotate
+              live "/settings/keys/:id/revoke", AccessKeyLive.Index, :revoke
+              live "/settings/retention", SettingsLive, :retention
+              # The confirmation of deleting this workspace, a modal over General, whose
+              # danger zone opens it; the second path opens the same.
+              live "/settings/danger", SettingsLive, :workspace_danger
+              live "/settings/delete", SettingsLive, :delete_this_workspace
             end
           end
 
           # The raw bytes of a run's log, for the terminal of the run page. Not a page.
           get "/:org/:workspace/runs/:run_id/log", RunLogController, :show
+
+          # A target's policy had a page of its own, by the target row's id; it is the
+          # Policy tab of the target's page now, where these send on to.
+          get "/:org/:workspace/policy/targets/:target_id", TargetMovedController, :show
+          get "/:org/:workspace/policy/targets/:target_id/*rest", TargetMovedController, :show
         end
       end
 

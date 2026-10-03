@@ -46,10 +46,10 @@ defmodule ApiaryWeb.PageControllerTest do
     assert redirected_to(conn) == ~p"/users/organisations"
   end
 
-  test "GET /:org sends a member on to their workspace in it", %{conn: conn} do
+  test "GET /:org is the organisation's overview, which leads to its workspace", %{conn: conn} do
     %{user: user, organisation: organisation, workspace: workspace} = sign_up_fixture()
-    conn = conn |> log_in_user(user) |> get(~p"/#{organisation}")
-    assert redirected_to(conn) == ~p"/#{organisation}/#{workspace}"
+    html = conn |> log_in_user(user) |> get(~p"/#{organisation}") |> html_response(200)
+    assert html =~ ~s(href="/#{organisation.slug}/#{workspace.slug}")
   end
 
   test "GET /:org answers not found to anyone who is not a member", %{conn: conn} do

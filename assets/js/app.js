@@ -106,6 +106,23 @@ document.addEventListener("click", e => {
   setTimeout(() => watch.observe(button, {attributes: true, attributeFilter: ["class"]}), 0)
 })
 
+// A tooltip is dismissible (WCAG 1.4.13): Escape hides the one under the pointer or
+// focus until the pointer leaves it or focus moves on. Escape still does its own work.
+document.addEventListener("keydown", e => {
+  if (e.key !== "Escape") return
+  document.querySelectorAll(".tooltip[data-tip]").forEach(tip => {
+    if (!tip.matches(":hover, :focus-visible, :has(:focus-visible)")) return
+    tip.setAttribute("data-tip-hidden", "")
+    const show = () => {
+      tip.removeAttribute("data-tip-hidden")
+      tip.removeEventListener("mouseleave", show)
+      tip.removeEventListener("focusout", show)
+    }
+    tip.addEventListener("mouseleave", show)
+    tip.addEventListener("focusout", show)
+  })
+})
+
 // The theme control is a group of three buttons; the script in the root
 // layout owns the theme, this keeps `aria-pressed` honest.
 const syncThemeButtons = () => {
@@ -115,6 +132,8 @@ const syncThemeButtons = () => {
       ? "system"
       : root.getAttribute("data-theme") === "qory-dark" ? "dark" : "light"
   document.querySelectorAll("[data-phx-theme]").forEach(b => {
+    // Preferences' theme is a group of radios; the account menu's, of menu radios.
+    if (b.type === "radio") return void (b.checked = b.dataset.phxTheme === current)
     const state = b.getAttribute("role") === "menuitemradio" ? "aria-checked" : "aria-pressed"
     b.setAttribute(state, String(b.dataset.phxTheme === current))
   })
@@ -123,6 +142,17 @@ window.addEventListener("DOMContentLoaded", syncThemeButtons)
 window.addEventListener("phx:set-theme", () => setTimeout(syncThemeButtons, 0))
 window.addEventListener("storage", e => e.key === "phx:theme" && setTimeout(syncThemeButtons, 0))
 window.addEventListener("phx:page-loading-stop", syncThemeButtons)
+
+// Preferences' Keyboard shortcuts switch; the root layout's script owns the preference,
+// this keeps `aria-checked` honest.
+const syncShortcuts = () => {
+  const on = document.documentElement.getAttribute("data-shortcuts") !== "off"
+  document.querySelectorAll('[data-pref="shortcuts"]').forEach(b => b.setAttribute("aria-checked", String(on)))
+}
+window.addEventListener("DOMContentLoaded", syncShortcuts)
+window.addEventListener("phx:set-shortcuts", () => setTimeout(syncShortcuts, 0))
+window.addEventListener("storage", e => e.key === "qory:shortcuts" && setTimeout(syncShortcuts, 0))
+window.addEventListener("phx:page-loading-stop", syncShortcuts)
 
 // Show progress bar on live navigation and form submits, in the theme's honey.
 const honey = () =>
@@ -133,6 +163,18 @@ window.addEventListener("phx:page-loading-start", _info => {
   topbar.show(300)
 })
 window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
+
+// A live navigation replaces the page under the reader: give focus to its title, so a
+// screen reader says where they are and the keyboard goes on from there, unless the
+// new page put focus somewhere itself (a dialog's first field, say).
+window.addEventListener("phx:page-loading-stop", ({detail}) => {
+  if (detail?.kind !== "redirect") return
+  setTimeout(() => {
+    const now = document.activeElement
+    if (now && now !== document.body && now.isConnected) return
+    document.querySelector("main h1[tabindex]")?.focus({preventScroll: true})
+  }, 0)
+})
 
 // connect if there are any LiveViews on the page
 liveSocket.connect()

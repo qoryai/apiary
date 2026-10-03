@@ -29,7 +29,8 @@ defmodule Apiary.FeaturesTest do
     test "a feature without the features it needs is refused" do
       for feature <- Features.all() -- [:observability] do
         assert {:error, reason} = Features.parse(to_string(feature))
-        assert reason == "#{feature} needs observability, which is left out"
+        [need | _] = Features.needs(feature)
+        assert reason == "#{feature} needs #{need}, which is left out"
       end
     end
 
@@ -37,7 +38,10 @@ defmodule Apiary.FeaturesTest do
       assert Features.parse("all") == {:ok, Features.all()}
       assert Features.parse(" all ") == {:ok, Features.all()}
 
-      assert Features.parse("all-security") == {:ok, Features.all() -- [:security]}
+      # A feature nothing else needs can be left out on its own; one another needs takes
+      # that one with it.
+      leaf = Enum.find(Features.all() -- [:observability], &(not needed?(&1)))
+      assert Features.parse("all-#{leaf}") == {:ok, Features.all() -- [leaf]}
 
       all_but_the_record = Enum.join(Features.all() -- [:observability], ", ")
       assert Features.parse("all-" <> all_but_the_record) == {:ok, [:observability]}
@@ -68,11 +72,11 @@ defmodule Apiary.FeaturesTest do
   end
 
   describe "needs/1" do
-    test "every feature but observability needs observability" do
+    test "every feature but observability needs observability, itself or through what it needs" do
       assert Features.needs(:observability) == []
 
       for feature <- Features.all() -- [:observability] do
-        assert Features.needs(feature) == [:observability]
+        assert :observability in needs_all(feature)
       end
     end
 
@@ -153,6 +157,17 @@ defmodule Apiary.FeaturesTest do
 
       assert error.message =~ "UnknownFeaturePlug uses ApiaryWeb.Features with :dispatch"
     end
+  end
+
+  # Whether another feature needs `feature`.
+  defp needed?(feature), do: Enum.any?(Features.all(), &(feature in Features.needs(&1)))
+
+  # Every feature `feature` needs, through what those need.
+  defp needs_all(feature) do
+    feature
+    |> Features.needs()
+    |> Enum.flat_map(&[&1 | needs_all(&1)])
+    |> Enum.uniq()
   end
 end
 

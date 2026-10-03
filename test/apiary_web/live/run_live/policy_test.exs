@@ -13,6 +13,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
   import Apiary.OrganisationsFixtures
   import Apiary.RunEventsFixtures
   import Apiary.RunListFixtures, only: [shop: 0]
+  import ApiaryWeb.TargetComponents, only: [target_path: 4]
 
   alias Apiary.Policy
   alias Apiary.Repo
@@ -127,7 +128,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
 
   defp connections(conn, scope, run) do
     {:ok, view, _html} =
-      live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/connections")
+      live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/network")
 
     view
   end
@@ -177,7 +178,11 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
 
       path =
-        "#{workspace_path(scope)}/policy/targets/#{target.id}/versions/#{configuration.version}"
+        target_path(scope, target.system, target.path, [
+          "policy",
+          "versions",
+          "#{configuration.version}"
+        ])
 
       assert has_element?(
                view,
@@ -204,7 +209,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
                ~s(#run-facts a.q-ver[href="#{workspace_path(scope)}/policy/versions/#{configuration.version}"])
              )
 
-      assert text(view, "#run-facts") =~ "v#{configuration.version} · of workspace baseline"
+      assert text(view, "#run-facts") =~ "v#{configuration.version} · of the workspace's policy"
     end
 
     test "behind a target's version while on the baseline's: both numberings are named", %{
@@ -221,7 +226,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       {:ok, view, _html} =
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
 
-      assert text(view, "#run-facts") =~ "v#{baseline.version} · of workspace baseline"
+      assert text(view, "#run-facts") =~ "v#{baseline.version} · of the workspace's policy"
 
       # the target's first rule gives it a numbering of its own, at v1
       {:ok, _} = Policy.allow(scope, target, %{host: "files.cdn.example"})
@@ -231,11 +236,11 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
 
       assert text(view, "#run-drift") == "Behind v1 · github.example/acme/shop"
       notice = text(view, "#run-behind")
-      assert notice =~ "It last reported the workspace baseline's v#{baseline.version}"
+      assert notice =~ "It last reported v#{baseline.version} of the workspace's policy"
       assert notice =~ "github.example/acme/shop's v1"
       assert notice =~ "is in force"
       # the two numberings do not compare: the link opens the version in force
-      path = "#{workspace_path(scope)}/policy/targets/#{target.id}/versions/1"
+      path = target_path(scope, target.system, target.path, ["policy", "versions", "1"])
 
       assert has_element?(
                view,
@@ -247,7 +252,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       {:ok, view, _html} =
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/details")
 
-      assert text(view, "#policy-version") =~ "v#{baseline.version} · of workspace baseline"
+      assert text(view, "#policy-version") =~ "v#{baseline.version} · of the workspace's policy"
       assert text(view, "#policy-in-force") =~ "v1 · of github.example/acme/shop"
     end
 
@@ -262,7 +267,9 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       {:ok, view, _html} =
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}")
 
-      assert text(view, "#policy-unrendered") == "0f0f0f0f0f0f · not rendered here"
+      assert text(view, "#policy-unrendered") ==
+               "0f0f0f0f0f0f Not a version made in this workspace"
+
       refute has_element?(view, "#run-facts a.q-ver")
     end
 
@@ -298,7 +305,8 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
                "it decides by github.example/acme/shop's v#{old.version}"
 
       compare =
-        "#{workspace_path(scope)}/policy/targets/#{target.id}/versions/#{new.version}?compare=#{old.version}"
+        target_path(scope, target.system, target.path, ["policy", "versions", "#{new.version}"]) <>
+          "?compare=#{old.version}"
 
       assert has_element?(view, ~s(#run-behind-diff[href="#{compare}"]))
       assert text(view, "#run-announcer") == "This run is behind the policy in force."
@@ -383,9 +391,9 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       assert text(view, "#e-30-reload") =~ "#0003 : 1 host added, none removed."
 
       assert text(view, "#e-30-reload") =~
-               "Connections before this item were decided by the workspace baseline's v#{v1.version}."
+               "Connections before this item were decided by v#{v1.version} of the workspace's policy."
 
-      assert text(view, "#e-30 .q-pv") == "v#{v2.version} · of workspace baseline"
+      assert text(view, "#e-30 .q-pv") == "v#{v2.version} · of the workspace's policy"
     end
 
     test "a reload that names the digest it had is not called new", %{conn: conn, scope: scope} do
@@ -494,7 +502,7 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       %{run: run}
     end
 
-    test "Allow, Deny, the padlock, and nothing for the wall: always there", %{
+    test "Allow and Deny as text with the menu, the padlock, and a lock for the wall", %{
       conn: conn,
       run: run,
       scope: scope
@@ -503,10 +511,19 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       id = &"#cx-#{connection_id(run, &1)}-act"
 
       assert text(view, "button" <> id.("files.cdn.example")) == "Allow"
-      # no rule decides it, so it can be denied outright too; the Deny is a bordered button
-      assert text(view, "button" <> id.("files.cdn.example") <> "-deny.q-rowbtn-deny") == "Deny"
+      # no rule decides it, so it can be denied outright too, from its menu: one text
+      # action a row, Allow on a denied destination
+      refute has_element?(view, "button" <> id.("files.cdn.example") <> "-deny")
+
       assert text(view, "button" <> id.("registry.example")) == "Deny"
       refute has_element?(view, "button" <> id.("registry.example") <> "-deny")
+
+      # The row's menu offers the same, and the host; no bordered button on any row.
+      menu = "#cx-#{connection_id(run, "files.cdn.example")}-menu"
+      assert has_element?(view, menu <> "-allow", "Allow…")
+      assert has_element?(view, menu <> "-deny", "Deny…")
+      assert has_element?(view, menu <> "-copy[data-copy='files.cdn.example']")
+      refute has_element?(view, "#run-connections .q-rowbtn")
 
       assert has_element?(
                view,
@@ -610,7 +627,9 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       assert line =~ "The run has not reloaded yet."
       refute line =~ "In force in this run"
 
-      rule = "#{workspace_path(scope)}/policy/targets/#{target.id}?rule=files.cdn.example"
+      rule =
+        target_path(scope, target.system, target.path, ["policy"]) <> "?rule=files.cdn.example"
+
       assert has_element?(view, ~s(a#cx-#{id}-act[href="#{rule}"]), "Rule")
 
       # the toast names the change and the version
@@ -777,11 +796,10 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
       run = policy_run(scope, egress: [observed], mode: "observe")
       view = connections(conn, scope, run)
       id = connection_id(run, "files.cdn.example")
-      assert has_element?(view, "button#cx-#{id}-act.q-rowbtn-allow", "Allow")
-      view |> element("#cx-#{id}-act-deny") |> render_click()
+      assert has_element?(view, "button#cx-#{id}-act[data-action=allow]", "Allow")
+      view |> element("#cx-#{id}-menu-deny") |> render_click()
 
       assert text(view, "#rule-popover-title") == "Deny files.cdn.example"
-      assert has_element?(view, ~s(#cx-#{id}-act-deny[aria-expanded=true]))
       assert has_element?(view, ~s(#cx-#{id}-act[aria-expanded=false]))
       assert text(view, "#rule-popover-submit") == "Deny for this repository"
 

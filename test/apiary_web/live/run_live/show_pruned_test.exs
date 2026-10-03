@@ -55,7 +55,7 @@ defmodule ApiaryWeb.RunLive.ShowPrunedTest do
     refute render(lv) =~ "This run wrote no output"
 
     {:ok, _lv, html} =
-      live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/connections")
+      live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/network")
 
     assert html =~ "api.example.com"
     assert html =~ "tracker.example.net"

@@ -8,7 +8,10 @@ defmodule Apiary.Policy.Change do
   the change was made; a change that rendered the same bytes names the version that
   stayed. A `rerendered` change is no change of the rules (`before` equals `after`): the
   documents were rendered again by `mix apiary.policy.rerender` after an upgrade that
-  changed what a render says.
+  changed what a render says. An `above_changed` change is likewise no change of the
+  holder's rules: the level above the workspace changed (`Apiary.Policy.Above`), and the
+  holder's bytes with it; `cause` is the id of the entry of that change, where the
+  edition recorded one.
 
   A change is an entry of the audit trail (`Apiary.Audit.Entry`), read by `from_entry/1`:
   its `id` is the entry's, which the run configurations it rendered name
@@ -18,7 +21,7 @@ defmodule Apiary.Policy.Change do
 
   alias Apiary.Audit.Entry
 
-  @actions ~w(rule_added rule_changed rule_removed rule_locked rule_unlocked mode_changed rerendered)
+  @actions ~w(rule_added rule_changed rule_removed rule_locked rule_unlocked mode_changed rerendered above_changed)
 
   @type t :: %__MODULE__{}
 
@@ -34,6 +37,7 @@ defmodule Apiary.Policy.Change do
     :workspace_id,
     :target_id,
     :changed_by_id,
+    :cause,
     changed_by: nil,
     target: nil
   ]
@@ -66,6 +70,7 @@ defmodule Apiary.Policy.Change do
       before: entry.before,
       after: entry.after,
       version_after: details["version"],
+      cause: details["cause"],
       inserted_at: entry.inserted_at,
       organisation_id: entry.organisation_id,
       workspace_id: entry.workspace_id,

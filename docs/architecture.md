@@ -33,6 +33,9 @@ beside it:
   edition's, then the core's.
 - `Apiary.AccessKeys`: a workspace's access keys, their secrets encrypted at rest through
   `Apiary.Vault`, rotation and revocation, and the lookup a signed request verifies against.
+- `Apiary.Targets`: the workspace's targets as the pages read them, the index in one query
+  bounded by fourteen days and a target's page, and the targets a person pinned
+  (`target_pins`), their own reading preference, which leaves no audit entry.
 - `Apiary.Contract`: the signature of a signed GET, pure functions with no database.
 - `Apiary.Edition`: the edition this build is, asked at the few places where an edition
   may add to the core or narrow it (An edition's part, below). `Apiary.Edition.Core` is
@@ -49,10 +52,10 @@ The web side is under `lib/apiary_web/`:
   `RunConfigurationController` for the run configuration. Each of them refuses a
   contract revision it does not serve through `ContractVersion`.
 - `live/`: the pages behind sign-in, one directory per area (`workspace_live`,
-  `run_live`, `connection_live`, `policy_live`, `member_live`, `access_key_live`,
-  `invitation_live`, and `user_live`, a person's own pages, their account and their
-  organisations), `settings_live.ex`, the organisation's settings, `activity_live.ex`,
-  the organisation's audit trail, whose words for each action are
+  `run_live`, `target_live`, `connection_live`, `policy_live`, `member_live`,
+  `access_key_live`, `invitation_live`, and `user_live`, a person's own pages, their
+  account and their organisations), `settings_live.ex`, the organisation's settings,
+  `activity_live.ex`, the organisation's audit trail, whose words for each action are
   `ApiaryWeb.Activity.Describer`'s, the edition's first, then the core's, and
   `organisation_live.ex`, the organisation's own path, which sends on to a workspace or
   says the person reaches none yet.
@@ -92,7 +95,8 @@ inserting rows directly. A second organisation is a later sign-up, which
 opens one (`open: true`), so the core's tests make as many organisations as they need,
 though the core's edition creates one. The exceptions are the published key of the
 contract's fixtures, and a second workspace of an organisation (`workspace_fixture/2`),
-which no product function creates yet.
+inserted whatever the edition's limit says: `Apiary.Organisations.create_workspace/2`
+creates one the product's way, and the core's edition allows one in use.
 
 ## Organisation keys
 
@@ -262,13 +266,26 @@ What an edition may do, by where it is asked (`Apiary.Edition`, `ApiaryWeb.Editi
   use is left out (`active_accounts/2`, `active_organisations/2`), and say why an account
   may not sign in (`account_refusal/1`).
 - **Sign-up and organisations**: open a later sign-up (`sign_up_open?/0`); add steps to
-  the transaction that creates an organisation (`organisation_created/2`); name the
-  instance's own organisation (`instance_organisation_id/0`); say how many organisations
-  and workspaces may be in use (`limits/0`, one of each in the core's), the most days the
-  trail may be kept (`audit_retention_max_days/0`), and whether the pages and emails carry
-  "Powered by Qory Apiary" (`attribution?/0`).
+  the transaction that creates an organisation (`organisation_created/2`); be told, in
+  the transaction that creates a workspace, of the workspace (`workspace_created/3`);
+  name the instance's own organisation (`instance_organisation_id/0`); say how many
+  organisations and workspaces may be in use (`limits/0`, one of each in the core's: the
+  workspaces per organisation, which `Apiary.Organisations.create_workspace/2` counts),
+  the most days the trail may be kept (`audit_retention_max_days/0`), and whether the
+  pages and emails carry "Powered by Qory Apiary" (`attribution?/0`).
 - **Places**: the organisations a person reaches, for the switcher and their
   organisations page (`places/1`).
+- **Policy**: keep a level above a workspace's security policy
+  (`above_workspace/1`, an `Apiary.Policy.Above`: host rules, a required mode, whether
+  the workspace may allow hosts of its own). The core reads it once per operation of
+  `Apiary.Policy`, resolves it with the workspace's and a target's rules
+  (`Apiary.Policy.Resolution`: its deny above everything, its allow narrowed by a lower
+  deny and never widened), renders it into every document, counts it in the record, and
+  draws its rows and lines on the policy pages and Network access, saying the level's
+  `name` and nothing of its own about it. A change of the level renders every workspace
+  again through `Apiary.Policy.rerender_in/3`, inside the edition's transaction, each
+  holder whose bytes change getting an `above_changed` change. The web side names where
+  the level is read and changed (`above_policy_link/1`).
 - **Invitations and members**: give the level an invitation's person joins at, or refuse
   the acceptance (`accepting/3`); add to it once the membership is made (`accepted/4`);
   hear of a change of a level or the end of a suspension (`membership_changed/5`).
@@ -284,13 +301,14 @@ What an edition may do, by where it is asked (`Apiary.Edition`, `ApiaryWeb.Editi
 - **Pages** (`ApiaryWeb.Edition`): its router, which calls the core's route macros
   (`ApiaryWeb.Routes`) with its own routes in the core's `live_session`s, may serve a page
   of its own at a core path (`except:`), and is the one the endpoint dispatches to
-  (`ApiaryWeb.Edition.router/0`); navigation entries and their counts (`nav_entries/1`,
-  `nav_counts/1`); the switcher's entries and the scope a place of its own gives
-  (`switcher_entries/1`, `place_scope/2`); what a page says to a person it lets in without
+  (`ApiaryWeb.Edition.router/0`); navigation entries, their groups and their counts
+  (`nav_entries/1`, `nav_sections/0`, `nav_counts/1`); the switcher's entries, the scope
+  a place of its own gives and the heading it lists such a place under
+  (`switcher_entries/1`, `place_scope/2`, `place_group/1`); what a page says to a person it lets in without
   a membership, and of a refusal of its own (`reader_sentence/2`, `refusal_sentence/1`);
-  settings tabs (`settings_tabs/1`, `ApiaryWeb.SettingsComponents`); what it renders in
+  settings sections (`settings_tabs/1`, `ApiaryWeb.SettingsComponents`); what it renders in
   the named places of the core's pages (`slot/2`, `ApiaryWeb.Extension`); the words for
-  its actions on the Activity page (`activity_describer/0`); and the names its own paths
+  its actions in the audit log (`activity_describer/0`); and the names its own paths
   take (`reserved_slugs/0`).
 
 A core page never names a module of an edition: it links to the edition's pages only
@@ -352,7 +370,7 @@ events a runner posts are the record and leave no entry.
   entry only where it ends a membership. An edition's actions are audited the same way,
   each in the trail of the organisation it changes. Every action of `Apiary.Access` is
   audited unless `Audit.not_audited/0` says why not (reads, and the server contract's
-  calls); `Audit.audited?/1` is the one answer, which the Activity page's filter asks
+  calls); `Audit.audited?/1` is the one answer, which the audit log's filter asks
   too. `Apiary.AuditCase` makes each audited change and finds exactly one entry, and
   finds none when it is refused: the core's in `test/apiary/audit_test.exs`, and an
   edition's, with the core's, in its own.
@@ -377,7 +395,7 @@ events a runner posts are the record and leave no entry.
 - **Organisation-keyed** like every table: `organisation_id` always, `workspace_id` for a
   workspace's changes, with the composite key, empty for the organisation's own, a
   membership's among them. The owners and the admins read it on the organisation's
-  Activity page (`audit.read`), and so does whoever an edition lets in with a role that
+  audit log (`audit.read`), and so does whoever an edition lets in with a role that
   holds it.
 
 ## Deletion

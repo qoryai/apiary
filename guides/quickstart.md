@@ -97,12 +97,13 @@ Open the link in the browser. The page reads **Welcome to Qory Apiary**; select 
 account**. You land on the overview of your workspace.
 
 Signing up created an organisation with the name you gave, one workspace in it named
-*Main*, and your membership as its owner. Both can be renamed under **Organisation** and
-**Settings**. As the first person to sign up on this instance you are also its **instance
+*Main*, and your membership as its owner. Both can be renamed in their **Settings**, at the
+foot of the sidebar: the workspace's on any page of the workspace, the organisation's on its
+overview, which its name in the top bar opens. As the first person to sign up on this instance you are also its **instance
 admin**: your organisation is the instance's own, and its owners are the instance's
 admins. Nobody else can sign up without an invitation
 ([Install and configure](install.md#sign-up-and-invitations)), so invite your colleagues
-from the **Members** page. Someone who signs up through an invitation joins the
+from **People** in the organisation's settings. Someone who signs up through an invitation joins the
 organisation as a member and is not asked for a name.
 
 Every page of a workspace is under `/<organisation>/<workspace>/…`, both parts slugs made
@@ -110,7 +111,7 @@ from the names at sign-up: an organisation named `Acme` gives `/acme/main`, and 
 are at `/acme/main/runs`. Renaming keeps a slug. A link to a page names its workspace, so
 a colleague in the organisation opens the same page, and anyone else gets *Not Found*.
 
-The people of the organisation are on its **Members** page, `/<organisation>/members`, each
+The people of the organisation are under **Settings › People**, `/<organisation>/settings/people`, each
 at one of three levels, and every one of them reaches the workspace. An invitation is an
 email address and nothing else: the person joins as a member, and an owner changes their
 level afterwards. An **owner** and an **admin** manage the organisation's members and
@@ -119,7 +120,7 @@ and an admin manages members only, not owners or other admins. A **member** work
 workspace and manages neither the members nor the settings. `http://localhost:4100/` and
 the log-in take you to the workspace.
 
-Your own preferences are under **Account settings**, in the menu of your account: the
+Your own preferences are under **Your settings › Preferences**, in the menu of your account: the
 time zone the pages show times in (UTC until you choose one; every time is stored in UTC)
 and, once the instance has more than one, the language. They are yours, not the
 organisation's. Mail to you, such as a log-in link, is written in your language. The words
@@ -130,7 +131,8 @@ domain there is, which says repository, forge and pull request.
 
 An access key lets the machines of a workspace post their runs.
 
-1. Select **Access keys** in the sidebar, `/:org/:workspace/keys`.
+1. Select **Settings** at the foot of the sidebar, then **Access keys**,
+   `/:org/:workspace/settings/keys`.
 2. Select **New access key**.
 3. Give it a **Label**, the machine or environment it is for, `build-01` say, and select
    **Create key**.
@@ -202,9 +204,10 @@ also written to `.qory/runs/<id>/` in the directory, whatever the server does.
 
 Open **Runs** in the sidebar, `http://localhost:4100/<organisation>/main/runs`. The run is
 there with its state, runtime, host, start and duration; select it for its timeline,
-terminal, connections and details. The `hello` directory has no origin remote, so the run
-names no repository and is listed under **Unassigned**. A run started in a checkout with
-an origin remote is grouped under that repository.
+terminal, network access and details. The `hello` directory has no origin remote, so the run
+names no repository: the repositories beside the list count it under **Unassigned**. A
+run started in a checkout with an origin remote names that repository, and choosing the
+repository there, or typing `repo:` and its path in the filter, lists its runs alone.
 
 On **Access keys**, the key's row now shows when it was last used, its last heartbeat and
 the runner's version.

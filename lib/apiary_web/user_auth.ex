@@ -256,7 +256,7 @@ defmodule ApiaryWeb.UserAuth do
 
     if scope && scope.user do
       # A person's own pages are no organisation's: their lines carry no ids, though the
-      # sidebar shows the workspace last opened.
+      # scope carries the workspace last opened, where the palette and New act.
       scope = Organisations.load_home_scope(scope, session[Atom.to_string(@last_workspace)])
       {:cont, assign_organisation(socket, scope)}
     else
@@ -302,6 +302,15 @@ defmodule ApiaryWeb.UserAuth do
     end
   end
 
+  # The sudo mode for the pages of a LiveView but those of the `except` actions, which a
+  # person reaches without a recent sign-in; the LiveView asks again when it patches to
+  # one of the others.
+  def on_mount({:require_sudo_mode, except: actions}, params, session, socket) do
+    if socket.assigns[:live_action] in actions,
+      do: {:cont, mount_current_scope(socket, session)},
+      else: on_mount(:require_sudo_mode, params, session, socket)
+  end
+
   def on_mount(:require_sudo_mode, _params, session, socket) do
     socket = mount_current_scope(socket, session)
 
@@ -332,7 +341,8 @@ defmodule ApiaryWeb.UserAuth do
 
   @doc """
   The counts the sidebar shows beside Runs (alive now), Access keys (active keys) and
-  Members, with the policy's mode beside Policy, and the edition's beside its entries
+  Members, with the policy's mode beside Policy, the targets the person pinned in the
+  workspace (`pins`, `Apiary.Targets.list_pins/2`), and the edition's beside its entries
   (`c:ApiaryWeb.Edition.nav_counts/1`).
   """
   def nav_counts(%Scope{organisation: nil}), do: nil
@@ -348,10 +358,19 @@ defmodule ApiaryWeb.UserAuth do
     %{
       keys: scope |> AccessKeys.list_access_keys() |> Enum.count(&is_nil(&1.revoked_at)),
       members: scope |> Organisations.list_members() |> length(),
-      alive: Apiary.Runs.count_alive(scope)
+      alive: Apiary.Runs.count_alive(scope),
+      pins: pins(scope)
     }
     |> Map.merge(policy_mode(scope))
     |> Map.merge(ApiaryWeb.Edition.nav_counts(scope))
+  end
+
+  # The targets the person pinned in the workspace, the first seven in the order pinned:
+  # the sidebar's Pinned group. None where they may not read its runs.
+  defp pins(%Scope{} = scope) do
+    if Apiary.Access.can?(scope, :"run.read", scope.workspace),
+      do: Apiary.Targets.list_pins(scope, 7),
+      else: []
   end
 
   # The word beside Policy: the workspace's default mode, once the workspace has a policy
@@ -363,6 +382,10 @@ defmodule ApiaryWeb.UserAuth do
   defp policy_mode(%Scope{} = scope) do
     if Apiary.Access.can?(scope, :"security_policy.read", scope.workspace) do
       case Apiary.Policy.mode_summary(scope) do
+        # Under a required mode every target enforces: the word is enforce, none its own.
+        %{managed?: true, floor: true} ->
+          %{mode: "enforce", own_modes: []}
+
         %{managed?: true, mode: mode, own_modes: own_modes} ->
           %{mode: mode, own_modes: own_modes}
 
@@ -569,7 +592,7 @@ defmodule ApiaryWeb.UserAuth do
   membership that is gone, or a workspace of the path the user no longer reaches, sends
   the page to `/`; a membership suspended sends it to `/users/organisations`, which says
   so; a page of a feature taken away from the organisation or the workspace meanwhile
-  (`Apiary.Features.of/2`) sends it to the organisation's members page, which every
+  (`Apiary.Features.of/2`) sends it to the organisation's overview, which every
   organisation has, and says so; an organisation's page keeps its workspace while the user
   reaches it.
   """
@@ -602,7 +625,7 @@ defmodule ApiaryWeb.UserAuth do
             organisation: reloaded.organisation.name
           )
         )
-        |> Phoenix.LiveView.redirect(to: ~p"/#{reloaded.organisation}/members")
+        |> Phoenix.LiveView.redirect(to: ~p"/#{reloaded.organisation}")
 
       :error ->
         case suspended_membership(scope, scope.organisation && scope.organisation.slug) do
@@ -772,6 +795,22 @@ defmodule ApiaryWeb.UserAuth do
       |> put_flash(:error, gettext("You must log in to access this page."))
       |> maybe_store_return_to()
       |> redirect(to: ~p"/users/log-in")
+      |> halt()
+    end
+  end
+
+  @doc """
+  Answers `401`, as JSON, a request that needs a signed-in person and has none: for what a
+  page asks of the server without leaving it, such as the palette's answers, which a
+  redirect to log in would not help.
+  """
+  def require_authenticated_json(conn, _opts) do
+    if conn.assigns.current_scope && conn.assigns.current_scope.user do
+      conn
+    else
+      conn
+      |> put_status(401)
+      |> Phoenix.Controller.json(%{error: "unauthenticated"})
       |> halt()
     end
   end

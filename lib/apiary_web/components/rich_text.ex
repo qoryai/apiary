@@ -127,6 +127,42 @@ defmodule ApiaryWeb.RichText do
     Enum.find_value(bindings, piece, fn {k, v} -> if Atom.to_string(k) == key, do: v end)
   end
 
+  @doc """
+  plain_text/2 is the words of rich text without its markup, for where only text goes,
+  such as the `title` that shows a cut line whole. A `{:part, name}` is the text `parts`
+  gives it (none without); a rendered component or safe HTML has no words here.
+
+      "Handed to %{tool} by rule %{rule}"
+      |> rich_gettext(tool: {:b, "files"}, rule: {:part, :rule})
+      |> plain_text(%{rule: "files.example"})
+      #=> "Handed to files by rule files.example"
+  """
+  @spec plain_text(term, %{optional(atom) => String.t()}) :: String.t()
+  def plain_text(rich, parts \\ %{})
+  def plain_text(nil, _parts), do: ""
+  def plain_text(text, _parts) when is_binary(text), do: text
+  def plain_text(number, _parts) when is_number(number), do: to_string(number)
+
+  def plain_text(pieces, parts) when is_list(pieces),
+    do: Enum.map_join(pieces, &plain_text(&1, parts))
+
+  def plain_text({:part, name}, parts), do: Map.get(parts, name) || ""
+  def plain_text({:term, word, _standard}, parts), do: plain_text(word, parts)
+
+  def plain_text({link, _to, inner}, parts) when link in [:link, :href],
+    do: plain_text(inner, parts)
+
+  def plain_text({link, _to, inner, _class}, parts) when link in [:link, :href],
+    do: plain_text(inner, parts)
+
+  def plain_text({mark, inner}, parts) when mark in [:b, :m, :code, :bad],
+    do: plain_text(inner, parts)
+
+  def plain_text({mark, inner, _class}, parts) when mark in [:b, :m, :code],
+    do: plain_text(inner, parts)
+
+  def plain_text(_html, _parts), do: ""
+
   ## Rendering
 
   @doc """

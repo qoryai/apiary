@@ -19,6 +19,17 @@ defmodule Apiary.Policy do
   of the workspace holds against every target. How the rules come to one policy is
   `Apiary.Policy.Resolution`'s to say.
 
+  An edition may keep a level above the workspace's policy
+  (`c:Apiary.Edition.above_workspace/1`, an `Apiary.Policy.Above`; the core keeps none):
+  host rules of its own, which every read and render of this module takes in, read once
+  per operation; a required mode (the floor), under which the mode in force is `enforce`
+  everywhere and `set_mode/3` refuses with `:fixed`; and a switch, off which a host
+  allow of the workspace or of a target is not in force. Its deny holds against every
+  rule below it, its allow is narrowed by a lower deny and never widened. A change of
+  that level renders every workspace of it again, through `rerender_in/3`, inside the
+  edition's transaction: each holder whose bytes change gets a new version and an
+  `above_changed` change in its history.
+
   ## Writes
 
   Every write is one transaction: the rule, its entry in the audit trail (`Apiary.Audit`),
@@ -74,7 +85,7 @@ defmodule Apiary.Policy do
   alias Apiary.Accounts.{Scope, User}
   alias Apiary.Audit.Entry
   alias Apiary.Organisations.{Workspace, Organisation}
-  alias Apiary.Policy.{Activity, Change, Effective, Error, Export, Grammar}
+  alias Apiary.Policy.{Above, Activity, Change, Effective, Error, Export, Grammar}
   alias Apiary.Policy.{Render, Resolution}
   alias Apiary.Policy.{Rule, RunConfiguration, Schema, Suggestions}
   alias Apiary.Repo
@@ -136,17 +147,19 @@ defmodule Apiary.Policy do
 
   @doc """
   What the sidebar shows of the policy, in one query: whether the workspace's policy is
-  managed (`managed?/1`), the workspace's mode, and the modes the workspace's targets set
-  for themselves, one per target that has one, in no particular order:
-  `%{managed?:, mode:, own_modes:}`.
+  managed (`managed?/1`), the workspace's mode, the modes the workspace's targets set
+  for themselves, one per target that has one, in no particular order, and `floor`,
+  whether the level above requires `enforce` (then the mode in force is `enforce`,
+  whatever the workspace and its targets set): `%{managed?:, mode:, own_modes:, floor:}`.
   """
   @spec mode_summary(Scope.t()) :: %{
           managed?: boolean,
           mode: String.t(),
-          own_modes: [String.t()]
+          own_modes: [String.t()],
+          floor: boolean
         }
   def mode_summary(%Scope{
-        workspace: %Workspace{id: workspace_id},
+        workspace: %Workspace{id: workspace_id} = workspace,
         organisation: %Organisation{id: org_id}
       }) do
     {mode, managed?, own_modes} =
@@ -165,7 +178,7 @@ defmodule Apiary.Policy do
              )}
       )
 
-    %{managed?: managed?, mode: mode, own_modes: own_modes}
+    %{managed?: managed?, mode: mode, own_modes: own_modes, floor: floor?(above(workspace))}
   end
 
   ## Targets
@@ -237,14 +250,23 @@ defmodule Apiary.Policy do
     )
   end
 
-  @typedoc "A target's mode: the one in force, its own (nil when it follows the workspace) and the workspace's."
-  @type target_mode :: %{mode: String.t(), own: String.t() | nil, workspace: String.t()}
+  @typedoc """
+  A target's mode: the one in force, its own (nil when it follows the workspace), the
+  workspace's, and whether the level above requires `enforce` (then `mode` is `enforce`).
+  """
+  @type target_mode :: %{
+          mode: String.t(),
+          own: String.t() | nil,
+          workspace: String.t(),
+          floor: boolean
+        }
 
   @doc """
-  With `nil` or `:workspace`, `get_mode/1`: the workspace's mode, a string. With a target,
-  `%{mode:, own:, workspace:}`: the mode in force for it, the mode it set for itself (nil
-  when it follows the workspace, the default) and the workspace's. A target that is not
-  the workspace's follows the workspace.
+  With `nil` or `:workspace`, `get_mode/1`: the workspace's mode, a string, as it is
+  stored. With a target, `%{mode:, own:, workspace:, floor:}`: the mode in force for it,
+  the mode it set for itself (nil when it follows the workspace, the default), the
+  workspace's, and whether the level above fixes the mode to `enforce`. A target that is
+  not the workspace's follows the workspace.
   """
   @spec get_mode(Scope.t(), holder) :: String.t() | target_mode
   def get_mode(%Scope{} = scope, holder) when holder in [nil, :workspace], do: get_mode(scope)
@@ -261,7 +283,14 @@ defmodule Apiary.Policy do
           nil
       end
 
-    %{mode: own || workspace, own: own, workspace: workspace}
+    floor = floor?(above(scope.workspace))
+
+    %{
+      mode: if(floor, do: "enforce", else: own || workspace),
+      own: own,
+      workspace: workspace,
+      floor: floor
+    }
   end
 
   @doc """
@@ -286,21 +315,29 @@ defmodule Apiary.Policy do
           {:ok, String.t() | target_mode} | refusal
   def set_mode(%Scope{} = scope, holder, mode)
       when holder in [nil, :workspace] and mode in @modes do
-    write(scope, nil, [:edit, :set_mode], mode_write(mode))
+    with :ok <- not_fixed(above(scope.workspace)) do
+      write(scope, nil, [:edit, :set_mode], mode_write(mode))
+    end
   end
 
   def set_mode(%Scope{} = scope, %Target{} = target, mode)
       when mode in @modes or mode in [:inherit, "inherit"] do
     own = if mode in @modes, do: mode
 
-    with {:ok, target_id} <- holder_id(scope, target) do
+    with :ok <- not_fixed(above(scope.workspace)),
+         {:ok, target_id} <- holder_id(scope, target) do
       write(scope, target_id, [:edit, :set_mode], fn workspace, _scope ->
         Repo.update_all(from(p in Target, where: p.id == ^target_id),
           set: [egress_mode: own, updated_at: DateTime.utc_now()]
         )
 
-        {:ok, %{mode: own || workspace.egress_mode, own: own, workspace: workspace.egress_mode},
-         "mode_changed", nil}
+        {:ok,
+         %{
+           mode: own || workspace.egress_mode,
+           own: own,
+           workspace: workspace.egress_mode,
+           floor: false
+         }, "mode_changed", nil}
       end)
     end
   end
@@ -351,9 +388,11 @@ defmodule Apiary.Policy do
   @doc """
   The policy in force for the baseline (`nil`) or for a target: every rule that takes
   part as an `Apiary.Policy.Entry` (where it came from, whether it is in force, what
-  overrode it, what it overrides), the `allow`, `paths` and `credentials` the document
-  says, and the `mode` in force with where it came from (`mode_source`, `:workspace` or
-  `:target`). A target that is not the workspace's gets the baseline.
+  overrode it, what it overrides), the level above's rules included, the `allow`,
+  `paths` and `credentials` the document says, the `mode` in force with where it came
+  from (`mode_source`, `:organisation`, `:workspace` or `:target`), and `above`, the
+  level above the workspace (nil where the edition keeps none). A target that is not the
+  workspace's gets the baseline.
   """
   @spec effective(Scope.t(), holder) :: Effective.t()
   def effective(%Scope{} = scope, holder) do
@@ -363,27 +402,30 @@ defmodule Apiary.Policy do
         {:error, _not_found} -> nil
       end
 
+    above = above(scope.workspace)
     workspace_rules = rules(scope.workspace.id, nil)
     own = if target_id, do: rules(scope.workspace.id, target_id), else: []
+    workspace_mode = get_mode(scope)
 
-    %{mode: mode, own: own_mode, workspace: workspace_mode} =
-      case target_id do
-        nil -> %{mode: get_mode(scope), own: nil, workspace: get_mode(scope)}
-        id -> get_mode(scope, %Target{id: id})
-      end
+    own_mode =
+      if target_id,
+        do: Repo.one(from p in targets(scope), where: p.id == ^target_id, select: p.egress_mode)
 
-    case Resolution.resolve_for(workspace_mode, own_mode, workspace_rules, own, target_id) do
+    case Resolution.resolve_for(workspace_mode, own_mode, workspace_rules, own, target_id, above) do
       {:ok, effective} ->
         effective
 
       # No write leaves rules that do not resolve; should one be there all the same, the
       # page shows the mode and nothing allowed rather than raise.
       {:error, _error} ->
-        %Effective{
-          mode: mode,
-          mode_source: if(own_mode, do: :target, else: :workspace),
-          target_id: target_id
-        }
+        {mode, source} =
+          cond do
+            floor?(above) -> {"enforce", :organisation}
+            own_mode -> {own_mode, :target}
+            true -> {workspace_mode, :workspace}
+          end
+
+        %Effective{mode: mode, mode_source: source, target_id: target_id, above: above}
     end
   end
 
@@ -568,6 +610,7 @@ defmodule Apiary.Policy do
           path: String.t(),
           held: boolean,
           locked: String.t() | nil,
+          above: String.t() | nil,
           denied: pos_integer,
           tool: String.t() | nil,
           runs: pos_integer,
@@ -582,7 +625,8 @@ defmodule Apiary.Policy do
   since is left out: the record says it was denied, the rules say it no longer would be.
   `held` is true when the host is allowed and the path is what no rule covers; `locked`
   names the locked workspace deny that covers the host, when one does, so a page can say
-  that only an owner changes it; `tool` names the tool whose host it is, whenever a
+  that only an owner changes it, and `above` the deny of the level above that covers it,
+  when one does, which no rule of the workspace changes; `tool` names the tool whose host it is, whenever a
   request to it in the range named one: a request to a tool that a path rule refused is a
   denied request to that tool. The 50 with the most denials, most first, with the
   targets whose runs were denied. Bounded as `uncovered/2` is, `:unavailable` beyond
@@ -680,7 +724,7 @@ defmodule Apiary.Policy do
         }
   def suggestion_counts(%Scope{workspace: %Workspace{} = workspace}, since \\ nil) do
     since = since || DateTime.add(DateTime.utc_now(), -14, :day)
-    Suggestions.counts(workspace, since)
+    Suggestions.counts(workspace, since, above(workspace))
   end
 
   @doc """
@@ -688,8 +732,9 @@ defmodule Apiary.Policy do
   [%{host:, by:, source:, rule_id:}]}`. `suggested` is `suggestions/3`. `covered` is the
   declared hosts a rule already allows, at most 20, by host: `by` is the entry of `allow`
   that covers the host as a runner would report it (the host itself, or a `*.` suffix),
-  `source` is `:workspace` or `:target`, where that rule was written, and `rule_id` its
-  id. A target that is not the workspace's has neither.
+  `source` is `:workspace`, `:target` or `:organisation` (the level above), where that
+  rule was written, and `rule_id` its id. A target that is not the workspace's has
+  neither.
   """
   @spec declared_hosts(Scope.t(), Target.t(), DateTime.t() | nil) :: %{
           suggested: [suggestion],
@@ -697,7 +742,7 @@ defmodule Apiary.Policy do
             %{
               host: String.t(),
               by: String.t(),
-              source: :workspace | :target,
+              source: :workspace | :target | :organisation,
               rule_id: Ecto.UUID.t()
             }
           ]
@@ -1193,8 +1238,15 @@ defmodule Apiary.Policy do
     end)
   end
 
-  defp requested_write(scope, {:mode, mode}),
-    do: write_in(scope, nil, [:edit, :set_mode], mode_write(mode))
+  # Under a floor the mode is not set here: `enforce` asked for is what holds already,
+  # and `observe` is refused with the floor's sentence.
+  defp requested_write(scope, {:mode, mode}) do
+    case {floor?(above(scope.workspace)), mode} do
+      {true, "enforce"} -> {:ok, {mode, nil}}
+      {true, _mode} -> {:error, fixed(above(scope.workspace))}
+      {false, _mode} -> write_in(scope, nil, [:edit, :set_mode], mode_write(mode))
+    end
+  end
 
   defp requested_write(scope, {:rule, %{"change" => "rule_removed", "rule" => rule}}) do
     kind = rule["kind"]
@@ -1500,6 +1552,25 @@ defmodule Apiary.Policy do
          Error.new(:invalid, gettext("This path cannot be written as a path rule."), :paths)}
   end
 
+  # A host the level above decides is not changed here, in the workspace or in a target;
+  # nor is a target's path change on a host a locked rule of the workspace decides.
+  defp not_locked_above(%Effective{entries: entries, above: %Above{name: name}}, target_id, host) do
+    if Enum.any?(entries, &(&1.kind == :host and &1.host == host and &1.source == :organisation)) do
+      {:error,
+       Error.new(
+         :locked,
+         gettext(
+           "%{name}'s rule for %{host} decides it here, so its paths are not changed in this workspace. It is changed in %{name}'s policy.",
+           name: name,
+           host: host
+         ),
+         :host
+       )}
+    else
+      not_locked_above(%Effective{entries: entries}, target_id, host)
+    end
+  end
+
   defp not_locked_above(_effective, nil, _host), do: :ok
 
   defp not_locked_above(%Effective{entries: entries}, _target_id, host) do
@@ -1769,7 +1840,9 @@ defmodule Apiary.Policy do
       %{
         before: change.before,
         after: change.after,
-        details: %{change: change.action, subject: change.subject, version: change.version_after}
+        details:
+          %{change: change.action, subject: change.subject, version: change.version_after}
+          |> then(&if(change.cause, do: Map.put(&1, :cause, change.cause), else: &1))
       },
       id: change.id
     )
@@ -1826,38 +1899,9 @@ defmodule Apiary.Policy do
               lock: fragment("FOR NO KEY UPDATE OF ?", h)
           )
 
-        if workspace && managed_workspace?(workspace.id) do
-          render_holders(workspace, fn target_id, rendered, store ->
-            with {:ok, document} <- rendered do
-              digest = Render.digest(document)
-
-              case Repo.one(newest(workspace.id, target_id)) do
-                %RunConfiguration{digest: ^digest} ->
-                  {:ok, 0}
-
-                nil ->
-                  {:ok, 0}
-
-                %RunConfiguration{} = current ->
-                  snapshot = snapshot(workspace, target_id)
-
-                  change =
-                    new_change(workspace, nil, target_id, "rerendered", nil, snapshot, snapshot)
-
-                  configuration = store.(change)
-                  change = %{change | version_after: configuration.version}
-
-                  with :ok <- record_change(rerender_scope(workspace), workspace, change) do
-                    Logger.info(
-                      "policy rerendered workspace=#{workspace.id} target=#{target_id || "baseline"} " <>
-                        "version=#{current.version}->#{configuration.version}"
-                    )
-
-                    {:ok, 1}
-                  end
-              end
-            end
-          end)
+        if workspace do
+          with {:ok, changes} <- rerender_in(workspace, rerender_scope(workspace)),
+               do: {:ok, length(changes)}
         else
           {:ok, 0}
         end
@@ -1882,6 +1926,62 @@ defmodule Apiary.Policy do
     end
   end
 
+  @doc """
+  rerender_in/3 renders every holder of `workspace` again through today's resolution and
+  what holds above it, inside the caller's transaction, on a workspace the caller has
+  locked `FOR NO KEY UPDATE` (`lock_workspaces/2`, or `rerender/1`'s own): each holder
+  whose bytes change gets a new version and a change of its own, no change of the rules
+  (`before` equals `after`), by the scope's person (nil for the instance's); unchanged
+  bytes write nothing. `{:ok, changes}`, the baseline's first, `[]` when nothing was
+  written, for `announce/1` once the caller has committed; or the first refusal (a
+  render the resolution or the schema refuses, said with the holder it came from), which
+  the caller rolls back.
+
+  `opts`: `action`, `"rerendered"` (the default: `mix apiary.policy.rerender`) or
+  `"above_changed"` (the level above the workspace changed, `Apiary.Policy.Above`);
+  `cause`, the id of the entry that caused it, kept in the change's `details.cause` and
+  `Apiary.Policy.Change`'s `cause`; `all`, whether to render an unmanaged workspace too
+  (false by default: `rerender/1` leaves it alone). With `all: true` an unmanaged
+  workspace gets its version 1, and is managed from then on: what a deny of the level
+  above holding everywhere means.
+  """
+  @spec rerender_in(%Workspace{}, Scope.t(), keyword) :: {:ok, [Change.t()]} | refusal
+  def rerender_in(%Workspace{} = workspace, %Scope{user: user}, opts \\ []) do
+    action = Keyword.get(opts, :action, "rerendered")
+    cause = Keyword.get(opts, :cause)
+    scope = Scope.for_instance(%Organisation{id: workspace.organisation_id}, workspace)
+    scope = if user, do: %{scope | user: user}, else: scope
+
+    if Keyword.get(opts, :all, false) or managed_workspace?(workspace.id) do
+      render_holders(workspace, [], fn target_id, rendered, store, changes ->
+        with {:ok, document} <- rendered do
+          digest = Render.digest(document)
+          current = Repo.one(newest(workspace.id, target_id))
+
+          if current && current.digest == digest do
+            {:ok, changes}
+          else
+            snapshot = snapshot(workspace, target_id)
+            change = new_change(workspace, user, target_id, action, nil, snapshot, snapshot)
+            configuration = store.(change)
+            change = %{change | version_after: configuration.version, cause: cause}
+
+            with :ok <- record_change(scope, workspace, change) do
+              Logger.info(
+                "policy #{action} workspace=#{workspace.id} target=#{target_id || "baseline"} " <>
+                  "version=#{(current && current.version) || 0}->#{configuration.version}"
+              )
+
+              {:ok, changes ++ [change]}
+            end
+          end
+        end
+      end)
+    else
+      {:ok, []}
+    end
+  end
+
   # A render again after an upgrade is nobody's change: the instance's, by the task.
   defp rerender_scope(%Workspace{} = workspace) do
     %Organisation{id: workspace.organisation_id}
@@ -1897,29 +1997,25 @@ defmodule Apiary.Policy do
   # `{:ok, version}`: the version in force for the changed holder once every holder is
   # rendered, which its entry records.
   defp render_all(%Workspace{} = workspace, %Change{} = change) do
-    render_holders(workspace, fn target_id, rendered, store ->
+    render_holders(workspace, nil, fn target_id, rendered, store, version ->
       case rendered do
         {:ok, _document} ->
           configuration = store.(change)
-          if change.target_id == target_id, do: {:ok, configuration.version}, else: :ok
+          if change.target_id == target_id, do: {:ok, configuration.version}, else: {:ok, version}
 
         {:error, error} ->
           {:error, elsewhere(error, workspace, change, target_id)}
       end
     end)
-    |> case do
-      # Only the changed holder answers a count, its version, so the sum is that version.
-      {:ok, 0} -> {:ok, nil}
-      result -> result
-    end
   end
 
-  # Every holder of the workspace, each handed `fun.(target_id, rendered, store)`:
-  # `rendered` is `{:ok, document}` or the refusal, and `store.(change)` keeps the document
+  # Every holder of the workspace, each handed `fun.(target_id, rendered, store, acc)`:
+  # `rendered` is `{:ok, document}` or the refusal, `store.(change)` keeps the document
   # under the change (or nil) and answers the configuration in force, the one that was
-  # there when the bytes are the same. `fun` answers `:ok` or `{:ok, count}` to go on, or
-  # `{:error, _}` to stop: `{:ok, sum}` or the first refusal.
-  defp render_holders(%Workspace{} = workspace, fun) do
+  # there when the bytes are the same, and `acc` is what the holders before it came to,
+  # `initial` for the first. `fun` answers `{:ok, acc}` to go on, or `{:error, _}` to
+  # stop: `{:ok, acc}` or the first refusal.
+  defp render_holders(%Workspace{} = workspace, initial, fun) do
     workspace_rules = rules(workspace.id, nil)
 
     own =
@@ -1944,31 +2040,33 @@ defmodule Apiary.Policy do
 
     holders = [nil | Enum.uniq(Map.keys(own) ++ rendered ++ Map.keys(modes))]
 
-    Enum.reduce_while(holders, {:ok, 0}, fn target_id, {:ok, count} ->
+    above = above(workspace)
+
+    Enum.reduce_while(holders, {:ok, initial}, fn target_id, {:ok, acc} ->
       rules = Map.get(own, target_id, [])
-      rendered = document(workspace, target_id, modes[target_id], workspace_rules, rules)
+      rendered = document(workspace, target_id, modes[target_id], workspace_rules, rules, above)
 
       store = fn change ->
         {:ok, document} = rendered
         store(workspace, change, target_id, document)
       end
 
-      case fun.(target_id, rendered, store) do
-        :ok -> {:cont, {:ok, count}}
-        {:ok, n} -> {:cont, {:ok, count + n}}
+      case fun.(target_id, rendered, store, acc) do
+        {:ok, acc} -> {:cont, {:ok, acc}}
         {:error, _error} = refusal -> {:halt, refusal}
       end
     end)
   end
 
-  defp document(workspace, target_id, own_mode, workspace_rules, own) do
+  defp document(workspace, target_id, own_mode, workspace_rules, own, above) do
     with {:ok, effective} <-
            Resolution.resolve_for(
              workspace.egress_mode,
              own_mode,
              workspace_rules,
              own,
-             target_id
+             target_id,
+             above
            ),
          document = Render.document(effective),
          :ok <- small(document),
@@ -2114,6 +2212,23 @@ defmodule Apiary.Policy do
   end
 
   ## Helpers
+
+  # What holds above the workspace, asked of the edition once per operation and threaded
+  # through, never once per holder.
+  defp above(%Workspace{} = workspace), do: Above.for_workspace(workspace)
+
+  defp floor?(%Above{floor: true}), do: true
+  defp floor?(_above), do: false
+
+  defp not_fixed(above), do: if(floor?(above), do: {:error, fixed(above)}, else: :ok)
+
+  defp fixed(%Above{name: name}) do
+    Error.new(
+      :fixed,
+      gettext("Enforce is required by %{name}: the mode is not set here.", name: name),
+      :mode
+    )
+  end
 
   defp rules(workspace_id, nil) do
     Repo.all(

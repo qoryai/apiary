@@ -15,11 +15,16 @@ defmodule ApiaryWeb.SettingsLiveTest do
       {:ok, lv, html} = live(conn, ~p"/#{scope.organisation}/settings")
 
       # The software domain's words, and no skin word: no apiary, no hive.
-      assert has_element?(lv, "h2", "Organisation name")
+      # A flat column: the section's h2 and its fields, no card of its own.
+      assert has_element?(lv, "h2#settings-section-title", "General")
+      assert has_element?(lv, "#organisation-form label", "Name")
+      refute has_element?(lv, "#settings-section-organisation .card")
+      assert has_element?(lv, "#organisation-form button[type=submit].btn-primary", "Save")
+      assert has_element?(lv, "#owners-part h3", "Owners")
       refute has_element?(lv, "#workspace-form")
       refute has_element?(lv, "#retention-form")
       assert html =~ "The name of this organisation, where its pages are, and who owns it."
-      assert has_element?(lv, "#nav-organisation[aria-current='page']")
+      assert has_element?(lv, "#settings-tab-organisation[aria-current='page']")
       assert has_element?(lv, "#organisation-slug span", "/#{scope.organisation.slug}")
 
       page = lv |> element("#main") |> render() |> LazyHTML.from_fragment() |> LazyHTML.text()
@@ -32,15 +37,15 @@ defmodule ApiaryWeb.SettingsLiveTest do
 
       {:ok, lv, html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings")
 
-      assert has_element?(lv, "h2", "Workspace name")
+      assert has_element?(lv, "#workspace-form button[type=submit].btn-primary", "Save")
       refute has_element?(lv, "#organisation-form")
       refute has_element?(lv, "#owners")
 
-      assert html =~
-               "The name of this workspace, where its pages are, and how long runs are kept."
+      assert html =~ "The name of this workspace, and where its pages are."
 
-      assert has_element?(lv, "#sidebar p", "Workspace")
+      assert has_element?(lv, "aside#sidebar[aria-label='Workspace']")
       assert has_element?(lv, "#nav-settings[aria-current='page']")
+      assert has_element?(lv, "#settings-tab-general[aria-current='page']")
       assert has_element?(lv, "#workspace-slug span", workspace_path(scope))
       assert html =~ scope.workspace.name
 
@@ -77,10 +82,43 @@ defmodule ApiaryWeb.SettingsLiveTest do
       assert has_element?(lv, "#owners", user.email)
       assert has_element?(lv, "#owners", other_owner.email)
       refute has_element?(lv, "#owners", member.email)
+      assert has_element?(lv, "#owners-part h3 .q-part-n", "2")
+
+      # With two owners, the last-owner rule holds nobody in place, and is not said.
+      refute has_element?(lv, "#owners-note", "only owner")
+    end
+
+    test "lists the workspaces with their targets", %{conn: conn, scope: scope} do
+      import Apiary.RunListFixtures
+      started_run(scope, %{"forge" => "github.example", "repository" => "acme/api"})
+      other = sign_up_fixture().scope
+      started_run(other, %{"forge" => "github.example", "repository" => "acme/api"})
+
+      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings/workspaces")
+      assert has_element?(lv, "th", "Repositories")
+      assert has_element?(lv, "#workspace-#{scope.workspace.id}-targets", "1")
+      assert Apiary.Targets.count_by_workspace(scope) == %{scope.workspace.id => 1}
+
+      %{scope: member} = member_fixture(scope, :member)
+      assert Apiary.Targets.count_by_workspace(member) == %{}
+    end
+
+    test "says the only owner is held in place, to that owner alone", %{conn: conn, scope: scope} do
+      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings")
+      assert has_element?(lv, "#owners-note", "The only owner cannot be removed or demoted")
+
+      %{user: member} = member_fixture(scope, :member)
+
+      {:ok, lv, _html} =
+        live(log_in_user(build_conn(), member), ~p"/#{scope.organisation}/settings")
+
+      refute has_element?(lv, "#owners-note", "only owner")
     end
 
     test "sets the retention, within the bounds, and clears it", %{conn: conn, scope: scope} do
-      {:ok, lv, html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings")
+      {:ok, lv, html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/retention")
+
       assert html =~ "This workspace keeps everything."
       assert html =~ "Nothing is pruned: this workspace keeps everything."
 
@@ -116,6 +154,8 @@ defmodule ApiaryWeb.SettingsLiveTest do
              )
 
       assert has_element?(lv, "#retention-runs-empty", "Nothing has been pruned yet.")
+      # No pass of the job yet: no line counting none of them.
+      refute has_element?(lv, "#retention-runs-note")
 
       workspace = Apiary.Repo.get!(Apiary.Organisations.Workspace, scope.workspace.id)
       assert {workspace.events_retention_days, workspace.log_retention_days} == {90, 14}
@@ -126,6 +166,43 @@ defmodule ApiaryWeb.SettingsLiveTest do
 
       workspace = Apiary.Repo.get!(Apiary.Organisations.Workspace, scope.workspace.id)
       assert {workspace.events_retention_days, workspace.log_retention_days} == {nil, nil}
+    end
+
+    test "a retention that is not a whole number is answered in its field, and kept from saving",
+         %{conn: conn, scope: scope} do
+      {:ok, _} = Apiary.Retention.update_retention(scope, %{events_retention_days: 30})
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/retention")
+
+      # A text field, so what was typed reaches the server as it is: a number field sends
+      # an empty value for letters, which would read as keeping everything.
+      assert has_element?(lv, ~s|#retention_events_retention_days[type=text][inputmode=numeric]|)
+
+      for typed <- ["abc", "1.5", "30 days"] do
+        lv
+        |> form("#retention-form", retention: %{events_retention_days: typed})
+        |> render_submit()
+
+        assert has_element?(
+                 lv,
+                 "#retention_events_retention_days-error",
+                 "must be between 1 and 3650 days, or empty to keep everything"
+               )
+
+        workspace = Apiary.Repo.get!(Apiary.Organisations.Workspace, scope.workspace.id)
+        assert workspace.events_retention_days == 30
+      end
+
+      html =
+        lv
+        |> form("#retention-form", retention: %{events_retention_days: " 60 "})
+        |> render_submit()
+
+      assert html =~ "Retention saved."
+
+      workspace = Apiary.Repo.get!(Apiary.Organisations.Workspace, scope.workspace.id)
+      assert workspace.events_retention_days == 60
     end
 
     test "says what the job pruned, for this workspace only", %{conn: conn, scope: scope} do
@@ -145,7 +222,8 @@ defmodule ApiaryWeb.SettingsLiveTest do
       assert %{runs_pruned: 1} = Apiary.Retention.prune_workspace(workspace, now: now)
       assert %{runs_pruned: 0} = Apiary.Retention.prune_workspace(other_workspace, now: now)
 
-      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings")
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/retention")
 
       assert [mine] = Apiary.Retention.list_retention_runs(%{scope | workspace: workspace})
 
@@ -156,6 +234,7 @@ defmodule ApiaryWeb.SettingsLiveTest do
              )
 
       assert has_element?(lv, "#retention-run-#{mine.id}", "By hand")
+      assert has_element?(lv, "#retention-runs-note", "The pruning job's last pass.")
       assert lv |> element("#retention-runs") |> render() =~ "events from before"
       assert lv |> render() |> String.split("retention-run-") |> length() == 2
     end
@@ -179,6 +258,11 @@ defmodule ApiaryWeb.SettingsLiveTest do
 
       assert html =~ "Only owners and admins can change these settings"
       assert has_element?(lv, "input#workspace_name[disabled]")
+      refute has_element?(lv, "button", "Save")
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/retention")
+
       assert has_element?(lv, "input#retention_events_retention_days[disabled]")
       assert has_element?(lv, "input#retention_log_retention_days[disabled]")
       refute has_element?(lv, "button", "Save")
@@ -207,6 +291,162 @@ defmodule ApiaryWeb.SettingsLiveTest do
       {path, flash} = assert_redirect(lv)
       assert path == ~p"/"
       assert flash["error"] =~ "no longer have access"
+    end
+  end
+
+  describe "the sections" do
+    setup :register_and_log_in_user
+
+    test "the organisation's list the owner may open, the current one marked, and a page each",
+         %{conn: conn, scope: scope} do
+      org = scope.organisation
+      {:ok, lv, _html} = live(conn, ~p"/#{org}/settings")
+
+      for {key, path} <- [
+            organisation: ~p"/#{org}/settings",
+            people: ~p"/#{org}/settings/people",
+            workspaces: ~p"/#{org}/settings/workspaces",
+            audit_log: ~p"/#{org}/settings/audit-log"
+          ] do
+        assert has_element?(lv, ~s(#settings-tabs #settings-tab-#{key}[href="#{path}"]))
+      end
+
+      # Its own sections only: no other kind's, no cross-link, no Elsewhere.
+      refute has_element?(
+               lv,
+               "#settings-tab-general, #settings-tab-keys, #settings-tab-retention"
+             )
+
+      refute has_element?(lv, "#settings-tab-workspace_settings, #settings-tab-your_settings")
+      refute render(lv) =~ "Elsewhere"
+
+      assert has_element?(lv, "#settings-tab-organisation[aria-current=page]")
+      assert has_element?(lv, "h1", "Organisation settings")
+      assert has_element?(lv, "h2#settings-section-title", "General")
+
+      {:ok, lv, _html} = live(conn, ~p"/#{org}/settings/workspaces")
+      assert has_element?(lv, "#settings-tab-workspaces[aria-current=page]")
+      assert has_element?(lv, "#workspace-#{scope.workspace.id}", scope.workspace.name)
+
+      # The danger zone ends General, and its dialog is at a path of its own over it.
+      {:ok, lv, html} = live(conn, ~p"/#{org}/settings")
+      assert has_element?(lv, "#danger-zone h2", "Danger zone")
+      assert html =~ ~r/id="owners".*id="danger-zone"/s
+
+      assert has_element?(
+               lv,
+               "#danger-zone #delete-organisation a#delete-organisation-button[href='#{~p"/#{org}/settings/danger"}']"
+             )
+
+      refute has_element?(lv, "#delete-organisation-modal")
+
+      lv |> element("#delete-organisation-button") |> render_click()
+      assert_patch(lv, ~p"/#{org}/settings/danger")
+      assert has_element?(lv, "#delete-organisation-modal")
+      assert has_element?(lv, "#settings-tab-organisation[aria-current=page]")
+      assert has_element?(lv, "h2#settings-section-title", "General")
+
+      {:ok, lv, _html} = live(conn, ~p"/#{org}/settings/delete")
+      assert has_element?(lv, "#delete-organisation-modal")
+    end
+
+    test "the workspace's list, and a section a page", %{conn: conn, scope: scope} do
+      base = ~p"/#{scope.organisation}/#{scope.workspace}/settings"
+      {:ok, lv, _html} = live(conn, base <> "/retention")
+
+      for {key, path} <- [
+            general: base,
+            keys: base <> "/keys",
+            retention: base <> "/retention"
+          ] do
+        assert has_element?(lv, ~s(#settings-tabs #settings-tab-#{key}[href="#{path}"]))
+      end
+
+      # No link to the organisation's settings, which are its own place.
+      refute has_element?(lv, "#settings-tab-organisation, #settings-tab-organisation_settings")
+
+      assert has_element?(lv, "#settings-tab-retention[aria-current=page]")
+      assert has_element?(lv, "h1", "Workspace settings")
+      assert has_element?(lv, "h2#settings-section-title", "Retention")
+      assert has_element?(lv, "#retention-form")
+      refute has_element?(lv, "#workspace-form")
+
+      refute has_element?(lv, "#danger-zone")
+    end
+
+    test "a workspace's danger zone deletes it when it is one of several, after its slug",
+         %{conn: conn, scope: scope} do
+      org = scope.organisation
+      platform = workspace_fixture(org, "Platform")
+
+      {:ok, lv, _html} = live(conn, ~p"/#{org}/#{platform}/settings")
+      assert has_element?(lv, "#danger-zone #delete-workspace", "Delete this workspace")
+      lv |> element("#delete-workspace-button") |> render_click()
+      assert_patch(lv, ~p"/#{org}/#{platform}/settings/danger")
+      assert has_element?(lv, "#delete-workspace-modal")
+      assert has_element?(lv, "#settings-tab-general[aria-current=page]")
+
+      lv |> form("#delete-workspace-form", confirm: %{slug: platform.slug}) |> render_submit()
+      {path, flash} = assert_redirect(lv)
+      assert path == ~p"/#{org}/settings/workspaces"
+      assert flash["info"] =~ "Platform is deleted"
+    end
+
+    test "the only workspace's danger zone says why it is not deleted on its own",
+         %{conn: conn, scope: scope} do
+      general = ~p"/#{scope.organisation}/#{scope.workspace}/settings"
+      {:ok, lv, _html} = live(conn, general)
+
+      assert has_element?(
+               lv,
+               "#danger-zone #delete-workspace",
+               "The organisation's only workspace is not deleted on its own"
+             )
+
+      refute has_element?(lv, "#delete-workspace-button")
+
+      # Its dialog's path says so, and goes back to General.
+      assert {:error, {:live_redirect, %{to: ^general, flash: flash}}} =
+               live(conn, general <> "/danger")
+
+      assert flash["error"] == "That workspace cannot be deleted here."
+    end
+
+    test "a member sees no Workspaces and no Danger zone", %{conn: conn} do
+      owner = sign_up_fixture()
+      %{user: user} = member_fixture(owner.scope, :member)
+      conn = log_in_user(conn, user)
+
+      {:ok, lv, _html} = live(conn, ~p"/#{owner.organisation}/settings")
+      assert has_element?(lv, "#settings-tab-people")
+      refute has_element?(lv, "#settings-tab-workspaces")
+      refute has_element?(lv, "#settings-tab-audit_log")
+      refute has_element?(lv, "#danger-zone")
+
+      # nor the workspace's
+      {:ok, lv, _html} = live(conn, ~p"/#{owner.organisation}/#{owner.workspace}/settings")
+      assert has_element?(lv, "#settings-tab-retention")
+      refute has_element?(lv, "#danger-zone")
+    end
+  end
+
+  describe "the paths that moved under the settings" do
+    setup :register_and_log_in_user
+
+    test "send on to where the page is now, with what followed and the query",
+         %{conn: conn, scope: scope} do
+      org = scope.organisation
+      ws = scope.workspace
+
+      for {old, new} <- [
+            {~p"/#{org}/members", ~p"/#{org}/settings/people"},
+            {~p"/#{org}/members/invite", ~p"/#{org}/settings/people/invite"},
+            {~p"/#{org}/#{ws}/keys", ~p"/#{org}/#{ws}/settings/keys"},
+            {~p"/#{org}/#{ws}/keys/new", ~p"/#{org}/#{ws}/settings/keys/new"},
+            {~p"/#{org}/#{ws}/keys?open=1", ~p"/#{org}/#{ws}/settings/keys?open=1"}
+          ] do
+        assert redirected_to(get(conn, old)) == new
+      end
     end
   end
 end

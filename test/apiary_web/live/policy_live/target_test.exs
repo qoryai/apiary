@@ -6,6 +6,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
 
   import Phoenix.LiveViewTest
   import Apiary.OrganisationsFixtures
+  import ApiaryWeb.TargetComponents, only: [target_path: 4]
   import Apiary.RunEventsFixtures
   import Apiary.RunListFixtures
 
@@ -31,7 +32,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     {:ok, _} = Policy.allow(scope, nil, %{host: "registry.example"})
     {:ok, _} = Policy.allow(scope, nil, %{kind: "credential", name: "model-key"})
 
-    %{target: target, path: workspace_path(scope, "/policy/targets/#{target.id}")}
+    %{target: target, path: target_path(scope, target.system, target.path, ["policy"])}
   end
 
   defp open(conn, path) do
@@ -55,35 +56,68 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     view
     |> render()
     |> LazyHTML.from_fragment()
-    |> LazyHTML.query("#policy-rules tr.q-rule-row")
+    |> LazyHTML.query("#policy-rules tr.q-pr-row")
     |> Enum.find(&(LazyHTML.query(&1, ".q-host") |> LazyHTML.text() |> String.trim() == host))
     |> LazyHTML.attribute("id")
     |> hd()
   end
 
+  defp hosts(view, selector \\ "#policy-rules .q-host") do
+    view
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.query(selector)
+    |> Enum.map(&(LazyHTML.text(&1) |> String.trim()))
+  end
+
+  # The composer opens from Add rule: a test that types into it opens it first.
+  defp compose(view) do
+    if has_element?(view, "#policy-rules-add[aria-expanded=false]") do
+      view |> element("#policy-rules-add") |> render_click()
+    end
+
+    view
+  end
+
+  defp type(view, params) do
+    compose(view)
+    view |> form("#policy-composer", rule: params) |> render_change()
+  end
+
+  defp workspace_rule(scope, host),
+    do: Enum.find(Policy.list_rules(scope, nil), &(&1.host == host))
+
   defp own(scope, target, host),
     do: Enum.find(Policy.list_rules(scope, target), &(&1.host == host))
 
-  test "another workspace's target is not found, nor is an id that is none", %{
+  test "another workspace's target is not found, by its path or by its old id", %{
     conn: conn,
     scope: scope
   } do
     other = scope_fixture()
-    started_run(other, shop())
+    started_run(other, %{"forge" => "github.example", "repository" => "acme/theirs"})
     [%{target: theirs}] = Policy.list_targets(other)
     {:ok, _} = Policy.allow(other, theirs, %{host: "secret.example"})
 
-    for path <- [
-          workspace_path(scope, "/policy/targets/#{theirs.id}"),
-          workspace_path(scope, "/policy/targets/nope")
-        ] do
-      {:ok, view, html} = live(conn, path)
-      assert html =~ "This repository is not in this workspace"
-      refute html =~ "secret.example"
-      assert has_element?(view, "#nav-policy[aria-current=page]")
-      assert has_element?(view, "a[href='#{workspace_path(scope, "/policy")}']", "Back to policy")
-      assert render_hook(view, "composer_save", %{}) =~ "This repository is not in this workspace"
+    assert_raise Ecto.NoResultsError, fn ->
+      live(conn, target_path(scope, theirs.system, theirs.path, ["policy"]))
     end
+
+    for id <- [theirs.id, "nope"] do
+      assert_error_sent 404, fn -> get(conn, workspace_path(scope, "/policy/targets/#{id}")) end
+    end
+  end
+
+  test "the old paths of a target's policy send on to the Policy tab", %{
+    conn: conn,
+    scope: scope,
+    target: target,
+    path: path
+  } do
+    old = workspace_path(scope, "/policy/targets/#{target.id}")
+    assert redirected_to(get(conn, old)) == path
+    assert redirected_to(get(conn, old <> "/history?page=2")) == path <> "/history?page=2"
+    assert redirected_to(get(conn, old <> "/versions/3/export")) == path <> "/versions/3/export"
   end
 
   test "a target without rules of its own is the workspace's list, and says so",
@@ -92,75 +126,143 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
 
     assert has_element?(view, "h1", "acme/shop")
     assert text(view, "#policy-no-own") =~ "This repository has no rules of its own."
-    assert text(view, "#policy-no-own") =~ "It is served the workspace baseline, version"
-    assert text(view, "#policy-baseline") == "workspace baseline"
-    assert text(view, "#policy-effective-n") == "4 rules · 2 hosts allowed · 2 denied"
-    assert text(view, "##{row(view, "registry.example")}") =~ "Workspace"
-    assert text(view, "##{row(view, "registry.example")}") =~ "Disable here"
-    assert text(view, "##{row(view, "telemetry.example")}") =~ "Allow here"
-    assert text(view, "##{row(view, "*.paste.example")}") =~ "Workspace, locked"
+
+    assert text(view, "#policy-no-own") =~
+             "It is served #{scope.workspace.name}'s policy, version"
+
+    assert text(view, "#policy-baseline") == "workspace's policy"
+    assert text(view, "#policy-rules-view-all") == "All 4"
+    assert text(view, "#policy-rules-view-allowed") == "Allowed 2"
+    assert text(view, "#policy-rules-view-denied") == "Denied 2"
+    assert text(view, "#policy-rules-view-locked") == "Locked 1"
+
+    assert hosts(view) == [
+             "*.paste.example",
+             "telemetry.example",
+             "gitlab.example",
+             "registry.example"
+           ]
+
+    assert has_element?(view, "#policy-rules-sort-button[aria-label='Sort: Its own first']")
+
+    # Every rule is the workspace's: its source says so, its menu leads to it there, and
+    # nothing changes it here.
+    registry = row(view, "registry.example")
+    assert text(view, "##{registry} .q-pr-src") == scope.workspace.name
 
     assert has_element?(
              view,
-             "##{row(view, "*.paste.example")} a[href^='#{workspace_path(scope, "/policy?rule=")}'][href$='.paste.example']",
-             "Open"
+             "##{registry}-menu a[href='#{workspace_path(scope, "/policy?rule=registry.example")}']",
+             "View in #{scope.workspace.name}'s policy"
            )
 
-    assert text(view, "#policy-effective-foot") =~
-             "Mode observe , the workspace's default. Credentials: model-key from the workspace."
+    refute has_element?(view, "##{registry}-menu [role=menuitem]", "Remove")
+    refute has_element?(view, "##{registry}-menu [role=menuitem]", "Change to deny")
+    assert text(view, "##{row(view, "*.paste.example")}-lock") == "Locked"
+    refute has_element?(view, "#policy-rules .q-pr-off")
 
-    assert has_element?(view, "#policy-tab-runs[href*='target=acme%2Fshop']")
-    assert text(view, "#policy-tab-runs") == "Runs 1"
-    assert has_element?(view, "#policy-tab-connections[href*='system=github.example']")
+    credential = Enum.find(Policy.list_rules(scope, nil), &(&1.name == "model-key"))
+    assert text(view, "#rule-#{credential.id} .q-pr-src") == scope.workspace.name
+    assert has_element?(view, "#rule-#{credential.id}-view", "View in")
+    refute has_element?(view, "#rule-#{credential.id}-remove")
+
+    assert text(view, "#policy-hosts-note") =~
+             "Its own rules come first and are changed here; #{scope.workspace.name}'s follow"
+
+    # The target's page holds the tab: its runs and connections are its other tabs.
+    assert has_element?(view, "#target-tab-policy[aria-current=page]")
+    assert has_element?(view, "#target-tab-runs[href$='/acme/shop/-/runs']")
+    assert has_element?(view, "#target-tab-connections[href$='/acme/shop/-/network']")
   end
 
-  test "disable here, then restore: the beaten rule hangs under the rule that beat it",
+  test "a deny of its own overrides the workspace's allow; removing it restores the workspace's",
        %{conn: conn, scope: scope, target: target, path: path} do
     view = open(conn, path)
 
-    view |> element("##{row(view, "gitlab.example")}-act", "Disable here") |> render_click()
+    view |> compose() |> element("#policy-composer button", "Deny") |> render_click()
+    type(view, %{host: "gitlab.example"})
+
+    assert text(view, "#policy-composer-reads") =~
+             "gitlab.example is allowed for the workspace. This rule denies it for this repository; other repositories keep it."
+
+    view |> form("#policy-composer") |> render_submit()
 
     rule = own(scope, target, "gitlab.example")
     assert rule.action == "deny"
 
     assert text(view, "#flash-info") =~
-             "gitlab.example is denied for github.example/acme/shop. Version 1."
+             "gitlab.example is denied for github.example/acme/shop. Version 1 of this repository's own policy; until now it was served the workspace's."
 
-    assert text(view, "#rule-#{rule.id}") =~ "This repository"
+    # Its own comes first, with its source and its menu; the workspace's allow stays in
+    # the list, struck, and says why.
+    assert hd(hosts(view)) == "gitlab.example"
+    assert text(view, "#rule-#{rule.id} .q-pr-src") == "This repository"
     assert text(view, "#rule-#{rule.id}") =~ "New in v1"
-    assert text(view, "#rule-#{rule.id}-act") == "Restore"
-
-    over = text(view, "tr[id^='rule-#{rule.id}-over-']")
-    assert over =~ "Overrides the workspace's rule"
-    assert over =~ "not in force: allow gitlab.example"
-    assert over =~ "Disabled here by"
-    assert over =~ "Other repositories keep it."
+    assert has_element?(view, "#rule-#{rule.id}-menu button", "Change to allow")
+    assert has_element?(view, "#rule-#{rule.id}-menu button", "Remove")
+    refute has_element?(view, "#rule-#{rule.id}-menu button", "Edit paths")
     refute has_element?(view, "#policy-no-own")
 
-    view |> element("#policy-show button", "Overrides") |> render_click()
-    assert_patch(view, path <> "?show=overrides")
-    refute has_element?(view, "#policy-rules .q-host", "registry.example")
+    beaten = workspace_rule(scope, "gitlab.example")
+    assert has_element?(view, "#rule-#{beaten.id}.q-pr-off")
 
-    view |> element("#rule-#{rule.id}-act", "Restore") |> render_click()
+    assert text(view, "#rule-#{beaten.id}") =~
+             "Not in force: this repository's own rule decides it"
+
+    assert text(view, "#policy-rules-view-all") == "All 5"
+
+    # The Filter menu's Source: its own, or the workspace's.
+    assert text(view, "#policy-rules-filter-source-0") == "This repository 1 rule"
+    assert text(view, "#policy-rules-filter-source-1") == "#{scope.workspace.name} 4 rules"
+    view |> element("#policy-rules-filter-source-0") |> render_click()
+    assert_patch(view, path <> "?q=source%3Arepo")
+    assert hosts(view) == ["gitlab.example"]
+    assert has_element?(view, "#policy-rules-token-source", "repo")
+
+    view |> element("#policy-rules-filter-source-1") |> render_click()
+    assert_patch(view, path <> "?q=source%3A#{scope.workspace.slug}")
+    assert length(hosts(view)) == 4
+    view |> element("#policy-rules-tokens-clear") |> render_click()
+
+    view |> element("#rule-#{rule.id}-menu button", "Remove") |> render_click()
     refute own(scope, target, "gitlab.example")
-    view = open(conn, path)
-    assert text(view, "##{row(view, "gitlab.example")}") =~ "Disable here"
+
+    assert text(view, "#flash-info") =~
+             "The workspace's rule for gitlab.example is restored for github.example/acme/shop."
+
+    refute has_element?(view, "#rule-#{beaten.id}.q-pr-off")
+    assert has_element?(view, "#policy-no-own")
   end
 
-  test "allow here overrides the workspace's deny", %{
+  test "an allow of its own overrides the workspace's deny", %{
     conn: conn,
     scope: scope,
     target: target,
     path: path
   } do
     view = open(conn, path)
-    view |> element("##{row(view, "telemetry.example")}-act", "Allow here") |> render_click()
+    type(view, %{host: "telemetry.example", paths: ""})
+
+    assert text(view, "#policy-composer-reads") =~
+             "telemetry.example is denied for the workspace. This rule allows it for this repository; other repositories keep the deny."
+
+    view |> form("#policy-composer") |> render_submit()
 
     rule = own(scope, target, "telemetry.example")
     assert rule.action == "allow"
-    assert text(view, "tr[id^='rule-#{rule.id}-over-']") =~ "not in force: deny telemetry.example"
-    assert text(view, "tr[id^='rule-#{rule.id}-over-']") =~ "Allowed here by"
-    assert text(view, "#rule-#{rule.id}-act") == "Remove"
+    beaten = workspace_rule(scope, "telemetry.example")
+
+    assert text(view, "#rule-#{beaten.id}") =~
+             "Not in force: this repository's own rule decides it"
+
+    assert has_element?(view, "#rule-#{rule.id}-menu button", "Edit paths")
+    assert has_element?(view, "#rule-#{rule.id}-menu button", "Change to deny")
+    assert has_element?(view, "#rule-#{rule.id}-menu button", "Remove")
+    refute has_element?(view, "#rule-#{rule.id}-menu button", "Lock")
+
+    view |> element("#rule-#{rule.id}-menu button", "Change to deny") |> render_click()
+    assert own(scope, target, "telemetry.example").action == "deny"
+    assert text(view, "#flash-info") =~ "telemetry.example is denied for github.example/acme/shop"
   end
 
   test "a rule a lock holds is struck under the locked rule, and can be removed",
@@ -180,19 +282,26 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
       )
 
     view = open(conn, path)
-    locked = row(view, "*.paste.example")
 
-    assert text(view, "##{locked}-over-#{held.id}") =~ "Holds against this repository's rule"
-    assert text(view, "##{locked}-over-#{held.id}") =~ "not in force: allow *.paste.example"
-    assert text(view, "##{locked}-over-#{held.id}") =~ "It is not in force."
+    assert has_element?(view, "#rule-#{held.id}.q-pr-off")
+    assert text(view, "#rule-#{held.id} .q-pr-src") == "This repository"
 
-    view |> element("##{locked}-over-#{held.id} button", "Remove it") |> render_click()
+    assert text(view, "#rule-#{held.id}") =~
+             "Not in force: #{scope.workspace.name}'s locked *.paste.example holds"
+
+    # Its menu holds only Remove: there is nothing to change while the lock holds.
+    refute has_element?(view, "#rule-#{held.id}-menu button", "Change to deny")
+    refute has_element?(view, "#rule-#{held.id}-menu button", "Edit paths")
+    assert text(view, "#rule-#{workspace_rule(scope, "*.paste.example").id}-lock") == "Locked"
+
+    view |> element("#rule-#{held.id}-menu button", "Remove") |> render_click()
     refute own(scope, target, "*.paste.example")
+    assert text(view, "#flash-info") =~ "The rule *.paste.example is removed."
   end
 
   test "the composer adds for the target, and a locked workspace rule refuses it",
        %{conn: conn, scope: scope, target: target, path: path} do
-    view = open(conn, path)
+    view = compose(open(conn, path))
     assert text(view, "#policy-composer-add") == "Add for this repository"
 
     view
@@ -223,7 +332,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
        %{conn: conn, scope: scope, target: target, path: path} do
     {:ok, _} = Policy.allow(scope, nil, %{host: "*.cdn.example"})
     {:ok, _} = Policy.allow(scope, nil, %{host: "*.internal.example", locked: true})
-    view = open(conn, path)
+    view = compose(open(conn, path))
 
     view |> element("#policy-composer button", "Deny") |> render_click()
     view |> form("#policy-composer", rule: %{host: "files.cdn.example"}) |> render_change()
@@ -248,7 +357,7 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
 
   test "a member is told only an owner changes the lock", %{scope: scope, path: path} do
     %{user: member} = member_fixture(scope, :member)
-    view = open(log_in_user(build_conn(), member), path)
+    view = compose(open(log_in_user(build_conn(), member), path))
 
     view
     |> form("#policy-composer", rule: %{host: "bin.paste.example", paths: ""})
@@ -259,13 +368,15 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
 
   describe "the target's mode" do
     test "follows the workspace until an owner says otherwise, and says where it comes from",
-         %{conn: conn, path: path} do
+         %{conn: conn, scope: scope, path: path} do
       view = open(conn, path)
 
       assert has_element?(view, "#policy-target-mode-follow[aria-checked=true]")
 
       assert text(view, "#policy-target-mode-effect") ==
-               "In effect: observe , the workspace's default. It changes when the workspace's does."
+               "It follows #{scope.workspace.name}, which observes. What no rule names is let through and recorded; a deny rule holds, and so do #{scope.workspace.name}'s locked rules."
+
+      assert text(view, "#policy-target-mode-follow") == "Follow #{scope.workspace.name}"
     end
 
     test "to enforce asks with this target's own list, and Allow here adds a target rule",
@@ -304,16 +415,16 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
       assert text(view, "#flash-info") =~ "github.example/acme/shop enforces on its own. Version"
 
       assert text(view, "#policy-target-mode-effect") =~
-               "In effect: enforce , this repository's own. The workspace's default is observe."
-
-      assert text(view, "#policy-effective-foot") =~ "Mode enforce , this repository's own."
+               "Its own, set by #{ApiaryWeb.People.short(scope.user.email)} today; #{scope.workspace.name} observes. A connection no rule allows is denied."
     end
 
     test "to observe names the locked denies that still hold, and the card keeps saying so",
          %{conn: conn, scope: scope, target: target, path: path} do
       {:ok, _} = Policy.set_mode(scope, "enforce")
       view = open(conn, path)
-      refute has_element?(view, "#policy-target-mode-locked-note")
+
+      assert text(view, "#policy-target-mode-effect") =~
+               "which enforces. A connection no rule allows is denied."
 
       view |> element("#policy-target-mode-observe") |> render_click()
 
@@ -326,11 +437,8 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
       view |> element("#target-mode-confirm", "Observe this repository") |> render_click()
       assert Policy.get_mode(scope, target).own == "observe"
 
-      assert text(view, "#policy-target-mode-locked-note") =~
-               "This repository observes: the locked deny still holds."
-
-      assert text(view, "#policy-target-mode-locked-note") =~
-               "under observe it is the only thing denied here"
+      assert text(view, "#policy-target-mode-effect") =~
+               "Its own, set by #{ApiaryWeb.People.short(scope.user.email)} today; #{scope.workspace.name} enforces. What no rule names is let through and recorded; a deny rule holds, and so do #{scope.workspace.name}'s locked rules."
 
       view |> element("#policy-target-mode-follow") |> render_click()
 
@@ -456,13 +564,10 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     end
   end
 
-  test "credentials live in the footer, and open in place",
+  test "credentials are its own, then the workspace's, each with its source",
        %{conn: conn, scope: scope, target: target, path: path} do
     view = open(conn, path)
-    refute has_element?(view, "#policy-credential")
-
-    view |> element("#policy-credentials-toggle", "Edit credentials") |> render_click()
-    assert has_element?(view, "#policy-credentials-toggle[aria-expanded=true]")
+    assert text(view, "#policy-credentials-n") == "1"
 
     view
     |> form("#policy-credential", credential: %{name: "forge-token", argument: "acme/shop"})
@@ -470,10 +575,27 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
 
     view |> form("#policy-credential") |> render_submit()
 
-    assert Enum.find(Policy.list_rules(scope, target), &(&1.name == "forge-token"))
+    own = Enum.find(Policy.list_rules(scope, target), &(&1.name == "forge-token"))
+    assert own
+    assert text(view, "#policy-credentials-n") == "2"
+    assert hosts(view, "#policy-credential-rows .q-host") == ["forge-token", "model-key"]
+    assert text(view, "#rule-#{own.id} .q-pr-src") == "This repository"
+    assert text(view, "#rule-#{own.id}") =~ "acme/shop"
 
-    assert text(view, "#policy-effective-foot") =~
-             "forge-token argument acme/shop from this repository, model-key from the workspace."
+    workspace = Enum.find(Policy.list_rules(scope, nil), &(&1.name == "model-key"))
+    assert text(view, "#rule-#{workspace.id} .q-pr-src") == scope.workspace.name
+
+    assert has_element?(
+             view,
+             "#rule-#{workspace.id}-view[href='#{workspace_path(scope, "/policy")}']",
+             "View in #{scope.workspace.name}'s policy"
+           )
+
+    refute has_element?(view, "#rule-#{workspace.id}-remove")
+
+    view |> element("#rule-#{own.id}-remove") |> render_click()
+    refute Enum.find(Policy.list_rules(scope, target), &(&1.name == "forge-token"))
+    assert text(view, "#flash-info") =~ "The credential forge-token is removed."
   end
 
   test "history, versions and export are the target's own",
@@ -491,8 +613,8 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     assert to == path <> "/versions/1"
 
     view = open(conn, path <> "/versions/1")
-    assert has_element?(view, "h1", "Version 1")
-    assert has_element?(view, ".q-crumbs a[href='#{path}']")
+    assert has_element?(view, "h2", "Version 1")
+    assert has_element?(view, "#policy-tabs a[href='#{path}']", "Effective policy")
 
     view = open(conn, path <> "/versions/1/export")
     assert text(view, "#export-lead") =~ "github.example/acme/shop"

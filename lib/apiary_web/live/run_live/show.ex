@@ -1,8 +1,13 @@
 defmodule ApiaryWeb.RunLive.Show do
   @moduledoc """
-  One run, read as a record: the header from `run.started`, `run.exited` and the policy
-  applied, and four tabs that are four live actions of this one LiveView, so that a tab is
-  a `patch` and the header stays: Timeline, Terminal, Connections, Details.
+  One run, read as a record, on a work surface: a header of two lines from `run.started`,
+  `run.exited` and the policy applied (the title; the state and the run's facts, with Close
+  run and the ⋯ menu), and four tabs that are four live actions of this one LiveView, so
+  that a tab is a `patch` and the header stays: Timeline, Terminal, Network access
+  (`/runs/:run_id/network`, the live action `:connections`; the old `/connections` path
+  sends on here), Details.
+  Details is the rail beside the tabs from 1440 px, and the tab below that shows the same
+  element in the column (`docs/ui.md`, The run page).
 
   `:run_id` in the URL is the run's subject, the id the runner prints. A run that is not
   in the caller's workspace renders the not-found state, whatever else it may be.
@@ -29,12 +34,14 @@ defmodule ApiaryWeb.RunLive.Show do
 
   import ApiaryWeb.RunPageComponents
   import ApiaryWeb.PolicyComponents, only: [short_digest: 1]
+  import ApiaryWeb.TargetComponents, only: [state_mark: 1, target_path: 3]
 
   alias Apiary.Access
   alias Apiary.Lingo.Domain
   alias Apiary.Policy
   alias Apiary.Runs
-  alias Apiary.Runs.{Filters, Record, Run}
+  alias Apiary.Runs.{Record, Run}
+  alias Apiary.Targets
   alias Apiary.Runs.Record.Timeline
   alias ApiaryWeb.ConnectionLive.Rules
   alias ApiaryWeb.UserAuth
@@ -55,7 +62,7 @@ defmodule ApiaryWeb.RunLive.Show do
       memberships={@memberships}
       counts={@nav_counts}
       nav={:runs}
-      width="full"
+      width="work"
     >
       <.empty_state
         tone="neutral"
@@ -82,247 +89,262 @@ defmodule ApiaryWeb.RunLive.Show do
       memberships={@memberships}
       counts={@nav_counts}
       nav={:runs}
-      width="full"
+      width="work"
     >
+      <:crumb :if={@run.target_id} navigate={target_link(@current_scope, @run)}>
+        <.target_name
+          path={@run.target_path}
+          system={@target_shared && @run.target_system}
+          class="truncate"
+        />
+      </:crumb>
+      <:crumb>{gettext("Run %{id}", id: short_id(@run.run_id))}</:crumb>
       <div id="run-announcer" class="sr-only" aria-live="polite" aria-atomic="true">
         {@announcement}
       </div>
 
-      <div class="q-run-head">
-        <nav class="q-crumbs" aria-label={gettext("Breadcrumb")}>
-          <.link navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/runs"}>
-            {gettext("Runs")}
-          </.link>
-          <%= if @run.target_system && @run.target_path do %>
-            <.icon name="hero-chevron-right-micro" class="size-3" />
-            <.link
-              navigate={
-                ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/runs?#{Filters.target_params(@run.target_system, @run.target_path)}"
-              }
-              class="font-mono text-xs"
+      <div
+        id="run-page"
+        class={["q-run", @live_action == :details && "q-run-on-details"]}
+      >
+        <div class="q-run-col">
+          <header class="q-run-head">
+            <h1 :if={@run.task} id="run-title" tabindex="-1" phx-hook="FocusOn">{@run.task}</h1>
+            <h1 :if={!@run.task} id="run-title" tabindex="-1" phx-hook="FocusOn">
+              <.rich text={
+                rich_gettext("Run %{id}", id: {:m, short_id(@run.run_id), "font-mono text-[18px]"})
+              } />
+            </h1>
+            <div class="q-run-sub">
+              <div class="q-run-meta-wrap">
+                <p id="run-meta" class="q-run-meta">
+                  <.state_mark id="run-state" state={@run.state} word />
+                  <.alive
+                    :if={@run.state in ~w(pending running)}
+                    state={@run.state}
+                    last_heartbeat_at={@run.last_heartbeat_at}
+                    last_event_at={@run.last_event_at}
+                    interval={beat(@run)}
+                    quiet={@quiet_for != nil}
+                    run={@run}
+                  />
+                  <span :if={ended?(@run) && exit_value(@run) not in ["0", gettext("n/a")]}>
+                    {gettext("exit %{code}", code: exit_value(@run))}
+                  </span>
+                  <.link
+                    :if={@run.target_id}
+                    id="run-target"
+                    navigate={target_link(@current_scope, @run)}
+                    class="q-run-target"
+                  >
+                    <.target_name
+                      path={@run.target_path}
+                      system={@target_shared && @run.target_system}
+                    />
+                  </.link>
+                  <span :if={!@run.target_id && @run.target_path} id="run-target">
+                    <.target_name path={@run.target_path} system={@run.target_system} />
+                  </span>
+                  <span :if={@run.runtime} id="run-runtime">
+                    {join([@run.runtime, @run.runtime_version])}
+                  </span>
+                  <span :if={@run.host} id="run-host" class="font-mono text-[12.5px]">{@run.host}</span>
+                  <span :if={@run.started_at} id="run-started-at">
+                    <span class="sr-only">{gettext("Started")}</span>
+                    <.relative_time id="run-started" at={@run.started_at} />
+                  </span>
+                  <span id="run-duration-line"><.run_duration run={@run} quiet={@quiet_for != nil} /></span>
+                  <.link
+                    :if={@counts.denied > 0}
+                    id="run-denied"
+                    patch={tab_path(@current_scope, @run, :connections, %{"decision" => "denied"})}
+                    class="q-run-denied"
+                  >
+                    <.icon name="hero-no-symbol-micro" class="size-3.5" />
+                    {ngettext("%{number} denied", "%{number} denied", @counts.denied,
+                      number: Format.number(@counts.denied)
+                    )}
+                  </.link>
+                </p>
+                <p :if={@ending} id="run-why" class="q-run-why">
+                  <span class="q-run-why-k">{gettext("How it ended")}</span>
+                  <span class="q-run-why-t" title={@ending.text}>{@ending.text}</span>
+                  <.link
+                    id="run-why-jump"
+                    patch={
+                      tab_path(
+                        @current_scope,
+                        @run,
+                        :timeline,
+                        Map.put(@timeline_query, "seq", Integer.to_string(@ending.seq))
+                      )
+                    }
+                    class="q-link"
+                  >
+                    {gettext("Jump to it")}
+                  </.link>
+                </p>
+              </div>
+              <div class="q-run-actions">
+                <.button
+                  :if={@closable}
+                  id="close-run-button"
+                  phx-click="close"
+                  title={
+                    gettext(
+                      "Closing tells the workspace to take no more events for this run. It is for a run that went quiet and will not post its exit."
+                    )
+                  }
+                >
+                  <.icon name="hero-stop-micro" class="size-4" />{gettext("Close run")}
+                </.button>
+                <.run_menu
+                  run={@run}
+                  log={
+                    Access.can?(@current_scope, :"run.read_log", @run) &&
+                      ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/runs/#{@run.run_id}/log"
+                  }
+                />
+              </div>
+            </div>
+
+            <.notice :if={@security && @in_force} kind={:warning} class="mt-3 max-w-[100ch]">
+              <span id="run-behind">
+                <b>{gettext("This run is behind the policy in force.")}</b>
+                <.rich
+                  phx-no-format
+                  text={
+                    rich_gettext(
+                      "It last reported %{reported}; %{in_force} is in force (%{since}).",
+                      reported: {:part, :reported},
+                      in_force: {:part, :in_force},
+                      since: {:part, :since}
+                    )
+                  }
+                >
+                  <:part name={:reported}>{version_words(@reported_version)}<span :if={@digests.reported}> <span class="font-mono text-xs">{short_digest(@digests.reported)}</span></span></:part>
+                  <:part name={:in_force}>{version_words(@in_force)} <span class="font-mono text-xs">{short_digest(@in_force.digest)}</span></:part>
+                  <:part name={:since}><.relative_time id="run-behind-since" at={@in_force.rendered_at} /></:part>
+                </.rich>
+                {if @reported_version,
+                  do:
+                    gettext(
+                      "A run reloads at its next heartbeat; until it does, it decides by %{version}.",
+                      version: version_words(@reported_version)
+                    ),
+                  else:
+                    gettext(
+                      "A run reloads at its next heartbeat; until it does, it decides by what it holds."
+                    )}
+              </span>
+              <div class="mt-1">
+                <.link
+                  id="run-behind-diff"
+                  navigate={behind_path(@current_scope, @target, @reported_version, @in_force)}
+                  class="q-link"
+                >
+                  {if comparable?(@reported_version, @in_force),
+                    do:
+                      gettext("What changed between v%{from} and v%{to} of the %{label}",
+                        from: @reported_version.n,
+                        to: @in_force.n,
+                        label: @in_force.label
+                      ),
+                    else: gettext("Open %{version}", version: version_words(@in_force))}
+                </.link>
+              </div>
+            </.notice>
+          </header>
+
+          <.tabs id="run-tabs" label={gettext("Run")}>
+            <:tab
+              id="run-tab-timeline"
+              patch={tab_path(@current_scope, @run, :timeline, @timeline_query)}
+              icon="hero-queue-list"
+              current={@live_action == :timeline}
+              count={@index.session_items > 0 && Format.number(@index.session_items)}
             >
-              <span class="text-faint">{@run.target_system}/</span>{@run.target_path}
-            </.link>
-          <% end %>
-          <.icon name="hero-chevron-right-micro" class="size-3" />
-          <span class="font-mono text-xs" aria-current="page">{short_id(@run.run_id)}</span>
-        </nav>
+              {gettext("Timeline")}
+            </:tab>
+            <:tab
+              :if={Access.can?(@current_scope, :"run.read_log", @run)}
+              id="run-tab-terminal"
+              patch={tab_path(@current_scope, @run, :terminal)}
+              icon="hero-command-line"
+              current={@live_action == :terminal}
+            >
+              {gettext("Terminal")}
+            </:tab>
+            <:tab
+              id="run-tab-connections"
+              patch={tab_path(@current_scope, @run, :connections)}
+              icon="hero-globe-alt"
+              current={@live_action == :connections}
+              count={connections_count(@counts)}
+              tone={@counts.denied > 0 && "error"}
+            >
+              {gettext("Network access")}
+            </:tab>
+            <:tab
+              id="run-tab-details"
+              patch={tab_path(@current_scope, @run, :details)}
+              icon="hero-clipboard-document-list"
+              current={@live_action == :details}
+            >
+              {gettext("Details")}
+            </:tab>
+          </.tabs>
 
-        <div class="q-run-title">
-          <h1 :if={@run.task} id="run-title" tabindex="-1" phx-hook="FocusOn">{@run.task}</h1>
-          <h1 :if={!@run.task} id="run-title" tabindex="-1" phx-hook="FocusOn">
-            <.rich text={
-              rich_gettext("Run %{id}", id: {:m, short_id(@run.run_id), "font-mono text-[17px]"})
-            } />
-          </h1>
-          <.run_state
-            state={@run.state}
-            exit_code={@run.exit_code}
-            signal={@run.signal}
-            quiet_for={@quiet_for}
-            quiet_since={heard_at(@run)}
-            interval={beat(@run)}
-            closed_at={@run.closed_at}
-            note={false}
-          />
-          <span :if={@run.state == "pending"} class="text-[13px] text-faint">
-            {gettext("Ping only")}
-          </span>
-          <.alive
-            state={@run.state}
-            last_heartbeat_at={@run.last_heartbeat_at}
-            last_event_at={@run.last_event_at}
-            interval={beat(@run)}
-            quiet={@quiet_for != nil}
-            run={@run}
-          />
-        </div>
-
-        <.kvs id="run-facts">
-          <.kv :if={ended?(@run)} label={gettext("Exit")} mono>{exit_value(@run)}</.kv>
-          <.kv label={gettext("Started")}>
-            <.relative_time
-              :if={@run.started_at}
-              id="run-started"
-              at={@run.started_at}
-              format="clock"
-            />
-            <.na :if={!@run.started_at} />
-          </.kv>
-          <.kv label={gettext("Duration")}>
-            <.run_duration run={@run} quiet={@quiet_for != nil} />
-          </.kv>
-          <.kv label={gettext("Runtime")} title={join([@run.runtime, @run.runtime_version])}>
-            {@run.runtime || na()}
-            <:sub :if={@run.runtime_version}>{@run.runtime_version}</:sub>
-          </.kv>
-          <.kv label={gettext("Host")} mono title={@run.host}>{@run.host || na()}</.kv>
-          <.kv label={gettext("Wall")} tip={@tips.wall} title={join([@run.wall, @run.image])}>
+          <div class={["q-run-body", @live_action == :terminal && "q-run-body-term"]}>
             <%= cond do %>
-              <% @run.wall -> %>
-                {@run.wall}
-              <% @run.state == "pending" -> %>
-                {na()}
-              <% true -> %>
-                <span class="tooltip q-tip-wide" tabindex="0" data-tip={@tips.no_wall}>
-                  {gettext("None")}
-                </span>
+              <% @live_action == :details -> %>
+              <% not @loaded -> %>
+                <div
+                  id="run-loading"
+                  class="grid gap-3"
+                  aria-busy="true"
+                  aria-label={gettext("Reading the record")}
+                >
+                  <span :for={width <- ~w(w-2/3 w-1/2 w-3/5 w-2/5 w-1/2)} class={["q-skel", width]}></span>
+                </div>
+              <% @run.state == "pending" and @index.items == [] -> %>
+                <.limits reason={:not_started} variant="empty" />
+              <% @run.events_pruned_at && @index.items == [] && @live_action == :timeline -> %>
+                <.limits reason={:pruned} variant="empty" at={@run.events_pruned_at} />
+              <% @live_action == :timeline -> %>
+                <.timeline_tab {assigns} />
+              <% @live_action == :terminal -> %>
+                <.terminal_tab scope={@current_scope} run={@run} log={@log} />
+              <% @live_action == :connections -> %>
+                <.connections_tab
+                  scope={@current_scope}
+                  run={@run}
+                  policy={@policy}
+                  connections={@connections}
+                  counts={@counts}
+                  decision={@decision}
+                  acts={@acts}
+                  version={@reported_version}
+                  in_force={@in_force}
+                  security={@security}
+                />
             <% end %>
-            <:sub :if={@run.wall && @run.image}>{@run.image}</:sub>
-          </.kv>
-          <.kv :if={@security} label={gettext("Policy")} class="q-kv-policy">
-            <.policy_value
-              policy={@policy}
-              digest={@run.policy_digest}
-              tips={@tips}
-              version={@reported_version}
-              reported={@digests.reported || @digests.applied}
-              in_force={@in_force}
-              last_seq={@run.projected_sequence}
-            />
-          </.kv>
-        </.kvs>
-
-        <.notice :if={@security && @in_force} kind={:warning} class="max-w-[100ch]">
-          <span id="run-behind">
-            <b>{gettext("This run is behind the policy in force.")}</b>
-            <.rich
-              phx-no-format
-              text={
-                rich_gettext(
-                  "It last reported %{reported}; %{in_force} is in force (%{since}).",
-                  reported: {:part, :reported},
-                  in_force: {:part, :in_force},
-                  since: {:part, :since}
-                )
-              }
-            >
-              <:part name={:reported}>{version_words(@reported_version)}<span :if={@digests.reported}> <span class="font-mono text-xs">{short_digest(@digests.reported)}</span></span></:part>
-              <:part name={:in_force}>{version_words(@in_force)} <span class="font-mono text-xs">{short_digest(@in_force.digest)}</span></:part>
-              <:part name={:since}><.relative_time id="run-behind-since" at={@in_force.rendered_at} /></:part>
-            </.rich>
-            {if @reported_version,
-              do:
-                gettext(
-                  "A run reloads at its next heartbeat; until it does, it decides by %{version}.",
-                  version: version_words(@reported_version)
-                ),
-              else:
-                gettext(
-                  "A run reloads at its next heartbeat; until it does, it decides by what it holds."
-                )}
-          </span>
-          <div class="mt-1">
-            <.link
-              id="run-behind-diff"
-              navigate={behind_path(@current_scope, @reported_version, @in_force)}
-              class="q-link"
-            >
-              {if comparable?(@reported_version, @in_force),
-                do:
-                  gettext("What changed between v%{from} and v%{to} of the %{label}",
-                    from: @reported_version.n,
-                    to: @in_force.n,
-                    label: @in_force.label
-                  ),
-                else: gettext("Open %{version}", version: version_words(@in_force))}
-            </.link>
           </div>
-        </.notice>
-
-        <div :if={ordered_labels(@run.labels, @current_scope.workspace) != []} class="q-labels">
-          <span>{gettext("Labels")}</span>
-          <.label_chip
-            :for={{key, value} <- ordered_labels(@run.labels, @current_scope.workspace)}
-            key={to_string(key)}
-            value={to_string(value)}
-            navigate={label_path(@current_scope, @run, key, value)}
-          />
         </div>
+
+        <.details_rail
+          scope={@current_scope}
+          run={@run}
+          policy={@policy}
+          session_id={@session_id}
+          quiet={@quiet_for != nil}
+          tips={@tips}
+          version={@reported_version}
+          in_force={@in_force}
+          digests={@digests}
+          security={@security}
+        />
       </div>
-
-      <.tabs id="run-tabs" label={gettext("Run")}>
-        <:tab
-          patch={tab_path(@current_scope, @run, :timeline, @timeline_query)}
-          icon="hero-list-bullet-micro"
-          current={@live_action == :timeline}
-          count={@index.session_items > 0 && Format.number(@index.session_items)}
-        >
-          {gettext("Timeline")}
-        </:tab>
-        <:tab
-          :if={Access.can?(@current_scope, :"run.read_log", @run)}
-          patch={tab_path(@current_scope, @run, :terminal)}
-          icon="hero-command-line-micro"
-          current={@live_action == :terminal}
-        >
-          {gettext("Terminal")}
-        </:tab>
-        <:tab
-          patch={tab_path(@current_scope, @run, :connections)}
-          icon="hero-arrows-right-left-micro"
-          current={@live_action == :connections}
-          count={connections_count(@counts)}
-          tone={@counts.denied > 0 && "error"}
-        >
-          {gettext("Connections")}
-        </:tab>
-        <:tab
-          patch={tab_path(@current_scope, @run, :details)}
-          icon="hero-document-text-micro"
-          current={@live_action == :details}
-        >
-          {gettext("Details")}
-        </:tab>
-      </.tabs>
-
-      <%= cond do %>
-        <% not @loaded -> %>
-          <div
-            id="run-loading"
-            class="grid gap-3"
-            aria-busy="true"
-            aria-label={gettext("Reading the record")}
-          >
-            <span :for={width <- ~w(w-2/3 w-1/2 w-3/5 w-2/5 w-1/2)} class={["q-skel", width]}></span>
-          </div>
-        <% @run.state == "pending" and @index.items == [] and @live_action != :details -> %>
-          <.limits reason={:not_started} variant="empty" />
-        <% @run.events_pruned_at && @index.items == [] && @live_action == :timeline -> %>
-          <.limits reason={:pruned} variant="empty" at={@run.events_pruned_at} />
-        <% @live_action == :timeline -> %>
-          <.timeline_tab {assigns} />
-        <% @live_action == :terminal -> %>
-          <.terminal_tab scope={@current_scope} run={@run} log={@log} />
-        <% @live_action == :connections -> %>
-          <.connections_tab
-            scope={@current_scope}
-            run={@run}
-            policy={@policy}
-            connections={@connections}
-            counts={@counts}
-            decision={@decision}
-            acts={@acts}
-            version={@reported_version}
-            in_force={@in_force}
-            security={@security}
-          />
-        <% @live_action == :details -> %>
-          <.details_tab
-            run={@run}
-            policy={@policy}
-            session_id={@session_id}
-            closable={
-              @run.state in Runs.closable_states() and
-                Access.can?(@current_scope, :"run.close", @run)
-            }
-            tips={@tips}
-            version={@reported_version}
-            in_force={@in_force}
-            digests={@digests}
-            security={@security}
-          />
-      <% end %>
 
       <.modal
         :if={@confirm_close}
@@ -345,6 +367,81 @@ defmodule ApiaryWeb.RunLive.Show do
 
       <.rule_popover :if={@security && @popover} popover={@popover} />
     </Layouts.app>
+    """
+  end
+
+  # The ⋯ menu of the header: what the reader may take away from the run, as the run is.
+  attr :run, :map, required: true
+
+  attr :log, :any,
+    required: true,
+    doc: "the log's path, or false for a reader who may not read it"
+
+  defp run_menu(assigns) do
+    ~H"""
+    <div
+      id="run-menu"
+      class="dropdown dropdown-end"
+      phx-hook="Menu"
+      phx-mounted={JS.ignore_attributes(["class"])}
+    >
+      <button
+        id="run-menu-button"
+        type="button"
+        class="btn btn-sm btn-square"
+        aria-haspopup="menu"
+        aria-expanded="false"
+        aria-label={gettext("More actions")}
+        phx-mounted={JS.ignore_attributes(["aria-expanded"])}
+      >
+        <.icon name="hero-ellipsis-horizontal-micro" class="size-4" />
+      </button>
+      <ul
+        class="menu menu-sm dropdown-content right-0 top-full z-30 mt-1.5 w-56"
+        role="menu"
+        aria-label={gettext("More actions")}
+      >
+        <li role="none">
+          <button
+            id="run-menu-copy"
+            type="button"
+            role="menuitem"
+            tabindex="-1"
+            phx-hook="CopyToClipboard"
+            data-copy={@run.run_id}
+            data-copied-words={gettext("Copied")}
+            data-menu-close
+          >
+            <.icon name="hero-link" class="size-4" /> {gettext("Copy run id")}
+            <span class="sr-only" aria-live="polite"></span>
+          </button>
+        </li>
+        <li :if={@log} role="none">
+          <a
+            id="run-menu-raw"
+            href={@log}
+            target="_blank"
+            rel="noopener"
+            role="menuitem"
+            tabindex="-1"
+          >
+            <.icon name="hero-document-text" class="size-4" /> {gettext("Raw log")}
+            <.icon name="hero-arrow-top-right-on-square-micro" class="ml-auto size-3.5 text-faint" />
+          </a>
+        </li>
+        <li :if={@log} role="none">
+          <a
+            id="run-menu-download"
+            href={@log <> "?download=1"}
+            download
+            role="menuitem"
+            tabindex="-1"
+          >
+            <.icon name="hero-arrow-down-tray" class="size-4" /> {gettext("Download log")}
+          </a>
+        </li>
+      </ul>
+    </div>
     """
   end
 
@@ -389,10 +486,10 @@ defmodule ApiaryWeb.RunLive.Show do
             JS.patch(tab_path(@current_scope, @run, :timeline, cx_query(@timeline_query, @cx)))
           }
           aria-pressed={to_string(@cx)}
-          class={["q-chip", @cx && "q-chip-on q-chip-plain"]}
+          class="btn btn-ghost btn-sm q-cx-toggle"
         >
-          <.icon name="hero-arrows-right-left-micro" class="size-4" />{gettext("Connections")}
-          <b>{if @cx, do: gettext("inline"), else: gettext("hidden")}</b>
+          <span class="q-toggle" data-on={@cx} aria-hidden="true"></span>
+          {gettext("Connections inline")}
         </button>
       </div>
 
@@ -457,7 +554,7 @@ defmodule ApiaryWeb.RunLive.Show do
         class="btn btn-ghost btn-xs btn-square"
         aria-label={gettext("Keyboard shortcuts of the timeline")}
       >
-        <.icon name="hero-question-mark-circle-micro" class="size-4" />
+        <.icon name="hero-question-mark-circle" class="size-4" />
       </button>
       <div tabindex="0" class="dropdown-content q-keys" role="note">
         <p class="font-medium">{gettext("With focus in the timeline")}</p>
@@ -603,7 +700,7 @@ defmodule ApiaryWeb.RunLive.Show do
       <.connections_table
         :if={@counts.all > 0}
         id="run-connections"
-        label={gettext("Connections of this run")}
+        label={gettext("Network access of this run")}
         rows={@connections.rows}
         started_at={@run.started_at}
         acts={@acts}
@@ -664,22 +761,116 @@ defmodule ApiaryWeb.RunLive.Show do
     """
   end
 
+  # The details of the run: a rail beside the tabs from 1440 px, and below that the
+  # Details tab, which shows this same element in the column (`q-run-on-details`), so the
+  # two never disagree and no id is rendered twice. Key and value lines under small
+  # headings; the run's labels are its own identifiers, in mono.
+  attr :scope, :map, required: true
   attr :run, :map, required: true
   attr :policy, :any, required: true
   attr :session_id, :string, default: nil
-  attr :closable, :boolean, required: true
+  attr :quiet, :boolean, required: true
   attr :tips, :map, required: true
   attr :version, :any, default: nil
   attr :in_force, :any, default: nil
   attr :digests, :map, required: true
   attr :security, :boolean, required: true
 
-  defp details_tab(assigns) do
+  defp details_rail(assigns) do
+    assigns =
+      assign(assigns, :labels, ordered_labels(assigns.run.labels, assigns.scope.workspace))
+
     ~H"""
-    <div class="q-cards">
-      <section class="q-card" aria-labelledby="card-command">
-        <h2 id="card-command">{gettext("Command")}</h2>
-        <dl class="q-dl">
+    <aside id="run-details" class="q-run-rail" aria-label={gettext("Details")}>
+      <h2 class="q-rail-title">{gettext("Details")}</h2>
+
+      <section class="q-rail-sec" aria-labelledby="rail-run">
+        <h3 id="rail-run">{gettext("Run")}</h3>
+        <dl id="run-facts" class="q-rail-kv">
+          <dt>{gettext("State")}</dt>
+          <dd>
+            <.state_mark state={@run.state} word />
+            <span :if={@run.state == "pending"} class="q-rail-sub">{gettext("Ping only")}</span>
+            <span :if={@run.reason} class="q-rail-sub">{@run.reason}</span>
+          </dd>
+          <dt :if={ended?(@run)}>{gettext("Exit")}</dt>
+          <dd :if={ended?(@run)} class="font-mono">{exit_value(@run)}</dd>
+          <dt>{gettext("Started")}</dt>
+          <dd><.clock at={@run.started_at} id="run-started-clock" /></dd>
+          <dt>{gettext("Duration")}</dt>
+          <dd><.run_duration id="rail-duration" run={@run} quiet={@quiet} /></dd>
+          <dt>{gettext("Runtime")}</dt>
+          <dd>
+            {@run.runtime || na()}
+            <span :if={@run.runtime_version} class="font-mono">{@run.runtime_version}</span>
+          </dd>
+          <dt>{gettext("Host")}</dt>
+          <dd class="font-mono">{@run.host || na()}</dd>
+          <dt>
+            <.term word={gettext("Wall")} standard={@tips.wall} class="q-tip-wide tooltip-right" />
+          </dt>
+          <dd>
+            <%= cond do %>
+              <% @run.wall -> %>
+                {@run.wall}
+              <% @run.state == "pending" -> %>
+                {na()}
+              <% true -> %>
+                <span class="tooltip q-tip-wide" tabindex="0" data-tip={@tips.no_wall}>
+                  {gettext("None")}
+                </span>
+            <% end %>
+            <span :if={@run.wall && @run.image} class="q-rail-sub font-mono" title={@run.image}>
+              {@run.image}
+            </span>
+          </dd>
+          <dt>{gettext("Key")}</dt>
+          <dd>
+            <%= if Ecto.assoc_loaded?(@run.access_key) && @run.access_key do %>
+              <span class="font-mono">{@run.access_key.label}</span>
+              <span class="q-rail-sub font-mono">{@run.access_key.key_id}</span>
+            <% else %>
+              {na()}
+            <% end %>
+          </dd>
+          <dt :if={@security}>{gettext("Policy")}</dt>
+          <dd :if={@security} class="q-kv-policy">
+            <.policy_value
+              policy={@policy}
+              digest={@run.policy_digest}
+              tips={@tips}
+              version={@version}
+              reported={@digests.reported || @digests.applied}
+              in_force={@in_force}
+              last_seq={@run.projected_sequence}
+            />
+          </dd>
+        </dl>
+      </section>
+
+      <section :if={@labels != []} class="q-rail-sec" aria-labelledby="rail-labels">
+        <h3 id="rail-labels">{gettext("Labels")}</h3>
+        <dl id="run-labels" class="q-rail-kv q-rail-kv-mono">
+          <%= for {key, value} <- @labels do %>
+            <dt>{key}</dt>
+            <dd title={to_string(value)}>
+              <.link
+                :if={path = label_path(@scope, @run, to_string(key), to_string(value))}
+                navigate={path}
+              >
+                {to_string(value)}
+              </.link>
+              <span :if={!label_path(@scope, @run, to_string(key), to_string(value))}>
+                {to_string(value)}
+              </span>
+            </dd>
+          <% end %>
+        </dl>
+      </section>
+
+      <section class="q-rail-sec" aria-labelledby="rail-command">
+        <h3 id="rail-command">{gettext("Command")}</h3>
+        <dl class="q-rail-kv">
           <dt>{gettext("Command")}</dt>
           <dd class="font-mono">{@run.command || na()}</dd>
           <dt>{gettext("Arguments")}</dt>
@@ -698,10 +889,6 @@ defmodule ApiaryWeb.RunLive.Show do
           <dd :if={@run.terminal_cols} class="font-mono">
             {@run.terminal_cols}×{@run.terminal_rows}
           </dd>
-          <dt>{gettext("Runtime")}</dt>
-          <dd>
-            {@run.runtime || na()} <span class="font-mono text-faint">{@run.runtime_version}</span>
-          </dd>
           <dt>{gettext("Runner")}</dt>
           <dd class="font-mono">
             {@run.runner_version || gettext("n/a")}<span :if={@run.contract_version}> · {gettext(
@@ -709,39 +896,66 @@ defmodule ApiaryWeb.RunLive.Show do
               version: @run.contract_version
             )}</span>
           </dd>
-          <dt>{gettext("Host")}</dt>
-          <dd class="font-mono">{@run.host || na()}</dd>
-          <dt>{gettext("Wall")}</dt>
-          <dd>
-            {@run.wall || gettext("None")}
-            <span :if={@run.image} class="font-mono text-faint">{@run.image}</span>
-          </dd>
-          <dt>{gettext("Access key")}</dt>
-          <dd>
-            <%= if Ecto.assoc_loaded?(@run.access_key) && @run.access_key do %>
-              {@run.access_key.label}
-              <span class="font-mono text-faint">{@run.access_key.key_id}</span>
-            <% else %>
-              {na()}
-            <% end %>
-          </dd>
         </dl>
       </section>
 
-      <section :if={@security} class="q-card" aria-labelledby="card-policy">
-        <h2 id="card-policy">{gettext("Policy in force")}</h2>
-        <dl :if={@policy} class="q-dl">
-          <dt>{gettext("Mode")}</dt>
-          <dd>
-            <.term word={@policy.mode || gettext("n/a")} standard={@tips.mode} class="q-tip-wide" />
+      <section class="q-rail-sec" aria-labelledby="rail-record">
+        <h3 id="rail-record">{gettext("Record")}</h3>
+        <dl class="q-rail-kv">
+          <dt>{gettext("Run id")}</dt>
+          <dd class="font-mono">
+            <span id="run-id">{@run.run_id}</span>
+            <.copy_button
+              id="copy-run-id"
+              target="#run-id"
+              icon_only
+              label={gettext("Copy the run id")}
+            />
           </dd>
+          <dt>{gettext("Events")}</dt>
+          <dd>
+            <.rich text={
+              rich_gettext("%{number}, projected through %{sequence}",
+                number: Format.number(@run.event_count),
+                sequence: {:m, "#" <> pad(@run.projected_sequence), "font-mono"}
+              )
+            } />
+          </dd>
+          <dt>{gettext("Last event")}</dt>
+          <dd><.clock at={@run.last_event_at} id="last-event" /></dd>
+          <dt>{gettext("Last heartbeat")}</dt>
+          <dd>
+            <.clock at={@run.last_heartbeat_at} id="last-heartbeat" />
+            <span :if={@run.heartbeat_interval_seconds} class="q-rail-sub">
+              {gettext("every %{seconds} s",
+                seconds: Format.number(@run.heartbeat_interval_seconds)
+              )}<span :if={@run.elapsed_seconds}> · {gettext("elapsed %{seconds} s",
+                seconds: Format.number(@run.elapsed_seconds)
+              )}</span>
+            </span>
+          </dd>
+          <dt>{gettext("Exited")}</dt>
+          <dd><.clock at={@run.exited_at} id="exited-at" /></dd>
+          <dt :if={@run.lost_at}>{gettext("Lost")}</dt>
+          <dd :if={@run.lost_at}><.clock at={@run.lost_at} id="lost-at" /></dd>
+          <dt :if={@run.closed_at}>{gettext("Closed")}</dt>
+          <dd :if={@run.closed_at}>
+            <.rich phx-no-format text={rich_gettext("%{time} by a member", time: {:part, :time})}><:part name={:time}><.clock at={@run.closed_at} id="closed-at" /></:part></.rich>
+          </dd>
+          <dt>{gettext("Session")}</dt>
+          <dd class="font-mono">{@session_id || gettext("n/a")}</dd>
+        </dl>
+      </section>
+      <section :if={@security} class="q-rail-sec" aria-labelledby="rail-policy">
+        <h3 id="rail-policy">{gettext("Policy in force")}</h3>
+        <dl :if={@policy} class="q-rail-kv">
           <dt>{gettext("Source")}</dt>
           <dd>{policy_source_words(@policy.source)}</dd>
           <dt>
             <.term word={gettext("Digest")} standard={@tips.digest} class="q-tip-wide tooltip-right" />
           </dt>
           <dd class="font-mono">
-            {@run.policy_digest || gettext("n/a")}
+            {if @run.policy_digest, do: short_digest(@run.policy_digest), else: gettext("n/a")}
             <.copy_button
               :if={@run.policy_digest}
               id="copy-digest"
@@ -751,8 +965,12 @@ defmodule ApiaryWeb.RunLive.Show do
             />
           </dd>
           <dt>{gettext("Run configuration")}</dt>
-          <dd class="font-mono">
-            {@run.run_configuration_digest || @run.reported_run_configuration_digest || gettext("n/a")}
+          <dd
+            class="font-mono"
+            title={@run.run_configuration_digest || @run.reported_run_configuration_digest}
+          >
+            {short_digest(@run.run_configuration_digest || @run.reported_run_configuration_digest) ||
+              gettext("n/a")}
           </dd>
           <dt :if={@version}>{gettext("Version")}</dt>
           <dd :if={@version} id="policy-version">
@@ -793,7 +1011,7 @@ defmodule ApiaryWeb.RunLive.Show do
           <dt>{pgettext("plain", "Applied at")}</dt>
           <dd class="font-mono">#{pad(@policy.sequence)}</dd>
         </dl>
-        <p :if={!@policy} class="px-5 py-4 text-[13px] text-muted">
+        <p :if={!@policy} class="q-rail-note">
           {if @run.events_pruned_at,
             do:
               gettext("The policy event was pruned with the run's events on %{date}.",
@@ -802,71 +1020,13 @@ defmodule ApiaryWeb.RunLive.Show do
             else: gettext("No policy event has arrived for this run.")}
         </p>
       </section>
-
-      <section class="q-card" aria-labelledby="card-record">
-        <h2 id="card-record">{gettext("Record")}</h2>
-        <dl class="q-dl">
-          <dt>{gettext("Run id")}</dt>
-          <dd class="font-mono">
-            <span id="run-id">{@run.run_id}</span>
-            <.copy_button
-              id="copy-run-id"
-              target="#run-id"
-              icon_only
-              label={gettext("Copy the run id")}
-            />
-          </dd>
-          <dt>{gettext("State")}</dt>
-          <dd>{state_label(@run.state)}<span :if={@run.reason}> · {@run.reason}</span></dd>
-          <dt>{gettext("Events")}</dt>
-          <dd>
-            <.rich text={
-              rich_gettext("%{number}, projected through %{sequence}",
-                number: Format.number(@run.event_count),
-                sequence: {:m, "#" <> pad(@run.projected_sequence), "font-mono"}
-              )
-            } />
-          </dd>
-          <dt>{gettext("Last event")}</dt>
-          <dd><.clock at={@run.last_event_at} id="last-event" /></dd>
-          <dt>{gettext("Last heartbeat")}</dt>
-          <dd>
-            <.clock at={@run.last_heartbeat_at} id="last-heartbeat" /><span :if={
-              @run.heartbeat_interval_seconds
-            }> · {gettext("every %{seconds} s",
-              seconds: Format.number(@run.heartbeat_interval_seconds)
-            )}</span><span :if={@run.elapsed_seconds}> · {gettext("elapsed %{seconds} s",
-              seconds: Format.number(@run.elapsed_seconds)
-            )}</span>
-          </dd>
-          <dt>{gettext("Exited")}</dt>
-          <dd><.clock at={@run.exited_at} id="exited-at" /></dd>
-          <dt :if={@run.lost_at}>{gettext("Lost")}</dt>
-          <dd :if={@run.lost_at}><.clock at={@run.lost_at} id="lost-at" /></dd>
-          <dt :if={@run.closed_at}>{gettext("Closed")}</dt>
-          <dd :if={@run.closed_at}>
-            <.rich phx-no-format text={rich_gettext("%{time} by a member", time: {:part, :time})}><:part name={:time}><.clock at={@run.closed_at} id="closed-at" /></:part></.rich>
-          </dd>
-          <dt>{gettext("Session")}</dt>
-          <dd class="font-mono">{@session_id || gettext("n/a")}</dd>
-        </dl>
-        <div :if={@closable} class="q-card-foot">
-          <p>
-            {gettext(
-              "Closing tells the workspace to take no more events for this run. It is for a run that went quiet and will not post its exit."
-            )}
-          </p>
-          <.button id="close-run-button" variant="danger" phx-click="close">
-            {gettext("Close run")}
-          </.button>
-        </div>
-      </section>
-    </div>
+    </aside>
     """
   end
 
   ## Small pieces of the header
 
+  attr :id, :string, default: "run-duration", doc: "the ticking clock's, one per place"
   attr :run, :map, required: true
   attr :quiet, :boolean, required: true
 
@@ -878,7 +1038,7 @@ defmodule ApiaryWeb.RunLive.Show do
       <% @run.state == "running" and not @quiet -> %>
         <%!-- The runner's own elapsed seconds plus this server's time since they were true. --%>
         <.duration
-          id="run-duration"
+          id={@id}
           elapsed_seconds={elem(elapsed(@run), 0)}
           elapsed_at={elem(elapsed(@run), 1)}
           so_far
@@ -942,7 +1102,7 @@ defmodule ApiaryWeb.RunLive.Show do
       <% @reported -> %>
         <span id="policy-unrendered" tabindex="0" title={@tips.unrendered}>
           <small class="ml-1 font-mono">{short_digest(@reported)}</small>
-          <small>· {gettext("not rendered here")}</small>
+          <small class="block">{gettext("Not a version made in this workspace")}</small>
         </span>
       <% @digest -> %>
         <small class="ml-1 font-mono" title={gettext("sha256 %{digest}", digest: @digest)}>
@@ -1023,6 +1183,8 @@ defmodule ApiaryWeb.RunLive.Show do
        loaded: false,
        page_title: gettext("Run"),
        tips: tips(),
+       target_shared: false,
+       closable: false,
        confirm_close: false,
        announcement: nil,
        announced_at: nil,
@@ -1069,8 +1231,9 @@ defmodule ApiaryWeb.RunLive.Show do
     refuse_terminal(socket)
 
     case socket.assigns do
-      %{run: %Run{}, loaded: true} ->
-        {:noreply, apply_params(socket, Map.drop(params, ["org", "workspace", "run_id"]))}
+      %{run: %Run{} = run, loaded: true} ->
+        socket = apply_params(socket, Map.drop(params, ["org", "workspace", "run_id"]))
+        {:noreply, assign(socket, :page_title, run_title(run, socket.assigns.live_action))}
 
       _ ->
         {:noreply, socket}
@@ -1094,7 +1257,14 @@ defmodule ApiaryWeb.RunLive.Show do
 
     case Record.fetch_run(scope, run_id) do
       {:ok, run} ->
-        socket = socket |> assign(loaded_id: run_id, new_count: 0) |> assign_run(run)
+        socket =
+          socket
+          |> assign(loaded_id: run_id, new_count: 0, ending: nil)
+          |> assign(
+            :target_shared,
+            run.target_id != nil and Targets.shared?(scope, run.target_path)
+          )
+          |> assign_run(run)
 
         if connected?(socket) do
           # Subscribed before the read, so nothing projected after it is missed.
@@ -1110,6 +1280,7 @@ defmodule ApiaryWeb.RunLive.Show do
             full: MapSet.new(),
             policy: if(security, do: Record.policy(scope, run)),
             counts: Record.connection_counts(scope, run),
+            session_id: Record.session_id(scope, run),
             target: if(security, do: target_of(scope, run)),
             versions: %{},
             effective: nil,
@@ -1117,6 +1288,7 @@ defmodule ApiaryWeb.RunLive.Show do
             popover: nil
           )
           |> put_index(Record.timeline(scope, run))
+          |> assign_ending()
           |> assign_policy_facts()
         else
           socket
@@ -1128,14 +1300,30 @@ defmodule ApiaryWeb.RunLive.Show do
   end
 
   defp assign_run(socket, %Run{} = run) do
+    scope = socket.assigns.current_scope
+
     assign(socket,
       run: run,
       quiet_for: quiet_for(run),
-      page_title:
-        gettext("%{title} · Runs",
-          title: run.task || gettext("Run %{id}", id: short_id(run.run_id))
-        )
+      closable: run.state in Runs.closable_states() and Access.can?(scope, :"run.close", run),
+      page_title: run_title(run, socket.assigns.live_action)
     )
+  end
+
+  # The window's title: the run, and the tab when it is not the timeline, so a reader with
+  # several tabs of one run open tells them apart.
+  defp run_title(run, tab) do
+    title =
+      gettext("%{title} · Runs",
+        title: run.task || gettext("Run %{id}", id: short_id(run.run_id))
+      )
+
+    case tab do
+      :terminal -> gettext("Terminal") <> " · " <> title
+      :connections -> gettext("Network access") <> " · " <> title
+      :details -> gettext("Details") <> " · " <> title
+      _timeline -> title
+    end
   end
 
   # Every parameter is validated against the record; what is not valid is dropped and the
@@ -1269,7 +1457,7 @@ defmodule ApiaryWeb.RunLive.Show do
     do: ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{id}/terminal?#{query}"
 
   defp tab_path(scope, %Run{run_id: id}, :connections, query),
-    do: ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{id}/connections?#{query}"
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{id}/network?#{query}"
 
   defp tab_path(scope, %Run{run_id: id}, :details, query),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{id}/details?#{query}"
@@ -1277,16 +1465,18 @@ defmodule ApiaryWeb.RunLive.Show do
   defp label_path(scope, _run, "task", value),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/runs?#{%{task: value}}"
 
-  # A label that names the target, by the workspace's domain, links to the target's runs.
+  # A label that names the target, by the workspace's domain, links to the target's page.
   # The scope's workspace is the run's, loaded with its domain: no read per render.
-  defp label_path(scope, %Run{target_system: system, target_path: path}, key, _value)
-       when is_binary(system) and is_binary(path) do
-    if key in Domain.target_labels(scope.workspace),
-      do:
-        ~p"/#{scope.organisation}/#{scope.workspace}/runs?#{Filters.target_params(system, path)}"
+  defp label_path(scope, %Run{target_id: id} = run, key, _value) when is_binary(id) do
+    if key in Domain.target_labels(scope.workspace), do: target_link(scope, run)
   end
 
   defp label_path(_scope, _run, _key, _value), do: nil
+
+  # The target's page: the run's own copy of its system and path, which the target's row
+  # holds too while the run names it.
+  defp target_link(scope, %Run{target_system: system, target_path: path}),
+    do: target_path(scope, system, path)
 
   # The chips of the lane key: the first dozen, and the isolated one wherever it is.
   defp lane_chips(index, isolated) do
@@ -1411,6 +1601,58 @@ defmodule ApiaryWeb.RunLive.Show do
 
     assign(socket, index: %{index | items: items, by_seq: by_seq})
   end
+
+  # Why a run that ended badly ended so, said in its header: the last of its timeline's
+  # results that was no success, failed turns and failed tools, read whole, with the way
+  # to that item. Nothing for a run that is alive or ended well, or whose timeline says
+  # no more than its state.
+  defp assign_ending(%{assigns: %{run: %Run{state: state} = run, index: index}} = socket) do
+    if state in Run.ended_badly_states() do
+      candidates =
+        index.items
+        |> Enum.filter(&(&1.kind in [:result, :turn_failed, :tool]))
+        |> Enum.take(-12)
+
+      ending =
+        if candidates != [],
+          do:
+            socket.assigns.current_scope
+            |> Record.items(run, candidates)
+            |> Enum.reverse()
+            |> Enum.find_value(&ending_of/1)
+
+      assign(socket, ending: ending)
+    else
+      assign(socket, ending: nil)
+    end
+  end
+
+  defp assign_ending(socket), do: assign(socket, ending: nil)
+
+  defp ending_of(%{kind: :result, outcome: outcome, text: text} = item)
+       when outcome != "success" and is_binary(text) and text != "",
+       do: %{seq: item.seq, text: one_line(text)}
+
+  defp ending_of(%{kind: :turn_failed} = item) do
+    case item[:error] || item[:message] do
+      text when is_binary(text) and text != "" -> %{seq: item.seq, text: one_line(text)}
+      _ -> nil
+    end
+  end
+
+  defp ending_of(%{kind: :tool, status: :failed} = item) do
+    text =
+      if is_binary(item.summary) and item.summary != "",
+        do: gettext("%{tool} failed: %{summary}", tool: item.tool, summary: item.summary),
+        else: gettext("%{tool} failed", tool: item.tool)
+
+    %{seq: item.seq, text: one_line(text)}
+  end
+
+  defp ending_of(_item), do: nil
+
+  defp one_line(text),
+    do: text |> String.replace(~r/\s+/u, " ") |> String.trim() |> String.slice(0, 400)
 
   defp assign_window_counts(socket) do
     %{index: index, win_first: first, win_last: last, run: run} = socket.assigns
@@ -1929,9 +2171,21 @@ defmodule ApiaryWeb.RunLive.Show do
     rule_options =
       for {row, rule_option} <- rule_options, do: {row, Rules.answered(rule_option, row, changes)}
 
+    # Who locked a locked rule, for the menu of the rows it decides: one read.
+    locks =
+      Rules.locks(
+        scope,
+        for(
+          {_row, %{rule_option: option, entry: %{host: host}}} <- rule_options,
+          option in [:locked_deny, :locked_allow],
+          uniq: true,
+          do: host
+        )
+      )
+
     acts =
       for {row, rule_option} <- rule_options, into: %{} do
-        {"cx-#{row.id}", act(socket, row, rule_option, changes)}
+        {"cx-#{row.id}", act(socket, row, rule_option, changes) |> locked(locks, scope)}
       end
 
     socket |> assign(acts: acts) |> mark_expanded()
@@ -1947,14 +2201,14 @@ defmodule ApiaryWeb.RunLive.Show do
        )
        when not is_nil(entry) do
     %{target: target, current_scope: scope} = socket.assigns
-    holder_id = if entry.source == :target and target, do: target.id
+    holder = if entry.source == :target and target, do: target
     change = Rules.change_for(entry, changes)
 
     rule_option
     |> Map.merge(%{
       values: %{"id" => row.id},
       entry_host: entry.host,
-      rule_path: Rules.rule_path(scope, holder_id, entry.host),
+      rule_path: Rules.rule_path(scope, holder, entry.host),
       after: %{
         action: action,
         level: if(entry.source == :target, do: :target, else: :workspace),
@@ -1962,8 +2216,8 @@ defmodule ApiaryWeb.RunLive.Show do
           change && is_integer(change.version) &&
             %{
               n: change.version,
-              path: Rules.version_path(scope, holder_id, change.version),
-              label: Rules.version_label(holder_id, target)
+              path: Rules.version_path(scope, holder, change.version),
+              label: Rules.version_label(holder && holder.id, target)
             },
         by: change && who(change, scope),
         at: (change && change.at) || (entry.rule && entry.rule.updated_at),
@@ -1973,11 +2227,17 @@ defmodule ApiaryWeb.RunLive.Show do
     })
   end
 
-  defp act(_socket, row, rule_option, _changes) do
+  # A row a rule decides links to that rule, in the Network access section of its policy.
+  defp act(socket, row, rule_option, _changes) do
+    %{target: target, current_scope: scope} = socket.assigns
+    entry = rule_option.entry
+
     Map.merge(rule_option, %{
       values: %{"id" => row.id},
-      entry_host: rule_option.entry && rule_option.entry.host,
-      rule_path: nil,
+      entry_host: entry && entry.host,
+      rule_path:
+        entry && entry.host &&
+          Rules.rule_path(scope, if(entry.source == :target and target, do: target), entry.host),
       after: nil
     })
   end
@@ -1985,6 +2245,13 @@ defmodule ApiaryWeb.RunLive.Show do
   defp who(%{by_id: id}, %{user: %{id: id}}) when not is_nil(id), do: gettext("you")
   defp who(%{by: name}, _scope) when is_binary(name), do: ApiaryWeb.People.short(name)
   defp who(_change, _scope), do: nil
+
+  # A locked rule's row: the way to the rule, and who locked it when that is known.
+  defp locked(%{rule_option: option, entry: %{host: host}} = act, locks, scope)
+       when option in [:locked_deny, :locked_allow],
+       do: Map.merge(act, %{rule_path: Rules.rule_path(scope, nil, host), locked: locks[host]})
+
+  defp locked(act, _locks, _scope), do: act
 
   # "In force in this run" is claimed from the record alone: the run reported the digest
   # that is in force. Never after a timer, and never of a run that takes no policy here.
@@ -2008,9 +2275,14 @@ defmodule ApiaryWeb.RunLive.Show do
   defp comparable?(%{target_id: id}, %{target_id: id}), do: true
   defp comparable?(_reported, _in_force), do: false
 
-  defp behind_path(scope, reported, in_force) do
-    if comparable?(reported, in_force),
-      do: Rules.version_path(scope, in_force.target_id, in_force.n, %{"compare" => reported.n}),
+  # A target's version is on the run's target's Policy tab: the only target a run's
+  # versions are of.
+  defp behind_path(scope, target, reported, in_force) do
+    if comparable?(reported, in_force) and (is_nil(in_force.target_id) or target != nil),
+      do:
+        Rules.version_path(scope, in_force.target_id && target, in_force.n, %{
+          "compare" => reported.n
+        }),
       else: in_force.path
   end
 
@@ -2206,7 +2478,7 @@ defmodule ApiaryWeb.RunLive.Show do
           end
       end
 
-    socket = put_index(socket, index)
+    socket = socket |> put_index(index) |> assign_ending()
     security = socket.assigns.security
 
     case rows do

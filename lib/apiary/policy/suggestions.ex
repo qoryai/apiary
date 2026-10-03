@@ -88,8 +88,8 @@ defmodule Apiary.Policy.Suggestions do
   # See `Apiary.Policy.suggestion_counts/2`. One read of the events joined to their runs
   # and targets (the hosts declared, and each target's own mode), one read of the
   # workspace's rules, and the workspace's mode; each target's effective policy is
-  # resolved once.
-  def counts(%Workspace{id: workspace_id}, since) do
+  # resolved once, under `above`, the level above the workspace or nil.
+  def counts(%Workspace{id: workspace_id}, since, above \\ nil) do
     runs =
       from r in Run,
         where: r.workspace_id == ^workspace_id and not is_nil(r.target_id),
@@ -135,10 +135,11 @@ defmodule Apiary.Policy.Suggestions do
                    own_mode,
                    workspace_rules,
                    Map.get(own, target_id, []),
-                   target_id
+                   target_id,
+                   above
                  ) do
               {:ok, effective} -> effective
-              {:error, _error} -> %Effective{}
+              {:error, _error} -> %Effective{above: above}
             end
 
           hosts |> open_hosts(effective) |> length()

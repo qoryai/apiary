@@ -16,7 +16,8 @@ defmodule Apiary.Organisations.Workspace do
   @derive {Phoenix.Param, key: :slug}
   schema "workspaces" do
     field :name, :string
-    # Set once, at creation, by `put_slug/2`; never cast from a form.
+    # Set once, at creation, by `put_slug/2`: made from the name, or as the form that
+    # creates the workspace gives it; never changed after.
     field :slug, :string
     # The mode of the workspace's security policy; changed through
     # `Apiary.Policy.set_mode/2`.
@@ -111,8 +112,12 @@ defmodule Apiary.Organisations.Workspace do
   def retention_changeset(workspace, attrs) do
     first..last//_ = @retention_days
 
+    # What was typed is cast as it is, but for the spaces around it: a field that is not a
+    # whole number says the same as one out of range.
     workspace
-    |> cast(attrs, [:events_retention_days, :log_retention_days])
+    |> cast(trim_strings(attrs), [:events_retention_days, :log_retention_days],
+      message: fn _field, _meta -> @retention_message end
+    )
     |> validate_number(:events_retention_days,
       greater_than_or_equal_to: first,
       less_than_or_equal_to: last,
@@ -127,6 +132,9 @@ defmodule Apiary.Organisations.Workspace do
     |> check_constraint(:events_retention_days, name: :workspaces_events_retention_days_check)
     |> check_constraint(:log_retention_days, name: :workspaces_log_retention_days_check)
   end
+
+  defp trim_strings(attrs),
+    do: Map.new(attrs, fn {k, v} -> {k, if(is_binary(v), do: String.trim(v), else: v)} end)
 
   defp validate_log_within_events(changeset) do
     events = get_field(changeset, :events_retention_days)

@@ -293,7 +293,10 @@ for each other and never on each other at once:
    order of their ids, so an organisation always comes before the ones it holds; with the
    core's edition, in the order of their ids.
 2. **Workspace rows**, in the order of their ids where a change takes several, as a write
-   of the policy of several workspaces at once does (`Apiary.Policy.lock_workspaces/2`).
+   of the policy of several workspaces at once does (`Apiary.Policy.lock_workspaces/2`),
+   and as a change of the level an edition keeps above the workspaces' policies does
+   (`c:Apiary.Edition.above_workspace/1`): it takes every workspace of the organisation,
+   then renders each again (`Apiary.Policy.rerender_in/3`).
 3. **Memberships**: the owners' of the organisation, in the order of their ids
    (`Apiary.Organisations.lock_owners/1`), then any other.
 4. **Accounts.**

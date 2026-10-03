@@ -12,6 +12,7 @@ defmodule ApiaryWeb.EditionTest do
 
     assert core.nav_entries(nil) == []
     assert core.nav_counts(nil) == %{}
+    assert core.new_entries(nil, :organisation) == []
     assert core.switcher_entries(nil) == []
     assert core.place_scope(%Apiary.Organisations.Membership{}, %Workspace{}) == nil
     assert core.reader_sentence(:level, nil) == nil
@@ -19,6 +20,7 @@ defmodule ApiaryWeb.EditionTest do
     assert core.settings_tabs(nil) == []
     assert core.slot(:notices, %{}) == nil
     assert core.activity_describer() == nil
+    assert core.above_policy_link(nil) == nil
     assert core.reserved_slugs() == %{}
     assert core.gettext_backend() == nil
   end
@@ -42,6 +44,8 @@ defmodule ApiaryWeb.EditionTest do
 
     test "is one of the core's names" do
       assert :notices in ApiaryWeb.Extension.names()
+      assert :workspaces_heading in ApiaryWeb.Extension.names()
+      assert :organisation_heading in ApiaryWeb.Extension.names()
 
       assert_raise ArgumentError, ~r/no slot :nowhere/, fn ->
         render_component(&ApiaryWeb.Extension.slot/1, name: :nowhere, scope: nil)

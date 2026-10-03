@@ -147,7 +147,7 @@ defmodule ApiaryWeb.LingoTest do
       {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings")
       {:dictionary, dictionary} = Process.info(view.pid, :dictionary)
       assert {Gettext, "en@software"} in dictionary
-      assert has_element?(view, "h2", "Workspace name")
+      assert has_element?(view, "h1", "Workspace settings")
     end
   end
 

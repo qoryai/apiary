@@ -89,11 +89,14 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewWithoutSecurityTest do
       conn: conn,
       scope: scope
     } do
-      for path <- [workspace_path(scope), workspace_path(scope, "/keys")] do
+      for path <- [workspace_path(scope), workspace_path(scope, "/runs")] do
         {:ok, view, _html} = live(conn, path)
 
-        for key <- ~w(overview runs connections keys members settings),
+        for key <- ~w(overview runs network settings),
             do: assert(has_element?(view, "#nav-#{key}"))
+
+        # Guard holds Network access alone: the record of it.
+        assert has_element?(view, "#nav-group-guard #nav-network")
 
         refute has_element?(view, "#nav-policy")
         refute has_element?(view, "#nav-policy-mode")
@@ -114,7 +117,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewWithoutSecurityTest do
       view = open(conn, scope)
       refute subscribed_to_policy?(view, scope)
 
-      {:ok, keys, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/keys")
+      {:ok, keys, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/keys")
       refute subscribed_to_policy?(keys, scope)
     end
 

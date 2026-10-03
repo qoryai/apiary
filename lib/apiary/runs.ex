@@ -4,8 +4,10 @@ defmodule Apiary.Runs do
 
   Events come in through `Apiary.Runs.Ingest`, are folded by `Apiary.Runs.Projector` and
   watched by `Apiary.Runs.Liveness`; this module is what pages call. Every function takes
-  the caller's scope first and reads only the scope's workspace; `closed?/2` is the one
-  exception, for the receiver, which has an access key's workspace and no user.
+  the caller's scope first and reads only the scope's workspace. Two read more:
+  `closed?/2`, for the receiver, which has an access key's workspace and no user, and
+  `workspace_facts/3`, for the organisation's overview, which reads the workspaces of the
+  scope's organisation it is given.
 
   Changes are announced on two topics of `Apiary.PubSub`:
 
@@ -132,205 +134,328 @@ defmodule Apiary.Runs do
 
   ## The runs list
 
-  @doc "How many runs a page of the list holds."
-  def page_size, do: @page_size
-
   @doc """
-  A page of the workspace's runs under the filters, newest first by when they started (a
-  run that has only pinged is placed by when its ping arrived). Returns the page's runs,
-  the page it is (the last one, when the filters asked for one beyond it) and the total.
+  A page of the workspace's runs under the filters, in their order (`sort`: newest first by
+  when they started, a run that has only pinged placed by when its ping arrived; oldest
+  first; the longest first, by the duration its exit gave or else the time it reported
+  elapsed; the most denials first), `per` to a page. Returns the page's runs, the page it
+  is (the last one, when the filters asked for one beyond it), the total, the pages and
+  the page size.
   """
   def page_runs(%Scope{} = scope, %Filters{} = filters, now \\ DateTime.utc_now()) do
     query = filtered(scope, filters, now)
     total = Repo.aggregate(query, :count)
-    page = filters.page |> min(max(ceil(total / @page_size), 1))
+    pages = max(ceil(total / filters.per), 1)
+    page = min(filters.page, pages)
 
-    runs = Repo.all(page_query(query, page))
+    runs = Repo.all(page_query(query, filters, page))
 
-    %{runs: runs, page: page, total: total, pages: max(ceil(total / @page_size), 1)}
+    %{runs: runs, page: page, total: total, pages: pages, per: filters.per}
   end
 
-  # In the order of the index `runs_workspace_id_started_or_first_heard_index`, expression
-  # included, so a page is read from the index and never sorted.
-  defp page_query(query, page) do
-    from r in query,
-      order_by: [desc: coalesce(r.started_at, r.inserted_at), desc: r.id],
-      limit: @page_size,
-      offset: ^((page - 1) * @page_size)
+  # Newest and oldest first are the order of the index
+  # `runs_workspace_id_started_or_first_heard_index`, expression included, read forwards or
+  # backwards, so a page is read from the index and never sorted.
+  defp page_query(query, %Filters{sort: sort, per: per}, page) do
+    from r in sorted(query, sort),
+      limit: ^per,
+      offset: ^((page - 1) * per)
   end
+
+  defp sorted(query, "oldest"),
+    do: order_by(query, [r], asc: coalesce(r.started_at, r.inserted_at), asc: r.id)
+
+  defp sorted(query, "longest"),
+    do:
+      order_by(query, [r],
+        desc_nulls_last:
+          fragment("COALESCE(?, ?::bigint * 1000)", r.duration_ms, r.elapsed_seconds),
+        desc: coalesce(r.started_at, r.inserted_at),
+        desc: r.id
+      )
+
+  defp sorted(query, "denials"),
+    do:
+      order_by(query, [r],
+        desc: r.denied_count,
+        desc: coalesce(r.started_at, r.inserted_at),
+        desc: r.id
+      )
+
+  defp sorted(query, _newest),
+    do: order_by(query, [r], desc: coalesce(r.started_at, r.inserted_at), desc: r.id)
 
   @doc false
   def page_runs_query(%Scope{} = scope, %Filters{} = filters, now \\ DateTime.utc_now()),
-    do: scope |> filtered(filters, now) |> page_query(filters.page)
+    do: scope |> filtered(filters, now) |> page_query(filters, filters.page)
 
   @doc """
-  What the summary line says of everything the filters return: `runs`, `targets`,
-  `tasks`, the three families `alive`, `ended_well` and `ended_badly`
-  (`Apiary.Runs.Filters.families/0`), and `with_denials`, all counted in one query.
-  `workspace_runs` is every run of the workspace, filtered or not, for the empty state
-  that says how many the filters hide.
+  The page of the list, under the filters and in their order, that holds the first run
+  started on or before the end of `date`, a UTC day, as the filters' dates are: newest
+  first, the runs that started after that day come before it; oldest first, the page that
+  holds the first run started on or after the day's start. When no run is on that side of
+  the day it is the last page; in any other order, the first. One count on the index.
   """
-  def summarise_runs(%Scope{} = scope, %Filters{} = filters, now \\ DateTime.utc_now()) do
-    ended_well = Filters.family_states("ended_well")
-    ended_badly = Filters.family_states("ended_badly")
+  @spec jump_page(Scope.t(), Filters.t(), Date.t(), DateTime.t()) :: pos_integer
+  def jump_page(%Scope{} = scope, %Filters{} = filters, %Date{} = date, now \\ DateTime.utc_now()) do
+    query = filtered(scope, filters, now)
+    start = DateTime.new!(date, ~T[00:00:00.000000], "Etc/UTC")
+    next = DateTime.add(start, 86_400, :second)
 
-    summary =
-      Repo.one(
-        from r in filtered(scope, filters, now),
-          select: %{
-            runs: count(r.id),
-            targets: count(r.target_id, :distinct),
-            tasks: count(r.task, :distinct),
-            alive: filter(count(r.id), r.state in ^Run.alive_states()),
-            ended_well: filter(count(r.id), r.state in ^ended_well),
-            ended_badly: filter(count(r.id), r.state in ^ended_badly),
-            with_denials: filter(count(r.id), r.denied_count > 0)
-          }
-      )
+    before =
+      case filters.sort do
+        "newest" ->
+          Repo.aggregate(
+            from(r in query, where: coalesce(r.started_at, r.inserted_at) >= ^next),
+            :count
+          )
 
-    Map.put(summary, :workspace_runs, Repo.aggregate(in_scope(scope), :count))
+        "oldest" ->
+          Repo.aggregate(
+            from(r in query, where: coalesce(r.started_at, r.inserted_at) < ^start),
+            :count
+          )
+
+        _other ->
+          0
+      end
+
+    total = Repo.aggregate(query, :count)
+    last = max(ceil(total / filters.per), 1)
+    min(div(before, filters.per) + 1, last)
   end
 
   @doc """
-  The facts of the groups with these keys (the groups on the page, so at most a page of
-  them), over everything the filters return and not only the page:
-  `%{key => %{runs:, alive:, denials:, targets:}}`. A key is `{system, path}` or `:none`
-  grouped by target, the task or `:none` grouped by task.
+  The views of the runs list, each counted under every other filter (the views set the
+  states and the denials, so those are left out): `%{all:, alive:, ended_badly:,
+  with_denials:}`, in one query. The families are `Apiary.Runs.Filters.families/0`.
   """
-  def group_facts(scope, filters, keys, now \\ DateTime.utc_now())
+  def view_counts(%Scope{} = scope, %Filters{} = filters, now \\ DateTime.utc_now()) do
+    Repo.one(
+      from r in filtered(scope, %{filters | states: [], denials: false}, now),
+        select: %{
+          all: count(r.id),
+          alive: filter(count(r.id), r.state in ^Run.alive_states()),
+          ended_badly: filter(count(r.id), r.state in ^Run.ended_badly_states()),
+          with_denials: filter(count(r.id), r.denied_count > 0)
+        }
+    )
+  end
 
-  def group_facts(%Scope{}, %Filters{}, [], _now), do: %{}
+  @doc """
+  How many runs the filters return; with no filters, how many runs the workspace has, which
+  the list's empty state says the filters hide.
+  """
+  def count_runs(scope, filters \\ nil, now \\ DateTime.utc_now())
 
-  def group_facts(%Scope{} = scope, %Filters{group: "target"} = filters, keys, now) do
-    condition =
-      Enum.reduce(keys, dynamic(false), fn
-        :none, acc ->
-          dynamic([r], ^acc or is_nil(r.target_id))
+  def count_runs(%Scope{} = scope, nil, _now), do: Repo.aggregate(in_scope(scope), :count)
 
-        {system, path}, acc ->
-          dynamic([r], ^acc or (r.target_system == ^system and r.target_path == ^path))
+  def count_runs(%Scope{} = scope, %Filters{} = filters, now),
+    do: Repo.aggregate(filtered(scope, filters, now), :count)
 
-        _other, acc ->
-          acc
+  @rail_size 20
+
+  @doc "How many targets the rail lists before \"n more\", and how many each asks for."
+  def rail_size, do: @rail_size
+
+  @typedoc "A target and the runs it has under the filters."
+  @type target_count :: %{system: String.t(), path: String.t(), runs: non_neg_integer}
+
+  @doc """
+  The rail of the runs list: the targets of the runs under the filters without their
+  target, counted in runs. `%{all:, pinned:, targets:, more:, unassigned:}`: `all` counts
+  every run under those filters; `pinned` is each of `pinned:` (a list of `{system,
+  path}`, in its order) with its runs, none left out; `targets` the targets with the most
+  runs, `limit:` of them (default #{@rail_size}), the pinned ones left out; `more` how many
+  more there are; `unassigned` the runs that name no target. `narrow:` keeps the targets
+  whose `system/path` holds the text anywhere, as text (`like/1`), and lists them all,
+  pinned or not.
+  """
+  @spec target_counts(Scope.t(), Filters.t(), keyword) :: %{
+          all: non_neg_integer,
+          pinned: [target_count],
+          targets: [target_count],
+          more: non_neg_integer,
+          unassigned: non_neg_integer
+        }
+  def target_counts(%Scope{} = scope, %Filters{} = filters, opts \\ []) do
+    now = Keyword.get(opts, :now, DateTime.utc_now())
+    rail(filtered(scope, %{filters | target: nil}, now), opts)
+  end
+
+  # `base` is a query with the run bound as `:run`; what is counted per target is `count`,
+  # a dynamic aggregate over `base`: the distinct runs on the runs list, the distinct
+  # destinations on the connections page.
+  defp rail(base, opts, count \\ dynamic([run: r], count(r.id, :distinct))) do
+    limit = opts |> Keyword.get(:limit, @rail_size) |> max(1) |> min(@max_limit * 5)
+    narrow = like(Keyword.get(opts, :narrow))
+    pinned = if narrow, do: [], else: Enum.uniq(Keyword.get(opts, :pinned, []))
+
+    {rows, total} = count_targets(base, narrow, limit, pinned, count)
+
+    pinned_counts =
+      case pinned do
+        [] ->
+          %{}
+
+        pairs ->
+          condition =
+            Enum.reduce(pairs, dynamic(false), fn {system, path}, acc ->
+              dynamic([run: r], ^acc or (r.target_system == ^system and r.target_path == ^path))
+            end)
+
+          Repo.all(
+            from [run: r] in base,
+              where: ^condition,
+              group_by: [r.target_system, r.target_path],
+              select: ^target_count_fields(count)
+          )
+          |> Map.new(&{{&1.system, &1.path}, &1.n})
+      end
+
+    all = Repo.one(from q in base, select: ^count)
+    unassigned = Repo.one(from [run: r] in base, where: is_nil(r.target_id), select: ^count)
+
+    %{
+      all: all,
+      unassigned: unassigned,
+      pinned:
+        for(
+          {system, path} <- pinned,
+          do: %{system: system, path: path, runs: Map.get(pinned_counts, {system, path}, 0)}
+        ),
+      targets: for({system, path, n} <- rows, do: %{system: system, path: path, runs: n}),
+      more: max(total - length(rows), 0)
+    }
+  end
+
+  # A target and its count, as a select of the rail's: `%{system:, path:, n:}`.
+  defp target_count_fields(count) do
+    %{
+      system: dynamic([run: r], r.target_system),
+      path: dynamic([run: r], r.target_path),
+      n: count
+    }
+  end
+
+  # The targets under `base` with the most runs, `limit` of them, without the pairs of
+  # `except`, and how many there are without those; narrowed to a `like/1` pattern.
+  defp count_targets(base, pattern, limit, except, count) do
+    grouped =
+      from [run: r] in base,
+        where: not is_nil(r.target_id),
+        group_by: [r.target_system, r.target_path]
+
+    grouped =
+      if pattern,
+        do:
+          where(
+            grouped,
+            [run: r],
+            ilike(fragment("? || '/' || ?", r.target_system, r.target_path), ^pattern)
+          ),
+        else: grouped
+
+    grouped =
+      Enum.reduce(except, grouped, fn {system, path}, query ->
+        where(query, [run: r], not (r.target_system == ^system and r.target_path == ^path))
       end)
 
-    Repo.all(
-      from r in filtered(scope, filters, now),
-        where: ^condition,
-        group_by: [is_nil(r.target_id), r.target_system, r.target_path],
-        select:
-          {is_nil(r.target_id), r.target_system, r.target_path,
-           %{
-             runs: count(r.id),
-             alive: filter(count(r.id), r.state in ^Run.alive_states()),
-             denials: coalesce(sum(r.denied_count), 0)
-           }}
-    )
-    |> Enum.reduce(%{}, fn {unassigned?, system, path, facts}, acc ->
-      key = if unassigned?, do: :none, else: {system, path}
-      Map.update(acc, key, facts, &Map.merge(&1, facts, fn _k, a, b -> a + b end))
-    end)
+    rows =
+      Repo.all(
+        from [run: r] in grouped,
+          order_by: ^[desc: count],
+          order_by: [asc: r.target_path, asc: r.target_system],
+          limit: ^(limit + 1),
+          select: ^target_count_fields(count)
+      )
+      |> Enum.map(&{&1.system, &1.path, &1.n})
+
+    total =
+      if length(rows) > limit,
+        do:
+          Repo.one(
+            from g in subquery(select(grouped, [run: r], %{s: r.target_system})), select: count()
+          ),
+        else: length(rows)
+
+    {Enum.take(rows, limit), total}
   end
-
-  def group_facts(%Scope{} = scope, %Filters{group: "task"} = filters, keys, now) do
-    tasks = Enum.filter(keys, &is_binary/1)
-    none? = :none in keys
-
-    Repo.all(
-      from r in filtered(scope, filters, now),
-        where: r.task in ^tasks or (^none? and is_nil(r.task)),
-        group_by: r.task,
-        select:
-          {r.task,
-           %{
-             runs: count(r.id),
-             alive: filter(count(r.id), r.state in ^Run.alive_states()),
-             denials: coalesce(sum(r.denied_count), 0),
-             targets: count(r.target_id, :distinct)
-           }}
-    )
-    |> Map.new(fn {task, facts} -> {task || :none, facts} end)
-  end
-
-  def group_facts(%Scope{}, %Filters{}, _keys, _now), do: %{}
 
   @doc """
-  The page's runs in their groups, the groups by their most recent run with the group that
-  has no target (or no task) last: `[%{key:, kind:, system:, path:, title:, runs:}]`.
-  `kind` is `:target`, `:unassigned`, `:task`, `:no_task` or `:none` (not grouped).
+  What a `repo:` of the query names, among the workspace's targets: `{system, path}` for the
+  one target whose `system/path` or whose path it is (compared exactly, then without
+  regard to case), else `{nil, text}`, the path on every system it is on (none, or more
+  than one). `Apiary.Runs.Filters.apply_query/3` asks it.
   """
-  def group_runs(runs, "none"),
-    do: [%{key: :all, kind: :none, system: nil, path: nil, title: nil, runs: runs}]
+  @spec resolve_target(Scope.t(), String.t()) :: {String.t() | nil, String.t()}
+  def resolve_target(%Scope{} = scope, text) when is_binary(text) do
+    folded = String.downcase(text)
 
-  def group_runs(runs, group) when group in ["target", "task"] do
-    runs
-    |> Enum.group_by(&group_key(&1, group))
-    |> Enum.map(fn {key, runs} -> group(key, group, runs) end)
-    |> Enum.sort_by(fn g -> {g.key == :none, -recency(hd(g.runs))} end)
+    rows =
+      Repo.all(
+        from t in targets_in(scope),
+          where:
+            fragment("lower(? || '/' || ?)", t.system, t.path) == ^folded or
+              fragment("lower(?)", t.path) == ^folded,
+          select: {t.system, t.path},
+          limit: 50
+      )
+
+    exact = &Enum.filter(rows, fn {system, path} -> &1.(system, path) end)
+
+    with [] <- exact.(fn system, path -> "#{system}/#{path}" == text end),
+         [] <- exact.(fn _system, path -> path == text end),
+         [] <- exact.(fn system, path -> String.downcase("#{system}/#{path}") == folded end),
+         [] <- exact.(fn _system, path -> String.downcase(path) == folded end) do
+      {nil, text}
+    else
+      [{system, path}] -> {system, path}
+      [{_system, path} | _several] -> {nil, path}
+    end
   end
-
-  @doc "The key of the group a run falls in."
-  def group_key(%Run{target_id: nil}, "target"), do: :none
-  def group_key(%Run{target_system: system, target_path: path}, "target"), do: {system, path}
-  def group_key(%Run{task: nil}, "task"), do: :none
-  def group_key(%Run{task: task}, "task"), do: task
-  def group_key(%Run{}, _group), do: :all
-
-  defp group(:none, "target", runs),
-    do: %{
-      key: :none,
-      kind: :unassigned,
-      system: nil,
-      path: nil,
-      title: gettext("Unassigned"),
-      runs: runs
-    }
-
-  defp group({system, path} = key, "target", runs),
-    do: %{key: key, kind: :target, system: system, path: path, title: path, runs: runs}
-
-  defp group(:none, "task", runs),
-    do: %{
-      key: :none,
-      kind: :no_task,
-      system: nil,
-      path: nil,
-      title: gettext("No task"),
-      runs: runs
-    }
-
-  defp group(task, "task", runs),
-    do: %{key: task, kind: :task, system: nil, path: nil, title: task, runs: runs}
-
-  defp recency(%Run{} = run),
-    do: DateTime.to_unix(run.started_at || run.inserted_at, :microsecond)
 
   @facet_size 50
 
-  @doc "How many options a filter's menu holds at most."
+  @doc "How many options a section of the Filter menu holds, and how many more each asks for."
   def facet_size, do: @facet_size
 
   @doc """
-  The options of each filter of the runs list, counted from the data: every facet is counted
-  under the other filters and the range, not under itself, so a chip shows what choosing
-  another value would give. `%{state:, target:, task:, runtime:, host:}`, each
-  `%{options: [{label, value, count}], total: n}`: the #{@facet_size} most frequent values
-  and the chosen one, with how many values there are. `narrow:` maps a facet's name to
-  what the reader typed in its menu, matched anywhere in the value, case-insensitively, as
-  text and never as a pattern.
+  The options of each section of the runs list's Filter menu, counted from the data: every
+  facet is counted under the other filters and the range, not under itself, so a section
+  shows what choosing another value would give. `%{state:, target:, task:, runtime:, host:,
+  key:}`, each `%{options: [{label, value, count}], total: n}`: the most frequent values,
+  #{@facet_size} of them unless `limits:` maps the facet's name to more, and the chosen one,
+  with how many values there are. `narrow:` maps a facet's name to what the reader typed in
+  its section, matched anywhere in the value, case-insensitively, as text and never as a
+  pattern, over every value there is.
   """
   def run_facets(%Scope{} = scope, %Filters{} = filters, opts \\ []) do
     now = Keyword.get(opts, :now, DateTime.utc_now())
     narrow = Keyword.get(opts, :narrow, %{})
+    limits = Keyword.get(opts, :limits, %{})
+    limit = &facet_limit(limits[&1])
 
     %{
       state: state_facet(scope, filters, now),
-      target: run_target_facet(scope, filters, now, narrow["target"]),
-      task: text_facet(scope, filters, now, :task, gettext("No task"), narrow["task"]),
-      runtime: text_facet(scope, filters, now, :runtime, nil, narrow["runtime"]),
-      host: text_facet(scope, filters, now, :host, nil, narrow["host"])
+      target:
+        target_facet(
+          filtered(scope, %{filters | target: nil}, now),
+          filters.target,
+          narrow["target"],
+          limit.("target")
+        ),
+      task:
+        text_facet(scope, filters, now, :task, gettext("No task"), narrow["task"], limit.("task")),
+      runtime:
+        text_facet(scope, filters, now, :runtime, nil, narrow["runtime"], limit.("runtime")),
+      host: text_facet(scope, filters, now, :host, nil, narrow["host"], limit.("host")),
+      key: key_facet(scope, filters, now, narrow["key"], limit.("key"))
     }
   end
+
+  defp facet_limit(n) when is_integer(n), do: n |> max(@facet_size) |> min(@facet_size * 20)
+  defp facet_limit(_n), do: @facet_size
 
   defp state_facet(scope, filters, now) do
     counts =
@@ -345,100 +470,71 @@ defmodule Apiary.Runs do
     %{options: options, total: length(options)}
   end
 
-  defp run_target_facet(scope, filters, now, narrow),
-    do: target_facet(filtered(scope, %{filters | target: nil}, now), filters.target, narrow)
-
-  # `base` is a query with the run bound as `:run`; what is counted per target is its
-  # distinct runs: the runs of the list, the runs that reached out on the connections page.
-  defp target_facet(base, chosen, narrow) do
-    like = like(narrow)
-
-    grouped =
-      from [run: r] in base,
-        where: not is_nil(r.target_id),
-        group_by: [r.target_system, r.target_path]
-
-    grouped =
-      if like,
-        do:
-          where(
-            grouped,
-            [run: r],
-            ilike(fragment("? || '/' || ?", r.target_system, r.target_path), ^like)
-          ),
-        else: grouped
-
-    rows =
-      Repo.all(
-        from [run: r] in grouped,
-          order_by: [desc: count(r.id, :distinct), asc: r.target_system, asc: r.target_path],
-          limit: ^(@facet_size + 1),
-          select: {r.target_system, r.target_path, count(r.id, :distinct)}
-      )
-
-    total =
-      if length(rows) > @facet_size,
-        do:
-          Repo.one(
-            from g in subquery(select(grouped, [run: r], r.target_system)), select: count()
-          ),
-        else: length(rows)
-
-    unassigned =
-      Repo.one(from [run: r] in base, where: is_nil(r.target_id), select: count(r.id, :distinct))
+  # `base` is a query with the run bound as `:run`, counted by `count` (distinct runs by
+  # default), as the rail counts.
+  defp target_facet(
+         base,
+         chosen,
+         narrow,
+         limit,
+         count \\ dynamic([run: r], count(r.id, :distinct))
+       ) do
+    pattern = like(narrow)
+    {rows, total} = count_targets(base, pattern, limit, [], count)
 
     options =
-      for {system, path, n} <- Enum.take(rows, @facet_size),
+      for {system, path, n} <- rows,
           do: {"#{system}/#{path}", Filters.target_value({system, path}), n}
 
     options =
-      with {system, path} <- chosen,
+      with {_system, path} <- chosen,
            value = Filters.target_value(chosen),
            false <- Enum.any?(options, &(elem(&1, 1) == value)) do
-        n =
-          Repo.one(
-            from [run: r] in base,
-              where: r.target_system == ^system and r.target_path == ^path,
-              select: count(r.id, :distinct)
-          )
-
-        [{"#{system}/#{path}", value, n} | options]
+        n = Repo.one(from q in where_target(base, chosen), select: ^count)
+        [{target_text(chosen, path), value, n} | options]
       else
         _ -> options
       end
 
+    unassigned = Repo.one(from [run: r] in base, where: is_nil(r.target_id), select: ^count)
+
     options =
-      if unassigned > 0 and is_nil(like),
+      if unassigned > 0 and is_nil(pattern),
         do: options ++ [{gettext("Unassigned"), "none", unassigned}],
         else: options
 
-    %{options: options, total: total + if(unassigned > 0, do: 1, else: 0)}
+    %{options: options, total: total + if(unassigned > 0 and is_nil(pattern), do: 1, else: 0)}
   end
 
-  defp text_facet(scope, filters, now, field, none_label, narrow) do
+  defp target_text({nil, _path}, path), do: path
+  defp target_text({system, _path}, path), do: "#{system}/#{path}"
+
+  defp text_facet(scope, filters, now, field, none_label, narrow, limit) do
     chosen = Map.fetch!(filters, field)
     base = filtered(scope, Map.put(filters, field, nil), now)
-    like = like(narrow)
+    pattern = like(narrow)
 
     grouped = from r in base, where: not is_nil(field(r, ^field)), group_by: field(r, ^field)
-    grouped = if like, do: where(grouped, [r], ilike(field(r, ^field), ^like)), else: grouped
+
+    grouped =
+      if pattern, do: where(grouped, [r], ilike(field(r, ^field), ^pattern)), else: grouped
 
     rows =
       Repo.all(
         from r in grouped,
           order_by: [desc: count(r.id), asc: field(r, ^field)],
-          limit: ^(@facet_size + 1),
+          limit: ^(limit + 1),
           select: {field(r, ^field), count(r.id)}
       )
 
     total =
-      if length(rows) > @facet_size,
+      if length(rows) > limit,
         do: Repo.one(from g in subquery(select(grouped, [r], field(r, ^field))), select: count()),
         else: length(rows)
 
     # A label that reads "none" cannot be told from the absence of one in the URL.
     options =
-      for {value, n} <- Enum.take(rows, @facet_size), value != "none", do: {value, value, n}
+      for {value, n} <- Enum.take(rows, limit), value != "none", do: {value, value, n}
 
     options =
       if is_binary(chosen) and not Enum.any?(options, &(elem(&1, 1) == chosen)) do
@@ -449,14 +545,50 @@ defmodule Apiary.Runs do
       end
 
     none =
-      if none_label,
+      if none_label && is_nil(pattern),
         do: Repo.aggregate(from(r in base, where: is_nil(field(r, ^field))), :count),
         else: 0
 
-    options =
-      if none > 0 and is_nil(like), do: options ++ [{none_label, "none", none}], else: options
+    options = if none > 0, do: options ++ [{none_label, "none", none}], else: options
 
     %{options: options, total: total + if(none > 0, do: 1, else: 0)}
+  end
+
+  # The access keys the runs came in with, by the key's label: the label is unique in the
+  # workspace, and a revoked key keeps its runs.
+  defp key_facet(scope, filters, now, narrow, limit) do
+    base = filtered(scope, %{filters | key: nil}, now)
+    pattern = like(narrow)
+
+    grouped =
+      from [run: r] in base,
+        join: k in AccessKey,
+        on: k.id == r.access_key_id and k.workspace_id == r.workspace_id,
+        group_by: k.label
+
+    grouped = if pattern, do: where(grouped, [_r, k], ilike(k.label, ^pattern)), else: grouped
+
+    rows =
+      Repo.all(
+        from [r, k] in grouped,
+          order_by: [desc: count(r.id), asc: k.label],
+          limit: ^(limit + 1),
+          select: {k.label, count(r.id)}
+      )
+
+    total =
+      if length(rows) > limit,
+        do: Repo.one(from g in subquery(select(grouped, [_r, k], k.label)), select: count()),
+        else: length(rows)
+
+    options = for {label, n} <- Enum.take(rows, limit), do: {label, label, n}
+
+    options =
+      if is_binary(filters.key) and not Enum.any?(options, &(elem(&1, 1) == filters.key)),
+        do: [{filters.key, filters.key, 0} | options],
+        else: options
+
+    %{options: options, total: total}
   end
 
   # What the reader typed, as the operand of ILIKE that matches it anywhere and as text:
@@ -499,6 +631,8 @@ defmodule Apiary.Runs do
     |> where_text(:task, f.task)
     |> where_text(:runtime, f.runtime)
     |> where_text(:host, f.host)
+    |> where_key(scope, f.key)
+    |> where_query(f.q)
     |> where_if(f.denials, dynamic([r], r.denied_count > 0))
     |> where_if(from, dynamic([r], coalesce(r.started_at, r.inserted_at) >= ^from))
     |> where_if(to, dynamic([r], coalesce(r.started_at, r.inserted_at) < ^to))
@@ -509,14 +643,56 @@ defmodule Apiary.Runs do
   end
 
   defp where_target(query, nil), do: query
-  defp where_target(query, :none), do: where(query, [r], is_nil(r.target_id))
+  defp where_target(query, :none), do: where(query, [run: r], is_nil(r.target_id))
+
+  defp where_target(query, {nil, path}),
+    do: where(query, [run: r], not is_nil(r.target_id) and r.target_path == ^path)
 
   defp where_target(query, {system, path}),
-    do: where(query, [r], r.target_system == ^system and r.target_path == ^path)
+    do: where(query, [run: r], r.target_system == ^system and r.target_path == ^path)
 
   defp where_text(query, _field, nil), do: query
   defp where_text(query, field, :none), do: where(query, [r], is_nil(field(r, ^field)))
   defp where_text(query, field, value), do: where(query, [r], field(r, ^field) == ^value)
+
+  defp where_key(query, _scope, nil), do: query
+
+  defp where_key(query, scope, label) do
+    keys =
+      from k in AccessKey,
+        where:
+          k.organisation_id == ^scope.organisation.id and k.workspace_id == ^scope.workspace.id,
+        where: k.label == ^label,
+        select: k.id
+
+    where(query, [r], r.access_key_id in subquery(keys))
+  end
+
+  # The free text: the start of the run's id (four hexadecimal characters at least, or a
+  # run page's address), or its task or its target, `system/path`, holding it anywhere.
+  defp where_query(query, nil), do: query
+
+  defp where_query(query, q) do
+    case {like(q), run_id_prefix(q)} do
+      {nil, _prefix} ->
+        query
+
+      {pattern, prefix} ->
+        text =
+          dynamic(
+            [r],
+            ilike(r.task, ^pattern) or
+              ilike(fragment("? || '/' || ?", r.target_system, r.target_path), ^pattern)
+          )
+
+        condition =
+          if prefix,
+            do: dynamic([r], ^text or fragment("?::text LIKE ?", r.run_id, ^prefix)),
+            else: text
+
+        where(query, ^condition)
+    end
+  end
 
   ## Tool invocations
 
@@ -544,6 +720,9 @@ defmodule Apiary.Runs do
 
   ## The workspace's connections
 
+  @doc "How many destinations a page of the workspace's connections holds."
+  def page_size, do: @page_size
+
   @doc """
   A page of the workspace's destinations across the runs in range: one row per host, port
   and path, with how many runs reached it, the attempts, and the decision, rule, outcome
@@ -551,12 +730,15 @@ defmodule Apiary.Runs do
   for (`last_tool`) and what answered it (`last_status`) among them; the attempt is a tool
   invocation when `tool_invocation?/2` says so of `last_tool` and `last_decision`.
   Filters: `decision` (destinations with any attempt so decided), `target`, `host` (the
-  destination's), `tools` (tool invocations only: the destinations where the last attempt
-  of a run was a tool invocation, that run's connection naming a tool with the decision
-  allowed; each is kept whole, so its counts are those without the filter) and the range,
-  which is over when a run last reached the destination and never wider than
+  destination's), `q` (a destination whose host or path holds the text), `tools` (tool
+  invocations only: the destinations where the last attempt of a run was a tool
+  invocation, that run's connection naming a tool with the decision allowed; each is kept
+  whole, so its counts are those without the filter) and the range, which is over when a
+  run last reached the destination and never wider than
   `Apiary.Runs.Filters.max_window_days/0` days, so the aggregate is over a bounded set.
-  Denied destinations come first, then the most recent.
+  The order is `sort`: denied destinations first, the most denied attempts first, then
+  the rest by when they were first seen, newest first (the default); the most recently seen first; the most runs first; the most
+  attempts first.
   """
   def page_destinations(%Scope{} = scope, %Filters{} = filters, now \\ DateTime.utc_now()) do
     query = destinations(scope, filters, now)
@@ -566,15 +748,7 @@ defmodule Apiary.Runs do
     read = fn page ->
       Repo.all(
         from d in subquery(query),
-          # Denied first, then by first seen, newest first, so a row the page holds does
-          # not move when it is seen again (see Record.connections/3).
-          order_by: [
-            desc: d.last_decision == "denied",
-            desc: d.first_seen_at,
-            asc: d.host,
-            asc: d.port,
-            asc: d.path
-          ],
+          order_by: ^destination_order(filters.sort),
           limit: @page_size,
           offset: ^((page - 1) * @page_size),
           select:
@@ -622,6 +796,85 @@ defmodule Apiary.Runs do
       summary: Map.put(summary, :runs, runs)
     }
   end
+
+  # Denied first: the destinations whose last attempt was denied, the most denied attempts
+  # first and then the most recently seen, as Needs attention weighs them; the rest by
+  # first seen, newest first, so such a row does not move when it is seen again (see
+  # Record.connections/3). Or the order the reader chose.
+  defp destination_order(sort) do
+    lead =
+      case sort do
+        "recent" ->
+          [desc: dynamic([d], d.last_seen_at)]
+
+        "runs" ->
+          [desc: dynamic([d], d.runs), desc: dynamic([d], d.last_seen_at)]
+
+        "attempts" ->
+          [desc: dynamic([d], d.attempts), desc: dynamic([d], d.last_seen_at)]
+
+        _denied ->
+          [
+            desc: dynamic([d], d.last_decision == "denied"),
+            desc:
+              dynamic(
+                [d],
+                fragment("CASE WHEN ? = 'denied' THEN ? END", d.last_decision, d.denied)
+              ),
+            desc:
+              dynamic(
+                [d],
+                fragment("CASE WHEN ? = 'denied' THEN ? END", d.last_decision, d.last_seen_at)
+              )
+          ]
+      end
+
+    lead ++
+      [
+        desc: dynamic([d], d.first_seen_at),
+        asc: dynamic([d], d.host),
+        asc: dynamic([d], d.port),
+        asc: dynamic([d], d.path)
+      ]
+  end
+
+  @doc """
+  The views of the workspace's connections, each counted in destinations under every other
+  filter (the views set the decision): `%{all:, denied:, allowed:}`, a destination counted
+  in each decision any of its attempts had.
+  """
+  def destination_views(%Scope{} = scope, %Filters{} = filters, now \\ DateTime.utc_now()) do
+    grouped =
+      from [c, r] in connections_in(scope, %{filters | decision: nil}, now),
+        group_by: [c.host, c.port, c.path],
+        select: %{allowed: sum(c.allowed), denied: sum(c.denied)}
+
+    Repo.one(
+      from d in subquery(grouped),
+        select: %{
+          all: count(),
+          denied: filter(count(), d.denied > 0),
+          allowed: filter(count(), d.allowed > 0)
+        }
+    )
+  end
+
+  @doc """
+  The rail of the workspace's connections: the targets of the runs that reached out under
+  the filters without their target, each counted in the destinations its runs reached (a
+  host, port and path once however many runs reached it), as the page's views count, with
+  the options of `target_counts/3`; `runs` in the result is that count, and `all` the
+  destinations of every target.
+  """
+  def destination_target_counts(%Scope{} = scope, %Filters{} = filters, opts \\ []) do
+    now = Keyword.get(opts, :now, DateTime.utc_now())
+
+    rail(connections_in(scope, %{filters | target: nil}, now), opts, destination_count())
+  end
+
+  # The destinations among connection rows: a host, port and path once.
+  defp destination_count,
+    do: dynamic([c], fragment("count(DISTINCT (?, ?, ?))", c.host, c.port, c.path))
 
   @doc """
   The runs that reached a destination, the most recent first, under the same filters:
@@ -735,25 +988,30 @@ defmodule Apiary.Runs do
 
   @doc """
   The options of the connections page's filters, `%{target:, host:}`, each
-  `%{options: [{label, value, count}], total: n}` like `run_facets/3`, counted in runs;
+  `%{options: [{label, value, count}], total: n}` like `run_facets/3`: a target counted in
+  destinations, as the rail counts it (`destination_target_counts/3`), a host in runs;
   `narrow:` as there.
   """
   def destination_facets(%Scope{} = scope, %Filters{} = filters, opts \\ []) do
     now = Keyword.get(opts, :now, DateTime.utc_now())
     narrow = Keyword.get(opts, :narrow, %{})
+    limits = Keyword.get(opts, :limits, %{})
 
     %{
       target:
         target_facet(
           connections_in(scope, %{filters | target: nil}, now),
           filters.target,
-          narrow["target"]
+          narrow["target"],
+          facet_limit(limits["target"]),
+          destination_count()
         ),
-      host: destination_host_facet(scope, filters, now, narrow["host"])
+      host:
+        destination_host_facet(scope, filters, now, narrow["host"], facet_limit(limits["host"]))
     }
   end
 
-  defp destination_host_facet(scope, filters, now, narrow) do
+  defp destination_host_facet(scope, filters, now, narrow, limit) do
     base = connections_in(scope, %{filters | host: nil}, now)
     like = like(narrow)
     grouped = from c in base, group_by: c.host
@@ -763,16 +1021,16 @@ defmodule Apiary.Runs do
       Repo.all(
         from c in grouped,
           order_by: [desc: count(c.run_id, :distinct), asc: c.host],
-          limit: ^(@facet_size + 1),
+          limit: ^(limit + 1),
           select: {c.host, c.host, count(c.run_id, :distinct)}
       )
 
     total =
-      if length(rows) > @facet_size,
+      if length(rows) > limit,
         do: Repo.one(from g in subquery(select(grouped, [c], c.host)), select: count()),
         else: length(rows)
 
-    options = Enum.take(rows, @facet_size)
+    options = Enum.take(rows, limit)
 
     options =
       if is_binary(filters.host) and not Enum.any?(options, &(elem(&1, 1) == filters.host)) do
@@ -812,7 +1070,18 @@ defmodule Apiary.Runs do
     |> where_if(from, dynamic([c], c.last_seen_at >= ^from))
     |> where_if(to, dynamic([c], c.last_seen_at < ^to))
     |> where_run_target(f.target)
+    |> where_destination_text(f.q)
     |> where_tools(f.tools)
+  end
+
+  # The free text of the connections: a destination whose host or path holds it.
+  defp where_destination_text(query, nil), do: query
+
+  defp where_destination_text(query, q) do
+    case like(q) do
+      nil -> query
+      pattern -> where(query, [c], ilike(c.host, ^pattern) or ilike(c.path, ^pattern))
+    end
   end
 
   # Tool invocations only: every row of a destination where any row under the same filters
@@ -835,6 +1104,9 @@ defmodule Apiary.Runs do
 
   defp where_run_target(query, nil), do: query
   defp where_run_target(query, :none), do: where(query, [_c, r], is_nil(r.target_id))
+
+  defp where_run_target(query, {nil, path}),
+    do: where(query, [_c, r], not is_nil(r.target_id) and r.target_path == ^path)
 
   defp where_run_target(query, {system, path}),
     do: where(query, [_c, r], r.target_system == ^system and r.target_path == ^path)
@@ -1019,6 +1291,225 @@ defmodule Apiary.Runs do
     )
   end
 
+  @doc """
+  What the organisation's overview says of each of `workspaces`, the workspaces of the
+  scope's organisation the reader reaches: `%{workspace_id => %{alive:, runs:, denied:,
+  last_at:, days:, targets:}}`, where `runs` and `denied` count the last fourteen UTC days
+  (today included), `days` the runs of each of them, oldest first, `last_at` is when the
+  workspace's last run started (nil when it has none) and `targets` how many targets it
+  has. A workspace of another organisation is left out. Four reads, whatever the number
+  of workspaces.
+  """
+  @spec workspace_facts(Scope.t(), [%Workspace{}], DateTime.t()) :: %{
+          optional(Ecto.UUID.t()) => map
+        }
+  def workspace_facts(scope, workspaces, now \\ DateTime.utc_now())
+
+  def workspace_facts(%Scope{}, [], _now), do: %{}
+
+  def workspace_facts(%Scope{organisation: %Organisation{id: organisation_id}}, workspaces, now) do
+    ids = for %Workspace{id: id, organisation_id: ^organisation_id} <- workspaces, do: id
+    today = DateTime.to_date(now)
+    first = Date.add(today, -13)
+    from = DateTime.new!(first, ~T[00:00:00], "Etc/UTC")
+
+    per_day =
+      Repo.all(
+        from r in Run,
+          where: r.organisation_id == ^organisation_id and r.workspace_id in ^ids,
+          where: coalesce(r.started_at, r.inserted_at) >= ^from,
+          group_by: [
+            r.workspace_id,
+            fragment("(COALESCE(?, ?) AT TIME ZONE 'UTC')::date", r.started_at, r.inserted_at)
+          ],
+          select:
+            {r.workspace_id,
+             type(
+               fragment("(COALESCE(?, ?) AT TIME ZONE 'UTC')::date", r.started_at, r.inserted_at),
+               :date
+             ), count(r.id), type(coalesce(sum(r.denied_count), 0), :integer)}
+      )
+
+    alive =
+      Repo.all(
+        from r in Run,
+          where: r.organisation_id == ^organisation_id and r.workspace_id in ^ids,
+          where: r.state in ^Run.alive_states(),
+          group_by: r.workspace_id,
+          select: {r.workspace_id, count(r.id)}
+      )
+      |> Map.new()
+
+    # The last run of each, read off the index the runs list reads by, one row each.
+    last =
+      from r in Run,
+        where: r.workspace_id == parent_as(:workspace).id,
+        order_by: [desc: coalesce(r.started_at, r.inserted_at), desc: r.id],
+        limit: 1,
+        select: %{at: coalesce(r.started_at, r.inserted_at)}
+
+    last_at =
+      Repo.all(
+        from w in Workspace,
+          as: :workspace,
+          where: w.id in ^ids,
+          left_lateral_join: l in subquery(last),
+          on: true,
+          select: {w.id, l.at}
+      )
+      |> Map.new()
+
+    targets =
+      Repo.all(
+        from t in Target,
+          where: t.organisation_id == ^organisation_id and t.workspace_id in ^ids,
+          group_by: t.workspace_id,
+          select: {t.workspace_id, count(t.id)}
+      )
+      |> Map.new()
+
+    by_workspace = Enum.group_by(per_day, &elem(&1, 0))
+
+    Map.new(ids, fn id ->
+      rows = Map.get(by_workspace, id, [])
+      counts = Map.new(rows, fn {_id, date, runs, _denied} -> {date, runs} end)
+
+      {id,
+       %{
+         alive: Map.get(alive, id, 0),
+         runs: rows |> Enum.map(&elem(&1, 2)) |> Enum.sum(),
+         denied: rows |> Enum.map(&elem(&1, 3)) |> Enum.sum(),
+         last_at: Map.get(last_at, id),
+         days: for(d <- Date.range(first, today), do: Map.get(counts, d, 0)),
+         targets: Map.get(targets, id, 0)
+       }}
+    end)
+  end
+
+  @typedoc """
+  A target of the overview's Active targets: its `system` and `path`, whether the same
+  path is on another system of the workspace too (`shared?`, which is when the system is
+  shown), its `runs` and `denied` attempts since the window opened, its runs of each UTC
+  day of the window, oldest first (`days`), and its last run (`last`).
+  """
+  @type active_target :: %{
+          id: Ecto.UUID.t(),
+          system: String.t(),
+          path: String.t(),
+          shared?: boolean,
+          runs: non_neg_integer,
+          denied: non_neg_integer,
+          days: [non_neg_integer],
+          last: Run.t() | nil
+        }
+
+  @doc """
+  active_targets/3 is what the workspace overview's Active targets say: the `limit`
+  (default 8) targets with the most runs that started on or after the UTC day `from`,
+  most first (by path on a tie), each an `t:active_target/0` with its runs of every day
+  from `from` to today; and `targets`, how many targets the workspace has. Five short
+  reads over the window's runs and the targets, whatever their number.
+  """
+  @spec active_targets(Scope.t(), Date.t(), pos_integer) :: %{
+          rows: [active_target],
+          targets: non_neg_integer
+        }
+  def active_targets(scope, from, limit \\ 8)
+
+  def active_targets(%Scope{} = scope, %Date{} = from, limit) do
+    start = DateTime.new!(from, ~T[00:00:00.000000], "Etc/UTC")
+    window = where(in_scope(scope), ^dynamic([r], ^by_start() >= ^start))
+
+    top =
+      Repo.all(
+        from r in window,
+          join: t in Target,
+          on: t.id == r.target_id,
+          group_by: [t.id, t.system, t.path],
+          order_by: [desc: count(r.id), asc: t.path, asc: t.system],
+          limit: ^bound(limit),
+          select: %{
+            id: t.id,
+            system: t.system,
+            path: t.path,
+            runs: count(r.id),
+            denied: type(coalesce(sum(r.denied_count), 0), :integer)
+          }
+      )
+
+    ids = Enum.map(top, & &1.id)
+
+    per_day =
+      Repo.all(
+        from r in window,
+          where: r.target_id in ^ids,
+          group_by: [
+            r.target_id,
+            fragment("(COALESCE(?, ?) AT TIME ZONE 'UTC')::date", r.started_at, r.inserted_at)
+          ],
+          select:
+            {r.target_id,
+             type(
+               fragment("(COALESCE(?, ?) AT TIME ZONE 'UTC')::date", r.started_at, r.inserted_at),
+               :date
+             ), count(r.id)}
+      )
+      |> Enum.group_by(&elem(&1, 0), &{elem(&1, 1), elem(&1, 2)})
+
+    last =
+      Repo.all(
+        from r in window,
+          where: r.target_id in ^ids,
+          distinct: r.target_id,
+          order_by: [r.target_id, desc: coalesce(r.started_at, r.inserted_at), desc: r.id]
+      )
+      |> Map.new(&{&1.target_id, &1})
+
+    shared = shared_paths(scope, Enum.map(top, & &1.path))
+
+    targets = Repo.aggregate(targets_in(scope), :count)
+
+    today = Date.utc_today()
+    days = if Date.compare(from, today) == :gt, do: [], else: Date.range(from, today)
+
+    rows =
+      for row <- top do
+        counts = Map.new(Map.get(per_day, row.id, []))
+
+        Map.merge(row, %{
+          shared?: MapSet.member?(shared, row.path),
+          days: for(day <- days, do: Map.get(counts, day, 0)),
+          last: Map.get(last, row.id)
+        })
+      end
+
+    %{rows: rows, targets: targets}
+  end
+
+  @doc """
+  shared_paths/2 is which of `paths` (every path, without them) name a target on more than
+  one system of the workspace: where a page shows a target's system beside its path.
+  """
+  @spec shared_paths(Scope.t(), [String.t()] | :all) :: MapSet.t(String.t())
+  def shared_paths(scope, paths \\ :all)
+
+  def shared_paths(%Scope{}, []), do: MapSet.new()
+
+  def shared_paths(%Scope{} = scope, paths) do
+    query =
+      if paths == :all,
+        do: targets_in(scope),
+        else: where(targets_in(scope), [t], t.path in ^Enum.uniq(paths))
+
+    Repo.all(
+      from t in query,
+        group_by: t.path,
+        having: count(t.id) > 1,
+        select: t.path
+    )
+    |> MapSet.new()
+  end
+
   @doc "The alive runs of the workspace, the most recently started first; at most `limit` (default 6)."
   @spec list_alive(Scope.t(), pos_integer) :: [Run.t()]
   def list_alive(%Scope{} = scope, limit \\ 6) do
@@ -1104,6 +1595,87 @@ defmodule Apiary.Runs do
 
   defp bound(limit), do: limit |> max(1) |> min(@max_limit)
 
+  ## Search or jump to
+
+  @doc """
+  search_targets/3 is the workspace's targets whose system and path, as `system/path`,
+  hold `text` anywhere, case-insensitively and as text (`like/1`): at most `limit`, by
+  path. What the palette finds (`ApiaryWeb.JumpController`).
+  """
+  @spec search_targets(Scope.t(), String.t(), pos_integer) :: [Target.t()]
+  def search_targets(
+        %Scope{organisation: %Organisation{id: organisation_id}, workspace: %Workspace{id: id}},
+        text,
+        limit \\ 8
+      ) do
+    case like(text) do
+      nil ->
+        []
+
+      pattern ->
+        Repo.all(
+          from t in Target,
+            where: t.organisation_id == ^organisation_id and t.workspace_id == ^id,
+            where: ilike(fragment("? || '/' || ?", t.system, t.path), ^pattern),
+            order_by: [asc: t.path, asc: t.system],
+            limit: ^bound(limit)
+        )
+    end
+  end
+
+  @doc """
+  search_runs/3 is the workspace's runs that `text` names: by the start of their id, as
+  the runner prints it (four hexadecimal characters at least, a whole id or the address
+  of a run's page too), or by their task, which holds it anywhere; newest first, at most
+  `limit`. What the palette finds (`ApiaryWeb.JumpController`).
+  """
+  @spec search_runs(Scope.t(), String.t(), pos_integer) :: [Run.t()]
+  def search_runs(%Scope{} = scope, text, limit \\ 8) when is_binary(text) do
+    prefix = run_id_prefix(text)
+    pattern = like(text)
+
+    condition =
+      case {prefix, pattern} do
+        {nil, nil} ->
+          nil
+
+        {nil, pattern} ->
+          dynamic([r], ilike(r.task, ^pattern))
+
+        {prefix, nil} ->
+          dynamic([r], fragment("?::text LIKE ?", r.run_id, ^prefix))
+
+        {prefix, pattern} ->
+          dynamic([r], fragment("?::text LIKE ?", r.run_id, ^prefix) or ilike(r.task, ^pattern))
+      end
+
+    if condition do
+      Repo.all(
+        from r in in_scope(scope),
+          where: ^condition,
+          order_by: [desc: coalesce(r.started_at, r.inserted_at), desc: r.id],
+          limit: ^bound(limit)
+      )
+    else
+      []
+    end
+  end
+
+  # The start of a run's id in what was typed, as the operand of LIKE: a run page's
+  # address gives its id; otherwise four to thirty-six hexadecimal characters and hyphens.
+  defp run_id_prefix(text) do
+    text = String.trim(text)
+
+    case Regex.run(~r"/runs/([0-9a-fA-F-]{36})(?:[/?#]|$)", text) do
+      [_, run_id] ->
+        String.downcase(run_id)
+
+      nil ->
+        if Regex.match?(~r/\A[0-9a-fA-F-]{4,36}\z/, text),
+          do: String.downcase(text) <> "%"
+    end
+  end
+
   ## Closing
 
   @closable_states ~w(pending running lost)
@@ -1170,5 +1742,13 @@ defmodule Apiary.Runs do
     from r in Run,
       as: :run,
       where: r.organisation_id == ^organisation_id and r.workspace_id == ^workspace_id
+  end
+
+  defp targets_in(%Scope{
+         organisation: %Organisation{id: organisation_id},
+         workspace: %Workspace{id: workspace_id}
+       }) do
+    from t in Target,
+      where: t.organisation_id == ^organisation_id and t.workspace_id == ^workspace_id
   end
 end

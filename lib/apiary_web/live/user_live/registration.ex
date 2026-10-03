@@ -65,6 +65,7 @@ defmodule ApiaryWeb.UserLive.Registration do
           phx-submit="save"
           phx-change="validate"
           class="grid gap-4"
+          novalidate
         >
           <.input
             field={@form[:email]}

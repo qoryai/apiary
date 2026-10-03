@@ -33,6 +33,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"member.suspend"), do: gettext("Member suspended")
   def label(:"member.activate"), do: gettext("Member activated")
   def label(:"audit.prune"), do: gettext("Activity pruned")
+  def label(:"workspace.create"), do: gettext("Workspace created")
   def label(:"workspace.rename"), do: gettext("Workspace renamed")
   def label(:"workspace.delete"), do: gettext("Workspace deleted")
   def label(:"workspace.restore"), do: gettext("Workspace's deletion cancelled")
@@ -119,6 +120,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp said(:"audit.prune", _details, _actor),
     do: gettext("Deleted the activity older than the instance keeps")
 
+  defp said(:"workspace.create", _details, _actor), do: gettext("Created the workspace")
   defp said(:"workspace.rename", _details, _actor), do: gettext("Renamed the workspace")
 
   defp said(:"workspace.delete", _details, _actor),
@@ -181,7 +183,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
              :"security_policy.set_mode"
            ] ->
         text(
-          gettext("Baseline of %{workspace}",
+          gettext("%{workspace}'s policy",
             workspace: names.workspaces[id] || gettext("n/a")
           )
         )

@@ -112,7 +112,7 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
       run: run
     } do
       {:ok, lv, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/connections")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/network")
 
       html = render(lv)
       refute_policy(html)
@@ -144,7 +144,7 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
 
     test "a crafted Allow or Deny writes nothing", %{conn: conn, scope: scope, run: run} do
       {:ok, lv, _html} =
-        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/connections")
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/network")
 
       %{rows: rows} = Record.connections(scope, run)
       refused = Enum.find(rows, &(&1.path == "/media/acme/other/checkout.png"))
@@ -172,30 +172,31 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
       html = render(lv)
       refute_policy(html)
 
-      assert has_element?(lv, "#card-command")
-      assert has_element?(lv, "#card-record")
+      assert has_element?(lv, "#run-details #rail-command")
+      assert has_element?(lv, "#run-details #rail-record")
+      refute has_element?(lv, "#run-details #rail-policy")
       assert has_element?(lv, "#run-id", run.run_id)
       refute html =~ "Policy in force"
     end
   end
 
   describe "the runs" do
-    test "a target's group links to its connections, not to a policy", %{
+    test "a run's denials are the record, and nothing links to a policy", %{
       conn: conn,
       scope: scope
     } do
-      started_run(scope, shop("github.example"),
-        egress: [%{"host" => "files.cdn.example", "decision" => "denied", "rule" => ""}]
-      )
+      run =
+        started_run(scope, shop("github.example"),
+          egress: [%{"host" => "files.cdn.example", "decision" => "denied", "rule" => ""}]
+        )
 
       {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs")
       render_async(lv, 2_000)
       html = render(lv)
       refute_policy(html)
 
-      refute has_element?(lv, ".q-g-policy")
-      assert has_element?(lv, ".q-group a", "Connections")
-      assert has_element?(lv, ".q-denials")
+      assert has_element?(lv, "#run-#{run.run_id} .q-rl-denied", "1")
+      refute has_element?(lv, "#runs-page a[href*='/policy']")
     end
   end
 
@@ -227,7 +228,7 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
       conn: conn,
       scope: scope
     } do
-      view = open(conn, ~p"/#{scope.organisation}/#{scope.workspace}/connections")
+      view = open(conn, ~p"/#{scope.organisation}/#{scope.workspace}/network")
       refute_policy(render(view))
 
       cdn = dst("files.cdn.example")
@@ -237,7 +238,7 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
       assert has_element?(view, "##{dst("169.254.169.254", 80)}.q-denied")
       refute has_element?(view, "#destinations .q-why")
       refute has_element?(view, "th", "Reason")
-      assert has_element?(view, "#connections-footer", "Denied destinations come first")
+      assert has_element?(view, "#connections-note", "The outcome is that of the last attempt")
 
       view |> element("##{cdn}-toggle") |> render_click()
       assert has_element?(view, "##{cdn}-runs", "1 run reached this destination")
@@ -250,7 +251,7 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
       view =
         open(
           conn,
-          ~p"/#{scope.organisation}/#{scope.workspace}/connections?#{Filters.target_params("github.example", "acme/shop")}"
+          ~p"/#{scope.organisation}/#{scope.workspace}/network?#{Filters.target_params("github.example", "acme/shop")}"
         )
 
       refute_policy(render(view))
@@ -259,7 +260,7 @@ defmodule ApiaryWeb.RunLive.WithoutSecurityTest do
     end
 
     test "a crafted Allow or Deny writes nothing", %{conn: conn, scope: scope} do
-      view = open(conn, ~p"/#{scope.organisation}/#{scope.workspace}/connections")
+      view = open(conn, ~p"/#{scope.organisation}/#{scope.workspace}/network")
       values = %{"host" => "files.cdn.example", "port" => "443", "path" => ""}
 
       for action <- ~w(allow deny) do

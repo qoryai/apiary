@@ -13,7 +13,13 @@ defmodule Apiary.EditionBoundaryTest do
     Regex.compile!("\\b" <> "apiary" <> "_pro" <> "(_web)?\\b")
   ]
 
-  @patterns ["lib/**/*.{ex,exs,heex}", "test/**/*.{ex,exs,heex}", "config/*.exs", "*.exs"]
+  @patterns [
+    "lib/**/*.{ex,exs,heex}",
+    "storybook/**/*.{ex,exs}",
+    "test/**/*.{ex,exs,heex}",
+    "config/*.exs",
+    "*.exs"
+  ]
 
   defp core_files do
     for pattern <- @patterns,

@@ -302,7 +302,8 @@ defmodule Apiary.AccessTest do
                  :"member.change_level",
                  :"organisation.delete",
                  :"organisation.restore",
-                 :"security_policy.lock"
+                 :"security_policy.lock",
+                 :"workspace.create"
                ])
 
       for action <- owner_only do

@@ -36,6 +36,11 @@ msgstr ""
 msgid "An argument is 1 to %{max} characters on one line."
 msgstr ""
 
+#: lib/apiary_web/live/user_live/login.ex
+#, elixir-autogen, elixir-format
+msgid "Enter an email address, such as dana@example.com."
+msgstr ""
+
 #: lib/apiary/policy/rule.ex
 #, elixir-autogen, elixir-format
 msgid "Name the credential."
@@ -154,6 +159,11 @@ msgstr ""
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "is not the slug"
+msgstr ""
+
+#: lib/apiary_web/live/user_live/settings.ex
+#, elixir-autogen, elixir-format
+msgid "is not your email"
 msgstr ""
 
 ## From Ecto.Changeset.validate_exclusion/3

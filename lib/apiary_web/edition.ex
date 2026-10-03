@@ -23,18 +23,23 @@ defmodule ApiaryWeb.Edition do
   The callbacks, by where they are asked:
 
   - **Navigation** (`ApiaryWeb.Layouts`): `c:nav_entries/1`, the sidebar's entries after
-    the core's, and `c:switcher_entries/1`, the organisation switcher's after its places,
-    each an `ApiaryWeb.Nav.Entry`; `c:nav_counts/1`, the numbers beside them, merged into
+    the core's, `c:new_entries/2`, what New offers before the core's, and
+    `c:switcher_entries/1`, the switcher's after its places, each an
+    `ApiaryWeb.Nav.Entry`; `c:nav_sections/0`, the headings of the edition's own groups of
+    the sidebar; `c:nav_counts/1`, the numbers beside them, merged into
     `ApiaryWeb.UserAuth.nav_counts/1`; `c:place_scope/2`, the scope a place of the
     switcher gives, for a place the edition lists (`c:Apiary.Edition.places/1`) or a
-    membership it puts more on.
+    membership it puts more on; `c:place_group/1`, the heading the switcher lists such a
+    place under.
   - **Readers and refusals**: `c:reader_sentence/2`, what the pages say to a person who
     reads an organisation through the edition's reach (`Apiary.Access.reader/1`);
     `c:refusal_sentence/1`, what a page says of a refusal the edition gave.
-  - **Pages**: `c:settings_tabs/1`, the tabs the organisation's settings add;
+  - **Pages**: `c:settings_tabs/1`, the sections the organisation's settings add;
     `c:slot/2`, what the edition renders in a named place of a core page
     (`ApiaryWeb.Extension`); `c:activity_describer/0`, the module that says the
-    edition's actions in words on the Activity page.
+    edition's actions in words on the Activity page; `c:above_policy_link/1`, where the
+    level above a workspace's policy (`c:Apiary.Edition.above_workspace/1`) is read and
+    changed, for the policy pages' "View in …" and Network access's "Change in …".
   - **Paths**: `c:reserved_slugs/0`, the names the edition's own paths take beyond the
     core's (`ApiaryWeb.ReservedSlugs`).
   - **Words**: `c:gettext_backend/0`, the Gettext backend of the edition's own sentences,
@@ -57,8 +62,32 @@ defmodule ApiaryWeb.Edition do
   """
   @callback nav_counts(Scope.t()) :: %{atom => term}
 
+  @doc """
+  The edition's entries of New, the top bar's menu and the palette's actions, before the
+  core's (`ApiaryWeb.Layouts.new_entries/2`), in the scope of the page and its place: a
+  workspace's page, an organisation's own, or the person's. Each entry's `action` is
+  asked, of the workspace or the organisation as the entry's `place` says, before it is
+  offered.
+  """
+  @callback new_entries(Scope.t(), place :: :workspace | :organisation | :person) :: [Entry.t()]
+
   @doc "The organisation switcher's entries after the places it switches to."
   @callback switcher_entries(Scope.t()) :: [Entry.t()]
+
+  @doc """
+  The edition's own groups of the sidebar, in order, after the core's: each the `section`
+  its entries name (`ApiaryWeb.Nav.Entry`) and its heading, translated, or nil for a group
+  without one. An entry of a section neither the core nor the edition names goes last,
+  without a heading.
+  """
+  @callback nav_sections() :: [{atom, String.t() | nil}]
+
+  @doc """
+  The heading the switcher lists a place under (`c:Apiary.Edition.places/1`), translated,
+  such as the clients a person reaches through their operator; nil for the person's own
+  organisations, which the switcher lists first.
+  """
+  @callback place_group(place :: term) :: String.t() | nil
 
   @doc """
   The scope a place of the organisation switcher gives in `workspace`, as
@@ -84,7 +113,10 @@ defmodule ApiaryWeb.Edition do
   """
   @callback refusal_sentence(reason :: atom) :: String.t() | nil
 
-  @doc "The tabs the edition adds to the organisation's settings."
+  @doc """
+  The sections the edition adds to the organisation's settings, each a page of its own, in
+  the list beside the settings (`ApiaryWeb.SettingsComponents`), after the core's.
+  """
   @callback settings_tabs(Scope.t()) :: [Entry.t()]
 
   @doc """
@@ -96,6 +128,17 @@ defmodule ApiaryWeb.Edition do
 
   @doc "The module that says the edition's actions in words on the Activity page, or nil."
   @callback activity_describer() :: module | nil
+
+  @doc """
+  Where the level above the workspace's policy is read and changed, for the scope's
+  reader: its `path`, and `can_change`, whether the reader may change it there; nil where
+  the edition keeps no such level, or the reader may not read it. The core's pages draw
+  the level's rows and lines from `Apiary.Policy.Effective`'s `above` and link here. A
+  link that asks the level to allow a host carries the host as `allow` and, as `back`, the
+  path of the workspace's page it was followed from (its overview, its Network access or
+  a target's, as filtered), for the level's page to offer the way back once it is done.
+  """
+  @callback above_policy_link(Scope.t()) :: %{path: String.t(), can_change: boolean} | nil
 
   @doc """
   The names the edition's own paths take beyond the core's: first segments of the
@@ -119,13 +162,17 @@ defmodule ApiaryWeb.Edition do
   @callbacks [
     nav_entries: 1,
     nav_counts: 1,
+    new_entries: 2,
     switcher_entries: 1,
+    nav_sections: 0,
+    place_group: 1,
     place_scope: 2,
     reader_sentence: 2,
     refusal_sentence: 1,
     settings_tabs: 1,
     slot: 2,
     activity_describer: 0,
+    above_policy_link: 1,
     reserved_slugs: 0,
     gettext_backend: 0
   ]

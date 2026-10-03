@@ -5,7 +5,8 @@
 //   "policy:fields" {fields}   values the server put into a field that may have focus,
 //                              which a patch alone would leave as the reader typed it
 //   "policy:rule" {host}     scroll to the rule ?rule= points at
-//   keys, while no field has focus:  a  the composer's host field    ?  the list of keys
+//   keys, while no field has focus:  a  the composer's host field, Add rule while it is shut
+//                                    ?  the list of keys
 //   arrows inside a [data-roving] radiogroup move between its radios
 //
 // RuleComposer, on the composer's form: a pasted list of hosts, one per line, goes to the
@@ -13,6 +14,7 @@
 //
 // ChangeRow, on a change's <details>: the URL decides what is open, so the native toggle
 // is held back and the summary's click only patches.
+import {singleKeys} from "./shortcuts"
 
 const typing = el => el && el.closest("input, textarea, select, [contenteditable='true']")
 
@@ -69,16 +71,16 @@ export const PolicyPage = {
       return
     }
     if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || typing(e.target)) return
-    if (document.querySelector("dialog[open]")) return
+    if (document.querySelector("dialog[open]") || !singleKeys()) return
     if (e.key === "a") {
       const host = document.getElementById("policy-composer-host")
-      const first = document.getElementById("policy-first-rule")
+      const add = document.getElementById("policy-rules-add") || document.getElementById("policy-first-rule")
       if (host) {
         e.preventDefault()
         host.focus()
-      } else if (first) {
+      } else if (add) {
         e.preventDefault()
-        first.click()
+        add.click()
       }
     } else if (e.key === "?") {
       const keys = document.getElementById("policy-keys")

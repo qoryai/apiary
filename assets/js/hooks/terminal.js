@@ -13,21 +13,33 @@
 // at it: every answer of the endpoint names in x-qory-log-size the size its bytes were
 // written to and stops short of the next resize, so the screen is set to that size before
 // the bytes are written and xterm.js reflows as a terminal does. The columns and rows are
-// the record's, never the box's: the font scales down to fit the columns in the box (to a
-// floor, below which the box scrolls sideways) and the box grows to the rows, so a
-// full-screen program replays as the screen it drew. A run without a size, on pipes or
-// recorded before the runner reported one, is fitted to the box, with the wrap toggle.
+// the record's, never the box's: the screen is drawn at them inside the box's own dark
+// ground, which fills the page's width, and scrolls inside it when it is larger. A run
+// without a size, on pipes or recorded before the runner reported one, is fitted to the
+// box, with the wrap toggle.
+//
+// The text size is the reader's (A−, A+, 11 to 18 px, or Fit, the largest at which a
+// recorded screen's columns fit the box), a reading preference kept in localStorage. Focus (the
+// f key, or its button) puts a class on the root that folds the shell away and gives the
+// window to the box, and Escape gives it back; Full screen is the browser's, on the box.
 //
 // xterm.js is vendored (assets/vendor/xterm) and built as its own bundle; it is loaded
 // on the first mount of this hook and by no other page.
+import {singleKeys} from "./shortcuts"
 
 const LIMIT = 2000
 const SLICE = 256 * 1024
 const UNWRAPPED_COLS = 200
-const FONT_SIZE = 12.5
+const FONT_SIZE = 13
 const MIN_FONT_SIZE = 7
-// What the box keeps beside the columns: xterm's own scrollbar and a little air.
-const SIDE_ROOM = 18
+// The sizes a reader chooses between, and where the choice is kept.
+const SMALLEST = 11
+const LARGEST = 18
+const SIZE_KEY = "qory:terminal-size"
+const FOCUS_CLASS = "q-term-focus"
+// What the box keeps beside a recorded screen's columns: the screen's own padding, xterm's
+// scrollbar and a little air.
+const SIDE_ROOM = 48
 const reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches
 
 // A hidden tab gets no animation frames; the log still loads there.
@@ -88,6 +100,26 @@ const cellRatio = family => {
 // on the box as `data-words`); this script holds none. A count's words are [one, other].
 const fill = (template, bindings) =>
   template.replace(/%\{(\w+)\}/g, (all, key) => (key in bindings ? String(bindings[key]) : all))
+// The reader's size: a number of pixels, "fit", or null for the page's own choice.
+const storedSize = () => {
+  try {
+    const value = localStorage.getItem(SIZE_KEY)
+    if (value === "fit") return "fit"
+    const n = Number(value)
+    return value && n >= SMALLEST && n <= LARGEST ? n : null
+  } catch (_err) {
+    return null
+  }
+}
+const storeSize = value => {
+  try {
+    localStorage.setItem(SIZE_KEY, String(value))
+  } catch (_err) {}
+}
+// A key that is typed into a field, not a shortcut.
+const typing = el =>
+  !!el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))
+
 // A number is grouped as the server groups it, in the reader's locale
 // (`ApiaryWeb.Format`, on the body as `data-locale`).
 const grouped = n => n.toLocaleString(document.body.dataset.locale || "en-GB")
@@ -109,6 +141,11 @@ export const Terminal = {
     this.messageText = q("[data-message-text]")
     this.retry = q("[data-retry]")
     this.polite = q("[data-announce]")
+    this.sizeLabel = q("[data-size-label]")
+    this.fitButton = q("[data-size-fit]")
+    this.focusButton = q("[data-focus]")
+    this.fullButton = q("[data-fullscreen]")
+    this.preference = storedSize()
 
     this.live = this.el.dataset.live === "true"
     this.following = this.live
@@ -161,7 +198,7 @@ export const Terminal = {
       cursorBlink: this.live && !reducedMotion(),
       cursorInactiveStyle: this.live ? "outline" : "none",
       fontFamily: style.getPropertyValue("--font-mono").trim() || "ui-monospace, monospace",
-      fontSize: FONT_SIZE,
+      fontSize: typeof this.preference === "number" ? this.preference : FONT_SIZE,
       lineHeight: 1.52,
       // The search add-on marks its matches with decorations, which xterm.js keeps behind
       // this flag (registerDecoration); nothing else here uses a proposed API.
@@ -241,6 +278,10 @@ export const Terminal = {
 
   destroyed() {
     this.dead = true
+    this.focus(false)
+    if (this.onKey) document.removeEventListener("keydown", this.onKey)
+    if (this.onFullscreen) document.removeEventListener("fullscreenchange", this.onFullscreen)
+    if (document.fullscreenElement === this.el) document.exitFullscreen?.()
     clearTimeout(this.retryTimer)
     clearTimeout(this.saying)
     if (this.resize) this.resize.disconnect()
@@ -262,7 +303,7 @@ export const Terminal = {
     // Keys, when the screen has focus. xterm.js sees them first; none of them is input.
     this.term.attachCustomKeyEventHandler(e => {
       if (e.type !== "keydown") return true
-      const findKey = e.key === "/" || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f")
+      const findKey = (e.key === "/" && singleKeys()) || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f")
       if (findKey) {
         e.preventDefault()
         this.find.focus()
@@ -283,6 +324,40 @@ export const Terminal = {
       this.wrapButton.setAttribute("aria-pressed", String(this.wrap))
       this.fit()
     })
+    this.el.querySelectorAll("[data-size-step]").forEach(button =>
+      button.addEventListener("click", () => this.step(Number(button.dataset.sizeStep))),
+    )
+    if (this.fitButton) this.fitButton.addEventListener("click", () => this.choose("fit"))
+    this.focusButton.addEventListener("click", () => this.focus(!this.focused))
+    // f anywhere on the page but in a field, the screen's own input included; Escape leaves.
+    this.onKey = e => {
+      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return
+      if (e.key === "Escape" && this.focused) {
+        if (document.querySelector("dialog[open]")) return
+        this.focus(false)
+      } else if (e.key === "f" && singleKeys() && !document.querySelector("dialog[open]")) {
+        const target = e.target
+        const own = this.term && target === this.term.textarea
+        if (typing(target) && !own) return
+        e.preventDefault()
+        this.focus(!this.focused)
+      }
+    }
+    document.addEventListener("keydown", this.onKey)
+    if (document.fullscreenEnabled && this.el.requestFullscreen) {
+      this.fullButton.hidden = false
+      this.fullButton.addEventListener("click", () =>
+        document.fullscreenElement === this.el ? document.exitFullscreen() : this.el.requestFullscreen(),
+      )
+      this.onFullscreen = () => {
+        const on = document.fullscreenElement === this.el
+        this.fullButton.setAttribute("aria-pressed", String(on))
+        const words = on ? this.words.leaveFullScreen : this.words.fullScreen
+        this.fullButton.setAttribute("aria-label", words)
+        this.fullButton.title = words
+      }
+      document.addEventListener("fullscreenchange", this.onFullscreen)
+    }
     this.el.querySelectorAll("[data-stream]").forEach(button =>
       button.addEventListener("click", () => {
         this.el.querySelectorAll("[data-stream]").forEach(b => b.setAttribute("aria-pressed", String(b === button)))
@@ -298,6 +373,7 @@ export const Terminal = {
   fit() {
     if (!this.term) return
     if (this.sized) return this.scale()
+    this.showSize()
     const size = this.fitter.proposeDimensions()
     if (!size || !size.cols || !size.rows) return
     const cols = this.wrap ? size.cols : Math.max(size.cols, UNWRAPPED_COLS)
@@ -316,14 +392,53 @@ export const Terminal = {
     this.scale()
   },
 
-  // The largest font, up to the usual one, at which the recorded columns fit the box;
-  // never below the floor, where the box scrolls sideways instead.
+  // A recorded screen at the reader's size, the usual one until they choose, scrolling
+  // sideways inside the box when it is wider; Fit takes the largest size, up to the
+  // largest, at which its columns fit the box, and never one below the floor.
   scale() {
+    if (this.preference !== "fit") return this.apply(this.preference || FONT_SIZE)
     const room = this.screen.clientWidth - SIDE_ROOM
     if (room <= 0 || !this.cellRatio) return
     const fits = Math.floor((10 * room) / (this.term.cols * this.cellRatio)) / 10
-    const fontSize = Math.max(MIN_FONT_SIZE, Math.min(FONT_SIZE, fits))
+    this.apply(Math.max(MIN_FONT_SIZE, Math.min(LARGEST, fits)))
+  },
+
+  apply(fontSize) {
     if (fontSize !== this.term.options.fontSize) this.term.options.fontSize = fontSize
+    this.showSize()
+  },
+
+  // A− and A+: a whole size smaller or larger than the one on screen, within the range.
+  step(by) {
+    if (!this.term) return
+    const now = this.term.options.fontSize
+    const next = by < 0 ? Math.ceil(now) - 1 : Math.floor(now) + 1
+    this.choose(Math.max(SMALLEST, Math.min(LARGEST, next)))
+  },
+
+  choose(value) {
+    this.preference = value
+    storeSize(value)
+    if (typeof value === "number") this.term.options.fontSize = value
+    this.sized ? this.scale() : this.fit()
+  },
+
+  showSize() {
+    if (!this.term) return
+    const size = this.term.options.fontSize
+    this.sizeLabel.textContent = fill(this.words.size, {size: grouped(Math.round(size * 10) / 10)})
+    this.el.querySelector('[data-size-step="-1"]').disabled = size <= SMALLEST
+    this.el.querySelector('[data-size-step="1"]').disabled = size >= LARGEST
+    if (this.fitButton) this.fitButton.setAttribute("aria-pressed", String(this.preference === "fit"))
+  },
+
+  // The terminal takes the window: the root's class folds the shell, the header, the tabs
+  // and the rail away (app.css), and gives them back.
+  focus(on) {
+    this.focused = on
+    document.documentElement.classList.toggle(FOCUS_CLASS, on)
+    if (this.focusButton) this.focusButton.setAttribute("aria-pressed", String(on))
+    if (on && this.term) this.term.focus()
   },
 
   restart() {

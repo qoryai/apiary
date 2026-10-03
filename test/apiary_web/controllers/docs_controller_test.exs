@@ -53,9 +53,9 @@ defmodule ApiaryWeb.DocsControllerTest do
       assert served(conn, "/docs/index.html") == "observability"
     end
 
-    # Every feature but security, whichever the edition adds: of the trees built, only
-    # observability's is among them.
-    @tag with_features: Apiary.Features.all() -- [:security]
+    # Every feature but security, and what needs it, whichever the edition adds: of the
+    # trees built, only observability's is among them.
+    @tag with_features: Apiary.Features.closed(Apiary.Features.all() -- [:security])
     test "the tree is the richest the instance's features cover", %{conn: conn} do
       assert served(conn, "/docs/index.html") == "observability"
     end

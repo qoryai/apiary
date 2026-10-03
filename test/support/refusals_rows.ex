@@ -44,60 +44,63 @@ defmodule ApiaryWeb.RefusalsRows do
   def rows do
     [
       # The members page.
-      {:"member.change_level", :member, "/:org/members", "set_level",
+      {:"member.change_level", :member, "/:org/settings/people", "set_level",
        %{"membership_id" => :other_member, "level" => "admin"}},
-      {:"member.change_level", :admin, "/:org/members", "set_level",
+      {:"member.change_level", :admin, "/:org/settings/people", "set_level",
        %{"membership_id" => :other_member, "level" => "admin"}},
-      {:"member.change_level", :demoted_owner, "/:org/members", "set_level",
+      {:"member.change_level", :demoted_owner, "/:org/settings/people", "set_level",
        %{"membership_id" => :other_member, "level" => "admin"}},
       # An admin acting on an owner.
-      {:"member.change_level", :admin, "/:org/members", "set_level",
+      {:"member.change_level", :admin, "/:org/settings/people", "set_level",
        %{"membership_id" => :second_owner, "level" => "member"}},
       # A level that is none, from one who may not change levels.
-      {:"member.change_level", :admin, "/:org/members", "set_level",
+      {:"member.change_level", :admin, "/:org/settings/people", "set_level",
        %{"membership_id" => :other_member, "level" => "superuser"}},
       # Another organisation's owner, on its own members page, naming this one's member.
-      {:"member.change_level", :other_owner, "/:other_org/members", "set_level",
+      {:"member.change_level", :other_owner, "/:other_org/settings/people", "set_level",
        %{"membership_id" => :other_member, "level" => "admin"}, answer: :not_found},
       # Without the modal of a member open: refused to a member; to an admin, who may
       # remove a member, it is a second click, and the list is shown again.
-      {:"member.remove", :member, "/:org/members", "remove", %{}},
-      {:"member.remove", :admin, "/:org/members", "remove", %{}, answer: :ignored},
-      {:"member.remove", :demoted_admin, "/:org/members/:other_member/remove", "remove", %{}},
+      {:"member.remove", :member, "/:org/settings/people", "remove", %{}},
+      {:"member.remove", :admin, "/:org/settings/people", "remove", %{}, answer: :ignored},
+      {:"member.remove", :demoted_admin, "/:org/settings/people/:other_member/remove", "remove",
+       %{}},
       # An admin who opened a member's removal, the member made an owner meanwhile.
-      {:"member.remove", :admin, "/:org/members/:other_member/remove", "remove", %{},
+      {:"member.remove", :admin, "/:org/settings/people/:other_member/remove", "remove", %{},
        meanwhile: {:level, :other_member, :owner}},
       # This organisation's member, in a removal's modal of another organisation's path:
       # the modal does not open, and the page says the member is gone, as for one who left.
-      {:"member.remove", :other_owner, "/:other_org/members/:other_member/remove", "remove", %{},
-       answer: :refused_at_mount},
-      {:"member.invite", :member, "/:org/members", "invite",
+      {:"member.remove", :other_owner, "/:other_org/settings/people/:other_member/remove",
+       "remove", %{}, answer: :refused_at_mount},
+      {:"member.invite", :member, "/:org/settings/people", "invite",
        %{"invitation" => %{"email" => "invitee@example.com"}}},
-      {:"member.invite", :demoted_admin, "/:org/members/invite", "invite",
+      {:"member.invite", :demoted_admin, "/:org/settings/people/invite", "invite",
        %{"invitation" => %{"email" => "invitee@example.com"}}},
-      {:"invitation.revoke", :member, "/:org/members", "revoke_invitation",
+      {:"invitation.revoke", :member, "/:org/settings/people", "revoke_invitation",
        %{"id" => :invitation}},
-      {:"invitation.revoke", :other_owner, "/:other_org/members", "revoke_invitation",
+      {:"invitation.revoke", :other_owner, "/:other_org/settings/people", "revoke_invitation",
        %{"id" => :invitation}, answer: :not_found},
       # Suspending and activating a person's membership: an owner acts on admins and
       # members, an admin on members only. A member cannot open a member's suspension, so
       # their `suspend` arrives without it and the page refuses it for their role; the
       # demoted admin's row, whose modal was open, reaches the context function.
-      {:"member.suspend", :member, "/:org/members", "suspend", %{}},
-      {:"member.suspend", :member, "/:org/members/:other_member/suspend", "suspend", %{},
+      {:"member.suspend", :member, "/:org/settings/people", "suspend", %{}},
+      {:"member.suspend", :member, "/:org/settings/people/:other_member/suspend", "suspend", %{},
        answer: :refused_at_mount},
-      {:"member.suspend", :demoted_admin, "/:org/members/:other_member/suspend", "suspend", %{}},
-      {:"member.suspend", :admin, "/:org/members/:other_member/suspend", "suspend", %{},
+      {:"member.suspend", :demoted_admin, "/:org/settings/people/:other_member/suspend",
+       "suspend", %{}},
+      {:"member.suspend", :admin, "/:org/settings/people/:other_member/suspend", "suspend", %{},
        meanwhile: {:level, :other_member, :owner}},
-      {:"member.suspend", :other_owner, "/:other_org/members/:other_member/suspend", "suspend",
-       %{}, answer: :refused_at_mount},
-      {:"member.activate", :member, "/:org/members", "activate", %{"id" => :other_member}},
-      {:"member.activate", :admin, "/:org/members", "activate", %{"id" => :second_owner}},
-      {:"member.activate", :other_owner, "/:other_org/members", "activate",
+      {:"member.suspend", :other_owner, "/:other_org/settings/people/:other_member/suspend",
+       "suspend", %{}, answer: :refused_at_mount},
+      {:"member.activate", :member, "/:org/settings/people", "activate",
+       %{"id" => :other_member}},
+      {:"member.activate", :admin, "/:org/settings/people", "activate", %{"id" => :second_owner}},
+      {:"member.activate", :other_owner, "/:other_org/settings/people", "activate",
        %{"id" => :other_member}, answer: :not_found},
       # An owner does not suspend another owner: the member whose suspension the owner
       # opened is made an owner meanwhile, and the event reaches the server's check.
-      {:"member.suspend", :owner, "/:org/members/:other_member/suspend", "suspend", %{},
+      {:"member.suspend", :owner, "/:org/settings/people/:other_member/suspend", "suspend", %{},
        meanwhile: {:level, :other_member, :owner}},
 
       # The settings, and their deletion modals.
@@ -148,7 +151,7 @@ defmodule ApiaryWeb.RefusalsRows do
        answer: :ignored},
       {:"security_policy.set_mode", :demoted_admin, "/:org/:workspace/policy", "mode_confirm",
        %{}, prelude: [{"mode_ask", %{"mode" => "enforce"}}]},
-      {:"security_policy.set_mode", :member, "/:org/:workspace/policy/targets/:target",
+      {:"security_policy.set_mode", :member, "/:org/:workspace/targets/:target_page/-/policy",
        "target_mode_ask", %{"setting" => "enforce"}},
       {:"security_policy.edit", :removed_member, "/:org/:workspace/policy", "composer_save", %{},
        prelude: [{"composer_change", %{"rule" => %{"host" => "new.example", "paths" => ""}}}]},
@@ -157,8 +160,12 @@ defmodule ApiaryWeb.RefusalsRows do
        %{"id" => :rule_open}, answer: :not_found},
       {:"security_policy.edit", :other_owner, "/:other_org/:other_ws/policy", "change_action",
        %{"id" => :rule_open}, answer: :not_found},
-      {:"security_policy.edit", :other_owner, "/:other_org/:other_ws/policy/targets/:target",
-       "row_act", %{"id" => :rule_open, "act" => "disable"}, answer: :not_found},
+      {:"security_policy.edit", :other_owner,
+       "/:other_org/:other_ws/targets/:target_page/-/policy", "remove", %{"id" => :rule_open},
+       answer: :not_found},
+      {:"security_policy.edit", :other_owner,
+       "/:other_org/:other_ws/targets/:target_page/-/policy", "change_action",
+       %{"id" => :rule_open}, answer: :not_found},
       {:"security_policy.lock", :member, "/:org/:workspace/policy", "lock_toggle",
        %{"id" => :rule_open}},
       # An admin locking a rule, unlocking one, and changing a locked one.
@@ -183,29 +190,44 @@ defmodule ApiaryWeb.RefusalsRows do
          {"composer_change", %{"rule" => %{"host" => "open.example", "paths" => ""}}}
        ],
        meanwhile: {:locked, :rule_open}},
-      {:"security_policy.lock", :member, "/:org/:workspace/policy/targets/:target", "row_act",
-       %{"id" => :rule_locked, "act" => "allow_here"}},
+      # A member's allow for a target under the workspace's locked deny: the composer
+      # reads the lock and saves nothing. The workspace's rules have no act on a target's
+      # page: an event naming one there is dropped.
+      {:"security_policy.lock", :member, "/:org/:workspace/targets/:target_page/-/policy",
+       "composer_save", %{},
+       prelude: [
+         {"composer_change", %{"rule" => %{"host" => "locked.example", "paths" => ""}}}
+       ],
+       answer: :ignored},
+      {:"security_policy.lock", :member, "/:org/:workspace/targets/:target_page/-/policy",
+       "change_action", %{"id" => :rule_locked}, answer: :ignored},
+      {:"security_policy.lock", :member, "/:org/:workspace/targets/:target_page/-/policy",
+       "remove", %{"id" => :rule_locked}, answer: :ignored},
 
       # The access keys.
-      {:"access_key.create", :removed_member, "/:org/:workspace/keys/new", "create",
+      {:"access_key.create", :removed_member, "/:org/:workspace/settings/keys/new", "create",
        %{"access_key" => %{"label" => "removed"}}},
-      {:"access_key.rotate", :removed_member, "/:org/:workspace/keys/:key/rotate", "rotate", %{}},
-      {:"access_key.rotate", :removed_member, "/:org/:workspace/keys", "retire_confirm", %{},
-       prelude: [{"retire", %{"id" => :key}}]},
+      {:"access_key.rotate", :removed_member, "/:org/:workspace/settings/keys/:key/rotate",
+       "rotate", %{}},
+      {:"access_key.rotate", :removed_member, "/:org/:workspace/settings/keys", "retire_confirm",
+       %{}, prelude: [{"retire", %{"id" => :key}}]},
       # Without the key's modal open, from a member, who may rotate and revoke keys: a
       # second click, and the list is shown again.
-      {:"access_key.rotate", :member, "/:org/:workspace/keys", "rotate", %{}, answer: :ignored},
-      {:"access_key.rotate", :member, "/:org/:workspace/keys", "retire_confirm", %{},
+      {:"access_key.rotate", :member, "/:org/:workspace/settings/keys", "rotate", %{},
        answer: :ignored},
-      {:"access_key.revoke", :member, "/:org/:workspace/keys", "revoke", %{}, answer: :ignored},
-      {:"access_key.revoke", :removed_member, "/:org/:workspace/keys/:key/revoke", "revoke", %{}},
+      {:"access_key.rotate", :member, "/:org/:workspace/settings/keys", "retire_confirm", %{},
+       answer: :ignored},
+      {:"access_key.revoke", :member, "/:org/:workspace/settings/keys", "revoke", %{},
+       answer: :ignored},
+      {:"access_key.revoke", :removed_member, "/:org/:workspace/settings/keys/:key/revoke",
+       "revoke", %{}},
       # The key's modal is a path: another organisation's key is a 404 as the page opens.
-      {:"access_key.rotate", :other_owner, "/:other_org/:other_ws/keys/:key/rotate", "rotate",
-       %{}, answer: :not_found_at_mount},
-      {:"access_key.rotate", :other_owner, "/:other_org/:other_ws/keys", "retire",
+      {:"access_key.rotate", :other_owner, "/:other_org/:other_ws/settings/keys/:key/rotate",
+       "rotate", %{}, answer: :not_found_at_mount},
+      {:"access_key.rotate", :other_owner, "/:other_org/:other_ws/settings/keys", "retire",
        %{"id" => :key}, answer: :not_found},
-      {:"access_key.revoke", :other_owner, "/:other_org/:other_ws/keys/:key/revoke", "revoke",
-       %{}, answer: :not_found_at_mount},
+      {:"access_key.revoke", :other_owner, "/:other_org/:other_ws/settings/keys/:key/revoke",
+       "revoke", %{}, answer: :not_found_at_mount},
 
       # A run.
       {:"run.close", :removed_member, "/:org/:workspace/runs/:run", "close_confirm", %{},
@@ -223,7 +245,8 @@ defmodule ApiaryWeb.RefusalsRows do
   # release commands: run on the instance's host by whoever controls it, never offered by
   # a page (`test/apiary/instance_admin_test.exs`). A sign-up's: it creates an
   # organisation for a person who is not signed in, and asks no one's level; no page of
-  # the core offers it to a signed-in person.
+  # the core offers it to a signed-in person. An edition's: creating a workspace, which
+  # no page of the core offers, and an edition's page does, with rows of its own.
   @impl true
   def exempt do
     %{
@@ -232,7 +255,8 @@ defmodule ApiaryWeb.RefusalsRows do
       contract: [:"run.post_events", :"run_configuration.fetch"],
       token: [:"invitation.accept"],
       release: [:"instance_admin.grant", :"instance_admin.revoke"],
-      sign_up: [:"organisation.create"]
+      sign_up: [:"organisation.create"],
+      edition: [:"workspace.create"]
     }
   end
 
@@ -269,6 +293,16 @@ defmodule ApiaryWeb.RefusalsRows do
     member = RefusalsCase.person(owner, :member)
     second_owner = RefusalsCase.person(owner, :owner)
     other = sign_up_fixture()
+
+    # The same path in the other organisation, whose page its owner names this one's ids
+    # from.
+    Repo.insert!(%Target{
+      organisation_id: other.organisation.id,
+      workspace_id: other.workspace.id,
+      system: target.system,
+      path: target.path,
+      first_seen_at: DateTime.utc_now()
+    })
 
     %{
       owner: owner,
@@ -311,6 +345,7 @@ defmodule ApiaryWeb.RefusalsRows do
   def value(:rule_open, world), do: {:id, world.rule_open.id}
   def value(:rule_locked, world), do: {:id, world.rule_locked.id}
   def value(:target, world), do: {:id, world.target.id}
+  def value(:target_page, world), do: "#{world.target.system}/#{world.target.path}"
   def value(:key, world), do: {:id, world.key.id}
   def value(:run, world), do: {:id, world.run.run_id}
   def value(_name, _world), do: nil

@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.ConnectionLive.Rules do
   @moduledoc """
-  What a connection's row may ask of the policy, for the run's connections tab and for the
-  workspace's connections page.
+  What a connection's row may ask of the policy, for the run's Network access tab and for
+  the workspace's Network access page (and a target's tab).
 
   A row's **rule option**, the rule it may ask the policy for or why it may ask for none,
   is derived from the effective policy the page holds, never by a query per row: whether
@@ -22,31 +22,62 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   use Gettext, backend: ApiaryWeb.Gettext
 
   alias Apiary.Policy
-  alias Apiary.Policy.{Effective, Entry, Grammar}
+  alias Apiary.Policy.{Above, Effective, Entry, Grammar}
+  alias ApiaryWeb.TargetComponents
 
   ## Paths of the policy pages
 
-  @doc "The page of one version of the baseline (`nil`) or of a target."
-  def version_path(scope, target_id, n, query \\ %{})
+  @doc """
+  The page of one version of the baseline (`nil`) or of a target (an `Apiary.Runs.Target`,
+  or anything with its `system` and `path`): the workspace's policy page, or the target's
+  Policy tab (`ApiaryWeb.TargetComponents.target_path/4`).
+  """
+  def version_path(scope, target, n, query \\ %{})
 
   def version_path(scope, nil, n, query),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/policy/versions/#{n}?#{query}"
 
-  def version_path(scope, target_id, n, query),
+  def version_path(scope, %{system: system, path: path}, n, query),
     do:
-      ~p"/#{scope.organisation}/#{scope.workspace}/policy/targets/#{target_id}/versions/#{n}?#{query}"
+      TargetComponents.target_path(scope, system, path, ["policy", "versions", to_string(n)]) <>
+        query_string(query)
 
-  @doc "The rule of `host` on the workspace's policy page (`nil`) or on a target's."
+  @doc """
+  The rule of `host` in the Network access section of the workspace's policy page (`nil`)
+  or of a target's Policy tab (`target`, with its `system` and `path`), which lands on the
+  page of the list that holds it.
+  """
   def rule_path(scope, nil, host),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/policy?#{%{"rule" => host}}"
 
-  def rule_path(scope, target_id, host),
+  def rule_path(scope, %{system: system, path: path}, host),
     do:
-      ~p"/#{scope.organisation}/#{scope.workspace}/policy/targets/#{target_id}?#{%{"rule" => host}}"
+      TargetComponents.target_path(scope, system, path, ["policy"]) <>
+        query_string(%{"rule" => host})
 
-  @doc "A target's policy page."
-  def target_policy_path(scope, target_id),
-    do: ~p"/#{scope.organisation}/#{scope.workspace}/policy/targets/#{target_id}"
+  defp query_string(query) when query == %{}, do: ""
+  defp query_string(query), do: "?" <> URI.encode_query(query)
+
+  @doc """
+  locks/2 is who locked the rule of each of `hosts` and when, `%{host => %{by:, at:}}`,
+  from the newest page of the workspace's history: one read, none for no host, and a host
+  locked further back than that page is absent.
+  """
+  def locks(_scope, []), do: %{}
+
+  def locks(scope, hosts) do
+    changes = scope |> Policy.list_changes(nil, 1) |> Map.get(:items, [])
+
+    for %{action: "rule_locked", subject: host} = change <- changes,
+        host in hosts,
+        reduce: %{} do
+      locks ->
+        Map.put_new(locks, host, %{
+          by: ApiaryWeb.People.email(change.changed_by),
+          at: change.inserted_at
+        })
+    end
+  end
 
   ## Versions
 
@@ -68,9 +99,12 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   A run configuration as the pages here name a version. Versions count per holder, the
   baseline's apart from each target's, so every version is named with its `label`:
   "workspace baseline", or the target's system and path when `target` is the one the
-  configuration is of. Its `path` is in `scope`'s workspace.
+  configuration is of. Its `path` is in `scope`'s workspace: the target's Policy tab for a
+  target's version, the target read when it is not `target`, and nil when it cannot be.
   """
   def version_of(scope, configuration, target \\ nil) do
+    holder = holder(scope, configuration.target_id, target)
+
     %{
       n: configuration.version,
       digest: configuration.digest,
@@ -78,12 +112,26 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
       target_id: configuration.target_id,
       label: version_label(configuration.target_id, target),
       rendered_at: configuration.rendered_at,
-      path: version_path(scope, configuration.target_id, configuration.version)
+      path:
+        if(configuration.target_id && is_nil(holder),
+          do: nil,
+          else: version_path(scope, holder, configuration.version)
+        )
     }
   end
 
+  defp holder(_scope, nil, _target), do: nil
+  defp holder(_scope, id, %{id: id} = target), do: target
+
+  defp holder(scope, id, _target) do
+    case Policy.get_target(scope, id) do
+      {:ok, target} -> target
+      _ -> nil
+    end
+  end
+
   @doc "The words that say whose numbering a version is in."
-  def version_label(nil, _target), do: gettext("workspace baseline")
+  def version_label(nil, _target), do: gettext("the workspace's policy")
   def version_label(id, %{id: id, system: system, path: path}), do: "#{system}/#{path}"
   def version_label(_id, _target), do: gettext("target")
 
@@ -103,13 +151,17 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   @doc """
   The rule the row may ask the policy for, or why it may ask for none, which is what the
   row's slot holds: `%{rule_option:, host:, entry:}` with `rule_option` one of
-  `:can_allow`, `:can_deny`, `:locked_deny`, `:locked_allow`, `:wall`, `:unnameable`,
-  `{:rule_added, :allow | :deny}`. `entry` is the rule in force that decides the host,
-  when one does. A `:can_allow` row carries `deny: true` when no rule decides its host:
-  a host let through under observe, or denied by default under enforce, can be denied
-  outright as well, so the policy is written while the record is read. `page` is `:run` or
-  `:workspace`: on the workspace's page a row allowed by a rule the baseline does not hold
-  (a target's own) can still be denied.
+  `:can_allow`, `:can_deny`, `:above_deny` (a deny of the level above the workspace
+  covers the host: no rule of the workspace or of a target allows it), `:locked_deny`,
+  `:locked_allow`, `:wall`, `:unnameable`, `{:rule_added, :allow | :deny}`. `entry` is
+  the rule in force that decides the host, when one does; where it is the level above's,
+  `above` (`%{name:, action:}`) says so. A `:can_allow` row carries `deny: true` when no
+  rule decides its host: a host let through under observe, or denied by default under
+  enforce, can be denied outright as well, so the policy is written while the record is
+  read; and `allow_elsewhere` (`%{name:}`) where the level above allows only its own
+  hosts, so an allow of the workspace or of a target would not be in force. `page` is
+  `:run` or `:workspace`: on the workspace's page a row allowed by a rule the baseline
+  does not hold (a target's own) can still be denied.
 
   `own` matters on the workspace's page, where the rows are weighed against the baseline
   alone: the hosts targets have rules of their own for (`own_hosts/1`), or `:unknown`.
@@ -123,28 +175,55 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
     c = read(row)
     host = host(c.host)
 
-    cond do
-      wall?(c) ->
-        %{rule_option: :wall, host: host, entry: nil}
+    option =
+      cond do
+        wall?(c) ->
+          %{rule_option: :wall, host: host, entry: nil}
 
-      is_nil(host) ->
-        %{rule_option: :unnameable, host: nil, entry: nil}
+        is_nil(host) ->
+          %{rule_option: :unnameable, host: nil, entry: nil}
 
-      needs_allow?(c) ->
-        wants_allow(effective, host, c.path, own_touches?(own, host, page))
+        needs_allow?(c) ->
+          wants_allow(effective, host, c.path, own_touches?(own, host, page))
 
-      true ->
-        wants_deny(effective, host, c.path, page, own_touches?(own, host, page))
-    end
+        true ->
+          wants_deny(effective, host, c.path, page, own_touches?(own, host, page))
+      end
+
+    above(option, effective)
   end
 
   def rule_option(_row, _effective, _page, _own),
     do: %{rule_option: :unnameable, host: nil, entry: nil}
 
+  # What the level above the workspace says of the row (`Apiary.Policy.Above`): `above`,
+  # `%{name:, action:}`, where its rule decides the host, so the row says so instead of
+  # the rule's name; and `allow_elsewhere`, `%{name:}`, on a row that could be allowed
+  # where the level allows only its own hosts: an allow here would not be in force.
+  defp above(option, %Effective{above: %Above{} = above}) do
+    option =
+      case option do
+        %{entry: %Entry{source: :organisation, action: action}} ->
+          Map.put(option, :above, %{name: above.name, action: action})
+
+        _ ->
+          option
+      end
+
+    if option.rule_option == :can_allow and not above.own_allows,
+      do: Map.put(option, :allow_elsewhere, %{name: above.name}),
+      else: option
+  end
+
+  defp above(option, _effective), do: option
+
   defp wants_allow(effective, host, path, own?) do
     cond do
       allowed_now?(effective, host, path) and not own? ->
         %{rule_option: {:rule_added, :allow}, host: host, entry: allow_entry(effective, host)}
+
+      entry = above_deny(effective, host) ->
+        %{rule_option: :above_deny, host: host, entry: entry}
 
       entry = locked(effective, host, :deny) ->
         %{rule_option: :locked_deny, host: host, entry: entry}
@@ -402,6 +481,15 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
       hosts(effective),
       &(&1.locked and &1.source == :workspace and &1.action == action and
           Grammar.covers?(&1.host, host))
+    )
+  end
+
+  # The deny of the level above the workspace that covers the host: nothing here allows
+  # it, whatever the holder.
+  defp above_deny(effective, host) do
+    Enum.find(
+      hosts(effective),
+      &(&1.source == :organisation and &1.action == :deny and Grammar.covers?(&1.host, host))
     )
   end
 

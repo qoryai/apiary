@@ -101,6 +101,12 @@ defmodule Apiary.Access do
       asked_of: :organisation
     ),
     # The workspace.
+    Action.new(
+      :"workspace.create",
+      "create a workspace of the organisation, which starts empty, while the edition's limit allows another; no page of the core offers it",
+      roles: @owners,
+      asked_of: :organisation
+    ),
     Action.new(:"workspace.rename", "rename the workspace", roles: @admins),
     Action.new(
       :"workspace.delete",

@@ -264,6 +264,9 @@ defmodule ApiaryWeb.PolicyLive.Reading do
           button: gettext("Change paths")
         )
 
+      over = context.scope == :target && workspace_opposite(action, host, context) ->
+        reading(:note, overrides(over.action, {:m, host}))
+
       cover = action == "allow" && covering_allow(host, context) ->
         reading(
           :note,
@@ -537,6 +540,29 @@ defmodule ApiaryWeb.PolicyLive.Reading do
   # On a target page: the locked rule of the workspace that decides the host whatever is
   # added here. A locked deny holds against an allow below it, a locked allow against a
   # deny below it.
+  # The workspace's rule for the same host with the other action, which this one would
+  # override for the target; a locked one is `locked_above/3`'s, read first.
+  defp workspace_opposite(action, host, context) do
+    Enum.find(context.entries, fn entry ->
+      entry.kind == :host and entry.source == :workspace and not entry.locked and
+        entry.host == host and to_string(entry.action) != action
+    end)
+  end
+
+  defp overrides(:deny, host),
+    do:
+      rich_gettext(
+        "%{host} is denied for the workspace. This rule allows it for this target; other targets keep the deny.",
+        host: host
+      )
+
+  defp overrides(:allow, host),
+    do:
+      rich_gettext(
+        "%{host} is allowed for the workspace. This rule denies it for this target; other targets keep it.",
+        host: host
+      )
+
   defp locked_above(_action, _host, %{scope: :workspace}), do: nil
 
   defp locked_above(action, host, context) do

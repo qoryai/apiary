@@ -95,7 +95,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
         id="history-list"
         label={
           if @scope == :workspace,
-            do: gettext("Changes to the workspace baseline, newest first"),
+            do: gettext("Changes to the workspace's policy, newest first"),
             else: gettext("Changes to this target's rules, newest first")
         }
         changes={@history.rows}
@@ -188,9 +188,11 @@ defmodule ApiaryWeb.PolicyLive.Views do
           {@v.mode}
           <:sub :if={@v.mode_source}>
             <span class="font-sans">
-              {if @v.mode_source == :target,
-                do: gettext("this target's own"),
-                else: gettext("the workspace's default")}
+              {case @v.mode_source do
+                :organisation -> gettext("required by %{name}", name: @v.mode_required_by || "?")
+                :target -> gettext("this target's own")
+                _workspace -> gettext("the workspace's default")
+              end}
             </span>
           </:sub>
         </.kv>
@@ -236,6 +238,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
               id="version-compare"
               phx-change="compare"
               class="flex items-center gap-2 text-[13px] text-muted"
+              novalidate
             >
               <label for="version-compare-select">{gettext("Compare with")}</label>
               <select id="version-compare-select" name="compare" class="q-input q-input-m q-select">
@@ -391,7 +394,7 @@ defmodule ApiaryWeb.PolicyLive.Views do
             href={"data:text/yaml;charset=utf-8," <> URI.encode(@export.policy_file, &URI.char_unreserved?/1)}
             download={@export.file_name}
           >
-            <.icon name="hero-arrow-down-tray-micro" class="size-4" />{gettext("Download")}
+            <.icon name="hero-arrow-down-tray" class="size-4" />{gettext("Download")}
           </a>
           <.copy_button id="export-policy-copy" text={@export.policy_file} label={gettext("Copy")} />
         </:actions>
@@ -455,11 +458,11 @@ defmodule ApiaryWeb.PolicyLive.Views do
           <dt><kbd class="kbd kbd-sm">?</kbd></dt>
           <dd>{gettext("This list")}</dd>
         </dl>
-        <form method="dialog" class="modal-action flex-none">
+        <form method="dialog" class="modal-action flex-none" novalidate>
           <button class="btn btn-sm" data-autofocus>{gettext("Close")}</button>
         </form>
       </div>
-      <form method="dialog" class="modal-backdrop">
+      <form method="dialog" class="modal-backdrop" novalidate>
         <button tabindex="-1" aria-hidden="true">{gettext("Close")}</button>
       </form>
     </dialog>

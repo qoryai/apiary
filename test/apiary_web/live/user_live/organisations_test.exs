@@ -75,7 +75,7 @@ defmodule ApiaryWeb.UserLive.OrganisationsTest do
     } do
       said = "Your membership in #{owner.organisation.name} is suspended."
 
-      conn = get(conn, ~p"/#{owner.organisation}/members")
+      conn = get(conn, ~p"/#{owner.organisation}/settings/people")
       assert redirected_to(conn) == ~p"/users/organisations"
       assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ said
 
@@ -100,10 +100,10 @@ defmodule ApiaryWeb.UserLive.OrganisationsTest do
       {:ok, _} = Apiary.Organisations.suspend_member(owner.scope, joined.id)
 
       conn = log_in_user(build_conn(), own.user)
-      {:ok, lv, _html} = live(conn, ~p"/#{own.organisation}/members")
+      {:ok, lv, _html} = live(conn, ~p"/#{own.organisation}/settings/people")
 
       assert {:error, {:redirect, %{to: "/users/organisations"}}} =
-               redirected = live_redirect(lv, to: ~p"/#{owner.organisation}/members")
+               redirected = live_redirect(lv, to: ~p"/#{owner.organisation}/settings/people")
 
       {:ok, conn} = follow_redirect(redirected, conn)
       html = html_response(conn, 200)
@@ -116,7 +116,7 @@ defmodule ApiaryWeb.UserLive.OrganisationsTest do
 
       assert build_conn()
              |> log_in_user(stranger)
-             |> get(~p"/#{owner.organisation}/members")
+             |> get(~p"/#{owner.organisation}/settings/people")
              |> response(404)
     end
   end

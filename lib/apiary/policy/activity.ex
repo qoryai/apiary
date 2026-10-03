@@ -37,7 +37,7 @@ defmodule Apiary.Policy.Activity do
 
   alias Apiary.Accounts.Scope
   alias Apiary.Organisations.Workspace
-  alias Apiary.Policy.{Effective, Grammar, Resolution, Rule}
+  alias Apiary.Policy.{Above, Effective, Grammar, Resolution, Rule}
   alias Apiary.Repo
   alias Apiary.Runs.{Connection, Target, Run}
 
@@ -144,12 +144,18 @@ defmodule Apiary.Policy.Activity do
           first_match(policy.locked_denies, row.host)
         end)
 
+      above =
+        Enum.find_value(hits, fn {row, _path, policy} ->
+          first_match(policy.above_denies, row.host)
+        end)
+
       %{
         host: host,
         port: port,
         path: path,
         held: held?,
         locked: locked,
+        above: above,
         denied: rows |> Enum.map(& &1.denied) |> Enum.sum(),
         tool: host_tool(rows),
         runs: rows |> Enum.map(& &1.run_id) |> Enum.uniq() |> length(),
@@ -249,9 +255,11 @@ defmodule Apiary.Policy.Activity do
 
   ## The policies the rows are held to
 
-  # target id (nil for the baseline) => what matching needs of its effective policy.
-  defp policies(%Workspace{id: workspace_id}, rows) do
+  # target id (nil for the baseline) => what matching needs of its effective policy. The
+  # level above the workspace is read once for all of them.
+  defp policies(%Workspace{id: workspace_id} = workspace, rows) do
     mode = Repo.one!(from h in Workspace, where: h.id == ^workspace_id, select: h.egress_mode)
+    above = Above.for_workspace(workspace)
 
     modes =
       Repo.all(
@@ -270,9 +278,16 @@ defmodule Apiary.Policy.Activity do
     |> Map.new(fn target_id ->
       rules = Map.get(own, target_id, [])
 
-      case Resolution.resolve_for(mode, modes[target_id], workspace_rules, rules, target_id) do
+      case Resolution.resolve_for(
+             mode,
+             modes[target_id],
+             workspace_rules,
+             rules,
+             target_id,
+             above
+           ) do
         {:ok, effective} -> {target_id, policy(effective)}
-        {:error, _error} -> {target_id, policy(%Effective{})}
+        {:error, _error} -> {target_id, policy(%Effective{above: above})}
       end
     end)
   end
@@ -287,9 +302,17 @@ defmodule Apiary.Policy.Activity do
 
     locked = for %{kind: :host, action: :deny, locked: true, host: host} <- in_force, do: host
 
+    above_denies =
+      for %{kind: :host, action: :deny, source: :organisation, host: host} <- in_force, do: host
+
+    above_allows =
+      for %{kind: :host, action: :allow, source: :organisation, host: host} <- in_force, do: host
+
     %{
       mode: effective.mode,
       locked_denies: Enum.sort_by(locked, &{Grammar.wildcard?(&1), &1}),
+      above_denies: Enum.sort_by(above_denies, &{Grammar.wildcard?(&1), &1}),
+      above_allows: Enum.sort_by(above_allows, &{Grammar.wildcard?(&1), &1}),
       follows_workspace: effective.mode_source == :workspace,
       allow: effective.allow,
       paths: effective.paths,
