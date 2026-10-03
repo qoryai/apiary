@@ -59,6 +59,37 @@ defmodule Apiary.RuntimeConfigTest do
 
   defp prod_config, do: Config.Reader.read!("config/runtime.exs", env: :prod, target: :host)
 
+  describe "APIARY_ENCRYPTION_SECRET" do
+    setup do
+      System.put_env("MAIL_TO_LOG", "true")
+    end
+
+    test "its 32 bytes are the access key cipher's key and what the other keys derive from" do
+      config = prod_config()
+      secret = String.duplicate("k", 32)
+
+      assert get_in(config, [:apiary, Apiary.KeyDerivation, :secret]) == secret
+
+      assert [default: {Cloak.Ciphers.AES.GCM, cipher}] =
+               get_in(config, [:apiary, Apiary.Vault, :ciphers])
+
+      assert cipher[:key] == secret
+    end
+
+    test "missing, or not 32 bytes in base64, it stops the boot, naming the variable" do
+      System.delete_env("APIARY_ENCRYPTION_SECRET")
+      assert_raise RuntimeError, ~r/APIARY_ENCRYPTION_SECRET is missing/, fn -> prod_config() end
+
+      for value <- [Base.encode64(String.duplicate("k", 31)), "not base64!"] do
+        System.put_env("APIARY_ENCRYPTION_SECRET", value)
+
+        assert_raise RuntimeError, ~r/APIARY_ENCRYPTION_SECRET is not 32 bytes/, fn ->
+          prod_config()
+        end
+      end
+    end
+  end
+
   describe "PUBLIC_URL" do
     setup do
       System.put_env("MAIL_TO_LOG", "true")

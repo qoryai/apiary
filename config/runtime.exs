@@ -167,8 +167,10 @@ if config_env() == :prod do
       You can generate one by calling: mix phx.gen.secret
       """
 
-  # APIARY_ENCRYPTION_SECRET encrypts secrets at rest (access key secrets). Changing it
-  # makes every stored secret unreadable, so keep it with the database backups.
+  # APIARY_ENCRYPTION_SECRET encrypts the access key secrets at rest (Apiary.Vault), and
+  # the keys that encrypt stored secret values and key integrity codes are derived from
+  # it (Apiary.KeyDerivation). Changing it makes every stored secret unreadable, so keep
+  # it with the database backups.
   encryption_secret =
     case System.get_env("APIARY_ENCRYPTION_SECRET") do
       nil ->
@@ -194,6 +196,8 @@ if config_env() == :prod do
     ciphers: [
       default: {Cloak.Ciphers.AES.GCM, tag: "AES.GCM.V1", key: encryption_secret}
     ]
+
+  config :apiary, Apiary.KeyDerivation, secret: encryption_secret
 
   # ## Public address and HTTP
 

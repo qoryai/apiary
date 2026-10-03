@@ -101,10 +101,12 @@ config :phoenix_live_view,
 # Disable swoosh api client as it is only required for production adapters.
 config :swoosh, :api_client, false
 
-# The encryption key for secrets at rest in dev. Not a secret: local databases only.
+# APIARY_ENCRYPTION_SECRET in dev: it encrypts the access key secrets (Apiary.Vault) and
+# is what the keys for stored values and integrity codes are derived from
+# (Apiary.KeyDerivation). Not a secret: local databases only.
+encryption_secret = Base.decode64!("MWlkMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=")
+
 config :apiary, Apiary.Vault,
-  ciphers: [
-    default:
-      {Cloak.Ciphers.AES.GCM,
-       tag: "AES.GCM.V1", key: Base.decode64!("MWlkMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=")}
-  ]
+  ciphers: [default: {Cloak.Ciphers.AES.GCM, tag: "AES.GCM.V1", key: encryption_secret}]
+
+config :apiary, Apiary.KeyDerivation, secret: encryption_secret
