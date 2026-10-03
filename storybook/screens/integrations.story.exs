@@ -88,20 +88,23 @@ defmodule ApiaryWeb.Storybook.Screens.Integrations do
 
           <.table id="integrations" label="Integrations" rows={@rows} row_id={&"integration-#{&1.id}"}>
             <:col :let={integration} label="Integration" kind="title">
-              <a
-                href={Mockup.path("integration", String.to_atom(integration.id), @theme)}
-                class="q-title hover:underline"
-              >
-                {integration.name}
-              </a>
-            </:col>
-            <:col :let={integration} label="Source" from="md">
-              <Mockup.source source={integration.source} />
+              <span class="grid">
+                <a
+                  href={Mockup.path("integration", String.to_atom(integration.id), @theme)}
+                  class="q-title hover:underline"
+                >
+                  {integration.name}
+                </a>
+                <Mockup.source
+                  source={integration.source}
+                  class="text-[12.5px]/[18px] font-normal text-muted"
+                />
+              </span>
             </:col>
             <:col :let={integration} label="Roles">
               <Mockup.roles roles={integration.roles} />
             </:col>
-            <:col :let={integration} label="Connects" from="sm">
+            <:col :let={integration} label="Connects" from="md">
               <Mockup.ways ways={integration.ways} />
             </:col>
             <:col :let={integration} label="Targets" kind="num" from="md">
@@ -142,8 +145,8 @@ defmodule ApiaryWeb.Storybook.Screens.Integrations do
           <p class="text-[12.5px]/[18px] text-faint">
             An integration with several roles is counted under each: GitHub is a task source,
             an output and a service. Services holds the tools too, such as Docs search.
-            Source is Built in for an LLM provider or a service that ships inside Apiary, and
-            otherwise the publisher's repository and the release it was added at. Connects says
+            Under each name is its source: Built in for an LLM provider or a service that ships
+            inside Apiary, otherwise the publisher's repository and the release it was added at. Connects says
             how a run reaches it: through Qory's API, as an MCP server, or both. Targets counts
             the targets whose run setup uses it.
           </p>
