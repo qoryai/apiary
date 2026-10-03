@@ -392,13 +392,17 @@ defmodule ApiaryWeb.Routes do
               live "/settings/secrets/new", SecretLive.Index, :new_secret
               live "/settings/secrets/:id/add-value", SecretLive.Index, :add_value
               live "/settings/secrets/:id/change-value", SecretLive.Index, :change_value
-              live "/settings/secrets/:id/values/:value_id/change", SecretLive.Index,
+
+              live "/settings/secrets/:id/values/:value_id/change",
+                   SecretLive.Index,
                    :change_value
 
-              live "/settings/secrets/:id/values/:value_id/rename", SecretLive.Index,
+              live "/settings/secrets/:id/values/:value_id/rename",
+                   SecretLive.Index,
                    :rename_value
 
-              live "/settings/secrets/:id/values/:value_id/delete", SecretLive.Index,
+              live "/settings/secrets/:id/values/:value_id/delete",
+                   SecretLive.Index,
                    :delete_value
 
               live "/settings/secrets/:id/delete", SecretLive.Index, :delete_secret
