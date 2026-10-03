@@ -36,6 +36,27 @@ defmodule ApiaryWeb.ActivityLiveTest do
   describe "as an owner" do
     setup :register_and_log_in_user
 
+    test "names a stored secret and a variable by name, never by value",
+         %{conn: conn, scope: scope} do
+      {:ok, secret} =
+        Apiary.Secrets.create_secret(scope, %{name: "GITHUB_APP_KEY", value: "s3cr3t-value"})
+
+      {:ok, _secret} = Apiary.Secrets.rename_value(scope, secret, nil, "main-app")
+
+      {:ok, _variable} =
+        Apiary.Variables.create_variable(scope, :workspace, %{name: "NODE_ENV", value: "plain"})
+
+      view = open(conn, scope)
+      [variable, renamed, created | _older] = entries(scope)
+
+      assert text(view, "#entry-#{created.id}-action") =~ "Created a stored secret"
+      assert text(view, "#entry-#{created.id}-subject") =~ "GITHUB_APP_KEY"
+      assert text(view, "#entry-#{renamed.id}-action") =~ "Renamed a value ID of a stored secret"
+      assert text(view, "#entry-#{variable.id}-action") =~ "Set a variable"
+      assert text(view, "#entry-#{variable.id}-subject") =~ "NODE_ENV"
+      refute render(view) =~ "s3cr3t-value"
+    end
+
     test "lists the organisation's changes, newest first", %{conn: conn, scope: scope} do
       {:ok, _workspace} = Organisations.update_workspace(scope, %{name: "Production"})
       %{access_key: key} = access_key_fixture(scope, %{label: "build-01"})

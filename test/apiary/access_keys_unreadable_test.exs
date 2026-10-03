@@ -1,7 +1,7 @@
 defmodule Apiary.AccessKeysUnreadableTest do
   @moduledoc """
-  An access key whose secrets were encrypted under another `CLOAK_KEY`: what a restore of
-  a dump without its key, or a changed key, leaves in the table.
+  An access key whose secrets were encrypted under another `APIARY_ENCRYPTION_SECRET`: what a
+  restore of a dump without its key, or a changed key, leaves in the table.
   """
   use Apiary.DataCase, async: true
 
@@ -43,7 +43,7 @@ defmodule Apiary.AccessKeysUnreadableTest do
       end)
 
     assert log =~ "access key secret cannot be decrypted key_id=#{key.key_id}"
-    assert log =~ "CLOAK_KEY"
+    assert log =~ "APIARY_ENCRYPTION_SECRET"
     # The line names the key's organisation and workspace by id, as metadata.
     assert log =~ "organisation_id=#{scope.organisation.id}"
     assert log =~ "workspace_id=#{scope.workspace.id}"

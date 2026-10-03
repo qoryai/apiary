@@ -1,10 +1,10 @@
 defmodule ApiaryWeb.Activity.Describer.Core do
   @moduledoc """
   The core's words for the Activity page (`ApiaryWeb.Activity.Describer`): the actions of
-  the organisation, its members and invitations, its workspaces, their access keys, nodes, runs,
-  retention and security policy, the trail's own pruning and the instance's commands.
-  The page asks it after the edition's describer, and it says nil for an action it does
-  not know, as it does for the edition's.
+  the organisation, its members and invitations, its workspaces, their access keys, nodes,
+  runs, retention, security policy, stored secrets and variables, the trail's own pruning
+  and the instance's commands. The page asks it after the edition's describer, and it says
+  nil for an action it does not know, as it does for the edition's.
   """
 
   @behaviour ApiaryWeb.Activity.Describer
@@ -49,6 +49,8 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"security_policy.edit"), do: gettext("Policy rules changed")
   def label(:"security_policy.lock"), do: gettext("Policy rule locked or unlocked")
   def label(:"security_policy.set_mode"), do: gettext("Policy mode changed")
+  def label(:"secret.write"), do: gettext("Stored secret changed")
+  def label(:"variable.edit"), do: gettext("Variable changed")
   def label(_action), do: nil
 
   # The core offers every action it has in the filter.
@@ -150,6 +152,9 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp said(:"retention.edit", _details, _actor),
     do: gettext("Changed how long runs are kept")
 
+  defp said(:"secret.write", %{"change" => change}, _actor), do: said_secret(change)
+  defp said(:"variable.edit", %{"change" => change}, _actor), do: said_variable(change)
+
   defp said(_policy, %{"change" => "rule_added"}, _actor), do: gettext("Added a policy rule")
 
   defp said(_policy, %{"change" => "rule_changed"}, _actor),
@@ -171,7 +176,24 @@ defmodule ApiaryWeb.Activity.Describer.Core do
     do: gettext("Rendered the run configurations again")
 
   defp said(:"security_policy.edit", _details, _actor), do: gettext("Changed the policy")
+  defp said(:"secret.write", _details, _actor), do: gettext("Changed a stored secret")
+  defp said(:"variable.edit", _details, _actor), do: gettext("Changed a variable")
   defp said(_action, _details, _actor), do: nil
+
+  defp said_secret("created"), do: gettext("Created a stored secret")
+  defp said_secret("updated"), do: gettext("Changed a stored secret")
+  defp said_secret("value_set"), do: gettext("Replaced a stored secret's value")
+  defp said_secret("value_added"), do: gettext("Added a value to a stored secret")
+  defp said_secret("value_renamed"), do: gettext("Renamed a value ID of a stored secret")
+  defp said_secret("value_deleted"), do: gettext("Deleted a value of a stored secret")
+  defp said_secret("deleted"), do: gettext("Deleted a stored secret")
+  defp said_secret(_change), do: gettext("Changed a stored secret")
+
+  defp said_variable("created"), do: gettext("Set a variable")
+  defp said_variable("locked"), do: gettext("Locked a variable")
+  defp said_variable("unlocked"), do: gettext("Unlocked a variable")
+  defp said_variable("deleted"), do: gettext("Removed a variable")
+  defp said_variable(_change), do: gettext("Changed a variable")
 
   # What was acted on, as it is called now.
   @impl true
@@ -237,6 +259,14 @@ defmodule ApiaryWeb.Activity.Describer.Core do
 
       "rule" ->
         text(gettext("A policy rule"))
+
+      # A secret and a variable are named in the entry itself: by name, never by value.
+      kind when kind in ["secret", "variable"] ->
+        case (entry.details || %{})["name"] do
+          name when is_binary(name) -> %{text: name, mono: true, href: nil}
+          _none when kind == "secret" -> text(gettext("A stored secret"))
+          _none -> text(gettext("A variable"))
+        end
 
       _other ->
         nil
@@ -319,6 +349,20 @@ defmodule ApiaryWeb.Activity.Describer.Core do
       days: days(details["retention_days"])
     )
   end
+
+  def change(:"secret.write", %{"value_id" => from}, %{"value_id" => to}, _details),
+    do: from_to(from, to)
+
+  def change(:"secret.write", _before, _after, %{"value_id" => value_id})
+      when is_binary(value_id),
+      do: [{:m, value_id}]
+
+  def change(:"variable.edit", %{"name" => from}, %{"name" => to}, _details) when from != to,
+    do: from_to(from, to)
+
+  def change(action, _before, _after, _details)
+      when action in [:"secret.write", :"variable.edit"],
+      do: nil
 
   def change(_policy, before, after_, %{"change" => "mode_changed"} = details),
     do: Enum.reject([from_to(before["mode"], after_["mode"]), version(details)], &is_nil/1)

@@ -185,6 +185,39 @@ defmodule Apiary.Access do
       feature: :security,
       roles: @admins
     ),
+    # Stored secrets and variables, which the run configuration delivers.
+    Action.new(
+      :"secret.read",
+      "read the stored secrets: their names, notes and value IDs, never a value",
+      feature: :security,
+      roles: @members,
+      audited: {:not, @read}
+    ),
+    Action.new(
+      :"secret.write",
+      "create a stored secret, change its name, note and values, and delete it",
+      feature: :security,
+      roles: @admins
+    ),
+    Action.new(
+      :"secret.use",
+      "link a stored secret to what uses it, so runs are given its value",
+      feature: :security,
+      roles: @admins,
+      audited:
+        {:not, "a link is part of the change to what uses the secret, which leaves its own entry"}
+    ),
+    Action.new(:"variable.read", "read the variables of the workspace and its repositories",
+      feature: :security,
+      roles: @members,
+      audited: {:not, @read}
+    ),
+    Action.new(
+      :"variable.edit",
+      "set, change, lock and remove the variables of the workspace and its repositories",
+      feature: :security,
+      roles: @admins
+    ),
     # The server contract.
     Action.new(:"run.post_events", "post a run's events",
       feature: :observability,

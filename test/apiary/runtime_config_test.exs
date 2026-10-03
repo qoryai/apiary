@@ -5,7 +5,7 @@ defmodule Apiary.RuntimeConfigTest do
   @base %{
     "DATABASE_URL" => "ecto://apiary:apiary@localhost/apiary",
     "SECRET_KEY_BASE" => String.duplicate("s", 64),
-    "CLOAK_KEY" => Base.encode64(String.duplicate("k", 32)),
+    "APIARY_ENCRYPTION_SECRET" => Base.encode64(String.duplicate("k", 32)),
     "PUBLIC_URL" => "https://qory.example"
   }
   @mail ~w(SMTP_RELAY SMTP_PORT SMTP_USERNAME SMTP_PASSWORD SMTP_TLS MAIL_TO_LOG MAIL_FROM)
@@ -58,6 +58,35 @@ defmodule Apiary.RuntimeConfigTest do
   end
 
   defp prod_config, do: Config.Reader.read!("config/runtime.exs", env: :prod, target: :host)
+
+  describe "APIARY_ENCRYPTION_SECRET" do
+    setup do
+      System.put_env("MAIL_TO_LOG", "true")
+    end
+
+    test "its 32 bytes are what every key derives from, and key nothing themselves" do
+      config = prod_config()
+
+      assert get_in(config, [:apiary, Apiary.KeyDerivation, :secret]) ==
+               String.duplicate("k", 32)
+
+      # The access key cipher takes its derived key when the vault starts.
+      assert get_in(config, [:apiary, Apiary.Vault, :ciphers]) == nil
+    end
+
+    test "missing, or not 32 bytes in base64, it stops the boot, naming the variable" do
+      System.delete_env("APIARY_ENCRYPTION_SECRET")
+      assert_raise RuntimeError, ~r/APIARY_ENCRYPTION_SECRET is missing/, fn -> prod_config() end
+
+      for value <- [Base.encode64(String.duplicate("k", 31)), "not base64!"] do
+        System.put_env("APIARY_ENCRYPTION_SECRET", value)
+
+        assert_raise RuntimeError, ~r/APIARY_ENCRYPTION_SECRET is not 32 bytes/, fn ->
+          prod_config()
+        end
+      end
+    end
+  end
 
   describe "PUBLIC_URL" do
     setup do

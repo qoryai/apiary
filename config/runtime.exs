@@ -167,13 +167,15 @@ if config_env() == :prod do
       You can generate one by calling: mix phx.gen.secret
       """
 
-  # CLOAK_KEY encrypts secrets at rest (access key secrets). Changing it makes every
-  # stored secret unreadable, so keep it with the database backups.
-  cloak_key =
-    case System.get_env("CLOAK_KEY") do
+  # APIARY_ENCRYPTION_SECRET is what every key the instance uses is derived from
+  # (Apiary.KeyDerivation): the access key secrets' (Apiary.Vault), the stored values'
+  # and the integrity codes'. Changing it makes every stored secret unreadable, so keep
+  # it with the database backups.
+  encryption_secret =
+    case System.get_env("APIARY_ENCRYPTION_SECRET") do
       nil ->
         raise """
-        environment variable CLOAK_KEY is missing.
+        environment variable APIARY_ENCRYPTION_SECRET is missing.
         It is 32 random bytes in base64. Generate one with: openssl rand -base64 32
         """
 
@@ -184,16 +186,13 @@ if config_env() == :prod do
 
           _ ->
             raise """
-            environment variable CLOAK_KEY is not 32 bytes in base64 (44 characters).
+            environment variable APIARY_ENCRYPTION_SECRET is not 32 bytes in base64 (44 characters).
             Generate one with: openssl rand -base64 32
             """
         end
     end
 
-  config :apiary, Apiary.Vault,
-    ciphers: [
-      default: {Cloak.Ciphers.AES.GCM, tag: "AES.GCM.V1", key: cloak_key}
-    ]
+  config :apiary, Apiary.KeyDerivation, secret: encryption_secret
 
   # ## Public address and HTTP
 

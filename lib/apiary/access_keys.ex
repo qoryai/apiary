@@ -249,8 +249,8 @@ defmodule Apiary.AccessKeys do
   again: a key is a workspace's, not a person's, so a suspended membership or an account
   out of use leaves the keys working; `{:error, :unreadable}`,
   with a line in the log, when the secrets cannot be decrypted with the key the instance
-  holds (`CLOAK_KEY` is not the one they were encrypted with). The key comes with its
-  workspace, read in the same query: its domain names a run's target
+  holds (`APIARY_ENCRYPTION_SECRET` is not the one they were encrypted with). The key comes
+  with its workspace, read in the same query: its domain names a run's target
   (`Apiary.Policy.Serving`).
   """
   @spec fetch_for_verification(term) :: {:ok, AccessKey.t()} | :error | {:error, :unreadable}
@@ -295,7 +295,7 @@ defmodule Apiary.AccessKeys do
   defp unreadable(key_id, metadata) do
     Logger.error(
       "access key secret cannot be decrypted key_id=#{key_id}: " <>
-        "CLOAK_KEY is not the key the secret was encrypted with",
+        "APIARY_ENCRYPTION_SECRET is not the key the secret was encrypted with",
       metadata
     )
 

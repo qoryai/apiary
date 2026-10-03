@@ -16,8 +16,8 @@ defmodule ApiaryWeb.Contract.SignedRequest do
 
   Either secret of the key verifies, in constant time. Every failure, whatever
   its cause, is a 401 with the same body, but one: a key whose secrets the instance
-  cannot decrypt, because `CLOAK_KEY` is not the key they were encrypted with, is a
-  503 with `{"error":"unavailable"}`, the runner's signal to fail closed and try
+  cannot decrypt, because `APIARY_ENCRYPTION_SECRET` is not the key they were encrypted
+  with, is a 503 with `{"error":"unavailable"}`, the runner's signal to fail closed and try
   again, and a line in the log names the key id (`Apiary.AccessKeys.fetch_for_verification/1`).
   That is the instance's fault, never the machine's, and a 401 would send the operator
   to the wrong place. Nothing in this module logs a header value.

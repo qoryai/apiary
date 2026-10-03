@@ -13,7 +13,11 @@ defmodule Apiary.Policy.Above do
       may observe;
     * `own_allows`: whether a workspace or a target may allow hosts of its own; off, only
       the level's allows grant, and every lower host allow is listed struck
-      (`Apiary.Policy.Entry`'s `reason: :only_above_allows`).
+      (`Apiary.Policy.Entry`'s `reason: :only_above_allows`);
+    * `variables`: its variables, each an `Apiary.Variables.Variable` the edition
+      materialises (not a row of `variables`), with its `name`, `value` and `locked`: they
+      reach every workspace below it, and one it locks is set by no workspace or
+      repository. `Apiary.Variables.Resolution` resolves them first in every chain.
 
   Its denies hold everywhere; its allows reach every workspace and can be narrowed by a
   lower deny, never widened: how they meet the workspace's and a target's rules is
@@ -29,10 +33,17 @@ defmodule Apiary.Policy.Above do
           slug: String.t() | nil,
           rules: [Rule.t()],
           floor: boolean,
-          own_allows: boolean
+          own_allows: boolean,
+          variables: [Apiary.Variables.Variable.t()]
         }
 
-  defstruct id: nil, name: nil, slug: nil, rules: [], floor: false, own_allows: true
+  defstruct id: nil,
+            name: nil,
+            slug: nil,
+            rules: [],
+            floor: false,
+            own_allows: true,
+            variables: []
 
   @doc false
   # What holds above `workspace`, asked of the edition once per operation. A test sets

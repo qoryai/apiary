@@ -83,20 +83,11 @@ defmodule Apiary.AccessKeys.AccessKey do
   def secrets(%__MODULE__{secret_primary: primary, secret_secondary: secondary}),
     do: [primary, secondary]
 
-  # Crockford base32 without the ambiguous letters i, l, o, u.
-  @crockford ~c"0123456789abcdefghjkmnpqrstvwxyz"
-
-  @doc "A fresh key id: `ak_` and 16 lowercase Crockford base32 characters (80 random bits)."
-  def generate_key_id do
-    "ak_" <> crockford_encode(:crypto.strong_rand_bytes(10))
-  end
+  @doc "A fresh key id: `ak_` and 16 lowercase Crockford base32 characters (`Apiary.PublicId`)."
+  def generate_key_id, do: Apiary.PublicId.generate("ak")
 
   @doc "A fresh secret: 32 random bytes as base64url without padding."
   def generate_secret do
     :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false)
-  end
-
-  defp crockford_encode(bytes) do
-    for <<chunk::5 <- bytes>>, into: "", do: <<Enum.at(@crockford, chunk)>>
   end
 end
