@@ -4,9 +4,9 @@ defmodule Apiary.Policy.Export do
 
   The runner file, `~/.config/qory/runner.yaml`, holds the machine's policy inline as its
   `egress` section, which says a mode, the hosts allowed, the hosts denied and nothing
-  else. Paths and credentials are said by a policy document, the contract's own format,
-  given to one run with `qory run --policy <file>`; it narrows the machine's section and
-  never widens it, so the two are exported together and agree.
+  else. Paths are said by a policy document, the contract's own format, given to one run
+  with `qory run --policy <file>`; it narrows the machine's section and never widens it,
+  so the two are exported together and agree.
 
   Every scalar is written as a JSON string, which YAML reads as it is, with the line
   breaks YAML knows and JSON does not (U+0085, U+2028, U+2029) escaped.
@@ -18,7 +18,7 @@ defmodule Apiary.Policy.Export do
 
   @doc false
   def text(%Effective{} = effective) do
-    narrowed = map_size(effective.paths) > 0 or effective.credentials != []
+    narrowed = map_size(effective.paths) > 0
 
     %{
       runner_file: runner_file(effective),
@@ -44,8 +44,7 @@ defmodule Apiary.Policy.Export do
       "\n",
       "version: 1\n",
       "egress:\n",
-      egress(effective, "  ", true),
-      credentials(effective.credentials)
+      egress(effective, "  ", true)
     ])
   end
 
@@ -85,23 +84,6 @@ defmodule Apiary.Policy.Export do
     ]
   end
 
-  defp credentials([]), do: []
-
-  defp credentials(credentials) do
-    [
-      "credentials:\n",
-      for credential <- credentials do
-        [
-          ["  - name: ", quoted(credential.name), "\n"],
-          if(credential[:argument],
-            do: ["    argument: ", quoted(credential.argument), "\n"],
-            else: []
-          )
-        ]
-      end
-    ]
-  end
-
   defp notes(effective, narrowed) do
     List.flatten([
       if(effective.mode == "observe",
@@ -114,14 +96,9 @@ defmodule Apiary.Policy.Export do
       if(narrowed,
         do: [
           gettext(
-            "The runner file's egress section says a mode and hosts only. The paths and the credentials are in the policy file, given to a run with --policy; it narrows the runner file's section."
+            "The runner file's egress section says a mode and hosts only. The paths are in the policy file, given to a run with --policy; it narrows the runner file's section."
           ),
-          gettext(
-            "Paths and credentials need a wall: without one the runner refuses to start the run."
-          ),
-          gettext(
-            "A credential is named here and defined on the machine, in the credentials section of its runner file."
-          )
+          gettext("Paths need a wall: without one the runner refuses to start the run.")
         ],
         else: []
       )

@@ -536,7 +536,8 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
 
   def change_for(_entry, _changes), do: nil
 
-  # A credential may be named like a host; its change says nothing of the host's rule.
+  # A change made while the policy still named credentials may name one like a host; it
+  # says nothing of the host's rule.
   defp host_rule?(%{after: %{"rules" => rules}}, host) when is_list(rules),
     do: Enum.any?(rules, &(&1["kind"] == "host" and &1["host"] == host))
 

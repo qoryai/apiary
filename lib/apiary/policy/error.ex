@@ -2,7 +2,7 @@ defmodule Apiary.Policy.Error do
   @moduledoc """
   Why the policy refused something, fit for the page: `reason` for code to match on,
   `message` a sentence to show as it is, `field` the input it is about when there is one
-  (`:host`, `:paths`, `:name`, `:argument`, `:mode`). `:fixed` is the mode under a level
+  (`:host`, `:paths`, `:kind`, `:action`, `:mode`). `:fixed` is the mode under a level
   above the workspace that requires `enforce` (`Apiary.Policy.Above`).
   """
 
