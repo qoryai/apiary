@@ -253,6 +253,32 @@ by name or the latest change.
   section's sentence, "Only owners and admins change this."; a form's page sends them back
   to the view with the same words.
 
+### Access keys
+
+A workspace's Access keys (`ApiaryWeb.AccessKeyLive.Index`, `/settings/keys`) is a list:
+each key's label and key id, when it was last used ("Never used; created …" until it is),
+the runner version that used it, and its state when it is not the usual one (Rotated, with
+Retire previous secret beside it; Revoked, with its date). Rotate… and Revoke… are in a
+live key's ⋯ menu. A revoked key stays listed, so the runs it posted keep a name.
+
+- **New access key** (`/settings/keys/new`) is a page of the section (A form is a page,
+  above): the breadcrumb `Settings / Access keys / New access key`, the title New access
+  key, one sentence, the Label field, and Create key with Cancel back to the list.
+- **The secret is shown once, on the page of the act that made it**, never in a dialog:
+  once the key is created, New access key's page becomes the secret's (Your new access
+  key: the warning that it is shown once, the key id and the secret each with a copy
+  button, the `server` block to paste into the runner file), and its foot is Done back to
+  the list beside "Once you leave this page, the secret is not shown again." A rotation
+  shows its new secret the same way at its own path (New secret for build-01, the
+  breadcrumb ending Rotate key). The secret is held by the page's process alone and
+  dropped as soon as the path changes, by Done, the breadcrumb or any other way; no path
+  renders it, and opening the page again starts without it.
+- **The confirmations stay small dialogs** over the list, since they confirm a row's act
+  and have no page to stand on: Rotate (`/settings/keys/:id/rotate`), Revoke
+  (`/settings/keys/:id/revoke`) and Retire previous secret (from the rotated key's row).
+  A path the reader may not take, or of a revoked key, sends them back to the list with a
+  flash saying why; a key of another workspace is not found.
+
 ## Lists
 
 A page that lists things reads top down, and every level of it has a look of its own
