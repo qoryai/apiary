@@ -33,6 +33,10 @@ beside it:
   edition's, then the core's.
 - `Apiary.AccessKeys`: a workspace's access keys, their secrets encrypted at rest through
   `Apiary.Vault`, rotation and revocation, and the lookup a signed request verifies against.
+- `Apiary.Nodes`: a workspace's nodes and node pools (`nodes`), the places its runs run:
+  a node is one permanent machine, a pool a fleet of short-lived instances up to its
+  instance limit or none; the kind is fixed when one is made, and a deleted one is gone
+  from every read but keeps its row until its workspace is purged.
 - `Apiary.Targets`: the workspace's targets as the pages read them, the index in one query
   bounded by fourteen days and a target's page, and the targets a person pinned
   (`target_pins`), their own reading preference, which leaves no audit entry.

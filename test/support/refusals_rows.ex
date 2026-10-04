@@ -19,7 +19,7 @@ defmodule ApiaryWeb.RefusalsRows do
 
   The world: an organisation with an owner, a second owner, an admin and two members; a
   second workspace, and a third marked for deletion; in the first workspace a rule, a
-  locked rule, a target, an access key, a run that has not ended, and a pending
+  locked rule, a target, an access key, a node, a run that has not ended, and a pending
   invitation; and another organisation, with its owner.
   """
 
@@ -27,6 +27,7 @@ defmodule ApiaryWeb.RefusalsRows do
 
   import Ecto.Query
   import Apiary.AccessKeysFixtures
+  import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.RunListFixtures
 
@@ -229,6 +230,29 @@ defmodule ApiaryWeb.RefusalsRows do
       {:"access_key.revoke", :other_owner, "/:other_org/:other_ws/settings/keys/:key/revoke",
        "revoke", %{}, answer: :not_found_at_mount},
 
+      # The nodes. Without the dialog open, from a member: refused, as the page offers
+      # them no button.
+      {:"node.create", :member, "/:org/:workspace/nodes", "create",
+       %{"node" => %{"name" => "build-09"}}},
+      {:"node.create", :demoted_admin, "/:org/:workspace/nodes/new", "create",
+       %{"node" => %{"name" => "build-09"}}},
+      {:"node.create", :removed_member, "/:org/:workspace/nodes", "create",
+       %{"node" => %{"name" => "build-09"}}},
+      {:"node.edit", :member, "/:org/:workspace/nodes/:node/settings", "save",
+       %{"node" => %{"name" => "renamed"}}},
+      {:"node.edit", :demoted_admin, "/:org/:workspace/nodes/:node/settings", "save",
+       %{"node" => %{"name" => "renamed"}}},
+      {:"node.edit", :removed_member, "/:org/:workspace/nodes/:node", "save",
+       %{"node" => %{"name" => "renamed"}}},
+      {:"node.delete", :member, "/:org/:workspace/nodes/:node/settings", "delete", %{}},
+      {:"node.delete", :demoted_admin, "/:org/:workspace/nodes/:node/settings/delete", "delete",
+       %{}},
+      # A node's page is its path: another organisation's node is a 404 as the page opens.
+      {:"node.edit", :other_owner, "/:other_org/:other_ws/nodes/:node/settings", "save",
+       %{"node" => %{"name" => "renamed"}}, answer: :not_found_at_mount},
+      {:"node.delete", :other_owner, "/:other_org/:other_ws/nodes/:node/settings/delete",
+       "delete", %{}, answer: :not_found_at_mount},
+
       # A run.
       {:"run.close", :removed_member, "/:org/:workspace/runs/:run", "close_confirm", %{},
        prelude: [{"close", %{}}]},
@@ -250,7 +274,7 @@ defmodule ApiaryWeb.RefusalsRows do
   @impl true
   def exempt do
     %{
-      reads: [:"run.read", :"run.read_log", :"security_policy.read", :"audit.read"],
+      reads: [:"run.read", :"run.read_log", :"security_policy.read", :"audit.read", :"node.read"],
       jobs: [:"organisation.purge", :"workspace.purge", :"audit.prune"],
       contract: [:"run.post_events", :"run_configuration.fetch"],
       token: [:"invitation.accept"],
@@ -287,6 +311,7 @@ defmodule ApiaryWeb.RefusalsRows do
       })
 
     %{access_key: key} = access_key_fixture(owner)
+    node = node_fixture(owner, name: "build-01")
     run = started_run(owner)
     %{invitation: invitation} = invitation_fixture(owner)
     admin = RefusalsCase.person(owner, :admin)
@@ -324,6 +349,7 @@ defmodule ApiaryWeb.RefusalsRows do
       rule_locked: rule_locked,
       target: target,
       key: key,
+      node: node,
       run: run,
       invitation: invitation
     }
@@ -348,6 +374,7 @@ defmodule ApiaryWeb.RefusalsRows do
   def value(:target_page, world), do: "#{world.target.system}/#{world.target.path}"
   def value(:key, world), do: {:id, world.key.id}
   def value(:run, world), do: {:id, world.run.run_id}
+  def value(:node, world), do: {:id, world.node.public_id}
   def value(_name, _world), do: nil
 
   # The organisation, the other one, whose pages its owner sends this one's ids from, and

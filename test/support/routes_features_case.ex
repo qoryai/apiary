@@ -31,6 +31,8 @@ defmodule ApiaryWeb.RoutesFeaturesCase do
     ApiaryWeb.HealthController,
     ApiaryWeb.Contract.ConfigurationController,
     ApiaryWeb.AccessKeyLive.Index,
+    ApiaryWeb.NodeLive.Index,
+    ApiaryWeb.NodeLive.Show,
     ApiaryWeb.MemberLive.Index,
     ApiaryWeb.SettingsLive,
     ApiaryWeb.ActivityLive,

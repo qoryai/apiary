@@ -16,7 +16,9 @@ belongs to.
   navigation is data, `ApiaryWeb.Nav.Entry` values, and the entry a page passes as `nav`
   names its scope (`place`) and so the sidebar it shows. A new item of the core goes in
   `nav_entries/1` of `ApiaryWeb.Layouts`, an edition's in its
-  `ApiaryWeb.Edition.nav_entries/1`, and never in a page.
+  `ApiaryWeb.Edition.nav_entries/1`, and never in a page. A page that no entry names yet,
+  such as Nodes, passes its scope as `place` instead: its sidebar is that scope's, with no
+  entry current.
 - **The top bar** is one `<header aria-label="Top bar">`, 48 px, across the window and
   above the sidebar, first in the tab order after Skip to content. From the left: the
   **breadcrumb** (`<nav id="breadcrumb">`: the organisation first, its tile and its name,
@@ -94,8 +96,9 @@ belongs to.
 ## Settings
 
 Configuration is not navigation: what is set up once and changed rarely lives in the
-settings. There are three kinds, GitHub's repository, organisation and personal settings,
-and each is a place of its own, reached from its own scope, that lists its own sections
+settings. There are four kinds, on the model of GitHub's repository, organisation and
+personal settings: a workspace's, an organisation's, a node's and a person's. Each is a
+place of its own, reached from its own scope, that lists its own sections
 and no other kind's: no "Elsewhere", no link across. A navigation item never replaces the
 navigation it is in.
 
@@ -113,6 +116,10 @@ navigation it is in.
   `/:org/activity`, its path before, sends on with its query), and the edition's sections
   (`ApiaryWeb.Edition.settings_tabs/1`). From a workspace the palette's Go to and New ›
   Invite people lead there too; nothing else in a workspace does.
+- **A node's** (`/:org/:workspace/nodes/:node_id/settings`), the last tab of the node's
+  page (Nodes, below): General (name, kind, a pool's instance limit, and its danger zone).
+  The page's header is the node's, so the section list and the section sit under the
+  tabs without a heading of their own (`SettingsComponents.layout/1`, `kind={:node}`).
 - **A person's** (`/users/settings`, `/users/settings/preferences`,
   `/users/organisations`), from the account menu's Your settings: Profile (email,
   password, and its danger zone), Preferences (language and time zone, kept with the
@@ -408,6 +415,42 @@ reads are `Apiary.Targets`'s, the looks `ApiaryWeb.TargetComponents`'s).
   parameters, events and messages while it is open.
 - **Pins** are the person's own (`target_pins`): the ★ of a row and of the header, and the
   sidebar's Pinned group.
+
+## Nodes
+
+A workspace's nodes and node pools are where its runs run (`ApiaryWeb.NodeLive.Index`,
+`…Show`; the reads and changes are `Apiary.Nodes`'s). A **node** is one permanent machine,
+which runs one instance at a time; a **node pool** is a fleet of short-lived instances,
+which run up to its instance limit, or any number without one. The kind is chosen when one
+is made and never changes. A node is named in a path by its public id, `nd_…` for a node
+and `np_…` for a pool. The workspace's sidebar has no entry for them yet: the list is
+reached by its path, and the page passes `place={:workspace}`.
+
+- **The list** (`/:org/:workspace/nodes`, width `list`) is on the list pattern (Lists,
+  above): one line a node, its name the title with its public id beside it in `q-side`,
+  its kind in words only for a pool ("Pool"; a node, the usual kind, says nothing), and
+  its state, which says "Never seen" until an instance of it reports. One search, `?q=`,
+  words of a name or an id, and the Filter menu's Kind (`?kind=node`, `?kind=pool`), each
+  a token under the bar. Owners and admins have **New node** (primary) and **New node
+  pool** in the header; with no node yet, the empty state offers both, and tells a member
+  that an owner or admin adds nodes.
+- **New node and New node pool** are dialogs over the list at paths of their own,
+  `/nodes/new` and `/nodes/new-pool`: a name, and for a pool its instance limit (a whole
+  number up to 10,000, or empty for none), with "You can't change the kind later". Adding
+  one opens its page on Settings.
+- **A node's page** (`/nodes/:node_id`) has a header (the node's name and public id, then
+  one muted line: its kind, its state and who made it when) and two tabs, patches of the
+  one LiveView, the operational side first and Settings last, set apart at the bar's
+  right end (`<.tabs>` with `end`): **Overview**, its instance (a node) or its running
+  instances (a pool) and its recent runs as far as the record holds them, each saying so
+  while nothing has reported, then About (kind, id, instance limit, who made it), which
+  leads to Settings; and **Settings** (`/nodes/:node_id/settings`), General, whose danger
+  zone's Delete node… opens the confirm dialog at `/nodes/:node_id/settings/delete`.
+  Deleting a node takes it out of the list, frees its name and keeps its runs in the
+  record. A node the workspace does not have, or a deleted one, is not found.
+- **Members** read the list and both tabs, without New node, New node pool or the danger
+  zone; Settings shows its fields disabled under one line that says only owners and
+  admins change them, and a dialog's path sends them back with why.
 
 ## Widths
 

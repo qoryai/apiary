@@ -9,6 +9,7 @@ defmodule Apiary.AuditChanges do
   import Apiary.AccessKeysFixtures
   import Apiary.AccountsFixtures, only: [unique_user_email: 0, valid_user_attributes: 1]
   import Apiary.AuditCase, only: [entries: 0, old!: 1, refuse_as_member: 4]
+  import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.RunEventsFixtures
   import Ecto.Query
@@ -19,6 +20,7 @@ defmodule Apiary.AuditChanges do
     Accounts,
     Audit,
     Deletion,
+    Nodes,
     Organisations,
     Policy,
     Repo,
@@ -55,6 +57,9 @@ defmodule Apiary.AuditChanges do
       :"access_key.create",
       :"access_key.rotate",
       :"access_key.revoke",
+      :"node.create",
+      :"node.edit",
+      :"node.delete",
       :"run.close",
       :"retention.edit",
       :"security_policy.edit",
@@ -210,6 +215,26 @@ defmodule Apiary.AuditChanges do
     %{scope: scope, subject: {"access_key", key.id}, before: before}
   end
 
+  def make(:"node.create", %{scope: scope}) do
+    before = entries()
+    {:ok, node} = Nodes.create_node(scope, %{kind: "pool", name: "spot-runners"})
+    %{scope: scope, subject: {"node", node.id}, before: before}
+  end
+
+  def make(:"node.edit", %{scope: scope}) do
+    node = pool_fixture(scope)
+    before = entries()
+    {:ok, _} = Nodes.update_node(scope, node, %{name: "spot-runners", instance_limit: 10})
+    %{scope: scope, subject: {"node", node.id}, before: before}
+  end
+
+  def make(:"node.delete", %{scope: scope}) do
+    node = node_fixture(scope)
+    before = entries()
+    {:ok, _} = Nodes.delete_node(scope, node)
+    %{scope: scope, subject: {"node", node.id}, before: before}
+  end
+
   def make(:"run.close", %{scope: scope}) do
     run = run_fixture(scope)
     before = entries()
@@ -363,6 +388,8 @@ defmodule Apiary.AuditChanges do
   defp prepare(:"access_key.rotate", %{scope: scope}), do: access_key_fixture(scope).access_key
   defp prepare(:"access_key.revoke", %{scope: scope}), do: access_key_fixture(scope).access_key
   defp prepare(:"run.close", %{scope: scope}), do: run_fixture(scope)
+  defp prepare(:"node.edit", %{scope: scope}), do: node_fixture(scope)
+  defp prepare(:"node.delete", %{scope: scope}), do: node_fixture(scope)
 
   defp prepare(:"organisation.restore", %{scope: scope}) do
     {:ok, organisation} = Deletion.delete_organisation(scope, scope.organisation.slug)
@@ -433,6 +460,12 @@ defmodule Apiary.AuditChanges do
 
   defp attempt(:"access_key.rotate", scope, key), do: AccessKeys.rotate_access_key(scope, key)
   defp attempt(:"access_key.revoke", scope, key), do: AccessKeys.revoke_access_key(scope, key)
+
+  defp attempt(:"node.create", scope, _),
+    do: Nodes.create_node(scope, %{kind: "node", name: "build-01"})
+
+  defp attempt(:"node.edit", scope, node), do: Nodes.update_node(scope, node, %{name: "build-02"})
+  defp attempt(:"node.delete", scope, node), do: Nodes.delete_node(scope, node)
   defp attempt(:"run.close", scope, run), do: Runs.close_run(scope, run)
 
   defp attempt(:"retention.edit", scope, _),

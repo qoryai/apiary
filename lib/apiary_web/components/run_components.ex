@@ -1720,7 +1720,8 @@ defmodule ApiaryWeb.RunComponents do
 
   @doc """
   The tabs of a second-level page. Links, not an ARIA tablist: each tab is a URL, a patch
-  within the page's LiveView, or a navigation to another page's (`navigate`).
+  within the page's LiveView, or a navigation to another page's (`navigate`). A tab
+  marked `end` sits at the bar's right end, set apart, as a page's Settings does.
   """
   attr :id, :string, required: true
   attr :label, :string, required: true
@@ -1733,6 +1734,7 @@ defmodule ApiaryWeb.RunComponents do
     attr :current, :boolean
     attr :count, :any
     attr :tone, :string
+    attr :end, :boolean
   end
 
   def tabs(assigns) do
@@ -1744,6 +1746,7 @@ defmodule ApiaryWeb.RunComponents do
         patch={tab[:patch]}
         navigate={tab[:navigate]}
         aria-current={tab[:current] == true && "page"}
+        class={tab[:end] && "q-tabs-end"}
       >
         <.icon :if={tab[:icon]} name={tab[:icon]} class="size-4" />
         {render_slot(tab)}

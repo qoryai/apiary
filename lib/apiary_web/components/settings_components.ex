@@ -12,6 +12,9 @@ defmodule ApiaryWeb.SettingsComponents do
     (`c:ApiaryWeb.Edition.settings_tabs/1`), each a page of the edition's own.
   - A workspace's (`/:org/:workspace/settings/…`): General (its name, and deleting it),
     Access keys, Retention.
+  - A node's (`/:org/:workspace/nodes/:node_id/settings`), the last tab of the node's page
+    (`ApiaryWeb.NodeLive.Show`): General (its name, a pool's instance limit, and deleting
+    it).
 
   A person's own settings are the person's pages, and their sidebar is their list
   (`ApiaryWeb.Layouts`). A list holds its kind's sections only: no other kind's, no link
@@ -32,11 +35,13 @@ defmodule ApiaryWeb.SettingsComponents do
   alias ApiaryWeb.Nav.Entry
 
   @doc """
-  sections/2 is the sections of the organisation's (`:organisation`) or the workspace's
-  (`:workspace`) settings the reader of `scope` may open, as `ApiaryWeb.Nav.Entry` values,
-  in the list's order; each entry's `section` is `:main`, or `:edition` for the edition's.
+  sections/2 is the sections of the organisation's (`:organisation`), the workspace's
+  (`:workspace`) or a node's (`{:node, node}`) settings the reader of `scope` may open, as
+  `ApiaryWeb.Nav.Entry` values, in the list's order; each entry's `section` is `:main`, or
+  `:edition` for the edition's.
   """
-  @spec sections(Scope.t(), :organisation | :workspace) :: [Entry.t()]
+  @spec sections(Scope.t(), :organisation | :workspace | {:node, Apiary.Nodes.Node.t()}) ::
+          [Entry.t()]
   def sections(%Scope{organisation: organisation} = scope, :organisation) do
     main = [
       %Entry{
@@ -109,6 +114,18 @@ defmodule ApiaryWeb.SettingsComponents do
     ]
   end
 
+  def sections(%Scope{organisation: organisation, workspace: workspace}, {:node, node}) do
+    [
+      %Entry{
+        section: :main,
+        key: :general,
+        label: gettext("General"),
+        icon: "hero-adjustments-horizontal",
+        path: ~p"/#{organisation}/#{workspace}/nodes/#{node}/settings"
+      }
+    ]
+  end
+
   # The settings' actions are asked of the organisation: listing its workspaces, whose
   # deletion is its, and reading the audit trail.
   defp can?(%Scope{organisation: organisation} = scope, action),
@@ -116,7 +133,8 @@ defmodule ApiaryWeb.SettingsComponents do
 
   @doc """
   layout/1 is a page of the settings: the settings' heading, "Organisation settings" or
-  "Workspace settings", the list of the sections beside the section (`sections/2`),
+  "Workspace settings" (a node's settings, a tab of its page, have the page's heading
+  instead), the list of the sections beside the section (`sections/2`),
   `current` marked, and the section itself, its title, what it is for and its actions
   above its content. From 1024 px the list is a column at the page's left edge; below, it
   is a row of links above the section.
@@ -125,7 +143,7 @@ defmodule ApiaryWeb.SettingsComponents do
   as the people or the access keys, a 960 px one (`measure="list"`).
   """
   attr :scope, :any, required: true
-  attr :kind, :atom, required: true, values: [:organisation, :workspace]
+  attr :kind, :atom, required: true, values: [:organisation, :workspace, :node]
   attr :sections, :list, required: true, doc: "the sections, as `sections/2` gives them"
 
   attr :counts, :map,
@@ -142,7 +160,7 @@ defmodule ApiaryWeb.SettingsComponents do
   def layout(assigns) do
     ~H"""
     <div class="q-settings">
-      <h1 class="q-settings-title outline-none" tabindex="-1">
+      <h1 :if={@kind != :node} class="q-settings-title outline-none" tabindex="-1">
         {if @kind == :organisation,
           do: gettext("Organisation settings"),
           else: gettext("Workspace settings")}

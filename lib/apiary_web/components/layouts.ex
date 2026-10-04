@@ -259,10 +259,16 @@ defmodule ApiaryWeb.Layouts do
 
   attr :nav, :atom, default: nil, doc: "the active navigation item"
 
+  attr :place, :atom,
+    default: nil,
+    values: [nil, :workspace, :organisation, :person],
+    doc:
+      "the scope a page that no navigation entry names belongs to (`nav` nil): its sidebar is that scope's, with no entry current"
+
   attr :notices, :boolean,
     default: nil,
     doc:
-      "whether the organisation's notices show, the edition's (the `:notices` slot): on every page of a workspace or an organisation, which passes `nav`, unless given; a person's own pages show none"
+      "whether the organisation's notices show, the edition's (the `:notices` slot): on every page of a workspace or an organisation, which passes `nav` or `place`, unless given; a person's own pages show none"
 
   attr :counts, :map,
     default: nil,
@@ -294,7 +300,7 @@ defmodule ApiaryWeb.Layouts do
     workspace = scope_field(scope, :workspace)
     entries = if user, do: nav_entries(scope), else: []
     current = Enum.find(entries, &(&1.key == assigns.nav))
-    place = place(current, organisation)
+    place = place(current, assigns.place, organisation)
 
     assigns =
       assigns
@@ -311,7 +317,7 @@ defmodule ApiaryWeb.Layouts do
         :pins,
         if(place == :workspace, do: pins(assigns.counts, organisation, workspace), else: [])
       )
-      |> assign(:show_notices, notices?(assigns.notices, current))
+      |> assign(:show_notices, notices?(assigns.notices, current, assigns.place))
 
     ~H"""
     <a
@@ -397,15 +403,17 @@ defmodule ApiaryWeb.Layouts do
   defp settings_page?(%Entry{section: section}), do: section in [:foot, :settings]
   defp settings_page?(nil), do: false
 
-  # The scope the page belongs to: its entry's, or without one the organisation's when the
-  # page has an organisation and the person's when it has none.
-  defp place(%Entry{place: place}, _organisation), do: place
-  defp place(nil, %{}), do: :organisation
-  defp place(nil, nil), do: :person
+  # The scope the page belongs to: its entry's; without one the place the page names, else
+  # the organisation's when the page has an organisation and the person's when it has
+  # none.
+  defp place(%Entry{place: place}, _given, _organisation), do: place
+  defp place(nil, given, _organisation) when not is_nil(given), do: given
+  defp place(nil, nil, %{}), do: :organisation
+  defp place(nil, nil, nil), do: :person
 
-  defp notices?(notices, _current) when is_boolean(notices), do: notices
-  defp notices?(nil, %Entry{place: place}), do: place in [:workspace, :organisation]
-  defp notices?(nil, nil), do: false
+  defp notices?(notices, _current, _place) when is_boolean(notices), do: notices
+  defp notices?(nil, %Entry{place: place}, _place), do: place in [:workspace, :organisation]
+  defp notices?(nil, nil, given), do: given in [:workspace, :organisation]
 
   # The bar: 48 px, across the window, above the sidebar. Its left says where the page is,
   # the organisation first, its right what the person may do from anywhere. Without a

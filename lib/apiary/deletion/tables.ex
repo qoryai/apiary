@@ -32,7 +32,8 @@ defmodule Apiary.Deletion.Tables do
 
   # Children first: a run's events, log and connections before the run; the deliveries
   # before the access keys they name; the run configurations and the policy's rules before
-  # the targets, and so are the pins; everything of a workspace before the workspace.
+  # the targets, and so are the pins; the access keys and the runs before the nodes they
+  # will name; everything of a workspace before the workspace.
   @tables [
     {"log_chunks", :workspace},
     {"events", :workspace},
@@ -45,6 +46,7 @@ defmodule Apiary.Deletion.Tables do
     {"target_pins", :workspace},
     {"targets", :workspace},
     {"access_keys", :workspace},
+    {"nodes", :workspace},
     {"invitations", :workspace},
     {"memberships", :organisation},
     {"audit_entries", :workspace},
