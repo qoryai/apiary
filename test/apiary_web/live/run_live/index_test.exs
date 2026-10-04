@@ -426,11 +426,11 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
       assert has_element?(
                view,
-               "#runs-filter-button[aria-haspopup=dialog][aria-controls=runs-filter-panel]",
+               "#runs-filter-button[aria-controls=runs-filter-panel]",
                "Filter"
              )
 
-      assert has_element?(view, "#runs-filter-panel[role=dialog]")
+      assert has_element?(view, "#runs-filter-panel[role=group]")
 
       for key <- ~w(target state task runtime host key since denials) do
         assert has_element?(view, "#runs-filter-open-#{key}")
@@ -962,7 +962,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
       assert has_element?(view, "#runs-query[role=search] label", "Filter runs")
       assert has_element?(view, "#runs-query-input[name=q]")
-      assert has_element?(view, "#runs-filter-panel[role=dialog][aria-label=Filter]")
+      assert has_element?(view, "#runs-filter-panel[role=group][aria-label=Filter]")
       assert has_element?(view, "#runs-sort-button[aria-haspopup=menu]")
       assert has_element?(view, "#runs-per button[type=button][aria-pressed=true]", "50")
 

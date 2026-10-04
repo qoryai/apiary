@@ -645,7 +645,6 @@ defmodule ApiaryWeb.Layouts do
       type="button"
       class="q-trail-chev"
       data-switcher-open
-      aria-haspopup="dialog"
       aria-expanded="false"
       aria-controls="organisation-menu-panel"
       aria-label={@label}
@@ -680,7 +679,7 @@ defmodule ApiaryWeb.Layouts do
     <div
       id="organisation-menu-panel"
       class="q-switcher"
-      role="dialog"
+      role="group"
       aria-label={gettext("Switch organisation or workspace")}
       hidden
       phx-mounted={JS.ignore_attributes(["hidden"])}

@@ -29,7 +29,8 @@ belongs to.
   person has no sidebar, and the Qory Apiary menu opens downward from the bar's left.
 - **The switcher.** With more than one place to go, or an edition's entry after the places
   (`ApiaryWeb.Edition.switcher_entries/1`), the chevrons beside the organisation and the
-  workspace open one popover (`role="dialog"`, the `Switcher` hook): a search that filters
+  workspace open one dropdown under them (a disclosure: the chevron's `aria-expanded` and
+  `aria-controls`, the panel a named `role="group"`; the `Switcher` hook): a search that filters
   as the reader types, the places opened last (kept in `localStorage`), then each
   organisation with its workspaces, a link to each at the section the reader is on where
   that workspace has it, else its overview (a section of a feature goes through

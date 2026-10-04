@@ -723,7 +723,6 @@ defmodule ApiaryWeb.RunComponents do
           id={"#{@id}-button"}
           type="button"
           class="q-chip-main"
-          aria-haspopup="dialog"
           aria-controls={"#{@id}-panel"}
           aria-expanded="false"
           aria-label={
@@ -754,7 +753,7 @@ defmodule ApiaryWeb.RunComponents do
       </span>
       <div
         id={"#{@id}-panel"}
-        role="dialog"
+        role="group"
         aria-label={gettext("Filter by %{filter}", filter: String.downcase(@label))}
         class="dropdown-content q-filter-menu left-0 top-full mt-1.5"
       >

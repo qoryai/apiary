@@ -1666,7 +1666,6 @@ defmodule ApiaryWeb.CoreComponents do
         id={"#{@id}-button"}
         type="button"
         class="btn btn-sm"
-        aria-haspopup="dialog"
         aria-controls={"#{@id}-panel"}
         aria-expanded="false"
         phx-mounted={JS.ignore_attributes(["aria-expanded"])}
@@ -1680,7 +1679,7 @@ defmodule ApiaryWeb.CoreComponents do
       </button>
       <div
         id={"#{@id}-panel"}
-        role="dialog"
+        role="group"
         aria-label={gettext("Filter")}
         class="dropdown-content q-fm-panel"
         tabindex="-1"

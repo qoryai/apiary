@@ -404,11 +404,11 @@ defmodule ApiaryWeb.LayoutsTest do
       for button <- ~w(organisation-menu-button workspace-menu-button) do
         assert has_element?(
                  view,
-                 "#organisation-menu button##{button}[aria-haspopup='dialog'][aria-controls='organisation-menu-panel'][aria-expanded='false']"
+                 "#organisation-menu button##{button}[aria-controls='organisation-menu-panel'][aria-expanded='false']"
                )
       end
 
-      assert has_element?(view, "#organisation-menu-panel[role='dialog'][hidden]")
+      assert has_element?(view, "#organisation-menu-panel[role='group'][hidden]")
 
       assert has_element?(
                view,
