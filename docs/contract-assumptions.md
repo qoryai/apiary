@@ -395,8 +395,9 @@ The contract has not fixed these; Apiary chose, and the runner should match:
   shows them as one entry with the hosts of every use. It reads the first twenty uses and
   the first twenty tools, and counts the different names and arguments among all of them,
   so "and N more" is the number of entries, grouped, that it does not show. The vendored
-  schemas and the contract fixtures at the pinned ref have no tools and no arguments yet;
-  the tests of tool invocations and of arguments use fixtures of their own.
+  policy schema at the pinned ref also lets a policy select `tools` and an `image`, which
+  the apiary does not render; the tests of tool invocations and of arguments use fixtures
+  of their own beside the contract's.
 - What the runner's proxy does with the policy document, read from `internal/proxy`,
   `internal/policy` and `session` of the runner at the pinned ref, and what the apiary
   renders for it:
