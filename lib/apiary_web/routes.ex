@@ -168,9 +168,8 @@ defmodule ApiaryWeb.Routes do
   end
 
   @doc """
-  storybook_routes/0 defines the component storybook, `/dev/storybook`, its assets, and
-  the navigation prototype, `/dev/prototype` (`ApiaryWeb.Prototype`), where `:dev_routes`
-  is set and `phoenix_storybook` is there: a dependency of this
+  storybook_routes/0 defines the component storybook, `/dev/storybook`, and its assets,
+  where `:dev_routes` is set and `phoenix_storybook` is there: a dependency of this
   checkout's in development and test only, so a release, and a project that has the core
   as its dependency, has neither the routes nor any reference to the library.
   """
@@ -191,17 +190,6 @@ defmodule ApiaryWeb.Routes do
               backend_module: ApiaryWeb.Storybook,
               assets_path: "/dev/storybook/assets"
             )
-          end
-
-          # The navigation prototype (storybook/prototype/): one LiveView draws every
-          # page from its path.
-          scope "/dev/prototype" do
-            pipe_through :browser
-
-            live_session :prototype, root_layout: {ApiaryWeb.Prototype.Shell, :root} do
-              live "/", ApiaryWeb.Prototype.Live, :show
-              live "/*path", ApiaryWeb.Prototype.Live, :show
-            end
           end
         end
       end
