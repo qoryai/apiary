@@ -178,18 +178,31 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
   end
 
   describe "deleting a node" do
-    test "from the danger zone, through its dialog, back to the list", %{conn: conn, scope: scope} do
+    test "from the danger zone, through its confirmation in place, back to the list",
+         %{conn: conn, scope: scope} do
       node = node_fixture(scope, name: "build-01")
       {:ok, lv, _html} = live(conn, node_path(scope, node, "/settings"))
+      refute has_element?(lv, "#delete-node-form")
 
       lv |> element("#delete-node-button") |> render_click()
       assert_patch(lv, node_path(scope, node, "/settings/delete"))
-      assert has_element?(lv, "#delete-node-dialog", "Delete build-01?")
+      refute has_element?(lv, "#delete-node-dialog")
+      assert has_element?(lv, "#node-danger #delete-node #delete-node-form", "build-01 leaves")
+      # No field to type: the red button takes the focus.
+      assert has_element?(lv, "#delete-node-confirm:not([disabled])", "Delete node")
+      assert lv |> element("#delete-node-form") |> render() =~ "#delete-node-confirm"
+
+      # Cancel folds it.
+      lv |> element("#delete-node-cancel") |> render_click()
+      assert_patch(lv, node_path(scope, node, "/settings"))
+      refute has_element?(lv, "#delete-node-form")
+
+      lv |> element("#delete-node-button") |> render_click()
 
       {:ok, list, html} =
         lv
-        |> element("#delete-node-confirm")
-        |> render_click()
+        |> form("#delete-node-form")
+        |> render_submit()
         |> follow_redirect(conn, ~p"/#{scope.organisation}/#{scope.workspace}/nodes")
 
       assert html =~ "build-01 is deleted."
@@ -198,7 +211,7 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
       assert Repo.get!(Node, node.id).deleted_at
     end
 
-    test "a member is refused the dialog's path, and its event", %{scope: scope} do
+    test "a member is refused the confirmation's path, and its event", %{scope: scope} do
       node = node_fixture(scope)
       conn = member_conn(scope)
 
@@ -206,7 +219,7 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
         live(conn, node_path(scope, node, "/settings/delete")) |> follow_redirect(conn)
 
       assert html =~ "Only owners and admins delete nodes."
-      refute has_element?(lv, "#delete-node-dialog")
+      refute has_element?(lv, "#delete-node-form")
 
       render_hook(lv, "delete", %{})
       assert render(lv) =~ "Only owners and admins delete nodes."
@@ -220,8 +233,8 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
 
       {:ok, _list, html} =
         lv
-        |> element("#delete-node-confirm")
-        |> render_click()
+        |> form("#delete-node-form")
+        |> render_submit()
         |> follow_redirect(conn, ~p"/#{scope.organisation}/#{scope.workspace}/nodes")
 
       assert html =~ "This node is gone: it was deleted."

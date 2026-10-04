@@ -2293,6 +2293,31 @@
   .q-danger-act .btn:not(:disabled) {
     color: var(--color-error);
   }
+  /* A line's confirmation, expanded in place under it (never a dialog): what is lost,
+     the field asked to confirm, then the red button and Cancel, set apart by a rule in
+     the error colour at its left. */
+  .q-danger-confirm {
+    flex: 1 1 100%;
+    display: grid;
+    gap: 16px;
+    max-width: 720px;
+    padding: 4px 0 4px 16px;
+    border-left: 2px solid var(--color-error);
+  }
+  .q-danger-lost {
+    display: grid;
+    gap: 8px;
+    max-width: 72ch;
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+  }
+  .q-danger-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+  }
 
   /* ---- Search or jump to: the palette ---- */
   .q-palette {

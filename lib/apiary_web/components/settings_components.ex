@@ -23,7 +23,7 @@ defmodule ApiaryWeb.SettingsComponents do
   across. A section the reader may not open is absent from it, as a navigation entry is;
   its page still refuses them. What cannot be undone is never an entry: it is the danger
   zone at the end of its scope's General page, or of Profile (`danger_zone/1`), and its
-  confirm dialog is at a path of its own over that page.
+  confirmation expands in place there, at a path of its own (`danger_action/1`).
 
   A page of the settings reads its sections when it mounts, and again when the reader's
   membership changes (`sections/2`), since an edition's section may ask the database
@@ -470,24 +470,104 @@ defmodule ApiaryWeb.SettingsComponents do
 
   @doc """
   danger_action/1 is one line of a danger zone: the act's title, one muted sentence of
-  what it does and what cannot be undone, and at the right its button, a default one in
-  the error colour, which opens the act's confirm dialog at a path of its own; the red
-  button is the dialog's. Without a button, where the act is not there, the sentence says
-  why.
+  what it does and what cannot be undone, and at the right its button (`button`), a
+  default one in the error colour. The confirmation is inline, GitHub's way, never a
+  dialog: the button is a patch to the act's own path (`open_path`), and there (`open`)
+  the line expands in place under its sentence into the confirmation's form, what is lost
+  (`:lost`), the field asked to confirm (`:field`), such as the slug typed, then the red
+  button (`confirm`, enabled once `ready`) and Cancel. Expanded, its first field takes the
+  focus, or the red button where there is no field; the button above becomes the way to
+  fold it (`aria-expanded`), as Cancel does, a patch back to the page (`close_path`) that
+  returns the focus to that button.
+
+  Without a button, where the act is not there, the sentence says why; `disabled` shows
+  the button but does not offer it, while something stops the act and the page says what
+  under the line.
   """
   attr :id, :string, required: true
   attr :title, :string, required: true
+
+  attr :button, :string,
+    default: nil,
+    doc: "the button's words, such as Delete organisation…; none where the act is not there"
+
+  attr :disabled, :boolean, default: false, doc: "the button shown but not offered"
+  attr :open, :boolean, default: false, doc: "whether the confirmation is expanded"
+  attr :open_path, :string, default: nil, doc: "the act's own path, which expands it"
+  attr :close_path, :string, default: nil, doc: "the page's path, which folds it"
+  attr :form, :any, default: nil, doc: "the confirmation's form, where it asks for a field"
+  attr :change, :string, default: nil, doc: "the event of a change of the field"
+  attr :submit, :string, default: nil, doc: "the event of the red button"
+  attr :confirm, :string, default: nil, doc: "the red button's words, such as Delete node"
+  attr :ready, :boolean, default: true, doc: "whether the red button is enabled"
   slot :inner_block, required: true, doc: "the sentence"
-  slot :action, doc: "the button that opens the confirm dialog"
+  slot :lost, doc: "what is lost, at more length than the sentence"
+  slot :field, doc: "the field asked to confirm"
+  slot :action, doc: "a control of the page's own in place of the button"
 
   def danger_action(assigns) do
+    assigns =
+      assigns
+      |> assign(:expanded, assigns.open && is_binary(assigns.button) && !assigns.disabled)
+      |> update(:form, &(&1 || to_form(%{}, as: :confirm)))
+
     ~H"""
-    <div id={@id} class="q-danger-line">
+    <div id={@id} class={["q-danger-line", @expanded && "q-danger-line-open"]}>
       <div class="q-danger-what">
-        <h3 class="q-danger-name">{@title}</h3>
+        <h3 id={"#{@id}-title"} class="q-danger-name">{@title}</h3>
         <p class="q-danger-sub">{render_slot(@inner_block)}</p>
       </div>
-      <div :if={@action != []} class="q-danger-act">{render_slot(@action)}</div>
+      <div :if={@button || @action != []} class="q-danger-act">
+        <.button :if={@button && @disabled} id={"#{@id}-button"} type="button" disabled>
+          {@button}
+        </.button>
+        <.button
+          :if={@button && !@disabled}
+          id={"#{@id}-button"}
+          patch={if @expanded, do: @close_path, else: @open_path}
+          aria-expanded={to_string(@expanded)}
+          aria-controls={@expanded && "#{@id}-form"}
+        >
+          {@button}
+        </.button>
+        {render_slot(@action)}
+      </div>
+      <.form
+        :if={@expanded}
+        for={@form}
+        id={"#{@id}-form"}
+        class="q-danger-confirm"
+        aria-labelledby={"#{@id}-title"}
+        phx-change={@change}
+        phx-submit={@submit}
+        phx-mounted={
+          if @field != [],
+            do: JS.focus_first(to: "##{@id}-field"),
+            else: JS.focus(to: "##{@id}-confirm")
+        }
+        novalidate
+      >
+        <div :if={@lost != []} class="q-danger-lost">{render_slot(@lost)}</div>
+        <div :if={@field != []} id={"#{@id}-field"}>{render_slot(@field)}</div>
+        <div class="q-danger-buttons">
+          <.button
+            id={"#{@id}-confirm"}
+            variant="danger"
+            type="submit"
+            disabled={!@ready}
+            loading_text={gettext("Deleting")}
+          >
+            {@confirm}
+          </.button>
+          <.button
+            id={"#{@id}-cancel"}
+            type="button"
+            phx-click={JS.patch(@close_path) |> JS.focus(to: "##{@id}-button")}
+          >
+            {gettext("Cancel")}
+          </.button>
+        </div>
+      </.form>
     </div>
     """
   end

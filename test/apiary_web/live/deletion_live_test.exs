@@ -78,9 +78,15 @@ defmodule ApiaryWeb.DeletionLiveTest do
 
       lv |> element("#delete-organisation-button") |> render_click()
       assert_patch(lv, ~p"/#{scope.organisation}/settings/danger")
-      assert has_element?(lv, "#delete-organisation-modal")
+      assert has_element?(lv, "#danger-zone #delete-organisation-form")
 
+      # The red button waits for the slug, typed.
       slug = scope.organisation.slug
+      assert has_element?(lv, "#delete-organisation-confirm[disabled]")
+      lv |> form("#delete-organisation-form", confirm: %{slug: "nope"}) |> render_change()
+      assert has_element?(lv, "#delete-organisation-confirm[disabled]")
+      lv |> form("#delete-organisation-form", confirm: %{slug: slug}) |> render_change()
+      refute has_element?(lv, "#delete-organisation-confirm[disabled]")
 
       lv |> form("#delete-organisation-form", confirm: %{slug: slug}) |> render_submit()
       flash = assert_redirect(lv, ~p"/users/organisations")
@@ -182,7 +188,7 @@ defmodule ApiaryWeb.DeletionLiveTest do
       assert has_element?(lv, "#marked-alone-#{scope.organisation.id}", scope.organisation.name)
 
       lv |> element("a#delete-account-button") |> render_click()
-      assert has_element?(lv, "#delete-account-modal-orphans")
+      assert has_element?(lv, "#delete-account-form #delete-account-lost-orphans")
     end
 
     test "a person deletes their account after confirming, and is logged out everywhere",
@@ -204,7 +210,10 @@ defmodule ApiaryWeb.DeletionLiveTest do
       refute has_element?(lv, "#sidebar a[href='/users/settings/delete']")
       lv |> element("a#delete-account-button") |> render_click()
       assert_patch(lv, ~p"/users/settings/delete")
-      assert has_element?(lv, "#delete-account-modal")
+      # Its confirmation expands in place, under the danger zone's line: no dialog.
+      refute has_element?(lv, "#delete-account-modal")
+      assert has_element?(lv, "#danger-zone #delete-account #delete-account-form")
+      assert has_element?(lv, "a#delete-account-button[aria-expanded=true]")
       assert has_element?(lv, "#nav-user_settings[aria-current='page']")
 
       # The red button waits for the account's email, typed; the server asks again.

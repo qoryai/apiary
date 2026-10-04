@@ -17,13 +17,13 @@ defmodule ApiaryWeb.NodeLive.Show do
     `/nodes/:node_id/instances/:instance/clear`.
   - **Settings** (`/nodes/:node_id/settings`), with the node's list of sections
     (`ApiaryWeb.SettingsComponents`): General, its name, its kind (shown, fixed) and a
-    pool's instance limit, then the danger zone, whose Delete opens the confirm dialog at
-    `/nodes/:node_id/settings/delete`.
+    pool's instance limit, then the danger zone, whose Delete expands its confirmation in
+    place, at `/nodes/:node_id/settings/delete`.
 
   Everyone in the workspace reads the page (`node.read`); owners and admins change the
   node (`node.edit`), delete it (`node.delete`) and clear an instance
   (`node.clear_instance`). A member reads Settings with its fields disabled and no danger
-  zone, sees no Clear instance, and a dialog's path refuses them.
+  zone, sees no Clear instance, and the deletion's and the clearing's paths refuse them.
 
   The header names the node, its public id beside it, then one muted line: its kind, its
   state (`ApiaryWeb.NodeComponents.node_state/1`: running, last seen or never seen), and
@@ -230,8 +230,8 @@ defmodule ApiaryWeb.NodeLive.Show do
     end
   end
 
-  # A deletion without its dialog open: a page that offered none, or a dialog that has
-  # closed. One who may delete the node is shown the page again; anyone else is refused.
+  # A deletion without its confirmation open: a page that offered none, or a confirmation
+  # that has folded. One who may delete the node is shown the page again; anyone else is refused.
   def handle_event("delete", _params, socket) do
     if socket.assigns.may_delete,
       do: {:noreply, socket},
@@ -369,7 +369,7 @@ defmodule ApiaryWeb.NodeLive.Show do
 
   defp node_path(socket, action), do: Map.fetch!(socket.assigns.paths, action)
 
-  # The page's paths: its tabs, the deletion's dialog, and the node's runs on the list.
+  # The page's paths: its tabs, the deletion's confirmation, and the node's runs on the list.
   defp paths(%{organisation: organisation, workspace: workspace}, public_id) do
     base = ~p"/#{organisation}/#{workspace}/nodes/#{public_id}"
 
@@ -475,39 +475,14 @@ defmodule ApiaryWeb.NodeLive.Show do
           form={@form}
           may_edit={@may_edit}
           may_delete={@may_delete}
-          delete={@paths.delete}
+          deleting={@live_action == :delete}
+          paths={@paths}
         />
       </SettingsComponents.layout>
 
-      <.modal
-        :if={@live_action == :delete && @may_delete}
-        id="delete-node-dialog"
-        title={gettext("Delete %{name}?", name: @node.name)}
-        on_cancel={JS.patch(@paths.settings)}
-      >
-        <p class="text-muted">
-          {gettext(
-            "%{name} leaves this workspace's nodes at once, and its name is free again. Its access keys are revoked, so every instance using them stops at its next request, and its enrolment codes are cancelled. Its runs stay in the record. This cannot be undone.",
-            name: @node.name
-          )}
-        </p>
-        <:footer>
-          <.button patch={@paths.settings} data-autofocus>
-            {gettext("Cancel")}
-          </.button>
-          <.button
-            id="delete-node-confirm"
-            variant="danger"
-            phx-click="delete"
-            loading_text={gettext("Deleting")}
-          >
-            {if @node.kind == :pool,
-              do: gettext("Delete node pool"),
-              else: gettext("Delete node")}
-          </.button>
-        </:footer>
-      </.modal>
-
+      <%!-- Clearing is an act of a row of a pool's running instances (and of a Node's one
+           instance), which has no page to put its confirmation on: it stays a small dialog
+           over Overview. --%>
       <.modal
         :if={@live_action == :clear_instance && @clearing && @may_clear}
         id="clear-instance-dialog"
@@ -820,7 +795,8 @@ defmodule ApiaryWeb.NodeLive.Show do
   attr :form, :any, required: true
   attr :may_edit, :boolean, required: true
   attr :may_delete, :boolean, required: true
-  attr :delete, :string, required: true
+  attr :deleting, :boolean, required: true, doc: "whether the deletion's confirmation is open"
+  attr :paths, :map, required: true
 
   # Settings › General: the name, the kind as it is, a pool's limit, and the danger zone.
   defp general(assigns) do
@@ -897,17 +873,32 @@ defmodule ApiaryWeb.NodeLive.Show do
             do: gettext("Delete this node pool"),
             else: gettext("Delete this node")
         }
+        button={
+          if @node.kind == :pool,
+            do: gettext("Delete node pool…"),
+            else: gettext("Delete node…")
+        }
+        open={@deleting}
+        open_path={@paths.delete}
+        close_path={@paths.settings}
+        submit="delete"
+        confirm={
+          if @node.kind == :pool,
+            do: gettext("Delete node pool"),
+            else: gettext("Delete node")
+        }
       >
         {gettext(
           "It leaves this workspace's nodes, its access keys are revoked and its name is free again. Its runs stay in the record."
         )}
-        <:action>
-          <.button id="delete-node-button" patch={@delete}>
-            {if @node.kind == :pool,
-              do: gettext("Delete node pool…"),
-              else: gettext("Delete node…")}
-          </.button>
-        </:action>
+        <:lost>
+          <p>
+            {gettext(
+              "%{name} leaves this workspace's nodes at once, and its name is free again. Its access keys are revoked, so every instance using them stops at its next request, and its enrolment codes are cancelled. Its runs stay in the record. This cannot be undone.",
+              name: @node.name
+            )}
+          </p>
+        </:lost>
       </SettingsComponents.danger_action>
     </SettingsComponents.danger_zone>
     """

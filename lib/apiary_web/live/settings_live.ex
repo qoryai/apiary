@@ -15,12 +15,14 @@ defmodule ApiaryWeb.SettingsLive do
     `/settings/retention`, sends on (`ApiaryWeb.MovedController`).
 
   A slug is shown, not edited: renaming one is not decided yet. Deleting asks to type the
-  slug, in a modal over its section: the organisation's over General at
-  `/:org/settings/danger` (`:danger`, and `/:org/settings/delete`, `:delete_organisation`),
-  this workspace's over General at `/:org/:workspace/settings/danger` (`:workspace_danger`,
-  and `/:org/:workspace/settings/delete`, `:delete_this_workspace`), and any workspace's
-  over Workspaces at `/:org/settings/workspaces/:workspace_id/delete`
-  (`:delete_workspace`). The danger zones are no section of their own: nothing that
+  slug. The organisation's and this workspace's deletions are confirmed inline, their
+  danger zone's line expanded in place on General (`SettingsComponents.danger_action/1`)
+  at a path of their own: the organisation's at `/:org/settings/danger` (`:danger`, and
+  `/:org/settings/delete`, `:delete_organisation`), this workspace's at
+  `/:org/:workspace/settings/danger` (`:workspace_danger`, and
+  `/:org/:workspace/settings/delete`, `:delete_this_workspace`). Any workspace's, a list
+  row's act with no page to put its confirmation on, is a small modal over Workspaces at
+  `/:org/settings/workspaces/:workspace_id/delete` (`:delete_workspace`). The danger zones are no section of their own: nothing that
   cannot be undone is an entry of the settings' list. A workspace marked for deletion is a
   notice at the top of Workspaces, where an owner or an admin cancels it until it is
   purged (`Apiary.Deletion`).
@@ -50,8 +52,8 @@ defmodule ApiaryWeb.SettingsLive do
     delete_this_workspace: {:workspace, :general}
   }
 
-  # The pages that are a confirm dialog over General, the organisation's and this
-  # workspace's deletion.
+  # The pages that are General with a danger zone's confirmation expanded, the
+  # organisation's and this workspace's deletion.
   @delete_organisation [:danger, :delete_organisation]
   @delete_this_workspace [:workspace_danger, :delete_this_workspace]
 
@@ -81,75 +83,15 @@ defmodule ApiaryWeb.SettingsLive do
         {section(assigns)}
       </SettingsComponents.layout>
 
+      <%!-- A list row's act has no page to put its confirmation on: it stays a small dialog
+           over Workspaces. --%>
       <.modal
-        :if={@live_action in [:danger, :delete_organisation]}
-        id="delete-organisation-modal"
-        title={gettext("Delete %{name}?", name: @current_scope.organisation.name)}
-        on_cancel={JS.patch(~p"/#{@current_scope.organisation}/settings")}
-      >
-        <p class="text-muted">
-          <.rich text={
-            rich_gettext(
-              "The organisation, its workspaces and everything in them disappear for every member at once, and its access keys stop working. It is purged after %{days}; until then you can cancel the deletion from %{organisations}.",
-              days: days(Deletion.grace_days()),
-              organisations:
-                {:link, ~p"/users/organisations", gettext("your organisations page"), "link"}
-            )
-          } />
-        </p>
-        <.form
-          for={@confirm_form}
-          id="delete-organisation-form"
-          phx-change="confirm"
-          phx-submit="delete_organisation"
-          class="grid gap-4"
-          novalidate
-        >
-          <.input
-            field={@confirm_form[:slug]}
-            type="text"
-            label={
-              gettext("Type the organisation's slug, %{slug}, to confirm",
-                slug: @current_scope.organisation.slug
-              )
-            }
-            autocomplete="off"
-            spellcheck="false"
-            debounce="0"
-          />
-        </.form>
-        <:footer>
-          <.button patch={~p"/#{@current_scope.organisation}/settings"} data-autofocus>
-            {gettext("Cancel")}
-          </.button>
-          <.button
-            id="delete-organisation-confirm"
-            variant="danger"
-            type="submit"
-            form="delete-organisation-form"
-            disabled={@confirm_form[:slug].value != @current_scope.organisation.slug}
-            loading_text={gettext("Deleting")}
-          >
-            {gettext("Delete organisation")}
-          </.button>
-        </:footer>
-      </.modal>
-
-      <.modal
-        :if={
-          @live_action in [:delete_workspace, :workspace_danger, :delete_this_workspace] &&
-            @deleting
-        }
+        :if={@live_action == :delete_workspace && @deleting}
         id="delete-workspace-modal"
         title={gettext("Delete %{name}?", name: @deleting.name)}
         on_cancel={JS.patch(section_path(@current_scope, @live_action))}
       >
-        <p class="text-muted">
-          {gettext(
-            "The workspace disappears at once, with its runs, policy and access keys, which stop working. Its members stay in the organisation. It is purged after %{days}; until then an owner or an admin can cancel the deletion in the organisation's settings.",
-            days: days(Deletion.grace_days())
-          )}
-        </p>
+        <p class="text-muted">{workspace_lost()}</p>
         <.form
           for={@confirm_form}
           id="delete-workspace-form"
@@ -269,19 +211,46 @@ defmodule ApiaryWeb.SettingsLive do
         :if={may?(@current_scope, :"organisation.delete")}
         id="delete-organisation"
         title={gettext("Delete this organisation")}
+        button={gettext("Delete organisation…")}
+        open={@live_action in [:danger, :delete_organisation]}
+        open_path={~p"/#{@current_scope.organisation}/settings/danger"}
+        close_path={~p"/#{@current_scope.organisation}/settings"}
+        form={@confirm_form}
+        change="confirm"
+        submit="delete_organisation"
+        confirm={gettext("Delete organisation")}
+        ready={@confirm_form[:slug].value == @current_scope.organisation.slug}
       >
         {gettext(
           "Its workspaces, runs, access keys, policy, members and activity go with it, for every member at once, and after the purge, %{days} later, nothing brings them back.",
           days: days(Deletion.grace_days())
         )}
-        <:action>
-          <.button
-            id="delete-organisation-button"
-            patch={~p"/#{@current_scope.organisation}/settings/danger"}
-          >
-            {gettext("Delete organisation…")}
-          </.button>
-        </:action>
+        <:lost>
+          <p>
+            <.rich text={
+              rich_gettext(
+                "The organisation, its workspaces and everything in them disappear for every member at once, and its access keys stop working. It is purged after %{days}; until then you can cancel the deletion from %{organisations}.",
+                days: days(Deletion.grace_days()),
+                organisations:
+                  {:link, ~p"/users/organisations", gettext("your organisations page"), "link"}
+              )
+            } />
+          </p>
+        </:lost>
+        <:field>
+          <.input
+            field={@confirm_form[:slug]}
+            type="text"
+            label={
+              gettext("Type the organisation's slug, %{slug}, to confirm",
+                slug: @current_scope.organisation.slug
+              )
+            }
+            autocomplete="off"
+            spellcheck="false"
+            debounce="0"
+          />
+        </:field>
       </SettingsComponents.danger_action>
       <SettingsComponents.danger_action
         :if={!may?(@current_scope, :"organisation.delete")}
@@ -389,6 +358,15 @@ defmodule ApiaryWeb.SettingsLive do
       <SettingsComponents.danger_action
         id="delete-workspace"
         title={gettext("Delete this workspace")}
+        button={if length(@workspaces) > 1, do: gettext("Delete workspace…")}
+        open={@live_action in [:workspace_danger, :delete_this_workspace] && @deleting != nil}
+        open_path={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/danger"}
+        close_path={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings"}
+        form={@confirm_form}
+        change="confirm"
+        submit="delete_workspace"
+        confirm={gettext("Delete workspace")}
+        ready={@deleting != nil && @confirm_form[:slug].value == @deleting.slug}
       >
         {if length(@workspaces) > 1,
           do:
@@ -400,14 +378,23 @@ defmodule ApiaryWeb.SettingsLive do
             gettext(
               "The organisation's only workspace is not deleted on its own: delete the organisation instead."
             )}
-        <:action :if={length(@workspaces) > 1}>
-          <.button
-            id="delete-workspace-button"
-            patch={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/danger"}
-          >
-            {gettext("Delete workspace…")}
-          </.button>
-        </:action>
+        <:lost>
+          <p>{workspace_lost()}</p>
+        </:lost>
+        <:field>
+          <.input
+            field={@confirm_form[:slug]}
+            type="text"
+            label={
+              gettext("Type the workspace's slug, %{slug}, to confirm",
+                slug: @current_scope.workspace.slug
+              )
+            }
+            autocomplete="off"
+            spellcheck="false"
+            debounce="0"
+          />
+        </:field>
       </SettingsComponents.danger_action>
     </SettingsComponents.danger_zone>
     """
@@ -535,7 +522,7 @@ defmodule ApiaryWeb.SettingsLive do
     {:noreply, socket |> assign_section() |> apply_action(socket.assigns.live_action, params)}
   end
 
-  # The section of the page's action: a modal is over its section, and a patch to another
+  # The section of the page's action: a confirmation is on its section, and a patch to another
   # section of the same settings shows that one.
   defp assign_section(socket) do
     {page, section} = Map.fetch!(@sections, socket.assigns.live_action)
@@ -545,8 +532,8 @@ defmodule ApiaryWeb.SettingsLive do
     |> assign(:page_title, page_title(page, section))
   end
 
-  # The organisation's deletion, a dialog over General, for whoever may; anyone else is
-  # sent to General, which says why.
+  # The organisation's deletion, expanded on General, for whoever may; anyone else is sent
+  # to General, which says why.
   defp apply_action(socket, action, _params) when action in @delete_organisation do
     scope = socket.assigns.current_scope
 
@@ -576,7 +563,8 @@ defmodule ApiaryWeb.SettingsLive do
 
   defp apply_action(socket, _page, _params), do: assign(socket, :deleting, nil)
 
-  # The workspace the modal deletes, while it is one of several the reader may delete.
+  # The workspace the confirmation deletes, while it is one of several the reader may
+  # delete.
   defp deleting(socket, workspace) do
     scope = socket.assigns.current_scope
 
@@ -889,7 +877,7 @@ defmodule ApiaryWeb.SettingsLive do
 
   defp workspaces_path(scope), do: ~p"/#{scope.organisation}/settings/workspaces"
 
-  # The section a modal is over, where the page goes back to once the modal is done.
+  # The section a confirmation is on, where the page goes back to once it is done.
   defp section_path(scope, action) when action in @delete_organisation,
     do: ~p"/#{scope.organisation}/settings"
 
@@ -1012,6 +1000,14 @@ defmodule ApiaryWeb.SettingsLive do
       events_days: days(events)
     )
   end
+
+  # What deleting a workspace loses, said by its confirmation.
+  defp workspace_lost,
+    do:
+      gettext(
+        "The workspace disappears at once, with its runs, policy and access keys, which stop working. Its members stay in the organisation. It is purged after %{days}; until then an owner or an admin can cancel the deletion in the organisation's settings.",
+        days: days(Deletion.grace_days())
+      )
 
   defp days(n), do: ngettext("%{number} day", "%{number} days", n, number: Format.number(n))
 

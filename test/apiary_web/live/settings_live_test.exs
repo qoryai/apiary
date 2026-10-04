@@ -328,26 +328,51 @@ defmodule ApiaryWeb.SettingsLiveTest do
       assert has_element?(lv, "#settings-tab-workspaces[aria-current=page]")
       assert has_element?(lv, "#workspace-#{scope.workspace.id}", scope.workspace.name)
 
-      # The danger zone ends General, and its dialog is at a path of its own over it.
+      # The danger zone ends General, and its confirmation expands in place there, at a
+      # path of its own: no dialog.
       {:ok, lv, html} = live(conn, ~p"/#{org}/settings")
       assert has_element?(lv, "#danger-zone h2", "Danger zone")
       assert html =~ ~r/id="owners".*id="danger-zone"/s
 
       assert has_element?(
                lv,
-               "#danger-zone #delete-organisation a#delete-organisation-button[href='#{~p"/#{org}/settings/danger"}']"
+               "#danger-zone #delete-organisation a#delete-organisation-button[href='#{~p"/#{org}/settings/danger"}'][aria-expanded=false]"
              )
 
-      refute has_element?(lv, "#delete-organisation-modal")
+      refute has_element?(lv, "#delete-organisation-form")
 
       lv |> element("#delete-organisation-button") |> render_click()
       assert_patch(lv, ~p"/#{org}/settings/danger")
-      assert has_element?(lv, "#delete-organisation-modal")
+      refute has_element?(lv, "#delete-organisation-modal")
+      assert has_element?(lv, "#danger-zone #delete-organisation #delete-organisation-form")
+      assert has_element?(lv, "#delete-organisation-form", "your organisations page")
+      assert has_element?(lv, "form#delete-organisation-form[phx-mounted]")
+
+      # Its button now folds it, as Cancel does, which gives that button the focus back.
+      assert has_element?(
+               lv,
+               "a#delete-organisation-button[href='#{~p"/#{org}/settings"}'][aria-expanded=true][aria-controls=delete-organisation-form]"
+             )
+
+      assert has_element?(lv, "#delete-organisation-confirm[disabled]", "Delete organisation")
       assert has_element?(lv, "#settings-tab-organisation[aria-current=page]")
       assert has_element?(lv, "h2#settings-section-title", "General")
 
+      cancel = lv |> element("#delete-organisation-cancel") |> render()
+      assert cancel =~ "focus" and cancel =~ "#delete-organisation-button"
+      lv |> element("#delete-organisation-cancel") |> render_click()
+      assert_patch(lv, ~p"/#{org}/settings")
+      refute has_element?(lv, "#delete-organisation-form")
+      assert has_element?(lv, "a#delete-organisation-button[aria-expanded=false]")
+
+      lv |> element("#delete-organisation-button") |> render_click()
+      lv |> element("#delete-organisation-button") |> render_click()
+      assert_patch(lv, ~p"/#{org}/settings")
+      refute has_element?(lv, "#delete-organisation-form")
+
       {:ok, lv, _html} = live(conn, ~p"/#{org}/settings/delete")
-      assert has_element?(lv, "#delete-organisation-modal")
+      assert has_element?(lv, "#delete-organisation-form")
+      refute has_element?(lv, "#delete-organisation-modal")
     end
 
     test "the workspace's list, and a section a page", %{conn: conn, scope: scope} do
@@ -406,8 +431,16 @@ defmodule ApiaryWeb.SettingsLiveTest do
       assert has_element?(lv, "#danger-zone #delete-workspace", "Delete this workspace")
       lv |> element("#delete-workspace-button") |> render_click()
       assert_patch(lv, ~p"/#{org}/#{platform}/settings/danger")
-      assert has_element?(lv, "#delete-workspace-modal")
+      refute has_element?(lv, "#delete-workspace-modal")
+      assert has_element?(lv, "#danger-zone #delete-workspace #delete-workspace-form")
       assert has_element?(lv, "#settings-tab-general[aria-current=page]")
+
+      # The red button waits for the slug.
+      assert has_element?(lv, "#delete-workspace-confirm[disabled]")
+      lv |> form("#delete-workspace-form", confirm: %{slug: "plat"}) |> render_change()
+      assert has_element?(lv, "#delete-workspace-confirm[disabled]")
+      lv |> form("#delete-workspace-form", confirm: %{slug: platform.slug}) |> render_change()
+      refute has_element?(lv, "#delete-workspace-confirm[disabled]")
 
       lv |> form("#delete-workspace-form", confirm: %{slug: platform.slug}) |> render_submit()
       {path, flash} = assert_redirect(lv)
@@ -428,7 +461,7 @@ defmodule ApiaryWeb.SettingsLiveTest do
 
       refute has_element?(lv, "#delete-workspace-button")
 
-      # Its dialog's path says so, and goes back to General.
+      # Its confirmation's path says so, and goes back to General.
       assert {:error, {:live_redirect, %{to: ^general, flash: flash}}} =
                live(conn, general <> "/danger")
 

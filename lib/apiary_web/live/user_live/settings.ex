@@ -3,9 +3,9 @@ defmodule ApiaryWeb.UserLive.Settings do
   A person's own settings, one section a page, whose list is the sidebar of a person's
   pages under Your settings (`ApiaryWeb.Layouts`): Profile, `/users/settings` (`:edit`),
   their email address, their password and, last, its danger zone
-  (`ApiaryWeb.SettingsComponents.danger_zone/1`), deleting their account, confirmed in a
-  modal over it, `/users/settings/delete` (`:delete`), where they type their email to
-  confirm; and Preferences, `/users/settings/preferences` (`:preferences`), their language
+  (`ApiaryWeb.SettingsComponents.danger_zone/1`), deleting their account, confirmed inline
+  in it, its line expanded in place at `/users/settings/delete` (`:delete`), where they
+  type their email to confirm, once nothing stops the deletion; and Preferences, `/users/settings/preferences` (`:preferences`), their language
   and time zone, kept with the account, and the theme and the keyboard shortcuts, reading
   preferences of the browser (`localStorage`), the same theme the account menu sets.
 
@@ -199,22 +199,47 @@ defmodule ApiaryWeb.UserLive.Settings do
       </SettingsComponents.part>
 
       <SettingsComponents.danger_zone :if={@live_action != :preferences}>
-        <SettingsComponents.danger_action id="delete-account" title={gettext("Delete account")}>
+        <SettingsComponents.danger_action
+          id="delete-account"
+          title={gettext("Delete account")}
+          button={gettext("Delete account…")}
+          disabled={@sole_owned != []}
+          open={@live_action == :delete}
+          open_path={~p"/users/settings/delete"}
+          close_path={~p"/users/settings"}
+          form={@confirm_form}
+          change="confirm"
+          submit="delete_account"
+          confirm={gettext("Delete my account")}
+          ready={email_typed?(@confirm_form[:email].value, @current_email)}
+        >
           {gettext(
             "Your email address, password and preferences are erased and you leave every organisation you belong to, which cannot be undone; what you made in a workspace stays there and names you as a former member."
           )}
-          <:action>
-            <.button
-              :if={@sole_owned == []}
-              id="delete-account-button"
-              patch={~p"/users/settings/delete"}
-            >
-              {gettext("Delete account…")}
-            </.button>
-            <.button :if={@sole_owned != []} id="delete-account-button" type="button" disabled>
-              {gettext("Delete account…")}
-            </.button>
-          </:action>
+          <:lost>
+            <p>
+              {gettext(
+                "Your email address, password and preferences are erased at once, you leave every organisation you belong to, and you are logged out everywhere. This cannot be undone: to come back, sign up again, as a new account."
+              )}
+            </p>
+            <p :if={@marked_alone != []} id="delete-account-lost-orphans">
+              {ngettext(
+                "Nobody will be left who can cancel the deletion of the organisation you are the only owner of: it is purged when its grace period is over.",
+                "Nobody will be left who can cancel the deletion of the organisations you are the only owner of: they are purged when their grace period is over.",
+                length(@marked_alone)
+              )}
+            </p>
+          </:lost>
+          <:field>
+            <.input
+              field={@confirm_form[:email]}
+              type="text"
+              label={gettext("Type your email, %{email}, to confirm", email: @current_email)}
+              autocomplete="off"
+              spellcheck="false"
+              debounce="0"
+            />
+          </:field>
         </SettingsComponents.danger_action>
         <div :if={is_nil(@sole_owned)} id="delete-account-loading" aria-busy="true">
           <span class="sr-only">{gettext("Checking the organisations you own")}</span>
@@ -254,56 +279,6 @@ defmodule ApiaryWeb.UserLive.Settings do
           </ul>
         </.notice>
       </SettingsComponents.danger_zone>
-
-      <.modal
-        :if={@live_action == :delete}
-        id="delete-account-modal"
-        title={gettext("Delete your account?")}
-        on_cancel={JS.patch(~p"/users/settings")}
-      >
-        <p class="text-muted">
-          {gettext(
-            "Your email address, password and preferences are erased at once, you leave every organisation you belong to, and you are logged out everywhere. This cannot be undone: to come back, sign up again, as a new account."
-          )}
-        </p>
-        <p :if={@marked_alone != []} id="delete-account-modal-orphans" class="text-muted">
-          {ngettext(
-            "Nobody will be left who can cancel the deletion of the organisation you are the only owner of: it is purged when its grace period is over.",
-            "Nobody will be left who can cancel the deletion of the organisations you are the only owner of: they are purged when their grace period is over.",
-            length(@marked_alone)
-          )}
-        </p>
-        <.form
-          for={@confirm_form}
-          id="delete-account-form"
-          phx-change="confirm"
-          phx-submit="delete_account"
-          class="grid gap-4"
-          novalidate
-        >
-          <.input
-            field={@confirm_form[:email]}
-            type="text"
-            label={gettext("Type your email, %{email}, to confirm", email: @current_email)}
-            autocomplete="off"
-            spellcheck="false"
-            debounce="0"
-          />
-        </.form>
-        <:footer>
-          <.button patch={~p"/users/settings"} data-autofocus>{gettext("Cancel")}</.button>
-          <.button
-            id="delete-account-confirm"
-            variant="danger"
-            type="submit"
-            form="delete-account-form"
-            disabled={!email_typed?(@confirm_form[:email].value, @current_email)}
-            loading_text={gettext("Deleting")}
-          >
-            {gettext("Delete my account")}
-          </.button>
-        </:footer>
-      </.modal>
     </Layouts.app>
     """
   end
