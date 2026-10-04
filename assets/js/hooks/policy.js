@@ -6,7 +6,9 @@
 //                              which a patch alone would leave as the reader typed it
 //   "policy:rule" {host}     scroll to the rule ?rule= points at
 //   keys, while no field has focus:  a  the composer's host field, Add rule while it is shut
-//                                    ?  the list of keys
+//                                    ?  shows or hides the list of keys, a panel in the
+//                                       page (#policy-keys), never an overlay; Escape and
+//                                       its Close hide it
 //   arrows inside a [data-roving] radiogroup move between its radios
 //
 // RuleComposer, on the composer's form: a pasted list of hosts, one per line, goes to the
@@ -30,18 +32,39 @@ export const PolicyPage = {
     this.handleEvent("policy:rule", () => this.reveal())
     this.onKey = e => this.key(e)
     document.addEventListener("keydown", this.onKey)
+    this.onClick = e => {
+      if (e.target.closest?.("[data-keys-close]")) this.keys(false)
+    }
+    this.el.addEventListener("click", this.onClick)
     this.reveal()
   },
 
   destroyed() {
     document.removeEventListener("keydown", this.onKey)
+    this.el.removeEventListener("click", this.onClick)
   },
 
-  // A closing modal gives focus back to what opened it, a frame later: ask after that.
+  // The list of keys, shown or hidden in place. Shown, it takes the focus so that it is
+  // read; hidden from inside, the focus goes back to where it was before.
+  keys(show) {
+    const panel = document.getElementById("policy-keys")
+    if (!panel) return
+    if (show) {
+      this.keysFrom = document.activeElement
+      panel.hidden = false
+      panel.focus({preventScroll: false})
+    } else if (!panel.hidden) {
+      const inside = panel.contains(document.activeElement)
+      panel.hidden = true
+      if (inside && this.keysFrom?.isConnected) this.keysFrom.focus()
+    }
+  },
+
+  // An element drawn by the next patch is not there yet: ask again for a few frames.
   focus(id, tries = 0) {
     requestAnimationFrame(() => {
       const el = document.getElementById(id)
-      if (el && !el.disabled && el.offsetParent !== null && !document.querySelector("dialog[open].modal")) {
+      if (el && !el.disabled && el.offsetParent !== null) {
         el.focus({preventScroll: false})
         if (el.select && el.value) el.select()
       } else if (tries < 12) {
@@ -70,6 +93,11 @@ export const PolicyPage = {
       radios[(at + step + radios.length) % radios.length].focus()
       return
     }
+    if (e.key === "Escape" && !document.querySelector("dialog[open]")) {
+      const panel = document.getElementById("policy-keys")
+      if (panel && !panel.hidden) this.keys(false)
+      return
+    }
     if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || typing(e.target)) return
     if (document.querySelector("dialog[open]") || !singleKeys()) return
     if (e.key === "a") {
@@ -84,9 +112,9 @@ export const PolicyPage = {
       }
     } else if (e.key === "?") {
       const keys = document.getElementById("policy-keys")
-      if (keys?.showModal) {
+      if (keys) {
         e.preventDefault()
-        keys.showModal()
+        this.keys(keys.hidden)
       }
     }
   },

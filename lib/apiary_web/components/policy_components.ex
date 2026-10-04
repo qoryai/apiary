@@ -927,7 +927,15 @@ defmodule ApiaryWeb.PolicyComponents do
     doc: "the views shown, of `:all`, `:allow`, `:deny` and `:locked`"
 
   attr :use_label, :string, default: nil, doc: "the use column's heading; the last 14 days"
+
+  attr :confirming, :any,
+    default: nil,
+    doc: "the id of the rule whose row asks to confirm an act on it (`confirm` slot)"
+
   slot :composer
+
+  slot :confirm,
+    doc: "what the row `confirming` names shows in place of its cells: an `inline_confirm/1`"
 
   def rule_list(assigns) do
     listing = assigns.listing
@@ -1100,17 +1108,26 @@ defmodule ApiaryWeb.PolicyComponents do
                 else: @empty}
             </td>
           </tr>
-          <.rule_line
-            :for={row <- @listing.rows}
-            id={"rule-#{row.id}"}
-            rule={row}
-            source={@source}
-            use?={@seen? or @off?}
-            seen={@seen? && seen_of(@activity, row)}
-            can_lock={@can_lock}
-            fresh={Map.get(@fresh, row.id)}
-            ruled={@ruled_host != nil && @ruled_host == row.host}
-          />
+          <%= for row <- @listing.rows do %>
+            <tr
+              :if={@confirming != nil && @confirming == row.id}
+              id={"rule-#{row.id}"}
+              class="q-pr-row q-confirming"
+            >
+              <td colspan="7" class="q-confirm-cell">{render_slot(@confirm, row)}</td>
+            </tr>
+            <.rule_line
+              :if={@confirming == nil || @confirming != row.id}
+              id={"rule-#{row.id}"}
+              rule={row}
+              source={@source}
+              use?={@seen? or @off?}
+              seen={@seen? && seen_of(@activity, row)}
+              can_lock={@can_lock}
+              fresh={Map.get(@fresh, row.id)}
+              ruled={@ruled_host != nil && @ruled_host == row.host}
+            />
+          <% end %>
         </tbody>
       </table>
     </div>

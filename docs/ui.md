@@ -367,6 +367,31 @@ segmented radio group, a required mode's lock and whose it is, then one sentence
 the mode does and who follows it, and the record of the last 7 days with its link, beside
 the control and never inside it.
 
+The policy pages confirm in place, never over the page:
+
+- **A mode** is asked, never switched at once (a click, or Space or Enter on the radio;
+  `?confirm=enforce` lands asking): a panel under the switch
+  (`PolicyLive.Views.confirm_panel/1`, in `inline_confirm/1`'s look) asks the question,
+  says what the mode denies and in whose runs, and for enforce lists what the last 14 days
+  let through with no rule, each with its Allow; then the act's button and Cancel. Cancel
+  takes the focus as the panel shows; Cancel or Escape gives it back to the mode in force.
+  Another tab leaves the question.
+- **A rule's row** asks for its own acts where they cost something: a Lock that would put
+  a target's own rule out of force, and the Remove of a locked rule or of one a target
+  overrides. The row becomes its `inline_confirm/1` (`rule_list/1`'s `confirming`): the
+  question, what follows, Yes, lock or Yes, remove, and Cancel, which gives the focus back
+  to the row's ⋯. A plain Remove, a Lock that holds nothing back and Unlock act at once
+  and say so.
+- **The keys**: `?` shows and hides the list of the page's keys, a panel at the top of
+  the page (`#policy-keys`), not an overlay; Escape and its Close hide it.
+
+**The export** (`…/policy/versions/:n/export`, and a target's
+`…/-/policy/versions/:n/export`) is a page, not a dialog: the breadcrumb Policy › Version
+n › Export, the title "Export for a node without a server" and what is exported (an h2
+under a target's own title), the policy file with Download and Copy, the command for the
+node and the runner file's egress section, each with Copy, the notes, and Done back to the
+version. Only the version in force is exported; another version's path sends on to it.
+
 - **Views** are the runs list's All, Alive, Ended badly and With denials, and Network
   access's decisions, each counted under every other filter; All is current when no
   other is. A view's own filter is not repeated as a token. The number that matches is a
@@ -861,9 +886,9 @@ the target's page, and `Run 0191f2a4`; the page has no breadcrumb of its own.
   run id, Raw log, Download log). Close run asks in place: the button becomes its
   `inline_confirm/1`, "Close this run?", that a close is final, Yes, close and Cancel,
   never a dialog; Cancel or Escape brings the button back with the focus. The seven
-  cells of v1 are the rail's. A run that ended badly says how under the meta line, in one cut line whole on hover: the last result of
-  its timeline that was no success, else its last failed turn or tool, with "Jump to it",
-  the timeline at that item.
+  cells of v1 are the rail's. A run that ended badly says how under the meta line, in one
+  cut line whole on hover: the last result of its timeline that was no success, else its
+  last failed turn or tool, with "Jump to it", the timeline at that item.
 - **The tabs**, Timeline, Terminal, Network access and, below 1440 px, Details, stick under
   the top bar; each is a live action of the one LiveView, so a tab is a patch.
 - **The Details rail** is key and value lines under small headings (Run, Labels, Command,

@@ -391,6 +391,16 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
       assert Policy.get_mode(scope, target).own == nil
       assert text(view, "#target-mode-enforce") =~ "Enforce github.example/acme/shop"
 
+      # In place under the switch, not a dialog; Cancel gives the focus back to the radio
+      # of the mode as it is.
+      assert has_element?(view, "#policy-target-mode + section#target-mode-enforce")
+      refute has_element?(view, "dialog#target-mode-enforce")
+      assert has_element?(view, "#policy-page section#policy-keys[hidden]")
+      view |> element("#target-mode-enforce-cancel") |> render_click()
+      refute has_element?(view, "#target-mode-enforce")
+      assert_push_event(view, "policy:focus", %{id: "policy-target-mode-follow"})
+      view |> element("#policy-target-mode-enforce") |> render_click()
+
       assert text(view, "#target-mode-enforce") =~
                "The mode becomes this repository's own: it stays enforce"
 
@@ -581,9 +591,17 @@ defmodule ApiaryWeb.PolicyLive.TargetTest do
     assert has_element?(view, "h2", "Version 1")
     assert has_element?(view, "#policy-tabs a[href='#{path}']", "Effective policy")
 
+    # The export is a page of the tab, under the target's own title: an h2, the way back
+    # to the target's policy and the version, and Done to the version.
     view = open(conn, path <> "/versions/1/export")
     assert text(view, "#export-lead") =~ "github.example/acme/shop"
     assert has_element?(view, "#export-download[download='acme-shop-policy.yaml']")
+    assert has_element?(view, "h2#policy-export-h", "Export for a node without a server")
+    refute has_element?(view, "dialog#policy-export")
+    assert has_element?(view, "#export-crumbs a[href='#{path}']", "Policy")
+    assert has_element?(view, "#export-crumbs a[href='#{path}/versions/1']", "Version 1")
+    assert has_element?(view, "#export-done[href='#{path}/versions/1']", "Done")
+    refute has_element?(view, "#policy-tabs")
 
     # The workspace's change is not this target's.
     [workspace_change | _] = Policy.list_changes(scope, nil, 1).items

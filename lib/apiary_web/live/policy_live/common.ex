@@ -603,7 +603,16 @@ defmodule ApiaryWeb.PolicyLive.Common do
      )}
   end
 
-  def handle_event("dialog_cancel", _params, socket), do: {:halt, assign(socket, :dialog, nil)}
+  # A confirm in place is cancelled (Cancel, Escape): the focus goes back to the control
+  # that asked, once it is drawn again.
+  def handle_event("dialog_cancel", params, socket) do
+    socket = assign(socket, :dialog, nil)
+
+    case params do
+      %{"focus" => id} when is_binary(id) and byte_size(id) <= 200 -> {:halt, focus(socket, id)}
+      _ -> {:halt, socket}
+    end
+  end
 
   # The list's search, sent as the reader types and on Enter: a qualifier they typed
   # becomes a token on Enter only, so one half typed is never applied; until then it is

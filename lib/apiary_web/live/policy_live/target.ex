@@ -140,6 +140,13 @@ defmodule ApiaryWeb.PolicyLive.Target do
 
   def handle_params(params, socket) do
     socket = assign(socket, missing: nil, export: nil, params: params, now: DateTime.utc_now())
+
+    # The mode's confirm is in place on the effective policy: another view leaves it.
+    socket =
+      if socket.assigns.action != :rules and match?({:target_mode, _, _}, socket.assigns.dialog),
+        do: assign(socket, :dialog, nil),
+        else: socket
+
     {:noreply, apply_action(socket, socket.assigns.action, params)}
   end
 
@@ -214,7 +221,14 @@ defmodule ApiaryWeb.PolicyLive.Target do
 
         cond do
           action == :export and v.current? ->
-            assign(socket, :export, Common.export(socket, v.configuration))
+            assign(socket,
+              export: Common.export(socket, v.configuration),
+              page_title:
+                gettext("Export · Version %{version} · %{title}",
+                  version: v.configuration.version,
+                  title: title(socket)
+                )
+            )
 
           action == :export ->
             push_patch(socket,
@@ -591,7 +605,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
   content/1 is the tab's content, under the target's page's header and tabs: what the
   policy of the target is, with the version in force and its export; the tab's own
   views (the effective policy, its history, its document); the view of the action; and
-  the dialogs. Its skeleton until the connected mount has read it.
+  the export page. Its skeleton until the connected mount has read it.
   """
   def content(%{loaded: false} = assigns) do
     ~H"""
@@ -607,13 +621,16 @@ defmodule ApiaryWeb.PolicyLive.Target do
     ~H"""
     <div id="policy-page" phx-hook="PolicyPage" class="q-policy grid grid-cols-[minmax(0,1fr)] gap-6">
       <Show.version_head
-        :if={@action in [:version, :export] && @v}
+        :if={@action == :version && @v}
         v={@v}
         base={@base}
         heading="h2"
       />
 
-      <div class="flex flex-wrap items-center justify-between gap-3">
+      <div
+        :if={!(@action == :export && @v)}
+        class="flex flex-wrap items-center justify-between gap-3"
+      >
         <.target_tabs
           action={@action}
           base={@base}
@@ -657,6 +674,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
       </div>
 
       <div id="policy-announce" class="sr-only" role="status" aria-live="polite">{@announce}</div>
+      <.keys_panel />
 
       <.notice :if={@write_error} kind={:error} class="max-w-[80ch]">
         <span id="policy-write-error" role="alert">{@write_error}</span>
@@ -673,7 +691,15 @@ defmodule ApiaryWeb.PolicyLive.Target do
         summary={@summary}
         now={@now}
       />
-      <.version_view :if={@action in [:version, :export] && @v} v={@v} base={@base} now={@now} />
+      <.version_view :if={@action == :version && @v} v={@v} base={@base} now={@now} />
+      <.export_page
+        :if={@action == :export && @v && @export}
+        export={@export}
+        policy={@base}
+        version={@v.configuration.version}
+        done={"#{@base}/versions/#{@v.configuration.version}"}
+        heading="h2"
+      />
       <.empty_state
         :if={@missing}
         tone="neutral"
@@ -698,33 +724,18 @@ defmodule ApiaryWeb.PolicyLive.Target do
         </:actions>
       </.empty_state>
     </div>
-
-    <.keys_dialog />
-    <.target_mode_dialog
-      :if={match?({:target_mode, _, _}, @dialog)}
-      setting={elem(@dialog, 1)}
-      becomes={elem(@dialog, 2)}
-      name={Common.holder_name(%{assigns: %{holder: @holder}})}
-      workspace={@mode.workspace}
-      would={@would}
-      locked_denies={@locked_denies}
-    />
-    <.export_modal
-      :if={@action == :export && @export}
-      export={@export}
-      close={"#{@base}/versions/#{@v.configuration.version}"}
-    />
     """
   end
 
   attr :setting, :string, required: true
   attr :becomes, :string, required: true
+  attr :return, :string, required: true, doc: "the radio of the mode as it is, for Cancel"
   attr :name, :string, required: true
   attr :workspace, :string, required: true
   attr :would, :any, required: true
   attr :locked_denies, :list, required: true
 
-  defp target_mode_dialog(%{becomes: "enforce"} = assigns) do
+  defp target_mode_ask(%{becomes: "enforce"} = assigns) do
     shown = if assigns.would, do: Enum.take(assigns.would.destinations, 8), else: []
 
     left = if assigns.would, do: MapSet.size(assigns.would.open), else: 0
@@ -732,11 +743,10 @@ defmodule ApiaryWeb.PolicyLive.Target do
     assigns = assign(assigns, shown: shown, left: left)
 
     ~H"""
-    <.modal
+    <.confirm_panel
       id="target-mode-enforce"
-      title={gettext("Enforce %{target}", target: @name)}
-      size="lg"
-      on_cancel={JS.push("dialog_cancel")}
+      question={gettext("Enforce %{target}?", target: @name)}
+      return={@return}
     >
       <p class="text-muted">
         <.rich text={mode_lead("enforce")} />
@@ -826,11 +836,11 @@ defmodule ApiaryWeb.PolicyLive.Target do
         {gettext("Enforce will deny these.")}
         {gettext("A destination no run has reached yet is not in this list.")}
       </p>
-      <:footer>
-        <.button phx-click="dialog_cancel" data-autofocus>{gettext("Cancel")}</.button>
+      <:action>
         <.button
           id="target-mode-confirm"
           variant="primary"
+          size="xs"
           phx-click="target_mode_confirm"
           loading_text={gettext("Setting")}
         >
@@ -838,18 +848,17 @@ defmodule ApiaryWeb.PolicyLive.Target do
             do: gettext("Follow the workspace"),
             else: gettext("Enforce this target")}
         </.button>
-      </:footer>
-    </.modal>
+      </:action>
+    </.confirm_panel>
     """
   end
 
-  defp target_mode_dialog(assigns) do
+  defp target_mode_ask(assigns) do
     ~H"""
-    <.modal
+    <.confirm_panel
       id="target-mode-observe"
-      title={gettext("Observe %{target}", target: @name)}
-      size="sm"
-      on_cancel={JS.push("dialog_cancel")}
+      question={gettext("Observe %{target}?", target: @name)}
+      return={@return}
     >
       <p class="text-muted">
         <.rich text={mode_lead("observe")} />
@@ -865,11 +874,11 @@ defmodule ApiaryWeb.PolicyLive.Target do
         <span :if={@locked_denies == []}>{gettext("A deny holds in either mode.")}</span>
         <.rich :if={@locked_denies != []} text={locked_denies_words(@locked_denies)} />
       </p>
-      <:footer>
-        <.button phx-click="dialog_cancel" data-autofocus>{gettext("Cancel")}</.button>
+      <:action>
         <.button
           id="target-mode-confirm"
           variant="danger"
+          size="xs"
           phx-click="target_mode_confirm"
           loading_text={gettext("Setting")}
         >
@@ -877,8 +886,8 @@ defmodule ApiaryWeb.PolicyLive.Target do
             do: gettext("Follow the workspace"),
             else: gettext("Observe this target")}
         </.button>
-      </:footer>
-    </.modal>
+      </:action>
+    </.confirm_panel>
     """
   end
 
@@ -945,6 +954,16 @@ defmodule ApiaryWeb.PolicyLive.Target do
       set={@mode_set}
       can_edit={Common.may?(@current_scope, :"security_policy.set_mode")}
       floor={@mode.floor && %{name: @effective.above.name}}
+    />
+    <.target_mode_ask
+      :if={match?({:target_mode, _, _}, @dialog)}
+      setting={elem(@dialog, 1)}
+      becomes={elem(@dialog, 2)}
+      return={"policy-target-mode-#{@mode.own || "follow"}"}
+      name={Common.holder_name(%{assigns: %{holder: @holder}})}
+      workspace={@mode.workspace}
+      would={@would}
+      locked_denies={@locked_denies}
     />
 
     <p :if={@own == [] && is_nil(@mode.own)} class="q-modeline-p max-w-[90ch]">
