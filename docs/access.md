@@ -314,7 +314,8 @@ for each other and never on each other at once:
 3. **Memberships**: the owners' of the organisation, in the order of their ids
    (`Apiary.Organisations.lock_owners/1`), then any other.
 4. **Accounts.**
-5. **Everything else**: invitations, access keys, runs, and an edition's rows.
+5. **Everything else**: invitations, access keys, nodes, then runs, and an edition's
+   rows.
 
 The modes keep a row that only names another out of it:
 
@@ -365,6 +366,15 @@ The modes keep a row that only names another out of it:
   but a change of a key: the purge's deletion of the row, an account's tombstone, and a
   change an edition locks so, first and alone.
 
+- A node's instance limit is checked under the node's row, `FOR UPDATE`
+  (`Apiary.Nodes.check_instance_limit/3`), before the batch that would create a run
+  locks the run's row: two starts for a node's last slot take turns, and the second
+  counts the first's run and is refused. Clearing an instance (`node.clear_instance`)
+  locks the node's row the same way before it marks the instance's runs lost, so a
+  clearing and a start take turns too. Nothing locks a run and then its node. A node's
+  changes (`node.*`) are owners' and admins' and ask `authorize/3` without holding the
+  organisation, as a rename does.
+
 A few changes lock rows below an organisation without its row first: an account's
 deletion locks its memberships in organisations it does not own, and a workspace's
 deletion locks the organisation's workspaces. None of them then takes an organisation
@@ -378,7 +388,7 @@ organisation.
 
 The races are tested outside the sandbox, on connections that commit
 (`test/apiary/access_races_test.exs`, `deletion_races_test.exs`,
-`sign_up_races_test.exs`, `suspension_races_test.exs`).
+`sign_up_races_test.exs`, `suspension_races_test.exs`, `nodes_races_test.exs`).
 
 ## The page asks the same question
 

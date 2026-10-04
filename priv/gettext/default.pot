@@ -474,6 +474,18 @@ msgstr ""
 msgid "%{index} of %{total}"
 msgstr ""
 
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "%{instance} is cleared."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "%{instance} is cleared: its open run is marked lost."
+msgid_plural "%{instance} is cleared: its %{count} open runs are marked lost."
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{key} leaves focus"
@@ -512,6 +524,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{ms} ms"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} (deleted)"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -1011,6 +1028,13 @@ msgid_plural "%{number} new events."
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} new instance was not recorded: a node records at most 256 new instances a day."
+msgid_plural "%{number} new instances were not recorded: a node records at most 256 new instances a day."
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
@@ -1046,6 +1070,13 @@ msgstr[1] ""
 #, elixir-autogen, elixir-format
 msgid "%{number} observes"
 msgid_plural "%{number} observe"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} open run marked lost"
+msgid_plural "%{number} open runs marked lost"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -1195,6 +1226,13 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "%{number} sets its own mode"
 msgid_plural "%{number} set their own mode"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} start was refused at the instance limit; the last"
+msgid_plural "%{number} starts were refused at the instance limit; the last"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -1450,6 +1488,16 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "%{rule} is unlocked. A target can override it again."
+msgstr ""
+
+#: lib/apiary_web/components/node_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{running} of %{limit} running"
+msgstr ""
+
+#: lib/apiary_web/components/node_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{running} running"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -1959,6 +2007,11 @@ msgstr ""
 msgid "A node cannot change a variable set here; it can only add its own."
 msgstr ""
 
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "A node runs one instance at a time."
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
 msgid "A path starts with / and may end in one *; no other wildcard and no query, such as %{example}."
@@ -2252,6 +2305,11 @@ msgstr ""
 msgid "Actions for %{host}"
 msgstr ""
 
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Actions for %{instance}"
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/access_key_live/index.ex
 #, elixir-autogen, elixir-format
@@ -2469,6 +2527,7 @@ msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/live/connection_live/index.ex
+#: lib/apiary_web/live/node_live/index.ex
 #: lib/apiary_web/live/run_live/index.ex
 #: lib/apiary_web/live/run_live/show.ex
 #: lib/apiary_web/live/target_live/index.ex
@@ -2722,6 +2781,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
 msgid "An argument is at most 256 characters."
+msgstr ""
+
+#: lib/apiary_web/components/node_components.ex
+#, elixir-autogen, elixir-format
+msgid "An instance is what a runner using this node's key reports itself as; anyone with the key can report any instance. Cut off a machine by giving it a node of its own."
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -3164,11 +3228,26 @@ msgstr ""
 msgid "Clear"
 msgstr ""
 
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Clear %{instance}?"
+msgstr ""
+
 #: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/node_live/index.ex
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Clear filters"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Clear instance"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Clear instance…"
 msgstr ""
 
 #: lib/apiary_web/live/activity_live.ex
@@ -3180,6 +3259,21 @@ msgstr ""
 #: lib/apiary_web/live/target_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Clear the search"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Clear this instance if it stopped without saying so. Another instance can then start at once."
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Cleared an instance of a node"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Clearing"
 msgstr ""
 
 #: lib/apiary_web/components/core_components.ex
@@ -4318,6 +4412,11 @@ msgstr ""
 msgid "Every host below %{suffix}, and not %{suffix} itself."
 msgstr ""
 
+#: lib/apiary_web/live/node_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Every node is running now."
+msgstr ""
+
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/live/policy_live/reading.ex
 #: lib/apiary_web/live/policy_live/rule_list.ex
@@ -5002,9 +5101,16 @@ msgstr ""
 msgid "In the workspace's baseline: %{refusal}"
 msgstr ""
 
+#: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/node_live/show.ex
+#: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Instance"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Instance cleared"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -5184,6 +5290,11 @@ msgid "Its %{number} target follows it."
 msgid_plural "All %{number} targets follow it."
 msgstr[0] ""
 msgstr[1] ""
+
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Its open runs are marked lost. If it is in fact still running, its next heartbeat brings its run back, and it counts against the instance limit again."
+msgstr ""
 
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
@@ -5482,8 +5593,11 @@ msgstr ""
 msgid "Last runs"
 msgstr ""
 
+#: lib/apiary_web/components/node_components.ex
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/connection_live/index.ex
+#: lib/apiary_web/live/node_live/index.ex
+#: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Last seen"
 msgstr ""
@@ -6086,8 +6200,7 @@ msgstr ""
 msgid "Never ran"
 msgstr ""
 
-#: lib/apiary_web/live/node_live/index.ex
-#: lib/apiary_web/live/node_live/show.ex
+#: lib/apiary_web/components/node_components.ex
 #, elixir-autogen, elixir-format
 msgid "Never seen"
 msgstr ""
@@ -6364,6 +6477,16 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "No new version: the document did not change."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No node here"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "No node is running now."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/index.ex
@@ -6651,8 +6774,10 @@ msgstr[0] ""
 msgstr[1] ""
 
 #: lib/apiary_web/activity/describer/core.ex
+#: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/node_live/index.ex
 #: lib/apiary_web/live/node_live/show.ex
+#: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Node"
 msgstr ""
@@ -6698,6 +6823,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "None"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "None is running. An instance shows here only while it runs; the last was seen"
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
@@ -6790,6 +6920,11 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Not part of an organisation yet"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Not running"
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
@@ -7060,6 +7195,11 @@ msgstr ""
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Only owners and admins change this."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Only owners and admins clear instances."
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -8123,6 +8263,7 @@ msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/components/target_components.ex
+#: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Run"
@@ -8219,13 +8360,17 @@ msgid "Run timed out."
 msgstr ""
 
 #: lib/apiary_web/live/access_key_live/index.ex
+#: lib/apiary_web/live/node_live/index.ex
+#: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Runner"
 msgstr ""
 
+#: lib/apiary_web/components/node_components.ex
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/components/run_page_components.ex
+#: lib/apiary_web/live/node_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Running"
 msgstr ""
@@ -8239,6 +8384,12 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Running sessions have it within a heartbeat."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/index.ex
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Running since"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -9454,6 +9605,13 @@ msgstr ""
 msgid "The run last reported %{version}."
 msgstr ""
 
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "The run on the runs list"
+msgid_plural "All %{count} runs on the runs list"
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "The run reloaded at #%{seq}."
@@ -9762,6 +9920,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "This list"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "This node has no such instance."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/show.ex
@@ -10303,6 +10466,7 @@ msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/live/connection_live/index.ex
+#: lib/apiary_web/live/node_live/index.ex
 #: lib/apiary_web/live/run_live/index.ex
 #: lib/apiary_web/live/target_live/index.ex
 #, elixir-autogen, elixir-format
@@ -10909,6 +11073,7 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/components/run_page_components.ex
+#: lib/apiary_web/live/node_live/index.ex
 #: lib/apiary_web/live/organisation_live.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
@@ -11344,6 +11509,7 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #: lib/apiary_web/live/access_key_live/index.ex
 #: lib/apiary_web/live/activity_live.ex
+#: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/policy_live/show.ex
 #: lib/apiary_web/live/policy_live/views.ex
 #: lib/apiary_web/live/run_live/show.ex
@@ -11573,9 +11739,16 @@ msgstr ""
 msgid "rules"
 msgstr ""
 
+#: lib/apiary_web/live/node_live/index.ex
+#: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "run %{id}"
+msgstr ""
+
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "runner %{version}"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex

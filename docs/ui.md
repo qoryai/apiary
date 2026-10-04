@@ -466,14 +466,25 @@ is made and never changes. A node is named in a path by its public id, `nd_…` 
 and `np_…` for a pool. The workspace's sidebar has no entry for them yet: the list is
 reached by its path, and the page passes `place={:workspace}`.
 
+- **A node's state** is never Online or Offline (`ApiaryWeb.NodeComponents.node_state/1`).
+  An instance is **running** while it has a run alive by the lost-run check's rule
+  (`Apiary.Runs.Liveness.alive/2`): running means "not yet lost". A Node says
+  "Running"; a pool says "3 of 10 running", or "3 running" without a limit; one that runs
+  nothing says "Last seen" and a time that ticks, or "Never seen" until an instance of it
+  reports.
 - **The list** (`/:org/:workspace/nodes`, width `list`) is on the list pattern (Lists,
   above): one line a node, its name the title with its public id beside it in `q-side`,
-  its kind in words only for a pool ("Pool"; a node, the usual kind, says nothing), and
-  its state, which says "Never seen" until an instance of it reports. One search, `?q=`,
-  words of a name or an id, and the Filter menu's Kind (`?kind=node`, `?kind=pool`), each
-  a token under the bar. Owners and admins have **New node** (primary) and **New node
-  pool** in the header; with no node yet, the empty state offers both, and tells a member
-  that an owner or admin adds nodes.
+  its kind in words only for a pool ("Pool"; a node, the usual kind, says nothing), its
+  state, and from `md` the runner's version it last reported. Under a pool's line, its
+  running instances as indented lines (name, id in `q-side`, "Running since", its run),
+  ten at most, then "and 12 more", which leads to the pool's page; an instance shows only
+  while it runs, and a Node has none, its one instance being its line. The views are
+  All, Running and Not running (`?view=running`, `?view=idle`), counted under the search
+  and the kind; one search, `?q=`, words of a name or an id, and the Filter menu's Kind
+  (`?kind=node`, `?kind=pool`), each a token under the bar; Sort by Name or Last seen
+  (`?sort=seen`: running first, never seen last). Owners and admins have **New node**
+  (primary) and **New node pool** in the header; with no node yet, the empty state
+  offers both, and tells a member that an owner or admin adds nodes.
 - **New node and New node pool** are dialogs over the list at paths of their own,
   `/nodes/new` and `/nodes/new-pool`: a name, and for a pool its instance limit (a whole
   number up to 10,000, or empty for none), with "You can't change the kind later". Adding
@@ -481,16 +492,34 @@ reached by its path, and the page passes `place={:workspace}`.
 - **A node's page** (`/nodes/:node_id`) has a header (the node's name and public id, then
   one muted line: its kind, its state and who made it when) and two tabs, patches of the
   one LiveView, the operational side first and Settings last, set apart at the bar's
-  right end (`<.tabs>` with `end`): **Overview**, its instance (a node) or its running
-  instances (a pool) and its recent runs as far as the record holds them, each saying so
-  while nothing has reported, then About (kind, id, instance limit, who made it), which
-  leads to Settings; and **Settings** (`/nodes/:node_id/settings`), General, whose danger
-  zone's Delete node… opens the confirm dialog at `/nodes/:node_id/settings/delete`.
+  right end (`<.tabs>` with `end`): **Overview**, a Node's instance (running since when,
+  its run and runner, or when it was last seen) or a pool's running instances on the
+  list pattern with "3 of 10 running", the starts refused at the instance limit, the
+  instances past the bound of 256 new ones a day, the sentence that an instance is what a
+  runner using the node's key reports itself as, and its recent runs (`runs.node_id`,
+  for a reader of the record) with the way to all of them on the runs list (`?node=`),
+  each saying so while nothing has reported, then About (kind, id, instance limit, who
+  made it), which leads to Settings; and **Settings** (`/nodes/:node_id/settings`),
+  General, whose danger zone's Delete node… opens the confirm dialog at
+  `/nodes/:node_id/settings/delete`.
   Deleting a node takes it out of the list, frees its name and keeps its runs in the
   record. A node the workspace does not have, or a deleted one, is not found.
-- **Members** read the list and both tabs, without New node, New node pool or the danger
-  zone; Settings shows its fields disabled under one line that says only owners and
-  admins change them, and a dialog's path sends them back with why.
+- **Clear instance** (owners and admins, `node.clear_instance`) is a text action on a
+  Node's running instance and an item of each row's ⋯ menu on a pool's, opening the
+  confirm dialog at `/nodes/:node_id/instances/:instance/clear` (the instance's id): "Clear
+  this instance if it stopped without saying so. Another instance can then start at
+  once." Its open runs are marked lost, which is not final: a heartbeat brings a run
+  back.
+- **Live**: the list and the page read again on `{:nodes_touched, workspace_id}`
+  (`Apiary.Nodes.topic/1`) and on a `{:run_changed, run}` of a run on a node, at most
+  every 250 ms, and every 15 seconds, since an instance stops running without an event.
+- **Where a run ran**: the run page's details say Node (linked, or "(deleted)") and
+  Instance (its name and id) beside Key, and so does the runs list's preview, each only
+  when the run names one; the runs list takes `node:` (a public id, or the name of a node
+  in use) and has a Node column from 1300 px (`q-rl-c5`) where the workspace has nodes.
+- **Members** read the list and both tabs, without New node, New node pool, Clear
+  instance or the danger zone; Settings shows its fields disabled under one line that
+  says only owners and admins change them, and a dialog's path sends them back with why.
 
 ## Widths
 

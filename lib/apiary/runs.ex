@@ -26,6 +26,7 @@ defmodule Apiary.Runs do
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.{Access, Audit}
   alias Apiary.Accounts.Scope
+  alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Workspace, Organisation}
   alias Apiary.Repo
   alias Apiary.Runs.{Connection, Filters, Target, Run}
@@ -634,6 +635,7 @@ defmodule Apiary.Runs do
     |> where_text(:runtime, f.runtime)
     |> where_text(:host, f.host)
     |> where_key(scope, f.key)
+    |> where_node(scope, f.node)
     |> where_query(f.q)
     |> where_if(f.denials, dynamic([r], r.denied_count > 0))
     |> where_if(from, dynamic([r], coalesce(r.started_at, r.inserted_at) >= ^from))
@@ -668,6 +670,21 @@ defmodule Apiary.Runs do
         select: k.id
 
     where(query, [r], r.access_key_id in subquery(keys))
+  end
+
+  # A node by its public id, or by the name of a node in use: a deleted node's runs are
+  # found by its id, since its name may be another's now.
+  defp where_node(query, _scope, nil), do: query
+
+  defp where_node(query, scope, node) do
+    nodes =
+      from n in Node,
+        where:
+          n.organisation_id == ^scope.organisation.id and n.workspace_id == ^scope.workspace.id,
+        where: n.public_id == ^node or (n.name == ^node and is_nil(n.deleted_at)),
+        select: n.id
+
+    where(query, [r], r.node_id in subquery(nodes))
   end
 
   # The free text: the start of the run's id (four hexadecimal characters at least, or a

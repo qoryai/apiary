@@ -27,8 +27,8 @@ defmodule Apiary.Runs.Filters do
   `q` is the free text of the query: the runs whose id starts with it, or whose task or
   target holds it; the destinations whose host or path holds it. `apply_query/3` reads what
   the reader typed: `qualifier:value` words set the filters the URL carries (`repo:` or
-  `target:`, `state:`, `task:`, `runtime:`, `host:`, `key:`, `started:` and `denied:` on the
-  runs list; `repo:`, `host:`, `decision:`, `tools:` and `seen:` on the connections), and
+  `target:`, `state:`, `task:`, `runtime:`, `host:`, `key:`, `node:`, `started:` and
+  `denied:` on the runs list; `repo:`, `host:`, `decision:`, `tools:` and `seen:` on the connections), and
   the other words are `q`. A value in double quotes may hold spaces. A word whose qualifier
   the page does not know is free text; a qualifier it knows with a value it cannot read is
   refused and named. `tokens/2` writes the filters back as those words.
@@ -81,6 +81,7 @@ defmodule Apiary.Runs.Filters do
       "runtime" => :runtime,
       "host" => :host,
       "key" => :key,
+      "node" => :node,
       "started" => :started,
       "denied" => :denied,
       "denials" => :denied
@@ -104,6 +105,7 @@ defmodule Apiary.Runs.Filters do
             runtime: nil,
             host: nil,
             key: nil,
+            node: nil,
             q: nil,
             since: "all",
             from: nil,
@@ -126,6 +128,7 @@ defmodule Apiary.Runs.Filters do
           runtime: nil | String.t(),
           host: nil | String.t(),
           key: nil | String.t(),
+          node: nil | String.t(),
           q: nil | String.t(),
           since: nil | String.t(),
           from: nil | Date.t(),
@@ -237,6 +240,7 @@ defmodule Apiary.Runs.Filters do
         {denials, d12} = read(params, "denials", &if(&1 == "1", do: true))
         {key, d13} = read(params, "key", &text/1)
         {per, d14} = read(params, "per", &per/1)
+        {node, d15} = read(params, "node", &text/1)
 
         %{
           filters
@@ -245,8 +249,9 @@ defmodule Apiary.Runs.Filters do
             runtime: runtime,
             denials: denials == true,
             key: key,
+            node: node,
             per: per || @default_per,
-            dropped: filters.dropped ++ d9 ++ d10 ++ d11 ++ d12 ++ d13 ++ d14
+            dropped: filters.dropped ++ d9 ++ d10 ++ d11 ++ d12 ++ d13 ++ d14 ++ d15
         }
 
       :connections ->
@@ -288,6 +293,7 @@ defmodule Apiary.Runs.Filters do
       {"runtime", f.runtime},
       {"host", f.host},
       {"key", f.key},
+      {"node", f.node},
       {"q", f.q},
       {"since", f.since not in [nil, @default_since[kind]] && f.since},
       {"from", f.from && Date.to_iso8601(f.from)},
@@ -309,7 +315,7 @@ defmodule Apiary.Runs.Filters do
   """
   def any?(%__MODULE__{kind: kind} = f) do
     f.states != [] or f.target != nil or f.task != nil or f.runtime != nil or f.host != nil or
-      f.key != nil or f.q != nil or f.since != @default_since[kind] or f.denials or
+      f.key != nil or f.node != nil or f.q != nil or f.since != @default_since[kind] or f.denials or
       f.decision != nil or f.tools
   end
 
@@ -499,7 +505,7 @@ defmodule Apiary.Runs.Filters do
       else: :error
   end
 
-  defp query_params(name, value, _kind, _resolve) when name in [:runtime, :host, :key] do
+  defp query_params(name, value, _kind, _resolve) when name in [:runtime, :host, :key, :node] do
     if text(value),
       do: {:ok, [Atom.to_string(name)], %{Atom.to_string(name) => value}},
       else: :error
@@ -603,7 +609,7 @@ defmodule Apiary.Runs.Filters do
   @doc """
   The filters as the query writes them, one token each, in the order the page shows them:
   `%{key:, value:, without:}`, `key` the qualifier (`:target`, `:state`, `:task`,
-  `:runtime`, `:host`, `:key`, `:started`, `:denied`, `:decision`, `:tools`), `value` what
+  `:runtime`, `:host`, `:key`, `:node`, `:started`, `:denied`, `:decision`, `:tools`), `value` what
   follows it (quoted when it holds a space), `without` the filters with it removed, nil
   for the connections' widest window, which cannot be. The free text is not a token, nor
   is a default but the connections' window, which is always said. `target_text:` writes a target (by default
@@ -622,6 +628,7 @@ defmodule Apiary.Runs.Filters do
       {:runtime, f.runtime, [runtime: nil]},
       {:host, f.host, [host: nil]},
       {:key, f.key, [key: nil]},
+      {:node, f.node, [node: nil]},
       {:decision, f.decision, [decision: nil]},
       {:started, range_text(f), range_without(f)},
       {:denied, f.denials && "yes", [denials: false]},

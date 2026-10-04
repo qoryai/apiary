@@ -54,6 +54,19 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
   a public key serves one access key, ever, on the instance. Each key's row carries an
   integrity code, checked before the key is trusted. Revoking today's keys is now the
   action `access_key.revoke_secret_key`; nothing else about them changes.
+- A node's instances: what a runner using the node's access key reports itself as, a
+  claim kept for display, the audit and the instance limit, never for authorisation. An
+  instance runs while it has a run the lost-run check holds alive. The Nodes list says
+  each node's state ("Running", "3 of 10 running", "Last seen", "Never seen"), with the
+  views All, Running and Not running, Sort by name or last seen, and a pool's running
+  instances under it; a node's Overview shows its instance or a pool's running
+  instances, the starts refused at the limit, and its recent runs. Owners and admins
+  clear an instance that stopped without saying so (`node.clear_instance`, audited): its
+  open runs are marked lost and another instance can start at once. The runs list takes
+  `node:` and has a Node column from 1300 px; the run page says a run's node and
+  instance. The receiving side records none yet: runs and deliveries name a node and an
+  instance once access keys name their node and requests carry the instance id, and the
+  instance limit is enforced at the ping from then.
 - Access keys, created, rotated and revoked in the console; members at the levels owner,
   admin and member, and the suspension of a member.
 - The audit trail of every change, in the organisation's settings, under Audit log; retention of a
@@ -139,7 +152,12 @@ The baseline, on an empty database: the accounts and their tokens (`users`,
 `instance_settings`) and Oban's.
 
 `nodes`: a workspace's nodes and node pools, with the trigger `nodes_kind_fixed`, which
-refuses a change of a node's kind.
+refuses a change of a node's kind; `nodes.instance_ids_over_bound` and its time.
+
+`node_instances`: a node's instances. `runs.node_id` and `runs.instance_id`,
+`deliveries.instance_id`, all NULL for every existing row; the indexes
+`runs_node_id_instance_id_alive_index` and `runs_workspace_id_node_id_started_index`,
+created concurrently.
 
 `access_keys` gains a node's key's columns (`node_id`, `public_key`, `received_at`,
 `approved_at`, `approved_by_id`, `allow_secrets`, `rate`, `burst`, `arrived_by`,

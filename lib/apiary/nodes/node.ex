@@ -13,7 +13,9 @@ defmodule Apiary.Nodes.Node do
 
   A node is deleted softly: `deleted_at` and `deleted_by_id` are set
   (`Apiary.Nodes.delete_node/2`), it leaves every page, and its name is free again.
-  `instance_limit_refused` and `instance_limit_refused_at` are written outside any
+  `instance_limit_refused` and `instance_limit_refused_at` (the starts refused at the
+  instance limit), and `instance_ids_over_bound` and `instance_ids_over_bound_at` (the
+  instances not recorded past the bound of new ones a day), are written outside any
   changeset.
   """
   use Ecto.Schema
@@ -40,6 +42,8 @@ defmodule Apiary.Nodes.Node do
     field :instance_limit, :integer
     field :instance_limit_refused, :integer, default: 0
     field :instance_limit_refused_at, :utc_datetime_usec
+    field :instance_ids_over_bound, :integer, default: 0
+    field :instance_ids_over_bound_at, :utc_datetime_usec
     field :deleted_at, :utc_datetime_usec
 
     belongs_to :organisation, Apiary.Organisations.Organisation

@@ -38,6 +38,7 @@ defmodule ApiaryWeb.RunLive.Show do
 
   alias Apiary.Access
   alias Apiary.Lingo.Domain
+  alias Apiary.Nodes
   alias Apiary.Policy
   alias Apiary.Runs
   alias Apiary.Runs.{Record, Run}
@@ -343,6 +344,7 @@ defmodule ApiaryWeb.RunLive.Show do
           in_force={@in_force}
           digests={@digests}
           security={@security}
+          instance={@instance}
         />
       </div>
 
@@ -775,6 +777,7 @@ defmodule ApiaryWeb.RunLive.Show do
   attr :in_force, :any, default: nil
   attr :digests, :map, required: true
   attr :security, :boolean, required: true
+  attr :instance, :any, default: nil, doc: "the run's instance's row, for its name"
 
   defp details_rail(assigns) do
     assigns =
@@ -832,6 +835,17 @@ defmodule ApiaryWeb.RunLive.Show do
             <% else %>
               {na()}
             <% end %>
+          </dd>
+          <dt :if={@run.node_id}>{gettext("Node")}</dt>
+          <dd :if={@run.node_id} id="run-node">
+            <.node_name scope={@scope} node={Ecto.assoc_loaded?(@run.node) && @run.node} />
+          </dd>
+          <dt :if={@run.instance_id}>{gettext("Instance")}</dt>
+          <dd :if={@run.instance_id} id="run-instance">
+            <span :if={@instance && @instance.name}>{@instance.name}</span>
+            <span class={["font-mono", @instance && @instance.name && "q-rail-sub"]}>
+              {@run.instance_id}
+            </span>
           </dd>
           <dt :if={@security}>{gettext("Policy")}</dt>
           <dd :if={@security} class="q-kv-policy">
@@ -1195,6 +1209,7 @@ defmodule ApiaryWeb.RunLive.Show do
        window_loaded: false,
        index: Timeline.new(),
        policy: nil,
+       instance: nil,
        target: nil,
        digests: %{in_force: nil, reported: nil, applied: nil, drift: false},
        reported_version: nil,
@@ -1265,6 +1280,7 @@ defmodule ApiaryWeb.RunLive.Show do
             run.target_id != nil and Targets.shared?(scope, run.target_path)
           )
           |> assign_run(run)
+          |> assign(:instance, Nodes.instance_of(scope, run))
 
         if connected?(socket) do
           # Subscribed before the read, so nothing projected after it is missed.
@@ -2377,8 +2393,8 @@ defmodule ApiaryWeb.RunLive.Show do
   end
 
   defp follow_run(%{assigns: %{run: %Run{id: id} = old}} = socket, %Run{id: id} = run) do
-    # The broadcast carries the row; the key it was posted with does not change.
-    run = %{run | access_key: old.access_key}
+    # The broadcast carries the row; the key it was posted with and its node do not change.
+    run = %{run | access_key: old.access_key, node: old.node}
     was_quiet? = socket.assigns.quiet_for != nil
 
     socket

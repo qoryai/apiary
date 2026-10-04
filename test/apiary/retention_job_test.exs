@@ -7,6 +7,7 @@ defmodule Apiary.RetentionJobTest do
   use Apiary.DataCase, async: false
 
   import Apiary.AccessKeysFixtures
+  import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.RunEventsFixtures
   import ExUnit.CaptureLog
@@ -67,6 +68,23 @@ defmodule Apiary.RetentionJobTest do
       assert {:ok, []} = Retention.prune_all(now: @now)
       assert count(Event, run) == 14
       assert Repo.aggregate(RetentionRun, :count) == 0
+    end
+  end
+
+  describe "a node's instances" do
+    test "go when the pages no longer show them, whatever the workspace's setting", %{
+      scope: scope
+    } do
+      pool = pool_fixture(scope)
+      gone = instance_fixture(pool, seen_at: days_ago(2))
+      kept = instance_fixture(pool, seen_at: DateTime.add(@now, -3600, :second))
+
+      assert {:ok, _results} = Retention.prune_all(now: @now, dry_run: true)
+      assert Repo.get(Apiary.Nodes.Instance, gone.id)
+
+      assert {:ok, []} = Retention.prune_all(now: @now)
+      refute Repo.get(Apiary.Nodes.Instance, gone.id)
+      assert Repo.get(Apiary.Nodes.Instance, kept.id)
     end
   end
 

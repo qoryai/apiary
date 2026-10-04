@@ -291,4 +291,34 @@ defmodule Apiary.Runs.LivenessTest do
     assert_receive {:run_changed, %Run{state: "lost"}}, 1000
     assert state(run) == "lost"
   end
+
+  describe "alive/2" do
+    test "holds alive exactly the runs the check would not mark lost", %{scope: scope} do
+      attrs = %{started_at: ago(600), heartbeat_interval_seconds: 10}
+
+      runs = [
+        run_fixture(scope, Map.merge(attrs, %{state: "running", last_heartbeat_at: ago(31)})),
+        run_fixture(scope, Map.merge(attrs, %{state: "running", last_heartbeat_at: ago(30)})),
+        run_fixture(scope, %{state: "running", inserted_at: ago(91)}),
+        run_fixture(scope, %{state: "running", inserted_at: ago(60)}),
+        run_fixture(scope, %{state: "pending", inserted_at: ago(91)}),
+        run_fixture(scope, %{state: "pending", inserted_at: ago(89)}),
+        run_fixture(scope, %{state: "succeeded", inserted_at: ago(1)}),
+        run_fixture(scope, %{state: "lost", inserted_at: ago(1)})
+      ]
+
+      ids = Enum.map(runs, & &1.id)
+
+      alive =
+        from(r in Run, as: :run, where: r.id in ^ids, select: r.id)
+        |> Liveness.alive(@now)
+        |> Repo.all()
+        |> MapSet.new()
+
+      lost = @now |> Liveness.check() |> Enum.map(& &1.id) |> MapSet.new()
+
+      assert alive == MapSet.new(Enum.map([1, 3, 5], &Enum.at(ids, &1)))
+      assert lost == MapSet.new(Enum.map([0, 2, 4], &Enum.at(ids, &1)))
+    end
+  end
 end

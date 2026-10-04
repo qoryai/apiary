@@ -77,6 +77,11 @@ random part of an hour, and prunes every workspace that has a setting.
   than its batch, so the receiver keeps writing while the job runs.
 - One night prunes at most 10,000 runs of a workspace, oldest first, and the next night
   goes on. The first night after a setting is shortened is the long one.
+- Under the same lock, on every workspace whatever its settings, the job deletes the
+  instances of nodes the pages no longer show: a node pool's instances not seen for a
+  day, and a node's instances other than its latest not seen for thirty days. Runs keep
+  the instance id they were started under. The log line is `retention pruned node
+  instances=<count>`, on a night that pruned any.
 - Postgres reuses the space of deleted rows; it does not give it back to the operating
   system. The database's files stop growing, they do not shrink. `VACUUM FULL` or
   `pg_repack` gives the space back, and neither is needed for the instance to work.
