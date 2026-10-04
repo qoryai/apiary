@@ -273,11 +273,15 @@ live key's ⋯ menu. A revoked key stays listed, so the runs it posted keep a na
   breadcrumb ending Rotate key). The secret is held by the page's process alone and
   dropped as soon as the path changes, by Done, the breadcrumb or any other way; no path
   renders it, and opening the page again starts without it.
-- **The confirmations stay small dialogs** over the list, since they confirm a row's act
-  and have no page to stand on: Rotate (`/settings/keys/:id/rotate`), Revoke
-  (`/settings/keys/:id/revoke`) and Retire previous secret (from the rotated key's row).
-  A path the reader may not take, or of a revoked key, sends them back to the list with a
-  flash saying why; a key of another workspace is not found.
+- **A row's act is confirmed in place**, never in a dialog: the key's row becomes its
+  confirmation (`table/1`'s `confirming`, `inline_confirm/1`), the question, one muted
+  sentence of what the act does, its button and Cancel back to the list, which takes the
+  focus (Escape cancels too). Rotate (`/settings/keys/:id/rotate`: "Rotate build-01?",
+  Yes, rotate), Revoke (`/settings/keys/:id/revoke`: "Revoke build-01?", the red Yes,
+  revoke) and Retire previous secret (from the rotated key's row, at no path of its own:
+  Yes, retire). A path shows its row's confirmation and never acts by itself; one row
+  confirms at a time. A path the reader may not take, or of a revoked key, sends them back
+  to the list with a flash saying why; a key of another workspace is not found.
 
 ## Lists
 

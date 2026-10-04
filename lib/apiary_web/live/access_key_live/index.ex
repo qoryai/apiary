@@ -14,8 +14,10 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
     until the reader leaves the page by any way: no path renders it, and a page opened
     again starts without it.
   - **Rotate** (`…/:id/rotate`), **Revoke** (`…/:id/revoke`) and **Retire the previous
-    secret** (from a rotated key's row) are confirmations of a row's act: small dialogs over
-    the list.
+    secret** (from a rotated key's row) are confirmed in place: the key's row becomes the
+    question, what the act does, its button and Cancel back to the list
+    (`CoreComponents.inline_confirm/1`). A path shows its confirmation and never acts by
+    itself.
   """
   use ApiaryWeb, :live_view
 
@@ -118,7 +120,10 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
     """
   end
 
+  # The list. A row's act asks to confirm in place: the row becomes its confirmation.
   def render(assigns) do
+    assigns = assign(assigns, :confirm, confirm_of(assigns))
+
     ~H"""
     <Layouts.app
       flash={@flash}
@@ -171,6 +176,7 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
           rows={@keys}
           row_id={&"key-#{&1.id}"}
           row_class={&(&1.revoked_at && "row-off")}
+          confirming={@confirm && "key-#{elem(@confirm, 1).id}"}
         >
           <:col :let={key} label={gettext("Key")} kind="title">
             <span class="q-nm">
@@ -235,6 +241,9 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
               </.menu_item>
             </.row_menu>
           </:action>
+          <:confirm :let={key}>
+            <.key_confirm act={elem(@confirm, 0)} key={key} scope={@current_scope} />
+          </:confirm>
         </.table>
         <p :if={@keys != []} class="text-[12.5px]/[18px] text-faint">
           {gettext(
@@ -242,73 +251,75 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
           )}
         </p>
       </SettingsComponents.layout>
-
-      <.modal
-        :if={@live_action == :rotate && @key}
-        id="rotate-key"
-        title={gettext("Rotate %{label}", label: @key.label)}
-        on_cancel={
-          JS.patch(~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/keys")
-        }
-      >
-        <p class="text-muted">
-          {gettext(
-            "Rotating issues a new secret and shows it once. The previous secret keeps working until you retire it, so machines can move over one at a time without a gap."
-          )}
-        </p>
-        <:footer>
-          <.button patch={
-            ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/keys"
-          }>{gettext("Cancel")}</.button>
-          <.button variant="primary" phx-click="rotate" loading_text={gettext("Rotating")}>
-            {gettext("Rotate key")}
-          </.button>
-        </:footer>
-      </.modal>
-
-      <.modal
-        :if={@live_action == :revoke && @key}
-        id="revoke-key"
-        title={gettext("Revoke %{label}", label: @key.label)}
-        on_cancel={
-          JS.patch(~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/keys")
-        }
-      >
-        <p class="text-muted">
-          {gettext(
-            "The key stops verifying at once. Machines still using it fail their next request and do not start new runs. This cannot be undone; create a new key to reconnect them."
-          )}
-        </p>
-        <:footer>
-          <.button
-            patch={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/keys"}
-            data-autofocus
-          >{gettext("Cancel")}</.button>
-          <.button variant="danger" phx-click="revoke" loading_text={gettext("Revoking")}>
-            {gettext("Revoke key")}
-          </.button>
-        </:footer>
-      </.modal>
-
-      <.modal
-        :if={@retire_key}
-        id="retire-secret"
-        title={gettext("Retire the previous secret of %{label}", label: @retire_key.label)}
-        on_cancel={JS.push("retire_cancel")}
-      >
-        <p class="text-muted">
-          {gettext(
-            "Only the secret issued at the last rotation keeps working. A machine still on the previous secret fails its next request."
-          )}
-        </p>
-        <:footer>
-          <.button phx-click="retire_cancel">{gettext("Cancel")}</.button>
-          <.button variant="primary" phx-click="retire_confirm" loading_text={gettext("Retiring")}>
-            {gettext("Retire previous secret")}
-          </.button>
-        </:footer>
-      </.modal>
     </Layouts.app>
+    """
+  end
+
+  attr :act, :atom, required: true, values: [:rotate, :revoke, :retire]
+  attr :key, AccessKey, required: true
+  attr :scope, :any, required: true
+
+  # A row's act, confirmed in place of the row's cells: the question, what it does, the
+  # button and Cancel, back to the list (Rotate and Revoke are paths; Retire is not).
+  defp key_confirm(%{act: :rotate} = assigns) do
+    ~H"""
+    <.inline_confirm
+      id={"key-#{@key.id}-confirm"}
+      question={gettext("Rotate %{label}?", label: @key.label)}
+      cancel={keys_path(@scope)}
+    >
+      {gettext(
+        "Rotating issues a new secret and shows it once. The previous secret keeps working until you retire it, so machines can move over one at a time without a gap."
+      )}
+      <:action>
+        <.button variant="primary" size="xs" phx-click="rotate" loading_text={gettext("Rotating")}>
+          {gettext("Yes, rotate")}
+        </.button>
+      </:action>
+    </.inline_confirm>
+    """
+  end
+
+  defp key_confirm(%{act: :revoke} = assigns) do
+    ~H"""
+    <.inline_confirm
+      id={"key-#{@key.id}-confirm"}
+      question={gettext("Revoke %{label}?", label: @key.label)}
+      cancel={keys_path(@scope)}
+    >
+      {gettext(
+        "The key stops verifying at once. Machines still using it fail their next request and do not start new runs. This cannot be undone; create a new key to reconnect them."
+      )}
+      <:action>
+        <.button variant="danger" size="xs" phx-click="revoke" loading_text={gettext("Revoking")}>
+          {gettext("Yes, revoke")}
+        </.button>
+      </:action>
+    </.inline_confirm>
+    """
+  end
+
+  defp key_confirm(%{act: :retire} = assigns) do
+    ~H"""
+    <.inline_confirm
+      id={"key-#{@key.id}-confirm"}
+      question={gettext("Retire the previous secret of %{label}?", label: @key.label)}
+      cancel={JS.push("retire_cancel")}
+    >
+      {gettext(
+        "Only the secret issued at the last rotation keeps working. A machine still on the previous secret fails its next request."
+      )}
+      <:action>
+        <.button
+          variant="primary"
+          size="xs"
+          phx-click="retire_confirm"
+          loading_text={gettext("Retiring")}
+        >
+          {gettext("Yes, retire")}
+        </.button>
+      </:action>
+    </.inline_confirm>
     """
   end
 
@@ -427,7 +438,8 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
   @impl true
   def handle_params(params, _uri, socket) do
     # Every path starts without a secret: one shown is gone once the reader leaves its page.
-    socket = assign(socket, key: nil, reveal: nil, form: nil)
+    # So does a confirmation in place: a path shows its own, or none.
+    socket = assign(socket, key: nil, reveal: nil, form: nil, retire_key: nil)
     {:noreply, socket |> apply_action(socket.assigns.live_action, params) |> titled()}
   end
 
@@ -497,7 +509,7 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
   def handle_event(
         "rotate",
         _params,
-        %{assigns: %{key: %AccessKey{} = key, reveal: nil}} = socket
+        %{assigns: %{live_action: :rotate, key: %AccessKey{} = key, reveal: nil}} = socket
       ) do
     case AccessKeys.rotate_access_key(socket.assigns.current_scope, key) do
       {:ok, key, secret} ->
@@ -548,13 +560,13 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
   # of another workspace's, or of none, finds nothing, and the list is read again.
   def handle_event("retire", %{"id" => id}, socket) do
     case Enum.find(socket.assigns.keys, &(&1.id == id)) do
-      %AccessKey{} = key -> {:noreply, assign(socket, :retire_key, key)}
+      %AccessKey{} = key -> {:noreply, assign(socket, retire_key: key, key: nil)}
       nil -> {:noreply, load_keys(socket)}
     end
   end
 
   def handle_event("retire_cancel", _params, socket) do
-    {:noreply, assign(socket, :retire_key, nil)}
+    {:noreply, socket |> assign(:retire_key, nil) |> to_list()}
   end
 
   def handle_event(
@@ -571,17 +583,18 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
            gettext("The previous secret of %{label} is retired.", label: key.label)
          )
          |> assign(:retire_key, nil)
-         |> load_keys()}
+         |> load_keys()
+         |> to_list()}
 
       {:error, reason} when reason in [:forbidden, :not_found] ->
         {:noreply, unauthorized(socket)}
     end
   end
 
-  # A rotation, a revocation or a retirement without its modal open: a second click of a
-  # button whose modal has closed, or a rotation once its new secret is shown. One who may
-  # take the action is shown the list again; one who may not is refused, as a path the
-  # page offers no button for is.
+  # A rotation, a revocation or a retirement without its row asking to confirm it: a second
+  # click of a button whose confirmation is gone, or a rotation once its new secret is
+  # shown. One who may take the action is shown the list again; one who may not is
+  # refused, as a path the page offers no button for is.
   def handle_event(event, _params, socket) when event in ~w(rotate revoke retire_confirm) do
     scope = socket.assigns.current_scope
     action = if event == "revoke", do: :"access_key.revoke_secret_key", else: :"access_key.rotate"
@@ -595,6 +608,21 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
 
   defp keys_path(%{organisation: organisation, workspace: workspace}),
     do: ~p"/#{organisation}/#{workspace}/settings/keys"
+
+  # The row asking to confirm an act on it, if one is: the retirement asked for on the
+  # list, or the rotation or revocation of the path.
+  defp confirm_of(%{retire_key: %AccessKey{} = key}), do: {:retire, key}
+
+  defp confirm_of(%{live_action: action, key: %AccessKey{} = key, reveal: nil})
+       when action in [:rotate, :revoke],
+       do: {action, key}
+
+  defp confirm_of(_assigns), do: nil
+
+  # A retirement asked for over a rotation's or a revocation's path leaves that path once
+  # it is answered.
+  defp to_list(%{assigns: %{live_action: :index}} = socket), do: socket
+  defp to_list(socket), do: push_patch(socket, to: keys_path(socket))
 
   # The title of a page of the section: the act and what it acts on.
   defp page_title(%{reveal: %{}, live_action: :new}), do: gettext("Your new access key")

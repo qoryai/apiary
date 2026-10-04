@@ -200,17 +200,20 @@ defmodule ApiaryWeb.AccessKeyLive.IndexTest do
         ~p"/#{scope.organisation}/#{scope.workspace}/settings/keys/#{key.id}/rotate"
       )
 
+      # The rotation is confirmed in place: the key's row asks, no dialog. The path alone
+      # does not rotate.
+      refute has_element?(lv, "#rotate-key")
+      assert has_element?(lv, "#key-#{key.id}.q-confirming #key-#{key.id}-confirm")
+      assert has_element?(lv, "#key-#{key.id}-confirm-question", "Rotate runner-a?")
       assert render(lv) =~ "keeps working"
+      assert AccessKey.status(AccessKeys.get_access_key!(scope, key.id)) == :active
 
-      # The rotation is a confirmation over the list: a small dialog.
-      assert has_element?(lv, "dialog#rotate-key")
-
-      html = lv |> element("#rotate-key button", "Rotate key") |> render_click()
+      html = lv |> element("#key-#{key.id}-confirm button", "Yes, rotate") |> render_click()
       assert [_, new_secret] = Regex.run(@secret, html)
       assert new_secret != secret
 
       # The new secret is shown on the page, as a new key's is: no dialog.
-      refute has_element?(lv, "#rotate-key")
+      refute has_element?(lv, "#key-#{key.id}-confirm")
       refute has_element?(lv, "#reveal-key")
       assert has_element?(lv, "#settings-section-title", "New secret for runner-a")
       assert has_element?(lv, "#breadcrumb [aria-current=page]", "Rotate key")
@@ -225,11 +228,18 @@ defmodule ApiaryWeb.AccessKeyLive.IndexTest do
       refute html =~ new_secret
       assert AccessKey.status(AccessKeys.get_access_key!(scope, key.id)) == :rotating
 
+      # Retiring is confirmed in place too, and Cancel leaves the row as it was.
       lv |> element("#key-#{key.id} button", "Retire previous secret") |> render_click()
-      assert has_element?(lv, "dialog#retire-secret")
+      refute has_element?(lv, "#retire-secret")
+      assert has_element?(lv, "#key-#{key.id}.q-confirming #key-#{key.id}-confirm")
       assert render(lv) =~ "Only the secret issued at the last rotation keeps working"
 
-      html = lv |> element("#retire-secret button", "Retire previous secret") |> render_click()
+      lv |> element("#key-#{key.id}-confirm-cancel") |> render_click()
+      refute has_element?(lv, "#key-#{key.id}-confirm")
+      assert has_element?(lv, "#key-#{key.id}-state", "Rotated")
+
+      lv |> element("#key-#{key.id} button", "Retire previous secret") |> render_click()
+      html = lv |> element("#key-#{key.id}-confirm button", "Yes, retire") |> render_click()
       assert html =~ "is retired"
       refute has_element?(lv, "#key-#{key.id}-state")
       assert AccessKey.status(AccessKeys.get_access_key!(scope, key.id)) == :active
@@ -247,10 +257,13 @@ defmodule ApiaryWeb.AccessKeyLive.IndexTest do
         ~p"/#{scope.organisation}/#{scope.workspace}/settings/keys/#{key.id}/revoke"
       )
 
-      assert has_element?(lv, "dialog#revoke-key")
+      refute has_element?(lv, "#revoke-key")
+      assert has_element?(lv, "#key-#{key.id}.q-confirming #key-#{key.id}-confirm")
+      assert has_element?(lv, "#key-#{key.id}-confirm-question", "Revoke runner-b?")
       assert render(lv) =~ "stops verifying at once"
+      refute AccessKeys.get_access_key!(scope, key.id).revoked_at
 
-      lv |> element("#revoke-key button", "Revoke key") |> render_click()
+      lv |> element("#key-#{key.id}-confirm button", "Yes, revoke") |> render_click()
       assert_patch(lv, ~p"/#{scope.organisation}/#{scope.workspace}/settings/keys")
 
       html = render(lv)
@@ -270,6 +283,50 @@ defmodule ApiaryWeb.AccessKeyLive.IndexTest do
                )
     end
 
+    test "Cancel takes a row's confirmation back to the list", %{conn: conn, scope: scope} do
+      %{access_key: key} = access_key_fixture(scope, label: "runner-e")
+      keys = workspace_path(scope, "/settings/keys")
+
+      for act <- ["rotate", "revoke"] do
+        {:ok, lv, _html} =
+          live(conn, workspace_path(scope, "/settings/keys/#{key.id}/#{act}"))
+
+        assert has_element?(lv, "#key-#{key.id}.q-confirming")
+        assert has_element?(lv, "#key-#{key.id}-confirm-cancel", "Cancel")
+
+        lv |> element("#key-#{key.id}-confirm-cancel") |> render_click()
+        assert_patch(lv, keys)
+        refute has_element?(lv, "#key-#{key.id}.q-confirming")
+        assert has_element?(lv, "#key-#{key.id}-menu")
+      end
+
+      assert AccessKey.status(AccessKeys.get_access_key!(scope, key.id)) == :active
+    end
+
+    test "one row confirms at a time: retiring over a rotation's path leaves it", %{
+      conn: conn,
+      scope: scope
+    } do
+      %{access_key: rotated} = access_key_fixture(scope, label: "runner-f")
+      {:ok, _, _} = AccessKeys.rotate_access_key(scope, rotated)
+      %{access_key: other} = access_key_fixture(scope, label: "runner-g")
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/keys/#{other.id}/rotate")
+
+      assert has_element?(lv, "#key-#{other.id}.q-confirming")
+
+      lv |> element("#key-#{rotated.id} button", "Retire previous secret") |> render_click()
+      assert has_element?(lv, "#key-#{rotated.id}.q-confirming")
+      refute has_element?(lv, "#key-#{other.id}.q-confirming")
+
+      lv |> element("#key-#{rotated.id}-confirm button", "Yes, retire") |> render_click()
+      assert_patch(lv, workspace_path(scope, "/settings/keys"))
+      refute has_element?(lv, ".q-confirming")
+      assert AccessKey.status(AccessKeys.get_access_key!(scope, rotated.id)) == :active
+      assert AccessKey.status(AccessKeys.get_access_key!(scope, other.id)) == :active
+    end
+
     test "a page whose membership is gone is refused and sent to /", %{
       conn: conn,
       scope: scope
@@ -282,7 +339,7 @@ defmodule ApiaryWeb.AccessKeyLive.IndexTest do
       # Removed behind the page's back: no announcement reaches it.
       Apiary.Repo.delete!(scope.membership)
 
-      lv |> element("#revoke-key button", "Revoke key") |> render_click()
+      lv |> element("#key-#{key.id}-confirm button", "Yes, revoke") |> render_click()
       {path, flash} = assert_redirect(lv)
       assert path == ~p"/"
       assert flash["error"] =~ "no longer a member"
