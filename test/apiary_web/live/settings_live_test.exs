@@ -354,18 +354,21 @@ defmodule ApiaryWeb.SettingsLiveTest do
       base = ~p"/#{scope.organisation}/#{scope.workspace}/settings"
       {:ok, lv, _html} = live(conn, base <> "/runs")
 
-      sections = [
-        general: base,
-        people: base <> "/people",
-        keys: base <> "/keys",
-        runs: base <> "/runs"
-      ]
+      sections =
+        [
+          general: base,
+          people: base <> "/people",
+          keys: base <> "/keys",
+          runs: base <> "/runs"
+        ] ++
+          if(Apiary.Features.on?(:security), do: [secrets: base <> "/secrets"], else: [])
 
       for {key, path} <- sections do
         assert has_element?(lv, ~s(#settings-tabs #settings-tab-#{key}[href="#{path}"]))
       end
 
-      # In that order: General, People, Access keys, Runs.
+      # In that order: General, People, Access keys, Runs, and, with the `security`
+      # feature, Secrets and variables.
       assert lv
              |> element("#settings-tabs")
              |> render()
