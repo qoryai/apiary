@@ -7,13 +7,17 @@ defmodule ApiaryWeb.MemberLive.Index do
   Owners change levels, and remove anyone; admins remove members only, and change no
   level; owners and admins invite; anyone may leave. An invitation is an email address
   and nothing else: it is sent from the workspace the page carries, grants it, and its
-  person joins as a member. Members see the page read-only. What each may is asked of
+  person joins as a member. Inviting is a page of the section,
+  `/:org/settings/people/invite`, as Add integration is (its title, one sentence, the form
+  in the section's column, its button and Cancel back to People); a sent invitation goes
+  back to People with a flash. Members see the page read-only. What each may is asked of
   `Apiary.Access`.
 
   Each person is one row on the row spec (`docs/ui.md`, Lists): the email is the title,
   the level is plain text, and what a reader may do to a membership is in its ⋯ menu:
   the level, as a choice of three with what each may do, suspending, activating and
-  removing, each of the last three but activating confirmed in a dialog at its own path.
+  removing, each of the last three but activating confirmed in a small dialog over the list
+  at its own path: a row's act with nothing to choose but whether to go on.
 
   An edition adds to the page through its slots (`ApiaryWeb.Extension`): under its title
   (`:members_heading`), beside each member's name (`:member_access`) and among the items
@@ -31,6 +35,72 @@ defmodule ApiaryWeb.MemberLive.Index do
   alias ApiaryWeb.{SettingsComponents, UserAuth}
 
   @impl true
+  # Inviting is a page of the section, as Add integration is: the section's list beside
+  # it, the breadcrumb ending with People and the page, its title, one sentence, the form
+  # in the section's column, its button and Cancel back to People.
+  def render(%{page: :invite} = assigns) do
+    ~H"""
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      memberships={@memberships}
+      counts={@nav_counts}
+      nav={:members}
+    >
+      <:crumb navigate={~p"/#{@current_scope.organisation}/settings"}>
+        {gettext("Settings")}
+      </:crumb>
+      <:crumb navigate={~p"/#{@current_scope.organisation}/settings/people"}>
+        {gettext("People")}
+      </:crumb>
+      <:crumb>{gettext("Invite people")}</:crumb>
+
+      <SettingsComponents.layout
+        scope={@current_scope}
+        counts={@nav_counts}
+        kind={:organisation}
+        sections={@sections}
+        current={:people}
+        title={gettext("Invite people")}
+      >
+        <:subtitle>
+          {gettext(
+            "We email them a link that works for seven days and brings them into %{workspace} as a member; an owner can change their level afterwards.",
+            workspace: @current_scope.workspace.name
+          )}
+        </:subtitle>
+        <.form
+          for={@form}
+          id="invitation-form"
+          phx-change="validate_invite"
+          phx-submit="invite"
+          class="grid gap-4"
+          novalidate
+        >
+          <.input
+            field={@form[:email]}
+            type="email"
+            label={gettext("Email")}
+            placeholder={gettext("dana@example.com")}
+            autocomplete="off"
+            spellcheck="false"
+            required
+            phx-mounted={JS.focus()}
+          />
+          <SettingsComponents.save
+            id="invitation-save"
+            cancel={~p"/#{@current_scope.organisation}/settings/people"}
+          >
+            <.button variant="primary" type="submit" loading_text={gettext("Sending")}>
+              {gettext("Send invitation")}
+            </.button>
+          </SettingsComponents.save>
+        </.form>
+      </SettingsComponents.layout>
+    </Layouts.app>
+    """
+  end
+
   def render(assigns) do
     ~H"""
     <Layouts.app
@@ -249,49 +319,6 @@ defmodule ApiaryWeb.MemberLive.Index do
       </SettingsComponents.layout>
 
       <.modal
-        :if={@live_action == :invite}
-        id="invite-member"
-        title={gettext("Invite a member")}
-        on_cancel={JS.patch(~p"/#{@current_scope.organisation}/settings/people")}
-      >
-        <p class="text-muted">
-          {gettext(
-            "We email an invitation link. It works for seven days and brings the person into %{workspace} as a member when they accept. An owner can change their level afterwards.",
-            workspace: @current_scope.workspace && @current_scope.workspace.name
-          )}
-        </p>
-        <.form
-          for={@form}
-          id="invitation-form"
-          phx-change="validate_invite"
-          phx-submit="invite"
-          class="grid gap-4"
-          novalidate
-        >
-          <.input
-            field={@form[:email]}
-            type="email"
-            label={gettext("Email")}
-            placeholder={gettext("dana@example.com")}
-            autocomplete="off"
-            spellcheck="false"
-            required
-          />
-        </.form>
-        <:footer>
-          <.button patch={~p"/#{@current_scope.organisation}/settings/people"}>{gettext("Cancel")}</.button>
-          <.button
-            variant="primary"
-            type="submit"
-            form="invitation-form"
-            loading_text={gettext("Sending")}
-          >
-            {gettext("Send invitation")}
-          </.button>
-        </:footer>
-      </.modal>
-
-      <.modal
         :if={@live_action == :remove && @member}
         id="remove-member"
         title={
@@ -413,6 +440,8 @@ defmodule ApiaryWeb.MemberLive.Index do
      socket
      |> assign(
        page_title: gettext("People") <> " · " <> gettext("Organisation settings"),
+       page: nil,
+       form: nil,
        member: nil
      )
      |> load()}
@@ -420,8 +449,22 @@ defmodule ApiaryWeb.MemberLive.Index do
 
   @impl true
   def handle_params(params, _uri, socket) do
-    {:noreply, apply_action(socket, socket.assigns.live_action, params)}
+    socket = assign(socket, page: nil, form: nil)
+    {:noreply, socket |> apply_action(socket.assigns.live_action, params) |> titled()}
   end
+
+  # The browser's title: Invite people is named by its act, the rest by the section.
+  defp titled(%{assigns: %{page: :invite}} = socket),
+    do:
+      assign(
+        socket,
+        :page_title,
+        gettext("Invite people") <> " · " <> gettext("Organisation settings")
+      )
+
+  defp titled(socket),
+    do:
+      assign(socket, :page_title, gettext("People") <> " · " <> gettext("Organisation settings"))
 
   defp apply_action(socket, :index, params),
     do: socket |> assign(:member, nil) |> find(params["q"])
@@ -432,6 +475,7 @@ defmodule ApiaryWeb.MemberLive.Index do
     if Access.can?(scope, :"member.invite", scope.workspace) do
       socket
       |> assign(:member, nil)
+      |> assign(:page, :invite)
       |> assign(:form, to_form(Organisations.change_invitation()))
     else
       refused(socket)

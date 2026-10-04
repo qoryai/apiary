@@ -62,6 +62,31 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
       lv |> element("#invite-people") |> render_click()
       assert_patch(lv, ~p"/#{scope.organisation}/settings/people/invite")
 
+      # A page of the section, not a dialog over the list: the section's list beside it,
+      # the breadcrumb ending with People and the page, Cancel back to People.
+      people = ~p"/#{scope.organisation}/settings/people"
+      refute has_element?(lv, "#invite-member")
+      refute has_element?(lv, "#members")
+      assert has_element?(lv, "#settings-tab-people[aria-current=page]")
+      assert has_element?(lv, "#settings-section-title", "Invite people")
+      assert has_element?(lv, "#breadcrumb a[href='#{people}']", "People")
+      assert has_element?(lv, "#breadcrumb [aria-current=page]", "Invite people")
+      assert has_element?(lv, "#invitation-form input[type=email][phx-mounted]")
+      assert has_element?(lv, "#invitation-save button[type=submit]", "Send invitation")
+      assert has_element?(lv, "#invitation-save-cancel[href='#{people}']", "Cancel")
+      assert page_title(lv) =~ "Invite people"
+
+      # Cancel goes back to People, sending nothing.
+      lv |> element("#invitation-save-cancel") |> render_click()
+      assert_patch(lv, people)
+      assert has_element?(lv, "#members")
+      assert page_title(lv) =~ "People"
+      refute page_title(lv) =~ "Invite"
+      assert Organisations.list_invitations(scope) == []
+
+      lv |> element("#invite-people") |> render_click()
+      assert_patch(lv, ~p"/#{scope.organisation}/settings/people/invite")
+
       lv
       |> form("#invitation-form", invitation: %{email: "bee@example.com"})
       |> render_submit()
@@ -87,8 +112,10 @@ defmodule ApiaryWeb.MemberLive.IndexTest do
         |> form("#invitation-form", invitation: %{email: user.email})
         |> render_submit()
 
+      # A refused invitation stays on the page, the error under its field.
       assert html =~ "already a member"
       assert has_element?(lv, "#invitation-form")
+      assert has_element?(lv, "#settings-section-title", "Invite people")
       assert Organisations.list_invitations(scope) == []
     end
 

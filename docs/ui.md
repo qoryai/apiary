@@ -113,7 +113,11 @@ navigation it is in.
 - **An organisation's** (`/:org/settings/…`), from the organisation's pages (the
   breadcrumb's organisation leads to its overview, whose sidebar has Settings): General
   (name, slug, owners, and its danger zone), People (`/settings/people`: members,
-  found by their email with Find a person, `?q=`; invitations, suspensions), Workspaces
+  found by their email with Find a person, `?q=`; invitations, suspensions; Invite
+  people, the section's action, is a page of it at `/settings/people/invite` (A form is a
+  page, below), its one field the email address, and a sent invitation goes back to
+  People with a flash; removing, leaving and suspending, each from a member's ⋯ menu, are
+  dialogs), Workspaces
   (owners and admins; each with its targets, `Apiary.Targets.count_by_workspace/1`;
   `SettingsComponents.workspace_list/1`, which an edition's page over the same list
   renders too, with the edition's way of adding one in the section's actions, the
@@ -180,8 +184,9 @@ says why in place of the button: the instance's own organisation, the organisati
 workspace. A reader who may not delete the scope sees no danger zone, and the dialog's
 path sends them to General and says why.
 
-Invite, rotate, revoke, remove, suspend and the deletions stay dialogs over their
-section, each at a path of its own. The old paths, `/:org/members/…`,
+Rotate, revoke, remove, suspend and the deletions stay dialogs over their section, each
+at a path of its own: an act on a row of a list, with nothing to choose but whether to go
+on. The old paths, `/:org/members/…`,
 `/:org/:workspace/keys/…` and `/:org/:workspace/settings/retention`, send on to the new
 ones (`ApiaryWeb.MovedController`).
 
