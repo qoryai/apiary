@@ -184,23 +184,27 @@ account…. No box, and never an entry of a list. **Its confirmation is inline, 
 dialog**: the button is a patch to a path of the act's own, `/:org/settings/danger`,
 `/:org/:workspace/settings/danger`, `/users/settings/delete` and a node's
 `/nodes/:node_id/settings/delete` (the older `/…/settings/delete` paths open the same),
-and there the line expands in place under its sentence, set apart by a rule in the error
-colour at its left: what is lost, the field asked to confirm where there is one (the
-slug, or for the account its email, the red button disabled until it matches), then the
-red button, Delete organisation, Delete workspace, Delete my account or Delete node, with
-Cancel beside it. The first field takes the focus, or the red button where there is none;
-the line's own button then folds it (`aria-expanded`), and Cancel, a patch back to the
-page, gives that button the focus back. Where the act is not there, the line says why in
-place of the button: the instance's own organisation, the organisation's only workspace;
-where something stops it for now, the button is disabled and the page says what under the
-line (the organisations a person is the only owner of). A reader who may not delete the
-scope sees no danger zone, and the act's path sends them to General and says why.
+and there the line expands in place under its sentence
+(`SettingsComponents.deletion_confirm/1`), set apart by a rule in the error colour at its
+left: what is lost, the field asked to confirm where there is one (the slug, or for the
+account its email), then the question, Delete Acme?, with its red button, Yes, delete,
+disabled until the field matches, and Cancel beside it (`<.inline_confirm>`). The field
+takes the focus, or Cancel where there is none to type (a node's); the line's own button
+then folds it (`aria-expanded`), and Cancel and Escape, a patch back to the page, give
+that button the focus back. Where the act is not there, the line says why in place of the
+button: the instance's own organisation, the organisation's only workspace; where
+something stops it for now, the button is disabled and the page says what under the line
+(the organisations a person is the only owner of). A reader who may not delete the scope
+sees no danger zone, and the act's path sends them to General and says why.
 
-A row's act in a list (rotate, revoke, remove, suspend, a deletion) is confirmed on its
-row, in place, each at a path of its own (Confirmations, under Components). The old paths,
-`/:org/members/…`,
-`/:org/:workspace/keys/…` and `/:org/:workspace/settings/retention`, send on to the new
-ones (`ApiaryWeb.MovedController`).
+Deleting any workspace from Workspaces is confirmed the same way in its row
+(`/:org/settings/workspaces/:workspace_id/delete`): the row shows the confirmation in
+place of its cells, its slug typed to enable Yes, delete, and Cancel gives the row back.
+Every other act on a row of a list (rotate, revoke, remove, suspend, a deletion) is
+confirmed on its row too, each at a path of its own (Confirmations, under Components).
+The old paths, `/:org/members/…`, `/:org/:workspace/keys/…` and
+`/:org/:workspace/settings/retention`, send on to the new ones
+(`ApiaryWeb.MovedController`).
 
 An organisation's own path, `/:org`, is its overview (`ApiaryWeb.OrganisationLive`): the
 workspaces the person reaches, what each is doing, and the organisation's people; its
@@ -589,16 +593,17 @@ reached by its path, and the page passes `place={:workspace}`.
   made it), which leads to Settings; and **Settings** (`/nodes/:node_id/settings`),
   General, whose danger zone's Delete node… (Delete node pool… for a pool) expands its
   confirmation in place (Settings, The danger zone) at `/nodes/:node_id/settings/delete`:
-  what is lost, then Delete node and Cancel, no field to type, the red button taking the
-  focus.
+  what is lost, then Delete build-01? with Yes, delete and Cancel, no field to type, Cancel
+  taking the focus.
   Deleting a node takes it out of the list, frees its name and keeps its runs in the
   record. A node the workspace does not have, or a deleted one, is not found.
 - **Clear instance** (owners and admins, `node.clear_instance`) is a text action on a
-  Node's running instance and an item of each row's ⋯ menu on a pool's, opening a small
-  confirm dialog, since a row's act has no page to put its confirmation on, at
-  `/nodes/:node_id/instances/:instance/clear` (the instance's id): "Clear this instance if
-  it stopped without saying so. Another instance can then start at once." Its open runs
-  are marked lost, which is not final: a heartbeat brings a run back.
+  Node's running instance and an item of each row's ⋯ menu on a pool's; at
+  `/nodes/:node_id/instances/:instance/clear` (the instance's id) that line, or that row in
+  place of its cells, is the confirmation, no dialog (`<.inline_confirm>`): "Clear
+  build-01? Clear this instance if it stopped without saying so. Another instance can then
+  start at once." with Yes, clear and Cancel; an instance that does not run now confirms at
+  the top of the instances. Its open runs are marked lost, which is not final: a heartbeat brings a run back.
 - **Live**: the list and the page read again on `{:nodes_touched, workspace_id}`
   (`Apiary.Nodes.topic/1`) and on a `{:run_changed, run}` of a run on a node, at most
   every 250 ms, and every 15 seconds, since an instance stops running without an event.
@@ -608,8 +613,8 @@ reached by its path, and the page passes `place={:workspace}`.
   in use) and has a Node column from 1300 px (`q-rl-c5`) where the workspace has nodes.
 - **Members** read the list and both tabs, without New node, New node pool, Clear
   instance or the danger zone; Settings shows its fields disabled under one line that
-  says only owners and admins change them, and the deletion's or a dialog's path sends
-  them back with why.
+  says only owners and admins change them, and the deletion's or the clearing's path
+  sends them back with why.
 
 ## Widths
 

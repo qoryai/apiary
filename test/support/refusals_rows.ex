@@ -127,9 +127,9 @@ defmodule ApiaryWeb.RefusalsRows do
        %{"id" => :organisation_id}, setup: :organisation_marked},
       {:"organisation.restore", :other_owner, "/users/organisations", "restore",
        %{"id" => :organisation_id}, setup: :organisation_marked, answer: :not_found},
-      # A member's page never holds a workspace to delete, since its modal opens only for
-      # one who may: the event is answered as for a workspace that is gone, and the
-      # context is not asked. The demoted admin's row below is the one that reaches it.
+      # A member's page never holds a workspace to delete, since its confirmation opens
+      # only for one who may: the event is answered as for a workspace that is gone, and
+      # the context is not asked. The demoted admin's row below is the one that reaches it.
       {:"workspace.delete", :member, "/:org/settings", "delete_workspace",
        %{"confirm" => %{"slug" => :workspace_b}}},
       {:"workspace.delete", :demoted_admin, "/:org/settings/workspaces/:workspace_b_id/delete",

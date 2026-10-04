@@ -2293,16 +2293,23 @@
   .q-danger-act .btn:not(:disabled) {
     color: var(--color-error);
   }
-  /* A line's confirmation, expanded in place under it (never a dialog): what is lost,
-     the field asked to confirm, then the red button and Cancel, set apart by a rule in
-     the error colour at its left. */
+  /* A deletion's confirmation in place (`SettingsComponents.deletion_confirm/1`): what is
+     lost, the field asked to confirm, then the question with its red button and Cancel
+     (`.q-confirm`). Under a danger zone's line, a rule in the error colour at its left
+     sets it apart; in a row, the row's tint does. */
   .q-danger-confirm {
-    flex: 1 1 100%;
     display: grid;
-    gap: 16px;
+    gap: 12px;
+    min-width: 0;
+  }
+  .q-danger-line > .q-danger-confirm {
+    flex: 1 1 100%;
     max-width: 720px;
     padding: 4px 0 4px 16px;
     border-left: 2px solid var(--color-error);
+  }
+  .q-danger-field {
+    max-width: 26rem;
   }
   .q-danger-lost {
     display: grid;
@@ -2311,12 +2318,6 @@
     color: var(--q-muted);
     font-size: 0.8125rem;
     line-height: 1.25rem;
-  }
-  .q-danger-buttons {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px 12px;
   }
 
   /* ---- Search or jump to: the palette ---- */

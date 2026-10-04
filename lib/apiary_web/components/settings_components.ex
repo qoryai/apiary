@@ -368,10 +368,12 @@ defmodule ApiaryWeb.SettingsComponents do
   organisation's in use, one row on the row spec, its name the title with its slug beside
   it, its targets where the page counted them (`targets`), when it was created, and its ⋯
   menu, the edition's items (the `:workspace_actions`
-  slot) then Delete…, which opens the deletion's dialog at its own path, by `patch` from
-  the organisation's settings and by `navigate` from an edition's page over the same
-  list; then the note under the list, what a deletion does, or why the only workspace is
-  not deleted on its own.
+  slot) then Delete…, which leads to the deletion's own path, by `patch` from the
+  organisation's settings and by `navigate` from an edition's page over the same list;
+  there the workspace's row (`confirming`) is the deletion's confirmation in place of its
+  cells (`deletion_confirm/1`, the slug typed in `confirm_form`), never a dialog. Then the
+  note under the list, what a deletion does, or why the only workspace is not deleted on
+  its own.
   """
   attr :scope, :any, required: true
   attr :workspaces, :list, required: true, doc: "the organisation's workspaces in use"
@@ -381,6 +383,12 @@ defmodule ApiaryWeb.SettingsComponents do
     doc: "how many targets each workspace has, by its id (`Apiary.Targets.count_by_workspace/1`)"
 
   attr :delete, :string, default: "patch", values: ~w(patch navigate)
+
+  attr :confirming, :any,
+    default: nil,
+    doc: "the workspace whose row asks to confirm its deletion, at the deletion's path"
+
+  attr :confirm_form, :any, default: nil, doc: "the slug typed to confirm it"
 
   def workspace_list(assigns) do
     days = Apiary.Deletion.grace_days()
@@ -397,6 +405,7 @@ defmodule ApiaryWeb.SettingsComponents do
       label={gettext("Workspaces")}
       rows={@workspaces}
       row_id={&"workspace-#{&1.id}"}
+      confirming={@confirming && "workspace-#{@confirming.id}"}
     >
       <:col :let={workspace} label={gettext("Workspace")} kind="title">
         <span class="q-nm">
@@ -431,6 +440,29 @@ defmodule ApiaryWeb.SettingsComponents do
           </.menu_item>
         </.row_menu>
       </:action>
+      <:confirm :let={workspace}>
+        <.deletion_confirm
+          id="delete-workspace"
+          question={gettext("Delete %{name}?", name: workspace.name)}
+          form={@confirm_form}
+          change="confirm"
+          submit="delete_workspace"
+          ready={@confirm_form[:slug].value == workspace.slug}
+          cancel={~p"/#{@scope.organisation}/settings/workspaces"}
+        >
+          <:lost>{workspace_lost()}</:lost>
+          <:field>
+            <.input
+              field={@confirm_form[:slug]}
+              type="text"
+              label={gettext("Type the workspace's slug, %{slug}, to confirm", slug: workspace.slug)}
+              autocomplete="off"
+              spellcheck="false"
+              debounce="0"
+            />
+          </:field>
+        </.deletion_confirm>
+      </:confirm>
     </.table>
     <p id="workspaces-note" class="text-[12.5px]/[18px] text-faint">
       {if length(@workspaces) > 1,
@@ -449,6 +481,19 @@ defmodule ApiaryWeb.SettingsComponents do
 
   defp delete_path(scope, workspace),
     do: ~p"/#{scope.organisation}/settings/workspaces/#{workspace.id}/delete"
+
+  @doc """
+  workspace_lost/0 is what deleting a workspace loses, the sentence of its confirmation,
+  from Workspaces and from the workspace's own danger zone.
+  """
+  def workspace_lost do
+    days = Apiary.Deletion.grace_days()
+
+    gettext(
+      "The workspace disappears at once, with its runs, policy and access keys, which stop working. Its members stay in the organisation. It is purged after %{days}; until then an owner or an admin can cancel the deletion in the organisation's settings.",
+      days: ngettext("%{number} day", "%{number} days", days, number: Format.number(days))
+    )
+  end
 
   @doc """
   danger_zone/1 is the last part of a scope's General page, and of Profile: after a rule,
@@ -471,14 +516,13 @@ defmodule ApiaryWeb.SettingsComponents do
   @doc """
   danger_action/1 is one line of a danger zone: the act's title, one muted sentence of
   what it does and what cannot be undone, and at the right its button (`button`), a
-  default one in the error colour. The confirmation is inline, GitHub's way, never a
-  dialog: the button is a patch to the act's own path (`open_path`), and there (`open`)
-  the line expands in place under its sentence into the confirmation's form, what is lost
-  (`:lost`), the field asked to confirm (`:field`), such as the slug typed, then the red
-  button (`confirm`, enabled once `ready`) and Cancel. Expanded, its first field takes the
-  focus, or the red button where there is no field; the button above becomes the way to
-  fold it (`aria-expanded`), as Cancel does, a patch back to the page (`close_path`) that
-  returns the focus to that button.
+  default one in the error colour. The confirmation is in place, never a dialog: the
+  button is a patch to the act's own path (`open_path`), and there (`open`) the line
+  expands under its sentence into the act's `deletion_confirm/1`, what is lost (`:lost`),
+  the field asked to confirm (`:field`), such as the slug typed, then the question
+  (`question`) with its red button, enabled once `ready`, and Cancel. The button above
+  becomes the way to fold it (`aria-expanded`), as Cancel and Escape do, a patch back to
+  the page (`close_path`) that gives that button the focus back.
 
   Without a button, where the act is not there, the sentence says why; `disabled` shows
   the button but does not offer it, while something stops the act and the page says what
@@ -495,21 +539,23 @@ defmodule ApiaryWeb.SettingsComponents do
   attr :open, :boolean, default: false, doc: "whether the confirmation is expanded"
   attr :open_path, :string, default: nil, doc: "the act's own path, which expands it"
   attr :close_path, :string, default: nil, doc: "the page's path, which folds it"
+  attr :question, :string, default: nil, doc: "the confirmation's question, such as Delete Acme?"
   attr :form, :any, default: nil, doc: "the confirmation's form, where it asks for a field"
   attr :change, :string, default: nil, doc: "the event of a change of the field"
   attr :submit, :string, default: nil, doc: "the event of the red button"
-  attr :confirm, :string, default: nil, doc: "the red button's words, such as Delete node"
   attr :ready, :boolean, default: true, doc: "whether the red button is enabled"
   slot :inner_block, required: true, doc: "the sentence"
-  slot :lost, doc: "what is lost, at more length than the sentence"
+
+  slot :lost, doc: "what is lost, at more length than the sentence, a paragraph each" do
+    attr :id, :string
+  end
+
   slot :field, doc: "the field asked to confirm"
   slot :action, doc: "a control of the page's own in place of the button"
 
   def danger_action(assigns) do
     assigns =
-      assigns
-      |> assign(:expanded, assigns.open && is_binary(assigns.button) && !assigns.disabled)
-      |> update(:form, &(&1 || to_form(%{}, as: :confirm)))
+      assign(assigns, :expanded, assigns.open && is_binary(assigns.button) && !assigns.disabled)
 
     ~H"""
     <div id={@id} class={["q-danger-line", @expanded && "q-danger-line-open"]}>
@@ -532,43 +578,82 @@ defmodule ApiaryWeb.SettingsComponents do
         </.button>
         {render_slot(@action)}
       </div>
-      <.form
+      <.deletion_confirm
         :if={@expanded}
-        for={@form}
-        id={"#{@id}-form"}
-        class="q-danger-confirm"
-        aria-labelledby={"#{@id}-title"}
-        phx-change={@change}
-        phx-submit={@submit}
-        phx-mounted={
-          if @field != [],
-            do: JS.focus_first(to: "##{@id}-field"),
-            else: JS.focus(to: "##{@id}-confirm")
-        }
-        novalidate
+        id={@id}
+        question={@question}
+        form={@form}
+        change={@change}
+        submit={@submit}
+        ready={@ready}
+        cancel={JS.patch(@close_path) |> JS.focus(to: "##{@id}-button")}
       >
-        <div :if={@lost != []} class="q-danger-lost">{render_slot(@lost)}</div>
-        <div :if={@field != []} id={"#{@id}-field"}>{render_slot(@field)}</div>
-        <div class="q-danger-buttons">
+        <:lost :for={lost <- @lost} id={lost[:id]}>{render_slot(lost)}</:lost>
+        <:field :for={field <- @field}>{render_slot(field)}</:field>
+      </.deletion_confirm>
+    </div>
+    """
+  end
+
+  @doc """
+  deletion_confirm/1 is the confirmation of a deletion, in place where it was asked for
+  (a danger zone's line, `danger_action/1`, or a row of a list, `CoreComponents.table/1`'s
+  `confirm` slot), never a dialog: a form, `id`-form, of what is lost (`:lost`), the field
+  asked to confirm (`:field`), such as the slug typed, which takes the focus, then the
+  `CoreComponents.inline_confirm/1` (`id`-confirming), its question and its red button,
+  Yes, delete (`id`-confirm), enabled once `ready`, beside Cancel, which takes the focus
+  where there is no field to type. Cancel and Escape run `cancel`.
+  """
+  attr :id, :string, required: true, doc: "the act's id, which its parts' ids begin with"
+  attr :question, :string, required: true
+  attr :form, :any, default: nil, doc: "the form, where it asks for a field"
+  attr :change, :string, default: nil
+  attr :submit, :string, required: true
+  attr :ready, :boolean, default: true
+  attr :cancel, :any, required: true, doc: "a path to patch to, or a JS command"
+
+  slot :lost, doc: "what is lost, a paragraph each" do
+    attr :id, :string
+  end
+
+  slot :field
+
+  def deletion_confirm(assigns) do
+    assigns = update(assigns, :form, &(&1 || to_form(%{}, as: :confirm)))
+
+    ~H"""
+    <.form
+      for={@form}
+      id={"#{@id}-form"}
+      class="q-danger-confirm"
+      phx-change={@change}
+      phx-submit={@submit}
+      novalidate
+    >
+      <div :if={@lost != []} class="q-danger-lost">
+        <p :for={lost <- @lost} id={lost[:id]}>{render_slot(lost)}</p>
+      </div>
+      <div :if={@field != []} id={"#{@id}-field"} class="q-danger-field">
+        {render_slot(@field)}
+      </div>
+      <.inline_confirm id={"#{@id}-confirming"} question={@question} cancel={@cancel}>
+        <:action>
           <.button
             id={"#{@id}-confirm"}
             variant="danger"
+            size="xs"
             type="submit"
             disabled={!@ready}
             loading_text={gettext("Deleting")}
           >
-            {@confirm}
+            {gettext("Yes, delete")}
           </.button>
-          <.button
-            id={"#{@id}-cancel"}
-            type="button"
-            phx-click={JS.patch(@close_path) |> JS.focus(to: "##{@id}-button")}
-          >
-            {gettext("Cancel")}
-          </.button>
-        </div>
-      </.form>
-    </div>
+        </:action>
+      </.inline_confirm>
+      <%!-- After the confirmation's Cancel, which takes the focus as it mounts: the field
+           to type takes it last. --%>
+      <span :if={@field != []} hidden phx-mounted={JS.focus_first(to: "##{@id}-field")}></span>
+    </.form>
     """
   end
 end

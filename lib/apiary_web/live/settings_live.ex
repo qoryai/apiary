@@ -15,13 +15,13 @@ defmodule ApiaryWeb.SettingsLive do
     `/settings/retention`, sends on (`ApiaryWeb.MovedController`).
 
   A slug is shown, not edited: renaming one is not decided yet. Deleting asks to type the
-  slug. The organisation's and this workspace's deletions are confirmed inline, their
-  danger zone's line expanded in place on General (`SettingsComponents.danger_action/1`)
-  at a path of their own: the organisation's at `/:org/settings/danger` (`:danger`, and
-  `/:org/settings/delete`, `:delete_organisation`), this workspace's at
+  slug, in place, never in a dialog, each at a path of its own: the organisation's and this
+  workspace's in their danger zone's line, expanded on General
+  (`SettingsComponents.danger_action/1`), the organisation's at `/:org/settings/danger`
+  (`:danger`, and `/:org/settings/delete`, `:delete_organisation`), this workspace's at
   `/:org/:workspace/settings/danger` (`:workspace_danger`, and
-  `/:org/:workspace/settings/delete`, `:delete_this_workspace`). Any workspace's, a list
-  row's act with no page to put its confirmation on, is a small modal over Workspaces at
+  `/:org/:workspace/settings/delete`, `:delete_this_workspace`); any workspace's in its
+  row of Workspaces (`SettingsComponents.workspace_list/1`), at
   `/:org/settings/workspaces/:workspace_id/delete` (`:delete_workspace`). The danger zones are no section of their own: nothing that
   cannot be undone is an entry of the settings' list. A workspace marked for deletion is a
   notice at the top of Workspaces, where an owner or an admin cancels it until it is
@@ -82,49 +82,6 @@ defmodule ApiaryWeb.SettingsLive do
         </:actions>
         {section(assigns)}
       </SettingsComponents.layout>
-
-      <%!-- A list row's act has no page to put its confirmation on: it stays a small dialog
-           over Workspaces. --%>
-      <.modal
-        :if={@live_action == :delete_workspace && @deleting}
-        id="delete-workspace-modal"
-        title={gettext("Delete %{name}?", name: @deleting.name)}
-        on_cancel={JS.patch(section_path(@current_scope, @live_action))}
-      >
-        <p class="text-muted">{workspace_lost()}</p>
-        <.form
-          for={@confirm_form}
-          id="delete-workspace-form"
-          phx-change="confirm"
-          phx-submit="delete_workspace"
-          class="grid gap-4"
-          novalidate
-        >
-          <.input
-            field={@confirm_form[:slug]}
-            type="text"
-            label={gettext("Type the workspace's slug, %{slug}, to confirm", slug: @deleting.slug)}
-            autocomplete="off"
-            spellcheck="false"
-            debounce="0"
-          />
-        </.form>
-        <:footer>
-          <.button patch={section_path(@current_scope, @live_action)} data-autofocus>
-            {gettext("Cancel")}
-          </.button>
-          <.button
-            id="delete-workspace-confirm"
-            variant="danger"
-            type="submit"
-            form="delete-workspace-form"
-            disabled={@confirm_form[:slug].value != @deleting.slug}
-            loading_text={gettext("Deleting")}
-          >
-            {gettext("Delete workspace")}
-          </.button>
-        </:footer>
-      </.modal>
     </Layouts.app>
     """
   end
@@ -215,10 +172,10 @@ defmodule ApiaryWeb.SettingsLive do
         open={@live_action in [:danger, :delete_organisation]}
         open_path={~p"/#{@current_scope.organisation}/settings/danger"}
         close_path={~p"/#{@current_scope.organisation}/settings"}
+        question={gettext("Delete %{name}?", name: @current_scope.organisation.name)}
         form={@confirm_form}
         change="confirm"
         submit="delete_organisation"
-        confirm={gettext("Delete organisation")}
         ready={@confirm_form[:slug].value == @current_scope.organisation.slug}
       >
         {gettext(
@@ -226,16 +183,14 @@ defmodule ApiaryWeb.SettingsLive do
           days: days(Deletion.grace_days())
         )}
         <:lost>
-          <p>
-            <.rich text={
-              rich_gettext(
-                "The organisation, its workspaces and everything in them disappear for every member at once, and its access keys stop working. It is purged after %{days}; until then you can cancel the deletion from %{organisations}.",
-                days: days(Deletion.grace_days()),
-                organisations:
-                  {:link, ~p"/users/organisations", gettext("your organisations page"), "link"}
-              )
-            } />
-          </p>
+          <.rich text={
+            rich_gettext(
+              "The organisation, its workspaces and everything in them disappear for every member at once, and its access keys stop working. It is purged after %{days}; until then you can cancel the deletion from %{organisations}.",
+              days: days(Deletion.grace_days()),
+              organisations:
+                {:link, ~p"/users/organisations", gettext("your organisations page"), "link"}
+            )
+          } />
         </:lost>
         <:field>
           <.input
@@ -301,6 +256,8 @@ defmodule ApiaryWeb.SettingsLive do
       scope={@current_scope}
       workspaces={@workspaces}
       targets={@workspace_targets}
+      confirming={@live_action == :delete_workspace && @deleting}
+      confirm_form={@confirm_form}
     />
     """
   end
@@ -362,10 +319,10 @@ defmodule ApiaryWeb.SettingsLive do
         open={@live_action in [:workspace_danger, :delete_this_workspace] && @deleting != nil}
         open_path={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/danger"}
         close_path={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings"}
+        question={gettext("Delete %{name}?", name: @current_scope.workspace.name)}
         form={@confirm_form}
         change="confirm"
         submit="delete_workspace"
-        confirm={gettext("Delete workspace")}
         ready={@deleting != nil && @confirm_form[:slug].value == @deleting.slug}
       >
         {if length(@workspaces) > 1,
@@ -378,9 +335,7 @@ defmodule ApiaryWeb.SettingsLive do
             gettext(
               "The organisation's only workspace is not deleted on its own: delete the organisation instead."
             )}
-        <:lost>
-          <p>{workspace_lost()}</p>
-        </:lost>
+        <:lost>{SettingsComponents.workspace_lost()}</:lost>
         <:field>
           <.input
             field={@confirm_form[:slug]}
@@ -1000,14 +955,6 @@ defmodule ApiaryWeb.SettingsLive do
       events_days: days(events)
     )
   end
-
-  # What deleting a workspace loses, said by its confirmation.
-  defp workspace_lost,
-    do:
-      gettext(
-        "The workspace disappears at once, with its runs, policy and access keys, which stop working. Its members stay in the organisation. It is purged after %{days}; until then an owner or an admin can cancel the deletion in the organisation's settings.",
-        days: days(Deletion.grace_days())
-      )
 
   defp days(n), do: ngettext("%{number} day", "%{number} days", n, number: Format.number(n))
 

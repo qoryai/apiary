@@ -346,7 +346,16 @@ defmodule ApiaryWeb.SettingsLiveTest do
       refute has_element?(lv, "#delete-organisation-modal")
       assert has_element?(lv, "#danger-zone #delete-organisation #delete-organisation-form")
       assert has_element?(lv, "#delete-organisation-form", "your organisations page")
-      assert has_element?(lv, "form#delete-organisation-form[phx-mounted]")
+
+      assert has_element?(
+               lv,
+               "#delete-organisation-form #delete-organisation-confirming.q-confirm",
+               "Delete #{scope.organisation.name}?"
+             )
+
+      # The slug's field takes the focus, after Cancel, which takes it as it mounts.
+      assert has_element?(lv, "#delete-organisation-field input[name='confirm[slug]']")
+      assert has_element?(lv, "#delete-organisation-field ~ span[hidden][phx-mounted]")
 
       # Its button now folds it, as Cancel does, which gives that button the focus back.
       assert has_element?(
@@ -354,13 +363,13 @@ defmodule ApiaryWeb.SettingsLiveTest do
                "a#delete-organisation-button[href='#{~p"/#{org}/settings"}'][aria-expanded=true][aria-controls=delete-organisation-form]"
              )
 
-      assert has_element?(lv, "#delete-organisation-confirm[disabled]", "Delete organisation")
+      assert has_element?(lv, "#delete-organisation-confirm[disabled]", "Yes, delete")
       assert has_element?(lv, "#settings-tab-organisation[aria-current=page]")
       assert has_element?(lv, "h2#settings-section-title", "General")
 
-      cancel = lv |> element("#delete-organisation-cancel") |> render()
+      cancel = lv |> element("#delete-organisation-confirming-cancel") |> render()
       assert cancel =~ "focus" and cancel =~ "#delete-organisation-button"
-      lv |> element("#delete-organisation-cancel") |> render_click()
+      lv |> element("#delete-organisation-confirming-cancel") |> render_click()
       assert_patch(lv, ~p"/#{org}/settings")
       refute has_element?(lv, "#delete-organisation-form")
       assert has_element?(lv, "a#delete-organisation-button[aria-expanded=false]")

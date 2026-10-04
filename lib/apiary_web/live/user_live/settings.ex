@@ -207,28 +207,26 @@ defmodule ApiaryWeb.UserLive.Settings do
           open={@live_action == :delete}
           open_path={~p"/users/settings/delete"}
           close_path={~p"/users/settings"}
+          question={gettext("Delete your account?")}
           form={@confirm_form}
           change="confirm"
           submit="delete_account"
-          confirm={gettext("Delete my account")}
           ready={email_typed?(@confirm_form[:email].value, @current_email)}
         >
           {gettext(
             "Your email address, password and preferences are erased and you leave every organisation you belong to, which cannot be undone; what you made in a workspace stays there and names you as a former member."
           )}
           <:lost>
-            <p>
-              {gettext(
-                "Your email address, password and preferences are erased at once, you leave every organisation you belong to, and you are logged out everywhere. This cannot be undone: to come back, sign up again, as a new account."
-              )}
-            </p>
-            <p :if={@marked_alone != []} id="delete-account-lost-orphans">
-              {ngettext(
-                "Nobody will be left who can cancel the deletion of the organisation you are the only owner of: it is purged when its grace period is over.",
-                "Nobody will be left who can cancel the deletion of the organisations you are the only owner of: they are purged when their grace period is over.",
-                length(@marked_alone)
-              )}
-            </p>
+            {gettext(
+              "Your email address, password and preferences are erased at once, you leave every organisation you belong to, and you are logged out everywhere. This cannot be undone: to come back, sign up again, as a new account."
+            )}
+          </:lost>
+          <:lost :if={@marked_alone != []} id="delete-account-lost-orphans">
+            {ngettext(
+              "Nobody will be left who can cancel the deletion of the organisation you are the only owner of: it is purged when its grace period is over.",
+              "Nobody will be left who can cancel the deletion of the organisations you are the only owner of: they are purged when their grace period is over.",
+              length(@marked_alone)
+            )}
           </:lost>
           <:field>
             <.input

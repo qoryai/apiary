@@ -39,8 +39,26 @@ defmodule ApiaryWeb.DeletionLiveTest do
 
       lv |> element("#workspace-#{workspace.id} a", "Delete") |> render_click()
       assert_patch(lv, ~p"/#{scope.organisation}/settings/workspaces/#{workspace.id}/delete")
-      assert has_element?(lv, "#delete-workspace-modal")
+      # Its row is the confirmation, in place of its cells: no dialog.
+      refute has_element?(lv, "#delete-workspace-modal")
+      row = "#workspace-#{workspace.id}.q-confirming"
+
+      assert has_element?(
+               lv,
+               "#{row} #delete-workspace-form #delete-workspace-confirming",
+               "Delete Staging?"
+             )
+
+      refute has_element?(lv, "#{row} #workspace-#{workspace.id}-menu")
+      refute has_element?(lv, "#workspace-#{scope.workspace.id}.q-confirming")
       assert has_element?(lv, "#delete-workspace-confirm[disabled]")
+
+      # Cancel gives the row back.
+      lv |> element("#delete-workspace-confirming-cancel") |> render_click()
+      assert_patch(lv, ~p"/#{scope.organisation}/settings/workspaces")
+      refute has_element?(lv, "#workspace-#{workspace.id}.q-confirming")
+
+      lv |> element("#workspace-#{workspace.id} a", "Delete") |> render_click()
 
       lv |> form("#delete-workspace-form", confirm: %{slug: "stag"}) |> render_change()
       assert has_element?(lv, "#delete-workspace-confirm[disabled]")

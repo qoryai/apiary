@@ -13,8 +13,8 @@ defmodule ApiaryWeb.NodeLive.Show do
     instance reports, each says so. Then About: its kind, id, instance limit and who made
     it, with the way to its Settings. Owners and admins clear a running instance
     (`node.clear_instance`): a text action on a Node's, an item of each row's menu on a
-    pool's, either opening the confirm dialog at
-    `/nodes/:node_id/instances/:instance/clear`.
+    pool's, either turning that line or row into its confirmation in place, never a
+    dialog, at `/nodes/:node_id/instances/:instance/clear`.
   - **Settings** (`/nodes/:node_id/settings`), with the node's list of sections
     (`ApiaryWeb.SettingsComponents`): General, its name, its kind (shown, fixed) and a
     pool's instance limit, then the danger zone, whose Delete expands its confirmation in
@@ -160,7 +160,7 @@ defmodule ApiaryWeb.NodeLive.Show do
     end
   end
 
-  # The instance the dialog clears: one running now, or one the record holds a row of.
+  # The instance the confirmation clears: one running now, or one the record holds a row of.
   defp clearing(socket, instance_id) do
     %{current_scope: scope, node: node, activity: activity} = socket.assigns
 
@@ -268,8 +268,8 @@ defmodule ApiaryWeb.NodeLive.Show do
     end
   end
 
-  # A clearing without its dialog open: a page that offered none, or a dialog that has
-  # closed. One who may clear is shown the page again; anyone else is refused.
+  # A clearing without its confirmation open: a page that offered none, or a confirmation
+  # that has been cancelled. One who may clear is shown the page again; anyone else is refused.
   def handle_event("clear_instance", _params, socket) do
     if socket.assigns.may_clear,
       do: {:noreply, socket},
@@ -381,7 +381,7 @@ defmodule ApiaryWeb.NodeLive.Show do
     }
   end
 
-  # The dialog that clears an instance of the node.
+  # The path where an instance of the node is asked to be cleared.
   defp clear_path(scope, node, instance_id),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/nodes/#{node}/instances/#{instance_id}/clear"
 
@@ -457,6 +457,7 @@ defmodule ApiaryWeb.NodeLive.Show do
         may_clear={@may_clear}
         may_runs={@may_runs}
         recent={@recent}
+        clearing={@live_action == :clear_instance && @may_clear && @clearing}
       />
 
       <SettingsComponents.layout
@@ -479,38 +480,6 @@ defmodule ApiaryWeb.NodeLive.Show do
           paths={@paths}
         />
       </SettingsComponents.layout>
-
-      <%!-- Clearing is an act of a row of a pool's running instances (and of a Node's one
-           instance), which has no page to put its confirmation on: it stays a small dialog
-           over Overview. --%>
-      <.modal
-        :if={@live_action == :clear_instance && @clearing && @may_clear}
-        id="clear-instance-dialog"
-        title={gettext("Clear %{instance}?", instance: instance_label(@clearing))}
-        on_cancel={JS.patch(@paths.overview)}
-      >
-        <p class="text-muted">
-          {gettext(
-            "Clear this instance if it stopped without saying so. Another instance can then start at once."
-          )}
-        </p>
-        <p class="text-muted">
-          {gettext(
-            "Its open runs are marked lost. If it is in fact still running, its next heartbeat brings its run back, and it counts against the instance limit again."
-          )}
-        </p>
-        <:footer>
-          <.button patch={@paths.overview} data-autofocus>{gettext("Cancel")}</.button>
-          <.button
-            id="clear-instance-confirm"
-            variant="danger"
-            phx-click="clear_instance"
-            loading_text={gettext("Clearing")}
-          >
-            {gettext("Clear instance")}
-          </.button>
-        </:footer>
-      </.modal>
     </Layouts.app>
     """
   end
@@ -522,10 +491,16 @@ defmodule ApiaryWeb.NodeLive.Show do
   attr :may_clear, :boolean, required: true
   attr :may_runs, :boolean, required: true
   attr :recent, :any, required: true
+  attr :clearing, :any, required: true, doc: "the instance asked to be cleared, or false"
 
   # The operational side: a Node's instance or a pool's running instances, what the
-  # instance limit refused, what an instance is, its recent runs, and About.
+  # instance limit refused, what an instance is, its recent runs, and About. An instance
+  # asked to be cleared confirms it in place: its row of a pool's running instances, or
+  # the line of a Node's running one; one that does not run now, at the top of the part.
   defp overview(assigns) do
+    assigns =
+      assign(assigns, :clear_at, clear_place(assigns.clearing, assigns.node, assigns.activity))
+
     ~H"""
     <div id="node-overview" class="grid max-w-[60rem] gap-8">
       <SettingsComponents.part
@@ -533,6 +508,8 @@ defmodule ApiaryWeb.NodeLive.Show do
         title={if @node.kind == :pool, do: gettext("Running instances"), else: gettext("Instance")}
         level={:h2}
       >
+        <.clear_confirm :if={@clear_at == :part} clearing={@clearing} cancel={@paths.overview} />
+
         <p
           :if={@node.kind == :pool && @activity.running != []}
           id="node-instances-count"
@@ -548,6 +525,8 @@ defmodule ApiaryWeb.NodeLive.Show do
           activity={@activity}
           may_clear={@may_clear}
           may_runs={@may_runs}
+          clearing={@clear_at == :line && @clearing}
+          cancel={@paths.overview}
         />
 
         <.table
@@ -556,6 +535,7 @@ defmodule ApiaryWeb.NodeLive.Show do
           label={gettext("Running instances")}
           rows={@activity.running}
           row_id={&instance_dom_id(&1.instance_id)}
+          confirming={@clear_at == :row && instance_dom_id(@clearing.instance_id)}
         >
           <:col :let={instance} label={gettext("Instance")} kind="title">
             <span class="q-nm">
@@ -589,6 +569,9 @@ defmodule ApiaryWeb.NodeLive.Show do
               </.menu_item>
             </.row_menu>
           </:action>
+          <:confirm>
+            <.clear_confirm clearing={@clearing} cancel={@paths.overview} />
+          </:confirm>
         </.table>
 
         <p
@@ -715,8 +698,11 @@ defmodule ApiaryWeb.NodeLive.Show do
   attr :activity, :map, required: true
   attr :may_clear, :boolean, required: true
   attr :may_runs, :boolean, required: true
+  attr :clearing, :any, required: true, doc: "the running instance asked to be cleared"
+  attr :cancel, :string, required: true
 
-  # A Node's one instance: the one running, or the one seen last.
+  # A Node's one instance: the one running, or the one seen last. Asked to be cleared, the
+  # running one's line is the confirmation.
   defp node_instance(assigns) do
     assigns =
       assign(assigns,
@@ -754,7 +740,8 @@ defmodule ApiaryWeb.NodeLive.Show do
           </span>
         <% end %>
       </p>
-      <p :if={@running} class="flex flex-wrap items-center gap-3 text-muted">
+      <.clear_confirm :if={@running && @clearing} clearing={@clearing} cancel={@cancel} />
+      <p :if={@running && !@clearing} class="flex flex-wrap items-center gap-3 text-muted">
         {gettext("A node runs one instance at a time.")}
         <.button
           :if={@may_clear}
@@ -768,6 +755,50 @@ defmodule ApiaryWeb.NodeLive.Show do
     </div>
     """
   end
+
+  attr :clearing, :map, required: true
+  attr :cancel, :string, required: true
+
+  # The confirmation of clearing an instance, in place of its row or its line.
+  defp clear_confirm(assigns) do
+    ~H"""
+    <.inline_confirm
+      id="clear-instance"
+      question={gettext("Clear %{instance}?", instance: instance_label(@clearing))}
+      cancel={@cancel}
+    >
+      {gettext(
+        "Clear this instance if it stopped without saying so. Another instance can then start at once."
+      )}
+      {gettext(
+        "Its open runs are marked lost. If it is in fact still running, its next heartbeat brings its run back, and it counts against the instance limit again."
+      )}
+      <:action>
+        <.button
+          id="clear-instance-confirm"
+          variant="danger"
+          size="xs"
+          phx-click="clear_instance"
+          loading_text={gettext("Clearing")}
+        >
+          {gettext("Yes, clear")}
+        </.button>
+      </:action>
+    </.inline_confirm>
+    """
+  end
+
+  # Where the instance asked to be cleared confirms it: its row of a pool's running
+  # instances, the line of a Node's running one, or, not running now, the top of the part.
+  defp clear_place(clearing, _node, _activity) when clearing in [nil, false], do: nil
+
+  defp clear_place(%{instance_id: id}, %Node{kind: :pool}, %{running: running}),
+    do: if(Enum.any?(running, &(&1.instance_id == id)), do: :row, else: :part)
+
+  defp clear_place(%{instance_id: id}, %Node{kind: :node}, %{running: [%{instance_id: id} | _]}),
+    do: :line
+
+  defp clear_place(_clearing, _node, _activity), do: :part
 
   attr :scope, :map, required: true
   attr :run_id, :string, required: true
@@ -881,23 +912,17 @@ defmodule ApiaryWeb.NodeLive.Show do
         open={@deleting}
         open_path={@paths.delete}
         close_path={@paths.settings}
+        question={gettext("Delete %{name}?", name: @node.name)}
         submit="delete"
-        confirm={
-          if @node.kind == :pool,
-            do: gettext("Delete node pool"),
-            else: gettext("Delete node")
-        }
       >
         {gettext(
           "It leaves this workspace's nodes, its access keys are revoked and its name is free again. Its runs stay in the record."
         )}
         <:lost>
-          <p>
-            {gettext(
-              "%{name} leaves this workspace's nodes at once, and its name is free again. Its access keys are revoked, so every instance using them stops at its next request, and its enrolment codes are cancelled. Its runs stay in the record. This cannot be undone.",
-              name: @node.name
-            )}
-          </p>
+          {gettext(
+            "%{name} leaves this workspace's nodes at once, and its name is free again. Its access keys are revoked, so every instance using them stops at its next request, and its enrolment codes are cancelled. Its runs stay in the record. This cannot be undone.",
+            name: @node.name
+          )}
         </:lost>
       </SettingsComponents.danger_action>
     </SettingsComponents.danger_zone>

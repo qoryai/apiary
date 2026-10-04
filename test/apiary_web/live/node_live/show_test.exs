@@ -188,12 +188,13 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
       assert_patch(lv, node_path(scope, node, "/settings/delete"))
       refute has_element?(lv, "#delete-node-dialog")
       assert has_element?(lv, "#node-danger #delete-node #delete-node-form", "build-01 leaves")
-      # No field to type: the red button takes the focus.
-      assert has_element?(lv, "#delete-node-confirm:not([disabled])", "Delete node")
-      assert lv |> element("#delete-node-form") |> render() =~ "#delete-node-confirm"
+      assert has_element?(lv, "#delete-node-confirming", "Delete build-01?")
+      # No field to type: Cancel takes the focus, and the red button is ready.
+      assert has_element?(lv, "#delete-node-confirming-cancel[phx-mounted]")
+      assert has_element?(lv, "#delete-node-confirm:not([disabled])", "Yes, delete")
 
       # Cancel folds it.
-      lv |> element("#delete-node-cancel") |> render_click()
+      lv |> element("#delete-node-confirming-cancel") |> render_click()
       assert_patch(lv, node_path(scope, node, "/settings"))
       refute has_element?(lv, "#delete-node-form")
 
@@ -271,10 +272,20 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
 
       lv |> element("#node-instance-clear") |> render_click()
       assert_patch(lv, node_path(scope, node, "/instances/i_1/clear"))
-      assert has_element?(lv, "#clear-instance-dialog", "Clear build-01.example.com?")
-      assert has_element?(lv, "#clear-instance-dialog", "stopped without saying so")
+      # The instance's line is the confirmation, in place: no dialog.
+      refute has_element?(lv, "#clear-instance-dialog")
+      refute has_element?(lv, "#node-instance-clear")
+      assert has_element?(lv, "#node-instance #clear-instance", "Clear build-01.example.com?")
+      assert has_element?(lv, "#node-instance #clear-instance", "stopped without saying so")
 
-      lv |> element("#clear-instance-confirm") |> render_click()
+      # Cancel puts the line back.
+      lv |> element("#clear-instance-cancel") |> render_click()
+      assert_patch(lv, node_path(scope, node))
+      refute has_element?(lv, "#clear-instance")
+      assert has_element?(lv, "#node-instance-clear")
+
+      lv |> element("#node-instance-clear") |> render_click()
+      lv |> element("#clear-instance-confirm", "Yes, clear") |> render_click()
       assert_patch(lv, node_path(scope, node))
       assert render(lv) =~ "build-01.example.com is cleared: its open run is marked lost."
       assert Repo.get!(Run, run.id).state == "lost"
@@ -354,11 +365,31 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
 
       lv |> element("#node-running [id$='-clear']") |> render_click()
       assert_patch(lv, node_path(scope, pool, "/instances/i_1/clear"))
-      lv |> element("#clear-instance-confirm") |> render_click()
+      # Its row is the confirmation, in place of its cells.
+      row = "#node-running tr.q-confirming"
+      assert has_element?(lv, "#{row} #clear-instance", "Clear i_1?")
+      refute has_element?(lv, "#{row} [id$='-menu']")
+      lv |> element("#{row} #clear-instance-confirm") |> render_click()
       assert Repo.get!(Run, run.id).state == "lost"
     end
 
-    test "an instance the node does not have has no dialog", %{conn: conn, scope: scope} do
+    test "an instance that does not run now confirms its clearing at the top of the instances",
+         %{conn: conn, scope: scope} do
+      node = node_fixture(scope)
+      instance_fixture(node, instance_id: "i_1", name: "build-01.example.com", seen_at: ago(3600))
+
+      {:ok, lv, _html} = live(conn, node_path(scope, node, "/instances/i_1/clear"))
+      refute has_element?(lv, "#clear-instance-dialog")
+      assert has_element?(lv, "#node-instances #clear-instance", "Clear build-01.example.com?")
+      assert has_element?(lv, "#node-instance", "Last seen")
+
+      lv |> element("#clear-instance-confirm") |> render_click()
+      assert_patch(lv, node_path(scope, node))
+      assert render(lv) =~ "build-01.example.com is cleared."
+      refute has_element?(lv, "#clear-instance")
+    end
+
+    test "an instance the node does not have has no confirmation", %{conn: conn, scope: scope} do
       node = node_fixture(scope)
 
       {:ok, _lv, html} =
@@ -380,7 +411,7 @@ defmodule ApiaryWeb.NodeLive.ShowTest do
         live(conn, node_path(scope, node, "/instances/i_1/clear")) |> follow_redirect(conn)
 
       assert html =~ "Only owners and admins clear instances."
-      refute has_element?(lv, "#clear-instance-dialog")
+      refute has_element?(lv, "#clear-instance")
 
       render_hook(lv, "clear_instance", %{})
       assert render(lv) =~ "Only owners and admins clear instances."
