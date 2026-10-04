@@ -2412,6 +2412,11 @@ msgstr ""
 msgid "Added an access key to a node"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Added an integration"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/rule_list.ex
 #, elixir-autogen, elixir-format
 msgid "Added by"
@@ -2717,6 +2722,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
 msgid "An argument is at most 256 characters."
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "An integration"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -3029,6 +3039,11 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
+msgid "Changed a service definition"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
 msgid "Changed a stored secret"
 msgstr ""
 
@@ -3040,6 +3055,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "Changed above the workspace"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Changed an integration"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/views.ex
@@ -3060,6 +3080,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Changed the policy's mode"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Changed where an integration is used"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -3734,6 +3759,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Deleted a node"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Deleted a service definition"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -4984,6 +5014,11 @@ msgstr ""
 msgid "Instance limit"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Integration changed"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Interactive"
@@ -5768,6 +5803,11 @@ msgstr ""
 msgid "Longest"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Looked up an integration's release"
+msgstr ""
+
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/run_live/show.ex
@@ -5963,6 +6003,11 @@ msgstr ""
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Most used"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Moved an integration to another version"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -7763,6 +7808,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Removed an expired invitation, sending a new one"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Removed an integration"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -10539,6 +10589,11 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Wrap long lines"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Wrote a service definition"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex

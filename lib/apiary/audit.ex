@@ -93,6 +93,8 @@ defmodule Apiary.Audit do
   alias Apiary.Organisations.{Invitation, Membership, Organisation, Workspace}
   alias Apiary.Policy.Rule
   alias Apiary.Runs.{Run, Target}
+  alias Apiary.Connections.{Connection, ServiceDefinition}
+  alias Apiary.Integrations.Release
   alias Apiary.Secrets.Secret
   alias Apiary.Variables.Variable
 
@@ -107,7 +109,10 @@ defmodule Apiary.Audit do
     Target => "target",
     Rule => "rule",
     Secret => "secret",
-    Variable => "variable"
+    Variable => "variable",
+    Connection => "connection",
+    ServiceDefinition => "service_definition",
+    Release => "integration_release"
   }
 
   @default_retention_days 90

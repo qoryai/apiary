@@ -60,6 +60,7 @@ msgid "are still associated with this entry"
 msgstr ""
 
 ## From Ecto.Changeset.cast/4
+#: lib/apiary/integrations.ex
 #: lib/apiary/secrets/value.ex
 #, elixir-autogen
 msgid "can't be blank"
@@ -133,6 +134,11 @@ msgstr ""
 msgid "is already set here, compared without case"
 msgstr ""
 
+#: lib/apiary/connections.ex
+#, elixir-autogen, elixir-format
+msgid "is already the key of a service of this workspace"
+msgstr ""
+
 #: lib/apiary/access_keys/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "is already the label of a key of this node"
@@ -193,6 +199,11 @@ msgstr ""
 msgid "is not a valid slug"
 msgstr ""
 
+#: lib/apiary/integrations.ex
+#, elixir-autogen, elixir-format
+msgid "is not the forge this source is on"
+msgstr ""
+
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "is not the slug"
@@ -201,6 +212,11 @@ msgstr ""
 #: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
 msgid "is not your email"
+msgstr ""
+
+#: lib/apiary/integrations.ex
+#, elixir-autogen, elixir-format
+msgid "is read from the description at an address"
 msgstr ""
 
 ## From Ecto.Changeset.validate_exclusion/3
@@ -235,6 +251,16 @@ msgstr ""
 #: lib/apiary/variables/variable.ex
 #, elixir-autogen, elixir-format
 msgid "must be UTF-8 text"
+msgstr ""
+
+#: lib/apiary/integrations.ex
+#, elixir-autogen, elixir-format
+msgid "must be a repository's path or an https address of a description.json"
+msgstr ""
+
+#: lib/apiary/integrations.ex
+#, elixir-autogen, elixir-format
+msgid "must be a version such as 1.4.0"
 msgstr ""
 
 ## From Ecto.Changeset.validate_acceptance/3
@@ -278,6 +304,11 @@ msgstr ""
 msgid "must be one line, with no NUL byte"
 msgstr ""
 
+#: lib/apiary/integrations.ex
+#, elixir-autogen, elixir-format
+msgid "must be owner/repo"
+msgstr ""
+
 #: lib/apiary/accounts/user.ex
 #: lib/apiary/organisations/invitation.ex
 #, elixir-autogen, elixir-format
@@ -295,6 +326,7 @@ msgid "must not contain a web address; a name like acme.io is fine"
 msgstr ""
 
 #: lib/apiary/access_keys/access_key.ex
+#: lib/apiary/connections.ex
 #: lib/apiary/nodes/node.ex
 #: lib/apiary/organisations/organisation.ex
 #: lib/apiary/organisations/workspace.ex
@@ -332,6 +364,11 @@ msgstr ""
 #: lib/apiary/variables.ex
 #, elixir-autogen, elixir-format
 msgid "only a workspace's variable can be locked: a lock holds it against the repositories"
+msgstr ""
+
+#: lib/apiary/integrations.ex
+#, elixir-autogen, elixir-format
+msgid "says which forge the server runs"
 msgstr ""
 
 msgid "should be %{count} byte(s)"

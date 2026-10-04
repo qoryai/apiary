@@ -57,6 +57,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"security_policy.set_mode"), do: gettext("Policy mode changed")
   def label(:"secret.write"), do: gettext("Stored secret changed")
   def label(:"variable.edit"), do: gettext("Variable changed")
+  def label(:"connection.write"), do: gettext("Integration changed")
   def label(_action), do: nil
 
   # The core offers every action it has in the filter.
@@ -177,6 +178,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
 
   defp said(:"secret.write", %{"change" => change}, _actor), do: said_secret(change)
   defp said(:"variable.edit", %{"change" => change}, _actor), do: said_variable(change)
+  defp said(:"connection.write", %{"change" => change}, _actor), do: said_connection(change)
 
   defp said(_policy, %{"change" => "rule_added"}, _actor), do: gettext("Added a policy rule")
 
@@ -201,6 +203,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp said(:"security_policy.edit", _details, _actor), do: gettext("Changed the policy")
   defp said(:"secret.write", _details, _actor), do: gettext("Changed a stored secret")
   defp said(:"variable.edit", _details, _actor), do: gettext("Changed a variable")
+  defp said(:"connection.write", _details, _actor), do: gettext("Changed an integration")
   defp said(_action, _details, _actor), do: nil
 
   defp said_secret("created"), do: gettext("Created a stored secret")
@@ -217,6 +220,17 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp said_variable("unlocked"), do: gettext("Unlocked a variable")
   defp said_variable("deleted"), do: gettext("Removed a variable")
   defp said_variable(_change), do: gettext("Changed a variable")
+
+  defp said_connection("created"), do: gettext("Added an integration")
+  defp said_connection("deleted"), do: gettext("Removed an integration")
+  defp said_connection("release_changed"), do: gettext("Moved an integration to another version")
+  defp said_connection("target_set"), do: gettext("Changed where an integration is used")
+  defp said_connection("target_removed"), do: gettext("Changed where an integration is used")
+  defp said_connection("release_requested"), do: gettext("Looked up an integration's release")
+  defp said_connection("definition_created"), do: gettext("Wrote a service definition")
+  defp said_connection("definition_updated"), do: gettext("Changed a service definition")
+  defp said_connection("definition_deleted"), do: gettext("Deleted a service definition")
+  defp said_connection(_change), do: gettext("Changed an integration")
 
   # What was acted on, as it is called now.
   @impl true
@@ -289,6 +303,16 @@ defmodule ApiaryWeb.Activity.Describer.Core do
           name when is_binary(name) -> %{text: name, mono: true, href: nil}
           _none when kind == "secret" -> text(gettext("A stored secret"))
           _none -> text(gettext("A variable"))
+        end
+
+      # An integration, a release and a service definition are named in the entry itself.
+      kind when kind in ["connection", "integration_release", "service_definition"] ->
+        case (entry.details || %{})["name"] do
+          name when is_binary(name) ->
+            %{text: name, mono: kind == "integration_release", href: nil}
+
+          _none ->
+            text(gettext("An integration"))
         end
 
       _other ->

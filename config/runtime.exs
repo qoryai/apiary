@@ -94,6 +94,13 @@ end
 # `ApiaryWeb.Origin.boot!/0` checks it at boot and stops a boot it refuses.
 config :apiary, :trusted_proxies_setting, System.get_env("TRUSTED_PROXIES")
 
+# INTEGRATION_PRIVATE_HOSTS names the hosts an integration's release may be fetched from
+# although they resolve to private addresses, such as a forge on the operator's own
+# network: host names separated by commas, none when unset. Loopback, link-local and
+# metadata addresses stay refused for every host. `Apiary.Integrations.Fetch.boot!/0`
+# checks it at boot and stops a boot it refuses.
+config :apiary, :integration_private_hosts_setting, System.get_env("INTEGRATION_PRIVATE_HOSTS")
+
 if config_env() == :dev do
   # Reload browser tabs when matching files change.
   config :apiary, ApiaryWeb.Endpoint,

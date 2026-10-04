@@ -241,6 +241,20 @@ defmodule Apiary.Access do
       feature: :security,
       roles: @admins
     ),
+    # What a run is connected to: runtimes, integrations and services.
+    Action.new(
+      :"connection.read",
+      "read the runtimes, integrations and services set up in the workspace, where each applies, the releases fetched and the workspace's service definitions",
+      feature: :security,
+      roles: @members,
+      audited: {:not, @read}
+    ),
+    Action.new(
+      :"connection.write",
+      "add, change and remove a runtime, an integration or a service, and where and how it applies; fetch an integration's release; write the workspace's own service definitions",
+      feature: :security,
+      roles: @admins
+    ),
     # The server contract.
     Action.new(:"run.post_events", "post a run's events",
       feature: :observability,

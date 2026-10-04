@@ -403,6 +403,72 @@ does not match, before any signature is checked;
 the per-request columns stay outside it. Variables and policy rules carry no code: they
 route no stored value, and the runner bounds what a variable can do.
 
+## Integrations, services and runtimes
+
+What a workspace sets up for its runs is a **connection** in the contract's words and an
+integration on its pages (`Apiary.Connections`): a runtime, an integration or a service,
+in `workspace_connections` (the record's `connections` are the hosts a run reached), with
+a public id, `con_` and 16 characters, that the run configuration names. Each applies to
+every repository of the workspace or to the ones `connection_targets` names; a target of an
+integration may also carry its **ways** there, `credential` ("Calls its API") and `tool`
+("Uses it as a tool (MCP)"), a subset of what its description offers, none for all of
+them. Two connections that would give a repository the same runtime, the same integration,
+or a value on the same host (one host pattern covering another) are refused on save. A
+connection holds no secret: the links to stored secrets are the linking piece's.
+
+**The kinds.** Runtimes come from the runner contract's `contracts/runner/v1/runtimes.json`,
+vendored at the same name as `priv/contract/runtimes.json` (`Apiary.Kinds.Runtimes`). The
+runner generates it from its built-in descriptors; until the pin moves to the release that
+ships it, the file is an interim copy written from the contract's text in the same shape,
+which the runner's file replaces as it is. Services come from a service
+definition, the one source of a service's hosts, paths, auth and declared secrets: built
+in (`priv/services/*.json`, `Apiary.Kinds.Services`, each checked in the test suite) or
+the workspace's own (`service_definitions`); a service connection names its definition and
+copies nothing of it, so a change to a definition reaches every connection that names it.
+Integrations come from a release (`Apiary.Integrations`): a `source`, a forge path with its
+`forge_kind` (`github`, `gitlab`, `forgejo`) or an https URL of a `description.json`, and an
+exact version. A request records a pending `integration_releases` row and enqueues
+`Apiary.Integrations.FetchJob`, which reads the release's `description.json` and
+`checksums.txt` where the integrations contract puts them
+(`releases/download/vX.Y.Z/<file>` on GitHub and Forgejo, `/-/releases/vX.Y.Z/downloads/<file>`
+on GitLab, the URL's directory for a URL source), and records it ready, byte for byte with
+its digest, or failed with a code. An integration connection is added from a ready
+release, takes its name, source, version and description digest, and stores its plain
+settings as canonical JSON, checked against the description: a secret, or a secret's
+`<name>_file`, is never a setting. A description is validated with JSV against the
+integrations contract's `description.schema.json` (vendored under
+`priv/contract/integration/`, at the commit in `.integration-contract-ref`), and by the rules
+the schema cannot say. Its `publisher`, required, a `name` and a `url` that may be absent,
+is kept on the release and shown beside the source's owner, never instead of it, since
+nothing verifies it; for a URL source it is the one name a page has. The vendored schema is
+pinned to a commit of the integrations contract's branch that defines ways; the pin moves to
+that contract's main branch once the branch is merged there, and then to its 0.3.0 tag. The contracts' patterns are compiled with `:dollar_endonly`, and a schema
+given to JSV has each `$` anchor written `\z` (`Apiary.Kinds.Pattern`), so a value with a
+trailing newline never passes.
+
+**The fetch guards** (`Apiary.Integrations.Fetch`): the host is resolved, and the fetch is
+refused unless every address is public (`Apiary.Integrations.Fetch.Address`); the request
+connects to the address it checked, the host name kept for `Host`, SNI and the
+certificate's check; every redirect is followed by hand and checked the same way, https on
+port 443 to a host name, at most five; the body is capped at 1 MiB (256 KiB for a
+description), counted as it arrives, and the whole fetch at 15 seconds. A token, which an
+edition may give for a private release (`c:Apiary.Edition.release_token/2`; the core gives
+none), goes only to a public forge's own host, `github.com`, `gitlab.com` or
+`codeberg.org`, and never across a redirect. Every failure is one `fetch_failed`, the
+reason only in the log. The operator's `INTEGRATION_PRIVATE_HOSTS` lets the hosts it names
+resolve to private addresses; loopback, link-local and metadata addresses stay refused.
+What came is checked against `checksums.txt`, the version asked for, and any earlier
+release of the same source and version the workspace found:
+`integration_source_mismatch` when they differ.
+
+**Integrity.** A connection, a release and a custom definition each carry an integrity
+code (`Apiary.Kinds.Coded`), a connection's over its kind, name, where it applies, its
+settings and argument, and what it names; a release's over its source, state and
+description digest, and the description's bytes are checked against the digest. A page
+reads each connection marked `intact`; what renders a run configuration takes the
+workspace's connections from `Apiary.Connections.list_for_rendering/1`, which refuses them
+all when one fails. The targets and their ways carry no code.
+
 ## The audit trail
 
 Every change a person, an access key or the instance makes to what an organisation holds

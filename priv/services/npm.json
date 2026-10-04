@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "key": "npm",
+  "title": "npm registry",
+  "description": "The public npm registry, with an access token sent as a bearer token, for installing and publishing packages.",
+  "hosts": ["registry.npmjs.org"],
+  "auth": {"scheme": "bearer", "secret": "token"},
+  "declares": [
+    {"id": "token", "title": "npm access token", "name": "NPM_TOKEN"}
+  ]
+}
