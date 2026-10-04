@@ -1857,7 +1857,8 @@ defmodule ApiaryWeb.RunComponents do
   thin split with their numbers, the denied one red only when there is one; the reason is
   one muted line, whole on hover, and folds under the destination below 600 px of table.
   Columns join as the table widens (`connections_table/1`). A row's acts are
-  `rule_action/1` and `rule_menu/1`.
+  `rule_action/1` and `rule_menu/1`; what they open (`panel`, `rule_panel/1`) is a row of
+  its own right under the row, in the table's flow.
 
   `connection` is a projection row (`last_decision`, `last_rule`, …) or a map read from one
   egress event (`decision`, `rule`, …); both spellings are read.
@@ -1895,6 +1896,11 @@ defmodule ApiaryWeb.RunComponents do
   attr :security, :boolean,
     default: true,
     doc: "false: the record alone, without the reason, the rule actions or the slot"
+
+  attr :panel, :map,
+    default: nil,
+    doc:
+      "table and workspace: the row's open panel (`rule_panel/1`), shown under it; nil for none"
 
   slot :trailing, doc: "what the slot holds when `act` is not given"
 
@@ -1974,7 +1980,13 @@ defmodule ApiaryWeb.RunComponents do
       </td>
       <td class="q-meta q-cx-nw q-cx-seen"><.seen c={@c} started_at={@started_at} /></td>
       <td :if={@security} class="q-cx-acts">
-        <.rule_action :if={@act} id={"#{@id}-act"} connection={@c} {rule_action_attrs(@act)} />
+        <.rule_action
+          :if={@act}
+          id={"#{@id}-act"}
+          connection={@c}
+          controls={"#{@id}-panel"}
+          {rule_action_attrs(@act)}
+        />
         <.rule_menu
           :if={@act}
           id={"#{@id}-menu"}
@@ -1985,6 +1997,9 @@ defmodule ApiaryWeb.RunComponents do
         />
         {if !@act, do: render_slot(@trailing)}
       </td>
+    </tr>
+    <tr :if={@security && @panel} id={"#{@id}-panel"} class="q-rule-sub">
+      <td colspan="7"><.rule_panel panel={@panel} /></td>
     </tr>
     """
   end
@@ -2066,7 +2081,13 @@ defmodule ApiaryWeb.RunComponents do
       </td>
       <td class="q-meta q-cx-nw q-cx-seen"><.relative_time at={@c.last_seen_at} /></td>
       <td :if={@security} class="q-cx-acts">
-        <.rule_action :if={@act} id={"#{@id}-act"} connection={@c} {rule_action_attrs(@act)} />
+        <.rule_action
+          :if={@act}
+          id={"#{@id}-act"}
+          connection={@c}
+          controls={"#{@id}-panel"}
+          {rule_action_attrs(@act)}
+        />
         <.rule_menu
           id={"#{@id}-menu"}
           act_id={"#{@id}-act"}
@@ -2076,6 +2097,9 @@ defmodule ApiaryWeb.RunComponents do
         />
         {if !@act, do: render_slot(@trailing)}
       </td>
+    </tr>
+    <tr :if={@security && @panel} id={"#{@id}-panel"} class="q-rule-sub">
+      <td colspan="9"><.rule_panel panel={@panel} /></td>
     </tr>
     <tr :if={@open} id={"#{@id}-runs"} class="q-sub">
       <td colspan={if @security, do: 9, else: 7}>
@@ -2628,6 +2652,10 @@ defmodule ApiaryWeb.RunComponents do
     default: true,
     doc: "false: no Reason column, no column of rule actions, and `acts` is not read"
 
+  attr :panel, :map,
+    default: nil,
+    doc: "the page's open panel of a row's Allow or Deny (`rule_panel/1`), shown under its row"
+
   attr :class, :any, default: nil
 
   def connections_table(assigns) do
@@ -2696,6 +2724,7 @@ defmodule ApiaryWeb.RunComponents do
             run_path={@run_path}
             host_path={@host_path}
             act={@security && @acts && @acts[@row_id.(row)]}
+            panel={@security && panel_of(@panel, @row_id.(row))}
             security={@security}
           />
         </tbody>
@@ -2703,6 +2732,10 @@ defmodule ApiaryWeb.RunComponents do
     </div>
     """
   end
+
+  # The panel is of the row whose text action it goes back to.
+  defp panel_of(%{anchor: anchor} = panel, id), do: if(anchor == "#{id}-act", do: panel)
+  defp panel_of(_panel, _id), do: nil
 
   defp default_row_id(%{id: id}) when is_binary(id), do: "cx-#{id}"
   defp default_row_id(row), do: destination_id(row)
@@ -2749,15 +2782,17 @@ defmodule ApiaryWeb.RunComponents do
 
   @doc """
   A row's text action: what its rule option lets the reader ask of the policy, shown on
-  hover, on focus inside the row and while its popover or menu is open, never a bordered
+  hover, on focus inside the row and while its panel or menu is open, never a bordered
   button on every row (docs/ui.md, Lists). `:can_allow` is Allow and `:can_deny` Deny, each
-  opening the popover, one action a row: Allow on a denied destination, Deny on an allowed
-  one; a `:can_allow` row with `deny`, which no rule decides yet, has Deny… in its menu. A locked rule of the workspace (`:locked_deny`, `:locked_allow`) is a
-  faint lock, always shown, that opens the refusal; the wall's refusals (`:wall`) are a
-  faint lock that says no rule changes this; a host no rule can name (`:unnameable`) says
-  so to a screen reader alone; a rule that answers the row (`{:rule_added, _}`) links to
-  it. The rest of a row's acts are its menu (`rule_menu/1`). `data-action` names what a
-  text action asks.
+  opening the row's panel (`rule_panel/1`) under the row, one action a row: Allow on a
+  denied destination, Deny on an allowed one; a `:can_allow` row with `deny`, which no rule
+  decides yet, has Deny… in its menu. A locked rule of the workspace (`:locked_deny`,
+  `:locked_allow`) is a faint lock, always shown, that opens the refusal there; the wall's
+  refusals (`:wall`) are a faint lock that says no rule changes this; a host no rule can
+  name (`:unnameable`) says so to a screen reader alone; a rule that answers the row
+  (`{:rule_added, _}`) links to it. The rest of a row's acts are its menu (`rule_menu/1`).
+  `data-action` names what a text action asks; one that opens the panel says whether it is
+  open (`aria-expanded`) and which element it is (`controls`).
 
   `values` ride on the `rule_open` event; they name the row and are looked up among the
   rows the page holds, never trusted.
@@ -2769,7 +2804,8 @@ defmodule ApiaryWeb.RunComponents do
   attr :rule_path, :string, default: nil
   attr :entry_host, :string, default: nil, doc: "the host of the locked rule, for the tooltip"
   attr :expanded, :boolean, default: false
-  attr :expanded_action, :atom, default: nil, doc: "which of two actions the open popover is of"
+  attr :expanded_action, :atom, default: nil, doc: "which of two actions the open panel is of"
+  attr :controls, :string, default: nil, doc: "the id of the row's panel, which the action opens"
   attr :deny, :boolean, default: false, doc: "a `:can_allow` row no rule decides: Deny too"
 
   attr :above, :any,
@@ -2784,7 +2820,7 @@ defmodule ApiaryWeb.RunComponents do
     default: nil,
     doc: "the level above's page with the host, to allow it there"
 
-  # Where the level above the workspace allows only its own hosts, Allow opens a popover
+  # Where the level above the workspace allows only its own hosts, Allow opens a panel
   # that says so and leads to its page, with the host, for a reader who may change it
   # there; the rest see a lock. Deny, where no rule decides the host, is in the menu.
   def rule_action(%{rule_option: :can_allow, allow_elsewhere: %{}} = assigns) do
@@ -2802,7 +2838,7 @@ defmodule ApiaryWeb.RunComponents do
       class="q-act-t q-hov"
       data-action="allow"
       phx-click={JS.push("rule_open", value: Map.put(@values, "action", "allow"))}
-      aria-haspopup="dialog"
+      aria-controls={@controls}
       aria-expanded={to_string(@expanded)}
       aria-label={gettext("Allow %{host}", host: @connection.host)}
     >
@@ -2821,7 +2857,7 @@ defmodule ApiaryWeb.RunComponents do
     assigns =
       assign(assigns,
         action: Atom.to_string(action),
-        # Expanded while its own popover is open, not a Deny… the menu opened.
+        # Expanded while its own panel is open, not a Deny… the menu opened.
         open: assigns.expanded and assigns.expanded_action in [nil, false, action]
       )
 
@@ -2832,7 +2868,7 @@ defmodule ApiaryWeb.RunComponents do
       class="q-act-t q-hov"
       data-action={@action}
       phx-click={JS.push("rule_open", value: Map.put(@values, "action", @action))}
-      aria-haspopup="dialog"
+      aria-controls={@controls}
       aria-expanded={to_string(@open)}
       aria-label={
         if @action == "deny",
@@ -2866,7 +2902,7 @@ defmodule ApiaryWeb.RunComponents do
             Map.put(@values, "action", if(@rule_option == :locked_deny, do: "allow", else: "deny"))
         )
       }
-      aria-haspopup="dialog"
+      aria-controls={@controls}
       aria-expanded={to_string(@expanded)}
       aria-label={@tip}
     >
@@ -2926,16 +2962,16 @@ defmodule ApiaryWeb.RunComponents do
 
   @doc """
   A row's ⋯ menu (`CoreComponents.row_menu/1`), beside its text action and shown with it:
-  Allow… and Deny… where the row may ask for them, opening the same popover, anchored at
-  the text action (`act_id`), and the rule in force that decides the row, where one does;
-  where no one here changes what happened, why (the locked rule and who locked it, when the
-  newest history says so, or the wall) with the way to the rule; the rule that answers the
-  row; then Only this host, where the list can be narrowed to it (`host_path`), and Copy
-  the host. A rule's link (`rule_path`) leads to the rule in its policy's Network access
-  section.
+  Allow… and Deny… where the row may ask for them, opening the same panel, whose focus
+  goes back to the text action (`act_id`), and the rule in force that decides the row,
+  where one does; where no one here changes what happened, why (the locked rule and who
+  locked it, when the newest history says so, or the wall) with the way to the rule; the
+  rule that answers the row; then Only this host, where the list can be narrowed to it
+  (`host_path`), and Copy the host. A rule's link (`rule_path`) leads to the rule in its
+  policy's Network access section.
   """
   attr :id, :string, required: true
-  attr :act_id, :string, required: true, doc: "the row's text action, the popover's anchor"
+  attr :act_id, :string, required: true, doc: "the row's text action, the panel's anchor"
   attr :connection, :map, required: true, doc: "the row's connection, as the row reads it"
   attr :act, :map, default: nil, doc: "the row's act, as `rule_action/1` reads it; nil for none"
   attr :host_path, :any, default: nil
@@ -3013,7 +3049,6 @@ defmodule ApiaryWeb.RunComponents do
             :if={@option == :can_allow && !@allow_elsewhere}
             id={"#{@id}-allow"}
             phx-click={JS.push("rule_open", value: Map.put(@values, "action", "allow"))}
-            aria-haspopup="dialog"
           >
             {gettext("Allow…")}
           </.menu_item>
@@ -3021,7 +3056,6 @@ defmodule ApiaryWeb.RunComponents do
             :if={@option == :can_deny or @both}
             id={"#{@id}-deny"}
             phx-click={JS.push("rule_open", value: Map.put(@values, "action", "deny"))}
-            aria-haspopup="dialog"
           >
             {gettext("Deny…")}
           </.menu_item>
@@ -3145,293 +3179,313 @@ defmodule ApiaryWeb.RunComponents do
   defp after_sentence(_line), do: nil
 
   @doc """
-  The popover of a row's Allow or Deny: a `popover` element in the top layer, so the
-  table's scroll container cannot clip it, placed under its button by the `RulePopover`
-  hook and a bottom sheet below 768 px. `popover` is the page's state of it:
+  What a row's Allow or Deny opens: a panel in place, in the page's flow under the row it
+  is of (`connection_row/1`'s `panel`, a Needs attention item), never an overlay. `panel`
+  is the page's state of it:
 
       %{anchor:, action: :allow | :deny, host:, path:, page: :run | :workspace, level:,
         target: %{label:} | nil, targets: [%{id, label, runs}], choice:,
         what: %{target:, workspace:}, own_rule:, workspace:, alive:, fetched:, interval:, consequence:, error:,
         refusal: nil | %{rule_option:, rule:, locked_by:, locked_at:, owner:, rule_path:}}
 
-  The form changes with `rule_change` and is sent with `rule_submit`; `rule_cancel`
-  closes it. A refusal has no form.
-  """
-  attr :id, :string, default: "rule-popover"
-  attr :popover, :map, required: true
+  or, where only the level above the workspace allows the host, `%{anchor:, host:,
+  elsewhere: %{name:, path:}}`.
 
-  def rule_popover(%{popover: %{elsewhere: %{}}} = assigns) do
+  The form changes with `rule_change` and is sent with `rule_submit`: Enter sends it once
+  its button says what it does. Cancel and Escape send `rule_cancel`. A refusal, and the
+  way to the level above, have no form. The `RulePanel` hook moves the focus into the
+  panel as it opens and back to the row's action (`anchor`) as it goes.
+  """
+  attr :id, :string, default: "rule-panel"
+  attr :panel, :map, required: true
+
+  def rule_panel(%{panel: %{elsewhere: %{}}} = assigns) do
     ~H"""
-    <div
-      id={@id}
-      class="q-pop"
-      popover="auto"
-      phx-hook="RulePopover"
-      data-anchor={@popover.anchor}
-      role="dialog"
-      aria-labelledby={"#{@id}-title"}
-      aria-describedby={"#{@id}-elsewhere"}
-    >
-      <header>
+    <.rule_frame id={@id} anchor={@panel.anchor} aria-describedby={"#{@id}-elsewhere"}>
+      <header class="q-rp-head">
         <h3 id={"#{@id}-title"}>
           <.spliced text={gettext("Allow %{host}", host: hole())}>
-            <span class="q-pop-host">{middle(@popover.host, 40)}</span>
+            <span class="q-rp-host">{middle(@panel.host, 40)}</span>
           </.spliced>
         </h3>
       </header>
-      <div class="q-pop-body">
-        <p id={"#{@id}-elsewhere"}>
-          {gettext(
-            "%{name} allows only its own hosts, so an allow of this workspace would not be in force. Add it to %{name}'s policy, for every workspace?",
-            name: @popover.elsewhere.name
-          )}
-        </p>
-      </div>
-      <footer>
-        <.button id={"#{@id}-close"} phx-click="rule_cancel">{gettext("Cancel")}</.button>
+      <p id={"#{@id}-elsewhere"}>
+        {gettext(
+          "%{name} allows only its own hosts, so an allow of this workspace would not be in force. Add it to %{name}'s policy, for every workspace?",
+          name: @panel.elsewhere.name
+        )}
+      </p>
+      <div class="q-rp-act">
         <.button
           id={"#{@id}-elsewhere-open"}
           variant="primary"
-          navigate={@popover.elsewhere.path}
+          navigate={@panel.elsewhere.path}
           data-autofocus
         >
-          {gettext("Open %{name}'s policy", name: @popover.elsewhere.name)}
+          {gettext("Open %{name}'s policy", name: @panel.elsewhere.name)}
         </.button>
-      </footer>
-    </div>
+        <.button id={"#{@id}-close"} phx-click="rule_cancel">{gettext("Cancel")}</.button>
+      </div>
+    </.rule_frame>
     """
   end
 
-  def rule_popover(%{popover: %{refusal: %{}}} = assigns) do
+  def rule_panel(%{panel: %{refusal: %{}}} = assigns) do
     ~H"""
-    <div
-      id={@id}
-      class="q-pop"
-      popover="auto"
-      phx-hook="RulePopover"
-      data-anchor={@popover.anchor}
-      role="dialog"
-      aria-labelledby={"#{@id}-title"}
-    >
-      <header>
+    <.rule_frame id={@id} anchor={@panel.anchor}>
+      <header class="q-rp-head">
         <.icon name="hero-lock-closed-micro" class="size-4 text-faint" />
         <h3 id={"#{@id}-title"}>
           <.spliced text={
-            if @popover.refusal.rule_option == :locked_deny,
+            if @panel.refusal.rule_option == :locked_deny,
               do: gettext("%{host} stays denied", host: hole()),
               else: gettext("%{host} stays allowed", host: hole())
           }>
-            <span class="q-pop-host">{middle(@popover.host, 40)}</span>
+            <span class="q-rp-host">{middle(@panel.host, 40)}</span>
           </.spliced>
         </h3>
       </header>
-      <div class="q-pop-body">
-        <.notice kind={:warning}>
-          <span id={"#{@id}-refusal"}>
-            <.spliced text={
-              if @popover.refusal.rule_option == :locked_deny,
-                do: gettext("A locked workspace rule denies %{rule}.", rule: hole()),
-                else: gettext("A locked workspace rule allows %{rule}.", rule: hole())
-            }>
-              <.mono bare>{@popover.refusal.rule}</.mono>
-            </.spliced>
-            {if @popover.refusal.rule_option == :locked_deny,
+      <.notice kind={:warning}>
+        <span id={"#{@id}-refusal"}>
+          <.spliced text={
+            if @panel.refusal.rule_option == :locked_deny,
+              do: gettext("A locked workspace rule denies %{rule}.", rule: hole()),
+              else: gettext("A locked workspace rule allows %{rule}.", rule: hole())
+          }>
+            <.mono bare>{@panel.refusal.rule}</.mono>
+          </.spliced>
+          {if @panel.refusal.rule_option == :locked_deny,
+            do:
+              gettext(
+                "It holds against every target, so no rule added here would change what happens."
+              ),
+            else: gettext("It holds against every target, so a deny added here would change nothing.")}
+          <span :if={@panel.refusal.locked_by}>
+            {if @panel.refusal.locked_at,
               do:
-                gettext(
-                  "It holds against every target, so no rule added here would change what happens."
+                gettext("Locked by %{name} on %{date}.",
+                  name: @panel.refusal.locked_by,
+                  date: Format.date(@panel.refusal.locked_at)
                 ),
-              else:
-                gettext("It holds against every target, so a deny added here would change nothing.")}
-            <span :if={@popover.refusal.locked_by}>
-              {if @popover.refusal.locked_at,
-                do:
-                  gettext("Locked by %{name} on %{date}.",
-                    name: @popover.refusal.locked_by,
-                    date: Format.date(@popover.refusal.locked_at)
-                  ),
-                else: gettext("Locked by %{name}.", name: @popover.refusal.locked_by)}
-            </span>
-            {if @popover.refusal.owner,
-              do: gettext("You can change or unlock it on the workspace's policy page."),
-              else: gettext("Only an owner can change or unlock it.")}
+              else: gettext("Locked by %{name}.", name: @panel.refusal.locked_by)}
           </span>
-        </.notice>
-      </div>
-      <footer>
+          {if @panel.refusal.owner,
+            do: gettext("You can change or unlock it on the workspace's policy page."),
+            else: gettext("Only an owner can change or unlock it.")}
+        </span>
+      </.notice>
+      <div class="q-rp-act">
+        <.button id={"#{@id}-locked-rule"} navigate={@panel.refusal.rule_path}>
+          {gettext("Show the locked rule")}
+        </.button>
         <.button id={"#{@id}-close"} phx-click="rule_cancel" data-autofocus>
           {gettext("Close")}
         </.button>
-        <.button id={"#{@id}-locked-rule"} navigate={@popover.refusal.rule_path}>
-          {gettext("Show the locked rule")}
-        </.button>
-      </footer>
-    </div>
+      </div>
+    </.rule_frame>
     """
   end
 
-  def rule_popover(assigns) do
+  def rule_panel(assigns) do
+    panel = assigns.panel
+
+    # A target option is offered where there is one to name.
+    target? =
+      (panel.page == :run and panel.target != nil) or
+        (panel.page == :workspace and panel.targets != [])
+
     assigns =
       assigns
-      |> assign(:deny, assigns.popover.action == :deny)
-      |> assign(:what, popover_what(assigns.popover))
-      |> assign(:ready, popover_ready?(assigns.popover))
+      |> assign(:deny, panel.action == :deny)
+      |> assign(:what, panel_what(panel))
+      |> assign(:ready, panel_ready?(panel))
+      # The focus lands on the option chosen, else on the first.
+      |> assign(:first, if(target? and panel.level != :workspace, do: :target, else: :workspace))
 
     ~H"""
-    <div
-      id={@id}
-      class="q-pop"
-      popover="auto"
-      phx-hook="RulePopover"
-      data-anchor={@popover.anchor}
-      role="dialog"
-      aria-labelledby={"#{@id}-title"}
-    >
-      <form id={"#{@id}-form"} phx-change="rule_change" phx-submit="rule_submit" novalidate>
-        <header>
+    <.rule_frame id={@id} anchor={@panel.anchor}>
+      <form
+        id={"#{@id}-form"}
+        class="q-rp-form"
+        phx-change="rule_change"
+        phx-submit="rule_submit"
+        novalidate
+      >
+        <header class="q-rp-head">
           <PolicyComponents.rule_mark action={if @deny, do: "deny", else: "allow"} />
           <h3 id={"#{@id}-title"}>
-            <.spliced text={popover_title(@deny, @what && @what.kind == :path)}>
+            <.spliced text={panel_title(@deny, @what && @what.kind == :path)}>
               <span
-                class="q-pop-host"
-                title={@popover.host}
-              >{middle(@popover.host, 40)}</span>
+                class="q-rp-host"
+                title={@panel.host}
+              >{middle(@panel.host, 40)}</span>
             </.spliced>
           </h3>
         </header>
-        <div class="q-pop-body">
-          <div :if={@popover.error} id={"#{@id}-error"} role="alert">
-            <.notice kind={:error}>{@popover.error}</.notice>
-          </div>
-
-          <fieldset :if={@what && @what.kind == :path} id={"#{@id}-what-set"}>
-            <legend>
-              {gettext("What. This host has path rules:")}
-              <.mono :for={path <- Enum.take(@what.paths, 6)} bare class="q-rule">
-                {middle(path, 40)}
-              </.mono>
-              <span :if={length(@what.paths) > 6}>
-                {ngettext("and %{number} more", "and %{number} more", length(@what.paths) - 6,
-                  number: Format.number(length(@what.paths) - 6)
-                )}
-              </span>
-              <span :if={@what.paths == []}>{gettext("none, so no path is allowed")}</span>
-            </legend>
-            <p id={"#{@id}-what"} class="q-pop-what">
-              <b>{gettext("This path")}</b>
-              <.mono bare class="q-rule">{middle(@popover.path, 64)}</.mono>
-              {if @deny,
-                do: gettext("is taken out of the paths in force for the host."),
-                else: gettext("is added to the paths in force for the host.")}
-            </p>
-          </fieldset>
-
-          <fieldset>
-            <legend>{gettext("For")}</legend>
-            <label :if={@popover.page == :run and @popover.target} class="q-popt">
-              <input
-                type="radio"
-                name="for"
-                value="target"
-                checked={@popover.level == :target}
-              />
-              <span>
-                <b>{gettext("This target")}</b>
-                <span class="font-mono text-xs text-muted">{middle(@popover.target.label, 48)}</span>
-              </span>
-              <small :if={@deny && @popover.consequence[:target]}>
-                {@popover.consequence.target}
-              </small>
-            </label>
-            <label :if={@popover.page == :workspace and @popover.targets != []} class="q-popt">
-              <input
-                type="radio"
-                name="for"
-                value="target"
-                checked={@popover.level == :target}
-              />
-              <span><b>{gettext("One target")}</b></span>
-              <small :if={@deny && @popover.consequence[:target]}>
-                {@popover.consequence.target}
-              </small>
-            </label>
-            <%!-- Outside the label: inside it, every option would be part of the radio's name. --%>
-            <div
-              :if={@popover.page == :workspace and @popover.targets != []}
-              class="q-popt-more"
-            >
-              <select
-                name="target"
-                id={"#{@id}-target"}
-                class="select select-sm q-pop-select"
-                aria-label={gettext("Target")}
-              >
-                <option value="" selected={is_nil(@popover.choice)}>
-                  {gettext("Choose a target")}
-                </option>
-                <option
-                  :for={target <- @popover.targets}
-                  value={target.id}
-                  selected={@popover.choice == target.id}
-                >
-                  {middle(target.label, 56)} · {ngettext(
-                    "%{number} run",
-                    "%{number} runs",
-                    target.runs,
-                    number: Format.number(target.runs)
-                  )}
-                </option>
-              </select>
-            </div>
-            <label class="q-popt">
-              <input type="radio" name="for" value="workspace" checked={@popover.level == :workspace} />
-              <span><b>{gettext("The whole workspace")}</b></span>
-              <small>
-                {gettext("Every target of %{workspace}.", workspace: @popover.workspace)} {if @deny,
-                  do: @popover.consequence[:workspace]}
-              </small>
-              <small :if={@popover[:own_rule]} id={"#{@id}-own-rule"}>
-                {if @popover.page == :run,
-                  do: gettext("This target's own rule still decides here."),
-                  else: gettext("A target's own rule for this host still decides there.")}
-              </small>
-            </label>
-          </fieldset>
-
-          <p class="q-pop-next">
-            <.icon name="hero-arrow-path-micro" class="size-3.5" />
-            <span id={"#{@id}-next"}>
-              {gettext("Takes effect in running sessions within a heartbeat, about %{seconds} s.",
-                seconds: Format.number(@popover.interval)
-              )} {next_sentence(@popover)}
-            </span>
-          </p>
+        <div :if={@panel.error} id={"#{@id}-error"} role="alert">
+          <.notice kind={:error}>{@panel.error}</.notice>
         </div>
-        <footer>
-          <.button id={"#{@id}-cancel"} type="button" phx-click="rule_cancel">
-            {gettext("Cancel")}
-          </.button>
+
+        <fieldset :if={@what && @what.kind == :path} id={"#{@id}-what-set"}>
+          <legend>
+            {gettext("What. This host has path rules:")}
+            <.mono :for={path <- Enum.take(@what.paths, 6)} bare class="q-rule">
+              {middle(path, 40)}
+            </.mono>
+            <span :if={length(@what.paths) > 6}>
+              {ngettext("and %{number} more", "and %{number} more", length(@what.paths) - 6,
+                number: Format.number(length(@what.paths) - 6)
+              )}
+            </span>
+            <span :if={@what.paths == []}>{gettext("none, so no path is allowed")}</span>
+          </legend>
+          <p id={"#{@id}-what"} class="q-rp-what">
+            <b>{gettext("This path")}</b>
+            <.mono bare class="q-rule">{middle(@panel.path, 64)}</.mono>
+            {if @deny,
+              do: gettext("is taken out of the paths in force for the host."),
+              else: gettext("is added to the paths in force for the host.")}
+          </p>
+        </fieldset>
+
+        <fieldset>
+          <legend>{gettext("For")}</legend>
+          <label :if={@panel.page == :run and @panel.target} class="q-rp-opt">
+            <input
+              type="radio"
+              name="for"
+              value="target"
+              checked={@panel.level == :target}
+              data-autofocus={@first == :target}
+            />
+            <span>
+              <b>{gettext("This target")}</b>
+              <span class="font-mono text-xs text-muted">{middle(@panel.target.label, 48)}</span>
+            </span>
+            <small :if={@deny && @panel.consequence[:target]}>
+              {@panel.consequence.target}
+            </small>
+          </label>
+          <label :if={@panel.page == :workspace and @panel.targets != []} class="q-rp-opt">
+            <input
+              type="radio"
+              name="for"
+              value="target"
+              checked={@panel.level == :target}
+              data-autofocus={@first == :target}
+            />
+            <span><b>{gettext("One target")}</b></span>
+            <small :if={@deny && @panel.consequence[:target]}>
+              {@panel.consequence.target}
+            </small>
+          </label>
+          <%!-- Outside the label: inside it, every option would be part of the radio's name. --%>
+          <div :if={@panel.page == :workspace and @panel.targets != []} class="q-rp-more">
+            <select
+              name="target"
+              id={"#{@id}-target"}
+              class="select select-sm q-rp-select"
+              aria-label={gettext("Target")}
+            >
+              <option value="" selected={is_nil(@panel.choice)}>
+                {gettext("Choose a target")}
+              </option>
+              <option
+                :for={target <- @panel.targets}
+                value={target.id}
+                selected={@panel.choice == target.id}
+              >
+                {middle(target.label, 56)} · {ngettext(
+                  "%{number} run",
+                  "%{number} runs",
+                  target.runs,
+                  number: Format.number(target.runs)
+                )}
+              </option>
+            </select>
+          </div>
+          <label class="q-rp-opt">
+            <input
+              type="radio"
+              name="for"
+              value="workspace"
+              checked={@panel.level == :workspace}
+              data-autofocus={@first == :workspace}
+            />
+            <span><b>{gettext("The whole workspace")}</b></span>
+            <small>
+              {gettext("Every target of %{workspace}.", workspace: @panel.workspace)} {if @deny,
+                do: @panel.consequence[:workspace]}
+            </small>
+            <small :if={@panel[:own_rule]} id={"#{@id}-own-rule"}>
+              {if @panel.page == :run,
+                do: gettext("This target's own rule still decides here."),
+                else: gettext("A target's own rule for this host still decides there.")}
+            </small>
+          </label>
+        </fieldset>
+
+        <p class="q-rp-next">
+          <.icon name="hero-arrow-path-micro" class="size-3.5" />
+          <span id={"#{@id}-next"}>
+            {gettext("Takes effect in running sessions within a heartbeat, about %{seconds} s.",
+              seconds: Format.number(@panel.interval)
+            )} {next_sentence(@panel)}
+          </span>
+        </p>
+        <div class="q-rp-act">
           <.button
             id={"#{@id}-submit"}
             type="submit"
             variant={if @deny, do: "danger", else: "primary"}
             disabled={!@ready}
           >
-            {submit_label(@deny, @popover)}
+            {submit_label(@deny, @panel)}
           </.button>
-        </footer>
+          <.button id={"#{@id}-cancel"} type="button" phx-click="rule_cancel">
+            {gettext("Cancel")}
+          </.button>
+        </div>
       </form>
+    </.rule_frame>
+    """
+  end
+
+  # The panel's own element: a group named by its title, in the page's flow. Escape
+  # cancels it wherever the focus is, as an inline confirmation does; the menu button is
+  # where the focus goes back to when the row's action is hidden in a narrow table.
+  attr :id, :string, required: true
+  attr :anchor, :string, required: true
+  attr :rest, :global
+  slot :inner_block, required: true
+
+  defp rule_frame(assigns) do
+    ~H"""
+    <div
+      id={@id}
+      class="q-rp"
+      role="group"
+      aria-labelledby={"#{@id}-title"}
+      phx-hook="RulePanel"
+      data-anchor={@anchor}
+      data-menu={String.replace_suffix(@anchor, "-act", "-menu-button")}
+      phx-window-keydown="rule_cancel"
+      phx-key="Escape"
+      {@rest}
+    >
+      {render_slot(@inner_block)}
     </div>
     """
   end
 
   # What the domain will do is said for the level chosen, and for no other.
-  defp popover_what(%{level: level, what: what}) when is_map(what), do: what[level]
-  defp popover_what(_popover), do: nil
+  defp panel_what(%{level: level, what: what}) when is_map(what), do: what[level]
+  defp panel_what(_panel), do: nil
 
-  defp popover_ready?(%{level: :workspace}), do: true
-  defp popover_ready?(%{level: :target, page: :run}), do: true
-  defp popover_ready?(%{level: :target, choice: choice}) when is_binary(choice), do: true
-  defp popover_ready?(_popover), do: false
+  defp panel_ready?(%{level: :workspace}), do: true
+  defp panel_ready?(%{level: :target, page: :run}), do: true
+  defp panel_ready?(%{level: :target, choice: choice}) when is_binary(choice), do: true
+  defp panel_ready?(_panel), do: false
 
   # Under observe an allow changes what the record says, not what the run does: the
   # connection is let through already. A deny holds in either mode, so its sentence is
@@ -3451,22 +3505,22 @@ defmodule ApiaryWeb.RunComponents do
   defp next_sentence(%{page: :run, alive: true}),
     do: gettext("This run uses its machine's policy and does not take this one.")
 
-  defp next_sentence(_popover), do: nil
+  defp next_sentence(_panel), do: nil
 
-  # The popover's title, with the host's element where `hole/0` stands.
-  defp popover_title(true = _deny, true = _path), do: gettext("Deny on %{host}", host: hole())
-  defp popover_title(true, _path), do: gettext("Deny %{host}", host: hole())
-  defp popover_title(_deny, true), do: gettext("Allow on %{host}", host: hole())
-  defp popover_title(_deny, _path), do: gettext("Allow %{host}", host: hole())
+  # The panel's title, with the host's element where `hole/0` stands.
+  defp panel_title(true = _deny, true = _path), do: gettext("Deny on %{host}", host: hole())
+  defp panel_title(true, _path), do: gettext("Deny %{host}", host: hole())
+  defp panel_title(_deny, true), do: gettext("Allow on %{host}", host: hole())
+  defp panel_title(_deny, _path), do: gettext("Allow %{host}", host: hole())
 
   defp submit_label(true = _deny, %{level: :workspace}), do: gettext("Deny for the workspace")
   defp submit_label(true, %{level: :target, page: :run}), do: gettext("Deny for this target")
   defp submit_label(true, %{level: :target}), do: gettext("Deny for the target")
-  defp submit_label(true, _popover), do: gettext("Deny for …")
+  defp submit_label(true, _panel), do: gettext("Deny for …")
   defp submit_label(_deny, %{level: :workspace}), do: gettext("Allow for the workspace")
   defp submit_label(_deny, %{level: :target, page: :run}), do: gettext("Allow for this target")
   defp submit_label(_deny, %{level: :target}), do: gettext("Allow for the target")
-  defp submit_label(_deny, _popover), do: gettext("Allow for …")
+  defp submit_label(_deny, _panel), do: gettext("Allow for …")
 
   @doc """
   A version named on a run's pages: the version link and, since versions count per holder

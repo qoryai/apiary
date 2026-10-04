@@ -674,7 +674,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
     end
 
     @tag needs: :security
-    test "allow a denied destination here: the popover, the rule, the struck row", %{
+    test "allow a denied destination here: the panel in place, the rule, the struck row", %{
       conn: conn,
       scope: scope
     } do
@@ -691,19 +691,42 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
         |> LazyHTML.query("#attention-list li[data-kind=denied]")
         |> LazyHTML.attribute("id")
 
-      view |> element("##{item}-act") |> render_click()
-      assert has_element?(view, "#rule-popover[data-anchor='#{item}-act']")
-      assert has_element?(view, "#rule-popover", "files.cdn.example")
-      assert has_element?(view, "#rule-popover-submit", "Allow for the repository")
+      refute has_element?(view, "##{item}-act[aria-haspopup]")
 
-      view |> element("#rule-popover form") |> render_submit()
+      assert has_element?(
+               view,
+               "##{item}-act[aria-expanded=false][aria-controls='#{item}-panel']"
+             )
+
+      view |> element("##{item}-act") |> render_click()
+
+      # In place, inside the item, not an overlay.
+      assert has_element?(
+               view,
+               "li##{item} > ##{item}-panel > #rule-panel[role=group][data-anchor='#{item}-act']"
+             )
+
+      refute has_element?(view, "#rule-panel[popover], #rule-panel[role=dialog]")
+      assert has_element?(view, "##{item}-act[aria-expanded=true]")
+      assert has_element?(view, "#rule-panel", "files.cdn.example")
+      assert has_element?(view, "#rule-panel-submit", "Allow for the repository")
+      # The one target is chosen, so its option takes the focus.
+      assert has_element?(view, "#rule-panel input[value=target][checked][data-autofocus]")
+
+      # Cancel closes it; the act opens it again.
+      view |> element("#rule-panel-cancel") |> render_click()
+      refute has_element?(view, "##{item}-panel")
+      assert has_element?(view, "##{item}-act[aria-expanded=false]")
+      view |> element("##{item}-act") |> render_click()
+
+      view |> element("#rule-panel form") |> render_submit()
 
       target = Repo.get!(Apiary.Runs.Target, run.target_id)
 
       assert [%{host: "files.cdn.example", action: "allow"}] =
                Policy.list_rules(scope, target)
 
-      refute has_element?(view, "#rule-popover")
+      refute has_element?(view, "#rule-panel")
       assert has_element?(view, "##{item}.q-resolved .q-mark-ok")
       assert has_element?(view, "##{item}-done", "Allowed here")
 
@@ -781,9 +804,9 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
              )
 
       view |> element("##{item}-act") |> render_click()
-      assert has_element?(view, "#rule-popover-submit[disabled]")
+      assert has_element?(view, "#rule-panel-submit[disabled]")
       render_hook(view, "rule_change", %{"for" => "workspace"})
-      view |> element("#rule-popover form") |> render_submit()
+      view |> element("#rule-panel form") |> render_submit()
 
       assert Enum.any?(Policy.list_rules(scope, nil), &(&1.host == "flags.example"))
       assert has_element?(view, "##{item}-done", "Allowed for the workspace")

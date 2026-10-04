@@ -377,7 +377,7 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
         "action" => "allow"
       })
 
-      refute has_element?(view, "#rule-popover")
+      refute has_element?(view, "#rule-panel")
     end
 
     test "where the level allows only its own hosts, Allow is a lock without its page, and Deny stays",
@@ -462,7 +462,7 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
     assert html =~ "/8wonders/policy?allow=new.example"
   end
 
-  test "where only the level allows a host, Allow opens a popover that says so and leads there" do
+  test "where only the level allows a host, Allow opens a panel that says so and leads there" do
     act = %{
       rule_option: :can_allow,
       deny: true,
@@ -487,9 +487,9 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
     refute html =~ ~s(id="a-deny")
 
     html =
-      render_component(&RunComponents.rule_popover/1,
-        popover: %{
-          anchor: "a",
+      render_component(&RunComponents.rule_panel/1,
+        panel: %{
+          anchor: "a-act",
           host: "new.example",
           action: :allow,
           refusal: :elsewhere,
@@ -500,5 +500,9 @@ defmodule ApiaryWeb.PolicyLive.AboveTest do
     assert html =~ "Eight Wonders allows only its own hosts"
     assert html =~ "Open Eight Wonders&#39;s policy"
     assert html =~ "/8wonders/policy?allow=new.example"
+    # In the page's flow, not an overlay: no popover and no dialog; Escape cancels.
+    refute html =~ "popover="
+    refute html =~ ~s(role="dialog")
+    assert html =~ ~s(phx-window-keydown="rule_cancel")
   end
 end

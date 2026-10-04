@@ -164,7 +164,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewWithoutSecurityTest do
           do: render_hook(view, "rule_open", %{"id" => id, "level" => level})
 
       render_hook(view, "rule_submit", %{})
-      refute has_element?(view, "#rule-popover")
+      refute has_element?(view, "#rule-panel")
       assert Policy.list_rules(scope, nil) == []
     end
   end

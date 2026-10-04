@@ -348,6 +348,7 @@ defmodule ApiaryWeb.RunLive.Show do
                   counts={@counts}
                   decision={@decision}
                   acts={@acts}
+                  panel={@rule_panel}
                   version={@reported_version}
                   in_force={@in_force}
                   security={@security}
@@ -370,8 +371,6 @@ defmodule ApiaryWeb.RunLive.Show do
           instance={@instance}
         />
       </div>
-
-      <.rule_popover :if={@security && @popover} popover={@popover} />
     </Layouts.app>
     """
   end
@@ -635,6 +634,7 @@ defmodule ApiaryWeb.RunLive.Show do
   attr :counts, :map, required: true
   attr :decision, :string, default: nil
   attr :acts, :map, default: nil
+  attr :panel, :map, default: nil, doc: "the open panel of a row's Allow or Deny"
   attr :version, :any, default: nil
   attr :in_force, :any, default: nil
   attr :security, :boolean, required: true
@@ -710,6 +710,7 @@ defmodule ApiaryWeb.RunLive.Show do
         rows={@connections.rows}
         started_at={@run.started_at}
         acts={@acts}
+        panel={@panel}
         security={@security}
       />
       <div
@@ -1221,7 +1222,7 @@ defmodule ApiaryWeb.RunLive.Show do
        versions: %{},
        effective: nil,
        acts: nil,
-       popover: nil,
+       rule_panel: nil,
        policy_flush_scheduled: false,
        session_id: nil,
        counts: %{all: 0, allowed: 0, denied: 0, attempts: 0},
@@ -1305,7 +1306,7 @@ defmodule ApiaryWeb.RunLive.Show do
             versions: %{},
             effective: nil,
             acts: nil,
-            popover: nil
+            rule_panel: nil
           )
           |> put_index(Record.timeline(scope, run))
           |> assign_ending()
@@ -1874,14 +1875,14 @@ defmodule ApiaryWeb.RunLive.Show do
 
     case {act, action} do
       {%{rule_option: :can_allow}, "allow"} ->
-        {:noreply, open_popover(socket, row, act, :allow)}
+        {:noreply, open_panel(socket, row, act, :allow)}
 
       {%{rule_option: :can_deny}, "deny"} ->
-        {:noreply, open_popover(socket, row, act, :deny)}
+        {:noreply, open_panel(socket, row, act, :deny)}
 
       # No rule decides the host: it can be denied outright as well as allowed.
       {%{rule_option: :can_allow, deny: true}, "deny"} ->
-        {:noreply, open_popover(socket, row, act, :deny)}
+        {:noreply, open_panel(socket, row, act, :deny)}
 
       {%{rule_option: locked}, _} when locked in [:locked_deny, :locked_allow] ->
         {:noreply, open_refusal(socket, row, act)}
@@ -1894,47 +1895,47 @@ defmodule ApiaryWeb.RunLive.Show do
   def handle_event(
         "rule_change",
         params,
-        %{assigns: %{popover: %{refusal: nil} = popover}} = socket
+        %{assigns: %{rule_panel: %{refusal: nil} = panel}} = socket
       ) do
     level =
       case params["for"] do
-        "target" when not is_nil(popover.target) -> :target
+        "target" when not is_nil(panel.target) -> :target
         "workspace" -> :workspace
-        _ -> popover.level
+        _ -> panel.level
       end
 
-    {:noreply, assign(socket, popover: %{popover | level: level, error: nil})}
+    {:noreply, assign(socket, rule_panel: %{panel | level: level, error: nil})}
   end
 
-  def handle_event("rule_cancel", _params, socket), do: {:noreply, close_popover(socket)}
+  def handle_event("rule_cancel", _params, socket), do: {:noreply, close_panel(socket)}
 
   # The rule is the domain's to make and to refuse: `rule_from_connection/4` and nothing
   # else, and what it refuses is said in its own sentence.
   def handle_event(
         "rule_submit",
         _params,
-        %{assigns: %{popover: %{refusal: nil, level: level} = popover}} = socket
+        %{assigns: %{rule_panel: %{refusal: nil, level: level} = panel}} = socket
       )
       when level in [:target, :workspace] do
     %{current_scope: scope, run: run} = socket.assigns
 
-    # What the popover said was true of the policy it opened on. It is sent only while
+    # What the panel said was true of the policy it opened on. It is sent only while
     # that is still the policy: a stale Allow must not undo a deny made meanwhile.
-    with :ok <- still(socket, popover),
-         {:ok, connection} <- Record.connection(scope, run, popover.connection_id),
-         {:ok, rule} <- Policy.rule_from_connection(scope, connection, popover.action, level) do
+    with :ok <- still(socket, panel),
+         {:ok, connection} <- Record.connection(scope, run, panel.connection_id),
+         {:ok, rule} <- Policy.rule_from_connection(scope, connection, panel.action, level) do
       {:noreply,
        socket
-       |> close_popover()
+       |> close_panel()
        |> assign(effective: nil)
        |> refresh_policy()
-       |> put_flash(:info, rule_toast(socket, popover, rule, level))
+       |> put_flash(:info, rule_toast(socket, panel, rule, level))
        |> announce(
          Rules.toast(
            rule,
-           popover.action,
-           popover.host,
-           popover.path,
+           panel.action,
+           panel.host,
+           panel.path,
            if(level == :target, do: :this_target, else: :workspace)
          ),
          :now
@@ -1944,12 +1945,12 @@ defmodule ApiaryWeb.RunLive.Show do
         {:noreply, socket |> assign(effective: nil) |> refresh_policy() |> policy_moved()}
 
       {:error, %Policy.Error{message: message}} ->
-        {:noreply, assign(socket, popover: %{popover | error: message})}
+        {:noreply, assign(socket, rule_panel: %{panel | error: message})}
 
       _not_found ->
         {:noreply,
          socket
-         |> close_popover()
+         |> close_panel()
          |> put_flash(:error, gettext("This connection is no longer in this run."))}
     end
   end
@@ -1957,18 +1958,18 @@ defmodule ApiaryWeb.RunLive.Show do
   # A crafted event, or one for a page without a run: nothing to do.
   def handle_event(_event, _params, socket), do: {:noreply, socket}
 
-  defp open_popover(socket, row, act, action) do
+  defp open_panel(socket, row, act, action) do
     %{run: run, target: target, current_scope: scope, effective: effective} =
       socket.assigns
 
     path = row.path || ""
-    # The page holds the target's policy; the workspace's is read when a popover opens,
+    # The page holds the target's policy; the workspace's is read when a panel opens,
     # since what a rule for the workspace would be is decided by the workspace's own
     # paths.
     baseline = if target, do: Policy.effective(scope, nil), else: effective
 
     assign(socket,
-      popover: %{
+      rule_panel: %{
         anchor: "cx-#{row.id}-act",
         connection_id: row.id,
         action: action,
@@ -2004,7 +2005,7 @@ defmodule ApiaryWeb.RunLive.Show do
     locked = locked_change(scope, act.entry)
 
     assign(socket,
-      popover: %{
+      rule_panel: %{
         anchor: "cx-#{row.id}-act",
         host: act.host,
         refusal: %{
@@ -2020,12 +2021,12 @@ defmodule ApiaryWeb.RunLive.Show do
     |> mark_expanded()
   end
 
-  defp close_popover(socket), do: socket |> assign(popover: nil) |> mark_expanded()
+  defp close_panel(socket), do: socket |> assign(rule_panel: nil) |> mark_expanded()
 
-  # The slot's button says whether its popover is open.
-  defp mark_expanded(%{assigns: %{acts: acts, popover: popover}} = socket) when is_map(acts) do
-    open = popover && String.replace_suffix(popover.anchor, "-act", "")
-    action = popover && popover[:action]
+  # The slot's button says whether its panel is open.
+  defp mark_expanded(%{assigns: %{acts: acts, rule_panel: panel}} = socket) when is_map(acts) do
+    open = panel && String.replace_suffix(panel.anchor, "-act", "")
+    action = panel && panel[:action]
 
     assign(socket,
       acts:
@@ -2062,34 +2063,34 @@ defmodule ApiaryWeb.RunLive.Show do
 
   defp deny_consequence(_entry), do: %{}
 
-  # Whether the policy is still the one the popover opened on, for the host it is about.
-  defp still(socket, popover) do
+  # Whether the policy is still the one the panel opened on, for the host it is about.
+  defp still(socket, panel) do
     %{current_scope: scope, target: target, connections: %{rows: rows}} = socket.assigns
     effective = Policy.effective(scope, target)
     baseline = if target, do: Policy.effective(scope, nil), else: effective
-    row = Enum.find(rows, &(&1.id == popover.connection_id))
+    row = Enum.find(rows, &(&1.id == panel.connection_id))
 
-    if (row && Rules.rule_option(row, effective, :run).rule_option == popover.rule_option) and
-         {Rules.seen(effective, popover.host), Rules.seen(baseline, popover.host)} == popover.seen,
+    if (row && Rules.rule_option(row, effective, :run).rule_option == panel.rule_option) and
+         {Rules.seen(effective, panel.host), Rules.seen(baseline, panel.host)} == panel.seen,
        do: :ok,
        else: :stale
   end
 
   defp policy_moved(socket) do
     socket
-    |> close_popover()
+    |> close_panel()
     |> put_flash(:error, gettext("The policy changed; look at the row again."))
   end
 
-  # A change of the policy under an open popover closes it when it touches its host.
-  defp recheck_popover(%{assigns: %{popover: %{refusal: nil} = popover}} = socket) do
-    if still(socket, popover) == :ok, do: socket, else: policy_moved(socket)
+  # A change of the policy under an open panel closes it when it touches its host.
+  defp recheck_panel(%{assigns: %{rule_panel: %{refusal: nil} = panel}} = socket) do
+    if still(socket, panel) == :ok, do: socket, else: policy_moved(socket)
   end
 
-  defp recheck_popover(%{assigns: %{popover: %{}}} = socket), do: close_popover(socket)
-  defp recheck_popover(socket), do: socket
+  defp recheck_panel(%{assigns: %{rule_panel: %{}}} = socket), do: close_panel(socket)
+  defp recheck_panel(socket), do: socket
 
-  defp rule_toast(socket, popover, rule, level) do
+  defp rule_toast(socket, panel, rule, level) do
     %{current_scope: scope, target: target} = socket.assigns
     holder = if level == :target, do: target, else: nil
 
@@ -2110,7 +2111,7 @@ defmodule ApiaryWeb.RunLive.Show do
       end
 
     own =
-      if level == :workspace and popover.own_rule,
+      if level == :workspace and panel.own_rule,
         do: gettext("This target's own rule still decides here.")
 
     reach =
@@ -2121,7 +2122,7 @@ defmodule ApiaryWeb.RunLive.Show do
             "This run uses its machine's policy; sessions that take this one have it within a heartbeat."
           )
 
-    [Rules.toast(rule, popover.action, popover.host, popover.path, where), version, own, reach]
+    [Rules.toast(rule, panel.action, panel.host, panel.path, where), version, own, reach]
     |> Enum.reject(&is_nil/1)
     |> Enum.join(" ")
   end
@@ -2391,7 +2392,7 @@ defmodule ApiaryWeb.RunLive.Show do
 
   def handle_info(:policy_flush, socket) do
     {:noreply,
-     socket |> assign(policy_flush_scheduled: false) |> refresh_policy() |> recheck_popover()}
+     socket |> assign(policy_flush_scheduled: false) |> refresh_policy() |> recheck_panel()}
   end
 
   def handle_info(_other, socket), do: {:noreply, socket}

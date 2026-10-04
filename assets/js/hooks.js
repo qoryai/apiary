@@ -15,7 +15,7 @@ import {TimelineKeys} from "./hooks/timeline_keys"
 import {Terminal} from "./hooks/terminal"
 import {FocusOn} from "./hooks/focus_on"
 import {PolicyPage, RuleComposer, ChangeRow} from "./hooks/policy"
-import {RulePopover} from "./hooks/rule_popover"
+import {RulePanel} from "./hooks/rule_panel"
 import {DaysChart, OverviewPage} from "./hooks/overview"
 import {FamilyBoxes} from "./hooks/family_boxes"
 
@@ -34,7 +34,7 @@ export const hooks = {
   TimelineKeys,
   Terminal,
   FocusOn,
-  RulePopover,
+  RulePanel,
   PolicyPage,
   RuleComposer,
   ChangeRow,

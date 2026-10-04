@@ -31,6 +31,7 @@ defmodule ApiaryWeb.OverviewComponents do
       format_seconds: 1,
       heard_at: 1,
       relative_time: 1,
+      rule_panel: 1,
       short_id: 1,
       state_label: 1,
       target_name: 1,
@@ -221,7 +222,8 @@ defmodule ApiaryWeb.OverviewComponents do
   it is, the reason in a few words, when, and the one act that settles it. `items` is
   ordered and bounded by the caller; an empty list renders nothing at all: when there is
   nothing to do the block is absent. `shared` is the target paths on more than one
-  system, whose system is shown.
+  system, whose system is shown. A denied destination's Allow opens its panel
+  (`RunComponents.rule_panel/1`, the page's `panel`) inside the item, under its subject.
   """
   attr :id, :string, required: true
   attr :items, :list, required: true
@@ -239,6 +241,10 @@ defmodule ApiaryWeb.OverviewComponents do
   attr :confirming, :string,
     default: nil,
     doc: "the id of the item whose act asks to confirm in place (a lost run's Close)"
+
+  attr :panel, :map,
+    default: nil,
+    doc: "the page's open panel of an item's Allow (`RunComponents.rule_panel/1`), by `item_id`"
 
   def attention(assigns) do
     ~H"""
@@ -264,6 +270,7 @@ defmodule ApiaryWeb.OverviewComponents do
           can_set_mode?={@can_set_mode?}
           now={@now}
           confirming={@confirming == item.id}
+          panel={@panel && @panel.item_id == item.id && @panel}
         />
       </ul>
       <.link
@@ -289,6 +296,8 @@ defmodule ApiaryWeb.OverviewComponents do
   attr :can_set_mode?, :boolean, required: true
   attr :now, :any, required: true
   attr :confirming, :boolean, default: false
+
+  attr :panel, :any, default: nil
 
   # A lost run's Close asks in place: the row becomes the question, its act and Cancel.
   defp attention_item(%{confirming: true, item: %{kind: :lost}} = assigns) do
@@ -345,6 +354,9 @@ defmodule ApiaryWeb.OverviewComponents do
           <.attention_act scope={@scope} item={@item} can_set_mode?={@can_set_mode?} />
         <% end %>
       </span>
+      <div :if={@panel && !@item.resolved} id={"#{@item.id}-panel"} class="q-ar-panel">
+        <.rule_panel panel={@panel} />
+      </div>
     </li>
     """
   end
@@ -792,8 +804,8 @@ defmodule ApiaryWeb.OverviewComponents do
           target: "#{@target.system}/#{@target.path}"
         )
       }
-      aria-haspopup="dialog"
       aria-expanded={to_string(@item[:expanded] == true)}
+      aria-controls={"#{@item.id}-panel"}
       phx-click={JS.push("rule_open", value: %{id: @item.id, level: "target"})}
     >
       {gettext("Allow here")}
@@ -808,8 +820,8 @@ defmodule ApiaryWeb.OverviewComponents do
       type="button"
       class="q-act"
       aria-label={gettext("Allow %{host} for the workspace", host: @item.host)}
-      aria-haspopup="dialog"
       aria-expanded={to_string(@item[:expanded] == true)}
+      aria-controls={"#{@item.id}-panel"}
       phx-click={JS.push("rule_open", value: %{id: @item.id, level: "workspace"})}
     >
       {gettext("Allow")}
@@ -824,8 +836,8 @@ defmodule ApiaryWeb.OverviewComponents do
       type="button"
       class="q-act"
       aria-label={gettext("Allow %{host}, choose a scope", host: @item.host)}
-      aria-haspopup="dialog"
       aria-expanded={to_string(@item[:expanded] == true)}
+      aria-controls={"#{@item.id}-panel"}
       phx-click={JS.push("rule_open", value: %{id: @item.id, level: "choose"})}
     >
       {gettext("Allow")}

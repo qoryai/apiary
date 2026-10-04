@@ -290,7 +290,7 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
   What `Apiary.Policy.rule_from_connection/4` will make of a row in a holder whose
   effective policy is `effective`: `%{kind: :path, paths: held}` when the host is held to
   paths there and the row names a path (the path is added to them, or taken out), else
-  `%{kind: :host, paths: held}`. The popover says this for the scope chosen, never for
+  `%{kind: :host, paths: held}`. The rule panel says this for the scope chosen, never for
   another.
   """
   def what(%Effective{} = effective, host, path) do
@@ -313,7 +313,7 @@ defmodule ApiaryWeb.ConnectionLive.Rules do
 
   @doc """
   Every rule of the effective policy that touches the host, in force or not, as plain
-  terms: what a popover saw when it opened. When it is not the same at the moment of
+  terms: what a rule panel saw when it opened. When it is not the same at the moment of
   sending, the policy changed under the reader, and nothing is sent.
   """
   def seen(%Effective{entries: entries}, host) when is_binary(host) do
