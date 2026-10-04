@@ -95,8 +95,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
     )
     |> then(fn socket ->
       assign(socket,
-        rows: Common.target_rules(effective, socket),
-        credentials: Common.target_credentials(effective, socket)
+        rows: Common.target_rules(effective, socket)
       )
     end)
     |> load_record()
@@ -413,8 +412,7 @@ defmodule ApiaryWeb.PolicyLive.Target do
     scope = socket.assigns.current_scope
 
     case Policy.get_rule(scope, id) do
-      {:ok, %{kind: "host"} = rule} -> remove_host(socket, rule)
-      {:ok, rule} -> remove_credential(socket, rule)
+      {:ok, rule} -> remove_host(socket, rule)
       {:error, error} -> Common.refused(socket, error)
     end
   end
@@ -532,24 +530,6 @@ defmodule ApiaryWeb.PolicyLive.Target do
       socket
       |> Common.wrote(nil, sentence, gettext("Rule removed."))
       |> focus_host(rule.host)
-    else
-      {:error, error} -> Common.refused(socket, error)
-      _ -> load(socket)
-    end
-  end
-
-  defp remove_credential(socket, rule) do
-    scope = socket.assigns.current_scope
-
-    with true <- rule.target_id == socket.assigns.holder.id,
-         {:ok, rule} <- Policy.remove_rule(scope, rule) do
-      socket
-      |> Common.wrote(
-        nil,
-        gettext("The credential %{name} is removed.", name: rule.name),
-        gettext("Credential removed.")
-      )
-      |> Common.focus("policy-credential-name")
     else
       {:error, error} -> Common.refused(socket, error)
       _ -> load(socket)
@@ -1058,30 +1038,6 @@ defmodule ApiaryWeb.PolicyLive.Target do
               workspace: @workspace
             )}
       </p>
-    </section>
-
-    <section id="policy-credentials" class="q-psec" aria-labelledby="policy-credentials-h">
-      <div class="q-psec-h">
-        <h2 id="policy-credentials-h">{gettext("Credentials")}</h2>
-        <span id="policy-credentials-n" class="q-psec-n">{Format.number(length(@credentials))}</span>
-      </div>
-      <p class="q-psec-p">
-        {gettext("Names its runs may use: its own, then %{workspace}'s.", workspace: @workspace)}
-      </p>
-      <.credential_composer
-        :if={@edit?}
-        id="policy-credential"
-        class="q-composer-line"
-        form={@credential}
-        reading={@credential_reading}
-      />
-      <.credentials_table
-        id="policy-credential-rows"
-        label={gettext("Credentials of %{target}", target: @target_name)}
-        rows={@credentials}
-        source
-        activity={@activity_now}
-      />
     </section>
     """
   end

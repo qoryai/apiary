@@ -5,18 +5,18 @@ defmodule Apiary.Policy do
 
   ## The model
 
-  The contract's policy document says a mode, the hosts denied, the hosts allowed, the
-  paths a host is held to, the credentials of the machine's a run may use. The workspace
-  has a mode (`get_mode/1`, `set_mode/2`) and a baseline of rules; a target has rules of
-  its own on top, and follows the workspace's mode unless it sets its own (`get_mode/2`,
-  `set_mode/3`). The mode and the rules are apart: a locked rule of the workspace holds in
-  a target's document whatever the target's mode, and a deny holds in either mode:
-  `egress.deny` is decided by the runner first, so under `observe` a host a deny names is
-  denied and everything else is let through and recorded, and the document's `allow`
-  says what `enforce` would reach. A rule (`Apiary.Policy.Rule`) allows or denies a host
-  or a credential. A deny is written to the document and takes the allow entries it
-  covers out of it, so a target can disable a host of the workspace, and a **locked** rule
-  of the workspace holds against every target. How the rules come to one policy is
+  The contract's policy document says a mode, the hosts denied, the hosts allowed and the
+  paths a host is held to; this policy selects none of the machine's credentials. The
+  workspace has a mode (`get_mode/1`, `set_mode/2`) and a baseline of rules; a target has
+  rules of its own on top, and follows the workspace's mode unless it sets its own
+  (`get_mode/2`, `set_mode/3`). The mode and the rules are apart: a locked rule of the
+  workspace holds in a target's document whatever the target's mode, and a deny holds in
+  either mode: `egress.deny` is decided by the runner first, so under `observe` a host a
+  deny names is denied and everything else is let through and recorded, and the
+  document's `allow` says what `enforce` would reach. A rule (`Apiary.Policy.Rule`)
+  allows or denies a host. A deny is written to the document and takes the allow entries
+  it covers out of it, so a target can disable a host of the workspace, and a **locked**
+  rule of the workspace holds against every target. How the rules come to one policy is
   `Apiary.Policy.Resolution`'s to say.
 
   An edition may keep a level above the workspace's policy
@@ -56,7 +56,7 @@ defmodule Apiary.Policy do
   (`security_policy.edit`, `.lock`, `.set_mode`), read as `Apiary.Policy.Change`s: the
   entry's subject is the holder, the target or the workspace for the baseline, its
   `before` and `after` the holder's mode and rules, and its `details` the kind of change
-  (`rule_added` …), the host or credential it is about and the version it left in force.
+  (`rule_added` …), the host it is about and the version it left in force.
   Each run configuration a change rendered names the change's entry (`audit_entry_id`).
 
   Who may write is `Apiary.Access`'s answer, asked in every write under the workspace's
@@ -357,7 +357,7 @@ defmodule Apiary.Policy do
 
   ## Rules
 
-  @doc "The rules of the baseline (`nil`) or of a target, hosts first, by host and name."
+  @doc "The rules of the baseline (`nil`) or of a target, by host."
   @spec list_rules(Scope.t(), holder) :: [Rule.t()]
   def list_rules(%Scope{} = scope, holder) do
     case holder_id(scope, holder) do
@@ -389,7 +389,7 @@ defmodule Apiary.Policy do
   The policy in force for the baseline (`nil`) or for a target: every rule that takes
   part as an `Apiary.Policy.Entry` (where it came from, whether it is in force, what
   overrode it, what it overrides), the level above's rules included, the `allow`,
-  `paths` and `credentials` the document says, the `mode` in force with where it came
+  `deny` and `paths` the document says, the `mode` in force with where it came
   from (`mode_source`, `:organisation`, `:workspace` or `:target`), and `above`, the
   level above the workspace (nil where the edition keeps none). A target that is not the
   workspace's gets the baseline.
@@ -430,17 +430,15 @@ defmodule Apiary.Policy do
   end
 
   @doc """
-  Allows a host or a credential in the holder, replacing the holder's rule for the same
-  host or name when there is one.
+  Allows a host in the holder, replacing the holder's rule for the same host when there
+  is one.
 
-  `attrs`, with atom or string keys: `kind` (`"host"`, the default, or `"credential"`);
-  for a host `host` and `paths` (a list, or a text of one path a line, for the paths the
-  host is held to; `[]` for no path at all; `nil` for every path); for a credential
-  `name` and `argument`; `locked`, `true` or `false` and nothing else (the workspace's
-  rules only, and `security_policy.lock`).
+  `attrs`, with atom or string keys: `host` and `paths` (a list, or a text of one path a
+  line, for the paths the host is held to; `[]` for no path at all; `nil` for every
+  path); `locked`, `true` or `false` and nothing else (the workspace's rules only, and
+  `security_policy.lock`); `kind`, `"host"` when given, the one kind of rule.
 
-  What `attrs` does not name stays as the rule there has it: the lock, the paths, the
-  argument. So allowing a host that is held to paths does not open it: every path takes
+  What `attrs` does not name stays as the rule there has it: the lock, the paths. So allowing a host that is held to paths does not open it: every path takes
   the key, `paths: nil`. A paths text with no path in it (a form's empty field) names
   nothing. A new rule without `paths` is on every path. At most #{@rules_max} rules a list
   and #{Grammar.paths_max()} paths a rule.
@@ -450,7 +448,7 @@ defmodule Apiary.Policy do
     do: put_rule(scope, holder, "allow", attrs)
 
   @doc """
-  Denies a host or a credential in the holder, as `allow/3` allows one. A deny takes the
+  Denies a host in the holder, as `allow/3` allows one. A deny takes the
   whole host: `paths` is not read. A deny holds in either mode, and a deny of a host below
   an allowed `*.` suffix stands beside the allow: the runner decides `deny` first.
   """
@@ -665,8 +663,7 @@ defmodule Apiary.Policy do
   connection of the workspace is read, for a target those of its runs; each is held to the
   effective policy of its run's target and counted on the rule the runner would
   report: the first entry of `allow` that matches (names before `*.` suffixes), else the
-  deny in force that covers the host; and on the credential rule the connection named.
-  So a target's page may name rules of the workspace, and the workspace's page counts a
+  deny in force that covers the host. So a target's page may name rules of the workspace, and the workspace's page counts a
   workspace rule wherever it decided. Bounded as `uncovered/2` is.
   """
   @spec rule_activity(Scope.t(), holder, DateTime.t()) ::
@@ -1084,7 +1081,9 @@ defmodule Apiary.Policy do
   @doc """
   What a change changed: `%{mode: nil | {from, to}, added: [rule], removed: [rule],
   changed: [{before, after}]}`, the rules as the JSON maps the change holds (`"kind"`,
-  `"action"`, `"host"`, `"paths"`, `"name"`, `"argument"`, `"locked"`).
+  `"action"`, `"host"`, `"paths"`, `"locked"`). A change made while the policy still
+  named credentials holds them as rules with `"name"` and `"argument"` in place of
+  `"host"`, and they are read as such.
   """
   @spec diff(Change.t()) :: %{
           mode: nil | {String.t(), String.t()},
@@ -1111,8 +1110,7 @@ defmodule Apiary.Policy do
   The effective policy as text for a node without a server: `runner_file`, the `egress`
   section of `~/.config/qory/runner.yaml`, which holds the mode and the hosts; and
   `policy_file`, a document in the contract's policy format for `qory run --policy`, when
-  the policy holds paths or credentials, which the runner file's section cannot say (nil
-  otherwise). `notes` are sentences for the page.
+  the policy holds paths, which the runner file's section cannot say (nil otherwise). `notes` are sentences for the page.
   """
   @spec export(Scope.t(), holder) ::
           {:ok, %{runner_file: String.t(), policy_file: String.t() | nil, notes: [String.t()]}}
@@ -1142,11 +1140,11 @@ defmodule Apiary.Policy do
 
   - `"rule_added"` or `"rule_changed"`, with `action` (`"allow"` or `"deny"`) and what
     `allow/3` takes: the rule as it is to be, whole. What it does not name is as a new
-    rule has it: every path for a host allowed with no paths given, no argument, not
-    locked. A changed rule replaces the rule there, its lock included.
-  - `"rule_removed"`, with `kind` and the `host` or the credential's `name`.
+    rule has it: every path for a host allowed with no paths given, not locked. A
+    changed rule replaces the rule there, its lock included.
+  - `"rule_removed"`, with the `host`.
 
-  Each host and each credential is named once, at most #{@request_rules_max} rules,
+  Each host is named once, at most #{@request_rules_max} rules,
   and the changes change something: a rule or the mode. `{:ok, requested}`, or
   `{:error, %Error{}}` with the first sentence of what is wrong.
   """
@@ -1249,11 +1247,10 @@ defmodule Apiary.Policy do
   end
 
   defp requested_write(scope, {:rule, %{"change" => "rule_removed", "rule" => rule}}) do
-    kind = rule["kind"]
-    subject = rule["host"] || rule["name"]
+    subject = rule["host"]
 
     write_in(scope, nil, [:edit], fn workspace, scope ->
-      case Enum.find(rules(workspace.id, nil), &(&1.kind == kind and Rule.subject(&1) == subject)) do
+      case Enum.find(rules(workspace.id, nil), &(Rule.subject(&1) == subject)) do
         nil ->
           {:error, gone(subject)}
 
@@ -1327,8 +1324,7 @@ defmodule Apiary.Policy do
     rules
     |> Enum.reduce_while({:ok, [], MapSet.new()}, fn entry, {:ok, rules, seen} ->
       with {:ok, requested} <- requested_rule(entry),
-           key =
-             {requested["rule"]["kind"], requested["rule"]["host"] || requested["rule"]["name"]},
+           key = requested["rule"]["host"],
            :ok <- once(key, seen) do
         {:cont, {:ok, [requested | rules], MapSet.put(seen, key)}}
       else
@@ -1364,13 +1360,6 @@ defmodule Apiary.Policy do
   defp requested_rule("rule_removed", entry) do
     with {:ok, attrs} <- attrs(entry) do
       case {attrs["kind"] || "host", attrs} do
-        {"credential", %{"name" => name}} when is_binary(name) ->
-          if Grammar.credential_name?(name),
-            do:
-              {:ok,
-               %{"change" => "rule_removed", "rule" => %{"kind" => "credential", "name" => name}}},
-            else: candidate("deny", attrs)
-
         {"host", %{"host" => host}} when is_binary(host) ->
           if Grammar.host?(host),
             do:
@@ -1404,8 +1393,8 @@ defmodule Apiary.Policy do
         {:error,
          Error.new(
            :invalid,
-           gettext("%{subject} is named twice: a request changes each host and credential once.",
-             subject: elem(key, 1)
+           gettext("%{subject} is named twice: a request changes each host once.",
+             subject: key
            )
          )},
       else: :ok
@@ -1497,8 +1486,7 @@ defmodule Apiary.Policy do
     {:ok, rule, "rule_added", Rule.subject(rule)}
   end
 
-  # What the caller did not name stays: the lock, and the paths and the argument of an
-  # allow. Opening a host held to paths to every path takes `paths: nil`, said.
+  # What the caller did not name stays: the lock, and the paths of an allow. Opening a host held to paths to every path takes `paths: nil`, said.
   defp store(_workspace, _user, _target_id, %Rule{} = existing, candidate, attrs) do
     keep = fn key, given, held ->
       cond do
@@ -1515,7 +1503,6 @@ defmodule Apiary.Policy do
       |> Ecto.Changeset.change(
         action: candidate.action,
         paths: keep.("paths", candidate.paths, existing.paths),
-        argument: keep.("argument", candidate.argument, existing.argument),
         locked: locked
       )
       |> Repo.update!()
@@ -1793,8 +1780,6 @@ defmodule Apiary.Policy do
       "action" => rule.action,
       "host" => rule.host,
       "paths" => rule.paths,
-      "name" => rule.name,
-      "argument" => rule.argument,
       "locked" => rule.locked
     }
   end
@@ -2117,7 +2102,7 @@ defmodule Apiary.Policy do
         :ok
 
       {:error, reason} ->
-        # The document holds hosts, paths and names of credentials, never a secret.
+        # The document holds hosts and paths, never a secret.
         Logger.error(
           "a rendered run configuration was refused by the contract's schema: #{inspect(reason, limit: 20)}"
         )
@@ -2234,7 +2219,7 @@ defmodule Apiary.Policy do
     Repo.all(
       from r in Rule,
         where: r.workspace_id == ^workspace_id and is_nil(r.target_id),
-        order_by: [desc: r.kind, asc: r.host, asc: r.name]
+        order_by: [asc: r.host]
     )
   end
 
@@ -2242,7 +2227,7 @@ defmodule Apiary.Policy do
     Repo.all(
       from r in Rule,
         where: r.workspace_id == ^workspace_id and r.target_id == ^target_id,
-        order_by: [desc: r.kind, asc: r.host, asc: r.name]
+        order_by: [asc: r.host]
     )
   end
 
@@ -2266,10 +2251,10 @@ defmodule Apiary.Policy do
   defp holder_id(%Scope{}, _holder),
     do: {:error, not_found(gettext("This workspace has no such target."))}
 
-  defp existing(workspace_id, target_id, %Rule{kind: kind} = candidate) do
+  defp existing(workspace_id, target_id, %Rule{} = candidate) do
     subject = Rule.subject(candidate)
 
-    Enum.find(rules(workspace_id, target_id), &(&1.kind == kind and Rule.subject(&1) == subject))
+    Enum.find(rules(workspace_id, target_id), &(Rule.subject(&1) == subject))
   end
 
   defp readable(scope) do
@@ -2378,7 +2363,7 @@ defmodule Apiary.Policy do
 
   # What a form or a caller gives, reduced to the known keys as strings. No atom is made
   # from input.
-  @keys ~w(kind host paths name argument locked)
+  @keys ~w(kind host paths locked)
   defp attrs(attrs) when is_map(attrs) do
     attrs =
       for key <- @keys,
@@ -2408,15 +2393,7 @@ defmodule Apiary.Policy do
   defp normalise("host", host) when is_binary(host),
     do: host |> String.trim() |> String.downcase()
 
-  defp normalise("name", name) when is_binary(name), do: String.trim(name)
   defp normalise("kind", kind) when is_atom(kind) and not is_nil(kind), do: Atom.to_string(kind)
-
-  defp normalise("argument", argument) when is_binary(argument) do
-    case String.trim(argument) do
-      "" -> nil
-      argument -> argument
-    end
-  end
 
   defp normalise("locked", locked) when locked in [true, "true"], do: true
   defp normalise("locked", locked) when locked in [false, "false"], do: false

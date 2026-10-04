@@ -1,37 +1,33 @@
 defmodule Apiary.Policy.Grammar do
   @moduledoc """
   The grammar of the contract's policy document (`policy.schema.json`), where a rule is
-  checked before it is stored: a host, a path, a credential's name and its argument. The
-  patterns are the schema's own; the rendered document is validated against the schema
-  again, whole, before it is stored (`Apiary.Policy.Schema`).
+  checked before it is stored: a host and a path. The patterns are the schema's own; the
+  rendered document is validated against the schema again, whole, before it is stored
+  (`Apiary.Policy.Schema`).
 
   `covers?/2` and `matches?/2` are the runner's `policy.Covers` and `policy.Match`.
   """
 
   # The schema's own patterns but for the anchors: `\A` and `\z`, since `$` would let a final
   # newline through. This, not the validation of the rendered document, is what keeps a
-  # host, a path or a name to the grammar.
+  # host or a path to the grammar.
   @host ~r/\A(\*\.)?([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\z/
   @path ~r/\A\/[^*?#\s]*\*?\z/
   # The schema's `\s` is ECMAScript's, every Unicode space and U+2028 and U+2029 with it,
   # where this engine's `\s` without more is ASCII's: a path holds no separator and no
   # control character of any kind, or the schema would refuse the render later, without a
-  # sentence. An argument is one line: no control character, no line or paragraph separator.
+  # sentence.
   @blank ~r/[\p{Z}\p{C}]/u
-  @line ~r/[\p{Cc}\x{2028}\x{2029}]/u
-  @name ~r/\A[a-z0-9][a-z0-9_.-]{0,63}\z/
 
   # A DNS name is at most 253 characters; a path and a list of paths are bounded so a
   # document stays far under what a runner reads.
   @host_max 255
   @path_max 1024
   @paths_max 100
-  @argument_max 256
 
   def host_max, do: @host_max
   def path_max, do: @path_max
   def paths_max, do: @paths_max
-  def argument_max, do: @argument_max
 
   @doc "Whether `host` is a lower-case host name or a `*.` suffix, as `egress.allow` takes it."
   def host?(host) when is_binary(host) do
@@ -47,25 +43,6 @@ defmodule Apiary.Policy.Grammar do
   end
 
   def path?(_path), do: false
-
-  @doc "Whether `name` can name a credential."
-  def credential_name?(name) when is_binary(name),
-    do: String.valid?(name) and Regex.match?(@name, name)
-
-  def credential_name?(_name), do: false
-
-  @doc """
-  Whether `argument` is a valid argument of a credential: 1 to 256 characters, none of
-  them a control character, a line separator or a paragraph separator. Characters are
-  code points, as the schema's `maxLength` counts them: a letter with a combining accent
-  is two.
-  """
-  def argument?(argument) when is_binary(argument) do
-    String.valid?(argument) and length(String.codepoints(argument)) in 1..@argument_max and
-      not Regex.match?(@line, argument)
-  end
-
-  def argument?(_argument), do: false
 
   @doc "Whether the entry is a `*.` suffix."
   def wildcard?("*." <> _suffix), do: true

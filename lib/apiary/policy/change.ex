@@ -2,7 +2,7 @@ defmodule Apiary.Policy.Change do
   @moduledoc """
   One change of the security policy, of the workspace's baseline (`target_id` nil) or of a
   target's rules, as the history shows it: what was done (`action`), to what (`subject`, a
-  host or a credential's name; nil for the mode), the rule set `before` and `after` as
+  host; nil for the mode), the rule set `before` and `after` as
   JSON (`%{"mode" => …, "rules" => […]}`), who (`changed_by_id`, nil for the instance)
   and when. `version_after` is the version of the holder's run configuration in force once
   the change was made; a change that rendered the same bytes names the version that

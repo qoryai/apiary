@@ -6941,9 +6941,6 @@
     border-bottom: 1px solid var(--q-border-subtle);
     background-color: var(--color-base-200);
   }
-  .q-composer-cred {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) auto;
-  }
   .q-composer > .btn {
     --size: 32px;
     height: 32px;
@@ -7477,8 +7474,7 @@
       overflow-x: auto;
       scrollbar-width: none;
     }
-    .q-composer,
-    .q-composer-cred {
+    .q-composer {
       grid-template-columns: minmax(0, 1fr);
     }
     .q-composer .q-seg {
@@ -7728,13 +7724,6 @@
   .q-pr .q-mark-no {
     background-color: var(--q-denied-tint);
     color: var(--color-error);
-  }
-  .q-pr-key {
-    display: inline-grid;
-    width: 18px;
-    height: 18px;
-    place-items: center;
-    color: var(--q-faint);
   }
   .q-pr .q-host.q-pr-h {
     color: var(--color-base-content);

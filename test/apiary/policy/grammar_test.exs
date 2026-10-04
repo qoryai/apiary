@@ -3,18 +3,15 @@ defmodule Apiary.Policy.GrammarTest do
 
   alias Apiary.Policy.Grammar
 
-  test "a final newline is not part of a host, a path or a name, whatever `$` would say" do
+  test "a final newline is not part of a host or a path, whatever `$` would say" do
     assert Grammar.host?("api.example")
     refute Grammar.host?("api.example\n")
     refute Grammar.host?("*.example\n")
     assert Grammar.path?("/a/*")
     refute Grammar.path?("/a\n")
-    assert Grammar.credential_name?("product")
-    refute Grammar.credential_name?("product\n")
-    refute Grammar.argument?("acme/shop\n")
   end
 
-  test "a path holds no space or control character of any script; an argument is one line" do
+  test "a path holds no space or control character of any script" do
     for bad <- [
           "/a\u2028b",
           "/a\u2029b",
@@ -28,21 +25,6 @@ defmodule Apiary.Policy.GrammarTest do
     end
 
     assert Grammar.path?("/ü/🐝/*")
-
-    for bad <- ["a\u2028b", "a\u2029b", "a\u0085b", "a\nb", "a\u0000b"] do
-      refute Grammar.argument?(bad), inspect(bad)
-    end
-
-    assert Grammar.argument?("acme/shop with a space, ü and 🐝")
-  end
-
-  test "an argument is at most 256 code points, as the schema's maxLength counts" do
-    assert Grammar.argument?(String.duplicate("\u00E9", 256))
-    refute Grammar.argument?(String.duplicate("\u00E9", 257))
-    # 200 letters with a combining accent: 200 graphemes, 400 code points.
-    refute Grammar.argument?(String.duplicate("e\u0301", 200))
-    assert Grammar.argument?(String.duplicate("e\u0301", 128))
-    refute Grammar.argument?("")
   end
 
   test "covers?/2 and matches?/2 are the runner's" do

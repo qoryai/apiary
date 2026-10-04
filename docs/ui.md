@@ -265,7 +265,7 @@ The policy's lists of rules (`PolicyComponents.rule_list/1`, on the workspace's 
 and on a target's Policy tab) are on the same pattern, their query read and written by
 `ApiaryWeb.PolicyLive.RuleList`, pure over the rows the page holds: views All, Allowed,
 Denied and Locked, each counted under the search and the other filters, the Rules tab's
-count the All view's with nothing narrowed (the rules, not the credentials); "Find a host" with the qualifiers `seen:`, `paths:`, `by:` and
+count the All view's with nothing narrowed; "Find a host" with the qualifiers `seen:`, `paths:`, `by:` and
 `source:` as tokens, sent as the reader types and read whole on Enter; one Filter menu
 whose sections come from the rows' sources and people (an edition that adds rules of
 another holder gives them a source, and the menu, the qualifier and the order take it);
@@ -446,9 +446,8 @@ reads are `Apiary.Targets`'s, the looks `ApiaryWeb.TargetComponents`'s).
     token or rail, and "New activity" leading the tab.
   - **Policy**: the target's view of the policy (`ApiaryWeb.PolicyLive.Target`): its
     mode on one line (Follow the workspace, by its name, Observe or Enforce, and whose
-    the mode is), the rules in force for it on the list pattern with their Source, its
-    credentials with theirs, and its history and document as views under the page's
-    tabs. Its old paths, `/policy/targets/:target_id/…`, send on here
+    the mode is), the rules in force for it on the list pattern with their Source, and
+    its history and document as views under the page's tabs. Its old paths, `/policy/targets/:target_id/…`, send on here
     (`ApiaryWeb.TargetMovedController`).
 
   A tab is its own mount; a tab another page's module answers is handed the page's
