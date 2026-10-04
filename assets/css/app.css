@@ -2001,7 +2001,7 @@
   }
   /* A confirmation in place (`CoreComponents.inline_confirm/1`): the question, what
      happens, the button and Cancel, on one line that wraps; on a table's row, the row
-     tinted the error's soft colour. */
+     tinted. */
   .q-confirm {
     display: flex;
     flex-wrap: wrap;
@@ -2031,8 +2031,12 @@
     gap: 8px;
   }
   tr.q-confirming > td.q-confirm-cell {
-    background-color: color-mix(in oklab, var(--q-error-soft) 45%, var(--color-base-100));
+    background-color: var(--color-base-200);
     white-space: normal;
+  }
+  /* What cannot be undone: the row in the error's soft colour. */
+  tr.q-confirming > td.q-confirm-cell:has(.btn-error) {
+    background-color: color-mix(in oklab, var(--q-error-soft) 45%, var(--color-base-100));
   }
   /* A form's foot: its button and one muted line beside it. */
   .q-save {
