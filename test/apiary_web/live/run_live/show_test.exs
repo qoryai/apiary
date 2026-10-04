@@ -1126,7 +1126,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       refute html =~ "close-run-button"
     end
 
-    test "a member closes a quiet run after confirming in a modal", %{conn: conn, scope: scope} do
+    test "a member closes a quiet run after confirming in place", %{conn: conn, scope: scope} do
       run =
         projected(scope, [
           {1, "run.started", started_data()},
@@ -1138,14 +1138,27 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
       refute has_element?(lv, "#close-run")
       lv |> element("#close-run-button") |> render_click()
-      assert has_element?(lv, "#close-run", "A close is final")
 
-      lv |> element("#close-run button", "Cancel") |> render_click()
+      # The button turns into the question in place, with its act and Cancel: no modal.
+      assert has_element?(lv, ".q-run-actions #close-run.q-confirm", "Close this run?")
+      assert has_element?(lv, "#close-run", "A close is final")
+      refute has_element?(lv, "dialog#close-run")
+      refute has_element?(lv, "#close-run-button")
+      assert has_element?(lv, "#close-run-cancel[phx-mounted]")
+
+      lv |> element("#close-run-cancel") |> render_click()
       refute has_element?(lv, "#close-run")
+      assert has_element?(lv, "#close-run-button[phx-hook=FocusOn]")
+      assert_push_event(lv, "run:focus", %{id: "close-run-button"})
       assert Runs.get_run!(scope, run.id).state == "running"
 
+      # Escape takes the question back too.
       lv |> element("#close-run-button") |> render_click()
-      html = lv |> element("#close-run button", "Close run") |> render_click()
+      render_keydown(lv, "close_cancel", %{"key" => "Escape"})
+      refute has_element?(lv, "#close-run")
+
+      lv |> element("#close-run-button") |> render_click()
+      html = lv |> element("#close-run-confirm", "Yes, close") |> render_click()
 
       assert Runs.get_run!(scope, run.id).state == "closed"
       assert html =~ "Closed"
@@ -1564,7 +1577,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
         live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/details")
 
       lv |> element("#close-run-button") |> render_click()
-      lv |> element("#close-run button", "Close run") |> render_click()
+      lv |> element("#close-run-confirm", "Yes, close") |> render_click()
 
       assert_push_event(lv, "run:focus", %{id: "run-title"})
       assert has_element?(lv, "h1#run-title[tabindex='-1'][phx-hook='FocusOn']")

@@ -131,6 +131,7 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
             shared={@shared}
             can_set_mode?={Common.may?(@current_scope, :"security_policy.set_mode")}
             now={@now}
+            confirming={@confirm_close && "att-run-#{@confirm_close.run_id}"}
           />
 
           <section id="overview-activity" class="q-blk q-ov-act" aria-labelledby="overview-activity-h">
@@ -217,34 +218,6 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       </div>
 
       <.rule_popover :if={@popover} popover={@popover} />
-
-      <.modal
-        :if={@confirm_close}
-        id="close-run"
-        title={gettext("Close this run")}
-        on_cancel={JS.push("close_cancel")}
-        size="sm"
-      >
-        <p>
-          <.rich text={
-            rich_gettext(
-              "The workspace stops taking events for %{run}: the runner is told the run is gone at its next delivery. The record kept so far stays. A close is final: nothing reopens the run.",
-              run: close_title(@confirm_close)
-            )
-          } />
-        </p>
-        <:footer>
-          <.button phx-click="close_cancel" data-autofocus>{gettext("Cancel")}</.button>
-          <.button
-            id="close-confirm"
-            variant="danger"
-            phx-click="close_confirm"
-            loading_text={gettext("Closing")}
-          >
-            {gettext("Close run")}
-          </.button>
-        </:footer>
-      </.modal>
     </Layouts.app>
     """
   end
@@ -819,8 +792,15 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
     end
   end
 
-  def handle_event("close_cancel", _params, socket),
-    do: {:noreply, assign(socket, :confirm_close, nil)}
+  # Cancel, or Escape: the row is itself again, and its Close has the focus back.
+  def handle_event("close_cancel", _params, %{assigns: %{confirm_close: %Run{} = run}} = socket) do
+    {:noreply,
+     socket
+     |> assign(:confirm_close, nil)
+     |> push_event("overview:focus", %{id: "att-run-#{run.run_id}-act"})}
+  end
+
+  def handle_event("close_cancel", _params, socket), do: {:noreply, socket}
 
   def handle_event("close_confirm", _params, %{assigns: %{confirm_close: %Run{} = run}} = socket) do
     socket = assign(socket, :confirm_close, nil)
@@ -1575,9 +1555,6 @@ defmodule ApiaryWeb.WorkspaceLive.Overview do
       gettext(
         "This could not be loaded. Reload the page; if it keeps happening, the server log has the reason."
       )
-
-  # The run the close dialog names, in bold inside its sentence.
-  defp close_title(run), do: {:b, run_title(run), "font-medium"}
 
   # What became of a run that ended while it was on the list.
   defp ended("succeeded"), do: gettext("Succeeded.")

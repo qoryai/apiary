@@ -8190,6 +8190,16 @@
   .q-ar:hover {
     background-color: var(--color-base-200);
   }
+  /* A row asking to confirm its act (`inline_confirm/1`) in place of its cells. */
+  .q-ar.q-confirming,
+  .q-ar.q-confirming:hover {
+    background-color: color-mix(in oklab, var(--q-error-soft) 45%, var(--color-base-100));
+    color: var(--color-base-content);
+  }
+  .q-ar.q-confirming > .q-confirm {
+    grid-column: 1 / -1;
+    padding-block: 6px;
+  }
   .q-ar-subj {
     display: flex;
     min-width: 0;

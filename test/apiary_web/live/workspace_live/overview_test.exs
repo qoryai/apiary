@@ -643,8 +643,24 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       assert text(view, "#attention-n") == if(security?, do: "2", else: "1")
 
       view |> element("#att-run-#{lost.run_id}-act") |> render_click()
-      assert has_element?(view, "#close-run", "Close this run")
-      view |> element("#close-confirm") |> render_click()
+
+      # The row itself asks, in place: no modal over the page.
+      assert has_element?(
+               view,
+               "#att-run-#{lost.run_id}.q-confirming #close-run",
+               "Close nightly-mirror?"
+             )
+
+      refute has_element?(view, "dialog#close-run")
+      refute has_element?(view, "#att-run-#{lost.run_id}-act")
+
+      view |> element("#close-run-cancel") |> render_click()
+      refute has_element?(view, "#close-run")
+      close_act = "att-run-#{lost.run_id}-act"
+      assert_push_event(view, "overview:focus", %{id: ^close_act})
+
+      view |> element("#att-run-#{lost.run_id}-act") |> render_click()
+      view |> element("#att-run-#{lost.run_id} #close-confirm", "Yes, close") |> render_click()
 
       assert %Run{state: "closed"} = Runs.get_run!(scope, lost.id)
       assert has_element?(view, "#att-run-#{lost.run_id}.q-resolved .q-mark-closed")

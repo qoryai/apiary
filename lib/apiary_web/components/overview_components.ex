@@ -23,7 +23,7 @@ defmodule ApiaryWeb.OverviewComponents do
   import ApiaryWeb.RichText
 
   import ApiaryWeb.CoreComponents,
-    only: [button: 1, icon: 1, listening: 1, sparkline: 1, steps: 1]
+    only: [button: 1, icon: 1, inline_confirm: 1, listening: 1, sparkline: 1, steps: 1]
 
   import ApiaryWeb.RunComponents,
     only: [
@@ -236,6 +236,10 @@ defmodule ApiaryWeb.OverviewComponents do
   attr :can_set_mode?, :boolean, default: false
   attr :now, :any, required: true
 
+  attr :confirming, :string,
+    default: nil,
+    doc: "the id of the item whose act asks to confirm in place (a lost run's Close)"
+
   def attention(assigns) do
     ~H"""
     <section :if={@items != []} id={@id} class="q-blk q-att" aria-labelledby={"#{@id}-h"}>
@@ -259,6 +263,7 @@ defmodule ApiaryWeb.OverviewComponents do
           shared={@shared}
           can_set_mode?={@can_set_mode?}
           now={@now}
+          confirming={@confirming == item.id}
         />
       </ul>
       <.link
@@ -283,6 +288,35 @@ defmodule ApiaryWeb.OverviewComponents do
   attr :shared, :any, required: true
   attr :can_set_mode?, :boolean, required: true
   attr :now, :any, required: true
+  attr :confirming, :boolean, default: false
+
+  # A lost run's Close asks in place: the row becomes the question, its act and Cancel.
+  defp attention_item(%{confirming: true, item: %{kind: :lost}} = assigns) do
+    ~H"""
+    <li id={@item.id} class="q-ar q-confirming" data-kind={@item.kind}>
+      <.inline_confirm
+        id="close-run"
+        question={gettext("Close %{run}?", run: run_title(@item.run))}
+        cancel={JS.push("close_cancel")}
+      >
+        {gettext(
+          "The workspace stops taking events for it: the runner is told the run is gone at its next delivery. A close is final."
+        )}
+        <:action>
+          <.button
+            id="close-confirm"
+            variant="danger"
+            size="xs"
+            phx-click="close_confirm"
+            loading_text={gettext("Closing")}
+          >
+            {gettext("Yes, close")}
+          </.button>
+        </:action>
+      </.inline_confirm>
+    </li>
+    """
+  end
 
   defp attention_item(assigns) do
     ~H"""

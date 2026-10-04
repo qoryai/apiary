@@ -473,7 +473,9 @@ what needs the reader, then what their agents did, and never grows with the data
   force, so the item offers the way to that level's page to one who may change it there,
   and a lock with the reason to the rest. A resolved item stays, struck, until the next
   navigation; one that arrives is announced (`#overview-announcer`), never inserted above
-  what is read.
+  what is read. A lost run's Close asks on its own line: the row becomes its
+  `inline_confirm/1` ("Close nightly-mirror?", what a close does, Yes, close and Cancel),
+  never a dialog; Cancel or Escape gives the row back with the focus on its Close.
 - **Activity**: runs and denied attempts per day on one day axis, drawn for the width the
   `DaysChart` hook measured, with its table twin a text action away.
 - **Active targets**: the eight with the most runs, each with its last run (a dot, and a
@@ -856,8 +858,10 @@ the target's page, and `Run 0191f2a4`; the page has no breadcrumb of its own.
   alive the run is while it runs, the target (its page), the runtime, the host, when it
   started, how long it took and its denials, in red, which lead to its denied
   connections. At the right: Close run while the run may be closed, and a ⋯ menu (Copy
-  run id, Raw log, Download log). The seven cells of v1 are the rail's. A run that ended
-  badly says how under the meta line, in one cut line whole on hover: the last result of
+  run id, Raw log, Download log). Close run asks in place: the button becomes its
+  `inline_confirm/1`, "Close this run?", that a close is final, Yes, close and Cancel,
+  never a dialog; Cancel or Escape brings the button back with the focus. The seven
+  cells of v1 are the rail's. A run that ended badly says how under the meta line, in one cut line whole on hover: the last result of
   its timeline that was no success, else its last failed turn or tool, with "Jump to it",
   the timeline at that item.
 - **The tabs**, Timeline, Terminal, Network access and, below 1440 px, Details, stick under

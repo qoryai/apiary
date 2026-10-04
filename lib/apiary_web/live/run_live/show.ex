@@ -188,8 +188,9 @@ defmodule ApiaryWeb.RunLive.Show do
               </div>
               <div class="q-run-actions">
                 <.button
-                  :if={@closable}
+                  :if={@closable && !@confirm_close}
                   id="close-run-button"
+                  phx-hook="FocusOn"
                   phx-click="close"
                   title={
                     gettext(
@@ -199,6 +200,28 @@ defmodule ApiaryWeb.RunLive.Show do
                 >
                   <.icon name="hero-stop-micro" class="size-4" />{gettext("Close run")}
                 </.button>
+                <%!-- The close is confirmed in place: the button turns into the question,
+                     its act and Cancel, never an overlay. --%>
+                <.inline_confirm
+                  :if={@closable && @confirm_close}
+                  id="close-run"
+                  question={gettext("Close this run?")}
+                  cancel={JS.push("close_cancel")}
+                  class="max-w-[60ch]"
+                >
+                  {gettext("The workspace takes no more events for it. A close is final.")}
+                  <:action>
+                    <.button
+                      id="close-run-confirm"
+                      variant="danger"
+                      size="xs"
+                      phx-click="close_confirm"
+                      loading_text={gettext("Closing")}
+                    >
+                      {gettext("Yes, close")}
+                    </.button>
+                  </:action>
+                </.inline_confirm>
                 <.run_menu
                   run={@run}
                   log={
@@ -347,25 +370,6 @@ defmodule ApiaryWeb.RunLive.Show do
           instance={@instance}
         />
       </div>
-
-      <.modal
-        :if={@confirm_close}
-        id="close-run"
-        title={gettext("Close this run")}
-        on_cancel={JS.push("close_cancel")}
-      >
-        <p class="text-muted">
-          {gettext(
-            "The workspace stops taking events for this run and the runner is told so on its next delivery. The record kept so far stays. A close is final: nothing reopens the run."
-          )}
-        </p>
-        <:footer>
-          <.button phx-click="close_cancel" data-autofocus>{gettext("Cancel")}</.button>
-          <.button variant="danger" phx-click="close_confirm" loading_text={gettext("Closing")}>
-            {gettext("Close run")}
-          </.button>
-        </:footer>
-      </.modal>
 
       <.rule_popover :if={@security && @popover} popover={@popover} />
     </Layouts.app>
@@ -1813,8 +1817,15 @@ defmodule ApiaryWeb.RunLive.Show do
     {:noreply, assign(socket, confirm_close: state in Runs.closable_states())}
   end
 
-  def handle_event("close_cancel", _params, socket),
-    do: {:noreply, assign(socket, confirm_close: false)}
+  # Cancel, or Escape while the question is out: the button comes back with the focus.
+  def handle_event("close_cancel", _params, %{assigns: %{confirm_close: true}} = socket) do
+    {:noreply,
+     socket
+     |> assign(confirm_close: false)
+     |> push_event("run:focus", %{id: "close-run-button"})}
+  end
+
+  def handle_event("close_cancel", _params, socket), do: {:noreply, socket}
 
   # The context decides what may be closed; the page only asks.
   def handle_event("close_confirm", _params, %{assigns: %{run: %Run{} = run}} = socket) do
