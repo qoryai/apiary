@@ -493,7 +493,17 @@ msgstr ""
 
 #: lib/apiary_web/live/access_key_live/index.ex
 #, elixir-autogen, elixir-format
+msgid "%{label} has a new secret. The previous one keeps working until you retire it."
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
 msgid "%{label} is already revoked."
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{label} is created, and works from now on."
 msgstr ""
 
 #: lib/apiary_web/live/access_key_live/index.ex
@@ -1922,6 +1932,11 @@ msgstr ""
 
 #: lib/apiary_web/live/access_key_live/index.ex
 #, elixir-autogen, elixir-format
+msgid "A key lets a machine post its runs to this workspace. Its secret is shown once, as soon as the key is created."
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
 msgid "A key lets the machines of this workspace post their runs; one key can serve many hosts."
 msgstr ""
 
@@ -2928,6 +2943,7 @@ msgid "Between the two modes; Space asks to switch"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
+#: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "Breadcrumb"
 msgstr ""
@@ -2946,16 +2962,7 @@ msgstr ""
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/components/settings_components.ex
-#: lib/apiary_web/live/access_key_live/index.ex
-#: lib/apiary_web/live/member_live/index.ex
-#: lib/apiary_web/live/node_live/index.ex
-#: lib/apiary_web/live/node_live/show.ex
-#: lib/apiary_web/live/policy_live/show.ex
-#: lib/apiary_web/live/policy_live/target.ex
-#: lib/apiary_web/live/run_live/show.ex
-#: lib/apiary_web/live/settings_live.ex
-#: lib/apiary_web/live/user_live/settings.ex
-#: lib/apiary_web/live/workspace_live/overview.ex
+#: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "Cancel"
 msgstr ""
@@ -3206,11 +3213,6 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Clear instance"
-msgstr ""
-
-#: lib/apiary_web/live/node_live/show.ex
-#, elixir-autogen, elixir-format
 msgid "Clear instance…"
 msgstr ""
 
@@ -3240,7 +3242,6 @@ msgstr ""
 msgid "Clearing"
 msgstr ""
 
-#: lib/apiary_web/components/core_components.ex
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/policy_live/views.ex
@@ -3253,21 +3254,24 @@ msgstr ""
 msgid "Close %{run}"
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
+#, elixir-autogen, elixir-format
+msgid "Close %{run}?"
+msgstr ""
+
 #: lib/apiary_web/components/layouts.ex
 #, elixir-autogen, elixir-format
 msgid "Close menu"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
-#: lib/apiary_web/live/workspace_live/overview.ex
 #, elixir-autogen, elixir-format
 msgid "Close run"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
-#: lib/apiary_web/live/workspace_live/overview.ex
 #, elixir-autogen, elixir-format
-msgid "Close this run"
+msgid "Close this run?"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -3307,8 +3311,8 @@ msgstr ""
 msgid "Closed."
 msgstr ""
 
+#: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/run_live/show.ex
-#: lib/apiary_web/live/workspace_live/overview.ex
 #, elixir-autogen, elixir-format
 msgid "Closing"
 msgstr ""
@@ -3645,6 +3649,7 @@ msgstr ""
 msgid "Delete %{name}"
 msgstr ""
 
+#: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #: lib/apiary_web/live/settings_live.ex
@@ -3672,21 +3677,6 @@ msgstr ""
 msgid "Delete account…"
 msgstr ""
 
-#: lib/apiary_web/live/user_live/settings.ex
-#, elixir-autogen, elixir-format
-msgid "Delete my account"
-msgstr ""
-
-#: lib/apiary_web/live/node_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Delete node"
-msgstr ""
-
-#: lib/apiary_web/live/node_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Delete node pool"
-msgstr ""
-
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Delete node pool…"
@@ -3695,11 +3685,6 @@ msgstr ""
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Delete node…"
-msgstr ""
-
-#: lib/apiary_web/live/settings_live.ex
-#, elixir-autogen, elixir-format
-msgid "Delete organisation"
 msgstr ""
 
 #: lib/apiary_web/controllers/jump_controller.ex
@@ -3750,11 +3735,6 @@ msgstr ""
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Delete variable…"
-msgstr ""
-
-#: lib/apiary_web/live/settings_live.ex
-#, elixir-autogen, elixir-format
-msgid "Delete workspace"
 msgstr ""
 
 #: lib/apiary_web/controllers/jump_controller.ex
@@ -3832,10 +3812,8 @@ msgstr ""
 msgid "Delete…"
 msgstr ""
 
-#: lib/apiary_web/live/node_live/show.ex
+#: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/live/secret_live/index.ex
-#: lib/apiary_web/live/settings_live.ex
-#: lib/apiary_web/live/user_live/settings.ex
 #, elixir-autogen, elixir-format
 msgid "Deleting"
 msgstr ""
@@ -4098,6 +4076,7 @@ msgstr ""
 msgid "Documentation"
 msgstr ""
 
+#: lib/apiary_web/live/access_key_live/index.ex
 #: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "Done"
@@ -4211,7 +4190,7 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
-msgid "Enforce %{target}"
+msgid "Enforce %{target}?"
 msgstr ""
 
 #: lib/apiary/policy.ex
@@ -4428,6 +4407,7 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
 #: lib/apiary_web/live/policy_live/target.ex
+#: lib/apiary_web/live/policy_live/views.ex
 #, elixir-autogen, elixir-format
 msgid "Export"
 msgstr ""
@@ -4440,6 +4420,16 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Export the version in force"
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/target.ex
+#, elixir-autogen, elixir-format
+msgid "Export · Version %{version} · %{title}"
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Export · Version %{version} · Policy"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -4938,11 +4928,6 @@ msgstr ""
 msgid "How the console shows things to you, in every organisation you belong to."
 msgstr ""
 
-#: lib/apiary_web/live/access_key_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "I have copied the secret"
-msgstr ""
-
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Id"
@@ -5097,11 +5082,6 @@ msgstr ""
 #: lib/apiary_web/live/organisation_live.ex
 #, elixir-autogen, elixir-format
 msgid "Invite"
-msgstr ""
-
-#: lib/apiary_web/live/member_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Invite a member"
 msgstr ""
 
 #: lib/apiary_web/components/layouts.ex
@@ -5546,14 +5526,14 @@ msgstr ""
 msgid "Leave %{organisation}"
 msgstr ""
 
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Leave %{organisation}?"
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Leave full screen"
-msgstr ""
-
-#: lib/apiary_web/live/member_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Leave the organisation"
 msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex
@@ -5672,17 +5652,12 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Lock the allow rule %{host}"
+msgid "Lock the allow rule %{host}?"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Lock the deny rule %{host}"
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Lock the rule"
+msgid "Lock the deny rule %{host}?"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -6973,7 +6948,7 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
-msgid "Observe %{target}"
+msgid "Observe %{target}?"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
@@ -7006,6 +6981,11 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "On %{reported}; %{in_force} in force"
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Once you leave this page, the secret is not shown again."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -7500,6 +7480,7 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/policy_live/show.ex
+#: lib/apiary_web/live/policy_live/views.ex
 #: lib/apiary_web/live/run_live/show.ex
 #: lib/apiary_web/live/target_live/index.ex
 #: lib/apiary_web/live/target_live/show.ex
@@ -7806,6 +7787,11 @@ msgstr ""
 msgid "Remove %{email}"
 msgstr ""
 
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Remove %{email}?"
+msgstr ""
+
 #: lib/apiary_web/live/node_live/index.ex
 #: lib/apiary_web/live/target_live/index.ex
 #, elixir-autogen, elixir-format
@@ -7824,29 +7810,19 @@ msgstr ""
 msgid "Remove filter: %{filter} %{value}"
 msgstr ""
 
-#: lib/apiary_web/live/member_live/index.ex
+#: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Remove member"
+msgid "Remove the allow rule %{host}?"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Remove the allow rule %{host}"
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Remove the deny rule %{host}"
+msgid "Remove the deny rule %{host}?"
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Remove the filter %{filter}"
-msgstr ""
-
-#: lib/apiary_web/live/policy_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Remove the rule"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
@@ -7891,6 +7867,7 @@ msgid "Remove…"
 msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex
+#: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Removing"
 msgstr ""
@@ -8018,6 +7995,11 @@ msgstr ""
 msgid "Retire the previous secret of %{label}"
 msgstr ""
 
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Retire the previous secret of %{label}?"
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Retired an access key's previous secret"
@@ -8051,7 +8033,7 @@ msgstr ""
 
 #: lib/apiary_web/live/access_key_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Revoke key"
+msgid "Revoke %{label}?"
 msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex
@@ -8097,6 +8079,11 @@ msgstr ""
 #: lib/apiary_web/live/access_key_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Rotate %{label}"
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Rotate %{label}?"
 msgstr ""
 
 #: lib/apiary_web/live/access_key_live/index.ex
@@ -8599,12 +8586,12 @@ msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Set the workspace's default to enforce"
+msgid "Set the workspace's default to enforce?"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Set the workspace's default to observe"
+msgid "Set the workspace's default to observe?"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -8626,6 +8613,8 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/settings_components.ex
+#: lib/apiary_web/live/access_key_live/index.ex
+#: lib/apiary_web/live/member_live/index.ex
 #: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/organisation_live.ex
 #: lib/apiary_web/live/secret_live/index.ex
@@ -8907,12 +8896,7 @@ msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Suspend admin"
-msgstr ""
-
-#: lib/apiary_web/live/member_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Suspend member"
+msgid "Suspend %{email}?"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -9603,7 +9587,7 @@ msgstr[1] ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "The secret is shown once, in the dialog that creates it. One key can serve many hosts: a pool of ephemeral instances shares one."
+msgid "The secret is shown once, on the page that creates it. One key can serve many hosts: a pool of ephemeral instances shares one."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/index.ex
@@ -9701,19 +9685,19 @@ msgstr ""
 msgid "The workspace %{name} is deleted and is purged on %{date}, with its runs and access keys. Until then an owner or an admin can cancel the deletion."
 msgstr ""
 
-#: lib/apiary_web/live/settings_live.ex
+#: lib/apiary_web/components/settings_components.ex
 #, elixir-autogen, elixir-format
 msgid "The workspace disappears at once, with its runs, policy and access keys, which stop working. Its members stay in the organisation. It is purged after %{days}; until then an owner or an admin can cancel the deletion in the organisation's settings."
 msgstr ""
 
-#: lib/apiary_web/live/workspace_live/overview.ex
+#: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "The workspace stops taking events for %{run}: the runner is told the run is gone at its next delivery. The record kept so far stays. A close is final: nothing reopens the run."
+msgid "The workspace stops taking events for it: the runner is told the run is gone at its next delivery. A close is final."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "The workspace stops taking events for this run and the runner is told so on its next delivery. The record kept so far stays. A close is final: nothing reopens the run."
+msgid "The workspace takes no more events for it. A close is final."
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/show.ex
@@ -10127,6 +10111,7 @@ msgstr ""
 msgid "Type the organisation's slug, %{slug}, to confirm"
 msgstr ""
 
+#: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Type the workspace's slug, %{slug}, to confirm"
@@ -10401,7 +10386,7 @@ msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "We email an invitation link. It works for seven days and brings the person into %{workspace} as a member when they accept. An owner can change their level afterwards."
+msgid "We email them a link that works for seven days and brings them into %{workspace} as a member; an owner can change their level afterwards."
 msgstr ""
 
 #: lib/apiary_web/live/user_live/settings.ex
@@ -10677,14 +10662,62 @@ msgstr ""
 msgid "Wrote a service definition"
 msgstr ""
 
+#: lib/apiary_web/live/node_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Yes, clear"
+msgstr ""
+
+#: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/live/run_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Yes, close"
+msgstr ""
+
+#: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Yes, delete"
 msgstr ""
 
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Yes, leave"
+msgstr ""
+
+#: lib/apiary_web/live/policy_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Yes, lock"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Yes, on a pseudo-terminal"
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#: lib/apiary_web/live/policy_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Yes, remove"
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Yes, retire"
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Yes, revoke"
+msgstr ""
+
+#: lib/apiary_web/live/access_key_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Yes, rotate"
+msgstr ""
+
+#: lib/apiary_web/live/member_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Yes, suspend"
 msgstr ""
 
 #: lib/apiary_web/format.ex
@@ -10997,6 +11030,7 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #: lib/apiary_web/live/node_live/index.ex
 #: lib/apiary_web/live/organisation_live.ex
+#: lib/apiary_web/live/policy_live/show.ex
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "and %{number} more"
