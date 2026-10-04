@@ -565,6 +565,13 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       lv |> element("#variable-#{variable.id}-confirm button", "Lock") |> render_click()
       assert Repo.reload!(variable).locked
 
+      # Another row's Lock, while this row asks, locks that row's variable alone.
+      other = variable!(scope, :workspace, "LOG_LEVEL", "info")
+      {:ok, lv, _html} = live(conn, variables_path(scope, "/#{variable.id}/unlock"))
+      lv |> element("#variable-#{other.id}-lock-item") |> render_click()
+      assert Repo.reload!(other).locked
+      assert Repo.reload!(variable).locked
+
       # Unlock acts at once from the menu too.
       lv |> element("#variable-#{variable.id}-unlock-item") |> render_click()
       assert render(lv) =~ "NODE_ENV is unlocked"

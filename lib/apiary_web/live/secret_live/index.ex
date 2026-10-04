@@ -1166,7 +1166,6 @@ defmodule ApiaryWeb.SecretLive.Index do
           variant="primary"
           size="xs"
           phx-click="lock_variable"
-          phx-value-id={@variable.id}
           loading_text={gettext("Locking")}
         >
           {gettext("Lock")}
@@ -1199,7 +1198,6 @@ defmodule ApiaryWeb.SecretLive.Index do
           variant="primary"
           size="xs"
           phx-click="unlock_variable"
-          phx-value-id={@variable.id}
           loading_text={gettext("Unlocking")}
         >
           {gettext("Unlock")}
@@ -1774,15 +1772,21 @@ defmodule ApiaryWeb.SecretLive.Index do
     end
   end
 
-  # Lock and Unlock act at once, from the row's menu or from their path's confirmation;
-  # each names its variable.
+  # The confirmation on a row acts on the variable its path named; the context asks again
+  # whether the reader still may. A row's menu names its own variable (below).
+  def handle_event(event, params, %{assigns: %{act: act}} = socket)
+      when {event, act} in [
+             {"lock_variable", :lock_variable},
+             {"unlock_variable", :unlock_variable},
+             {"delete_variable", :delete_variable}
+           ] and not is_map_key(params, "id"),
+      do: {:noreply, change_variable(socket, event, socket.assigns.variable)}
+
+  # Lock and Unlock act at once from the row's menu, which names the variable.
   def handle_event(event, %{"id" => id}, socket)
       when event in ~w(lock_variable unlock_variable) do
     {:noreply, with_variable(socket, id, :edit, &change_variable(&1, event, &2))}
   end
-
-  def handle_event("delete_variable", _params, %{assigns: %{act: :delete_variable}} = socket),
-    do: {:noreply, change_variable(socket, "delete_variable", socket.assigns.variable)}
 
   # A change without its page or its confirmation open: a second click of a button whose
   # confirmation has gone, or an event the page offers no control for. One who may change the view is shown the
