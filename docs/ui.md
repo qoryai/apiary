@@ -104,7 +104,7 @@ navigation it is in.
 
 - **A workspace's** (`/:org/:workspace/settings/…`), from the workspace sidebar's
   Settings: General (name, slug, and its danger zone), Access keys (`/settings/keys`),
-  Retention.
+  Retention, and, with `security`, Secrets and variables (`/settings/secrets`, below).
 - **An organisation's** (`/:org/settings/…`), from the organisation's pages (the
   breadcrumb's organisation leads to its overview, whose sidebar has Settings): General
   (name, slug, owners, and its danger zone), People (`/settings/people`: members,
@@ -169,6 +169,46 @@ workspaces the person reaches, what each is doing, and the organisation's people
 header's actions are the edition's (the `:organisation_heading` slot), such as a way to add
 a workspace. The breadcrumb's organisation leads there; `/` still sends a person to the workspace they
 opened last.
+
+### Secrets and variables
+
+A workspace's Secrets and variables (`ApiaryWeb.SecretLive.Index`, with `security`, for a
+reader of `secret.read`) is one section of two views, tabs with their counts over the
+list (`<.views>`): **Secrets**, `/settings/secrets`, and **Variables**,
+`/settings/variables`. Each is a list on the list pattern (Lists, below), its search, its
+Filter menu, Sort and its tokens in the URL (`ApiaryWeb.SecretLive.Query`): a secret found
+by its name or a value ID and filtered by one value or several; a variable by its name or
+its value, and filtered by its lock and by whether a repository sets it too; both ordered
+by name or the latest change.
+
+- **A secret** is one row: its name in mono, its note beside it, how many values it
+  holds, who changed it and when (`ApiaryWeb.People`), and what uses it, "Not used yet"
+  while nothing does (`Apiary.Secrets.list_uses/2`). A secret of several values, or of one
+  named value, has a line under it for each, its value ID in mono, with who changed that
+  value and when, and the value's own acts. **No value is ever rendered**: the value is a
+  textarea whose content is always empty, written and sent once; the form the context
+  hands back after a refused save holds none, so a refusal shows the error under an
+  empty field, and a save closes the dialog, so the field is gone. A parameter named
+  `value` is `[FILTERED]` in the logs, a LiveView event's included
+  (`:filter_parameters`).
+- **A variable** is one row: its name, its value in mono (plain configuration, shown
+  whole on hover), its lock (the faint lock and Locked; a value set aside by a lock above
+  the workspace says so), and the repositories that set their own value, or whose value
+  the lock sets aside, from their resolution (`Apiary.Variables.repository_overrides/1`),
+  a link to a dialog that lists them, with a search past ten. Locked means a repository
+  may not set its own value, and nothing more. A name on the runner's deny list other
+  than `QORY_…`, which the context refuses, is saved with a warning in the dialog and a
+  word on its row. One line under the list says what a node does with them.
+- **The dialogs** are at paths of their own over their view: `/settings/secrets/new`,
+  `/:id/add-value`, `/:id/change-value` (a secret's one value without a value ID),
+  `/:id/values/:value_id/change`, `…/rename` and `…/delete`, `/:id/delete`;
+  `/settings/variables/new`, `/:id/change`, `/:id/lock`, `/:id/unlock`, `/:id/delete` and
+  `/:id/targets`. A secret is named by its public id, a variable by its row's. A path the
+  reader may not open, or of a secret or variable the workspace does not have, sends them
+  back to the view and says why.
+- **Who.** Every member reads both views; owners and admins change them (`secret.write`,
+  `variable.edit`). A reader who may not sees no New, no ⋯ menu, and once, under the
+  section's sentence, "Only owners and admins change this."
 
 ## Lists
 

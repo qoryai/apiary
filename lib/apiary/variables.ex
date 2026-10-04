@@ -111,6 +111,59 @@ defmodule Apiary.Variables do
     end
   end
 
+  @doc """
+  repository_overrides/1 is, for each name the workspace's chain sets (the level above and
+  the workspace), the repositories that set it too, as each repository's resolution has
+  it: `:own` for a repository whose value its runs are given in place of the workspace's,
+  `:ignored` for one whose value a lock above it sets aside. `{:ok, overrides}`, keyed by
+  the name without case, each list of `%{target: target, state: state}` by the target's
+  system and path, for a reader who may `variable.read`; else `{:error, reason}`.
+
+  Two queries however many repositories the workspace has: the workspace's chain, and
+  every repository's own variables with their targets.
+  """
+  @spec repository_overrides(Scope.t()) ::
+          {:ok, %{String.t() => [%{target: Target.t(), state: :own | :ignored}]}}
+          | {:error, Access.reason()}
+  def repository_overrides(%Scope{} = scope) do
+    with :ok <- may_read(scope) do
+      base = chain(scope, scope.workspace, :workspace)
+
+      keys =
+        base |> Resolution.resolve() |> Map.get(:entries) |> MapSet.new(&String.downcase(&1.name))
+
+      own =
+        Repo.all(
+          from v in variables(scope),
+            join: t in Target,
+            on: t.id == v.target_id,
+            where: not is_nil(v.target_id),
+            order_by: [asc: t.system, asc: t.path, asc: t.id],
+            select: {t, v}
+        )
+
+      overrides =
+        own
+        |> Enum.chunk_by(fn {target, _variable} -> target.id end)
+        |> Enum.flat_map(fn [{target, _} | _] = rows ->
+          resolution = Resolution.resolve(base ++ [{:target, Enum.map(rows, &elem(&1, 1))}])
+
+          for %{name: name} = entry <- resolution.entries,
+              String.downcase(name) in keys,
+              state <- List.wrap(override_state(entry)),
+              do: {String.downcase(name), %{target: target, state: state}}
+        end)
+        |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+
+      {:ok, overrides}
+    end
+  end
+
+  defp override_state(%{set_by: :target}), do: :own
+
+  defp override_state(%{ignored: ignored}),
+    do: if(:target in ignored, do: :ignored)
+
   defp may_read(%Scope{workspace: %Workspace{} = workspace} = scope),
     do: Access.authorize(scope, :"variable.read", workspace)
 

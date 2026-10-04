@@ -92,9 +92,11 @@ config :logger, :default_formatter,
   format: "$time $metadata[$level] $message\n",
   metadata: [:request_id, :organisation_id, :workspace_id, :user_id]
 
-# Parameters the Phoenix logger masks in development request logs. Production logs
-# never include parameters at all.
-config :phoenix, :filter_parameters, ["password", "secret"]
+# Parameters the Phoenix logger masks in development request logs, and in the lines a
+# LiveView logs for its mount and its events. Production logs never include parameters
+# at all. A parameter whose name holds one of these words is logged as [FILTERED]:
+# `value` keeps a stored secret's value out of the log, and a variable's.
+config :phoenix, :filter_parameters, ["password", "secret", "value"]
 
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason

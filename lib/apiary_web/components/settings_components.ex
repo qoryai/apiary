@@ -11,7 +11,8 @@ defmodule ApiaryWeb.SettingsComponents do
     (`ApiaryWeb.ActivityLive`), then the edition's sections
     (`c:ApiaryWeb.Edition.settings_tabs/1`), each a page of the edition's own.
   - A workspace's (`/:org/:workspace/settings/…`): General (its name, and deleting it),
-    Access keys, Retention.
+    Access keys, Retention, and, with the `security` feature, Secrets and variables
+    (`ApiaryWeb.SecretLive.Index`).
   - A node's (`/:org/:workspace/nodes/:node_id/settings`), the last tab of the node's page
     (`ApiaryWeb.NodeLive.Show`): General (its name, a pool's instance limit, and deleting
     it).
@@ -87,7 +88,7 @@ defmodule ApiaryWeb.SettingsComponents do
     Enum.filter(main ++ edition, & &1)
   end
 
-  def sections(%Scope{organisation: organisation, workspace: workspace}, :workspace) do
+  def sections(%Scope{organisation: organisation, workspace: workspace} = scope, :workspace) do
     [
       %Entry{
         section: :main,
@@ -110,8 +111,17 @@ defmodule ApiaryWeb.SettingsComponents do
         label: gettext("Retention"),
         icon: "hero-archive-box",
         path: ~p"/#{organisation}/#{workspace}/settings/retention"
-      }
+      },
+      Access.can?(scope, :"secret.read", workspace) &&
+        %Entry{
+          section: :main,
+          key: :secrets,
+          label: gettext("Secrets and variables"),
+          icon: "hero-lock-closed",
+          path: ~p"/#{organisation}/#{workspace}/settings/secrets"
+        }
     ]
+    |> Enum.filter(& &1)
   end
 
   def sections(%Scope{organisation: organisation, workspace: workspace}, {:node, node}) do
