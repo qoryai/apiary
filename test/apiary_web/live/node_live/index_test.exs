@@ -40,13 +40,48 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
              )
     end
 
-    test "has no entry in the sidebar, and the workspace's sidebar", %{conn: conn, scope: scope} do
+    test "is the sidebar's Nodes, the current entry on the list and on a node's page",
+         %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, nodes_path(scope))
 
-      refute has_element?(lv, "#nav-nodes")
-      refute has_element?(lv, ~s{nav a[aria-current="page"][href$="/nodes"]})
-      assert has_element?(lv, "#nav-runs")
+      assert has_element?(lv, ~s{#nav-nodes[aria-current="page"][href="#{nodes_path(scope)}"]})
+      assert has_element?(lv, "#nav-runs:not([aria-current])")
       assert has_element?(lv, "#breadcrumb", "Nodes")
+      # nothing runs and no key waits: nothing beside it
+      refute has_element?(lv, "#nav-nodes-running")
+
+      node = node_fixture(scope, name: "build-01")
+      {:ok, lv, _html} = live(conn, nodes_path(scope, "/#{node.public_id}"))
+      assert has_element?(lv, ~s{#nav-nodes[aria-current="page"]})
+
+      {:ok, lv, _html} = live(conn, nodes_path(scope, "/#{node.public_id}/settings"))
+      assert has_element?(lv, ~s{#nav-nodes[aria-current="page"]})
+      refute has_element?(lv, ~s{#nav-settings[aria-current="page"]})
+    end
+
+    test "the sidebar's Nodes counts the instances running, and dots a key awaiting approval for whoever may approve it",
+         %{conn: conn, scope: scope} do
+      node = node_fixture(scope, name: "build-01")
+      pool = pool_fixture(scope, name: "spot-runners")
+      node_run_fixture(node, "i_1")
+      node_run_fixture(pool, "p_1")
+      node_run_fixture(pool, "p_2")
+      # two runs of one instance are one instance
+      node_run_fixture(pool, "p_2")
+
+      {:ok, lv, _html} = live(conn, nodes_path(scope))
+      assert has_element?(lv, "#nav-nodes #nav-nodes-running", "3")
+      refute has_element?(lv, "#nav-nodes-waiting")
+
+      Apiary.AccessKeysFixtures.pending_key_fixture(scope, node)
+      {:ok, lv, _html} = live(conn, nodes_path(scope))
+      assert has_element?(lv, "#nav-nodes #nav-nodes-waiting")
+      assert has_element?(lv, "#nav-nodes-running", "1 key awaits approval")
+
+      # a member may not approve a key: the count, and no dot
+      {:ok, lv, _html} = live(member_conn(scope), nodes_path(scope))
+      assert has_element?(lv, "#nav-nodes-running", "3")
+      refute has_element?(lv, "#nav-nodes-waiting")
     end
 
     test "says so when there are none, with the ways to add one", %{conn: conn, scope: scope} do

@@ -26,7 +26,9 @@ defmodule ApiaryWeb.LayoutsTest do
       assert before?(html, ~s(id="sidebar"), ~s(id="main"))
       assert has_element?(view, "#shell-content > main#main")
       assert has_element?(view, "aside#sidebar[aria-label='Workspace'] nav[aria-label='Main']")
-      assert has_element?(view, "aside#sidebar nav[aria-label='Record']")
+      # One group of operational pages, without a heading: no Record, no Guard.
+      refute has_element?(view, "aside#sidebar nav[aria-label='Record']")
+      refute has_element?(view, "aside#sidebar nav[aria-label='Guard']")
     end
 
     test "the top bar: where the page is, the organisation first, Search or jump to, New, then the account menu",
@@ -76,29 +78,40 @@ defmodule ApiaryWeb.LayoutsTest do
     test "New offers what the reader may start here", %{conn: conn, scope: scope} do
       {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}")
 
-      assert has_element?(
-               view,
-               "#new-menu a#new-menu-key[role='menuitem'][href='#{workspace_path(scope, "/settings/keys/new")}']",
-               "New access key"
-             )
+      # Each lands where its thing is set up: a node on Nodes, a secret and a variable in
+      # Settings, an invitation in the organisation's Settings › People.
+      security? = Apiary.Features.on?(:security)
 
-      assert has_element?(
-               view,
-               "#new-menu a#new-menu-invite[href='/#{scope.organisation.slug}/settings/people/invite']",
-               "Invite people"
-             )
+      for {key, path, label, shown} <- [
+            {"node", workspace_path(scope, "/nodes/new"), "New node", true},
+            {"node_pool", workspace_path(scope, "/nodes/new-pool"), "New node pool", true},
+            {"secret", workspace_path(scope, "/settings/secrets/new"), "New secret", security?},
+            {"variable", workspace_path(scope, "/settings/variables/new"), "New variable",
+             security?},
+            {"invite", "/#{scope.organisation.slug}/settings/people/invite", "Invite people",
+             true}
+          ] do
+        assert has_element?(
+                 view,
+                 "#new-menu a#new-menu-#{key}[role='menuitem'][href='#{path}']",
+                 label
+               ) == shown,
+               key
+      end
 
-      # a member creates keys and invites nobody
+      refute has_element?(view, "#new-menu-key")
+
+      # a member makes no node, no secret and invites nobody: New has nothing for them
       %{user: member} = member_fixture(scope, :member)
       {:ok, view, _html} = live(log_in_user(build_conn(), member), workspace_path(scope))
-      assert has_element?(view, "#new-menu-key")
+      refute has_element?(view, "#new-menu-node")
       refute has_element?(view, "#new-menu-invite")
 
-      # an organisation's own page offers what the organisation holds: no key of a
+      # an organisation's own page offers what the organisation holds: no node of a
       # workspace the page is not on
       {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/settings")
       assert has_element?(view, "#new-menu-invite")
-      refute has_element?(view, "#new-menu-key")
+      refute has_element?(view, "#new-menu-node")
     end
 
     test "the account menu: who you are, your settings and organisations, the theme, log out",
@@ -153,32 +166,43 @@ defmodule ApiaryWeb.LayoutsTest do
       assert has_element?(view, "#user-menu-level", "Member of #{scope.organisation.name}")
     end
 
-    test "a workspace's sidebar: its pages in groups, Settings at the foot, Qory Apiary, the fold",
+    test "a workspace's sidebar: its operational pages, Settings at the foot, Qory Apiary, the fold",
          %{conn: conn, scope: scope} do
       {:ok, view, html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}")
 
       # The policy's entry is there only on an instance with the security policy.
       policy = if Apiary.Features.on?(:security), do: [policy: workspace_path(scope, "/policy")]
 
-      for {key, href} <-
-            [
-              overview: workspace_path(scope),
-              runs: workspace_path(scope, "/runs"),
-              network: workspace_path(scope, "/network")
-            ] ++ List.wrap(policy) ++ [settings: workspace_path(scope, "/settings")] do
-        assert has_element?(view, "#sidebar a#nav-#{key}[href='#{href}']"), "#{key}"
+      # One group without a heading, in this order: the records, the security policy,
+      # whose hosts are allowed and denied every day, then the lists of things.
+      entries =
+        [
+          overview: workspace_path(scope),
+          runs: workspace_path(scope, "/runs"),
+          network: workspace_path(scope, "/network")
+        ] ++
+          List.wrap(policy) ++
+          [targets: workspace_path(scope, "/targets"), nodes: workspace_path(scope, "/nodes")]
+
+      for {key, href} <- entries do
+        assert has_element?(view, "#nav-group-home > a#nav-#{key}[href='#{href}']"), "#{key}"
       end
 
+      keys = Keyword.keys(entries)
+
+      for {a, b} <- Enum.zip(keys, tl(keys)),
+          do: assert(before?(html, ~s(id="nav-#{a}"), ~s(id="nav-#{b}")), "#{a} before #{b}")
+
+      assert has_element?(view, "#nav-policy", "Security policy") == (policy != nil)
+      assert has_element?(view, "#nav-targets", "Repositories")
       assert has_element?(view, "#nav-overview[aria-current='page']")
-      assert before?(html, ~s(id="nav-group-home"), ~s(id="nav-group-record"))
-      assert has_element?(view, "#nav-group-record #nav-runs")
+      refute has_element?(view, "#nav-group-home .q-nav-heading")
+      refute has_element?(view, "#nav-group-record, #nav-group-guard")
 
-      # Guard: Network access, then the rules that decide it.
-      assert has_element?(view, "#nav-group-guard #nav-network")
-      refute has_element?(view, "#nav-group-record #nav-network")
-
-      if policy,
-        do: assert(before?(html, ~s(id="nav-network"), ~s(id="nav-policy")))
+      assert has_element?(
+               view,
+               ".q-sidebar-foot a#nav-settings[href='#{workspace_path(scope, "/settings")}']"
+             )
 
       assert has_element?(view, ".q-sidebar-foot #nav-settings")
 
@@ -238,7 +262,7 @@ defmodule ApiaryWeb.LayoutsTest do
 
       # The sidebar is the workspace's, its Settings the current entry; nothing replaces it.
       assert has_element?(view, "aside#sidebar[aria-label='Workspace']")
-      assert has_element?(view, "#nav-group-record #nav-runs:not([aria-current])")
+      assert has_element?(view, "#nav-group-home #nav-runs:not([aria-current])")
       assert has_element?(view, ".q-sidebar-foot #nav-settings[aria-current='page']")
       refute has_element?(view, "#nav-keys")
       refute has_element?(view, "#settings-back")
@@ -298,8 +322,16 @@ defmodule ApiaryWeb.LayoutsTest do
 
         assert has_element?(view, "#main h1", "Organisation settings")
 
-        for key <- ~w(organisation people workspaces audit_log),
+        for key <- ~w(organisation people workspaces),
             do: assert(has_element?(view, "#settings-tabs #settings-tab-#{key}"), key)
+
+        # The audit log is an operational page of the organisation, in its sidebar.
+        refute has_element?(view, "#settings-tab-audit_log")
+
+        assert has_element?(
+                 view,
+                 "#nav-group-home a#nav-audit_log[href='/#{org.slug}/audit-log']"
+               )
 
         refute has_element?(
                  view,
@@ -316,15 +348,16 @@ defmodule ApiaryWeb.LayoutsTest do
     test "an organisation's page shows the organisation's sidebar", %{conn: conn, scope: scope} do
       for {path, current} <- [
             {~p"/#{scope.organisation}", "nav-organisation_overview"},
-            {~p"/#{scope.organisation}/settings/audit-log", "nav-organisation"}
+            {~p"/#{scope.organisation}/audit-log", "nav-audit_log"}
           ] do
         {:ok, view, _html} = live(conn, path)
 
         assert has_element?(view, "aside#sidebar[aria-label='Organisation']")
         assert has_element?(view, "##{current}[aria-current='page']")
 
-        # The audit log is a section of the settings, not an entry of the sidebar.
+        # Overview and Audit log, the organisation's operational pages, in its sidebar.
         refute has_element?(view, "#sidebar #nav-activity")
+        assert before?(render(view), ~s(id="nav-organisation_overview"), ~s(id="nav-audit_log"))
 
         assert has_element?(
                  view,
@@ -496,7 +529,7 @@ defmodule ApiaryWeb.LayoutsTest do
 
       assert has_element?(view, "#palette #palette-results[role='listbox']")
 
-      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/settings/audit-log")
+      {:ok, view, _html} = live(conn, ~p"/#{scope.organisation}/audit-log")
       assert has_element?(view, "dialog#palette[data-url='/#{scope.organisation.slug}/jump']")
     end
 

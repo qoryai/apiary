@@ -76,15 +76,6 @@ defmodule ApiaryWeb.SettingsComponents do
           icon: "hero-squares-2x2",
           path: ~p"/#{organisation}/settings/workspaces",
           place: :organisation
-        },
-      can?(scope, :"audit.read") &&
-        %Entry{
-          section: :main,
-          key: :audit_log,
-          label: gettext("Audit log"),
-          icon: "hero-clipboard-document-list",
-          path: ~p"/#{organisation}/settings/audit-log",
-          place: :organisation
         }
     ]
 
@@ -150,7 +141,7 @@ defmodule ApiaryWeb.SettingsComponents do
   end
 
   # The settings' actions are asked of the organisation: listing its workspaces, whose
-  # deletion is its, and reading the audit trail.
+  # deletion is its.
   defp can?(%Scope{organisation: organisation} = scope, action),
     do: Access.can?(scope, action, organisation)
 

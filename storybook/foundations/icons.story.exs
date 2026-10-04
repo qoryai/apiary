@@ -296,13 +296,13 @@ defmodule ApiaryWeb.Storybook.Foundations.Icons do
     """
   end
 
-  # The workspace's entries of the real navigation (`ApiaryWeb.Layouts.nav_entries/1`), by
-  # the sidebar's groups, and its foot.
+  # The workspace's entries of the real navigation (`ApiaryWeb.Layouts.nav_entries/1`), its
+  # one group of operational pages, and its foot.
   defp nav(scope) do
     entries = Enum.filter(Layouts.nav_entries(scope), &(&1.place == :workspace))
 
     groups =
-      for {section, heading} <- [home: nil, record: "Record", guard: "Guard"],
+      for {section, heading} <- [home: nil],
           shown = Enum.filter(entries, &(&1.section == section)),
           shown != [],
           do: {section, heading, shown}

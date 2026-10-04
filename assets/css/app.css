@@ -3972,6 +3972,11 @@
     border-radius: 9999px;
     background-color: currentColor;
   }
+  /* Something waits for someone who may settle it, such as a key awaiting approval beside
+     Nodes in the sidebar. */
+  .q-dot-hot {
+    color: var(--color-warning);
+  }
   .q-ripple::after {
     content: "";
     position: absolute;

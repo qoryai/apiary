@@ -47,7 +47,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
     socket =
       if connected?(socket),
         do: socket |> load() |> assign(:loaded, true),
-        else: assign(socket, loaded: false, page_title: gettext("Policy"))
+        else: assign(socket, loaded: false, page_title: gettext("Security policy"))
 
     {:ok, socket}
   end
@@ -174,7 +174,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         )
 
       socket
-      |> assign(list_query: query, ruled_host: ruled_host, page_title: gettext("Policy"))
+      |> assign(list_query: query, ruled_host: ruled_host, page_title: gettext("Security policy"))
       |> then(&if(ruled_host, do: push_event(&1, "policy:rule", %{host: ruled_host}), else: &1))
       |> then(&if(params["confirm"] == "enforce", do: confirm_enforce(&1), else: &1))
     else
@@ -187,12 +187,12 @@ defmodule ApiaryWeb.PolicyLive.Show do
 
   defp apply_action(socket, :targets, params) do
     socket
-    |> assign(page_title: gettext("Targets · Policy"), own_only: params["mode"] == "own")
+    |> assign(page_title: gettext("Targets · Security policy"), own_only: params["mode"] == "own")
     |> load_targets(:all)
   end
 
   defp apply_action(socket, :history, params) do
-    socket = assign(socket, :page_title, gettext("History · Policy"))
+    socket = assign(socket, :page_title, gettext("History · Security policy"))
     history = Common.history(socket, Common.page_param(params["page"]))
 
     {open, diff} =
@@ -228,7 +228,8 @@ defmodule ApiaryWeb.PolicyLive.Show do
         socket =
           assign(socket,
             v: v,
-            page_title: gettext("Version %{version} · Policy", version: v.configuration.version)
+            page_title:
+              gettext("Version %{version} · Security policy", version: v.configuration.version)
           )
 
         cond do
@@ -252,7 +253,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         assign(socket,
           v: nil,
           missing: %{n: n, latest: socket.assigns.version},
-          page_title: gettext("Policy")
+          page_title: gettext("Security policy")
         )
     end
   end
@@ -776,7 +777,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
       nav={:policy}
       width="list"
     >
-      <.page_skeleton title={gettext("Policy")} />
+      <.page_skeleton title={gettext("Security policy")} />
     </Layouts.app>
     """
   end
@@ -799,7 +800,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         <div :if={@live_action in [:version, :export] && @v} class="grid gap-3">
           <nav class="q-crumbs" aria-label={gettext("Breadcrumb")}>
             <.link navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/policy"}>{gettext(
-              "Policy"
+              "Security policy"
             )}</.link>
             <.icon name="hero-chevron-right-micro" class="size-3" />
             <span class="q-here" aria-current="page">
@@ -810,7 +811,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
         </div>
 
         <.header :if={!(@live_action in [:version, :export] && @v)}>
-          {gettext("Policy")}
+          {gettext("Security policy")}
           <:subtitle>
             {gettext("What the runs of this workspace may reach through the runner's proxy.")}
             <.above_line :if={@loaded} above={@effective.above} link={@above_link} />
@@ -1013,7 +1014,7 @@ defmodule ApiaryWeb.PolicyLive.Show do
 
   defp policy_tabs(assigns) do
     ~H"""
-    <.tabs id="policy-tabs" label={gettext("Policy")}>
+    <.tabs id="policy-tabs" label={gettext("Security policy")}>
       <:tab
         patch={~p"/#{@scope.organisation}/#{@scope.workspace}/policy"}
         icon="hero-shield-check"

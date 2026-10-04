@@ -23,16 +23,14 @@ defmodule ApiaryWeb.Layouts do
   # and other static content.
   embed_templates "layouts/*"
 
-  # The sidebar's groups, in order: the scope's first entries without a heading, then each
-  # group of a workspace with its heading, and the person's settings under theirs; an
+  # The sidebar's groups, in order: the scope's operational pages without a heading (a
+  # workspace's and an organisation's), and the person's settings under theirs; an
   # edition's groups follow (`c:ApiaryWeb.Edition.nav_sections/0`). `:settings` (the pages
   # of the scope's Settings) and `:foot` (Settings itself) are not groups. The headings are
   # marked for extraction here and translated when the sidebar renders (`nav_text/1`), and
   # so is the name of the first group's navigation.
   @sections [
     home: nil,
-    record: gettext_noop("Record"),
-    guard: gettext_noop("Guard"),
     account: gettext_noop("Your settings")
   ]
 
@@ -52,7 +50,10 @@ defmodule ApiaryWeb.Layouts do
 
   defp core_entries do
     [
-      # A workspace's pages.
+      # A workspace's pages: its operational side, what people watch and act on every day,
+      # in one group without a heading. The records first (Runs, Network access), then the
+      # security policy, whose hosts are allowed and denied as daily work, then the lists of
+      # things (targets, nodes). What is set up once is its Settings, at the foot.
       %Entry{
         section: :home,
         key: :overview,
@@ -62,7 +63,7 @@ defmodule ApiaryWeb.Layouts do
         action: :"run.read"
       },
       %Entry{
-        section: :record,
+        section: :home,
         key: :runs,
         label: gettext("Runs"),
         icon: "hero-play-circle",
@@ -70,18 +71,7 @@ defmodule ApiaryWeb.Layouts do
         action: :"run.read"
       },
       %Entry{
-        section: :record,
-        key: :targets,
-        label: gettext("Targets"),
-        icon: "hero-folder",
-        path: fn organisation, workspace -> ~p"/#{organisation}/#{workspace}/targets" end,
-        action: :"run.read"
-      },
-      # Guard: what the runs reached and what decided it, then the rules that decide. On an
-      # instance without the security policy Network access is the group's one entry, the
-      # record of it.
-      %Entry{
-        section: :guard,
+        section: :home,
         key: :network,
         label: gettext("Network access"),
         icon: "hero-globe-alt",
@@ -89,12 +79,28 @@ defmodule ApiaryWeb.Layouts do
         action: :"run.read"
       },
       %Entry{
-        section: :guard,
+        section: :home,
         key: :policy,
-        label: gettext("Policy"),
+        label: gettext("Security policy"),
         icon: "hero-shield-check",
         path: fn organisation, workspace -> ~p"/#{organisation}/#{workspace}/policy" end,
         action: :"security_policy.read"
+      },
+      %Entry{
+        section: :home,
+        key: :targets,
+        label: gettext("Targets"),
+        icon: "hero-folder",
+        path: fn organisation, workspace -> ~p"/#{organisation}/#{workspace}/targets" end,
+        action: :"run.read"
+      },
+      %Entry{
+        section: :home,
+        key: :nodes,
+        label: gettext("Nodes"),
+        icon: "hero-server-stack",
+        path: fn organisation, workspace -> ~p"/#{organisation}/#{workspace}/nodes" end,
+        action: :"node.read"
       },
       %Entry{
         section: :settings,
@@ -120,12 +126,13 @@ defmodule ApiaryWeb.Layouts do
         path: fn organisation, _workspace -> ~p"/#{organisation}" end,
         place: :organisation
       },
+      # Its audit trail is a record that is read, not a setting: an operational page.
       %Entry{
-        section: :settings,
+        section: :home,
         key: :audit_log,
         label: gettext("Audit log"),
         icon: "hero-clipboard-document-list",
-        path: fn organisation, _workspace -> ~p"/#{organisation}/settings/audit-log" end,
+        path: fn organisation, _workspace -> ~p"/#{organisation}/audit-log" end,
         place: :organisation,
         action: :"audit.read"
       },
@@ -179,22 +186,52 @@ defmodule ApiaryWeb.Layouts do
   new_entries/2 is what New offers in `scope` at `place`, a workspace's page, an
   organisation's own or the person's, for the top bar's menu and the palette's actions, as
   `ApiaryWeb.Nav.Entry` values: the edition's first (`c:ApiaryWeb.Edition.new_entries/2`),
-  then the core's, a new access key on a workspace's page and an invitation on an
-  organisation's too; of them, only what the reader may do there, each entry's action
+  then the core's, each landing where its thing is set up: on a workspace's page a new node
+  and a new node pool (a new level, on the Nodes list), a new secret and a new variable
+  (Settings › Secrets and variables); an invitation on an organisation's page too
+  (Settings › People). Of them, only what the reader may do there, each entry's action
   asked of the workspace or the organisation as its `place` says.
   """
   @spec new_entries(Apiary.Accounts.Scope.t(), :workspace | :organisation | :person) ::
           [Entry.t()]
   def new_entries(%{organisation: %{} = organisation, workspace: workspace} = scope, place) do
-    key =
-      place == :workspace && workspace &&
-        %Entry{
-          key: :key,
-          label: gettext("New access key"),
-          icon: "hero-key",
-          path: ~p"/#{organisation}/#{workspace}/settings/keys/new",
-          action: :"access_key.create"
-        }
+    workspace_entries =
+      if place == :workspace && workspace do
+        base = ~p"/#{organisation}/#{workspace}"
+
+        [
+          %Entry{
+            key: :node,
+            label: gettext("New node"),
+            icon: "hero-server",
+            path: base <> "/nodes/new",
+            action: :"node.create"
+          },
+          %Entry{
+            key: :node_pool,
+            label: gettext("New node pool"),
+            icon: "hero-server-stack",
+            path: base <> "/nodes/new-pool",
+            action: :"node.create"
+          },
+          %Entry{
+            key: :secret,
+            label: gettext("New secret"),
+            icon: "hero-lock-closed",
+            path: base <> "/settings/secrets/new",
+            action: :"secret.write"
+          },
+          %Entry{
+            key: :variable,
+            label: gettext("New variable"),
+            icon: "hero-variable",
+            path: base <> "/settings/variables/new",
+            action: :"variable.edit"
+          }
+        ]
+      else
+        []
+      end
 
     invite = %Entry{
       key: :invite,
@@ -205,7 +242,8 @@ defmodule ApiaryWeb.Layouts do
       action: :"member.invite"
     }
 
-    for %Entry{} = entry <- ApiaryWeb.Edition.new_entries(scope, place) ++ [key, invite],
+    for %Entry{} = entry <-
+          ApiaryWeb.Edition.new_entries(scope, place) ++ workspace_entries ++ [invite],
         nav_open?(scope, entry.action, subject(entry, scope)),
         do: entry
   end
@@ -860,7 +898,8 @@ defmodule ApiaryWeb.Layouts do
   defp current_switch_id(organisation, workspace),
     do: "switch-#{organisation.slug}-#{workspace.slug}"
 
-  # New: what the person may start from here (`new_entries/2`).
+  # New: what the person may start from here (`new_entries/2`), a rule between the
+  # workspace's and the organisation's.
   attr :entries, :list, required: true
 
   defp new_menu(assigns) do
@@ -889,11 +928,24 @@ defmodule ApiaryWeb.Layouts do
         role="menu"
         aria-label={gettext("New")}
       >
-        <li :for={entry <- @entries} role="none">
-          <.link id={"new-menu-#{entry.key}"} navigate={entry.path} role="menuitem" tabindex="-1">
-            <.icon name={entry.icon} class="size-4" /> {entry.label}
-          </.link>
-        </li>
+        <%= for {entry, i} <- Enum.with_index(@entries) do %>
+          <li
+            :if={i > 0 && Enum.at(@entries, i - 1).place != entry.place}
+            class="menu-divider"
+            role="separator"
+          >
+          </li>
+          <li role="none">
+            <.link
+              id={"new-menu-#{entry.key}"}
+              navigate={entry.path}
+              role="menuitem"
+              tabindex="-1"
+            >
+              <.icon name={entry.icon} class="size-4" /> {entry.label}
+            </.link>
+          </li>
+        <% end %>
       </ul>
     </div>
     """
@@ -1231,6 +1283,23 @@ defmodule ApiaryWeb.Layouts do
       >
         {policy_mode(@counts)}
       </span>
+      <span
+        :if={@entry.key == :nodes && (running_count(@counts) > 0 || keys_waiting(@counts) > 0)}
+        id="nav-nodes-running"
+        class="q-nav-count"
+        title={nodes_title(running_count(@counts), keys_waiting(@counts))}
+      >
+        <span
+          :if={keys_waiting(@counts) > 0}
+          id="nav-nodes-waiting"
+          class="q-dot q-dot-hot !size-1.5"
+          aria-hidden="true"
+        ></span>
+        <span :if={running_count(@counts) > 0}>{Format.number(running_count(@counts))}</span>
+        <span :if={keys_waiting(@counts) > 0} class="sr-only">
+          {keys_waiting_words(keys_waiting(@counts))}
+        </span>
+      </span>
       <span :if={count = nav_count(@counts, @entry)} class="q-nav-count">
         {Format.number(count)}
       </span>
@@ -1536,6 +1605,35 @@ defmodule ApiaryWeb.Layouts do
         "%{number} targets set their own.",
         length(modes),
         number: Format.number(length(modes))
+      )
+
+  # Beside Nodes: the instances running now, and a hot dot while a key awaits approval,
+  # for a reader who may approve it (`keys_waiting` is absent for anybody else).
+  defp running_count(%{running: n}) when is_integer(n), do: n
+  defp running_count(_counts), do: 0
+
+  defp keys_waiting(%{keys_waiting: n}) when is_integer(n), do: n
+  defp keys_waiting(_counts), do: 0
+
+  defp nodes_title(running, 0), do: running_words(running)
+  defp nodes_title(0, waiting), do: keys_waiting_words(waiting)
+
+  defp nodes_title(running, waiting),
+    do: running_words(running) <> " · " <> keys_waiting_words(waiting)
+
+  defp running_words(n),
+    do:
+      ngettext("%{number} instance running", "%{number} instances running", n,
+        number: Format.number(n)
+      )
+
+  defp keys_waiting_words(n),
+    do:
+      ngettext(
+        "%{number} key awaits approval",
+        "%{number} keys await approval",
+        n,
+        number: Format.number(n)
       )
 
   defp alive_count(%{alive: n}) when is_integer(n), do: n
