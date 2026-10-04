@@ -49,6 +49,55 @@ defmodule ApiaryWeb.AccessKeyLive.IndexTest do
       refute has_element?(lv, "#key-#{key.id} .badge")
     end
 
+    test "New access key is a page of the section, not a dialog", %{conn: conn, scope: scope} do
+      keys = workspace_path(scope, "/settings/keys")
+      {:ok, lv, _html} = live(conn, keys)
+
+      lv |> element("#main a", "New access key") |> render_click()
+      assert_patch(lv, ~p"/#{scope.organisation}/#{scope.workspace}/settings/keys/new")
+
+      # Its title and sentence, the breadcrumb ending with the section and the page, the
+      # form with its button, and Cancel back to the list.
+      refute has_element?(lv, "#new-key")
+      assert has_element?(lv, "#settings-tab-keys[aria-current=page]")
+      assert has_element?(lv, "#settings-section-title", "New access key")
+      assert render(lv) =~ "Its secret is shown once"
+      assert has_element?(lv, "#breadcrumb a[href='#{keys}']", "Access keys")
+      assert has_element?(lv, "#breadcrumb [aria-current=page]", "New access key")
+      assert page_title(lv) =~ "New access key"
+
+      assert has_element?(
+               lv,
+               "#access-key-form #access-key-save button[type=submit]",
+               "Create key"
+             )
+
+      assert has_element?(lv, "#access-key-save-cancel[href='#{keys}']", "Cancel")
+
+      # The form opens without errors.
+      refute render(lv) =~ "can&#39;t be blank"
+
+      lv |> element("#access-key-save-cancel") |> render_click()
+      assert_patch(lv, keys)
+      refute has_element?(lv, "#access-key-form")
+      assert has_element?(lv, "#settings-section-title", "Access keys")
+      assert AccessKeys.list_access_keys(scope) == []
+    end
+
+    test "a refused label stays on the page, its error under the field", %{
+      conn: conn,
+      scope: scope
+    } do
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/keys/new")
+
+      html = lv |> form("#access-key-form", access_key: %{label: ""}) |> render_submit()
+      assert html =~ "can&#39;t be blank"
+      assert has_element?(lv, "#access-key-form")
+      refute has_element?(lv, "#key-secret")
+      assert AccessKeys.list_access_keys(scope) == []
+    end
+
     test "creates a key and reveals the secret once", %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/keys")
 
@@ -74,8 +123,21 @@ defmodule ApiaryWeb.AccessKeyLive.IndexTest do
       assert html =~ "access_key: #{key.key_id}"
       assert [_, secret] = Regex.run(@secret, html)
 
-      lv |> element("#reveal-key a", "I have copied the secret") |> render_click()
+      # The page of the form is now the secret's, on the page itself: no dialog.
+      refute has_element?(lv, "#reveal-key")
+      refute has_element?(lv, "#access-key-form")
+      assert has_element?(lv, "#settings-section-title", "Your new access key")
+      assert has_element?(lv, "#breadcrumb [aria-current=page]", "New access key")
+      assert page_title(lv) =~ "Your new access key"
+      assert has_element?(lv, "#key-secret #copy-reveal-secret")
+      assert has_element?(lv, "#key-secret #copy-reveal-key-id")
+
+      lv |> element("#key-secret-done", "Done") |> render_click()
       assert_patch(lv, ~p"/#{scope.organisation}/#{scope.workspace}/settings/keys")
+      refute has_element?(lv, "#key-secret")
+
+      refute inspect(:sys.get_state(lv.pid), limit: :infinity, printable_limit: :infinity) =~
+               secret
 
       html = render(lv)
       assert html =~ "build-server-1"
@@ -84,8 +146,42 @@ defmodule ApiaryWeb.AccessKeyLive.IndexTest do
       assert html =~ "Never used"
       refute html =~ secret
 
-      # the secret never appears again
+      # the secret never appears again, on the list nor on the page that showed it
       {:ok, _lv, html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/keys")
+      refute html =~ secret
+
+      {:ok, lv, html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/keys/new")
+
+      refute html =~ secret
+      assert has_element?(lv, "#access-key-form")
+    end
+
+    test "a secret shown is gone once the page is left by another way", %{
+      conn: conn,
+      scope: scope
+    } do
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/keys/new")
+
+      html =
+        lv
+        |> form("#access-key-form", access_key: %{label: "build-server-2"})
+        |> render_submit()
+
+      assert [_, secret] = Regex.run(@secret, html)
+
+      # The breadcrumb's section, and opening the page again: neither shows the secret.
+      render_patch(lv, ~p"/#{scope.organisation}/#{scope.workspace}/settings/keys/new")
+      refute render(lv) =~ secret
+      assert has_element?(lv, "#access-key-form")
+
+      {:ok, _lv, html} =
+        lv
+        |> element("#breadcrumb a", "Access keys")
+        |> render_click()
+        |> follow_redirect(conn)
+
       refute html =~ secret
     end
 
@@ -106,12 +202,21 @@ defmodule ApiaryWeb.AccessKeyLive.IndexTest do
 
       assert render(lv) =~ "keeps working"
 
+      # The rotation is a confirmation over the list: a small dialog.
+      assert has_element?(lv, "dialog#rotate-key")
+
       html = lv |> element("#rotate-key button", "Rotate key") |> render_click()
-      assert html =~ "New secret for runner-a"
       assert [_, new_secret] = Regex.run(@secret, html)
       assert new_secret != secret
 
-      lv |> element("#reveal-key a", "I have copied the secret") |> render_click()
+      # The new secret is shown on the page, as a new key's is: no dialog.
+      refute has_element?(lv, "#rotate-key")
+      refute has_element?(lv, "#reveal-key")
+      assert has_element?(lv, "#settings-section-title", "New secret for runner-a")
+      assert has_element?(lv, "#breadcrumb [aria-current=page]", "Rotate key")
+      assert render(lv) =~ "The previous one keeps working until you retire it"
+
+      lv |> element("#key-secret-done", "Done") |> render_click()
       assert_patch(lv, ~p"/#{scope.organisation}/#{scope.workspace}/settings/keys")
 
       html = render(lv)
@@ -121,6 +226,7 @@ defmodule ApiaryWeb.AccessKeyLive.IndexTest do
       assert AccessKey.status(AccessKeys.get_access_key!(scope, key.id)) == :rotating
 
       lv |> element("#key-#{key.id} button", "Retire previous secret") |> render_click()
+      assert has_element?(lv, "dialog#retire-secret")
       assert render(lv) =~ "Only the secret issued at the last rotation keeps working"
 
       html = lv |> element("#retire-secret button", "Retire previous secret") |> render_click()
@@ -141,6 +247,7 @@ defmodule ApiaryWeb.AccessKeyLive.IndexTest do
         ~p"/#{scope.organisation}/#{scope.workspace}/settings/keys/#{key.id}/revoke"
       )
 
+      assert has_element?(lv, "dialog#revoke-key")
       assert render(lv) =~ "stops verifying at once"
 
       lv |> element("#revoke-key button", "Revoke key") |> render_click()

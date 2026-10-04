@@ -1,8 +1,21 @@
 defmodule ApiaryWeb.AccessKeyLive.Index do
   @moduledoc """
   The workspace's access keys, a section of its settings (`ApiaryWeb.SettingsComponents`),
-  `/:org/:workspace/settings/keys`: list, create (reveal-once), rotate, retire the previous
-  secret, revoke, the last three in modals over the list.
+  `/:org/:workspace/settings/keys`: the list, and the acts on a key, each at a path of its
+  own.
+
+  - **New access key** (`/settings/keys/new`) is a page of the section, as Add integration
+    is: the breadcrumb ending with the section and the page, its title, one sentence, the
+    form in the section's column, its button and Cancel back to the list.
+  - **The secret is shown once**, on the page of the act that made it: once the key is
+    created, New access key's page is the secret, its key id, the `server` block to paste,
+    and Done back to the list; once a key is rotated, its path (`/settings/keys/:id/rotate`)
+    is the same page for the new secret. The secret lives in the page's process alone,
+    until the reader leaves the page by any way: no path renders it, and a page opened
+    again starts without it.
+  - **Rotate** (`…/:id/rotate`), **Revoke** (`…/:id/revoke`) and **Retire the previous
+    secret** (from a rotated key's row) are confirmations of a row's act: small dialogs over
+    the list.
   """
   use ApiaryWeb, :live_view
 
@@ -11,6 +24,100 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
   alias ApiaryWeb.SettingsComponents
 
   @impl true
+  # The secret of a key just created or rotated: the page of the act that made it, shown
+  # once, with Done back to the list.
+  def render(%{reveal: %{}} = assigns) do
+    ~H"""
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      memberships={@memberships}
+      counts={@nav_counts}
+      nav={:keys}
+    >
+      <:crumb navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings"}>
+        {gettext("Settings")}
+      </:crumb>
+      <:crumb navigate={keys_path(@current_scope)}>{gettext("Access keys")}</:crumb>
+      <:crumb>{crumb_words(@live_action)}</:crumb>
+
+      <SettingsComponents.layout
+        scope={@current_scope}
+        counts={@nav_counts}
+        kind={:workspace}
+        sections={@sections}
+        current={:keys}
+        title={page_title(assigns)}
+      >
+        <:subtitle>{page_sentence(assigns)}</:subtitle>
+        <div id="key-secret" class="grid gap-4">
+          <.reveal reveal={@reveal} rotated={@live_action == :rotate} />
+          <SettingsComponents.save id="key-secret-save">
+            <.button id="key-secret-done" variant="primary" patch={keys_path(@current_scope)}>
+              {gettext("Done")}
+            </.button>
+            <:note>{gettext("Once you leave this page, the secret is not shown again.")}</:note>
+          </SettingsComponents.save>
+        </div>
+      </SettingsComponents.layout>
+    </Layouts.app>
+    """
+  end
+
+  # New access key: a form is a page of the section, as Add integration is.
+  def render(%{live_action: :new, form: %Phoenix.HTML.Form{}} = assigns) do
+    ~H"""
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      memberships={@memberships}
+      counts={@nav_counts}
+      nav={:keys}
+    >
+      <:crumb navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings"}>
+        {gettext("Settings")}
+      </:crumb>
+      <:crumb navigate={keys_path(@current_scope)}>{gettext("Access keys")}</:crumb>
+      <:crumb>{crumb_words(:new)}</:crumb>
+
+      <SettingsComponents.layout
+        scope={@current_scope}
+        counts={@nav_counts}
+        kind={:workspace}
+        sections={@sections}
+        current={:keys}
+        title={page_title(assigns)}
+      >
+        <:subtitle>{page_sentence(assigns)}</:subtitle>
+        <.form
+          for={@form}
+          id="access-key-form"
+          phx-change="validate"
+          phx-submit="create"
+          class="grid gap-4"
+          novalidate
+        >
+          <.input
+            field={@form[:label]}
+            type="text"
+            label={gettext("Label")}
+            placeholder={gettext("build-01")}
+            hint={gettext("The machine or environment this key is for.")}
+            autocomplete="off"
+            spellcheck="false"
+            phx-mounted={JS.focus()}
+          />
+          <SettingsComponents.save id="access-key-save" cancel={keys_path(@current_scope)}>
+            <.button variant="primary" type="submit" loading_text={gettext("Creating")}>
+              {gettext("Create key")}
+            </.button>
+          </SettingsComponents.save>
+        </.form>
+      </SettingsComponents.layout>
+    </Layouts.app>
+    """
+  end
+
   def render(assigns) do
     ~H"""
     <Layouts.app
@@ -137,75 +244,7 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
       </SettingsComponents.layout>
 
       <.modal
-        :if={@live_action == :new && is_nil(@reveal)}
-        id="new-key"
-        title={gettext("New access key")}
-        on_cancel={
-          JS.patch(~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/keys")
-        }
-      >
-        <.form
-          for={@form}
-          id="access-key-form"
-          phx-change="validate"
-          phx-submit="create"
-          class="grid gap-4"
-          novalidate
-        >
-          <.input
-            field={@form[:label]}
-            type="text"
-            label={gettext("Label")}
-            placeholder={gettext("build-01")}
-            hint={gettext("The machine or environment this key is for.")}
-            autocomplete="off"
-            spellcheck="false"
-          />
-        </.form>
-        <:footer>
-          <.button patch={
-            ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/keys"
-          }>{gettext("Cancel")}</.button>
-          <.button
-            variant="primary"
-            type="submit"
-            form="access-key-form"
-            loading_text={gettext("Creating")}
-          >
-            {gettext("Create key")}
-          </.button>
-        </:footer>
-      </.modal>
-
-      <.modal
-        :if={@live_action in [:new, :rotate] && @reveal}
-        id="reveal-key"
-        title={
-          if @live_action == :new,
-            do: gettext("Your new access key"),
-            else: gettext("New secret for %{label}", label: @reveal.key.label)
-        }
-        dismissable={false}
-        size="lg"
-      >
-        <:aside>
-          <.badge :if={@live_action == :new} color="success" dot>{@reveal.key.label}</.badge>
-          <.badge :if={@live_action == :rotate} color="warning" dot>{gettext("Rotating")}</.badge>
-        </:aside>
-        <.reveal reveal={@reveal} rotated={@live_action == :rotate} />
-        <:footer>
-          <.button
-            variant="primary"
-            patch={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/keys"}
-            data-autofocus
-          >
-            {gettext("I have copied the secret")}
-          </.button>
-        </:footer>
-      </.modal>
-
-      <.modal
-        :if={@live_action == :rotate && @key && is_nil(@reveal)}
+        :if={@live_action == :rotate && @key}
         id="rotate-key"
         title={gettext("Rotate %{label}", label: @key.label)}
         on_cancel={
@@ -378,7 +417,8 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
        page_title: gettext("Access keys") <> " · " <> gettext("Workspace settings"),
        key: nil,
        reveal: nil,
-       retire_key: nil
+       retire_key: nil,
+       form: nil
      )
      |> assign(:sections, SettingsComponents.sections(socket.assigns.current_scope, :workspace))
      |> load_keys()}
@@ -386,20 +426,18 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
 
   @impl true
   def handle_params(params, _uri, socket) do
-    {:noreply, apply_action(socket, socket.assigns.live_action, params)}
+    # Every path starts without a secret: one shown is gone once the reader leaves its page.
+    socket = assign(socket, key: nil, reveal: nil, form: nil)
+    {:noreply, socket |> apply_action(socket.assigns.live_action, params) |> titled()}
   end
 
-  defp apply_action(socket, :index, _params) do
-    assign(socket, key: nil, reveal: nil)
-  end
+  defp apply_action(socket, :index, _params), do: socket
 
   defp apply_action(socket, :new, _params) do
     scope = socket.assigns.current_scope
 
     if Access.can?(scope, :"access_key.create", scope.workspace) do
-      socket
-      |> assign(key: nil, reveal: nil)
-      |> assign_form(AccessKeys.change_access_key(%AccessKey{}))
+      assign_form(socket, fresh(AccessKeys.change_access_key(%AccessKey{})))
     else
       refused(socket)
     end
@@ -418,7 +456,7 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
         |> push_patch(to: keys_path(socket))
 
       true ->
-        assign(socket, key: key, reveal: nil)
+        assign(socket, :key, key)
     end
   end
 
@@ -445,7 +483,8 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
   def handle_event("create", %{"access_key" => params}, socket) do
     case AccessKeys.create_access_key(socket.assigns.current_scope, params) do
       {:ok, key, secret} ->
-        {:noreply, socket |> assign(reveal: reveal_for(key, secret)) |> load_keys()}
+        {:noreply,
+         socket |> assign(form: nil, reveal: reveal_for(key, secret)) |> titled() |> load_keys()}
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign_form(socket, changeset)}
@@ -455,10 +494,18 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
     end
   end
 
-  def handle_event("rotate", _params, %{assigns: %{key: %AccessKey{} = key}} = socket) do
+  def handle_event(
+        "rotate",
+        _params,
+        %{assigns: %{key: %AccessKey{} = key, reveal: nil}} = socket
+      ) do
     case AccessKeys.rotate_access_key(socket.assigns.current_scope, key) do
       {:ok, key, secret} ->
-        {:noreply, socket |> assign(key: key, reveal: reveal_for(key, secret)) |> load_keys()}
+        {:noreply,
+         socket
+         |> assign(key: key, reveal: reveal_for(key, secret))
+         |> titled()
+         |> load_keys()}
 
       {:error, :revoked} ->
         {:noreply,
@@ -474,7 +521,11 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
     end
   end
 
-  def handle_event("revoke", _params, %{assigns: %{key: %AccessKey{} = key}} = socket) do
+  def handle_event(
+        "revoke",
+        _params,
+        %{assigns: %{live_action: :revoke, key: %AccessKey{} = key}} = socket
+      ) do
     case AccessKeys.revoke_access_key(socket.assigns.current_scope, key) do
       {:ok, key} ->
         {:noreply,
@@ -528,8 +579,9 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
   end
 
   # A rotation, a revocation or a retirement without its modal open: a second click of a
-  # button whose modal has closed. One who may take the action is shown the list again;
-  # one who may not is refused, as a path the page offers no button for is.
+  # button whose modal has closed, or a rotation once its new secret is shown. One who may
+  # take the action is shown the list again; one who may not is refused, as a path the
+  # page offers no button for is.
   def handle_event(event, _params, socket) when event in ~w(rotate revoke retire_confirm) do
     scope = socket.assigns.current_scope
     action = if event == "revoke", do: :"access_key.revoke_secret_key", else: :"access_key.rotate"
@@ -539,10 +591,51 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
       else: {:noreply, refused(socket)}
   end
 
-  defp keys_path(socket) do
-    %{organisation: organisation, workspace: workspace} = socket.assigns.current_scope
-    ~p"/#{organisation}/#{workspace}/settings/keys"
+  defp keys_path(%Phoenix.LiveView.Socket{} = socket), do: keys_path(socket.assigns.current_scope)
+
+  defp keys_path(%{organisation: organisation, workspace: workspace}),
+    do: ~p"/#{organisation}/#{workspace}/settings/keys"
+
+  # The title of a page of the section: the act and what it acts on.
+  defp page_title(%{reveal: %{}, live_action: :new}), do: gettext("Your new access key")
+
+  defp page_title(%{reveal: %{key: key}, live_action: :rotate}),
+    do: gettext("New secret for %{label}", label: key.label)
+
+  defp page_title(%{live_action: :new}), do: gettext("New access key")
+
+  # The breadcrumb's last segment: the act alone.
+  defp crumb_words(:new), do: gettext("New access key")
+  defp crumb_words(:rotate), do: gettext("Rotate key")
+
+  # The one sentence under the title: what the page does.
+  defp page_sentence(%{reveal: %{key: key}, live_action: :new}),
+    do: gettext("%{label} is created, and works from now on.", label: key.label)
+
+  defp page_sentence(%{reveal: %{key: key}, live_action: :rotate}),
+    do:
+      gettext("%{label} has a new secret. The previous one keeps working until you retire it.",
+        label: key.label
+      )
+
+  defp page_sentence(%{live_action: :new}),
+    do:
+      gettext(
+        "A key lets a machine post its runs to this workspace. Its secret is shown once, as soon as the key is created."
+      )
+
+  # The browser's title: a page is named by its title, the list by the section.
+  defp titled(%{assigns: assigns} = socket) do
+    title =
+      if assigns.reveal || (assigns.live_action == :new && assigns.form),
+        do: page_title(assigns),
+        else: gettext("Access keys")
+
+    assign(socket, :page_title, title <> " · " <> gettext("Workspace settings"))
   end
+
+  # A form as its page opens: nothing is typed yet, so nothing is wrong yet.
+  defp fresh(%Ecto.Changeset{} = changeset), do: %{changeset | errors: [], valid?: true}
 
   # The membership this page was opened with is gone, or the person no longer reaches the
   # workspace: `/` sends the user to where they still belong. A reader, who reads the
