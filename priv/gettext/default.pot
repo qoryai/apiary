@@ -577,6 +577,13 @@ msgstr ""
 msgid "%{name} is locked."
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} is locked: %{number} target that sets its own is given the workspace's value while the lock holds."
+msgid_plural "%{name} is locked: %{number} targets that set their own are given the workspace's value while the lock holds."
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
@@ -587,6 +594,13 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "%{name} is unlocked."
 msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{name} is unlocked: %{number} target is given its own value again."
+msgid_plural "%{name} is unlocked: %{number} targets are given their own value again."
+msgstr[0] ""
+msgstr[1] ""
 
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
@@ -2888,6 +2902,11 @@ msgstr ""
 msgid "Back to the target's policy"
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Back to the variables"
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Background tasks"
@@ -2923,6 +2942,7 @@ msgstr ""
 msgid "Can you trust your agents? With Qory *you don't have to*."
 msgstr ""
 
+#: lib/apiary_web/components/core_components.ex
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/components/settings_components.ex
@@ -2933,7 +2953,6 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/show.ex
 #: lib/apiary_web/live/policy_live/target.ex
 #: lib/apiary_web/live/run_live/show.ex
-#: lib/apiary_web/live/secret_live/index.ex
 #: lib/apiary_web/live/settings_live.ex
 #: lib/apiary_web/live/user_live/settings.ex
 #: lib/apiary_web/live/workspace_live/overview.ex
@@ -3225,7 +3244,6 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/live/policy_live/views.ex
-#: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Close"
 msgstr ""
@@ -3628,6 +3646,7 @@ msgid "Delete %{name}"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/show.ex
+#: lib/apiary_web/live/secret_live/index.ex
 #: lib/apiary_web/live/settings_live.ex
 #, elixir-autogen, elixir-format
 msgid "Delete %{name}?"
@@ -3636,6 +3655,11 @@ msgstr ""
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Delete %{value_id} of %{name}"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Delete %{value_id} of %{name}?"
 msgstr ""
 
 #: lib/apiary_web/live/user_live/settings.ex
@@ -3690,11 +3714,6 @@ msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Delete secret"
-msgstr ""
-
-#: lib/apiary_web/live/secret_live/index.ex
-#, elixir-autogen, elixir-format
 msgid "Delete secret…"
 msgstr ""
 
@@ -3725,17 +3744,7 @@ msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Delete value"
-msgstr ""
-
-#: lib/apiary_web/live/secret_live/index.ex
-#, elixir-autogen, elixir-format
 msgid "Delete value…"
-msgstr ""
-
-#: lib/apiary_web/live/secret_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Delete variable"
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
@@ -5298,6 +5307,11 @@ msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
+msgid "Its value"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
 msgid "Its value set aside by the lock"
 msgstr ""
 
@@ -5651,6 +5665,11 @@ msgstr ""
 msgid "Lock %{name}"
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Lock %{name}?"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Lock the allow rule %{host}"
@@ -5664,11 +5683,6 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Lock the rule"
-msgstr ""
-
-#: lib/apiary_web/live/secret_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Lock variable"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -5751,11 +5765,6 @@ msgstr ""
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Locking"
-msgstr ""
-
-#: lib/apiary_web/live/secret_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Lock…"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -8963,6 +8972,7 @@ msgstr ""
 #: lib/apiary_web/live/connection_live/index.ex
 #: lib/apiary_web/live/policy_live/show.ex
 #: lib/apiary_web/live/run_live/index.ex
+#: lib/apiary_web/live/secret_live/index.ex
 #: lib/apiary_web/live/target_live/index.ex
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
@@ -9626,6 +9636,11 @@ msgstr ""
 msgid "The targets could not be read. Reload the page to try again."
 msgstr ""
 
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "The targets that set their own value of %{name}, and those whose own value its lock sets aside."
+msgstr ""
+
 #: lib/apiary_web/live/target_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "The targets this workspace's runs have changed."
@@ -10140,6 +10155,7 @@ msgid "Unknown decision"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
+#: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Unlock"
 msgstr ""
@@ -10151,7 +10167,7 @@ msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Unlock variable"
+msgid "Unlock %{name}?"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
@@ -10172,11 +10188,6 @@ msgstr ""
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Unlocking"
-msgstr ""
-
-#: lib/apiary_web/live/secret_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Unlock…"
 msgstr ""
 
 #: lib/apiary_web/components/target_components.ex
@@ -10664,6 +10675,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Wrote a service definition"
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Yes, delete"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex

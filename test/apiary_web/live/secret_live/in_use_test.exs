@@ -40,7 +40,7 @@ defmodule ApiaryWeb.SecretLive.InUseTest do
     refute has_element?(lv, "#secret-#{secret.public_id}", "Not used yet")
 
     {:ok, lv, _html} = live(conn, path <> "/#{secret.public_id}/delete")
-    lv |> element("#secret-dialog button", "Delete secret") |> render_click()
+    lv |> element("#secret-#{secret.public_id}-confirm button", "Yes, delete") |> render_click()
 
     assert render(lv) =~ "FORGE_TOKEN is used by Example: unlink it there first."
     assert {:ok, [_secret]} = Secrets.list_secrets(scope)

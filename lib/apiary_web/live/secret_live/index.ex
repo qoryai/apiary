@@ -4,12 +4,13 @@ defmodule ApiaryWeb.SecretLive.Index do
   (`ApiaryWeb.SettingsComponents`) with the `security` feature: two views of one page,
   Secrets (`/:org/:workspace/settings/secrets`) and Variables (`…/settings/variables`),
   each a list on the list pattern (a search, a Filter menu, Sort, the filters in force as
-  tokens, all in the URL; `ApiaryWeb.SecretLive.Query`). Each change is at a path of its
-  own: a form is a page of the section, as Add integration is (its title, one sentence,
-  the form in the section's column, its button and Cancel back to the view, the
-  breadcrumb ending with the section and the page); a confirmation (a deletion, a lock,
-  an unlock) is a small dialog over its view, and so is the list of a variable's
-  targets.
+  tokens, all in the URL; `ApiaryWeb.SecretLive.Query`). Nothing opens over the page:
+  each act is at a path of its own, a form a page of the section, as Add integration is
+  (its title, one sentence, the form in the section's column, its button and Cancel back
+  to the view, the breadcrumb ending with the section and the page), and so is the list of
+  a variable's targets; a deletion asks to confirm in place, on its row
+  (`CoreComponents.inline_confirm/1`). Lock and Unlock act at once from the row's menu;
+  their paths, which must not act as they open, ask on the row first.
 
   - **Secrets** (`Apiary.Secrets`): a secret's name, its value ids, who changed each
     value and when, and what uses it; never a value. New secret, then Add value, Change
@@ -21,7 +22,7 @@ defmodule ApiaryWeb.SecretLive.Index do
     is plain configuration, its lock, and the repositories that set their own value or
     whose value a lock sets aside, from their resolution
     (`Apiary.Variables.repository_overrides/1`). New variable, Change value, Lock and
-    Unlock, Delete variable, and the repositories of a variable. A name beginning
+    Unlock, Delete variable, and the targets of a variable. A name beginning
     `QORY_` is refused by the context; any other name on the runner's deny list is
     saved, and the page warns (`Apiary.Variables.Denied`).
 
@@ -40,7 +41,8 @@ defmodule ApiaryWeb.SecretLive.Index do
   alias ApiaryWeb.{People, SettingsComponents, UserAuth}
   alias ApiaryWeb.SecretLive.Query
 
-  @secret_dialogs [
+  # The acts of each view, each at a path of its own.
+  @secret_acts [
     :new_secret,
     :add_value,
     :change_value,
@@ -48,18 +50,18 @@ defmodule ApiaryWeb.SecretLive.Index do
     :delete_value,
     :delete_secret
   ]
-  @variable_dialogs [
+
+  # The acts that are a page of the section: the forms, and the targets of a variable;
+  # the rest are confirmations in place, on the row they act on.
+  @pages [
+    :new_secret,
+    :add_value,
+    :change_value,
+    :rename_value,
     :new_variable,
     :change_variable,
-    :lock_variable,
-    :unlock_variable,
-    :delete_variable,
     :variable_targets
   ]
-
-  # The changes that are a form, each a page of the section; the rest are confirmations,
-  # small dialogs over their view.
-  @pages [:new_secret, :add_value, :change_value, :rename_value, :new_variable, :change_variable]
 
   # Past this many repositories, a variable's list of them has a search.
   @find_from 10
@@ -68,7 +70,7 @@ defmodule ApiaryWeb.SecretLive.Index do
   # A form is a page of the section, as Add integration is: the section's list beside it,
   # the breadcrumb ending with the section and the page, its title, one sentence, the
   # form in the section's column, its button and Cancel back to the view.
-  def render(%{dialog: dialog} = assigns) when dialog in @pages do
+  def render(%{act: act} = assigns) when act in @pages do
     ~H"""
     <Layouts.app
       flash={@flash}
@@ -83,7 +85,7 @@ defmodule ApiaryWeb.SecretLive.Index do
       <:crumb navigate={list_path(@current_scope, @view, @query)}>
         {gettext("Secrets and variables")}
       </:crumb>
-      <:crumb>{crumb_words(@dialog)}</:crumb>
+      <:crumb>{crumb_words(@act)}</:crumb>
 
       <SettingsComponents.layout
         scope={@current_scope}
@@ -175,15 +177,9 @@ defmodule ApiaryWeb.SecretLive.Index do
         <.secrets_view :if={@view == :secrets} {assigns} />
         <.variables_view :if={@view == :variables} {assigns} />
       </SettingsComponents.layout>
-
-      <.secret_dialog :if={secret_dialog?(@dialog)} {assigns} />
-      <.variable_dialog :if={variable_dialog?(@dialog)} {assigns} />
     </Layouts.app>
     """
   end
-
-  defp secret_dialog?(dialog), do: dialog in @secret_dialogs
-  defp variable_dialog?(dialog), do: dialog in @variable_dialogs
 
   ## The secrets
 
@@ -287,6 +283,7 @@ defmodule ApiaryWeb.SecretLive.Index do
       label={gettext("Secrets")}
       rows={secret_rows(@shown)}
       row_id={&row_id/1}
+      confirming={secret_confirming(@act, @secret, @value)}
     >
       <:col :let={row} label={gettext("Name")} kind="title">
         <%= case row do %>
@@ -331,6 +328,9 @@ defmodule ApiaryWeb.SecretLive.Index do
       <:action :let={row}>
         <.secret_menu :if={@may_write} row={row} scope={@current_scope} />
       </:action>
+      <:confirm :let={row}>
+        <.secret_confirm row={row} cancel={list_path(@current_scope, :secrets, @query)} />
+      </:confirm>
     </.table>
     """
   end
@@ -571,6 +571,7 @@ defmodule ApiaryWeb.SecretLive.Index do
       label={gettext("Variables")}
       rows={@shown}
       row_id={&"variable-#{&1.id}"}
+      confirming={variable_confirming(@act, @variable)}
     >
       <:col :let={variable} label={gettext("Name")} kind="title">
         <span class="q-nm">
@@ -627,21 +628,25 @@ defmodule ApiaryWeb.SecretLive.Index do
           >
             {gettext("Change value…")}
           </.menu_item>
+          <%!-- A lock is undone by an unlock: each acts at once, and the flash says what
+               it did to the targets. --%>
           <.menu_item
             :if={!variable.locked}
             id={"variable-#{variable.id}-lock-item"}
-            patch={variable_path(@current_scope, variable, :lock)}
+            phx-click="lock_variable"
+            phx-value-id={variable.id}
             aria-label={gettext("Lock %{name}", name: variable.name)}
           >
-            {gettext("Lock…")}
+            {gettext("Lock")}
           </.menu_item>
           <.menu_item
             :if={variable.locked}
             id={"variable-#{variable.id}-unlock-item"}
-            patch={variable_path(@current_scope, variable, :unlock)}
+            phx-click="unlock_variable"
+            phx-value-id={variable.id}
             aria-label={gettext("Unlock %{name}", name: variable.name)}
           >
-            {gettext("Unlock…")}
+            {gettext("Unlock")}
           </.menu_item>
           <.menu_divider />
           <.menu_item
@@ -653,6 +658,14 @@ defmodule ApiaryWeb.SecretLive.Index do
           </.menu_item>
         </.row_menu>
       </:action>
+      <:confirm :let={variable}>
+        <.variable_confirm
+          act={@act}
+          variable={variable}
+          targets={Map.get(@targets, String.downcase(variable.name), [])}
+          cancel={list_path(@current_scope, :variables, @query)}
+        />
+      </:confirm>
     </.table>
 
     <p id="variables-note" class="max-w-[72ch] text-[12.5px]/[18px] text-faint">
@@ -718,7 +731,7 @@ defmodule ApiaryWeb.SecretLive.Index do
 
   ## The pages of a form
 
-  defp form_page(%{dialog: :new_secret} = assigns) do
+  defp form_page(%{act: :new_secret} = assigns) do
     ~H"""
     <.form for={@form} id="secret-form" phx-submit="create_secret" class="grid gap-4" novalidate>
       <.input
@@ -754,7 +767,7 @@ defmodule ApiaryWeb.SecretLive.Index do
     """
   end
 
-  defp form_page(%{dialog: :add_value} = assigns) do
+  defp form_page(%{act: :add_value} = assigns) do
     assigns =
       assign(assigns, :unnamed, Enum.any?(assigns.secret.values, &is_nil(&1.value_id)))
 
@@ -790,7 +803,7 @@ defmodule ApiaryWeb.SecretLive.Index do
     """
   end
 
-  defp form_page(%{dialog: :change_value} = assigns) do
+  defp form_page(%{act: :change_value} = assigns) do
     ~H"""
     <.form for={@form} id="secret-form" phx-submit="set_value" class="grid gap-4" novalidate>
       <.value_field form={@form} label={gettext("New value")} focus />
@@ -803,7 +816,7 @@ defmodule ApiaryWeb.SecretLive.Index do
     """
   end
 
-  defp form_page(%{dialog: :rename_value} = assigns) do
+  defp form_page(%{act: :rename_value} = assigns) do
     ~H"""
     <.form for={@form} id="secret-form" phx-submit="rename_value" class="grid gap-4" novalidate>
       <.input
@@ -824,7 +837,7 @@ defmodule ApiaryWeb.SecretLive.Index do
     """
   end
 
-  defp form_page(%{dialog: :new_variable} = assigns) do
+  defp form_page(%{act: :new_variable} = assigns) do
     ~H"""
     <.form
       for={@form}
@@ -873,7 +886,7 @@ defmodule ApiaryWeb.SecretLive.Index do
     """
   end
 
-  defp form_page(%{dialog: :change_variable} = assigns) do
+  defp form_page(%{act: :change_variable} = assigns) do
     ~H"""
     <.form for={@form} id="variable-form" phx-submit="change_variable" class="grid gap-4" novalidate>
       <.input
@@ -897,25 +910,81 @@ defmodule ApiaryWeb.SecretLive.Index do
     """
   end
 
-  # The page's title, the act and what it acts on.
-  defp form_title(%{dialog: :new_secret}), do: gettext("New secret")
+  # The targets of a variable: a page of the section too, to read.
+  defp form_page(%{act: :variable_targets} = assigns) do
+    targets = Map.get(assigns.targets, String.downcase(assigns.variable.name), [])
+    q = String.downcase(assigns.target_q)
 
-  defp form_title(%{dialog: :add_value, secret: secret}),
+    assigns =
+      assign(assigns,
+        all: targets,
+        listed:
+          Enum.filter(targets, &(q == "" or String.contains?(String.downcase(&1.target.path), q))),
+        shared: shared_paths(assigns.targets)
+      )
+
+    ~H"""
+    <.list_search
+      :if={length(@all) > find_from()}
+      id="variable-targets-search"
+      value={@target_q}
+      label={gettext("Find a target")}
+      change="find_target"
+    />
+    <p :if={@all == []} class="text-muted">{gettext("No target sets its own value.")}</p>
+    <.table
+      :if={@all != []}
+      id="variable-targets"
+      label={gettext("Targets that set %{name}", name: @variable.name)}
+      rows={@listed}
+      row_id={&"variable-target-#{&1.target.id}"}
+    >
+      <:col :let={%{target: target}} label={gettext("Target")} kind="title">
+        <.link
+          navigate={
+            ApiaryWeb.TargetComponents.target_path(@current_scope, target.system, target.path)
+          }
+          class="hover:underline"
+        >
+          <.target_name system={target.system} path={target.path} shared={@shared} />
+        </.link>
+      </:col>
+      <:col :let={%{state: state}} label={gettext("Its value")}>
+        {if state == :own,
+          do: gettext("Its own value"),
+          else: gettext("Its value set aside by the lock")}
+      </:col>
+    </.table>
+    <SettingsComponents.save id="variable-targets-foot">
+      <.button patch={list_path(@current_scope, :variables, @query)}>
+        {gettext("Back to the variables")}
+      </.button>
+    </SettingsComponents.save>
+    """
+  end
+
+  # The page's title, the act and what it acts on.
+  defp form_title(%{act: :new_secret}), do: gettext("New secret")
+
+  defp form_title(%{act: :add_value, secret: secret}),
     do: gettext("Add a value to %{name}", name: secret.name)
 
-  defp form_title(%{dialog: :change_value, secret: secret, value: %Value{value_id: nil}}),
+  defp form_title(%{act: :change_value, secret: secret, value: %Value{value_id: nil}}),
     do: gettext("Change the value of %{name}", name: secret.name)
 
-  defp form_title(%{dialog: :change_value, secret: secret, value: value}),
+  defp form_title(%{act: :change_value, secret: secret, value: value}),
     do: gettext("Change %{value_id} of %{name}", value_id: value.value_id, name: secret.name)
 
-  defp form_title(%{dialog: :rename_value, secret: secret, value: value}),
+  defp form_title(%{act: :rename_value, secret: secret, value: value}),
     do: gettext("Rename %{value_id} of %{name}", value_id: value.value_id, name: secret.name)
 
-  defp form_title(%{dialog: :new_variable}), do: gettext("New variable")
+  defp form_title(%{act: :new_variable}), do: gettext("New variable")
 
-  defp form_title(%{dialog: :change_variable, variable: variable}),
+  defp form_title(%{act: :change_variable, variable: variable}),
     do: gettext("Change the value of %{name}", name: variable.name)
+
+  defp form_title(%{act: :variable_targets, variable: variable}),
+    do: gettext("Targets that set %{name}", name: variable.name)
 
   # The breadcrumb's last segment: the act alone.
   defp crumb_words(:new_secret), do: gettext("New secret")
@@ -924,88 +993,219 @@ defmodule ApiaryWeb.SecretLive.Index do
   defp crumb_words(:rename_value), do: gettext("Rename value")
   defp crumb_words(:new_variable), do: gettext("New variable")
   defp crumb_words(:change_variable), do: gettext("Change value")
+  defp crumb_words(:variable_targets), do: gettext("Targets")
 
   # The one sentence under the title: what the page does.
-  defp form_sentence(%{dialog: :new_secret}),
+  defp form_sentence(%{act: :new_secret}),
     do:
       gettext(
         "A secret holds a value the runs are given, such as a token for a system. Once it is saved, nobody sees it again."
       )
 
-  defp form_sentence(%{dialog: :add_value}),
+  defp form_sentence(%{act: :add_value}),
     do:
       gettext(
         "A secret with several values names each one with a value ID, and what uses the secret chooses one of them."
       )
 
-  defp form_sentence(%{dialog: :change_value}),
+  defp form_sentence(%{act: :change_value}),
     do:
       gettext(
         "The value it holds now is not shown. Runs are given the new one from their next start."
       )
 
-  defp form_sentence(%{dialog: :rename_value}),
+  defp form_sentence(%{act: :rename_value}),
     do: gettext("The value stays as it is; only its value ID changes.")
 
-  defp form_sentence(%{dialog: :new_variable}),
+  defp form_sentence(%{act: :new_variable}),
     do:
       gettext(
         "A variable is a plain value a run's process is given, such as the address of a package registry."
       )
 
-  defp form_sentence(%{dialog: :change_variable}),
+  defp form_sentence(%{act: :change_variable}),
     do: gettext("Runs are given the new value from their next start.")
 
-  ## The secrets' dialogs: confirmations
+  defp form_sentence(%{act: :variable_targets, variable: variable}),
+    do:
+      gettext(
+        "The targets that set their own value of %{name}, and those whose own value its lock sets aside.",
+        name: variable.name
+      )
 
-  defp secret_dialog(%{dialog: :delete_value} = assigns) do
+  ## The confirmations in place
+
+  # The row of the secrets that asks to confirm: a secret's, or one of its values'.
+  defp secret_confirming(:delete_secret, %Secret{} = secret, _value),
+    do: row_id({:secret, secret})
+
+  defp secret_confirming(:delete_value, %Secret{} = secret, %Value{} = value),
+    do: row_id({:value, secret, value})
+
+  defp secret_confirming(_act, _secret, _value), do: nil
+
+  attr :row, :any, required: true
+  attr :cancel, :string, required: true
+
+  defp secret_confirm(%{row: {:secret, secret}} = assigns) do
+    assigns = assign(assigns, :secret, secret)
+
     ~H"""
-    <.modal
-      id="secret-dialog"
-      title={gettext("Delete %{value_id} of %{name}", value_id: @value.value_id, name: @secret.name)}
-      on_cancel={JS.patch(list_path(@current_scope, :secrets, @query))}
+    <.inline_confirm
+      id={"secret-#{@secret.public_id}-confirm"}
+      question={gettext("Delete %{name}?", name: @secret.name)}
+      cancel={@cancel}
     >
-      <p class="text-muted">
-        {gettext(
-          "The value is deleted, and the secret keeps its other values. This cannot be undone."
-        )}
-      </p>
-      <:footer>
-        <.button patch={list_path(@current_scope, :secrets, @query)} data-autofocus>
-          {gettext("Cancel")}
+      {ngettext(
+        "The secret and its value are deleted. This cannot be undone.",
+        "The secret and its %{number} values are deleted. This cannot be undone.",
+        length(@secret.values),
+        number: Format.number(length(@secret.values))
+      )}
+      <:action>
+        <.button
+          variant="danger"
+          size="xs"
+          phx-click="delete_secret"
+          loading_text={gettext("Deleting")}
+        >
+          {gettext("Yes, delete")}
         </.button>
-        <.button variant="danger" phx-click="delete_value" loading_text={gettext("Deleting")}>
-          {gettext("Delete value")}
-        </.button>
-      </:footer>
-    </.modal>
+      </:action>
+    </.inline_confirm>
     """
   end
 
-  defp secret_dialog(%{dialog: :delete_secret} = assigns) do
+  defp secret_confirm(%{row: {:value, secret, value}} = assigns) do
+    assigns = assign(assigns, secret: secret, value: value, id: row_id(assigns.row))
+
     ~H"""
-    <.modal
-      id="secret-dialog"
-      title={gettext("Delete %{name}", name: @secret.name)}
-      on_cancel={JS.patch(list_path(@current_scope, :secrets, @query))}
+    <.inline_confirm
+      id={"#{@id}-confirm"}
+      question={
+        gettext("Delete %{value_id} of %{name}?", value_id: @value.value_id, name: @secret.name)
+      }
+      cancel={@cancel}
     >
-      <p class="text-muted">
+      {gettext("The value is deleted, and the secret keeps its other values. This cannot be undone.")}
+      <:action>
+        <.button
+          variant="danger"
+          size="xs"
+          phx-click="delete_value"
+          loading_text={gettext("Deleting")}
+        >
+          {gettext("Yes, delete")}
+        </.button>
+      </:action>
+    </.inline_confirm>
+    """
+  end
+
+  # The row of the variables that asks to confirm.
+  defp variable_confirming(act, %Variable{} = variable)
+       when act in [:delete_variable, :lock_variable, :unlock_variable],
+       do: "variable-#{variable.id}"
+
+  defp variable_confirming(_act, _variable), do: nil
+
+  attr :act, :atom, required: true
+  attr :variable, Variable, required: true
+  attr :targets, :list, required: true, doc: "the targets that set the variable"
+  attr :cancel, :string, required: true
+
+  defp variable_confirm(%{act: :delete_variable} = assigns) do
+    ~H"""
+    <.inline_confirm
+      id={"variable-#{@variable.id}-confirm"}
+      question={gettext("Delete %{name}?", name: @variable.name)}
+      cancel={@cancel}
+    >
+      {gettext(
+        "Runs are no longer given the workspace's value of %{name}. A target that sets its own keeps it. This cannot be undone.",
+        name: @variable.name
+      )}
+      <:action>
+        <.button
+          variant="danger"
+          size="xs"
+          phx-click="delete_variable"
+          loading_text={gettext("Deleting")}
+        >
+          {gettext("Yes, delete")}
+        </.button>
+      </:action>
+    </.inline_confirm>
+    """
+  end
+
+  # Lock and Unlock act at once from the row's menu; their paths, which must not act as
+  # they open, ask first.
+  defp variable_confirm(%{act: :lock_variable} = assigns) do
+    assigns = assign(assigns, :own, Enum.count(assigns.targets, &(&1.state == :own)))
+
+    ~H"""
+    <.inline_confirm
+      id={"variable-#{@variable.id}-confirm"}
+      question={gettext("Lock %{name}?", name: @variable.name)}
+      cancel={@cancel}
+    >
+      {gettext("While %{name} is locked, a target may not set its own value.",
+        name: @variable.name
+      )}
+      <span :if={@own > 0} id="lock-targets">
         {ngettext(
-          "The secret and its value are deleted. This cannot be undone.",
-          "The secret and its %{number} values are deleted. This cannot be undone.",
-          length(@secret.values),
-          number: Format.number(length(@secret.values))
+          "%{number} target sets its own now: while the lock holds, its runs are given the workspace's value.",
+          "%{number} targets set their own now: while the lock holds, their runs are given the workspace's value.",
+          @own,
+          number: Format.number(@own)
         )}
-      </p>
-      <:footer>
-        <.button patch={list_path(@current_scope, :secrets, @query)} data-autofocus>
-          {gettext("Cancel")}
+      </span>
+      <:action>
+        <.button
+          variant="primary"
+          size="xs"
+          phx-click="lock_variable"
+          phx-value-id={@variable.id}
+          loading_text={gettext("Locking")}
+        >
+          {gettext("Lock")}
         </.button>
-        <.button variant="danger" phx-click="delete_secret" loading_text={gettext("Deleting")}>
-          {gettext("Delete secret")}
+      </:action>
+    </.inline_confirm>
+    """
+  end
+
+  defp variable_confirm(%{act: :unlock_variable} = assigns) do
+    assigns = assign(assigns, :ignored, Enum.count(assigns.targets, &(&1.state == :ignored)))
+
+    ~H"""
+    <.inline_confirm
+      id={"variable-#{@variable.id}-confirm"}
+      question={gettext("Unlock %{name}?", name: @variable.name)}
+      cancel={@cancel}
+    >
+      {gettext("A target may set its own value of %{name} again.", name: @variable.name)}
+      <span :if={@ignored > 0} id="unlock-targets">
+        {ngettext(
+          "%{number} target set its own: its runs are given it again.",
+          "%{number} targets set their own: their runs are given them again.",
+          @ignored,
+          number: Format.number(@ignored)
+        )}
+      </span>
+      <:action>
+        <.button
+          variant="primary"
+          size="xs"
+          phx-click="unlock_variable"
+          phx-value-id={@variable.id}
+          loading_text={gettext("Unlocking")}
+        >
+          {gettext("Unlock")}
         </.button>
-      </:footer>
-    </.modal>
+      </:action>
+    </.inline_confirm>
     """
   end
 
@@ -1032,160 +1232,7 @@ defmodule ApiaryWeb.SecretLive.Index do
     """
   end
 
-  ## The variables' dialogs: confirmations, and the list of a variable's targets
-
-  defp variable_dialog(%{dialog: :lock_variable} = assigns) do
-    assigns = assign(assigns, :own, count_targets(assigns, :own))
-
-    ~H"""
-    <.modal
-      id="variable-dialog"
-      title={gettext("Lock %{name}", name: @variable.name)}
-      on_cancel={JS.patch(list_path(@current_scope, :variables, @query))}
-    >
-      <p class="text-muted">
-        {gettext("While %{name} is locked, a target may not set its own value.",
-          name: @variable.name
-        )}
-      </p>
-      <p :if={@own > 0} id="lock-targets" class="text-muted">
-        {ngettext(
-          "%{number} target sets its own now: while the lock holds, its runs are given the workspace's value.",
-          "%{number} targets set their own now: while the lock holds, their runs are given the workspace's value.",
-          @own,
-          number: Format.number(@own)
-        )}
-      </p>
-      <:footer>
-        <.button patch={list_path(@current_scope, :variables, @query)}>{gettext("Cancel")}</.button>
-        <.button variant="primary" phx-click="lock_variable" loading_text={gettext("Locking")}>
-          {gettext("Lock variable")}
-        </.button>
-      </:footer>
-    </.modal>
-    """
-  end
-
-  defp variable_dialog(%{dialog: :unlock_variable} = assigns) do
-    assigns = assign(assigns, :ignored, count_targets(assigns, :ignored))
-
-    ~H"""
-    <.modal
-      id="variable-dialog"
-      title={gettext("Unlock %{name}", name: @variable.name)}
-      on_cancel={JS.patch(list_path(@current_scope, :variables, @query))}
-    >
-      <p class="text-muted">
-        {gettext("A target may set its own value of %{name} again.", name: @variable.name)}
-      </p>
-      <p :if={@ignored > 0} id="unlock-targets" class="text-muted">
-        {ngettext(
-          "%{number} target set its own: its runs are given it again.",
-          "%{number} targets set their own: their runs are given them again.",
-          @ignored,
-          number: Format.number(@ignored)
-        )}
-      </p>
-      <:footer>
-        <.button patch={list_path(@current_scope, :variables, @query)}>{gettext("Cancel")}</.button>
-        <.button variant="primary" phx-click="unlock_variable" loading_text={gettext("Unlocking")}>
-          {gettext("Unlock variable")}
-        </.button>
-      </:footer>
-    </.modal>
-    """
-  end
-
-  defp variable_dialog(%{dialog: :delete_variable} = assigns) do
-    ~H"""
-    <.modal
-      id="variable-dialog"
-      title={gettext("Delete %{name}", name: @variable.name)}
-      on_cancel={JS.patch(list_path(@current_scope, :variables, @query))}
-    >
-      <p class="text-muted">
-        {gettext(
-          "Runs are no longer given the workspace's value of %{name}. A target that sets its own keeps it. This cannot be undone.",
-          name: @variable.name
-        )}
-      </p>
-      <:footer>
-        <.button patch={list_path(@current_scope, :variables, @query)} data-autofocus>
-          {gettext("Cancel")}
-        </.button>
-        <.button variant="danger" phx-click="delete_variable" loading_text={gettext("Deleting")}>
-          {gettext("Delete variable")}
-        </.button>
-      </:footer>
-    </.modal>
-    """
-  end
-
-  defp variable_dialog(%{dialog: :variable_targets} = assigns) do
-    targets = Map.get(assigns.targets, String.downcase(assigns.variable.name), [])
-    q = String.downcase(assigns.target_q)
-
-    assigns =
-      assign(assigns,
-        all: targets,
-        listed:
-          Enum.filter(targets, &(q == "" or String.contains?(String.downcase(&1.target.path), q))),
-        shared: shared_paths(assigns.targets)
-      )
-
-    ~H"""
-    <.modal
-      id="variable-dialog"
-      title={gettext("Targets that set %{name}", name: @variable.name)}
-      on_cancel={JS.patch(list_path(@current_scope, :variables, @query))}
-      size="lg"
-    >
-      <.list_search
-        :if={length(@all) > find_from()}
-        id="variable-targets-search"
-        value={@target_q}
-        label={gettext("Find a target")}
-        change="find_target"
-        class="w-full"
-      />
-      <p :if={@all == []} class="text-muted">{gettext("No target sets its own value.")}</p>
-      <ul id="variable-targets" class="grid gap-1.5">
-        <li
-          :for={%{target: target, state: state} <- @listed}
-          id={"variable-target-#{target.id}"}
-          class="flex flex-wrap items-baseline justify-between gap-x-4"
-        >
-          <.link
-            navigate={
-              ApiaryWeb.TargetComponents.target_path(@current_scope, target.system, target.path)
-            }
-            class="min-w-0 hover:underline"
-          >
-            <.target_name system={target.system} path={target.path} shared={@shared} />
-          </.link>
-          <span class="text-[12.5px] text-muted">
-            {if state == :own,
-              do: gettext("Its own value"),
-              else: gettext("Its value set aside by the lock")}
-          </span>
-        </li>
-      </ul>
-      <:footer>
-        <.button patch={list_path(@current_scope, :variables, @query)} data-autofocus>
-          {gettext("Close")}
-        </.button>
-      </:footer>
-    </.modal>
-    """
-  end
-
   defp find_from, do: @find_from
-
-  defp count_targets(assigns, state) do
-    assigns.targets
-    |> Map.get(String.downcase(assigns.variable.name), [])
-    |> Enum.count(&(&1.state == state))
-  end
 
   # The paths that are on more than one system among the repositories the page names.
   defp shared_paths(targets) do
@@ -1267,16 +1314,10 @@ defmodule ApiaryWeb.SecretLive.Index do
   defp variable_path(scope, variable, :change),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/settings/variables/#{variable.id}/change"
 
-  defp variable_path(scope, variable, :lock),
-    do: ~p"/#{scope.organisation}/#{scope.workspace}/settings/variables/#{variable.id}/lock"
-
-  defp variable_path(scope, variable, :unlock),
-    do: ~p"/#{scope.organisation}/#{scope.workspace}/settings/variables/#{variable.id}/unlock"
-
   defp variable_path(scope, variable, :delete),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/settings/variables/#{variable.id}/delete"
 
-  ## Mount and the paths of the pages and the dialogs
+  ## Mount and the paths of the pages and the confirmations
 
   @impl true
   def mount(_params, _session, socket) do
@@ -1288,7 +1329,7 @@ defmodule ApiaryWeb.SecretLive.Index do
         page_title: gettext("Secrets and variables") <> " · " <> gettext("Workspace settings"),
         sections: SettingsComponents.sections(scope, :workspace),
         query: %Query{},
-        dialog: nil,
+        act: nil,
         secret: nil,
         value: nil,
         variable: nil,
@@ -1353,8 +1394,8 @@ defmodule ApiaryWeb.SecretLive.Index do
 
     socket =
       socket
-      |> assign(view: if(action in [:secrets | @secret_dialogs], do: :secrets, else: :variables))
-      |> assign(dialog: nil, secret: nil, value: nil, variable: nil, form: nil, warning: nil)
+      |> assign(view: if(action in [:secrets | @secret_acts], do: :secrets, else: :variables))
+      |> assign(act: nil, secret: nil, value: nil, variable: nil, form: nil, warning: nil)
 
     socket =
       if action in [:secrets, :variables],
@@ -1365,7 +1406,7 @@ defmodule ApiaryWeb.SecretLive.Index do
   end
 
   # The browser's title: a page of a form is named by its act, the views by the section.
-  defp titled(%{assigns: %{dialog: dialog}} = socket) when dialog in @pages,
+  defp titled(%{assigns: %{act: act}} = socket) when act in @pages,
     do:
       assign(
         socket,
@@ -1387,7 +1428,7 @@ defmodule ApiaryWeb.SecretLive.Index do
     if socket.assigns.may_write,
       do:
         assign(socket,
-          dialog: :new_secret,
+          act: :new_secret,
           form: secret_form(fresh(Secrets.change_secret(%Secret{})))
         ),
       else: refused(socket)
@@ -1396,7 +1437,7 @@ defmodule ApiaryWeb.SecretLive.Index do
   defp open(socket, :add_value, %{"id" => id}) do
     with_secret(socket, id, nil, fn socket, secret, _value ->
       assign(socket,
-        dialog: :add_value,
+        act: :add_value,
         secret: secret,
         form: value_form(Ecto.Changeset.change(%Value{}))
       )
@@ -1406,7 +1447,7 @@ defmodule ApiaryWeb.SecretLive.Index do
   defp open(socket, :change_value, %{"id" => id} = params) do
     with_secret(socket, id, {:value, params["value_id"]}, fn socket, secret, value ->
       assign(socket,
-        dialog: :change_value,
+        act: :change_value,
         secret: secret,
         value: value,
         form: value_form(Ecto.Changeset.change(%Value{}))
@@ -1417,7 +1458,7 @@ defmodule ApiaryWeb.SecretLive.Index do
   defp open(socket, :rename_value, %{"id" => id, "value_id" => value_id}) do
     with_secret(socket, id, {:value, value_id}, fn socket, secret, value ->
       assign(socket,
-        dialog: :rename_value,
+        act: :rename_value,
         secret: secret,
         value: value,
         form: value_form(Ecto.Changeset.change(value))
@@ -1428,14 +1469,14 @@ defmodule ApiaryWeb.SecretLive.Index do
   defp open(socket, :delete_value, %{"id" => id, "value_id" => value_id}) do
     with_secret(socket, id, {:value, value_id}, fn socket, secret, value ->
       if length(secret.values) > 1,
-        do: assign(socket, dialog: :delete_value, secret: secret, value: value),
+        do: assign(socket, act: :delete_value, secret: secret, value: value),
         else: back(socket, :error, last_value(secret))
     end)
   end
 
   defp open(socket, :delete_secret, %{"id" => id}) do
     with_secret(socket, id, nil, fn socket, secret, _value ->
-      assign(socket, dialog: :delete_secret, secret: secret)
+      assign(socket, act: :delete_secret, secret: secret)
     end)
   end
 
@@ -1443,7 +1484,7 @@ defmodule ApiaryWeb.SecretLive.Index do
     if socket.assigns.may_edit,
       do:
         assign(socket,
-          dialog: :new_variable,
+          act: :new_variable,
           form: variable_form(fresh(Variables.change_variable(%Variable{})))
         ),
       else: refused(socket)
@@ -1451,14 +1492,14 @@ defmodule ApiaryWeb.SecretLive.Index do
 
   defp open(socket, :variable_targets, %{"id" => id}) do
     with_variable(socket, id, :read, fn socket, variable ->
-      assign(socket, dialog: :variable_targets, variable: variable, target_q: "")
+      assign(socket, act: :variable_targets, variable: variable, target_q: "")
     end)
   end
 
   defp open(socket, :change_variable, %{"id" => id}) do
     with_variable(socket, id, :edit, fn socket, variable ->
       assign(socket,
-        dialog: :change_variable,
+        act: :change_variable,
         variable: variable,
         form: variable_form(fresh(Variables.change_variable(variable)))
       )
@@ -1473,13 +1514,13 @@ defmodule ApiaryWeb.SecretLive.Index do
           push_patch(socket,
             to: list_path(socket.assigns.current_scope, :variables, socket.assigns.query)
           ),
-        else: assign(socket, dialog: action, variable: variable)
+        else: assign(socket, act: action, variable: variable)
     end)
   end
 
   defp open(socket, :delete_variable, %{"id" => id}) do
     with_variable(socket, id, :edit, fn socket, variable ->
-      assign(socket, dialog: :delete_variable, variable: variable)
+      assign(socket, act: :delete_variable, variable: variable)
     end)
   end
 
@@ -1571,7 +1612,7 @@ defmodule ApiaryWeb.SecretLive.Index do
   def handle_event(
         "add_value",
         %{"secret_value" => params},
-        %{assigns: %{dialog: :add_value}} = socket
+        %{assigns: %{act: :add_value}} = socket
       )
       when is_map(params) do
     %{current_scope: scope, secret: secret} = socket.assigns
@@ -1599,7 +1640,7 @@ defmodule ApiaryWeb.SecretLive.Index do
   def handle_event(
         "set_value",
         %{"secret_value" => params},
-        %{assigns: %{dialog: :change_value}} = socket
+        %{assigns: %{act: :change_value}} = socket
       )
       when is_map(params) do
     %{current_scope: scope, secret: secret, value: value} = socket.assigns
@@ -1630,7 +1671,7 @@ defmodule ApiaryWeb.SecretLive.Index do
   def handle_event(
         "rename_value",
         %{"secret_value" => params},
-        %{assigns: %{dialog: :rename_value}} = socket
+        %{assigns: %{act: :rename_value}} = socket
       )
       when is_map(params) do
     %{current_scope: scope, secret: secret, value: value} = socket.assigns
@@ -1655,7 +1696,7 @@ defmodule ApiaryWeb.SecretLive.Index do
     end
   end
 
-  def handle_event("delete_value", _params, %{assigns: %{dialog: :delete_value}} = socket) do
+  def handle_event("delete_value", _params, %{assigns: %{act: :delete_value}} = socket) do
     %{current_scope: scope, secret: secret, value: value} = socket.assigns
 
     case Secrets.delete_value(scope, secret, value.value_id) do
@@ -1674,7 +1715,7 @@ defmodule ApiaryWeb.SecretLive.Index do
     end
   end
 
-  def handle_event("delete_secret", _params, %{assigns: %{dialog: :delete_secret}} = socket) do
+  def handle_event("delete_secret", _params, %{assigns: %{act: :delete_secret}} = socket) do
     %{current_scope: scope, secret: secret} = socket.assigns
 
     case Secrets.delete_secret(scope, secret) do
@@ -1716,7 +1757,7 @@ defmodule ApiaryWeb.SecretLive.Index do
   def handle_event(
         "change_variable",
         %{"variable" => params},
-        %{assigns: %{dialog: :change_variable}} = socket
+        %{assigns: %{act: :change_variable}} = socket
       )
       when is_map(params) do
     %{current_scope: scope, variable: variable} = socket.assigns
@@ -1733,35 +1774,18 @@ defmodule ApiaryWeb.SecretLive.Index do
     end
   end
 
-  def handle_event(event, _params, %{assigns: %{dialog: dialog}} = socket)
-      when {event, dialog} in [
-             {"lock_variable", :lock_variable},
-             {"unlock_variable", :unlock_variable},
-             {"delete_variable", :delete_variable}
-           ] do
-    %{current_scope: scope, variable: variable} = socket.assigns
-
-    result =
-      case event do
-        "lock_variable" -> Variables.lock_variable(scope, variable)
-        "unlock_variable" -> Variables.unlock_variable(scope, variable)
-        "delete_variable" -> Variables.delete_variable(scope, variable)
-      end
-
-    case result do
-      {:ok, variable} ->
-        {:noreply, saved(socket, variable_done(event, variable.name), :variables)}
-
-      {:error, %Ecto.Changeset{} = changeset} ->
-        {:noreply, refusal(socket, changeset, :variables)}
-
-      {:error, reason} ->
-        {:noreply, refusal(socket, reason, :variables)}
-    end
+  # Lock and Unlock act at once, from the row's menu or from their path's confirmation;
+  # each names its variable.
+  def handle_event(event, %{"id" => id}, socket)
+      when event in ~w(lock_variable unlock_variable) do
+    {:noreply, with_variable(socket, id, :edit, &change_variable(&1, event, &2))}
   end
 
-  # A change without its dialog open: a second click of a button whose dialog has closed,
-  # or an event the page offers no control for. One who may change the view is shown the
+  def handle_event("delete_variable", _params, %{assigns: %{act: :delete_variable}} = socket),
+    do: {:noreply, change_variable(socket, "delete_variable", socket.assigns.variable)}
+
+  # A change without its page or its confirmation open: a second click of a button whose
+  # confirmation has gone, or an event the page offers no control for. One who may change the view is shown the
   # list again; one who may not is refused, as a path the page offers no button for is.
   def handle_event(event, _params, socket)
       when event in ~w(add_value set_value rename_value delete_value delete_secret) do
@@ -1777,9 +1801,63 @@ defmodule ApiaryWeb.SecretLive.Index do
       else: {:noreply, refused(socket)}
   end
 
-  defp variable_done("lock_variable", name), do: gettext("%{name} is locked.", name: name)
-  defp variable_done("unlock_variable", name), do: gettext("%{name} is unlocked.", name: name)
-  defp variable_done("delete_variable", name), do: gettext("%{name} is deleted.", name: name)
+  defp change_variable(socket, event, variable) do
+    %{current_scope: scope, targets: targets} = socket.assigns
+    targets = Map.get(targets, String.downcase(variable.name), [])
+
+    result =
+      case event do
+        "lock_variable" -> Variables.lock_variable(scope, variable)
+        "unlock_variable" -> Variables.unlock_variable(scope, variable)
+        "delete_variable" -> Variables.delete_variable(scope, variable)
+      end
+
+    case result do
+      {:ok, variable} ->
+        saved(socket, variable_done(event, variable.name, targets), :variables)
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        refusal(socket, changeset, :variables)
+
+      {:error, reason} ->
+        refusal(socket, reason, :variables)
+    end
+  end
+
+  # What a change did, with what a lock or an unlock did to the targets that set the
+  # variable too.
+  defp variable_done("lock_variable", name, targets) do
+    own = Enum.count(targets, &(&1.state == :own))
+
+    if own > 0,
+      do:
+        ngettext(
+          "%{name} is locked: %{number} target that sets its own is given the workspace's value while the lock holds.",
+          "%{name} is locked: %{number} targets that set their own are given the workspace's value while the lock holds.",
+          own,
+          name: name,
+          number: Format.number(own)
+        ),
+      else: gettext("%{name} is locked.", name: name)
+  end
+
+  defp variable_done("unlock_variable", name, targets) do
+    ignored = Enum.count(targets, &(&1.state == :ignored))
+
+    if ignored > 0,
+      do:
+        ngettext(
+          "%{name} is unlocked: %{number} target is given its own value again.",
+          "%{name} is unlocked: %{number} targets are given their own value again.",
+          ignored,
+          name: name,
+          number: Format.number(ignored)
+        ),
+      else: gettext("%{name} is unlocked.", name: name)
+  end
+
+  defp variable_done("delete_variable", name, _targets),
+    do: gettext("%{name} is deleted.", name: name)
 
   ## After a change, and its refusals
 

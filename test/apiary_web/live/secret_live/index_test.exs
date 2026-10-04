@@ -293,7 +293,21 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       lv |> element("#secret-#{secret.public_id}-bot-app-delete") |> render_click()
       assert_patch(lv, secrets_path(scope, "/#{secret.public_id}/values/bot-app/delete"))
 
-      lv |> element("#secret-dialog button", "Delete value") |> render_click()
+      # The value's row asks in place, nothing over the list.
+      refute has_element?(lv, "#secret-dialog")
+      assert has_element?(lv, "#secret-#{secret.public_id}-bot-app.q-confirming")
+      assert has_element?(lv, "#secrets")
+
+      assert has_element?(
+               lv,
+               "#secret-#{secret.public_id}-bot-app-confirm",
+               "Delete bot-app of GITHUB_APP_KEY?"
+             )
+
+      lv
+      |> element("#secret-#{secret.public_id}-bot-app-confirm button", "Yes, delete")
+      |> render_click()
+
       assert render(lv) =~ "bot-app is deleted from GITHUB_APP_KEY."
       assert reveal(scope, secret, "bot-app") == {:error, :not_found}
 
@@ -312,11 +326,23 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
 
       lv |> element("#secret-#{secret.public_id}-delete") |> render_click()
       assert_patch(lv, secrets_path(scope, "/#{secret.public_id}/delete"))
-      assert has_element?(lv, "dialog#secret-dialog")
-      assert has_element?(lv, "#secrets")
+      # The secret's row asks in place, nothing over the list.
+      refute has_element?(lv, "#secret-dialog")
+      assert has_element?(lv, "#secret-#{secret.public_id}.q-confirming")
+      assert has_element?(lv, "#secret-#{secret.public_id}-confirm", "Delete FORGE_TOKEN?")
       assert render(lv) =~ "The secret and its value are deleted. This cannot be undone."
 
-      lv |> element("#secret-dialog button", "Delete secret") |> render_click()
+      # Cancel leaves it as it was.
+      lv |> element("#secret-#{secret.public_id}-confirm-cancel") |> render_click()
+      assert_patch(lv, secrets_path(scope))
+      refute has_element?(lv, "#secret-#{secret.public_id}.q-confirming")
+
+      lv |> element("#secret-#{secret.public_id}-delete") |> render_click()
+
+      lv
+      |> element("#secret-#{secret.public_id}-confirm button", "Yes, delete")
+      |> render_click()
+
       assert render(lv) =~ "FORGE_TOKEN is deleted."
       assert secrets(scope) == []
       assert has_element?(lv, "#secrets-empty")
@@ -499,14 +525,12 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       assert render(lv) =~ "NODE_ENV is changed."
       assert has_element?(lv, "#variable-#{variable.id}-value", "prod")
 
+      # Lock acts at once from the menu, and says what it did to the targets.
       lv |> element("#variable-#{variable.id}-lock-item") |> render_click()
-      assert_patch(lv, variables_path(scope, "/#{variable.id}/lock"))
-      # A confirmation stays a small dialog over the list.
-      assert has_element?(lv, "dialog#variable-dialog")
-      assert has_element?(lv, "#variables")
-      assert has_element?(lv, "#lock-targets", "2 repositories set their own now")
-      lv |> element("#variable-dialog button", "Lock variable") |> render_click()
-      assert render(lv) =~ "NODE_ENV is locked."
+
+      assert render(lv) =~
+               "NODE_ENV is locked: 2 repositories that set their own are given the workspace&#39;s value while the lock holds."
+
       assert has_element?(lv, "#variable-#{variable.id}-lock", "Locked")
 
       assert has_element?(
@@ -521,10 +545,29 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
 
       assert to == variables_path(scope)
 
-      lv |> element("#variable-#{variable.id}-unlock-item") |> render_click()
+      # Its unlock path, which must not act as it opens, asks on the row.
+      {:ok, lv, _html} = live(conn, variables_path(scope, "/#{variable.id}/unlock"))
+      assert Repo.reload!(variable).locked
+      refute has_element?(lv, "#variable-dialog")
+      assert has_element?(lv, "#variable-#{variable.id}.q-confirming")
       assert has_element?(lv, "#unlock-targets", "2 repositories set their own")
-      lv |> element("#variable-dialog button", "Unlock variable") |> render_click()
-      assert render(lv) =~ "NODE_ENV is unlocked."
+      lv |> element("#variable-#{variable.id}-confirm button", "Unlock") |> render_click()
+
+      assert render(lv) =~
+               "NODE_ENV is unlocked: 2 repositories are given their own value again."
+
+      refute Repo.reload!(variable).locked
+
+      # Its lock path asks the same way.
+      {:ok, lv, _html} = live(conn, variables_path(scope, "/#{variable.id}/lock"))
+      refute Repo.reload!(variable).locked
+      assert has_element?(lv, "#lock-targets", "2 repositories set their own now")
+      lv |> element("#variable-#{variable.id}-confirm button", "Lock") |> render_click()
+      assert Repo.reload!(variable).locked
+
+      # Unlock acts at once from the menu too.
+      lv |> element("#variable-#{variable.id}-unlock-item") |> render_click()
+      assert render(lv) =~ "NODE_ENV is unlocked"
       refute Repo.reload!(variable).locked
     end
 
@@ -543,6 +586,13 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       lv |> element("#variable-#{variable.id}-targets") |> render_click()
       assert_patch(lv, variables_path(scope, "/#{variable.id}/targets"))
 
+      # A page of the section, to read, with its way back.
+      refute has_element?(lv, "#variable-dialog")
+      refute has_element?(lv, "#variables")
+      assert has_element?(lv, "#settings-section-title", "Repositories that set NODE_ENV")
+      assert has_element?(lv, "#breadcrumb [aria-current=page]", "Repositories")
+      assert has_element?(lv, "#variable-targets-foot a[href='#{variables_path(scope)}']")
+
       for target <- targets, do: assert(has_element?(lv, "#variable-target-#{target.id}"))
       assert has_element?(lv, "#variable-targets", "Its own value")
 
@@ -557,7 +607,13 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
 
       lv |> element("#variable-#{variable.id}-delete") |> render_click()
       assert_patch(lv, variables_path(scope, "/#{variable.id}/delete"))
-      lv |> element("#variable-dialog button", "Delete variable") |> render_click()
+      refute has_element?(lv, "#variable-dialog")
+      assert has_element?(lv, "#variable-#{variable.id}-confirm", "Delete NODE_ENV?")
+
+      lv
+      |> element("#variable-#{variable.id}-confirm button", "Yes, delete")
+      |> render_click()
+
       assert render(lv) =~ "NODE_ENV is deleted."
       assert {:ok, []} = Variables.list_variables(scope, :workspace)
     end
@@ -593,8 +649,11 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       {:ok, lv, _html} =
         live(member_conn(scope, :admin), variables_path(scope, "/#{variable.id}/lock"))
 
-      lv |> element("#variable-dialog button", "Lock variable") |> render_click()
+      lv |> element("#variable-#{variable.id}-confirm button", "Lock") |> render_click()
       assert Repo.reload!(variable).locked
+
+      lv |> element("#variable-#{variable.id}-unlock-item") |> render_click()
+      refute Repo.reload!(variable).locked
     end
 
     test "a member reads them and changes nothing", %{scope: scope} do
@@ -630,6 +689,10 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
 
       assert html =~ "Only owners and admins change this."
       render_hook(lv, "lock_variable", %{})
+      refute Repo.reload!(variable).locked
+
+      html = render_hook(lv, "lock_variable", %{"id" => variable.id})
+      assert html =~ "Only owners and admins change this."
       refute Repo.reload!(variable).locked
       assert {:ok, [_one]} = Variables.list_variables(scope, :workspace)
     end

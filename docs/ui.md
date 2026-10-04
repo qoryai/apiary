@@ -217,7 +217,7 @@ by name or the latest change.
   whole on hover), its lock (the faint lock and Locked; a value set aside by a lock above
   the workspace says so), and the repositories that set their own value, or whose value
   the lock sets aside, from their resolution (`Apiary.Variables.repository_overrides/1`),
-  a link to a dialog that lists them, with a search past ten. Locked means a repository
+  a link to the page that lists them. Locked means a repository
   may not set its own value, and nothing more. A name on the runner's deny list other
   than `QORY_…`, which the context refuses, is saved with a warning on New variable's page
   and a word on its row. One line under the list says what a node does with them.
@@ -228,12 +228,18 @@ by name or the latest change.
   (`…/values/:value_id/rename`); for variables New variable (`/settings/variables/new`) and
   Change value (`/:id/change`). The breadcrumb ends `Secrets and variables / New secret`,
   the section leading back to the view the page was opened from, with its query.
-- **The confirmations stay small dialogs** over their view, at paths of their own: Delete
-  secret (`/:id/delete`), Delete value (`…/values/:value_id/delete`), and Lock, Unlock and
-  Delete variable (`/:id/lock`, `/:id/unlock`, `/:id/delete`); so does the read-only list
-  of a variable's repositories (`/:id/targets`). A secret is named by its public id, a
-  variable by its row's. A path the reader may not open, or of a secret or variable the
-  workspace does not have, sends them back to the view and says why.
+- **The targets of a variable** are a page of the section too, to read
+  (`/settings/variables/:id/targets`, "Repositories that set NODE_ENV"): each with its own
+  value or its value set aside by the lock, found by their path past ten, and Back to the
+  variables at its foot. Its row's count of them in the list leads there.
+- **Deletions confirm in place**, on the row they act on (Confirmations, above): Delete
+  secret (`/:id/delete`), Delete value (`…/values/:value_id/delete`) and Delete variable
+  (`/:id/delete`) turn the row into "Delete FORGE_TOKEN?", what is lost, Yes, delete and
+  Cancel. **Lock and Unlock act at once** from the row's menu, and the flash says what the
+  lock did to the targets that set their own; their paths, `/:id/lock` and `/:id/unlock`,
+  which must not act as they open, ask on the row first. A secret is named by its public
+  id, a variable by its row's. A path the reader may not open, or of a secret or variable
+  the workspace does not have, sends them back to the view and says why.
 - **Who.** Every member reads both views; owners and admins change them (`secret.write`,
   `variable.edit`). A reader who may not sees no New, no ⋯ menu, and once, under the
   section's sentence, "Only owners and admins change this."; a form's page sends them back
