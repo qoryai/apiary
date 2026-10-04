@@ -4535,12 +4535,14 @@
       transition: opacity 120ms var(--q-ease-out);
     }
     .q-cxt tr:is(:hover, :focus-within) .q-hov,
-    .q-cxt tr:has(:is(.q-act-t, .q-act-lock, .q-rowmenu-btn)[aria-expanded="true"]) .q-hov {
+    .q-cxt tr:has(:is(.q-act-t, .q-act-lock, .q-rowmenu-btn)[aria-expanded="true"]) .q-hov,
+    .q-cxt tbody tr:has(+ tr.q-rule-sub) .q-hov {
       opacity: 1;
     }
   }
   /* The row whose panel or menu is open is the one chosen. */
-  .q-cxt tr:has(:is(.q-act-t, .q-act-lock, .q-rowmenu-btn)[aria-expanded="true"]) > td {
+  .q-cxt tr:has(:is(.q-act-t, .q-act-lock, .q-rowmenu-btn)[aria-expanded="true"]) > td,
+  .q-cxt tbody tr:has(+ tr.q-rule-sub) > td {
     background-color: color-mix(in oklab, var(--color-base-300) 55%, transparent);
   }
   .q-dcell {
@@ -6457,14 +6459,15 @@
     padding: 0 0 12px;
   }
   @media (max-width: 767.98px) {
-    /* The table may scroll sideways; the panel stays in the view. */
+    /* The table may scroll sideways; the panel stays in the view, as wide as the
+       table's box (`q-tbl`, the container) less the cell's padding. */
     .q-cxt tr.q-rule-sub > td {
       padding-left: 16px;
     }
     .q-cxt tr.q-rule-sub .q-rp {
       position: sticky;
       left: 16px;
-      width: calc(100vw - 66px);
+      width: calc(100cqi - 32px);
     }
     .q-rp-select {
       height: 40px;

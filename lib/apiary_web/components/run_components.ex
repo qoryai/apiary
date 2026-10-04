@@ -3201,7 +3201,12 @@ defmodule ApiaryWeb.RunComponents do
 
   def rule_panel(%{panel: %{elsewhere: %{}}} = assigns) do
     ~H"""
-    <.rule_frame id={@id} anchor={@panel.anchor} aria-describedby={"#{@id}-elsewhere"}>
+    <.rule_frame
+      id={@id}
+      anchor={@panel.anchor}
+      kind="elsewhere"
+      aria-describedby={"#{@id}-elsewhere"}
+    >
       <header class="q-rp-head">
         <h3 id={"#{@id}-title"}>
           <.spliced text={gettext("Allow %{host}", host: hole())}>
@@ -3232,7 +3237,7 @@ defmodule ApiaryWeb.RunComponents do
 
   def rule_panel(%{panel: %{refusal: %{}}} = assigns) do
     ~H"""
-    <.rule_frame id={@id} anchor={@panel.anchor}>
+    <.rule_frame id={@id} anchor={@panel.anchor} kind="refusal">
       <header class="q-rp-head">
         <.icon name="hero-lock-closed-micro" class="size-4 text-faint" />
         <h3 id={"#{@id}-title"}>
@@ -3303,7 +3308,7 @@ defmodule ApiaryWeb.RunComponents do
       |> assign(:first, if(target? and panel.level != :workspace, do: :target, else: :workspace))
 
     ~H"""
-    <.rule_frame id={@id} anchor={@panel.anchor}>
+    <.rule_frame id={@id} anchor={@panel.anchor} kind={Atom.to_string(@panel.action)}>
       <form
         id={"#{@id}-form"}
         class="q-rp-form"
@@ -3453,9 +3458,12 @@ defmodule ApiaryWeb.RunComponents do
 
   # The panel's own element: a group named by its title, in the page's flow. Escape
   # cancels it wherever the focus is, as an inline confirmation does; the menu button is
-  # where the focus goes back to when the row's action is hidden in a narrow table.
+  # where the focus goes back to when the row's action is hidden in a narrow table. One
+  # panel keeps its id from row to row, so the hook tells a new one by its anchor and
+  # its kind (`data-kind`: allow, deny, refusal or elsewhere).
   attr :id, :string, required: true
   attr :anchor, :string, required: true
+  attr :kind, :string, required: true
   attr :rest, :global
   slot :inner_block, required: true
 
@@ -3468,6 +3476,7 @@ defmodule ApiaryWeb.RunComponents do
       aria-labelledby={"#{@id}-title"}
       phx-hook="RulePanel"
       data-anchor={@anchor}
+      data-kind={@kind}
       data-menu={String.replace_suffix(@anchor, "-act", "-menu-button")}
       phx-window-keydown="rule_cancel"
       phx-key="Escape"

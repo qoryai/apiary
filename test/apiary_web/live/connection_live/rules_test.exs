@@ -138,7 +138,7 @@ defmodule ApiaryWeb.ConnectionLive.RulesTest do
       # In place: a row of its own right under the row, in the table, not an overlay.
       assert has_element?(
                view,
-               ~s(tr##{registry} + tr##{registry}-panel > td > #rule-panel[role=group][data-anchor="#{registry}-act"])
+               ~s(tr##{registry} + tr##{registry}-panel > td > #rule-panel[role=group][data-anchor="#{registry}-act"][data-kind=deny])
              )
 
       refute has_element?(view, "#rule-panel[popover], #rule-panel[role=dialog]")

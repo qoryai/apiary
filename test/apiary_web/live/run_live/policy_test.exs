@@ -898,7 +898,12 @@ defmodule ApiaryWeb.RunLive.PolicyTest do
              )
 
       # Close takes the focus as it opens.
-      assert has_element?(view, "#rule-panel-close[data-autofocus]", "Close")
+      assert has_element?(
+               view,
+               "#rule-panel[data-kind=refusal] #rule-panel-close[data-autofocus]",
+               "Close"
+             )
+
       view |> element("#rule-panel-close") |> render_click()
       refute has_element?(view, "#rule-panel")
     end

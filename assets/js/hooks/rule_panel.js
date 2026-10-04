@@ -5,20 +5,21 @@
 // policy). As it goes while it held the focus (Cancel, Escape, a rule saved, the policy
 // moved under it), the focus goes back to the row's action, or to the row's ⋯ menu where
 // a narrow table hides the action, so it never falls to the page's body.
+//
+// The panel keeps its id from row to row, so a panel opened over another one is this same
+// element patched and moved, not a new one: it opens anew when its anchor or its kind
+// changes.
 
 export const RulePanel = {
   mounted() {
     this.remember()
-    const first = this.el.querySelector("[data-autofocus]")
-    // After the patch, so that a panel that replaced another one keeps the focus.
-    requestAnimationFrame(() => {
-      if (first) first.focus({preventScroll: true})
-      this.el.scrollIntoView({block: "nearest"})
-    })
+    this.enter()
   },
 
   updated() {
+    const was = this.key
     this.remember()
+    if (this.key !== was) this.enter()
   },
 
   destroyed() {
@@ -35,6 +36,17 @@ export const RulePanel = {
   },
 
   remember() {
-    this.back = [this.el.dataset.anchor, this.el.dataset.menu]
+    const {anchor, kind, menu} = this.el.dataset
+    this.key = `${anchor} ${kind}`
+    this.back = [anchor, menu]
+  },
+
+  // After the patch, so that a panel that replaced another one keeps the focus.
+  enter() {
+    requestAnimationFrame(() => {
+      const first = this.el.querySelector("[data-autofocus]")
+      if (first) first.focus({preventScroll: true})
+      this.el.scrollIntoView({block: "nearest"})
+    })
   },
 }
