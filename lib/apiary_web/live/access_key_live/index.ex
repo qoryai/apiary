@@ -311,7 +311,7 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
       )}
       <:action>
         <.button
-          variant="primary"
+          variant="danger"
           size="xs"
           phx-click="retire_confirm"
           loading_text={gettext("Retiring")}
