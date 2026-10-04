@@ -129,7 +129,30 @@ defmodule Apiary.Access do
     Action.new(:"access_key.rotate", "rotate an access key, and retire its previous secret",
       roles: @members
     ),
-    Action.new(:"access_key.revoke", "revoke an access key", roles: @members),
+    Action.new(
+      :"access_key.revoke_secret_key",
+      "revoke an access key with a secret the server made, from the workspace's settings",
+      roles: @members
+    ),
+    # The access keys of nodes and node pools: one Ed25519 public key each.
+    Action.new(
+      :"access_key.create_code",
+      "make an enrolment code for a node, with the settings of the key it brings",
+      roles: @admins
+    ),
+    Action.new(:"access_key.cancel_code", "cancel a node's outstanding enrolment code",
+      roles: @admins
+    ),
+    Action.new(:"access_key.add", "add an access key to a node by its public key, approved",
+      roles: @admins
+    ),
+    Action.new(:"access_key.approve", "approve a node's access key that awaits approval",
+      roles: @admins
+    ),
+    Action.new(:"access_key.reject", "reject a node's access key that awaits approval",
+      roles: @admins
+    ),
+    Action.new(:"access_key.revoke", "revoke a node's access key", roles: @admins),
     # The workspace's nodes and node pools, the places its runs run.
     Action.new(:"node.read", "read the workspace's nodes and node pools, and each one's page",
       roles: @members,
@@ -182,6 +205,39 @@ defmodule Apiary.Access do
       roles: @owners
     ),
     Action.new(:"security_policy.set_mode", "set the mode, observe or enforce",
+      feature: :security,
+      roles: @admins
+    ),
+    # Stored secrets and variables, which the run configuration delivers.
+    Action.new(
+      :"secret.read",
+      "read the stored secrets: their names, notes and value IDs, never a value",
+      feature: :security,
+      roles: @members,
+      audited: {:not, @read}
+    ),
+    Action.new(
+      :"secret.write",
+      "create a stored secret, change its name, note and values, and delete it",
+      feature: :security,
+      roles: @admins
+    ),
+    Action.new(
+      :"secret.use",
+      "link a stored secret to what uses it, so runs are given its value",
+      feature: :security,
+      roles: @admins,
+      audited:
+        {:not, "a link is part of the change to what uses the secret, which leaves its own entry"}
+    ),
+    Action.new(:"variable.read", "read the variables of the workspace and its repositories",
+      feature: :security,
+      roles: @members,
+      audited: {:not, @read}
+    ),
+    Action.new(
+      :"variable.edit",
+      "set, change, lock and remove the variables of the workspace and its repositories",
       feature: :security,
       roles: @admins
     ),

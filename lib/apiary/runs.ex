@@ -554,8 +554,10 @@ defmodule Apiary.Runs do
     %{options: options, total: total + if(none > 0, do: 1, else: 0)}
   end
 
-  # The access keys the runs came in with, by the key's label: the label is unique in the
-  # workspace, and a revoked key keeps its runs.
+  # The access keys the runs came in with, by the key's label, and a revoked key keeps its
+  # runs. A label is unique among the workspace's keys of today, but a node's key's only
+  # among that node's keys, so keys of two nodes may share one, and count under it
+  # together.
   defp key_facet(scope, filters, now, narrow, limit) do
     base = filtered(scope, %{filters | key: nil}, now)
     pattern = like(narrow)

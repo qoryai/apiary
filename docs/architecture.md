@@ -31,12 +31,30 @@ beside it:
   purge after the grace period (Deletion, below). `Apiary.Deletion.Tables` lists every
   table that holds an organisation's rows, in the order a purge deletes them: the
   edition's, then the core's.
-- `Apiary.AccessKeys`: a workspace's access keys, their secrets encrypted at rest through
-  `Apiary.Vault`, rotation and revocation, and the lookup a signed request verifies against.
+- `Apiary.AccessKeys`: a workspace's access keys, and the lookup a signed request verifies
+  against. Today's keys have secrets the server made, encrypted at rest through
+  `Apiary.Vault`, rotation and revocation, and no node. A node's keys each have one
+  Ed25519 public key and belong to one node or node pool: enrolment codes
+  (`access_key_enrolment_codes`, kept as their SHA-256), a pasted key approved at once,
+  approval, rejection and revocation, at most two approved keys and one awaiting approval
+  per node, and the ledger of public keys (`access_key_public_keys`), one public key for
+  one access key, ever, whose tombstones outlive the purge. `Apiary.Contract.Ed25519`
+  holds the checks every public key received passes, the fingerprint and cofactorless
+  verification.
 - `Apiary.Nodes`: a workspace's nodes and node pools (`nodes`), the places its runs run:
   a node is one permanent machine, a pool a fleet of short-lived instances up to its
   instance limit or none; the kind is fixed when one is made, and a deleted one is gone
   from every read but keeps its row until its workspace is purged.
+- `Apiary.Secrets`: a workspace's stored secrets, each with one value or several, each
+  with its value id, encrypted at rest and never shown again; `Apiary.Secrets.Usage`
+  says what uses one, so it is not deleted while it is (Secrets at rest and integrity
+  codes, below).
+- `Apiary.Variables`: a workspace's variables and its repositories' own, with the
+  workspace's locks, resolved per holder down the chain from the level above the
+  workspace (`Apiary.Variables.Resolution`), and the runner's names it refuses or warns
+  about (`Apiary.Variables.Denied`).
+- `Apiary.KeyDerivation` and `Apiary.Integrity`: the keys derived from
+  `APIARY_ENCRYPTION_SECRET`, one per purpose, and the integrity codes of stored rows.
 - `Apiary.Targets`: the workspace's targets as the pages read them, the index in one query
   bounded by fourteen days and a target's page, and the targets a person pinned
   (`target_pins`), their own reading preference, which leaves no audit entry.
@@ -107,7 +125,8 @@ creates one the product's way, and the core's edition allows one in use.
 Each organisation's data is kept apart by the schema, not by the pages:
 
 - Every table except the account tables (`users`, `users_tokens`) and the instance's own
-  (`purged_organisations`, `instance_settings`, Oban's) carries `organisation_id`, and
+  (`purged_organisations`, `instance_settings`, the ledger of access keys' public keys
+  `access_key_public_keys`, Oban's) carries `organisation_id`, and
   every table that belongs to a workspace carries `workspace_id` beside it with the
   composite foreign key `(organisation_id, workspace_id)` against `workspaces`, so no row
   can name a workspace of another organisation. Both come in the table's first migration;
@@ -118,8 +137,9 @@ Each organisation's data is kept apart by the schema, not by the pages:
   fails until it is there.
 - A unique constraint is scoped by the organisation: `(organisation_id, name)` on
   workspaces, `(organisation_id, user_id)` on memberships, `(organisation_id, email)` on
-  pending invitations, `(organisation_id, workspace_id, label)` on active access keys. A
-  name is unique inside an organisation, never across them.
+  pending invitations, `(organisation_id, workspace_id, label)` on today's active access
+  keys, `(node_id, label)` on a node's keys in use. A name is unique inside an
+  organisation, never across them; a public key is unique on the instance, by the ledger.
 - Every context function that reads or writes an organisation's data takes an
   `Apiary.Accounts.Scope` as its first argument and filters by its organisation and
   workspace, and by nothing else the caller passes. The exceptions are the entry points
@@ -343,6 +363,46 @@ features are listed after the core's (`c:Apiary.Edition.features/0`), and
   locks, so what an edition changes of them under the organisation's or the workspace's
   lock is waited for by a change that asked, or seen by it.
 
+## Secrets at rest and integrity codes
+
+`APIARY_ENCRYPTION_SECRET`, 32 random bytes, is the one key the instance holds, and
+nothing is encrypted or keyed under its own bytes: every key is derived from it with
+HKDF-SHA256 (`Apiary.KeyDerivation`), salt `apiary/kdf/v1`, one info string per purpose:
+`apiary values v1` for stored values, `apiary integrity v1` for integrity codes,
+`apiary envelope signing v1` for the key that signs answers to runners, and
+`apiary access keys v1` for the access key secrets, which `Apiary.Vault` (Cloak) takes
+when it starts, until access keys stop holding secrets. Each derived key
+has a key id, a truncated SHA-256 of a label and the key, stored beside what it made, so a
+rotation of the secret can keep the previous one to read with and tell the two apart.
+
+**Stored values** use envelope encryption. Each workspace has a data key, 32 random bytes
+made with its first secret, kept only wrapped (`workspace_data_keys`): AES-256-GCM under
+the values key, with associated data that names its organisation and workspace, and with
+the values key's id. Each value is AES-256-GCM under the data key (`:crypto`, not Cloak,
+whose associated data is fixed), with a fresh 96-bit nonce and the associated data
+
+    lp("qory-secret-v1") ‖ lp(workspace id) ‖ lp(secret id) ‖ lp(value id, or "")
+
+where `lp` is a big-endian 16-bit length, then the bytes (`Apiary.Secrets.Cipher`). A
+row copied to another workspace, secret or value id does not decrypt there, and a
+renamed value id is encrypted again. A value is write-only: a listing never loads the
+ciphertext, the schemas redact it from `inspect` and leave it out of JSON, the audit
+trail names secrets and value ids, and `Apiary.Secrets.reveal_for_sealing/3` is the one
+function that returns a plaintext, for sealing to a runner. A value that does not decrypt
+is `unavailable`, with a log line that names the secret, never wrong.
+
+**Integrity codes** (`Apiary.Integrity`) find a row changed outside the application by
+someone who can write to the database but does not hold the secret: an HMAC-SHA256 under
+the integrity key over a canonical encoding of a kind, a version and the fields the caller
+chooses, each length-prefixed and typed, stored with the key id beside it, and verified in
+constant time. A caller codes what routes a secret or grants access, a node's access key
+rows (their node, public key, stored-secrets flag, arrival, approval and revocation), what
+links a stored secret to the runs, and the enrolment codes, and checks the code where it
+trusts the row: `Apiary.AccessKeys.fetch_for_verification/1` refuses a node's key whose row
+does not match, before any signature is checked;
+the per-request columns stay outside it. Variables and policy rules carry no code: they
+route no stored value, and the runner bounds what a variable can do.
+
 ## The audit trail
 
 Every change a person, an access key or the instance makes to what an organisation holds
@@ -441,7 +501,10 @@ but a person's account, which leaves a tombstone.
   workspaces in use, its URLs answer not found, `Apiary.Access` answers not found to
   anything asked of it but cancelling and the purge, a page opened before the marking
   included, its access keys answer the contract as a revoked key does, its invitations
-  accept no one, and retention leaves it alone; nothing is removed. The organisation's
+  accept no one, and retention leaves it alone; nothing is removed. Its nodes' keys are
+  hidden so, not revoked, and come back with a cancelled deletion; the purge makes their
+  public keys tombstones in the ledger, `workspace_deleted` for an organisation's purge
+  too, before it deletes them. The organisation's
   last workspace in use is not deleted on its own, `{:error, :last_workspace}`: the
   organisation is. A workspace's members stay in the organisation; only their access to
   it goes, with the workspace. An owner or an admin cancels a workspace's deletion on the

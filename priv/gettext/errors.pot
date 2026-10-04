@@ -51,11 +51,12 @@ msgstr ""
 ## `msgid`s here are often extracted from source code.
 ## Add new translations manually only if they're dynamic
 ## translations that can't be statically extracted.
-##
 ## Run `mix gettext.extract` to bring this file up to
 ## date. Leave `msgstr`s empty as changing them here has no
 ## effect: edit them in PO (`.po`) files instead.
 ## From Ecto.Changeset.cast/4
+#: lib/apiary/secrets/value.ex
+#, elixir-autogen
 msgid "can't be blank"
 msgstr ""
 
@@ -105,10 +106,30 @@ msgstr ""
 msgid "has invalid format"
 msgstr ""
 
+#: lib/apiary/variables.ex
+#, elixir-autogen, elixir-format
+msgid "is %{name} elsewhere in this workspace: use the same spelling"
+msgstr ""
+
 #: lib/apiary/organisations.ex
 #: lib/apiary/organisations/membership.ex
 #, elixir-autogen, elixir-format
 msgid "is already a member of this organisation"
+msgstr ""
+
+#: lib/apiary/secrets/value.ex
+#, elixir-autogen, elixir-format
+msgid "is already a value ID of this secret"
+msgstr ""
+
+#: lib/apiary/variables/variable.ex
+#, elixir-autogen, elixir-format
+msgid "is already set here, compared without case"
+msgstr ""
+
+#: lib/apiary/access_keys/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "is already the label of a key of this node"
 msgstr ""
 
 #: lib/apiary/access_keys/access_key.ex
@@ -119,6 +140,11 @@ msgstr ""
 #: lib/apiary/nodes/node.ex
 #, elixir-autogen, elixir-format
 msgid "is already the name of a node in this workspace"
+msgstr ""
+
+#: lib/apiary/secrets/secret.ex
+#, elixir-autogen, elixir-format
+msgid "is already the name of a secret in this workspace, compared without case"
 msgstr ""
 
 #: lib/apiary/organisations/workspace.ex
@@ -138,6 +164,11 @@ msgstr ""
 
 ## From Ecto.Changeset.put_change/3
 msgid "is invalid"
+msgstr ""
+
+#: lib/apiary/variables.ex
+#, elixir-autogen, elixir-format
+msgid "is locked above, so it cannot be set here"
 msgstr ""
 
 #: lib/apiary/accounts/user.ex
@@ -179,13 +210,35 @@ msgstr ""
 msgid "is still associated with this entry"
 msgstr ""
 
+#: lib/apiary/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "is the value ID the first value takes"
+msgstr ""
+
+#: lib/apiary/secrets/secret.ex
+#, elixir-autogen, elixir-format
+msgid "is too long"
+msgstr ""
+
 #: lib/apiary/organisations/slug.ex
 #, elixir-autogen, elixir-format
 msgid "may hold lowercase letters, digits and hyphens, and starts and ends with a letter or a digit"
 msgstr ""
 
+#: lib/apiary/secrets/value.ex
+#: lib/apiary/variables/variable.ex
+#, elixir-autogen, elixir-format
+msgid "must be UTF-8 text"
+msgstr ""
+
 ## From Ecto.Changeset.validate_acceptance/3
 msgid "must be accepted"
+msgstr ""
+
+#: lib/apiary/secrets/value.ex
+#: lib/apiary/variables/variable.ex
+#, elixir-autogen, elixir-format
+msgid "must be at most %{count} bytes"
 msgstr ""
 
 #: lib/apiary/organisations/workspace.ex
@@ -209,10 +262,25 @@ msgstr ""
 msgid "must be less than or equal to %{number}"
 msgstr ""
 
+#: lib/apiary/secrets/value.ex
+#, elixir-autogen, elixir-format
+msgid "must be lowercase letters, digits, ., _ and -, starting with a letter or digit, at most 64"
+msgstr ""
+
+#: lib/apiary/variables/variable.ex
+#, elixir-autogen, elixir-format
+msgid "must be one line, with no NUL byte"
+msgstr ""
+
 #: lib/apiary/accounts/user.ex
 #: lib/apiary/organisations/invitation.ex
 #, elixir-autogen, elixir-format
 msgid "must have the @ sign and no spaces"
+msgstr ""
+
+#: lib/apiary/secrets/value.ex
+#, elixir-autogen, elixir-format
+msgid "must not contain a NUL byte"
 msgstr ""
 
 #: lib/apiary/organisations/organisation.ex
@@ -224,6 +292,7 @@ msgstr ""
 #: lib/apiary/nodes/node.ex
 #: lib/apiary/organisations/organisation.ex
 #: lib/apiary/organisations/workspace.ex
+#: lib/apiary/secrets/secret.ex
 #, elixir-autogen, elixir-format
 msgid "must not contain control characters"
 msgstr ""
@@ -241,6 +310,22 @@ msgstr ""
 #: lib/apiary/organisations/organisation.ex
 #, elixir-autogen, elixir-format
 msgid "must not start or end with a joining character"
+msgstr ""
+
+#: lib/apiary/secrets/secret.ex
+#: lib/apiary/variables/variable.ex
+#, elixir-autogen, elixir-format
+msgid "must start with a letter or _ and hold only letters, digits and _, at most 128"
+msgstr ""
+
+#: lib/apiary/variables.ex
+#, elixir-autogen, elixir-format
+msgid "names beginning QORY_ are the runner's own"
+msgstr ""
+
+#: lib/apiary/variables.ex
+#, elixir-autogen, elixir-format
+msgid "only a workspace's variable can be locked: a lock holds it against the repositories"
 msgstr ""
 
 msgid "should be %{count} byte(s)"
@@ -289,6 +374,11 @@ msgid_plural "should have at most %{count} item(s)"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary/access_keys/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "this key cannot be used"
+msgstr ""
+
 #: lib/apiary/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "too many pending invitations"
@@ -307,4 +397,14 @@ msgstr ""
 #: lib/apiary/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "was not invited: this organisation has tried to send %{limit} invitations in the last 24 hours, delivered or not, as many as it may. Try again later."
+msgstr ""
+
+#: lib/apiary/variables.ex
+#, elixir-autogen, elixir-format
+msgid "would give a run more than %{count} variables"
+msgstr ""
+
+#: lib/apiary/variables.ex
+#, elixir-autogen, elixir-format
+msgid "would give a run more than 64 KiB of variables"
 msgstr ""

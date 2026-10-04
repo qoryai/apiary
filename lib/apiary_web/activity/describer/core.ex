@@ -1,10 +1,10 @@
 defmodule ApiaryWeb.Activity.Describer.Core do
   @moduledoc """
   The core's words for the Activity page (`ApiaryWeb.Activity.Describer`): the actions of
-  the organisation, its members and invitations, its workspaces, their access keys, nodes, runs,
-  retention and security policy, the trail's own pruning and the instance's commands.
-  The page asks it after the edition's describer, and it says nil for an action it does
-  not know, as it does for the edition's.
+  the organisation, its members and invitations, its workspaces, their access keys, nodes,
+  runs, retention, security policy, stored secrets and variables, the trail's own pruning
+  and the instance's commands. The page asks it after the edition's describer, and it says
+  nil for an action it does not know, as it does for the edition's.
   """
 
   @behaviour ApiaryWeb.Activity.Describer
@@ -40,6 +40,12 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"workspace.purge"), do: gettext("Workspace purged")
   def label(:"access_key.create"), do: gettext("Access key created")
   def label(:"access_key.rotate"), do: gettext("Access key rotated")
+  def label(:"access_key.revoke_secret_key"), do: gettext("Access key revoked in settings")
+  def label(:"access_key.create_code"), do: gettext("Enrolment code created")
+  def label(:"access_key.cancel_code"), do: gettext("Enrolment code cancelled")
+  def label(:"access_key.add"), do: gettext("Access key added")
+  def label(:"access_key.approve"), do: gettext("Access key approved")
+  def label(:"access_key.reject"), do: gettext("Access key rejected")
   def label(:"access_key.revoke"), do: gettext("Access key revoked")
   def label(:"node.create"), do: gettext("Node created")
   def label(:"node.edit"), do: gettext("Node changed")
@@ -49,6 +55,8 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def label(:"security_policy.edit"), do: gettext("Policy rules changed")
   def label(:"security_policy.lock"), do: gettext("Policy rule locked or unlocked")
   def label(:"security_policy.set_mode"), do: gettext("Policy mode changed")
+  def label(:"secret.write"), do: gettext("Stored secret changed")
+  def label(:"variable.edit"), do: gettext("Variable changed")
   def label(_action), do: nil
 
   # The core offers every action it has in the filter.
@@ -141,6 +149,23 @@ defmodule ApiaryWeb.Activity.Describer.Core do
     do: gettext("Retired an access key's previous secret")
 
   defp said(:"access_key.rotate", _details, _actor), do: gettext("Rotated an access key")
+
+  defp said(:"access_key.revoke_secret_key", _details, _actor),
+    do: gettext("Revoked an access key")
+
+  defp said(:"access_key.create_code", _details, _actor),
+    do: gettext("Created an enrolment code for a node")
+
+  defp said(:"access_key.cancel_code", _details, _actor),
+    do: gettext("Cancelled a node's enrolment code")
+
+  defp said(:"access_key.add", _details, _actor), do: gettext("Added an access key to a node")
+  defp said(:"access_key.approve", _details, _actor), do: gettext("Approved an access key")
+  defp said(:"access_key.reject", _details, _actor), do: gettext("Rejected an access key")
+
+  defp said(:"access_key.revoke", %{"reason" => "node_deleted"}, _actor),
+    do: gettext("Revoked an access key with its deleted node")
+
   defp said(:"access_key.revoke", _details, _actor), do: gettext("Revoked an access key")
   defp said(:"node.create", _details, _actor), do: gettext("Created a node")
   defp said(:"node.edit", _details, _actor), do: gettext("Changed a node")
@@ -149,6 +174,9 @@ defmodule ApiaryWeb.Activity.Describer.Core do
 
   defp said(:"retention.edit", _details, _actor),
     do: gettext("Changed how long runs are kept")
+
+  defp said(:"secret.write", %{"change" => change}, _actor), do: said_secret(change)
+  defp said(:"variable.edit", %{"change" => change}, _actor), do: said_variable(change)
 
   defp said(_policy, %{"change" => "rule_added"}, _actor), do: gettext("Added a policy rule")
 
@@ -171,7 +199,24 @@ defmodule ApiaryWeb.Activity.Describer.Core do
     do: gettext("Rendered the run configurations again")
 
   defp said(:"security_policy.edit", _details, _actor), do: gettext("Changed the policy")
+  defp said(:"secret.write", _details, _actor), do: gettext("Changed a stored secret")
+  defp said(:"variable.edit", _details, _actor), do: gettext("Changed a variable")
   defp said(_action, _details, _actor), do: nil
+
+  defp said_secret("created"), do: gettext("Created a stored secret")
+  defp said_secret("updated"), do: gettext("Changed a stored secret")
+  defp said_secret("value_set"), do: gettext("Replaced a stored secret's value")
+  defp said_secret("value_added"), do: gettext("Added a value to a stored secret")
+  defp said_secret("value_renamed"), do: gettext("Renamed a value ID of a stored secret")
+  defp said_secret("value_deleted"), do: gettext("Deleted a value of a stored secret")
+  defp said_secret("deleted"), do: gettext("Deleted a stored secret")
+  defp said_secret(_change), do: gettext("Changed a stored secret")
+
+  defp said_variable("created"), do: gettext("Set a variable")
+  defp said_variable("locked"), do: gettext("Locked a variable")
+  defp said_variable("unlocked"), do: gettext("Unlocked a variable")
+  defp said_variable("deleted"), do: gettext("Removed a variable")
+  defp said_variable(_change), do: gettext("Changed a variable")
 
   # What was acted on, as it is called now.
   @impl true
@@ -238,6 +283,14 @@ defmodule ApiaryWeb.Activity.Describer.Core do
       "rule" ->
         text(gettext("A policy rule"))
 
+      # A secret and a variable are named in the entry itself: by name, never by value.
+      kind when kind in ["secret", "variable"] ->
+        case (entry.details || %{})["name"] do
+          name when is_binary(name) -> %{text: name, mono: true, href: nil}
+          _none when kind == "secret" -> text(gettext("A stored secret"))
+          _none -> text(gettext("A variable"))
+        end
+
       _other ->
         nil
     end
@@ -273,8 +326,9 @@ defmodule ApiaryWeb.Activity.Describer.Core do
 
   def change(:"member.remove", %{"level" => level}, _after, _details), do: as_level(level)
 
-  def change(:"access_key.create", _before, %{"key_id" => key_id}, _details),
-    do: [{:m, key_id}]
+  def change(action, _before, %{"key_id" => key_id}, _details)
+      when action in [:"access_key.create", :"access_key.add"],
+      do: [{:m, key_id}]
 
   def change(:"node.create", _before, %{"kind" => kind, "public_id" => id}, _details),
     do: [[kind_word(kind), " ", {:m, id}]]
@@ -319,6 +373,20 @@ defmodule ApiaryWeb.Activity.Describer.Core do
       days: days(details["retention_days"])
     )
   end
+
+  def change(:"secret.write", %{"value_id" => from}, %{"value_id" => to}, _details),
+    do: from_to(from, to)
+
+  def change(:"secret.write", _before, _after, %{"value_id" => value_id})
+      when is_binary(value_id),
+      do: [{:m, value_id}]
+
+  def change(:"variable.edit", %{"name" => from}, %{"name" => to}, _details) when from != to,
+    do: from_to(from, to)
+
+  def change(action, _before, _after, _details)
+      when action in [:"secret.write", :"variable.edit"],
+      do: nil
 
   def change(_policy, before, after_, %{"change" => "mode_changed"} = details),
     do: Enum.reject([from_to(before["mode"], after_["mode"]), version(details)], &is_nil/1)

@@ -136,7 +136,7 @@ For example: ecto://USER:PASS@HOST/DATABASE
 | Variable | Required or default | Meaning and accepted values |
 |---|---|---|
 | `SECRET_KEY_BASE` | required | Signs the session cookie and the "Keep me signed in" cookie. At least 64 bytes. Generate one with `openssl rand -base64 48`, or with `mix phx.gen.secret` where there is Mix. |
-| `CLOAK_KEY` | required | Encrypts access key secrets at rest. Exactly 32 bytes in base64, 44 characters: `openssl rand -base64 32`. It must never change once an access key exists, or every stored secret becomes unreadable. Keep it with the database backups, not in them ([Backup and restore](backup.md)). |
+| `APIARY_ENCRYPTION_SECRET` | required | Encrypts what the database holds secret: the access key secrets, and the values of the workspaces' stored secrets, under keys derived from it. Exactly 32 bytes in base64, 44 characters: `openssl rand -base64 32`. It must never change once an access key or a stored secret exists, or every one of them becomes unreadable: losing it loses every stored value, for good. Keep it with the database backups, not in them ([Backup and restore](backup.md)). |
 
 ```text
 environment variable SECRET_KEY_BASE is missing.
@@ -144,12 +144,12 @@ You can generate one by calling: mix phx.gen.secret
 ```
 
 ```text
-environment variable CLOAK_KEY is missing.
+environment variable APIARY_ENCRYPTION_SECRET is missing.
 It is 32 random bytes in base64. Generate one with: openssl rand -base64 32
 ```
 
 ```text
-environment variable CLOAK_KEY is not 32 bytes in base64 (44 characters).
+environment variable APIARY_ENCRYPTION_SECRET is not 32 bytes in base64 (44 characters).
 Generate one with: openssl rand -base64 32
 ```
 
@@ -427,7 +427,7 @@ boot with an error that does not name the variable.
 ## Backups
 
 Postgres is the only state, so a `pg_dump` of the database is a complete backup, and the
-two values to keep beside it are `CLOAK_KEY` and `SECRET_KEY_BASE`.
+two values to keep beside it are `APIARY_ENCRYPTION_SECRET` and `SECRET_KEY_BASE`.
 [Backup and restore](backup.md) has the commands for the compose installation and for an
 external Postgres, what is lost without each key, and a restore drill. A deleted account
 does not reach the backups taken before it: those hold its address until they expire, so

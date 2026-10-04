@@ -45,6 +45,15 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
   (`node.create`, `node.edit`, `node.delete`, each in the audit trail); everyone in the
   workspace reads them (`node.read`). The list is at `/:org/:workspace/nodes`, with New
   node and New node pool, and each node has a page with Overview and Settings.
+- Access keys of nodes, beside today's keys: each holds one Ed25519 public key and belongs
+  to one node or node pool, with its stored-secrets flag fixed when it is made. Owners and
+  admins make single-use enrolment codes, valid for 15 minutes, add a pasted key, approved
+  at once, approve or reject a key that awaits approval, and revoke one, each in the audit
+  trail; a node holds at most two approved keys and one awaiting approval, and deleting a
+  node revokes its keys. Every public key received passes the contract's key checks, and
+  a public key serves one access key, ever, on the instance. Each key's row carries an
+  integrity code, checked before the key is trusted. Revoking today's keys is now the
+  action `access_key.revoke_secret_key`; nothing else about them changes.
 - Access keys, created, rotated and revoked in the console; members at the levels owner,
   admin and member, and the suspension of a member.
 - The audit trail of every change, in the organisation's settings, under Audit log; retention of a
@@ -85,6 +94,19 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
   sends a link, and still says the same of an address with an account and one without.
 - The features an instance has, switched at launch (`QORY_FEATURES`), and the guides and
   module reference every instance serves at `/docs`.
+- Stored secrets and variables, kept for the runs, without a page yet: a workspace's
+  secrets (`Apiary.Secrets`), each with one value or several, each of those with a value
+  ID, written once and never shown again, and not deleted while something uses them; and
+  the variables of a workspace and of each repository (`Apiary.Variables`), which the
+  workspace may lock against its repositories, with names compared without case, names
+  beginning `QORY_` refused, and at most 128 names and 64 KiB for each repository. Who
+  may read and change them are the actions `secret.read`, `secret.write`, `secret.use`,
+  `variable.read` and `variable.edit`, and every change is in the audit trail by name,
+  never by value.
+- `APIARY_ENCRYPTION_SECRET`, 32 bytes, encrypts what the database holds secret: the
+  access key secrets, and each workspace's stored values under a data key of its own,
+  with AES-256-GCM, wrapped by a key derived from it. Losing it loses every stored
+  value. Integrity codes for stored rows are keyed from it as well.
 
 ### Migrations
 
@@ -92,11 +114,20 @@ The baseline, on an empty database: the accounts and their tokens (`users`,
 `users_tokens`), `organisations`, `workspaces`, `memberships`, `invitations`,
 `access_keys`, `targets`, `runs`, the record (`events`, `log_chunks`, `connections`,
 `deliveries`), the security policy (`policy_rules`, `run_configurations`),
-`retention_runs`, `audit_entries`, the instance's own tables (`purged_organisations`,
+`retention_runs`, `audit_entries`, the stored secrets (`workspace_data_keys`, `secrets`,
+`secret_values`), `variables`, the instance's own tables (`purged_organisations`,
 `instance_settings`) and Oban's.
 
 `nodes`: a workspace's nodes and node pools, with the trigger `nodes_kind_fixed`, which
 refuses a change of a node's kind.
+
+`access_keys` gains a node's key's columns (`node_id`, `public_key`, `received_at`,
+`approved_at`, `approved_by_id`, `allow_secrets`, `rate`, `burst`, `arrived_by`,
+`enrolment_code_id`, `revoked_by_id`, `integrity_code`, `integrity_key_id`,
+`last_pending_at`), its secret becomes nullable for a node's key, and the trigger
+`access_keys_fixed_at_insert` refuses a change of a key's node, public key, stored-secrets
+flag or arrival. New: `access_key_enrolment_codes`, a node's enrolment codes, and
+`access_key_public_keys`, the instance's ledger of public keys.
 
 ### Upgrading
 

@@ -117,7 +117,7 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
                 {gettext("Rotate…")}
               </.menu_item>
               <.menu_item
-                :if={Access.can?(@current_scope, :"access_key.revoke", key)}
+                :if={Access.can?(@current_scope, :"access_key.revoke_secret_key", key)}
                 id={"key-#{key.id}-revoke"}
                 patch={
                   ~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings/keys/#{key.id}/revoke"
@@ -423,7 +423,7 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
   end
 
   defp key_action(:rotate), do: :"access_key.rotate"
-  defp key_action(:revoke), do: :"access_key.revoke"
+  defp key_action(:revoke), do: :"access_key.revoke_secret_key"
 
   # A path for an action the reader may not take, which the page offers no button for.
   defp refused(socket) do
@@ -532,7 +532,7 @@ defmodule ApiaryWeb.AccessKeyLive.Index do
   # one who may not is refused, as a path the page offers no button for is.
   def handle_event(event, _params, socket) when event in ~w(rotate revoke retire_confirm) do
     scope = socket.assigns.current_scope
-    action = if event == "revoke", do: :"access_key.revoke", else: :"access_key.rotate"
+    action = if event == "revoke", do: :"access_key.revoke_secret_key", else: :"access_key.rotate"
 
     if Access.can?(scope, action, scope.workspace),
       do: {:noreply, load_keys(socket)},

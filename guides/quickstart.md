@@ -29,7 +29,7 @@ Generate three values:
 ```sh
 openssl rand -hex 24       # the database password
 openssl rand -base64 48    # SECRET_KEY_BASE: 64 characters, the least the server accepts
-openssl rand -base64 32    # CLOAK_KEY: 32 bytes in base64, 44 characters
+openssl rand -base64 32    # APIARY_ENCRYPTION_SECRET: 32 bytes in base64, 44 characters
 ```
 
 Open `.env` and set these lines. The database password appears twice, and the two must
@@ -39,7 +39,7 @@ match; a password in hexadecimal needs no escaping inside the URL.
 POSTGRES_PASSWORD=<the database password>
 DATABASE_URL=ecto://apiary:<the database password>@postgres/apiary
 SECRET_KEY_BASE=<the second value>
-CLOAK_KEY=<the third value>
+APIARY_ENCRYPTION_SECRET=<the third value>
 PUBLIC_URL=http://localhost:4100
 MAIL_TO_LOG=true
 ```
@@ -52,8 +52,8 @@ Leave `SMTP_RELAY` empty and every other line as it is.
 > invitation links are credentials, and with this setting they reach the log and everyone
 > and everything that reads it. Never set it on an installation other people sign in to.
 
-Keep `CLOAK_KEY` and `SECRET_KEY_BASE` somewhere safe if you mean to keep this installation;
-[Backup and restore](backup.md) says what is lost without them.
+Keep `APIARY_ENCRYPTION_SECRET` and `SECRET_KEY_BASE` somewhere safe if you mean to keep this
+installation; [Backup and restore](backup.md) says what is lost without them.
 
 ## 3. Start it
 

@@ -1,7 +1,8 @@
 defmodule ApiaryWeb.Contract.UnreadableSecretTest do
   @moduledoc """
-  A signed request with a key whose secrets this instance cannot decrypt (`CLOAK_KEY` is
-  not the one they were encrypted with) is 503, uniform and logged, never 401 and never 500.
+  A signed request with a key whose secrets this instance cannot decrypt
+  (`APIARY_ENCRYPTION_SECRET` is not the one they were encrypted with) is 503, uniform and
+  logged, never 401 and never 500.
   """
   use ApiaryWeb.ConnCase, async: true
 

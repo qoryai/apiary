@@ -281,7 +281,7 @@ defmodule ApiaryWeb.NodeLive.Show do
       >
         <p class="text-muted">
           {gettext(
-            "%{name} leaves this workspace's nodes at once, and its name is free again. Its runs stay in the record. This cannot be undone.",
+            "%{name} leaves this workspace's nodes at once, and its name is free again. Its access keys are revoked, so every instance using them stops at its next request, and its enrolment codes are cancelled. Its runs stay in the record. This cannot be undone.",
             name: @node.name
           )}
         </p>
@@ -453,7 +453,7 @@ defmodule ApiaryWeb.NodeLive.Show do
         }
       >
         {gettext(
-          "It leaves this workspace's nodes, and its name is free again. Its runs stay in the record."
+          "It leaves this workspace's nodes, its access keys are revoked and its name is free again. Its runs stay in the record."
         )}
         <:action>
           <.button id="delete-node-button" patch={@delete}>

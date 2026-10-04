@@ -26,8 +26,8 @@ the restart, for example to watch a long migration.
   Every section has **Migrations**, the tables it touches and whether a migration is long,
   and **Upgrading**, anything whoever runs the instance has to do or know.
 - Back up Postgres. It is the only state; a `pg_dump` of the database is a complete backup.
-  `CLOAK_KEY` and `SECRET_KEY_BASE` are the other two things to keep: without `CLOAK_KEY`
-  every stored secret is unreadable. [Backup and restore](backup.md) has the commands.
+  `APIARY_ENCRYPTION_SECRET` and `SECRET_KEY_BASE` are the other two things to keep: without
+  `APIARY_ENCRYPTION_SECRET` every stored secret is unreadable. [Backup and restore](backup.md) has the commands.
 
 ## How migrations are written
 

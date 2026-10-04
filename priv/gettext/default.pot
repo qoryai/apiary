@@ -561,7 +561,7 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "%{name} leaves this workspace's nodes at once, and its name is free again. Its runs stay in the record. This cannot be undone."
+msgid "%{name} leaves this workspace's nodes at once, and its name is free again. Its access keys are revoked, so every instance using them stops at its next request, and its enrolment codes are cancelled. Its runs stay in the record. This cannot be undone."
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -1942,6 +1942,11 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
+msgid "A stored secret"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
 msgid "A target"
 msgstr ""
 
@@ -1980,6 +1985,11 @@ msgstr ""
 #: lib/apiary_web/live/connection_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "A target's own rule for this host still decides there."
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "A variable"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -2022,12 +2032,32 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
+msgid "Access key added"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Access key approved"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
 msgid "Access key created"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
+msgid "Access key rejected"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
 msgid "Access key revoked"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Access key revoked in settings"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -2208,6 +2238,16 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Added a policy rule"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Added a value to a stored secret"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Added an access key to a node"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/rule_list.ex
@@ -2559,6 +2599,11 @@ msgctxt "plain"
 msgid "Applies at once, on this browser. Auto follows the device's light or dark setting. The terminal stays dark in every theme."
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Approved an access key"
+msgstr ""
+
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Argument"
@@ -2728,6 +2773,11 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
+msgid "Cancelled a node's enrolment code"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
 msgid "Cancelled a workspace's deletion"
 msgstr ""
 
@@ -2791,6 +2841,16 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Changed a policy rule"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Changed a stored secret"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Changed a variable"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
@@ -3220,7 +3280,17 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
+msgid "Created a stored secret"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
 msgid "Created an access key"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Created an enrolment code for a node"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -3438,6 +3508,16 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Deleted a node"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Deleted a stored secret"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Deleted a value of a stored secret"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -3907,6 +3987,16 @@ msgstr ""
 #: lib/apiary_web/live/target_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Enforces on its own"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Enrolment code cancelled"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Enrolment code created"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -4782,7 +4872,7 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "It leaves this workspace's nodes, and its name is free again. Its runs stay in the record."
+msgid "It leaves this workspace's nodes, its access keys are revoked and its name is free again. Its runs stay in the record."
 msgstr ""
 
 #: lib/apiary_web/live/invitation_live/accept.ex
@@ -5246,6 +5336,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Locked a policy rule"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Locked a variable"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/reading.ex
@@ -7191,6 +7286,11 @@ msgstr ""
 msgid "Refused before reaching the tool %{tool}."
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Rejected an access key"
+msgstr ""
+
 #: lib/apiary_web/live/workspace_live/overview.ex
 #, elixir-autogen, elixir-format
 msgid "Reloaded."
@@ -7266,6 +7366,11 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
+msgid "Removed a variable"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
 msgid "Removed an expired invitation, sending a new one"
 msgstr ""
 
@@ -7283,6 +7388,11 @@ msgstr ""
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Removing"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Renamed a value ID of a stored secret"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -7323,6 +7433,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "Replaced %{subject}"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Replaced a stored secret's value"
 msgstr ""
 
 #: lib/apiary_web/live/connection_live/index.ex
@@ -7439,6 +7554,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Revoked an access key"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Revoked an access key with its deleted node"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -7889,6 +8009,11 @@ msgstr ""
 msgid "Session timeline, oldest first"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Set a variable"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Set the default to enforce"
@@ -8129,6 +8254,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Stopped by the workspace: a member closed it after it went quiet."
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Stored secret changed"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -9395,6 +9525,11 @@ msgstr ""
 msgid "Unlocked a policy rule"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Unlocked a variable"
+msgstr ""
+
 #: lib/apiary_web/components/target_components.ex
 #, elixir-autogen, elixir-format
 msgid "Unpin %{target}"
@@ -9443,6 +9578,11 @@ msgstr ""
 #: lib/apiary_web/live/user_live/registration.ex
 #, elixir-autogen, elixir-format
 msgid "Usually your company's name. Owners can change it later in the organisation's settings."
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Variable changed"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
