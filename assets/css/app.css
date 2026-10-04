@@ -1863,6 +1863,11 @@
     color: var(--color-base-content);
     font-weight: 500;
   }
+  /* A group's heading in the list of sections (Workspace, What runs are given): in the
+     column from 1024 px; the row below it has no room for headings. */
+  .q-settings-group {
+    display: none;
+  }
   /* A section's count, where it helps (People, Access keys). */
   .q-settings-n {
     color: var(--q-faint);
@@ -1935,6 +1940,17 @@
       gap: 2px;
       overflow: visible;
       border-bottom: 0;
+    }
+    .q-settings-group {
+      display: block;
+      padding: 12px 10px 4px;
+      color: var(--q-faint);
+      font-size: 0.75rem;
+      line-height: 1rem;
+      font-weight: 500;
+    }
+    .q-settings-group:first-child {
+      padding-top: 0;
     }
     .q-settings-link {
       height: 2rem;
