@@ -715,6 +715,26 @@ defmodule Apiary.Nodes do
   end
 
   @doc """
+  count_running/2 is how many instances of the workspace's nodes in use run at `now`: one
+  for each instance with a run alive by the lost-run check's rule, as `activity/3` counts
+  them. One read, for the sidebar's count beside Nodes.
+  """
+  @spec count_running(Scope.t(), DateTime.t()) :: non_neg_integer
+  def count_running(%Scope{} = scope, %DateTime{} = now \\ DateTime.utc_now()) do
+    %Scope{organisation: organisation, workspace: workspace} = scope
+    nodes = scope |> live_query() |> select([n], n.id)
+
+    from(r in Run,
+      as: :run,
+      where: r.organisation_id == ^organisation.id and r.workspace_id == ^workspace.id,
+      where: r.node_id in subquery(nodes) and not is_nil(r.instance_id),
+      select: count(fragment("DISTINCT (?, ?)", r.node_id, r.instance_id))
+    )
+    |> Liveness.alive(now)
+    |> Repo.one(telemetry_options: [sidebar: true])
+  end
+
+  @doc """
   names/2 is the scope's workspace's nodes of `ids`, deleted ones too, by id: for a page
   that shows the node a run ran on. A node of another workspace is not among them.
   """

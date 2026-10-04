@@ -328,8 +328,10 @@ defmodule ApiaryWeb.Routes do
             # opened last, while they reach it, else the first they reach; none for a
             # member who reaches no workspace yet.
             scope "/:org" do
-              # The organisation's overview: its workspaces and its people.
+              # The organisation's operational pages: its overview, its workspaces and its
+              # people; its audit trail, for the readers `audit.read` allows.
               live "/", OrganisationLive, :index
+              live "/audit-log", ActivityLive, :index
               # Its settings, one section a page, the list of them beside it
               # (`ApiaryWeb.SettingsComponents`). General is the settings' own path.
               live "/settings", SettingsLive, :organisation
@@ -345,9 +347,6 @@ defmodule ApiaryWeb.Routes do
               # zone, which opens it; the second path opens the same.
               live "/settings/danger", SettingsLive, :danger
               live "/settings/delete", SettingsLive, :delete_organisation
-              # The organisation's audit trail, a section of its settings, for the readers
-              # `audit.read` allows.
-              live "/settings/audit-log", ActivityLive, :index
             end
 
             unquote(@block)
@@ -359,7 +358,7 @@ defmodule ApiaryWeb.Routes do
               live "/runs", RunLive.Index, :index
               live "/network", ConnectionLive.Index, :index
               # The targets the workspace's runs changed, and one target's page: its path
-              # is the glob, its tabs follow a `-` segment (`…/-/runs`), and a tab's own
+              # is the glob, its tabs follow a `-` segment (`…/-/policy`), and a tab's own
               # paths follow the tab (`…/-/policy/history`).
               live "/targets", TargetLive.Index, :index
               live "/targets/:system/*path", TargetLive.Show, :show
@@ -367,7 +366,7 @@ defmodule ApiaryWeb.Routes do
               # with New node and New node pool as dialogs over it, and a node's page,
               # Overview and Settings, its deletion a dialog over Settings, and clearing an
               # instance a dialog over Overview. `:node_id` is the node's public id; an
-              # instance is named by its instance id. No navigation entry leads here yet.
+              # instance is named by its instance id. The sidebar's Nodes leads here.
               live "/nodes", NodeLive.Index, :index
               live "/nodes/new", NodeLive.Index, :new
               live "/nodes/new-pool", NodeLive.Index, :new_pool
@@ -381,8 +380,9 @@ defmodule ApiaryWeb.Routes do
               live "/runs/:run_id/terminal", RunLive.Show, :terminal
               live "/runs/:run_id/network", RunLive.Show, :connections
               live "/runs/:run_id/details", RunLive.Show, :details
-              # The security policy: the workspace's baseline; a target's view of it is
-              # the Policy tab of the target's page. Tabs, filters, the opened change, the
+              # The security policy, an operational page: approving and denying hosts is
+              # daily work. The workspace's baseline; a target's view of it is the Security
+              # policy tab of the target's page. Tabs, filters, the opened change, the
               # compared version and the export page are in the URL.
               live "/policy", PolicyLive.Show, :rules
               live "/policy/targets", PolicyLive.Show, :targets

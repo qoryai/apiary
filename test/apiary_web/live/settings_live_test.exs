@@ -305,11 +305,13 @@ defmodule ApiaryWeb.SettingsLiveTest do
       for {key, path} <- [
             organisation: ~p"/#{org}/settings",
             people: ~p"/#{org}/settings/people",
-            workspaces: ~p"/#{org}/settings/workspaces",
-            audit_log: ~p"/#{org}/settings/audit-log"
+            workspaces: ~p"/#{org}/settings/workspaces"
           ] do
         assert has_element?(lv, ~s(#settings-tabs #settings-tab-#{key}[href="#{path}"]))
       end
+
+      # The audit log is a record, an operational page of the organisation, not a setting.
+      refute has_element?(lv, "#settings-tab-audit_log")
 
       # Its own sections only: no other kind's, no cross-link, no Elsewhere.
       refute has_element?(
@@ -392,8 +394,8 @@ defmodule ApiaryWeb.SettingsLiveTest do
         [
           general: base,
           people: base <> "/people",
-          keys: base <> "/keys",
-          runs: base <> "/runs"
+          runs: base <> "/runs",
+          keys: base <> "/keys"
         ] ++
           if(Apiary.Features.on?(:security), do: [secrets: base <> "/secrets"], else: [])
 
@@ -401,8 +403,9 @@ defmodule ApiaryWeb.SettingsLiveTest do
         assert has_element?(lv, ~s(#settings-tabs #settings-tab-#{key}[href="#{path}"]))
       end
 
-      # In that order: General, People, Access keys, Runs, and, with the `security`
-      # feature, Secrets and variables.
+      # In that order: General, People, Runs, Access keys, and, with the `security`
+      # feature, what runs are given: Secrets and variables. That group has one section,
+      # so the list is one list, without the groups' headings.
       assert lv
              |> element("#settings-tabs")
              |> render()
@@ -410,6 +413,8 @@ defmodule ApiaryWeb.SettingsLiveTest do
              |> LazyHTML.query("a")
              |> LazyHTML.attribute("id") ==
                Enum.map(sections, fn {key, _path} -> "settings-tab-#{key}" end)
+
+      refute has_element?(lv, "#settings-tabs .q-settings-group")
 
       # No link to the organisation's settings, which are its own place.
       refute has_element?(lv, "#settings-tab-organisation, #settings-tab-organisation_settings")
@@ -421,8 +426,11 @@ defmodule ApiaryWeb.SettingsLiveTest do
       assert has_element?(
                lv,
                "#settings-section-runs .q-settings-head-sub",
-               "How long this workspace keeps runs, their events and their logs."
+               "How this workspace handles its runs. The run history itself is in Runs."
              )
+
+      # Its first part: how long the run history is kept.
+      assert has_element?(lv, "#retention-keep h3", "Run history retention")
 
       assert page_title(lv) =~ "Runs · Workspace settings"
       assert has_element?(lv, "#retention-form")

@@ -8,8 +8,8 @@ defmodule ApiaryWeb.Nav.Entry do
   `ApiaryWeb.Layouts` decides from these which to show and where they lead, and nothing
   else does.
 
-  - `section`: where the entry goes in its scope's sidebar: `:home` (the scope's first
-    entries, without a heading), `:record` or `:guard` (a workspace's groups), a section of
+  - `section`: where the entry goes in its scope's sidebar: `:home` (the scope's
+    operational pages, without a heading), `:account` (the person's settings), a section of
     the edition's (`c:ApiaryWeb.Edition.nav_sections/0`), `:foot` (Settings, at the
     sidebar's foot) or `:settings` (a page of the scope's Settings, not in the sidebar: its
     page marks Settings as the current entry). An edition's entry goes after the

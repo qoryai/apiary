@@ -1,7 +1,8 @@
 defmodule ApiaryWeb.TargetLive.ShowTest do
   @moduledoc """
   A target's page (`ApiaryWeb.TargetLive.Show`): its header and pin, the crumb, the tabs
-  by path, Overview, Runs, Network access with the target fixed, and what is not found.
+  by path (Overview and Security policy), Overview's ways to Runs and Network access
+  filtered to the target, and what is not found.
   """
   use ApiaryWeb.ConnCase, async: true
 
@@ -65,12 +66,14 @@ defmodule ApiaryWeb.TargetLive.ShowTest do
     assert has_element?(view, "#breadcrumb [aria-current=page]", "github.example/acme/shop")
     assert has_element?(view, "#nav-targets[aria-current=page]")
     assert has_element?(view, "#target-tab-overview[aria-current=page]")
-    assert has_element?(view, "#target-tab-runs[href='#{path}/-/runs']", "2")
 
-    assert has_element?(
-             view,
-             "#target-tab-connections[href='#{path}/-/network']"
-           )
+    # Its records are the sidebar's Runs and Network access, filtered to it, not tabs;
+    # with nothing of its own to set, it has no Settings tab either.
+    refute has_element?(view, "#target-tab-runs, #target-tab-connections")
+    refute has_element?(view, "#target-tab-settings")
+
+    assert has_element?(view, "#target-tab-policy[href='#{path}/-/policy']", "Security policy") ==
+             Apiary.Features.on?(:security)
 
     assert page_title(view) =~ "github.example/acme/shop"
     assert workspace_path(scope) <> "/targets/github.example/acme/shop" == path
@@ -78,6 +81,7 @@ defmodule ApiaryWeb.TargetLive.ShowTest do
 
   test "Overview: the last runs, the denied destinations and what the target is", %{
     conn: conn,
+    scope: scope,
     path: path,
     last: last,
     old: old
@@ -87,14 +91,21 @@ defmodule ApiaryWeb.TargetLive.ShowTest do
     assert has_element?(view, "#target-last-runs tr:first-child", "fix-totals")
     assert has_element?(view, "#target-last-runs-#{last.id} .q-sdot-failed", "Failed")
     assert has_element?(view, "#target-last-runs-#{old.id}")
-    assert has_element?(view, "#target-all-runs[href='#{path}/-/runs']", "All 2 runs")
+    # See all: the sidebar's Runs, filtered to the target.
+    assert has_element?(
+             view,
+             "#target-all-runs[href='#{workspace_path(scope, "/runs?system=github.example&target=acme%2Fshop")}'][title='All its 2 runs, on Runs']",
+             "See all"
+           )
 
     assert has_element?(view, "#target-denied", "files.cdn.example")
     assert has_element?(view, "#target-denied", "1 attempt in 1 run")
 
+    # See all: the sidebar's Network access, filtered to the target, denied only.
     assert has_element?(
              view,
-             "#target-denied-connections[href='#{path}/-/network?decision=denied']"
+             "#target-denied-connections[href='#{workspace_path(scope, "/network?decision=denied&system=github.example&target=acme%2Fshop")}']",
+             "See all"
            )
 
     assert has_element?(view, "#target-about", "github.example")
@@ -132,7 +143,7 @@ defmodule ApiaryWeb.TargetLive.ShowTest do
     refute has_element?(view, "#target-new-runs")
   end
 
-  test "the pin: the header's toggle, and the sidebar marks the target", %{
+  test "the pin: the header's toggle; the sidebar keeps Targets current and marks the pin", %{
     conn: conn,
     scope: scope,
     path: path,
@@ -146,63 +157,40 @@ defmodule ApiaryWeb.TargetLive.ShowTest do
     assert Targets.pinned?(scope, shop)
 
     view = open(conn, path)
-    assert has_element?(view, "#nav-pin-#{shop.id}[aria-current=page]")
-    refute has_element?(view, "#nav-targets[aria-current=page]")
+    assert has_element?(view, "#nav-targets[aria-current=page]")
+    assert has_element?(view, "#nav-pin-#{shop.id}[aria-current=location]")
+    assert has_element?(view, "#sidebar [aria-current=page]", "Repositories")
   end
 
-  test "Runs: the target's latest runs and a link to all of them in the runs list", %{
+  test "See all leads to the sidebar's lists, filtered to the target, with their rail", %{
     conn: conn,
     scope: scope,
-    path: path,
     last: last
   } do
-    view = open(conn, path <> "/-/runs")
+    view = open(conn, workspace_path(scope, "/runs?system=github.example&target=acme%2Fshop"))
+    assert has_element?(view, "#nav-runs[aria-current=page]")
+    assert has_element?(view, "#runs #run-#{last.run_id}", "fix-totals")
+    assert has_element?(view, "#runs-rail")
+    assert has_element?(view, "#runs-token-target")
 
-    assert has_element?(view, "#target-tab-runs[aria-current=page]")
-    assert has_element?(view, "#target-runs-list-#{last.id}", "fix-totals")
-    assert has_element?(view, "#target-runs", "The latest 2 runs of 2")
+    view =
+      open(
+        conn,
+        workspace_path(scope, "/network?decision=denied&system=github.example&target=acme%2Fshop")
+      )
 
-    assert has_element?(
-             view,
-             "#target-runs-all[href='#{workspace_path(scope, "/runs?system=github.example&target=acme%2Fshop")}']"
-           )
-
-    # The crumb leads back to the target.
-    assert has_element?(view, "#breadcrumb a[href='#{path}']", "acme/shop")
-  end
-
-  test "the tab's old path, Connections, sends on to Network access with the query, for good",
-       %{conn: conn, path: path} do
-    conn = get(conn, path <> "/-/connections?decision=denied&since=30d")
-    assert redirected_to(conn, 301) == path <> "/-/network?decision=denied&since=30d"
-
-    assert redirected_to(get(recycle(conn), path <> "/-/connections"), 301) ==
-             path <> "/-/network"
-  end
-
-  test "Network access: the workspace's Network access of the target, the target fixed", %{
-    conn: conn,
-    path: path
-  } do
-    view = open(conn, path <> "/-/network")
-
-    assert has_element?(view, "#target-tab-connections[aria-current=page]")
+    assert has_element?(view, "#nav-network[aria-current=page]")
     assert has_element?(view, "#destinations", "files.cdn.example")
-    refute has_element?(view, "#filter-target")
-    refute has_element?(view, "#connections-rail")
-    refute has_element?(view, "#connections-token-target")
-
-    view |> element("#connections-view-denied") |> render_click()
-    assert_patch(view, path <> "/-/network?decision=denied")
-    render_async(view, 2_000)
-    assert has_element?(view, "#destinations", "files.cdn.example")
+    assert has_element?(view, "#connections-rail")
+    assert has_element?(view, "#connections-token-target")
   end
 
   @tag needs: :security
-  test "Policy: the target's policy, a tab of its page", %{conn: conn, path: path} do
+  test "Security policy: the target's policy, a tab of its page", %{conn: conn, path: path} do
     view = open(conn, path <> "/-/policy")
 
-    assert has_element?(view, "#target-tab-policy[aria-current=page]")
+    assert has_element?(view, "#target-tab-policy[aria-current=page]", "Security policy")
+    assert has_element?(view, "#nav-targets[aria-current=page]")
     assert has_element?(view, "#policy-tabs a[aria-current=page]", "Effective policy")
     assert has_element?(view, "#policy-rules")
 
@@ -219,7 +207,10 @@ defmodule ApiaryWeb.TargetLive.ShowTest do
           workspace_path(scope, "/targets/github.example/acme/theirs"),
           workspace_path(scope, "/targets/github.example/acme/nope"),
           path <> "/-/nope",
-          path <> "/-/runs/more"
+          # the records are the sidebar's lists, not tabs of the target's page
+          path <> "/-/runs",
+          path <> "/-/network",
+          path <> "/-/connections"
         ] do
       assert_raise Ecto.NoResultsError, fn -> live(conn, missing) end
     end

@@ -4,6 +4,44 @@ The rules the pages of the console follow, for a contributor who adds a page or 
 one. The words on them are in [lingo.md](lingo.md); where the code lives is in
 [architecture.md](architecture.md).
 
+## Two sides of every level
+
+The console has levels, each inside the one above: the organisation, the workspace, and in
+a workspace its targets and its nodes. **Every level has two sides, kept apart: its
+operational pages and its Settings.**
+
+- **The operational side is for watching and acting**, every day: the run history, what
+  the runs reached, what runs now, the audit trail, and the acts on live things (Close run,
+  Clear instance, a pin). **The security policy is operational**: approving and denying a
+  host is daily work, done where the runs' network access is read, so the workspace's
+  Security policy is a sidebar page and a target's is a tab of its page, with the mode and
+  the locks on them. Network access's Allow and Deny act in place.
+- **Settings are for setting up**: what is configured once and changed rarely, each
+  setting at exactly one level. An operational page never embeds a setting; it links to
+  the Settings page that holds it, and the link may carry the context to fill the form and
+  the way back.
+- **A record shows once, where the reader filters it.** The runs and the network access are
+  the sidebar's Runs and Network access, each with its repository rail and its `target:`
+  and `node:` filters. A target's page and a node's page have no Runs or Network access
+  tab of their own: their Overview shows the last few and leads to the list, filtered to
+  them ("See all").
+- **Settings sit in the same place at every level.** An organisation's and a workspace's
+  are the sidebar's foot, set apart by a rule. A target's and a node's are the last tab of
+  their page, ⚙ Settings at the right end of the tab bar, GitHub's way, shown only while
+  there is something in it.
+
+| Level | Operational | Settings |
+|---|---|---|
+| Organisation `/:org` | Overview, Audit log (`/audit-log`) | General, People, Workspaces, the edition's |
+| Workspace `/:org/:workspace` | Overview, Runs, Network access, Security policy (`/policy`), Targets, Nodes; Pinned | General, People, Runs, Access keys; Secrets and variables |
+| Target `…/targets/:system/*path` | Overview, Security policy (`…/-/policy`) | none yet, so no tab |
+| Node `…/nodes/:node_id` | Overview | General (`…/settings`) |
+
+The sidebar marks the page's own level: on a target's page Targets is the current entry,
+on a node's Nodes, on a run's Runs, on any page of Settings the foot's Settings. Paths that
+move with this structure get no redirect; every link, the palette and New lead to the new
+ones.
+
 ## The shell
 
 Every page behind sign-in renders inside `ApiaryWeb.Layouts.app/1`, which takes the
@@ -16,9 +54,9 @@ belongs to.
   navigation is data, `ApiaryWeb.Nav.Entry` values, and the entry a page passes as `nav`
   names its scope (`place`) and so the sidebar it shows. A new item of the core goes in
   `nav_entries/1` of `ApiaryWeb.Layouts`, an edition's in its
-  `ApiaryWeb.Edition.nav_entries/1`, and never in a page. A page that no entry names yet,
-  such as Nodes, passes its scope as `place` instead: its sidebar is that scope's, with no
-  entry current.
+  `ApiaryWeb.Edition.nav_entries/1`, and never in a page. A page that no entry names
+  passes its scope as `place` instead: its sidebar is that scope's, with no entry
+  current.
 - **The top bar** is one `<header aria-label="Top bar">`, 48 px, across the window and
   above the sidebar, first in the tab order after Skip to content. From the left: the
   **breadcrumb** (`<nav id="breadcrumb">`: the organisation first, its tile and its name,
@@ -51,22 +89,27 @@ belongs to.
   reader may take. Every word of it comes from the server; a runner's words are written
   as text.
 - **New** offers only what the reader may do where the page is
-  (`ApiaryWeb.Layouts.new_entries/2`): on a workspace's page a new access key and an
-  invitation, on an organisation's own the invitation, and before the core's whatever
+  (`ApiaryWeb.Layouts.new_entries/2`), each landing where its thing is set up: on a
+  workspace's page New node and New node pool (on Nodes), New secret and New variable
+  (Settings › Secrets and variables) and Invite people (the organisation's Settings ›
+  People), on an organisation's own the invitation, and before the core's whatever
   the edition offers there (`ApiaryWeb.Edition.new_entries/2`), each entry asked of the
   workspace or the organisation as its place says. **The account menu** holds who they are and their
   level there, their settings and organisations, the theme (Auto, Light, Dark), and Log
   out; nothing about Qory Apiary itself.
-- **The sidebar** holds the scope's pages and nothing else, in groups, each a `<nav>` with
-  its own name: a workspace's Overview, then Record (Runs, Targets) and Guard (Network
-  access, then Policy, which carries the policy's mode word alone, how many targets set
-  their own in its title; without `security` Network access alone, the record of it), then
-  the targets the person pinned (`counts.pins`, the first seven in the
-  order pinned, `Apiary.Targets.list_pins/2`; on a target's page its pin is the current
-  entry); an organisation's
-  Overview and the edition's groups (`ApiaryWeb.Edition.nav_sections/0`); the
-  person's Profile, Preferences and Organisations under Your settings, which are their
-  settings' list. It is never replaced: a page of a scope's settings keeps the scope's
+- **The sidebar** holds the scope's operational pages and nothing else, each group a
+  `<nav>` with its own name. A workspace's are one group without a heading: Overview,
+  Runs (with the runs alive now), Network access, Security policy (with the policy's mode
+  word, how many targets set their own in its title; absent without `security`), Targets
+  and Nodes (with the instances running now, `counts.running`, and a warning dot while a
+  node's key awaits approval, `counts.keys_waiting`, for a reader who may approve it); the
+  records first, then the policy, then the lists of things. Then the targets the person
+  pinned (`counts.pins`, the first seven in the order pinned,
+  `Apiary.Targets.list_pins/2`; on a target's page Targets stays the current entry and its
+  pin is marked `aria-current="location"`, the place within it). An organisation's:
+  Overview and Audit log, then the edition's groups (`ApiaryWeb.Edition.nav_sections/0`).
+  The person's Profile, Preferences and Organisations under Your settings, which are their
+  settings' list. Nothing that is set up once is a sidebar entry. It is never replaced: a page of a scope's settings keeps the scope's
   sidebar. The active item carries `aria-current="page"`. A group whose feature is off is
   absent, not greyed.
 - **The sidebar's foot** holds the scope's Settings, a workspace's or an organisation's,
@@ -127,7 +170,7 @@ the console keeps. Every other act happens on a page, in place:
 ## Settings
 
 Configuration is not navigation: what is set up once and changed rarely lives in the
-settings. There are four kinds, on the model of GitHub's repository, organisation and
+settings, at one level each (Two sides of every level, above). There are four kinds, on the model of GitHub's repository, organisation and
 personal settings: a workspace's, an organisation's, a node's and a person's. Each is a
 place of its own, reached from its own scope, that lists its own sections
 and no other kind's: no "Elsewhere", no link across. A navigation item never replaces the
@@ -137,10 +180,15 @@ navigation it is in.
   Settings: General (name, slug, and its danger zone), People (`/settings/people`,
   `ApiaryWeb.MemberLive.Workspace`: who reaches the workspace and at what level, read
   only, on the row spec of the organisation's People, the edition's `:member_access`
-  beside each name; no suspended membership, which reaches nothing), Access keys
-  (`/settings/keys`), Runs (`/settings/runs`: how long the workspace keeps runs, their
-  events and their logs; `/settings/retention`, its path before, sends on with its
-  query), and, with `security`, Secrets and variables (`/settings/secrets`, below).
+  beside each name; no suspended membership, which reaches nothing), Runs
+  (`/settings/runs`: how the workspace handles its runs, its first part **Run history
+  retention**, how long it keeps runs, their events and their logs; the run history itself
+  is the sidebar's Runs; `/settings/retention`, its path before, sends on with its query)
+  and Access keys (`/settings/keys`, until a node's keys have a page of the node's), then,
+  with `security`, what runs are given: Secrets and variables (`/settings/secrets`,
+  below). The list is in two groups, Workspace and What runs are given, each under its
+  heading (`SettingsComponents.sections/2` gives each entry its group); while a group has
+  a single section the headings go and the list is one list.
 - **An organisation's** (`/:org/settings/…`), from the organisation's pages (the
   breadcrumb's organisation leads to its overview, whose sidebar has Settings): General
   (name, slug, owners, and its danger zone), People (`/settings/people`: members,
@@ -155,8 +203,7 @@ navigation it is in.
   (owners and admins; each with its targets, `Apiary.Targets.count_by_workspace/1`;
   `SettingsComponents.workspace_list/1`, which an edition's page over the same list
   renders too, with the edition's way of adding one in the section's actions, the
-  `:workspaces_heading` slot), Audit log (`/settings/audit-log`, `ApiaryWeb.ActivityLive`;
-  `/:org/activity`, its path before, sends on with its query), and the edition's sections
+  `:workspaces_heading` slot), and the edition's sections
   (`ApiaryWeb.Edition.settings_tabs/1`). From a workspace the palette's Go to, New ›
   Invite people and, for whoever manages members, the workspace People's Manage people
   lead there too, since membership is the organisation's; nothing else in a workspace
@@ -180,7 +227,7 @@ current entry, and are one section a page (`ApiaryWeb.SettingsComponents.layout/
 of the kind's sections (`#settings-tabs`, `settings-tab-<key>`; `sections/2`, which a page
 reads when it mounts), and beside it the section, its title an `<h2>` (16 px), one sentence
 of what it is for, then its content, a 720 px column for forms and 960 px for a list
-(People, a workspace's and an organisation's, Access keys, Audit log). The list is labels
+(People, a workspace's and an organisation's, Access keys). The list is labels
 without icons, 13.5 px and muted, the current one in the text colour on a light fill, with
 a count where it helps (an organisation's People, Access keys; the page passes the
 navigation's `counts`); below 1024 px it is a row of
@@ -235,6 +282,10 @@ confirmed on its row too, each at a path of its own (No modals, above).
 The old paths, `/:org/members/…`, `/:org/:workspace/keys/…` and
 `/:org/:workspace/settings/retention`, send on to the new ones
 (`ApiaryWeb.MovedController`).
+
+An organisation's **Audit log** (`/:org/audit-log`, `ApiaryWeb.ActivityLive`, owners and
+admins) is an operational page of its sidebar, beside Overview: a record that is read, not a
+setting. `/:org/activity`, its path before, sends on with its query.
 
 An organisation's own path, `/:org`, is its overview (`ApiaryWeb.OrganisationLive`): the
 workspaces the person reaches, what each is doing, and the organisation's people; its
@@ -373,12 +424,12 @@ way to allow or deny it) are one flat list each, and `Apiary.Runs.Filters` reads
 writes every control of them. The page was Connections: `/:org/:workspace/connections`
 and a run's `/runs/:run_id/connections` send on to the new paths with their query, moved
 permanently (`ApiaryWeb.MovedController`). A connection as a thing keeps its word: a row is
-a destination and the connections made to it. The Policy page's hosts and paths are its
+a destination and the connections made to it. The Security policy page's hosts and paths are its
 Network access section, which links to the page ("See what the runs reached"); the page's
 rule links lead to the rule there.
 
 The policy's lists of rules (`PolicyComponents.rule_list/1`, on the workspace's Rules tab
-and on a target's Policy tab) are on the same pattern, their query read and written by
+and on a target's Security policy tab) are on the same pattern, their query read and written by
 `ApiaryWeb.PolicyLive.RuleList`, pure over the rows the page holds: views All, Allowed,
 Denied and Locked, each counted under the search and the other filters, the Rules tab's
 count the All view's with nothing narrowed; "Find a host" with the qualifiers `seen:`, `paths:`, `by:` and
@@ -387,7 +438,7 @@ whose sections come from the rows' sources and people (an edition that adds rule
 another holder gives them a source, and the menu, the qualifier and the order take it);
 Sort (the list's own order, Host, Most used, Recently added); pages of 50; and `?rule=`,
 which Network access links with, landing on the page that holds the rule and marking it.
-A target's Policy tab shows each rule's Source; its own rules come first and have the ⋯
+A target's Security policy tab shows each rule's Source; its own rules come first and have the ⋯
 menu's acts, the workspace's are read there and lead to the workspace's page. A rule of
 the level above the workspace has that level's tile in its Source, which says whose it is;
 the faint lock is a locked rule of the workspace's alone, what the Locked view counts.
@@ -517,7 +568,7 @@ words say so. The workspace's window is **fourteen days**:
   Network access, whose Denied view counts the destinations the summary names). **Needs
   attention** weighs the same fourteen days but lists only what is still denied, no rule
   having allowed it since, and its "and n more" says so.
-- **The Policy page's** fact beside the mode and the enforce preview read fourteen days,
+- **The Security policy page's** fact beside the mode and the enforce preview read fourteen days,
   so "See them" lands on the same numbers; a rule's use is its last fourteen days.
 - **The targets index** counts runs, the share that ended well and denied attempts over
   the same fourteen days, each column saying so; a **target's page** counts its denied
@@ -586,25 +637,24 @@ reads are `Apiary.Targets`'s, the looks `ApiaryWeb.TargetComponents`'s).
   bounded by the fourteen days, and re-reads at most once a second as runs land, changing
   the rows it holds in place.
 - **A target's page** is `/:org/:workspace/targets/:system/*path`, its tabs after a `-`
-  segment, GitLab's way (`target_path/4`): Overview at the bare path, then `…/-/runs`,
-  `…/-/network` (once `…/-/connections`, which the page sends on with its query, moved
-  permanently) and, with `security`, `…/-/policy` with the policy's own paths after it
-  (`/history`, `/document`, `/versions/:n`, `/export`). A path with a segment that
+  segment, GitLab's way (`target_path/4`): Overview at the bare path, then, with
+  `security`, Security policy, `…/-/policy`, with the policy's own paths after it
+  (`/history`, `/document`, `/versions/:n`, `/export`). Its runs and its network access
+  are not tabs: they are the sidebar's Runs and Network access with `target:` set, which
+  its Overview leads to. ⚙ Settings joins as the last tab, at the right end, once a
+  target has settings of its own to hold. A path with a segment that
   would be misread (empty, `-`, `.`, `..`) is one segment, its slashes escaped. A target
   the workspace does not have, and a tab the page does not know, are not found. The header
   is the target in full with the reader's pin, one muted line (its runs since it was first
   seen, its last run, and its mode only where it sets its own) and Open on the system when
   the system is a host name; the breadcrumb's third segment is the target.
-  - **Overview**: two cards, each one list, the few with a link to the many (its last
-    runs; the destinations it was denied in 14 days), beside a plain About column (the
+  - **Overview**: two cards, each one list, the few with "See all" to the many (its last
+    runs, on Runs; the destinations it was denied in 14 days, on Network access, denied
+    only; both filtered to the target), beside a plain About column (the
     system and path, when it was first seen and by which run, the same path elsewhere,
     its runs a day, its machines and runtimes). A run that lands is counted, never
     inserted, and comes in when asked.
-  - **Runs**: its latest runs, one line each, and all of them in the runs list.
-  - **Network access**: the Network access page's content with the target fixed
-    (`ApiaryWeb.ConnectionLive.Index.fix_target/3`): its own path, no Target section,
-    token or rail, and "New activity" leading the tab.
-  - **Policy**: the target's view of the policy (`ApiaryWeb.PolicyLive.Target`): its
+  - **Security policy**: the target's view of the policy (`ApiaryWeb.PolicyLive.Target`): its
     mode on one line (Follow the workspace, by its name, Observe or Enforce, and whose
     the mode is), the rules in force for it on the list pattern with their Source, and
     its history and document as views under the page's tabs. Its old paths, `/policy/targets/:target_id/…`, send on here
@@ -622,8 +672,8 @@ A workspace's nodes and node pools are where its runs run (`ApiaryWeb.NodeLive.I
 which runs one instance at a time; a **node pool** is a fleet of short-lived instances,
 which run up to its instance limit, or any number without one. The kind is chosen when one
 is made and never changes. A node is named in a path by its public id, `nd_…` for a node
-and `np_…` for a pool. The workspace's sidebar has no entry for them yet: the list is
-reached by its path, and the page passes `place={:workspace}`.
+and `np_…` for a pool. The workspace's sidebar has Nodes, the current entry on the list
+and on a node's page.
 
 - **A node's state** is never Online or Offline (`ApiaryWeb.NodeComponents.node_state/1`).
   An instance is **running** while it has a run alive by the lost-run check's rule
@@ -662,7 +712,8 @@ reached by its path, and the page passes `place={:workspace}`.
   list pattern with "3 of 10 running", the starts refused at the instance limit, the
   instances past the bound of 256 new ones a day, the sentence that an instance is what a
   runner using the node's key reports itself as, and its recent runs (`runs.node_id`,
-  for a reader of the record) with the way to all of them on the runs list (`?node=`),
+  for a reader of the record) with the way to all of them on the runs list (`?node=`; a
+  node's page has no Runs tab of its own),
   each saying so while nothing has reported, then About (kind, id, instance limit, who
   made it), which leads to Settings; and **Settings** (`/nodes/:node_id/settings`),
   General, whose danger zone's Delete node… (Delete node pool… for a pool) expands its

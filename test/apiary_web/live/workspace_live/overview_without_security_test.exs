@@ -95,8 +95,8 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewWithoutSecurityTest do
         for key <- ~w(overview runs network settings),
             do: assert(has_element?(view, "#nav-#{key}"))
 
-        # Guard holds Network access alone: the record of it.
-        assert has_element?(view, "#nav-group-guard #nav-network")
+        # Network access is there, the record of it, among the operational pages.
+        assert has_element?(view, "#nav-group-home #nav-network")
 
         refute has_element?(view, "#nav-policy")
         refute has_element?(view, "#nav-policy-mode")
