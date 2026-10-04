@@ -61,7 +61,7 @@ defmodule ApiaryWeb.RefusalsRows do
       # Another organisation's owner, on its own members page, naming this one's member.
       {:"member.change_level", :other_owner, "/:other_org/settings/people", "set_level",
        %{"membership_id" => :other_member, "level" => "admin"}, answer: :not_found},
-      # Without the modal of a member open: refused to a member; to an admin, who may
+      # Without a member's confirmation open: refused to a member; to an admin, who may
       # remove a member, it is a second click, and the list is shown again.
       {:"member.remove", :member, "/:org/settings/people", "remove", %{}},
       {:"member.remove", :admin, "/:org/settings/people", "remove", %{}, answer: :ignored},
@@ -70,8 +70,8 @@ defmodule ApiaryWeb.RefusalsRows do
       # An admin who opened a member's removal, the member made an owner meanwhile.
       {:"member.remove", :admin, "/:org/settings/people/:other_member/remove", "remove", %{},
        meanwhile: {:level, :other_member, :owner}},
-      # This organisation's member, in a removal's modal of another organisation's path:
-      # the modal does not open, and the page says the member is gone, as for one who left.
+      # This organisation's member, in a removal's path of another organisation: no row
+      # asks to confirm, and the page says the member is gone, as for one who left.
       {:"member.remove", :other_owner, "/:other_org/settings/people/:other_member/remove",
        "remove", %{}, answer: :refused_at_mount},
       {:"member.invite", :member, "/:org/settings/people", "invite",
@@ -85,7 +85,7 @@ defmodule ApiaryWeb.RefusalsRows do
       # Suspending and activating a person's membership: an owner acts on admins and
       # members, an admin on members only. A member cannot open a member's suspension, so
       # their `suspend` arrives without it and the page refuses it for their role; the
-      # demoted admin's row, whose modal was open, reaches the context function.
+      # demoted admin's row, whose confirmation was open, reaches the context function.
       {:"member.suspend", :member, "/:org/settings/people", "suspend", %{}},
       {:"member.suspend", :member, "/:org/settings/people/:other_member/suspend", "suspend", %{},
        answer: :refused_at_mount},
@@ -232,8 +232,8 @@ defmodule ApiaryWeb.RefusalsRows do
        "/:other_org/:other_ws/settings/keys/:key/revoke", "revoke", %{},
        answer: :not_found_at_mount},
 
-      # The nodes. Without the dialog open, from a member: refused, as the page offers
-      # them no button.
+      # The nodes. Without the page or the confirmation open, from a member: refused, as
+      # the page offers them no button.
       {:"node.create", :member, "/:org/:workspace/nodes", "create",
        %{"node" => %{"name" => "build-09"}}},
       {:"node.create", :demoted_admin, "/:org/:workspace/nodes/new", "create",

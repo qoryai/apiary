@@ -117,7 +117,10 @@ navigation it is in.
   people, the section's action, is a page of it at `/settings/people/invite` (A form is a
   page, below), its one field the email address, and a sent invitation goes back to
   People with a flash; removing, leaving and suspending, each from a member's ⋯ menu, are
-  dialogs), Workspaces
+  confirmed in place, the member's row turned into the question, what happens, Yes,
+  remove (Yes, leave, Yes, suspend) and Cancel (`inline_confirm/1`), at their paths
+  `/settings/people/:id/remove` and `…/suspend`, whose Cancel or Escape goes back to
+  People), Workspaces
   (owners and admins; each with its targets, `Apiary.Targets.count_by_workspace/1`;
   `SettingsComponents.workspace_list/1`, which an edition's page over the same list
   renders too, with the edition's way of adding one in the section's actions, the
@@ -184,7 +187,7 @@ says why in place of the button: the instance's own organisation, the organisati
 workspace. A reader who may not delete the scope sees no danger zone, and the dialog's
 path sends them to General and says why.
 
-Rotate, revoke, remove, suspend and the deletions stay dialogs over their section, each
+Rotate, revoke and the deletions stay dialogs over their section, each
 at a path of its own: an act on a row of a list, with nothing to choose but whether to go
 on. The old paths, `/:org/members/…`,
 `/:org/:workspace/keys/…` and `/:org/:workspace/settings/retention`, send on to the new
