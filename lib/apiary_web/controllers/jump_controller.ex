@@ -92,25 +92,25 @@ defmodule ApiaryWeb.JumpController do
   end
 
   # The pages of the navigation, each Settings followed by its sections the navigation
-  # does not list (Retention, Workspaces) and Preferences by its own parts, each once. A
+  # does not list (a workspace's People and Runs, Workspaces) and Preferences by its own
+  # parts, each once: a section is the navigation's entry where both lead to one path. A
   # scope's General is its Settings.
   defp destinations(scope) do
     entries = Layouts.palette_entries(scope)
-    keys = MapSet.new(entries, fn {entry, _path} -> {entry.place, entry.key} end)
+    paths = MapSet.new(entries, fn {_entry, path} -> path end)
 
     Enum.flat_map(entries, fn {entry, _path} = pair ->
-      [pair | after_entry(entry, scope, keys)]
+      [pair | after_entry(entry, scope, paths)]
     end)
   end
 
-  defp after_entry(%Entry{section: :foot, place: place}, scope, keys)
+  defp after_entry(%Entry{section: :foot, place: place}, scope, paths)
        when place in [:workspace, :organisation] do
     for %Entry{} = section <- SettingsComponents.sections(scope, place),
         section.key not in [:general, :organisation],
-        not MapSet.member?(keys, {place, settings_key(section.key)}),
-        do:
-          {%{section | section: :settings, place: place},
-           Entry.path(section, scope.organisation, scope.workspace)}
+        path = Entry.path(section, scope.organisation, scope.workspace),
+        not MapSet.member?(paths, path),
+        do: {%{section | section: :settings, place: place}, path}
   end
 
   defp after_entry(%Entry{key: :user_preferences}, _scope, _keys) do
@@ -134,11 +134,7 @@ defmodule ApiaryWeb.JumpController do
     ]
   end
 
-  defp after_entry(_entry, _scope, _keys), do: []
-
-  # The settings' People is the navigation's members.
-  defp settings_key(:people), do: :members
-  defp settings_key(key), do: key
+  defp after_entry(_entry, _scope, _paths), do: []
 
   # Entries of the same name in two scopes say whose they are: a workspace's Overview,
   # Settings and Policy, an organisation's, and an edition's entry by its `long_label`; a
@@ -171,7 +167,7 @@ defmodule ApiaryWeb.JumpController do
     do: gettext("members users invitations")
 
   defp also(%Entry{key: :audit_log}), do: gettext("activity history")
-  defp also(%Entry{key: :retention}), do: gettext("prune keep")
+  defp also(%Entry{key: :runs, section: :settings}), do: gettext("retention prune keep")
   defp also(%Entry{key: :secrets}), do: gettext("secret variable environment token value")
   defp also(%Entry{key: :theme}), do: gettext("dark light appearance")
   defp also(%Entry{section: :foot}), do: gettext("general name slug")

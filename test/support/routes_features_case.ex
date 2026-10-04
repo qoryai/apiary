@@ -34,6 +34,7 @@ defmodule ApiaryWeb.RoutesFeaturesCase do
     ApiaryWeb.NodeLive.Index,
     ApiaryWeb.NodeLive.Show,
     ApiaryWeb.MemberLive.Index,
+    ApiaryWeb.MemberLive.Workspace,
     ApiaryWeb.SettingsLive,
     ApiaryWeb.ActivityLive,
     ApiaryWeb.UserLive.Organisations,

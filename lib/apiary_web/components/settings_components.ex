@@ -11,8 +11,9 @@ defmodule ApiaryWeb.SettingsComponents do
     (`ApiaryWeb.ActivityLive`), then the edition's sections
     (`c:ApiaryWeb.Edition.settings_tabs/1`), each a page of the edition's own.
   - A workspace's (`/:org/:workspace/settings/…`): General (its name, and deleting it),
-    Access keys, Retention, and, with the `security` feature, Secrets and variables
-    (`ApiaryWeb.SecretLive.Index`).
+    People (who reaches it, and at what level: read here, managed in the organisation's
+    People), Access keys, Runs (how long it keeps runs, their events and their logs), and,
+    with the `security` feature, Secrets and variables (`ApiaryWeb.SecretLive.Index`).
   - A node's (`/:org/:workspace/nodes/:node_id/settings`), the last tab of the node's page
     (`ApiaryWeb.NodeLive.Show`): General (its name, a pool's instance limit, and deleting
     it).
@@ -99,6 +100,13 @@ defmodule ApiaryWeb.SettingsComponents do
       },
       %Entry{
         section: :main,
+        key: :people,
+        label: gettext("People"),
+        icon: "hero-users",
+        path: ~p"/#{organisation}/#{workspace}/settings/people"
+      },
+      %Entry{
+        section: :main,
         key: :keys,
         label: gettext("Access keys"),
         icon: "hero-key",
@@ -107,10 +115,10 @@ defmodule ApiaryWeb.SettingsComponents do
       },
       %Entry{
         section: :main,
-        key: :retention,
-        label: gettext("Retention"),
+        key: :runs,
+        label: gettext("Runs"),
         icon: "hero-archive-box",
-        path: ~p"/#{organisation}/#{workspace}/settings/retention"
+        path: ~p"/#{organisation}/#{workspace}/settings/runs"
       },
       Access.can?(scope, :"secret.read", workspace) &&
         %Entry{
