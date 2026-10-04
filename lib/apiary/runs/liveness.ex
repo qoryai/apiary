@@ -178,9 +178,9 @@ defmodule Apiary.Runs.Liveness do
 
   @doc """
   mark/2 marks the runs of `query` lost as of `now`, in one `UPDATE … WHERE`, and returns
-  them as they are now. It broadcasts nothing: the caller does, once what it is part of
-  has committed (`Apiary.Runs.broadcast_changed/1`). The check marks the runs its rules
-  find; Clear instance (`Apiary.Nodes.clear_instance/3`) the runs alive on an instance.
+  them as they are now. It broadcasts nothing: the caller broadcasts each run once what
+  it is part of has committed. The check marks the runs its rules find; Clear instance
+  (`Apiary.Nodes.clear_instance/3`) the open runs of an instance.
   """
   @spec mark(Ecto.Queryable.t(), DateTime.t()) :: [Run.t()]
   def mark(query, %DateTime{} = now) do
