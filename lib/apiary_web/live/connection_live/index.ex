@@ -37,10 +37,6 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   the most recent connection of the destination in the chosen scope, and what the domain
   refuses is said in its sentence.
 
-  A target's page shows the same content in its Network access tab, with the target fixed
-  (`fix_target/3`): its own path, no Target section, token or rail, and the target in every
-  query.
-
   The rows are the record (`observability`); the rules are `security`'s. On an instance
   without `security` the page is the record alone: no Reason column (which rule matched,
   in which mode), no Allow or Deny, no popover, no link to a policy, and the policy is
@@ -117,15 +113,10 @@ defmodule ApiaryWeb.ConnectionLive.Index do
     """
   end
 
-  @doc """
-  content/1 is the page's content under its header: the views, the query, the menus and
-  the tokens, the rail, the destinations and their pages, and the rule's popover. A
-  target's page renders it in its Network access tab, where "New activity" leads it.
-  """
-  def content(assigns) do
+  # The page's content under its header: the views, the query, the menus and the tokens,
+  # the rail, the destinations and their pages, and the rule's popover.
+  defp content(assigns) do
     ~H"""
-    <.new_status :if={@page_base.fixed} stale={@stale} />
-
     <.notice :if={@load_error} kind={:error} class="max-w-[80ch]">
       <span id="connections-error">
         {gettext(
@@ -170,10 +161,9 @@ defmodule ApiaryWeb.ConnectionLive.Index do
         />
         <.filter_menu
           id="connections-filter"
-          count={filter_count(loose(@filters, @page_base))}
+          count={filter_count(@filters)}
         >
           <:section
-            :if={!@page_base.fixed}
             key="target"
             label={gettext("Target")}
             icon="hero-folder"
@@ -270,9 +260,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
 
       <.filter_tokens
         id="connections-tokens"
-        clear={
-          narrowed?(loose(@filters, @page_base)) && page_path(@page_base, Filters.clear(@filters))
-        }
+        clear={narrowed?(@filters) && page_path(@page_base, Filters.clear(@filters))}
       >
         <:token
           :for={token <- tokens(@page_base, @filters, @shared)}
@@ -287,7 +275,6 @@ defmodule ApiaryWeb.ConnectionLive.Index do
 
       <div class="q-with-rail">
         <.target_rail
-          :if={!@page_base.fixed}
           id="connections-rail"
           label={gettext("Targets")}
           heading={gettext("Most destinations")}
@@ -302,7 +289,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           <%!-- Always there, so a screen reader hears what a view or a filter left. --%>
           <div id="connections-status" role="status" class="q-status">
             <p
-              :if={@listing && @listing.rows != [] && narrowed?(loose(@filters, @page_base))}
+              :if={@listing && @listing.rows != [] && narrowed?(@filters)}
               id="connections-summary"
               class="q-matchline"
             >
@@ -323,7 +310,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
               } />
             </p>
             <p :if={@listing && @listing.rows == []} class="sr-only">
-              {empty_title(loose(@filters, @page_base))}
+              {empty_title(@filters)}
             </p>
           </div>
 
@@ -373,11 +360,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           <.connections_table
             :if={@listing && @listing.rows != []}
             id="destinations"
-            label={
-              if @page_base.fixed,
-                do: gettext("Network access of this target"),
-                else: gettext("Network access of this workspace")
-            }
+            label={gettext("Network access of this workspace")}
             variant="workspace"
             rows={@listing.rows}
             row_id={&destination_id/1}
@@ -390,12 +373,12 @@ defmodule ApiaryWeb.ConnectionLive.Index do
 
           <.empty_state
             :if={@listing && @listing.rows == []}
-            icon={if !narrowed?(loose(@filters, @page_base)), do: "hero-arrows-right-left"}
+            icon={if !narrowed?(@filters), do: "hero-arrows-right-left"}
             tone="neutral"
-            title={empty_title(loose(@filters, @page_base))}
+            title={empty_title(@filters)}
           >
             <span id="connections-empty">
-              {if narrowed?(loose(@filters, @page_base)),
+              {if narrowed?(@filters),
                 do: gettext("No destination matches them in this range."),
                 else:
                   gettext(
@@ -411,7 +394,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
                 {gettext("Remove %{token}", token: "#{token.qualifier}:#{token.value}")}
               </.button>
               <.button
-                :if={narrowed?(loose(@filters, @page_base))}
+                :if={narrowed?(@filters)}
                 id="connections-clear"
                 patch={page_path(@page_base, Filters.clear(@filters))}
               >
@@ -516,17 +499,9 @@ defmodule ApiaryWeb.ConnectionLive.Index do
        own: [],
        policy_flush_scheduled: false,
        security: security,
-       page_base: %{path: ~p"/#{scope.organisation}/#{scope.workspace}/network", fixed: nil}
+       page_base: %{path: ~p"/#{scope.organisation}/#{scope.workspace}/network"}
      )}
   end
-
-  @doc """
-  fix_target/3 makes the page a target's: its links lead to `path`, the target's
-  Network access tab, and every query keeps `{system, path}`, which the parameters the tab
-  hands `handle_params/3` carry. The target's page has no rail to read.
-  """
-  def fix_target(socket, path, {system, target_path}) when is_binary(path),
-    do: assign(socket, :page_base, %{path: path, fixed: {system, target_path}})
 
   @impl true
   def handle_params(params, _uri, socket) do
@@ -849,7 +824,6 @@ defmodule ApiaryWeb.ConnectionLive.Index do
     %{current_scope: scope, filters: filters, open: open, security: security} = socket.assigns
     facets_opts = [narrow: socket.assigns.narrow, limits: socket.assigns.limits]
     rail_opts = rail_opts(socket)
-    rail? = is_nil(socket.assigns.page_base.fixed)
 
     if connected?(socket) do
       start_async(socket, :load, fn ->
@@ -876,8 +850,7 @@ defmodule ApiaryWeb.ConnectionLive.Index do
           filters: filters,
           listing: listing,
           views: Runs.destination_views(scope, filters, now),
-          rail:
-            if(rail?, do: Runs.destination_target_counts(scope, filters, [now: now] ++ rail_opts)),
+          rail: Runs.destination_target_counts(scope, filters, [now: now] ++ rail_opts),
           shared: Runs.shared_paths(scope),
           facets: Runs.destination_facets(scope, filters, [now: now] ++ facets_opts),
           open: open,
@@ -1362,11 +1335,9 @@ defmodule ApiaryWeb.ConnectionLive.Index do
     ]
   end
 
-  # The filters as tokens in the query field; the decision is the view's, and a target's
-  # page has no token for its own target.
+  # The filters as tokens in the query field; the decision is the view's.
   defp tokens(base, filters, shared) do
     filters
-    |> loose(base)
     |> Filters.tokens(except: [:decision], target_text: &target_text(&1, shared))
     |> Enum.map(fn token ->
       %{
@@ -1427,15 +1398,11 @@ defmodule ApiaryWeb.ConnectionLive.Index do
   defp sort_name("runs"), do: gettext("most runs first")
   defp sort_name("attempts"), do: gettext("most attempts first")
 
-  # The page's path with the filters, less the target when the page is a target's.
-  defp page_path(%{path: path, fixed: fixed}, %Filters{} = filters) do
-    params = Filters.to_params(if fixed, do: %{filters | target: nil}, else: filters)
+  # The page's path with the filters.
+  defp page_path(%{path: path}, %Filters{} = filters) do
+    params = Filters.to_params(filters)
     if params == %{}, do: path, else: path <> "?" <> URI.encode_query(params)
   end
-
-  # The filters as the reader chose them: without the target a target's page fixes.
-  defp loose(%Filters{} = filters, %{fixed: nil}), do: filters
-  defp loose(%Filters{} = filters, %{fixed: _fixed}), do: %{filters | target: nil}
 
   defp run_path(scope, run),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.run_id}/network"

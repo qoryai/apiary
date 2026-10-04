@@ -1692,6 +1692,15 @@
   .q-nav-item[aria-current="page"] .q-nav-icon {
     color: var(--color-accent);
   }
+  /* A pinned target whose page this is: the place within Targets, which stays the
+     current entry. Its words and its icon say so, not its row. */
+  .q-nav-item[aria-current="location"] {
+    color: var(--color-base-content);
+    font-weight: 600;
+  }
+  .q-nav-item[aria-current="location"] .q-nav-icon {
+    color: var(--color-accent);
+  }
   .q-nav-text {
     min-width: 0;
     overflow: hidden;

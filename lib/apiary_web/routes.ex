@@ -359,7 +359,7 @@ defmodule ApiaryWeb.Routes do
               live "/runs", RunLive.Index, :index
               live "/network", ConnectionLive.Index, :index
               # The targets the workspace's runs changed, and one target's page: its path
-              # is the glob, its tabs follow a `-` segment (`…/-/runs`), and a tab's own
+              # is the glob, its tabs follow a `-` segment (`…/-/policy`), and a tab's own
               # paths follow the tab (`…/-/policy/history`).
               live "/targets", TargetLive.Index, :index
               live "/targets/:system/*path", TargetLive.Show, :show

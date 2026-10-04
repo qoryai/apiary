@@ -284,7 +284,7 @@ defmodule ApiaryWeb.Layouts do
   attr :target, :string,
     default: nil,
     doc:
-      "the id of the target the page is about: its entry under Pinned, when it is pinned, is the current one"
+      "the id of the target the page is about: its entry under Pinned, when it is pinned, is marked as the place within Targets, which stays the current entry"
 
   slot :crumb,
     doc: "the breadcrumb's segments after the workspace: a target, a record; the last is the page" do
@@ -1139,7 +1139,7 @@ defmodule ApiaryWeb.Layouts do
             :for={{entry, path} <- items}
             entry={entry}
             path={path}
-            current={@nav == entry.key and not Enum.any?(@pins, &(&1.id == @target))}
+            current={@nav == entry.key}
             counts={@counts}
           />
         </nav>
@@ -1155,7 +1155,7 @@ defmodule ApiaryWeb.Layouts do
             :for={pin <- @pins}
             id={"nav-pin-#{pin.id}"}
             navigate={pin.href}
-            aria-current={pin.id == @target && "page"}
+            aria-current={pin.id == @target && "location"}
             class="q-nav-item"
             title={"#{pin.system}/#{pin.path}"}
             phx-mounted={JS.ignore_attributes(["title"])}
