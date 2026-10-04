@@ -1735,7 +1735,7 @@ defmodule ApiaryWeb.OverviewComponents do
           </:step>
           <:step title={gettext("Paste the server block into the runner file")}>
             {gettext(
-              "The secret is shown once, in the dialog that creates it. One key can serve many hosts: a pool of ephemeral instances shares one."
+              "The secret is shown once, on the page that creates it. One key can serve many hosts: a pool of ephemeral instances shares one."
             )}
           </:step>
           <:step title={gettext("See runs here")}>

@@ -50,7 +50,7 @@ window.addEventListener("DOMContentLoaded", () => {
 })
 
 // Buttons with a gerund (`data-busy`) show it while their form submits. The
-// button may sit outside the form (a modal footer), so the form's loading
+// button may sit outside the form (its `form` attribute), so the form's loading
 // class cannot reach it from CSS.
 const busyButtons = form => {
   const inside = [...form.querySelectorAll(".btn[data-busy]:not([type=button])")]

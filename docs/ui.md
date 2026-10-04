@@ -92,7 +92,37 @@ belongs to.
 - **Landmarks.** A Skip to content link is the first thing in the tab order and targets
   the one `<main id="main">`. A page has one `<h1>`, the title of its `<.header>`, which
   also holds a one-line description and at most one primary and one default action. Card
-  and modal titles are `<h2>`.
+  titles are `<h2>`.
+
+## No modals
+
+Nothing opens over a page but **Search or jump to**, the palette (above), the one overlay
+the console keeps. Every other act happens on a page, in place:
+
+- **A form is a page** of its section at a path of its own, never a dialog over a list:
+  New secret, New variable, New access key, Invite people, New node, an export. Its
+  breadcrumb ends with the section and the page; its title is the act and what it acts
+  on, with one sentence under it; its form fills the 720 px column, its first field takes
+  the focus, and its foot is the primary button with Cancel back to where it was opened
+  from (`SettingsComponents.save/1`, `cancel`). A save goes back with a flash; a refused
+  one stays, the error under its field. What a save shows once, such as a key's secret,
+  it shows on that page, never again once the reader leaves it. The pattern is Add
+  integration's (storybook, Screens); A form is a page, under Settings, says the rest.
+- **A confirmation is in place** (`<.inline_confirm>`, Components): a row's Delete,
+  Revoke, Rotate, Remove, Suspend or Clear turns that row into the question, "Delete
+  FORGE_TOKEN?", what is lost, "Yes, delete" and Cancel; a danger zone's line expands
+  under its sentence, with the field to type where one is asked; a page's own switch,
+  such as the policy's mode, opens its confirmation under it. Each keeps the path it had,
+  which opens the page with that confirmation showing and never acts by itself; Cancel and
+  Escape go back.
+- **What is undone as easily as it is done acts at once**, with a flash that says what it
+  did: Lock and Unlock of a variable, a plain Remove of a policy rule. It asks in place
+  only when something is lost or set aside.
+- **What only reads** is a page too, or opens in place under its row: the targets that set
+  a variable, the keys of the policy pages (`?`).
+- **Menus, Filter, the switcher and Jump to date** drop down under their button: a
+  disclosure, its button's `aria-expanded` and `aria-controls`, its panel a menu or a
+  named group, closed by Escape or a click elsewhere. They are no dialog either.
 
 ## Settings
 
@@ -201,7 +231,7 @@ Deleting any workspace from Workspaces is confirmed the same way in its row
 (`/:org/settings/workspaces/:workspace_id/delete`): the row shows the confirmation in
 place of its cells, its slug typed to enable Yes, delete, and Cancel gives the row back.
 Every other act on a row of a list (rotate, revoke, remove, suspend, a deletion) is
-confirmed on its row too, each at a path of its own (Confirmations, under Components).
+confirmed on its row too, each at a path of its own (No modals, above).
 The old paths, `/:org/members/…`, `/:org/:workspace/keys/…` and
 `/:org/:workspace/settings/retention`, send on to the new ones
 (`ApiaryWeb.MovedController`).
@@ -253,7 +283,7 @@ by name or the latest change.
   (`/settings/variables/:id/targets`, "Repositories that set NODE_ENV"): each with its own
   value or its value set aside by the lock, found by their path past ten, and Back to the
   variables at its foot. Its row's count of them in the list leads there.
-- **Deletions confirm in place**, on the row they act on (Confirmations, above): Delete
+- **Deletions confirm in place**, on the row they act on (No modals, above): Delete
   secret (`/:id/delete`), Delete value (`…/values/:value_id/delete`) and Delete variable
   (`/:id/delete`) turn the row into "Delete FORGE_TOKEN?", what is lost, Yes, delete and
   Cancel. **Lock and Unlock act at once** from the row's menu, and the flash says what the
@@ -319,8 +349,8 @@ look alike are one level too many, and nothing is boxed inside a row.
   (`<.row_menu>` with `<.menu_item>`s, a heading and dividers between groups), which
   floats in the top layer so the table's scroll region never clips it. A choice of one,
   such as a person's level, is a set of `menuitemradio` items with what each means. A
-  destructive item opens its confirm dialog at a path of its own; red is for that
-  dialog's button only. No bordered button on every row.
+  destructive item asks on its row, at a path of its own (No modals, above); red is for
+  that confirmation's button only. No bordered button on every row.
 - **Columns grow with the table**, not the screen: `from="sm" | "md" | "lg"` shows a
   column from 600, 1000 or 1300 px of the table's own width (a container query), so a
   table in a narrow pane reflows as it would on a narrow screen.
@@ -692,11 +722,14 @@ or an attribute of one, not a copy.
   made is the server's too. A whole number is a text field with `inputmode="numeric"`,
   not `type="number"`, whose value the browser empties when it is not a number.
   `test/apiary_web/novalidate_test.exs` fails for a form without the attribute.
-- **`<.modal>`** is a native `<dialog>` under the `Modal` hook. Escape and the backdrop
-  run its `data-cancel` command, usually a patch back to the page beneath; a dialog
-  without one cannot be dismissed. Focus returns to what opened it. From 640 px it sits
-  near the top over a plain scrim, never a blur, so what it acts on stays legible behind
-  it; while it is open the window's title names it before the page's.
+- **`<.inline_confirm>`** is a confirmation in place (No modals, above): the question,
+  one muted sentence of what happens, the act's button and Cancel, on one line that
+  wraps. Cancel takes the focus as it shows and Escape cancels; both lead back by
+  `cancel`, a patch or a JS command. A table shows one in place of the cells of the row
+  named by `confirming` (`<.table>`'s `confirm` slot), tinted the error's soft colour
+  when its button is red, neutral otherwise. A danger zone's line wraps it with what is
+  lost and the field to type (`SettingsComponents.deletion_confirm/1`). There is no modal
+  component.
 - **Menus** are daisyUI dropdowns under the `Menu` hook: a click opens and leaves focus on
   the trigger; Enter, Space and ArrowDown open and focus the first item, ArrowUp the last;
   the arrows wrap, Home and End go to the ends, Escape closes and returns focus. The items
@@ -832,8 +865,8 @@ inverted.
   word, an error its icon and sentence, a connection in the timeline its glyph and word,
   a destination's denied number the words of its split.
 - **Borders on the page, shadows in the air.** What rests on the page has a 1 px border
-  and at most `shadow-xs`; only what floats (menus, toasts, tooltips, modals, the drawer)
-  has a real shadow.
+  and at most `shadow-xs`; only what floats (menus, toasts, tooltips, the palette, the
+  drawer) has a real shadow.
 
 ## First paint and live pages
 

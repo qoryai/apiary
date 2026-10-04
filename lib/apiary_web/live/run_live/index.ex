@@ -383,7 +383,6 @@ defmodule ApiaryWeb.RunLive.Index do
                       id="runs-jump-button"
                       type="button"
                       class="btn btn-ghost btn-sm"
-                      aria-haspopup="dialog"
                       aria-controls="runs-jump-panel"
                       aria-expanded="false"
                       phx-mounted={JS.ignore_attributes(["aria-expanded"])}
@@ -392,7 +391,7 @@ defmodule ApiaryWeb.RunLive.Index do
                     </button>
                     <div
                       id="runs-jump-panel"
-                      role="dialog"
+                      role="group"
                       aria-label={gettext("Jump to date")}
                       class="dropdown-content q-jumpdate"
                     >

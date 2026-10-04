@@ -222,7 +222,7 @@ defmodule ApiaryWeb.Routes do
             # account) and Preferences.
             live "/users/settings", UserLive.Settings, :edit
             live "/users/settings/preferences", UserLive.Settings, :preferences
-            # The confirmation of deleting one's own account, a modal over Profile.
+            # The confirmation of deleting one's own account, in place in Profile's danger zone.
             live "/users/settings/delete", UserLive.Settings, :delete
             live "/users/settings/confirm-email/:token", UserLive.Settings, :confirm_email
             # A user's organisations: each in use, and those marked for deletion that they
@@ -336,13 +336,13 @@ defmodule ApiaryWeb.Routes do
               live "/settings/people", MemberLive.Index, :index
               live "/settings/people/invite", MemberLive.Index, :invite
               live "/settings/people/:id/remove", MemberLive.Index, :remove
-              # The confirmation of suspending a membership, a modal over the people.
+              # Removing and suspending a membership confirm on the member's row.
               live "/settings/people/:id/suspend", MemberLive.Index, :suspend
               live "/settings/workspaces", SettingsLive, :workspaces
-              # The confirmation of deleting a workspace, a modal over the workspaces.
+              # The confirmation of deleting a workspace, on its row of the workspaces.
               live "/settings/workspaces/:workspace_id/delete", SettingsLive, :delete_workspace
-              # The confirmation of deleting the organisation, a modal over General, whose
-              # danger zone opens it; the second path opens the same.
+              # The confirmation of deleting the organisation, in place in General's danger
+              # zone, which opens it; the second path opens the same.
               live "/settings/danger", SettingsLive, :danger
               live "/settings/delete", SettingsLive, :delete_organisation
               # The organisation's audit trail, a section of its settings, for the readers
@@ -383,7 +383,7 @@ defmodule ApiaryWeb.Routes do
               live "/runs/:run_id/details", RunLive.Show, :details
               # The security policy: the workspace's baseline; a target's view of it is
               # the Policy tab of the target's page. Tabs, filters, the opened change, the
-              # compared version and the export modal are in the URL.
+              # compared version and the export page are in the URL.
               live "/policy", PolicyLive.Show, :rules
               live "/policy/targets", PolicyLive.Show, :targets
               live "/policy/history", PolicyLive.Show, :history
@@ -428,8 +428,8 @@ defmodule ApiaryWeb.Routes do
               live "/settings/variables/:id/unlock", SecretLive.Index, :unlock_variable
               live "/settings/variables/:id/delete", SecretLive.Index, :delete_variable
               live "/settings/variables/:id/targets", SecretLive.Index, :variable_targets
-              # The confirmation of deleting this workspace, a modal over General, whose
-              # danger zone opens it; the second path opens the same.
+              # The confirmation of deleting this workspace, in place in General's danger
+              # zone, which opens it; the second path opens the same.
               live "/settings/danger", SettingsLive, :workspace_danger
               live "/settings/delete", SettingsLive, :delete_this_workspace
             end

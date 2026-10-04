@@ -9,7 +9,7 @@ defmodule ApiaryWeb.RefusalsRows do
       admin           an admin of the organisation
       removed_member  a member whose page was opened, and who was removed from the
                       organisation before the event
-      demoted_admin   an admin whose page was opened, a modal or a dialog of an admin's
+      demoted_admin   an admin whose page was opened, a page or a confirmation of an admin's
                       included, and who was made a member before the event, as a demotion
                       leaves them
       demoted_owner   an owner whose page was opened, and who was made an admin before
@@ -105,7 +105,7 @@ defmodule ApiaryWeb.RefusalsRows do
       {:"member.suspend", :owner, "/:org/settings/people/:other_member/suspend", "suspend", %{},
        meanwhile: {:level, :other_member, :owner}},
 
-      # The settings, and their deletion modals.
+      # The settings, and their deletions' confirmations.
       {:"organisation.rename", :member, "/:org/settings", "save_organisation",
        %{"organisation" => %{"name" => "Renamed"}}},
       # An organisation the person does not reach answers 404 before any page opens.
@@ -134,8 +134,8 @@ defmodule ApiaryWeb.RefusalsRows do
        %{"confirm" => %{"slug" => :workspace_b}}},
       {:"workspace.delete", :demoted_admin, "/:org/settings/workspaces/:workspace_b_id/delete",
        "delete_workspace", %{"confirm" => %{"slug" => :workspace_b}}},
-      # This organisation's workspace, in a deletion's modal of another organisation's
-      # path: the modal does not open, and the page says it cannot be deleted there.
+      # This organisation's workspace, in a deletion's confirmation of another organisation's
+      # path: the confirmation does not open, and the page says it cannot be deleted there.
       {:"workspace.delete", :other_owner,
        "/:other_org/settings/workspaces/:workspace_b_id/delete", "delete_workspace",
        %{"confirm" => %{"slug" => :workspace_b}}, answer: :refused_at_mount},
@@ -213,7 +213,7 @@ defmodule ApiaryWeb.RefusalsRows do
        "rotate", %{}},
       {:"access_key.rotate", :removed_member, "/:org/:workspace/settings/keys", "retire_confirm",
        %{}, prelude: [{"retire", %{"id" => :key}}]},
-      # Without the key's modal open, from a member, who may rotate and revoke keys: a
+      # Without the key's confirmation open, from a member, who may rotate and revoke keys: a
       # second click, and the list is shown again.
       {:"access_key.rotate", :member, "/:org/:workspace/settings/keys", "rotate", %{},
        answer: :ignored},
@@ -223,7 +223,7 @@ defmodule ApiaryWeb.RefusalsRows do
        answer: :ignored},
       {:"access_key.revoke_secret_key", :removed_member,
        "/:org/:workspace/settings/keys/:key/revoke", "revoke", %{}},
-      # The key's modal is a path: another organisation's key is a 404 as the page opens.
+      # The key's confirmation is a path: another organisation's key is a 404 as the page opens.
       {:"access_key.rotate", :other_owner, "/:other_org/:other_ws/settings/keys/:key/rotate",
        "rotate", %{}, answer: :not_found_at_mount},
       {:"access_key.rotate", :other_owner, "/:other_org/:other_ws/settings/keys", "retire",

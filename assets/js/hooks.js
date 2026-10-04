@@ -3,7 +3,6 @@
 // this collection to register the same ones beside its own. `autoDismiss` is the toasts'
 // timer, which app.js also runs for a page a controller rendered.
 import {CopyToClipboard} from "./hooks/copy_to_clipboard"
-import {Modal} from "./hooks/modal"
 import {Menu} from "./hooks/menu"
 import {NavDrawer} from "./hooks/nav_drawer"
 import {Switcher} from "./hooks/switcher"
@@ -24,7 +23,6 @@ export {autoDismiss}
 
 export const hooks = {
   CopyToClipboard,
-  Modal,
   Menu,
   NavDrawer,
   Switcher,
