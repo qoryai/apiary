@@ -4,8 +4,12 @@ defmodule ApiaryWeb.SecretLive.Index do
   (`ApiaryWeb.SettingsComponents`) with the `security` feature: two views of one page,
   Secrets (`/:org/:workspace/settings/secrets`) and Variables (`…/settings/variables`),
   each a list on the list pattern (a search, a Filter menu, Sort, the filters in force as
-  tokens, all in the URL; `ApiaryWeb.SecretLive.Query`), and each change a dialog over
-  its view at a path of its own.
+  tokens, all in the URL; `ApiaryWeb.SecretLive.Query`). Each change is at a path of its
+  own: a form is a page of the section, as Add integration is (its title, one sentence,
+  the form in the section's column, its button and Cancel back to the view, the
+  breadcrumb ending with the section and the page); a confirmation (a deletion, a lock,
+  an unlock) is a small dialog over its view, and so is the list of a variable's
+  targets.
 
   - **Secrets** (`Apiary.Secrets`): a secret's name, its value ids, who changed each
     value and when, and what uses it; never a value. New secret, then Add value, Change
@@ -19,7 +23,7 @@ defmodule ApiaryWeb.SecretLive.Index do
     (`Apiary.Variables.repository_overrides/1`). New variable, Change value, Lock and
     Unlock, Delete variable, and the repositories of a variable. A name beginning
     `QORY_` is refused by the context; any other name on the runner's deny list is
-    saved, and the dialog warns (`Apiary.Variables.Denied`).
+    saved, and the page warns (`Apiary.Variables.Denied`).
 
   Every member reads both views; owners and admins change them (`secret.write`,
   `variable.edit`), and a reader who may not sees the page without its controls, and
@@ -53,10 +57,49 @@ defmodule ApiaryWeb.SecretLive.Index do
     :variable_targets
   ]
 
+  # The changes that are a form, each a page of the section; the rest are confirmations,
+  # small dialogs over their view.
+  @pages [:new_secret, :add_value, :change_value, :rename_value, :new_variable, :change_variable]
+
   # Past this many repositories, a variable's list of them has a search.
   @find_from 10
 
   @impl true
+  # A form is a page of the section, as Add integration is: the section's list beside it,
+  # the breadcrumb ending with the section and the page, its title, one sentence, the
+  # form in the section's column, its button and Cancel back to the view.
+  def render(%{dialog: dialog} = assigns) when dialog in @pages do
+    ~H"""
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      memberships={@memberships}
+      counts={@nav_counts}
+      nav={:settings}
+    >
+      <:crumb navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/settings"}>
+        {gettext("Settings")}
+      </:crumb>
+      <:crumb navigate={list_path(@current_scope, @view, @query)}>
+        {gettext("Secrets and variables")}
+      </:crumb>
+      <:crumb>{crumb_words(@dialog)}</:crumb>
+
+      <SettingsComponents.layout
+        scope={@current_scope}
+        counts={@nav_counts}
+        kind={:workspace}
+        sections={@sections}
+        current={:secrets}
+        title={form_title(assigns)}
+      >
+        <:subtitle>{form_sentence(assigns)}</:subtitle>
+        <.form_page {assigns} />
+      </SettingsComponents.layout>
+    </Layouts.app>
+    """
+  end
+
   def render(assigns) do
     ~H"""
     <Layouts.app
@@ -673,181 +716,247 @@ defmodule ApiaryWeb.SecretLive.Index do
     """
   end
 
-  ## The secrets' dialogs
+  ## The pages of a form
 
-  defp secret_dialog(%{dialog: :new_secret} = assigns) do
+  defp form_page(%{dialog: :new_secret} = assigns) do
     ~H"""
-    <.modal
-      id="secret-dialog"
-      title={gettext("New secret")}
-      on_cancel={JS.patch(list_path(@current_scope, :secrets, @query))}
-    >
-      <.form
-        for={@form}
-        id="secret-form"
-        phx-submit="create_secret"
-        class="grid gap-4"
-        novalidate
-      >
-        <.input
-          field={@form[:name]}
-          label={gettext("Name")}
-          placeholder="FORGE_TOKEN"
-          hint={gettext("Letters, digits and _, starting with a letter or _.")}
-          autocomplete="off"
-          spellcheck="false"
-          class="font-mono"
-        />
-        <.value_field form={@form} />
-        <.input
-          field={@form[:value_id]}
-          label={gettext("Value ID")}
-          optional
-          placeholder="main-app"
-          hint={
-            gettext("Only for a secret that will hold several values: a lowercase name for this one.")
-          }
-          autocomplete="off"
-          spellcheck="false"
-          class="font-mono"
-        />
-        <.input
-          field={@form[:note]}
-          label={gettext("What it is for")}
-          optional
-          autocomplete="off"
-        />
-      </.form>
-      <:footer>
-        <.button patch={list_path(@current_scope, :secrets, @query)}>{gettext("Cancel")}</.button>
-        <.button variant="primary" type="submit" form="secret-form" loading_text={gettext("Saving")}>
+    <.form for={@form} id="secret-form" phx-submit="create_secret" class="grid gap-4" novalidate>
+      <.input
+        field={@form[:name]}
+        label={gettext("Name")}
+        placeholder="FORGE_TOKEN"
+        hint={gettext("Letters, digits and _, starting with a letter or _.")}
+        autocomplete="off"
+        spellcheck="false"
+        class="font-mono"
+        phx-mounted={JS.focus()}
+      />
+      <.value_field form={@form} />
+      <.input
+        field={@form[:value_id]}
+        label={gettext("Value ID")}
+        optional
+        placeholder="main-app"
+        hint={
+          gettext("Only for a secret that will hold several values: a lowercase name for this one.")
+        }
+        autocomplete="off"
+        spellcheck="false"
+        class="font-mono"
+      />
+      <.input field={@form[:note]} label={gettext("What it is for")} optional autocomplete="off" />
+      <SettingsComponents.save id="secret-save" cancel={list_path(@current_scope, :secrets, @query)}>
+        <.button variant="primary" type="submit" loading_text={gettext("Saving")}>
           {gettext("Save secret")}
         </.button>
-      </:footer>
-    </.modal>
+      </SettingsComponents.save>
+    </.form>
     """
   end
 
-  defp secret_dialog(%{dialog: :add_value} = assigns) do
+  defp form_page(%{dialog: :add_value} = assigns) do
     assigns =
       assign(assigns, :unnamed, Enum.any?(assigns.secret.values, &is_nil(&1.value_id)))
 
     ~H"""
-    <.modal
-      id="secret-dialog"
-      title={gettext("Add a value to %{name}", name: @secret.name)}
-      on_cancel={JS.patch(list_path(@current_scope, :secrets, @query))}
-    >
-      <p class="text-muted">
-        {gettext(
-          "A secret with several values names each one with a value ID, and what uses the secret chooses one of them."
-        )}
-      </p>
-      <.form
-        for={@form}
-        id="secret-form"
-        phx-submit="add_value"
-        class="grid gap-4"
-        novalidate
-      >
-        <.input
-          :if={@unnamed}
-          field={@form[:first_value_id]}
-          label={gettext("Value ID of the value it holds now")}
-          placeholder="main-app"
-          autocomplete="off"
-          spellcheck="false"
-          class="font-mono"
-        />
-        <.input
-          field={@form[:value_id]}
-          label={gettext("Value ID of the new value")}
-          placeholder="bot-app"
-          hint={gettext("Lowercase letters, digits, ., _ and -.")}
-          autocomplete="off"
-          spellcheck="false"
-          class="font-mono"
-        />
-        <.value_field form={@form} />
-      </.form>
-      <:footer>
-        <.button patch={list_path(@current_scope, :secrets, @query)}>{gettext("Cancel")}</.button>
-        <.button variant="primary" type="submit" form="secret-form" loading_text={gettext("Saving")}>
+    <.form for={@form} id="secret-form" phx-submit="add_value" class="grid gap-4" novalidate>
+      <.input
+        :if={@unnamed}
+        field={@form[:first_value_id]}
+        label={gettext("Value ID of the value it holds now")}
+        placeholder="main-app"
+        autocomplete="off"
+        spellcheck="false"
+        class="font-mono"
+        phx-mounted={JS.focus()}
+      />
+      <.input
+        field={@form[:value_id]}
+        label={gettext("Value ID of the new value")}
+        placeholder="bot-app"
+        hint={gettext("Lowercase letters, digits, ., _ and -.")}
+        autocomplete="off"
+        spellcheck="false"
+        class="font-mono"
+        phx-mounted={!@unnamed && JS.focus()}
+      />
+      <.value_field form={@form} />
+      <SettingsComponents.save id="secret-save" cancel={list_path(@current_scope, :secrets, @query)}>
+        <.button variant="primary" type="submit" loading_text={gettext("Saving")}>
           {gettext("Add value")}
         </.button>
-      </:footer>
-    </.modal>
+      </SettingsComponents.save>
+    </.form>
     """
   end
 
-  defp secret_dialog(%{dialog: :change_value} = assigns) do
+  defp form_page(%{dialog: :change_value} = assigns) do
     ~H"""
-    <.modal
-      id="secret-dialog"
-      title={
-        if @value.value_id,
-          do: gettext("Change %{value_id} of %{name}", value_id: @value.value_id, name: @secret.name),
-          else: gettext("Change the value of %{name}", name: @secret.name)
-      }
-      on_cancel={JS.patch(list_path(@current_scope, :secrets, @query))}
-    >
-      <p class="text-muted">
-        {gettext(
-          "The value it holds now is not shown. Runs are given the new one from their next start."
-        )}
-      </p>
-      <.form
-        for={@form}
-        id="secret-form"
-        phx-submit="set_value"
-        class="grid gap-4"
-        novalidate
-      >
-        <.value_field form={@form} label={gettext("New value")} />
-      </.form>
-      <:footer>
-        <.button patch={list_path(@current_scope, :secrets, @query)}>{gettext("Cancel")}</.button>
-        <.button variant="primary" type="submit" form="secret-form" loading_text={gettext("Saving")}>
+    <.form for={@form} id="secret-form" phx-submit="set_value" class="grid gap-4" novalidate>
+      <.value_field form={@form} label={gettext("New value")} focus />
+      <SettingsComponents.save id="secret-save" cancel={list_path(@current_scope, :secrets, @query)}>
+        <.button variant="primary" type="submit" loading_text={gettext("Saving")}>
           {gettext("Change value")}
         </.button>
-      </:footer>
-    </.modal>
+      </SettingsComponents.save>
+    </.form>
     """
   end
 
-  defp secret_dialog(%{dialog: :rename_value} = assigns) do
+  defp form_page(%{dialog: :rename_value} = assigns) do
     ~H"""
-    <.modal
-      id="secret-dialog"
-      title={gettext("Rename %{value_id} of %{name}", value_id: @value.value_id, name: @secret.name)}
-      on_cancel={JS.patch(list_path(@current_scope, :secrets, @query))}
-    >
-      <p class="text-muted">{gettext("The value stays as it is; only its value ID changes.")}</p>
-      <.form
-        for={@form}
-        id="secret-form"
-        phx-submit="rename_value"
-        class="grid gap-4"
-        novalidate
-      >
-        <.input
-          field={@form[:value_id]}
-          label={gettext("Value ID")}
-          hint={gettext("Lowercase letters, digits, ., _ and -.")}
-          autocomplete="off"
-          spellcheck="false"
-          class="font-mono"
-        />
-      </.form>
-      <:footer>
-        <.button patch={list_path(@current_scope, :secrets, @query)}>{gettext("Cancel")}</.button>
-        <.button variant="primary" type="submit" form="secret-form" loading_text={gettext("Saving")}>
+    <.form for={@form} id="secret-form" phx-submit="rename_value" class="grid gap-4" novalidate>
+      <.input
+        field={@form[:value_id]}
+        label={gettext("Value ID")}
+        hint={gettext("Lowercase letters, digits, ., _ and -.")}
+        autocomplete="off"
+        spellcheck="false"
+        class="font-mono"
+        phx-mounted={JS.focus()}
+      />
+      <SettingsComponents.save id="secret-save" cancel={list_path(@current_scope, :secrets, @query)}>
+        <.button variant="primary" type="submit" loading_text={gettext("Saving")}>
           {gettext("Rename value")}
         </.button>
-      </:footer>
-    </.modal>
+      </SettingsComponents.save>
+    </.form>
     """
   end
+
+  defp form_page(%{dialog: :new_variable} = assigns) do
+    ~H"""
+    <.form
+      for={@form}
+      id="variable-form"
+      phx-change="validate_variable"
+      phx-submit="create_variable"
+      class="grid gap-4"
+      novalidate
+    >
+      <.input
+        field={@form[:name]}
+        label={gettext("Name")}
+        placeholder="NPM_REGISTRY"
+        hint={gettext("Letters, digits and _, starting with a letter or _.")}
+        autocomplete="off"
+        spellcheck="false"
+        class="font-mono"
+        phx-mounted={JS.focus()}
+      />
+      <.notice :if={@warning} kind={:warning}>
+        <span id="variable-warning">{@warning}</span>
+      </.notice>
+      <.input
+        field={@form[:value]}
+        label={gettext("Value")}
+        placeholder="https://registry.example.com"
+        hint={gettext("Plain text on one line, shown to every member.")}
+        autocomplete="off"
+        spellcheck="false"
+        class="font-mono"
+      />
+      <.input
+        field={@form[:locked]}
+        type="checkbox"
+        label={gettext("Locked: a target may not set its own value")}
+      />
+      <SettingsComponents.save
+        id="variable-save"
+        cancel={list_path(@current_scope, :variables, @query)}
+      >
+        <.button variant="primary" type="submit" loading_text={gettext("Saving")}>
+          {gettext("Save variable")}
+        </.button>
+      </SettingsComponents.save>
+    </.form>
+    """
+  end
+
+  defp form_page(%{dialog: :change_variable} = assigns) do
+    ~H"""
+    <.form for={@form} id="variable-form" phx-submit="change_variable" class="grid gap-4" novalidate>
+      <.input
+        field={@form[:value]}
+        label={gettext("Value")}
+        hint={gettext("Plain text on one line, shown to every member.")}
+        autocomplete="off"
+        spellcheck="false"
+        class="font-mono"
+        phx-mounted={JS.focus()}
+      />
+      <SettingsComponents.save
+        id="variable-save"
+        cancel={list_path(@current_scope, :variables, @query)}
+      >
+        <.button variant="primary" type="submit" loading_text={gettext("Saving")}>
+          {gettext("Change value")}
+        </.button>
+      </SettingsComponents.save>
+    </.form>
+    """
+  end
+
+  # The page's title, the act and what it acts on.
+  defp form_title(%{dialog: :new_secret}), do: gettext("New secret")
+
+  defp form_title(%{dialog: :add_value, secret: secret}),
+    do: gettext("Add a value to %{name}", name: secret.name)
+
+  defp form_title(%{dialog: :change_value, secret: secret, value: %Value{value_id: nil}}),
+    do: gettext("Change the value of %{name}", name: secret.name)
+
+  defp form_title(%{dialog: :change_value, secret: secret, value: value}),
+    do: gettext("Change %{value_id} of %{name}", value_id: value.value_id, name: secret.name)
+
+  defp form_title(%{dialog: :rename_value, secret: secret, value: value}),
+    do: gettext("Rename %{value_id} of %{name}", value_id: value.value_id, name: secret.name)
+
+  defp form_title(%{dialog: :new_variable}), do: gettext("New variable")
+
+  defp form_title(%{dialog: :change_variable, variable: variable}),
+    do: gettext("Change the value of %{name}", name: variable.name)
+
+  # The breadcrumb's last segment: the act alone.
+  defp crumb_words(:new_secret), do: gettext("New secret")
+  defp crumb_words(:add_value), do: gettext("Add value")
+  defp crumb_words(:change_value), do: gettext("Change value")
+  defp crumb_words(:rename_value), do: gettext("Rename value")
+  defp crumb_words(:new_variable), do: gettext("New variable")
+  defp crumb_words(:change_variable), do: gettext("Change value")
+
+  # The one sentence under the title: what the page does.
+  defp form_sentence(%{dialog: :new_secret}),
+    do:
+      gettext(
+        "A secret holds a value the runs are given, such as a token for a system. Once it is saved, nobody sees it again."
+      )
+
+  defp form_sentence(%{dialog: :add_value}),
+    do:
+      gettext(
+        "A secret with several values names each one with a value ID, and what uses the secret chooses one of them."
+      )
+
+  defp form_sentence(%{dialog: :change_value}),
+    do:
+      gettext(
+        "The value it holds now is not shown. Runs are given the new one from their next start."
+      )
+
+  defp form_sentence(%{dialog: :rename_value}),
+    do: gettext("The value stays as it is; only its value ID changes.")
+
+  defp form_sentence(%{dialog: :new_variable}),
+    do:
+      gettext(
+        "A variable is a plain value a run's process is given, such as the address of a package registry."
+      )
+
+  defp form_sentence(%{dialog: :change_variable}),
+    do: gettext("Runs are given the new value from their next start.")
+
+  ## The secrets' dialogs: confirmations
 
   defp secret_dialog(%{dialog: :delete_value} = assigns) do
     ~H"""
@@ -902,6 +1011,7 @@ defmodule ApiaryWeb.SecretLive.Index do
 
   attr :form, Phoenix.HTML.Form, required: true
   attr :label, :string, default: nil
+  attr :focus, :boolean, default: false, doc: "whether the field takes the focus as it mounts"
 
   # The value of a secret: written, sent once, and never rendered back. The field's
   # value is always empty, whatever the form holds.
@@ -917,106 +1027,12 @@ defmodule ApiaryWeb.SecretLive.Index do
       autocomplete="off"
       spellcheck="false"
       class="font-mono"
+      phx-mounted={@focus && JS.focus()}
     />
     """
   end
 
-  ## The variables' dialogs
-
-  defp variable_dialog(%{dialog: :new_variable} = assigns) do
-    ~H"""
-    <.modal
-      id="variable-dialog"
-      title={gettext("New variable")}
-      on_cancel={JS.patch(list_path(@current_scope, :variables, @query))}
-    >
-      <.form
-        for={@form}
-        id="variable-form"
-        phx-change="validate_variable"
-        phx-submit="create_variable"
-        class="grid gap-4"
-        novalidate
-      >
-        <.input
-          field={@form[:name]}
-          label={gettext("Name")}
-          placeholder="NPM_REGISTRY"
-          hint={gettext("Letters, digits and _, starting with a letter or _.")}
-          autocomplete="off"
-          spellcheck="false"
-          class="font-mono"
-        />
-        <.notice :if={@warning} kind={:warning}>
-          <span id="variable-warning">{@warning}</span>
-        </.notice>
-        <.input
-          field={@form[:value]}
-          label={gettext("Value")}
-          placeholder="https://registry.example.com"
-          hint={gettext("Plain text on one line, shown to every member.")}
-          autocomplete="off"
-          spellcheck="false"
-          class="font-mono"
-        />
-        <.input
-          field={@form[:locked]}
-          type="checkbox"
-          label={gettext("Locked: a target may not set its own value")}
-        />
-      </.form>
-      <:footer>
-        <.button patch={list_path(@current_scope, :variables, @query)}>{gettext("Cancel")}</.button>
-        <.button
-          variant="primary"
-          type="submit"
-          form="variable-form"
-          loading_text={gettext("Saving")}
-        >
-          {gettext("Save variable")}
-        </.button>
-      </:footer>
-    </.modal>
-    """
-  end
-
-  defp variable_dialog(%{dialog: :change_variable} = assigns) do
-    ~H"""
-    <.modal
-      id="variable-dialog"
-      title={gettext("Change the value of %{name}", name: @variable.name)}
-      on_cancel={JS.patch(list_path(@current_scope, :variables, @query))}
-    >
-      <.form
-        for={@form}
-        id="variable-form"
-        phx-submit="change_variable"
-        class="grid gap-4"
-        novalidate
-      >
-        <.input
-          field={@form[:value]}
-          label={gettext("Value")}
-          hint={gettext("Plain text on one line, shown to every member.")}
-          autocomplete="off"
-          spellcheck="false"
-          class="font-mono"
-        />
-      </.form>
-      <:footer>
-        <.button patch={list_path(@current_scope, :variables, @query)}>{gettext("Cancel")}</.button>
-        <.button
-          variant="primary"
-          type="submit"
-          form="variable-form"
-          loading_text={gettext("Saving")}
-        >
-          {gettext("Change value")}
-        </.button>
-      </:footer>
-    </.modal>
-    """
-  end
+  ## The variables' dialogs: confirmations, and the list of a variable's targets
 
   defp variable_dialog(%{dialog: :lock_variable} = assigns) do
     assigns = assign(assigns, :own, count_targets(assigns, :own))
@@ -1260,7 +1276,7 @@ defmodule ApiaryWeb.SecretLive.Index do
   defp variable_path(scope, variable, :delete),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/settings/variables/#{variable.id}/delete"
 
-  ## Mount and the dialogs' paths
+  ## Mount and the paths of the pages and the dialogs
 
   @impl true
   def mount(_params, _session, socket) do
@@ -1345,8 +1361,25 @@ defmodule ApiaryWeb.SecretLive.Index do
         do: assign(socket, :query, Query.from_params(params)),
         else: socket
 
-    {:noreply, open(socket, action, params)}
+    {:noreply, socket |> open(action, params) |> titled()}
   end
+
+  # The browser's title: a page of a form is named by its act, the views by the section.
+  defp titled(%{assigns: %{dialog: dialog}} = socket) when dialog in @pages,
+    do:
+      assign(
+        socket,
+        :page_title,
+        form_title(socket.assigns) <> " · " <> gettext("Workspace settings")
+      )
+
+  defp titled(socket),
+    do:
+      assign(
+        socket,
+        :page_title,
+        gettext("Secrets and variables") <> " · " <> gettext("Workspace settings")
+      )
 
   defp open(socket, action, _params) when action in [:secrets, :variables], do: socket
 
@@ -1355,7 +1388,7 @@ defmodule ApiaryWeb.SecretLive.Index do
       do:
         assign(socket,
           dialog: :new_secret,
-          form: secret_form(Secrets.change_secret(%Secret{}))
+          form: secret_form(fresh(Secrets.change_secret(%Secret{})))
         ),
       else: refused(socket)
   end
@@ -1411,7 +1444,7 @@ defmodule ApiaryWeb.SecretLive.Index do
       do:
         assign(socket,
           dialog: :new_variable,
-          form: variable_form(Variables.change_variable(%Variable{}))
+          form: variable_form(fresh(Variables.change_variable(%Variable{})))
         ),
       else: refused(socket)
   end
@@ -1427,7 +1460,7 @@ defmodule ApiaryWeb.SecretLive.Index do
       assign(socket,
         dialog: :change_variable,
         variable: variable,
-        form: variable_form(Variables.change_variable(variable))
+        form: variable_form(fresh(Variables.change_variable(variable)))
       )
     end)
   end
@@ -1659,7 +1692,9 @@ defmodule ApiaryWeb.SecretLive.Index do
       |> Variables.change_variable(params)
       |> Map.put(:action, :validate)
 
-    {:noreply, assign(socket, form: variable_form(changeset), warning: warning(params["name"]))}
+    # Only what was typed in shows its error, as the reader goes (`used_input?/1`).
+    {:noreply,
+     assign(socket, form: to_form(changeset, as: "variable"), warning: warning(params["name"]))}
   end
 
   def handle_event("create_variable", %{"variable" => params}, socket) when is_map(params) do
@@ -1748,7 +1783,7 @@ defmodule ApiaryWeb.SecretLive.Index do
 
   ## After a change, and its refusals
 
-  # Saved: the list read again, the dialog closed, the field gone with it.
+  # Saved: the list read again, back on the view, the page and its field gone.
   defp saved(socket, words, view \\ :secrets) do
     socket
     |> put_flash(:info, words)
@@ -1905,6 +1940,9 @@ defmodule ApiaryWeb.SecretLive.Index do
   end
 
   defp variable_form(%Ecto.Changeset{} = changeset), do: to_form(used(changeset), as: "variable")
+
+  # A form as its page opens: nothing is typed yet, so nothing is wrong yet.
+  defp fresh(%Ecto.Changeset{} = changeset), do: %{changeset | errors: [], valid?: true}
 
   # A field with an error is a used one, so the error shows under it, however the
   # changeset came to have it: a context's check adds an error to a changeset that may

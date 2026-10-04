@@ -2925,6 +2925,7 @@ msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/live/access_key_live/index.ex
 #: lib/apiary_web/live/member_live/index.ex
 #: lib/apiary_web/live/node_live/index.ex
@@ -8324,6 +8325,11 @@ msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
+msgid "Runs are given the new value from their next start."
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
 msgid "Runs are no longer given the workspace's value of %{name}. A target that sets its own keeps it. This cannot be undone."
 msgstr ""
 
@@ -8613,6 +8619,7 @@ msgstr ""
 #: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/organisation_live.ex
+#: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Settings"
 msgstr ""

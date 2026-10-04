@@ -255,7 +255,11 @@ defmodule ApiaryWeb.Storybook.Screens.AddIntegration do
         </p>
       </SettingsComponents.part>
 
-      <SettingsComponents.save>
+      <SettingsComponents.save
+        id="add-save"
+        cancel={Mockup.path("integrations", :all, @theme)}
+        cancel_by="href"
+      >
         <.button variant="primary" href={Mockup.path("integrations", :all, @theme)}>
           Add {@found.name}
         </.button>

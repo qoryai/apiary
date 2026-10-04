@@ -58,7 +58,7 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
 
   defp refute_value(html), do: refute(html =~ @value)
 
-  # A dialog's path the page refuses as it opens: back to the list, with why.
+  # A page's or a dialog's path the page refuses as it opens: back to the list, with why.
   defp refused_at(conn, path) do
     assert {:error, {:live_redirect, %{flash: flash, to: to}}} = live(conn, path)
     refute String.contains?(to, ["/new", "/delete", "/change", "/lock", "/rename"])
@@ -94,7 +94,21 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
 
       lv |> element("#new-secret") |> render_click()
       assert_patch(lv, secrets_path(scope, "/new"))
-      assert has_element?(lv, "#secret-dialog textarea[name='secret[value]']")
+
+      # A page of the section, not a dialog over the list: the section's list beside it,
+      # the breadcrumb ending with the section and the page, Cancel back to the list.
+      refute has_element?(lv, "#secret-dialog")
+      refute has_element?(lv, "#secrets")
+      assert has_element?(lv, "#settings-tab-secrets[aria-current=page]")
+      assert has_element?(lv, "#settings-section-title", "New secret")
+      assert has_element?(lv, "#breadcrumb a", "Secrets and variables")
+      assert has_element?(lv, "#breadcrumb [aria-current=page]", "New secret")
+      assert has_element?(lv, "#secret-form textarea[name='secret[value]']")
+      assert has_element?(lv, "#secret-save-cancel[href='#{secrets_path(scope)}']", "Cancel")
+      assert page_title(lv) =~ "New secret"
+
+      # The form sends nothing until it is submitted: a value travels only then.
+      refute lv |> element("#secret-form") |> render() =~ "phx-change"
 
       html =
         lv
@@ -108,7 +122,7 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       html = render(lv)
       refute_value(html)
       assert html =~ "FORGE_TOKEN is saved."
-      refute has_element?(lv, "#secret-dialog")
+      refute has_element?(lv, "#secret-form")
 
       [secret] = secrets(scope)
       assert reveal(scope, secret) == {:ok, @value}
@@ -120,8 +134,14 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       lv |> element("#new-secret") |> render_click()
       refute_value(render(lv))
 
-      assert lv |> element("#secret-dialog textarea[name='secret[value]']") |> render() =~
+      assert lv |> element("#secret-form textarea[name='secret[value]']") |> render() =~
                "></textarea>"
+
+      # Cancel goes back to the list, saving nothing.
+      lv |> element("#secret-save-cancel") |> render_click()
+      assert_patch(lv, secrets_path(scope))
+      assert has_element?(lv, "#secrets")
+      assert [_one] = secrets(scope)
     end
 
     test "a refused save says why and does not render the value",
@@ -136,7 +156,10 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
 
       refute_value(html)
       assert html =~ "must start with a letter or _"
-      assert has_element?(lv, "#secret-dialog")
+      assert has_element?(lv, "#secret-form")
+
+      assert lv |> element("#secret-form textarea[name='secret[value]']") |> render() =~
+               "></textarea>"
 
       html =
         lv
@@ -163,6 +186,10 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
 
       lv |> element("#secret-#{secret.public_id}-add") |> render_click()
       assert_patch(lv, secrets_path(scope, "/#{secret.public_id}/add-value"))
+      refute has_element?(lv, "#secret-dialog")
+      assert has_element?(lv, "#settings-section-title", "Add a value to GITHUB_APP_KEY")
+      assert has_element?(lv, "#breadcrumb [aria-current=page]", "Add value")
+      refute lv |> element("#secret-form") |> render() =~ "phx-change"
 
       html =
         lv
@@ -204,6 +231,10 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       {:ok, lv, _html} = live(conn, secrets_path(scope))
       lv |> element("#secret-#{one.public_id}-change") |> render_click()
       assert_patch(lv, secrets_path(scope, "/#{one.public_id}/change-value"))
+      refute has_element?(lv, "#secret-dialog")
+      assert has_element?(lv, "#settings-section-title", "Change the value of FORGE_TOKEN")
+      assert has_element?(lv, "#breadcrumb [aria-current=page]", "Change value")
+      refute lv |> element("#secret-form") |> render() =~ "phx-change"
 
       html =
         lv
@@ -216,6 +247,8 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
 
       lv |> element("#secret-#{several.public_id}-main-app-change") |> render_click()
       assert_patch(lv, secrets_path(scope, "/#{several.public_id}/values/main-app/change"))
+
+      assert has_element?(lv, "#settings-section-title", "Change main-app of GITHUB_APP_KEY")
 
       html = lv |> form("#secret-form", secret_value: %{value: ""}) |> render_submit()
       assert has_element?(lv, "#secret_value_value-error")
@@ -231,6 +264,10 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
 
       {:ok, lv, _html} =
         live(conn, secrets_path(scope, "/#{secret.public_id}/values/main-app/rename"))
+
+      refute has_element?(lv, "#secret-dialog")
+      assert has_element?(lv, "#settings-section-title", "Rename main-app of GITHUB_APP_KEY")
+      assert has_element?(lv, "#breadcrumb [aria-current=page]", "Rename value")
 
       assert lv |> element("#secret-form input[name='secret_value[value_id]']") |> render() =~
                ~s(value="main-app")
@@ -275,6 +312,8 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
 
       lv |> element("#secret-#{secret.public_id}-delete") |> render_click()
       assert_patch(lv, secrets_path(scope, "/#{secret.public_id}/delete"))
+      assert has_element?(lv, "dialog#secret-dialog")
+      assert has_element?(lv, "#secrets")
       assert render(lv) =~ "The secret and its value are deleted. This cannot be undone."
 
       lv |> element("#secret-dialog button", "Delete secret") |> render_click()
@@ -334,7 +373,7 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       refute has_element?(lv, "#new-secret")
       refute has_element?(lv, "#secret-#{secret.public_id}-menu")
 
-      # A dialog's path refuses them, and so does its event.
+      # A page's or a dialog's path refuses them, and so does its event.
       assert refused_at(conn, secrets_path(scope, "/new")) ==
                "Only owners and admins change this."
 
@@ -391,6 +430,11 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
 
       lv |> element("#new-variable") |> render_click()
       assert_patch(lv, variables_path(scope, "/new"))
+      refute has_element?(lv, "#variable-dialog")
+      assert has_element?(lv, "#settings-section-title", "New variable")
+      assert has_element?(lv, "#breadcrumb a", "Secrets and variables")
+      assert has_element?(lv, "#breadcrumb [aria-current=page]", "New variable")
+      assert has_element?(lv, "#variable-save-cancel[href='#{variables_path(scope)}']")
 
       lv
       |> form("#variable-form",
@@ -448,12 +492,18 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
 
       lv |> element("#variable-#{variable.id}-change") |> render_click()
       assert_patch(lv, variables_path(scope, "/#{variable.id}/change"))
+      refute has_element?(lv, "#variable-dialog")
+      assert has_element?(lv, "#settings-section-title", "Change the value of NODE_ENV")
+      assert has_element?(lv, "#breadcrumb [aria-current=page]", "Change value")
       lv |> form("#variable-form", variable: %{value: "prod"}) |> render_submit()
       assert render(lv) =~ "NODE_ENV is changed."
       assert has_element?(lv, "#variable-#{variable.id}-value", "prod")
 
       lv |> element("#variable-#{variable.id}-lock-item") |> render_click()
       assert_patch(lv, variables_path(scope, "/#{variable.id}/lock"))
+      # A confirmation stays a small dialog over the list.
+      assert has_element?(lv, "dialog#variable-dialog")
+      assert has_element?(lv, "#variables")
       assert has_element?(lv, "#lock-targets", "2 repositories set their own now")
       lv |> element("#variable-dialog button", "Lock variable") |> render_click()
       assert render(lv) =~ "NODE_ENV is locked."

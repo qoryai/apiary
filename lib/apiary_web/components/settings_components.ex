@@ -267,8 +267,18 @@ defmodule ApiaryWeb.SettingsComponents do
   save/1 is the foot of a settings form: its button, one primary per section where the
   section has one main action, and beside it one muted line of who may change it or what
   happens once it is saved.
+
+  On a page of its own that creates or changes one thing, Cancel follows the button: a link back to the list the page was opened from (`cancel`), by `patch`
+  within the list's LiveView and by `navigate` from another.
   """
   attr :id, :string, default: nil
+  attr :cancel, :string, default: nil, doc: "where Cancel leads back to"
+
+  attr :cancel_by, :string,
+    default: "patch",
+    values: ~w(patch navigate href),
+    doc: "how Cancel leads back: `href` for a page of the storybook"
+
   slot :inner_block, required: true, doc: "the button"
   slot :note, doc: "the muted line"
 
@@ -276,6 +286,23 @@ defmodule ApiaryWeb.SettingsComponents do
     ~H"""
     <div id={@id} class="q-save">
       {render_slot(@inner_block)}
+      <.button
+        :if={@cancel && @cancel_by == "patch"}
+        id={@id && "#{@id}-cancel"}
+        patch={@cancel}
+      >
+        {gettext("Cancel")}
+      </.button>
+      <.button
+        :if={@cancel && @cancel_by == "navigate"}
+        id={@id && "#{@id}-cancel"}
+        navigate={@cancel}
+      >
+        {gettext("Cancel")}
+      </.button>
+      <.button :if={@cancel && @cancel_by == "href"} id={@id && "#{@id}-cancel"} href={@cancel}>
+        {gettext("Cancel")}
+      </.button>
       <span :if={@note != []}>{render_slot(@note)}</span>
     </div>
     """

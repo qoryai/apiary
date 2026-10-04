@@ -155,6 +155,18 @@ its path sends them to General with its own sentence of why.
 The breadcrumb ends with Settings (`8wonders / Main / Settings`, `8wonders / Settings`); a
 person's page names itself.
 
+**A form is a page.** Creating or changing one thing is a page of its section at a path of
+its own, never a dialog over the list, on the pattern of Add integration (storybook,
+Screens): the section list stays beside it, its section the current one; the breadcrumb
+ends with the section and the page (`8wonders / Main / Settings / Secrets and variables /
+New secret`), each segment before the page a link back; the section's `<h2>` is the page's
+title, the act and what it acts on (New secret, Change the value of FORGE_TOKEN), with one
+sentence under it of what the page does; the form fills the 720 px column, its first field
+takes the focus, and its foot is the primary button with Cancel beside it, a link back to
+the list (`SettingsComponents.save/1`, `cancel`). A save goes back to the list with a
+flash; a refused one stays on the page, the error under its field. The breadcrumb's last
+segment is the act alone (New secret, Change value), and the browser's title the page's.
+
 **The danger zone** ends its scope's General page, and Profile, GitHub's way
 (`SettingsComponents.danger_zone/1`): after a rule, the heading Danger zone, the page's
 only red words, then a line for each act that cannot be undone (`danger_action/1`), its
@@ -197,7 +209,8 @@ by name or the latest change.
   value and when, and the value's own acts. **No value is ever rendered**: the value is a
   textarea whose content is always empty, written and sent once; the form the context
   hands back after a refused save holds none, so a refusal shows the error under an
-  empty field, and a save closes the dialog, so the field is gone. A parameter named
+  empty field, and a save goes back to the list, so the field is gone. No secret form
+  sends a change event, so a value travels only when it is submitted. A parameter named
   `value` is `[FILTERED]` in the logs, a LiveView event's included
   (`:filter_parameters`).
 - **A variable** is one row: its name, its value in mono (plain configuration, shown
@@ -206,18 +219,25 @@ by name or the latest change.
   the lock sets aside, from their resolution (`Apiary.Variables.repository_overrides/1`),
   a link to a dialog that lists them, with a search past ten. Locked means a repository
   may not set its own value, and nothing more. A name on the runner's deny list other
-  than `QORY_…`, which the context refuses, is saved with a warning in the dialog and a
-  word on its row. One line under the list says what a node does with them.
-- **The dialogs** are at paths of their own over their view: `/settings/secrets/new`,
-  `/:id/add-value`, `/:id/change-value` (a secret's one value without a value ID),
-  `/:id/values/:value_id/change`, `…/rename` and `…/delete`, `/:id/delete`;
-  `/settings/variables/new`, `/:id/change`, `/:id/lock`, `/:id/unlock`, `/:id/delete` and
-  `/:id/targets`. A secret is named by its public id, a variable by its row's. A path the
-  reader may not open, or of a secret or variable the workspace does not have, sends them
-  back to the view and says why.
+  than `QORY_…`, which the context refuses, is saved with a warning on New variable's page
+  and a word on its row. One line under the list says what a node does with them.
+- **The forms are pages** of the section (A form is a page, above), each at a path of its
+  own: for secrets New secret (`/settings/secrets/new`), Add value (`/:id/add-value`),
+  Change value (`/:id/change-value` for a secret's one value without a value ID,
+  `/:id/values/:value_id/change` for a named one) and Rename value
+  (`…/values/:value_id/rename`); for variables New variable (`/settings/variables/new`) and
+  Change value (`/:id/change`). The breadcrumb ends `Secrets and variables / New secret`,
+  the section leading back to the view the page was opened from, with its query.
+- **The confirmations stay small dialogs** over their view, at paths of their own: Delete
+  secret (`/:id/delete`), Delete value (`…/values/:value_id/delete`), and Lock, Unlock and
+  Delete variable (`/:id/lock`, `/:id/unlock`, `/:id/delete`); so does the read-only list
+  of a variable's repositories (`/:id/targets`). A secret is named by its public id, a
+  variable by its row's. A path the reader may not open, or of a secret or variable the
+  workspace does not have, sends them back to the view and says why.
 - **Who.** Every member reads both views; owners and admins change them (`secret.write`,
   `variable.edit`). A reader who may not sees no New, no ⋯ menu, and once, under the
-  section's sentence, "Only owners and admins change this."
+  section's sentence, "Only owners and admins change this."; a form's page sends them back
+  to the view with the same words.
 
 ## Lists
 
