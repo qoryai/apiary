@@ -1148,7 +1148,9 @@ defmodule ApiaryWeb.CoreComponents do
   (`"sm"` 600 px, `"md"` 1000 px, `"lg"` 1300 px), so a table in a narrow pane reflows as
   on a narrow screen. A row's actions are its last column: a text action for the one
   thing a row's state asks for, and the rest in a `row_menu/1`; never a bordered button
-  on every row, and never red outside the confirm dialog.
+  on every row, and never red outside a confirmation. A row asked to confirm an act on it
+  (`confirming`, the row's id) shows the `confirm` slot in place of its cells, an
+  `inline_confirm/1`.
 
   ## Examples
 
@@ -1178,6 +1180,14 @@ defmodule ApiaryWeb.CoreComponents do
   end
 
   slot :action, doc: "the slot for showing user actions in the last table column"
+
+  attr :confirming, :string,
+    default: nil,
+    doc: "the id of the row that is asking to confirm an act on it (`confirm` slot)"
+
+  slot :confirm,
+    doc:
+      "what the row `confirming` names shows in place of its cells: an `inline_confirm/1`, given the row"
 
   def table(assigns) do
     assigns =
@@ -1211,16 +1221,30 @@ defmodule ApiaryWeb.CoreComponents do
           <tr
             :for={row <- @rows}
             id={@row_id && @row_id.(row)}
-            class={@row_class && @row_class.(row)}
+            class={[
+              @row_class && @row_class.(row),
+              confirming?(@confirming, @row_id, row) && "q-confirming"
+            ]}
           >
             <td
+              :if={confirming?(@confirming, @row_id, row)}
+              colspan={length(@col) + if(@action != [], do: 1, else: 0)}
+              class="q-confirm-cell"
+            >
+              {render_slot(@confirm, @row_item.(row))}
+            </td>
+            <td
               :for={col <- @col}
+              :if={!confirming?(@confirming, @row_id, row)}
               phx-click={@row_click && @row_click.(row)}
               class={[@row_click && "cursor-pointer", col_class(col), col[:class]]}
             >
               {render_slot(col, @row_item.(row))}
             </td>
-            <td :if={@action != []} class="cell-actions w-px text-right">
+            <td
+              :if={@action != [] && !confirming?(@confirming, @row_id, row)}
+              class="cell-actions w-px text-right"
+            >
               <div class="flex items-center justify-end gap-1">
                 <%= for action <- @action do %>
                   {render_slot(action, @row_item.(row))}
@@ -1230,6 +1254,77 @@ defmodule ApiaryWeb.CoreComponents do
           </tr>
         </tbody>
       </table>
+    </div>
+    """
+  end
+
+  defp confirming?(nil, _row_id, _row), do: false
+  defp confirming?(_id, nil, _row), do: false
+  defp confirming?(id, row_id, row), do: row_id.(row) == id
+
+  @doc """
+  Renders a confirmation in place, where the act was asked for: never an overlay
+  (`docs/ui.md`, Confirmations). A row of a table becomes one (`table/1`'s `confirming`
+  and `confirm` slot), and so does a page's own control, such as a danger zone's line.
+
+  It reads as one line that wraps: the question in the text colour ("Delete
+  FORGE_TOKEN?"), what happens in a muted sentence, then its button, red for what cannot
+  be undone ("Yes, delete"), and Cancel, which leads back (`cancel`, a patch) and takes
+  the focus as it shows, so Enter does not act by mistake; Escape cancels too.
+
+      <.inline_confirm id="secret-1-confirm" question="Delete FORGE_TOKEN?" cancel={@list}>
+        The secret and its value are deleted. This cannot be undone.
+        <:action>
+          <.button variant="danger" size="xs" phx-click="delete_secret" loading_text="Deleting">
+            Yes, delete
+          </.button>
+        </:action>
+      </.inline_confirm>
+  """
+  attr :id, :string, required: true
+  attr :question, :string, required: true
+
+  attr :cancel, :any,
+    required: true,
+    doc: "where Cancel leads: a path to patch to, or a JS command"
+
+  attr :class, :any, default: nil
+  slot :inner_block, doc: "what happens, one or two short sentences"
+  slot :action, required: true, doc: "the button that acts"
+
+  def inline_confirm(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :cancel_js,
+        if(is_binary(assigns.cancel), do: JS.patch(assigns.cancel), else: assigns.cancel)
+      )
+
+    ~H"""
+    <div
+      id={@id}
+      role="group"
+      aria-labelledby={"#{@id}-question"}
+      class={["q-confirm", @class]}
+      phx-window-keydown={@cancel_js}
+      phx-key="Escape"
+    >
+      <div class="q-confirm-what">
+        <p id={"#{@id}-question"} class="q-confirm-q">{@question}</p>
+        <p :if={@inner_block != []} class="q-confirm-sub">{render_slot(@inner_block)}</p>
+      </div>
+      <div class="q-confirm-act">
+        {render_slot(@action)}
+        <button
+          id={"#{@id}-cancel"}
+          type="button"
+          class="btn btn-xs"
+          phx-click={@cancel_js}
+          phx-mounted={JS.focus()}
+        >
+          {gettext("Cancel")}
+        </button>
+      </div>
     </div>
     """
   end

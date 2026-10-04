@@ -1999,6 +1999,41 @@
       grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     }
   }
+  /* A confirmation in place (`CoreComponents.inline_confirm/1`): the question, what
+     happens, the button and Cancel, on one line that wraps; on a table's row, the row
+     tinted the error's soft colour. */
+  .q-confirm {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 16px;
+    min-width: 0;
+  }
+  .q-confirm-what {
+    flex: 1 1 18rem;
+    min-width: 0;
+  }
+  .q-confirm-q {
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+  .q-confirm-sub {
+    color: var(--q-muted);
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+  }
+  .q-confirm-act {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 8px;
+  }
+  tr.q-confirming > td.q-confirm-cell {
+    background-color: color-mix(in oklab, var(--q-error-soft) 45%, var(--color-base-100));
+    white-space: normal;
+  }
   /* A form's foot: its button and one muted line beside it. */
   .q-save {
     display: flex;
