@@ -491,13 +491,22 @@ defmodule Apiary.OrganisationsTest do
       %{membership: suspended} = member_fixture(scope, :member)
       {:ok, _suspended} = Organisations.suspend_member(scope, suspended.id)
 
-      # In the core every level reaches every workspace; a suspended membership none.
+      # Each reaches the workspace they were invited into; a suspended membership none.
       assert [owner.id, admin.id, member.id] ==
                scope |> Organisations.list_workspace_members() |> Enum.map(& &1.user.id)
 
       platform = workspace_fixture(scope.organisation, "Platform")
 
-      assert [owner.id, admin.id, member.id] ==
+      # Another workspace: in the core's edition, of one workspace in use, every level
+      # reaches every workspace; where an organisation may have several, a member reaches
+      # only those they were added to.
+      reach_platform =
+        case Apiary.Edition.limits().workspaces do
+          1 -> [owner.id, admin.id, member.id]
+          :unlimited -> [owner.id, admin.id]
+        end
+
+      assert reach_platform ==
                %{scope | workspace: platform}
                |> Organisations.list_workspace_members()
                |> Enum.map(& &1.user.id)
