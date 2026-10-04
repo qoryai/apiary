@@ -88,12 +88,48 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
   describe "New node and New node pool" do
     setup :register_and_log_in_user
 
-    test "a node is named, and its page opens on Settings", %{conn: conn, scope: scope} do
+    test "New node is a page of the Nodes section", %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, nodes_path(scope))
 
       lv |> element("#new-node") |> render_click()
       assert_patch(lv, nodes_path(scope, "/new"))
-      assert has_element?(lv, "#new-node-dialog", "You can't change the kind later.")
+
+      refute has_element?(lv, "#new-node-dialog")
+      refute has_element?(lv, "#nodes-empty")
+      assert has_element?(lv, "main h1", "New node")
+      assert has_element?(lv, "main header", "One permanent machine.")
+      assert has_element?(lv, "main header", "You can't change the kind later.")
+      assert has_element?(lv, ~s{#breadcrumb a[href="#{nodes_path(scope)}"]}, "Nodes")
+      assert has_element?(lv, "#breadcrumb [aria-current=page]", "New node")
+      assert has_element?(lv, ~s{#new-node-form input[name="node[name]"][phx-mounted]})
+      assert has_element?(lv, "#new-node-save #new-node-submit", "Add node")
+      assert has_element?(lv, ~s{#new-node-save-cancel[href="#{nodes_path(scope)}"]}, "Cancel")
+      assert page_title(lv) =~ "New node"
+
+      lv |> element("#new-node-save-cancel") |> render_click()
+      assert_patch(lv, nodes_path(scope))
+      refute has_element?(lv, "#new-node-form")
+      assert has_element?(lv, "#nodes-empty", "No nodes yet")
+    end
+
+    test "New node pool is a page of the Nodes section", %{conn: conn, scope: scope} do
+      {:ok, lv, _html} = live(conn, nodes_path(scope))
+
+      lv |> element("#new-node-pool") |> render_click()
+      assert_patch(lv, nodes_path(scope, "/new-pool"))
+
+      refute has_element?(lv, "#new-node-dialog")
+      assert has_element?(lv, "main h1", "New node pool")
+      assert has_element?(lv, "main header", "Short-lived instances that share one access key.")
+      assert has_element?(lv, "#breadcrumb [aria-current=page]", "New node pool")
+      assert has_element?(lv, "#new-node-save #new-node-submit", "Add node pool")
+      assert has_element?(lv, ~s{#new-node-save-cancel[href="#{nodes_path(scope)}"]}, "Cancel")
+      assert page_title(lv) =~ "New node pool"
+    end
+
+    test "a node is named, and its page opens on Settings", %{conn: conn, scope: scope} do
+      {:ok, lv, _html} = live(conn, nodes_path(scope, "/new"))
+
       refute has_element?(lv, "#new-node-form input[name='node[instance_limit]']")
 
       assert lv |> form("#new-node-form", node: %{name: ""}) |> render_change() =~
@@ -132,13 +168,26 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
                Nodes.list_nodes(scope)
     end
 
-    test "a name in use is refused in the dialog", %{conn: conn, scope: scope} do
+    test "a name in use is refused on the page", %{conn: conn, scope: scope} do
       node_fixture(scope, name: "build-01")
       {:ok, lv, _html} = live(conn, nodes_path(scope, "/new"))
 
       html = lv |> form("#new-node-form", node: %{name: "build-01"}) |> render_submit()
       assert html =~ "is already the name of a node in this workspace"
+      assert has_element?(lv, "#breadcrumb [aria-current=page]", "New node")
       assert length(Nodes.list_nodes(scope)) == 1
+      refute has_element?(lv, "main h1", "New node pool")
+      refute has_element?(lv, "#new-node-form input[name='node[instance_limit]']")
+
+      # The page keeps its kind after a refused save, and the next one is made.
+      {:ok, _show, _html} =
+        lv
+        |> form("#new-node-form", node: %{name: "build-02"})
+        |> render_submit()
+        |> follow_redirect(conn)
+
+      assert [%Node{name: "build-01"}, %Node{kind: :node, name: "build-02"}] =
+               Enum.sort_by(Nodes.list_nodes(scope), & &1.name)
     end
 
     test "an admin adds nodes", %{scope: scope} do
@@ -169,13 +218,16 @@ defmodule ApiaryWeb.NodeLive.IndexTest do
       refute has_element?(lv, "#nodes-empty a")
     end
 
-    test "is refused the dialog's path, and its event", %{scope: scope} do
+    test "is refused the form's paths, and its event", %{scope: scope} do
       conn = member_conn(scope)
+
+      {:ok, _lv, html} = live(conn, nodes_path(scope, "/new-pool")) |> follow_redirect(conn)
+      assert html =~ "Only owners and admins add nodes."
 
       {:ok, lv, html} = live(conn, nodes_path(scope, "/new")) |> follow_redirect(conn)
 
       assert html =~ "Only owners and admins add nodes."
-      refute has_element?(lv, "#new-node-dialog")
+      refute has_element?(lv, "#new-node-form")
 
       render_hook(lv, "create", %{"node" => %{"name" => "build-01"}})
       assert render(lv) =~ "Only owners and admins add nodes."

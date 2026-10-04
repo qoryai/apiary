@@ -15,11 +15,13 @@ defmodule ApiaryWeb.NodeLive.Index do
   name or by Last seen (`?sort=seen`: running first, then the last seen first, never seen
   last), all in the URL.
 
-  Owners and admins make a node or a node pool here (`node.create`), each a dialog over
-  the list at a path of its own, `/nodes/new` and `/nodes/new-pool`; the kind is the
-  dialog's and never changes after. Making one leads to its Settings. Everyone in the
-  workspace reads the list (`node.read`); a member sees it without the buttons, and a
-  dialog's path refuses them.
+  Owners and admins make a node or a node pool here (`node.create`), each a page of its
+  own, `/nodes/new` and `/nodes/new-pool`, on the pattern of a form page (`docs/ui.md`, A
+  form is a page): the breadcrumb `Nodes / New node`, the page's heading and one sentence,
+  the form in the 720 px column, its button and Cancel back to the list. The kind is the
+  page's and never changes after. Making one leads to its Settings, with a flash.
+  Everyone in the workspace reads the list (`node.read`); a member sees it without the
+  buttons, and a form's path refuses them.
 
   The workspace's sidebar has no entry for it yet: the page is reached by its path.
 
@@ -34,7 +36,7 @@ defmodule ApiaryWeb.NodeLive.Index do
   alias Apiary.{Access, Nodes, Runs}
   alias Apiary.Nodes.Node
   alias Apiary.Runs.Run
-  alias ApiaryWeb.NodeComponents
+  alias ApiaryWeb.{NodeComponents, SettingsComponents}
 
   @tick :timer.seconds(15)
   @coalesce_ms 250
@@ -58,7 +60,8 @@ defmodule ApiaryWeb.NodeLive.Index do
        may_create: Access.can?(scope, :"node.create", scope.workspace),
        may_runs: may_runs,
        reload_scheduled: false,
-       form: nil
+       form: nil,
+       kind: nil
      )}
   end
 
@@ -78,12 +81,16 @@ defmodule ApiaryWeb.NodeLive.Index do
      |> apply_action(socket.assigns.live_action)}
   end
 
-  defp apply_action(socket, :index), do: assign(socket, :form, nil)
+  defp apply_action(socket, :index),
+    do: assign(socket, form: nil, kind: nil, page_title: gettext("Nodes"))
 
   defp apply_action(socket, action) when action in [:new, :new_pool] do
     if socket.assigns.may_create do
       kind = if action == :new, do: :node, else: :pool
-      assign_form(socket, Nodes.change_new_node(Nodes.new_node(kind)))
+
+      socket
+      |> assign_form(Nodes.change_new_node(Nodes.new_node(kind)))
+      |> assign(kind: kind, page_title: form_title(kind) <> " · " <> gettext("Nodes"))
     else
       socket
       |> put_flash(:error, gettext("Only owners and admins add nodes."))
@@ -106,7 +113,10 @@ defmodule ApiaryWeb.NodeLive.Index do
   defp sort(_sort), do: nil
 
   # The nodes under the search and the kind, what each is doing now, the views' counts
-  # over them, and the rows of the view in force, in its order.
+  # over them, and the rows of the view in force, in its order. A form's page shows none
+  # of it: the list is read when it is opened again.
+  defp load(%{assigns: %{live_action: action}} = socket) when action != :index, do: socket
+
   defp load(socket) do
     scope = socket.assigns.current_scope
     filters = socket.assigns.filters
@@ -198,7 +208,8 @@ defmodule ApiaryWeb.NodeLive.Index do
 
   def handle_event("validate", %{"node" => params}, %{assigns: %{form: %{}}} = socket) do
     changeset =
-      socket.assigns.form.data
+      socket.assigns.kind
+      |> Nodes.new_node()
       |> Nodes.change_new_node(params)
       |> Map.put(:action, :validate)
 
@@ -206,7 +217,7 @@ defmodule ApiaryWeb.NodeLive.Index do
   end
 
   def handle_event("create", %{"node" => params}, %{assigns: %{form: %{}}} = socket) do
-    %Node{kind: kind} = socket.assigns.form.data
+    kind = socket.assigns.kind
     scope = socket.assigns.current_scope
 
     case Nodes.create_node(scope, Map.put(params, "kind", Atom.to_string(kind))) do
@@ -226,8 +237,8 @@ defmodule ApiaryWeb.NodeLive.Index do
     end
   end
 
-  # A dialog's event with no dialog open: a page that offered none, or one whose dialog
-  # has closed. Only one who may add nodes is shown the list again.
+  # A form's event with no form open: the list, which has none, or a form page that has
+  # been left. Only one who may add nodes is shown the list again.
   def handle_event(event, _params, socket) when event in ~w(validate create) do
     if socket.assigns.may_create,
       do: {:noreply, load(socket)},
@@ -297,6 +308,81 @@ defmodule ApiaryWeb.NodeLive.Index do
   defp runner_version(_activity), do: nil
 
   @impl true
+  # A form is a page of the Nodes section, as Add integration is of Settings: the
+  # breadcrumb ending with Nodes and the page, its heading and one sentence, the form in
+  # the 720 px column, its button and Cancel back to the list.
+  def render(%{form: %{}} = assigns) do
+    ~H"""
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      memberships={@memberships}
+      counts={@nav_counts}
+      place={:workspace}
+      width="read"
+    >
+      <:crumb navigate={list_path(@current_scope, @filters)}>{gettext("Nodes")}</:crumb>
+      <:crumb>{form_title(@kind)}</:crumb>
+
+      <.header>
+        {form_title(@kind)}
+        <:subtitle>
+          {if @kind == :node,
+            do: gettext("One permanent machine. It runs one instance at a time."),
+            else: gettext("Short-lived instances that share one access key.")}
+          {gettext("You can't change the kind later.")}
+        </:subtitle>
+      </.header>
+
+      <.form
+        for={@form}
+        id="new-node-form"
+        phx-change="validate"
+        phx-submit="create"
+        class="grid gap-4"
+        novalidate
+      >
+        <.input
+          field={@form[:name]}
+          type="text"
+          label={gettext("Name")}
+          placeholder={if @kind == :node, do: "build-01", else: "spot-runners"}
+          autocomplete="off"
+          spellcheck="false"
+          required
+          phx-mounted={JS.focus()}
+        />
+        <.input
+          :if={@kind == :pool}
+          field={@form[:instance_limit]}
+          type="text"
+          inputmode="numeric"
+          label={gettext("Instance limit")}
+          hint={
+            gettext("How many instances may run at once, up to %{max}. Empty means no limit.",
+              max: Format.number(Node.max_limit())
+            )
+          }
+          autocomplete="off"
+          optional
+        />
+        <SettingsComponents.save id="new-node-save" cancel={list_path(@current_scope, @filters)}>
+          <.button
+            id="new-node-submit"
+            variant="primary"
+            type="submit"
+            loading_text={gettext("Adding")}
+          >
+            {if @kind == :node,
+              do: gettext("Add node"),
+              else: gettext("Add node pool")}
+          </.button>
+        </SettingsComponents.save>
+      </.form>
+    </Layouts.app>
+    """
+  end
+
   def render(assigns) do
     ~H"""
     <Layouts.app
@@ -527,72 +613,16 @@ defmodule ApiaryWeb.NodeLive.Index do
           </:col>
         </.table>
       </div>
-
-      <.modal
-        :if={@form}
-        id="new-node-dialog"
-        title={if @form.data.kind == :node, do: gettext("New node"), else: gettext("New node pool")}
-        on_cancel={JS.patch(list_path(@current_scope, @filters))}
-      >
-        <p class="text-[13px]/[18px] text-muted">
-          {if @form.data.kind == :node,
-            do: gettext("One permanent machine. It runs one instance at a time."),
-            else: gettext("Short-lived instances that share one access key.")}
-          {gettext("You can't change the kind later.")}
-        </p>
-        <.form
-          for={@form}
-          id="new-node-form"
-          phx-change="validate"
-          phx-submit="create"
-          class="grid gap-4"
-          novalidate
-        >
-          <.input
-            field={@form[:name]}
-            type="text"
-            label={gettext("Name")}
-            placeholder={if @form.data.kind == :node, do: "build-01", else: "spot-runners"}
-            autocomplete="off"
-            spellcheck="false"
-            required
-          />
-          <.input
-            :if={@form.data.kind == :pool}
-            field={@form[:instance_limit]}
-            type="text"
-            inputmode="numeric"
-            label={gettext("Instance limit")}
-            hint={
-              gettext("How many instances may run at once, up to %{max}. Empty means no limit.",
-                max: Format.number(Node.max_limit())
-              )
-            }
-            autocomplete="off"
-            optional
-          />
-        </.form>
-        <:footer>
-          <.button patch={list_path(@current_scope, @filters)}>{gettext("Cancel")}</.button>
-          <.button
-            id="new-node-submit"
-            variant="primary"
-            type="submit"
-            form="new-node-form"
-            loading_text={gettext("Adding")}
-          >
-            {if @form.data.kind == :node,
-              do: gettext("Add node"),
-              else: gettext("Add node pool")}
-          </.button>
-        </:footer>
-      </.modal>
     </Layouts.app>
     """
   end
 
   defp new_path(scope, :node), do: ~p"/#{scope.organisation}/#{scope.workspace}/nodes/new"
   defp new_path(scope, :pool), do: ~p"/#{scope.organisation}/#{scope.workspace}/nodes/new-pool"
+
+  # A form page's title and its breadcrumb's last segment: the act, by the kind.
+  defp form_title(:node), do: gettext("New node")
+  defp form_title(:pool), do: gettext("New node pool")
 
   defp kind_label(:node), do: gettext("Node")
   defp kind_label(:pool), do: gettext("Node pool")

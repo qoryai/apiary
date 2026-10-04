@@ -519,10 +519,16 @@ reached by its path, and the page passes `place={:workspace}`.
   (`?sort=seen`: running first, never seen last). Owners and admins have **New node**
   (primary) and **New node pool** in the header; with no node yet, the empty state
   offers both, and tells a member that an owner or admin adds nodes.
-- **New node and New node pool** are dialogs over the list at paths of their own,
-  `/nodes/new` and `/nodes/new-pool`: a name, and for a pool its instance limit (a whole
-  number up to 10,000, or empty for none), with "You can't change the kind later". Adding
-  one opens its page on Settings.
+- **New node and New node pool** are pages of the Nodes section at paths of their own,
+  `/nodes/new` and `/nodes/new-pool`, on the pattern of a form page (Settings, A form is a
+  page, above) in the `read` width: the workspace's sidebar, the breadcrumb ending
+  `Nodes / New node` (Nodes a link back to the list), the page's heading (`header/1`, as
+  the list's) and one sentence of what the kind is, with "You can't change the kind
+  later"; then the form, a name (it takes the focus), and for a pool its instance limit
+  (a whole number up to 10,000, or empty for none), and its foot, Add node or Add node
+  pool with Cancel back to the list (`SettingsComponents.save/1`). A refused save stays on
+  the page, the error under its field; adding one opens its page on Settings with a
+  flash.
 - **A node's page** (`/nodes/:node_id`) has a header (the node's name and public id, then
   one muted line: its kind, its state and who made it when) and two tabs, patches of the
   one LiveView, the operational side first and Settings last, set apart at the bar's
