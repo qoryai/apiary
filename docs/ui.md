@@ -462,12 +462,12 @@ version. Only the version in force is exported; another version's path sends on 
   from 840, the attempts and the outcome from 1300. A run's Network access tab draws the
   same row without the runs, its title the request line, its times the offsets inside the
   run; only the timeline's inline connections keep a glyph. A row's one text action, Allow on a destination that needs allowing and Deny on
-  an allowed one, shows on hover, on focus inside the row and while the row's popover or
+  an allowed one, shows on hover, on focus inside the row and while the row's panel or
   menu is open (always on a touch screen, in the menu alone below 600 px of table); the ⋯
   menu (`rule_menu/1`) holds Allow…, Deny…, Only this host and Copy the host. A locked
   rule, and the wall, are a faint lock: the menu says who locked it and when, or why no
   rule changes it, and leads to the rule. Where only the level above the workspace allows
-  a host, the row's reason says so in words, and Allow opens a popover that says an allow
+  a host, the row's reason says so in words, and Allow opens a panel that says an allow
   here would not be in force and leads to that level's policy with the host, for a reader
   who may change it there, and with the way back to this page (`back`,
   `c:ApiaryWeb.Edition.above_policy_link/1`); never a navigation on the click alone. A
@@ -475,6 +475,20 @@ version. Only the version in force is exported; another version's path sends on 
   default order, Denied first, puts the destinations whose last attempt was denied
   first, the most denied attempts first and then the most recently seen, as Needs
   attention weighs them; the rest by when they were first seen, so they hold still.
+- **A row's rule is asked for in place** (`RunComponents.rule_panel/1`), never in a
+  popover, a dialog or a sheet: Allow, Deny, Allow…, Deny… and a locked rule's lock open
+  a row of the table's own right under the row (`#<row>-panel`), in the page's flow, the
+  row and its panel in the chosen row's tint. It holds the rule's form, its title ("Deny
+  registry.example"), the paths a path rule would change, For (this target, or one target
+  of those that reached the host, and the whole workspace, each with what it changes),
+  when it takes effect, then its button, which says what it does ("Allow for the
+  workspace"), and Cancel; or a locked rule's refusal with Show the locked rule and Close;
+  or the way to the level above's policy with Cancel. The trigger says it is open
+  (`aria-expanded`, `aria-controls`), never that it opens a dialog. The focus goes into it
+  as it opens, on the option chosen (else the first), Close, or the way to the level
+  above, and back to the row's action as it goes, or to the row's ⋯ menu where the
+  action is hidden (the `RulePanel` hook); Enter sends the form once its button can,
+  Escape cancels it wherever the focus is. One panel is open at a time.
 - **Pages** of 25, 50 or 100 (`<.pager>`), "1–50 of 3,137", the page before and after named
   by the order (Newer, Older), and Jump to date on the orders by time.
 - **The preview** is for 1920 px and more: a pane beside the list, a rule at its left and no
@@ -523,10 +537,13 @@ what needs the reader, then what their agents did, and never grows with the data
 - **Needs attention**: one line an item, on columns the list holds (each row a subgrid,
   so they line up whatever an act says), its mark, its subject, where it is, the reason
   in a few words (the longer sentence on hover), when, and the one text act that settles
-  it; five shown and "and n more". Its Allow is Network access's: where the level above
-  the workspace denies the host, or allows only its own hosts, no allow here would be in
-  force, so the item offers the way to that level's page to one who may change it there,
-  and a lock with the reason to the rest. A resolved item stays, struck, until the next
+  it; five shown and "and n more". Its Allow is Network access's: the same panel, in
+  place inside the item under its subject (`#<item>-panel`), never an overlay, the target
+  chosen when only one reached the host, and the focus on the next item's act once the
+  rule is written. Where the level above the workspace denies the host, or allows only its
+  own hosts, no allow here would be in force, so the item offers the way to that level's
+  page to one who may change it there, and a lock with the reason to the rest. A resolved
+  item stays, struck, until the next
   navigation; one that arrives is announced (`#overview-announcer`), never inserted above
   what is read. A lost run's Close asks on its own line: the row becomes its
   `inline_confirm/1` ("Close nightly-mirror?", what a close does, Yes, close and Cancel),
