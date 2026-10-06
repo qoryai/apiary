@@ -86,4 +86,21 @@ defmodule Apiary.VariablesAboveTest do
                changeset.errors[:name]
     end
   end
+
+  test "a level with variables and no policy is still resolved first, and its locks hold",
+       %{scope: scope, site: site} do
+    above = Above.for_workspace(scope.workspace)
+    variables_only = %{above | policy: false}
+    Application.put_env(:apiary, Above, answer: fn _workspace -> variables_only end)
+
+    {:ok, resolution} = Variables.resolve(scope, site)
+    assert Resolution.values(resolution) == %{"REGION" => "eu-west-1", "Log_Level" => "info"}
+    assert %{set_by: :above, locked_by: :above} = Resolution.entry(resolution, "region")
+
+    assert {:error, changeset} =
+             Variables.create_variable(scope, site, %{name: "REGION", value: "us-east-1"})
+
+    assert {"is locked above, so it cannot be set here", _} = changeset.errors[:name]
+    assert Apiary.Policy.effective(scope, nil).above == nil
+  end
 end

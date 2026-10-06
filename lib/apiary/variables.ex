@@ -9,10 +9,10 @@ defmodule Apiary.Variables do
   A variable is at a level (`Apiary.Variables.Variable`): the workspace's, which every
   repository of it takes, or a repository's, which overrides the workspace's for that
   repository. Above the workspace an edition may keep a level of its own
-  (`Apiary.Policy.Above`, its `variables`), which the core resolves first and never
-  stores. A level **locks** a name against the levels below it: a locked name is set by
-  no level below. Only the workspace's variables are locked here; the level above locks
-  its own.
+  (`Apiary.Policy.Above`, its `variables`, read whether or not the level has a security
+  policy), which the core resolves first and never stores. A level **locks** a name
+  against the levels below it: a locked name is set by no level below. Only the
+  workspace's variables are locked here; the level above locks its own.
 
   ## Refused on save
 
@@ -32,6 +32,10 @@ defmodule Apiary.Variables do
   A lock set on a name that repositories already set is saved: the lock wins, and their
   own values are set aside (`ignored` in the resolution), as they are for a lock the
   level above sets after them.
+
+  The edition writes the level above's variables, and checks a change of them against
+  the workspaces below with `check_above/2`: another spelling of a name, and the limits
+  of every holder, as a save here is checked.
 
   ## Who, and the trail
 
@@ -169,10 +173,11 @@ defmodule Apiary.Variables do
 
   defp may_read(_scope), do: {:error, :not_found}
 
-  # The variables `holder` sets itself, unasked: for the writes, which have asked.
-  defp own_variables(scope, holder) do
+  # The variables `holder` sets itself, unasked: for the writes, which have asked, and
+  # for `check_above/2`, whose caller has.
+  defp own_variables(source, holder) do
     Repo.all(
-      from v in level(variables(scope), holder),
+      from v in level(variables(source), holder),
         order_by: [asc: fragment("lower(?)", v.name), asc: v.id]
     )
   end
@@ -182,10 +187,18 @@ defmodule Apiary.Variables do
   def change_variable(%Variable{} = variable, attrs \\ %{}),
     do: Variable.changeset(variable, attrs)
 
+  # The variables of the scope's workspace, or of a workspace a caller has locked
+  # (`check_above/2`), at every level.
   defp variables(%Scope{
          organisation: %Organisation{id: organisation_id},
          workspace: %Workspace{id: workspace_id}
-       }) do
+       }),
+       do: variables(organisation_id, workspace_id)
+
+  defp variables(%Workspace{organisation_id: organisation_id, id: workspace_id}),
+    do: variables(organisation_id, workspace_id)
+
+  defp variables(organisation_id, workspace_id) do
     from v in Variable,
       where: v.organisation_id == ^organisation_id and v.workspace_id == ^workspace_id
   end
@@ -196,20 +209,20 @@ defmodule Apiary.Variables do
   defp level(query, %Target{id: target_id}), do: where(query, [v], v.target_id == ^target_id)
 
   # The levels of `holder`'s chain, from the top down, as `Resolution.resolve/1` takes them.
-  defp chain(scope, workspace, holder) do
-    above =
-      case Above.for_workspace(workspace) do
-        %Above{variables: variables} when is_list(variables) -> [{:above, variables}]
-        _none -> []
-      end
+  # The level above counts whatever its `policy` says: one with variables and no policy
+  # is still the top of every chain.
+  defp chain(scope, workspace, holder), do: levels(scope, above_variables(workspace), holder)
 
+  # The same under `above`, the level above's variables as given: as they are, or as a
+  # change of them would leave them (`check_above/2`).
+  defp levels(source, above, holder) do
     own =
       case holder do
-        %Target{} = target -> [{:target, own_variables(scope, target)}]
+        %Target{} = target -> [{:target, own_variables(source, target)}]
         _workspace -> []
       end
 
-    above ++ [{:workspace, own_variables(scope, :workspace)}] ++ own
+    [{:above, above}, {:workspace, own_variables(source, :workspace)}] ++ own
   end
 
   ## Writing
@@ -362,6 +375,69 @@ defmodule Apiary.Variables do
     end)
   end
 
+  ## The level above
+
+  @doc """
+  check_above/2 checks a change of the variables of the level above the workspace
+  (`Apiary.Policy.Above`, its `variables`), which the edition keeps and writes, against
+  `workspaces`, as a save here is checked against the levels below it. `above` is the
+  level's whole set as the change would leave it, each with its `name`, `value` and
+  `locked` (`Apiary.Variables.Variable` structs, saved or not), not what changes.
+
+  For each workspace, in the list's order, and each of its repositories:
+
+    * `{:error, {:spelled_otherwise, workspace, name}}`: the workspace or one of its
+      repositories sets a name of `above` spelled otherwise, compared without case;
+      `name` is its spelling there;
+    * `{:error, {:too_many_names, workspace}}` or `{:error, {:too_large, workspace}}`: the
+      workspace, or one of its repositories, which is reported with its workspace, would
+      be given more than 128 names or 64 KiB of names and values, counted as
+      `Apiary.Variables.Resolution` resolves the chain: a name `above` locks counts its
+      value, and the values below it set aside count nothing.
+
+  `:ok` otherwise, and for no workspace. A lock of `above` on a name a workspace or a
+  repository sets is no error: their values are set aside, as under a workspace's lock.
+  What a variable must be on its own is not checked here: a name's rule
+  (`Apiary.Variables.Variable.name_format/0`), a value's size
+  (`Apiary.Variables.Variable.value_max/0`) and the runner's names
+  (`Apiary.Variables.Denied`) are the edition's to check of each.
+
+  It only reads, and takes no lock: the caller holds the rows, in one transaction, in
+  the lock order (docs/access.md), as a write of a workspace's variables does. In order:
+  the transaction; `Apiary.Policy.lock_workspaces/2` on every workspace the level
+  reaches, which are `workspaces`; `Apiary.Access.reload/2` with `lock: :share`; the
+  level's own row `FOR UPDATE`; this check; then the write and its audit entry. A write
+  of a workspace's variables locks the same workspace's row, so the two take turns, and
+  each checks what the other wrote.
+  """
+  @spec check_above([%Workspace{}], [%Variable{}]) ::
+          :ok
+          | {:error, {:spelled_otherwise, %Workspace{}, name :: String.t()}}
+          | {:error, {:too_many_names | :too_large, %Workspace{}}}
+  def check_above(workspaces, above) when is_list(workspaces) and is_list(above) do
+    names = for %{name: name} when is_binary(name) <- above, uniq: true, do: name
+
+    Enum.reduce_while(workspaces, :ok, fn %Workspace{} = workspace, :ok ->
+      case check_below(workspace, above, names) do
+        :ok -> {:cont, :ok}
+        {:error, _reason} = refusal -> {:halt, refusal}
+      end
+    end)
+  end
+
+  # One workspace under `above`: the spellings first, as a save checks them before the
+  # limits, then the workspace's and its repositories' sizes.
+  defp check_below(workspace, above, names) do
+    if other = spelled_below(variables(workspace), names) do
+      {:error, {:spelled_otherwise, workspace, other}}
+    else
+      case holders_within_limits(workspace, above, nil) do
+        :ok -> :ok
+        {:error, reason} -> {:error, {reason, workspace}}
+      end
+    end
+  end
+
   ## The checks
 
   # What the changeset alone cannot see: the runner's names, the other levels' names and
@@ -440,12 +516,7 @@ defmodule Apiary.Variables do
         other
 
       nil ->
-        query =
-          from v in variables(scope),
-            where: fragment("lower(?)", v.name) == ^key and v.name != ^name,
-            select: v.name,
-            limit: 1
-
+        query = variables(scope)
         query = if id, do: where(query, [v], v.id != ^id), else: query
 
         query =
@@ -453,49 +524,79 @@ defmodule Apiary.Variables do
             do: where(query, [v], is_nil(v.target_id)),
             else: query
 
-        Repo.one(query)
+        spelled_below(query, [name])
     end
+  end
+
+  # The first variable of `query` that sets one of `names` spelled otherwise, compared
+  # without case, by its own spelling, or nil: one query however many names.
+  defp spelled_below(_query, []), do: nil
+
+  defp spelled_below(query, names) do
+    keys = Enum.map(names, &String.downcase/1)
+
+    Repo.one(
+      from v in query,
+        join:
+          n in fragment(
+            "SELECT * FROM unnest(?::text[], ?::text[]) AS n(key, name)",
+            ^keys,
+            ^names
+          ),
+        on: field(n, :key) == fragment("lower(?)", v.name) and field(n, :name) != v.name,
+        order_by: [asc: fragment("lower(?)", v.name), asc: v.name],
+        select: v.name,
+        limit: 1
+    )
   end
 
   # After the write, in its transaction: every holder the variable reaches is within the
   # limits, or the write rolls back. A workspace's variable reaches the workspace and every
   # repository with variables of its own; a repository's, that repository.
+  defp within_limits(scope, workspace, %Variable{target_id: target_id}, changeset) do
+    case holders_within_limits(scope, above_variables(workspace), target_id) do
+      :ok ->
+        :ok
+
+      {:error, :too_many_names} ->
+        refuse(
+          changeset,
+          :name,
+          dgettext_noop("errors", "would give a run more than %{count} variables"),
+          count: Resolution.max_names()
+        )
+
+      {:error, :too_large} ->
+        refuse(
+          changeset,
+          :value,
+          dgettext_noop("errors", "would give a run more than 64 KiB of variables")
+        )
+    end
+  end
+
+  # Whether every holder under `above`, the level above's variables, is within the
+  # limits: the workspace and each repository with variables of its own when `target_id`
+  # is nil, else the one repository it names. `:ok`, or the first holder's reason.
   #
   # The workspace's chain is resolved once; each repository's size is that one's plus
   # what its own variables add, from one grouped query over their names and value sizes
   # (no value is read), so the check is two queries however many repositories there are.
-  defp within_limits(scope, workspace, %Variable{target_id: target_id}, changeset) do
-    base = Resolution.resolve(chain(scope, workspace, :workspace))
+  defp holders_within_limits(source, above, target_id) do
+    base = Resolution.resolve(levels(source, above, :workspace))
     base_size = Resolution.size(base)
 
     sizes =
-      for {_target_id, added, delta} <- repository_growth(scope, base, target_id) do
+      for {_target_id, added, delta} <- repository_growth(source, base, target_id) do
         %{names: base_size.names + added, bytes: base_size.bytes + delta}
       end
 
     sizes = if is_nil(target_id), do: [base_size | sizes], else: sizes
 
-    Enum.reduce_while(sizes, :ok, fn size, :ok ->
+    Enum.find_value(sizes, :ok, fn size ->
       case Resolution.check_size(size) do
-        :ok ->
-          {:cont, :ok}
-
-        {:error, :too_many_names} ->
-          {:halt,
-           refuse(
-             changeset,
-             :name,
-             dgettext_noop("errors", "would give a run more than %{count} variables"),
-             count: Resolution.max_names()
-           )}
-
-        {:error, :too_large} ->
-          {:halt,
-           refuse(
-             changeset,
-             :value,
-             dgettext_noop("errors", "would give a run more than 64 KiB of variables")
-           )}
+        :ok -> nil
+        {:error, _reason} = over -> over
       end
     end)
   end
@@ -505,13 +606,13 @@ defmodule Apiary.Variables do
   # workspace's chain does not set adds itself and its value; one it sets replaces the
   # value's bytes; one it locks adds nothing. Names are ASCII, so another spelling of a
   # name is as long as it.
-  defp repository_growth(scope, %Resolution{entries: entries}, target_id) do
+  defp repository_growth(source, %Resolution{entries: entries}, target_id) do
     keys = Enum.map(entries, &String.downcase(&1.name))
     sizes = Enum.map(entries, &byte_size(&1.value))
     locked = Enum.map(entries, &(not is_nil(&1.locked_by)))
 
     query =
-      from v in variables(scope),
+      from v in variables(source),
         left_join:
           b in fragment(
             "SELECT * FROM unnest(?::text[], ?::int[], ?::boolean[]) AS b(key, size, locked)",

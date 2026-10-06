@@ -56,7 +56,8 @@ beside it:
 - `Apiary.Variables`: a workspace's variables and its repositories' own, with the
   workspace's locks, resolved per holder down the chain from the level above the
   workspace (`Apiary.Variables.Resolution`), and the runner's names it refuses or warns
-  about (`Apiary.Variables.Denied`).
+  about (`Apiary.Variables.Denied`). An edition that writes the level above's variables
+  checks the change against its workspaces with `check_above/2`, under its own locks.
 - `Apiary.KeyDerivation` and `Apiary.Integrity`: the keys derived from
   `APIARY_ENCRYPTION_SECRET`, one per purpose, and the integrity codes of stored rows.
 - `Apiary.Targets`: the workspace's targets as the pages read them, the index in one query
@@ -305,15 +306,18 @@ What an edition may do, by where it is asked (`Apiary.Edition`, `ApiaryWeb.Editi
   organisations page (`places/1`).
 - **Policy**: keep a level above a workspace's security policy
   (`above_workspace/1`, an `Apiary.Policy.Above`: host rules, a required mode, whether
-  the workspace may allow hosts of its own). The core reads it once per operation of
-  `Apiary.Policy`, resolves it with the workspace's and a target's rules
-  (`Apiary.Policy.Resolution`: its deny above everything, its allow narrowed by a lower
-  deny and never widened), renders it into every document, counts it in the record, and
-  draws its rows and lines on the policy pages and Network access, saying the level's
-  `name` and nothing of its own about it. A change of the level renders every workspace
-  again through `Apiary.Policy.rerender_in/3`, inside the edition's transaction, each
-  holder whose bytes change getting an `above_changed` change. The web side names where
-  the level is read and changed (`above_policy_link/1`).
+  the workspace may allow hosts of its own, and variables). The core asks for it in the
+  reads and writes of `Apiary.Policy` that need it, resolves it with the workspace's and
+  a target's rules (`Apiary.Policy.Resolution`: its deny above everything, its allow
+  narrowed by a lower deny and never widened), renders it into every document, counts it
+  in the record, and draws its rows and lines on the policy pages and Network access,
+  saying the level's `name` and nothing of its own about it. A change of the level
+  renders every workspace again through `Apiary.Policy.rerender_in/3`, inside the
+  edition's transaction, each holder whose bytes change getting an `above_changed`
+  change. The web side names where
+  the level is read and changed (`above_policy_link/1`). A level with variables and no
+  policy says `policy: false`: the policy, its record and its pages take it as nil, and
+  only `Apiary.Variables` reads it, resolving its variables first in every chain.
 - **Invitations and members**: give the level an invitation's person joins at, or refuse
   the acceptance (`accepting/3`); add to it once the membership is made (`accepted/4`);
   hear of a change of a level or the end of a suspension (`membership_changed/5`).

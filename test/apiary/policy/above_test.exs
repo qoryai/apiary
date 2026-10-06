@@ -14,8 +14,10 @@ defmodule Apiary.Policy.AboveTest do
   import Apiary.RunListFixtures
 
   alias Apiary.Policy
-  alias Apiary.Policy.{Above, Change, Error, Rule}
+  alias Apiary.Policy.{Above, Change, Error, Render, Resolution, Rule}
   alias Apiary.Runs.Target
+  alias Apiary.Variables
+  alias Apiary.Variables.Variable
 
   setup do
     %{scope: scope} = sign_up_fixture()
@@ -338,5 +340,174 @@ defmodule Apiary.Policy.AboveTest do
       assert message =~ "Eight Wonders's policy"
       assert {:ok, %{version: 1}} = Policy.current_configuration(scope, nil)
     end
+  end
+
+  describe "a level that carries variables only" do
+    # What an edition answers for a level with variables and no policy of its own.
+    defp variables_only!(opts \\ []) do
+      above = %Above{
+        id: Ecto.UUID.generate(),
+        name: "Eight Wonders",
+        slug: "8wonders",
+        policy: false,
+        variables: [
+          %Variable{name: "REGION", value: "eu-west-1", locked: true},
+          %Variable{name: "LOG_LEVEL", value: "info"}
+        ]
+      }
+
+      above = struct!(above, opts)
+      Application.put_env(:apiary, Apiary.Policy.Above, answer: fn _workspace -> above end)
+      above
+    end
+
+    # Everything the policy says of the workspace and of `target`, to compare with and
+    # without the level.
+    defp policy_reads(scope, target) do
+      {:ok, baseline} = Policy.current_configuration(scope, nil)
+      {:ok, own} = Policy.current_configuration(scope, target)
+      {:ok, export} = Policy.export(scope, nil)
+      {:ok, target_export} = Policy.export(scope, target)
+
+      %{
+        effective: Policy.effective(scope, nil),
+        target_effective: Policy.effective(scope, target),
+        mode: Policy.get_mode(scope, target),
+        summary: Policy.mode_summary(scope),
+        digests: {baseline.digest, own.digest},
+        documents: {baseline.document, own.document},
+        exports: {export, target_export}
+      }
+    end
+
+    test "is a level, and the policy's unless it says otherwise" do
+      assert %Above{}.policy
+      above = %Above{name: "Eight Wonders", rules: [rule("deny", "paste.example")]}
+      assert Above.for_policy(above) == above
+      assert Above.for_policy(%Above{name: "Eight Wonders", policy: false}) == nil
+      assert Above.for_policy(nil) == nil
+    end
+
+    test "leaves the effective policy, the resolution, the render and the export as with none",
+         %{scope: scope} do
+      target = target_fixture(scope)
+      {:ok, _} = Policy.allow(scope, nil, %{host: "api.example", paths: ["/v1/*"]})
+      {:ok, _} = Policy.deny(scope, nil, %{host: "ads.example", locked: true})
+      {:ok, _} = Policy.allow(scope, target, %{host: "cdn.example"})
+      {:ok, _} = Policy.set_mode(scope, target, "enforce")
+
+      none = policy_reads(scope, target)
+      variables_only!()
+
+      assert policy_reads(scope, target) == none
+      assert Policy.effective(scope, nil).above == nil
+      refute Policy.get_mode(scope, target).floor
+
+      # The mode is the workspace's to set: nothing requires enforce.
+      assert {:ok, "enforce"} = Policy.set_mode(scope, "enforce")
+    end
+
+    test "resolves as nil, whatever rules it holds when handed to the resolution itself" do
+      rules = [rule("allow", "api.example"), rule("allow", "cdn.example")]
+
+      above = %Above{
+        name: "Eight Wonders",
+        policy: false,
+        rules: [rule("deny", "api.example")],
+        floor: true,
+        own_allows: false
+      }
+
+      assert {:ok, none} = Resolution.resolve_for("observe", nil, rules, [], nil, nil)
+      assert {:ok, ^none} = Resolution.resolve_for("observe", nil, rules, [], nil, above)
+      assert {:ok, ^none} = Resolution.resolve("observe", rules, [], nil, nil)
+      assert {:ok, ^none} = Resolution.resolve("observe", rules, [], nil, above)
+      assert none.above == nil
+      assert none.mode_source == :workspace
+      assert Render.document(none) =~ "cdn.example"
+    end
+
+    test "decides no connection in the record and leaves the history alone", %{scope: scope} do
+      {:ok, _} = Policy.deny(scope, nil, %{host: "ads.example"})
+      target = target_fixture(scope)
+
+      started_run(scope, %{"forge" => "github.example", "repository" => "acme/site"},
+        egress: [
+          %{"host" => "api.example", "decision" => "allowed"},
+          %{"host" => "ads.example", "decision" => "denied"}
+        ]
+      )
+
+      since = DateTime.add(DateTime.utc_now(), -1, :day)
+
+      record = fn ->
+        {Policy.denied_destinations(scope, since), Policy.uncovered(scope, since),
+         Policy.rule_activity(scope, nil, since), Policy.suggestion_counts(scope),
+         Policy.declared_hosts(scope, target)}
+      end
+
+      none = record.()
+      variables_only!()
+      assert record.() == none
+
+      assert {:ok, [%{host: "ads.example", above: nil}]} =
+               Policy.denied_destinations(scope, since)
+
+      # A render again under it gives the same bytes: no version, no change of the level.
+      assert {:ok, []} =
+               Repo.transact(fn ->
+                 {:ok, [workspace]} = Policy.lock_workspaces(scope, [scope.workspace.id])
+                 Policy.rerender_in(workspace, scope, action: "above_changed", all: true)
+               end)
+
+      refute Enum.any?(Policy.list_changes(scope, nil).items, &(&1.action == "above_changed"))
+    end
+
+    test "is still the top of the variables' chain", %{scope: scope} do
+      variables_only!()
+
+      assert {:ok, resolution} = Variables.resolve(scope, :workspace)
+
+      assert Variables.Resolution.values(resolution) == %{
+               "REGION" => "eu-west-1",
+               "LOG_LEVEL" => "info"
+             }
+
+      assert %{set_by: :above, locked_by: :above} =
+               Variables.Resolution.entry(resolution, "REGION")
+
+      assert {:error, changeset} =
+               Variables.create_variable(scope, :workspace, %{name: "REGION", value: "x"})
+
+      assert {"is locked above, so it cannot be set here", _} = changeset.errors[:name]
+    end
+
+    test "with rules, a floor or the switch off, is an edition's mistake said at once",
+         %{scope: scope} do
+      for opts <- [[rules: [rule("deny", "ads.example")]], [floor: true], [own_allows: false]] do
+        variables_only!(opts)
+
+        assert_raise ArgumentError, ~r/policy: false carries variables only/, fn ->
+          Policy.effective(scope, nil)
+        end
+      end
+    end
+  end
+
+  test "a level with a policy and variables holds both", %{scope: scope} do
+    above = %Above{
+      id: Ecto.UUID.generate(),
+      name: "Eight Wonders",
+      slug: "8wonders",
+      policy: true,
+      rules: [rule("deny", "paste.example")],
+      variables: [%Variable{name: "REGION", value: "eu-west-1"}]
+    }
+
+    Application.put_env(:apiary, Apiary.Policy.Above, answer: fn _workspace -> above end)
+
+    assert %{above: ^above} = Policy.effective(scope, nil)
+    assert {:ok, resolution} = Variables.resolve(scope, :workspace)
+    assert Variables.Resolution.values(resolution) == %{"REGION" => "eu-west-1"}
   end
 end

@@ -28,7 +28,9 @@ defmodule Apiary.Policy do
   rule below it, its allow is narrowed by a lower deny and never widened. A change of
   that level renders every workspace of it again, through `rerender_in/3`, inside the
   edition's transaction: each holder whose bytes change gets a new version and an
-  `above_changed` change in its history.
+  `above_changed` change in its history. A level that carries variables only
+  (`policy: false`) is none here: everything this module reads, renders and records is
+  what it is with no level above.
 
   ## Writes
 
@@ -2199,8 +2201,9 @@ defmodule Apiary.Policy do
   ## Helpers
 
   # What holds above the workspace, asked of the edition once per operation and threaded
-  # through, never once per holder.
-  defp above(%Workspace{} = workspace), do: Above.for_workspace(workspace)
+  # through, never once per holder. A level that carries variables only is none here.
+  defp above(%Workspace{} = workspace),
+    do: workspace |> Above.for_workspace() |> Above.for_policy()
 
   defp floor?(%Above{floor: true}), do: true
   defp floor?(_above), do: false
