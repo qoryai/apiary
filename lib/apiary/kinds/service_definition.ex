@@ -6,8 +6,9 @@ defmodule Apiary.Kinds.ServiceDefinition do
   (`Apiary.Connections.ServiceDefinition`) are checked alike.
 
   A definition is valid when it passes `priv/schemas/service-definition.schema.json`, whose
-  `auth` and grammar are the runner contract's for a service item, and the rules the
-  schema cannot say, each with the contract's code:
+  `auth` is the runner contract's `auth.schema.json` (vendored under `priv/contract/`) with
+  its `secret` required, and whose grammar is the contract's for a service item, and the
+  rules the schema cannot say, each with the contract's code:
 
     * every declared id is unique, and `auth.secret` and `auth.username_secret` are
       declared ids (`declaration_unknown`);

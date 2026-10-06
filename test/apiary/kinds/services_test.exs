@@ -120,6 +120,18 @@ defmodule Apiary.Kinds.ServicesTest do
                )
     end
 
+    test "takes the contract's auth, with a username of at most 128 characters" do
+      for auth <- [
+            %{"scheme" => "bearer", "secret" => "key", "prefix" => "Token"},
+            %{"scheme" => "bearer"},
+            %{"scheme" => "basic", "secret" => "key", "username" => String.duplicate("a", 129)}
+          ] do
+        assert {:error, [{:definition_invalid, _}]} =
+                 ServiceDefinition.validate(definition(%{"auth" => auth})),
+               inspect(auth)
+      end
+    end
+
     test "has one canonical encoding, whatever the order of its members" do
       a = definition()
       b = a |> Enum.reverse() |> Map.new()

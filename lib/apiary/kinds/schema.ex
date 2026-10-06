@@ -6,11 +6,18 @@ defmodule Apiary.Kinds.Schema do
   definition (`priv/schemas/service-definition.schema.json`), and an integration's own
   settings schema. Every schema is given `Apiary.Kinds.Pattern.end_only/1` first, so its
   patterns read `$` as the contracts do. A schema from a file is built once and kept in
-  `:persistent_term`; nothing is fetched, and a reference outside the file resolves only
-  to JSON Schema's own meta-schemas, which JSV embeds.
+  `:persistent_term`. Nothing is fetched: a reference outside the file resolves only to
+  the runner contract's `auth.schema.json`, vendored under `priv/contract/`, which a
+  service definition's `auth` refers to by its URL, and to JSON Schema's own
+  meta-schemas, which JSV embeds.
   """
 
+  @behaviour JSV.Resolver
+
   alias Apiary.Kinds.Pattern
+
+  @runner "https://qory.dev/contracts/runner/v1/"
+  @vendored ~w(auth.schema.json)
 
   @doc """
   build/2 builds `schema`, a decoded JSON Schema: `{:ok, root}`, or `{:error, reason}` for
@@ -38,7 +45,7 @@ defmodule Apiary.Kinds.Schema do
           |> File.read!()
           |> Jason.decode!()
           |> adjust.()
-          |> build()
+          |> build(resolver: __MODULE__)
 
         :persistent_term.put(key, root)
         root
@@ -59,4 +66,15 @@ defmodule Apiary.Kinds.Schema do
       {:error, %JSV.ValidationError{} = error} -> {:error, JSV.normalize_error(error)}
     end
   end
+
+  # A file of ours that refers to the runner's contract gets the vendored copy, whose
+  # patterns are read as the contract reads them, like the file's own.
+  @impl JSV.Resolver
+  def resolve(@runner <> file, _opts) when file in @vendored do
+    with {:ok, body} <- File.read(Application.app_dir(:apiary, ["priv", "contract", file])),
+         {:ok, schema} <- Jason.decode(body),
+         do: {:ok, Pattern.end_only(schema)}
+  end
+
+  def resolve(url, _opts), do: {:error, {:not_vendored, url}}
 end
