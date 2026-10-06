@@ -26,12 +26,14 @@ defmodule Apiary.Variables do
     * a name that differs only in case from one set elsewhere in a chain it is in: for a
       workspace's, at the level above and in any repository of the workspace; for a
       repository's, at the level above and in the workspace;
-    * a change, a deletion among them, that would leave any holder it reaches over the
-      contract's limits, 128 names or 64 KiB of names and values
-      (`Apiary.Variables.Resolution.check_limits/1`). The holders are checked where the
-      change leaves them, so one already over the limits refuses it too. A deletion can
-      give a holder more: the larger value the deleted override hid, the workspace's or
-      the level above's, or the values a deleted lock set aside.
+    * a change that would leave any holder it reaches over the contract's limits, 128
+      names or 64 KiB of names and values (`Apiary.Variables.Resolution.check_limits/1`).
+      The holders are checked where the change leaves them, so one already over the
+      limits refuses it too; except a deletion, which is refused only when it makes a
+      holder larger, in names or in bytes, and leaves it over a limit, so deletions that
+      shrink a holder, and grow no other past a limit, can bring it back under them. A
+      deletion can make a holder larger: the larger value the deleted override hid, the
+      workspace's or the level above's, or the values a deleted lock set aside.
 
   A lock set on a name that repositories already set is saved: the lock wins, and their
   own values are set aside (`ignored` in the resolution), as they are for a lock the
@@ -356,23 +358,30 @@ defmodule Apiary.Variables do
   delete_variable/2 removes a variable (`variable.edit`): `{:ok, variable}`, as it was,
   or `{:error, refusal}`.
 
-  A deletion is checked against the limits as every write is: every holder the variable
-  reaches, the workspace and its repositories for a workspace's, the one repository for
-  a repository's, must be left within 128 names and 64 KiB, or it is refused with a
-  changeset, the reason on `name` or on `value`, as an update's is. A deletion can give
-  a holder more than it takes: a repository's value that overrode the workspace's, or
-  the workspace's that overrode the level above's, gives back the larger value it hid,
-  to the repository or to the workspace and every repository that takes it; and a
-  workspace's locked variable takes its lock with it, so the repositories' values it set
-  aside are given to their runs again, as after `unlock_variable/2`.
+  A deletion is checked against the limits, 128 names and 64 KiB, for every holder the
+  variable reaches: the workspace and its repositories for a workspace's, the one
+  repository for a repository's. It is let through when it leaves every holder no
+  larger than before, in names and in bytes, and refused only when it makes a holder
+  larger and leaves it over a limit: a changeset, the reason on `name` or on `value`, as
+  an update's is. So a holder already over the limits can be brought back under them by
+  deletions that shrink it and grow no other holder past them. Every other write is
+  checked where it leaves the holders, whatever they were before.
+
+  A deletion can make a holder larger: a repository's value that overrode the
+  workspace's, or the workspace's that overrode the level above's, gives back the larger
+  value it hid, to the repository or to the workspace and every repository that takes
+  it; and a workspace's locked variable takes its lock with it, so the repositories'
+  values it set aside are given to their runs again, as after `unlock_variable/2`.
   """
   @spec delete_variable(Scope.t(), Variable.t()) :: {:ok, Variable.t()} | {:error, refusal}
   def delete_variable(%Scope{} = scope, %Variable{id: id}) do
     write(scope, fn scope, workspace ->
       with {:ok, current} <- lock_row(scope, id),
            :ok <- Access.check(scope, :"variable.edit", current),
+           above = above_variables(workspace),
+           before = holder_sizes(scope, above, current.target_id),
            {:ok, deleted} <- Repo.delete(current),
-           :ok <- within_limits(scope, workspace, current, Ecto.Changeset.change(current)),
+           :ok <- no_holder_grown_over(scope, above, before, current),
            {:ok, _entry} <-
              Audit.record(Repo, scope, :"variable.edit", deleted, %{
                before: %{name: deleted.name, locked: deleted.locked},
@@ -573,51 +582,82 @@ defmodule Apiary.Variables do
   # limits, or the write rolls back. A workspace's variable reaches the workspace and every
   # repository with variables of its own; a repository's, that repository.
   defp within_limits(scope, workspace, %Variable{target_id: target_id}, changeset) do
-    case holders_within_limits(scope, above_variables(workspace), target_id) do
-      :ok ->
-        :ok
+    scope
+    |> holders_within_limits(above_variables(workspace), target_id)
+    |> limits_refusal(changeset)
+  end
 
-      {:error, :too_many_names} ->
-        refuse(
-          changeset,
-          :name,
-          dgettext_noop("errors", "would give a run more than %{count} variables"),
-          count: Resolution.max_names()
-        )
+  # After a deletion, in its transaction: `before` is `holder_sizes/3` as it was. A
+  # deletion is refused only for a holder it makes larger, in names or in bytes, and
+  # leaves over a limit, so deletions that shrink a holder already over the limits, and
+  # grow no other past them, are how it is brought back under them.
+  defp no_holder_grown_over(scope, above, before, %Variable{target_id: target_id} = variable) do
+    before = Map.new(before)
+    nothing = %{names: 0, bytes: 0}
 
-      {:error, :too_large} ->
-        refuse(
-          changeset,
-          :value,
-          dgettext_noop("errors", "would give a run more than 64 KiB of variables")
-        )
-    end
+    scope
+    |> holder_sizes(above, target_id)
+    |> Enum.filter(fn {holder, size} -> grew?(Map.get(before, holder, nothing), size) end)
+    |> first_over()
+    |> limits_refusal(Ecto.Changeset.change(variable))
+  end
+
+  defp grew?(before, size), do: size.names > before.names or size.bytes > before.bytes
+
+  defp limits_refusal(:ok, _changeset), do: :ok
+
+  defp limits_refusal({:error, :too_many_names}, changeset) do
+    refuse(
+      changeset,
+      :name,
+      dgettext_noop("errors", "would give a run more than %{count} variables"),
+      count: Resolution.max_names()
+    )
+  end
+
+  defp limits_refusal({:error, :too_large}, changeset) do
+    refuse(
+      changeset,
+      :value,
+      dgettext_noop("errors", "would give a run more than 64 KiB of variables")
+    )
   end
 
   # Whether every holder under `above`, the level above's variables, is within the
-  # limits: the workspace and each repository with variables of its own when `target_id`
-  # is nil, else the one repository it names. `:ok`, or the first holder's reason.
-  #
-  # The workspace's chain is resolved once; each repository's size is that one's plus
-  # what its own variables add, from one grouped query over their names and value sizes
-  # (no value is read), so the check is two queries however many repositories there are.
-  defp holders_within_limits(source, above, target_id) do
-    base = Resolution.resolve(levels(source, above, :workspace))
-    base_size = Resolution.size(base)
+  # limits (`holder_sizes/3`): `:ok`, or the first holder's reason.
+  defp holders_within_limits(source, above, target_id),
+    do: source |> holder_sizes(above, target_id) |> first_over()
 
-    sizes =
-      for {_target_id, added, delta} <- repository_growth(source, base, target_id) do
-        %{names: base_size.names + added, bytes: base_size.bytes + delta}
-      end
-
-    sizes = if is_nil(target_id), do: [base_size | sizes], else: sizes
-
-    Enum.find_value(sizes, :ok, fn size ->
+  defp first_over(sizes) do
+    Enum.find_value(sizes, :ok, fn {_holder, size} ->
       case Resolution.check_size(size) do
         :ok -> nil
         {:error, _reason} = over -> over
       end
     end)
+  end
+
+  # The size of every holder under `above` that a variable at `target_id` reaches, each
+  # `{holder, size}`: the workspace (`:workspace`) and each repository with variables of
+  # its own when `target_id` is nil, else the one repository it names, whose size is the
+  # workspace's when it has none of its own.
+  #
+  # The workspace's chain is resolved once; each repository's size is that one's plus
+  # what its own variables add, from one grouped query over their names and value sizes
+  # (no value is read), so it is two queries however many repositories there are.
+  defp holder_sizes(source, above, target_id) do
+    base = Resolution.resolve(levels(source, above, :workspace))
+    base_size = Resolution.size(base)
+
+    sizes =
+      for {id, added, delta} <- repository_growth(source, base, target_id),
+          do: {id, %{names: base_size.names + added, bytes: base_size.bytes + delta}}
+
+    cond do
+      is_nil(target_id) -> [{:workspace, base_size} | sizes]
+      sizes == [] -> [{target_id, base_size}]
+      true -> sizes
+    end
   end
 
   # For each repository with variables of its own (or the one `target_id` names), what

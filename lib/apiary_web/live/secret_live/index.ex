@@ -1947,8 +1947,10 @@ defmodule ApiaryWeb.SecretLive.Index do
 
   defp refusal(socket, :forbidden, _view), do: unauthorized(socket)
 
-  # A deletion refused on the same limits, checked the same way. Nothing was being saved,
-  # so its words say what did not happen: the row is still there.
+  # A deletion refused on the limits: it would make a holder larger and leave it over
+  # them (one that shrinks a holder already over them, and grows none, is let through).
+  # Nothing was being saved, so its words say what did not happen: the row is still
+  # there.
   defp not_deleted(socket, changeset) do
     words = gettext("Not deleted: %{reason}", reason: reasons(changeset))
     back(socket, :error, words, :variables)
