@@ -390,7 +390,7 @@ defmodule ApiaryWeb.NodeLive.Index do
       current_scope={@current_scope}
       memberships={@memberships}
       counts={@nav_counts}
-      nav={:nodes}
+      place={:workspace}
     >
       <:crumb>{gettext("Nodes")}</:crumb>
 

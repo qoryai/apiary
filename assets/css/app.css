@@ -1611,15 +1611,6 @@
   .q-nav-item[aria-current="page"] .q-nav-icon {
     color: var(--color-accent);
   }
-  /* A pinned target whose page this is: the place within Targets, which stays the
-     current entry. Its words and its icon say so, not its row. */
-  .q-nav-item[aria-current="location"] {
-    color: var(--color-base-content);
-    font-weight: 600;
-  }
-  .q-nav-item[aria-current="location"] .q-nav-icon {
-    color: var(--color-accent);
-  }
   .q-nav-text {
     min-width: 0;
     overflow: hidden;
@@ -1791,11 +1782,6 @@
     color: var(--color-base-content);
     font-weight: 500;
   }
-  /* A group's heading in the list of sections (Workspace, What runs are given): in the
-     column from 1024 px; the row below it has no room for headings. */
-  .q-settings-group {
-    display: none;
-  }
   /* A section's count, where it helps (People, Access keys). */
   .q-settings-n {
     color: var(--q-faint);
@@ -1868,17 +1854,6 @@
       gap: 2px;
       overflow: visible;
       border-bottom: 0;
-    }
-    .q-settings-group {
-      display: block;
-      padding: 12px 10px 4px;
-      color: var(--q-faint);
-      font-size: 0.75rem;
-      line-height: 1rem;
-      font-weight: 500;
-    }
-    .q-settings-group:first-child {
-      padding-top: 0;
     }
     .q-settings-link {
       height: 2rem;
@@ -3955,11 +3930,6 @@
     flex: none;
     border-radius: 9999px;
     background-color: currentColor;
-  }
-  /* Something waits for someone who may settle it, such as a key awaiting approval beside
-     Nodes in the sidebar. */
-  .q-dot-hot {
-    color: var(--color-warning);
   }
   .q-ripple::after {
     content: "";

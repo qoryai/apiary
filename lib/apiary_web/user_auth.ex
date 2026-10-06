@@ -340,9 +340,8 @@ defmodule ApiaryWeb.UserAuth do
   end
 
   @doc """
-  The counts the sidebar shows beside Runs (alive now), Nodes (instances running, and the
-  keys awaiting approval for a reader who may approve them), Access keys (active keys) and
-  Members, with the policy's mode beside Security policy, the targets the person pinned in the
+  The counts the sidebar shows beside Runs (alive now), Access keys (active keys) and
+  Members, with the policy's mode beside Policy, the targets the person pinned in the
   workspace (`pins`, `Apiary.Targets.list_pins/2`), and the edition's beside its entries
   (`c:ApiaryWeb.Edition.nav_counts/1`).
   """
@@ -362,23 +361,8 @@ defmodule ApiaryWeb.UserAuth do
       alive: Apiary.Runs.count_alive(scope),
       pins: pins(scope)
     }
-    |> Map.merge(nodes(scope))
     |> Map.merge(policy_mode(scope))
     |> Map.merge(ApiaryWeb.Edition.nav_counts(scope))
-  end
-
-  # Beside Nodes: the instances running now, and the keys awaiting approval, counted only
-  # for a reader who may approve one. Nothing for a reader who may not open the nodes.
-  defp nodes(%Scope{} = scope) do
-    if Apiary.Access.can?(scope, :"node.read", scope.workspace) do
-      waiting =
-        if Apiary.Access.can?(scope, :"access_key.approve", scope.workspace),
-          do: AccessKeys.count_pending(scope)
-
-      %{running: Apiary.Nodes.count_running(scope), keys_waiting: waiting}
-    else
-      %{}
-    end
   end
 
   # The targets the person pinned in the workspace, the first seven in the order pinned:
@@ -555,22 +539,12 @@ defmodule ApiaryWeb.UserAuth do
     scope = socket.assigns.current_scope
 
     if scope && scope.workspace do
-      counts =
-        (socket.assigns.nav_counts || %{})
-        |> Map.put(:alive, Apiary.Runs.count_alive(scope))
-        |> refresh_running(scope)
-
+      counts = Map.put(socket.assigns.nav_counts || %{}, :alive, Apiary.Runs.count_alive(scope))
       Phoenix.Component.assign(socket, :nav_counts, counts)
     else
       socket
     end
   end
-
-  # The instances running follow the runs, as the alive count does, where they are counted.
-  defp refresh_running(%{running: _running} = counts, scope),
-    do: Map.put(counts, :running, Apiary.Nodes.count_running(scope))
-
-  defp refresh_running(counts, _scope), do: counts
 
   # An open page follows a change of the user's own membership and of the workspaces they
   # reach: a new level is loaded into the scope, a membership that is gone, or a workspace

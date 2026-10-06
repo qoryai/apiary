@@ -8,7 +8,7 @@ defmodule ApiaryWeb.TargetComponents do
   where the same path is in more than one system of the workspace
   (`Apiary.Runs.shared_paths/2`) and on the target's own header. `target_path/4` is
   where a target's page is: `/:org/:workspace/targets/:system/*path`, its tabs after a
-  `-` segment (`…/-/policy`), GitLab's way, so no tab can be taken for a part of a path.
+  `-` segment (`…/-/runs`), GitLab's way, so no tab can be taken for a part of a path.
 
   **A run's state** is a dot and, when the run needs a look, a word: running, failed,
   timed out, lost and pending say so; a run that ended well, or was closed, is the dot
@@ -22,7 +22,7 @@ defmodule ApiaryWeb.TargetComponents do
 
   @doc """
   target_path/4 is the path of a target's page in the scope's workspace, `rest` the
-  segments of a tab after `-` (`["policy"]`, `["policy", "history"]`), none for its
+  segments of a tab after `-` (`["runs"]`, `["policy", "history"]`), none for its
   Overview. The path's segments are the target's own, each escaped, unless one of them is
   empty, `-`, `.` or `..`: then the path is one segment, its slashes escaped, so a
   segment of it is never read as the tab's separator or as a step up.

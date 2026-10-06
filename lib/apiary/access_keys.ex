@@ -458,23 +458,6 @@ defmodule Apiary.AccessKeys do
   end
 
   @doc """
-  count_pending/1 is how many keys of the workspace's nodes in use await approval
-  (`AccessKey.status/1`, `:pending`): for the sidebar's dot beside Nodes. One read.
-  """
-  @spec count_pending(Scope.t()) :: non_neg_integer
-  def count_pending(%Scope{} = scope) do
-    Repo.aggregate(
-      from(k in in_workspace(AccessKey, scope),
-        join: n in Node,
-        on: n.id == k.node_id and is_nil(n.deleted_at),
-        where: is_nil(k.revoked_at) and is_nil(k.approved_at) and not is_nil(k.public_key)
-      ),
-      :count,
-      telemetry_options: [sidebar: true]
-    )
-  end
-
-  @doc """
   list_enrolment_codes/2 is `node`'s outstanding enrolment codes, neither used, nor
   cancelled, nor expired, newest first. A code itself is never among what they hold.
   """

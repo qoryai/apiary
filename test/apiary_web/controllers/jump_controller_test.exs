@@ -43,15 +43,7 @@ defmodule ApiaryWeb.JumpControllerTest do
 
     # nothing else is listed for nothing typed but what New offers
     assert Enum.map(answer["groups"], & &1["label"]) == ["Go to", "Actions"]
-    # each where its thing is set up: nodes on Nodes, secrets and variables with
-    # `security` in Settings, people in the organisation's Settings
-    stored = if Apiary.Features.on?(:security), do: ["New secret", "New variable"], else: []
-
-    assert labels(group(answer, "Actions")) ==
-             ["New node", "New node pool"] ++ stored ++ ["Invite people"]
-
-    nodes = Enum.find(group(answer, "Go to")["items"], &(&1["label"] == "Nodes"))
-    assert nodes["href"] == workspace_path(scope, "/nodes")
+    assert labels(group(answer, "Actions")) == ["New access key", "Invite people"]
   end
 
   test "what is typed narrows the pages, in the domain's words", %{conn: conn, scope: scope} do
@@ -78,7 +70,7 @@ defmodule ApiaryWeb.JumpControllerTest do
     end
 
     # The policy is a page only where there is one: with `security`.
-    assert "Security policy" in labels == Apiary.Features.on?(:security)
+    assert "Workspace policy" in labels == Apiary.Features.on?(:security)
 
     refute "Overview" in labels
     refute "Settings" in labels
@@ -92,13 +84,7 @@ defmodule ApiaryWeb.JumpControllerTest do
     assert found.("retention") == ["Workspace settings › Runs"]
     assert found.("prune") == ["Workspace settings › Runs"]
     assert found.("runs") == ["Runs", "Workspace settings › Runs"]
-    # The audit log is an operational page of the organisation, not one of its settings.
-    assert found.("audit") == ["Audit log"]
-
-    assert found.("hosts") ==
-             if(Apiary.Features.on?(:security), do: ["Security policy"], else: [])
-
-    assert found.("machines") == ["Nodes"]
+    assert found.("audit") == ["Organisation settings › Audit log"]
     assert found.("members") == ["Workspace settings › People", "Organisation settings › People"]
     assert found.("workspaces") == ["Organisation settings › Workspaces"]
     assert "Organisation settings" in found.("organisation settings")
@@ -170,12 +156,10 @@ defmodule ApiaryWeb.JumpControllerTest do
     answer = jump(conn, ~p"/#{scope.organisation}/jump")
 
     refute "Runs" in labels(group(answer, "Go to"))
-    assert "Audit log" in labels(group(answer, "Go to"))
-    audit = Enum.find(group(answer, "Go to")["items"], &(&1["label"] == "Audit log"))
-    assert audit["href"] == ~p"/#{scope.organisation}/audit-log"
+    assert "Organisation settings › Audit log" in labels(group(answer, "Go to"))
     # the organisation's own actions, and an edition's; no key of a workspace
     assert "Invite people" in labels(group(answer, "Actions"))
-    refute "New node" in labels(group(answer, "Actions"))
+    refute "New access key" in labels(group(answer, "Actions"))
     refute group(jump(conn, ~p"/#{scope.organisation}/jump", "shop"), "Repositories")
   end
 

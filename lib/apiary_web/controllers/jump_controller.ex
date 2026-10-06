@@ -92,7 +92,7 @@ defmodule ApiaryWeb.JumpController do
   end
 
   # The pages of the navigation, each Settings followed by its sections the navigation
-  # does not list (a workspace's People, Runs and Secrets and variables, Workspaces) and Preferences by its own
+  # does not list (a workspace's People and Runs, Workspaces) and Preferences by its own
   # parts, each once: a section is the navigation's entry where both lead to one path. A
   # scope's General is its Settings.
   defp destinations(scope) do
@@ -136,12 +136,13 @@ defmodule ApiaryWeb.JumpController do
 
   defp after_entry(_entry, _scope, _paths), do: []
 
-  # Entries of the same name in two scopes say whose they are: a workspace's Overview and
-  # Settings, an organisation's, and an edition's entry by its `long_label`; a
+  # Entries of the same name in two scopes say whose they are: a workspace's Overview,
+  # Settings and Policy, an organisation's, and an edition's entry by its `long_label`; a
   # page of Settings names the Settings it is in.
   defp go_to_label(%Entry{long_label: label}) when is_binary(label), do: label
   defp go_to_label(%Entry{key: :overview}), do: gettext("Workspace overview")
   defp go_to_label(%Entry{key: :organisation_overview}), do: gettext("Organisation overview")
+  defp go_to_label(%Entry{key: :policy, place: :workspace}), do: gettext("Workspace policy")
   defp go_to_label(%Entry{section: :foot, place: :workspace}), do: gettext("Workspace settings")
 
   defp go_to_label(%Entry{section: :foot, place: :organisation}),
@@ -166,8 +167,6 @@ defmodule ApiaryWeb.JumpController do
     do: gettext("members users invitations")
 
   defp also(%Entry{key: :audit_log}), do: gettext("activity history")
-  defp also(%Entry{key: :policy}), do: gettext("rules allow deny hosts")
-  defp also(%Entry{key: :nodes}), do: gettext("machines runners instances pools")
   defp also(%Entry{key: :runs, section: :settings}), do: gettext("retention prune keep")
   defp also(%Entry{key: :secrets}), do: gettext("secret variable environment token value")
   defp also(%Entry{key: :theme}), do: gettext("dark light appearance")

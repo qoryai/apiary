@@ -395,7 +395,7 @@ defmodule ApiaryWeb.NodeLive.Show do
       current_scope={@current_scope}
       memberships={@memberships}
       counts={@nav_counts}
-      nav={:nodes}
+      place={:workspace}
     >
       <:crumb navigate={~p"/#{@current_scope.organisation}/#{@current_scope.workspace}/nodes"}>
         {gettext("Nodes")}

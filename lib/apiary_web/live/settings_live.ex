@@ -10,9 +10,8 @@ defmodule ApiaryWeb.SettingsLive do
     deletion of one and the cancelling of a deletion.
   - The workspace's: General, `/:org/:workspace/settings` (`:workspace`), its name, its
     slug and, last, its danger zone, its deletion while it is one of several; Runs,
-    `/:org/:workspace/settings/runs` (`:runs`), how the workspace handles its runs: its
-    first part, Run history retention, how long it keeps runs, their events and their
-    logs, then what the nightly job last pruned. Its path before,
+    `/:org/:workspace/settings/runs` (`:runs`), how long the workspace keeps runs, their
+    events and their logs, and what the nightly job last pruned. Its path before,
     `/settings/retention`, sends on (`ApiaryWeb.MovedController`).
 
   A slug is shown, not edited: renaming one is not decided yet. Deleting asks to type the
@@ -360,7 +359,7 @@ defmodule ApiaryWeb.SettingsLive do
   # and what the nightly job last pruned.
   defp section(%{section: :runs} = assigns) do
     ~H"""
-    <SettingsComponents.part id="retention-keep" title={gettext("Run history retention")}>
+    <SettingsComponents.part id="retention-keep">
       <.form
         for={@retention_form}
         id="retention-form"
@@ -456,7 +455,7 @@ defmodule ApiaryWeb.SettingsLive do
     do: gettext("The name of this workspace, and where its pages are.")
 
   defp section_subtitle(:workspace, :runs),
-    do: gettext("How this workspace handles its runs. The run history itself is in Runs.")
+    do: gettext("How long this workspace keeps runs, their events and their logs.")
 
   @impl true
   def mount(_params, _session, socket) do

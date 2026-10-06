@@ -7,17 +7,13 @@ defmodule ApiaryWeb.SettingsComponents do
   holds the pages people use every day.
 
   - An organisation's (`/:org/settings/…`): General (its name and owners, and deleting
-    it), People (its members, invitations and suspended memberships), Workspaces, then the
-    edition's sections
+    it), People (its members, invitations and suspended memberships), Workspaces, Audit log
+    (`ApiaryWeb.ActivityLive`), then the edition's sections
     (`c:ApiaryWeb.Edition.settings_tabs/1`), each a page of the edition's own.
-  - A workspace's (`/:org/:workspace/settings/…`), in two groups. Workspace: General (its
-    name, and deleting it), People (who reaches it, and at what level: read here, managed
-    in the organisation's People), Runs (how the workspace handles runs; its first part is
-    Run history retention, how long it keeps runs, their events and their logs) and Access
-    keys, until a node's keys have a page of the node's. What runs are given: with the
-    `security` feature, Secrets and variables (`ApiaryWeb.SecretLive.Index`). The groups'
-    headings show only while there are two groups and each has two sections or more;
-    otherwise the list is one list, without headings.
+  - A workspace's (`/:org/:workspace/settings/…`): General (its name, and deleting it),
+    People (who reaches it, and at what level: read here, managed in the organisation's
+    People), Access keys, Runs (how long it keeps runs, their events and their logs), and,
+    with the `security` feature, Secrets and variables (`ApiaryWeb.SecretLive.Index`).
   - A node's (`/:org/:workspace/nodes/:node_id/settings`), the last tab of the node's page
     (`ApiaryWeb.NodeLive.Show`): General (its name, a pool's instance limit, and deleting
     it).
@@ -43,9 +39,8 @@ defmodule ApiaryWeb.SettingsComponents do
   @doc """
   sections/2 is the sections of the organisation's (`:organisation`), the workspace's
   (`:workspace`) or a node's (`{:node, node}`) settings the reader of `scope` may open, as
-  `ApiaryWeb.Nav.Entry` values, in the list's order; each entry's `section` is its group:
-  `:main`, or `:edition` for the edition's, for an organisation's and a node's; a
-  workspace's `:workspace` or `:given` (what runs are given), which `layout/1` heads.
+  `ApiaryWeb.Nav.Entry` values, in the list's order; each entry's `section` is `:main`, or
+  `:edition` for the edition's.
   """
   @spec sections(Scope.t(), :organisation | :workspace | {:node, Apiary.Nodes.Node.t()}) ::
           [Entry.t()]
@@ -76,6 +71,15 @@ defmodule ApiaryWeb.SettingsComponents do
           icon: "hero-squares-2x2",
           path: ~p"/#{organisation}/settings/workspaces",
           place: :organisation
+        },
+      can?(scope, :"audit.read") &&
+        %Entry{
+          section: :main,
+          key: :audit_log,
+          label: gettext("Audit log"),
+          icon: "hero-clipboard-document-list",
+          path: ~p"/#{organisation}/settings/audit-log",
+          place: :organisation
         }
     ]
 
@@ -88,37 +92,37 @@ defmodule ApiaryWeb.SettingsComponents do
   def sections(%Scope{organisation: organisation, workspace: workspace} = scope, :workspace) do
     [
       %Entry{
-        section: :workspace,
+        section: :main,
         key: :general,
         label: gettext("General"),
         icon: "hero-adjustments-horizontal",
         path: ~p"/#{organisation}/#{workspace}/settings"
       },
       %Entry{
-        section: :workspace,
+        section: :main,
         key: :people,
         label: gettext("People"),
         icon: "hero-users",
         path: ~p"/#{organisation}/#{workspace}/settings/people"
       },
       %Entry{
-        section: :workspace,
-        key: :runs,
-        label: gettext("Runs"),
-        icon: "hero-archive-box",
-        path: ~p"/#{organisation}/#{workspace}/settings/runs"
-      },
-      %Entry{
-        section: :workspace,
+        section: :main,
         key: :keys,
         label: gettext("Access keys"),
         icon: "hero-key",
         path: ~p"/#{organisation}/#{workspace}/settings/keys",
         count: :keys
       },
+      %Entry{
+        section: :main,
+        key: :runs,
+        label: gettext("Runs"),
+        icon: "hero-archive-box",
+        path: ~p"/#{organisation}/#{workspace}/settings/runs"
+      },
       Access.can?(scope, :"secret.read", workspace) &&
         %Entry{
-          section: :given,
+          section: :main,
           key: :secrets,
           label: gettext("Secrets and variables"),
           icon: "hero-lock-closed",
@@ -141,7 +145,7 @@ defmodule ApiaryWeb.SettingsComponents do
   end
 
   # The settings' actions are asked of the organisation: listing its workspaces, whose
-  # deletion is its.
+  # deletion is its, and reading the audit trail.
   defp can?(%Scope{organisation: organisation} = scope, action),
     do: Access.can?(scope, action, organisation)
 
@@ -181,28 +185,18 @@ defmodule ApiaryWeb.SettingsComponents do
       </h1>
 
       <nav id="settings-tabs" class="q-settings-nav" aria-label={gettext("Settings")}>
-        <%= for {heading, entries} <- groups(@sections) do %>
-          <p
-            :if={heading}
-            id={"settings-group-#{hd(entries).section}"}
-            class="q-settings-group"
-            aria-hidden="true"
-          >
-            {heading}
-          </p>
-          <.link
-            :for={entry <- entries}
-            id={"settings-tab-#{entry.key}"}
-            navigate={Entry.path(entry, @scope.organisation, @scope.workspace)}
-            aria-current={entry.key == @current && "page"}
-            class="q-settings-link"
-          >
-            <span class="truncate">{entry.label}</span>
-            <span :if={count = count(@counts, entry)} class="q-settings-n">
-              {Format.number(count)}
-            </span>
-          </.link>
-        <% end %>
+        <.link
+          :for={entry <- @sections}
+          id={"settings-tab-#{entry.key}"}
+          navigate={Entry.path(entry, @scope.organisation, @scope.workspace)}
+          aria-current={entry.key == @current && "page"}
+          class="q-settings-link"
+        >
+          <span class="truncate">{entry.label}</span>
+          <span :if={count = count(@counts, entry)} class="q-settings-n">
+            {Format.number(count)}
+          </span>
+        </.link>
       </nav>
 
       <%!-- Not a named region: the section's heading leads it, and a list in it is the
@@ -223,27 +217,6 @@ defmodule ApiaryWeb.SettingsComponents do
     </div>
     """
   end
-
-  # The sections in their groups, each with its heading: a workspace's Workspace and What
-  # runs are given. The headings show only where there are two groups or more and every
-  # group has two sections or more; a heading over the whole list, or over a single link,
-  # says nothing, so the list is then one list.
-  defp groups(sections) do
-    groups =
-      sections
-      |> Enum.chunk_by(& &1.section)
-      |> Enum.map(&{group_heading(hd(&1).section), &1})
-
-    headed? =
-      length(groups) > 1 and
-        Enum.all?(groups, fn {heading, entries} -> heading && length(entries) > 1 end)
-
-    if headed?, do: groups, else: [{nil, sections}]
-  end
-
-  defp group_heading(:workspace), do: gettext("Workspace")
-  defp group_heading(:given), do: gettext("What runs are given")
-  defp group_heading(_section), do: nil
 
   # An entry's count, where the page passed the navigation's counts and the entry has one.
   defp count(%{} = counts, %Entry{count: key}) when is_atom(key) and not is_nil(key) do
