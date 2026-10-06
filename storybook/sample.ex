@@ -158,7 +158,12 @@ defmodule ApiaryWeb.Storybook.Sample do
           setting("base_url", "API base URL", "https://api.github.com",
             hint: "Another for GitHub Enterprise Server."
           ),
-          secret("private_key", "The GitHub App's private key.", "GITHUB_APP_KEY", "main-app"),
+          secret(
+            "private_key",
+            "The GitHub App's private key.",
+            "GITHUB_APP_PRIVATE_KEY",
+            "main-app"
+          ),
           secret(
             "webhook_secret",
             "Checks that an event came from GitHub.",
@@ -408,7 +413,7 @@ defmodule ApiaryWeb.Storybook.Sample do
   def suggested do
     [
       %{
-        id: "qory_github",
+        id: "github",
         publisher: "qoryai",
         repo: "qoryai/qory-github",
         version: "0.1.0",
@@ -450,7 +455,7 @@ defmodule ApiaryWeb.Storybook.Sample do
   def workspace_secrets do
     %{
       secrets: [
-        secret_of("GITHUB_APP_KEY", [{"github", "main-app"}], "2 Sept 2026",
+        secret_of("GITHUB_APP_PRIVATE_KEY", [{"github", "main-app"}], "2 Sept 2026",
           values: ["main-app", "bot-app"]
         ),
         secret_of("GITHUB_WEBHOOK_SECRET", [{"github", nil}], "2 Sept 2026"),

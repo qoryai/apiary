@@ -181,13 +181,13 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
 
     test "adds a value, naming the one it holds, and lists each value with who changed it",
          %{conn: conn, scope: scope} do
-      secret = secret!(scope, %{name: "GITHUB_APP_KEY"})
+      secret = secret!(scope, %{name: "GITHUB_APP_PRIVATE_KEY"})
       {:ok, lv, _html} = live(conn, secrets_path(scope))
 
       lv |> element("#secret-#{secret.public_id}-add") |> render_click()
       assert_patch(lv, secrets_path(scope, "/#{secret.public_id}/add-value"))
       refute has_element?(lv, "#secret-dialog")
-      assert has_element?(lv, "#settings-section-title", "Add a value to GITHUB_APP_KEY")
+      assert has_element?(lv, "#settings-section-title", "Add a value to GITHUB_APP_PRIVATE_KEY")
       assert has_element?(lv, "#breadcrumb [aria-current=page]", "Add value")
       refute lv |> element("#secret-form") |> render() =~ "phx-change"
 
@@ -210,7 +210,7 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
 
       refute_value(html)
       assert_patch(lv, secrets_path(scope))
-      assert render(lv) =~ "bot-app is added to GITHUB_APP_KEY."
+      assert render(lv) =~ "bot-app is added to GITHUB_APP_PRIVATE_KEY."
 
       assert reveal(scope, secret, "main-app") == {:ok, @value}
       assert reveal(scope, secret, "bot-app") == {:ok, "second"}
@@ -226,7 +226,7 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
     test "changes the one value, and a named one, never showing either",
          %{conn: conn, scope: scope} do
       one = secret!(scope, %{name: "FORGE_TOKEN"})
-      several = secret!(scope, %{name: "GITHUB_APP_KEY", value_id: "main-app"})
+      several = secret!(scope, %{name: "GITHUB_APP_PRIVATE_KEY", value_id: "main-app"})
 
       {:ok, lv, _html} = live(conn, secrets_path(scope))
       lv |> element("#secret-#{one.public_id}-change") |> render_click()
@@ -248,25 +248,35 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       lv |> element("#secret-#{several.public_id}-main-app-change") |> render_click()
       assert_patch(lv, secrets_path(scope, "/#{several.public_id}/values/main-app/change"))
 
-      assert has_element?(lv, "#settings-section-title", "Change main-app of GITHUB_APP_KEY")
+      assert has_element?(
+               lv,
+               "#settings-section-title",
+               "Change main-app of GITHUB_APP_PRIVATE_KEY"
+             )
 
       html = lv |> form("#secret-form", secret_value: %{value: ""}) |> render_submit()
       assert has_element?(lv, "#secret_value_value-error")
       refute_value(html)
 
       lv |> form("#secret-form", secret_value: %{value: "next"}) |> render_submit()
-      assert render(lv) =~ "main-app of GITHUB_APP_KEY is changed."
+      assert render(lv) =~ "main-app of GITHUB_APP_PRIVATE_KEY is changed."
       assert reveal(scope, several, "main-app") == {:ok, "next"}
     end
 
     test "renames a value", %{conn: conn, scope: scope} do
-      secret = secret!(scope, %{name: "GITHUB_APP_KEY", value_id: "main-app"})
+      secret = secret!(scope, %{name: "GITHUB_APP_PRIVATE_KEY", value_id: "main-app"})
 
       {:ok, lv, _html} =
         live(conn, secrets_path(scope, "/#{secret.public_id}/values/main-app/rename"))
 
       refute has_element?(lv, "#secret-dialog")
-      assert has_element?(lv, "#settings-section-title", "Rename main-app of GITHUB_APP_KEY")
+
+      assert has_element?(
+               lv,
+               "#settings-section-title",
+               "Rename main-app of GITHUB_APP_PRIVATE_KEY"
+             )
+
       assert has_element?(lv, "#breadcrumb [aria-current=page]", "Rename value")
 
       assert lv |> element("#secret-form input[name='secret_value[value_id]']") |> render() =~
@@ -278,14 +288,14 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       assert html =~ "must be lowercase letters"
 
       lv |> form("#secret-form", secret_value: %{value_id: "web-app"}) |> render_submit()
-      assert render(lv) =~ "main-app of GITHUB_APP_KEY is now web-app."
+      assert render(lv) =~ "main-app of GITHUB_APP_PRIVATE_KEY is now web-app."
       assert reveal(scope, secret, "web-app") == {:ok, @value}
       refute_value(render(lv))
     end
 
     test "deletes a value of several; a secret's one value goes only with it",
          %{conn: conn, scope: scope} do
-      secret = secret!(scope, %{name: "GITHUB_APP_KEY", value_id: "main-app"})
+      secret = secret!(scope, %{name: "GITHUB_APP_PRIVATE_KEY", value_id: "main-app"})
       {:ok, _} = Secrets.add_value(scope, secret, %{value_id: "bot-app", value: "x"})
       one = secret!(scope, %{name: "FORGE_TOKEN"})
 
@@ -301,21 +311,21 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       assert has_element?(
                lv,
                "#secret-#{secret.public_id}-bot-app-confirm",
-               "Delete bot-app of GITHUB_APP_KEY?"
+               "Delete bot-app of GITHUB_APP_PRIVATE_KEY?"
              )
 
       lv
       |> element("#secret-#{secret.public_id}-bot-app-confirm button", "Yes, delete")
       |> render_click()
 
-      assert render(lv) =~ "bot-app is deleted from GITHUB_APP_KEY."
+      assert render(lv) =~ "bot-app is deleted from GITHUB_APP_PRIVATE_KEY."
       assert reveal(scope, secret, "bot-app") == {:error, :not_found}
 
       # The one value left has no Delete in its menu, and its path says why.
       refute has_element?(lv, "#secret-#{secret.public_id}-main-app-delete")
 
       assert refused_at(conn, secrets_path(scope, "/#{secret.public_id}/values/main-app/delete")) =~
-               "GITHUB_APP_KEY has one value, which goes only with the secret"
+               "GITHUB_APP_PRIVATE_KEY has one value, which goes only with the secret"
 
       assert reveal(scope, one) == {:ok, @value}
     end
@@ -355,7 +365,7 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
 
     test "finds, filters and orders the secrets in the URL", %{conn: conn, scope: scope} do
       secret!(scope, %{name: "FORGE_TOKEN"})
-      several = secret!(scope, %{name: "GITHUB_APP_KEY", value_id: "main-app"})
+      several = secret!(scope, %{name: "GITHUB_APP_PRIVATE_KEY", value_id: "main-app"})
       {:ok, _} = Secrets.add_value(scope, several, %{value_id: "bot-app", value: "x"})
       secret!(scope, %{name: "NPM_TOKEN"})
 
@@ -389,7 +399,7 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
     end
 
     test "a member reads the names and value ids, and changes nothing", %{scope: scope} do
-      secret = secret!(scope, %{name: "GITHUB_APP_KEY", value_id: "main-app"})
+      secret = secret!(scope, %{name: "GITHUB_APP_PRIVATE_KEY", value_id: "main-app"})
       conn = member_conn(scope, :member)
 
       {:ok, lv, html} = live(conn, secrets_path(scope))

@@ -5,9 +5,9 @@ defmodule Apiary.Secrets do
 
   A secret (`Apiary.Secrets.Secret`) has a name, unique in the workspace whatever its
   case, a public id (`sec_…`), a note on what it is used for, and either one value or
-  several values, each with a **value id** the person names: `GITHUB_APP_KEY` with the
-  values `main-app` and `bot-app`. A secret has at least one value. Adding a second value
-  to a secret whose one value has no value id names that value too.
+  several values, each with a **value id** the person names: `GITHUB_APP_PRIVATE_KEY` with
+  the values `main-app` and `bot-app`. A secret has at least one value. Adding a second
+  value to a secret whose one value has no value id names that value too.
 
   ## Write-only
 

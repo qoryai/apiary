@@ -193,9 +193,9 @@ defmodule Apiary.SecretsTest do
     end
 
     test "names are unique in the workspace whatever their case", %{scope: scope, owner: owner} do
-      create!(scope, %{name: "GITHUB_APP_KEY"})
+      create!(scope, %{name: "GITHUB_APP_PRIVATE_KEY"})
 
-      for name <- ["GITHUB_APP_KEY", "github_app_key", "GitHub_App_Key"] do
+      for name <- ["GITHUB_APP_PRIVATE_KEY", "github_app_private_key", "GitHub_App_Private_Key"] do
         assert {:error, changeset} = Secrets.create_secret(scope, %{name: name, value: @value})
         assert {message, _} = changeset.errors[:name]
         assert message =~ "compared without case"
@@ -206,7 +206,7 @@ defmodule Apiary.SecretsTest do
       other_scope = workspace_scope(owner.user, other)
 
       assert {:ok, _} =
-               Secrets.create_secret(other_scope, %{name: "github_app_key", value: @value})
+               Secrets.create_secret(other_scope, %{name: "github_app_private_key", value: @value})
     end
 
     test "renaming to another secret's name, in any case, is refused", %{scope: scope} do
@@ -255,7 +255,7 @@ defmodule Apiary.SecretsTest do
   describe "several values" do
     test "a second value names the first, which is encrypted again under its value id",
          %{scope: scope} do
-      secret = create!(scope, %{name: "GITHUB_APP_KEY"})
+      secret = create!(scope, %{name: "GITHUB_APP_PRIVATE_KEY"})
       before = row!(secret, nil)
 
       assert {:error, changeset} =
