@@ -11,11 +11,14 @@ defmodule Apiary.RunListFixtures do
   @doc """
   A run that started `ago:` seconds ago (default 60) with `labels`, projected. Options:
   `runtime:`, `host:`, `egress:` (a list of overrides of `egress_data/1`), `exit:` (the
-  data of `run.exited`), `heartbeat:` `{seconds_ago_received, elapsed, interval}`.
+  data of `run.exited`), `heartbeat:` `{seconds_ago_received, elapsed, interval}`, `now:`
+  the moment `ago:` and the heartbeat count back from (default the clock), for a test that
+  reads by UTC day: a clock just after midnight would put a run of a minute ago on
+  yesterday.
   """
   def started_run(scope, labels \\ %{}, opts \\ []) do
     run = run_fixture(scope)
-    now = DateTime.utc_now()
+    now = Keyword.get_lazy(opts, :now, &DateTime.utc_now/0)
     time = DateTime.add(now, -Keyword.get(opts, :ago, 60), :second)
 
     extra =
