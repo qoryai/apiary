@@ -136,26 +136,25 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
 - Runtimes, integrations and services for the runs, without a page yet
   (`Apiary.Connections`, `Apiary.Integrations`): a runtime of the runner contract's
   catalogue, its `runtimes.json` as the runner ships it; an integration added from a
-  release on GitHub, GitLab or Forgejo, or at an
+  release on GitHub, GitLab or Codeberg, or at an
   https address of its `description.json`, which a job fetches and checks against the
-  release's `checksums.txt` and the integrations contract; a service from a built-in
+  release's `checksums.txt` and the integrations contract (on GitLab through the API's
+  download route, `/api/v4/projects/<project>/releases/vX.Y.Z/downloads/<file>`, which
+  redirects to where a release's link points, where the web route answers a link to
+  another host with a page); a service from a built-in
   definition or one the workspace writes. Each applies to every repository or to chosen
-  ones, an integration in the ways chosen per repository, and two that would collide on a
-  repository are refused. A release is on `github.com`, `gitlab.com` or `codeberg.org`, or
-  on a self-hosted or enterprise forge the operator lists with its kind in
-  `INTEGRATION_FORGE_HOSTS` (`forgejo:git.example.com`, separated by commas), which is
-  recorded with that kind and may resolve to private addresses when its own releases are
-  fetched; a forge path on any other host is refused. `INTEGRATION_URL_SOURCES=false`
-  turns off integrations from an address, for an instance such as a cloud one: neither
-  added nor fetched, though a forge release's download links, which its author chooses,
-  are still followed to any public https host. A wrong value of either stops the boot.
-  The fetch connects only to public addresses, checked again on every redirect, within
-  size and time limits; `INTEGRATION_PRIVATE_HOSTS` names the other hosts that may
-  resolve to private addresses. A token an edition gives
-  (`c:Apiary.Edition.release_token/2`) goes only to the forge's own host, a public or a
-  listed one, only when it is the host first asked, never to another host a redirect
-  names, and never to an address; since it goes to the source's host, an edition gives a
-  token for that exact host, never one chosen by the forge's kind alone. Who may read and
+  ones, an integration through its credential way alone (a description may offer the
+  `tool` way, which a connection refuses), and two that would collide on a repository are
+  refused. A release is on `github.com`, `gitlab.com` or `codeberg.org`,
+  whose host gives its kind of forge, never the request, or at an https address of its
+  `description.json`; a forge path on any other host is refused, since self-hosted forges
+  are not supported. `INTEGRATION_URL_SOURCES=false` turns off integrations from an
+  address, for an instance such as a cloud one: neither added nor fetched, though a forge
+  release's download links, which its author chooses, are still followed to any public
+  https host. A wrong value stops the boot. The fetch connects only to public addresses,
+  for every host and with no setting to allow a private one, checked again on every
+  redirect, within size and time limits. A release is always fetched without
+  credentials, so private releases are not supported. Who may read and
   change them are the actions `connection.read` and `connection.write`, every change is in
   the audit trail, and each row carries an integrity code.
 

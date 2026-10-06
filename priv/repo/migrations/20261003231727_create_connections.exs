@@ -27,8 +27,8 @@ defmodule Apiary.Repo.Migrations.CreateConnections do
   # it is started with.
   #
   # `connection_targets`: the repositories a connection applies to, and per repository the
-  # ways an integration is used there (`credential`, `tool`); none uses every way the
-  # integration offers.
+  # ways an integration is used there (`credential`, `tool`); none uses the credential way
+  # when the integration's description offers it, and a save refuses `tool`.
   #
   # Every row of the first three carries an integrity code (`Apiary.Integrity`) over the
   # fields its schema names, with the key id and the version of that choice of fields.

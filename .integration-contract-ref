@@ -3,4 +3,4 @@
 # test/fixtures/integration-contract/: a commit on the integrations' next branch. It is
 # pinned by commit, since no tag of the integrations has this contract yet; the next tag
 # comes with the joint release.
-e9271cf987c77679bbbe685ea7e05f9c63fea8b8
+bbb23a12a2491d6d0cd9e335f539457788e8882c

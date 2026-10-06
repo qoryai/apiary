@@ -4,15 +4,13 @@ defmodule Apiary.Integrations.Source do
   where each file of a release is downloaded from, by the integrations contract.
 
     * **A forge path**, `<host>/<path>` with no scheme, such as
-      `github.com/qoryai/qory-github`, `gitlab.com/acme/tools/qory-webhook` or
-      `git.example.com/acme/shop`, with its `forge_kind`, `github`, `gitlab` or `forgejo`
-      (Forgejo and Gitea). The forge is a public one, `github.com`, `gitlab.com` or
-      `codeberg.org`, or one the operator lists with its kind in
-      `INTEGRATION_FORGE_HOSTS`, a self-hosted or enterprise forge; a forge path on any
-      other host is refused. The host implies the kind, which may be left out and may not
-      differ, so the kind a release records is always its host's, the one a run
-      configuration has to give off the public forges. A path on GitHub and Forgejo is
-      `<owner>/<repo>`; on GitLab it is the project's full path, its groups included.
+      `github.com/qoryai/qory-github` or `gitlab.com/acme/tools/qory-webhook`, on one of
+      the public forges, each with its `forge_kind`: `github.com` (`github`), `gitlab.com`
+      (`gitlab`) and `codeberg.org` (`forgejo`). A forge path on any other host is
+      refused: self-hosted forges are not supported. The kind is the host's, never one a
+      person gives, so the kind a release records is always its host's. A path on GitHub
+      and Codeberg is `<owner>/<repo>`; on GitLab it is the project's full path, its
+      groups included.
     * **An https URL of a `description.json`**, the release's other files beside it, with
       no `forge_kind`, accepted while `INTEGRATION_URL_SOURCES` is on, as it is by default.
 
@@ -24,23 +22,23 @@ defmodule Apiary.Integrations.Source do
   A **version** is `X.Y.Z` with no leading zeros. A file of version X.Y.Z is at:
 
     * GitHub, Forgejo: `https://<host>/<path>/releases/download/vX.Y.Z/<file>`;
-    * GitLab: `https://<host>/<path>/-/releases/vX.Y.Z/downloads/<file>`;
+    * GitLab: `https://gitlab.com/api/v4/projects/<project>/releases/vX.Y.Z/downloads/<file>`,
+      the API's download route, `<project>` the path with each `/` written `%2F`
+      (`acme%2Ftools%2Fqory-webhook`). Not the web route,
+      `/<path>/-/releases/vX.Y.Z/downloads/<file>`: since GitLab 17.3.2 it answers a
+      release link to another host with a page of HTML that asks the reader to follow
+      it, not a redirect, where the API's route redirects;
     * a URL source: the URL's directory, `<dir>/<file>`, whatever the version.
 
   The source's **owner**, the part of it a person can check, is shown beside the
   publisher a description names: `<host>/<owner>` on a forge (the group path on GitLab),
   the host of a URL.
 
-  ## The operator's settings
+  ## The operator's setting
 
-  Both are read at boot (`boot!/0`), which stops on a value it refuses:
-
-    * `INTEGRATION_FORGE_HOSTS`, the operator's forges: entries `<kind>:<host>` separated
-      by commas, such as
-      `github:github.example.com,gitlab:gitlab.example.com,forgejo:git.example.com`,
-      none when unset (`parse_forge_hosts/1`);
-    * `INTEGRATION_URL_SOURCES`, whether a URL source is accepted: `true`, `1` or `yes`,
-      the default, or `false`, `0` or `no` (`parse_url_sources/1`).
+  `INTEGRATION_URL_SOURCES` says whether a URL source is accepted: `true`, `1` or `yes`,
+  the default, or `false`, `0` or `no` (`parse_url_sources/1`). It is read at boot
+  (`boot!/0`), which stops on a value it refuses.
   """
 
   alias Apiary.Kinds.{Hosts, Pattern}
@@ -57,11 +55,8 @@ defmodule Apiary.Integrations.Source do
           path: String.t() | nil
         }
 
-  @typedoc "The operator's forges: each host, with its kind."
-  @type forge_hosts :: %{String.t() => String.t()}
-
-  @typedoc "An option of `parse/3`: a setting in place of the instance's."
-  @type option :: {:forge_hosts, forge_hosts} | {:url_sources, boolean}
+  @typedoc "An option of `parse/2`: a setting in place of the instance's."
+  @type option :: {:url_sources, boolean}
 
   @host_part "(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?"
   @forge_pattern "^" <> @host_part <> "(?:/[A-Za-z0-9_-][A-Za-z0-9_.-]{0,99}){2,}$"
@@ -70,86 +65,75 @@ defmodule Apiary.Integrations.Source do
   @version_pattern "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
 
   @forge_kinds ~w(github gitlab forgejo)
-  @implied %{"github.com" => "github", "gitlab.com" => "gitlab", "codeberg.org" => "forgejo"}
+  @public_forges %{
+    "github.com" => "github",
+    "gitlab.com" => "gitlab",
+    "codeberg.org" => "forgejo"
+  }
 
   @doc "forge_kinds/0 is the kinds of forge a source may be on."
   @spec forge_kinds() :: [String.t()]
   def forge_kinds, do: @forge_kinds
 
   @doc """
-  public_forge_hosts/0 is the public forges' hosts, whose kind is implied whatever the
-  operator lists.
+  public_forges/0 is the hosts a forge path may be on, the public forges, each of
+  which implies its kind.
   """
-  @spec public_forge_hosts() :: [String.t()]
-  def public_forge_hosts, do: Map.keys(@implied)
+  @spec public_forges() :: [String.t()]
+  def public_forges, do: Map.keys(@public_forges)
 
   @doc """
-  parse/3 checks `source` with `forge_kind`, nil or empty when none was given, under the
-  instance's settings, or the ones `opts` gives (`:forge_hosts`, `:url_sources`):
-  `{:ok, source}`, the kind filled in from the host, or `{:error, reason}`:
-  `:source_invalid` for a source of neither form or a refused host,
-  `:forge_host_unlisted` for a forge path on a host neither public nor listed,
-  `:url_sources_off` for a URL source while they are off, `:forge_kind_invalid` for a
-  kind other than the host's, or given with a URL source, and `:path_invalid` for a
-  GitHub or Forgejo path that is not `<owner>/<repo>`.
+  parse/2 checks `source` under the instance's setting, or the one `opts` gives
+  (`:url_sources`): `{:ok, source}`, a forge path's kind its host's, or
+  `{:error, reason}`: `:source_invalid` for a source of neither form or a refused host,
+  `:forge_host_unlisted` for a forge path on a host other than `github.com`, `gitlab.com`
+  and `codeberg.org`, `:url_sources_off` for a URL source while they are off, and
+  `:path_invalid` for a GitHub or Codeberg path that is not `<owner>/<repo>`.
   """
-  @spec parse(term, term, [option]) :: {:ok, t} | {:error, atom}
-  def parse(source, forge_kind, opts \\ [])
+  @spec parse(term, [option]) :: {:ok, t} | {:error, atom}
+  def parse(source, opts \\ [])
 
-  def parse(source, forge_kind, opts) when is_binary(source) do
-    forge_kind = if forge_kind in [nil, ""], do: nil, else: forge_kind
-
+  def parse(source, opts) when is_binary(source) do
     cond do
       byte_size(source) <= 2048 and Regex.match?(url_regex(), source) ->
-        url(source, forge_kind, opts)
+        url(source, opts)
 
       byte_size(source) <= 512 and not String.ends_with?(source, ".git") and
           Regex.match?(forge_regex(), source) ->
-        forge(source, forge_kind, opts)
+        forge(source)
 
       true ->
         {:error, :source_invalid}
     end
   end
 
-  def parse(_source, _forge_kind, _opts), do: {:error, :source_invalid}
+  def parse(_source, _opts), do: {:error, :source_invalid}
 
-  defp url(source, forge_kind, opts) do
-    cond do
-      not Keyword.get_lazy(opts, :url_sources, &url_sources?/0) ->
-        {:error, :url_sources_off}
+  defp url(source, opts) do
+    if Keyword.get_lazy(opts, :url_sources, &url_sources?/0) do
+      %URI{host: host} = URI.parse(source)
 
-      not is_nil(forge_kind) ->
-        {:error, :forge_kind_invalid}
-
-      true ->
-        %URI{host: host} = URI.parse(source)
-
-        with :ok <- refuse_name(host),
-             do: {:ok, %__MODULE__{source: source, form: :url, host: host}}
+      with :ok <- refuse_name(host),
+           do: {:ok, %__MODULE__{source: source, form: :url, host: host}}
+    else
+      {:error, :url_sources_off}
     end
   end
 
-  defp forge(source, forge_kind, opts) do
+  defp forge(source) do
     [host, path] = String.split(source, "/", parts: 2)
 
     with :ok <- refuse_name(host),
-         {:ok, kind} <- kind(host, forge_kind, opts),
+         {:ok, kind} <- kind(host),
          :ok <- path_for(kind, path) do
       {:ok, %__MODULE__{source: source, form: :forge, forge_kind: kind, host: host, path: path}}
     end
   end
 
-  # The host's kind is the one recorded, whatever was typed: a run configuration gives it
-  # off the public forges, and it has to be the forge's.
-  defp kind(host, forge_kind, opts) do
-    forges = Map.merge(Keyword.get_lazy(opts, :forge_hosts, &forge_hosts/0), @implied)
-
-    case {Map.fetch(forges, host), forge_kind} do
-      {{:ok, kind}, nil} -> {:ok, kind}
-      {{:ok, kind}, kind} -> {:ok, kind}
-      {{:ok, _kind}, _other} -> {:error, :forge_kind_invalid}
-      {:error, _forge_kind} -> {:error, :forge_host_unlisted}
+  defp kind(host) do
+    case Map.fetch(@public_forges, host) do
+      {:ok, kind} -> {:ok, kind}
+      :error -> {:error, :forge_host_unlisted}
     end
   end
 
@@ -181,11 +165,16 @@ defmodule Apiary.Integrations.Source do
     do: Path.dirname(source) <> "/" <> file
 
   def download_url(%__MODULE__{forge_kind: "gitlab", host: host, path: path}, version, file),
-    do: "https://#{host}/#{path}/-/releases/v#{version}/downloads/#{file}"
+    do:
+      "https://#{host}/api/v4/projects/#{project_id(path)}/releases/v#{version}/downloads/#{file}"
 
   def download_url(%__MODULE__{forge_kind: kind, host: host, path: path}, version, file)
       when kind in ["github", "forgejo"],
       do: "https://#{host}/#{path}/releases/download/v#{version}/#{file}"
+
+  # GitLab's API names a project by its full path, URL-encoded: a path's characters are
+  # unreserved but for `/`, so only the slashes change.
+  defp project_id(path), do: URI.encode(path, &URI.char_unreserved?/1)
 
   @doc """
   owner/1 is what a person can check of `source`: `<host>/<owner>` on a forge, the group
@@ -202,100 +191,21 @@ defmodule Apiary.Integrations.Source do
   def owner(%__MODULE__{host: host, path: path}),
     do: host <> "/" <> (path |> String.split("/") |> hd())
 
-  @doc """
-  public_forge?/1 says whether `source` is on a public forge, whose host implies its kind:
-  `github.com`, `gitlab.com` or `codeberg.org`. Any other host is self-hosted.
-  """
-  @spec public_forge?(t) :: boolean
-  def public_forge?(%__MODULE__{form: :forge, host: host}), do: Map.has_key?(@implied, host)
-  def public_forge?(%__MODULE__{}), do: false
-
-  ## The operator's settings
-
-  @doc """
-  forge_hosts/0 is the operator's forges, each host with its kind
-  (`INTEGRATION_FORGE_HOSTS`), as `boot!/0` fixed them.
-  """
-  @spec forge_hosts() :: forge_hosts
-  def forge_hosts, do: setting(:integration_forge_hosts)
+  ## The operator's setting
 
   @doc """
   url_sources?/0 says whether a URL source is accepted (`INTEGRATION_URL_SOURCES`), as
   `boot!/0` fixed it.
   """
   @spec url_sources?() :: boolean
-  def url_sources?, do: setting(:integration_url_sources)
-
-  defp setting(key) do
-    case Application.fetch_env(:apiary, key) do
-      {:ok, value} ->
-        value
+  def url_sources? do
+    case Application.fetch_env(:apiary, :integration_url_sources) do
+      {:ok, on?} ->
+        on?
 
       :error ->
         :ok = boot!()
-        Application.fetch_env!(:apiary, key)
-    end
-  end
-
-  @doc """
-  parse_forge_hosts/1 reads a value of `INTEGRATION_FORGE_HOSTS`: `{:ok, forges}`, each
-  host with its kind, none for nil or a blank value; `{:error, reason}` for an entry that
-  is not `<kind>:<host>`, a kind of `forge_kinds/0` and an exact host name, for a public
-  forge's host, and for a host listed with two kinds. Any case.
-  """
-  @spec parse_forge_hosts(String.t() | nil) :: {:ok, forge_hosts} | {:error, String.t()}
-  def parse_forge_hosts(nil), do: {:ok, %{}}
-
-  def parse_forge_hosts(setting) when is_binary(setting) do
-    setting
-    |> String.split(",")
-    |> Enum.map(&(&1 |> String.trim() |> String.downcase()))
-    |> Enum.reject(&(&1 == ""))
-    |> Enum.reduce_while({:ok, %{}}, fn entry, {:ok, forges} ->
-      with {:ok, host, kind} <- forge_host(entry),
-           :ok <- one_kind(forges, host, kind) do
-        {:cont, {:ok, Map.put(forges, host, kind)}}
-      else
-        {:error, reason} -> {:halt, {:error, reason}}
-      end
-    end)
-  end
-
-  defp forge_host(entry) do
-    with [kind, host] <- entry |> String.split(":", parts: 2) |> Enum.map(&String.trim/1),
-         true <- kind in @forge_kinds do
-      cond do
-        String.starts_with?(host, "*.") ->
-          {:error, "#{inspect(host)} is a pattern: list each forge by its exact host name"}
-
-        String.ends_with?(host, ".") ->
-          {:error, "#{inspect(host)} ends in a dot: write the host name without it"}
-
-        not Hosts.exact?(host) or Hosts.refused_name?(host) ->
-          {:error, "#{inspect(host)} is not a host name"}
-
-        # A public forge listed would be let resolve to a private address, and could be
-        # given another kind than its own.
-        Map.has_key?(@implied, host) ->
-          {:error, "#{inspect(host)} is a public forge, known without being listed"}
-
-        true ->
-          {:ok, host, kind}
-      end
-    else
-      _other ->
-        {:error,
-         "#{inspect(entry)} is not a kind (github, gitlab or forgejo), a colon and a host name"}
-    end
-  end
-
-  defp one_kind(forges, host, kind) do
-    case Map.fetch(forges, host) do
-      {:ok, other} when other != kind ->
-        {:error, "#{inspect(host)} is listed as #{other} and as #{kind}"}
-
-      _same_or_none ->
-        :ok
+        Application.fetch_env!(:apiary, :integration_url_sources)
     end
   end
 
@@ -316,27 +226,12 @@ defmodule Apiary.Integrations.Source do
   end
 
   @doc """
-  boot!/0 reads `INTEGRATION_FORGE_HOSTS` and `INTEGRATION_URL_SOURCES` as
-  `config/runtime.exs` left them, checks them and fixes them for the life of the node.
-  Called at boot; raises on a value `parse_forge_hosts/1` or `parse_url_sources/1`
-  refuses, so the instance does not start.
+  boot!/0 reads `INTEGRATION_URL_SOURCES` as `config/runtime.exs` left it, checks it and
+  fixes it for the life of the node. Called at boot; raises on a value
+  `parse_url_sources/1` refuses, so the instance does not start.
   """
   @spec boot!() :: :ok
   def boot! do
-    forges =
-      case parse_forge_hosts(Application.get_env(:apiary, :integration_forge_hosts_setting)) do
-        {:ok, forges} ->
-          forges
-
-        {:error, reason} ->
-          raise ArgumentError, """
-          environment variable INTEGRATION_FORGE_HOSTS is not valid: #{reason}.
-          Leave it unset for no forge beside github.com, gitlab.com and codeberg.org, or
-          list yours, each as its kind and its host, separated by commas, for example:
-          INTEGRATION_FORGE_HOSTS=github:github.example.com,gitlab:gitlab.example.com,forgejo:git.example.com
-          """
-      end
-
     url_sources =
       case parse_url_sources(Application.get_env(:apiary, :integration_url_sources_setting)) do
         {:ok, on?} ->
@@ -351,7 +246,6 @@ defmodule Apiary.Integrations.Source do
           """
       end
 
-    Application.put_env(:apiary, :integration_forge_hosts, forges)
     Application.put_env(:apiary, :integration_url_sources, url_sources)
     :ok
   end

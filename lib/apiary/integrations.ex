@@ -6,24 +6,22 @@ defmodule Apiary.Integrations do
 
   ## A request
 
-  `request_release/2` takes a `source` (`Apiary.Integrations.Source`): a forge path, on a
-  public forge or one the operator lists in `INTEGRATION_FORGE_HOSTS`, and an exact
-  `version`, the `forge_kind` the host's; or, while `INTEGRATION_URL_SOURCES` is on, an
-  https URL of a `description.json` and no version. A forge release already found in the
-  workspace, intact, is given back as it is: a release's files do not change under its
-  version. Otherwise it records a `pending` release (`Apiary.Integrations.Release`) and
-  enqueues `Apiary.Integrations.FetchJob`, in one transaction, with a `connection.write`
-  entry in the audit trail. A release found is one of the kind the host has now: when the
-  operator corrects a listed forge's kind, a release found under the old kind is not given
-  back, and is fetched anew.
+  `request_release/2` takes a `source` (`Apiary.Integrations.Source`): a forge path, on
+  `github.com`, `gitlab.com` or `codeberg.org`, and an exact `version`, its `forge_kind`
+  always the host's; or, while `INTEGRATION_URL_SOURCES` is on, an https URL of a
+  `description.json` and no version. A forge release already found in the workspace,
+  intact, is given back as it is: a release's files do not change under its version.
+  Otherwise it records a `pending` release (`Apiary.Integrations.Release`) and enqueues
+  `Apiary.Integrations.FetchJob`, in one transaction, with a `connection.write` entry in
+  the audit trail.
 
   ## The fetch
 
   `fetch_release/2` reads the release's `description.json` and `checksums.txt` from where
   the integrations contract says they are, through `Apiary.Integrations.Fetch` and its
-  guards, with the token the edition gives for a forge source
-  (`c:Apiary.Edition.release_token/2`; none in the core) and none for a URL source, then
-  records the release `ready`, or `failed` with a code:
+  guards, without credentials: no request carries a token, whatever the source, so only
+  a release anyone may read is found. It then records the release `ready`, or `failed`
+  with a code:
 
     * `integration_source_refused`, fetching nothing, when the instance's settings no
       longer accept the source (`accepted_source/1`);
@@ -50,7 +48,7 @@ defmodule Apiary.Integrations do
 
   require Logger
 
-  alias Apiary.{Access, Audit, Edition, LogMetadata, Repo}
+  alias Apiary.{Access, Audit, LogMetadata, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Integrations.{Description, Fetch, FetchJob, Release, Source}
   alias Apiary.Kinds.{CanonicalJSON, Coded}
@@ -126,10 +124,9 @@ defmodule Apiary.Integrations do
 
   @doc """
   request_release/2 asks for a release of an integration (`connection.write`): `attrs`
-  has `source`, `forge_kind` (a forge path's, which its host implies and which may be
-  left out) and `version` (a forge path; none for a URL). `{:ok, release}`, pending with
-  its fetch enqueued, or one found before; or `{:error, refusal}`, a changeset whose
-  errors are on `source`, `forge_kind` or `version`.
+  has `source` and `version` (a forge path; none for a URL), and no kind of forge, which
+  is the host's. `{:ok, release}`, pending with its fetch enqueued, or one found before;
+  or `{:error, refusal}`, a changeset whose errors are on `source` or `version`.
   """
   @spec request_release(Scope.t(), map) :: {:ok, Release.t()} | {:error, refusal}
   def request_release(%Scope{} = scope, attrs) do
@@ -145,11 +142,11 @@ defmodule Apiary.Integrations do
     end
   end
 
-  @request_types %{source: :string, forge_kind: :string, version: :string}
+  @request_types %{source: :string, version: :string}
 
   @doc """
-  change_request/1 is the changeset of a request's `source`, `forge_kind` and `version`,
-  for a form; its errors are the ones `request_release/2` gives.
+  change_request/1 is the changeset of a request's `source` and `version`, for a form; its
+  errors are the ones `request_release/2` gives.
   """
   @spec change_request(map) :: Ecto.Changeset.t()
   def change_request(attrs \\ %{}) do
@@ -175,7 +172,7 @@ defmodule Apiary.Integrations do
     source = Ecto.Changeset.get_field(changeset, :source)
     version = Ecto.Changeset.get_field(changeset, :version)
 
-    case Source.parse(source, Ecto.Changeset.get_field(changeset, :forge_kind)) do
+    case Source.parse(source) do
       {:ok, %Source{form: :forge} = parsed} ->
         changeset = Ecto.Changeset.put_change(changeset, :source, parsed)
 
@@ -227,13 +224,6 @@ defmodule Apiary.Integrations do
           )
         )
 
-      {:error, :forge_kind_invalid} ->
-        Ecto.Changeset.add_error(
-          changeset,
-          :forge_kind,
-          dgettext_noop("errors", "is not the forge this source is on")
-        )
-
       {:error, :path_invalid} ->
         Ecto.Changeset.add_error(
           changeset,
@@ -253,17 +243,13 @@ defmodule Apiary.Integrations do
     end
   end
 
-  # A forge release found before, intact, under the kind its host has now: one found
-  # under a kind the operator has since corrected is fetched again, where a forge of the
-  # right kind publishes it. A URL is fetched again each time, since its files may be
-  # replaced.
+  # A forge release found before, intact; a URL is fetched again each time, since its
+  # files may be replaced.
   defp found(_scope, %Source{form: :url}, _version), do: nil
 
-  defp found(scope, %Source{source: source, forge_kind: kind}, version) do
+  defp found(scope, %Source{source: source}, version) do
     from(r in releases(scope),
-      where:
-        r.source == ^source and r.forge_kind == ^kind and r.requested_version == ^version and
-          r.state == "ready",
+      where: r.source == ^source and r.requested_version == ^version and r.state == "ready",
       order_by: [desc: r.inserted_at],
       limit: 1
     )
@@ -311,22 +297,18 @@ defmodule Apiary.Integrations do
   ## Fetching
 
   @doc """
-  fetch_release/3 fetches the pending release with the id `release_id` of the scope's
+  fetch_release/2 fetches the pending release with the id `release_id` of the scope's
   workspace (`connection.write`) and records what was found (see the module's
   documentation): `{:ok, release}`, ready or failed, or as it was when it is no longer
   pending; `{:error, reason}` from `Apiary.Access`, or `:not_found`.
-
-  `opts` exist for the tests: `:release_token`, a function of a scope and a source in
-  place of `c:Apiary.Edition.release_token/2`.
   """
-  @spec fetch_release(Scope.t(), term, keyword) ::
-          {:ok, Release.t()} | {:error, Access.reason()}
-  def fetch_release(%Scope{} = scope, release_id, opts \\ []) do
+  @spec fetch_release(Scope.t(), term) :: {:ok, Release.t()} | {:error, Access.reason()}
+  def fetch_release(%Scope{} = scope, release_id) do
     with {:ok, workspace} <- workspace(scope),
          :ok <- Access.authorize(scope, :"connection.write", workspace),
          %Release{} = release <- Repo.one(from r in releases(scope), where: r.id == ^release_id) do
       if release.state == "pending" and intact(release) do
-        outcome = outcome(scope, release, opts)
+        outcome = outcome(scope, release)
         record(scope, release, outcome)
       else
         {:ok, release}
@@ -339,13 +321,12 @@ defmodule Apiary.Integrations do
 
   @doc """
   accepted_source/1 is the source of `release` as the instance's settings take it now
-  (`Apiary.Integrations.Source.parse/3`): `{:ok, source}`, or `{:error, reason}`, logged,
-  for one they no longer accept, such as a URL source with `INTEGRATION_URL_SOURCES`
-  turned off, or a forge path on a host `INTEGRATION_FORGE_HOSTS` no longer lists.
+  (`Apiary.Integrations.Source.parse/2`): `{:ok, source}`, or `{:error, reason}`, logged,
+  for one they no longer accept, a URL source with `INTEGRATION_URL_SOURCES` turned off.
   """
   @spec accepted_source(Release.t()) :: {:ok, Source.t()} | {:error, atom}
   def accepted_source(%Release{} = release) do
-    case Source.parse(release.source, release.forge_kind) do
+    case Source.parse(release.source) do
       {:ok, source} ->
         {:ok, source}
 
@@ -360,22 +341,16 @@ defmodule Apiary.Integrations do
     end
   end
 
-  defp outcome(scope, %Release{} = release, opts) do
+  defp outcome(scope, %Release{} = release) do
     case accepted_source(release) do
-      {:ok, source} -> fetched(scope, release, source, opts)
+      {:ok, source} -> fetched(scope, release, source)
       {:error, _reason} -> {:failed, "integration_source_refused"}
     end
   end
 
-  defp fetched(scope, release, source, opts) do
-    token = token(scope, source, opts)
-
+  defp fetched(scope, release, source) do
     get = fn file, max ->
-      Fetch.get(Source.download_url(source, release.requested_version, file),
-        token: token,
-        forge_host: forge_host(source),
-        max_bytes: max
-      )
+      Fetch.get(Source.download_url(source, release.requested_version, file), max_bytes: max)
     end
 
     with {:ok, bytes} <- get.("description.json", @description_max),
@@ -391,16 +366,6 @@ defmodule Apiary.Integrations do
       {:failed, code} -> {:failed, code}
     end
   end
-
-  # A URL names a host no forge vouches for, so the edition is not asked for a token to
-  # send there, and the fetch is for no forge, whatever host it is.
-  defp token(_scope, %Source{form: :url}, _opts), do: nil
-
-  defp token(scope, %Source{form: :forge} = source, opts),
-    do: Keyword.get(opts, :release_token, &Edition.release_token/2).(scope, source)
-
-  defp forge_host(%Source{form: :forge, host: host}), do: host
-  defp forge_host(%Source{form: :url}), do: nil
 
   defp listed(checksums, sha, release) do
     if checksum(checksums, "description.json") == sha,

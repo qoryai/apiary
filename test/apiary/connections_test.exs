@@ -168,26 +168,103 @@ defmodule Apiary.ConnectionsTest do
                {:error, :release_not_ready}
     end
 
-    test "is used in the ways its description offers, per repository", %{scope: scope} do
+    test "is used through its credential, per repository, never as a tool", %{scope: scope} do
       tracker = ready_release!(scope, tracker_description(), "github.com/acme/tracker")
       shop = target!(scope, "acme/shop")
       {:ok, connection} = Connections.create_integration(scope, tracker.id, %{})
 
-      assert {:ok, connection} = Connections.put_target(scope, connection, shop.id, ["tool"])
-      assert [%Target{ways: ["tool"]}] = connection.targets
+      # The description offers the tool way, which a connection refuses all the same.
+      assert {:ok, %{ways: ["credential", "tool"]}} = Connections.description(connection)
+
+      for ways <- [["tool"], ["tool", "credential"], [], ["output"]] do
+        assert Connections.put_target(scope, connection, shop.id, ways) ==
+                 {:error, :ways_not_allowed},
+               inspect(ways)
+      end
 
       assert {:ok, connection} =
-               Connections.put_target(scope, connection, shop.id, ["tool", "credential"])
+               Connections.put_target(scope, connection, shop.id, ["credential"])
 
-      assert [%Target{ways: ["credential", "tool"]}] = connection.targets
+      assert [%Target{ways: ["credential"]}] = connection.targets
+      assert Connections.used_ways(connection, shop.id) == ["credential"]
 
       assert {:ok, connection} = Connections.put_target(scope, connection, shop.id, nil)
       assert [%Target{ways: nil}] = connection.targets
+      assert Connections.used_ways(connection, shop.id) == ["credential"]
+    end
 
-      assert Connections.put_target(scope, connection, shop.id, []) == {:error, :ways_not_allowed}
+    test "with no ways of its own, is used through its credential alone", %{scope: scope} do
+      tracker = ready_release!(scope, tracker_description(), "github.com/acme/tracker")
+      shop = target!(scope, "acme/shop")
+      site = target!(scope, "acme/site")
+      {:ok, everywhere} = Connections.create_integration(scope, tracker.id, %{})
+      assert Connections.used_ways(everywhere, shop.id) == ["credential"]
+      {:ok, _deleted} = Connections.delete_connection(scope, everywhere)
 
-      assert Connections.put_target(scope, connection, shop.id, ["output"]) ==
-               {:error, :ways_not_allowed}
+      {:ok, selected} =
+        Connections.create_integration(scope, tracker.id, %{
+          applies_to: "selected",
+          target_ids: [shop.id]
+        })
+
+      assert Connections.used_ways(selected, shop.id) == ["credential"]
+      assert Connections.used_ways(selected, site.id) == []
+    end
+
+    test "is used in none of its target's ways once its release is not ready",
+         %{scope: scope, release: release} do
+      shop = target!(scope, "acme/shop")
+      {:ok, connection} = Connections.create_integration(scope, release.id, %{})
+      {:ok, connection} = Connections.put_target(scope, connection, shop.id, ["credential"])
+      assert Connections.used_ways(connection, shop.id) == ["credential"]
+
+      Repo.update_all(from(r in Apiary.Integrations.Release, where: r.id == ^release.id),
+        set: [description: "{"]
+      )
+
+      {:ok, connection} = Connections.get_connection(scope, connection.public_id)
+      assert Connections.description(connection) == {:error, :not_ready}
+      assert [%Target{ways: ["credential"]}] = connection.targets
+      assert Connections.used_ways(connection, shop.id) == []
+    end
+
+    test "is used in only those of its target's ways its current release offers",
+         %{scope: scope} do
+      tracker = ready_release!(scope, tracker_description(), "github.com/acme/tracker")
+      shop = target!(scope, "acme/shop")
+      {:ok, connection} = Connections.create_integration(scope, tracker.id, %{})
+      {:ok, connection} = Connections.put_target(scope, connection, shop.id, ["credential"])
+      assert Connections.used_ways(connection, shop.id) == ["credential"]
+
+      tool_only =
+        ready_release!(
+          scope,
+          tracker_description(%{
+            "program_version" => "0.4.0",
+            "settings" => %{
+              "type" => "object",
+              "properties" => %{"url" => %{"title" => "Tracker", "type" => "string"}}
+            },
+            "roles" => Map.delete(tracker_description()["roles"], "credential")
+          }),
+          "github.com/acme/tracker"
+        )
+
+      assert {:ok, connection} = Connections.change_release(scope, connection, tool_only.id)
+      assert {:ok, %{ways: ["tool"]}} = Connections.description(connection)
+      assert [%Target{ways: ["credential"]}] = connection.targets
+      assert Connections.used_ways(connection, shop.id) == []
+    end
+
+    test "that applies to every repository is used in none of another workspace",
+         %{scope: scope, release: release} do
+      shop = target!(scope, "acme/shop")
+      elsewhere = target!(sign_up_fixture().scope, "acme/shop")
+      {:ok, everywhere} = Connections.create_integration(scope, release.id, %{})
+
+      assert Connections.used_ways(everywhere, shop.id) == ["credential"]
+      assert Connections.used_ways(everywhere, elsewhere.id) == []
+      assert Connections.used_ways(everywhere, Ecto.UUID.generate()) == []
     end
 
     test "is one per name where two would apply to a repository alike", %{

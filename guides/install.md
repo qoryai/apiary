@@ -305,53 +305,37 @@ next day's job; setting it longer again does not bring it back.
 
 | Variable | Required or default | Meaning and accepted values |
 |---|---|---|
-| `INTEGRATION_FORGE_HOSTS` | none | Your own forges, self-hosted or enterprise, that integrations may be added from as from `github.com`, `gitlab.com` and `codeberg.org`: each as its kind, `github`, `gitlab` or `forgejo` (Forgejo and Gitea), a colon and its host name, separated by commas, for example `github:github.example.com,gitlab:gitlab.example.com,forgejo:git.example.com`. Not set, or empty, lists none. An entry that is not a kind and a host name, a pattern such as `*.example.com`, a name ending in a dot, a public forge's host, or a host listed with two kinds stops the boot. |
 | `INTEGRATION_URL_SOURCES` | `true` | Whether an integration may be added from an https address of its `description.json`: `true`, `1` or `yes`, or `false`, `0` or `no`. Not set, or empty, is `true`. Any other value stops the boot. |
-| `INTEGRATION_PRIVATE_HOSTS` | none | The other hosts an integration's release may be fetched from although they resolve to private addresses, such as a server of `description.json` files, or the storage your forge's downloads redirect to, on your own network: host names, separated by commas. Not set, or empty, allows none. An entry that is not a host name, or is `localhost` or under `.local`, `.internal` or `.home.arpa`, stops the boot. |
 
 When a workspace adds an integration from a release, Qory reads the release's
 `description.json` and `checksums.txt` from the forge or the address it names. A release
-is on `github.com`, `gitlab.com` or `codeberg.org`, or on a forge listed in
-`INTEGRATION_FORGE_HOSTS`, where it is found as on a public forge of its kind: by the
-repository's path and the version, at the download address a forge of that kind gives
-it. The kind you list is the one Qory records with the release and the integration. A
-repository on any other host is refused.
+is on `github.com`, `gitlab.com` or `codeberg.org`, found by the repository's path and
+the version at the download address that forge gives it (on GitLab, the API's download
+route, `/api/v4/projects/…/releases/…/downloads/…`, which redirects to where the
+release's link points), or at an https address of its `description.json`. A repository
+on any other host is refused: self-hosted forges are not supported.
 
 Qory connects only to public addresses: it resolves the host, refuses the fetch when any
 address is private, loopback, link-local or a cloud metadata address, and connects to the
 address it checked, each redirect checked again, at most five, within 15 seconds and
-1 MiB. A forge listed in `INTEGRATION_FORGE_HOSTS` may resolve to private addresses when
-its own releases are fetched, since such a forge is usually on your own network; it may
-not when a release elsewhere redirects to it, or when an address of a `description.json`
-names its host. A host listed in `INTEGRATION_PRIVATE_HOSTS` may resolve to private
-addresses on any fetch. Loopback, link-local and metadata addresses stay refused for
-every host. A fetch that fails says only that it failed; the reason is in the log, with
-the address it was fetching.
+1 MiB. This holds for every host, and no setting allows a private address. A fetch that
+fails says only that it failed; the reason is in the log, with the address it was
+fetching.
 
 An address of a `description.json` may be on any host, so an instance open to people you
 do not know, such as a cloud service, sets `INTEGRATION_URL_SOURCES=false`: integrations
 are then added from forges' releases alone. A workspace that asks for one from an address
 is told so, and a release already asked for from an address is not fetched, nor added.
 Even so, Qory follows a forge release's download links where they lead, to any public
-https host: on GitLab a release's links, and on Forgejo its attachments, may be addresses
-the release's author chose. Whether it is on or off, an address that resolves to a
-private address is refused unless its host is listed in `INTEGRATION_PRIVATE_HOSTS`; a
-forge listed in `INTEGRATION_FORGE_HOSTS` opens no address of a `description.json` on
-its host.
+https host: on GitLab a release's links, and on Codeberg its attachments, may be addresses
+the release's author chose.
 
-This edition sends no token with a fetch. An edition that reads private releases sends
-its token only to the forge's own host, `github.com`, `gitlab.com`, `codeberg.org` or one
-in `INTEGRATION_FORGE_HOSTS`, and only when it is the host first asked: never to an
-address of a `description.json`, to a host only `INTEGRATION_PRIVATE_HOSTS` names, or to
-another host a redirect leads to.
+Qory fetches every release without credentials, as anyone could: no request carries a
+token, so private releases are not supported.
 
-The values are read at boot, so a change takes a restart. A release asked for from a
-forge you then remove from the list, or from an address once `INTEGRATION_URL_SOURCES` is
-off, is not fetched; it fails with `integration_source_refused`, and a release found
-before is not added. When you correct a forge's kind, a release found under the old kind
-is not given back: asking for the same version again fetches it anew under the new kind.
-An integration already added from the old release keeps the old kind; remove it and add
-it again from the new release.
+The value is read at boot, so a change takes a restart. A release asked for from an
+address once `INTEGRATION_URL_SOURCES` is off is not fetched; it fails with
+`integration_source_refused`, and a release found before is not added.
 <!-- /feature -->
 
 ### Sign-up and invitations
