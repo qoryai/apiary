@@ -52,16 +52,17 @@ defmodule Apiary.VariablesTest do
     end)
   end
 
-  # A save never takes a holder past the limits, so a repository is put past the names
-  # here by rows written around the checks: the state a refusal on the names needs.
-  defp past_names!(scope, target, names) do
+  # A save never takes a holder past the limits, so a repository is put past them here
+  # by rows written around the checks: the state a refusal on the names needs, and the
+  # one deletions bring back.
+  defp around_checks!(scope, target, names, value \\ "") do
     for name <- names do
       Repo.insert!(%Variable{
         organisation_id: scope.organisation.id,
         workspace_id: scope.workspace.id,
         target_id: target.id,
         name: name,
-        value: "",
+        value: value,
         created_by_id: scope.user.id,
         updated_by_id: scope.user.id
       })
@@ -386,9 +387,10 @@ defmodule Apiary.VariablesTest do
       set!(scope, site, "LOCKED", "own")
       {:ok, locked} = Variables.lock_variable(scope, locked)
       for i <- 1..8, do: set!(scope, site, "T#{i}", "")
-      past_names!(scope, site, ["T9"])
+      around_checks!(scope, site, ["T9"])
 
-      # The value set aside takes back the name the workspace gives up: still 129.
+      # The value set aside takes back the name the workspace gives up, still 129, and is
+      # 3 bytes longer than the workspace's: larger, and past 128.
       assert {:error, unlock} = Variables.unlock_variable(scope, locked)
       assert {:error, %Ecto.Changeset{} = changeset} = Variables.delete_variable(scope, locked)
       assert error(changeset, :name) == "would give a run more than 128 variables"
@@ -436,24 +438,44 @@ defmodule Apiary.VariablesTest do
       assert deleted_entries() == 0
     end
 
-    test "every deletion is checked where it leaves the holders, so one already over refuses it",
+    test "a repository past 128 names is brought back by deletions that take a name away",
          %{scope: scope, site: site} do
-      for i <- 1..119, do: set!(scope, :workspace, "W#{i}", "")
+      for i <- 1..118, do: set!(scope, :workspace, "W#{i}", "")
       plain = set!(scope, :workspace, "PLAIN", "")
+      set!(scope, :workspace, "BIG", String.duplicate("b", 100))
+      big = set!(scope, site, "BIG", "x")
       for i <- 1..8, do: set!(scope, site, "T#{i}", "")
-      [_t9, _t10, own] = past_names!(scope, site, ["T9", "T10", "T11"])
-
-      # An unlocked workspace variable and a repository's own: each would leave it at 130.
-      for variable <- [plain, own] do
-        assert {:error, %Ecto.Changeset{} = changeset} =
-                 Variables.delete_variable(scope, variable)
-
-        assert error(changeset, :name) == "would give a run more than 128 variables"
-        assert Repo.reload!(variable)
-      end
-
+      [_t9, _t10, own] = around_checks!(scope, site, ["T9", "T10", "T11"])
       assert Resolution.size(resolve!(scope, site)).names == 131
-      assert deleted_entries() == 0
+
+      # Its own BIG keeps the name when deleted, and gives back the workspace's longer
+      # value: larger, and still past 128.
+      assert {:error, %Ecto.Changeset{} = changeset} = Variables.delete_variable(scope, big)
+      assert error(changeset, :name) == "would give a run more than 128 variables"
+      assert Repo.reload!(big)
+
+      # An unlocked workspace variable and one of the repository's own each take a name
+      # away and add no byte: let through, though it is still past.
+      assert {:ok, _} = Variables.delete_variable(scope, plain)
+      assert {:ok, _} = Variables.delete_variable(scope, own)
+      assert Resolution.size(resolve!(scope, site)).names == 129
+      assert deleted_entries() == 2
+    end
+
+    test "a repository over 64 KiB is brought back by deletions that shrink it",
+         %{scope: scope, site: site} do
+      [first | _] =
+        for i <- 10..24, do: set!(scope, :workspace, "V_#{i}", String.duplicate("v", 4096))
+
+      own = set!(scope, site, "LAST", String.duplicate("l", 4032))
+      around_checks!(scope, site, ["EXTRA_1", "EXTRA_2"], String.duplicate("e", 4096))
+      assert Resolution.size(resolve!(scope, site)).bytes == 73_742
+
+      # Each takes bytes away and adds none: let through, though it is still over.
+      assert {:ok, _} = Variables.delete_variable(scope, own)
+      assert {:ok, _} = Variables.delete_variable(scope, first)
+      assert Resolution.size(resolve!(scope, site)).bytes == 65_606
+      assert deleted_entries() == 2
     end
 
     test "one that only shrinks the holders is deleted, at the limit too",
