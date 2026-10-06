@@ -78,8 +78,8 @@ defmodule Apiary.Policy.Above do
   and where it carries variables only (`policy: false`).
   """
   @spec for_policy(t | nil) :: t | nil
-  def for_policy(%__MODULE__{policy: true} = above), do: above
-  def for_policy(_above), do: nil
+  def for_policy(%__MODULE__{policy: false}), do: nil
+  def for_policy(above), do: above
 
   # The policy leaves a level with `policy: false` out whole, so rules, a floor or a
   # switch on it would hold nowhere and say so nowhere: an edition's mistake, said at once.
