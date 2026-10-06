@@ -68,7 +68,7 @@
           }
         },
         "tool": {
-          "description": "The runner's tool: the MCP way, an MCP server reached over HTTP behind the runner's wall. The program is started as <program> tool -- <argument>, with the settings the role lists on standard input, listens on the Unix socket QORY_TOOL_LISTEN names, and answers the requests the runner allows for the hosts it serves, as HTTP/1.1.",
+          "description": "The runner's tool: the MCP way, defined here; a runner runs it in a later release. It is an MCP server reached over HTTP behind the runner's wall. The program is started as <program> tool -- <argument>, with the settings the role lists on standard input, listens on the Unix socket QORY_TOOL_LISTEN names, and answers the requests the runner allows for the hosts it serves, as HTTP/1.1.",
           "type": "object",
           "additionalProperties": false,
           "required": ["serves", "settings"],
