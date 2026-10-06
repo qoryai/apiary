@@ -13,7 +13,9 @@ defmodule Apiary.Integrations do
   workspace, intact, is given back as it is: a release's files do not change under its
   version. Otherwise it records a `pending` release (`Apiary.Integrations.Release`) and
   enqueues `Apiary.Integrations.FetchJob`, in one transaction, with a `connection.write`
-  entry in the audit trail.
+  entry in the audit trail. A release found is one of the kind the host has now: when the
+  operator corrects a listed forge's kind, a release found under the old kind is not given
+  back, and is fetched anew.
 
   ## The fetch
 
@@ -251,13 +253,17 @@ defmodule Apiary.Integrations do
     end
   end
 
-  # A forge release found before, intact; a URL is fetched again each time, since its
-  # files may be replaced.
+  # A forge release found before, intact, under the kind its host has now: one found
+  # under a kind the operator has since corrected is fetched again, where a forge of the
+  # right kind publishes it. A URL is fetched again each time, since its files may be
+  # replaced.
   defp found(_scope, %Source{form: :url}, _version), do: nil
 
-  defp found(scope, %Source{source: source}, version) do
+  defp found(scope, %Source{source: source, forge_kind: kind}, version) do
     from(r in releases(scope),
-      where: r.source == ^source and r.requested_version == ^version and r.state == "ready",
+      where:
+        r.source == ^source and r.forge_kind == ^kind and r.requested_version == ^version and
+          r.state == "ready",
       order_by: [desc: r.inserted_at],
       limit: 1
     )
@@ -367,6 +373,7 @@ defmodule Apiary.Integrations do
     get = fn file, max ->
       Fetch.get(Source.download_url(source, release.requested_version, file),
         token: token,
+        forge_host: forge_host(source),
         max_bytes: max
       )
     end
@@ -386,11 +393,14 @@ defmodule Apiary.Integrations do
   end
 
   # A URL names a host no forge vouches for, so the edition is not asked for a token to
-  # send there, whatever host it is.
+  # send there, and the fetch is for no forge, whatever host it is.
   defp token(_scope, %Source{form: :url}, _opts), do: nil
 
   defp token(scope, %Source{form: :forge} = source, opts),
     do: Keyword.get(opts, :release_token, &Edition.release_token/2).(scope, source)
+
+  defp forge_host(%Source{form: :forge, host: host}), do: host
+  defp forge_host(%Source{form: :url}), do: nil
 
   defp listed(checksums, sha, release) do
     if checksum(checksums, "description.json") == sha,

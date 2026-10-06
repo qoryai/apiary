@@ -283,9 +283,14 @@ defmodule Apiary.Edition do
   path alone, on a public forge or on one the operator lists in `INTEGRATION_FORGE_HOSTS`:
   the source's `host` says which forge, its `forge_kind` what kind of forge it is
   (`Apiary.Integrations.Source.public_forge?/1` tells a public one). A URL source is
-  fetched without a token, and the edition is not asked. The fetch sends the token only
-  to that forge's own host, the one it asks first, and never to another host a redirect
-  names (`Apiary.Integrations.Fetch`).
+  fetched without a token, and the edition is not asked. The fetch sends the token to
+  `source.host`, the host it asks first, and never to another host a redirect names
+  (`Apiary.Integrations.Fetch`).
+
+  So the token returned must be one for that exact host: an edition picks it by
+  `source.host`, never by `forge_kind` alone, since two forges of a kind are two hosts,
+  and a token for `github.com` given for a source on a forge the operator lists as
+  `github:github.example.com` would be sent to that forge.
   """
   @callback release_token(Scope.t(), Apiary.Integrations.Source.t()) :: String.t() | nil
 

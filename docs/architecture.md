@@ -438,7 +438,11 @@ release and its connection record, which a run configuration gives off the publi
 and a forge path on any other host is refused. A URL source is accepted while
 `INTEGRATION_URL_SOURCES` is on, the default; off, it is refused, and a release already
 asked for from one fails with `integration_source_refused` when its fetch comes, as does
-one of a forge no longer listed, and neither is added as a connection. A request records
+one of a forge no longer listed, or listed now with another kind, and none of them is
+added as a connection. A ready release is given back for the same source and version
+only under the kind its host has now, so a corrected kind fetches the release anew; a
+connection recorded under the old kind keeps it, and is removed and added again from the
+new release. A request records
 a pending `integration_releases` row and enqueues `Apiary.Integrations.FetchJob`, which
 reads the release's `description.json` and `checksums.txt` where the integrations contract
 puts them
@@ -467,11 +471,15 @@ description), counted as it arrives, and the whole fetch at 15 seconds. A token,
 edition may give for a private release of a forge source
 (`c:Apiary.Edition.release_token/2`; the core gives none, and none is asked for a URL
 source), goes only to the forge's own host, `github.com`, `gitlab.com`, `codeberg.org` or
-one `INTEGRATION_FORGE_HOSTS` lists, and never across a redirect. Every failure is one
+one `INTEGRATION_FORGE_HOSTS` lists, only when it is the host first asked, and never to
+another host a redirect names; the fetch is told which forge it is for, and sends no token
+on a fetch for none. Since the token goes to the source's host, an edition gives one for
+that exact host, never one chosen by the forge's kind alone. Every failure is one
 `fetch_failed`, the reason only in the log. A forge `INTEGRATION_FORGE_HOSTS` lists may
-resolve to private addresses, and so may the other hosts the operator's
-`INTEGRATION_PRIVATE_HOSTS` names; loopback, link-local and metadata addresses stay
-refused. What came is checked against `checksums.txt`, the version asked for, and any
+resolve to private addresses on the hops to it of a fetch of its own release, not when a
+release elsewhere redirects to it nor when a URL source names its host; the hosts the
+operator's `INTEGRATION_PRIVATE_HOSTS` names may on any fetch. Loopback, link-local and
+metadata addresses stay refused. What came is checked against `checksums.txt`, the version asked for, and any
 earlier release of the same source and version the workspace found:
 `integration_source_mismatch` when they differ.
 

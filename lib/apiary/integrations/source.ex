@@ -263,13 +263,25 @@ defmodule Apiary.Integrations.Source do
 
   defp forge_host(entry) do
     with [kind, host] <- entry |> String.split(":", parts: 2) |> Enum.map(&String.trim/1),
-         true <- kind in @forge_kinds,
-         true <- Hosts.exact?(host) and not Hosts.refused_name?(host) do
-      # A public forge listed would be let resolve to a private address, and could be
-      # given another kind than its own.
-      if Map.has_key?(@implied, host),
-        do: {:error, "#{inspect(host)} is a public forge, known without being listed"},
-        else: {:ok, host, kind}
+         true <- kind in @forge_kinds do
+      cond do
+        String.starts_with?(host, "*.") ->
+          {:error, "#{inspect(host)} is a pattern: list each forge by its exact host name"}
+
+        String.ends_with?(host, ".") ->
+          {:error, "#{inspect(host)} ends in a dot: write the host name without it"}
+
+        not Hosts.exact?(host) or Hosts.refused_name?(host) ->
+          {:error, "#{inspect(host)} is not a host name"}
+
+        # A public forge listed would be let resolve to a private address, and could be
+        # given another kind than its own.
+        Map.has_key?(@implied, host) ->
+          {:error, "#{inspect(host)} is a public forge, known without being listed"}
+
+        true ->
+          {:ok, host, kind}
+      end
     else
       _other ->
         {:error,

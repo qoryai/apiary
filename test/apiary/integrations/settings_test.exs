@@ -150,6 +150,109 @@ defmodule Apiary.Integrations.SettingsTest do
                source: ["is not on a forge this instance adds integrations from"]
              }
     end
+
+    test "unlisted, holds a connection to the release it has", %{scope: scope} do
+      settings("forgejo:git.example.com", nil)
+      attrs = %{source: "git.example.com/acme/shop", version: "0.1.0"}
+      serve(github_description(), "/acme/shop/releases/download/v0.1.0/")
+      {:ok, first} = Integrations.request_release(scope, attrs)
+      first = fetch!(scope, first)
+      {:ok, connection} = Connections.create_integration(scope, first.id, %{})
+
+      serve(
+        github_description(%{"program_version" => "0.2.0"}),
+        "/acme/shop/releases/download/v0.2.0/"
+      )
+
+      {:ok, newer} = Integrations.request_release(scope, %{attrs | version: "0.2.0"})
+      assert %Release{state: "ready"} = fetch!(scope, newer)
+
+      settings(nil, nil)
+
+      capture_log(fn ->
+        assert Connections.change_release(scope, connection, newer.id) ==
+                 {:error, :integration_source_refused}
+      end)
+    end
+
+    test "a release found under a kind since corrected is fetched anew under the new one",
+         %{scope: scope} do
+      settings("github:git.example.com", nil)
+      attrs = %{source: "git.example.com/acme/shop", version: "0.1.0"}
+      serve(github_description(), "/acme/shop/releases/download/v0.1.0/")
+      {:ok, old} = Integrations.request_release(scope, attrs)
+      assert %Release{state: "ready", forge_kind: "github"} = old = fetch!(scope, old)
+      {:ok, connection} = Connections.create_integration(scope, old.id, %{})
+      assert {:ok, %Release{id: id}} = Integrations.request_release(scope, attrs)
+      assert id == old.id
+
+      settings("forgejo:git.example.com", nil)
+
+      assert {:ok, %Release{state: "pending", forge_kind: "forgejo"} = new} =
+               Integrations.request_release(scope, attrs)
+
+      assert new.id != old.id
+      assert %Release{state: "ready"} = fetch!(scope, new)
+
+      capture_log(fn ->
+        assert Connections.create_integration(scope, old.id, %{}) ==
+                 {:error, :integration_source_refused}
+      end)
+
+      # The connection keeps the kind it was recorded with: it is removed and added again.
+      assert Connections.change_release(scope, connection, new.id) ==
+               {:error, {:integration_source_mismatch, :source}}
+
+      {:ok, _deleted} = Connections.delete_connection(scope, connection)
+      assert {:ok, connection} = Connections.create_integration(scope, new.id, %{})
+      assert connection.forge_kind == "forgejo"
+    end
+
+    test "is reached at a private address for its own releases alone", %{scope: scope} do
+      settings("gitlab:private.example.com", nil)
+      release_token = fn _scope, _source -> "forge-token" end
+
+      # A URL source on the forge's host is not let through by the forge's listing.
+      serve(github_description(), "/acme/shop/")
+
+      {:ok, release} =
+        Integrations.request_release(scope, %{
+          source: "https://private.example.com/acme/shop/description.json"
+        })
+
+      log =
+        capture_log(fn ->
+          assert %Release{failure: "fetch_failed"} =
+                   fetch!(scope, release, release_token: release_token)
+        end)
+
+      assert log =~ "address_refused"
+      refute_received {:request, _, _, _, _}
+
+      # Nor is a public forge's release whose download leads there.
+      test = self()
+
+      Req.Test.stub(Apiary.Integrations.Fetch, fn conn ->
+        send(test, {:request, conn.host, Plug.Conn.get_req_header(conn, "host"), [], ""})
+
+        conn
+        |> Plug.Conn.put_resp_header("location", "https://private.example.com/acme/admin")
+        |> Plug.Conn.send_resp(302, "")
+      end)
+
+      {:ok, release} =
+        Integrations.request_release(scope, %{source: "github.com/acme/shop", version: "0.1.0"})
+
+      log =
+        capture_log(fn ->
+          assert %Release{failure: "fetch_failed"} =
+                   fetch!(scope, release, release_token: release_token)
+        end)
+
+      assert log =~ "address_refused"
+      assert_received {:request, "203.0.113.10", ["github.com"], _, _}
+      refute_received {:request, _, ["private.example.com"], _, _}
+    end
   end
 
   describe "INTEGRATION_URL_SOURCES" do
@@ -212,6 +315,14 @@ defmodule Apiary.Integrations.SettingsTest do
   test "a value either setting refuses stops the boot; the ones accepted are fixed" do
     assert_raise ArgumentError, ~r/INTEGRATION_FORGE_HOSTS/, fn ->
       settings("gitea:git.example.com", nil)
+    end
+
+    assert_raise ArgumentError,
+                 ~r/INTEGRATION_FORGE_HOSTS.*"git.example.com." ends in a dot/s,
+                 fn -> settings("forgejo:git.example.com.", nil) end
+
+    assert_raise ArgumentError, ~r/INTEGRATION_FORGE_HOSTS.*"\*.example.com" is a pattern/s, fn ->
+      settings("gitlab:*.example.com", nil)
     end
 
     assert_raise ArgumentError, ~r/INTEGRATION_URL_SOURCES/, fn -> settings(nil, "maybe") end

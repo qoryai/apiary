@@ -36,7 +36,9 @@ being one. Every variable named here is described in [Install and configure](ins
   `github.com`, `gitlab.com` or `codeberg.org`, from a forge of yours you list in
   `INTEGRATION_FORGE_HOSTS` with its kind, or from an https address of its
   `description.json`, which may be on any host. On an instance open to people you do not
-  know, set `INTEGRATION_URL_SOURCES=false` so that they come from forges alone:
+  know, set `INTEGRATION_URL_SOURCES=false` so that they are added from forges' releases
+  alone; a release's download links, which its author chooses on GitLab and Forgejo, are
+  still followed to any public https host:
   [Install and configure](install.md#integrations).
 <!-- /feature -->
 - **The port is not public.** Publish the release's port to the reverse proxy only. In the

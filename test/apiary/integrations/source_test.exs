@@ -205,12 +205,14 @@ defmodule Apiary.Integrations.SourceTest do
       for {setting, reason} <- [
             {"git.example.com", "is not a kind"},
             {"gitea:git.example.com", "is not a kind"},
-            {"forgejo:", "is not a kind"},
-            {"forgejo:10.0.0.1", "is not a kind"},
-            {"forgejo:git.example.com:3000", "is not a kind"},
-            {"forgejo:https://git.example.com", "is not a kind"},
-            {"forgejo:forge.local", "is not a kind"},
-            {"forgejo:localhost", "is not a kind"},
+            {"forgejo:", "is not a host name"},
+            {"forgejo:10.0.0.1", "is not a host name"},
+            {"forgejo:git.example.com:3000", "is not a host name"},
+            {"forgejo:https://git.example.com", "is not a host name"},
+            {"forgejo:forge.local", "is not a host name"},
+            {"forgejo:localhost", "is not a host name"},
+            {"forgejo:git.example.com.", "\"git.example.com.\" ends in a dot"},
+            {"gitlab:*.example.com", "\"*.example.com\" is a pattern"},
             {"gitlab:gitlab.com", "public forge"},
             {"forgejo:git.example.com,gitlab:git.example.com", "listed as forgejo and as gitlab"}
           ] do
