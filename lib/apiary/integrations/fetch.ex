@@ -71,7 +71,12 @@ defmodule Apiary.Integrations.Fetch do
   """
   @spec get(String.t(), [option]) :: {:ok, binary} | {:error, :fetch_failed}
   def get(url, opts \\ []) when is_binary(url) do
-    opts = Keyword.merge(Application.get_env(:apiary, __MODULE__, []), opts)
+    opts =
+      :apiary
+      |> Application.get_env(__MODULE__, [])
+      |> Keyword.merge(opts)
+      |> hold_forge_host(url)
+
     timeout = Keyword.get(opts, :timeout, @timeout)
     deadline = System.monotonic_time(:millisecond) + timeout
 
@@ -103,6 +108,15 @@ defmodule Apiary.Integrations.Fetch do
 
         {:error, :fetch_failed}
     end
+  end
+
+  # A forge's private addresses and its token belong to a fetch that starts on that forge:
+  # a `forge_host` other than the host first asked is dropped, so no caller can lend a
+  # forge's allowance to a fetch that only redirects there.
+  defp hold_forge_host(opts, url) do
+    if Keyword.get(opts, :forge_host) == URI.parse(url).host,
+      do: opts,
+      else: Keyword.put(opts, :forge_host, nil)
   end
 
   # One hop: `url` checked, resolved and pinned, then asked; a redirect followed from here.

@@ -479,8 +479,8 @@ that exact host, never one chosen by the forge's kind alone. Every failure is on
 resolve to private addresses on the hops to it of a fetch of its own release, not when a
 release elsewhere redirects to it nor when a URL source names its host; the hosts the
 operator's `INTEGRATION_PRIVATE_HOSTS` names may on any fetch. Loopback, link-local and
-metadata addresses stay refused. What came is checked against `checksums.txt`, the version asked for, and any
-earlier release of the same source and version the workspace found:
+metadata addresses stay refused. What came is checked against `checksums.txt`, the version
+asked for, and any earlier release of the same source and version the workspace found:
 `integration_source_mismatch` when they differ.
 
 **Integrity.** A connection, a release and a custom definition each carry an integrity

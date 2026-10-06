@@ -250,6 +250,21 @@ defmodule Apiary.Integrations.FetchTest do
     refute_received {:request, _, _, _, _}
   end
 
+  test "lends a listed forge's allowance to no fetch that starts elsewhere" do
+    log =
+      capture_log(fn ->
+        assert get(@url, redirect("https://private.example.com/acme/admin"),
+                 token: "forge-token",
+                 forge_hosts: %{"private.example.com" => "gitlab"},
+                 forge_host: "private.example.com"
+               ) == {:error, :fetch_failed}
+      end)
+
+    assert log =~ "address_refused"
+    assert_received {:request, _, ["github.com"], [], _}
+    refute_received {:request, "10.1.2.3", _, _, _}
+  end
+
   test "reaches no listed forge's private address from a release elsewhere, or a URL" do
     forges = %{"private.example.com" => "gitlab"}
 
