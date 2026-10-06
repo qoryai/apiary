@@ -1150,7 +1150,8 @@ defmodule ApiaryWeb.CoreComponents do
   thing a row's state asks for, and the rest in a `row_menu/1`; never a bordered button
   on every row, and never red outside a confirmation. A row asked to confirm an act on it
   (`confirming`, the row's id) shows the `confirm` slot in place of its cells, an
-  `inline_confirm/1`.
+  `inline_confirm/1`, in one cell across the row; where the table is wider than its box,
+  the confirmation stays in the box's view however far the table is scrolled sideways.
 
   ## Examples
 
@@ -1231,7 +1232,7 @@ defmodule ApiaryWeb.CoreComponents do
               colspan={length(@col) + if(@action != [], do: 1, else: 0)}
               class="q-confirm-cell"
             >
-              {render_slot(@confirm, @row_item.(row))}
+              <div class="q-confirm-view">{render_slot(@confirm, @row_item.(row))}</div>
             </td>
             <td
               :for={col <- @col}

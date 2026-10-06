@@ -1114,7 +1114,9 @@ defmodule ApiaryWeb.PolicyComponents do
               id={"rule-#{row.id}"}
               class="q-pr-row q-confirming"
             >
-              <td colspan="7" class="q-confirm-cell">{render_slot(@confirm, row)}</td>
+              <td colspan="7" class="q-confirm-cell">
+                <div class="q-confirm-view">{render_slot(@confirm, row)}</div>
+              </td>
             </tr>
             <.rule_line
               :if={@confirming == nil || @confirming != row.id}

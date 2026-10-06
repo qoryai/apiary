@@ -26,10 +26,10 @@ if Mix.Project.config()[:app] == :apiary do
     test "the storybook holds the stories" do
       paths = Enum.map(stories(), &elem(&1, 0))
 
-      for path <- ~w(foundations/icons core/button lists/list_pattern policy/rule_mark
-                     policy/rule_line policy/rule_list screens/shell screens/settings
-                     screens/integrations screens/integration screens/add_integration
-                     screens/run_setup screens/nodes screens/node),
+      for path <- ~w(foundations/icons core/button lists/list_pattern lists/row_confirm
+                     policy/rule_mark policy/rule_line policy/rule_list screens/shell
+                     screens/settings screens/integrations screens/integration
+                     screens/add_integration screens/run_setup screens/nodes screens/node),
           do: assert(path in paths, "#{path} is not in the storybook")
     end
 
