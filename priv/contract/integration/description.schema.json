@@ -9,7 +9,7 @@
   "properties": {
     "version": {"description": "The contract's version.", "const": 1},
     "name": {
-      "description": "The integration's name: the key a machine's configuration declares it under, unless the machine chooses another, and so the name of what it defines there. The key is the name of the runner's credential and of the program qory-<key> of this repository's, so the name is the credential's grammar without the dot.",
+      "description": "The integration's name: the key the machine's runner file lists the integration under in integrations:, and the name a run's connection uses. The machine does not choose another. A program Qory publishes is qory-<name>, and in a program's name a dot reads as an extension, so the name has no dot.",
       "type": "string",
       "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
     },

@@ -462,11 +462,12 @@ integrations contract's `description.schema.json` (vendored under
 `priv/contract/integration/`, at the commit in `.integration-contract-ref`), and by the rules
 the schema cannot say. Its `publisher`, required, a `name` and a `url` that may be absent,
 is kept on the release and shown beside the source's owner, never instead of it, since
-nothing verifies it; for a URL source it is the one name a page has. The vendored schema is
-pinned to a commit of the integrations contract's branch that defines ways; the pin moves to
-that contract's main branch once the branch is merged there, and then to its 0.3.0 tag. The contracts' patterns are compiled with `:dollar_endonly`, and a schema
-given to JSV has each `$` anchor written `\z` (`Apiary.Kinds.Pattern`), so a value with a
-trailing newline never passes.
+nothing verifies it; for a URL source it is the one name a page has. The vendored schema and
+the contract's fixtures (`test/fixtures/integration-contract/`) are pinned to a commit on
+the integrations' `next` branch, by its id, since no tag of the integrations has this
+contract yet; the next tag comes with the joint release. The contracts' patterns are
+compiled with `:dollar_endonly`, and a schema given to JSV has each `$` anchor written
+`\z` (`Apiary.Kinds.Pattern`), so a value with a trailing newline never passes.
 
 **The fetch guards** (`Apiary.Integrations.Fetch`): the host is resolved, and the fetch is
 refused unless every address is public (`Apiary.Integrations.Fetch.Address`); the request

@@ -1,10 +1,15 @@
 defmodule Apiary.DescriptionFixtures do
   @moduledoc """
   Descriptions of integrations for the tests: synthetic, in the shape of the integrations
-  contract, and the `qory-github` 0.1.0 description, as its release would publish it.
+  contract, and a `qory-github` description in the shape of the contract's `github.json`,
+  as the tests' made-up release 0.1.0 of it carries it.
   """
 
-  @doc "The decoded description of `qory-github` 0.1.0, with `overrides` merged at the top."
+  @doc """
+  A `qory-github` description in the shape of the contract's `github.json`, at the tests'
+  version 0.1.0, with `overrides` merged at the top. As in `github.json`, `api_url` is a
+  setting no role lists.
+  """
   def github_description(overrides \\ %{}) do
     Map.merge(
       %{
@@ -38,7 +43,7 @@ defmodule Apiary.DescriptionFixtures do
           "credential" => %{
             "argument" => "[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9_.-]{1,100}",
             "hosts" => ["github.com", "api.github.com"],
-            "settings" => ["app_id", "api_url", "private_key"],
+            "settings" => ["app_id", "private_key"],
             "required" => ["app_id", "private_key"]
           }
         }

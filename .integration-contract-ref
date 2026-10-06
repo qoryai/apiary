@@ -1,6 +1,6 @@
 # The commit of qoryai/integrations whose contracts/integration/v1/description.schema.json
 # is vendored under priv/contract/integration/, and whose fixtures are under
-# test/fixtures/integration-contract/: the head of the branch that defines ways. The pin
-# moves to the contract's main branch once that branch is merged there, and then to its
-# 0.3.0 tag.
-d84e824cd722805fa4dae8f28e2297853d94ea00
+# test/fixtures/integration-contract/: a commit on the integrations' next branch. It is
+# pinned by commit, since no tag of the integrations has this contract yet; the next tag
+# comes with the joint release.
+e9271cf987c77679bbbe685ea7e05f9c63fea8b8
