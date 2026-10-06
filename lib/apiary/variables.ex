@@ -27,11 +27,14 @@ defmodule Apiary.Variables do
       workspace's, at the level above and in any repository of the workspace; for a
       repository's, at the level above and in the workspace;
     * a change that would take any holder it reaches over the contract's limits, 128
-      names or 64 KiB of names and values (`Apiary.Variables.Resolution.check_limits/1`).
+      names or 64 KiB of names and values (`Apiary.Variables.Resolution.check_limits/1`),
+      an unlock and the deletion of a locked variable among them.
 
   A lock set on a name that repositories already set is saved: the lock wins, and their
   own values are set aside (`ignored` in the resolution), as they are for a lock the
-  level above sets after them.
+  level above sets after them. An unlock gives them back, and so does deleting the locked
+  variable, whose lock goes with it: either is refused if a repository would then be over
+  the limits.
 
   The edition writes the level above's variables, and checks a change of them against
   the workspaces below with `check_above/2`: another spelling of a name, and the limits
@@ -347,13 +350,22 @@ defmodule Apiary.Variables do
     )
   end
 
-  @doc "delete_variable/2 removes a variable (`variable.edit`): `{:ok, variable}`, as it was."
+  @doc """
+  delete_variable/2 removes a variable (`variable.edit`): `{:ok, variable}`, as it was,
+  or `{:error, refusal}`.
+
+  A workspace's locked variable takes its lock with it, so the repositories' own values
+  it set aside are given to their runs again, as after `unlock_variable/2`, and its
+  deletion is refused as an unlock would be: a changeset with the reason on `name`, over
+  128 names, or on `value`, over 64 KiB, when a repository would then be past them.
+  """
   @spec delete_variable(Scope.t(), Variable.t()) :: {:ok, Variable.t()} | {:error, refusal}
   def delete_variable(%Scope{} = scope, %Variable{id: id}) do
-    write(scope, fn scope, _workspace ->
+    write(scope, fn scope, workspace ->
       with {:ok, current} <- lock_row(scope, id),
            :ok <- Access.check(scope, :"variable.edit", current),
            {:ok, deleted} <- Repo.delete(current),
+           :ok <- lock_gone_within_limits(scope, workspace, current),
            {:ok, _entry} <-
              Audit.record(Repo, scope, :"variable.edit", deleted, %{
                before: %{name: deleted.name, locked: deleted.locked},
@@ -363,6 +375,13 @@ defmodule Apiary.Variables do
       end
     end)
   end
+
+  # After the delete, in its transaction, as `change/4` checks an unlock after its update:
+  # the values the lock set aside count again. Without a lock nothing set aside comes back.
+  defp lock_gone_within_limits(scope, workspace, %Variable{target_id: nil, locked: true} = row),
+    do: within_limits(scope, workspace, row, Ecto.Changeset.change(row))
+
+  defp lock_gone_within_limits(_scope, _workspace, _row), do: :ok
 
   defp details(%Variable{} = variable, change) do
     %{

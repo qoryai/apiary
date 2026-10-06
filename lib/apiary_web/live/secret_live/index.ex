@@ -1919,7 +1919,8 @@ defmodule ApiaryWeb.SecretLive.Index do
         view
       )
 
-  # A lock or an unlock refused on what the lock asks: said, the list read again.
+  # A lock refused on what the lock asks, or an unlock or a deletion refused on the values
+  # it would give the repositories back: said, the list read again, the row still there.
   defp refusal(socket, %Ecto.Changeset{} = changeset, view) do
     message =
       Enum.map_join(changeset.errors, " ", fn {_field, error} -> translate_error(error) end)
