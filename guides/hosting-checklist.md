@@ -31,6 +31,14 @@ being one. Every variable named here is described in [Install and configure](ins
   the release with your address and your organisation's name: it is the instance's first
   sign-up, and emails you your log-in link.
   [Install and configure](install.md#the-instance-admins) has the command.
+<!-- feature: security -->
+- **Where integrations come from.** A workspace adds an integration from a release on
+  `github.com`, `gitlab.com` or `codeberg.org`, from a forge of yours you list in
+  `INTEGRATION_FORGE_HOSTS` with its kind, or from an https address of its
+  `description.json`, which may be on any host. On an instance open to people you do not
+  know, set `INTEGRATION_URL_SOURCES=false` so that they come from forges alone:
+  [Install and configure](install.md#integrations).
+<!-- /feature -->
 - **The port is not public.** Publish the release's port to the reverse proxy only. In the
   compose file that is `127.0.0.1:4100:4100` in place of `4100:4100` when the proxy runs
   on the same machine.

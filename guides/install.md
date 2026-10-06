@@ -305,17 +305,41 @@ next day's job; setting it longer again does not bring it back.
 
 | Variable | Required or default | Meaning and accepted values |
 |---|---|---|
-| `INTEGRATION_PRIVATE_HOSTS` | none | The hosts an integration's release may be fetched from although they resolve to private addresses, such as a forge on your own network: host names, separated by commas. Not set, or empty, allows none. An entry that is not a host name, or is `localhost` or under `.local`, `.internal` or `.home.arpa`, stops the boot. |
+| `INTEGRATION_FORGE_HOSTS` | none | Your own forges, self-hosted or enterprise, that integrations may be added from as from `github.com`, `gitlab.com` and `codeberg.org`: each as its kind, `github`, `gitlab` or `forgejo` (Forgejo and Gitea), a colon and its host name, separated by commas, for example `github:github.example.com,gitlab:gitlab.example.com,forgejo:git.example.com`. Not set, or empty, lists none. An entry that is not a kind and a host name, a public forge's host, or a host listed with two kinds stops the boot. |
+| `INTEGRATION_URL_SOURCES` | `true` | Whether an integration may be added from an https address of its `description.json`: `true`, `1` or `yes`, or `false`, `0` or `no`. Not set, or empty, is `true`. Any other value stops the boot. |
+| `INTEGRATION_PRIVATE_HOSTS` | none | The other hosts an integration's release may be fetched from although they resolve to private addresses, such as a server of `description.json` files, or the storage your forge's downloads redirect to, on your own network: host names, separated by commas. Not set, or empty, allows none. An entry that is not a host name, or is `localhost` or under `.local`, `.internal` or `.home.arpa`, stops the boot. |
 
 When a workspace adds an integration from a release, Qory reads the release's
-`description.json` and `checksums.txt` from the forge or the address it names. It connects
-only to public addresses: it resolves the host, refuses the fetch when any address is
-private, loopback, link-local or a cloud metadata address, and connects to the address it
-checked, each redirect checked again, at most five, within 15 seconds and 1 MiB. A forge
-of your own on a private network is reached only when its host is listed in
+`description.json` and `checksums.txt` from the forge or the address it names. A release
+is on `github.com`, `gitlab.com` or `codeberg.org`, or on a forge listed in
+`INTEGRATION_FORGE_HOSTS`, where it is found as on a public forge of its kind: by the
+repository's path and the version, at the download address a forge of that kind gives
+it. The kind you list is the one Qory records with the release and the integration. A
+repository on any other host is refused.
+
+Qory connects only to public addresses: it resolves the host, refuses the fetch when any
+address is private, loopback, link-local or a cloud metadata address, and connects to the
+address it checked, each redirect checked again, at most five, within 15 seconds and
+1 MiB. A forge listed in `INTEGRATION_FORGE_HOSTS` may resolve to private addresses, since
+such a forge is usually on your own network, and so may a host listed in
 `INTEGRATION_PRIVATE_HOSTS`; loopback, link-local and metadata addresses stay refused for
 every host. A fetch that fails says only that it failed; the reason is in the log, with
 the address it was fetching.
+
+An address of a `description.json` may be on any host, so an instance open to people you
+do not know, such as a cloud service, sets `INTEGRATION_URL_SOURCES=false`: integrations
+then come from forges alone. A workspace that asks for one from an address is told so,
+and a release already asked for from an address is not fetched, nor added. Private
+addresses are refused whether it is on or off.
+
+This edition sends no token with a fetch. An edition that reads private releases sends
+its token only to the forge's own host, `github.com`, `gitlab.com`, `codeberg.org` or one
+in `INTEGRATION_FORGE_HOSTS`: never to an address of a `description.json`, to a host only
+`INTEGRATION_PRIVATE_HOSTS` names, or to another host a redirect leads to.
+
+The values are read at boot, so a change takes a restart. A release asked for from a
+forge you then remove from the list, or from an address once `INTEGRATION_URL_SOURCES` is
+off, is not fetched; it fails with `integration_source_refused`.
 <!-- /feature -->
 
 ### Sign-up and invitations

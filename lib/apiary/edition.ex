@@ -279,8 +279,13 @@ defmodule Apiary.Edition do
 
   @doc """
   The token to fetch a release of `source` (`Apiary.Integrations.Source`) with, for the
-  scope's workspace, or nil to fetch it without one, as the core does. The fetch sends a
-  token only to a public forge's own host (`Apiary.Integrations.Fetch`).
+  scope's workspace, or nil to fetch it without one, as the core does. Asked for a forge
+  path alone, on a public forge or on one the operator lists in `INTEGRATION_FORGE_HOSTS`:
+  the source's `host` says which forge, its `forge_kind` what kind of forge it is
+  (`Apiary.Integrations.Source.public_forge?/1` tells a public one). A URL source is
+  fetched without a token, and the edition is not asked. The fetch sends the token only
+  to that forge's own host, the one it asks first, and never to another host a redirect
+  names (`Apiary.Integrations.Fetch`).
   """
   @callback release_token(Scope.t(), Apiary.Integrations.Source.t()) :: String.t() | nil
 

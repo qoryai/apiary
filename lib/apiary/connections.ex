@@ -10,12 +10,14 @@ defmodule Apiary.Connections do
     * A **runtime** connection names a runtime of the catalogue
       (`Apiary.Kinds.Runtimes`), such as `claude`.
     * An **integration** connection is added from a release the workspace found
-      (`Apiary.Integrations`), ready and intact: it takes the description's name and the
-      release's source, version and description digest. Its plain `settings` are checked
-      against the description (`Apiary.Integrations.Description.check_settings/2`): a
-      secret, or a secret's `<name>_file`, is never a setting. Its `argument` must match
-      every pattern of its roles. Moving it to another release keeps its source and its
-      name, else `integration_source_mismatch`.
+      (`Apiary.Integrations`), ready and intact, whose source the instance's settings
+      still accept, else `integration_source_refused`: it takes the description's name
+      and the release's source, its forge's kind, its version and its description digest.
+      Its plain `settings` are checked against the description
+      (`Apiary.Integrations.Description.check_settings/2`): a secret, or a secret's
+      `<name>_file`, is never a setting. Its `argument` must match every pattern of its
+      roles. Moving it to another release keeps its source and its name, else
+      `integration_source_mismatch`.
     * A **service** connection names its definition, a built-in one by key
       (`Apiary.Kinds.Services`) or the workspace's own, and nothing else: the definition is
       the one source of its hosts, paths, auth and declared secrets.
@@ -68,8 +70,9 @@ defmodule Apiary.Connections do
   @typedoc """
   Why a change is refused: the reasons of `Apiary.Access`, a changeset, or a code with
   what it is about: `{:overlap, public_ids}`, `{:in_use, public_ids}`, `:runtime_unknown`,
-  `:service_unknown`, `:release_not_ready`, `:target_not_found`, `:ways_not_allowed`,
-  `{:integration_source_mismatch, why}`, and the description's
+  `:service_unknown`, `:release_not_ready`, `:integration_source_refused`,
+  `:target_not_found`, `:ways_not_allowed`, `{:integration_source_mismatch, why}`, and the
+  description's
   `{:integration_settings_not_allowed, names}`, `{:integration_settings_invalid, errors}`,
   `{:integration_settings_too_large, max}` and `{:integration_argument_not_allowed, roles}`;
   for a definition, `{:definition_invalid, problems}`.
@@ -273,8 +276,10 @@ defmodule Apiary.Connections do
   create_integration/3 adds an integration from the scope's workspace's release
   `release_id`, ready and intact (`connection.write`): `attrs` has `settings`, the plain
   settings (`%{}` by default), `argument`, `applies_to` and `target_ids`.
-  `{:ok, connection}`, or `{:error, refusal}`: `:release_not_ready`, and the
-  description's refusals of the settings and the argument.
+  `{:ok, connection}`, or `{:error, refusal}`: `:release_not_ready`,
+  `:integration_source_refused` for a release whose source the instance's settings no
+  longer accept (`Apiary.Integrations.accepted_source/1`), and the description's refusals
+  of the settings and the argument.
   """
   @spec create_integration(Scope.t(), term, map) :: {:ok, Connection.t()} | {:error, refusal}
   def create_integration(%Scope{} = scope, release_id, attrs) do
@@ -461,7 +466,8 @@ defmodule Apiary.Connections do
   the scope's workspace (`connection.write`), of the same source and the same
   integration, its settings and argument checked again against the new description.
   `{:ok, connection}`, or `{:error, refusal}`: `{:integration_source_mismatch, why}` for a
-  release of another source or another integration.
+  release of another source or another integration, and the refusals of
+  `create_integration/3` of the release.
   """
   @spec change_release(Scope.t(), Connection.t(), term) ::
           {:ok, Connection.t()} | {:error, refusal}
@@ -666,7 +672,11 @@ defmodule Apiary.Connections do
            ),
          true <- Integrations.intact(release),
          {:ok, description} <- Integrations.description(release) do
-      {:ok, release, description}
+      # Found before the operator's settings changed, it is still not one to add now.
+      case Integrations.accepted_source(release) do
+        {:ok, _source} -> {:ok, release, description}
+        {:error, _reason} -> {:error, :integration_source_refused}
+      end
     else
       _ -> {:error, :release_not_ready}
     end

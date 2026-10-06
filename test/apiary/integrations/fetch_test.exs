@@ -21,7 +21,10 @@ defmodule Apiary.Integrations.FetchTest do
       answer.(conn)
     end
 
-    Fetch.get(url, Keyword.merge([req_options: [plug: plug], private_hosts: []], opts))
+    Fetch.get(
+      url,
+      Keyword.merge([req_options: [plug: plug], private_hosts: [], forge_hosts: %{}], opts)
+    )
   end
 
   defp ok(body), do: fn conn -> Plug.Conn.send_resp(conn, 200, body) end
@@ -166,6 +169,64 @@ defmodule Apiary.Integrations.FetchTest do
 
     assert_received {:request, _, ["github.com"], ["Bearer forge-token"], _}
     assert_received {:request, _, ["objects.example.com"], [], _}
+  end
+
+  test "sends a token to a forge the operator lists, and to no other host on the lists" do
+    url = "https://private.example.com/acme/shop/releases/download/v1.0.0/description.json"
+    forges = %{"private.example.com" => "forgejo"}
+
+    assert {:ok, _} = get(url, ok("{}"), token: "forge-token", forge_hosts: forges)
+    assert_received {:request, "10.1.2.3", ["private.example.com"], ["Bearer forge-token"], _}
+
+    assert {:ok, _} =
+             get(url, ok("{}"), token: "forge-token", private_hosts: ["private.example.com"])
+
+    assert_received {:request, "10.1.2.3", ["private.example.com"], [], _}
+  end
+
+  test "never sends a listed forge's token on to the host a redirect names" do
+    url = "https://git.example.com/acme/shop/releases/download/v1.0.0/description.json"
+
+    assert {:ok, _} =
+             get(
+               url,
+               fn conn ->
+                 if conn.request_path =~ "acme/shop",
+                   do: redirect("https://objects.example.com/asset").(conn),
+                   else: ok("{}").(conn)
+               end,
+               token: "forge-token",
+               forge_hosts: %{"git.example.com" => "forgejo", "objects.example.com" => "forgejo"}
+             )
+
+    assert_received {:request, _, ["git.example.com"], ["Bearer forge-token"], _}
+    assert_received {:request, _, ["objects.example.com"], [], "/asset"}
+  end
+
+  test "reaches a private address for a forge the operator lists, and not for one unlisted" do
+    url = "https://private.example.com/acme/shop/releases/download/v1.0.0/description.json"
+
+    assert {:ok, "{}"} =
+             get(url, ok("{}"), forge_hosts: %{"private.example.com" => "gitlab"})
+
+    assert_received {:request, "10.1.2.3", ["private.example.com"], _, _}
+
+    log =
+      capture_log(fn ->
+        assert get(url, ok("{}"), forge_hosts: %{"git.example.com" => "gitlab"}) ==
+                 {:error, :fetch_failed}
+      end)
+
+    assert log =~ "address_refused"
+    refute_received {:request, _, _, _, _}
+
+    capture_log(fn ->
+      assert get("https://loopback.example.com/description.json", ok("{}"),
+               forge_hosts: %{"loopback.example.com" => "forgejo"}
+             ) == {:error, :fetch_failed}
+    end)
+
+    refute_received {:request, _, _, _, _}
   end
 
   test "reaches a private address only for a host on the operator's allow list" do
