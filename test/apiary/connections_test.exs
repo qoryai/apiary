@@ -136,6 +136,11 @@ defmodule Apiary.ConnectionsTest do
              }) ==
                {:error, {:integration_settings_not_allowed, ["private_key"]}}
 
+      assert Connections.create_integration(scope, release.id, %{
+               settings: %{"api_url" => "https://api.github.com"}
+             }) ==
+               {:error, {:integration_settings_not_allowed, ["api_url"]}}
+
       assert {:error, {:integration_settings_invalid, _}} =
                Connections.create_integration(scope, release.id, %{
                  settings: %{"app_id" => "no id"}

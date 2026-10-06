@@ -26,6 +26,23 @@ defmodule Apiary.Integrations.DescriptionTest do
                Path.basename(file)
       end
     end
+
+    test "github.json: a connection holds what its credential role lists, never api_url" do
+      assert {:ok, github} =
+               @fixtures |> Path.join("github.json") |> File.read!() |> Description.parse()
+
+      assert github.ways == ["credential"]
+      assert github.settings == ["api_url", "app_id", "installation_id", "permissions"]
+
+      assert Description.check_settings(github, %{
+               "app_id" => 123_456,
+               "installation_id" => 7,
+               "permissions" => %{"contents" => "read"}
+             }) == :ok
+
+      assert Description.check_settings(github, %{"api_url" => "https://api.github.com"}) ==
+               {:error, {:integration_settings_not_allowed, ["api_url"]}}
+    end
   end
 
   describe "a description" do
@@ -163,8 +180,11 @@ defmodule Apiary.Integrations.DescriptionTest do
                Description.check_settings(description, %{"app_id" => "1\n"})
     end
 
-    test "never hold a secret, a secret's _file, or a name no role lists",
+    test "never hold a secret, a secret's _file, or a name no role lists, declared or not",
          %{description: description} do
+      assert {:error, {:integration_settings_not_allowed, ["api_url"]}} =
+               Description.check_settings(description, %{"api_url" => "https://api.github.com"})
+
       assert {:error, {:integration_settings_not_allowed, ["private_key_file"]}} =
                Description.check_settings(description, %{"private_key_file" => "/etc/key.pem"})
 
@@ -178,7 +198,7 @@ defmodule Apiary.Integrations.DescriptionTest do
     test "are at most 64 KiB as canonical JSON", %{description: description} do
       assert {:error, {:integration_settings_too_large, 65_536}} =
                Description.check_settings(description, %{
-                 "api_url" => "https://" <> String.duplicate("a", 65_536)
+                 "app_id" => String.duplicate("a", 65_536)
                })
     end
 
