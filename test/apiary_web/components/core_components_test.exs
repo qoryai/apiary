@@ -173,5 +173,64 @@ defmodule ApiaryWeb.CoreComponentsTest do
 
       assert doc |> LazyHTML.query("th .sr-only") |> LazyHTML.text() == "Pinned"
     end
+
+    # A table wider than its box scrolls sideways: the confirmation is one cell across the
+    # row, its content in the block the stylesheet keeps in the box's view (`q-confirm-view`,
+    # sticky), so the question and its buttons are never off to one side.
+    test "shows a row's confirmation in one cell across its columns, kept in view" do
+      assigns = %{rows: [%{id: 1, name: "build-01"}, %{id: 2, name: "build-02"}]}
+
+      html =
+        rendered_to_string(~H"""
+        <CoreComponents.table
+          id="keys"
+          label="Access keys"
+          rows={@rows}
+          row_id={&"key-#{&1.id}"}
+          confirming="key-2"
+        >
+          <:col :let={row} label="Name" kind="title">{row.name}</:col>
+          <:col label="Added by" from="sm">dana</:col>
+          <:action :let={row}>
+            <CoreComponents.row_menu id={"key-#{row.id}-menu"} label={"Actions for #{row.name}"} />
+          </:action>
+          <:confirm :let={row}>
+            <CoreComponents.inline_confirm
+              id={"key-#{row.id}-confirm"}
+              question={"Revoke #{row.name}?"}
+              cancel="/acme/shop/settings/keys"
+            >
+              Runs that use it are refused from their next request.
+              <:action>
+                <CoreComponents.button variant="danger" size="xs">Yes, revoke</CoreComponents.button>
+              </:action>
+            </CoreComponents.inline_confirm>
+          </:confirm>
+        </CoreComponents.table>
+        """)
+
+      doc = LazyHTML.from_fragment(html)
+
+      assert [cell] = doc |> LazyHTML.query("tr#key-2.q-confirming > td") |> Enum.to_list()
+      assert LazyHTML.attribute(cell, "class") == ["q-confirm-cell"]
+      assert LazyHTML.attribute(cell, "colspan") == ["3"]
+
+      view = LazyHTML.query(cell, "td > .q-confirm-view > #key-2-confirm.q-confirm")
+      assert [_] = Enum.to_list(view)
+      assert view |> LazyHTML.query(".q-confirm-q") |> LazyHTML.text() == "Revoke build-02?"
+
+      assert view |> LazyHTML.query(".q-confirm-sub") |> LazyHTML.text() =~
+               "refused from their next request"
+
+      assert view
+             |> LazyHTML.query(".q-confirm-act button")
+             |> Enum.map(&LazyHTML.text/1)
+             |> Enum.map(&String.trim/1) ==
+               ["Yes, revoke", "Cancel"]
+
+      # The other rows keep their cells.
+      assert doc |> LazyHTML.query("tr#key-1 > td") |> Enum.count() == 3
+      assert doc |> LazyHTML.query("tr#key-1 .q-confirm-view") |> Enum.to_list() == []
+    end
   end
 end

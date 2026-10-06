@@ -1950,8 +1950,18 @@
     gap: 8px;
   }
   tr.q-confirming > td.q-confirm-cell {
+    padding-inline: 1rem;
     background-color: var(--color-base-200);
     white-space: normal;
+  }
+  /* A table wider than its box scrolls sideways, and its cell across the row with it: the
+     confirmation stays in the box's view wherever it is scrolled, as wide as the box
+     (`q-tbl`, the container) less the cell's padding, or its buttons would sit off to the
+     right and its question off to the left, out of sight. */
+  tr.q-confirming > td.q-confirm-cell > .q-confirm-view {
+    position: sticky;
+    left: 1rem;
+    max-width: calc(100cqi - 2rem);
   }
   /* What cannot be undone: the row in the error's soft colour. */
   tr.q-confirming > td.q-confirm-cell:has(.btn-error) {

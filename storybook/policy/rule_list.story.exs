@@ -7,7 +7,8 @@ defmodule ApiaryWeb.Storybook.Policy.RuleList do
 
   def function, do: &ApiaryWeb.PolicyComponents.rule_list/1
   def layout, do: :one_column
-  def container, do: {:div, class: "grid w-full gap-3 p-3"}
+  def container, do: {:div, class: "grid w-full grid-cols-[minmax(0,1fr)] gap-3 p-3"}
+  def imports, do: [{ApiaryWeb.CoreComponents, inline_confirm: 1, button: 1}]
 
   # The list as the workspace's policy page builds it: `RuleList.list/3` of the rows, the
   # query and their use, the Filter menu's sections, and its URLs (`Common.list_path/2`).
@@ -34,6 +35,25 @@ defmodule ApiaryWeb.Storybook.Policy.RuleList do
         id: :use_not_counted,
         description: "The use could not be counted: the column is not shown, never faked.",
         attributes: list(rows, %RuleList{}, :unavailable, [])
+      },
+      %Variation{
+        id: :confirming,
+        description:
+          "A rule's row asking to confirm its removal; where the table scrolls sideways, " <>
+            "the question and its buttons stay in its box's view.",
+        attributes: list(rows, %RuleList{}, activity, can_lock: true, confirming: "r3"),
+        slots: [
+          """
+          <:confirm>
+            <.inline_confirm id="remove-confirm" question="Remove the deny rule paste.example.com?" cancel="#">
+              This takes effect within a heartbeat.
+              <:action>
+                <.button variant="danger" size="xs">Yes, remove</.button>
+              </:action>
+            </.inline_confirm>
+          </:confirm>
+          """
+        ]
       },
       %Variation{
         id: :loading,

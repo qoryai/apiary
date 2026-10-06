@@ -413,6 +413,67 @@ defmodule ApiaryWeb.PolicyComponentsTest do
       assert text(render_list([], query: %RuleList{text: "x"})) =~ "No rule matches."
       assert text(render_list([])) =~ "No rule matches."
     end
+
+    defp confirming_list(assigns) do
+      ~H"""
+      <PolicyComponents.rule_list
+        id="policy-rules"
+        label="Rules"
+        listing={@listing}
+        query={@query}
+        path={fn _query -> "/acme/main/policy" end}
+        sections={RuleList.sections(@rows, :unavailable)}
+        default_sort="Its own first"
+        confirming="r2"
+      >
+        <:confirm :let={rule}>
+          <ApiaryWeb.CoreComponents.inline_confirm
+            id="remove-confirm"
+            question={"Remove the deny rule #{rule.host}?"}
+            cancel="/acme/main/policy"
+          >
+            This takes effect within a heartbeat.
+            <:action>
+              <ApiaryWeb.CoreComponents.button variant="danger" size="xs">
+                Yes, remove
+              </ApiaryWeb.CoreComponents.button>
+            </:action>
+          </ApiaryWeb.CoreComponents.inline_confirm>
+        </:confirm>
+      </PolicyComponents.rule_list>
+      """
+    end
+
+    # As `table/1`'s: in a table wider than its box, the question and its buttons stay in
+    # the box's view (`q-confirm-view`, sticky), wherever the table is scrolled.
+    test "a row asking to confirm is one cell across the row, kept in view" do
+      rows = [row(%{}), own(%{id: "r2", host: "mcp.example", action: "deny"})]
+      query = %RuleList{}
+
+      html =
+        rendered_to_string(
+          confirming_list(%{
+            rows: rows,
+            listing: RuleList.list(rows, query, :unavailable),
+            query: query
+          })
+        )
+
+      doc = LazyHTML.from_fragment(html)
+
+      assert [cell] = doc |> LazyHTML.query("tr#rule-r2.q-confirming > td") |> Enum.to_list()
+      assert LazyHTML.attribute(cell, "class") == ["q-confirm-cell"]
+      assert LazyHTML.attribute(cell, "colspan") == ["7"]
+
+      view = LazyHTML.query(cell, "td > .q-confirm-view > #remove-confirm.q-confirm")
+      assert [_] = Enum.to_list(view)
+
+      assert text(LazyHTML.to_html(view)) ==
+               "Remove the deny rule mcp.example? This takes effect within a heartbeat. " <>
+                 "Yes, remove Cancel"
+
+      assert doc |> LazyHTML.query("tr#rule-r1 .q-confirm-view") |> Enum.to_list() == []
+    end
   end
 
   test "the target's mode is a radio group, its radios checked and never pressed" do

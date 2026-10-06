@@ -744,9 +744,12 @@ or an attribute of one, not a copy.
   wraps. Cancel takes the focus as it shows and Escape cancels; both lead back by
   `cancel`, a patch or a JS command. A table shows one in place of the cells of the row
   named by `confirming` (`<.table>`'s `confirm` slot), tinted the error's soft colour
-  when its button is red, neutral otherwise. A danger zone's line wraps it with what is
-  lost and the field to type (`SettingsComponents.deletion_confirm/1`). There is no modal
-  component.
+  when its button is red, neutral otherwise: one cell across the row, its content sticky
+  and as wide as the table's box (`q-confirm-view`), so that in a table wider than its
+  box the question and its buttons stay in view however far it is scrolled sideways, and
+  Cancel takes the focus without scrolling the question away (`rule_list/1`'s row is the
+  same). A danger zone's line wraps it with what is lost and the field to type
+  (`SettingsComponents.deletion_confirm/1`). There is no modal component.
 - **Menus** are daisyUI dropdowns under the `Menu` hook: a click opens and leaves focus on
   the trigger; Enter, Space and ArrowDown open and focus the first item, ArrowUp the last;
   the arrows wrap, Home and End go to the ends, Escape closes and returns focus. The items
