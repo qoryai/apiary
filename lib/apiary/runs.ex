@@ -1254,7 +1254,11 @@ defmodule Apiary.Runs do
 
   # The runs are placed by when they started, or, for a run that has only pinged, by when
   # the workspace first heard of it: the expression of
-  # `runs_workspace_id_started_or_first_heard_index`.
+  # `runs_workspace_id_started_or_first_heard_index`. A run's UTC day is that expression
+  # cast to a date as it is, since the columns hold UTC with no zone: `AT TIME ZONE 'UTC'`
+  # would make a timestamptz of it, which the cast dates in the connection's time zone, and
+  # a database not set to UTC would put the runs of the hours around midnight on the wrong
+  # day.
   defp by_start, do: dynamic([r], coalesce(r.started_at, r.inserted_at))
 
   @typedoc """
@@ -1289,14 +1293,12 @@ defmodule Apiary.Runs do
 
     Repo.all(
       from r in query,
-        group_by:
-          fragment("(COALESCE(?, ?) AT TIME ZONE 'UTC')::date", r.started_at, r.inserted_at),
-        order_by:
-          fragment("(COALESCE(?, ?) AT TIME ZONE 'UTC')::date", r.started_at, r.inserted_at),
+        group_by: fragment("COALESCE(?, ?)::date", r.started_at, r.inserted_at),
+        order_by: fragment("COALESCE(?, ?)::date", r.started_at, r.inserted_at),
         select: %{
           day:
             type(
-              fragment("(COALESCE(?, ?) AT TIME ZONE 'UTC')::date", r.started_at, r.inserted_at),
+              fragment("COALESCE(?, ?)::date", r.started_at, r.inserted_at),
               :date
             ),
           runs: count(r.id),
@@ -1339,12 +1341,12 @@ defmodule Apiary.Runs do
           where: coalesce(r.started_at, r.inserted_at) >= ^from,
           group_by: [
             r.workspace_id,
-            fragment("(COALESCE(?, ?) AT TIME ZONE 'UTC')::date", r.started_at, r.inserted_at)
+            fragment("COALESCE(?, ?)::date", r.started_at, r.inserted_at)
           ],
           select:
             {r.workspace_id,
              type(
-               fragment("(COALESCE(?, ?) AT TIME ZONE 'UTC')::date", r.started_at, r.inserted_at),
+               fragment("COALESCE(?, ?)::date", r.started_at, r.inserted_at),
                :date
              ), count(r.id), type(coalesce(sum(r.denied_count), 0), :integer)}
       )
@@ -1464,12 +1466,12 @@ defmodule Apiary.Runs do
           where: r.target_id in ^ids,
           group_by: [
             r.target_id,
-            fragment("(COALESCE(?, ?) AT TIME ZONE 'UTC')::date", r.started_at, r.inserted_at)
+            fragment("COALESCE(?, ?)::date", r.started_at, r.inserted_at)
           ],
           select:
             {r.target_id,
              type(
-               fragment("(COALESCE(?, ?) AT TIME ZONE 'UTC')::date", r.started_at, r.inserted_at),
+               fragment("COALESCE(?, ?)::date", r.started_at, r.inserted_at),
                :date
              ), count(r.id)}
       )

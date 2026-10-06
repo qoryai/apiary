@@ -219,10 +219,14 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewTest do
       conn: conn,
       scope: scope
     } do
-      running = started_run(scope, shop(), host: "build-01")
-      quiet = started_run(scope, shop(), heartbeat: {45, 100, 30}, ago: 30)
+      # The page's today is the clock's, on which a run a minute back is yesterday's for the
+      # first minute after midnight UTC: the three start now, the quiet one after the
+      # running one, which makes it the target's last run.
+      running = started_run(scope, shop(), host: "build-01", ago: 0)
+      quiet = started_run(scope, shop(), heartbeat: {45, 100, 30}, ago: 0)
 
       started_run(scope, %{},
+        ago: 0,
         exit: %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 48_000}
       )
 
