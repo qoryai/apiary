@@ -117,10 +117,11 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
   ID, written once and never shown again, and not deleted while something uses them; and
   the variables of a workspace and of each repository (`Apiary.Variables`), which the
   workspace may lock against its repositories, with names compared without case, names
-  beginning `QORY_` refused, and at most 128 names and 64 KiB for each repository. Who
-  may read and change them are the actions `secret.read`, `secret.write`, `secret.use`,
-  `variable.read` and `variable.edit`, and every change is in the audit trail by name,
-  never by value.
+  beginning `QORY_` refused, and at most 128 names and 64 KiB for each repository, the
+  limits an edition checks a change of the level above's variables against
+  (`Apiary.Variables.check_above/2`). Who may read and change them are the actions
+  `secret.read`, `secret.write`, `secret.use`, `variable.read` and `variable.edit`, and
+  every change is in the audit trail by name, never by value.
 - The workspace's settings have **Secrets and variables**, with the security feature: a
   view of the secrets, by name, value ID, who changed each value and when, and what uses
   it, never a value, with New secret, Add value, Change value, Rename value, Delete value

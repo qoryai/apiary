@@ -56,7 +56,8 @@ beside it:
 - `Apiary.Variables`: a workspace's variables and its repositories' own, with the
   workspace's locks, resolved per holder down the chain from the level above the
   workspace (`Apiary.Variables.Resolution`), and the runner's names it refuses or warns
-  about (`Apiary.Variables.Denied`).
+  about (`Apiary.Variables.Denied`). An edition that writes the level above's variables
+  checks the change against its workspaces with `check_above/2`, under its own locks.
 - `Apiary.KeyDerivation` and `Apiary.Integrity`: the keys derived from
   `APIARY_ENCRYPTION_SECRET`, one per purpose, and the integrity codes of stored rows.
 - `Apiary.Targets`: the workspace's targets as the pages read them, the index in one query

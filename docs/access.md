@@ -310,7 +310,8 @@ for each other and never on each other at once:
    of the policy of several workspaces at once does (`Apiary.Policy.lock_workspaces/2`),
    and as a change of the level an edition keeps above the workspaces' policies does
    (`c:Apiary.Edition.above_workspace/1`): it takes every workspace of the organisation,
-   then renders each again (`Apiary.Policy.rerender_in/3`).
+   then renders each again (`Apiary.Policy.rerender_in/3`), or checks its variables
+   against each (`Apiary.Variables.check_above/2`).
 3. **Memberships**: the owners' of the organisation, in the order of their ids
    (`Apiary.Organisations.lock_owners/1`), then any other.
 4. **Accounts.**
