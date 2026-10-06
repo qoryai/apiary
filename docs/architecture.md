@@ -467,20 +467,15 @@ compiled with `:dollar_endonly`, and a schema given to JSV has each `$` anchor w
 **The fetch guards** (`Apiary.Integrations.Fetch`): the host is resolved, and the fetch is
 refused unless every address is public (`Apiary.Integrations.Fetch.Address`), for every
 host and with no setting to allow a private one; the request connects to the address it
-checked, the host name kept for `Host`, SNI and the
-certificate's check; every redirect is followed by hand and checked the same way, https on
-port 443 to a host name, at most five; the body is capped at 1 MiB (256 KiB for a
-description), counted as it arrives, and the whole fetch at 15 seconds. A token, which an
-edition may give for a private release of a forge source
-(`c:Apiary.Edition.release_token/2`; the core gives none, and none is asked for a URL
-source), goes only to the forge's own host, `github.com`, `gitlab.com` or `codeberg.org`,
-only when it is the host first asked, and never to another host a redirect names; the
-fetch is told which forge it is for, and sends no token on a fetch for none. Since the
-token goes to the source's host, an edition gives one for that exact host, never one
-chosen by the forge's kind alone. Every failure is one `fetch_failed`, the reason only in
-the log. What came is checked against `checksums.txt`, the version
-asked for, and any earlier release of the same source and version the workspace found:
-`integration_source_mismatch` when they differ.
+checked, the host name kept for `Host`, SNI and the certificate's check; every redirect is
+followed by hand and checked the same way, https on port 443 to a host name, at most five;
+the body is capped at 1 MiB (256 KiB for a description), counted as it arrives, and the
+whole fetch at 15 seconds. A release is always fetched without credentials, in every
+edition: no request carries an `Authorization` header or a token of any kind, so private
+releases are not supported. Every failure is one `fetch_failed`, the reason only in the
+log. What came is checked against `checksums.txt`, the version asked for, and any earlier
+release of the same source and version the workspace found: `integration_source_mismatch`
+when they differ.
 
 **Integrity.** A connection, a release and a custom definition each carry an integrity
 code (`Apiary.Kinds.Coded`), a connection's over its kind, name, where it applies, its

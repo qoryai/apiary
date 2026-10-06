@@ -19,9 +19,9 @@ defmodule Apiary.Integrations do
 
   `fetch_release/2` reads the release's `description.json` and `checksums.txt` from where
   the integrations contract says they are, through `Apiary.Integrations.Fetch` and its
-  guards, with the token the edition gives for a forge source
-  (`c:Apiary.Edition.release_token/2`; none in the core) and none for a URL source, then
-  records the release `ready`, or `failed` with a code:
+  guards, without credentials: no request carries a token, whatever the source, so only
+  a release anyone may read is found. It then records the release `ready`, or `failed`
+  with a code:
 
     * `integration_source_refused`, fetching nothing, when the instance's settings no
       longer accept the source (`accepted_source/1`);
@@ -48,7 +48,7 @@ defmodule Apiary.Integrations do
 
   require Logger
 
-  alias Apiary.{Access, Audit, Edition, LogMetadata, Repo}
+  alias Apiary.{Access, Audit, LogMetadata, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Integrations.{Description, Fetch, FetchJob, Release, Source}
   alias Apiary.Kinds.{CanonicalJSON, Coded}
@@ -297,22 +297,18 @@ defmodule Apiary.Integrations do
   ## Fetching
 
   @doc """
-  fetch_release/3 fetches the pending release with the id `release_id` of the scope's
+  fetch_release/2 fetches the pending release with the id `release_id` of the scope's
   workspace (`connection.write`) and records what was found (see the module's
   documentation): `{:ok, release}`, ready or failed, or as it was when it is no longer
   pending; `{:error, reason}` from `Apiary.Access`, or `:not_found`.
-
-  `opts` exist for the tests: `:release_token`, a function of a scope and a source in
-  place of `c:Apiary.Edition.release_token/2`.
   """
-  @spec fetch_release(Scope.t(), term, keyword) ::
-          {:ok, Release.t()} | {:error, Access.reason()}
-  def fetch_release(%Scope{} = scope, release_id, opts \\ []) do
+  @spec fetch_release(Scope.t(), term) :: {:ok, Release.t()} | {:error, Access.reason()}
+  def fetch_release(%Scope{} = scope, release_id) do
     with {:ok, workspace} <- workspace(scope),
          :ok <- Access.authorize(scope, :"connection.write", workspace),
          %Release{} = release <- Repo.one(from r in releases(scope), where: r.id == ^release_id) do
       if release.state == "pending" and intact(release) do
-        outcome = outcome(scope, release, opts)
+        outcome = outcome(scope, release)
         record(scope, release, outcome)
       else
         {:ok, release}
@@ -345,22 +341,16 @@ defmodule Apiary.Integrations do
     end
   end
 
-  defp outcome(scope, %Release{} = release, opts) do
+  defp outcome(scope, %Release{} = release) do
     case accepted_source(release) do
-      {:ok, source} -> fetched(scope, release, source, opts)
+      {:ok, source} -> fetched(scope, release, source)
       {:error, _reason} -> {:failed, "integration_source_refused"}
     end
   end
 
-  defp fetched(scope, release, source, opts) do
-    token = token(scope, source, opts)
-
+  defp fetched(scope, release, source) do
     get = fn file, max ->
-      Fetch.get(Source.download_url(source, release.requested_version, file),
-        token: token,
-        forge_host: forge_host(source),
-        max_bytes: max
-      )
+      Fetch.get(Source.download_url(source, release.requested_version, file), max_bytes: max)
     end
 
     with {:ok, bytes} <- get.("description.json", @description_max),
@@ -376,16 +366,6 @@ defmodule Apiary.Integrations do
       {:failed, code} -> {:failed, code}
     end
   end
-
-  # A URL names a host no forge vouches for, so the edition is not asked for a token to
-  # send there, and the fetch is for no forge, whatever host it is.
-  defp token(_scope, %Source{form: :url}, _opts), do: nil
-
-  defp token(scope, %Source{form: :forge} = source, opts),
-    do: Keyword.get(opts, :release_token, &Edition.release_token/2).(scope, source)
-
-  defp forge_host(%Source{form: :forge, host: host}), do: host
-  defp forge_host(%Source{form: :url}), do: nil
 
   defp listed(checksums, sha, release) do
     if checksum(checksums, "description.json") == sha,

@@ -329,10 +329,8 @@ Even so, Qory follows a forge release's download links where they lead, to any p
 https host: on GitLab a release's links, and on Codeberg its attachments, may be addresses
 the release's author chose.
 
-This edition sends no token with a fetch. An edition that reads private releases sends
-its token only to the forge's own host, `github.com`, `gitlab.com` or `codeberg.org`, and
-only when it is the host first asked: never to an address of a `description.json`, or to
-another host a redirect leads to.
+Qory fetches every release without credentials, as anyone could: no request carries a
+token, so private releases are not supported.
 
 The value is read at boot, so a change takes a restart. A release asked for from an
 address once `INTEGRATION_URL_SOURCES` is off is not fetched; it fails with

@@ -7,7 +7,8 @@ defmodule Apiary.Integrations.FetchTest do
 
   @url "https://github.com/qoryai/qory-github/releases/download/v0.1.0/description.json"
 
-  # Every request reaches this plug, which records what it saw and answers by `answer`.
+  # Every request reaches this plug, which records what it saw, any credential among it,
+  # and answers by `answer`.
   defp get(url, answer, opts \\ []) do
     test = self()
 
@@ -15,7 +16,8 @@ defmodule Apiary.Integrations.FetchTest do
       send(
         test,
         {:request, conn.host, Plug.Conn.get_req_header(conn, "host"),
-         Plug.Conn.get_req_header(conn, "authorization"), conn.request_path}
+         Plug.Conn.get_req_header(conn, "authorization") ++
+           Plug.Conn.get_req_header(conn, "private-token"), conn.request_path}
       )
 
       answer.(conn)
@@ -41,18 +43,6 @@ defmodule Apiary.Integrations.FetchTest do
       capture_log(fn ->
         assert get("https://private.example.com/x/description.json", ok("{}")) ==
                  {:error, :fetch_failed}
-      end)
-
-    assert log =~ "address_refused"
-    refute_received {:request, _, _, _, _}
-  end
-
-  test "refuses a private address on a fetch of a forge's own release too" do
-    url = "https://private.example.com/acme/shop/releases/download/v1.0.0/description.json"
-
-    log =
-      capture_log(fn ->
-        assert get(url, ok("{}"), forge_host: "private.example.com") == {:error, :fetch_failed}
       end)
 
     assert log =~ "address_refused"
@@ -150,58 +140,16 @@ defmodule Apiary.Integrations.FetchTest do
     assert log =~ "timeout"
   end
 
-  test "sends a token to the public forge the fetch is for, and to no other host" do
-    assert {:ok, _} = get(@url, ok("{}"), token: "forge-token", forge_host: "github.com")
-    assert_received {:request, _, ["github.com"], ["Bearer forge-token"], _}
+  test "sends no credential, on the first hop or after a redirect" do
+    assert {:ok, _} =
+             get(@url, fn conn ->
+               if conn.request_path =~ "qory-github",
+                 do: redirect("https://objects.example.com/asset").(conn),
+                 else: ok("{}").(conn)
+             end)
 
-    url = "https://git.example.com/acme/shop/releases/download/v1.0.0/description.json"
-
-    assert {:ok, _} = get(url, ok("{}"), token: "forge-token", forge_host: "git.example.com")
-    assert_received {:request, _, ["git.example.com"], [], _}
-
-    assert {:ok, _} = get(@url, ok("{}"), token: "forge-token", forge_host: "gitlab.com")
     assert_received {:request, _, ["github.com"], [], _}
-  end
-
-  test "sends no token on a fetch for no forge, whatever token it is given" do
-    for url <- [@url, "https://git.example.com/acme/shop/description.json"] do
-      assert {:ok, _} = get(url, ok("{}"), token: "forge-token")
-      assert_received {:request, _, _, [], _}
-    end
-  end
-
-  test "never sends the token on to the host a redirect names" do
-    assert {:ok, _} =
-             get(
-               @url,
-               fn conn ->
-                 if conn.request_path =~ "qory-github",
-                   do: redirect("https://objects.example.com/asset").(conn),
-                   else: ok("{}").(conn)
-               end,
-               token: "forge-token",
-               forge_host: "github.com"
-             )
-
-    assert_received {:request, _, ["github.com"], ["Bearer forge-token"], _}
-    assert_received {:request, _, ["objects.example.com"], [], _}
-  end
-
-  test "keeps the token on a redirect to the forge's own host" do
-    assert {:ok, _} =
-             get(
-               @url,
-               fn conn ->
-                 if conn.request_path =~ "qory-github",
-                   do: redirect("https://github.com/acme/asset").(conn),
-                   else: ok("{}").(conn)
-               end,
-               token: "forge-token",
-               forge_host: "github.com"
-             )
-
-    assert_received {:request, _, ["github.com"], ["Bearer forge-token"], "/qoryai/" <> _}
-    assert_received {:request, _, ["github.com"], ["Bearer forge-token"], "/acme/asset"}
+    assert_received {:request, _, ["objects.example.com"], [], "/asset"}
   end
 
   test "resolves the host again on every hop, and refuses an answer changed to loopback" do
@@ -239,13 +187,8 @@ defmodule Apiary.Integrations.FetchTest do
     assert_received {:request, "2001:db8::10", ["v6.example.com"], _, _}
   end
 
-  test "the log names the URL and never the token" do
-    log =
-      capture_log(fn ->
-        get("https://private.example.com/description.json", ok("{}"), token: "forge-token")
-      end)
-
-    assert log =~ "private.example.com"
-    refute log =~ "forge-token"
+  test "the log names the URL" do
+    log = capture_log(fn -> get("https://private.example.com/description.json", ok("{}")) end)
+    assert log =~ "https://private.example.com/description.json"
   end
 end

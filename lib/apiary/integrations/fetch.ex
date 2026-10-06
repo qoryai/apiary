@@ -15,18 +15,13 @@ defmodule Apiary.Integrations.Fetch do
     * **Caps.** At most `max_bytes` of body (1 MiB), counted as it arrives, a declared
       `Content-Length` over it refused before; and the whole fetch, every hop, within
       `timeout` milliseconds (15 seconds). No body is decompressed.
-    * **The forge's own host.** A fetch of a forge source's release names that forge's
-      host, `forge_host`; a fetch of a URL source names none. A `token`, which an edition
-      gives for a private release (`c:Apiary.Edition.release_token/2`), is sent only to
-      `forge_host`, when it is a public forge's
-      (`Apiary.Integrations.Source.public_forges/0`), and only when it is the host
-      first asked: never to another host a redirect names, and never on a fetch that names
-      no forge host, whatever token it is given.
+    * **No credentials.** A request carries a `Host`, a `User-Agent` and an `Accept`
+      header, and no credential: no `Authorization`, no token of any kind, on any hop. A
+      release is read as anyone may read it, so a private one is not found.
     * **One answer.** Every failure is `{:error, :fetch_failed}`, the same to every
-      caller and page, with what failed in a log line, which names the URL and never a
-      token.
+      caller and page, with what failed in a log line, which names the URL.
 
-  The options, beside `:token` and `:forge_host`, exist for the tests and are read from
+  The options, beside the caps, exist for the tests and are read from
   `config :apiary, Apiary.Integrations.Fetch` where not given: `:resolver`, a module with
   `resolve/1` or a function of a host answering `{:ok, [address]}` or `{:error, reason}`
   (`:inet` by default); `:req_options`, merged into the request's.
@@ -35,7 +30,6 @@ defmodule Apiary.Integrations.Fetch do
   require Logger
 
   alias Apiary.Integrations.Fetch.Address
-  alias Apiary.Integrations.Source
   alias Apiary.Kinds.Hosts
 
   @max_bytes 1_048_576
@@ -45,9 +39,7 @@ defmodule Apiary.Integrations.Fetch do
 
   @typedoc "An option of `get/2`: see the module's documentation."
   @type option ::
-          {:token, String.t() | nil}
-          | {:forge_host, String.t() | nil}
-          | {:max_bytes, pos_integer}
+          {:max_bytes, pos_integer}
           | {:timeout, pos_integer}
           | {:max_redirects, non_neg_integer}
           | {:resolver, module | (String.t() -> {:ok, [:inet.ip_address()]} | {:error, term})}
@@ -60,11 +52,7 @@ defmodule Apiary.Integrations.Fetch do
   """
   @spec get(String.t(), [option]) :: {:ok, binary} | {:error, :fetch_failed}
   def get(url, opts \\ []) when is_binary(url) do
-    opts =
-      :apiary
-      |> Application.get_env(__MODULE__, [])
-      |> Keyword.merge(opts)
-      |> hold_forge_host(url)
+    opts = :apiary |> Application.get_env(__MODULE__, []) |> Keyword.merge(opts)
 
     timeout = Keyword.get(opts, :timeout, @timeout)
     deadline = System.monotonic_time(:millisecond) + timeout
@@ -72,7 +60,7 @@ defmodule Apiary.Integrations.Fetch do
     task =
       Task.async(fn ->
         try do
-          follow(url, 0, nil, deadline, opts)
+          follow(url, 0, deadline, opts)
         rescue
           error -> {:error, {:raised, Exception.message(error)}}
         catch
@@ -99,21 +87,11 @@ defmodule Apiary.Integrations.Fetch do
     end
   end
 
-  # A forge's token belongs to a fetch that starts on that forge: a `forge_host` other than
-  # the host first asked is dropped, so no caller can lend it to a fetch that only
-  # redirects there.
-  defp hold_forge_host(opts, url) do
-    if Keyword.get(opts, :forge_host) == URI.parse(url).host,
-      do: opts,
-      else: Keyword.put(opts, :forge_host, nil)
-  end
-
   # One hop: `url` checked, resolved and pinned, then asked; a redirect followed from here.
-  defp follow(url, hops, first_host, deadline, opts) do
+  defp follow(url, hops, deadline, opts) do
     with {:ok, uri} <- check_url(url),
-         first_host = first_host || uri.host,
          {:ok, address} <- resolve(uri.host, opts),
-         {:ok, response} <- request(uri, address, first_host, deadline, opts) do
+         {:ok, response} <- request(uri, address, deadline, opts) do
       cond do
         response.status == 200 ->
           if Req.Response.get_private(response, :too_large),
@@ -121,7 +99,7 @@ defmodule Apiary.Integrations.Fetch do
             else: {:ok, response.body}
 
         response.status in @redirects ->
-          redirect(uri, response, hops, first_host, deadline, opts)
+          redirect(uri, response, hops, deadline, opts)
 
         true ->
           {:error, {:status, response.status}}
@@ -129,7 +107,7 @@ defmodule Apiary.Integrations.Fetch do
     end
   end
 
-  defp redirect(uri, response, hops, first_host, deadline, opts) do
+  defp redirect(uri, response, hops, deadline, opts) do
     max = Keyword.get(opts, :max_redirects, @max_redirects)
 
     case Req.Response.get_header(response, "location") do
@@ -138,7 +116,7 @@ defmodule Apiary.Integrations.Fetch do
 
       [location | _] ->
         next = uri |> URI.merge(location) |> URI.to_string()
-        follow(next, hops + 1, first_host, deadline, opts)
+        follow(next, hops + 1, deadline, opts)
 
       [] ->
         {:error, :redirect_without_location}
@@ -180,14 +158,11 @@ defmodule Apiary.Integrations.Fetch do
   defp lookup(host, resolver) when is_function(resolver, 1), do: resolver.(host)
   defp lookup(host, resolver) when is_atom(resolver), do: resolver.resolve(host)
 
-  defp request(uri, address, first_host, deadline, opts) do
+  defp request(uri, address, deadline, opts) do
     remaining = deadline - System.monotonic_time(:millisecond)
     max_bytes = Keyword.get(opts, :max_bytes, @max_bytes)
     host = uri.host
-
-    headers =
-      [{"host", host}, {"user-agent", "qory-apiary"}, {"accept", "*/*"}] ++
-        token_header(Keyword.get(opts, :token), host, first_host, opts)
+    headers = [{"host", host}, {"user-agent", "qory-apiary"}, {"accept", "*/*"}]
 
     options =
       [
@@ -211,19 +186,6 @@ defmodule Apiary.Integrations.Fetch do
       {:error, exception} -> {:error, {:transport, Exception.message(exception)}}
     end
   end
-
-  # The token is for the forge the fetch is for, and goes to that forge's host alone, when
-  # it is the host first asked: never to another host a redirect names, and never on a
-  # fetch that names no forge, whatever the caller passed.
-  defp token_header(token, host, first_host, opts) when is_binary(token) and token != "" do
-    forge? = host in Source.public_forges()
-
-    if host == first_host and host == opts[:forge_host] and forge?,
-      do: [{"authorization", "Bearer " <> token}],
-      else: []
-  end
-
-  defp token_header(_token, _host, _first_host, _opts), do: []
 
   # The body, kept only up to `max_bytes`: a declared length over it, or a body that grows
   # past it, stops the read.

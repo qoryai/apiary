@@ -7,7 +7,7 @@ defmodule Apiary.IntegrationsTest do
   import ExUnit.CaptureLog
 
   alias Apiary.Integrations
-  alias Apiary.Integrations.{FetchJob, Release, Source}
+  alias Apiary.Integrations.{FetchJob, Release}
   alias Apiary.Audit.Entry
 
   @moduletag needs: :security
@@ -21,7 +21,8 @@ defmodule Apiary.IntegrationsTest do
   end
 
   # The release's files as a forge serves them, every other path a 404, each request told
-  # to the test with its Host and Authorization headers.
+  # to the test with its Host header and any credential it carries, GitHub's and Forgejo's
+  # Authorization or GitLab's PRIVATE-TOKEN.
   defp serve(files) do
     test = self()
 
@@ -29,7 +30,8 @@ defmodule Apiary.IntegrationsTest do
       send(
         test,
         {:request, Plug.Conn.get_req_header(conn, "host"),
-         Plug.Conn.get_req_header(conn, "authorization"), conn.request_path}
+         Plug.Conn.get_req_header(conn, "authorization") ++
+           Plug.Conn.get_req_header(conn, "private-token"), conn.request_path}
       )
 
       case Map.fetch(files, conn.request_path) do
@@ -261,44 +263,22 @@ defmodule Apiary.IntegrationsTest do
       assert log =~ "address_refused"
     end
 
-    test "sends the token the edition gives for a forge source to the forge", %{scope: scope} do
+    test "sends no credential, for a forge source or a URL source", %{scope: scope} do
       serve_release(github_description())
       {:ok, release} = Integrations.request_release(scope, @github)
-      test = self()
+      assert %Release{state: "ready"} = fetch!(scope, release)
+      assert_received {:request, ["github.com"], [], @base <> "description.json"}
+      assert_received {:request, ["github.com"], [], @base <> "checksums.txt"}
 
-      release_token = fn _scope, source ->
-        send(test, {:asked, source})
-        "forge-token"
-      end
+      {:ok, release} =
+        Integrations.request_release(scope, %{
+          source: "https://github.com" <> @base <> "description.json"
+        })
 
-      assert {:ok, %Release{state: "ready"}} =
-               Integrations.fetch_release(scope, release.id, release_token: release_token)
-
-      assert_received {:asked, %Source{host: "github.com", forge_kind: "github"}}
-
-      assert_received {:request, ["github.com"], ["Bearer forge-token"],
-                       @base <> "description.json"}
-
-      assert_received {:request, ["github.com"], ["Bearer forge-token"], @base <> "checksums.txt"}
-    end
-
-    test "fetches a URL source without a token, the edition not asked", %{scope: scope} do
-      serve_release(github_description(), "/qoryai/qory-github/releases/download/v0.1.0/")
-      url = "https://github.com/qoryai/qory-github/releases/download/v0.1.0/description.json"
-      {:ok, release} = Integrations.request_release(scope, %{source: url})
-      test = self()
-
-      release_token = fn _scope, source ->
-        send(test, {:asked, source})
-        "forge-token"
-      end
-
-      assert {:ok, %Release{state: "ready"}} =
-               Integrations.fetch_release(scope, release.id, release_token: release_token)
-
-      refute_received {:asked, _source}
-      assert_received {:request, ["github.com"], [], _path}
-      assert_received {:request, ["github.com"], [], _path}
+      assert %Release{state: "ready"} = fetch!(scope, release)
+      assert_received {:request, ["github.com"], [], @base <> "description.json"}
+      assert_received {:request, ["github.com"], [], @base <> "checksums.txt"}
+      refute_received {:request, _host, [_ | _], _path}
     end
 
     test "a release changed in the database is not found", %{scope: scope} do

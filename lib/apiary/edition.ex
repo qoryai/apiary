@@ -39,7 +39,6 @@ defmodule Apiary.Edition do
   - **Deletion**: `deletion_refusal/2`, `deletion_changed/4`.
   - **Registries**: `deletion_tables/0` (`Apiary.Deletion.Tables`), `features/0` and
     `features_of/3` (`Apiary.Features`), `subject_kinds/0` (`Apiary.Audit`).
-  - **Integrations**: `release_token/2`, the token a release is fetched with.
   - **Runtime**: `boot!/0`, `children/0`, `crontab/0`, `migrations_paths/0`,
     `after_migrate/0`.
   """
@@ -278,22 +277,6 @@ defmodule Apiary.Edition do
   @doc "The edition's schemas an audit entry may be about, with the kind it records."
   @callback subject_kinds() :: %{module => String.t()}
 
-  # Integrations
-
-  @doc """
-  The token to fetch a release of `source` (`Apiary.Integrations.Source`) with, for the
-  scope's workspace, or nil to fetch it without one, as the core does. Asked for a forge
-  path alone, on `github.com`, `gitlab.com` or `codeberg.org`: the source's `host` says
-  which forge, its `forge_kind` what kind of forge it is. A URL source is fetched without
-  a token, and the edition is not asked. The fetch sends the token to `source.host`, the
-  host it asks first, and never to another host a redirect names
-  (`Apiary.Integrations.Fetch`).
-
-  So the token returned must be one for that exact host: an edition picks it by
-  `source.host`, never by `forge_kind` alone.
-  """
-  @callback release_token(Scope.t(), Apiary.Integrations.Source.t()) :: String.t() | nil
-
   # Runtime
 
   @doc "Reads and checks the edition's settings at boot; raises on a wrong one."
@@ -343,7 +326,6 @@ defmodule Apiary.Edition do
     features: 0,
     features_of: 3,
     subject_kinds: 0,
-    release_token: 2,
     boot!: 0,
     children: 0,
     crontab: 0,

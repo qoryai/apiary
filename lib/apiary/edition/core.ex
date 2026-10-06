@@ -128,9 +128,6 @@ defmodule Apiary.Edition.Core do
   def subject_kinds, do: %{}
 
   @impl true
-  def release_token(_scope, _source), do: nil
-
-  @impl true
   def boot!, do: :ok
 
   @impl true

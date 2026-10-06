@@ -136,7 +136,7 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
 - Runtimes, integrations and services for the runs, without a page yet
   (`Apiary.Connections`, `Apiary.Integrations`): a runtime of the runner contract's
   catalogue, its `runtimes.json` as the runner ships it; an integration added from a
-  release on GitHub, GitLab or Forgejo, or at an
+  release on GitHub, GitLab or Codeberg, or at an
   https address of its `description.json`, which a job fetches and checks against the
   release's `checksums.txt` and the integrations contract; a service from a built-in
   definition or one the workspace writes. Each applies to every repository or to chosen
@@ -149,11 +149,8 @@ for one team, as `EDITIONS.md` at the root of the repository describes it.
   release's download links, which its author chooses, are still followed to any public
   https host. A wrong value stops the boot. The fetch connects only to public addresses,
   for every host and with no setting to allow a private one, checked again on every
-  redirect, within size and time limits. A token an edition gives
-  (`c:Apiary.Edition.release_token/2`) goes only to the forge's own host, only when it is
-  the host first asked, never to another host a redirect names, and never to an address;
-  since it goes to the source's host, an edition gives a token for that exact host, never
-  one chosen by the forge's kind alone. Who may read and
+  redirect, within size and time limits. A release is always fetched without
+  credentials, so private releases are not supported. Who may read and
   change them are the actions `connection.read` and `connection.write`, every change is in
   the audit trail, and each row carries an integrity code.
 
