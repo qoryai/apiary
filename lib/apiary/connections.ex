@@ -31,11 +31,10 @@ defmodule Apiary.Connections do
   repositories of its targets (`Apiary.Connections.Target`). A target of an integration
   may also carry the **ways** it is used in that repository, of which there is one,
   `credential` ("Calls its API"), when its description offers it; nil is the same
-  (`used_ways/2`). The
-  `tool` way ("Uses it as a tool (MCP)") a description may offer is refused. A save that
-  would make two connections collide where both apply, the same runtime, the same
-  integration, or a host in common, is refused, `{:error, {:overlap, public_ids}}`
-  (`Apiary.Connections.Overlap`).
+  (`used_ways/2`). The `tool` way ("Uses it as a tool (MCP)") a description may offer is
+  refused. A save that would make two connections collide where both apply, the same
+  runtime, the same integration, or a host in common, is refused,
+  `{:error, {:overlap, public_ids}}` (`Apiary.Connections.Overlap`).
 
   ## Integrity
 
@@ -176,19 +175,22 @@ defmodule Apiary.Connections do
 
   @doc """
   used_ways/2 is the ways the integration `connection` is used in at the repository
-  `target_id`: the ways its target there carries, or, where it carries none, the
-  credential way when its description offers it, never the tool way. A connection that
-  does not apply there, a runtime, a service, or an integration whose release is not
-  ready, is used in none.
+  `target_id`, of those its description offers, never the tool way: the ways its target
+  there carries, or, where it carries none, the credential way. A connection that does
+  not apply there (a `selected` one without that repository among its targets, or any
+  at a repository not of its workspace), a runtime, a service, or an integration whose
+  release is not ready, is used in none.
   """
   @spec used_ways(Connection.t(), Ecto.UUID.t()) :: [String.t()]
   def used_ways(%Connection{kind: "integration"} = connection, target_id) do
     connection = Repo.preload(connection, [:release, :targets])
+    offered = offered_ways(connection)
 
     case {connection.applies_to, Enum.find(connection.targets, &(&1.target_id == target_id))} do
-      {_applies_to, %Target{ways: [_ | _] = ways}} -> Enum.filter(@ways, &(&1 in ways))
+      {_applies_to, %Target{ways: [_ | _] = ways}} -> Enum.filter(offered, &(&1 in ways))
+      {_applies_to, %Target{}} -> offered
+      {"all", nil} -> if of_its_workspace?(connection, target_id), do: offered, else: []
       {"selected", nil} -> []
-      _none_of_its_own -> offered_ways(connection)
     end
   end
 
@@ -199,6 +201,15 @@ defmodule Apiary.Connections do
       {:ok, description} -> Enum.filter(@ways, &(&1 in description.ways))
       {:error, :not_ready} -> []
     end
+  end
+
+  defp of_its_workspace?(%Connection{} = connection, target_id) do
+    workspace = %Workspace{
+      id: connection.workspace_id,
+      organisation_id: connection.organisation_id
+    }
+
+    match?({:ok, _}, target_ids(workspace, [target_id]))
   end
 
   defp may_read(%Scope{workspace: %Workspace{} = workspace} = scope) do
